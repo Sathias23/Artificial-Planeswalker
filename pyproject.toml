@@ -1,0 +1,90 @@
+[project]
+name = "artificial-planeswalker"
+version = "0.1.0"
+description = "MTG Arena deck-building AI assistant built with PydanticAI, integrating with Scryfall API for card lookups, deck validation, and intelligent recommendations"
+requires-python = ">=3.12"
+readme = "README.md"
+authors = [
+    { name = "Brad", email = "brad@example.com" }
+]
+dependencies = [
+    "aiosqlite>=0.21.0",
+    "asyncpg>=0.30.0",
+    "chainlit>=2.8.3",
+    "httpx>=0.28.1",
+    "ijson>=3.3.0",
+    "logfire>=3.0.0",
+    "openai>=1.0.0",
+    "pydantic-ai>=1.0.17",
+    "anthropic>=0.69.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.1.1",
+    "sqlalchemy[asyncio]>=2.0.44",
+    "tenacity>=8.0.0",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "mypy>=1.18.2",
+    "pre-commit>=4.3.0",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.14.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "F",  # pyflakes
+    "I",  # isort
+    "N",  # pep8-naming
+    "W",  # pycodestyle warnings
+    "UP", # pyupgrade
+]
+ignore = []
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = "src.ui.*"
+# Chainlit doesn't have complete type stubs, so we need to allow untyped calls and decorators
+disallow_untyped_calls = false
+disallow_untyped_decorators = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

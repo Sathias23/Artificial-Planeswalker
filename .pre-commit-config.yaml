@@ -1,0 +1,24 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.0
+    hooks:
+      # Run the linter with auto-fix
+      - id: ruff
+        args: [--fix]
+      # Run the formatter
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.18.2
+    hooks:
+      - id: mypy
+        args: [--strict, --ignore-missing-imports]
+        additional_dependencies:
+          - pydantic>=2.12.0
+          - pydantic-settings>=2.0.0
+          - pydantic-ai>=1.0.17
+          - sqlalchemy>=2.0.44
+          - tenacity>=8.0.0
+          - openai>=1.0.0
+          - types-requests
+        files: ^src/

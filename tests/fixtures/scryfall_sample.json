@@ -1,0 +1,141 @@
+[
+  {
+    "id": "f2b9983e-20d4-4d12-9e2c-ec6d9a345787",
+    "name": "Lightning Bolt",
+    "oracle_id": "4e887119-67d1-47a7-b5e5-d1c05f6e4c6e",
+    "mana_cost": "{R}",
+    "cmc": 1.0,
+    "type_line": "Instant",
+    "oracle_text": "Lightning Bolt deals 3 damage to any target.",
+    "colors": ["R"],
+    "color_identity": ["R"],
+    "keywords": [],
+    "legalities": {
+      "standard": "not_legal",
+      "modern": "legal",
+      "legacy": "legal",
+      "vintage": "legal",
+      "commander": "legal"
+    },
+    "rarity": "common",
+    "set": "lea",
+    "set_name": "Limited Edition Alpha",
+    "collector_number": "161"
+  },
+  {
+    "id": "c83a1119-adc8-404e-bf1e-165ea69b67e7",
+    "name": "Black Lotus",
+    "oracle_id": "bd8fa327-dd41-4737-8f19-2cf5eb1f7cdd",
+    "mana_cost": "{0}",
+    "cmc": 0.0,
+    "type_line": "Artifact",
+    "oracle_text": "{T}, Sacrifice Black Lotus: Add three mana of any one color.",
+    "colors": [],
+    "color_identity": [],
+    "keywords": [],
+    "legalities": {
+      "standard": "not_legal",
+      "modern": "not_legal",
+      "legacy": "banned",
+      "vintage": "restricted",
+      "commander": "banned"
+    },
+    "rarity": "rare",
+    "set": "lea",
+    "set_name": "Limited Edition Alpha",
+    "collector_number": "232"
+  },
+  {
+    "id": "afb5d48e-82e8-449b-96ef-e14e4ff8b9d4",
+    "name": "Forest",
+    "oracle_id": "b34bb2dc-c1af-4d77-b0b3-a0fb342a5fc6",
+    "mana_cost": "",
+    "cmc": 0.0,
+    "type_line": "Basic Land — Forest",
+    "oracle_text": "({T}: Add {G}.)",
+    "colors": [],
+    "color_identity": ["G"],
+    "keywords": [],
+    "legalities": {
+      "standard": "legal",
+      "modern": "legal",
+      "legacy": "legal",
+      "vintage": "legal",
+      "commander": "legal"
+    },
+    "rarity": "common",
+    "set": "lea",
+    "set_name": "Limited Edition Alpha",
+    "collector_number": "294"
+  },
+  {
+    "id": "9ea8179a-d3c9-4cdc-a5b5-68cc73279050",
+    "name": "Delver of Secrets // Insectile Aberration",
+    "oracle_id": "9f8e0669-197b-41c4-970e-1d7f23292c40",
+    "mana_cost": "{U}",
+    "cmc": 1.0,
+    "type_line": "Creature — Human Wizard // Creature — Human Insect",
+    "oracle_text": "",
+    "colors": ["U"],
+    "color_identity": ["U"],
+    "keywords": ["Transform", "Flying"],
+    "card_faces": [
+      {
+        "name": "Delver of Secrets",
+        "mana_cost": "{U}",
+        "type_line": "Creature — Human Wizard",
+        "oracle_text": "At the beginning of your upkeep, look at the top card of your library. You may reveal that card. If an instant or sorcery card is revealed this way, transform Delver of Secrets.",
+        "power": "1",
+        "toughness": "1"
+      },
+      {
+        "name": "Insectile Aberration",
+        "type_line": "Creature — Human Insect",
+        "oracle_text": "Flying",
+        "power": "3",
+        "toughness": "2"
+      }
+    ],
+    "legalities": {
+      "standard": "not_legal",
+      "modern": "legal",
+      "legacy": "legal",
+      "vintage": "legal",
+      "commander": "legal"
+    },
+    "rarity": "common",
+    "set": "isd",
+    "set_name": "Innistrad",
+    "collector_number": "51"
+  },
+  {
+    "id": "1a873f0a-0e0c-4a90-bca9-6ce74904e3e0",
+    "name": "Pact of Negation",
+    "oracle_id": "ca1b53f9-d6b5-42f3-a7ad-96b983a1e96b",
+    "mana_cost": "{0}",
+    "cmc": 0.0,
+    "type_line": "Instant",
+    "oracle_text": "Counter target spell. At the beginning of your next upkeep, pay {3}{U}{U}. If you don't, you lose the game.",
+    "colors": ["U"],
+    "color_identity": ["U"],
+    "color_indicator": ["U"],
+    "keywords": [],
+    "legalities": {
+      "standard": "not_legal",
+      "modern": "legal",
+      "legacy": "legal",
+      "vintage": "legal",
+      "commander": "legal"
+    },
+    "rarity": "rare",
+    "set": "fut",
+    "set_name": "Future Sight",
+    "collector_number": "42"
+  },
+  {
+    "id": "invalid-card-missing-oracle-id",
+    "name": "Invalid Card - Missing Oracle ID",
+    "type_line": "Creature",
+    "mana_cost": "{1}{G}"
+  }
+]
