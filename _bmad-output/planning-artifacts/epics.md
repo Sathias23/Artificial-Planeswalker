@@ -1,63 +1,108 @@
-# Artificial-Planeswalker - Epic Breakdown
+# Artificial-Planeswalker - Epic Breakdown (Letta Migration)
 
-**Author:** Bradmin
-**Date:** 2025-12-07
-**Project Level:** MVP
+---
+stepsCompleted: [1, 2, 3, 4]
+inputDocuments:
+  - prd.md
+  - architecture.md
+  - research/technical-letta-framework-research-2026-01-04.md
+workflowType: 'create-epics-and-stories'
+project_name: 'Artificial-Planeswalker'
+user_name: 'Brad'
+date: '2026-01-04'
+status: 'complete'
+completedAt: '2026-01-04'
+---
+
+**Author:** Winston (Architect Agent)
+**Date:** 2026-01-04
+**Project Level:** MVP Migration
 **Target Scale:** Single-user local application
+**Migration:** PydanticAI → Letta Framework
 
 ---
 
 ## Overview
 
-This document provides the complete epic and story breakdown for Artificial-Planeswalker, decomposing the requirements from the [PRD](./prd.md) into implementable stories with full technical context from [Architecture](./architecture.md).
+This document provides the complete epic and story breakdown for Artificial-Planeswalker's migration from PydanticAI to the Letta framework. It decomposes requirements from the [PRD](./prd.md) and [Architecture](./architecture.md) into implementable stories.
 
-**Living Document Notice:** This is the implementation-ready version incorporating PRD requirements and Architecture decisions.
+**Technology Pivot Context:** This is a framework migration, not a greenfield project. Epics 1-4 from the original PydanticAI implementation are COMPLETE. This epic breakdown focuses on the Letta migration work.
 
 ### Epic Summary
 
 | Epic | Title | User Value | Stories |
 |------|-------|------------|---------|
-| 1 | Foundation & Data Infrastructure | Working local card database for instant queries | 5 |
-| 2 | PydanticAI Agent Core | AI-powered natural language card lookups | 4 |
-| 3 | Chainlit Chat Interface | Conversational web UI for card queries | 4 |
-| 4 | Deck Creation and Management | Create, save, and manage Standard decks | 5 |
-| 5 | Deck Building Intelligence | Real-time curve analysis and synergy suggestions | 5 |
+| L1 | Letta Agent Infrastructure | Foundation for stateful AI assistant | 4 |
+| L2 | Card Data Migration | 60k searchable cards via semantic search | 4 |
+| L3 | Chainlit Letta Integration | Working chat interface with new agent | 4 |
+| L4 | Deck Management Tools | Full deck CRUD via Letta tools | 5 |
+| L5 | Deck Intelligence Tools | Mana curve and synergy analysis | 4 |
+| L6 | Migration Cleanup | Clean codebase, archived legacy code | 3 |
 
-**Total Stories:** 23
+**Total Stories:** 24
 
 ---
 
 ## Functional Requirements Inventory
 
-| FR ID | Description | Priority |
-|-------|-------------|----------|
-| FR1 | Download and store Scryfall bulk data locally in SQL database | Critical |
-| FR2 | Natural language card lookup through PydanticAI agent | Critical |
-| FR3 | Card queries filtered by Standard format | High |
-| FR4 | Deck creation and management for Standard format | Critical |
-| FR5 | Deck construction rule validation (60+ cards, max 4 copies) | High |
-| FR6 | Mana curve distribution analysis and feedback | Medium |
-| FR7 | Card synergy identification and suggestions | Medium |
-| FR8 | Deck persistence with CRUD operations | Critical |
-| FR9 | Chainlit chat interface for user interactions | Critical |
-| FR10 | UI/agent layer separation for future replacement | High |
+| FR ID | Description | Letta Implementation |
+|-------|-------------|---------------------|
+| FR1 | Download and store Scryfall bulk data locally | Letta archival memory (semantic search) |
+| FR2 | Natural language card lookup | Letta tools with archival_memory_search |
+| FR3 | Card queries filtered by Standard format | Core memory block `format_filter` |
+| FR4 | Deck creation and management | Letta tools + SQLite DeckRepository |
+| FR5 | Deck construction rule validation | Logic layer (preserved) |
+| FR6 | Mana curve distribution analysis | Logic layer (preserved) + Letta tools |
+| FR7 | Card synergy identification | Logic layer (preserved) + Letta tools |
+| FR8 | Deck persistence with CRUD operations | SQLite DeckRepository (preserved) |
+| FR9 | Chainlit chat interface | Letta SDK integration |
+| FR10 | UI/agent layer separation | REST API boundary (Chainlit → Letta) |
+
+---
+
+## Non-Functional Requirements Inventory
+
+| NFR ID | Description | Letta Approach |
+|--------|-------------|----------------|
+| NFR1 | Offline-first card queries | Archival memory is local vector DB |
+| NFR2 | Type safety with Pydantic | Tools return strings, schemas in data layer |
+| NFR3 | Agent testable without UI | Pure Python tools, mock Letta client |
+| NFR4 | Bulk data updates refreshable | Re-run archival import script |
+| NFR5 | Future format support | Core memory block extensible |
+| NFR6 | UI replacement support | Letta REST API is UI-agnostic |
+| NFR7 | <500ms query performance | Validate semantic search latency |
+
+---
+
+## Additional Requirements from Technology Pivot
+
+| Requirement | Source | Epic |
+|-------------|--------|------|
+| Letta server setup and configuration | Architecture | L1 |
+| Core memory blocks: persona, human, active_deck, format_filter | Architecture | L1 |
+| Card import to archival memory (~$0.60 embedding cost) | Architecture | L2 |
+| Step streaming for real-time responses | Architecture | L3 |
+| Environment path pattern for tool database access | Architecture | L4 |
+| Google-style docstrings for all Letta tools | Architecture | L4, L5 |
+| `[MEMORY UPDATE: block]` pattern for state changes | Architecture | L4 |
+| Archive PydanticAI code after successful migration | Architecture | L6 |
 
 ---
 
 ## FR Coverage Map
 
-| FR | Epic 1 | Epic 2 | Epic 3 | Epic 4 | Epic 5 |
-|----|--------|--------|--------|--------|--------|
-| FR1 | 1.2, 1.4 | - | - | - | - |
-| FR2 | - | 2.2, 2.3 | - | - | - |
-| FR3 | - | 2.4 | - | - | - |
-| FR4 | - | - | - | 4.2, 4.4, 4.5 | - |
-| FR5 | - | - | - | 4.3 | 5.5 |
-| FR6 | - | - | - | - | 5.1, 5.2 |
-| FR7 | - | - | - | - | 5.3, 5.4 |
-| FR8 | - | - | - | 4.1, 4.5 | - |
-| FR9 | - | - | 3.1, 3.2 | - | - |
-| FR10 | 1.1 | 2.1 | 3.2 | - | - |
+| FR | Epic L1 | Epic L2 | Epic L3 | Epic L4 | Epic L5 | Epic L6 |
+|----|---------|---------|---------|---------|---------|---------|
+| FR1 | - | L2.1, L2.2 | - | - | - | - |
+| FR2 | - | L2.3, L2.4 | - | - | - | - |
+| FR3 | L1.3 | L2.4 | - | - | - | - |
+| FR4 | - | - | - | L4.2, L4.3 | - | - |
+| FR5 | - | - | - | L4.4 | - | - |
+| FR6 | - | - | - | - | L5.1, L5.2 | - |
+| FR7 | - | - | - | - | L5.3, L5.4 | - |
+| FR8 | - | - | - | L4.1, L4.5 | - | - |
+| FR9 | - | - | L3.1, L3.2 | - | - | - |
+| FR10 | L1.1 | - | L3.2, L3.3 | - | - | L6.1 |
 
 ---
 
@@ -65,879 +110,1191 @@ This document provides the complete epic and story breakdown for Artificial-Plan
 
 ### Design Principles Applied
 
-1. **User-Value First**: Each epic enables users to accomplish something meaningful
-2. **Leverage Architecture**: Built upon Repository Pattern, Tool-Based Agent, Session Management
-3. **Incremental Delivery**: Each epic is independently valuable and testable
-4. **Natural Dependencies**: Dependencies flow logically from data → agent → UI → features
+1. **Migration Safety**: Each epic independently verifiable before proceeding
+2. **Parallel Capability**: Existing PydanticAI code remains functional until L6
+3. **Incremental Delivery**: Each story delivers testable functionality
+4. **Architecture Alignment**: Stories directly map to architecture decisions
 
 ### Epic Dependency Graph
 
 ```
-Epic 1: Foundation & Data Infrastructure
+Epic L1: Letta Agent Infrastructure
     │
     ▼
-Epic 2: PydanticAI Agent Core ◄── Card queries need local DB
+Epic L2: Card Data Migration ◄── Cards need agent with archival memory
     │
     ▼
-Epic 3: Chainlit Chat Interface ◄── UI needs agent to invoke
+Epic L3: Chainlit Integration ◄── UI needs agent to communicate with
     │
     ▼
-Epic 4: Deck Creation & Management ◄── Deck tools need UI context
+Epic L4: Deck Management Tools ◄── Tools need integration working
     │
     ▼
-Epic 5: Deck Building Intelligence ◄── Analysis needs deck data
+Epic L5: Deck Intelligence Tools ◄── Analysis needs deck tools
+    │
+    ▼
+Epic L6: Migration Cleanup ◄── Cleanup after all features ported
 ```
 
 ### Technical Context Summary
 
-| Epic | Architecture Patterns | Key Components |
-|------|----------------------|----------------|
-| 1 | Repository Pattern, Bulk Import | SQLAlchemy, CardRepository, Scryfall importer |
-| 2 | Tool-Based Agent, Strategy Pattern | PydanticAI, OpenRouter, card_tools.py |
-| 3 | Session-Based Context | Chainlit handlers, formatters, session.py |
-| 4 | Repository Pattern (Deck) | DeckRepository, DeckValidator, deck_tools.py |
-| 5 | Business Logic Layer | CurveAnalyzer, SynergyDetector, analysis_tools.py |
+| Epic | Architecture Components | Key Deliverables |
+|------|------------------------|------------------|
+| L1 | Letta server, agent, memory blocks | Working Letta agent with persona |
+| L2 | Archival memory, card import | Searchable card database |
+| L3 | Letta SDK, step streaming | Chat interface with agent |
+| L4 | Letta tools, SQLite access | Deck CRUD operations |
+| L5 | Logic layer integration | Curve and synergy analysis |
+| L6 | Code archival | Clean codebase |
 
 ---
 
-## Epic 1: Foundation & Data Infrastructure
+## Epic L1: Letta Agent Infrastructure
 
-**Epic Goal:** Establish project foundation including Python environment, SQLite database with SQLAlchemy ORM, Scryfall bulk data import, and basic card query capabilities.
+**Epic Goal:** Establish the Letta framework foundation including server setup, base agent creation, and core memory block definitions.
 
-**User Value:** Users get instant card queries from a local database without API rate limits or network latency.
+**User Value:** Foundation enabling stateful AI assistant that remembers context across sessions.
 
-**FRs Addressed:** FR1, FR10
+**FRs Addressed:** FR10 (architecture separation)
 
 **Technical Context:**
-- Repository Pattern (`src/data/repositories/`)
-- SQLAlchemy 2.0+ with Pydantic schema separation
-- Bulk Import Pattern for Scryfall JSON
-- Four-layer architecture: data → logic → agent → ui
+- Letta server on port 8283
+- pip installation with SQLite backend
+- Core memory blocks define agent context
+- Agent persists across user sessions
 
 ---
 
-### Story 1.1: Project Initialization and Environment Setup
+### Story L1.1: Letta Server Setup and Dependencies
 
 As a **developer**,
-I want **a properly configured Python project with UV package management and development tooling**,
-So that **I can develop the application with type safety, code quality checks, and consistent dependency management**.
+I want **Letta framework installed and server running locally**,
+So that **I can create and interact with Letta agents**.
 
 **Acceptance Criteria:**
 
-**Given** a fresh project directory
-**When** I run the setup commands
+**Given** the existing project structure
+**When** I set up Letta
 **Then** the following is configured:
 
-- [ ] Project structure created per Architecture Source Tree:
-  - `src/data/`, `src/logic/`, `src/agent/`, `src/ui/`
-  - `src/config/settings.py`, `src/config/constants.py`
-  - `scripts/`, `tests/unit/`, `tests/integration/`
-- [ ] UV-based dependency management with `pyproject.toml`
-- [ ] Core dependencies installed:
-  - `pydantic>=2.9`, `pydanticai>=0.0.14`
-  - `sqlalchemy>=2.0`, `chainlit>=1.3`, `httpx>=0.27`
-- [ ] Dev dependencies: `pytest>=8.3`, `pytest-asyncio>=0.24`, `mypy>=1.11`, `ruff>=0.6`
-- [ ] Pre-commit hooks configured (`.pre-commit-config.yaml`):
-  - Ruff linting and formatting
-  - mypy type checking
-- [ ] `.env.example` created with placeholder values
-- [ ] `.gitignore` configured for Python, SQLite, `.env`
-- [ ] Git repository initialized
-- [ ] All pre-commit hooks pass on initial commit
+- [ ] Dependencies added to `pyproject.toml`:
+  - `letta>=0.6.0`
+  - `letta-client>=0.1.0`
+- [ ] Letta server starts successfully:
+  ```bash
+  letta server --port 8283 --data-dir ./data/letta
+  ```
+- [ ] Server health check passes: `GET http://localhost:8283/v1/health`
+- [ ] `.env` updated with:
+  - `LETTA_BASE_URL=http://localhost:8283`
+  - `OPENAI_API_KEY=...` (for embeddings)
+- [ ] Data directory created: `./data/letta/`
+- [ ] Development workflow documented in README
 
 **Technical Notes:**
-- Python 3.12+ required (Architecture: PEP 695 type improvements)
-- Use modern type hints: `list[Card]` not `List[Card]`
-- Configure `pyproject.toml` per Architecture lines 1039-1078
-- Settings module uses `pydantic-settings` for env loading
+- Architecture: pip installation with SQLite (development mode)
+- Two terminals needed: Letta server + Chainlit app
+- Server persists agent state in `./data/letta/`
 
 **Prerequisites:** None (first story)
 
 ---
 
-### Story 1.2: SQLite Database Setup with SQLAlchemy Models
+### Story L1.2: Letta Client Wrapper Module
 
 As a **developer**,
-I want **a SQLite database with SQLAlchemy ORM models for Scryfall card data**,
-So that **I can store and query Magic: The Gathering card information efficiently with type safety**.
+I want **a client wrapper for the Letta SDK**,
+So that **I have a consistent interface for agent operations throughout the codebase**.
 
 **Acceptance Criteria:**
 
-**Given** the project structure from Story 1.1
-**When** I run the database initialization
-**Then** the following exists:
-
-- [ ] SQLAlchemy Card model defined in `src/data/models.py`:
-  - `id`: TEXT PRIMARY KEY (Scryfall UUID)
-  - `name`: TEXT NOT NULL
-  - `mana_cost`: TEXT (nullable for lands)
-  - `cmc`: REAL NOT NULL DEFAULT 0.0
-  - `type_line`: TEXT NOT NULL
-  - `oracle_text`: TEXT
-  - `colors`: TEXT (JSON array)
-  - `color_identity`: TEXT (JSON array)
-  - `keywords`: TEXT (JSON array)
-  - `legalities`: TEXT NOT NULL (JSON object)
-  - `set_code`: TEXT NOT NULL
-  - `rarity`: TEXT NOT NULL
-  - `image_uris`: TEXT (JSON object)
-- [ ] Pydantic Card schema in `src/data/schemas.py` with `ConfigDict(from_attributes=True)`
-- [ ] Database module `src/data/database.py`:
-  - `create_engine()` function with SQLite URL
-  - `get_session()` context manager
-  - `init_database()` function creates tables
-- [ ] Indexes created per Architecture schema:
-  - `idx_cards_name` (case-insensitive)
-  - `idx_cards_cmc`
-  - `idx_cards_legalities_standard` (JSON extract)
-- [ ] Init script `scripts/init_db.py` creates `data/planeswalker.db`
-- [ ] Unit tests verify model definitions and connection
-- [ ] Health check test: INSERT card → SELECT card → verify match
-
-**Technical Notes:**
-- Use SQLAlchemy 2.0 declarative syntax
-- JSON fields use SQLite JSON1 extension
-- Database URL from `DATABASE_URL` env var, default `sqlite:///data/planeswalker.db`
-- Schema DDL reference: Architecture lines 769-887
-
-**Prerequisites:** Story 1.1
-
----
-
-### Story 1.3: Basic Card Query Functionality and Validation
-
-As a **developer**,
-I want **basic query functions to retrieve cards from the database by name or criteria**,
-So that **I can validate the data layer works before bulk import and provide foundation for agent tools**.
-
-**Acceptance Criteria:**
-
-**Given** the database models from Story 1.2
-**When** I use the CardRepository
-**Then** the following queries work:
-
-- [ ] `CardRepository` class in `src/data/repositories/card_repository.py`
-- [ ] Query methods implemented:
-  - `search_by_name(name: str) -> Card | None` - exact match (case-insensitive)
-  - `search_by_name_partial(query: str) -> list[Card]` - partial match
-  - `filter_by_colors(colors: list[str]) -> list[Card]`
-  - `filter_by_type(type_query: str) -> list[Card]`
-  - `filter_by_format(format: str) -> list[Card]` - JSON legalities check
-- [ ] All methods return **Pydantic models**, not SQLAlchemy objects
-- [ ] Repository uses injected session (dependency injection pattern)
-- [ ] Unit tests cover all query functions:
-  - Exact name match
-  - Partial name match (multiple results)
-  - Color filtering (single and multi-color)
-  - Type filtering (creature, instant, sorcery)
-  - Format legality filtering
-- [ ] Test script `scripts/test_queries.py` demonstrates queries with sample data
-
-**Technical Notes:**
-- Repository pattern: Architecture lines 101-110
-- Return Pydantic schemas from `schemas.py`
-- Use SQLAlchemy `ilike` for case-insensitive search
-- JSON queries: `json_extract(legalities, '$.standard') = 'legal'`
-
-**Prerequisites:** Story 1.2
-
----
-
-### Story 1.4: Scryfall Bulk Data Download and Import
-
-As a **developer**,
-I want **a script to download Scryfall bulk data and import it into the local database**,
-So that **the application has a complete, up-to-date card database without relying on API calls**.
-
-**Acceptance Criteria:**
-
-**Given** the database and repository from Stories 1.2-1.3
-**When** I run the import script
-**Then** the following happens:
-
-- [ ] Import script at `scripts/import_scryfall.py`
-- [ ] Script downloads from Scryfall bulk data API:
-  - GET `https://api.scryfall.com/bulk-data` for URLs
-  - Download `oracle-cards` JSON (~70MB)
-- [ ] Download features:
-  - Streaming download with httpx (10MB chunks)
-  - Progress logging every 10MB
-  - Exponential backoff retry (3 retries, max 30s)
-  - 60s timeout for large file
-- [ ] JSON parsing:
-  - Stream-parse with memory efficiency (ijson or chunked)
-  - Transform to Card Pydantic models
-  - Handle missing optional fields gracefully
-- [ ] Bulk insert:
-  - Batch size 1000 cards per commit
-  - INSERT OR REPLACE for duplicate handling
-  - Transaction rollback on errors
-- [ ] Completion logging:
-  - Cards imported count
-  - Time elapsed
-  - Import rate (cards/second)
-- [ ] Temporary JSON file cleanup after import
-- [ ] Runnable via `uv run scripts/import_scryfall.py`
-
-**Technical Notes:**
-- Scryfall JSON schema: Architecture lines 521-538
-- Use `oracle-cards` endpoint (unique cards only, smaller)
-- Bulk import workflow: Architecture lines 576-608
-- Map Scryfall fields to Card model carefully
-
-**Prerequisites:** Story 1.3
-
----
-
-### Story 1.5: End-to-End Data Layer Validation
-
-As a **developer**,
-I want **a comprehensive smoke test that validates the complete data layer pipeline**,
-So that **I can confirm Epic 1 is fully functional before proceeding to Epic 2**.
-
-**Acceptance Criteria:**
-
-**Given** the complete data layer from Stories 1.1-1.4
-**When** I run the validation script
-**Then** all checks pass:
-
-- [ ] Validation script at `scripts/validate_data_layer.py`
-- [ ] Test database created (separate from main DB)
-- [ ] Import validation:
-  - Import minimum 100 sample cards
-  - Verify card count matches expected
-- [ ] Query validation:
-  - Search by exact name: "Lightning Bolt" → 1 result
-  - Search partial name: "Lightning" → multiple results
-  - Filter by color: "R" (red) → red cards only
-  - Filter by type: "Instant" → instants only
-  - Filter by format: "standard" → Standard-legal only
-- [ ] Performance validation:
-  - Each query < 500ms (NFR7)
-  - Log actual query times
-- [ ] Output summary report:
-  ```
-  ✓ Database initialized
-  ✓ 100 cards imported
-  ✓ Exact name search: PASS (12ms)
-  ✓ Partial name search: PASS (45ms)
-  ✓ Color filter: PASS (38ms)
-  ✓ Type filter: PASS (41ms)
-  ✓ Format filter: PASS (52ms)
-  ✓ All queries under 500ms
-
-  EPIC 1 VALIDATION: PASSED
-  ```
-- [ ] Test database cleanup after validation
-- [ ] Runnable via `uv run scripts/validate_data_layer.py`
-
-**Technical Notes:**
-- Use in-memory SQLite for speed, or temp file for debugging
-- Sample cards fixture in `tests/fixtures/sample_cards.json`
-- This is the GATE for Epic 1 - must pass before Epic 2
-
-**Prerequisites:** Stories 1.1-1.4
-
----
-
-### Epic 1 Summary
-
-| Story | Title | FRs | Key Deliverables |
-|-------|-------|-----|------------------|
-| 1.1 | Project Initialization | FR10 | UV config, pre-commit, directory structure |
-| 1.2 | Database Setup | FR1 | SQLAlchemy models, Pydantic schemas, init script |
-| 1.3 | Query Functionality | FR1 | CardRepository with 5 query methods |
-| 1.4 | Scryfall Import | FR1 | Bulk download and import script |
-| 1.5 | E2E Validation | FR1 | Smoke test validating full pipeline |
-
-**Epic 1 Complete Criteria:**
-- All 5 stories implemented and tested
-- Story 1.5 validation passes 100%
-- Pre-commit hooks pass
-- Ready to proceed to Epic 2
-
----
-
-## Epic 2: PydanticAI Agent Core with Card Query Tools
-
-**Epic Goal:** Implement the PydanticAI agent with OpenRouter integration and tool definitions for natural language card lookups and format-aware queries.
-
-**User Value:** Users can ask natural language questions about MTG cards and receive intelligent, accurate answers from the local database.
-
-**FRs Addressed:** FR2, FR3, FR10
-
-**Technical Context:**
-- Tool-Based Agent Architecture (`src/agent/tools/`)
-- Strategy Pattern for LLM provider abstraction (OpenRouter)
-- PydanticAI typed tool definitions
-- Agent has NO UI dependencies (enables future UI replacement)
-
----
-
-### Story 2.1: PydanticAI Agent Setup with OpenRouter Integration
-
-As a **developer**,
-I want **a PydanticAI agent configured to use OpenRouter as the LLM backend**,
-So that **I can test different AI models and leverage the agent framework for tool-based card queries**.
-
-**Acceptance Criteria:**
-
-**Given** the project foundation from Epic 1
-**When** I configure and run the agent
+**Given** a running Letta server
+**When** I use the client wrapper
 **Then** the following works:
 
-- [ ] Agent configuration in `src/agent/config.py`:
-  - Load `OPENROUTER_API_KEY` from environment
-  - Load `OPENROUTER_MODEL` with default `openai/gpt-4-turbo`
-  - Support alternative models: `anthropic/claude-3.5-sonnet`
-- [ ] PydanticAI agent in `src/agent/planeswalker_agent.py`:
-  - Agent instance created with OpenRouter provider
-  - System prompt establishes MTG deck building assistant persona
-  - Agent configured for tool calling
-- [ ] OpenRouter integration:
-  - Use OpenAI-compatible endpoint (`https://openrouter.ai/api/v1`)
-  - Bearer token authentication
-  - Streaming response support
-- [ ] Error handling:
-  - 401 Unauthorized → clear API key error message
-  - 429 Rate Limit → exponential backoff retry
-  - 503 Unavailable → fallback model if configured
-- [ ] Basic test:
-  - Agent responds to "Hello" with greeting
-  - Agent responds to MTG question without tools (baseline)
-- [ ] Unit tests verify agent initialization
-- [ ] Integration test validates OpenRouter communication
-
-**Technical Notes:**
-- OpenRouter API details: Architecture lines 543-572
-- PydanticAI uses OpenAI-compatible format natively
-- Store API key in `.env`, never in code
-- 30s timeout per LLM request
-
-**Prerequisites:** Epic 1 complete (Story 1.5 passes)
-
----
-
-### Story 2.2: Card Lookup Tool Implementation
-
-As a **user**,
-I want **to ask the agent for specific cards by name using natural language**,
-So that **I can quickly find card details without memorizing exact card names**.
-
-**Acceptance Criteria:**
-
-**Given** the agent from Story 2.1 and CardRepository from Epic 1
-**When** I ask about a card by name
-**Then** the agent finds and returns card details:
-
-- [ ] Tool defined in `src/agent/tools/card_tools.py`:
+- [ ] Client module at `src/letta/client.py`:
   ```python
-  @agent.tool
-  async def lookup_card(name: str) -> CardResult:
-      """Find a Magic: The Gathering card by name."""
+  from letta_client import Letta
+
+  def get_letta_client() -> Letta:
+      """Get configured Letta client instance."""
   ```
-- [ ] Tool behavior:
-  - Exact match first, then partial match fallback
-  - Returns structured card data (name, mana cost, type, oracle text, colors)
-  - Handles multiple matches with disambiguation
-- [ ] CardRepository injected via PydanticAI dependency injection
-- [ ] Natural language queries work:
-  - "Show me Lightning Bolt" → finds Lightning Bolt
-  - "What is Black Lotus?" → finds Black Lotus
-  - "Find Sheoldred" → finds Sheoldred, the Apocalypse
-- [ ] Partial match handling:
-  - "Lightning" → returns top 5 matches, asks for clarification
-  - "Jace" → returns Jace planeswalkers, asks which one
-- [ ] Not found handling:
-  - "Find Lightening Bolt" → "No exact match. Did you mean 'Lightning Bolt'?"
-- [ ] Unit tests:
-  - Exact name match
-  - Partial name match with multiple results
-  - Card not found
-- [ ] Integration test: agent + tool + database flow
+- [ ] Client reads `LETTA_BASE_URL` from environment
+- [ ] Connection error handling with helpful messages
+- [ ] Retry logic for transient failures (3 attempts)
+- [ ] Unit tests verify client initialization
+- [ ] Integration test verifies server connectivity
 
 **Technical Notes:**
-- Tool pattern: Architecture lines 112-122
-- Return Pydantic `CardResult` model, not raw dict
-- Tool receives CardRepository via `RunContext`
-- Log tool invocations for debugging
+- Architecture: REST API on port 8283
+- Use `letta-client` SDK for type-safe operations
+- Client is stateless; agent state is in server
 
-**Prerequisites:** Story 2.1
+**Prerequisites:** Story L1.1
 
 ---
 
-### Story 2.3: Advanced Card Search Tool (Filters and Criteria)
+### Story L1.3: Base Agent Creation with Memory Blocks
 
-As a **user**,
-I want **to search for cards using complex criteria like color, type, mana cost, and keywords**,
-So that **I can discover cards that match my deck building needs**.
+As a **developer**,
+I want **a Letta agent created with properly configured core memory blocks**,
+So that **the agent has persistent context for MTG deck building**.
 
 **Acceptance Criteria:**
 
-**Given** the agent with card lookup from Story 2.2
-**When** I describe card criteria in natural language
-**Then** the agent finds matching cards:
+**Given** a running Letta server and client
+**When** I create the base agent
+**Then** the following is configured:
 
-- [ ] Tool defined in `src/agent/tools/card_tools.py`:
+- [ ] Agent creation module at `src/letta/agent.py`:
   ```python
-  @agent.tool
-  async def search_cards(
-      colors: list[str] | None = None,
-      card_types: list[str] | None = None,
-      min_cmc: int | None = None,
-      max_cmc: int | None = None,
-      keywords: list[str] | None = None,
-      text_contains: str | None = None,
-  ) -> CardSearchResult:
-      """Search for cards matching multiple criteria."""
+  async def create_mtg_agent(client: Letta) -> Agent:
+      """Create MTG deck-building agent with memory blocks."""
   ```
-- [ ] Filter combinations work:
-  - Colors: "R" (red), "U,B" (blue and black), colorless
-  - Types: "creature", "instant", "sorcery", "enchantment", "artifact", "land"
-  - CMC range: min/max mana value
-  - Keywords: "haste", "flying", "trample", etc.
-  - Text search: oracle text contains phrase
-- [ ] Natural language interpretation:
-  - "red creatures with haste under 4 mana" → colors=["R"], types=["creature"], keywords=["haste"], max_cmc=3
-  - "blue instant draw spells" → colors=["U"], types=["instant"], text_contains="draw"
-  - "colorless artifacts" → colors=[], types=["artifact"]
-- [ ] Result handling:
-  - Return top 10 matches with pagination hint
-  - "Found 47 cards matching criteria. Showing top 10..."
-  - Include total count for user awareness
-- [ ] Edge cases:
-  - No results → helpful message with relaxed criteria suggestion
-  - Too broad → "Found 500+ results. Try adding more filters."
-- [ ] Unit tests: filter combinations, natural language parsing
-- [ ] Integration test: complex queries against real card data
+- [ ] Core memory blocks defined per Architecture:
+  - `persona` (2000 chars): MTG deck-building expert identity
+  - `human` (2000 chars): User preferences placeholder
+  - `active_deck` (5000 chars): Current deck summary
+  - `format_filter` (500 chars): Current format/games filter
+- [ ] Memory block module at `src/letta/memory.py`:
+  ```python
+  PERSONA_BLOCK = """You are an expert Magic: The Gathering deck-building assistant..."""
+  ```
+- [ ] Agent creation script at `scripts/create_letta_agent.py`
+- [ ] Script outputs agent_id for configuration
+- [ ] Unit tests verify memory block structure
+- [ ] Integration test verifies agent creation
 
 **Technical Notes:**
-- Build on CardRepository query methods from Story 1.3
-- May need new repository method for combined filters
-- LLM interprets natural language → structured tool parameters
-- Consider caching frequent queries
+- Architecture: persona block sets agent behavior
+- Core memory always in LLM context window
+- Agent persists across server restarts
 
-**Prerequisites:** Story 2.2
+**Prerequisites:** Story L1.2
 
 ---
 
-### Story 2.4: Standard Format Filtering Tool
+### Story L1.4: Agent Retrieval and Session Management
 
-As a **user**,
-I want **card searches to be automatically filtered for Standard format legality**,
-So that **I only see cards I can use in Standard decks**.
+As a **developer**,
+I want **to retrieve existing agents by ID or create new ones**,
+So that **users can have persistent agents across sessions**.
 
 **Acceptance Criteria:**
 
-**Given** the search tools from Stories 2.2-2.3
+**Given** an existing Letta agent
+**When** I need to use it
+**Then** the following works:
+
+- [ ] Agent retrieval function in `src/letta/agent.py`:
+  ```python
+  async def get_or_create_agent(client: Letta, agent_id: str | None = None) -> Agent:
+      """Get existing agent or create new one if not found."""
+  ```
+- [ ] Agent ID stored in configuration (single-user MVP)
+- [ ] `.env` updated: `LETTA_AGENT_ID=<uuid>`
+- [ ] Graceful handling if agent not found (recreate)
+- [ ] Tool execution environment configured:
+  - `APP_DATABASE_PATH` for SQLite access
+  - `LETTA_AGENT_ID` for self-reference
+- [ ] Unit tests verify get-or-create logic
+- [ ] Integration test verifies agent persistence
+
+**Technical Notes:**
+- Architecture: One agent per user (MVP)
+- Agent ID stored in Chainlit session in Epic L3
+- Tool environment enables database access
+
+**Prerequisites:** Story L1.3
+
+---
+
+### Epic L1 Summary
+
+| Story | Title | Key Deliverables |
+|-------|-------|------------------|
+| L1.1 | Server Setup | Letta running, dependencies installed |
+| L1.2 | Client Wrapper | Reusable Letta SDK interface |
+| L1.3 | Base Agent | Agent with 4 core memory blocks |
+| L1.4 | Session Management | Get-or-create pattern for agents |
+
+**Epic L1 Complete Criteria:**
+- Letta server running on port 8283
+- Agent created with all memory blocks
+- Agent persists across server restarts
+- Client wrapper tested and working
+- Ready to proceed to Epic L2
+
+---
+
+## Epic L2: Card Data Migration
+
+**Epic Goal:** Import Scryfall card data into Letta archival memory and implement card search tools.
+
+**User Value:** Users can search 60,000+ MTG cards using natural language with semantic similarity.
+
+**FRs Addressed:** FR1, FR2, FR3
+
+**Technical Context:**
+- Archival memory with vector embeddings
+- OpenAI text-embedding-3-small model
+- One-time import cost ~$0.60
+- File upload strategy for bulk import
+
+---
+
+### Story L2.1: Card Data Export for Letta Import
+
+As a **developer**,
+I want **Scryfall card data exported in Letta-optimized format**,
+So that **cards can be imported to archival memory with good search quality**.
+
+**Acceptance Criteria:**
+
+**Given** existing Scryfall bulk data
+**When** I export for Letta
+**Then** the following is produced:
+
+- [ ] Export script at `scripts/export_cards_for_letta.py`
+- [ ] Each card formatted per Architecture pattern:
+  ```
+  Card: Lightning Bolt
+  Mana Cost: {R}
+  Type: Instant
+  Oracle Text: Lightning Bolt deals 3 damage to any target.
+  Colors: R
+  CMC: 1
+  Keywords:
+  Rarity: common
+  Format: Standard=not_legal, Modern=legal, Legacy=legal
+  ```
+- [ ] Output file: `data/cards_for_letta.jsonl`
+- [ ] One JSON object per line with `text` field
+- [ ] All ~60,000 cards exported
+- [ ] Export completes in < 5 minutes
+- [ ] Unit tests verify format structure
+
+**Technical Notes:**
+- Text format optimized for embedding similarity
+- Include all searchable fields
+- Legalities as key=value for filtering
+
+**Prerequisites:** Epic L1 complete
+
+---
+
+### Story L2.2: Archival Memory Card Import
+
+As a **developer**,
+I want **card data imported into Letta archival memory**,
+So that **the agent can search cards semantically**.
+
+**Acceptance Criteria:**
+
+**Given** exported card data file
+**When** I import to Letta
+**Then** the following happens:
+
+- [ ] Import script at `scripts/import_cards_to_letta.py`
+- [ ] Script creates data source via Letta API
+- [ ] File uploaded and processed asynchronously
+- [ ] Progress tracking with estimated completion time
+- [ ] Import completes successfully (~60k cards)
+- [ ] Data source attached to agent
+- [ ] Embedding cost logged (~$0.60 expected)
+- [ ] Script runnable: `uv run scripts/import_cards_to_letta.py`
+
+**Technical Notes:**
+- Architecture: File upload for bulk import
+- Letta handles chunking and embedding
+- Same embedding model for agent and data source
+
+**Prerequisites:** Story L2.1
+
+---
+
+### Story L2.3: Card Search Tool Implementation
+
+As a **user**,
+I want **to search for cards using natural language**,
+So that **I can find cards for my deck without knowing exact names**.
+
+**Acceptance Criteria:**
+
+**Given** cards imported to archival memory
 **When** I search for cards
-**Then** format filtering is applied:
+**Then** the agent finds relevant matches:
 
-- [ ] Tool for setting format context:
+- [ ] Tool at `src/letta/tools/card_tools.py`:
   ```python
-  @agent.tool
-  async def set_format_filter(format: str | None) -> str:
-      """Set the format filter for card searches. Use 'standard', 'modern', etc., or None for all cards."""
+  def search_cards(query: str, limit: int = 10) -> str:
+      """
+      Search for Magic: The Gathering cards.
+
+      Args:
+          query (str): Natural language search query
+          limit (int): Maximum results to return
+
+      Returns:
+          str: Formatted list of matching cards
+      """
   ```
-- [ ] Session-level format state:
-  - Format filter stored in agent context/session
-  - Persists across queries within conversation
-  - Default: Standard format enabled
-- [ ] All card tools respect format filter:
-  - `lookup_card` → only returns Standard-legal matches
-  - `search_cards` → filters results by format legality
-- [ ] User feedback:
-  - "Searching Standard-legal cards only..."
-  - "Lightning Bolt is not legal in Standard" (if searching banned card)
-- [ ] Opt-out capability:
-  - "Show me all cards, not just Standard" → clears filter
-  - "Search Modern format" → switches format
-  - "Include banned cards" → temporary filter bypass
-- [ ] Legality data from `legalities` JSON field:
-  - Check `json_extract(legalities, '$.standard') = 'legal'`
-  - Handle "not_legal", "banned", "restricted" values
-- [ ] Unit tests: format filtering logic
-- [ ] Integration test: Standard filter applied to searches
+- [ ] Tool uses `archival_memory_search` internally
+- [ ] Results formatted with name, mana cost, type, text
+- [ ] Semantic similarity finds related cards:
+  - "red burn spells" → Lightning Bolt, Shock, etc.
+  - "flying creatures" → cards with flying keyword
+- [ ] No results handled gracefully
+- [ ] Unit tests with mock archival memory
+- [ ] Integration test verifies search quality
 
 **Technical Notes:**
-- Format filter stored in agent RunContext or session state
-- CardRepository already has `filter_by_format()` from Story 1.3
-- Standard is MVP focus; other formats (Modern, Commander) extensible
-- Clear UI indication when format filter is active
+- Archival search returns similar text entries
+- Tool parses card format back to fields
+- Return user-friendly formatted string
 
-**Prerequisites:** Story 2.3
-
----
-
-### Epic 2 Summary
-
-| Story | Title | FRs | Key Deliverables |
-|-------|-------|-----|------------------|
-| 2.1 | Agent Setup | FR10 | PydanticAI + OpenRouter config, error handling |
-| 2.2 | Card Lookup Tool | FR2 | `lookup_card` tool with fuzzy matching |
-| 2.3 | Advanced Search Tool | FR2 | `search_cards` with multi-filter support |
-| 2.4 | Format Filtering | FR3 | Session-based Standard filter for all queries |
-
-**Epic 2 Complete Criteria:**
-- Agent responds to natural language card queries
-- All 3 card tools functional and tested
-- Standard format filtering works by default
-- Agent testable without UI (FR10)
-- Ready to proceed to Epic 3
+**Prerequisites:** Story L2.2
 
 ---
 
-## Epic 3: Chainlit Chat Interface Integration
+### Story L2.4: Format Filter Integration
 
-**Status:** ✅ COMPLETED
+As a **user**,
+I want **card searches filtered by format legality**,
+So that **I only see cards I can use in my deck**.
 
-See PRD for original stories. Implementation complete in `src/ui/`.
+**Acceptance Criteria:**
+
+**Given** format filter set in core memory
+**When** I search for cards
+**Then** only legal cards returned:
+
+- [ ] Filter tool at `src/letta/tools/filter_tools.py`:
+  ```python
+  def set_format_filter(format: str | None, games: list[str] | None = None) -> str:
+      """
+      Set format and platform filter for card searches.
+
+      Args:
+          format (str | None): Format name (standard, modern, etc.) or None
+          games (list[str] | None): Platforms (arena, paper, mtgo) or None
+
+      Returns:
+          str: Confirmation of filter settings
+      """
+  ```
+- [ ] Tool updates `format_filter` core memory block
+- [ ] Card search tool reads filter from context
+- [ ] Search results filtered by legality field
+- [ ] "standard" filters to Standard-legal only
+- [ ] `None` shows all cards
+- [ ] Memory update pattern used:
+  ```
+  [MEMORY UPDATE: format_filter]
+  Format: standard
+  Games: arena
+  ```
+- [ ] Integration test verifies filtering works
+
+**Technical Notes:**
+- Architecture: Core memory block for filter state
+- Agent has filter context in every interaction
+- Games filter for platform availability
+
+**Prerequisites:** Story L2.3
 
 ---
 
-## Epic 4: Deck Creation and Management
+### Epic L2 Summary
 
-**Status:** ✅ COMPLETED
+| Story | Title | Key Deliverables |
+|-------|-------|------------------|
+| L2.1 | Card Export | JSONL file with 60k cards |
+| L2.2 | Archival Import | Cards searchable in Letta |
+| L2.3 | Search Tool | Natural language card search |
+| L2.4 | Format Filter | Standard/Modern/etc. filtering |
 
-See PRD for original stories. Implementation complete with DeckRepository, deck tools, and sidebar integration.
+**Epic L2 Complete Criteria:**
+- All cards imported to archival memory
+- `search_cards` tool returns relevant results
+- Format filtering works via core memory
+- Ready to proceed to Epic L3
 
 ---
 
-## Epic 5: Deck Building Intelligence (Curve & Synergy)
+## Epic L3: Chainlit Letta Integration
 
-**Epic Goal:** Enhance the deck building experience with real-time mana curve analysis and synergy detection to guide cooperative deck construction.
+**Epic Goal:** Update the Chainlit UI to communicate with Letta agent via REST API with step streaming.
 
-**User Value:** Users receive intelligent, proactive feedback on their deck's mana curve and card synergies, transforming the assistant into a true deck building partner.
+**User Value:** Users interact with the new Letta-powered agent through familiar chat interface.
+
+**FRs Addressed:** FR9, FR10
+
+**Technical Context:**
+- Letta SDK for API calls
+- Step streaming for real-time responses
+- Session maps to Letta agent_id
+- Thin UI layer (no business logic)
+
+---
+
+### Story L3.1: Chainlit Session to Letta Agent Mapping
+
+As a **developer**,
+I want **Chainlit sessions mapped to Letta agents**,
+So that **users have persistent agents across chat sessions**.
+
+**Acceptance Criteria:**
+
+**Given** the Chainlit application
+**When** a user starts a chat
+**Then** they connect to a Letta agent:
+
+- [ ] Updated `src/ui/app.py`:
+  ```python
+  AGENT_ID_KEY = "letta_agent_id"
+
+  @cl.on_chat_start
+  async def on_chat_start():
+      agent_id = cl.user_session.get(AGENT_ID_KEY)
+      if not agent_id:
+          agent = await get_or_create_agent(letta_client)
+          cl.user_session.set(AGENT_ID_KEY, agent.id)
+  ```
+- [ ] Agent ID persisted in Chainlit session
+- [ ] Welcome message displays on start
+- [ ] Letta client initialized at app startup
+- [ ] Error handling for Letta connection failures
+- [ ] Unit tests with mock Letta client
+
+**Technical Notes:**
+- Architecture: One agent per user (MVP)
+- Agent ID stored in Chainlit user session
+- Lazy agent creation on first message
+
+**Prerequisites:** Epic L1 and L2 complete
+
+---
+
+### Story L3.2: Step Streaming Message Handler
+
+As a **user**,
+I want **to see agent responses stream in real-time**,
+So that **I get immediate feedback as the agent thinks**.
+
+**Acceptance Criteria:**
+
+**Given** a connected Letta agent
+**When** I send a message
+**Then** I see streaming response:
+
+- [ ] Message handler at `src/ui/handlers/message_handler.py`:
+  ```python
+  async def handle_message(message: str, agent_id: str) -> None:
+      async for chunk in client.agents.messages.stream(agent_id, messages):
+          if chunk.message_type == "assistant_message":
+              await cl_message.stream_token(chunk.content)
+  ```
+- [ ] Step streaming per Architecture pattern
+- [ ] Complete LettaMessage objects received
+- [ ] Tool execution steps visible (optional debug mode)
+- [ ] Response completes and displays fully
+- [ ] Error messages shown for failures
+- [ ] Integration test verifies streaming works
+
+**Technical Notes:**
+- Architecture: Step streaming (Letta default)
+- No client-side token accumulation
+- Steps: reasoning → tool execution → response
+
+**Prerequisites:** Story L3.1
+
+---
+
+### Story L3.3: Tool Step Display
+
+As a **user**,
+I want **to see when the agent uses tools**,
+So that **I understand what the agent is doing**.
+
+**Acceptance Criteria:**
+
+**Given** agent executing tools
+**When** I watch the response
+**Then** I see tool activity:
+
+- [ ] Tool calls displayed as Chainlit Steps
+- [ ] Step shows tool name and brief input
+- [ ] Step collapses after completion
+- [ ] Tool results integrated into response
+- [ ] Multiple tools show in sequence
+- [ ] Error states displayed if tool fails
+- [ ] Manual testing confirms UX is clear
+
+**Technical Notes:**
+- Use existing `src/ui/tool_steps.py` pattern
+- Adapt for Letta message format
+- Keep tool display optional/collapsible
+
+**Prerequisites:** Story L3.2
+
+---
+
+### Story L3.4: Error Handling and Reconnection
+
+As a **user**,
+I want **graceful error handling when things go wrong**,
+So that **I can continue working without confusion**.
+
+**Acceptance Criteria:**
+
+**Given** possible Letta failures
+**When** errors occur
+**Then** user sees helpful messages:
+
+- [ ] Connection errors: "Connecting to AI assistant..."
+- [ ] Timeout errors: "Response taking longer than expected"
+- [ ] Tool failures: Error message from tool (not stack trace)
+- [ ] Server restart: Automatic reconnection attempt
+- [ ] Agent not found: Recreate agent transparently
+- [ ] Rate limits: Backoff and retry
+- [ ] All error paths tested
+
+**Technical Notes:**
+- Wrap all Letta calls in try/except
+- User never sees technical error details
+- Log full errors for debugging
+
+**Prerequisites:** Stories L3.1-L3.3
+
+---
+
+### Epic L3 Summary
+
+| Story | Title | Key Deliverables |
+|-------|-------|------------------|
+| L3.1 | Session Mapping | Chainlit → Letta agent connection |
+| L3.2 | Step Streaming | Real-time response display |
+| L3.3 | Tool Display | Visible tool execution steps |
+| L3.4 | Error Handling | Graceful failure recovery |
+
+**Epic L3 Complete Criteria:**
+- Chat interface connects to Letta agent
+- Messages stream in real-time
+- Tool usage visible to user
+- Errors handled gracefully
+- Ready to proceed to Epic L4
+
+---
+
+## Epic L4: Deck Management Tools
+
+**Epic Goal:** Port all deck CRUD operations to Letta tool format with proper memory updates.
+
+**User Value:** Users can create, edit, and manage decks through natural language.
+
+**FRs Addressed:** FR4, FR5, FR8
+
+**Technical Context:**
+- SQLite access via environment path pattern
+- Sync database connections in tools
+- Memory update pattern for active_deck block
+- Google-style docstrings for schema
+
+---
+
+### Story L4.1: Deck Repository Access Pattern
+
+As a **developer**,
+I want **Letta tools to access SQLite deck database**,
+So that **deck operations work with existing data layer**.
+
+**Acceptance Criteria:**
+
+**Given** the SQLite deck database
+**When** a tool needs deck data
+**Then** access works correctly:
+
+- [ ] Environment variable: `APP_DATABASE_PATH=data/decks.db`
+- [ ] Database helper in `src/letta/tools/_db.py`:
+  ```python
+  def get_db_connection():
+      """Get sync SQLite connection for tool use."""
+      import os
+      import sqlite3
+      db_path = os.environ.get("APP_DATABASE_PATH", "data/decks.db")
+      return sqlite3.connect(db_path)
+  ```
+- [ ] All deck tools use this pattern
+- [ ] Connection closed after each operation
+- [ ] Error handling for DB failures
+- [ ] Unit tests with test database
+
+**Technical Notes:**
+- Architecture: Environment path pattern
+- Sync connections (Letta tools are sync)
+- Keep tool logic minimal, delegate to helper
+
+**Prerequisites:** Epic L3 complete
+
+---
+
+### Story L4.2: Create Deck Tool
+
+As a **user**,
+I want **to create a new deck through conversation**,
+So that **I can start building a deck with a name**.
+
+**Acceptance Criteria:**
+
+**Given** no active deck
+**When** I say "create a deck called Mono Red"
+**Then** deck is created and active:
+
+- [ ] Tool at `src/letta/tools/deck_tools.py`:
+  ```python
+  def create_deck(name: str, format: str = "standard") -> str:
+      """
+      Create a new deck and set it as active.
+
+      Args:
+          name (str): Name for the new deck
+          format (str): Deck format (standard, modern, etc.)
+
+      Returns:
+          str: Confirmation with deck details
+      """
+  ```
+- [ ] Deck created in SQLite via DeckRepository
+- [ ] Active deck set in core memory:
+  ```
+  [MEMORY UPDATE: active_deck]
+  Name: Mono Red
+  Format: standard
+  ID: <uuid>
+  Cards: 0
+  Colors: none
+  ```
+- [ ] Format filter auto-set to match deck format
+- [ ] Duplicate name handled (suggest alternative)
+- [ ] Integration test verifies creation
+
+**Technical Notes:**
+- Memory update pattern per Architecture
+- Format filter synced automatically
+- Return user-friendly confirmation
+
+**Prerequisites:** Story L4.1
+
+---
+
+### Story L4.3: Add Card to Deck Tool
+
+As a **user**,
+I want **to add cards to my deck through conversation**,
+So that **I can build my deck naturally**.
+
+**Acceptance Criteria:**
+
+**Given** an active deck
+**When** I say "add 4 Lightning Bolt"
+**Then** cards are added:
+
+- [ ] Tool at `src/letta/tools/deck_tools.py`:
+  ```python
+  def add_card_to_deck(card_name: str, quantity: int = 1, sideboard: bool = False) -> str:
+      """
+      Add a card to the active deck.
+
+      Args:
+          card_name (str): Name of the card to add
+          quantity (int): Number of copies (default 1)
+          sideboard (bool): Add to sideboard if True
+
+      Returns:
+          str: Confirmation with updated deck status
+      """
+  ```
+- [ ] Card looked up via archival memory search
+- [ ] Best match used if exact match not found
+- [ ] Card added to SQLite deck_cards table
+- [ ] Active deck memory block updated with new count/colors
+- [ ] Ambiguous names prompt for clarification
+- [ ] Integration test verifies addition
+
+**Technical Notes:**
+- Two-step: search archival → add to SQLite
+- Update active_deck block with new state
+- Handle card not found gracefully
+
+**Prerequisites:** Story L4.2, Epic L2
+
+---
+
+### Story L4.4: Deck Validation Tool
+
+As a **user**,
+I want **deck construction rules enforced**,
+So that **my deck is legal for the format**.
+
+**Acceptance Criteria:**
+
+**Given** adding cards to deck
+**When** rules would be violated
+**Then** I'm warned:
+
+- [ ] Validation in `add_card_to_deck`:
+  - Max 4 copies (except basic lands)
+  - Card is legal in deck format
+- [ ] Warning returned (not error):
+  - "You already have 4 Lightning Bolt - can't add more"
+  - "Counterspell is not legal in Standard"
+- [ ] Use existing `src/logic/deck_validator.py`
+- [ ] Validation can be bypassed with confirmation
+- [ ] Unit tests for all validation rules
+
+**Technical Notes:**
+- Logic layer preserved unchanged
+- Tools call into logic layer
+- Return warnings, not exceptions
+
+**Prerequisites:** Story L4.3
+
+---
+
+### Story L4.5: View, Load, and Delete Deck Tools
+
+As a **user**,
+I want **to see, switch between, and delete decks**,
+So that **I can manage multiple deck ideas**.
+
+**Acceptance Criteria:**
+
+**Given** saved decks
+**When** I manage decks
+**Then** operations work:
+
+- [ ] View tool:
+  ```python
+  def view_deck() -> str:
+      """Display the active deck contents grouped by card type."""
+  ```
+- [ ] List tool:
+  ```python
+  def list_decks(format_filter: str | None = None) -> str:
+      """List all saved decks with optional format filter."""
+  ```
+- [ ] Load tool:
+  ```python
+  def load_deck(name: str | None = None, deck_id: str | None = None) -> str:
+      """Load a deck by name or ID and set as active."""
+  ```
+- [ ] Delete tool:
+  ```python
+  def delete_deck(name: str | None = None, deck_id: str | None = None, confirmed: bool = False) -> str:
+      """Delete a deck with confirmation."""
+  ```
+- [ ] Load updates active_deck memory block
+- [ ] Delete requires confirmation
+- [ ] Integration tests for all operations
+
+**Technical Notes:**
+- Pattern consistent with Architecture
+- Memory updates for state changes
+- Confirmation for destructive actions
+
+**Prerequisites:** Story L4.4
+
+---
+
+### Epic L4 Summary
+
+| Story | Title | Key Deliverables |
+|-------|-------|------------------|
+| L4.1 | DB Access Pattern | SQLite connection helper |
+| L4.2 | Create Deck | Deck creation with memory |
+| L4.3 | Add Card | Card addition from archival |
+| L4.4 | Validation | Format and copy rules |
+| L4.5 | Deck Management | View, load, delete tools |
+
+**Epic L4 Complete Criteria:**
+- All deck CRUD operations working
+- Memory blocks update correctly
+- Validation rules enforced
+- Integration tests pass
+- Ready to proceed to Epic L5
+
+---
+
+## Epic L5: Deck Intelligence Tools
+
+**Epic Goal:** Port mana curve analysis and synergy detection to Letta tool format.
+
+**User Value:** Users receive intelligent feedback on deck composition and synergies.
 
 **FRs Addressed:** FR6, FR7
 
 **Technical Context:**
-- Business Logic Layer (`src/logic/mana_curve.py`, `src/logic/synergy.py`)
-- Analysis tools (`src/agent/tools/analysis_tools.py`)
-- Automatic feedback system with throttling
-- LLM-hybrid synergy suggestions
+- Existing logic layer preserved
+- Tools wrap logic layer calls
+- Results formatted for chat display
+- Auto-feedback system integration
 
 ---
 
-### Story 5.1: Mana Curve Analysis Tool
+### Story L5.1: Mana Curve Analysis Tool
 
 As a **user**,
-I want **the agent to analyze my deck's mana curve and provide feedback**,
-So that **I can build a balanced deck with appropriate mana distribution**.
+I want **to analyze my deck's mana curve**,
+So that **I can build a balanced deck**.
 
 **Acceptance Criteria:**
 
 **Given** an active deck with cards
-**When** I ask "analyze my mana curve"
-**Then** the agent provides curve analysis:
+**When** I ask "analyze my curve"
+**Then** I get analysis:
 
-- [ ] `CurveAnalyzer` class in `src/logic/mana_curve.py`:
-  - Calculate CMC distribution (0, 1, 2, 3, 4, 5, 6, 7+)
-  - Compute average CMC
-  - Identify curve shape (aggro, midrange, control)
-- [ ] `analyze_deck_mana_curve` tool in `src/agent/tools/analysis_tools.py`
-- [ ] Curve insights provided:
-  - "Your average CMC is 2.3 - aggressive curve"
-  - "Top-heavy: 40% of spells cost 4+ mana"
-  - "Missing early plays: only 2 one-drops"
-- [ ] Archetype-aware feedback:
-  - Aggro decks: encourage low CMC, warn on high CMC
-  - Control decks: validate early interaction + late-game finishers
-  - Midrange: balanced 2-4 CMC curve
-- [ ] Text-based curve visualization in chat
-- [ ] Unit tests for curve calculation logic
+- [ ] Tool at `src/letta/tools/analysis_tools.py`:
+  ```python
+  def analyze_mana_curve() -> str:
+      """
+      Analyze the active deck's mana curve distribution.
+
+      Returns:
+          str: Curve analysis with recommendations
+      """
+  ```
+- [ ] Uses existing `src/logic/mana_curve.analyze_mana_curve()`
+- [ ] Output includes:
+  - CMC distribution (0-7+)
+  - Average CMC
+  - Curve assessment (aggro/midrange/control)
+  - Issues detected
+  - Recommendations
+- [ ] Text-based curve visualization
+- [ ] Unit tests verify integration
 
 **Technical Notes:**
-- Reference: CLAUDE.md `src/logic/mana_curve.py`
-- CurveAnalyzer should be stateless, receive deck as input
-- Return structured `CurveAnalysis` Pydantic model
+- Logic layer unchanged
+- Tool formats results for chat
+- Keep existing analysis algorithms
 
-**Prerequisites:** Epic 4 (deck with cards exists)
-
-**Status:** ✅ COMPLETE
-
-**Verification:**
-- ✅ `analyze_mana_curve()` in `src/logic/mana_curve.py` (lines 58-119)
-- ✅ `analyze_deck_mana_curve` tool in `src/agent/tools/mana_curve.py`
-- ✅ `ManaCurveAnalysis` dataclass with distribution, issues, recommendations
-- ✅ CMC distribution (0-7+), average CMC, land ratio
-- ✅ Issue detection: top-heavy, mana screw/flood, curve gaps
-- ✅ Text-based visualization in chat output
+**Prerequisites:** Epic L4 complete
 
 ---
 
-### Story 5.2: Automatic Curve Feedback During Deck Building
+### Story L5.2: Automatic Curve Feedback
 
 As a **user**,
-I want **the agent to automatically comment on curve impact when I add cards**,
-So that **I receive real-time guidance without explicitly asking**.
+I want **curve feedback when I add cards**,
+So that **I'm guided during deck building**.
 
 **Acceptance Criteria:**
 
-**Given** auto-feedback is enabled (default)
-**When** I add a card to my deck
-**Then** I receive contextual curve feedback:
+**Given** auto-feedback enabled
+**When** I add a card
+**Then** I may get feedback:
 
-- [ ] Proactive feedback system in `src/logic/mana_curve.py:generate_contextual_feedback()`
-- [ ] Throttling strategy to avoid fatigue:
-  - Always show for first 4 cards (establishing curve)
-  - Trigger when CMC distribution shifts > 15%
-  - Trigger when curve problems detected
-- [ ] Feedback types:
-  - **Positive:** "Great addition! Strong early-game presence"
-  - **Warning:** "Deck getting top-heavy - consider 1-3 mana plays"
-  - **Neutral:** "Curve remains balanced"
-- [ ] Archetype inference from average CMC
-- [ ] `toggle_auto_feedback` tool to enable/disable
-- [ ] Session persistence of preference
-- [ ] Conversational tone (suggestive, not prescriptive)
+- [ ] `add_card_to_deck` triggers feedback check
+- [ ] Uses `src/logic/mana_curve.generate_contextual_feedback()`
+- [ ] Throttling rules preserved:
+  - Always for first 5 cards
+  - When distribution shifts >15%
+  - When problems detected
+- [ ] Feedback types: positive, warning, neutral
+- [ ] Toggle tool:
+  ```python
+  def toggle_auto_feedback(enabled: bool) -> str:
+      """Enable or disable automatic curve feedback."""
+  ```
+- [ ] Preference stored in core memory
+- [ ] Integration test verifies feedback triggers
 
 **Technical Notes:**
-- Reference: CLAUDE.md "Automatic Curve Feedback" section
-- Feedback generated in tool layer, displayed by UI
-- Don't spam user - throttle intelligently
+- Feedback appended to add_card response
+- Throttling prevents spam
+- User can disable via tool
 
-**Prerequisites:** Story 5.1
-
-**Status:** ✅ COMPLETE
-
-**Verification:**
-- ✅ `generate_contextual_feedback()` in `src/logic/mana_curve.py` (lines 243-354)
-- ✅ `CurveFeedback` dataclass with message, feedback_type, triggered_by, should_display
-- ✅ Throttling: first 5 cards, >15% CMC shift, problem detection
-- ✅ Feedback types: positive, warning, neutral
-- ✅ Archetype inference: aggro (≤2.5), midrange (2.5-3.5), control (>3.5)
-- ✅ `toggle_auto_feedback` tool in `src/agent/tools/preferences.py`
-- ✅ Session persistence via `AgentDependencies.set_auto_feedback_enabled()`
+**Prerequisites:** Story L5.1
 
 ---
 
-### Story 5.3: Basic Synergy Detection
+### Story L5.3: Synergy Detection Tool
 
 As a **user**,
-I want **the agent to identify card synergies within my deck**,
-So that **I can build more cohesive and powerful decks**.
+I want **to see synergies in my deck**,
+So that **I can build more cohesive decks**.
 
 **Acceptance Criteria:**
 
-**Given** a deck with multiple cards
+**Given** an active deck with cards
 **When** I ask "what synergies does my deck have?"
-**Then** the agent identifies patterns:
+**Then** I get synergy report:
 
-- [ ] `SynergyDetector` class in `src/logic/synergy.py`
-- [ ] Pattern detection types:
-  - **Tribal:** "8 Goblins - strong tribal synergy"
-  - **Keyword:** "6 creatures with flying"
-  - **Mechanic combos:** "Sacrifice synergy with 4 sacrifice outlets"
-- [ ] `detect_deck_synergies` tool returns structured synergy report
-- [ ] Synergy explanations:
-  - Why cards work together
-  - Which cards are the synergy payoffs
-  - Which cards enable the synergy
-- [ ] Handle no synergies gracefully:
-  - "No strong synergies detected. Consider focusing on a theme."
-- [ ] Unit tests for pattern recognition
+- [ ] Tool at `src/letta/tools/analysis_tools.py`:
+  ```python
+  def detect_synergies() -> str:
+      """
+      Analyze the active deck for card synergies.
+
+      Returns:
+          str: Synergy report with patterns and explanations
+      """
+  ```
+- [ ] Uses existing `src/logic/synergy.detect_synergies()`
+- [ ] Reports:
+  - Tribal synergies (e.g., "8 Goblins")
+  - Keyword synergies (e.g., "6 flying creatures")
+  - Mechanic combos (e.g., "sacrifice theme")
+- [ ] Explains why cards synergize
+- [ ] "No synergies" handled helpfully
+- [ ] Unit tests verify integration
 
 **Technical Notes:**
-- Rule-based pattern matching for MVP (not ML)
-- Analyze card types, subtypes, keywords, oracle text
-- Return `SynergyReport` Pydantic model with `has_synergies` flag
+- Logic layer unchanged
+- Tool formats results for chat
+- Return structured analysis
 
-**Prerequisites:** Epic 4
-
-**Status:** ✅ COMPLETE
-
-**Verification:**
-- ✅ `detect_synergies()` in `src/logic/synergy.py` (lines 80-113)
-- ✅ `SynergyPattern` model with pattern_type, subtype, affected_cards, explanation, strength
-- ✅ `SynergyAnalysis` model with synergies list and deck_cohesion
-- ✅ Tribal detection: `_detect_tribal_synergies()` (creature types + payoffs)
-- ✅ Keyword detection: `_detect_keyword_synergies()` (flying, lifelink, etc.)
-- ✅ Mechanic combos: sacrifice, graveyard, card_draw patterns
-- ✅ `detect_deck_synergies` tool in `src/agent/tools/synergy_detection.py`
-- ✅ Returns structured dict with `has_synergies` for UI action buttons
+**Prerequisites:** Story L5.1
 
 ---
 
-### Story 5.4: Proactive Synergy Suggestions
+### Story L5.4: Synergy Card Suggestions
 
 As a **user**,
-I want **the agent to suggest cards that synergize with my current deck**,
-So that **I can discover cards I might not have considered**.
+I want **card suggestions that synergize with my deck**,
+So that **I can discover cards I might not know**.
 
 **Acceptance Criteria:**
 
-**Given** a deck with identified synergies
+**Given** a deck with identified themes
 **When** I ask "suggest cards for my deck"
-**Then** the agent recommends synergistic cards:
+**Then** I get suggestions:
 
-- [ ] `suggest_synergy_cards` tool with LLM-hybrid approach
-- [ ] Suggestion process:
-  1. Detect current deck themes/synergies
-  2. Query database for cards matching themes
-  3. Use LLM to curate and explain top suggestions
-- [ ] Suggestions are:
-  - Standard-legal (respect format filter)
-  - Not already in deck
-  - Contextually relevant to strategy
-- [ ] Explanation for each suggestion:
-  - "Goblin Chainwhirler - tribal synergy + board presence"
-  - "Claim the Firstborn - enables sacrifice theme"
-- [ ] Limit to 5-7 suggestions to avoid overwhelming
-- [ ] Quick-add action buttons in UI (Chainlit actions)
-- [ ] Performance: ~5-10 seconds acceptable for LLM call
+- [ ] Tool at `src/letta/tools/analysis_tools.py`:
+  ```python
+  def suggest_synergy_cards(limit: int = 7) -> str:
+      """
+      Suggest cards that synergize with the active deck.
+
+      Args:
+          limit (int): Maximum suggestions to return
+
+      Returns:
+          str: Suggested cards with explanations
+      """
+  ```
+- [ ] Process:
+  1. Detect deck themes via synergy logic
+  2. Search archival for matching cards
+  3. Filter to format-legal, not already in deck
+  4. Return top suggestions with explanations
+- [ ] Each suggestion explains synergy
+- [ ] Suggestions respect format filter
+- [ ] Integration test verifies relevance
 
 **Technical Notes:**
-- Reference: CLAUDE.md "Synergy Quick-Add" actions
-- LLM evaluates card fit, not just pattern matching
-- Cache suggestions per deck state to avoid repeated LLM calls
+- Combines synergy detection + archival search
+- LLM curates final suggestions
+- Limit to 5-7 to avoid overwhelming
 
-**Prerequisites:** Story 5.3
-
-**Status:** ❌ NOT IMPLEMENTED (OpenSpec proposal exists)
-
-**Verification:**
-- ❌ `suggest_synergy_cards` tool does NOT exist in codebase
-- ⚠️ OpenSpec proposal exists: `openspec/changes/add-llm-card-suggestions/`
-- ⚠️ Design complete: 3-stage LLM-hybrid workflow (analysis → search → curation)
-- ❌ Implementation not started
-
-**Gap:** This story requires implementation via the OpenSpec proposal.
+**Prerequisites:** Story L5.3
 
 ---
 
-### Story 5.5: Deck Validation and Improvement Recommendations
+### Epic L5 Summary
 
-As a **user**,
-I want **the agent to validate my deck is complete and suggest improvements**,
-So that **I can finalize a competitive, well-rounded deck**.
+| Story | Title | Key Deliverables |
+|-------|-------|------------------|
+| L5.1 | Curve Analysis | Mana curve tool |
+| L5.2 | Auto Feedback | Contextual curve guidance |
+| L5.3 | Synergy Detection | Pattern recognition tool |
+| L5.4 | Suggestions | LLM-curated card suggestions |
+
+**Epic L5 Complete Criteria:**
+- All analysis tools working
+- Auto-feedback triggers appropriately
+- Synergy detection accurate
+- Suggestions relevant and helpful
+- Ready to proceed to Epic L6
+
+---
+
+## Epic L6: Migration Cleanup
+
+**Epic Goal:** Archive PydanticAI code, remove deprecated components, and validate complete migration.
+
+**User Value:** Clean, maintainable codebase focused on Letta implementation.
+
+**FRs Addressed:** All (validation)
+
+**Technical Context:**
+- Archive, don't delete (git history)
+- Validate all FRs work with Letta
+- Update documentation
+- Remove unused dependencies
+
+---
+
+### Story L6.1: Archive PydanticAI Code
+
+As a **developer**,
+I want **old agent code archived**,
+So that **the codebase is clean but history preserved**.
 
 **Acceptance Criteria:**
 
-**Given** a deck in progress
-**When** I ask "is my deck ready?" or "review my deck"
-**Then** the agent provides comprehensive validation:
+**Given** successful Letta migration
+**When** I archive old code
+**Then** the following is done:
 
-- [ ] Validation checks:
-  - Minimum 60 cards (Standard)
-  - Maximum 4 copies per non-basic card
-  - All cards Standard-legal
-  - Reasonable land count (typically 20-26)
-- [ ] Issue detection:
-  - "Only 18 lands - consider adding 2-4 more"
-  - "No removal spells - vulnerable to threats"
-  - "Missing win condition - how do you close games?"
-- [ ] Prioritized recommendations:
-  1. Critical issues (illegal deck)
-  2. Major concerns (too few lands)
-  3. Suggestions (synergy improvements)
-- [ ] Formatted report in chat:
-  ```
-  📋 Deck Review: Mono Red Aggro
-
-  ✅ 60 cards (valid)
-  ✅ All cards Standard-legal
-  ⚠️ 18 lands (recommend 20-22 for aggro)
-  ⚠️ No interaction spells
-
-  Recommendations:
-  1. Add 2-3 Mountains
-  2. Consider Lightning Strike for removal
-  ```
-- [ ] Integration with curve and synergy analysis
+- [ ] Move `src/agent/` to `archive/pydanticai-agent/`
+- [ ] Move `src/data/models/card.py` to archive
+- [ ] Move `src/data/repositories/card.py` to archive
+- [ ] Remove `data/cards.db` (cards now in Letta)
+- [ ] Update imports throughout codebase
+- [ ] Remove PydanticAI from `pyproject.toml`
+- [ ] Git commit with clear message
+- [ ] All tests still pass
 
 **Technical Notes:**
-- Combine DeckValidator, CurveAnalyzer, SynergyDetector
-- Validation rules in `src/logic/format_rules.py`
-- Return structured `DeckValidationReport`
+- Archive for reference, not permanent storage
+- Could be deleted in future cleanup
+- Preserve git history of changes
 
-**Prerequisites:** Stories 5.1-5.4
-
-**Status:** ⚠️ PARTIAL (card addition validation only)
-
-**Verification:**
-- ✅ `validate_card_addition()` in `src/logic/deck_validator.py` - max 4 copies rule
-- ✅ `is_basic_land()` - basic land exemption
-- ✅ `get_current_card_count()` - mainboard card counting
-- ❌ No 60-card minimum validation tool
-- ❌ No land count recommendation tool
-- ❌ No "deck review" tool combining curve + synergy + validation
-- ❌ No missing removal/win condition detection
-
-**Gap:** Need a comprehensive `review_deck` tool that combines all analyses.
+**Prerequisites:** Epics L1-L5 complete
 
 ---
 
-### Epic 5 Summary
+### Story L6.2: Documentation Update
 
-| Story | Title | FRs | Status |
-|-------|-------|-----|--------|
-| 5.1 | Mana Curve Analysis | FR6 | ✅ Complete |
-| 5.2 | Auto Curve Feedback | FR6 | ✅ Complete |
-| 5.3 | Synergy Detection | FR7 | ✅ Complete |
-| 5.4 | Synergy Suggestions | FR7 | ❌ Not Implemented |
-| 5.5 | Deck Validation | FR5, FR6, FR7 | ⚠️ Partial |
+As a **developer**,
+I want **documentation updated for Letta**,
+So that **the codebase is self-documenting**.
 
-**Epic 5 Status: 60% Complete (3/5 stories)**
+**Acceptance Criteria:**
 
-**Completed:**
-- ✅ 5.1: Full mana curve analysis with issues/recommendations
-- ✅ 5.2: Contextual auto-feedback with throttling
-- ✅ 5.3: Tribal, keyword, and mechanic synergy detection
+**Given** completed migration
+**When** I update docs
+**Then** the following is current:
 
-**Gaps to Address:**
-- ❌ 5.4: `suggest_synergy_cards` tool (OpenSpec proposal ready)
-- ⚠️ 5.5: Comprehensive deck review tool needed
+- [ ] CLAUDE.md updated:
+  - Letta tech stack documented
+  - Old PydanticAI sections marked deprecated
+  - New development workflow documented
+- [ ] README.md updated:
+  - Setup includes Letta server
+  - Two-terminal development workflow
+  - New environment variables
+- [ ] Architecture.md is authoritative (already updated)
+- [ ] Inline code comments updated
+- [ ] Remove outdated diagrams/references
+
+**Technical Notes:**
+- CLAUDE.md was partially updated during architecture
+- Ensure consistency across all docs
+- Remove references to OpenRouter (if not used)
+
+**Prerequisites:** Story L6.1
 
 ---
 
-## FR Coverage Matrix
+### Story L6.3: Full Migration Validation
 
-| FR | Description | Stories | Status |
-|----|-------------|---------|--------|
-| FR1 | Scryfall bulk data in local DB | 1.2, 1.4 | ✅ Complete |
-| FR2 | Natural language card lookup | 2.2, 2.3 | ✅ Complete |
-| FR3 | Standard format filtering | 2.4 | ✅ Complete |
-| FR4 | Deck creation and management | 4.2, 4.4, 4.5 | ✅ Complete |
-| FR5 | Deck construction validation | 4.3, 5.5 | ⚠️ Partial (4-copy rule only) |
-| FR6 | Mana curve analysis | 5.1, 5.2 | ✅ Complete |
-| FR7 | Synergy identification | 5.3, 5.4 | ⚠️ Partial (5.4 not implemented) |
-| FR8 | Deck persistence (CRUD) | 4.1, 4.5 | ✅ Complete |
-| FR9 | Chainlit chat interface | 3.1, 3.2 | ✅ Complete |
-| FR10 | UI/agent separation | 1.1, 2.1, 3.2 | ✅ Complete |
+As a **developer**,
+I want **validation that all features work**,
+So that **I'm confident the migration is complete**.
 
-**Coverage:** 8/10 FRs fully complete, 2 FRs partially complete
+**Acceptance Criteria:**
+
+**Given** complete Letta implementation
+**When** I run validation
+**Then** all features work:
+
+- [ ] Validation script at `scripts/validate_letta_migration.py`
+- [ ] Validates each FR:
+  - [ ] FR1: Cards searchable in archival (query test)
+  - [ ] FR2: Natural language lookup works
+  - [ ] FR3: Format filtering works
+  - [ ] FR4: Deck creation works
+  - [ ] FR5: Validation rules enforced
+  - [ ] FR6: Curve analysis works
+  - [ ] FR7: Synergy detection works
+  - [ ] FR8: Deck CRUD works
+  - [ ] FR9: Chainlit UI works
+  - [ ] FR10: Layers properly separated
+- [ ] Performance validation:
+  - Card search < 500ms
+  - Deck operations < 500ms
+- [ ] Report output with pass/fail
+- [ ] All tests pass: `uv run pytest`
+
+**Technical Notes:**
+- This is the GATE for migration completion
+- Must pass before declaring migration done
+- Run against real Letta server
+
+**Prerequisites:** Stories L6.1-L6.2
+
+---
+
+### Epic L6 Summary
+
+| Story | Title | Key Deliverables |
+|-------|-------|------------------|
+| L6.1 | Archive Old Code | Clean codebase |
+| L6.2 | Update Docs | Current documentation |
+| L6.3 | Validation | FR verification |
+
+**Epic L6 Complete Criteria:**
+- PydanticAI code archived
+- All documentation current
+- All FRs validated working
+- Performance targets met
+- Migration declared COMPLETE
 
 ---
 
 ## Summary
 
-This epic breakdown documents Artificial-Planeswalker's transition to BMAD workflow management.
+This epic breakdown documents Artificial-Planeswalker's migration from PydanticAI to Letta framework.
 
-**Completed Epics (1-4):** Foundation, Agent, UI, Deck Management - all implemented and working.
+### Migration Overview
 
-**Epic 5 Status:** 60% Complete (3/5 stories fully implemented)
+| Phase | Epics | Stories | Focus |
+|-------|-------|---------|-------|
+| Foundation | L1 | 4 | Letta server and agent setup |
+| Data | L2 | 4 | Card import and search |
+| Integration | L3 | 4 | Chainlit connection |
+| Features | L4, L5 | 9 | Deck management and intelligence |
+| Cleanup | L6 | 3 | Archival and validation |
 
-### Verified Implementation
+**Total: 6 Epics, 24 Stories**
 
-| Story | Status | Key Components |
-|-------|--------|----------------|
-| 5.1 | ✅ | `analyze_mana_curve()`, `ManaCurveAnalysis`, issue detection |
-| 5.2 | ✅ | `generate_contextual_feedback()`, throttling, `toggle_auto_feedback` |
-| 5.3 | ✅ | `detect_synergies()`, tribal/keyword/mechanic detection |
-| 5.4 | ❌ | OpenSpec proposal ready, implementation not started |
-| 5.5 | ⚠️ | 4-copy validation exists, no comprehensive review tool |
+### What's Preserved
 
-### Remaining Work
+- Logic layer (`src/logic/`) - unchanged
+- DeckRepository and SQLite - unchanged
+- Chainlit UI patterns - adapted for Letta SDK
+- Test structure - extended for Letta
 
-1. **Story 5.4: Synergy Suggestions** - Implement via OpenSpec proposal at `openspec/changes/add-llm-card-suggestions/`
-2. **Story 5.5: Deck Review Tool** - Create comprehensive `review_deck` tool combining:
-   - 60-card minimum check
-   - Land count validation
-   - Curve + synergy analysis integration
-   - Missing archetypes detection (removal, win cons)
+### What's New
+
+- Letta agent with tiered memory
+- Archival memory for card search
+- Core memory blocks for context
+- Letta tool patterns (Google docstrings)
+- Step streaming for responses
+
+### Implementation Sequence
+
+1. **Epic L1**: Set up Letta, create agent
+2. **Epic L2**: Import cards, implement search
+3. **Epic L3**: Connect Chainlit to Letta
+4. **Epic L4**: Port deck tools
+5. **Epic L5**: Port analysis tools
+6. **Epic L6**: Clean up and validate
 
 ---
 
-_Generated via BMAD Method workflow. Verified 2025-12-07._
-
+_Generated via BMAD Method workflow. 2026-01-04._

@@ -23,6 +23,52 @@ The MVP focuses on delivering a PydanticAI-powered assistant with a Chainlit cha
 |------|---------|-------------|--------|
 | 2025-10-10 | 1.0 | Initial PRD creation | PM Agent (John) |
 | 2025-10-12 | 1.1 | PO validation fixes: Reordered Epic 1 stories (1.3↔1.4), added Story 1.5 smoke test, added Chainlit/httpx to Story 1.1 dependencies, added DB health check to Story 1.2 | Sarah (PO Agent) |
+| 2026-01-04 | 2.0 | Technology Pivot: PydanticAI → Letta framework (see Technology Pivot section) | Brad |
+
+## Technology Pivot (2026-01-04)
+
+### Decision Summary
+
+This project is pivoting from **PydanticAI** to the **Letta framework** (formerly MemGPT) for the AI agent backend. This is a complete agent framework replacement that fundamentally changes how the assistant stores and accesses card data.
+
+### Research Reference
+
+Detailed technical research supporting this decision is available at:
+`research/technical-letta-framework-research-2026-01-04.md`
+
+### What Changes
+
+| Component | Current (PydanticAI) | New (Letta) |
+|-----------|---------------------|-------------|
+| Agent Framework | PydanticAI with `@agent.tool` decorators | Letta Agent with Google-style docstring tools |
+| Card Storage | SQLite database with CardRepository | Letta Archival Memory (~60k cards with semantic search) |
+| Conversation History | Manual `ConversationSessionManager` | Letta Recall Memory (automatic) |
+| Session Context | `AgentDependencies` dataclass | Letta Core Memory Blocks |
+| LLM Provider | Anthropic/OpenRouter direct | Letta LLM abstraction layer |
+
+### What Stays the Same
+
+- **User Requirements**: All functional requirements (FR1-FR10) remain valid
+- **User Experience**: Conversational deck-building interaction paradigm unchanged
+- **UI Layer**: Chainlit chat interface (integration pattern changes, not the UI itself)
+- **Deck Storage**: SQLite with DeckRepository (structured queries needed for deck management)
+- **Scryfall Data**: Same bulk data source, different storage destination
+- **Format Filtering**: Standard format focus for MVP
+
+### Architectural Impact
+
+The new architecture positions Letta as an **agent microservice** with:
+- REST API for Chainlit integration
+- Built-in memory persistence (no external state management)
+- Semantic card search via archival memory
+- Automatic conversation context management
+
+### Migration Notes
+
+- Existing PydanticAI implementation in `src/agent/` will be archived
+- New Letta agent will be implemented following the research document patterns
+- Card import pipeline changes: JSON → Letta archival memory (instead of SQLite)
+- DeckRepository and deck-related SQLite tables remain unchanged
 
 ## Requirements
 
