@@ -237,6 +237,25 @@ class TestFindByNameExact:
         assert card.id == "bolt-alpha"  # First alphabetically by ID
 
 
+class TestGetById:
+    """Tests for get_by_id method (Story 1.5 — card pre-validation under FK-off)."""
+
+    async def test_found_returns_card(self, populated_repo: CardRepository) -> None:
+        """A known card id returns the corresponding Card schema."""
+        card = await populated_repo.get_by_id("bolt-001")
+
+        assert card is not None
+        assert isinstance(card, Card)
+        assert card.id == "bolt-001"
+        assert card.name == "Lightning Bolt"
+
+    async def test_bogus_id_returns_none(self, populated_repo: CardRepository) -> None:
+        """An unknown card id returns None (graceful, no raise)."""
+        card = await populated_repo.get_by_id("does-not-exist")
+
+        assert card is None
+
+
 class TestFindByNamePartial:
     """Tests for find_by_name_partial method."""
 

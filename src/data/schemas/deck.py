@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from src.data.schemas.card import Card
+from src.data.schemas.card import Card, CardSummary
 
 # Type alias for supported formats (extensible post-MVP)
 # Common MTG formats: standard, modern, commander, legacy, vintage, pioneer, pauper, all
@@ -85,3 +85,62 @@ class Deck(BaseModel):
             except (json.JSONDecodeError, TypeError):
                 return []
         return v if isinstance(v, list) else []
+
+
+class DeckCardSummary(BaseModel):
+    """Lightweight projection of a deck-card entry for deck-returning tools.
+
+    The bounded counterpart to :class:`DeckCard`, which nests the full
+    :class:`Card` (with ``legalities``/``image_uris``/``card_faces``). This nests
+    a :class:`CardSummary` instead, keeping ``load_deck`` payloads small for LLM
+    clients. Callers that need full card detail should follow up with
+    ``lookup_card_by_name``. Reused by the Story 1.6 deck-analysis tools.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    card_id: str
+    quantity: int
+    sideboard: bool
+    card: CardSummary
+
+
+class DeckSummary(BaseModel):
+    """Lightweight deck projection (metadata + counts, no card list) for list_decks.
+
+    Mirrors the Story 1.4 ``CardSummary`` decision: returns deck metadata plus
+    aggregate counts without the heavy nested card list, so ``list_decks`` never
+    dumps full decks at the LLM client. The count fields
+    (``mainboard_count``/``sideboard_count``/``distinct_cards``) are **computed by
+    the tool helper** from a source ``Deck``'s ``deck_cards`` — a ``Deck`` has no
+    such attributes, so ``model_validate`` would silently use the ``0`` defaults.
+    Build via the helper's explicit constructor, not ``model_validate``. Reused by
+    the Story 1.6 deck-analysis tools.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    format: FormatType
+    strategy: str | None = None
+    color_identity: list[str] = []
+    tags: list[str] = []
+    mainboard_count: int = 0
+    sideboard_count: int = 0
+    distinct_cards: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class DeckDetail(DeckSummary):
+    """Deck metadata + counts + its cards as lightweight projections.
+
+    Extends :class:`DeckSummary` with ``cards`` as :class:`DeckCardSummary` rows
+    (each nesting a :class:`CardSummary`, not the full :class:`Card`). Returned by
+    ``create_deck`` (empty ``cards``) and ``load_deck`` (full contents). Like
+    ``DeckSummary``, the counts are computed by the tool helper, not
+    ``model_validate``. Reused by the Story 1.6 deck-analysis tools.
+    """
+
+    cards: list[DeckCardSummary] = []

@@ -123,6 +123,33 @@ class CardRepository(BaseRepository):
         # Filter original statement to only include IDs that are the minimum for their oracle_id
         return stmt.where(CardModel.id.in_(min_id_subquery))
 
+    async def get_by_id(self, card_id: str) -> Card | None:
+        """Get a card by its primary-key id.
+
+        Read-only point lookup used to confirm a card exists before associating it
+        with a deck (deck tools pre-validate the card id because foreign-key
+        enforcement is off on the async engine). No format/games filtering.
+
+        Args:
+            card_id: Card primary-key id (Scryfall UUID).
+
+        Returns:
+            The matching Card schema if found, None otherwise.
+
+        Example:
+            card = await repo.get_by_id("card-456")
+            if card:
+                print(f"Found: {card.name}")
+        """
+        stmt = select(CardModel).where(CardModel.id == card_id)
+        result = await self.session.execute(stmt)
+        card_model = result.scalar_one_or_none()
+
+        if card_model is None:
+            return None
+
+        return Card.model_validate(card_model)
+
     async def find_by_name_exact(
         self, name: str, format_filter: FormatFilter = None, games: GamesFilter = None
     ) -> Card | None:

@@ -131,3 +131,90 @@ async def test_search_cards_invalid_is_graceful(
     assert sc is not None
     assert sc["status"] == "invalid"
     assert "X" in sc["message"]
+
+
+async def test_deck_lifecycle_through_client(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    """Full deck CRUD lifecycle through the in-process MCP client (no subprocess).
+
+    create_deck → add by name → add by card_id → load_deck → list_decks →
+    remove_card_from_deck → delete_deck → load_deck (now not_found). Builds the deck
+    purely through the tools against the shared file-backed seeded DB (AC7).
+    """
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        created = await client.call_tool("create_deck", {"name": "My Deck"})
+        assert created.isError is False
+        assert created.structuredContent is not None
+        assert created.structuredContent["status"] == "ok"
+        deck_id = created.structuredContent["deck"]["id"]
+        assert deck_id
+
+        # Add 4 Lightning Bolt via the name path.
+        added_name = await client.call_tool(
+            "add_card_to_deck", {"deck_id": deck_id, "name": "Lightning Bolt", "quantity": 4}
+        )
+        assert added_name.isError is False
+        assert added_name.structuredContent["status"] == "ok"
+        assert added_name.structuredContent["card_id"] == "card-lightning-bolt"
+
+        # Add 1 Counterspell via the card_id path.
+        added_id = await client.call_tool(
+            "add_card_to_deck", {"deck_id": deck_id, "card_id": "card-counterspell"}
+        )
+        assert added_id.isError is False
+        assert added_id.structuredContent["status"] == "ok"
+
+        # load_deck: 2 distinct cards, mainboard_count 5, cards are lightweight summaries.
+        loaded = await client.call_tool("load_deck", {"deck_id": deck_id})
+        assert loaded.isError is False
+        deck = loaded.structuredContent["deck"]
+        assert deck["distinct_cards"] == 2
+        assert deck["mainboard_count"] == 5
+        # Deck cards are DeckCardSummary with a CardSummary inside — no heavy keys.
+        nested_card = deck["cards"][0]["card"]
+        assert "legalities" not in nested_card
+        assert "image_uris" not in nested_card
+        assert "card_faces" not in nested_card
+
+        # list_decks: the deck appears with counts (assert by id, NOT order).
+        listed = await client.call_tool("list_decks", {})
+        assert listed.isError is False
+        assert listed.structuredContent["status"] == "ok"
+        by_id = {d["id"]: d for d in listed.structuredContent["decks"]}
+        assert deck_id in by_id
+        assert by_id[deck_id]["mainboard_count"] == 5
+        assert by_id[deck_id]["distinct_cards"] == 2
+
+        # Remove a card, then delete the deck.
+        removed = await client.call_tool(
+            "remove_card_from_deck", {"deck_id": deck_id, "card_id": "card-lightning-bolt"}
+        )
+        assert removed.isError is False
+        assert removed.structuredContent["status"] == "ok"
+
+        deleted = await client.call_tool("delete_deck", {"deck_id": deck_id})
+        assert deleted.isError is False
+        assert deleted.structuredContent["status"] == "ok"
+
+        # The deck is gone — load now reports not_found gracefully.
+        gone = await client.call_tool("load_deck", {"deck_id": deck_id})
+        assert gone.isError is False
+        assert gone.structuredContent["status"] == "not_found"
+
+
+async def test_add_card_to_bogus_deck_is_graceful(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    """add_card_to_deck on a missing deck returns deck_not_found (not a surfaced error)."""
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool(
+            "add_card_to_deck", {"deck_id": "bogus-deck", "card_id": "card-counterspell"}
+        )
+
+    assert result.isError is False
+    sc = result.structuredContent
+    assert sc is not None
+    assert sc["status"] == "deck_not_found"
