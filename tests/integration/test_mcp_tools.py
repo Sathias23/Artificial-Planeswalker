@@ -82,3 +82,52 @@ async def test_report_bug_persists_and_confirms(
         row = (await session.execute(stmt)).scalar_one()
         assert row.description == "Card search returned the wrong result"
         assert row.status == "open"
+
+
+async def test_search_cards_by_color(seeded_card_db: async_sessionmaker[AsyncSession]):
+    """search_cards by color returns lightweight CardSummary rows via the harness."""
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool("search_cards", {"colors": ["R"]})
+
+    assert result.isError is False
+    sc = result.structuredContent
+    assert sc is not None
+    assert sc["status"] == "ok"
+    assert sc["total_count"] == 2
+    names = {card["name"] for card in sc["cards"]}
+    assert names == {"Lightning Bolt", "Thunderbolt"}
+    # CardSummary projection: heavy detail fields are not serialized to the client.
+    first = sc["cards"][0]
+    assert "legalities" not in first
+    assert "image_uris" not in first
+
+
+async def test_search_cards_format_filter_excludes_non_legal(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    """format is a per-call parameter: the modern-only Thunderbolt is excluded from standard."""
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool("search_cards", {"colors": ["R"], "format": "standard"})
+
+    assert result.isError is False
+    sc = result.structuredContent
+    assert sc is not None
+    assert sc["status"] == "ok"
+    assert {card["name"] for card in sc["cards"]} == {"Lightning Bolt"}
+
+
+async def test_search_cards_invalid_is_graceful(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    """A bad filter value returns a graceful structured invalid result, not a surfaced error."""
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool("search_cards", {"colors": ["X"]})
+
+    assert result.isError is False
+    sc = result.structuredContent
+    assert sc is not None
+    assert sc["status"] == "invalid"
+    assert "X" in sc["message"]

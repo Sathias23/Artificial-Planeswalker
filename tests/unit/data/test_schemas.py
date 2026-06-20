@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from src.data.schemas.card import Card
+from src.data.schemas.card import Card, CardSummary
 
 
 def test_card_schema_validation() -> None:
@@ -181,3 +181,56 @@ def test_card_schema_multiface_card() -> None:
     assert card.card_faces is not None
     assert len(card.card_faces) == 2
     assert card.card_faces[0]["name"] == "Delver of Secrets"
+
+
+def test_card_summary_from_full_card() -> None:
+    """CardSummary.model_validate(<a full Card>) keeps the projected fields and types."""
+    card = Card(
+        id="card-bolt",
+        name="Lightning Bolt",
+        oracle_id="oracle-bolt",
+        mana_cost="{R}",
+        cmc=1.0,
+        type_line="Instant",
+        oracle_text="Lightning Bolt deals 3 damage to any target.",
+        rarity="common",
+        set_code="LEA",
+        set_name="Limited Edition Alpha",
+        collector_number="161",
+        colors=["R"],
+        color_identity=["R"],
+        legalities={"standard": "legal", "modern": "legal"},
+        image_uris={"normal": "https://example.test/bolt.png"},
+    )
+
+    summary = CardSummary.model_validate(card)
+
+    assert summary.id == "card-bolt"
+    assert summary.name == "Lightning Bolt"
+    assert summary.mana_cost == "{R}"
+    assert summary.cmc == 1.0
+    assert summary.type_line == "Instant"
+    assert summary.oracle_text == "Lightning Bolt deals 3 damage to any target."
+    assert summary.colors == ["R"]
+    assert summary.rarity == "common"
+    assert summary.set_code == "LEA"
+
+
+def test_card_summary_projects_only_lightweight_fields() -> None:
+    """CardSummary drops the heavy detail fields (legalities/image_uris/card_faces)."""
+    summary_fields = set(CardSummary.model_fields)
+
+    assert summary_fields == {
+        "id",
+        "name",
+        "mana_cost",
+        "cmc",
+        "type_line",
+        "oracle_text",
+        "colors",
+        "rarity",
+        "set_code",
+    }
+    assert "legalities" not in summary_fields
+    assert "image_uris" not in summary_fields
+    assert "card_faces" not in summary_fields

@@ -9,12 +9,16 @@ Registration is transport-agnostic: the transport string is selected only at the
 entry point (``src/mcp_server/__main__.py``), never here (AC2 / D7).
 """
 
+from typing import Literal
+
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.data.database import create_engine, create_session_factory
 from src.mcp_server.tools.bug_report import BugReportResult, file_bug_report
 from src.mcp_server.tools.card_lookup import CardLookupResult, lookup_card
+from src.mcp_server.tools.card_search import CardSearchResult
+from src.mcp_server.tools.card_search import search_cards as _search_cards_helper
 
 
 def build_server(
@@ -75,5 +79,65 @@ def build_server(
         """
         async with session_factory() as session:
             return await file_bug_report(session, description)
+
+    @mcp.tool()
+    async def search_cards(
+        colors: list[str] | None = None,
+        color_mode: Literal["any", "all", "exact", "at_most"] = "any",
+        types: list[str] | None = None,
+        keywords: list[str] | None = None,
+        oracle_text: list[str] | None = None,
+        mana_value_min: float | None = None,
+        mana_value_max: float | None = None,
+        rarity: str | list[str] | None = None,
+        format: str | None = None,
+        games: list[str] | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> CardSearchResult:
+        """Search Magic: The Gathering cards by relational filters.
+
+        All supplied filters combine with AND logic. Results are bounded to one
+        page of lightweight summaries — use ``lookup_card_by_name`` for full
+        detail on a chosen card. The tool is stateless: pass ``format``/``games``
+        and ``page`` on every call (nothing is remembered between calls).
+
+        Args:
+            colors: Color codes (W/U/B/R/G), interpreted by ``color_mode``.
+            color_mode: How ``colors`` is matched — ``any`` (has any of them),
+                ``all`` (has all of them), ``exact`` (exactly these and no others),
+                ``at_most`` (only these colors or fewer, i.e. a subset).
+            types: Type substrings to match in the type line (e.g. ["Creature"]).
+            keywords: Keyword abilities to match (e.g. ["flying"]).
+            oracle_text: Oracle-text phrases that must all appear.
+            mana_value_min: Inclusive minimum mana value (CMC).
+            mana_value_max: Inclusive maximum mana value (CMC).
+            rarity: A rarity or list of rarities (common/uncommon/rare/mythic/...).
+            format: Restrict to cards legal in this format (e.g. "standard").
+            games: Restrict to platforms (any of "paper", "arena", "mtgo").
+            page: 1-based page number (default 1).
+            page_size: Results per page (default 20, max 50).
+
+        Returns:
+            A result whose ``status`` is ``ok`` (``cards`` plus pagination
+            metadata), ``empty`` (no matches — a graceful hint), or ``invalid``
+            (a filter value failed validation, with a message naming it).
+        """
+        async with session_factory() as session:
+            return await _search_cards_helper(
+                session,
+                colors=colors,
+                color_mode=color_mode,
+                types=types,
+                keywords=keywords,
+                oracle_text=oracle_text,
+                mana_value_min=mana_value_min,
+                mana_value_max=mana_value_max,
+                rarity=rarity,
+                format=format,
+                games=games,
+                page=page,
+                page_size=page_size,
+            )
 
     return mcp

@@ -61,3 +61,30 @@ class Card(BaseModel):
     def validate_games(cls, v: Any) -> list[str]:
         """Ensure games is always a list, converting None to empty list."""
         return v if v is not None else []
+
+
+class CardSummary(BaseModel):
+    """Lightweight card projection for list-returning tools (search, etc.).
+
+    A bounded subset of :class:`Card` for tools that return many cards at once
+    (e.g. ``search_cards``), keeping the payload small for LLM clients. Retains
+    ``oracle_text`` for relevance while omitting the heavy detail fields
+    (``legalities``, ``image_uris``, ``card_faces``). Because
+    ``from_attributes=True`` is set, ``CardSummary.model_validate(card)`` builds
+    a summary directly from a full ``Card``. Callers that need full detail (e.g.
+    legalities/images) should follow up with ``lookup_card_by_name``.
+
+    ``set_name`` may be added later if display needs it.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    mana_cost: str
+    cmc: float
+    type_line: str
+    oracle_text: str
+    colors: list[str]
+    rarity: str
+    set_code: str
