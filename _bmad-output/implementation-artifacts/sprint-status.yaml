@@ -46,8 +46,8 @@ development_status:
   epic-1: in-progress
   1-1-repository-restructure-dependency-reshape: done
   1-2-sqlite-connectionfactory-with-wal-extension-loading: done
-  1-3-fastmcp-server-with-card-lookup-bug-report: backlog
-  1-4-advanced-card-search-tool: backlog
+  1-3-fastmcp-server-with-card-lookup-bug-report: done
+  1-4-advanced-card-search-tool: ready-for-dev
   1-5-deck-management-tools: backlog
   1-6-deck-analysis-tools: backlog
   epic-1-retrospective: optional

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "artificial-planeswalker": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "src.mcp_server"]
+    }
+  }
+}
