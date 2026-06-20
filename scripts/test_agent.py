@@ -11,7 +11,7 @@ import sys
 
 from dotenv import load_dotenv
 
-from src.agent import create_agent, run_agent_with_retry
+from legacy.agent import create_agent, run_agent_with_retry
 
 # Load environment variables from .env file
 load_dotenv()

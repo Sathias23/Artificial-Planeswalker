@@ -445,7 +445,7 @@ Create a test harness to measure improvements:
 # tests/performance/test_streaming.py
 import asyncio
 import time
-from src.agent import create_agent, run_agent_with_session
+from legacy.agent import create_agent, run_agent_with_session
 
 async def benchmark_streaming(conversation_length: int):
     """Benchmark streaming performance with varying conversation lengths."""
@@ -515,7 +515,7 @@ logging.basicConfig(
 )
 
 # Set levels per module
-logging.getLogger('src.agent').setLevel(logging.DEBUG)
+logging.getLogger('legacy.agent').setLevel(logging.DEBUG)
 logging.getLogger('src.data').setLevel(logging.INFO)
 logging.getLogger('httpx').setLevel(logging.WARNING)  # Suppress HTTP logs
 logging.getLogger('pydantic_ai').setLevel(logging.INFO)

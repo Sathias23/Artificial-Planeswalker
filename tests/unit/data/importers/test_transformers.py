@@ -12,7 +12,7 @@ from src.data.importers.transformers import transform_scryfall_card
 def sample_cards():
     """Load sample Scryfall JSON data."""
     fixture_path = Path(__file__).parent.parent.parent.parent / "fixtures" / "scryfall_sample.json"
-    with fixture_path.open() as f:
+    with fixture_path.open(encoding="utf-8") as f:
         return json.load(f)
 
 

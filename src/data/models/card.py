@@ -22,7 +22,9 @@ class CardModel(Base):
 
     # Core card identification
     name: Mapped[str] = mapped_column(String, nullable=False, index=True, init=True)
-    printed_name: Mapped[str | None] = mapped_column(String, nullable=True, index=True, init=True)
+    printed_name: Mapped[str | None] = mapped_column(
+        String, nullable=True, index=True, default=None, kw_only=True, init=True
+    )
     oracle_id: Mapped[str] = mapped_column(String, nullable=False, init=True)
 
     # Mana and casting cost

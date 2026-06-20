@@ -69,8 +69,8 @@ dmypy.json
 .chainlit/
 chainlit.md
 
-# Data files
-data/
+# Data files (top-level runtime data dir only; anchored so it does NOT match src/data/)
+/data/
 
 # Debugging scripts
 scripts/check_*.py

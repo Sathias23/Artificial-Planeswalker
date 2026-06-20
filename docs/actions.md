@@ -674,7 +674,7 @@ Our codebase is **perfectly structured** for actions:
 
 ```python
 import chainlit as cl
-from src.ui.app import get_agent_dependencies, update_deck_sidebar
+from legacy.ui.app import get_agent_dependencies, update_deck_sidebar
 
 @cl.on_chat_start
 async def start():
@@ -836,7 +836,7 @@ async def handle_navigate_page(action: cl.Action):
 async def display_search_results(result, search_context, current_page):
     """Display search results with pagination actions."""
     # Format card list
-    from src.ui.formatters import format_card_list
+    from legacy.ui.formatters import format_card_list
     card_table = format_card_list(result.items)
 
     # Build pagination actions

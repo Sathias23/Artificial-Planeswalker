@@ -1,18 +1,7 @@
-"""Shared test fixtures for all test modules."""
+"""Shared fixtures for the active (core) test suite.
 
-import pytest
-
-from src.agent.core import ConversationSessionManager
-
-
-@pytest.fixture
-def mock_session_manager():
-    """Create a ConversationSessionManager for testing.
-
-    This fixture provides a fresh session manager instance for each test,
-    ensuring clean session state and preventing test contamination.
-
-    Returns:
-        ConversationSessionManager instance for testing
-    """
-    return ConversationSessionManager()
+The legacy agent/UI fixtures (``mock_session_manager``, ``mock_user_session``,
+``mock_action``, ``action_message``) were relocated to ``legacy/tests/conftest.py`` when
+``src/agent`` and ``src/ui`` were archived to ``legacy/`` (Story 1.1). The active suite
+(``testpaths = ["tests"]``) no longer depends on them.
+"""

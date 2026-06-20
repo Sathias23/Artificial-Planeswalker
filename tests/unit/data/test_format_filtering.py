@@ -226,8 +226,8 @@ class TestFormatFilteringAdvancedSearch:
         results = await mixed_format_repo.search_advanced(colors=["R"], types=["Instant"])
 
         # Should include both Standard and non-Standard red instants
-        assert len(results) >= 3
-        card_names = {card.name for card in results}
+        assert len(results.items) >= 3
+        card_names = {card.name for card in results.items}
         assert "Lightning Bolt" in card_names
         assert "Play with Fire" in card_names
 
@@ -240,13 +240,13 @@ class TestFormatFilteringAdvancedSearch:
         )
 
         # Should only include Standard-legal red instants
-        assert len(results) >= 1
-        card_names = {card.name for card in results}
+        assert len(results.items) >= 1
+        card_names = {card.name for card in results.items}
         assert "Play with Fire" in card_names
         assert "Lightning Bolt" not in card_names
 
         # Verify all are Standard-legal
-        for card in results:
+        for card in results.items:
             assert card.legalities["standard"] == "legal"
 
     async def test_advanced_search_combined_filters(
@@ -261,12 +261,12 @@ class TestFormatFilteringAdvancedSearch:
         )
 
         # Should only include Standard-legal blue instants with CMC <= 1
-        card_names = {card.name for card in results}
+        card_names = {card.name for card in results.items}
         assert "Consider" in card_names
         assert "Counterspell" not in card_names  # not Standard-legal
 
         # Verify all meet criteria
-        for card in results:
+        for card in results.items:
             assert card.legalities["standard"] == "legal"
             assert "U" in card.colors
             assert "Instant" in card.type_line
@@ -281,8 +281,8 @@ class TestFormatFilteringAdvancedSearch:
             colors=["B"], types=["Creature"], format_filter="standard"
         )
 
-        assert results == []
-        assert isinstance(results, list)
+        assert results.items == []
+        assert isinstance(results.items, list)
 
 
 class TestFormatFilteringKeywordSearch:

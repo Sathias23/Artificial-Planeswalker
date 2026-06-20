@@ -151,7 +151,7 @@ The agent uses PydanticAI with OpenRouter for accessing multiple LLM providers:
 
 **Basic Usage:**
 ```python
-from src.agent import create_agent, run_agent_with_retry
+from legacy.agent import create_agent, run_agent_with_retry
 
 # Create agent (loads config from environment)
 agent = create_agent()

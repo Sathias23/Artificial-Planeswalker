@@ -6,8 +6,8 @@ Demonstrates the new search_cards_advanced tool with various queries.
 
 import asyncio
 
-from src.agent.core import create_agent
-from src.agent.dependencies import AgentDependencies
+from legacy.agent.core import create_agent
+from legacy.agent.dependencies import AgentDependencies
 from src.data.database import create_engine, create_session_factory
 from src.data.repositories.card import CardRepository
 

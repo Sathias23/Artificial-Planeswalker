@@ -27,7 +27,7 @@ from typing import Any
 
 # Import BugReportStatus enum from the agent tools
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from src.agent.tools.bug_report import BugReportStatus
+from legacy.agent.tools.bug_report import BugReportStatus
 
 
 def read_bug_reports(file_path: Path) -> dict[str, dict[str, Any]]:
