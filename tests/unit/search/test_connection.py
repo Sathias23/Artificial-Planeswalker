@@ -4,6 +4,7 @@ import sqlite3
 import threading
 
 import pytest
+import sqlite_vec
 
 from src.search import ConnectionFactory
 from src.search.connection import _resolve_db_path
@@ -98,7 +99,7 @@ def test_default_driver_is_sqlite3(tmp_path) -> None:
 
 def test_resolve_db_path_explicit_wins() -> None:
     """An explicit db_path is returned verbatim, ignoring the environment."""
-    assert _resolve_db_path("/tmp/explicit.db") == "/tmp/explicit.db"
+    assert _resolve_db_path("data/explicit.db") == "data/explicit.db"
 
 
 def test_resolve_db_path_strips_aiosqlite_prefix(monkeypatch) -> None:
@@ -117,3 +118,18 @@ def test_resolve_db_path_defaults_when_env_absent(monkeypatch) -> None:
     """With no explicit path and no env var, the default ./data/cards.db is used."""
     monkeypatch.delenv("CARDS_DATABASE_URL", raising=False)
     assert _resolve_db_path(None) == "./data/cards.db"
+
+
+def test_build_connection_cleans_up_on_load_error(tmp_path, monkeypatch) -> None:
+    """If sqlite_vec.load raises, the connection is closed and not retained in thread-local."""
+
+    def bad_load(conn: sqlite3.Connection) -> None:
+        raise RuntimeError("sqlite_vec load failed")
+
+    monkeypatch.setattr(sqlite_vec, "load", bad_load)
+    factory = ConnectionFactory(db_path=str(tmp_path / "cards.db"))
+
+    with pytest.raises(RuntimeError, match="sqlite_vec load failed"):
+        factory.get_connection()
+
+    assert getattr(factory._local, "conn", None) is None

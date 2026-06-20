@@ -90,7 +90,6 @@ class ConnectionFactory:
                 "the default and only supported driver is stdlib 'sqlite3'."
             )
         self._db_path = _resolve_db_path(db_path)
-        self._driver = driver
         self._local = threading.local()
 
     @property
@@ -126,20 +125,32 @@ class ConnectionFactory:
             A fully configured ``sqlite3.Connection``.
         """
         conn = sqlite3.connect(self._db_path)  # default check_same_thread=True — keep it
-        conn.enable_load_extension(True)
-        sqlite_vec.load(conn)
-        conn.enable_load_extension(False)
-        conn.execute("PRAGMA journal_mode=WAL")
-        logger.debug("Created sqlite3 connection (sqlite-vec + WAL) for db_path=%s", self._db_path)
+        try:
+            conn.enable_load_extension(True)
+            sqlite_vec.load(conn)
+            conn.enable_load_extension(False)
+            wal_result = conn.execute("PRAGMA journal_mode=WAL").fetchone()
+            logger.debug(
+                "Created sqlite3 connection (db_path=%s, journal_mode=%s)",
+                self._db_path,
+                wal_result[0] if wal_result else "unknown",
+            )
+        except Exception:
+            conn.close()
+            raise
         return conn
 
     def close(self) -> None:
         """Close and discard this thread's connection, if one exists.
 
         Intended for test teardown and graceful worker shutdown. Only affects the calling
-        thread's connection, since the ``threading.local`` store is per-thread.
+        thread's connection, since the ``threading.local`` store is per-thread. After calling
+        ``close()``, the next ``get_connection()`` call on this thread will build a fresh
+        connection.
         """
         conn: sqlite3.Connection | None = getattr(self._local, "conn", None)
         if conn is not None:
-            conn.close()
-            self._local.conn = None
+            try:
+                conn.close()
+            finally:
+                self._local.conn = None

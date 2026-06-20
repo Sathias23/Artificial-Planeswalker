@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 from src.data.models.base import Base
 from src.data.repositories.card import CardRepository
+from src.data.schemas.pagination import PaginatedResult
 from tests.fixtures.card_data import create_sample_cards, create_standard_legal_cards
 
 
@@ -282,7 +283,7 @@ class TestFormatFilteringAdvancedSearch:
         )
 
         assert results.items == []
-        assert isinstance(results.items, list)
+        assert isinstance(results, PaginatedResult)
 
 
 class TestFormatFilteringKeywordSearch:

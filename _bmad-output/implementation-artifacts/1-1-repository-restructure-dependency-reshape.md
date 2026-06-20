@@ -4,7 +4,7 @@ baseline_commit: 043c5d91dc441618904b770ac9d4c0ee0363f340
 
 # Story 1.1: Repository Restructure & Dependency Reshape
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -305,3 +305,13 @@ proceeding:
 | 2026-06-20 | Implemented Story 1.1: archived `agent`+`ui` to `legacy/`, reshaped deps (PEP 735 groups; lean core + `legacy` group; added `mcp`/`sqlite-vec`/`fastembed`), scaffolded `src/mcp_server`+`src/search`. |
 | 2026-06-20 | Fixed pre-existing blockers (approved): `.gitignore` `data/`→`/data/`, recreated `pagination.py`, `CardModel.printed_name` default, test encoding + `PaginatedResult` drift. Core suite green: 300 passed. |
 | 2026-06-20 | Status → review.                                                                             |
+
+### Review Findings
+
+- [x] [Review][Patch] `isinstance(results.items, list)` is trivially true; should assert return type contract instead — `assert isinstance(results, PaginatedResult)` [`tests/unit/data/test_format_filtering.py:3111`] ✓ fixed
+
+- [x] [Review][Defer] `legacy/tests/conftest.py` module-level `import chainlit` crashes `pytest legacy/tests/` on a lean env (no `--group legacy`); `testpaths = ["tests"]` guards the default run but not an explicit path invocation [`legacy/tests/conftest.py:8`] — deferred, expected limitation of the legacy separation design; document in legacy/README or rely on `--group legacy` install instructions
+- [x] [Review][Defer] `mock_user_session` fixture patches `cl.user_session.get/.set` without teardown, causing state leak between tests if one fails mid-run [`legacy/tests/conftest.py:70`] — deferred, pre-existing bug in fixture relocated from `tests/integration/conftest.py`; in excluded reference-only tree
+- [x] [Review][Defer] Legacy test files import `from tests.fixtures.card_data` using project-root-relative path — resolves correctly under `uv run pytest` from project root but may fail in IDE or isolated invocations [`legacy/tests/integration/agent/test_agent_card_search.py:16`] — deferred, pre-existing import structure unchanged during move
+- [x] [Review][Defer] `PaginatedResult[T]` lacks field validators: `page` and `page_size` can be `< 1`; `total_pages=0` when `total_count=0` produces an impossible `page=1, total_pages=0` state [`src/data/schemas/pagination.py:18–24`] — deferred, design gap in Task-0 faithful recreation; add validators as a follow-up
+- [x] [Review][Defer] Task 0 out-of-scope changes shipped in this commit (`pagination.py` recreation, `CardModel.printed_name` default, test contract updates) — deferred, explicitly pre-approved by user twice during dev

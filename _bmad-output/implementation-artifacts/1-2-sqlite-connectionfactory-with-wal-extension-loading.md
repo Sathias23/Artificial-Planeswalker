@@ -4,7 +4,7 @@ baseline_commit: e73fa7bf2331e59b8912785bbdc3bcc84cc036f7
 
 # Story 1.2: SQLite ConnectionFactory with WAL & Extension Loading
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -70,6 +70,17 @@ so that the MCP tools and the future RAG layer are driver-agnostic and the `sqli
   - [x] `uv run pytest tests/` → full active suite still green (no regressions; 300+ passing).
   - [x] `uv run ruff check .` and `uv run ruff format --check .` → clean.
   - [x] `uv run mypy src/` → clean (see Dev Notes if `sqlite_vec` types trip mypy).
+
+### Review Findings
+
+- [x] [Review][Decision] AC2 runtime probe — dismissed; test assertion (AC5a) is sufficient; `_build_connection` need not call vec_version() on every connection.
+- [x] [Review][Patch] Connection leak if sqlite_vec.load raises — no try/finally in `_build_connection` [`src/search/connection.py:128-132`]
+- [x] [Review][Patch] `close()` stale reference if conn.close() raises — self._local.conn not cleared on exception [`src/search/connection.py:142-145`]
+- [x] [Review][Patch] WAL pragma result silently discarded — cursor from PRAGMA journal_mode=WAL never fetched; silent failure undetected [`src/search/connection.py:132`]
+- [x] [Review][Patch] Test uses Unix /tmp/ path in Windows project — test_resolve_db_path_explicit_wins uses "/tmp/explicit.db" [`tests/unit/search/test_connection.py:101`]
+- [x] [Review][Patch] self._driver is dead state — always "sqlite3" after the guard clause; never read again [`src/search/connection.py:93`]
+- [x] [Review][Patch] No test for sqlite_vec.load failure path — _build_connection error handling has zero test coverage; most critical failure mode on Windows
+- [x] [Review][Defer] Empty string CARDS_DATABASE_URL not guarded [`src/search/connection.py:38-45`] — deferred, operator config error; fails loudly with OperationalError
 
 ## Dev Notes
 
