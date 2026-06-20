@@ -1,5 +1,5 @@
 # generated: 2026-06-20
-# last_updated: 2026-06-20 (Story 1.5 → done)
+# last_updated: 2026-06-20 (Story 1.6 → done)
 # project: Artificial-Planeswalker
 # project_key: NOKEY
 # tracking_system: file-system
@@ -49,7 +49,7 @@ development_status:
   1-3-fastmcp-server-with-card-lookup-bug-report: done
   1-4-advanced-card-search-tool: done
   1-5-deck-management-tools: done
-  1-6-deck-analysis-tools: backlog
+  1-6-deck-analysis-tools: done
   epic-1-retrospective: optional
 
   # Epic 2: Semantic Card Search (RAG)

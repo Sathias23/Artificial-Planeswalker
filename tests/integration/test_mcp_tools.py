@@ -218,3 +218,81 @@ async def test_add_card_to_bogus_deck_is_graceful(
     sc = result.structuredContent
     assert sc is not None
     assert sc["status"] == "deck_not_found"
+
+
+async def test_deck_analysis_through_client(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    """Drive analyze_mana_curve / detect_synergies / validate_deck end-to-end (AC7).
+
+    Builds a 6-card deck through the tools (4x Lightning Bolt + Counterspell +
+    Thunderbolt) from the shared 3-card fixture, then asserts each analysis tool's
+    structuredContent. Confirms ``format`` is a real per-call parameter:
+    Thunderbolt (modern-only) trips standard legality but not modern legality.
+    """
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        created = await client.call_tool("create_deck", {"name": "Analysis Deck"})
+        deck_id = created.structuredContent["deck"]["id"]
+        assert deck_id
+
+        # Build the deck through the tools (do not edit the shared fixture).
+        await client.call_tool(
+            "add_card_to_deck", {"deck_id": deck_id, "name": "Lightning Bolt", "quantity": 4}
+        )
+        await client.call_tool(
+            "add_card_to_deck", {"deck_id": deck_id, "card_id": "card-counterspell"}
+        )
+        await client.call_tool(
+            "add_card_to_deck", {"deck_id": deck_id, "card_id": "card-thunderbolt"}
+        )
+
+        # analyze_mana_curve: 6 spells, no lands; JSON dict keys are strings.
+        curve = await client.call_tool("analyze_mana_curve", {"deck_id": deck_id})
+        assert curve.isError is False
+        curve_sc = curve.structuredContent
+        assert curve_sc["status"] == "ok"
+        assert curve_sc["total_spells"] == 6  # 4 + 1 + 1
+        assert curve_sc["total_lands"] == 0
+        assert curve_sc["distribution"]["1"] == 4  # four CMC-1 Lightning Bolts
+
+        # detect_synergies: 3 unrelated cards -> runs, structured, no synergies.
+        synergy = await client.call_tool("detect_synergies", {"deck_id": deck_id})
+        assert synergy.isError is False
+        synergy_sc = synergy.structuredContent
+        assert synergy_sc["status"] == "ok"
+        assert synergy_sc["synergies"] == []
+        assert synergy_sc["deck_cohesion"] == "low"
+
+        # validate_deck(standard): illegal (6 < 60) AND Thunderbolt is modern-only.
+        standard = await client.call_tool(
+            "validate_deck", {"deck_id": deck_id, "format": "standard"}
+        )
+        assert standard.isError is False
+        report = standard.structuredContent["report"]
+        assert report["is_legal"] is False
+        rules = {v["rule"] for v in report["violations"]}
+        assert "min_deck_size" in rules
+        assert any(
+            v["rule"] == "format_legality" and v["card_name"] == "Thunderbolt"
+            for v in report["violations"]
+        )
+
+        # validate_deck(modern): the same deck drops the Thunderbolt legality violation.
+        modern = await client.call_tool("validate_deck", {"deck_id": deck_id, "format": "modern"})
+        modern_report = modern.structuredContent["report"]
+        assert modern_report["format"] == "modern"
+        assert not any(v["rule"] == "format_legality" for v in modern_report["violations"])
+
+
+async def test_analysis_tools_on_bogus_deck_are_graceful(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    """Each analysis tool on a bogus deck_id returns deck_not_found, isError False (AC7)."""
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        for tool in ("analyze_mana_curve", "detect_synergies", "validate_deck"):
+            result = await client.call_tool(tool, {"deck_id": "bogus-deck"})
+            assert result.isError is False, tool
+            assert result.structuredContent is not None
+            assert result.structuredContent["status"] == "deck_not_found", tool

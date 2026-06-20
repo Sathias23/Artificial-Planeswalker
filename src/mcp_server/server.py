@@ -19,6 +19,14 @@ from src.mcp_server.tools.bug_report import BugReportResult, file_bug_report
 from src.mcp_server.tools.card_lookup import CardLookupResult, lookup_card
 from src.mcp_server.tools.card_search import CardSearchResult
 from src.mcp_server.tools.card_search import search_cards as _search_cards_helper
+from src.mcp_server.tools.deck_analysis import (
+    ManaCurveResult,
+    SynergyResult,
+    ValidateDeckResult,
+)
+from src.mcp_server.tools.deck_analysis import analyze_mana_curve as _analyze_mana_curve_helper
+from src.mcp_server.tools.deck_analysis import detect_synergies as _detect_synergies_helper
+from src.mcp_server.tools.deck_analysis import validate_deck as _validate_deck_helper
 from src.mcp_server.tools.deck_management import (
     DeckCardResult,
     DeckDeleteResult,
@@ -300,5 +308,70 @@ def build_server(
                 name=name,
                 sideboard=sideboard,
             )
+
+    @mcp.tool()
+    async def analyze_mana_curve(deck_id: str) -> ManaCurveResult:
+        """Analyze a deck's mana curve by id.
+
+        Loads the deck and analyzes its mainboard only (sideboard excluded),
+        returning the CMC distribution, land/spell counts, average CMC,
+        turn-by-turn playability, land ratio, and any detected issues with
+        recommendations. Observational — it does not modify the deck. Use
+        ``load_deck`` for the card list. Stateless: pass ``deck_id`` every call.
+
+        Args:
+            deck_id: The deck id (from ``create_deck`` or ``list_decks``).
+
+        Returns:
+            A result whose ``status`` is ``ok`` (analysis populated), ``empty``
+            (no mainboard cards), ``deck_not_found``, or ``error``.
+        """
+        async with session_factory() as session:
+            return await _analyze_mana_curve_helper(session, deck_id=deck_id)
+
+    @mcp.tool()
+    async def detect_synergies(deck_id: str) -> SynergyResult:
+        """Detect synergy patterns in a deck by id.
+
+        Loads the deck and analyzes its mainboard only (sideboard excluded),
+        returning detected tribal/keyword/mechanic synergies (each naming the
+        cards involved), a count, and an overall cohesion rating. Observational —
+        it does not modify the deck. Stateless: pass ``deck_id`` every call.
+
+        Args:
+            deck_id: The deck id (from ``create_deck`` or ``list_decks``).
+
+        Returns:
+            A result whose ``status`` is ``ok`` (synergies populated), ``empty``
+            (no mainboard cards), ``deck_not_found``, or ``error``.
+        """
+        async with session_factory() as session:
+            return await _detect_synergies_helper(session, deck_id=deck_id)
+
+    @mcp.tool()
+    async def validate_deck(
+        deck_id: str, format: str = "standard", games: list[str] | None = None
+    ) -> ValidateDeckResult:
+        """Validate a deck's construction legality (size, copy limits, format legality).
+
+        Loads the deck and checks the constructed (60-card) rules: mainboard size,
+        sideboard size, the 4-copy limit (combined across both boards, basics
+        exempt), per-card legality in ``format``, and — when ``games`` is given —
+        card availability on those platforms. ``format``/``games`` are per-call
+        parameters (no server-side state). Returns a report listing every
+        violation; ``report.is_legal`` is the overall verdict.
+
+        Args:
+            deck_id: The deck id (from ``create_deck`` or ``list_decks``).
+            format: The MTG format to validate against (default "standard").
+            games: Optional platforms ("paper"/"arena"/"mtgo") the deck must be
+                playable on; omit to skip the availability check.
+
+        Returns:
+            A result whose ``status`` is ``ok`` (``report`` populated),
+            ``deck_not_found``, ``invalid`` (a bad ``games`` value), or ``error``.
+        """
+        async with session_factory() as session:
+            return await _validate_deck_helper(session, deck_id=deck_id, format=format, games=games)
 
     return mcp

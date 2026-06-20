@@ -14,10 +14,13 @@ import pytest
 from src.data.schemas.card import Card
 from src.data.schemas.deck import Deck, DeckCard
 from src.logic.deck_validator import (
+    DeckValidationReport,
+    DeckViolation,
     ValidationResult,
     get_current_card_count,
     is_basic_land,
     validate_card_addition,
+    validate_deck,
 )
 
 
@@ -495,3 +498,201 @@ class TestErrorMessageClarity:
         assert "1 copy" in result.error_message
         # Should NOT contain "1 copies"
         assert "1 copies" not in result.error_message
+
+
+# --- validate_deck (whole-deck legality, Story 1.6) ---
+
+
+def _vd_card(
+    card_id: str,
+    name: str,
+    *,
+    type_line: str = "Creature — Goblin",
+    legalities: dict[str, str] | None = None,
+    games: list[str] | None = None,
+    cmc: float = 1.0,
+) -> Card:
+    """Build a Card for validate_deck tests (standard-legal, all platforms by default)."""
+    return Card(
+        id=card_id,
+        name=name,
+        oracle_id=f"oracle-{card_id}",
+        mana_cost="{R}",
+        cmc=cmc,
+        type_line=type_line,
+        oracle_text="",
+        rarity="common",
+        set_code="TST",
+        set_name="Test Set",
+        collector_number="1",
+        colors=["R"],
+        color_identity=["R"],
+        keywords=[],
+        legalities=legalities if legalities is not None else {"standard": "legal"},
+        games=games if games is not None else ["paper", "arena", "mtgo"],
+    )
+
+
+def _vd_deck_card(card: Card, quantity: int, *, sideboard: bool = False) -> DeckCard:
+    """Build a DeckCard wrapping ``card`` (card_id mirrors card.id for combined counting)."""
+    return DeckCard(
+        deck_id="deck-vd",
+        card_id=card.id,
+        quantity=quantity,
+        sideboard=sideboard,
+        card=card,
+    )
+
+
+def _vd_deck(deck_cards: list[DeckCard]) -> Deck:
+    """Build a Deck from a list of DeckCards for validate_deck tests."""
+    return Deck(
+        id="deck-vd",
+        name="VD Deck",
+        format="standard",
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        deck_cards=deck_cards,
+    )
+
+
+class TestValidateDeck:
+    """Test validate_deck() whole-deck legality logic (D-1.6a/b/c)."""
+
+    def test_legal_60_card_standard_deck(self) -> None:
+        """A 60-card mainboard of standard-legal basics has no violations."""
+        mountain = _vd_card("mountain", "Mountain", type_line="Basic Land — Mountain", cmc=0.0)
+        deck = _vd_deck([_vd_deck_card(mountain, 60)])
+
+        report = validate_deck(deck)
+
+        assert isinstance(report, DeckValidationReport)
+        assert report.is_legal is True
+        assert report.violations == []
+        assert report.format == "standard"
+        assert report.mainboard_count == 60
+        assert report.sideboard_count == 0
+
+    def test_under_60_mainboard_flags_min_deck_size(self) -> None:
+        """A mainboard under 60 cards yields a min_deck_size violation."""
+        goblin = _vd_card("goblin", "Goblin Guide")
+        deck = _vd_deck([_vd_deck_card(goblin, 4)])
+
+        report = validate_deck(deck)
+
+        assert report.is_legal is False
+        assert any(v.rule == "min_deck_size" for v in report.violations)
+        assert report.mainboard_count == 4
+
+    def test_oversized_sideboard_flags_max_sideboard_size(self) -> None:
+        """A sideboard over 15 cards yields a max_sideboard_size violation."""
+        mountain = _vd_card("mountain", "Mountain", type_line="Basic Land — Mountain", cmc=0.0)
+        side_basic = _vd_card("forest", "Forest", type_line="Basic Land — Forest", cmc=0.0)
+        deck = _vd_deck(
+            [
+                _vd_deck_card(mountain, 60),
+                _vd_deck_card(side_basic, 16, sideboard=True),
+            ]
+        )
+
+        report = validate_deck(deck)
+
+        assert report.sideboard_count == 16
+        assert any(v.rule == "max_sideboard_size" for v in report.violations)
+        # Mainboard size is fine; basics are copy-limit exempt.
+        assert not any(v.rule == "min_deck_size" for v in report.violations)
+        assert not any(v.rule == "copy_limit" for v in report.violations)
+
+    def test_five_copies_non_basic_flags_copy_limit(self) -> None:
+        """More than 4 copies of a non-basic card yields a copy_limit violation."""
+        goblin = _vd_card("goblin", "Goblin Guide")
+        deck = _vd_deck([_vd_deck_card(goblin, 5)])
+
+        report = validate_deck(deck)
+
+        copy_violations = [v for v in report.violations if v.rule == "copy_limit"]
+        assert len(copy_violations) == 1
+        assert copy_violations[0].card_name == "Goblin Guide"
+
+    def test_twenty_basic_lands_no_copy_limit(self) -> None:
+        """Basic lands are exempt from the 4-copy limit."""
+        mountain = _vd_card("mountain", "Mountain", type_line="Basic Land — Mountain", cmc=0.0)
+        deck = _vd_deck([_vd_deck_card(mountain, 20)])
+
+        report = validate_deck(deck)
+
+        assert not any(v.rule == "copy_limit" for v in report.violations)
+
+    def test_non_standard_legal_card_flags_format_legality(self) -> None:
+        """A card not legal in the target format yields a format_legality violation."""
+        modern_only = _vd_card("modern-card", "Modern Staple", legalities={"modern": "legal"})
+        deck = _vd_deck([_vd_deck_card(modern_only, 4)])
+
+        report = validate_deck(deck)
+
+        legality_violations = [v for v in report.violations if v.rule == "format_legality"]
+        assert len(legality_violations) == 1
+        assert legality_violations[0].card_name == "Modern Staple"
+
+    def test_format_parameter_changes_legality_check(self) -> None:
+        """``format`` is a parameter: a modern-only card is legal when format='modern'."""
+        modern_only = _vd_card("modern-card", "Modern Staple", legalities={"modern": "legal"})
+        deck = _vd_deck([_vd_deck_card(modern_only, 4)])
+
+        report = validate_deck(deck, format="modern")
+
+        assert report.format == "modern"
+        assert not any(v.rule == "format_legality" for v in report.violations)
+
+    def test_combined_mainboard_sideboard_copies_flag_copy_limit(self) -> None:
+        """3 mainboard + 2 sideboard copies of one non-basic = 5 combined -> copy_limit."""
+        goblin = _vd_card("goblin", "Goblin Guide")
+        deck = _vd_deck(
+            [
+                _vd_deck_card(goblin, 3),
+                _vd_deck_card(goblin, 2, sideboard=True),
+            ]
+        )
+
+        report = validate_deck(deck)
+
+        copy_violations = [v for v in report.violations if v.rule == "copy_limit"]
+        assert len(copy_violations) == 1
+        assert copy_violations[0].card_name == "Goblin Guide"
+
+    def test_games_filter_flags_unavailable_card(self) -> None:
+        """``games=['arena']`` flags a paper-only card with a game_availability violation."""
+        paper_only = _vd_card("paper-card", "Paper Promo", games=["paper"])
+        deck = _vd_deck([_vd_deck_card(paper_only, 4)])
+
+        report = validate_deck(deck, games=["arena"])
+
+        availability_violations = [v for v in report.violations if v.rule == "game_availability"]
+        assert len(availability_violations) == 1
+        assert availability_violations[0].card_name == "Paper Promo"
+
+    def test_games_none_skips_availability_check(self) -> None:
+        """``games=None`` (default) performs no availability check."""
+        paper_only = _vd_card("paper-card", "Paper Promo", games=["paper"])
+        deck = _vd_deck([_vd_deck_card(paper_only, 4)])
+
+        report = validate_deck(deck, games=None)
+
+        assert not any(v.rule == "game_availability" for v in report.violations)
+
+    def test_empty_deck_is_illegal_with_min_deck_size(self) -> None:
+        """An empty deck is illegal (0/60) with a min_deck_size violation (D-1.6f)."""
+        deck = _vd_deck([])
+
+        report = validate_deck(deck)
+
+        assert report.is_legal is False
+        assert report.mainboard_count == 0
+        assert any(v.rule == "min_deck_size" for v in report.violations)
+
+    def test_violation_is_pydantic_model(self) -> None:
+        """DeckViolation is a Pydantic model carrying rule/card_name/detail."""
+        violation = DeckViolation(rule="copy_limit", card_name="X", detail="too many")
+        assert violation.rule == "copy_limit"
+        assert violation.card_name == "X"
+        assert violation.detail == "too many"
