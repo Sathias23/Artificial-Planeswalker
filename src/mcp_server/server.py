@@ -1,9 +1,16 @@
-"""FastMCP server builder for Artificial-Planeswalker (Story 1.3).
+"""FastMCP server builder for Artificial-Planeswalker (Story 1.3; sync RAG tool added 2.4).
 
-Constructs the ``FastMCP`` server and registers the Epic-1 tools. Tools are
+Constructs the ``FastMCP`` server and registers the tool surface. The Epic-1 tools are
 ``async def`` and ``await`` the async ``src/data`` repositories directly on the
-FastMCP event loop (D-1.3a). Each tool closes over a ``session_factory`` so the
-server is test-injectable; the default factory reuses the data-layer engine.
+FastMCP event loop (D-1.3a), closing over a ``session_factory`` so the server is
+test-injectable; the default factory reuses the data-layer engine.
+
+The Story 2.4 ``semantic_search_cards`` tool is fundamentally different: it is a **sync**
+``def`` tool (FastMCP runs it in its anyio worker threadpool) because the vector index is
+reachable only on the sync ``sqlite-vec`` ``ConnectionFactory`` connection — the async aiosqlite
+engine never loads the extension. It closes over an injected ``connection_factory`` (per-thread
+sqlite-vec connection, NFR6) and an optional ``embedder`` (a test seam; the production embedder is
+resolved lazily inside the tool via :func:`get_embedder`, never at build time).
 
 Registration is transport-agnostic: the transport string is selected only at the
 entry point (``src/mcp_server/__main__.py``), never here (AC2 / D7).
@@ -41,23 +48,39 @@ from src.mcp_server.tools.deck_management import load_deck as _load_deck_helper
 from src.mcp_server.tools.deck_management import (
     remove_card_from_deck as _remove_card_from_deck_helper,
 )
+from src.mcp_server.tools.semantic_search import SemanticSearchResult
+from src.mcp_server.tools.semantic_search import semantic_search_cards as _semantic_search_helper
+from src.search import ConnectionFactory, Embedder, get_embedder
 
 
 def build_server(
     session_factory: async_sessionmaker[AsyncSession] | None = None,
+    connection_factory: ConnectionFactory | None = None,
+    embedder: Embedder | None = None,
 ) -> FastMCP:
-    """Build the FastMCP server with the Epic-1 card, deck, and bug-report tools.
+    """Build the FastMCP server with the Epic-1 tools plus the Story 2.4 semantic-search tool.
 
     Args:
-        session_factory: Async session factory the tools use for DB access. If
+        session_factory: Async session factory the ``async`` Epic-1 tools use for DB access. If
             ``None``, a default factory is built from the data-layer engine
             (reusing ``create_engine`` / ``create_session_factory``).
+        connection_factory: Sync :class:`~src.search.connection.ConnectionFactory` the
+            ``semantic_search_cards`` tool uses to reach the ``sqlite-vec`` index. If ``None``, a
+            default is constructed — it resolves the **same** DB file as the async engine via
+            ``CARDS_DATABASE_URL`` / ``./data/cards.db`` (single-file topology, D2).
+        embedder: Optional :class:`~src.search.embedder.Embedder` override (a **test seam**). In
+            production this stays ``None`` and the tool resolves the process-lifetime singleton
+            lazily via :func:`~src.search.embedder.get_embedder` on first call — the model is never
+            loaded at build time.
 
     Returns:
-        A configured ``FastMCP`` instance with all Epic-1 tools registered.
+        A configured ``FastMCP`` instance with every tool registered (async Epic-1 tools plus the
+        sync ``semantic_search_cards``).
     """
     if session_factory is None:
         session_factory = create_session_factory(create_engine())
+    if connection_factory is None:
+        connection_factory = ConnectionFactory()
 
     mcp = FastMCP("artificial-planeswalker")
 
@@ -373,5 +396,60 @@ def build_server(
         """
         async with session_factory() as session:
             return await _validate_deck_helper(session, deck_id=deck_id, format=format, games=games)
+
+    @mcp.tool()
+    def semantic_search_cards(
+        query: str,
+        colors: list[str] | None = None,
+        color_mode: Literal["any", "all", "exact", "at_most"] = "any",
+        mana_value_min: float | None = None,
+        mana_value_max: float | None = None,
+        format: str | None = None,
+        games: list[str] | None = None,
+        limit: int = 10,
+    ) -> SemanticSearchResult:
+        """Search Magic: The Gathering cards by *meaning* (semantic similarity), with filters.
+
+        Embeds your natural-language ``query`` and finds the nearest cards by vector similarity,
+        then composes any optional relational filters into the **same hybrid query** — so one call
+        answers things like *"semantically like Glorybringer, Standard-legal red 4-drops"*. Results
+        are ranked nearest-first, de-duplicated to one entry per card, and returned as lightweight
+        summaries (each with a ``distance`` relevance signal) — use ``lookup_card_by_name`` for full
+        detail. Prefer this over ``search_cards`` when the intent is conceptual ("aggressive red
+        one-drops", "graveyard recursion") rather than exact keyword/type filters. Stateless: pass
+        ``format``/``games`` and every filter on each call (nothing is remembered between calls).
+
+        Args:
+            query: Natural-language description of what to search for (must be non-empty).
+            colors: Color codes (W/U/B/R/G), interpreted by ``color_mode``.
+            color_mode: How ``colors`` is matched — ``any`` (has any), ``all`` (has all),
+                ``exact`` (exactly these and no others), ``at_most`` (only these or fewer).
+            mana_value_min: Inclusive minimum mana value (CMC).
+            mana_value_max: Inclusive maximum mana value (CMC).
+            format: Restrict to cards legal in this format (e.g. "standard").
+            games: Restrict to platforms (any of "paper", "arena", "mtgo").
+            limit: Maximum number of cards to return (default 10).
+
+        Returns:
+            A result whose ``status`` is ``ok`` (``cards`` ranked nearest-first, each with a
+            ``distance``), ``empty`` (a valid query with no surviving matches — a graceful hint),
+            or ``invalid`` (a query/filter value failed validation, with a message naming it).
+        """
+        # Sync tool: FastMCP threadpools it. Per-thread sqlite-vec connection (NFR6); the embedder
+        # is the injected test seam or the lazily-built process singleton (never loaded at build).
+        conn = connection_factory.get_connection()
+        emb = embedder if embedder is not None else get_embedder()
+        return _semantic_search_helper(
+            conn,
+            emb,
+            query,
+            colors=colors,
+            color_mode=color_mode,
+            mana_value_min=mana_value_min,
+            mana_value_max=mana_value_max,
+            format=format,
+            games=games,
+            limit=limit,
+        )
 
     return mcp

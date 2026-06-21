@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.data.models.bug_report import BugReportModel
 from src.mcp_server.server import build_server
+from tests.integration.conftest import SeededVecDB
 
 
 async def test_lookup_card_exact_hit(seeded_card_db: async_sessionmaker[AsyncSession]):
@@ -296,3 +297,80 @@ async def test_analysis_tools_on_bogus_deck_are_graceful(
             assert result.isError is False, tool
             assert result.structuredContent is not None
             assert result.structuredContent["status"] == "deck_not_found", tool
+
+
+# --- semantic_search_cards: the sync RAG tool through the in-process MCP client (Story 2.4) --
+
+
+def _vec_server(vec_db: SeededVecDB):
+    """build_server wired with the vector fixture's sync seams + the SAME fake embedder."""
+    return build_server(
+        session_factory=vec_db.session_factory,
+        connection_factory=vec_db.connection_factory,
+        embedder=vec_db.embedder,
+    )
+
+
+async def test_semantic_search_sync_tool_is_hosted_alongside_async(seeded_vec_db: SeededVecDB):
+    """FastMCP hosts the sync semantic_search_cards tool next to the async Epic-1 tools."""
+    server = _vec_server(seeded_vec_db)
+    async with create_connected_server_and_client_session(server) as client:
+        tools = await client.list_tools()
+    names = {t.name for t in tools.tools}
+    assert "semantic_search_cards" in names  # the sync tool
+    assert {"search_cards", "lookup_card_by_name"} <= names  # the async tools still present
+
+
+async def test_semantic_search_returns_nearest_card(seeded_vec_db: SeededVecDB):
+    """A relevant query returns status='ok' with the expected nearest card (with a distance)."""
+    server = _vec_server(seeded_vec_db)
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool(
+            "semantic_search_cards", {"query": seeded_vec_db.query_text("Inferno Dragon")}
+        )
+
+    assert result.isError is False
+    sc = result.structuredContent
+    assert sc is not None
+    assert sc["status"] == "ok"
+    assert sc["cards"][0]["card"]["name"] == "Inferno Dragon"
+    assert "distance" in sc["cards"][0]
+    # Lightweight projection through the wire: no heavy detail fields on the nested card.
+    assert "legalities" not in sc["cards"][0]["card"]
+    assert "image_uris" not in sc["cards"][0]["card"]
+
+
+async def test_semantic_search_format_filter_excludes_non_legal(seeded_vec_db: SeededVecDB):
+    """format is a per-call hybrid filter through the wire: the modern-only goblin drops out."""
+    query = seeded_vec_db.query_text("Backstreet Goblin")
+    server = _vec_server(seeded_vec_db)
+    async with create_connected_server_and_client_session(server) as client:
+        unfiltered = await client.call_tool("semantic_search_cards", {"query": query})
+        filtered = await client.call_tool(
+            "semantic_search_cards", {"query": query, "format": "standard"}
+        )
+
+    # Without a format filter the modern-only goblin is the nearest hit...
+    assert unfiltered.isError is False
+    assert unfiltered.structuredContent["cards"][0]["card"]["name"] == "Backstreet Goblin"
+    # ...but it is excluded once Standard legality is required (hybrid JOIN post-filter).
+    assert filtered.isError is False
+    assert filtered.structuredContent["status"] == "ok"
+    filtered_names = {c["card"]["name"] for c in filtered.structuredContent["cards"]}
+    assert "Backstreet Goblin" not in filtered_names
+
+
+async def test_semantic_search_invalid_color_is_graceful(seeded_vec_db: SeededVecDB):
+    """A bad color value returns a graceful structured invalid result, not a surfaced error."""
+    server = _vec_server(seeded_vec_db)
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool(
+            "semantic_search_cards",
+            {"query": seeded_vec_db.query_text("Inferno Dragon"), "colors": ["X"]},
+        )
+
+    assert result.isError is False
+    sc = result.structuredContent
+    assert sc is not None
+    assert sc["status"] == "invalid"
+    assert "X" in sc["message"]
