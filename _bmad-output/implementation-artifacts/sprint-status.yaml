@@ -1,5 +1,5 @@
 # generated: 2026-06-20
-# last_updated: 2026-06-21 (Story 2.2 card_vec schema → done, code review complete)
+# last_updated: 2026-06-21 (Story 2.3 code review → done; stats.pruned fix applied)
 # project: Artificial-Planeswalker
 # project_key: NOKEY
 # tracking_system: file-system
@@ -58,7 +58,7 @@ development_status:
   epic-2: in-progress
   2-1-embedder-port-fastembed-singleton-persistent-cache: done
   2-2-card-vec-schema-with-metadata-columns: done
-  2-3-card-embedding-index-builder-idempotent-incremental: backlog
+  2-3-card-embedding-index-builder-idempotent-incremental: done
   2-4-semantic-search-cards-tool-hybrid-query: backlog
   2-5-find-similar-cards-tool: backlog
   2-6-rag-sanity-eval: backlog
