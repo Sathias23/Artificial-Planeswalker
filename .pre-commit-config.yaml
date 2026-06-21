@@ -19,5 +19,7 @@ repos:
           - sqlalchemy>=2.0.44
           - tenacity>=8.0.0
           - openai>=1.0.0
+          - numpy>=2.0.0
+          - mcp>=1.27.0
           - types-requests
         files: ^src/

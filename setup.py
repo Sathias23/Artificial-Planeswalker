@@ -10,7 +10,6 @@ Performs one-time initialization:
 """
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -85,43 +84,38 @@ def setup_environment() -> None:
     print("\n🔧 Creating .env file...")
     env_path.write_text(env_example.read_text())
     print("✓ .env created from template")
-    print("\n⚠️  IMPORTANT: Edit .env and add your OPENROUTER_API_KEY")
-    print("   Get your key at: https://openrouter.ai/keys")
-
-
-def check_api_key() -> bool:
-    """Check if OPENROUTER_API_KEY is set in .env."""
-    try:
-        from dotenv import load_dotenv
-    except ImportError:
-        # dotenv not installed yet, will be installed by uv sync
-        return False
-
-    load_dotenv()
-    api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
-
-    # Check if key exists and is not the placeholder
-    if not api_key or api_key == "your-key-here":
-        return False
-    return True
+    print("   Defaults work out of the box (SQLite at ./data/cards.db, stdio transport);")
+    print("   editing .env is optional — no API key is required for the MCP server.")
 
 
 async def initialize_database() -> None:
-    """Initialize database and import Scryfall data."""
+    """Initialize the database and import Scryfall card data if not already present.
+
+    Idempotent: creating the schema is a no-op when it exists, and the (multi-minute)
+    Scryfall import is skipped when the cards table is already populated. No API key is
+    involved — the Scryfall bulk endpoint is public.
+    """
     print("\n💾 Initializing database...")
 
-    # Import here to avoid dependency issues before sync
+    # Import here to avoid dependency issues before `uv sync`.
+    from sqlalchemy import func, select
+
     from src.data import create_engine, create_session_factory, init_database
     from src.data.importers.scryfall import import_scryfall_bulk_data
+    from src.data.models.card import CardModel
 
     engine = create_engine()
     await init_database(engine)
     print("✓ Database initialized")
 
-    print("\n📥 Importing Scryfall card data (this may take 2-3 minutes)...")
     session_factory = create_session_factory(engine)
-
     async with session_factory() as session:
+        existing = await session.scalar(select(func.count()).select_from(CardModel))
+        if existing:
+            print(f"✓ Database already has {existing:,} cards — skipping Scryfall import")
+            return
+
+        print("\n📥 Importing Scryfall card data (this may take 2-3 minutes)...")
         stats = await import_scryfall_bulk_data(session, bulk_type="oracle_cards")
 
     print(f"✓ Imported {stats.total_inserted:,} cards in {stats.elapsed_time():.1f}s")
@@ -145,14 +139,14 @@ def print_next_steps() -> None:
     print("\n" + "=" * 60)
     print("🎉 Setup complete!")
     print("=" * 60)
-    print("\nNext steps:")
-    print("1. Edit .env and add your OPENROUTER_API_KEY")
-    print("   Get your key at: https://openrouter.ai/keys")
-    print("\n2. Start the application:")
-    print("   uv run chainlit run src/ui/app.py")
-    print("\n3. Open your browser to the URL shown (usually http://localhost:8000)")
-    print("\nFor development with auto-reload:")
-    print("   uv run chainlit run src/ui/app.py -w")
+    print("\nThis project is a stateless MCP server, consumed by an MCP client")
+    print("(e.g. Claude Code) — the client is the LLM; the server makes no LLM calls.")
+    print("\nRun it directly (stdio transport by default):")
+    print("   uv run python -m src.mcp_server")
+    print("\nOr let an MCP client launch it: .mcp.json already points at that command,")
+    print("so a client opened in this directory exposes the tools automatically.")
+    print("\nRun the test suite:")
+    print("   uv run pytest")
     print()
 
 
@@ -177,19 +171,13 @@ async def main() -> None:
     # 4. Create .env file
     setup_environment()
 
-    # 5. Check API key
-    has_api_key = check_api_key()
-    if not has_api_key:
-        print("\n⚠️  Skipping database import - OPENROUTER_API_KEY not configured")
-        print("   Run this script again after adding your API key to .env")
-    else:
-        # 6. Initialize database and import data
-        await initialize_database()
+    # 5. Initialize database and import card data (idempotent: skips if already populated)
+    await initialize_database()
 
-    # 7. Install git hooks
+    # 6. Install git hooks
     install_git_hooks()
 
-    # 8. Print next steps
+    # 7. Print next steps
     print_next_steps()
 
 

@@ -1,5 +1,5 @@
 # generated: 2026-06-20
-# last_updated: 2026-06-21 (Epic 1 retro tech-debt prep gate → done)
+# last_updated: 2026-06-21 (Story 2.1 embedder port → review)
 # project: Artificial-Planeswalker
 # project_key: NOKEY
 # tracking_system: file-system
@@ -55,8 +55,8 @@ development_status:
   epic-1-tech-debt-prep-gate: done
 
   # Epic 2: Semantic Card Search (RAG)
-  epic-2: backlog
-  2-1-embedder-port-fastembed-singleton-persistent-cache: backlog
+  epic-2: in-progress
+  2-1-embedder-port-fastembed-singleton-persistent-cache: review
   2-2-card-vec-schema-with-metadata-columns: backlog
   2-3-card-embedding-index-builder-idempotent-incremental: backlog
   2-4-semantic-search-cards-tool-hybrid-query: backlog

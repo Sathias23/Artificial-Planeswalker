@@ -1,10 +1,10 @@
 # Artificial Planeswalker
 
-An intelligent Magic: The Gathering Arena (MTG:A) deck-building assistant powered by PydanticAI and the Scryfall API.
+An intelligent Magic: The Gathering Arena (MTG:A) deck-building assistant, exposed as an [MCP](https://modelcontextprotocol.io) server over a local Scryfall card database.
 
 ## Overview
 
-Artificial-Planeswalker provides fast, accurate card lookups, explains game mechanics, validates decks across multiple formats, and delivers intelligent synergy-based card recommendations. Built with type-safe Pydantic models, it offers a Streamlit-based interface for intuitive deck building and analysis.
+Artificial-Planeswalker provides fast, accurate card lookups, validates decks across multiple formats, and surfaces mana-curve and synergy analysis. Built with type-safe Pydantic models, it runs as a **stateless MCP server**: an MCP client (e.g. Claude Code) drives the tools and supplies the LLM — the server itself makes no LLM calls, so no API key is required.
 
 ## Features
 
@@ -34,10 +34,13 @@ The setup script will:
 - Initialize database and import Scryfall card data (~2-3 minutes)
 - Install git pre-commit hooks
 
-After setup completes:
-1. Edit `.env` and add your `OPENROUTER_API_KEY` (get one at [openrouter.ai/keys](https://openrouter.ai/keys))
-2. Start the application: `uv run chainlit run src/ui/app.py`
-3. Open your browser to the URL shown (usually http://localhost:8000)
+After setup completes, run the MCP server (stdio transport by default):
+
+```bash
+uv run python -m src.mcp_server
+```
+
+`.mcp.json` already points at that command, so an MCP client (e.g. Claude Code) opened in this directory exposes the tools automatically. No API key is required.
 
 **Manual Setup (Alternative):**
 
@@ -57,24 +60,14 @@ After setup completes:
    uv sync
    ```
 
-4. **Set up environment variables**
+4. **(Optional) Set up environment variables**
    ```bash
    cp .env.example .env
-   # Edit .env and add your OpenRouter API key
    ```
+   Defaults work out of the box (SQLite at `./data/cards.db`, stdio transport). The MCP
+   server needs no API key — `.env` is only required for the archived `legacy/` stack.
 
-   **Obtaining an OpenRouter API Key:**
-   1. Visit [openrouter.ai](https://openrouter.ai/)
-   2. Sign up or log in to your account
-   3. Navigate to [API Keys](https://openrouter.ai/keys)
-   4. Create a new API key
-   5. Add credits to your account (pay-as-you-go pricing)
-   6. Copy the API key and add it to your `.env` file:
-      ```
-      OPENROUTER_API_KEY=your_api_key_here
-      ```
-
-5. **Initialize the database**
+5. **Initialize the database** (downloads public Scryfall bulk data — no API key)
    ```bash
    uv run python scripts/import_scryfall_data.py
    ```
@@ -119,73 +112,57 @@ uv run pre-commit run --all-files
 
 ```
 src/
-├── data/       # Data layer: Database models, Scryfall API client, repositories
-│   ├── models/       # SQLAlchemy ORM models (CardModel)
-│   ├── schemas/      # Pydantic schemas for type-safe data transfer
-│   ├── repositories/ # Repository pattern for data access
-│   └── database.py   # Database engine and session management
-├── logic/      # Business logic: Deck validation, card filtering, recommendations
-├── agent/      # AI agent: PydanticAI agent with OpenRouter integration
-│   ├── config.py     # Agent configuration with environment variables
-│   ├── core.py       # Agent initialization and factory functions
-│   ├── errors.py     # Custom exception hierarchy
-│   └── retry.py      # Retry logic with exponential backoff
-└── ui/         # User interface: Chainlit/Streamlit UI components
-tests/          # Test suite mirroring src/ structure
-├── unit/             # Unit tests (fast, no I/O)
-└── integration/      # Integration tests (database, API)
+├── data/         # Data layer: SQLAlchemy models, Scryfall importers, repositories
+│   ├── models/         # SQLAlchemy ORM models (CardModel, DeckModel, ...)
+│   ├── schemas/        # Pydantic schemas for type-safe data transfer
+│   ├── repositories/   # Repository pattern for data access
+│   ├── importers/      # Scryfall bulk-data import pipeline
+│   └── database.py     # Database engine and session management
+├── logic/        # Business logic: deck validation, mana curve, synergy detection
+├── search/       # SQLite ConnectionFactory (sqlite-vec load-extension seam, for Epic 2 RAG)
+└── mcp_server/   # FastMCP server: tool definitions + entry point (python -m src.mcp_server)
+    └── tools/          # MCP tool implementations (card lookup, search, deck mgmt, analysis)
+legacy/           # Archived PydanticAI agent + Chainlit UI (reference only; uv sync --group legacy)
+tests/            # Test suite mirroring src/ structure
+├── unit/               # Unit tests (fast, no I/O)
+└── integration/        # Integration tests (database, in-memory MCP client)
 ```
 
-### AI Agent Configuration
+### MCP Server
 
-The agent uses PydanticAI with OpenRouter for accessing multiple LLM providers:
+The server is built on FastMCP and exposes the card/deck tools over stdio (the default
+transport). It is stateless — every call carries its own arguments; there is no
+server-side session or "active deck".
 
-**Environment Variables:**
-- `OPENROUTER_API_KEY`: Your OpenRouter API key (required)
-- `AGENT_MODEL`: Model to use (default: `anthropic/claude-sonnet-4.5`)
-  - Recommended: `anthropic/claude-sonnet-4.5` - Best for coding/reasoning (77.2% SWE-bench)
-  - Alternative: `openai/gpt-5` - Faster, cheaper (74.9% SWE-bench)
-  - Budget: `google/gemini-2.5-flash` - Cost-effective with good performance
-- `AGENT_TEMPERATURE`: Sampling temperature 0.0-2.0 (default: 0.7)
-- `AGENT_MAX_TOKENS`: Maximum response tokens (default: 2000)
-
-**Basic Usage:**
-```python
-from legacy.agent import create_agent, run_agent_with_retry
-
-# Create agent (loads config from environment)
-agent = create_agent()
-
-# Run with automatic retry on rate limits
-response = await run_agent_with_retry(
-    agent,
-    "Show me red creatures with haste under 4 mana"
-)
-```
-
-**Testing the Agent:**
+**Run it:**
 ```bash
-# Manual test with simple prompt (requires OPENROUTER_API_KEY)
-uv run python scripts/test_agent.py
-
-# Run unit tests (no API key needed)
-uv run pytest tests/unit/agent/ -v
-
-# Run integration tests (requires OPENROUTER_API_KEY)
-uv run pytest tests/integration/agent/ -v -m integration
+uv run python -m src.mcp_server          # stdio (default)
+MCP_TRANSPORT=streamable-http uv run python -m src.mcp_server   # serve over HTTP instead
 ```
 
-**Error Handling:**
-The agent includes comprehensive error handling:
-- `AuthenticationError`: Invalid or missing API key
-- `RateLimitError`: Too many requests (automatic retry with exponential backoff)
-- `ModelUnavailableError`: Model service unavailable
+An MCP client (e.g. Claude Code) typically launches it for you via `.mcp.json`:
+```json
+{
+  "mcpServers": {
+    "artificial-planeswalker": { "command": "uv", "args": ["run", "python", "-m", "src.mcp_server"] }
+  }
+}
+```
+
+**Tools exposed:** `lookup_card_by_name`, `search_cards`; deck management
+(`create_deck`, `list_decks`, `load_deck`, `delete_deck`, `add_card_to_deck`,
+`remove_card_from_deck`); deck analysis (`analyze_mana_curve`, `detect_synergies`,
+`validate_deck`); and `report_bug`.
+
+> **Legacy:** the previous PydanticAI + OpenRouter agent and Chainlit UI are archived under
+> `legacy/` (install with `uv sync --group legacy`). They are reference-only and not part of
+> the supported app.
 
 ### Database Configuration
 
 The data layer uses SQLAlchemy 2.0 with async support and SQLite:
 
-- **DATABASE_URL**: Configure via environment variable (default: `sqlite+aiosqlite:///./data/cards.db`)
+- **CARDS_DATABASE_URL**: Configure via environment variable (default: `sqlite+aiosqlite:///./data/cards.db`). Named `CARDS_DATABASE_URL` (not `DATABASE_URL`) to avoid clashing with Chainlit's data layer.
 - **Models**: SQLAlchemy ORM models with type hints and async support
 - **Schemas**: Pydantic schemas for validation and type-safe data transfer
 - **Repository Pattern**: Clean separation between database and business logic
@@ -223,5 +200,5 @@ async with session_factory() as session:
 ## Acknowledgments
 
 - [Scryfall API](https://scryfall.com/docs/api) for comprehensive MTG card data
-- [PydanticAI](https://ai.pydantic.dev) for the AI agent framework
-- [Chainlit](https://docs.chainlit.io) for the conversational UI
+- [Model Context Protocol](https://modelcontextprotocol.io) and the FastMCP server framework
+- [PydanticAI](https://ai.pydantic.dev) and [Chainlit](https://docs.chainlit.io) — powered the archived `legacy/` agent + UI
