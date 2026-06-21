@@ -4,7 +4,7 @@ baseline_commit: f368d613f890b9080b092402a45527d16210409a
 
 # Story 2.1: Embedder Port (fastembed singleton + persistent cache)
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -291,3 +291,26 @@ Claude Opus 4.8 (1M context) — `claude-opus-4-8[1m]` — via the BMAD `dev-sto
 | Date | Version | Description |
 |---|---|---|
 | 2026-06-21 | 1.0 | Implemented the `Embedder` port — fastembed `bge-small-en-v1.5` process-lifetime singleton (double-checked locking) with persistent `FASTEMBED_CACHE_DIR` pin, `encode`/`encode_batch` → 384-dim `float32` vectors. Added 14 unit tests + 1 integration test; numpy made a direct dep; `mcp` added to pre-commit mypy env. All ACs satisfied; full suite green (455 passed). Status → review. |
+
+## Review Findings
+
+<!-- Generated 2026-06-21 | sources: blind (Blind Hunter), edge (Edge Case Hunter), auditor (Acceptance Auditor) -->
+
+- [x] [Review][Decision] TODO-LIST.md (88 lines) created out of scope — Resolved: kept as deliberate addition outside story scope (usage-session notes with genuine future value).
+
+- [x] [Review][Patch] _DEFAULT_CACHE_DIR is a relative path — resolves to process CWD, not project root; re-downloads model if server launched from a different directory [src/search/embedder.py:897] **(High)**
+- [x] [Review][Patch] encode_batch() does not assert len(vectors) == len(texts) — silent index misalignment with Story 2.3 index builder if fastembed yields fewer vectors [src/search/embedder.py:encode_batch] **(High)**
+- [x] [Review][Patch] encode("") crashes with IndexError from result[0] if fastembed yields nothing for an empty string — add guard raising ValueError [src/search/embedder.py:encode] **(Medium)**
+- [x] [Review][Patch] Integration test real_embedder fixture missing reset_embedder() before yield — may corrupt singleton state if a prior test populated the singleton [tests/integration/search/test_embedder.py:real_embedder] **(Medium)**
+- [x] [Review][Patch] Embedder.__init__ raises opaque FileExistsError if cache_dir resolves to an existing file — add clear ValueError with diagnostic [src/search/embedder.py:__init__] **(Medium)**
+- [x] [Review][Patch] _resolve_cache_dir accepts whitespace-only FASTEMBED_CACHE_DIR as a valid path — add .strip() before truthy check [src/search/embedder.py:_resolve_cache_dir] **(Low)**
+- [x] [Review][Patch] encode() does not assert len(result) == 1 — future API drift would silently return only the first sub-vector [src/search/embedder.py:encode] **(Low)**
+- [x] [Review][Patch] FakeTextEmbedding.embed crashes with IndexError on empty-string doc (doc[0]) — fix fake or add test documenting expected behavior [tests/unit/search/test_embedder.py:FakeTextEmbedding] **(Low)**
+- [x] [Review][Patch] encode() and encode_batch() missing Example sections in docstrings — spec requires Google-style Args/Returns/Example on all public methods [src/search/embedder.py] **(Low)**
+- [x] [Review][Patch] get_embedder() missing Example section in docstring — spec requires Google-style docstrings on public functions [src/search/embedder.py:get_embedder] **(Low)**
+
+- [x] [Review][Defer] Double-checked locking portability for non-CPython/free-threaded Python [src/search/embedder.py:1038] — deferred, pre-existing pattern; CPython 3.12 GIL makes this correct on the project's target platform; revisit if free-threaded builds are ever targeted
+- [x] [Review][Defer] encode_batch large-batch memory (no batch_size guardrail for ~60k cards) [src/search/embedder.py:encode_batch] — deferred, by design; spec explicitly deferred batch_size passthrough to Story 2.3
+- [x] [Review][Defer] reset_embedder() dual ONNX sessions if called while threads are mid-encode [src/search/embedder.py:reset_embedder] — deferred, test-only; GC reclaims old Embedder when callers release reference; production FastMCP never calls reset
+- [x] [Review][Defer] test_resolve_cache_dir_never_temp assertion uses startswith("./data") — deferred; correctly prevents Temp regression for the current default; will need updating if the P1 absolute-path patch is applied
+- [x] [Review][Defer] README.md and setup.py modified without appearing in spec File List — deferred; acknowledged as pre-existing MCP-pivot cleanup bundled into the commit per Git Intelligence note

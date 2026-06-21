@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # hardcode the dimension or model name elsewhere).
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
 EMBEDDING_DIM = 384
-_DEFAULT_CACHE_DIR = "./data/fastembed_cache"
+_DEFAULT_CACHE_DIR = str(Path(__file__).resolve().parent.parent.parent / "data" / "fastembed_cache")
 
 
 def _resolve_cache_dir(cache_dir: str | None) -> str:
@@ -25,9 +25,11 @@ def _resolve_cache_dir(cache_dir: str | None) -> str:
     Mirrors ``connection.py::_resolve_db_path``. Resolution order:
 
     1. An explicit ``cache_dir`` argument (tests pass ``tmp_path``).
-    2. The ``FASTEMBED_CACHE_DIR`` env var (operator override; empty value is treated as unset).
-    3. The ``./data/fastembed_cache`` default — beside ``cards.db`` under the gitignored
-       ``./data/`` tree, so the ~80 MB model stays out of git.
+    2. The ``FASTEMBED_CACHE_DIR`` env var (operator override; empty or whitespace-only is
+       treated as unset).
+    3. The project-root ``data/fastembed_cache`` directory (absolute path anchored to this
+       module's location) — beside ``cards.db`` under the gitignored ``data/`` tree, so the
+       ~80 MB model stays out of git and resolves correctly regardless of process CWD.
 
     The result is **always** a concrete project path; it never falls through to fastembed's
     volatile ``%TEMP%\\fastembed_cache`` default (the operational gotcha the RAG de-risk spike
@@ -42,7 +44,7 @@ def _resolve_cache_dir(cache_dir: str | None) -> str:
     if cache_dir is not None:
         return cache_dir
 
-    env_dir = os.getenv("FASTEMBED_CACHE_DIR")
+    env_dir = (os.getenv("FASTEMBED_CACHE_DIR") or "").strip()
     if env_dir:
         return env_dir
     return _DEFAULT_CACHE_DIR
@@ -68,8 +70,11 @@ class Embedder:
 
     Args:
         cache_dir: Explicit persistent cache directory. If ``None``, derived from the
-            ``FASTEMBED_CACHE_DIR`` env var or the ``./data/fastembed_cache`` default
-            (never fastembed's volatile Temp default).
+            ``FASTEMBED_CACHE_DIR`` env var or the project-root ``data/fastembed_cache``
+            default (never fastembed's volatile Temp default).
+
+    Raises:
+        ValueError: If the resolved ``cache_dir`` path exists as a file rather than a directory.
 
     Example:
         >>> emb = get_embedder()
@@ -80,8 +85,14 @@ class Embedder:
 
     def __init__(self, cache_dir: str | None = None) -> None:
         self._cache_dir = _resolve_cache_dir(cache_dir)
+        cache_path = Path(self._cache_dir)
+        if cache_path.exists() and not cache_path.is_dir():
+            raise ValueError(
+                f"cache_dir={self._cache_dir!r} exists as a file, not a directory; "
+                "set FASTEMBED_CACHE_DIR to a writable directory path"
+            )
         # The model lazily downloads into this dir on first use; create it if absent.
-        Path(self._cache_dir).mkdir(parents=True, exist_ok=True)
+        cache_path.mkdir(parents=True, exist_ok=True)
         logger.info("Loading fastembed model %s (cache_dir=%s)", MODEL_NAME, self._cache_dir)
         # This is the expensive one-time load (the "lazy boundary"): import is free, the model
         # materializes here, on the first get_embedder() call.
@@ -112,9 +123,20 @@ class Embedder:
         Returns:
             A ``numpy.ndarray`` of shape ``(384,)`` and dtype ``float32`` — the raw, already
             L2-normalized bge embedding (do not re-normalize).
+
+        Raises:
+            ValueError: If ``text`` is empty.
+
+        Example:
+            >>> vec = get_embedder().encode("Lightning Bolt")
+            >>> vec.shape, vec.dtype
+            ((384,), dtype('float32'))
         """
+        if not text:
+            raise ValueError("text must be a non-empty string")
         # embed() is a generator yielding one ndarray per input; pass [text] and take the first.
         result = list(self._model.embed([text]))
+        assert len(result) == 1, f"embed([text]) yielded {len(result)} vectors; expected 1"
         # asarray(dtype=float32) is a safety-net coercion that also gives mypy a concrete
         # NDArray return type (fastembed is stub-less, so .embed() is typed Any).
         vector: NDArray[np.float32] = np.asarray(result[0], dtype=np.float32)
@@ -130,10 +152,18 @@ class Embedder:
 
         Returns:
             One ``(384,)`` ``float32`` vector per input string, in input order.
+
+        Example:
+            >>> vecs = get_embedder().encode_batch(["Lightning Bolt", "Counterspell"])
+            >>> len(vecs), vecs[0].shape
+            (2, (384,))
         """
         vectors: list[NDArray[np.float32]] = [
             np.asarray(vec, dtype=np.float32) for vec in self._model.embed(texts)
         ]
+        assert len(vectors) == len(texts), (
+            f"fastembed embed() yielded {len(vectors)} vectors for {len(texts)} inputs"
+        )
         return vectors
 
 
@@ -155,6 +185,11 @@ def get_embedder() -> Embedder:
 
     Returns:
         The shared ``Embedder`` instance.
+
+    Example:
+        >>> emb = get_embedder()
+        >>> emb is get_embedder()
+        True
     """
     global _embedder
     if _embedder is None:  # fast path, no lock once built

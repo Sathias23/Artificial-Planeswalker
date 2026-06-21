@@ -6,13 +6,14 @@ no model download or ONNX session ever occurs. The real-model load is covered by
 """
 
 import threading
+from pathlib import Path
 
 import numpy as np
 import pytest
 
 import src.search.embedder as embedder_module
 from src.search import EMBEDDING_DIM, Embedder, get_embedder
-from src.search.embedder import MODEL_NAME, _resolve_cache_dir, reset_embedder
+from src.search.embedder import _DEFAULT_CACHE_DIR, MODEL_NAME, _resolve_cache_dir, reset_embedder
 
 
 class FakeTextEmbedding:
@@ -32,7 +33,9 @@ class FakeTextEmbedding:
 
     def embed(self, documents, **kwargs):
         for doc in documents:
-            yield np.full(EMBEDDING_DIM, float(ord(doc[0])), dtype=np.float64)
+            # Use 0.0 for empty strings to avoid IndexError on doc[0].
+            value = float(ord(doc[0])) if doc else 0.0
+            yield np.full(EMBEDDING_DIM, value, dtype=np.float64)
 
 
 @pytest.fixture
@@ -63,23 +66,31 @@ def test_resolve_cache_dir_env_honored(tmp_path, monkeypatch) -> None:
 
 
 def test_resolve_cache_dir_defaults_when_absent(monkeypatch) -> None:
-    """With no explicit arg and no env var, the persistent ./data default is used."""
+    """With no explicit arg and no env var, the project-root data dir (absolute path) is used."""
     monkeypatch.delenv("FASTEMBED_CACHE_DIR", raising=False)
-    assert _resolve_cache_dir(None) == "./data/fastembed_cache"
+    assert _resolve_cache_dir(None) == _DEFAULT_CACHE_DIR
+    assert Path(_resolve_cache_dir(None)).is_absolute()
 
 
 def test_resolve_cache_dir_empty_env_falls_back_to_default(monkeypatch) -> None:
     """An empty FASTEMBED_CACHE_DIR is treated as unset (never resolves to an empty path)."""
     monkeypatch.setenv("FASTEMBED_CACHE_DIR", "")
-    assert _resolve_cache_dir(None) == "./data/fastembed_cache"
+    assert _resolve_cache_dir(None) == _DEFAULT_CACHE_DIR
+
+
+def test_resolve_cache_dir_whitespace_env_falls_back_to_default(monkeypatch) -> None:
+    """A whitespace-only FASTEMBED_CACHE_DIR is treated as unset."""
+    monkeypatch.setenv("FASTEMBED_CACHE_DIR", "   ")
+    assert _resolve_cache_dir(None) == _DEFAULT_CACHE_DIR
 
 
 def test_resolve_cache_dir_never_temp(monkeypatch) -> None:
-    """The default resolves under the project ./data dir, never fastembed's volatile %TEMP%."""
+    """The default resolves to an absolute project path, never fastembed's volatile %TEMP%."""
     monkeypatch.delenv("FASTEMBED_CACHE_DIR", raising=False)
-    resolved = _resolve_cache_dir(None).lower()
-    assert resolved.startswith("./data")
-    assert "temp" not in resolved
+    resolved = _resolve_cache_dir(None)
+    assert Path(resolved).is_absolute()
+    assert "temp" not in resolved.lower()
+    assert "fastembed_cache" in resolved
 
 
 # --- Singleton: one load, reused across calls and threads (AC2) ----------------------------
@@ -144,6 +155,12 @@ def test_encode_returns_384_float32(fake_model) -> None:
     assert vec.dtype == np.float32
 
 
+def test_encode_raises_on_empty_string(fake_model) -> None:
+    """encode("") raises ValueError rather than propagating an opaque error from fastembed."""
+    with pytest.raises(ValueError, match="non-empty"):
+        get_embedder().encode("")
+
+
 def test_encode_batch_one_vector_per_input_in_order(fake_model) -> None:
     """encode_batch() returns one (384,) float32 vector per input, preserving input order."""
     texts = ["alpha", "bravo", "charlie"]
@@ -183,3 +200,12 @@ def test_embedder_creates_and_uses_resolved_cache_dir(tmp_path, fake_model) -> N
     # the model was constructed with the resolved cache dir + the pinned model name
     assert emb._model.cache_dir == str(cache)
     assert emb._model.model_name == MODEL_NAME
+
+
+def test_embedder_raises_when_cache_dir_is_a_file(tmp_path, fake_model) -> None:
+    """__init__ raises ValueError with a diagnostic when cache_dir points at a file."""
+    file_path = tmp_path / "not_a_dir"
+    file_path.write_text("oops")
+
+    with pytest.raises(ValueError, match="exists as a file"):
+        Embedder(cache_dir=str(file_path))

@@ -20,7 +20,8 @@ _CACHE_DIR = Path(__file__).resolve().parents[3] / "data" / "fastembed_cache"
 
 @pytest.fixture
 def real_embedder():
-    """Build the real Embedder against the persistent cache; reset the singleton afterwards."""
+    """Build the real Embedder against the persistent cache; reset singleton before and after."""
+    reset_embedder()  # ensure clean singleton state going in
     embedder = Embedder(cache_dir=str(_CACHE_DIR))
     yield embedder
     reset_embedder()
