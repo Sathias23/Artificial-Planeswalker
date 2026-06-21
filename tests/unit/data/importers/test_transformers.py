@@ -112,6 +112,39 @@ def test_transform_card_with_null_keywords():
     assert card.keywords is None
 
 
+def test_transform_card_with_explicit_null_fields():
+    """Explicit JSON nulls on non-nullable fields must coerce to empty defaults, not None.
+
+    Scryfall (and especially tokens/split cards) can send `"field": null`. dict.get(k, d)
+    returns the default only for MISSING keys, so a present-but-null value slips through as
+    None and would write a NULL into a non-nullable column. Keep NULLs out at the source.
+    """
+    card_json = {
+        "id": "null-fields-id",
+        "name": "Null Fields Card",
+        "oracle_id": "null-fields-oracle",
+        "type_line": "Token Creature",
+        "mana_cost": None,
+        "oracle_text": None,
+        "colors": None,
+        "color_identity": None,
+        "legalities": None,
+        "rarity": "common",
+        "set": "tst",
+        "set_name": "Test Set",
+        "collector_number": "1",
+    }
+
+    card = transform_scryfall_card(card_json)
+
+    assert card is not None
+    assert card.mana_cost == ""
+    assert card.oracle_text == ""
+    assert card.colors == []
+    assert card.color_identity == []
+    assert card.legalities == {}
+
+
 def test_transform_card_with_defaults():
     """Test transforming a minimal card with default values."""
     card_json = {

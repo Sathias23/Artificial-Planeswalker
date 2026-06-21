@@ -1,9 +1,33 @@
 """Unit tests for Pydantic card schemas."""
 
+from types import SimpleNamespace
+
 import pytest
 from pydantic import ValidationError
 
 from src.data.schemas.card import Card, CardSummary
+
+
+def _valid_card_kwargs(**overrides: object) -> dict[str, object]:
+    """Return a minimal-but-complete set of valid Card kwargs, with overrides applied."""
+    data: dict[str, object] = {
+        "id": "card-1",
+        "name": "Test Card",
+        "oracle_id": "oracle-1",
+        "mana_cost": "{R}",
+        "cmc": 1.0,
+        "type_line": "Instant",
+        "oracle_text": "Some text.",
+        "rarity": "common",
+        "set_code": "TST",
+        "set_name": "Test Set",
+        "collector_number": "1",
+        "colors": ["R"],
+        "color_identity": ["R"],
+        "legalities": {"standard": "legal"},
+    }
+    data.update(overrides)
+    return data
 
 
 def test_card_schema_validation() -> None:
@@ -214,6 +238,98 @@ def test_card_summary_from_full_card() -> None:
     assert summary.colors == ["R"]
     assert summary.rarity == "common"
     assert summary.set_code == "LEA"
+
+
+# ===== Nullability gate (Epic 1 retro action item #1) =====
+# Real Scryfall data stores NULL for these fields on tokens / split cards / lands.
+# Epic 2's build_card_embeddings.py composes name + type_line + mana_cost + oracle_text
+# over the full corpus, so Card/CardSummary must tolerate NULL by coercing to empty
+# defaults rather than raising ValidationError.
+
+
+@pytest.mark.parametrize("field", ["oracle_text", "mana_cost"])
+def test_card_coerces_null_text_field_to_empty_string(field: str) -> None:
+    """A NULL oracle_text / mana_cost (split cards, lands) coerces to ''."""
+    card = Card(**_valid_card_kwargs(**{field: None}))
+
+    assert getattr(card, field) == ""
+
+
+def test_card_coerces_null_colors_to_empty_list() -> None:
+    """A NULL colors value (colorless cards stored as NULL) coerces to []."""
+    card = Card(**_valid_card_kwargs(colors=None))
+
+    assert card.colors == []
+
+
+def test_card_coerces_null_legalities_to_empty_dict() -> None:
+    """A NULL legalities value coerces to {}."""
+    card = Card(**_valid_card_kwargs(legalities=None))
+
+    assert card.legalities == {}
+
+
+def test_card_coerces_null_games_to_empty_list() -> None:
+    """A NULL games value coerces to [] (pre-existing behavior, locked by the gate)."""
+    card = Card(**_valid_card_kwargs(games=None))
+
+    assert card.games == []
+
+
+def test_card_model_validate_tolerates_nulls_from_attributes() -> None:
+    """The Epic-2 read path (model_validate over an ORM row with NULLs) must not raise."""
+    row = SimpleNamespace(
+        id="card-split",
+        name="Fire // Ice",
+        printed_name=None,
+        oracle_id="oracle-split",
+        mana_cost=None,  # split cards carry mana cost on the faces, not the top level
+        cmc=2.0,
+        type_line="Instant // Instant",
+        oracle_text=None,  # top-level oracle_text is NULL for split cards
+        rarity="uncommon",
+        set_code="APC",
+        set_name="Apocalypse",
+        collector_number="128",
+        colors=None,
+        color_identity=["U", "R"],
+        color_indicator=None,
+        keywords=None,
+        legalities=None,
+        card_faces=None,
+        image_uris=None,
+        games=None,
+    )
+
+    card = Card.model_validate(row)
+
+    assert card.mana_cost == ""
+    assert card.oracle_text == ""
+    assert card.colors == []
+    assert card.legalities == {}
+    assert card.games == []
+    # Composing the embedding text must not blow up on the coerced fields.
+    embed_text = f"{card.name} {card.type_line} {card.mana_cost} {card.oracle_text}"
+    assert embed_text == "Fire // Ice Instant // Instant  "
+
+
+@pytest.mark.parametrize("field", ["oracle_text", "mana_cost"])
+def test_card_summary_coerces_null_text_field_to_empty_string(field: str) -> None:
+    """CardSummary tolerates NULL oracle_text / mana_cost the same way Card does."""
+    full = Card(**_valid_card_kwargs(**{field: None}))
+
+    summary = CardSummary.model_validate(full)
+
+    assert getattr(summary, field) == ""
+
+
+def test_card_summary_coerces_null_colors_to_empty_list() -> None:
+    """CardSummary tolerates NULL colors."""
+    full = Card(**_valid_card_kwargs(colors=None))
+
+    summary = CardSummary.model_validate(full)
+
+    assert summary.colors == []
 
 
 def test_card_summary_projects_only_lightweight_fields() -> None:

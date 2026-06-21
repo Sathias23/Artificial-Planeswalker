@@ -1,6 +1,6 @@
 """Pydantic schema for paginated repository results."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PaginatedResult[T](BaseModel):
@@ -11,14 +11,14 @@ class PaginatedResult[T](BaseModel):
 
     Attributes:
         items: The items on the current page.
-        total_count: Total number of matching items across all pages.
-        page: Current 1-based page number.
-        page_size: Maximum number of items per page.
-        total_pages: Total number of pages for the current query.
+        total_count: Total number of matching items across all pages (>= 0).
+        page: Current 1-based page number (>= 1).
+        page_size: Maximum number of items per page (>= 1).
+        total_pages: Total number of pages for the current query (>= 0; 0 when no matches).
     """
 
     items: list[T]
-    total_count: int
-    page: int
-    page_size: int
-    total_pages: int
+    total_count: int = Field(ge=0)
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1)
+    total_pages: int = Field(ge=0)

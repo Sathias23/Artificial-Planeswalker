@@ -239,7 +239,9 @@ class DeckRepository(BaseRepository):
     async def list_decks(self, format_filter: str | None = None) -> list[Deck]:
         """List all decks, optionally filtered by format.
 
-        Decks are ordered by created_at descending (newest first).
+        Decks are ordered by created_at descending (newest first), with id as a
+        secondary key so the order is deterministic when decks share a created_at
+        timestamp (rapid creation can tie on the clock).
         Eager loads deck_cards relationship for accurate card counts.
 
         Args:
@@ -257,7 +259,7 @@ class DeckRepository(BaseRepository):
         if format_filter is not None:
             stmt = stmt.where(DeckModel.format == format_filter)
 
-        stmt = stmt.order_by(DeckModel.created_at.desc())
+        stmt = stmt.order_by(DeckModel.created_at.desc(), DeckModel.id)
         stmt = stmt.options(selectinload(DeckModel.deck_cards).selectinload(DeckCardModel.card))
         result = await self.session.execute(stmt)
         deck_models = result.scalars().all()
@@ -307,6 +309,7 @@ class DeckRepository(BaseRepository):
             DeckCard schema with card details
 
         Raises:
+            ValueError: If quantity < 1 (rejected before any write)
             IntegrityError: If card already exists in the specified location
             DatabaseError: For other database-level errors
 
@@ -318,6 +321,12 @@ class DeckRepository(BaseRepository):
                 sideboard=False
             )
         """
+        if quantity < 1:
+            # Reject before touching the session so a bad quantity never persists an
+            # orphan row (which validate_deck would later undercount). DeckCard validates
+            # this on read; this is the write-path backstop for every caller.
+            raise ValueError("Quantity must be at least 1")
+
         try:
             deck_card_model = DeckCardModel(
                 deck_id=deck_id, card_id=card_id, quantity=quantity, sideboard=sideboard
@@ -428,6 +437,7 @@ class DeckRepository(BaseRepository):
             Updated DeckCard schema if found, None otherwise
 
         Raises:
+            ValueError: If quantity < 1 (rejected before any write)
             DatabaseError: For database-level errors
 
         Example:
@@ -438,6 +448,10 @@ class DeckRepository(BaseRepository):
                 sideboard=False
             )
         """
+        if quantity < 1:
+            # Backstop the write path: never persist a quantity DeckCard would reject on read.
+            raise ValueError("Quantity must be at least 1")
+
         try:
             stmt = (
                 select(DeckCardModel)

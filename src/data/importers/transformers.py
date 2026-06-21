@@ -47,29 +47,33 @@ def transform_scryfall_card(card_json: dict[str, Any]) -> CardModel | None:
         oracle_id = card_json["oracle_id"]
         type_line = card_json["type_line"]
 
+        # Non-nullable fields use `get(...) or default`, NOT `get(field, default)`:
+        # `.get` only falls back for MISSING keys, so an explicit JSON null
+        # (`"field": null`, common on tokens/split cards) would slip through as None
+        # and write a NULL into a non-nullable column. `or` also coerces those nulls.
         # Handle mana cost and CMC (lands and some cards have empty mana_cost)
-        mana_cost = card_json.get("mana_cost", "")
-        cmc = float(card_json.get("cmc", 0.0))
+        mana_cost = card_json.get("mana_cost") or ""
+        cmc = float(card_json.get("cmc") or 0.0)
 
         # Handle oracle text (some cards have no text)
-        oracle_text = card_json.get("oracle_text", "")
+        oracle_text = card_json.get("oracle_text") or ""
 
         # Extract set information with defaults
-        rarity = card_json.get("rarity", "common")
-        set_code = card_json.get("set", "unknown")
-        set_name = card_json.get("set_name", "Unknown Set")
-        collector_number = card_json.get("collector_number", "0")
+        rarity = card_json.get("rarity") or "common"
+        set_code = card_json.get("set") or "unknown"
+        set_name = card_json.get("set_name") or "Unknown Set"
+        collector_number = card_json.get("collector_number") or "0"
 
         # Handle color arrays (default to empty lists)
-        colors = card_json.get("colors", [])
-        color_identity = card_json.get("color_identity", [])
+        colors = card_json.get("colors") or []
+        color_identity = card_json.get("color_identity") or []
         color_indicator = card_json.get("color_indicator")  # Optional, can be None
 
-        # Handle keywords (optional)
+        # Handle keywords (optional, nullable column — preserve None)
         keywords = card_json.get("keywords")  # Can be None or missing
 
         # Handle legalities (default to empty dict)
-        legalities = card_json.get("legalities", {})
+        legalities = card_json.get("legalities") or {}
 
         # Handle multi-face cards (optional)
         card_faces = card_json.get("card_faces")  # Can be None or missing

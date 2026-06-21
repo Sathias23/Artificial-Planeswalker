@@ -1,13 +1,25 @@
 """Integration tests for DeckRepository."""
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
+from src.data.models.deck import DeckModel
 from src.data.repositories.deck import DeckRepository
 from src.data.schemas.deck import Deck, DeckCard
+
+
+async def _set_created_at(session: AsyncSession, deck_id: str, value: datetime) -> None:
+    """Force a deck's created_at to an explicit value (creation timing is wall-clock
+    dependent, so tests that assert on ordering must set it deterministically)."""
+    model = await session.get(DeckModel, deck_id)
+    assert model is not None
+    model.created_at = value
+    await session.commit()
 
 
 @pytest.fixture
@@ -250,19 +262,49 @@ async def test_list_decks_empty(deck_repo: DeckRepository) -> None:
     assert decks == []
 
 
-async def test_list_decks(deck_repo: DeckRepository) -> None:
-    """Test list_decks returns all decks ordered by created_at descending."""
+async def test_list_decks(deck_repo: DeckRepository, session: AsyncSession) -> None:
+    """Test list_decks returns all decks ordered by created_at descending.
+
+    created_at is set explicitly here: three rapid create_deck calls can land on the
+    same wall-clock tick, in which case the desc ordering is ambiguous (the historical
+    flake). Pinning distinct timestamps makes the newest-first intent unambiguous.
+    """
     deck1 = await deck_repo.create_deck(name="Deck 1", format="standard")
     deck2 = await deck_repo.create_deck(name="Deck 2", format="standard")
     deck3 = await deck_repo.create_deck(name="Deck 3", format="standard")
 
+    base = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    await _set_created_at(session, deck1.id, base)
+    await _set_created_at(session, deck2.id, base + timedelta(minutes=1))
+    await _set_created_at(session, deck3.id, base + timedelta(minutes=2))
+
     decks = await deck_repo.list_decks()
 
-    assert len(decks) == 3
-    # Should be ordered newest first
-    assert decks[0].id == deck3.id
-    assert decks[1].id == deck2.id
-    assert decks[2].id == deck1.id
+    assert [d.id for d in decks] == [deck3.id, deck2.id, deck1.id]
+
+
+async def test_list_decks_orders_deterministically_on_created_at_tie(
+    deck_repo: DeckRepository, session: AsyncSession
+) -> None:
+    """When created_at ties, list_decks must break the tie by id (stable, repeatable).
+
+    Without a secondary sort key, SQLite returns tied rows in insertion order, so the
+    newest-first contract silently depends on timing. The id tie-breaker makes the order
+    deterministic regardless of how many decks share a timestamp.
+    """
+    tie = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+    created = []
+    for i in range(10):
+        deck = await deck_repo.create_deck(name=f"Tie Deck {i}", format="standard")
+        await _set_created_at(session, deck.id, tie)
+        created.append(deck)
+
+    first = [d.id for d in await deck_repo.list_decks()]
+    second = [d.id for d in await deck_repo.list_decks()]
+
+    # Tie broken by id ascending, and stable across repeated calls.
+    assert first == sorted(d.id for d in created)
+    assert first == second
 
 
 async def test_list_decks_filtered_by_format(deck_repo: DeckRepository) -> None:
@@ -310,6 +352,44 @@ async def test_add_card_to_deck_mainboard(
     assert deck_card.quantity == 4
     assert deck_card.sideboard is False
     assert deck_card.card.name == "Lightning Bolt"
+
+
+@pytest.mark.parametrize("bad_quantity", [0, -1, -5])
+async def test_add_card_to_deck_rejects_quantity_below_one(
+    deck_repo: DeckRepository, test_cards: list[CardModel], bad_quantity: int
+) -> None:
+    """add_card_to_deck must reject quantity < 1 and persist nothing (data-integrity guard)."""
+    deck = await deck_repo.create_deck(name="Guard Test", format="standard")
+
+    with pytest.raises(ValueError):
+        await deck_repo.add_card_to_deck(
+            deck_id=deck.id, card_id="card-bolt", quantity=bad_quantity, sideboard=False
+        )
+
+    # No row should have been written.
+    loaded = await deck_repo.get_deck_with_cards(deck_id=deck.id)
+    assert loaded is not None
+    assert loaded.deck_cards == []
+
+
+@pytest.mark.parametrize("bad_quantity", [0, -1])
+async def test_update_card_quantity_rejects_quantity_below_one(
+    deck_repo: DeckRepository, test_cards: list[CardModel], bad_quantity: int
+) -> None:
+    """update_card_quantity must reject quantity < 1 and leave the existing quantity intact."""
+    deck = await deck_repo.create_deck(name="Guard Test", format="standard")
+    await deck_repo.add_card_to_deck(
+        deck_id=deck.id, card_id="card-bolt", quantity=4, sideboard=False
+    )
+
+    with pytest.raises(ValueError):
+        await deck_repo.update_card_quantity(
+            deck_id=deck.id, card_id="card-bolt", quantity=bad_quantity, sideboard=False
+        )
+
+    loaded = await deck_repo.get_deck_with_cards(deck_id=deck.id)
+    assert loaded is not None
+    assert loaded.deck_cards[0].quantity == 4
 
 
 async def test_add_card_to_deck_sideboard(

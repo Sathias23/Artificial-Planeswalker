@@ -56,11 +56,27 @@ class Card(BaseModel):
     # Game availability ("paper", "arena", "mtgo")
     games: list[str] = []
 
-    @field_validator("games", mode="before")
+    # NULL-coercion (Epic 1 retro gate): real Scryfall data stores NULL for these fields
+    # on tokens / split cards / lands. The schema keeps the non-optional types but coerces
+    # NULL to an empty default so reads (e.g. Epic 2's embedding builder over the full
+    # corpus) never raise ValidationError.
+    @field_validator("oracle_text", "mana_cost", mode="before")
     @classmethod
-    def validate_games(cls, v: Any) -> list[str]:
-        """Ensure games is always a list, converting None to empty list."""
-        return v if v is not None else []
+    def _coerce_none_to_empty_str(cls, v: Any) -> Any:
+        """Coerce a NULL text field to an empty string."""
+        return "" if v is None else v
+
+    @field_validator("colors", "games", mode="before")
+    @classmethod
+    def _coerce_none_to_empty_list(cls, v: Any) -> Any:
+        """Coerce a NULL list field to an empty list."""
+        return [] if v is None else v
+
+    @field_validator("legalities", mode="before")
+    @classmethod
+    def _coerce_none_to_empty_dict(cls, v: Any) -> Any:
+        """Coerce a NULL dict field to an empty dict."""
+        return {} if v is None else v
 
 
 class CardSummary(BaseModel):
@@ -88,3 +104,17 @@ class CardSummary(BaseModel):
     colors: list[str]
     rarity: str
     set_code: str
+
+    # NULL-coercion gate — mirrors Card so summaries built from NULL-bearing rows
+    # (split cards, lands) never raise. See Card for rationale.
+    @field_validator("oracle_text", "mana_cost", mode="before")
+    @classmethod
+    def _coerce_none_to_empty_str(cls, v: Any) -> Any:
+        """Coerce a NULL text field to an empty string."""
+        return "" if v is None else v
+
+    @field_validator("colors", mode="before")
+    @classmethod
+    def _coerce_none_to_empty_list(cls, v: Any) -> Any:
+        """Coerce a NULL list field to an empty list."""
+        return [] if v is None else v

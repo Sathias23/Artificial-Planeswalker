@@ -1,5 +1,5 @@
 # generated: 2026-06-20
-# last_updated: 2026-06-20 (Story 1.6 → done)
+# last_updated: 2026-06-21 (Epic 1 retro tech-debt prep gate → done)
 # project: Artificial-Planeswalker
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-06-20
+last_updated: 2026-06-21
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -43,14 +43,16 @@ story_location: _bmad-output/implementation-artifacts
 
 development_status:
   # Epic 1: MCP Server & Core Tool Surface
-  epic-1: in-progress
+  epic-1: done
   1-1-repository-restructure-dependency-reshape: done
   1-2-sqlite-connectionfactory-with-wal-extension-loading: done
   1-3-fastmcp-server-with-card-lookup-bug-report: done
   1-4-advanced-card-search-tool: done
   1-5-deck-management-tools: done
   1-6-deck-analysis-tools: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
+  # Pre-Epic-2 tech-debt prep gate (from epic-1-retro-2026-06-21.md, action items 1-3 + optional wins)
+  epic-1-tech-debt-prep-gate: done
 
   # Epic 2: Semantic Card Search (RAG)
   epic-2: backlog
