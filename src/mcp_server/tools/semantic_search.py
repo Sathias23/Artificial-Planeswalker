@@ -210,10 +210,10 @@ def semantic_search_cards(
             card=CardSummary(
                 id=hit.card_id,
                 name=hit.name,
-                mana_cost=hit.mana_cost,
+                mana_cost=hit.mana_cost or "",
                 cmc=hit.cmc,
                 type_line=hit.type_line,
-                oracle_text=hit.oracle_text,
+                oracle_text=hit.oracle_text or "",
                 colors=hit.colors,
                 rarity=hit.rarity,
                 set_code=hit.set_code,

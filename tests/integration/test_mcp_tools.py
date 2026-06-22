@@ -333,6 +333,8 @@ async def test_semantic_search_returns_nearest_card(seeded_vec_db: SeededVecDB):
     sc = result.structuredContent
     assert sc is not None
     assert sc["status"] == "ok"
+    assert sc["total_count"] == len(sc["cards"])
+    assert sc["total_count"] > 0
     assert sc["cards"][0]["card"]["name"] == "Inferno Dragon"
     assert "distance" in sc["cards"][0]
     # Lightweight projection through the wire: no heavy detail fields on the nested card.
@@ -358,6 +360,25 @@ async def test_semantic_search_format_filter_excludes_non_legal(seeded_vec_db: S
     assert filtered.structuredContent["status"] == "ok"
     filtered_names = {c["card"]["name"] for c in filtered.structuredContent["cards"]}
     assert "Backstreet Goblin" not in filtered_names
+
+
+async def test_semantic_search_empty_when_filters_exclude_all(seeded_vec_db: SeededVecDB):
+    """A valid query with no surviving matches returns status='empty', isError=False (AC6)."""
+    server = _vec_server(seeded_vec_db)
+    async with create_connected_server_and_client_session(server) as client:
+        # No seeded card is White — the color pre-filter excludes every card.
+        result = await client.call_tool(
+            "semantic_search_cards",
+            {"query": seeded_vec_db.query_text("Inferno Dragon"), "colors": ["W"]},
+        )
+
+    assert result.isError is False
+    sc = result.structuredContent
+    assert sc is not None
+    assert sc["status"] == "empty"
+    assert sc["cards"] == []
+    assert sc["total_count"] == 0
+    assert sc["message"]
 
 
 async def test_semantic_search_invalid_color_is_graceful(seeded_vec_db: SeededVecDB):

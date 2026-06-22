@@ -4,7 +4,7 @@ baseline_commit: dc47b94ec461057416c8dcbc8bd82a4ad1e6b9d7
 
 # Story 2.4: semantic_search_cards Tool (hybrid query)
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -117,6 +117,15 @@ so that Epic 3's deckbuilding skills (and `find_similar_cards`, Story 2.5) can s
   - [x] `uv run ruff check .` and `uv run ruff format --check .` → clean for story-authored files (`src/search/query.py`, `src/search/__init__.py`, `src/mcp_server/tools/semantic_search.py`, `src/mcp_server/server.py`, the new/modified tests). Don't reformat pre-existing unrelated issues.
   - [x] `uv run mypy src/` → clean. `uv run pre-commit run mypy --all-files` too (the isolated env already has `mcp`+`numpy` from Stories 2.1; `sqlite_vec` is stub-less under `ignore_missing_imports` → **no new `additional_dependencies`**).
   - [x] **Optional real-corpus smoke (AC4):** with the real `./data/cards.db` (38,232-vector index already built by Story 2.3), drive `semantic_search_cards` for *"flying red dragon"* and for the *"Standard-legal red 4-drops like Glorybringer"* hybrid; confirm sensible hits and note the measured end-to-end time (expect <~100 ms) in the Debug Log. Do not assert it in a test.
+
+### Review Findings
+
+- [x] [Review][Patch] `CardHit.mana_cost` and `oracle_text` annotated `str` but receive `None` from DB for lands/tokens — correct to `str | None` [`src/search/query.py:89,93`]
+- [x] [Review][Patch] Missing AC6 `status="empty"` path through the in-process MCP harness — AC6 explicitly requires it but no test in `test_mcp_tools.py` covers valid-query-no-matches end-to-end [`tests/integration/test_mcp_tools.py`]
+- [x] [Review][Patch] `test_semantic_search_returns_nearest_card` does not assert `total_count` — specified field left unverified [`tests/integration/test_mcp_tools.py:~339`]
+- [x] [Review][Defer] Unhandled exceptions (OperationalError, RuntimeError) propagate from sync tool to FastMCP — consistent with Epic-1 pattern; isError=True is the FastMCP contract [`src/mcp_server/server.py:440`] — deferred, pre-existing pattern
+- [x] [Review][Defer] `_FakeEmbedder` class duplicated in 3 test files — test cleanup, not a correctness issue — deferred, pre-existing
+- [x] [Review][Defer] `limit > over_fetch_k` silently truncates results with no caller signal — spec says "sane max ~50"; extreme edge case [`src/search/query.py:hybrid_search`] — deferred, pre-existing
 
 ## Dev Notes
 

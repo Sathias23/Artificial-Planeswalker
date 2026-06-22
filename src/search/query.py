@@ -64,10 +64,10 @@ class CardHit:
         oracle_id: The Oracle identity shared across printings (the de-dup key).
         distance: Raw vec0 L2 distance from the query vector (nearest-first ordering).
         name: Card name.
-        mana_cost: Mana-cost string (e.g. ``"{3}{R}{R}"``; ``""`` for lands).
+        mana_cost: Mana-cost string (e.g. ``"{3}{R}{R}"``); ``None`` for lands and tokens.
         cmc: Converted mana cost (mana value) as a float.
         type_line: The type line.
-        oracle_text: Oracle rules text.
+        oracle_text: Oracle rules text; ``None`` for some split/token cards.
         colors: Decoded colour letters (a subset of W/U/B/R/G; ``[]`` if none/NULL).
         rarity: Card rarity.
         set_code: The set code of this printing.
@@ -86,10 +86,10 @@ class CardHit:
     oracle_id: str
     distance: float
     name: str
-    mana_cost: str
+    mana_cost: str | None
     cmc: float
     type_line: str
-    oracle_text: str
+    oracle_text: str | None
     colors: list[str]
     rarity: str
     set_code: str
