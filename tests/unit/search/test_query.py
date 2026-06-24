@@ -17,7 +17,7 @@ from numpy.typing import NDArray
 
 from src.search import ConnectionFactory, build_card_embeddings, compose_card_text
 from src.search.embedder import EMBEDDING_DIM
-from src.search.query import CardHit, hybrid_search
+from src.search.query import CardHit, get_card_vector, hybrid_search
 
 
 class _FakeEmbedder:
@@ -361,4 +361,91 @@ def test_null_colors_coerce_to_empty_list(tmp_path) -> None:
 
     hits = hybrid_search(conn, _qvec(fake, name="Null Colors", oracle_text="A."))
     assert hits[0].colors == []  # NULL colors JSON -> []
+    factory.close()
+
+
+# --- get_card_vector: point read-back of a stored vector (Story 2.5) ------------------------
+
+
+def test_get_card_vector_round_trips_to_distance_zero(tmp_path) -> None:
+    """The stored vector read back by PK feeds hybrid_search and ranks the seed at distance 0."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    fake = _FakeEmbedder()
+    _seed_card(conn, "id-r", name="Red Card", oracle_text="Burn.", colors=["R"], cmc=3.0)
+    _seed_card(conn, "id-u", name="Blue Card", oracle_text="Draw.", colors=["U"], cmc=2.0)
+    build_card_embeddings(conn, fake)
+
+    vec = get_card_vector(conn, "id-r")
+
+    assert vec is not None
+    assert vec.dtype == np.float32
+    assert vec.shape == (EMBEDDING_DIM,)
+    # Read-back fidelity: it equals the exact vector the builder embedded the card under.
+    expected = _qvec(fake, name="Red Card", oracle_text="Burn.")
+    assert np.array_equal(vec, expected)
+    # End-to-end: seeding hybrid_search with the read-back vector returns the seed at distance 0.
+    hits = hybrid_search(conn, vec, limit=5)
+    assert hits[0].card_id == "id-r"
+    assert hits[0].distance == pytest.approx(0.0, abs=1e-6)
+    factory.close()
+
+
+def test_get_card_vector_returns_none_for_unindexed_card(tmp_path) -> None:
+    """A card_id with no card_vec row returns None (the AC4 'not indexed' signal)."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    fake = _FakeEmbedder()
+    _seed_card(conn, "id-r", name="Red Card", oracle_text="Burn.", colors=["R"], cmc=3.0)
+    build_card_embeddings(conn, fake)
+
+    assert get_card_vector(conn, "no-such-card") is None
+    factory.close()
+
+
+# --- hybrid_search(exclude_oracle_id=...): drop the whole seed oracle (Story 2.5) -----------
+
+
+def test_exclude_oracle_id_drops_every_printing_of_that_oracle(tmp_path) -> None:
+    """Excluding an oracle removes ALL its printings while still returning `limit` other hits."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    fake = _FakeEmbedder()
+    # Two printings of the seed oracle (identical text -> identical, nearest vectors)...
+    _seed_card(conn, "seed-a", oracle_id="oracle-seed", name="Seed", oracle_text="Same.")
+    _seed_card(conn, "seed-b", oracle_id="oracle-seed", name="Seed", oracle_text="Same.")
+    # ...plus two other distinct oracles.
+    _seed_card(conn, "other-1", oracle_id="oracle-one", name="One", oracle_text="A.")
+    _seed_card(conn, "other-2", oracle_id="oracle-two", name="Two", oracle_text="B.")
+    build_card_embeddings(conn, fake)
+
+    seed_vec = get_card_vector(conn, "seed-a")
+    assert seed_vec is not None
+
+    excluded = hybrid_search(conn, seed_vec, limit=10, exclude_oracle_id="oracle-seed")
+    included = hybrid_search(conn, seed_vec, limit=10)
+
+    # Without exclusion the seed oracle is the nearest hit; with it, no printing survives.
+    assert "oracle-seed" in {h.oracle_id for h in included}
+    assert all(h.oracle_id != "oracle-seed" for h in excluded)
+    assert "seed-a" not in {h.card_id for h in excluded}
+    assert "seed-b" not in {h.card_id for h in excluded}
+    # The two other oracles still come back (exclusion does not starve the limit).
+    assert {h.oracle_id for h in excluded} == {"oracle-one", "oracle-two"}
+    factory.close()
+
+
+def test_exclude_oracle_id_default_none_preserves_behaviour(tmp_path) -> None:
+    """Default exclude_oracle_id=None leaves the Story 2.4 path unchanged (nothing dropped)."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    fake = _FakeEmbedder()
+    _seed_card(conn, "id-r", name="Red Card", oracle_text="Burn.", colors=["R"], cmc=3.0)
+    _seed_card(conn, "id-u", name="Blue Card", oracle_text="Draw.", colors=["U"], cmc=2.0)
+    build_card_embeddings(conn, fake)
+
+    q = _qvec(fake, name="Red Card", oracle_text="Burn.")
+    assert {h.card_id for h in hybrid_search(conn, q)} == {
+        h.card_id for h in hybrid_search(conn, q, exclude_oracle_id=None)
+    }
     factory.close()

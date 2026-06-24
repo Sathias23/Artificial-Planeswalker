@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-06-22 (Story 2.4 code review → done; CardHit nullability fix, empty-harness test, total_count assertion)
+last_updated: 2026-06-24 (Story 2.5 code review → done)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -60,7 +60,7 @@ development_status:
   2-2-card-vec-schema-with-metadata-columns: done
   2-3-card-embedding-index-builder-idempotent-incremental: done
   2-4-semantic-search-cards-tool-hybrid-query: done
-  2-5-find-similar-cards-tool: backlog
+  2-5-find-similar-cards-tool: done
   2-6-rag-sanity-eval: backlog
   epic-2-retrospective: optional
 

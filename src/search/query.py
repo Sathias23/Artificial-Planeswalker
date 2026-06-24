@@ -141,6 +141,51 @@ def _color_predicates(colors: Sequence[str], color_mode: ColorMode) -> list[str]
     return [f"{col} = 0" for col in others]
 
 
+def get_card_vector(conn: sqlite3.Connection, card_id: str) -> NDArray[np.float32] | None:
+    """Read a card's **stored** embedding back out of ``card_vec`` by primary key (Story 2.5).
+
+    A **point lookup** by the TEXT primary key — *not* a KNN: ``SELECT embedding FROM card_vec
+    WHERE card_id = ?`` (no ``MATCH`` / ``k``). On sqlite-vec v0.1.9 the ``embedding`` column comes
+    back as the compact ``float32`` BLOB :func:`sqlite_vec.serialize_float32` wrote at index time
+    (Story 2.3), which :func:`numpy.frombuffer` deserializes straight into a
+    :data:`~src.search.embedder.EMBEDDING_DIM`-length ``float32`` array. The vector is byte-for-byte
+    the one the card was indexed under, so feeding it back into :func:`hybrid_search` ranks the card
+    at distance ≈ 0 (round-trip safe — both ends use the same encoding). This is how
+    ``find_similar_cards`` seeds the KNN from a card it already has, **without re-embedding**.
+
+    The seed value is bound as a parameter; the table/column identifiers are schema constants
+    (never string literals). The default tuple row factory is used — the single column is read
+    positionally.
+
+    Args:
+        conn: A ``sqlite3.Connection`` from
+            :class:`~src.search.connection.ConnectionFactory` (sqlite-vec loaded).
+        card_id: The Scryfall printing UUID (``cards.id`` = ``card_vec.card_id``) to read.
+
+    Returns:
+        The stored 384-dim ``float32`` embedding, or ``None`` if the ``card_id`` has no row in
+        ``card_vec`` (i.e. the card is not in the semantic index yet — the "not indexed" signal
+        ``find_similar_cards`` surfaces as a graceful result).
+
+    Raises:
+        sqlite3.OperationalError: If ``conn`` lacks the sqlite-vec extension, or on a SQL error.
+
+    Example:
+        >>> from src.search import ConnectionFactory
+        >>> conn = ConnectionFactory(db_path="./data/cards.db").get_connection()
+        >>> vec = get_card_vector(conn, "a1b2c3d4-...")  # doctest: +SKIP
+        >>> vec.shape  # doctest: +SKIP
+        (384,)
+    """
+    row = conn.execute(
+        f"SELECT {EMBEDDING_COL} FROM {CARD_VEC_TABLE} WHERE {CARD_ID_COL} = ?",
+        (card_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return np.frombuffer(row[0], dtype=np.float32)
+
+
 def hybrid_search(
     conn: sqlite3.Connection,
     query_vector: NDArray[np.float32] | Sequence[float],
@@ -153,6 +198,7 @@ def hybrid_search(
     color_mode: ColorMode = "any",
     format_legal: str | None = None,
     games: Sequence[str] | None = None,
+    exclude_oracle_id: str | None = None,
 ) -> list[CardHit]:
     """Run the hybrid KNN + JOIN query and return de-duplicated, ranked :class:`CardHit` rows.
 
@@ -185,6 +231,11 @@ def hybrid_search(
             ``json_extract(cards.legalities, '$.<format>') = 'legal'``. Falsy → no legality filter.
         games: Restrict to cards available on any of these platforms (``paper`` / ``arena`` /
             ``mtgo``) via ``cast(cards.games AS TEXT) LIKE`` (OR across games). Falsy → no filter.
+        exclude_oracle_id: If given, drop **every** hit whose ``oracle_id`` equals it — used by
+            ``find_similar_cards`` to remove the seed card (and all its other printings) so results
+            are genuine alternatives, not the seed echoed back. The skip happens inside the
+            nearest-first de-dup loop *before* a hit consumes a ``limit`` slot, so the over-fetch /
+            ``limit`` accounting stays correct. Default ``None`` preserves the Story 2.4 behaviour.
 
     Returns:
         A list of :class:`CardHit`, nearest-first, one per ``oracle_id``, at most ``limit`` long.
@@ -249,6 +300,9 @@ def hybrid_search(
     seen_oracles: set[str] = set()
     for row in rows:
         oracle_id = row[2]
+        # Drop the seed's whole oracle (find_similar) before it can consume a `limit` slot.
+        if exclude_oracle_id is not None and oracle_id == exclude_oracle_id:
+            continue
         if oracle_id in seen_oracles:
             continue
         seen_oracles.add(oracle_id)

@@ -395,3 +395,91 @@ async def test_semantic_search_invalid_color_is_graceful(seeded_vec_db: SeededVe
     assert sc is not None
     assert sc["status"] == "invalid"
     assert "X" in sc["message"]
+
+
+# --- find_similar_cards: the second sync RAG tool through the in-process MCP client (Story 2.5) -
+
+
+async def test_find_similar_sync_tool_is_hosted_alongside_others(seeded_vec_db: SeededVecDB):
+    """FastMCP hosts the sync find_similar_cards tool next to semantic_search + the async tools."""
+    server = _vec_server(seeded_vec_db)
+    async with create_connected_server_and_client_session(server) as client:
+        tools = await client.list_tools()
+    names = {t.name for t in tools.tools}
+    assert "find_similar_cards" in names  # the 14th tool
+    assert "semantic_search_cards" in names
+    assert {"search_cards", "lookup_card_by_name"} <= names
+
+
+async def test_find_similar_returns_alternatives_excluding_seed_oracle(seeded_vec_db: SeededVecDB):
+    """A seed returns status='ok' alternatives with the seed's own oracle absent (plus distance)."""
+    server = _vec_server(seeded_vec_db)
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool("find_similar_cards", {"card_name": "Inferno Dragon"})
+
+    assert result.isError is False
+    sc = result.structuredContent
+    assert sc is not None
+    assert sc["status"] == "ok"
+    assert sc["total_count"] == len(sc["cards"])
+    assert sc["total_count"] > 0
+    assert sc["seed"]["name"] == "Inferno Dragon"  # the resolved seed is echoed back
+    names = {c["card"]["name"] for c in sc["cards"]}
+    assert "Inferno Dragon" not in names  # the seed (its oracle) is excluded — alternatives only
+    assert names <= {"Backstreet Goblin", "Mind Dissolve", "Verdant Elf"}
+    assert len(names) > 0
+    assert "distance" in sc["cards"][0]
+    # Lightweight projection through the wire: no heavy detail fields on the nested card.
+    assert "legalities" not in sc["cards"][0]["card"]
+    assert "image_uris" not in sc["cards"][0]["card"]
+
+
+async def test_find_similar_format_filter_excludes_non_legal(seeded_vec_db: SeededVecDB):
+    """format is a per-call hybrid filter through the wire: the modern-only goblin drops out."""
+    server = _vec_server(seeded_vec_db)
+    async with create_connected_server_and_client_session(server) as client:
+        unfiltered = await client.call_tool("find_similar_cards", {"card_name": "Inferno Dragon"})
+        filtered = await client.call_tool(
+            "find_similar_cards", {"card_name": "Inferno Dragon", "format": "standard"}
+        )
+
+    # Without a format filter the modern-only goblin is a candidate alternative...
+    assert unfiltered.isError is False
+    assert "Backstreet Goblin" in {c["card"]["name"] for c in unfiltered.structuredContent["cards"]}
+    # ...but it is excluded once Standard legality is required (hybrid JOIN post-filter).
+    assert filtered.isError is False
+    assert filtered.structuredContent["status"] == "ok"
+    filtered_names = {c["card"]["name"] for c in filtered.structuredContent["cards"]}
+    assert "Backstreet Goblin" not in filtered_names
+
+
+async def test_find_similar_bad_seed_name_is_graceful(seeded_vec_db: SeededVecDB):
+    """An unknown seed name returns status='not_found', isError=False (no surfaced exception)."""
+    server = _vec_server(seeded_vec_db)
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool(
+            "find_similar_cards", {"card_name": "Nonexistent Planeswalker"}
+        )
+
+    assert result.isError is False
+    sc = result.structuredContent
+    assert sc is not None
+    assert sc["status"] == "not_found"
+    assert sc["cards"] == []
+    assert sc["seed"] is None
+    assert sc["message"]
+
+
+async def test_find_similar_invalid_filter_is_graceful(seeded_vec_db: SeededVecDB):
+    """An invalid color filter returns status='invalid', isError=False through the MCP wire."""
+    server = _vec_server(seeded_vec_db)
+    async with create_connected_server_and_client_session(server) as client:
+        result = await client.call_tool(
+            "find_similar_cards", {"card_name": "Inferno Dragon", "colors": ["X"]}
+        )
+
+    assert result.isError is False
+    sc = result.structuredContent
+    assert sc is not None
+    assert sc["status"] == "invalid"
+    assert "X" in sc["message"]
