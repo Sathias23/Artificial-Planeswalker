@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-06-24 (Story 2.6 → done)
+last_updated: 2026-06-24 (Epic 2 retrospective → done; epic-2 → done)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -55,14 +55,14 @@ development_status:
   epic-1-tech-debt-prep-gate: done
 
   # Epic 2: Semantic Card Search (RAG)
-  epic-2: in-progress
+  epic-2: done
   2-1-embedder-port-fastembed-singleton-persistent-cache: done
   2-2-card-vec-schema-with-metadata-columns: done
   2-3-card-embedding-index-builder-idempotent-incremental: done
   2-4-semantic-search-cards-tool-hybrid-query: done
   2-5-find-similar-cards-tool: done
   2-6-rag-sanity-eval: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   # Epic 3: Deckbuilding Skills Suite
   epic-3: backlog
