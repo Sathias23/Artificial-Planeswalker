@@ -71,7 +71,9 @@ chainlit.md
 
 # Data files (top-level runtime data dir only; anchored so it does NOT match src/data/)
 /data/
+/temp/
 
 # Debugging scripts
 scripts/check_*.py
 .files/
+

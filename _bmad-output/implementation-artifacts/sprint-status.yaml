@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-06-24 (Story 2.5 code review → done)
+last_updated: 2026-06-24 (Story 2.6 → done)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -61,7 +61,7 @@ development_status:
   2-3-card-embedding-index-builder-idempotent-incremental: done
   2-4-semantic-search-cards-tool-hybrid-query: done
   2-5-find-similar-cards-tool: done
-  2-6-rag-sanity-eval: backlog
+  2-6-rag-sanity-eval: done
   epic-2-retrospective: optional
 
   # Epic 3: Deckbuilding Skills Suite
