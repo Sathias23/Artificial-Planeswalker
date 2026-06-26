@@ -440,7 +440,9 @@ def build_server(
         Returns:
             A result whose ``status`` is ``ok`` (``cards`` ranked nearest-first, each with a
             ``distance``), ``empty`` (a valid query with no surviving matches — a graceful hint),
-            or ``invalid`` (a query/filter value failed validation, with a message naming it).
+            ``invalid`` (a query/filter value failed validation, with a message naming it), or
+            ``index_unavailable`` (the semantic index has not been built yet — run
+            ``scripts/build_card_embeddings.py``).
         """
         # Sync tool: FastMCP threadpools it. Per-thread sqlite-vec connection (NFR6); the embedder
         # is the injected test seam or the lazily-built process singleton (never loaded at build).
@@ -502,7 +504,9 @@ def build_server(
             ``distance``, plus the resolved ``seed``), ``empty`` (seed found but no alternatives
             survived the filters), ``not_found`` (no such card, or the card isn't in the semantic
             index yet), ``ambiguous`` (the name matched multiple cards — see ``matches``, re-call
-            with a ``card_id``), or ``invalid`` (a parameter failed validation).
+            with a ``card_id``), ``invalid`` (a parameter failed validation), or
+            ``index_unavailable`` (the semantic index has not been built yet — run
+            ``scripts/build_card_embeddings.py``).
         """
         # Sync tool: FastMCP threadpools it. Per-thread sqlite-vec connection (NFR6). This tool
         # never embeds — it reads the seed's stored vector — so it needs no embedder.

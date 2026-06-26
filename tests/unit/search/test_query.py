@@ -15,34 +15,15 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
-from src.search import ConnectionFactory, build_card_embeddings, compose_card_text
+from src.search import (
+    ConnectionFactory,
+    build_card_embeddings,
+    compose_card_text,
+    create_card_vec_table,
+)
 from src.search.embedder import EMBEDDING_DIM
-from src.search.query import CardHit, get_card_vector, hybrid_search
-
-
-class _FakeEmbedder:
-    """Deterministic offline embedder: each distinct composite text -> a distinct one-hot vector.
-
-    Identical text yields the identical vector (distance 0 to itself and to a duplicate printing
-    with the same text), so KNN nearest-neighbour assertions are exact without loading the model.
-    """
-
-    def __init__(self) -> None:
-        self.dim = EMBEDDING_DIM
-        self._assigned: dict[str, int] = {}
-
-    def _vector_for(self, text: str) -> NDArray[np.float32]:
-        if text not in self._assigned:
-            self._assigned[text] = len(self._assigned) % EMBEDDING_DIM
-        vec = np.zeros(EMBEDDING_DIM, dtype=np.float32)
-        vec[self._assigned[text]] = 1.0
-        return vec
-
-    def encode(self, text: str) -> NDArray[np.float32]:
-        return self._vector_for(text)
-
-    def encode_batch(self, texts: list[str]) -> list[NDArray[np.float32]]:
-        return [self._vector_for(t) for t in texts]
+from src.search.query import CardHit, get_card_vector, hybrid_search, index_is_populated
+from tests.fixtures.embedder import FakeEmbedder
 
 
 def _make_factory(tmp_path) -> ConnectionFactory:
@@ -101,7 +82,7 @@ def _seed_card(
 
 
 def _qvec(
-    fake: _FakeEmbedder,
+    fake: FakeEmbedder,
     *,
     name: str,
     type_line: str = "Creature — Test",
@@ -113,13 +94,43 @@ def _qvec(
     return fake.encode(compose_card_text(name, type_line, mana_cost, oracle_text, keywords or []))
 
 
+# --- index_is_populated: the G3 "is the semantic index usable?" probe -----------------------
+
+
+def test_index_is_populated_false_when_table_missing(tmp_path) -> None:
+    """A fresh DB with no ``card_vec`` table reads as not-populated (no OperationalError)."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    assert index_is_populated(conn) is False
+    factory.close()
+
+
+def test_index_is_populated_false_when_table_empty(tmp_path) -> None:
+    """An existing but row-less ``card_vec`` reads as not-populated."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    create_card_vec_table(conn)
+    assert index_is_populated(conn) is False
+    factory.close()
+
+
+def test_index_is_populated_true_after_build(tmp_path) -> None:
+    """Once vectors are built, the probe reads as populated."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    _seed_card(conn, "id-r", name="Red Card", oracle_text="Burn.", colors=["R"], cmc=3.0)
+    build_card_embeddings(conn, FakeEmbedder())
+    assert index_is_populated(conn) is True
+    factory.close()
+
+
 # --- Plain query: nearest-first, every CardHit field populated ------------------------------
 
 
 def test_returns_card_hits_nearest_first(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(
         conn,
         "id-r",
@@ -166,7 +177,7 @@ def test_returns_card_hits_nearest_first(tmp_path) -> None:
 def test_color_prefilter_excludes_off_color_even_when_nearest(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "id-r", name="Red Card", oracle_text="Burn.", colors=["R"], cmc=3.0)
     _seed_card(conn, "id-u", name="Blue Card", oracle_text="Draw.", colors=["U"], cmc=2.0)
     build_card_embeddings(conn, fake)
@@ -181,7 +192,7 @@ def test_color_prefilter_excludes_off_color_even_when_nearest(tmp_path) -> None:
 def test_mana_range_prefilter_excludes_out_of_range(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "id-3", name="Three Drop", oracle_text="A.", cmc=3.0)
     _seed_card(conn, "id-5", name="Five Drop", oracle_text="B.", cmc=5.0)
     build_card_embeddings(conn, fake)
@@ -200,7 +211,7 @@ def test_mana_range_prefilter_excludes_out_of_range(tmp_path) -> None:
 def test_mana_range_floats_floor_min_ceil_max(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "id-4", name="Four Drop", oracle_text="A.", cmc=4.0)
     build_card_embeddings(conn, fake)
 
@@ -218,7 +229,7 @@ def test_mana_range_floats_floor_min_ceil_max(tmp_path) -> None:
 def test_color_mode_all_requires_every_flag(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "id-wu", name="Azorius", oracle_text="WU.", colors=["W", "U"], cmc=2.0)
     _seed_card(conn, "id-w", name="Mono White", oracle_text="W.", colors=["W"], cmc=1.0)
     build_card_embeddings(conn, fake)
@@ -238,7 +249,7 @@ def test_color_mode_all_requires_every_flag(tmp_path) -> None:
 def test_format_legal_excludes_non_legal(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(
         conn,
         "id-std",
@@ -268,7 +279,7 @@ def test_format_legal_excludes_non_legal(tmp_path) -> None:
 def test_games_filter_excludes_unavailable(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "id-arena", name="Arena Card", oracle_text="A.", cmc=2.0, games=["arena"])
     _seed_card(conn, "id-paper", name="Paper Card", oracle_text="B.", cmc=2.0, games=["paper"])
     build_card_embeddings(conn, fake)
@@ -284,7 +295,7 @@ def test_games_filter_excludes_unavailable(tmp_path) -> None:
 def test_oracle_dedup_keeps_one_hit_per_oracle(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     # Two printings of the SAME card: same oracle_id, identical composite text -> identical vector.
     _seed_card(conn, "print-1", oracle_id="oracle-dragon", name="Dragon", oracle_text="Flies.")
     _seed_card(conn, "print-2", oracle_id="oracle-dragon", name="Dragon", oracle_text="Flies.")
@@ -303,7 +314,7 @@ def test_oracle_dedup_keeps_one_hit_per_oracle(tmp_path) -> None:
 def test_over_fetch_k_bounds_candidate_pool(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     for i in range(5):
         _seed_card(conn, f"id-{i}", name=f"Card {i}", oracle_text=f"Text {i}", cmc=float(i))
     build_card_embeddings(conn, fake)
@@ -319,7 +330,7 @@ def test_over_fetch_k_bounds_candidate_pool(tmp_path) -> None:
 def test_limit_caps_unique_results(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     for i in range(5):
         _seed_card(conn, f"id-{i}", name=f"Card {i}", oracle_text=f"Text {i}", cmc=float(i))
     build_card_embeddings(conn, fake)
@@ -337,7 +348,7 @@ def test_limit_caps_unique_results(tmp_path) -> None:
 def test_no_surviving_match_returns_empty_list(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "id-2", name="Two Drop", oracle_text="A.", cmc=2.0)
     build_card_embeddings(conn, fake)
 
@@ -355,7 +366,7 @@ def test_no_surviving_match_returns_empty_list(tmp_path) -> None:
 def test_null_colors_coerce_to_empty_list(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "id-null", name="Null Colors", oracle_text="A.", colors=None, cmc=2.0)
     build_card_embeddings(conn, fake)
 
@@ -371,7 +382,7 @@ def test_get_card_vector_round_trips_to_distance_zero(tmp_path) -> None:
     """The stored vector read back by PK feeds hybrid_search and ranks the seed at distance 0."""
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "id-r", name="Red Card", oracle_text="Burn.", colors=["R"], cmc=3.0)
     _seed_card(conn, "id-u", name="Blue Card", oracle_text="Draw.", colors=["U"], cmc=2.0)
     build_card_embeddings(conn, fake)
@@ -395,7 +406,7 @@ def test_get_card_vector_returns_none_for_unindexed_card(tmp_path) -> None:
     """A card_id with no card_vec row returns None (the AC4 'not indexed' signal)."""
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "id-r", name="Red Card", oracle_text="Burn.", colors=["R"], cmc=3.0)
     build_card_embeddings(conn, fake)
 
@@ -410,7 +421,7 @@ def test_exclude_oracle_id_drops_every_printing_of_that_oracle(tmp_path) -> None
     """Excluding an oracle removes ALL its printings while still returning `limit` other hits."""
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     # Two printings of the seed oracle (identical text -> identical, nearest vectors)...
     _seed_card(conn, "seed-a", oracle_id="oracle-seed", name="Seed", oracle_text="Same.")
     _seed_card(conn, "seed-b", oracle_id="oracle-seed", name="Seed", oracle_text="Same.")
@@ -439,7 +450,7 @@ def test_exclude_oracle_id_default_none_preserves_behaviour(tmp_path) -> None:
     """Default exclude_oracle_id=None leaves the Story 2.4 path unchanged (nothing dropped)."""
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "id-r", name="Red Card", oracle_text="Burn.", colors=["R"], cmc=3.0)
     _seed_card(conn, "id-u", name="Blue Card", oracle_text="Draw.", colors=["U"], cmc=2.0)
     build_card_embeddings(conn, fake)

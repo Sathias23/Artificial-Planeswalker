@@ -634,6 +634,41 @@ class TestValidateDeck:
         assert len(legality_violations) == 1
         assert legality_violations[0].card_name == "Modern Staple"
 
+    def test_null_legalities_and_games_coerce_without_raising(self) -> None:
+        """A card whose DB ``legalities``/``games`` were NULL coerces to ``{}``/``[]`` at
+        construction, so validate_deck never raises AttributeError/TypeError on
+        ``card.legalities.get(...)`` / ``set(card.games)`` and still flags both checks
+        (nullability-audit regression — closes the 1-4/1-6 deferred items)."""
+        null_card = Card(
+            id="null-card",
+            name="Null Fields",
+            oracle_id="oracle-null-card",
+            mana_cost="{R}",
+            cmc=1.0,
+            type_line="Creature — Goblin",
+            oracle_text="",
+            rarity="common",
+            set_code="TST",
+            set_name="Test Set",
+            collector_number="1",
+            colors=["R"],
+            color_identity=["R"],
+            keywords=[],
+            legalities=None,
+            games=None,
+        )
+        # The schema validators coerced the NULLs at construction time.
+        assert null_card.legalities == {}
+        assert null_card.games == []
+
+        deck = _vd_deck([_vd_deck_card(null_card, 4)])
+
+        # legalities={} -> not legal in standard; games=[] -> unavailable on arena. Neither raises.
+        report = validate_deck(deck, games=["arena"])
+
+        assert any(v.rule == "format_legality" for v in report.violations)
+        assert any(v.rule == "game_availability" for v in report.violations)
+
     def test_format_parameter_changes_legality_check(self) -> None:
         """``format`` is a parameter: a modern-only card is legal when format='modern'."""
         modern_only = _vd_card("modern-card", "Modern Staple", legalities={"modern": "legal"})

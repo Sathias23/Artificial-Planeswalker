@@ -12,39 +12,18 @@ One ``@pytest.mark.integration`` test drives the **real** embedder for honest se
 import json
 import sqlite3
 
-import numpy as np
 import pytest
-from numpy.typing import NDArray
 
 from src.mcp_server.tools.semantic_search import SemanticSearchResult, semantic_search_cards
-from src.search import ConnectionFactory, build_card_embeddings, compose_card_text, get_embedder
-from src.search.embedder import EMBEDDING_DIM, reset_embedder
-
-
-class _FakeEmbedder:
-    """Deterministic offline embedder: each distinct text -> a distinct one-hot ``float32`` vector.
-
-    Implements both ``encode`` (the query path) and ``encode_batch`` (the index-build path) over the
-    same per-instance assignment, so a query whose text equals a card's composed text embeds to that
-    card's exact vector (distance 0).
-    """
-
-    def __init__(self) -> None:
-        self.dim = EMBEDDING_DIM
-        self._assigned: dict[str, int] = {}
-
-    def _vector_for(self, text: str) -> NDArray[np.float32]:
-        if text not in self._assigned:
-            self._assigned[text] = len(self._assigned) % EMBEDDING_DIM
-        vec = np.zeros(EMBEDDING_DIM, dtype=np.float32)
-        vec[self._assigned[text]] = 1.0
-        return vec
-
-    def encode(self, text: str) -> NDArray[np.float32]:
-        return self._vector_for(text)
-
-    def encode_batch(self, texts: list[str]) -> list[NDArray[np.float32]]:
-        return [self._vector_for(t) for t in texts]
+from src.search import (
+    ConnectionFactory,
+    build_card_embeddings,
+    compose_card_text,
+    create_card_vec_table,
+    get_embedder,
+)
+from src.search.embedder import reset_embedder
+from tests.fixtures.embedder import FakeEmbedder
 
 
 def _make_factory(tmp_path) -> ConnectionFactory:
@@ -117,7 +96,7 @@ def _query_text(
 def test_ok_returns_ranked_hits_with_distance(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "id-r", name="Red Card", oracle_text="Burn.", colors=["R"], cmc=3.0)
     _seed_card(conn, "id-u", name="Blue Card", oracle_text="Draw.", colors=["U"], cmc=2.0)
     build_card_embeddings(conn, fake)
@@ -142,7 +121,7 @@ def test_ok_returns_ranked_hits_with_distance(tmp_path) -> None:
 def test_ok_filters_compose_color_mana_format_games(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     # A standard-legal arena red 3-drop, and an off-filter blue card.
     _seed_card(
         conn,
@@ -188,7 +167,7 @@ def test_ok_filters_compose_color_mana_format_games(tmp_path) -> None:
 def test_empty_when_filters_exclude_all(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "id-r", name="Red Card", oracle_text="Burn.", colors=["R"], cmc=3.0)
     build_card_embeddings(conn, fake)
 
@@ -208,7 +187,7 @@ def test_empty_when_filters_exclude_all(tmp_path) -> None:
 def test_invalid_empty_query_does_not_call_encode(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "id-r", name="Red Card", oracle_text="Burn.", colors=["R"], cmc=3.0)
     build_card_embeddings(conn, fake)
 
@@ -223,7 +202,7 @@ def test_invalid_empty_query_does_not_call_encode(tmp_path) -> None:
 def test_invalid_bad_filter_values(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "id-r", name="Red Card", oracle_text="Burn.", colors=["R"], cmc=3.0)
     build_card_embeddings(conn, fake)
     q = _query_text("Red Card", oracle_text="Burn.")
@@ -239,6 +218,40 @@ def test_invalid_bad_filter_values(tmp_path) -> None:
 
     bad_limit = semantic_search_cards(conn, fake, q, limit=0)
     assert bad_limit.status == "invalid"
+
+    # G2: limit above the 50 ceiling is rejected (keeps it under hybrid_search's over_fetch_k).
+    high_limit = semantic_search_cards(conn, fake, q, limit=51)
+    assert high_limit.status == "invalid" and "50" in high_limit.message
+    factory.close()
+
+
+# --- status="index_unavailable": G3 graceful "index not built" guard ------------------------
+
+
+def test_index_unavailable_when_card_vec_missing(tmp_path) -> None:
+    """A fresh DB has no ``card_vec`` — return a build-the-index hint, not an OperationalError."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    fake = FakeEmbedder()
+    _seed_card(conn, "id-r", name="Red Card", oracle_text="Burn.", colors=["R"], cmc=3.0)
+    # NB: build_card_embeddings is deliberately NOT called, so ``card_vec`` never exists.
+
+    result = semantic_search_cards(conn, fake, _query_text("Red Card", oracle_text="Burn."))
+    assert result.status == "index_unavailable"
+    assert result.cards == []
+    assert "build_card_embeddings" in result.message
+    factory.close()
+
+
+def test_index_unavailable_when_card_vec_empty(tmp_path) -> None:
+    """An existing-but-empty ``card_vec`` is index_unavailable, not a no-match ``empty``."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    fake = FakeEmbedder()
+    create_card_vec_table(conn)  # table exists, zero vectors
+
+    result = semantic_search_cards(conn, fake, "anything")
+    assert result.status == "index_unavailable"
     factory.close()
 
 
@@ -246,7 +259,7 @@ def test_empty_format_normalized_to_no_filter(tmp_path) -> None:
     """A whitespace ``format`` must not fire a malformed json_extract path — treated as None."""
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(
         conn,
         "id-r",

@@ -18,33 +18,9 @@ filter composition, not_found (unknown / unindexed), ambiguous, and the invalid 
 import json
 import sqlite3
 
-import numpy as np
-from numpy.typing import NDArray
-
 from src.mcp_server.tools.find_similar import SimilarCardsResult, find_similar_cards
-from src.search import ConnectionFactory, build_card_embeddings
-from src.search.embedder import EMBEDDING_DIM
-
-
-class _FakeEmbedder:
-    """Deterministic offline embedder: each distinct composite text -> a distinct one-hot vector."""
-
-    def __init__(self) -> None:
-        self.dim = EMBEDDING_DIM
-        self._assigned: dict[str, int] = {}
-
-    def _vector_for(self, text: str) -> NDArray[np.float32]:
-        if text not in self._assigned:
-            self._assigned[text] = len(self._assigned) % EMBEDDING_DIM
-        vec = np.zeros(EMBEDDING_DIM, dtype=np.float32)
-        vec[self._assigned[text]] = 1.0
-        return vec
-
-    def encode(self, text: str) -> NDArray[np.float32]:
-        return self._vector_for(text)
-
-    def encode_batch(self, texts: list[str]) -> list[NDArray[np.float32]]:
-        return [self._vector_for(t) for t in texts]
+from src.search import ConnectionFactory, build_card_embeddings, create_card_vec_table
+from tests.fixtures.embedder import FakeEmbedder
 
 
 def _make_factory(tmp_path) -> ConnectionFactory:
@@ -111,7 +87,7 @@ def _seed_card(
 def test_ok_returns_alternatives_with_seed_oracle_excluded(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "seed", name="Seed Dragon", oracle_text="Fly.", colors=["R"], cmc=5.0)
     _seed_card(conn, "alt-1", name="Alt One", oracle_text="A.", colors=["R"], cmc=4.0)
     _seed_card(conn, "alt-2", name="Alt Two", oracle_text="B.", colors=["R"], cmc=3.0)
@@ -139,7 +115,7 @@ def test_ok_returns_alternatives_with_seed_oracle_excluded(tmp_path) -> None:
 def test_ok_resolves_seed_by_card_id(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "seed", name="Seed Dragon", oracle_text="Fly.", colors=["R"], cmc=5.0)
     _seed_card(conn, "alt-1", name="Alt One", oracle_text="A.", colors=["R"], cmc=4.0)
     build_card_embeddings(conn, fake)
@@ -156,7 +132,7 @@ def test_ok_resolves_seed_by_card_id(tmp_path) -> None:
 def test_self_exclusion_drops_every_printing_of_the_seed_oracle(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     # Two printings of ONE oracle (identical text -> identical, nearest vectors).
     _seed_card(conn, "seed-a", oracle_id="oracle-twin", name="Twin Card", oracle_text="Same.")
     _seed_card(conn, "seed-b", oracle_id="oracle-twin", name="Twin Card", oracle_text="Same.")
@@ -181,7 +157,7 @@ def test_self_exclusion_drops_every_printing_of_the_seed_oracle(tmp_path) -> Non
 def test_filters_compose_with_similarity(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(
         conn,
         "seed",
@@ -249,7 +225,7 @@ def test_filters_compose_with_similarity(tmp_path) -> None:
 def test_empty_when_filters_exclude_all_alternatives(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "seed", name="Seed Red", oracle_text="Z.", colors=["R"], cmc=3.0)
     _seed_card(conn, "alt", name="Alt Red", oracle_text="A.", colors=["R"], cmc=3.0)
     build_card_embeddings(conn, fake)
@@ -271,7 +247,7 @@ def test_empty_when_filters_exclude_all_alternatives(tmp_path) -> None:
 def test_not_found_for_unknown_name(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "seed", name="Seed Card", oracle_text="A.")
     build_card_embeddings(conn, fake)
 
@@ -287,7 +263,7 @@ def test_not_found_for_unknown_name(tmp_path) -> None:
 def test_not_found_for_card_present_but_not_indexed(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "indexed", name="Indexed Card", oracle_text="A.")
     build_card_embeddings(conn, fake)
     # Insert AFTER the build -> the card exists in `cards` but has NO card_vec row.
@@ -306,7 +282,7 @@ def test_not_found_for_card_present_but_not_indexed(tmp_path) -> None:
 def test_not_found_for_unknown_card_id(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "seed", name="Seed Card", oracle_text="A.")
     build_card_embeddings(conn, fake)
 
@@ -323,7 +299,7 @@ def test_not_found_for_unknown_card_id(tmp_path) -> None:
 def test_ambiguous_returns_distinct_oracle_matches(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "g1", oracle_id="oracle-raider", name="Goblin Raider", oracle_text="A.")
     _seed_card(conn, "g2", oracle_id="oracle-chief", name="Goblin Chief", oracle_text="B.")
     build_card_embeddings(conn, fake)
@@ -346,7 +322,7 @@ def test_ambiguous_returns_distinct_oracle_matches(tmp_path) -> None:
 def test_invalid_requires_exactly_one_identifier(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "seed", name="Seed Card", oracle_text="A.")
     build_card_embeddings(conn, fake)
 
@@ -363,7 +339,7 @@ def test_invalid_requires_exactly_one_identifier(tmp_path) -> None:
 def test_invalid_bad_filter_values(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
-    fake = _FakeEmbedder()
+    fake = FakeEmbedder()
     _seed_card(conn, "seed", name="Seed Card", oracle_text="A.")
     build_card_embeddings(conn, fake)
 
@@ -378,4 +354,37 @@ def test_invalid_bad_filter_values(tmp_path) -> None:
 
     bad_limit = find_similar_cards(conn, card_name="Seed Card", limit=0)
     assert bad_limit.status == "invalid"
+
+    # G2: limit above the 50 ceiling is rejected (keeps it under hybrid_search's over_fetch_k).
+    high_limit = find_similar_cards(conn, card_name="Seed Card", limit=51)
+    assert high_limit.status == "invalid" and "50" in high_limit.message
+    factory.close()
+
+
+# --- status="index_unavailable": G3 graceful "index not built" guard ------------------------
+
+
+def test_index_unavailable_when_card_vec_missing(tmp_path) -> None:
+    """No ``card_vec`` table: the seed resolves on ``cards`` but the vector read would raise — so
+    the up-front guard returns a build-the-index hint instead of an OperationalError."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    _seed_card(conn, "seed", name="Seed Card", oracle_text="A.")
+    # NB: build_card_embeddings is deliberately NOT called, so ``card_vec`` never exists.
+
+    result = find_similar_cards(conn, card_name="Seed Card")
+    assert result.status == "index_unavailable"
+    assert result.cards == []
+    assert "build_card_embeddings" in result.message
+    factory.close()
+
+
+def test_index_unavailable_when_card_vec_empty(tmp_path) -> None:
+    """An existing-but-empty ``card_vec`` is index_unavailable, distinct from a resolved seed."""
+    factory = _make_factory(tmp_path)
+    conn = factory.get_connection()
+    create_card_vec_table(conn)  # table exists, zero vectors
+
+    result = find_similar_cards(conn, card_name="Anything")
+    assert result.status == "index_unavailable"
     factory.close()

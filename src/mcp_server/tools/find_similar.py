@@ -28,7 +28,7 @@ from pydantic import BaseModel
 
 from src.data.schemas.card import CardSummary
 from src.mcp_server.tools.semantic_search import SemanticCardHit
-from src.search.query import ColorMode, get_card_vector, hybrid_search
+from src.search.query import ColorMode, get_card_vector, hybrid_search, index_is_populated
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,11 @@ logger = logging.getLogger(__name__)
 # the colour / games codes are stable domain constants, the same precedent Story 2.4 set).
 _VALID_COLORS = frozenset({"W", "U", "B", "R", "G"})
 _VALID_GAMES = frozenset({"paper", "arena", "mtgo"})
+
+# Upper bound on ``limit``: kept well under ``hybrid_search``'s ``over_fetch_k`` (200) so the
+# over-fetch can never be starved by the requested ``limit`` (Pre-Epic-3 Targeted Gate G2). This
+# also bounds the seed-printing exclusion, which consumes KNN slots before the limit is filled.
+_MAX_LIMIT = 50
 
 # Disambiguation buckets, mirroring ``card_lookup``: at most this many candidate matches, and
 # above this many ask the user to refine rather than enumerate.
@@ -57,7 +62,8 @@ class SimilarCardsResult(BaseModel):
         status: ``ok`` (``cards`` populated), ``empty`` (seed resolved/indexed but nothing survived
             the filters/exclusion), ``invalid`` (a parameter failed validation), ``not_found`` (the
             seed matched no card, or matched a card that isn't in the semantic index yet), or
-            ``ambiguous`` (the name matched multiple distinct Oracle cards — see ``matches``).
+            ``ambiguous`` (the name matched multiple distinct Oracle cards — see ``matches``), or
+            ``index_unavailable`` (the ``card_vec`` semantic index has not been built yet).
         cards: The ranked alternatives, nearest-first (empty unless ``status == "ok"``).
         total_count: Number of alternatives returned (after oracle de-dup, exclusion, ``limit``).
         seed: The resolved seed card. Echoed back for ``ok`` and ``empty`` (seed found and
@@ -71,7 +77,7 @@ class SimilarCardsResult(BaseModel):
             disambiguation prompt, or the offending value when invalid.
     """
 
-    status: Literal["ok", "empty", "invalid", "not_found", "ambiguous"]
+    status: Literal["ok", "empty", "invalid", "not_found", "ambiguous", "index_unavailable"]
     cards: list[SemanticCardHit] = []
     total_count: int = 0
     seed: CardSummary | None = None
@@ -173,6 +179,8 @@ def _validation_error(
 
     if limit < 1:
         return f"limit must be >= 1 (got {limit})."
+    if limit > _MAX_LIMIT:
+        return f"limit must be <= {_MAX_LIMIT} (got {limit})."
 
     return None
 
@@ -315,7 +323,7 @@ def find_similar_cards(
 
     Returns:
         A :class:`SimilarCardsResult` with ``status`` of ``ok`` / ``empty`` / ``invalid`` /
-        ``not_found`` / ``ambiguous``.
+        ``not_found`` / ``ambiguous`` / ``index_unavailable`` (the ``card_vec`` index is not built).
 
     Example:
         >>> from src.search import ConnectionFactory
@@ -344,6 +352,18 @@ def find_similar_cards(
     )
     if error is not None:
         return SimilarCardsResult(status="invalid", message=error)
+
+    # Guard the unbuilt/empty index up front: without ``card_vec`` the seed still resolves on the
+    # ``cards`` table, but ``get_card_vector`` would then raise a raw OperationalError. Surface a
+    # build-the-index hint instead so the skills suite stays graceful (G3).
+    if not index_is_populated(conn):
+        return SimilarCardsResult(
+            status="index_unavailable",
+            message=(
+                "The semantic search index has not been built yet. Run "
+                "`uv run python scripts/build_card_embeddings.py` to build it, then retry."
+            ),
+        )
 
     seed = _resolve_seed(conn, card_name, card_id)
     if seed.status == "not_found":

@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-06-24 (Epic 2 retrospective → done; epic-2 → done)
+last_updated: 2026-06-27 (Pre-Epic-3 targeted gate G1/G2/G3 + nullability + index-build docs → done)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -63,6 +63,9 @@ development_status:
   2-5-find-similar-cards-tool: done
   2-6-rag-sanity-eval: done
   epic-2-retrospective: done
+
+  # Pre-Epic-3 tech-debt gate (from epic-2-retro §7: G1/G2/G3 + nullability audit + D1 docs)
+  pre-epic-3-targeted-gate: done
 
   # Epic 3: Deckbuilding Skills Suite
   epic-3: backlog

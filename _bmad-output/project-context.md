@@ -121,6 +121,14 @@ _This file contains critical rules and patterns that AI agents must follow when 
   (4) `card_vec` metadata cols `mana_value` + `color_{w,u,b,r,g}` for pre-filter, legality/display
   via JOIN; (5) **every KNN query needs `k`/`LIMIT`**, over-fetch `k` then JOIN-filter;
   (6) fastembed ships the **quantized** model — guard recall with a RAG sanity eval.
+- **The `card_vec` index is a build prerequisite, never committed.** Build it with `uv run python
+  scripts/build_card_embeddings.py` (idempotent/incremental); a fresh checkout / CI has no index.
+  `semantic_search_cards` / `find_similar_cards` detect a missing/empty index (via
+  `query.index_is_populated`) and return a graceful `status="index_unavailable"` build-the-index
+  hint — never a raw `OperationalError`. **Checkpoint the WAL before any file-copy backup**
+  (`PRAGMA wal_checkpoint(TRUNCATE)`); a model/dimension change means rebuilding `card_vec` (NFR10).
+- **`limit` on the semantic tools is capped at 50** (`_MAX_LIMIT`), kept under `hybrid_search`'s
+  `over_fetch_k` (200) so the over-fetch can't be starved; `limit > 50` returns `status="invalid"`.
 
 **Legacy layers (`src/agent` PydanticAI, `src/ui` Chainlit)**
 - Slated for `legacy/`; modify only for maintenance. The PydanticAI `SYSTEM_PROMPT` forces

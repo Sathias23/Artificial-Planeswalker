@@ -158,6 +158,26 @@ An MCP client (e.g. Claude Code) typically launches it for you via `.mcp.json`:
 > `legacy/` (install with `uv sync --group legacy`). They are reference-only and not part of
 > the supported app.
 
+### Semantic Search (RAG)
+
+Two further tools — `semantic_search_cards` (natural-language query) and `find_similar_cards`
+(alternatives to a seed card) — search a local vector index over the card corpus. The index is a
+`sqlite-vec` virtual table (`card_vec`) living in the **same** SQLite file as the relational data,
+embedded locally with `fastembed` (`bge-small-en-v1.5` — no API key, no network).
+
+**Build the index first (one-time, ~minutes):**
+```bash
+uv run python scripts/build_card_embeddings.py
+```
+
+The `card_vec` index is **not** committed, so it is absent on a fresh checkout / CI — until it is
+built, both semantic tools return a graceful `status="index_unavailable"` (no error) telling you to
+run the build. The build is idempotent and incremental: re-running embeds only new or changed cards.
+
+> **Backups:** the database runs in WAL mode. **Checkpoint the WAL before copying the DB file**
+> (`PRAGMA wal_checkpoint(TRUNCATE);`), or the copy may miss un-checkpointed pages. A change to the
+> embedding model or its dimension requires rebuilding `card_vec` (treat it as a migration).
+
 ### Database Configuration
 
 The data layer uses SQLAlchemy 2.0 with async support and SQLite:

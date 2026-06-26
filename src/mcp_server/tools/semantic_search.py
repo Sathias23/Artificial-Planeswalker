@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from src.data.schemas.card import CardSummary
 from src.search.embedder import Embedder
-from src.search.query import ColorMode, hybrid_search
+from src.search.query import ColorMode, hybrid_search, index_is_populated
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,10 @@ logger = logging.getLogger(__name__)
 # name from the async card-search module).
 _VALID_COLORS = frozenset({"W", "U", "B", "R", "G"})
 _VALID_GAMES = frozenset({"paper", "arena", "mtgo"})
+
+# Upper bound on ``limit``: kept well under ``hybrid_search``'s ``over_fetch_k`` (200) so the
+# over-fetch can never be starved by the requested ``limit`` (Pre-Epic-3 Targeted Gate G2).
+_MAX_LIMIT = 50
 
 
 class SemanticCardHit(BaseModel):
@@ -53,7 +57,8 @@ class SemanticSearchResult(BaseModel):
 
     Attributes:
         status: ``ok`` (``cards`` populated), ``empty`` (a valid query/filters with no surviving
-            matches), or ``invalid`` (a query/filter value failed validation).
+            matches), ``invalid`` (a query/filter value failed validation), or
+            ``index_unavailable`` (the ``card_vec`` semantic index has not been built yet).
         cards: The ranked hits, nearest-first (empty unless ``status == "ok"``).
         total_count: Number of hits returned (after oracle de-dup and ``limit``).
         query: The natural-language query reflected back to the caller.
@@ -61,7 +66,7 @@ class SemanticSearchResult(BaseModel):
             empty, or the offending value when invalid.
     """
 
-    status: Literal["ok", "empty", "invalid"]
+    status: Literal["ok", "empty", "invalid", "index_unavailable"]
     cards: list[SemanticCardHit] = []
     total_count: int = 0
     query: str
@@ -113,6 +118,8 @@ def _validation_error(
 
     if limit < 1:
         return f"limit must be >= 1 (got {limit})."
+    if limit > _MAX_LIMIT:
+        return f"limit must be <= {_MAX_LIMIT} (got {limit})."
 
     return None
 
@@ -154,7 +161,8 @@ def semantic_search_cards(
         limit: Maximum number of de-duplicated hits to return (default 10).
 
     Returns:
-        A :class:`SemanticSearchResult` with ``status`` of ``ok`` / ``empty`` / ``invalid``.
+        A :class:`SemanticSearchResult` with ``status`` of ``ok`` / ``empty`` / ``invalid`` /
+        ``index_unavailable`` (the ``card_vec`` index has not been built yet).
 
     Example:
         >>> from src.search import ConnectionFactory, get_embedder
@@ -180,6 +188,19 @@ def semantic_search_cards(
     )
     if error is not None:
         return SemanticSearchResult(status="invalid", query=query, message=error)
+
+    # Guard the unbuilt/empty index BEFORE embedding: a fresh checkout has no ``card_vec`` (it is
+    # built by ``scripts/build_card_embeddings.py``, never committed). Surface a usable status so
+    # the skills suite gets a build-the-index hint instead of a raw OperationalError (G3).
+    if not index_is_populated(conn):
+        return SemanticSearchResult(
+            status="index_unavailable",
+            query=query,
+            message=(
+                "The semantic search index has not been built yet. Run "
+                "`uv run python scripts/build_card_embeddings.py` to build it, then retry."
+            ),
+        )
 
     query_vector = embedder.encode(query)
     hits = hybrid_search(

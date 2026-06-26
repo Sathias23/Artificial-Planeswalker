@@ -186,6 +186,36 @@ def get_card_vector(conn: sqlite3.Connection, card_id: str) -> NDArray[np.float3
     return np.frombuffer(row[0], dtype=np.float32)
 
 
+def index_is_populated(conn: sqlite3.Connection) -> bool:
+    """Return whether the ``card_vec`` semantic index exists **and** holds at least one vector.
+
+    A fresh checkout / CI clone has no ``card_vec`` table (it is built by
+    ``scripts/build_card_embeddings.py`` and never committed), and a half-built index can exist but
+    be empty. Both cases must be distinguished from a genuine no-match so the search tools can
+    return a graceful "build the index first" status instead of letting a raw
+    ``sqlite3.OperationalError`` (*no such table*) escape — or silently reporting ``empty`` (the
+    Pre-Epic-3 Targeted Gate G3 guard the skills suite sits on top of).
+
+    The existence probe reads ``sqlite_master`` so the missing-table case returns ``False`` rather
+    than raising; the table name is a schema constant (never interpolated user input).
+
+    Args:
+        conn: A ``sqlite3.Connection`` from
+            :class:`~src.search.connection.ConnectionFactory` (sqlite-vec loaded).
+
+    Returns:
+        ``True`` if ``card_vec`` exists and contains at least one row, else ``False``.
+    """
+    table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (CARD_VEC_TABLE,),
+    ).fetchone()
+    if table is None:
+        return False
+    populated = conn.execute(f"SELECT EXISTS(SELECT 1 FROM {CARD_VEC_TABLE})").fetchone()
+    return bool(populated[0])
+
+
 def hybrid_search(
     conn: sqlite3.Connection,
     query_vector: NDArray[np.float32] | Sequence[float],

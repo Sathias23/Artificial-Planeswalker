@@ -9,15 +9,13 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
 import pytest
-from numpy.typing import NDArray
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
 from src.search import ConnectionFactory, build_card_embeddings, compose_card_text
-from src.search.embedder import EMBEDDING_DIM
+from tests.fixtures.embedder import FakeEmbedder
 
 
 def _sample_cards() -> list[CardModel]:
@@ -118,32 +116,6 @@ async def seeded_card_db(
 # fake embedder used for the build so a query embeds to a known card's vector offline.
 
 
-class _FakeVecEmbedder:
-    """Deterministic offline embedder: each distinct composite text -> a distinct one-hot vector.
-
-    Used for BOTH the index build (``encode_batch``) and the query path (``encode``) so that a
-    query whose text equals a card's composed text embeds to that card's exact vector (distance 0)
-    — KNN ranking is meaningful with no ~80 MB model download.
-    """
-
-    def __init__(self) -> None:
-        self.dim = EMBEDDING_DIM
-        self._assigned: dict[str, int] = {}
-
-    def _vector_for(self, text: str) -> NDArray[np.float32]:
-        if text not in self._assigned:
-            self._assigned[text] = len(self._assigned) % EMBEDDING_DIM
-        vec = np.zeros(EMBEDDING_DIM, dtype=np.float32)
-        vec[self._assigned[text]] = 1.0
-        return vec
-
-    def encode(self, text: str) -> NDArray[np.float32]:
-        return self._vector_for(text)
-
-    def encode_batch(self, texts: list[str]) -> list[NDArray[np.float32]]:
-        return [self._vector_for(t) for t in texts]
-
-
 def _sample_vec_cards() -> list[CardModel]:
     """A richer card set for semantic-search tests: distinct texts spanning colours/mana/games.
 
@@ -242,7 +214,7 @@ class SeededVecDB:
 
     session_factory: async_sessionmaker[AsyncSession]
     connection_factory: ConnectionFactory
-    embedder: _FakeVecEmbedder
+    embedder: FakeEmbedder
     cards: list[CardModel]
 
     def query_text(self, name: str) -> str:
@@ -278,7 +250,7 @@ async def seeded_vec_db(tmp_path: Path) -> AsyncGenerator[SeededVecDB, None]:
         await session.commit()  # commit before building vectors (WAL visibility on the sync conn)
 
     connection_factory = ConnectionFactory(db_path=str(db_path))
-    embedder = _FakeVecEmbedder()
+    embedder = FakeEmbedder()
     build_card_embeddings(connection_factory.get_connection(), embedder)
 
     try:

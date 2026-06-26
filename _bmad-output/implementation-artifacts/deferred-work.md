@@ -1,5 +1,28 @@
 # Deferred Work
 
+## ✅ Resolved by the Pre-Epic-3 Targeted Gate (2026-06-27)
+
+> Cleared via `spec-pre-epic-3-targeted-gate.md` before starting Epic 3. The items below are closed;
+> they remain listed in their original sections for traceability.
+
+- **G1 — `_FakeEmbedder`/`_FakeVecEmbedder` duplication (was 5 copies).** Consolidated into one
+  `tests/fixtures/embedder.py::FakeEmbedder` (union of `encode`/`encode_batch`/`total_embedded`);
+  all call sites import it. (Closes the 2-4 and 2-5 "`_FakeEmbedder` in N test files" items.)
+- **G2 — `limit` upper bound / `limit > over_fetch_k` starvation.** `semantic_search_cards` and
+  `find_similar_cards` now reject `limit > 50` (`_MAX_LIMIT`, kept under `over_fetch_k=200`).
+  (Closes the 2-4 "`limit > over_fetch_k` silently truncates" and 2-5 "silently starves" /
+  "`limit` has no upper bound" items.)
+- **G3 — graceful "index not built".** New `src/search/query.py::index_is_populated` gates both
+  semantic tools, returning `status="index_unavailable"` (with a build-the-index hint, `isError=False`)
+  for a missing **or** empty `card_vec`, instead of a raw `OperationalError`. (Closes the
+  "index not built" half of the 2-4 "Unhandled exceptions propagating from sync tool" item; the
+  ONNX/`RuntimeError`/`JSONDecodeError` halves remain deferred — infra concerns.)
+- **Nullability audit (1-4 / 1-6).** Confirmed the `Card`/`CardSummary` `@field_validator(mode="before")`
+  coercions (`None → ""`/`[]`/`{}`) already protect `mana_cost`/`oracle_text`/`colors`/`games`/`legalities`;
+  added a `validate_deck` NULL-legalities/NULL-games regression test. Closes the 1-4
+  "CardSummary.mana_cost/oracle_text non-nullable" + "colors no None-coercion" items and the 1-6
+  "`card.legalities` potentially None" + "`card.games` potentially None" items.
+
 ## Deferred from: code review of 2-6-rag-sanity-eval (2026-06-24)
 
 - **`evaluate_hit_rate([])` produces confusing "0 miss(es)" failure message** — `tests/integration/search/test_rag_eval.py`. If `_QUERY_FIXTURE` is ever emptied (module-level constant; only via code edit), `evaluate_hit_rate([])` returns `(0.0, [])`, which trips the `>= TARGET_HIT_RATE` assert but `format_failure` prints "0 miss(es)" with no per-miss lines — self-contradictory. Add `assert case_results, "Query fixture is empty"` before the hit-rate assert as a defensive guard in a future maintenance pass.
