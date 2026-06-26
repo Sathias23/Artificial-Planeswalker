@@ -1,11 +1,10 @@
-.claude/
 .github/
 docs/_sathias.txt
-AGENTS.md
-CLAUDE.local.md
-CLAUDE.md
 PROJECTIDEA.md
 temp/
+
+# Claude Code — track shared skills/config, keep machine-local settings out
+.claude/settings.local.json
 
 # Python
 __pycache__/
