@@ -22,6 +22,7 @@ Run with:
 
 import argparse
 import logging
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -42,6 +43,23 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _cards_table_populated(conn: sqlite3.Connection) -> bool:
+    """Return whether the relational ``cards`` table exists **and** holds at least one row.
+
+    The embedding build reads ``cards``; on a fresh database that table is absent (the Scryfall
+    import has not run), so building would fail deep inside with ``no such table: cards``. This
+    upfront probe lets the CLI surface the *real* first step — import the corpus — rather than that
+    opaque error (the "bootstrap cliff" found in the semantic-tool live test). Mirrors
+    :func:`src.search.query.index_is_populated`; ``cards`` is a fixed identifier (no user input).
+    """
+    table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'cards'"
+    ).fetchone()
+    if table is None:
+        return False
+    return bool(conn.execute("SELECT EXISTS(SELECT 1 FROM cards)").fetchone()[0])
 
 
 def main() -> int:
@@ -99,6 +117,18 @@ Examples:
 
     try:
         conn = factory.get_connection()
+
+        # Bootstrap guard: embeddings are built FROM the cards table, so importing the Scryfall
+        # corpus is the true first step. Surface that explicitly instead of a deep
+        # "no such table: cards" — and before downloading the ~80 MB model for nothing.
+        if not _cards_table_populated(conn):
+            logger.error(
+                "No card data found — the `cards` table is missing or empty. The embedding index "
+                "is built FROM the cards table, so import the Scryfall corpus first:\n"
+                "    uv run python scripts/import_scryfall_data.py\n"
+                "then re-run this build (import -> build embeddings -> search)."
+            )
+            return 1
 
         if args.rebuild:
             logger.info("--rebuild: dropping card_vec, recreating, and clearing content hashes")

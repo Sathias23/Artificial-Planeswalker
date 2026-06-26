@@ -23,6 +23,22 @@
   "CardSummary.mana_cost/oracle_text non-nullable" + "colors no None-coercion" items and the 1-6
   "`card.legalities` potentially None" + "`card.games` potentially None" items.
 
+## Epic-3 design candidates (from TOOL_PERFORMANCE_REPORT.md, 2026-06-27)
+
+> Surfaced by Brad's live test of the semantic tools (R1). Not bugs — enhancement candidates to weigh
+> during Epic 3.
+
+- **Compound-intent dilution — handle in the orchestrator, not the tools.** "A **and** B" queries
+  (e.g. "removal that also reanimates") rank by topical proximity, so cards matching *either* effect
+  blend in and can outrank true "both" cards (`Betrayal of Flesh` ranked 14th). Treat the semantic
+  tools as **high-recall candidate generators**: over-fetch, then have the Story 3.1 orchestrator /
+  LLM filter for the logical intersection and present ranked candidates **with reasons** (confirms
+  retro design-input I1). An optional in-tool re-rank rewarding multi-clause matches is a possible
+  later refinement.
+- **`find_similar_cards` cross-color leakage.** With no `colors` filter, off-color cards surface
+  (`src/mcp_server/tools/find_similar.py`). Consider defaulting `colors` to the seed card's colour
+  identity (overridable) to cut leakage. Tool already supports the filter; only the default is open.
+
 ## Deferred from: code review of 2-6-rag-sanity-eval (2026-06-24)
 
 - **`evaluate_hit_rate([])` produces confusing "0 miss(es)" failure message** — `tests/integration/search/test_rag_eval.py`. If `_QUERY_FIXTURE` is ever emptied (module-level constant; only via code edit), `evaluate_hit_rate([])` returns `(0.0, [])`, which trips the `>= TARGET_HIT_RATE` assert but `format_failure` prints "0 miss(es)" with no per-miss lines — self-contradictory. Add `assert case_results, "Query fixture is empty"` before the hit-rate assert as a defensive guard in a future maintenance pass.

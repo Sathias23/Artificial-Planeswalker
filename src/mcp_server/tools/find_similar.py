@@ -360,8 +360,9 @@ def find_similar_cards(
         return SimilarCardsResult(
             status="index_unavailable",
             message=(
-                "The semantic search index has not been built yet. Run "
-                "`uv run python scripts/build_card_embeddings.py` to build it, then retry."
+                "The semantic search index isn't available yet. On a fresh database, import the "
+                "card data first (`uv run python scripts/import_scryfall_data.py`), then build the "
+                "index (`uv run python scripts/build_card_embeddings.py`) and retry."
             ),
         )
 
