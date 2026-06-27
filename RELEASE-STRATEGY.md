@@ -40,8 +40,8 @@ git rm -r .claude/skills/bmad-*         # 44 dev-tooling skills; keeps the 4 pro
 git rm scripts/test_agent.py scripts/test_api_connection.py \
        scripts/test_database_setup.py scripts/test_mini_import.py scripts/test_queries.py
 
-# Legacy agent example
-git rm examples/advanced_search/03_agent_natural_language.py
+# Examples (decision: delete the whole folder)
+git rm -r examples/
 
 # Internal / legacy docs (curate docs/ — see 1c)
 git rm docs/CONTEXT_DESIGN.md docs/SESSION_DEBUGGING_GUIDE.md docs/actions.md \
@@ -66,10 +66,6 @@ Keep and lightly retitle:
 - `docs/BUG_REPORT_MANAGEMENT.md` (the `report_bug` tool ships) and `docs/performance.md`
 
 Result: `docs/` becomes a small, public-appropriate set (architecture, bug-report ops, performance) instead of 11 mixed internal files.
-
-### 1d. REVIEW — `examples/`
-
-`examples/advanced_search/{01_repository_search.py, 02_real_cards_search.py}` use the data/search layer and may still run — verify against current APIs, then either keep as a genuine "use the core programmatically" example or delete the folder. The agent example (`03_*`) is already deleted in 1a.
 
 ---
 
@@ -237,7 +233,7 @@ The server speaks standard MCP over **stdio** (default) and **streamable-http** 
 | **Goose, Continue, LibreChat, Witsy, …** | per-client MCP config | standard stdio/HTTP |
 | **Remote / multi-user / web** | `MCP_TRANSPORT=streamable-http` | host once, many clients connect; pairs with the central DB |
 
-**Recommendation:** ship a copy-paste config block per client in the README (stdio command is identical everywhere), and publish to PyPI (§6) so clients can run `uvx artificial-planeswalker` without cloning.
+**Recommendation:** ship a copy-paste config block per client in the README (stdio command is identical everywhere). PyPI publish (which would enable `uvx artificial-planeswalker` without cloning) is **deferred** — not at this stage.
 
 ---
 
@@ -272,8 +268,8 @@ The server speaks standard MCP over **stdio** (default) and **streamable-http** 
 - Issue/PR templates + a short repo description & topics on GitHub.
 
 **Release mechanics**
-- Tag `v0.1.0`, cut a GitHub Release, attach the `.mcpb`.
-- Optional but high-leverage: publish to **PyPI** so every MCP client can `uvx artificial-planeswalker` with no clone — the single biggest onboarding win.
+- Tag `v0.1.0`, cut a **GitHub Release**, and attach the `.mcpb` bundle there (the canonical distribution channel for Claude Desktop install).
+- **PyPI publish: deferred** (not at this stage). Revisit later if zero-clone `uvx` install becomes worth it.
 
 ---
 
@@ -286,11 +282,11 @@ The server speaks standard MCP over **stdio** (default) and **streamable-http** 
 5. **Docs:** rewrite `README.md` (done — see below), add `LICENSE`, `NOTICE`, `SECURITY.md`, `CONTRIBUTING.md`, `CHANGELOG.md`.
 6. **CI:** add `.github/workflows/ci.yml`; confirm green.
 7. **Package:** add `manifest.json`, `mcpb pack`, smoke-test install in Claude Desktop.
-8. **Release:** tag `v0.1.0`, GitHub Release + `.mcpb`, (optional) PyPI publish, flip repo public.
+8. **Release:** tag `v0.1.0`, cut a GitHub Release with the `.mcpb` attached, flip repo public.
 
-## 8. Open follow-ups (your call, not blocking)
+## 8. Resolved follow-ups
 
-- Bundled-vs-prebuilt DB later: if first-run import friction bites, revisit publishing a prebuilt `cards.db` as a Release asset (you chose build-on-first-run for v1 — this stays a v2 option).
-- `examples/` keep-or-delete after the API review (§1d).
-- PyPI publish yes/no (recommended).
-- `uv`-prereq vs fully-bundled `.mcpb` (recommended: require `uv`).
+- **No prebuilt DB — ever.** Build-on-first-run only. Shipping a prebuilt `cards.db` would mean redistributing Scryfall/WotC card data ourselves (license risk) and the asset would go stale against new sets. Keeping the data download user-side sidesteps both. (This is also why the `.mcpb` carries no data — §4.)
+- **Delete `examples/`** entirely (done in §1a).
+- **PyPI publish: deferred** — not at this stage.
+- **Require `uv`** for the `.mcpb` (manifest `type: "uv"`), and **distribute the `.mcpb` via GitHub Releases**.
