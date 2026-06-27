@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-06-27 (Stories 3.3 + 3.4 → done via bmad-code-review; 6 patches applied)
+last_updated: 2026-06-27 (Epic 3 retrospective → done; epic-3 → done; Pre-Phase-2 Gate added)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -68,9 +68,15 @@ development_status:
   pre-epic-3-targeted-gate: done
 
   # Epic 3: Deckbuilding Skills Suite
-  epic-3: in-progress
+  epic-3: done
   3-1-magic-deckbuilding-orchestrator-skill: done
   3-2-synergy-discovery-skill: done
   3-3-mana-curve-analysis-skill: done
   3-4-format-legality-skill: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
+
+  # Pre-Phase-2 Gate (from epic-3-retro-2026-06-27.md §6) — all green before Arena import/export build starts
+  # G-SD2a: validate_deck lowercase-format .lower() + valid-key guard
+  # G-SD2b: detect_synergies '//' double-faced-card token fix
+  # G-R1: Brad live-smokes all four skills end-to-end through Claude Code (Phase-1 acceptance)
+  pre-phase-2-gate: backlog
