@@ -1,224 +1,158 @@
 # Artificial Planeswalker
 
-An intelligent Magic: The Gathering Arena (MTG:A) deck-building assistant, exposed as an [MCP](https://modelcontextprotocol.io) server over a local Scryfall card database.
+An intelligent **Magic: The Gathering** deck-building assistant, exposed as a local
+[MCP](https://modelcontextprotocol.io) server over a Scryfall card database.
 
-## Overview
+Card lookup, multi-format deck validation, mana-curve and synergy analysis, and **local
+semantic card search** — all driven by your MCP client (Claude Code, Claude Desktop, Cursor, …).
+The server is **stateless** and makes **no LLM calls** of its own, so **no API key is required**:
+your client supplies the model, the server supplies fast, accurate MTG data and analysis.
 
-Artificial-Planeswalker provides fast, accurate card lookups, validates decks across multiple formats, and surfaces mana-curve and synergy analysis. Built with type-safe Pydantic models, it runs as a **stateless MCP server**: an MCP client (e.g. Claude Code) drives the tools and supplies the LLM — the server itself makes no LLM calls, so no API key is required.
+---
 
-## Features
+## What it does
 
-- **Card Lookup**: Fast searches using Scryfall API with local caching
-- **Deck Validation**: Format-specific validation (Standard, Modern, Commander, etc.)
-- **AI Recommendations**: Intelligent card suggestions based on deck synergy
-- **Deck Analysis**: Performance insights and improvement suggestions
-- **Markdown Export**: Export decks in standard MTG formats
+| Capability | Tools |
+|------------|-------|
+| **Card lookup & search** | `lookup_card_by_name`, `search_cards` |
+| **Semantic search** (local embeddings, no network) | `semantic_search_cards`, `find_similar_cards` |
+| **Deck management** | `create_deck`, `list_decks`, `load_deck`, `delete_deck`, `add_card_to_deck`, `remove_card_from_deck` |
+| **Deck analysis** | `analyze_mana_curve`, `detect_synergies`, `validate_deck` |
+| **Feedback** | `report_bug` |
 
-## Quick Start
+Four companion **skills** layer expert reasoning on top of the tools —
+`magic-deckbuilding` (the orchestrator), `synergy-discovery`, `mana-curve-analysis`, and
+`format-legality` — so a client can go from "improve my deck" to ranked, reasoned swaps.
 
-**Automated Setup (Recommended):**
+## Requirements
+
+- **Python 3.12+**
+- **[uv](https://docs.astral.sh/uv/)** (package manager / runner)
+- ~250 MB of disk for the card database + embedding index (downloaded on first run)
+
+## Quick start
+
 ```bash
-# Clone the repository
-git clone <repository-url>
+git clone https://github.com/Sathias23/Artificial-Planeswalker.git
 cd Artificial-Planeswalker
-
-# Run automated setup script
-python3 setup.py
+python3 setup.py        # installs deps, builds the card DB + index into a central location
 ```
 
-The setup script will:
-- Verify Python 3.12+ is installed
-- Install uv package manager (if needed)
-- Install project dependencies
-- Create `.env` file from template
-- Initialize database and import Scryfall card data (~2-3 minutes)
-- Install git pre-commit hooks
+`setup.py` is idempotent: it checks Python/uv, syncs dependencies, then downloads public
+**Scryfall** bulk data (~60k cards, a few minutes — no API key) and builds the local search index.
+Run it once per machine; the data lives in a shared OS location (below), so every project and
+every MCP client reuses it.
 
-After setup completes, run the MCP server (stdio transport by default):
+Then point any MCP client at it — in this directory, [`.mcp.json`](.mcp.json) already does:
 
 ```bash
-uv run python -m src.mcp_server
-```
-
-`.mcp.json` already points at that command, so an MCP client (e.g. Claude Code) opened in this directory exposes the tools automatically. No API key is required.
-
-**Manual Setup (Alternative):**
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd Artificial-Planeswalker
-   ```
-
-2. **Install uv (if not installed)**
-   ```bash
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   ```
-
-3. **Install dependencies**
-   ```bash
-   uv sync
-   ```
-
-4. **(Optional) Set up environment variables**
-   ```bash
-   cp .env.example .env
-   ```
-   Defaults work out of the box (SQLite at `./data/cards.db`, stdio transport). The MCP
-   server needs no API key — `.env` is only required for the archived `legacy/` stack.
-
-5. **Initialize the database** (downloads public Scryfall bulk data — no API key)
-   ```bash
-   uv run python scripts/import_scryfall_data.py
-   ```
-
-6. **Install git hooks**
-   ```bash
-   uv run pre-commit install
-   ```
-
-## Development
-
-### Running Tests
-
-```bash
-# Run all tests
-uv run pytest
-
-# Run specific test file
-uv run pytest tests/test_data.py
-
-# Run with coverage
-uv run pytest --cov=src --cov-report=html
-```
-
-### Code Quality
-
-```bash
-# Run linting (with auto-fix)
-uv run ruff check . --fix
-
-# Run formatting
-uv run ruff format .
-
-# Run type checking
-uv run mypy src/
-
-# Run all pre-commit hooks manually
-uv run pre-commit run --all-files
-```
-
-### Project Structure
-
-```
-src/
-├── data/         # Data layer: SQLAlchemy models, Scryfall importers, repositories
-│   ├── models/         # SQLAlchemy ORM models (CardModel, DeckModel, ...)
-│   ├── schemas/        # Pydantic schemas for type-safe data transfer
-│   ├── repositories/   # Repository pattern for data access
-│   ├── importers/      # Scryfall bulk-data import pipeline
-│   └── database.py     # Database engine and session management
-├── logic/        # Business logic: deck validation, mana curve, synergy detection
-├── search/       # SQLite ConnectionFactory (sqlite-vec load-extension seam, for Epic 2 RAG)
-└── mcp_server/   # FastMCP server: tool definitions + entry point (python -m src.mcp_server)
-    └── tools/          # MCP tool implementations (card lookup, search, deck mgmt, analysis)
-legacy/           # Archived PydanticAI agent + Chainlit UI (reference only; uv sync --group legacy)
-tests/            # Test suite mirroring src/ structure
-├── unit/               # Unit tests (fast, no I/O)
-└── integration/        # Integration tests (database, in-memory MCP client)
-```
-
-### MCP Server
-
-The server is built on FastMCP and exposes the card/deck tools over stdio (the default
-transport). It is stateless — every call carries its own arguments; there is no
-server-side session or "active deck".
-
-**Run it:**
-```bash
-uv run python -m src.mcp_server          # stdio (default)
+uv run python -m src.mcp_server          # stdio (default; how clients launch it)
 MCP_TRANSPORT=streamable-http uv run python -m src.mcp_server   # serve over HTTP instead
 ```
 
-An MCP client (e.g. Claude Code) typically launches it for you via `.mcp.json`:
+## Connect your client
+
+The launch command is the same everywhere — only the config file differs.
+
+<details>
+<summary><b>Claude Code</b></summary>
+
+Nothing to do — [`.mcp.json`](.mcp.json) is detected automatically when you open this directory.
+</details>
+
+<details>
+<summary><b>Claude Desktop</b> (one-click)</summary>
+
+Download `artificial-planeswalker.mcpb` from the
+[latest release](https://github.com/Sathias23/Artificial-Planeswalker/releases) and double-click
+to install. Requires `uv` on your PATH. (First launch prompts you to run the one-time data build.)
+</details>
+
+<details>
+<summary><b>Cursor / VS Code / Windsurf / Cline / Zed</b></summary>
+
+Add an MCP server with:
+
 ```json
 {
   "mcpServers": {
-    "artificial-planeswalker": { "command": "uv", "args": ["run", "python", "-m", "src.mcp_server"] }
+    "artificial-planeswalker": {
+      "command": "uv",
+      "args": ["run", "--directory", "/absolute/path/to/Artificial-Planeswalker", "python", "-m", "src.mcp_server"]
+    }
   }
 }
 ```
 
-**Tools exposed:** `lookup_card_by_name`, `search_cards`; deck management
-(`create_deck`, `list_decks`, `load_deck`, `delete_deck`, `add_card_to_deck`,
-`remove_card_from_deck`); deck analysis (`analyze_mana_curve`, `detect_synergies`,
-`validate_deck`); and `report_bug`.
+Config locations: Cursor `.cursor/mcp.json` · VS Code `.vscode/mcp.json` · Windsurf Cascade MCP
+settings · Cline MCP panel · Zed `context_servers`. Any other MCP client works the same way.
+</details>
 
-> **Legacy:** the previous PydanticAI + OpenRouter agent and Chainlit UI are archived under
-> `legacy/` (install with `uv sync --group legacy`). They are reference-only and not part of
-> the supported app.
+## Where the data lives
 
-### Semantic Search (RAG)
+The card database and embedding index are stored once in a **central, OS-appropriate location** so
+every clone and every client shares them:
 
-Two further tools — `semantic_search_cards` (natural-language query) and `find_similar_cards`
-(alternatives to a seed card) — search a local vector index over the card corpus. The index is a
-`sqlite-vec` virtual table (`card_vec`) living in the **same** SQLite file as the relational data,
-embedded locally with `fastembed` (`bge-small-en-v1.5` — no API key, no network).
+| OS | Default location |
+|----|------------------|
+| Windows | `%LOCALAPPDATA%\artificial-planeswalker\` |
+| macOS | `~/Library/Application Support/artificial-planeswalker/` |
+| Linux | `~/.local/share/artificial-planeswalker/` (honours `XDG_DATA_HOME`) |
 
-**Build the index first (one-time, ~minutes):**
+Override with `PLANESWALKER_DATA_DIR=/your/path`, or point the engine at any SQLite file with
+`CARDS_DATABASE_URL`. See [`.env.example`](.env.example).
+
+### Semantic search index
+
+`semantic_search_cards` and `find_similar_cards` query a [`sqlite-vec`](https://github.com/asg017/sqlite-vec)
+vector table (`card_vec`) in the **same** SQLite file, embedded locally with
+[`fastembed`](https://github.com/qdrant/fastembed) (`bge-small-en-v1.5` — no API key, no network).
+`setup.py` builds it; to (re)build manually:
+
 ```bash
-uv run python scripts/build_card_embeddings.py
+uv run python scripts/build_card_embeddings.py    # idempotent + incremental
 ```
 
-The `card_vec` index is **not** committed, so it is absent on a fresh checkout / CI — until it is
-built, both semantic tools return a graceful `status="index_unavailable"` (no error) telling you to
-run the build. The build is idempotent and incremental: re-running embeds only new or changed cards.
+Until built, both semantic tools return a graceful `status="index_unavailable"` (never an error).
+The DB runs in WAL mode — **checkpoint before copying it** (`PRAGMA wal_checkpoint(TRUNCATE);`).
 
-> **Backups:** the database runs in WAL mode. **Checkpoint the WAL before copying the DB file**
-> (`PRAGMA wal_checkpoint(TRUNCATE);`), or the copy may miss un-checkpointed pages. A change to the
-> embedding model or its dimension requires rebuilding `card_vec` (treat it as a migration).
+## Development
 
-### Database Configuration
-
-The data layer uses SQLAlchemy 2.0 with async support and SQLite:
-
-- **CARDS_DATABASE_URL**: Configure via environment variable (default: `sqlite+aiosqlite:///./data/cards.db`). Named `CARDS_DATABASE_URL` (not `DATABASE_URL`) to avoid clashing with Chainlit's data layer.
-- **Models**: SQLAlchemy ORM models with type hints and async support
-- **Schemas**: Pydantic schemas for validation and type-safe data transfer
-- **Repository Pattern**: Clean separation between database and business logic
-
-Example usage:
-```python
-from src.data import create_engine, create_session_factory, init_database, CardRepository
-
-# Initialize database
-engine = create_engine()
-await init_database(engine)
-
-# Create session and repository
-session_factory = create_session_factory(engine)
-async with session_factory() as session:
-    repo = CardRepository(session)
-    # Use repository for database operations
+```bash
+uv run pytest                       # tests (add -m "not integration" to skip DB/network)
+uv run ruff check . --fix           # lint
+uv run ruff format .                # format
+uv run mypy src/                    # strict type-check
+uv run pre-commit install           # gate every commit
 ```
 
-## Usage
+```
+src/
+├── data/        # SQLAlchemy models, Scryfall importers, repositories, schemas
+├── logic/       # deck validation, mana curve, synergy detection
+├── search/      # sqlite-vec connection + fastembed embedder (semantic search)
+├── paths.py     # central data-dir resolution
+└── mcp_server/  # FastMCP server + tool definitions (python -m src.mcp_server)
+tests/           # unit + integration, mirroring src/
+```
 
-(Documentation will be updated as features are implemented)
+See [`docs/architecture.md`](docs/architecture.md) for the design of record and
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for the workflow.
 
-## Contributing
+## License & attribution
 
-1. Create a feature branch
-2. Make your changes
-3. Ensure all tests pass and pre-commit hooks succeed
-4. Submit a pull request
+Released under the [MIT License](LICENSE).
 
-## License
+Card data is © Wizards of the Coast, sourced from [Scryfall](https://scryfall.com/docs/api) bulk
+data under Scryfall's terms. **This project bundles no card data** — it is downloaded on first run.
 
-(To be determined)
+> Artificial Planeswalker is unofficial Fan Content permitted under the
+> [Wizards of the Coast Fan Content Policy](https://company.wizards.com/en/legal/fancontentpolicy).
+> Not approved or endorsed by Wizards. Portions of the materials used are property of Wizards of
+> the Coast. ©Wizards of the Coast LLC.
 
 ## Acknowledgments
 
-- [Scryfall API](https://scryfall.com/docs/api) for comprehensive MTG card data
-- [Model Context Protocol](https://modelcontextprotocol.io) and the FastMCP server framework
-- [PydanticAI](https://ai.pydantic.dev) and [Chainlit](https://docs.chainlit.io) — powered the archived `legacy/` agent + UI
+- [Scryfall](https://scryfall.com/docs/api) — MTG card data
+- [Model Context Protocol](https://modelcontextprotocol.io) & FastMCP — server framework
+- [sqlite-vec](https://github.com/asg017/sqlite-vec) & [fastembed](https://github.com/qdrant/fastembed) — local semantic search
