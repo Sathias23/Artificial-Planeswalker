@@ -1,6 +1,10 @@
+---
+baseline_commit: a6f745dd4014baf656ba21d6bdb174b7337dbc2a
+---
+
 # Story 3.1: magic-deckbuilding Orchestrator Skill
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -19,19 +23,50 @@ so that I get ranked card swaps with reasons rather than raw tool output.
 
 ## Tasks / Subtasks
 
-- [ ] Create the skill file `.claude/skills/magic-deckbuilding/SKILL.md` (AC: 1, 4)
-  - [ ] YAML frontmatter: `name: magic-deckbuilding` + a `description` that triggers on deckbuilding/improve-my-deck/“what should I cut” style requests (the description is the ONLY trigger signal Claude Code sees — make it specific).
-  - [ ] Define the **Planeswalker AI persona** (an expert, opinionated MTG deckbuilding coach — concise, decisive, explains the "why").
-- [ ] Encode the **analyze→suggest→explain core loop** as explicit steps (AC: 1, 2)
-  - [ ] Step 0 — **Resolve the deck**: get a `deck_id` (via `list_decks`/`load_deck`), or accept a pasted decklist. Pull the list with `load_deck`.
-  - [ ] Step 1 — **Analyze**: call `analyze_mana_curve`, `detect_synergies`, and `validate_deck` (pass `format`/`games` every call) and read their structured results.
-  - [ ] Step 2 — **Generate candidates**: use `semantic_search_cards` (conceptual intent) and/or `find_similar_cards` (seed-based) and/or `search_cards` (hard filters) to find swap candidates — **over-fetch**, then filter (see Dev Notes "candidate-generator pattern").
-  - [ ] Step 3 — **Suggest**: produce **ranked swaps**, each as a cut→add pair (or add/cut) **with a reason** grounded in the Step-1 findings (curve gap, missing synergy, illegal card, etc.).
-  - [ ] Step 4 — **Explain**: summarize the deck's state and why the top swaps matter.
-- [ ] Wire the **exact MCP tool names** and document the stateless calling contract (AC: 2)
-- [ ] Add the **graceful-degradation** rules: handle `index_unavailable`, `not_found`, `ambiguous`, `empty`, `invalid` statuses without breaking the loop (AC: 2)
-- [ ] Reference the capability skills `synergy-discovery`, `mana-curve-analysis`, `format-legality` as deeper-dive companions — **without depending on them** (they ship in Stories 3.2–3.4) (AC: 4)
-- [ ] Verify: dry-run the loop against the real index on a sample deck (see Verification) — confirm ranked swaps with reasons, statelessness, and no auto-add.
+- [x] Create the skill file `.claude/skills/magic-deckbuilding/SKILL.md` (AC: 1, 4)
+  - [x] YAML frontmatter: `name: magic-deckbuilding` + a `description` that triggers on deckbuilding/improve-my-deck/“what should I cut” style requests (the description is the ONLY trigger signal Claude Code sees — make it specific).
+  - [x] Define the **Planeswalker AI persona** (an expert, opinionated MTG deckbuilding coach — concise, decisive, explains the "why").
+- [x] Encode the **analyze→suggest→explain core loop** as explicit steps (AC: 1, 2)
+  - [x] Step 0 — **Resolve the deck**: get a `deck_id` (via `list_decks`/`load_deck`), or accept a pasted decklist. Pull the list with `load_deck`.
+  - [x] Step 1 — **Analyze**: call `analyze_mana_curve`, `detect_synergies`, and `validate_deck` (pass `format`/`games` every call) and read their structured results.
+  - [x] Step 2 — **Generate candidates**: use `semantic_search_cards` (conceptual intent) and/or `find_similar_cards` (seed-based) and/or `search_cards` (hard filters) to find swap candidates — **over-fetch**, then filter (see Dev Notes "candidate-generator pattern").
+  - [x] Step 3 — **Suggest**: produce **ranked swaps**, each as a cut→add pair (or add/cut) **with a reason** grounded in the Step-1 findings (curve gap, missing synergy, illegal card, etc.).
+  - [x] Step 4 — **Explain**: summarize the deck's state and why the top swaps matter.
+- [x] Wire the **exact MCP tool names** and document the stateless calling contract (AC: 2)
+- [x] Add the **graceful-degradation** rules: handle `index_unavailable`, `not_found`, `ambiguous`, `empty`, `invalid` statuses without breaking the loop (AC: 2)
+- [x] Reference the capability skills `synergy-discovery`, `mana-curve-analysis`, `format-legality` as deeper-dive companions — **without depending on them** (they ship in Stories 3.2–3.4) (AC: 4)
+- [x] Verify: dry-run the loop against the real index on a sample deck (see Verification) — confirm ranked swaps with reasons, statelessness, and no auto-add.
+
+### Review Findings
+
+_Code review 2026-06-27 (adversarial: Blind Hunter + Edge Case Hunter + Acceptance Auditor). Triage: 0 decision-needed, 16 patch, 0 defer, 1 dismissed. **All 4 ACs and every Dev-Notes hard contract verified satisfied by the Acceptance Auditor** — the items below are contract-fidelity hardening, not AC blockers. Edge findings verified against `src/mcp_server/` ground truth._
+
+**High**
+
+- [x] [Review][Patch] `create_deck` & `delete_deck` referenced in prose/Hard-rules but have no contract-table row (no params, no `status` enum) — a "destructive and irreversible" op and the consent/persist path both call undocumented tools [.claude/skills/magic-deckbuilding/SKILL.md table + Step 0/Hard rules]
+- [x] [Review][Patch] `error` status omitted from `list_decks`/`load_deck`/`delete_deck`/`add_card_to_deck`/`remove_card_from_deck` table rows; the generic graceful-`error` bullet is scoped to analysis tools, so a DB error during deck-resolution (Step 0) or apply (Step 5) is an unhandled branch [SKILL.md table; src/mcp_server/tools/deck_management.py:49,66,80,102-111]
+- [x] [Review][Patch] Stale-`deck_id` handler keys on `deck_not_found`, but `load_deck` returns `not_found` (and can also return `invalid`) — a stale/guessed `deck_id` pasted into Step 0 hits an unhandled status [SKILL.md graceful-degradation; deck_management.py:66 vs deck_analysis.py:63,96,120]
+- [x] [Review][Patch] Pasted-list persistence is N independent `add_card_to_deck` calls, each of which can return `ambiguous`/`card_not_found`/`error`; a partial save is then analyzed by Steps 1–3 as if whole → wrong curve/legality advice. No partial-failure handling documented [SKILL.md Step 0; deck_management.py:429,439]
+
+**Medium**
+
+- [x] [Review][Patch] `exists` (add) / `not_in_deck` (remove) apply-step outcomes have no Step-5 branching — a no-op add/remove (quantities are NOT merged) gets reported to the user as a completed swap [SKILL.md Step 5; deck_management.py:451-460,552-558]
+- [x] [Review][Patch] `lookup_card_by_name` returns `found` (not `ok`) on success — the lone exception to the all-`ok` table convention and the "branch on status, never assume ok" rule; not flagged in "Notes that bite if ignored" [SKILL.md table; src/mcp_server/tools/card_lookup.py:35]
+- [x] [Review][Patch] Format-default contradiction: "Ask the user (or infer) … (default `standard`)" gives no precedence rule; silently assuming Standard yields wrong "mandatory cut" legality verdicts for a Commander/Modern deck [SKILL.md Step 0]
+- [x] [Review][Patch] `index_unavailable` → "fall back to `search_cards`" is a non-equivalent dead-end for `find_similar_cards` (seed-based; `search_cards` has no similarity) — scope the fallback, or degrade via lookup-seed→type/color/CMC approximation [SKILL.md graceful-degradation; find_similar.py vs card_search.py]
+
+**Low**
+
+- [x] [Review][Patch] `validate_deck` table shows `format="standard"` as a default param, inviting omission and contradicting the D5 "pass `format` every call" rule; `=` also collides with genuine defaults (`quantity=1`) [SKILL.md table]
+- [x] [Review][Patch] `find_similar_cards` `not_found` with a populated `seed` (indexed-but-no-vector) is collapsed into plain not-found; retrying the same seed always fails — degrade instead of retry [SKILL.md graceful-degradation; find_similar.py:383-392]
+- [x] [Review][Patch] `semantic_search_cards` never returns `not_found` (only `empty`); the combined "`not_found`/`empty`" rule mis-documents its contract [SKILL.md graceful-degradation; semantic_search.py:69]
+- [x] [Review][Patch] `search_cards.page_size` is silently clamped to 50 (not rejected) — unlike the semantic `limit` hard-reject; "(max 50)" written identically implies symmetric rejection [SKILL.md table/Notes; card_search.py:48]
+- [x] [Review][Patch] `invalid` recovery rule should cite the exact valid `games` enum (`paper`/`arena`/`mtgo`) at the point of failure so the agent can self-correct [SKILL.md graceful-degradation; deck_analysis.py:284-291]
+- [x] [Review][Patch] "Pure add/cut" path is named in Step 3 but the output example table has no row shape for an empty Cut or Add side [SKILL.md Step 3 + Output format]
+- [x] [Review][Patch] "Re-run Step 1" after applying swaps silently fails for unsaved/pasted decks — not conditioned on the deck being saved [SKILL.md Step 5]
+- [x] [Review][Patch] `color_mode` value enum (`any`/`all`/`exact`/`at_most`) not surfaced in the contract table — agent must guess valid values [SKILL.md table; src/mcp_server/server.py:411]
+
+_Dismissed (1): `detect_synergies` dry-run arithmetic ("28 Dragons / 38 distinct / 59 total") in the Debug Log mixes distinct vs total counts but isn't actually contradictory, and lives in the verification record, not the shipped skill — noise._
 
 ## Dev Notes
 
@@ -133,8 +168,39 @@ A skill has no automated test harness — verify by **dry-running the orchestrat
 
 ### Agent Model Used
 
+claude-opus-4-8[1m] (Claude Code, dev-story workflow)
+
 ### Debug Log References
+
+Live dry-run against the real MCP server (`artificial-planeswalker`) on saved deck **"Prismatic Dragon"** (`deck_id a6ec5c97-…`, 59-card five-color Dragons — deliberately chosen for its under-60 mainboard to exercise a real legality violation):
+
+- `list_decks` → `ok` (10 decks). `load_deck` → `ok` (38 distinct cards).
+- `analyze_mana_curve` → `ok`: `average_cmc` 4.66, distribution `{1:2, 2:1, 3:2, 4:5, 5:17, 6:8}`, 24 lands / 35 spells, `issues: ["Top-heavy curve: 71.4% of spells cost 5+ mana"]`.
+- `detect_synergies` → `ok`: `deck_cohesion: high`, strong Dragon tribal (28 Dragons / 5 payoffs).
+- `validate_deck(format=standard, games=["arena"])` → `ok`, `report.is_legal: false`: `min_deck_size` (59 < 60) + 8 `game_availability` violations (Temple duals not on Arena).
+- `semantic_search_cards(mana_value_max=3, format=standard, games=["arena"], limit=15)` → `ok`: top hit **Mox Jasper** (dist 0.598), on-theme cheap accelerants — confirms over-fetch + intersection-filter pattern.
+- `find_similar_cards(card_name="Sarkhan, Dragon Ascendant", format, games)` → `ok`, resolved `seed` echoed; results show the documented **seed-blend artifact** (orchestrator must filter).
+- `search_cards(types=["Artifact"], oracle_text=["Add one mana of any color"], mana_value_max=2, format, games)` → `ok` (24 matches) — confirms the relational **fallback** path used on `index_unavailable`.
 
 ### Completion Notes List
 
+- Deliverable is a single content artifact: `.claude/skills/magic-deckbuilding/SKILL.md` (first non-BMAD project skill). No `src/`, tests, or deps touched — there is no mypy/ruff/pytest gate on a skill file (per Dev Notes).
+- **AC1** ✅ — defines the **Planeswalker AI** persona and the explicit `analyze → suggest → explain` loop (Steps 0–5).
+- **AC2** ✅ — wires the exact `mcp__artificial-planeswalker__*` tool names with a verified contract table (params + every `status` enum, cross-checked against `src/mcp_server/server.py`), the non-negotiable **stateless** rule (pass `format`/`games` every call; track `deck_id` yourself), and full **graceful-degradation** handling for `index_unavailable` (→ `search_cards` fallback), `ambiguous`, `not_found`, `empty`, `deck_not_found`, `invalid`, `error`.
+- **AC3** ✅ — Step 3 mandates **ranked** cut→add swaps, each with a one-line reason grounded in a Step-1 finding; includes an output-format example table. Dry-run produced exactly this shape.
+- **AC4** ✅ — `description` is deckbuilding-trigger-specific (registry auto-loaded it, confirmed via system-reminder) **and** references the three capability companions (`synergy-discovery`, `mana-curve-analysis`, `format-legality`) both in the description and a dedicated body section — explicitly "reference, don't depend" (they ship in 3.2–3.4).
+- Encoded the live-test **candidate-generator pattern** (over-fetch ≤50 → logical-intersection filter; `distance` is within-call-only; pass deck `colors` to `find_similar_cards`) and the **hard behavioral contract** (never auto-add/remove; persisting a pasted list needs consent).
+- Frontmatter fix: the `description` contains a colon ("Magic: The Gathering") and an apostrophe — wrapped it as a single-quoted YAML scalar with doubled apostrophe (validated it parses).
+
 ### File List
+
+- `.claude/skills/magic-deckbuilding/SKILL.md` (new) — the orchestrator skill.
+- `_bmad-output/implementation-artifacts/3-1-magic-deckbuilding-orchestrator-skill.md` (modified) — frontmatter `baseline_commit`, task checkboxes, Dev Agent Record, Change Log, Status.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified) — story status `ready-for-dev` → `in-progress` → `review`.
+
+## Change Log
+
+| Date | Version | Description |
+|------|---------|-------------|
+| 2026-06-27 | 0.1 | Story drafted (create-story); status `ready-for-dev`. |
+| 2026-06-27 | 1.0 | Implemented `magic-deckbuilding/SKILL.md` (persona + analyze→suggest→explain loop + verified tool contract + graceful degradation + capability-skill references). Verified via live dry-run on deck "Prismatic Dragon". All ACs satisfied; status → `review`. |
