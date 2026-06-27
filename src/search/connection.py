@@ -8,9 +8,10 @@ from typing import Literal
 
 import sqlite_vec
 
+from src.paths import database_path
+
 logger = logging.getLogger(__name__)
 
-_DEFAULT_DB_PATH = "./data/cards.db"
 # SQLAlchemy-style URL prefixes the async engine uses; the sync factory needs the bare file path.
 _SQLALCHEMY_PREFIXES = ("sqlite+aiosqlite:///", "sqlite:///")
 
@@ -22,9 +23,12 @@ def _resolve_db_path(db_path: str | None) -> str:
     but ``sqlite3.connect`` needs a filesystem path. Resolution order:
 
     1. An explicit ``db_path`` argument (tests pass ``tmp_path / "x.db"``).
-    2. The ``CARDS_DATABASE_URL`` env var, with the SQLAlchemy prefix stripped to a file path.
-       (``CARDS_DATABASE_URL`` — *not* ``DATABASE_URL``, which Chainlit hijacks.)
-    3. The ``./data/cards.db`` default (matches the async engine's default).
+    2. The ``CARDS_DATABASE_URL`` env var (empty/whitespace treated as unset — mirrors
+       ``src.paths.database_url()`` so the async engine and this factory can never diverge), with
+       the SQLAlchemy prefix stripped to a file path. (``CARDS_DATABASE_URL`` — *not*
+       ``DATABASE_URL``, which Chainlit hijacks.)
+    3. ``src.paths.database_path()`` — ``cards.db`` in the shared central OS data dir, the same
+       file the async engine resolves to by default.
 
     Args:
         db_path: Explicit filesystem path, or ``None`` to derive from the environment.
@@ -35,9 +39,9 @@ def _resolve_db_path(db_path: str | None) -> str:
     if db_path is not None:
         return db_path
 
-    url = os.getenv("CARDS_DATABASE_URL")
-    if url is None:
-        return _DEFAULT_DB_PATH
+    url = (os.getenv("CARDS_DATABASE_URL") or "").strip()
+    if not url:
+        return str(database_path())
 
     for prefix in _SQLALCHEMY_PREFIXES:
         if url.startswith(prefix):
@@ -66,7 +70,7 @@ class ConnectionFactory:
 
     Args:
         db_path: Explicit SQLite file path. If ``None``, derived from ``CARDS_DATABASE_URL``
-            (SQLAlchemy prefix stripped) or the ``./data/cards.db`` default.
+            (SQLAlchemy prefix stripped) or the central ``src.paths.database_path()`` default.
         driver: Connection driver. ``"sqlite3"`` (default) uses the stdlib. ``"apsw"`` is the
             documented contingency seam and raises ``NotImplementedError``.
 

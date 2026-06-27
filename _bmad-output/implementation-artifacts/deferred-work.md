@@ -1,5 +1,71 @@
 # Deferred Work
 
+## Public-release goals deferred by scope-split (2026-06-27)
+
+> Source: `RELEASE-STRATEGY.md`. Brad ran `bmad-quick-dev` to "execute RELEASE-STRATEGY.md" and
+> chose **Split — DB centralization first** at the multi-goal gate. This run (branch
+> `feat/central-data-dir`) implements **only §3 (central OS data dir)**. The remaining
+> independently-shippable deliverables below are deferred and should each be picked up as their
+> own quick-dev run, in roughly the strategy's §7 order. Each links back to the strategy section.
+>
+> **Two cross-cutting constraints carried forward:**
+> 1. **The prune deletes this workflow's own home.** §1a removes `_bmad/`, `_bmad-output/`, and
+>    `.claude/skills/bmad-*` — the bmad-quick-dev spec store and step files. Run the prune (or at
+>    least the `_bmad-output/` deletion) **last**, ideally outside an active quick-dev run.
+> 2. **Outward-facing / irreversible steps stay manual.** Secret scan, `git tag v0.1.0`, cutting
+>    the GitHub Release, and flipping the repo public are Brad's call — automate the prep, stop
+>    at that line.
+
+- **Prune legacy + dev tooling (§1, §2).** `git rm` the legacy PydanticAI/Chainlit stack
+  (`legacy/`, `public/`), BMAD framework + planning artifacts (`_bmad/`, `_bmad-output/`,
+  `.claude/skills/bmad-*`), superseded root docs, scratch `scripts/test_*.py`, `examples/`, and
+  internal `docs/` files; curate `docs/` down to architecture/bug-report/performance; edit
+  `.gitignore` (un-ignore `.github/`, add the dev-tooling ignores). Mechanical; no logic. **Do
+  this last** (constraint 1).
+- **Trim deps & package metadata (§6).** `pyproject.toml`: drop orphaned `anthropic`/`openai`/
+  `asyncpg`, move `logfire` to an optional `observability` group, verify-and-likely-drop
+  `tenacity`/`python-dotenv`, add `platformdirs` (already added by the §3 run — reconcile), remove
+  the `[dependency-groups] legacy` block, rewrite the "built with PydanticAI" description, set a
+  real `authors` email (sathias@slopstudio.net), add `[project.scripts]` console entry points.
+  (**`.env.example` cleanup — including deleting the `LEGACY ONLY` section and adding the
+  `PLANESWALKER_DATA_DIR` note — was pulled into the `feat/central-data-dir` run at Brad's
+  request, so it's done; only the `pyproject.toml` work remains under §6.**)
+- **Licensing & repo-health docs (§6).** Add `LICENSE` (MIT, Copyright (c) 2026 Brad Sprigg),
+  `NOTICE` (Scryfall/WotC attribution + Fan Content Policy), `SECURITY.md`, `CONTRIBUTING.md`,
+  `CHANGELOG.md` (start 0.1.0, record the central-DB migration note), and the README attribution/
+  disclaimer block. (README body was already rewritten in commit d1dc5a2.)
+- **CI workflow (§6).** `.github/workflows/ci.yml`: `uv sync` → `ruff check` → `ruff format
+  --check` → `mypy src/` → `pytest -m "not integration"`, matrix on 3.12/3.13; plus issue/PR
+  templates.
+- **MCPB bundle for Claude Desktop (§4).** Add `manifest.json` (manifest_version 0.4, `uv`
+  runtime, `PLANESWALKER_DATA_DIR` user_config — **depends on the §3 env var**); `npx
+  @anthropic-ai/mcpb pack`; smoke-test install. Attach the `.mcpb` to the GitHub Release.
+- **Release mechanics (§7.1, §8 — MANUAL).** Run the full-history secret scan
+  (`uvx gitleaks detect --source . --log-opts="--all"`), tag `v0.1.0`, cut the GitHub Release with
+  the `.mcpb` attached, flip the repo public. Brad executes these.
+
+## Deferred from: code review of spec-central-os-data-dir (2026-06-27)
+
+> Surfaced by the 3-reviewer adversarial pass on the `feat/central-data-dir` work. The HIGH/MED
+> findings (broken `migrate_add_bug_reports.py` import, empty-env sync/async divergence, relative
+> `PLANESWALKER_DATA_DIR` not absolute) were patched in-branch; the items below are real but
+> pre-existing or exotic, left for a focused later pass.
+
+- **Bare-path `CARDS_DATABASE_URL` (no SQLAlchemy prefix) crashes the async engine** —
+  `src/paths.py::database_url` returns the env value verbatim, so `CARDS_DATABASE_URL=/data/cards.db`
+  (without `sqlite+aiosqlite:///`) makes `create_async_engine` raise `ArgumentError`, while the sync
+  `ConnectionFactory` happily uses the bare path — a half-works/half-crashes split. Pre-existing (the
+  old `os.getenv("CARDS_DATABASE_URL", default)` had the same risk) and it fails loudly. Fix later by
+  validating/normalising the URL form, or document that the `sqlite+aiosqlite:///` prefix is mandatory.
+- **UNC `PLANESWALKER_DATA_DIR` yields a malformed async URL** — for `\\server\share\pw`,
+  `database_path().as_posix()` collapses the leading `\\` to a single `/`, so the async URL drops the
+  UNC authority while the sync factory keeps the native UNC path → divergence. Exotic (SQLite over a
+  network share is discouraged anyway); document "use a local absolute data dir" or reject UNC paths.
+- **Repo-wide `ruff check .` / `ruff format --check .` not clean (pre-existing drift)** — failures in
+  `_bmad/scripts/*` and `src/mcp_server/tools/card_lookup.py`, none touched by this change. `_bmad/`
+  is slated for deletion in the public-release prune; `card_lookup.py` is unrelated format drift for a
+  separate quality pass. (mypy `^src/` and the changed files' own ruff state are clean.)
+
 ## ✅ Resolved by the Pre-Epic-3 Targeted Gate (2026-06-27)
 
 > Cleared via `spec-pre-epic-3-targeted-gate.md` before starting Epic 3. The items below are closed;

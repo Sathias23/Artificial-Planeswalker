@@ -10,13 +10,14 @@ import numpy as np
 from fastembed import TextEmbedding
 from numpy.typing import NDArray
 
+from src.paths import fastembed_cache_dir
+
 logger = logging.getLogger(__name__)
 
 # Single source of truth for downstream stories (2.2 schema / 2.3 builder import these — never
 # hardcode the dimension or model name elsewhere).
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
 EMBEDDING_DIM = 384
-_DEFAULT_CACHE_DIR = str(Path(__file__).resolve().parent.parent.parent / "data" / "fastembed_cache")
 
 
 def _resolve_cache_dir(cache_dir: str | None) -> str:
@@ -27,11 +28,10 @@ def _resolve_cache_dir(cache_dir: str | None) -> str:
     1. An explicit ``cache_dir`` argument (tests pass ``tmp_path``).
     2. The ``FASTEMBED_CACHE_DIR`` env var (operator override; empty or whitespace-only is
        treated as unset).
-    3. The project-root ``data/fastembed_cache`` directory (absolute path anchored to this
-       module's location) — beside ``cards.db`` under the gitignored ``data/`` tree, so the
-       ~80 MB model stays out of git and resolves correctly regardless of process CWD.
+    3. ``src.paths.fastembed_cache_dir()`` — ``fastembed_cache`` beside ``cards.db`` in the shared
+       central OS data dir, so the ~80 MB model downloads once and is reused by every client.
 
-    The result is **always** a concrete project path; it never falls through to fastembed's
+    The result is **always** a concrete, persistent path; it never falls through to fastembed's
     volatile ``%TEMP%\\fastembed_cache`` default (the operational gotcha the RAG de-risk spike
     surfaced), forcing a re-download on every reboot/Temp cleanup.
 
@@ -47,7 +47,7 @@ def _resolve_cache_dir(cache_dir: str | None) -> str:
     env_dir = (os.getenv("FASTEMBED_CACHE_DIR") or "").strip()
     if env_dir:
         return env_dir
-    return _DEFAULT_CACHE_DIR
+    return str(fastembed_cache_dir())
 
 
 class Embedder:
@@ -70,7 +70,7 @@ class Embedder:
 
     Args:
         cache_dir: Explicit persistent cache directory. If ``None``, derived from the
-            ``FASTEMBED_CACHE_DIR`` env var or the project-root ``data/fastembed_cache``
+            ``FASTEMBED_CACHE_DIR`` env var or the central ``src.paths.fastembed_cache_dir()``
             default (never fastembed's volatile Temp default).
 
     Raises:

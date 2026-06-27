@@ -12,8 +12,9 @@ import numpy as np
 import pytest
 
 import src.search.embedder as embedder_module
+from src.paths import fastembed_cache_dir
 from src.search import EMBEDDING_DIM, Embedder, get_embedder
-from src.search.embedder import _DEFAULT_CACHE_DIR, MODEL_NAME, _resolve_cache_dir, reset_embedder
+from src.search.embedder import MODEL_NAME, _resolve_cache_dir, reset_embedder
 
 
 class FakeTextEmbedding:
@@ -65,28 +66,32 @@ def test_resolve_cache_dir_env_honored(tmp_path, monkeypatch) -> None:
     assert _resolve_cache_dir(None) == env_dir
 
 
-def test_resolve_cache_dir_defaults_when_absent(monkeypatch) -> None:
-    """With no explicit arg and no env var, the project-root data dir (absolute path) is used."""
+def test_resolve_cache_dir_defaults_when_absent(tmp_path, monkeypatch) -> None:
+    """With no explicit arg and no env var, the central data-dir cache is used (absolute)."""
     monkeypatch.delenv("FASTEMBED_CACHE_DIR", raising=False)
-    assert _resolve_cache_dir(None) == _DEFAULT_CACHE_DIR
+    monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path))
+    assert _resolve_cache_dir(None) == str(fastembed_cache_dir())
     assert Path(_resolve_cache_dir(None)).is_absolute()
 
 
-def test_resolve_cache_dir_empty_env_falls_back_to_default(monkeypatch) -> None:
+def test_resolve_cache_dir_empty_env_falls_back_to_default(tmp_path, monkeypatch) -> None:
     """An empty FASTEMBED_CACHE_DIR is treated as unset (never resolves to an empty path)."""
     monkeypatch.setenv("FASTEMBED_CACHE_DIR", "")
-    assert _resolve_cache_dir(None) == _DEFAULT_CACHE_DIR
+    monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path))
+    assert _resolve_cache_dir(None) == str(fastembed_cache_dir())
 
 
-def test_resolve_cache_dir_whitespace_env_falls_back_to_default(monkeypatch) -> None:
+def test_resolve_cache_dir_whitespace_env_falls_back_to_default(tmp_path, monkeypatch) -> None:
     """A whitespace-only FASTEMBED_CACHE_DIR is treated as unset."""
     monkeypatch.setenv("FASTEMBED_CACHE_DIR", "   ")
-    assert _resolve_cache_dir(None) == _DEFAULT_CACHE_DIR
+    monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path))
+    assert _resolve_cache_dir(None) == str(fastembed_cache_dir())
 
 
 def test_resolve_cache_dir_never_temp(monkeypatch) -> None:
-    """The default resolves to an absolute project path, never fastembed's volatile %TEMP%."""
+    """The default resolves to an absolute central path, never fastembed's volatile %TEMP%."""
     monkeypatch.delenv("FASTEMBED_CACHE_DIR", raising=False)
+    monkeypatch.delenv("PLANESWALKER_DATA_DIR", raising=False)
     resolved = _resolve_cache_dir(None)
     assert Path(resolved).is_absolute()
     assert "temp" not in resolved.lower()

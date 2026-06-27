@@ -1,7 +1,6 @@
 """Database engine and session management for async SQLAlchemy."""
 
 import logging
-import os
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
@@ -19,24 +18,22 @@ from src.data.models.bug_report import BugReportModel  # noqa: F401
 from src.data.models.card import CardModel  # noqa: F401
 from src.data.models.deck import DeckModel  # noqa: F401
 from src.data.models.deck_card import DeckCardModel  # noqa: F401
+from src.paths import database_url as default_database_url
 
 logger = logging.getLogger(__name__)
-
-# Database URL from environment variable
-# Using CARDS_DATABASE_URL instead of DATABASE_URL to avoid conflict with Chainlit
-DATABASE_URL = os.getenv("CARDS_DATABASE_URL", "sqlite+aiosqlite:///./data/cards.db")
 
 
 def create_engine(database_url: str | None = None) -> AsyncEngine:
     """Create an async SQLAlchemy engine.
 
     Args:
-        database_url: Database connection string. If None, uses DATABASE_URL env var.
+        database_url: Database connection string. If None, resolves the shared central-data-dir
+            URL via ``src.paths.database_url()`` (an explicit ``CARDS_DATABASE_URL`` still wins).
 
     Returns:
         Configured AsyncEngine instance for aiosqlite.
     """
-    url = database_url or DATABASE_URL
+    url = database_url or default_database_url()
     engine = create_async_engine(
         url,
         echo=False,  # Set to True for SQL query logging during development
