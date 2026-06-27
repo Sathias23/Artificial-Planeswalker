@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-06-27 (Story 3.1 → done; code review applied 16 contract-fidelity patches, all ACs verified)
+last_updated: 2026-06-27 (Story 3.2 synergy-discovery skill → done via code-review; 6 patches applied)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -70,7 +70,7 @@ development_status:
   # Epic 3: Deckbuilding Skills Suite
   epic-3: in-progress
   3-1-magic-deckbuilding-orchestrator-skill: done
-  3-2-synergy-discovery-skill: backlog
+  3-2-synergy-discovery-skill: done
   3-3-mana-curve-analysis-skill: backlog
   3-4-format-legality-skill: backlog
   epic-3-retrospective: optional
