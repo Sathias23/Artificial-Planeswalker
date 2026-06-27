@@ -35,6 +35,16 @@ class CardModel(Base):
     type_line: Mapped[str] = mapped_column(String, nullable=False, init=True)
     oracle_text: Mapped[str] = mapped_column(String, nullable=False, init=True)
 
+    # Combat stats (creatures/vehicles only; Scryfall strings like "2", "*", "1+*").
+    # Nullable: non-creatures have no P/T. kw_only matches printed_name to keep the
+    # dataclass init signature valid (defaulted fields precede non-defaulted ones).
+    power: Mapped[str | None] = mapped_column(
+        String, nullable=True, default=None, kw_only=True, init=True
+    )
+    toughness: Mapped[str | None] = mapped_column(
+        String, nullable=True, default=None, kw_only=True, init=True
+    )
+
     # Rarity and set information
     rarity: Mapped[str] = mapped_column(String, nullable=False, init=True)
     set_code: Mapped[str] = mapped_column(String, nullable=False, init=True)
