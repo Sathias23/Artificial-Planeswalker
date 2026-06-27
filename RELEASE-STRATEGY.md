@@ -8,7 +8,7 @@
 |---|----------|--------|
 | 1 | Legacy PydanticAI + Chainlit stack | **Delete entirely** (history preserved in git) |
 | 2 | License | **MIT** + explicit note that card data is Scryfall / Wizards of the Coast |
-| 3 | BMAD framework, planning artifacts, 44 `bmad-*` dev skills | **Remove all** — keep only the 4 MTG product skills |
+| 3 | BMAD framework + 44 `bmad-*` dev skills (NOT the artifacts) | **Remove the `_bmad/` framework + dev skills; KEEP `_bmad-output/`** (planning + implementation artifacts, as the public project's design record). Keep only the 4 MTG product skills. *(amended 2026-06-28 — `_bmad-output/` originally slated for deletion)* |
 | 4 | Central card DB + embedding index | **Build on first run** into a shared OS data dir (no hosting) |
 
 ## Pre-flight safety check — PASSED
@@ -32,8 +32,9 @@ git rm PROJECTIDEA.md SATHIAS.md SPIDER_MAN_INVESTIGATION.md TODO-LIST.md TOOL_P
 git rm -r legacy/ public/
 rm -rf .chainlit/                       # untracked on disk; delete locally
 
-# BMAD framework + planning artifacts + dev skills (decision #3)
-git rm -r _bmad/ _bmad-output/
+# BMAD framework + dev skills (decision #3). KEEP _bmad-output/ — the planning +
+# implementation artifacts stay tracked in the public repo as the project's design record.
+git rm -r _bmad/
 git rm -r .claude/skills/bmad-*         # 44 dev-tooling skills; keeps the 4 product skills
 
 # Manual scratch scripts (NOT the test suite in tests/)
@@ -77,9 +78,9 @@ Remove these now-obsolete lines:
 
 Add:
 ```gitignore
-# Dev process tooling (not part of the public product)
+# Dev process tooling (not part of the public product). NOTE: _bmad-output/ is intentionally
+# NOT ignored — its planning + implementation artifacts are kept and tracked in the public repo.
 /_bmad/
-/_bmad-output/
 .claude/skills/bmad-*/
 .claude/settings.local.json   # (already present — keep)
 

@@ -9,19 +9,22 @@
 > own quick-dev run, in roughly the strategy's §7 order. Each links back to the strategy section.
 >
 > **Two cross-cutting constraints carried forward:**
-> 1. **The prune deletes this workflow's own home.** §1a removes `_bmad/`, `_bmad-output/`, and
->    `.claude/skills/bmad-*` — the bmad-quick-dev spec store and step files. Run the prune (or at
->    least the `_bmad-output/` deletion) **last**, ideally outside an active quick-dev run.
+> 1. **The prune removes the workflow's framework + step files** (`_bmad/`, `.claude/skills/bmad-*`),
+>    but **`_bmad-output/` (the spec store) is KEPT** (Brad, 2026-06-28). Run the prune when no
+>    bmad-quick-dev run is active. Note: deleting `_bmad/` + the skills removes the ability to *run*
+>    the workflow; the artifacts remain only as a record. To keep running it locally, `git rm --cached`
+>    + gitignore `_bmad/` and the skills instead of a hard delete.
 > 2. **Outward-facing / irreversible steps stay manual.** Secret scan, `git tag v0.1.0`, cutting
 >    the GitHub Release, and flipping the repo public are Brad's call — automate the prep, stop
 >    at that line.
 
 - **Prune legacy + dev tooling (§1, §2).** `git rm` the legacy PydanticAI/Chainlit stack
-  (`legacy/`, `public/`), BMAD framework + planning artifacts (`_bmad/`, `_bmad-output/`,
-  `.claude/skills/bmad-*`), superseded root docs, scratch `scripts/test_*.py`, `examples/`, and
-  internal `docs/` files; curate `docs/` down to architecture/bug-report/performance; edit
-  `.gitignore` (un-ignore `.github/`, add the dev-tooling ignores). Mechanical; no logic. **Do
-  this last** (constraint 1).
+  (`legacy/`, `public/`), the BMAD **framework + dev skills** (`_bmad/`, `.claude/skills/bmad-*`),
+  superseded root docs, scratch `scripts/test_*.py`, `examples/`, and internal `docs/` files; curate
+  `docs/` down to architecture/bug-report/performance; edit `.gitignore` (un-ignore `.github/`, add
+  the dev-tooling ignores — but **not** `/_bmad-output/`). **KEEP `_bmad-output/`** — the planning +
+  implementation artifacts stay tracked in the public repo as the project's design record (Brad,
+  2026-06-28; reverses the original decision #3 to delete them). Mechanical; no logic.
 - **Trim deps & package metadata (§6).** `pyproject.toml`: drop orphaned `anthropic`/`openai`/
   `asyncpg`, move `logfire` to an optional `observability` group, verify-and-likely-drop
   `tenacity`/`python-dotenv`, add `platformdirs` (already added by the §3 run — reconcile), remove
