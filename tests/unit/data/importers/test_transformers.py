@@ -251,3 +251,57 @@ def test_transform_card_without_image_uris():
 
     assert card is not None
     assert card.image_uris is None
+
+
+def test_transform_creature_extracts_power_toughness():
+    """A creature's power/toughness are captured as Scryfall strings."""
+    card_json = {
+        "id": "creature-id",
+        "name": "Grizzly Bears",
+        "oracle_id": "grizzly-oracle-id",
+        "type_line": "Creature — Bear",
+        "mana_cost": "{1}{G}",
+        "cmc": 2.0,
+        "oracle_text": "",
+        "colors": ["G"],
+        "color_identity": ["G"],
+        "legalities": {},
+        "rarity": "common",
+        "set": "tst",
+        "set_name": "Test Set",
+        "collector_number": "1",
+        "power": "2",
+        "toughness": "2",
+    }
+
+    card = transform_scryfall_card(card_json)
+
+    assert card is not None
+    assert card.power == "2"
+    assert card.toughness == "2"
+
+
+def test_transform_noncreature_has_no_power_toughness():
+    """Non-creatures (no P/T in the Scryfall JSON) leave the columns None."""
+    card_json = {
+        "id": "instant-id",
+        "name": "Shock",
+        "oracle_id": "shock-oracle-id",
+        "type_line": "Instant",
+        "mana_cost": "{R}",
+        "cmc": 1.0,
+        "oracle_text": "Shock deals 2 damage to any target.",
+        "colors": ["R"],
+        "color_identity": ["R"],
+        "legalities": {},
+        "rarity": "common",
+        "set": "tst",
+        "set_name": "Test Set",
+        "collector_number": "1",
+    }
+
+    card = transform_scryfall_card(card_json)
+
+    assert card is not None
+    assert card.power is None
+    assert card.toughness is None

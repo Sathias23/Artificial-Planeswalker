@@ -58,6 +58,12 @@ def transform_scryfall_card(card_json: dict[str, Any]) -> CardModel | None:
         # Handle oracle text (some cards have no text)
         oracle_text = card_json.get("oracle_text") or ""
 
+        # Handle combat stats (creatures/vehicles only; None for everything else).
+        # Scryfall stores these as strings ("2", "*", "1+*"); preserve None for non-creatures.
+        # For DFCs the top-level value is absent — the viewer falls back to card_faces.
+        power = card_json.get("power")
+        toughness = card_json.get("toughness")
+
         # Extract set information with defaults
         rarity = card_json.get("rarity") or "common"
         set_code = card_json.get("set") or "unknown"
@@ -98,6 +104,8 @@ def transform_scryfall_card(card_json: dict[str, Any]) -> CardModel | None:
             cmc=cmc,
             type_line=type_line,
             oracle_text=oracle_text,
+            power=power,
+            toughness=toughness,
             rarity=rarity,
             set_code=set_code,
             set_name=set_name,

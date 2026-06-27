@@ -30,6 +30,10 @@ class Card(BaseModel):
     type_line: str
     oracle_text: str
 
+    # Combat stats (None for non-creatures)
+    power: str | None = None
+    toughness: str | None = None
+
     # Rarity and set information
     rarity: str
     set_code: str

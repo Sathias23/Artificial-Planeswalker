@@ -250,6 +250,11 @@ def _build_card(dc: DeckCard, index: int) -> dict[str, Any]:
     pip_syms = parse_mana_pips(card.mana_cost or _face_value(card, "mana_cost"))
     oracle = card.oracle_text or _face_value(card, "oracle_text")
     type_line = card.type_line or _face_value(card, "type_line")
+    # Combat stats, with the DFC fallback (front face) used elsewhere in this builder.
+    # Both must be present to render; "0" is a valid power, so guard on truthiness only.
+    power = card.power or _face_value(card, "power")
+    toughness = card.toughness or _face_value(card, "toughness")
+    pt = f"{power}/{toughness}" if power and toughness else None
     return {
         "id": card.id,
         "name": card.name,
@@ -263,6 +268,7 @@ def _build_card(dc: DeckCard, index: int) -> dict[str, Any]:
         "pips": map_pips(pip_syms),
         "oracle": oracle,
         "art": pick_art(card, color, index),
+        "pt": pt,
     }
 
 

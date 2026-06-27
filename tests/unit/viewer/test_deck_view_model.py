@@ -36,6 +36,8 @@ def make_card(
     color_identity: list[str] | None = None,
     image_uris: dict[str, str] | None = None,
     card_faces: list[dict[str, Any]] | None = None,
+    power: str | None = None,
+    toughness: str | None = None,
 ) -> Card:
     """Build a minimal valid Card for tests."""
     return Card(
@@ -55,6 +57,8 @@ def make_card(
         legalities={},
         image_uris=image_uris,
         card_faces=card_faces,
+        power=power,
+        toughness=toughness,
     )
 
 
@@ -248,3 +252,72 @@ def test_render_html_injects_json_and_escapes_script() -> None:
     assert "__DECK_JSON__" not in html  # placeholder replaced
     assert "</script> more" not in html  # the raw closing tag is neutralised
     assert "<\\/script>" in html
+
+
+# --- power/toughness ---------------------------------------------------------
+
+
+def _card_by_name(vm: dict[str, Any], name: str) -> dict[str, Any]:
+    """Find a single nonland card's view-model dict by name across all columns."""
+    for col in vm["columns"]:
+        for card in col["cards"]:
+            if card["name"] == name:
+                return card
+    raise AssertionError(f"card {name!r} not in view model")
+
+
+def test_creature_exposes_power_toughness() -> None:
+    deck = make_deck([(make_card("a", "Bear", power="2", toughness="2"), 1, False)])
+    assert _card_by_name(build_view_model(deck), "Bear")["pt"] == "2/2"
+
+
+def test_noncreature_has_no_pt() -> None:
+    deck = make_deck(
+        [(make_card("a", "Bolt", type_line="Instant", power=None, toughness=None), 1, False)]
+    )
+    assert _card_by_name(build_view_model(deck), "Bolt")["pt"] is None
+
+
+def test_zero_power_is_not_dropped() -> None:
+    # "0" is a valid power (e.g. Ornithopter 0/2); truthiness guard must keep it.
+    deck = make_deck([(make_card("a", "Thopter", power="0", toughness="2"), 1, False)])
+    assert _card_by_name(build_view_model(deck), "Thopter")["pt"] == "0/2"
+
+
+def test_variable_power_toughness_rendered_verbatim() -> None:
+    deck = make_deck([(make_card("a", "Goyf", power="*", toughness="1+*"), 1, False)])
+    assert _card_by_name(build_view_model(deck), "Goyf")["pt"] == "*/1+*"
+
+
+def test_dfc_falls_back_to_face_power_toughness() -> None:
+    # Top-level P/T is None on DFCs; the viewer reads the front face like it does
+    # for type_line / oracle_text.
+    faces = [
+        {"name": "Front", "type_line": "Creature — Human", "power": "3", "toughness": "2"},
+        {"name": "Back", "type_line": "Creature — Werewolf", "power": "5", "toughness": "4"},
+    ]
+    deck = make_deck([(make_card("a", "Wolf", card_faces=faces), 1, False)])
+    assert _card_by_name(build_view_model(deck), "Wolf")["pt"] == "3/2"
+
+
+def test_vehicle_shows_pt_not_creature_gated() -> None:
+    # Vehicles carry P/T but are not creatures; display is gated on P/T presence,
+    # never on the type line, so a Vehicle must still show its P/T.
+    deck = make_deck(
+        [
+            (
+                make_card(
+                    "a",
+                    "Copter",
+                    type_line="Artifact — Vehicle",
+                    colors=[],
+                    color_identity=[],
+                    power="3",
+                    toughness="3",
+                ),
+                1,
+                False,
+            )
+        ]
+    )
+    assert _card_by_name(build_view_model(deck), "Copter")["pt"] == "3/3"
