@@ -8,7 +8,7 @@
 |---|----------|--------|
 | 1 | Legacy PydanticAI + Chainlit stack | **Delete entirely** (history preserved in git) |
 | 2 | License | **MIT** + explicit note that card data is Scryfall / Wizards of the Coast |
-| 3 | BMAD framework + 44 `bmad-*` dev skills (NOT the artifacts) | **Remove the `_bmad/` framework + dev skills; KEEP `_bmad-output/`** (planning + implementation artifacts, as the public project's design record). Keep only the 4 MTG product skills. *(amended 2026-06-28 — `_bmad-output/` originally slated for deletion)* |
+| 3 | BMAD framework + 44 `bmad-*` dev skills (NOT the artifacts) | **Untrack (`git rm --cached` + gitignore, keep on disk) the `_bmad/` framework + `bmad-*` dev skills; KEEP `_bmad-output/` tracked** (planning + implementation artifacts = public design record). Keep only the 4 MTG product skills tracked. *(amended 2026-06-28 — keep `_bmad-output/`; gitignore the rest rather than delete, so the workflow still runs locally)* |
 | 4 | Central card DB + embedding index | **Build on first run** into a shared OS data dir (no hosting) |
 
 ## Pre-flight safety check — PASSED
@@ -32,10 +32,11 @@ git rm PROJECTIDEA.md SATHIAS.md SPIDER_MAN_INVESTIGATION.md TODO-LIST.md TOOL_P
 git rm -r legacy/ public/
 rm -rf .chainlit/                       # untracked on disk; delete locally
 
-# BMAD framework + dev skills (decision #3). KEEP _bmad-output/ — the planning +
-# implementation artifacts stay tracked in the public repo as the project's design record.
-git rm -r _bmad/
-git rm -r .claude/skills/bmad-*         # 44 dev-tooling skills; keeps the 4 product skills
+# BMAD framework + dev skills (decision #3). UNTRACK but KEEP ON DISK (--cached) so the workflow
+# still runs locally; the .gitignore entries in §2 remove them from the public repo. KEEP
+# _bmad-output/ tracked — the planning + implementation artifacts are the public design record.
+git rm --cached -r _bmad/
+git rm --cached -r .claude/skills/bmad-*   # 44 dev-tooling skills; keeps the 4 product skills tracked
 
 # Manual scratch scripts (NOT the test suite in tests/)
 git rm scripts/test_agent.py scripts/test_api_connection.py \
@@ -78,8 +79,9 @@ Remove these now-obsolete lines:
 
 Add:
 ```gitignore
-# Dev process tooling (not part of the public product). NOTE: _bmad-output/ is intentionally
-# NOT ignored — its planning + implementation artifacts are kept and tracked in the public repo.
+# Dev process tooling — untracked here (via `git rm --cached` in §1a) but KEPT ON DISK locally so
+# the workflow still runs. NOTE: _bmad-output/ is intentionally NOT ignored — its planning +
+# implementation artifacts are kept and tracked in the public repo.
 /_bmad/
 .claude/skills/bmad-*/
 .claude/settings.local.json   # (already present — keep)
