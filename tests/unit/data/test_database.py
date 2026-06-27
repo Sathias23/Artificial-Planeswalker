@@ -4,7 +4,7 @@ from src.data.database import create_engine, create_session_factory
 
 
 def test_create_engine_default_url() -> None:
-    """Test engine creation with default DATABASE_URL."""
+    """Test engine creation with the default (central) database URL."""
     engine = create_engine()
 
     assert engine is not None

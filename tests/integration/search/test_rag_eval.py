@@ -10,7 +10,7 @@ every miss so a failure is actionable.
 
 This generalizes the one-query precursor
 ``test_real_embedder_ranks_relevant_card_first`` into a multi-query, threshold-guarded recall eval.
-It loads the ~80 MB model (cached at ``./data/fastembed_cache`` after first download), so it is
+It loads the ~80 MB model (cached in the central data dir, see ``src.paths``), so it is
 ``@pytest.mark.integration`` — **part of the active suite** under ``tests/`` (``legacy/`` is the
 excluded tree; the ``-m "not integration"`` filter merely scopes the fast offline subset, it does
 not exclude this from the active suite). The pure hit-rate helpers are unit-tested offline below.

@@ -6,6 +6,7 @@ import threading
 import pytest
 import sqlite_vec
 
+from src.paths import database_path
 from src.search import ConnectionFactory
 from src.search.connection import _resolve_db_path
 
@@ -114,10 +115,23 @@ def test_resolve_db_path_strips_bare_sqlite_prefix(monkeypatch) -> None:
     assert _resolve_db_path(None) == "./data/cards.db"
 
 
-def test_resolve_db_path_defaults_when_env_absent(monkeypatch) -> None:
-    """With no explicit path and no env var, the default ./data/cards.db is used."""
+def test_resolve_db_path_defaults_when_env_absent(tmp_path, monkeypatch) -> None:
+    """With no explicit path and no env var, the central data-dir cards.db is used."""
     monkeypatch.delenv("CARDS_DATABASE_URL", raising=False)
-    assert _resolve_db_path(None) == "./data/cards.db"
+    monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path))
+    assert _resolve_db_path(None) == str(database_path())
+
+
+def test_resolve_db_path_empty_env_falls_back_to_central(tmp_path, monkeypatch) -> None:
+    """An empty / whitespace CARDS_DATABASE_URL is treated as unset (not a throwaway "" DB).
+
+    Mirrors src.paths.database_url(), so the sync factory and the async engine never diverge
+    onto different files for the same (mis)configuration.
+    """
+    monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path))
+    for blank in ("", "   "):
+        monkeypatch.setenv("CARDS_DATABASE_URL", blank)
+        assert _resolve_db_path(None) == str(database_path())
 
 
 def test_build_connection_cleans_up_on_load_error(tmp_path, monkeypatch) -> None:
