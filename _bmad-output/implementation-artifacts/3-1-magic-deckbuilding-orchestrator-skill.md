@@ -4,7 +4,7 @@ baseline_commit: a6f745dd4014baf656ba21d6bdb174b7337dbc2a
 
 # Story 3.1: magic-deckbuilding Orchestrator Skill
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -36,6 +36,37 @@ so that I get ranked card swaps with reasons rather than raw tool output.
 - [x] Add the **graceful-degradation** rules: handle `index_unavailable`, `not_found`, `ambiguous`, `empty`, `invalid` statuses without breaking the loop (AC: 2)
 - [x] Reference the capability skills `synergy-discovery`, `mana-curve-analysis`, `format-legality` as deeper-dive companions — **without depending on them** (they ship in Stories 3.2–3.4) (AC: 4)
 - [x] Verify: dry-run the loop against the real index on a sample deck (see Verification) — confirm ranked swaps with reasons, statelessness, and no auto-add.
+
+### Review Findings
+
+_Code review 2026-06-27 (adversarial: Blind Hunter + Edge Case Hunter + Acceptance Auditor). Triage: 0 decision-needed, 16 patch, 0 defer, 1 dismissed. **All 4 ACs and every Dev-Notes hard contract verified satisfied by the Acceptance Auditor** — the items below are contract-fidelity hardening, not AC blockers. Edge findings verified against `src/mcp_server/` ground truth._
+
+**High**
+
+- [x] [Review][Patch] `create_deck` & `delete_deck` referenced in prose/Hard-rules but have no contract-table row (no params, no `status` enum) — a "destructive and irreversible" op and the consent/persist path both call undocumented tools [.claude/skills/magic-deckbuilding/SKILL.md table + Step 0/Hard rules]
+- [x] [Review][Patch] `error` status omitted from `list_decks`/`load_deck`/`delete_deck`/`add_card_to_deck`/`remove_card_from_deck` table rows; the generic graceful-`error` bullet is scoped to analysis tools, so a DB error during deck-resolution (Step 0) or apply (Step 5) is an unhandled branch [SKILL.md table; src/mcp_server/tools/deck_management.py:49,66,80,102-111]
+- [x] [Review][Patch] Stale-`deck_id` handler keys on `deck_not_found`, but `load_deck` returns `not_found` (and can also return `invalid`) — a stale/guessed `deck_id` pasted into Step 0 hits an unhandled status [SKILL.md graceful-degradation; deck_management.py:66 vs deck_analysis.py:63,96,120]
+- [x] [Review][Patch] Pasted-list persistence is N independent `add_card_to_deck` calls, each of which can return `ambiguous`/`card_not_found`/`error`; a partial save is then analyzed by Steps 1–3 as if whole → wrong curve/legality advice. No partial-failure handling documented [SKILL.md Step 0; deck_management.py:429,439]
+
+**Medium**
+
+- [x] [Review][Patch] `exists` (add) / `not_in_deck` (remove) apply-step outcomes have no Step-5 branching — a no-op add/remove (quantities are NOT merged) gets reported to the user as a completed swap [SKILL.md Step 5; deck_management.py:451-460,552-558]
+- [x] [Review][Patch] `lookup_card_by_name` returns `found` (not `ok`) on success — the lone exception to the all-`ok` table convention and the "branch on status, never assume ok" rule; not flagged in "Notes that bite if ignored" [SKILL.md table; src/mcp_server/tools/card_lookup.py:35]
+- [x] [Review][Patch] Format-default contradiction: "Ask the user (or infer) … (default `standard`)" gives no precedence rule; silently assuming Standard yields wrong "mandatory cut" legality verdicts for a Commander/Modern deck [SKILL.md Step 0]
+- [x] [Review][Patch] `index_unavailable` → "fall back to `search_cards`" is a non-equivalent dead-end for `find_similar_cards` (seed-based; `search_cards` has no similarity) — scope the fallback, or degrade via lookup-seed→type/color/CMC approximation [SKILL.md graceful-degradation; find_similar.py vs card_search.py]
+
+**Low**
+
+- [x] [Review][Patch] `validate_deck` table shows `format="standard"` as a default param, inviting omission and contradicting the D5 "pass `format` every call" rule; `=` also collides with genuine defaults (`quantity=1`) [SKILL.md table]
+- [x] [Review][Patch] `find_similar_cards` `not_found` with a populated `seed` (indexed-but-no-vector) is collapsed into plain not-found; retrying the same seed always fails — degrade instead of retry [SKILL.md graceful-degradation; find_similar.py:383-392]
+- [x] [Review][Patch] `semantic_search_cards` never returns `not_found` (only `empty`); the combined "`not_found`/`empty`" rule mis-documents its contract [SKILL.md graceful-degradation; semantic_search.py:69]
+- [x] [Review][Patch] `search_cards.page_size` is silently clamped to 50 (not rejected) — unlike the semantic `limit` hard-reject; "(max 50)" written identically implies symmetric rejection [SKILL.md table/Notes; card_search.py:48]
+- [x] [Review][Patch] `invalid` recovery rule should cite the exact valid `games` enum (`paper`/`arena`/`mtgo`) at the point of failure so the agent can self-correct [SKILL.md graceful-degradation; deck_analysis.py:284-291]
+- [x] [Review][Patch] "Pure add/cut" path is named in Step 3 but the output example table has no row shape for an empty Cut or Add side [SKILL.md Step 3 + Output format]
+- [x] [Review][Patch] "Re-run Step 1" after applying swaps silently fails for unsaved/pasted decks — not conditioned on the deck being saved [SKILL.md Step 5]
+- [x] [Review][Patch] `color_mode` value enum (`any`/`all`/`exact`/`at_most`) not surfaced in the contract table — agent must guess valid values [SKILL.md table; src/mcp_server/server.py:411]
+
+_Dismissed (1): `detect_synergies` dry-run arithmetic ("28 Dragons / 38 distinct / 59 total") in the Debug Log mixes distinct vs total counts but isn't actually contradictory, and lives in the verification record, not the shipped skill — noise._
 
 ## Dev Notes
 

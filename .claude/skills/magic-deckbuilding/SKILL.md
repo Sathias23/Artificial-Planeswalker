@@ -40,16 +40,27 @@ matching capability companion (see the end of this file).
 
 You need either a saved `deck_id` or a pasted decklist.
 
-- Ask the user (or infer) the **format** (default `"standard"`) and **games** platforms
-  (`"paper"`/`"arena"`/`"mtgo"`, optional). Carry these for the whole session.
+- Establish the **format** and **games** platforms before any legality call, and carry them for the
+  whole session. Precedence for format: **infer** it from the decklist / the user's words if you can;
+  if it's **ambiguous, ask** — do not guess; only fall back to `"standard"` as a last resort when the
+  user declines to specify. (Get this wrong and `validate_deck` emits confident-but-bogus "mandatory
+  cut" verdicts — Standard legality applied to a Commander/Modern deck.) **games** is optional and
+  must be exactly `"paper"` / `"arena"` / `"mtgo"` — any other value returns `invalid`.
 - **Saved deck:** call `mcp__artificial-planeswalker__list_decks` (optionally `format`-filtered).
   Show the summaries, confirm which deck, capture its `deck_id`, and pull the full contents with
   `mcp__artificial-planeswalker__load_deck` (`deck_id`).
 - **Pasted decklist:** you can analyze it *in conversation* without persisting. Persisting it
-  (`create_deck` + `add_card_to_deck`) is an **explicit action that needs the user's consent** —
-  offer it, don't assume it. Note: `analyze_mana_curve`, `detect_synergies`, and `validate_deck`
-  operate on a **saved `deck_id`**, so to use them on a pasted list you must first get consent to
-  save it; otherwise reason from the list yourself and use the search tools for candidates.
+  (`create_deck`, then one `add_card_to_deck` per line) is an **explicit action that needs the user's
+  consent** — offer it, don't assume it. Note: `analyze_mana_curve`, `detect_synergies`, and
+  `validate_deck` operate on a **saved `deck_id`**, so to use them on a pasted list you must first get
+  consent to save it; otherwise reason from the list yourself and use the search tools for candidates.
+- **Persisting is N independent writes that can partially fail.** There is no bulk-import tool, so a
+  pasted list is saved one `add_card_to_deck` call at a time, and any line can return `ambiguous`
+  (name matches >1 card — disambiguate or re-call with `card_id`), `card_not_found` (typo/unknown —
+  fix or drop it with the user), or `error`. **Resolve every line before you run Step 1** — never let
+  a half-saved deck flow into `analyze_mana_curve`/`validate_deck`, or the curve/legality advice is
+  computed on a deck silently missing cards. If any card can't be added, name them and confirm with
+  the user before analyzing.
 
 ### Step 1 — Analyze (read the deck's actual state)
 
@@ -89,7 +100,8 @@ the intent:
 ### Step 3 — Suggest (ranked swaps, each with a reason)
 
 Produce **ranked** suggestions, best first. Each is a **cut → add pair** (or a pure add/cut when
-that's the right move), and each carries a **one-line reason grounded in a Step-1 finding**:
+that's the right move — render the empty side as "—", see the example table below), and each carries
+a **one-line reason grounded in a Step-1 finding**:
 
 - *Curve gap:* "Cut a 5th six-drop for **[2-drop]** — your curve has no plays before turn 3
   (`average_cmc` 3.8, `distribution` empty at 1–2)."
@@ -113,7 +125,21 @@ then, with consent, touch the deck (Step 5, below).
 Applying a swap mutates the deck and **requires explicit user confirmation first**:
 `mcp__artificial-planeswalker__remove_card_from_deck` and
 `mcp__artificial-planeswalker__add_card_to_deck` (both take `deck_id`, and `card_id` **or** `name`).
-After applying, re-run Step 1 if the user wants to see the effect. **Never apply swaps unprompted.**
+**Never apply swaps unprompted.** Prefer `card_id` over `name` for both the cut and the add to avoid
+`ambiguous`.
+
+**Check the `status` of every write — a swap is not done until the tool says so:**
+- `ok` → applied.
+- `exists` (add): the card was **already present and quantities are NOT merged**, so the add did
+  nothing — say so; do not report the swap as landed.
+- `not_in_deck` (remove): the cut target **wasn't in that board**, so nothing was removed — re-check
+  the card/board before claiming a cut.
+- `ambiguous` → disambiguate or re-call with `card_id`; `card_not_found` → fix the name; `error` →
+  report it honestly and treat the swap as **not applied** (never pretend it succeeded).
+
+After a confirmed, successful apply, **re-run Step 1 only if the deck is saved** (the analysis tools
+need a `deck_id`); for an unsaved/pasted list there's nothing to re-query — re-reason from the updated
+list yourself. Re-validate after any swap (`add_card_to_deck` does no legality check).
 
 ---
 
@@ -124,24 +150,32 @@ Each returns a `status` plus a payload — branch on `status`, never assume `ok`
 
 | Tool | Key params | `status` values (payload on `ok`) |
 |------|-----------|-----------------------------------|
-| `list_decks` | `format?` | `ok` (`decks[]`) · `empty` |
-| `load_deck` | `deck_id` | `ok` (`deck` + cards) · `not_found` |
+| `list_decks` | `format?` | `ok` (`decks[]`) · `empty` · `error` |
+| `create_deck` | `name`, `format?`, `strategy?`, `tags?` | `ok` (`deck` + new `id`) · `invalid` · `error` |
+| `load_deck` | `deck_id` | `ok` (`deck` + cards) · `not_found` · `invalid` · `error` |
+| `delete_deck` | `deck_id` | `ok` (deleted) · `not_found` · `error` |
 | `analyze_mana_curve` | `deck_id` | `ok` (`distribution`, `total_lands/total_spells`, `average_cmc`, `land_ratio`, `issues`, `recommendations`) · `empty` · `deck_not_found` · `error` |
 | `detect_synergies` | `deck_id` | `ok` (`synergies[]`, `synergy_count`, `deck_cohesion`) · `empty` · `deck_not_found` · `error` |
-| `validate_deck` | `deck_id`, `format="standard"`, `games?` | `ok` (`report.is_legal` + violations) · `deck_not_found` · `invalid` · `error` |
-| `semantic_search_cards` | `query`, `colors?`, `color_mode?`, `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]`, each with `distance`, nearest-first) · `empty` · `invalid` · `index_unavailable` |
-| `find_similar_cards` | `card_name?` \| `card_id?`, `colors?`, `color_mode?`, `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]` + resolved `seed`) · `empty` · `not_found` · `ambiguous` (`matches`) · `invalid` · `index_unavailable` |
-| `search_cards` | `colors?`, `color_mode?`, `types?`, `keywords?`, `oracle_text?`, `mana_value_min/max?`, `rarity?`, `format?`, `games?`, `page`, `page_size` (max 50) | `ok` (`cards[]` + pagination) · `empty` · `invalid` |
-| `lookup_card_by_name` | `card_name`, `format?`, `games?` | `found` (`card`) · `ambiguous` (`matches`) · `not_found` |
-| `add_card_to_deck` | `deck_id`, `card_id?` \| `name?`, `quantity=1`, `sideboard=False` | `ok` · `exists` · `deck_not_found` · `card_not_found` · `ambiguous` · `invalid` |
-| `remove_card_from_deck` | `deck_id`, `card_id?` \| `name?`, `sideboard=False` | `ok` · `not_in_deck` · `deck_not_found` · `card_not_found` · `ambiguous` · `invalid` |
+| `validate_deck` | `deck_id`, `format`, `games?` | `ok` (`report.is_legal` + violations) · `deck_not_found` · `invalid` · `error` |
+| `semantic_search_cards` | `query`, `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]`, each with `distance`, nearest-first) · `empty` · `invalid` · `index_unavailable` |
+| `find_similar_cards` | `card_name?` \| `card_id?`, `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `mana_value_min/max?`, `format?`, `games?`, `limit` (default 10, **max 50**) | `ok` (`cards[]` + resolved `seed`) · `empty` · `not_found` · `ambiguous` (`matches`) · `invalid` · `index_unavailable` |
+| `search_cards` | `colors?`, `color_mode?` (`any`/`all`/`exact`/`at_most`), `types?`, `keywords?`, `oracle_text?`, `mana_value_min/max?`, `rarity?`, `format?`, `games?`, `page`, `page_size` (**silently capped at 50, not rejected**) | `ok` (`cards[]` + pagination) · `empty` · `invalid` |
+| `lookup_card_by_name` | `card_name`, `format?`, `games?` | **`found`** (`card`) · `ambiguous` (`matches`) · `not_found` — success is **`found`**, not `ok` |
+| `add_card_to_deck` | `deck_id`, `card_id?` \| `name?`, `quantity=1`, `sideboard=False` | `ok` · `exists` · `deck_not_found` · `card_not_found` · `ambiguous` · `invalid` · `error` |
+| `remove_card_from_deck` | `deck_id`, `card_id?` \| `name?`, `sideboard=False` | `ok` · `not_in_deck` · `deck_not_found` · `card_not_found` · `ambiguous` · `invalid` · `error` |
 
 Notes that bite if ignored:
-- **`limit` on the semantic tools is capped at 50.** Asking for more returns `status="invalid"` —
-  request a generous-but-≤50 `limit` and filter down yourself.
+- **`limit` on the semantic tools is hard-capped at 50.** Asking for more returns `status="invalid"`
+  (a real error you must fix) — request a generous-but-≤50 `limit` and filter down yourself.
+- **`search_cards.page_size` is *silently clamped* to 50, not rejected** — unlike the semantic `limit`,
+  `page_size > 50` does **not** error; you just get 50 (and may mis-page). Request ≤50 and page through.
+- **`lookup_card_by_name` signals success as `found`, NOT `ok`** — it's the one tool whose success
+  sentinel differs. Don't apply the "assume `ok`" reflex to it, or a good lookup reads as a miss.
+- **Valid `games` values are exactly `paper` / `arena` / `mtgo`.** Any other platform string (e.g.
+  `"mtga"`, `"online"`) returns `invalid` from every tool that accepts `games`.
 - `analyze_mana_curve` / `detect_synergies` read the **mainboard only** (sideboard excluded).
 - `add_card_to_deck` does **no** legality or 4-copy checking — that's `validate_deck`'s job; re-validate
-  after applying swaps.
+  after applying swaps. Adding a card already present returns `exists` and **does not merge quantities**.
 
 ## ⭐ Candidate-generator pattern (your core value-add)
 
@@ -167,21 +201,37 @@ live test the single best "both" card ranked **14th**. So:
 The tools return structured statuses, not raw exceptions — handle each so the loop keeps producing
 value:
 
-- **`index_unavailable`** (semantic tools): tell the user the semantic index isn't built and surface
-  the tool's own build hint (it names `scripts/build_card_embeddings.py`; the real prerequisite chain
-  is **import Scryfall data → build embeddings → search**). Then **fall back to
-  `search_cards`** (relational filters) so you still generate candidates and finish the loop.
-- **`ambiguous`** (`find_similar_cards`, `add_card_to_deck`, `remove_card_from_deck`,
-  `lookup_card_by_name`): present the `matches` and ask the user to pick — or re-call with a specific
+- **`index_unavailable`** (semantic tools only): tell the user the semantic index isn't built and
+  surface the tool's own build hint (it names `scripts/build_card_embeddings.py`; the real prerequisite
+  chain is **import Scryfall data → build embeddings → search**). Then degrade so the loop still
+  finishes:
+  - For `semantic_search_cards`, **fall back to `search_cards`** — translate the conceptual query into
+    relational filters (types/keywords/colors/CMC).
+  - For `find_similar_cards`, there is **no relational "similar-to-seed"** (`search_cards` can't do it).
+    Instead `lookup_card_by_name` the seed, then approximate it with a `search_cards` filter on its
+    type line / colors / mana value, and tell the user it's a degraded substitute.
+- **`ambiguous`** (`find_similar_cards`, `lookup_card_by_name`, `add_card_to_deck`,
+  `remove_card_from_deck`): present the `matches` and ask the user to pick — or re-call with a specific
   `card_id`. Don't guess.
-- **`not_found` / `empty`**: adjust the query or filters and retry, or tell the user plainly. **Never
-  invent cards** to fill a gap.
-- **`deck_not_found`** (analysis/validate): the `deck_id` is stale — re-resolve via `list_decks` /
-  confirm with the user.
-- **`invalid`**: you sent a bad parameter (e.g. `limit > 50`, an unknown `games` value). Read the
-  message, fix the call, retry.
-- **`error`**: report it honestly and continue with whatever other analyses succeeded — don't pretend
-  the failed step passed.
+- **`empty`** (`semantic_search_cards`, `search_cards`, `find_similar_cards`): no results — relax the
+  filters (widen colors/CMC, drop a constraint) and retry, or tell the user plainly. **Never invent
+  cards** to fill a gap.
+- **`not_found`** — two distinct cases, handled differently:
+  - *Name unresolved* (`lookup_card_by_name`, or `find_similar_cards` with `seed` **absent**): the name
+    didn't match a card — fix the spelling / re-query. Don't retry the same string.
+  - *Seed exists but isn't indexed* (`find_similar_cards` with `seed` **populated**): the card is real
+    but has no vector — **retrying is futile**; treat it like `index_unavailable` for that seed (build
+    hint, or the `search_cards` approximation above).
+  - *`load_deck` returns `not_found`*: the `deck_id` is stale/wrong — re-resolve via `list_decks` /
+    confirm with the user (same handling as `deck_not_found` below).
+- **`deck_not_found`** (analysis / validate) **and `load_deck`'s `not_found`**: the `deck_id` is stale —
+  re-resolve via `list_decks` / confirm with the user before continuing.
+- **`invalid`**: you sent a bad parameter — read the message and fix the call. Common causes: a semantic
+  `limit > 50`, or a `games` value outside the exact set `paper` / `arena` / `mtgo`.
+- **`error`** (can come from **any** tool — deck resolution, analysis, *or* a write): report it honestly
+  and continue with whatever other analyses succeeded — never pretend the failed step passed. If the
+  `error` is in Step-0 deck resolution (`list_decks` / `load_deck`), you have no deck to analyze — say
+  so and re-resolve or stop; don't proceed into Step 1 on a deck that never loaded.
 
 ## Hard rules (do not break these)
 
@@ -206,7 +256,8 @@ Lead with the verdict, then the ranked table, then the synthesis. For example:
 > | # | Cut | → Add | Why (evidence) |
 > |---|-----|-------|----------------|
 > | 1 | Colossal Dreadmaw | Kumano Faces Kakkazan | `validate_deck`: Dreadmaw is illegal in Standard (mandatory cut); Kumano fills your empty 1-drop slot. |
-> | 2 | … | … | curve gap: `distribution` shows only 2 cards at CMC 2, `average_cmc` 3.6 |
+> | 2 | — | Lightning Strike | pure add — curve gap: `distribution` has only 2 cards at CMC 2 (`average_cmc` 3.6); adds reach without cutting yet. |
+> | 3 | Run Away Together | — | pure cut — `detect_synergies` names no synergy for it; trimming it raises consistency. |
 >
 > **Bottom line:** lower the curve and lean into the aggro plan; swaps 1–2 are the highest impact.
 
