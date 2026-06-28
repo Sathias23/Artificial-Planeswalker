@@ -21,6 +21,10 @@ Scryfall card import that build-on-first-run depends on, since a packaged instal
 un-imported database with a graceful ``database_not_initialized`` status that points at
 ``initialize_database`` rather than leaking a raw "no such table" error.
 
+The read-only ``view_deck`` tool renders a saved deck to a self-contained HTML page and
+best-effort opens it in the host's default browser (a local-bundle side effect; the file
+path is always returned, so a headless host degrades gracefully).
+
 Registration is transport-agnostic: the transport string is selected only at the
 entry point (``src/mcp_server/__main__.py``), never here (AC2 / D7).
 """
@@ -67,6 +71,8 @@ from src.mcp_server.tools.initialize_database import (
 )
 from src.mcp_server.tools.semantic_search import SemanticSearchResult
 from src.mcp_server.tools.semantic_search import semantic_search_cards as _semantic_search_helper
+from src.mcp_server.tools.view_deck import ViewDeckResult
+from src.mcp_server.tools.view_deck import view_deck as _view_deck_helper
 from src.search import ConnectionFactory, Embedder, get_embedder
 
 
@@ -350,6 +356,31 @@ def build_server(
                 name=name,
                 sideboard=sideboard,
             )
+
+    @mcp.tool()
+    async def view_deck(deck_id: str, open_browser: bool = True) -> ViewDeckResult:
+        """Render a saved deck and open it in the default browser for visual review.
+
+        Loads the deck by id, renders the read-only HTML deck viewer, writes it to a
+        temp file, and (by default) opens it in this machine's default browser — the
+        server runs locally, so the page opens on the user's own desktop. Opening is
+        best-effort: ``file_path`` is always returned, so the page is reachable even
+        when no browser can be launched (set ``open_browser=False`` to render only).
+        Read-only and stateless — pass ``deck_id`` (from ``create_deck`` /
+        ``list_decks``) every call.
+
+        Args:
+            deck_id: The deck id to view.
+            open_browser: Open the rendered page in the default browser (default
+                True); set False to render the file without opening it.
+
+        Returns:
+            A result whose ``status`` is ``ok`` (``file_path`` set,
+            ``opened_in_browser`` reports whether a browser launched), ``not_found``,
+            ``error``, or ``database_not_initialized``.
+        """
+        async with session_factory() as session:
+            return await _view_deck_helper(session, deck_id=deck_id, open_browser=open_browser)
 
     @mcp.tool()
     async def analyze_mana_curve(deck_id: str) -> ManaCurveResult:

@@ -23,14 +23,11 @@ import argparse
 import asyncio
 import logging
 import sys
-import tempfile
-import webbrowser
-from pathlib import Path
 
 from src.data.database import create_engine, create_session_factory
 from src.data.repositories.deck import DeckRepository
 from src.data.schemas.deck import Deck
-from src.viewer import render_html
+from src.viewer import present_deck
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
@@ -78,11 +75,6 @@ async def _resolve_deck(repo: DeckRepository, identifier: str) -> Deck | None:
     return None
 
 
-def _slug(name: str) -> str:
-    """Make a filesystem-safe slug from a deck name."""
-    return "".join(ch if ch.isalnum() else "-" for ch in name).strip("-").lower() or "deck"
-
-
 async def _run(identifier: str, open_browser: bool) -> int:
     """Load, render, and (optionally) open the viewer. Returns an exit code."""
     engine = create_engine()
@@ -93,15 +85,14 @@ async def _run(identifier: str, open_browser: bool) -> int:
             deck = await _resolve_deck(repo, identifier)
             if deck is None:
                 return 1  # _resolve_deck already logged why
-            html = render_html(deck)
     finally:
         await engine.dispose()
 
-    out_path = Path(tempfile.gettempdir()) / f"ap-deck-viewer-{_slug(deck.name)}.html"
-    out_path.write_text(html, encoding="utf-8")
+    # The deck is a detached Pydantic schema with cards eagerly loaded, so rendering
+    # after the engine is disposed is safe. ``present_deck`` is shared with the
+    # ``view_deck`` MCP tool.
+    out_path, _ = present_deck(deck, open_browser=open_browser)
     logger.info("Rendered %s -> %s", deck.name, out_path)
-    if open_browser:
-        webbrowser.open(out_path.as_uri())
     return 0
 
 

@@ -5,7 +5,8 @@ data object consumed by ``template.html`` (a vanilla recreation of the
 ``Deck Viewer`` design). Sits above ``src/data`` and imports only its schemas.
 """
 
+from src.viewer.present import deck_viewer_path, present_deck
 from src.viewer.render import render_html
 from src.viewer.view_model import build_view_model
 
-__all__ = ["build_view_model", "render_html"]
+__all__ = ["build_view_model", "deck_viewer_path", "present_deck", "render_html"]
