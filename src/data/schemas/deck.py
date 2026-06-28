@@ -1,8 +1,8 @@
 """Pydantic schemas for type-safe deck data transfer."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
 
 from src.data.schemas.card import Card, CardSummary
 
@@ -53,6 +53,18 @@ class Deck(BaseModel):
     created_at: datetime
     updated_at: datetime
     deck_cards: list[DeckCard] = []
+
+    @field_serializer("created_at", "updated_at")
+    def _serialize_timestamps(self, value: datetime) -> str:
+        """Emit RFC 3339 with a UTC offset.
+
+        SQLite stores naive datetimes; strict ``date-time`` validators (Ajv-style,
+        e.g. Claude Desktop's MCP client) reject timezone-less values and fail the
+        whole tool result. Coerce naive -> UTC so the output always carries an offset.
+        """
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
 
     @field_validator("color_identity", mode="before")
     @classmethod
@@ -131,6 +143,18 @@ class DeckSummary(BaseModel):
     distinct_cards: int = 0
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer("created_at", "updated_at")
+    def _serialize_timestamps(self, value: datetime) -> str:
+        """Emit RFC 3339 with a UTC offset.
+
+        SQLite stores naive datetimes; strict ``date-time`` validators (Ajv-style,
+        e.g. Claude Desktop's MCP client) reject timezone-less values and fail the
+        whole tool result. Coerce naive -> UTC so the output always carries an offset.
+        """
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()
 
 
 class DeckDetail(DeckSummary):
