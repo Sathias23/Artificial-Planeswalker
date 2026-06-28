@@ -27,8 +27,18 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 from src.data.schemas.card import CardSummary
+from src.mcp_server.tools.messages import (
+    DATABASE_NOT_INITIALIZED_MESSAGE,
+    INDEX_NOT_BUILT_MESSAGE,
+)
 from src.mcp_server.tools.semantic_search import SemanticCardHit
-from src.search.query import ColorMode, get_card_vector, hybrid_search, index_is_populated
+from src.search.query import (
+    ColorMode,
+    get_card_vector,
+    hybrid_search,
+    index_is_populated,
+    is_database_initialized,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +87,15 @@ class SimilarCardsResult(BaseModel):
             disambiguation prompt, or the offending value when invalid.
     """
 
-    status: Literal["ok", "empty", "invalid", "not_found", "ambiguous", "index_unavailable"]
+    status: Literal[
+        "ok",
+        "empty",
+        "invalid",
+        "not_found",
+        "ambiguous",
+        "index_unavailable",
+        "database_not_initialized",
+    ]
     cards: list[SemanticCardHit] = []
     total_count: int = 0
     seed: CardSummary | None = None
@@ -353,18 +371,18 @@ def find_similar_cards(
     if error is not None:
         return SimilarCardsResult(status="invalid", message=error)
 
+    # Guard an un-imported database first: with no ``cards`` the user hasn't run the one-time
+    # ``initialize_database`` step, so point there rather than at the index.
+    if not is_database_initialized(conn):
+        return SimilarCardsResult(
+            status="database_not_initialized", message=DATABASE_NOT_INITIALIZED_MESSAGE
+        )
+
     # Guard the unbuilt/empty index up front: without ``card_vec`` the seed still resolves on the
     # ``cards`` table, but ``get_card_vector`` would then raise a raw OperationalError. Surface a
     # build-the-index hint instead so the skills suite stays graceful (G3).
     if not index_is_populated(conn):
-        return SimilarCardsResult(
-            status="index_unavailable",
-            message=(
-                "The semantic search index isn't available yet. On a fresh database, import the "
-                "card data first (`uv run python scripts/import_scryfall_data.py`), then build the "
-                "index (`uv run python scripts/build_card_embeddings.py`) and retry."
-            ),
-        )
+        return SimilarCardsResult(status="index_unavailable", message=INDEX_NOT_BUILT_MESSAGE)
 
     seed = _resolve_seed(conn, card_name, card_id)
     if seed.status == "not_found":

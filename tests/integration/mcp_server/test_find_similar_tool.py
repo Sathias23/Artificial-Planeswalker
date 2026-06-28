@@ -375,7 +375,7 @@ def test_index_unavailable_when_card_vec_missing(tmp_path) -> None:
     result = find_similar_cards(conn, card_name="Seed Card")
     assert result.status == "index_unavailable"
     assert result.cards == []
-    assert "build_card_embeddings" in result.message
+    assert "build_search_index" in result.message
     factory.close()
 
 
@@ -383,6 +383,9 @@ def test_index_unavailable_when_card_vec_empty(tmp_path) -> None:
     """An existing-but-empty ``card_vec`` is index_unavailable, distinct from a resolved seed."""
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
+    _seed_card(
+        conn, "seed", name="Anything"
+    )  # cards present, so the DB-not-initialized guard passes
     create_card_vec_table(conn)  # table exists, zero vectors
 
     result = find_similar_cards(conn, card_name="Anything")

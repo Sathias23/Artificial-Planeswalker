@@ -239,7 +239,7 @@ def test_index_unavailable_when_card_vec_missing(tmp_path) -> None:
     result = semantic_search_cards(conn, fake, _query_text("Red Card", oracle_text="Burn."))
     assert result.status == "index_unavailable"
     assert result.cards == []
-    assert "build_card_embeddings" in result.message
+    assert "build_search_index" in result.message
     factory.close()
 
 
@@ -248,6 +248,9 @@ def test_index_unavailable_when_card_vec_empty(tmp_path) -> None:
     factory = _make_factory(tmp_path)
     conn = factory.get_connection()
     fake = FakeEmbedder()
+    _seed_card(
+        conn, "id-r", name="Red Card"
+    )  # cards present, so the DB-not-initialized guard passes
     create_card_vec_table(conn)  # table exists, zero vectors
 
     result = semantic_search_cards(conn, fake, "anything")

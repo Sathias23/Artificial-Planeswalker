@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.data.database import is_database_initialized
 from src.data.repositories.deck import DeckRepository
 from src.data.schemas.card import Card
 from src.logic.deck_validator import DeckValidationReport
@@ -29,6 +30,7 @@ from src.logic.deck_validator import validate_deck as _logic_validate_deck
 from src.logic.mana_curve import analyze_mana_curve as _logic_analyze_mana_curve
 from src.logic.synergy import SynergyPattern
 from src.logic.synergy import detect_synergies as _logic_detect_synergies
+from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +62,7 @@ class ManaCurveResult(BaseModel):
         message: Human-facing summary of the analysis.
     """
 
-    status: Literal["ok", "empty", "deck_not_found", "error"]
+    status: Literal["ok", "empty", "deck_not_found", "error", "database_not_initialized"]
     deck_id: str | None = None
     deck_name: str | None = None
     distribution: dict[int, int] = {}
@@ -93,7 +95,7 @@ class SynergyResult(BaseModel):
         message: Human-facing summary of the analysis.
     """
 
-    status: Literal["ok", "empty", "deck_not_found", "error"]
+    status: Literal["ok", "empty", "deck_not_found", "error", "database_not_initialized"]
     deck_id: str | None = None
     deck_name: str | None = None
     synergies: list[SynergyPattern] = []
@@ -117,7 +119,7 @@ class ValidateDeckResult(BaseModel):
         message: Human-facing summary of the verdict.
     """
 
-    status: Literal["ok", "deck_not_found", "invalid", "error"]
+    status: Literal["ok", "deck_not_found", "invalid", "error", "database_not_initialized"]
     deck_id: str | None = None
     report: DeckValidationReport | None = None
     message: str
@@ -138,9 +140,17 @@ async def analyze_mana_curve(session: AsyncSession, *, deck_id: str) -> ManaCurv
 
     Returns:
         A ``ManaCurveResult`` whose ``status`` is ``ok`` (analysis populated),
-        ``empty`` (no mainboard cards), ``deck_not_found``, or ``error``.
+        ``empty`` (no mainboard cards), ``deck_not_found``, ``error``, or
+        ``database_not_initialized`` (the card database hasn't been set up — run
+        ``initialize_database``).
     """
     deck_id = deck_id.strip()
+    if not await is_database_initialized(session):
+        return ManaCurveResult(
+            status="database_not_initialized",
+            deck_id=deck_id,
+            message=DATABASE_NOT_INITIALIZED_MESSAGE,
+        )
     repo = DeckRepository(session)
     try:
         deck = await repo.get_deck_with_cards(deck_id)
@@ -206,9 +216,17 @@ async def detect_synergies(session: AsyncSession, *, deck_id: str) -> SynergyRes
 
     Returns:
         A ``SynergyResult`` whose ``status`` is ``ok`` (synergies populated),
-        ``empty`` (no mainboard cards), ``deck_not_found``, or ``error``.
+        ``empty`` (no mainboard cards), ``deck_not_found``, ``error``, or
+        ``database_not_initialized`` (the card database hasn't been set up — run
+        ``initialize_database``).
     """
     deck_id = deck_id.strip()
+    if not await is_database_initialized(session):
+        return SynergyResult(
+            status="database_not_initialized",
+            deck_id=deck_id,
+            message=DATABASE_NOT_INITIALIZED_MESSAGE,
+        )
     repo = DeckRepository(session)
     try:
         deck = await repo.get_deck_with_cards(deck_id)
@@ -276,7 +294,9 @@ async def validate_deck(
 
     Returns:
         A ``ValidateDeckResult`` whose ``status`` is ``ok`` (``report`` populated),
-        ``deck_not_found``, ``invalid`` (a bad ``games`` value), or ``error``.
+        ``deck_not_found``, ``invalid`` (a bad ``games`` value), ``error``, or
+        ``database_not_initialized`` (the card database hasn't been set up — run
+        ``initialize_database``).
     """
     deck_id = deck_id.strip()
     format = format.strip() or "standard"
@@ -289,6 +309,13 @@ async def validate_deck(
                     deck_id=deck_id,
                     message=f"Invalid game '{game}'. Valid games are: paper, arena, mtgo.",
                 )
+
+    if not await is_database_initialized(session):
+        return ValidateDeckResult(
+            status="database_not_initialized",
+            deck_id=deck_id,
+            message=DATABASE_NOT_INITIALIZED_MESSAGE,
+        )
 
     repo = DeckRepository(session)
     try:

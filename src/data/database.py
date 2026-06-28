@@ -3,6 +3,7 @@
 import logging
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -109,6 +110,38 @@ async def init_database(engine: AsyncEngine) -> None:
     except Exception as e:
         logger.error(f"Database initialization failed: {e}")
         raise
+
+
+async def is_database_initialized(session: AsyncSession) -> bool:
+    """Return whether the ``cards`` table exists **and** holds at least one row.
+
+    A fresh MCPB / first-run install ships no data (the card set is excluded by design — Scryfall
+    license): the ``cards.db`` file, the schema, or the ``cards`` table itself may be absent, or
+    present-but-empty. All three states mean "the one-time ``initialize_database`` step has not
+    run yet", so this returns ``False`` **without raising** — letting every relational tool surface
+    a graceful ``database_not_initialized`` status instead of leaking a raw ``OperationalError``
+    (*no such table: cards*).
+
+    The existence probe reads ``sqlite_master`` (always present) so the missing-table case returns
+    ``False`` rather than raising; ``cards`` is a schema constant, never interpolated input. This is
+    the async counterpart of :func:`src.search.query.is_database_initialized` (used by the sync
+    sqlite-vec tools); the two never share a call site.
+
+    Args:
+        session: An ``AsyncSession`` from the server's session factory.
+
+    Returns:
+        ``True`` if ``cards`` exists and contains at least one row, else ``False``.
+    """
+    table = (
+        await session.execute(
+            text("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'cards'")
+        )
+    ).first()
+    if table is None:
+        return False
+    populated = (await session.execute(text("SELECT EXISTS(SELECT 1 FROM cards)"))).scalar()
+    return bool(populated)
 
 
 async def health_check(session: AsyncSession) -> bool:

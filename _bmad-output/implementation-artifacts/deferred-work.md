@@ -1,5 +1,65 @@
 # Deferred Work
 
+## Deferred from: code review of first-run-data-initialization (2026-06-28)
+
+> Surfaced by the 3-reviewer adversarial pass on `spec-first-run-data-initialization.md`. The
+> contract gap (uncaught `init_database` failure) and two real robustness items (partial-import
+> *exception* path now clears the truncated `cards`; `build_search_index(rebuild=True)` now resolves
+> the embedder before the destructive drop) were patched in-branch. The items below are real but
+> either pre-existing config or narrow/concurrency edges left for a focused later pass.
+
+- **No `busy_timeout` → `SQLITE_BUSY` on concurrent writers** (Edge Case Hunter, HIGH). Neither the
+  async engine (`src/data/database.py::create_engine`) nor the sync `ConnectionFactory`
+  (`src/search/connection.py`) sets `busy_timeout`/`connect_args={"timeout": …}`, so SQLite's
+  default-0 timeout makes a second writer fail immediately with `database is locked` rather than
+  waiting. Pre-existing config, but the new `initialize_database` (bulk write) + `build_search_index`
+  (index write) tools make concurrent-writer collisions more likely. Fix project-wide: set
+  `PRAGMA busy_timeout=5000` on the sync factory and `connect_args={"timeout": 5}` on the async
+  engine (matches the documented WAL topology).
+- **Process-kill mid-import leaves a partial DB mistaken for complete** (Edge Case Hunter, HIGH —
+  *exception* half patched). The importer commits per 1000-card batch; the in-branch fix clears the
+  partial `cards` when the import raises, so a *failed* import retries cleanly. But a hard process
+  kill between batches can't run that cleanup, leaving e.g. 1000 of ~30k cards — which the ≥1-row
+  idempotency check then reports as `already_initialized`, permanently. Full fix: write an
+  `import_complete` sentinel (meta row) only after the final commit and gate `already_initialized`
+  on it, or make the import a single transaction.
+- **Corrupt/malformed DB file raises out of the "never raises" guards** (Edge Case Hunter, MED). A
+  truncated `-wal` / malformed header makes even the `sqlite_master` probe in either
+  `is_database_initialized` raise `DatabaseError`/`OperationalError`; because the guard runs *above*
+  each tool's `try/except`, that propagates as a raw error instead of a graceful status. Fix: wrap
+  the probes in `try/except (OperationalError, DatabaseError): return False`, or add a distinct
+  `database_corrupt` status.
+- **Concurrent `initialize_database` double-imports** (Edge Case Hunter, MED). The idempotency check
+  and the import aren't atomic/locked, so two concurrent invocations both download + import (the
+  upsert importer keeps data correct, but wastes a ~3-min download and contends on the write lock —
+  near-certain to fail one of them until `busy_timeout` above is set). Fix: an app-level
+  `asyncio.Lock` around the tool, or rely on `busy_timeout` so the loser re-checks and returns
+  `already_initialized`.
+
+## ✅ Resolved by first-run-data-initialization (2026-06-28)
+
+> Closed by `spec-first-run-data-initialization.md` — the in-client `initialize_database` /
+> `build_search_index` tools plus a graceful `database_not_initialized` status across every
+> card/deck tool. The items below are closed; they remain listed in their original sections for
+> traceability.
+
+- **MCPB bundle has no first-run data bootstrap or guidance** (mcpb-bundle review, High-for-UX). A
+  fresh `.mcpb` now bootstraps in-client: the assistant runs `initialize_database` (Scryfall card
+  import) and `build_search_index` (embedding index), and every card/deck tool returns
+  `database_not_initialized` with a run-`initialize_database` hint instead of the opaque "A database
+  error occurred". No prebuilt DB is shipped (license held — build-on-first-run only).
+- **`README.md` overclaimed Claude-Desktop first-run + that `setup.py` builds the index**
+  (mcpb-bundle review `README.md:68`; licensing-repo-health review `README.md:38`/`:44`). The Quick
+  start and Claude Desktop sections now describe the real flow: `setup.py` (or `initialize_database`)
+  downloads the cards; the semantic index is a separate `build_search_index` step.
+- The semantic tools' `index_unavailable` message now points at the `build_search_index` **tool**
+  rather than the `scripts/build_card_embeddings.py` terminal command (which a GUI client can't run).
+
+> Still open from those reviews (out of this spec's scope): `setup.py:87` prints the stale
+> `./data/cards.db` path; `project-context.md`'s "all MCP tools sync `def`" drift; the `report_bug`
+> tool is **intentionally not** guarded (it is card-data-independent and already graceful — see the
+> spec's Change Log).
+
 ## Public-release goals deferred by scope-split (2026-06-27)
 
 > Source: `RELEASE-STRATEGY.md`. Brad ran `bmad-quick-dev` to "execute RELEASE-STRATEGY.md" and

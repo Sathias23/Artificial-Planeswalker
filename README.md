@@ -1,5 +1,7 @@
 # Artificial Planeswalker
 
+![Artificial Planeswalker](docs/hero-image.png)
+
 An intelligent **Magic: The Gathering** deck-building assistant, exposed as a local
 [MCP](https://modelcontextprotocol.io) server over a Scryfall card database.
 
@@ -18,6 +20,7 @@ your client supplies the model, the server supplies fast, accurate MTG data and 
 | **Semantic search** (local embeddings, no network) | `semantic_search_cards`, `find_similar_cards` |
 | **Deck management** | `create_deck`, `list_decks`, `load_deck`, `delete_deck`, `add_card_to_deck`, `remove_card_from_deck` |
 | **Deck analysis** | `analyze_mana_curve`, `detect_synergies`, `validate_deck` |
+| **First-run setup** | `initialize_database`, `build_search_index` |
 | **Feedback** | `report_bug` |
 
 Four companion **skills** layer expert reasoning on top of the tools —
@@ -35,13 +38,17 @@ Four companion **skills** layer expert reasoning on top of the tools —
 ```bash
 git clone https://github.com/Sathias23/Artificial-Planeswalker.git
 cd Artificial-Planeswalker
-python3 setup.py        # installs deps, builds the card DB + index into a central location
+python3 setup.py        # installs deps + downloads the card database into a central location
 ```
 
 `setup.py` is idempotent: it checks Python/uv, syncs dependencies, then downloads public
-**Scryfall** bulk data (~60k cards, a few minutes — no API key) and builds the local search index.
-Run it once per machine; the data lives in a shared OS location (below), so every project and
-every MCP client reuses it.
+**Scryfall** bulk data (~60k cards, a few minutes — no API key) into a shared OS location (below),
+so every project and every MCP client reuses it. Run it once per machine.
+
+To enable **semantic search** (`semantic_search_cards` / `find_similar_cards`), build the embedding
+index once too — either ask your MCP client to run the **`build_search_index`** tool, or run
+`uv run python scripts/build_card_embeddings.py`. (Until then those two tools report
+`index_unavailable` with a build hint; the other tools work as soon as the card data is downloaded.)
 
 Then point any MCP client at it — in this directory, [`.mcp.json`](.mcp.json) already does:
 
@@ -65,7 +72,10 @@ Nothing to do — [`.mcp.json`](.mcp.json) is detected automatically when you op
 
 Download `artificial-planeswalker.mcpb` from the
 [latest release](https://github.com/Sathias23/Artificial-Planeswalker/releases) and double-click
-to install. Requires `uv` on your PATH. (First launch prompts you to run the one-time data build.)
+to install. Requires `uv` on your PATH. The bundle ships no card data, so on first use just ask the
+assistant to run the **`initialize_database`** tool (a one-time card-data download, ~2–3 min) — and
+then **`build_search_index`** if you want semantic search. Until then the card/deck tools reply with
+a `database_not_initialized` hint instead of an error.
 </details>
 
 <details>
