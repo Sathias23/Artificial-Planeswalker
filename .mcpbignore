@@ -1,0 +1,68 @@
+# Files excluded from the packed .mcpb bundle (gitignore syntax), layered on top of
+# mcpb's built-in defaults (.git, .gitignore, .env*, *.log, *.mcpb, *.map, ...).
+# Goal: ship only what `uv run -m src.mcp_server` needs to build + launch, plus the
+# one-time data bootstrap. Keep the ~250 MB card data set and the venv OUT.
+
+# --- Heavy / never-ship ---
+# Leading slash = anchored to the repo root, so `/data/` does NOT also match `src/data/`
+# (the data layer the server imports). Unanchored `data/` would exclude both.
+/data/
+/.venv/
+/venv/
+/env/
+/ENV/
+
+# --- Dev tooling, CI, planning docs (not needed at runtime; all repo-root-only) ---
+/.claude/
+/.github/
+/_bmad/
+/_bmad-output/
+/docs/
+/tests/
+/temp/
+/.files/
+/.pre-commit-config.yaml
+/.mcp.json
+
+# --- Community / repo-health docs (LICENSE + NOTICE + README still ship) ---
+CONTRIBUTING.md
+SECURITY.md
+CHANGELOG.md
+
+# --- Python caches / build artifacts ---
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# --- Editor / OS cruft ---
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- Stray databases (defensive; data/ already excluded) ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Dev-only scripts & dead code (the end-user bundle keeps only the data bootstrap:
+#     scripts/import_scryfall_data.py + scripts/build_card_embeddings.py) ---
+scripts/check_*.py
+scripts/migrate_*.py
+scripts/manage_bug_reports.py
+scripts/validate_data_layer.py
+scripts/verify_image_data.py
+scripts/view_deck.py
+# src/viewer/ is imported only by scripts/view_deck.py (a dev CLI), never by the MCP server.
+src/viewer/
+
+# Re-include the env template: mcpb's default `.env*` rule would otherwise drop it,
+# but setup.py reads .env.example during the one-time bootstrap.
+!.env.example

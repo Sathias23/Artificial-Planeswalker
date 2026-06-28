@@ -257,3 +257,38 @@
 ## Deferred from: code review of story-3.4 (2026-06-27)
 
 - **`validate_deck` skips `dc.card is None` rows from copy/legality checks while still counting them in `mainboard_count`** — `src/logic/deck_validator.py` does `if dc.card is None: continue` before tallying copies/legality, but `mainboard_count` sums quantity unconditionally. A saved deck with an orphaned card join (a `card_id` no longer in the DB) passes copy/legality vacuously while still counting toward the 60-card size — a "legal" result can hide un-validated phantom cards. Pre-existing tool/data edge; obscure. Could add a one-line caveat to the format-legality skill's "what the tool can't see" section. (Source: Edge Case Hunter; Severity: Low.)
+
+## Deferred from: code review of mcpb-bundle (2026-06-28)
+
+> Surfaced by the 3-reviewer adversarial pass on the `chore/mcpb-bundle` work (§4 MCPB bundle).
+> The one HIGH that mattered (`.mcpbignore`'s unanchored `data/` also excluding `src/data/`, which
+> would have shipped a server unable to import its own data layer) was caught by re-verification and
+> patched in-branch by anchoring the rule to `/data/`. Most blind-hunter findings were verified false
+> (`server.type: "uv"` IS valid in the MCPB v0.4 schema; blank `data_dir` is handled by
+> `paths.py`'s `(getenv() or "").strip()` fallback; `uv run` honours `requires-python`). The two
+> real items below are pre-existing or out-of-this-run's-scope-by-design.
+
+- **MCPB bundle has no first-run data bootstrap or guidance.** A freshly-installed `.mcpb` launches
+  the server, but the shared OS data dir has no `cards.db` yet — the ~250 MB data set is excluded from
+  the bundle **by design** (§3/§4; spec "Never: no DB shipped"). The server never calls
+  `init_database`, so the first relational tool call fails (`no such table: cards`); the two semantic
+  tools degrade gracefully to `status="index_unavailable"`. Net end-user experience: "every deck/card
+  tool errors with no guidance." Out of scope here (the bundle correctly ships data-excluded), but a
+  real UX gap. Follow-up: either add a first-run auto-init / friendly "run the one-time data build"
+  response, or document the manual bootstrap (`uv run python setup.py`, then
+  `scripts/build_card_embeddings.py` — both write to the shared OS data dir the bundle reads) in the
+  install docs. (Source: Edge Case Hunter; Severity: High-for-UX.)
+- **`README.md:68` overclaims the Claude-Desktop first-run behavior.** The "Claude Desktop
+  (one-click)" section says *"(First launch prompts you to run the one-time data build.)"* — but the
+  shipped `manifest.json` has no prompt/hook to do that (coupled to the bootstrap-gap item above).
+  Out of this run's frozen scope (no README edits). Fix in the focused README-accuracy pass already
+  tracked (the `setup.py`-builds-the-index claim) — either implement the prompt or reword to a manual
+  build step. (Source: Edge Case Hunter; Severity: Med.)
+- **MCPB GUI data-dir override removed (smoke-test fix 2026-06-28).** The optional
+  `user_config.data_dir` field was dropped from `manifest.json` because Claude Desktop passes the
+  **unsubstituted `${user_config.data_dir}` placeholder** when the optional field is left blank,
+  repointing the server at a bogus relative dir → empty DB → `no such table: decks`. The bundle now
+  always uses the shared central OS dir (zero-config). If the GUI override is ever re-added, also
+  harden `src/paths.py::data_dir` to ignore an override that still contains an unsubstituted `${...}`
+  placeholder (defense-in-depth), with a unit test — otherwise the bug returns. (Source: Brad live
+  smoke-test; Severity: was High, now fixed.)
