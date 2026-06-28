@@ -80,3 +80,7 @@ chainlit.md
 scripts/check_*.py
 .files/
 
+# MCPB bundle build artifact (produced by `npx @anthropic-ai/mcpb pack`; attached to
+# GitHub Releases, never committed). The manifest.json + .mcpbignore source files ARE tracked.
+*.mcpb
+

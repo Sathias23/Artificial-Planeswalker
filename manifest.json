@@ -1,0 +1,63 @@
+{
+  "manifest_version": "0.4",
+  "name": "artificial-planeswalker",
+  "display_name": "Artificial Planeswalker",
+  "version": "0.1.0",
+  "description": "MTG deckbuilding assistant: card lookup, deck management & validation, mana-curve & synergy analysis, and local semantic card search — over a local Scryfall database.",
+  "long_description": "A stateless Model Context Protocol (MCP) server that gives an LLM expert Magic: The Gathering deckbuilding tools — keyword and semantic card search, deck management, and format-legality, mana-curve, and synergy analysis — over a local Scryfall card database. Runs entirely on your machine via uv; makes no LLM calls of its own.",
+  "author": {
+    "name": "Brad Sprigg",
+    "email": "sathias@slopstudio.net",
+    "url": "https://github.com/Sathias23"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sathias23/Artificial-Planeswalker"
+  },
+  "homepage": "https://github.com/Sathias23/Artificial-Planeswalker",
+  "license": "MIT",
+  "keywords": ["mtg", "magic-the-gathering", "deckbuilding", "scryfall", "mcp"],
+  "server": {
+    "type": "uv",
+    "entry_point": "src/mcp_server/__main__.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": ["run", "--directory", "${__dirname}", "python", "-m", "src.mcp_server"],
+      "env": {
+        "PLANESWALKER_DATA_DIR": "${user_config.data_dir}",
+        "MCP_TRANSPORT": "stdio"
+      }
+    }
+  },
+  "user_config": {
+    "data_dir": {
+      "type": "directory",
+      "title": "Card data directory (optional)",
+      "description": "Where the card database + embedding index live. Leave blank to use the shared OS data location.",
+      "required": false
+    }
+  },
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "python": ">=3.12"
+    }
+  },
+  "tools": [
+    { "name": "lookup_card_by_name", "description": "Look up a Magic card by exact or partial name." },
+    { "name": "search_cards", "description": "Search cards by color, type, rarity, mana value, text, and other filters." },
+    { "name": "semantic_search_cards", "description": "Find cards by natural-language meaning using local semantic search." },
+    { "name": "find_similar_cards", "description": "Find cards similar to a given card." },
+    { "name": "create_deck", "description": "Create a new saved deck." },
+    { "name": "list_decks", "description": "List saved decks, optionally filtered by format." },
+    { "name": "load_deck", "description": "Load a saved deck with its full card list." },
+    { "name": "delete_deck", "description": "Delete a saved deck." },
+    { "name": "add_card_to_deck", "description": "Add a card to a deck's mainboard or sideboard." },
+    { "name": "remove_card_from_deck", "description": "Remove a card from a deck." },
+    { "name": "analyze_mana_curve", "description": "Analyze a deck's mana curve and land count." },
+    { "name": "detect_synergies", "description": "Detect card synergies within a deck." },
+    { "name": "validate_deck", "description": "Validate a deck against a format's construction rules." },
+    { "name": "report_bug", "description": "File a bug report about the assistant." }
+  ]
+}
