@@ -1,30 +1,35 @@
 [project]
 name = "artificial-planeswalker"
 version = "0.1.0"
-description = "MTG Arena deck-building AI assistant built with PydanticAI, integrating with Scryfall API for card lookups, deck validation, and intelligent recommendations"
+description = "A stateless Model Context Protocol (MCP) server that gives an LLM expert Magic: The Gathering deckbuilding tools — keyword and semantic card search, deck management, and format-legality, mana-curve, and synergy analysis — over a local Scryfall card database"
 requires-python = ">=3.12"
 readme = "README.md"
 authors = [
-    { name = "Brad", email = "brad@example.com" }
+    { name = "Brad Sprigg", email = "sathias@slopstudio.net" }
 ]
 dependencies = [
     "aiosqlite>=0.21.0",
-    "anthropic>=0.69.0",
-    "asyncpg>=0.30.0",
     "fastembed>=0.7.1",
     "httpx>=0.28.1",
     "ijson>=3.3.0",
-    "logfire>=3.0.0",
     "mcp>=1.27.0",
     "numpy>=2.0.0",
-    "openai>=1.0.0",
     "platformdirs>=4.0.0",
     "pydantic-settings>=2.0.0",
-    "python-dotenv>=1.1.1",
     "sqlalchemy[asyncio]>=2.0.44",
     "sqlite-vec>=0.1.9",
-    "tenacity>=8.0.0",
 ]
+
+[project.optional-dependencies]
+# Optional observability integration. Install with: uv sync --extra observability
+# (or pip install "artificial-planeswalker[observability]"). The logfire import in
+# src/data/database.py is guarded, so a default install runs without it as a no-op.
+observability = [
+    "logfire>=3.0.0",
+]
+
+[project.scripts]
+artificial-planeswalker = "src.mcp_server.__main__:main"
 
 [dependency-groups]
 dev = [
@@ -34,12 +39,6 @@ dev = [
     "pytest-asyncio>=1.2.0",
     "pytest-cov>=7.0.0",
     "ruff>=0.14.0",
-]
-# Archived PydanticAI + Chainlit stack (see legacy/). Reference-only; NOT installed by a
-# default `uv sync`. Install on demand with: uv sync --group legacy
-legacy = [
-    "pydantic-ai>=1.0.17",
-    "chainlit>=2.8.3",
 ]
 
 [tool.ruff]
