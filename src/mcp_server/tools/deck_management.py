@@ -25,10 +25,12 @@ from pydantic import BaseModel
 from sqlalchemy.exc import DatabaseError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.data.database import is_database_initialized
 from src.data.repositories.card import CardRepository
 from src.data.repositories.deck import DeckRepository
 from src.data.schemas.card import Card, CardSummary
 from src.data.schemas.deck import Deck, DeckCardSummary, DeckDetail, DeckSummary
+from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +48,7 @@ class DeckListResult(BaseModel):
         message: Human-facing summary.
     """
 
-    status: Literal["ok", "empty", "error"]
+    status: Literal["ok", "empty", "error", "database_not_initialized"]
     decks: list[DeckSummary] = []
     count: int = 0
     message: str
@@ -63,7 +65,7 @@ class DeckResult(BaseModel):
         message: Human-facing summary.
     """
 
-    status: Literal["ok", "not_found", "invalid", "error"]
+    status: Literal["ok", "not_found", "invalid", "error", "database_not_initialized"]
     deck: DeckDetail | None = None
     message: str
 
@@ -77,7 +79,7 @@ class DeckDeleteResult(BaseModel):
         message: Human-facing summary.
     """
 
-    status: Literal["ok", "not_found", "error"]
+    status: Literal["ok", "not_found", "error", "database_not_initialized"]
     deck_id: str
     message: str
 
@@ -108,6 +110,7 @@ class DeckCardResult(BaseModel):
         "ambiguous",
         "invalid",
         "error",
+        "database_not_initialized",
     ]
     deck_id: str | None = None
     card_id: str | None = None
@@ -240,8 +243,14 @@ async def list_decks(session: AsyncSession, *, format: str | None = None) -> Dec
             applies no filter.
 
     Returns:
-        A ``DeckListResult`` with ``status`` of ``ok``, ``empty``, or ``error``.
+        A ``DeckListResult`` with ``status`` of ``ok``, ``empty``, ``error``, or
+        ``database_not_initialized`` (run ``initialize_database`` first).
     """
+    if not await is_database_initialized(session):
+        return DeckListResult(
+            status="database_not_initialized", message=DATABASE_NOT_INITIALIZED_MESSAGE
+        )
+
     format = _blank_to_none(format)
     repo = DeckRepository(session)
     try:
@@ -287,10 +296,16 @@ async def create_deck(
         tags: Optional list of tags / win conditions.
 
     Returns:
-        A ``DeckResult`` with ``status`` of ``ok``, ``invalid`` (blank name), or ``error``.
+        A ``DeckResult`` with ``status`` of ``ok``, ``invalid`` (blank name), ``error``, or
+        ``database_not_initialized`` (run ``initialize_database`` first).
     """
     if not name or not name.strip():
         return DeckResult(status="invalid", message="Deck name must not be empty.")
+
+    if not await is_database_initialized(session):
+        return DeckResult(
+            status="database_not_initialized", message=DATABASE_NOT_INITIALIZED_MESSAGE
+        )
 
     format = _blank_to_none(format) or "standard"
     repo = DeckRepository(session)
@@ -319,8 +334,14 @@ async def load_deck(session: AsyncSession, *, deck_id: str) -> DeckResult:
         deck_id: The deck id (from ``create_deck`` / ``list_decks``).
 
     Returns:
-        A ``DeckResult`` with ``status`` of ``ok``, ``not_found``, or ``error``.
+        A ``DeckResult`` with ``status`` of ``ok``, ``not_found``, ``error``, or
+        ``database_not_initialized`` (run ``initialize_database`` first).
     """
+    if not await is_database_initialized(session):
+        return DeckResult(
+            status="database_not_initialized", message=DATABASE_NOT_INITIALIZED_MESSAGE
+        )
+
     repo = DeckRepository(session)
     try:
         deck = await repo.get_deck_with_cards(deck_id)
@@ -348,8 +369,16 @@ async def delete_deck(session: AsyncSession, *, deck_id: str) -> DeckDeleteResul
         deck_id: The deck id to delete.
 
     Returns:
-        A ``DeckDeleteResult`` with ``status`` of ``ok``, ``not_found``, or ``error``.
+        A ``DeckDeleteResult`` with ``status`` of ``ok``, ``not_found``, ``error``, or
+        ``database_not_initialized`` (run ``initialize_database`` first).
     """
+    if not await is_database_initialized(session):
+        return DeckDeleteResult(
+            status="database_not_initialized",
+            deck_id=deck_id,
+            message=DATABASE_NOT_INITIALIZED_MESSAGE,
+        )
+
     repo = DeckRepository(session)
     try:
         deleted = await repo.delete_deck(deck_id)
@@ -411,6 +440,13 @@ async def add_card_to_deck(
             status="invalid",
             deck_id=deck_id,
             message=f"quantity must be >= 1 (got {quantity}).",
+        )
+
+    if not await is_database_initialized(session):
+        return DeckCardResult(
+            status="database_not_initialized",
+            deck_id=deck_id,
+            message=DATABASE_NOT_INITIALIZED_MESSAGE,
         )
 
     deck_repo = DeckRepository(session)
@@ -507,6 +543,13 @@ async def remove_card_from_deck(
     selector_error = _selector_error(card_id, name)
     if selector_error is not None:
         return DeckCardResult(status="invalid", deck_id=deck_id, message=selector_error)
+
+    if not await is_database_initialized(session):
+        return DeckCardResult(
+            status="database_not_initialized",
+            deck_id=deck_id,
+            message=DATABASE_NOT_INITIALIZED_MESSAGE,
+        )
 
     deck_repo = DeckRepository(session)
     card_repo = CardRepository(session)

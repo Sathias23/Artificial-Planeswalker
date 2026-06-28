@@ -216,6 +216,36 @@ def index_is_populated(conn: sqlite3.Connection) -> bool:
     return bool(populated[0])
 
 
+def is_database_initialized(conn: sqlite3.Connection) -> bool:
+    """Return whether the relational ``cards`` table exists **and** holds at least one row.
+
+    A fresh first-run install ships no card data (excluded by design — Scryfall license), so the
+    ``cards`` table may be missing or present-but-empty until the one-time ``initialize_database``
+    tool runs. Both states return ``False`` **without raising**, so the sync sqlite-vec tools
+    (``semantic_search_cards`` / ``find_similar_cards`` / ``build_search_index``) can surface a
+    graceful ``database_not_initialized`` status instead of leaking a raw ``OperationalError``.
+
+    This is the sync counterpart of :func:`src.data.database.is_database_initialized` (used by the
+    async relational tools); the two never share a call site. Mirrors :func:`index_is_populated`:
+    the ``sqlite_master`` probe makes the missing-table case return ``False``; ``cards`` is a schema
+    constant, never interpolated input.
+
+    Args:
+        conn: A ``sqlite3.Connection`` (e.g. from
+            :class:`~src.search.connection.ConnectionFactory`).
+
+    Returns:
+        ``True`` if ``cards`` exists and contains at least one row, else ``False``.
+    """
+    table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'cards'"
+    ).fetchone()
+    if table is None:
+        return False
+    populated = conn.execute("SELECT EXISTS(SELECT 1 FROM cards)").fetchone()
+    return bool(populated[0])
+
+
 def hybrid_search(
     conn: sqlite3.Connection,
     query_vector: NDArray[np.float32] | Sequence[float],

@@ -19,8 +19,17 @@ from typing import Literal
 from pydantic import BaseModel
 
 from src.data.schemas.card import CardSummary
+from src.mcp_server.tools.messages import (
+    DATABASE_NOT_INITIALIZED_MESSAGE,
+    INDEX_NOT_BUILT_MESSAGE,
+)
 from src.search.embedder import Embedder
-from src.search.query import ColorMode, hybrid_search, index_is_populated
+from src.search.query import (
+    ColorMode,
+    hybrid_search,
+    index_is_populated,
+    is_database_initialized,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +75,7 @@ class SemanticSearchResult(BaseModel):
             empty, or the offending value when invalid.
     """
 
-    status: Literal["ok", "empty", "invalid", "index_unavailable"]
+    status: Literal["ok", "empty", "invalid", "index_unavailable", "database_not_initialized"]
     cards: list[SemanticCardHit] = []
     total_count: int = 0
     query: str
@@ -189,18 +198,23 @@ def semantic_search_cards(
     if error is not None:
         return SemanticSearchResult(status="invalid", query=query, message=error)
 
-    # Guard the unbuilt/empty index BEFORE embedding: a fresh checkout has no ``card_vec`` (it is
-    # built by ``scripts/build_card_embeddings.py``, never committed). Surface a usable status so
-    # the skills suite gets a build-the-index hint instead of a raw OperationalError (G3).
+    # Guard an un-imported database first: with no ``cards`` the user hasn't run the one-time
+    # ``initialize_database`` step, so point there rather than at the index.
+    if not is_database_initialized(conn):
+        return SemanticSearchResult(
+            status="database_not_initialized",
+            query=query,
+            message=DATABASE_NOT_INITIALIZED_MESSAGE,
+        )
+
+    # Guard the unbuilt/empty index BEFORE embedding: cards exist but ``card_vec`` has not been
+    # built (it is built by ``build_search_index``, never committed). Surface a usable status so the
+    # skills suite gets a build-the-index hint instead of a raw OperationalError (G3).
     if not index_is_populated(conn):
         return SemanticSearchResult(
             status="index_unavailable",
             query=query,
-            message=(
-                "The semantic search index isn't available yet. On a fresh database, import the "
-                "card data first (`uv run python scripts/import_scryfall_data.py`), then build the "
-                "index (`uv run python scripts/build_card_embeddings.py`) and retry."
-            ),
+            message=INDEX_NOT_BUILT_MESSAGE,
         )
 
     query_vector = embedder.encode(query)

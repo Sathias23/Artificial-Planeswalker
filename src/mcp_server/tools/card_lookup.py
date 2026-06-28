@@ -12,8 +12,10 @@ from typing import Literal
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.data.database import is_database_initialized
 from src.data.repositories.card import CardRepository
 from src.data.schemas.card import Card
+from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
 
 # Maximum number of candidate cards returned for an ambiguous query.
 _MAX_MATCHES = 10
@@ -32,7 +34,7 @@ class CardLookupResult(BaseModel):
         message: Human-facing summary suitable for surfacing to the user.
     """
 
-    status: Literal["found", "not_found", "ambiguous"]
+    status: Literal["found", "not_found", "ambiguous", "database_not_initialized"]
     card: Card | None = None
     matches: list[Card] = []
     message: str
@@ -66,6 +68,11 @@ async def lookup_card(
         return CardLookupResult(
             status="not_found",
             message="Card name must not be empty. Please provide a name to look up.",
+        )
+
+    if not await is_database_initialized(session):
+        return CardLookupResult(
+            status="database_not_initialized", message=DATABASE_NOT_INITIALIZED_MESSAGE
         )
 
     repo = CardRepository(session)

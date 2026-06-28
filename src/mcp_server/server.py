@@ -15,6 +15,12 @@ a card's **stored** vector and **never embeds**, so it uses only the ``connectio
 no embedder. Both close over the injected ``connection_factory`` (per-thread sqlite-vec connection,
 NFR6).
 
+Two first-run tools sit alongside these: ``initialize_database`` (async — the one-time in-client
+Scryfall card import that build-on-first-run depends on, since a packaged install ships no data) and
+``build_search_index`` (sync — builds the ``card_vec`` index). Every card/deck tool guards an
+un-imported database with a graceful ``database_not_initialized`` status that points at
+``initialize_database`` rather than leaking a raw "no such table" error.
+
 Registration is transport-agnostic: the transport string is selected only at the
 entry point (``src/mcp_server/__main__.py``), never here (AC2 / D7).
 """
@@ -26,6 +32,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.data.database import create_engine, create_session_factory
 from src.mcp_server.tools.bug_report import BugReportResult, file_bug_report
+from src.mcp_server.tools.build_search_index import BuildSearchIndexResult
+from src.mcp_server.tools.build_search_index import build_search_index as _build_search_index_helper
 from src.mcp_server.tools.card_lookup import CardLookupResult, lookup_card
 from src.mcp_server.tools.card_search import CardSearchResult
 from src.mcp_server.tools.card_search import search_cards as _search_cards_helper
@@ -53,6 +61,10 @@ from src.mcp_server.tools.deck_management import (
 )
 from src.mcp_server.tools.find_similar import SimilarCardsResult
 from src.mcp_server.tools.find_similar import find_similar_cards as _find_similar_helper
+from src.mcp_server.tools.initialize_database import InitializeDatabaseResult
+from src.mcp_server.tools.initialize_database import (
+    initialize_database as _initialize_database_helper,
+)
 from src.mcp_server.tools.semantic_search import SemanticSearchResult
 from src.mcp_server.tools.semantic_search import semantic_search_cards as _semantic_search_helper
 from src.search import ConnectionFactory, Embedder, get_embedder
@@ -440,9 +452,10 @@ def build_server(
         Returns:
             A result whose ``status`` is ``ok`` (``cards`` ranked nearest-first, each with a
             ``distance``), ``empty`` (a valid query with no surviving matches — a graceful hint),
-            ``invalid`` (a query/filter value failed validation, with a message naming it), or
-            ``index_unavailable`` (the semantic index has not been built yet — run
-            ``scripts/build_card_embeddings.py``).
+            ``invalid`` (a query/filter value failed validation, with a message naming it),
+            ``index_unavailable`` (the semantic index has not been built yet — run the
+            ``build_search_index`` tool), or ``database_not_initialized`` (no card data yet — run
+            the ``initialize_database`` tool).
         """
         # Sync tool: FastMCP threadpools it. Per-thread sqlite-vec connection (NFR6); the embedder
         # is the injected test seam or the lazily-built process singleton (never loaded at build).
@@ -504,9 +517,10 @@ def build_server(
             ``distance``, plus the resolved ``seed``), ``empty`` (seed found but no alternatives
             survived the filters), ``not_found`` (no such card, or the card isn't in the semantic
             index yet), ``ambiguous`` (the name matched multiple cards — see ``matches``, re-call
-            with a ``card_id``), ``invalid`` (a parameter failed validation), or
-            ``index_unavailable`` (the semantic index has not been built yet — run
-            ``scripts/build_card_embeddings.py``).
+            with a ``card_id``), ``invalid`` (a parameter failed validation),
+            ``index_unavailable`` (the semantic index has not been built yet — run the
+            ``build_search_index`` tool), or ``database_not_initialized`` (no card data yet — run
+            the ``initialize_database`` tool).
         """
         # Sync tool: FastMCP threadpools it. Per-thread sqlite-vec connection (NFR6). This tool
         # never embeds — it reads the seed's stored vector — so it needs no embedder.
@@ -523,5 +537,46 @@ def build_server(
             games=games,
             limit=limit,
         )
+
+    @mcp.tool()
+    async def initialize_database() -> InitializeDatabaseResult:
+        """Download the Magic card data and set up the local database (one-time first-run step).
+
+        Run this once on a fresh install before using the card/deck tools: a packaged install ships
+        with **no card data**, so the first card or deck call returns ``database_not_initialized``
+        until this has run. It downloads the latest Scryfall ``oracle_cards`` set (~2-3 minutes)
+        into this machine's local data directory and creates the schema. Idempotent — if the cards
+        are already present it returns ``already_initialized`` and downloads nothing. This imports
+        the cards only; to enable semantic search, follow up with ``build_search_index``.
+
+        Returns:
+            A result whose ``status`` is ``ok`` (cards imported — see ``cards_imported`` /
+            ``cards_total``), ``already_initialized`` (cards were already present), or ``error``
+            (the import failed; ``message`` explains).
+        """
+        return await _initialize_database_helper()
+
+    @mcp.tool()
+    def build_search_index(rebuild: bool = False) -> BuildSearchIndexResult:
+        """Build the semantic search index (one-time step that enables semantic_search_cards).
+
+        Run this after ``initialize_database`` to enable ``semantic_search_cards`` and
+        ``find_similar_cards``: it downloads a small embedding model (~80 MB) on first run and
+        indexes every card (~5 minutes). Until it has run, those two tools return
+        ``index_unavailable``. Idempotent and incremental — re-running only re-embeds cards that
+        changed, so it is cheap to repeat. If the card data hasn't been imported yet it returns
+        ``database_not_initialized`` (run ``initialize_database`` first).
+
+        Args:
+            rebuild: Drop and fully rebuild the index from scratch (use after the embedding model
+                changes; normally leave ``False`` for a fast incremental update).
+
+        Returns:
+            A result whose ``status`` is ``ok`` (index built — see ``cards_indexed`` /
+            ``cards_skipped``), ``database_not_initialized`` (import the cards first), or ``error``.
+        """
+        # Sync tool: FastMCP threadpools it. Reuses the injected sqlite-vec connection factory and
+        # the lazily-built embedder singleton (``embedder`` is the build_server test seam).
+        return _build_search_index_helper(connection_factory, embedder=embedder, rebuild=rebuild)
 
     return mcp

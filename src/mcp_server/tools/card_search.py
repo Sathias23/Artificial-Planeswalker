@@ -15,8 +15,10 @@ from typing import Literal
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.data.database import is_database_initialized
 from src.data.repositories.card import CardRepository
 from src.data.schemas.card import CardSummary
+from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
 
 # Validation vocabularies (AC4). Colors are the WUBRG codes as stored on cards;
 # rarity/games are matched case-insensitively against these canonical values.
@@ -41,7 +43,7 @@ class CardSearchResult(BaseModel):
             adjust-your-filters hint when empty, or the bad value when invalid.
     """
 
-    status: Literal["ok", "empty", "invalid"]
+    status: Literal["ok", "empty", "invalid", "database_not_initialized"]
     cards: list[CardSummary] = []
     total_count: int = 0
     page: int = 1
@@ -145,7 +147,9 @@ async def search_cards(
         page_size: Items per page (default 20, capped at 50 by the repository).
 
     Returns:
-        A ``CardSearchResult`` with ``status`` of ``ok`` / ``empty`` / ``invalid``.
+        A ``CardSearchResult`` with ``status`` of ``ok`` / ``empty`` / ``invalid`` /
+        ``database_not_initialized`` (the card database hasn't been set up — run
+        ``initialize_database``).
     """
     # Normalize degenerate inputs: empty rarity list would produce or_() with no args in the repo
     # (SQLAlchemy renders it as a false clause, silently filtering every row). Empty/whitespace
@@ -166,6 +170,14 @@ async def search_cards(
     )
     if error is not None:
         return CardSearchResult(status="invalid", page=page, page_size=page_size, message=error)
+
+    if not await is_database_initialized(session):
+        return CardSearchResult(
+            status="database_not_initialized",
+            page=page,
+            page_size=page_size,
+            message=DATABASE_NOT_INITIALIZED_MESSAGE,
+        )
 
     repo = CardRepository(session)
     result = await repo.search_advanced(
