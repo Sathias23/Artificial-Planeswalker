@@ -71,6 +71,24 @@
   untracked + gitignored `_bmad/` (ruff now skips it) and the pre-commit formatter normalized one
   f-string in `card_lookup.py`. Verified: `ruff format --check .` (120 files) + `ruff check .` both pass.
 
+## Deferred from: code review of trim-deps-package-metadata (2026-06-28)
+
+> Surfaced by the 3-reviewer adversarial pass on the `chore/trim-deps-package-metadata` work
+> (§6 deps/metadata cleanup). No HIGH/MED findings against the change itself — every blind-hunter
+> "risk-to-confirm" item (entry-point `main` exists, removed deps unreferenced anywhere, mypy hook
+> still clean without `logfire`) was verified false. The one real item below is pre-existing.
+
+- **`setup.py` creates a `.env` that nothing actually loads (orphaned onboarding artifact)** —
+  `setup.py::setup_environment` writes `.env` from `.env.example`, but no code path loads it: there
+  is no `load_dotenv` call and no `pydantic-settings` `BaseSettings(env_file=...)` anywhere — all
+  config is read via bare `os.getenv(...)` (`src/paths.py`, `src/search/connection.py`,
+  `src/search/embedder.py`, `src/mcp_server/__main__.py`), and `uv run` does not auto-load `.env`.
+  So edits to the generated `.env` silently have no effect unless the user exports the vars or the
+  MCP client injects them. Pre-existing (predates this chore; confirmed while verifying the
+  `python-dotenv` removal). Fix later by either wiring up `.env` loading (a `BaseSettings` config
+  object, or `uv run --env-file`) or trimming `setup_environment` + `.env.example` to match the
+  "env vars are optional, defaults work out of the box" reality. (Source: Edge Case Hunter; Severity: Low.)
+
 ## ✅ Resolved by the Pre-Epic-3 Targeted Gate (2026-06-27)
 
 > Cleared via `spec-pre-epic-3-targeted-gate.md` before starting Epic 3. The items below are closed;
