@@ -20,10 +20,10 @@ context:
 ## Boundaries & Constraints
 
 **Always:**
-- Install via the official `astral-sh/setup-uv` action with caching enabled; install Python through it (matrix-driven). Sync with `uv sync --frozen` (the tracked `uv.lock` is authoritative — never re-resolve in CI).
+- Install via the official `astral-sh/setup-uv` action with caching enabled; install Python through it (matrix-driven). Pin third-party actions by commit SHA with a trailing `# vX.Y.Z` comment. Sync with `uv sync --locked` (the tracked `uv.lock` is authoritative — never re-resolve in CI; `--locked` additionally fails the run if the lock has drifted from `pyproject.toml`).
 - Run gates as separate steps in this order so each fails the job independently: `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy src/`, `uv run pytest -m "not integration"`.
 - Matrix `python-version: ["3.12", "3.13"]` on `ubuntu-latest`, `fail-fast: false`.
-- Trigger on `push` to `master` and on all `pull_request` events. Set workflow-level `permissions: contents: read`. Add a `concurrency` group keyed on the ref with `cancel-in-progress: true`.
+- Trigger on `push` to `master` and on all `pull_request` events. Set workflow-level `permissions: contents: read`. Add a `concurrency` group keyed on the ref that cancels superseded **PR** runs only (`cancel-in-progress: ${{ github.event_name == 'pull_request' }}`) so push-to-master runs always finish.
 - Issue/PR templates must be consistent with the shipped `CONTRIBUTING.md` (gate commands, Conventional Commits, branch-off-master) and `SECURITY.md` (private reporting — never solicit security reports via a public issue).
 
 **Ask First:**
@@ -67,11 +67,16 @@ context:
 
 **Acceptance Criteria:**
 - Given a fresh checkout on a Linux runner with no DB/model/keys/network, when the workflow runs, then `uv sync --frozen` succeeds and all four gate steps pass on both 3.12 and 3.13.
-- Given the workflow YAML, when validated (actionlint / GitHub parse), then it has no syntax errors and uses pinned major action versions (`actions/checkout@v4`, `astral-sh/setup-uv@v…`).
+- Given the workflow YAML, when validated (actionlint / GitHub parse), then it has no syntax errors and pins third-party actions by commit SHA with a version comment (`actions/checkout@<sha> # v7.0.0`, `astral-sh/setup-uv@<sha> # v8.2.0`).
 - Given a contributor opens the new-issue chooser, when they look for security reporting, then only bug/feature templates appear and a contact link directs them to private disclosure per `SECURITY.md`.
 - Given the PR template, when a PR is opened, then its checklist matches CONTRIBUTING's quality gates verbatim in intent (ruff, mypy, pytest, Conventional Commits).
 
 ## Spec Change Log
+
+- **2026-06-28 — post-review hardening (human-authorized, Brad).** After CHECKPOINT-1 approval and the 3-reviewer pass, Brad opted into three optional tweaks; the frozen `Always` block was renegotiated accordingly:
+  - `uv sync --frozen` → `uv sync --locked` — keeps the lock authoritative *and* fails CI on lock/`pyproject.toml` drift (avoids a stale-lock false-green). Rejected the reviewer's paired `--all-extras` (would install the `observability`/logfire extra, violating "Never").
+  - `cancel-in-progress: true` → `${{ github.event_name == 'pull_request' }}` — cancels only superseded PR runs so a rapid push to `master` never leaves the default branch without a completed check.
+  - Actions SHA-pinned with version comments (`checkout@…#v7.0.0`, `setup-uv@…#v8.2.0`) for supply-chain hardening; also bumped `checkout@v4→v7.0.0` and `setup-uv@v5→v8.2.0`. **KEEP:** the four-gate order, headless `-m "not integration"` scoping, and Markdown-template choice all survived re-derivation unchanged. No Dependabot added (out of scope) — SHA pins are bumped manually.
 
 ## Design Notes
 
