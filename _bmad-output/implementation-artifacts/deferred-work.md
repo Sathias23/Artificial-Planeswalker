@@ -49,6 +49,35 @@
   (`uvx gitleaks detect --source . --log-opts="--all"`), tag `v0.1.0`, cut the GitHub Release with
   the `.mcpb` attached, flip the repo public. Brad executes these.
 
+## Deferred from: code review of licensing-repo-health-docs (2026-06-28)
+
+> Surfaced by the 3-reviewer adversarial pass on the §6 licensing/repo-health docs run
+> (`spec-licensing-repo-health-docs.md`). The doc-accuracy issues in the *new* files
+> (CONTRIBUTING/CHANGELOG over-claiming that `setup.py` builds the search index; the "all MCP
+> tools are sync `def`" overstatement) were patched in-branch. The items below are real but
+> pre-existing or outside this run's frozen scope (no README/code edits).
+
+- **README claims `setup.py` builds the search index (it doesn't).** [`README.md:38`](../../README.md#L38)
+  (`# installs deps, builds the card DB + index`) and [`README.md:44`](../../README.md#L44)
+  ("builds the local search index") both assert the one-time `setup.py` run produces the semantic
+  index. Verified false: `setup.py` only runs `initialize_database()` (Scryfall card import) — no
+  `build_card_embeddings` / `card_vec` reference anywhere in it. The index must be built separately
+  via `uv run python scripts/build_card_embeddings.py`. So a user who follows the README Quick start
+  and immediately calls `semantic_search_cards` gets `status="index_unavailable"`. Out of scope here
+  (the spec froze "no README edits"); fix in a focused README-accuracy pass — either correct the two
+  lines, or have `setup.py` actually build the index after import.
+- **`setup.py` post-`.env` message hard-codes the old `./data/cards.db` path.**
+  [`setup.py:87`](../../setup.py#L87) prints `Defaults work out of the box (SQLite at ./data/cards.db…)`,
+  stale since the central-OS-data-dir change (the engine now resolves via `paths.database_url()` to the
+  OS data dir). Cosmetic only — the DB still lands in the central dir — but the printed path misleads.
+  Update the string to reference the central dir (or drop the concrete path).
+- **`project-context.md` MCP-tool rule ("Define tools as sync `def`") drifted from the shipped code.**
+  The Framework rules state MCP tools are sync `def` threadpooled by FastMCP, but the Epic-1 tools
+  (`lookup_card_by_name`, `report_bug`, `search_cards`, deck CRUD/analysis) are `async def`; only the
+  two Epic-2 semantic tools (`semantic_search_cards`, `find_similar_cards`) are sync `def`. The doc
+  describes the Phase-1 *design target*, not the implementation — and it's what led the docs run to
+  over-generalize. Reconcile the project-context MCP-tool rule with the actual async/sync split.
+
 ## Deferred from: code review of spec-central-os-data-dir (2026-06-27)
 
 > Surfaced by the 3-reviewer adversarial pass on the `feat/central-data-dir` work. The HIGH/MED
