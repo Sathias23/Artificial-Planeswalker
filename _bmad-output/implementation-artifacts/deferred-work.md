@@ -284,3 +284,11 @@
   Out of this run's frozen scope (no README edits). Fix in the focused README-accuracy pass already
   tracked (the `setup.py`-builds-the-index claim) — either implement the prompt or reword to a manual
   build step. (Source: Edge Case Hunter; Severity: Med.)
+- **MCPB GUI data-dir override removed (smoke-test fix 2026-06-28).** The optional
+  `user_config.data_dir` field was dropped from `manifest.json` because Claude Desktop passes the
+  **unsubstituted `${user_config.data_dir}` placeholder** when the optional field is left blank,
+  repointing the server at a bogus relative dir → empty DB → `no such table: decks`. The bundle now
+  always uses the shared central OS dir (zero-config). If the GUI override is ever re-added, also
+  harden `src/paths.py::data_dir` to ignore an override that still contains an unsubstituted `${...}`
+  placeholder (defense-in-depth), with a unit test — otherwise the bug returns. (Source: Brad live
+  smoke-test; Severity: was High, now fixed.)

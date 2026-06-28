@@ -24,17 +24,8 @@
       "command": "uv",
       "args": ["run", "--directory", "${__dirname}", "python", "-m", "src.mcp_server"],
       "env": {
-        "PLANESWALKER_DATA_DIR": "${user_config.data_dir}",
         "MCP_TRANSPORT": "stdio"
       }
-    }
-  },
-  "user_config": {
-    "data_dir": {
-      "type": "directory",
-      "title": "Card data directory (optional)",
-      "description": "Where the card database + embedding index live. Leave blank to use the shared OS data location.",
-      "required": false
     }
   },
   "compatibility": {
