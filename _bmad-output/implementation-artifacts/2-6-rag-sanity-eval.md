@@ -192,7 +192,7 @@ Real quantized embeddings are **deterministic** (same input → identical vector
 |---|---|---|
 | Embedding model | `bge-small-en-v1.5-onnx-q` (**quantized**), 384-dim float32, ~3 ms/query, ~3.6 s first-run load | [research §Probe 2](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md#L229) |
 | Recall status | NFR9 watch variable — *"sanity test good; tune via RAG eval; quantized-model recall is the variable to watch"* (open-low) | [research §10 risk register](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md#L279) |
-| Eval shape | small fixture `query → expected card in top-K`; *"the spike is a minimal version"*; ≥ target top-K hit-rate | [spec §8](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md); [research §"Testing & QA"/§294](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md#L264) |
+| Eval shape | small fixture `query → expected card in top-K`; *"the spike is a minimal version"*; ≥ target top-K hit-rate | [spec §8](../../docs/architecture.md); [research §"Testing & QA"/§294](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md#L264) |
 | Production path | `semantic_search_cards(conn, embedder, query, limit=k)` → `hybrid_search` (KNN + JOIN + oracle de-dup) | [semantic_search.py](../../src/mcp_server/tools/semantic_search.py); [query.py](../../src/search/query.py) |
 | Build path | `build_card_embeddings(conn, embedder)` (self-bootstraps `card_vec`; `compose_card_text` recipe) | [index_builder.py](../../src/search/index_builder.py) |
 | Real model cache | `./data/fastembed_cache` (persistent; model downloaded by Stories 2.1/2.3 — present on this machine) | [test_embedder.py:18](../../tests/integration/search/test_embedder.py#L18); ls `data/fastembed_cache` |
@@ -213,14 +213,14 @@ tests/
       _rag_eval_fixture.py    # OPTIONAL NEW — corpus + query fixture data (or inline as module constants)
 ```
 
-- **Alignment:** matches spec §8 ("RAG sanity eval — `query → expected card in top-K`"), research §"Testing & QA" + roadmap step 5 + success metric ("≥ target top-K hit-rate"), and NFR9. Closes Epic 2's quality gate. No FR adds code; this is the NFR9 guard over FR6/FR13–FR16. [Source: [spec §8/§6/§10](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md); [research §Testing/§10/§294](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md).]
+- **Alignment:** matches spec §8 ("RAG sanity eval — `query → expected card in top-K`"), research §"Testing & QA" + roadmap step 5 + success metric ("≥ target top-K hit-rate"), and NFR9. Closes Epic 2's quality gate. No FR adds code; this is the NFR9 guard over FR6/FR13–FR16. [Source: [spec §8/§6/§10](../../docs/architecture.md); [research §Testing/§10/§294](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md).]
 - **Layering check:** a test module consuming the public `src/search` + `src/mcp_server` surface downward — no new production code, no new dependency, no cycle. `src/search`/`src/mcp_server` stay untouched. ✅
 - **No new dependencies / no `pyproject.toml` or `.pre-commit-config.yaml` changes** — `fastembed`, `sqlite-vec`, `numpy`, `mcp` are already core; the `integration` marker already exists.
 
 ### References
 
 - [epics.md — Epic 2 / Story 2.6](../planning-artifacts/epics.md) — user story + the four BDD ACs (fixture of query→expected-in-top-K; same hybrid path on a built/fixture index; below-target fails/flags for composite-text tuning; active suite, `legacy/` excluded).
-- [design spec §8 (Testing) / §6 (RAG) / §10 (Open Questions)](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md) — "RAG sanity eval — a small fixture of `query → expected card appears in top-K`"; "validate with the RAG sanity eval and tune the composite if recall is poor".
+- [design spec §8 (Testing) / §6 (RAG) / §10 (Open Questions)](../../docs/architecture.md) — "RAG sanity eval — a small fixture of `query → expected card appears in top-K`"; "validate with the RAG sanity eval and tune the composite if recall is poor".
 - [research §"Testing & QA" / §"Risk Register §10" / §"Success Metrics"](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md) — eval is proven viable (the spike *is* a minimal version); quantized-model recall is the watch variable; "≥ target top-K hit-rate on the MTG fixture".
 - [src/mcp_server/tools/semantic_search.py](../../src/mcp_server/tools/semantic_search.py) — `semantic_search_cards(conn, embedder, query, …) -> SemanticSearchResult`; the production path the eval drives (real embedder).
 - [src/search/query.py](../../src/search/query.py) — `hybrid_search` (KNN + JOIN + oracle de-dup) reached via the tool.

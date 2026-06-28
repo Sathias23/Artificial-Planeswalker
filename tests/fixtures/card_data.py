@@ -627,7 +627,7 @@ def create_multiface_card() -> CardModel:
 def create_om1_spm_cards() -> list[CardModel]:
     """Create sample OM1/SPM card pairs for testing games filtering with same Oracle ID.
 
-    Simulates the scenario described in SPIDER_MAN_INVESTIGATION.md where:
+    Simulates a same-Oracle-ID multi-printing scenario where:
     - SPM (Marvel's Spider-Man) cards are paper-only
     - OM1 (Through the Omenpaths) cards are digital-only (Arena/MTGO)
     - Both printings share the SAME Oracle ID and oracle name

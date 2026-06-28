@@ -1,7 +1,7 @@
 ---
 stepsCompleted: [1, 2, 3, 4]
 inputDocuments:
-  - docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md
+  - docs/architecture.md
   - _bmad-output/planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md
 project_name: 'Artificial-Planeswalker'
 user_name: 'Brad'
@@ -16,7 +16,7 @@ status: 'complete'
 
 This document provides the complete epic and story breakdown for **Artificial-Planeswalker — Phase 1 (MCP-server architecture pivot)**. Requirements are decomposed from the two current design-of-record inputs:
 
-1. **MCP-Server Architecture Pivot — Design** (`docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md`) — locked decisions D1–D7, the MCP tool catalog (§5), RAG/semantic-search design (§6), the Claude skills suite (§7), testing approach (§8), and repo restructure (§4).
+1. **MCP-Server Architecture Pivot — Design** (`docs/architecture.md`) — locked decisions D1–D7, the MCP tool catalog (§5), RAG/semantic-search design (§6), the Claude skills suite (§7), testing approach (§8), and repo restructure (§4).
 2. **RAG-stack de-risk research** (`…/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md`) — GO verdict, six design deltas (research §6), the implementation roadmap (research §8), and the validated performance envelope.
 
 > **Project type:** Brownfield restructure of an existing Python modular monolith — **not greenfield**. There is no starter template; Epic 1 Story 1 is the repo restructure + dependency reshape, not a scaffold.

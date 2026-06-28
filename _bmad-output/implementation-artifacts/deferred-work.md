@@ -66,10 +66,10 @@
   `database_path().as_posix()` collapses the leading `\\` to a single `/`, so the async URL drops the
   UNC authority while the sync factory keeps the native UNC path → divergence. Exotic (SQLite over a
   network share is discouraged anyway); document "use a local absolute data dir" or reject UNC paths.
-- **Repo-wide `ruff check .` / `ruff format --check .` not clean (pre-existing drift)** — failures in
-  `_bmad/scripts/*` and `src/mcp_server/tools/card_lookup.py`, none touched by this change. `_bmad/`
-  is slated for deletion in the public-release prune; `card_lookup.py` is unrelated format drift for a
-  separate quality pass. (mypy `^src/` and the changed files' own ruff state are clean.)
+- **✅ RESOLVED by the prune (2026-06-28) — Repo-wide `ruff check .` / `ruff format --check .` now clean.**
+  The pre-existing drift was in `_bmad/scripts/*` and `src/mcp_server/tools/card_lookup.py`. The prune
+  untracked + gitignored `_bmad/` (ruff now skips it) and the pre-commit formatter normalized one
+  f-string in `card_lookup.py`. Verified: `ruff format --check .` (120 files) + `ruff check .` both pass.
 
 ## ✅ Resolved by the Pre-Epic-3 Targeted Gate (2026-06-27)
 

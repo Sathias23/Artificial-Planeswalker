@@ -233,14 +233,14 @@ tests/
       test_find_similar_tool.py  # NEW — helper-level (fake embedder): ok/empty/invalid/not_found/ambiguous + self-exclusion
 ```
 
-- **Alignment:** matches spec §5 (tool catalog: `find_similar_cards` *(new)*, "seeded by an existing card's vector") + §6 ("`find_similar_cards` uses the same path seeded by a card's stored vector"). FR7/FR16; D2 single-file; D5 statelessness. [Source: [spec §5/§6](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md).]
+- **Alignment:** matches spec §5 (tool catalog: `find_similar_cards` *(new)*, "seeded by an existing card's vector") + §6 ("`find_similar_cards` uses the same path seeded by a card's stored vector"). FR7/FR16; D2 single-file; D5 statelessness. [Source: [spec §5/§6](../../docs/architecture.md).]
 - **Layering check:** `src/search/query.py` (sync infra) is consumed downward by `src/mcp_server/tools/find_similar.py` — no upward import, no cycle. `find_similar.py` imports `SemanticCardHit` from its sibling `semantic_search.py` (both tool layer — fine). `src/search` stays framework-free. ✅
 - **No new dependencies / no `pyproject.toml` or `.pre-commit-config.yaml` changes** — `sqlite-vec`, `numpy`, `mcp` are already core; the pre-commit mypy env already resolves them.
 
 ### References
 
 - [epics.md — Epic 2 / Story 2.5](../planning-artifacts/epics.md) — user story + the five BDD ACs (seed vector → top-K; seed excluded/marked; filters compose; graceful not-in-index; in-memory harness).
-- [design spec §5 / §6](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md) — tool catalog (`find_similar_cards` *(new)*, seeded by a card's vector); "uses the same path seeded by a card's stored vector"; D5 statelessness; D2 single-file.
+- [design spec §5 / §6](../../docs/architecture.md) — tool catalog (`find_similar_cards` *(new)*, seeded by a card's vector); "uses the same path seeded by a card's stored vector"; D5 statelessness; D2 single-file.
 - [research §A (hybrid patterns + over-fetch) / §B (serialization)](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md) — the hybrid query `find_similar` reuses; `serialize_float32` BLOB layout you read back.
 - [src/search/query.py](../../src/search/query.py) — `hybrid_search` (reuse) + `CardHit`; **extend** with `get_card_vector` + `exclude_oracle_id`.
 - [src/search/schema.py](../../src/search/schema.py) — `CARD_VEC_TABLE`/`CARD_ID_COL`/`EMBEDDING_COL`/`COLOR_COLS`/`MANA_VALUE_COL`; TEXT `card_id` PK (point lookup key).

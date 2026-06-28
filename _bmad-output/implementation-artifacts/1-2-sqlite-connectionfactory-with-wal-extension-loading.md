@@ -201,14 +201,14 @@ tests/
       test_connection.py  # NEW — probe: vec_version, WAL(file), relational round-trip, per-thread distinct
 ```
 
-- **Alignment:** matches the spec §4 restructure (`src/search` = embedder wrapper + sqlite-vec integration) and the research roadmap step 2 ("Search core — ConnectionFactory …"). [Source: [design spec §4](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md); [research §8](../planning-artifacts/research/...)]
+- **Alignment:** matches the spec §4 restructure (`src/search` = embedder wrapper + sqlite-vec integration) and the research roadmap step 2 ("Search core — ConnectionFactory …"). [Source: [design spec §4](../../docs/architecture.md); [research §8](../planning-artifacts/research/...)]
 - **Variance to record:** the `ConnectionFactory` is placed in `src/search` (not `src/data`) deliberately — see "File location decision" above.
 
 ### References
 
 - [epics.md — Epic 1 / Story 1.2](../planning-artifacts/epics.md) — user story, ACs, the "ConnectionFactory port" additional requirement (no hardcoded `sqlite3.connect`; WAL; apsw seam).
 - [research — RAG de-risk](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md) — §Component 1/2 (load sequence, driver gate), §Integration E (driver seam), §Concurrency (WAL + per-thread), §Empirical spike (verified `vec_version v0.1.9`, `enable_load_extension: True`), §6 deltas (delta #1).
-- [design spec §4 / §6](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md) — restructure (`src/search`), RAG storage in one SQLite file.
+- [design spec §4 / §6](../../docs/architecture.md) — restructure (`src/search`), RAG storage in one SQLite file.
 - [project-context.md](../project-context.md) — RAG/MCP rules, async-vs-sync boundary, `CARDS_DATABASE_URL`, testing layout, mypy/ruff gates, verified Windows envelope.
 - [src/data/database.py](../../src/data/database.py) — existing async engine (the path this story does **not** touch) and the `CARDS_DATABASE_URL` default to mirror.
 - [tests/unit/data/test_database.py](../../tests/unit/data/test_database.py) — sync test style to follow.

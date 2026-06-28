@@ -213,7 +213,7 @@ af85d58 feat: add magic-deckbuilding orchestrator skill (Story 3.1)
 ### References
 
 - [Source: _bmad-output/planning-artifacts/epics.md#Story 3.3] — story statement + the 3 ACs; the "capability skills (3.2–3.4) are independent" / "orchestrator (3.1) functions standalone" notes.
-- [Source: docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md#7] — Claude skills suite shape; [#5] tool catalog; [#3 D4/D5] focused-suite + statelessness; [D-1.6g] drop of the auto-feedback/active-deck machinery.
+- [Source: docs/architecture.md#7] — Claude skills suite shape; [#5] tool catalog; [#3 D4/D5] focused-suite + statelessness; [D-1.6g] drop of the auto-feedback/active-deck machinery.
 - [Source: _bmad-output/project-context.md] — skill conventions, stateless-MCP rules, "don't auto-add cards / analysis is observational only" contract, RAG index prerequisite + `index_unavailable`, semantic `limit ≤ 50` cap.
 - [Source: src/logic/mana_curve.py] — the exact heuristics `analyze_mana_curve` applies (`_detect_issues`/`_generate_recommendations` thresholds: 35/45% land bands, >3.5 avg-CMC, ≥2 curve gaps, >25% top-heavy, ≤1 early plays) **and** the legacy `generate_contextual_feedback` throttle (`<5` cards / >15% bucket shift / new problem; archetype bands ≤2.5/≤3.5) that AC3 must reproduce *as judgment* (it is NOT an MCP tool).
 - [Source: src/mcp_server/tools/deck_analysis.py#analyze_mana_curve] — the `ManaCurveResult` contract: `status` (`ok`/`empty`/`deck_not_found`/`error`), all eight analysis fields, `deck_id`-only params (no `format`), mainboard-only-by-quantity, and the JSON int-keys-as-strings note on `distribution`/`playable_cards_by_turn`.

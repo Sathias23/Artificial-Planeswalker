@@ -146,7 +146,7 @@ The epic note: "the orchestrator (3.1) functions standalone by calling tools dir
 ### References
 
 - [Source: _bmad-output/planning-artifacts/epics.md#Story 3.1] — story statement + ACs + the standalone/independent note.
-- [Source: docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md#7] — Claude skills suite shape; [#5] tool catalog; [#3 D4/D5] focused-suite + statelessness.
+- [Source: docs/architecture.md#7] — Claude skills suite shape; [#5] tool catalog; [#3 D4/D5] focused-suite + statelessness.
 - [Source: _bmad-output/project-context.md] — skill conventions, stateless MCP rules, "don't auto-add cards" contract, RAG index prerequisite + `index_unavailable`.
 - [Source: _bmad-output/implementation-artifacts/epic-2-retro-2026-06-24.md#6] — design-input I1 (ranked candidates with reasons; recall is breadth-over-precision).
 - [Source: TOOL_PERFORMANCE_REPORT.md] — live-test findings: compound-intent dilution, candidate-generator pattern, `distance` within-call-only, cross-color leakage.

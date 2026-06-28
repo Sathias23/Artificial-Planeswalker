@@ -5,7 +5,7 @@ no SQL — it validates inputs gracefully, awaits the async repository, and proj
 each result to a lightweight ``CardSummary`` (D-1.4e) so a single page stays small
 for the LLM client. Stateless (D-1.4d): ``format``/``games``/``page`` are per-call
 parameters; no search context is retained between calls. Ports the filter set and
-the four ``color_mode`` semantics from ``legacy/agent/tools/card_search.py`` while
+the four ``color_mode`` semantics from the original PydanticAI agent's card-search tool while
 dropping all presentation/session concerns (HTML, RunContext, session cursors,
 the ``max_results`` alias).
 """

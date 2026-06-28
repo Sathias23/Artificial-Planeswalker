@@ -1136,7 +1136,7 @@ class TestGamesFiltering:
 class TestOM1SPMScenario:
     """Tests for OM1/SPM card scenario - same Oracle ID, different games arrays.
 
-    These tests verify the issue described in SPIDER_MAN_INVESTIGATION.md where:
+    These tests verify a same-Oracle-ID multi-printing issue where:
     - SPM (Marvel's Spider-Man) cards are paper-only
     - OM1 (Through the Omenpaths) cards are digital-only (Arena/MTGO)
     - Both printings share the SAME Oracle ID and oracle name

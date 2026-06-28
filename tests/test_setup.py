@@ -10,7 +10,7 @@ def test_python_version() -> None:
 
 
 def test_project_structure() -> None:
-    """Verify project structure (MCP-server layout; agent + ui archived to legacy/ in Story 1.1)."""
+    """Verify project structure (MCP-server layout; legacy stack removed for public release)."""
     project_root = Path(__file__).parent.parent
 
     # Reusable core + new MCP/search packages
@@ -18,10 +18,6 @@ def test_project_structure() -> None:
     assert (project_root / "src" / "logic").exists(), "src/logic/ should exist"
     assert (project_root / "src" / "mcp_server").exists(), "src/mcp_server/ should exist"
     assert (project_root / "src" / "search").exists(), "src/search/ should exist"
-
-    # agent + ui were archived out of the active build to legacy/
-    assert (project_root / "legacy" / "agent").exists(), "legacy/agent/ should exist"
-    assert (project_root / "legacy" / "ui").exists(), "legacy/ui/ should exist"
 
     # Check __init__.py files
     assert (project_root / "src" / "__init__.py").exists(), "src/__init__.py should exist"

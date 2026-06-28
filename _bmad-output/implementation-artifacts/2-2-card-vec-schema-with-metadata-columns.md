@@ -226,7 +226,7 @@ tests/
       test_schema.py       # NEW — fast unit tests: idempotency, shape, insert+metadata-filtered KNN, JOIN-alignment, drop
 ```
 
-- **Alignment:** matches spec §4 (`src/search` = "embedding model wrapper + sqlite-vec integration + index builder") and research roadmap step 2 ("Search core — … `card_vec` schema (metadata cols: mana_value + 5 color booleans) …"). [Source: [design spec §4/§6](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md); [research §8](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md).]
+- **Alignment:** matches spec §4 (`src/search` = "embedding model wrapper + sqlite-vec integration + index builder") and research roadmap step 2 ("Search core — … `card_vec` schema (metadata cols: mana_value + 5 color booleans) …"). [Source: [design spec §4/§6](../../docs/architecture.md); [research §8](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md).]
 - **Layering check:** `src/search` is a sync infra package consumed *downward* by `scripts/` (Story 2.3 builder) and `src/mcp_server` (Stories 2.4–2.5) — no upward import, no cycle. `schema.py` imports only stdlib + `EMBEDDING_DIM` from its sibling `embedder.py`. ✅
 - **No new dependencies / no `pyproject.toml` or `.pre-commit-config.yaml` changes** — sqlite-vec is already a core dep (Story 1.1) and the pre-commit mypy env already resolves what's needed.
 
@@ -234,7 +234,7 @@ tests/
 
 - [epics.md — Epic 2 / Story 2.2](../planning-artifacts/epics.md) — user story, the five BDD ACs, the "`card_vec` schema" additional requirement (metadata cols `mana_value` + `color_{w,u,b,r,g}`; legality/display via JOIN; aux `+` not filterable; rebuild on model/dim change).
 - [research — RAG de-risk §A / §B / §Data Architecture / §Empirical spike / §Deployment](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md) — the metadata-vs-JOIN decision (Pattern 1+2 hybrid), serialization, single-file topology (`rowid = card_id` written against fake integer ids), the validated `mana_value`/`color_red` pre-filter, the rebuild/WAL-checkpoint ops rules.
-- [design spec §3 (D2) / §4 / §6](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md) — `sqlite-vec` + `bge-small-en-v1.5`; `src/search` restructure; `card_vec` in the same file keyed by `card_id`, JOIN-able; hybrid query path.
+- [design spec §3 (D2) / §4 / §6](../../docs/architecture.md) — `sqlite-vec` + `bge-small-en-v1.5`; `src/search` restructure; `card_vec` in the same file keyed by `card_id`, JOIN-able; hybrid query path.
 - [src/data/models/card.py](../../src/data/models/card.py) — **`cards` PK is a UUID string**; `cmc` Float; `colors` JSON — the facts that force a TEXT PK and inform metadata sourcing.
 - [src/search/connection.py](../../src/search/connection.py) / [tests/unit/search/test_connection.py](../../tests/unit/search/test_connection.py) — the sync seam that loads sqlite-vec, and the exact unit-test style (tmp_path, `factory.close()`, real extension) to mirror.
 - [src/search/embedder.py](../../src/search/embedder.py) — exports `EMBEDDING_DIM` to import; the sibling-port shape to match.

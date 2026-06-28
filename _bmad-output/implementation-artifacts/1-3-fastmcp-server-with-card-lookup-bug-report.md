@@ -256,13 +256,13 @@ tests/
     test_mcp_tools.py           # NEW — in-memory MCP client harness (AC7)
 ```
 
-- **Alignment:** matches spec §4 (`src/mcp_server` = server + transport entry point) and §5 (tools import core repositories directly). Import direction stays `data → logic → mcp_server` (no upward imports). [Source: [design spec §4/§5](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md)]
+- **Alignment:** matches spec §4 (`src/mcp_server` = server + transport entry point) and §5 (tools import core repositories directly). Import direction stays `data → logic → mcp_server` (no upward imports). [Source: [design spec §4/§5](../../docs/architecture.md)]
 - **Variances to record (Dev Agent Record):** (a) D-1.3a relaxes NFR6's "sync `def`" for repo-backed tools (async `def`; sync reserved for Epic 2). (b) D-1.3b adds a `bug_reports` table, superseding the legacy JSONL store.
 
 ### References
 
 - [epics.md — Epic 1 / Story 1.3](../planning-artifacts/epics.md) — user story, ACs (FR1–FR4, FR12, FR3).
-- [design spec §4 / §5 / §8](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md) — restructure, tool catalog + statelessness (D5), stdio/pluggable transport (D7), in-process MCP test approach.
+- [design spec §4 / §5 / §8](../../docs/architecture.md) — restructure, tool catalog + statelessness (D5), stdio/pluggable transport (D7), in-process MCP test approach.
 - [project-context.md](../project-context.md) — MCP rules, structured returns, port tools 1:1, `CARDS_DATABASE_URL`, model/repo conventions, testing layout, ruff/mypy gates, `format`-as-param convention, schema-change/migration rule.
 - [legacy/agent/tools/card_lookup.py](../../legacy/agent/tools/card_lookup.py) / [bug_report.py](../../legacy/agent/tools/bug_report.py) — source logic + status enum values to port (logic/values only; drop UI/session/JSONL).
 - [src/data/repositories/card.py](../../src/data/repositories/card.py) — `find_by_name_exact`/`find_by_name_partial` (async, return `Card`). [schemas/card.py](../../src/data/schemas/card.py) — `Card` fields.

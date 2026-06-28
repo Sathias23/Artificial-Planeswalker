@@ -196,8 +196,8 @@ creature"). When you do:
 
 1. **Over-fetch** (generous `limit` ≤ 50), then **intersection-filter** by reading each hit's
    `oracle_text` / `type_line` — keep only cards that actually fill the slot **and** fit the deck's
-   plan/colors. The semantic tools rank by **topical proximity, not logical conjunction** (proven in
-   `TOOL_PERFORMANCE_REPORT.md`: the best compound-match card ranked **14th**), so never echo their raw
+   plan/colors. The semantic tools rank by **topical proximity, not logical conjunction** (in testing,
+   the best compound-match card ranked **14th**), so never echo their raw
    order as a recommendation ranking. For a pure CMC/type/color gap, `search_cards` with
    `mana_value_min/max` is often the cleaner generator anyway — you're filtering on `mana_value` directly.
 2. **`distance` is a within-call relative signal only** — nearest-first inside one result set, never an
