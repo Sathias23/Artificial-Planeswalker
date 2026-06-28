@@ -14,7 +14,7 @@ completedAt: '2026-01-04'
 
 # Architecture Decision Document
 
-> ⚠️ **SUPERSEDED (architecture only) — 2026-06-20.** This is the **Letta-first** architecture (2026-01-04). The project has since pivoted to an **MCP-server architecture**; the current design of record is [`docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md`](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md) (with the Phase-1 RAG de-risk in [`research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md`](research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md)).
+> ⚠️ **SUPERSEDED (architecture only) — 2026-06-20.** This is the **Letta-first** architecture (2026-01-04). The project has since pivoted to an **MCP-server architecture**; the current design of record is [`docs/architecture.md`](../../docs/architecture.md) (with the Phase-1 RAG de-risk in [`research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md`](research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md)).
 >
 > **Still valid:** the MTG **domain** content — functional requirements, data model, and core `data`/`logic` design.
 > **Historical only:** anything describing the **Letta agent / Chainlit UI topology** — under the pivot, `src/agent` + `src/ui` are archived to `legacy/` and Letta returns later as a *client* of the MCP server (Phase 2), not the foundation.

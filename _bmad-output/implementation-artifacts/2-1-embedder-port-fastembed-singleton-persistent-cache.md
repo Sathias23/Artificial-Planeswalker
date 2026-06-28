@@ -230,14 +230,14 @@ pyproject.toml         # MODIFIED — add numpy>=2.0.0 to [project.dependencies]
 .env.example           # MODIFIED — document FASTEMBED_CACHE_DIR
 ```
 
-- **Alignment:** matches spec §4 (`src/search` = embedding model wrapper + sqlite-vec integration + index builder) and research roadmap step 2 ("Search core — … `Embedder` (singleton + persistent cache) …"). [Source: [design spec §4](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md); [research §8](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md).]
+- **Alignment:** matches spec §4 (`src/search` = embedding model wrapper + sqlite-vec integration + index builder) and research roadmap step 2 ("Search core — … `Embedder` (singleton + persistent cache) …"). [Source: [design spec §4](../../docs/architecture.md); [research §8](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md).]
 - **Layering check:** `src/search` is a sync infra package consumed *downward* by `src/mcp_server` (Stories 2.4–2.5) and by `scripts/` (Story 2.3) — no upward import, no cycle. ✅
 
 ### References
 
 - [epics.md — Epic 2 / Story 2.1](../planning-artifacts/epics.md) — user story, the five BDD ACs, the "Embedder port" additional requirement (fastembed singleton + persistent `FASTEMBED_CACHE_DIR`; `encode(text) -> float32`).
 - [research — RAG de-risk](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md) — §Component 3 (fastembed on Windows), §Embedding-Model Lifecycle (process singleton), §6 delta #2, §Empirical spike (384-dim float32, ~3 ms, quantized variant, Temp-cache gotcha), §10 open-low recall risk.
-- [design spec §4 / §6](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md) — `src/search` restructure; RAG embeddings (`bge-small-en-v1.5` via fastembed, 384-dim, offline).
+- [design spec §4 / §6](../../docs/architecture.md) — `src/search` restructure; RAG embeddings (`bge-small-en-v1.5` via fastembed, 384-dim, offline).
 - [project-context.md](../project-context.md) — RAG/MCP rules ("embedding model is a process singleton", "Don't let `FASTEMBED_CACHE_DIR` default"), async-vs-sync boundary, `./data/` data dir, testing layout, mypy/ruff gates, verified Windows envelope.
 - [src/search/connection.py](../../src/search/connection.py) — the sibling port to mirror (`_resolve_*` helper, thin class, teardown seam, strict typing/docstrings).
 - [tests/unit/search/test_connection.py](../../tests/unit/search/test_connection.py) — sync test style + env-monkeypatch + teardown pattern to follow.

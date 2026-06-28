@@ -1,6 +1,6 @@
 ---
 stepsCompleted: [1, 2, 3, 4, 5, 6]
-inputDocuments: ['docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md']
+inputDocuments: ['docs/architecture.md']
 workflowType: 'research'
 lastStep: 6
 status: complete

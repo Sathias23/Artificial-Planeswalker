@@ -177,8 +177,8 @@ tests/
 ### References
 
 - [epics.md — Epic 1 / Story 1.1](../planning-artifacts/epics.md) — user story, ACs, FR/NFR coverage (FR1 enabling work; NFR5, NFR7).
-- [design spec §4 — Repository Restructure](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md) — archive table, dependency reshape, core facade guidance (D1, D3).
-- [design spec §8 — Testing](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md) — data/logic tests stay valid; legacy tests excluded.
+- [design spec §4 — Repository Restructure](../../docs/architecture.md) — archive table, dependency reshape, core facade guidance (D1, D3).
+- [design spec §8 — Testing](../../docs/architecture.md) — data/logic tests stay valid; legacy tests excluded.
 - [project-context.md](../project-context.md) — `uv`-only, mypy-strict, layer boundaries, verified Windows RAG envelope, "build toward MCP not the superseded Letta/PydanticAI plan".
 - [pyproject.toml](../../pyproject.toml), [.pre-commit-config.yaml](../../.pre-commit-config.yaml), [tests/conftest.py](../../tests/conftest.py), [tests/integration/conftest.py](../../tests/integration/conftest.py) — the files this story edits.
 - PEP 735 dependency groups + [uv Managing dependencies](https://docs.astral.sh/uv/concepts/projects/dependencies/) — `[dependency-groups]`, `--group`, default-group semantics.

@@ -20,9 +20,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 > ⚠️ **Project is mid-pivot (as of 2026-06-20).** The codebase on disk is still the
 > original **PydanticAI + Chainlit** monolith, but the **design of record** is the
-> **MCP-server architecture** (`docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md`,
+> **MCP-server architecture** (`docs/architecture.md`,
 > epics in `_bmad-output/planning-artifacts/epics.md`).
-> `architecture.md` (Letta-first) and `prd.md` are **SUPERSEDED — do not implement from them.**
+> `planning-artifacts/architecture.md` (Letta-first) and `planning-artifacts/prd.md` are **SUPERSEDED — do not implement from them.**
 > Net effect for agents: **build new capability as MCP tools; treat `src/agent` + `src/ui`
 > as legacy slated for `legacy/`.**
 
@@ -199,8 +199,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Git:** feature branches off `master` (current: `feat/mcp-server-architecture`).
   Commit messages follow **Conventional Commits** (`feat:`, `fix:`, `chore:`, `docs:`).
   Ensure tests pass and pre-commit hooks succeed before a PR.
-- **Planning artifacts are the source of truth** for *what* to build: design specs in
-  `docs/superpowers/specs/`, epics/research in `_bmad-output/planning-artifacts/`. Check the
+- **Planning artifacts are the source of truth** for *what* to build: the design of record in
+  `docs/architecture.md`, epics/research in `_bmad-output/planning-artifacts/`. Check the
   latest dated spec — older planning docs may be superseded (see the banner in this file's
   Technology Stack section).
 

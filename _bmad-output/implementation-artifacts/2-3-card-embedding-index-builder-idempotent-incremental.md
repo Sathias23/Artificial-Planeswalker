@@ -217,7 +217,7 @@ tests/
       test_index_builder.py  # NEW — fast unit tests (fake embedder, real sqlite-vec): first build, idempotent skip, changed re-embed, new card, rebuild-clears, JSON None coercion
 ```
 
-- **Alignment:** matches spec §4 (`src/search` = "embedding model wrapper + sqlite-vec integration + **index builder**") and research roadmap step 2; FR14/FR15/FR16; D2 single-file topology. [Source: [design spec §4/§6](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md); [research §8](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md).]
+- **Alignment:** matches spec §4 (`src/search` = "embedding model wrapper + sqlite-vec integration + **index builder**") and research roadmap step 2; FR14/FR15/FR16; D2 single-file topology. [Source: [design spec §4/§6](../../docs/architecture.md); [research §8](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md).]
 - **Layering check:** `src/search` is sync infra consumed downward by `scripts/` (this builder) and `src/mcp_server` (Stories 2.4–2.5) — no upward import, no cycle. `index_builder.py` imports stdlib + `sqlite_vec` + sibling `embedder`/`schema`/`connection`. ✅
 - **No new dependencies / no `pyproject.toml` or `.pre-commit-config.yaml` changes** — `sqlite-vec`, `fastembed`, `numpy` are already core (Stories 1.1/2.1); the pre-commit mypy env already resolves them.
 
@@ -225,7 +225,7 @@ tests/
 
 - [epics.md — Epic 2 / Story 2.3](../planning-artifacts/epics.md) — user story, the five BDD ACs (compose+embed+serialize+insert; content-hash incremental; minutes/footprint; converge-no-duplicates; uv-invocable).
 - [research — RAG de-risk §A / §B / §Data Architecture / §Deployment](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md) — serialization (`serialize_float32`), single-file topology, metadata pre-filter, build/footprint envelope, WAL-checkpoint-before-backup ops.
-- [design spec §3 (D2) / §4 / §6](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md) — `src/search` = embedder + sqlite-vec + **index builder**; composite embedded text; `card_vec` keyed by `card_id`.
+- [design spec §3 (D2) / §4 / §6](../../docs/architecture.md) — `src/search` = embedder + sqlite-vec + **index builder**; composite embedded text; `card_vec` keyed by `card_id`.
 - [src/search/schema.py](../../src/search/schema.py) — `create_card_vec_table`/`drop_card_vec_table` + constants to reuse; the home for the new `card_embedding_meta` DDL.
 - [src/search/embedder.py](../../src/search/embedder.py) — `get_embedder()` singleton, `encode_batch`, `EMBEDDING_DIM`; the deferred `batch_size`.
 - [src/search/connection.py](../../src/search/connection.py) — the sync seam (sqlite-vec + WAL) the builder reads cards from and writes vectors to.

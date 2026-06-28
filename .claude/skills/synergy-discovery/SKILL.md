@@ -171,8 +171,8 @@ Notes that bite if ignored:
 
 ## ⭐ Candidate-generator pattern (your core value-add — doubly important for synergy)
 
-The semantic tools rank by **topical proximity, not logical conjunction** (proven in
-`TOOL_PERFORMANCE_REPORT.md`: a compound "removal that *also* reanimates" ask put the best "both" card
+The semantic tools rank by **topical proximity, not logical conjunction** (in testing, a
+compound "removal that *also* reanimates" ask put the best "both" card
 **14th**). Synergy is *inherently* a conjunction — "card that sacrifices **and** rewards death", "card
 that makes tokens **and** an anthem that pays them off" — so this caveat hits **hardest** here:
 

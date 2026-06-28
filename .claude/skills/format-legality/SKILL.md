@@ -320,7 +320,7 @@ legal replacement candidates via `search_cards` (hard type/color/CMC filter, `fo
 
 1. **Over-fetch** (generous `limit` ≤ 50), then **intersection-filter** by reading each hit's `oracle_text`
    / `type_line` — keep only cards that fill the same role *and* are on-color/legal. Semantic tools rank by
-   **topical proximity, not logical conjunction** (proven in `TOOL_PERFORMANCE_REPORT.md`: the best
+   **topical proximity, not logical conjunction** (in testing, the best
    compound-match card ranked **14th**), so never echo their raw order as a recommendation ranking.
 2. **`distance` is a within-call relative signal only** (~0.44–0.71 observed across siblings) — nearest-first
    inside one result set, never an absolute quality bar or a cross-call comparison.

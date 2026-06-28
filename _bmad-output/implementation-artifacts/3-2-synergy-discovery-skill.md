@@ -169,7 +169,7 @@ Recent commits are the 3.1 skill work: `af85d58 feat: add magic-deckbuilding orc
 ### References
 
 - [Source: _bmad-output/planning-artifacts/epics.md#Story 3.2] — story statement + the 3 ACs + the "capability skills are independent" / "orchestrator standalone" notes.
-- [Source: docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md#7] — Claude skills suite shape; [#5] tool catalog; [#3 D4/D5] focused-suite + statelessness.
+- [Source: docs/architecture.md#7] — Claude skills suite shape; [#5] tool catalog; [#3 D4/D5] focused-suite + statelessness.
 - [Source: _bmad-output/project-context.md] — skill conventions, stateless-MCP rules, "don't auto-add cards" contract, RAG index prerequisite + `index_unavailable`, semantic `limit ≤ 50` cap.
 - [Source: src/logic/synergy.py] — exactly what `detect_synergies` can and cannot detect (tribal/12-keyword/3-mechanic limits + excluded generic types) — the basis for this skill's value-add.
 - [Source: src/mcp_server/tools/deck_analysis.py#detect_synergies] — `SynergyResult` contract (`synergies[]`, `synergy_count`, `deck_cohesion`; `ok`/`empty`/`deck_not_found`/`error`); mainboard-only.

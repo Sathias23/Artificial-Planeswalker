@@ -1,7 +1,7 @@
 """Structured card-lookup logic for the ``lookup_card_by_name`` MCP tool.
 
 Ports the legacy exact-then-partial matching and disambiguation buckets
-(0 / 1 / 2-5 / 6+) from ``legacy/agent/tools/card_lookup.py`` while dropping all
+(0 / 1 / 2-5 / 6+) from the original PydanticAI agent's card-lookup tool while dropping all
 presentation concerns (HTML formatting, Chainlit UI elements, RunContext, and
 session-state filtering). Returns a structured Pydantic result so FastMCP can
 serialize machine-readable fields plus a human-facing message.
@@ -98,8 +98,7 @@ async def lookup_card(
             )
         else:
             message = (
-                f"Found {len(matches)} cards matching '{card_name}'. "
-                "Please refine your search."
+                f"Found {len(matches)} cards matching '{card_name}'. Please refine your search."
             )
     else:
         message = f"Found {len(matches)} cards matching '{card_name}'. Which one did you mean?"

@@ -256,14 +256,14 @@ tests/
       test_semantic_search_tool.py  # NEW — helper-level (fake) + one @pytest.mark.integration real-embedder ranking test
 ```
 
-- **Alignment:** matches spec §5 (tool catalog: `semantic_search_cards` *(new)*, hybrid) + §6 (hybrid query path) and research roadmap step 3 ("add `semantic_search_cards` … over-fetch `k`, then JOIN/filter"). FR6/FR16; D2 single-file; D5 statelessness. [Source: [spec §5/§6](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md); [research §8/§A](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md).]
+- **Alignment:** matches spec §5 (tool catalog: `semantic_search_cards` *(new)*, hybrid) + §6 (hybrid query path) and research roadmap step 3 ("add `semantic_search_cards` … over-fetch `k`, then JOIN/filter"). FR6/FR16; D2 single-file; D5 statelessness. [Source: [spec §5/§6](../../docs/architecture.md); [research §8/§A](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md).]
 - **Layering check:** `src/search/query.py` is sync infra consumed downward by `src/mcp_server/tools/semantic_search.py` (and Story 2.5) — no upward import, no cycle. The tool layer projects to Pydantic; `src/search` stays framework-free. ✅
 - **No new dependencies / no `pyproject.toml` or `.pre-commit-config.yaml` changes** — `sqlite-vec`, `fastembed`, `numpy`, `mcp` are already core; the pre-commit mypy env already resolves them.
 
 ### References
 
 - [epics.md — Epic 2 / Story 2.4](../planning-artifacts/epics.md) — user story + the six BDD ACs (embed→top-K; mandatory `k`/over-fetch; hybrid filters in one query; <100 ms; stateless params; in-memory harness).
-- [design spec §5 / §6](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md) — tool catalog (`semantic_search_cards` hybrid), the "one call" Glorybringer example, RAG hybrid query path, D5 statelessness, D2 single-file.
+- [design spec §5 / §6](../../docs/architecture.md) — tool catalog (`semantic_search_cards` hybrid), the "one call" Glorybringer example, RAG hybrid query path, D5 statelessness, D2 single-file.
 - [research §A (hybrid patterns + over-fetch) / §Performance / §8](../planning-artifacts/research/technical-sqlite-vec-fastembed-rag-stack-on-windows-research-2026-06-20.md) — Pattern 1 (metadata pre-filter) + Pattern 2 (JOIN post-filter), mandatory `k`, over-fetch `k` 100–200, <100 ms envelope, roadmap step 3.
 - [src/search/schema.py](../../src/search/schema.py) — `CARD_VEC_TABLE`/`CARD_ID_COL`/`EMBEDDING_COL`/`MANA_VALUE_COL`/`COLOR_COLS`/`METADATA_COLS` to build the SQL from; TEXT-PK JOIN alignment; default L2.
 - [src/search/embedder.py](../../src/search/embedder.py) — `get_embedder()` + `encode()` (symmetric query embedding); `encode("")` raises.

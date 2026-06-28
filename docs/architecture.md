@@ -7,6 +7,8 @@
 
 ---
 
+> **Public-release note (2026-06-28):** the `legacy/` tree referenced below (the archived PydanticAI agent + Chainlit UI) has since been **removed from the public repository**; it remains in git history. The `legacy/…` references that follow describe the original Phase-1 restructure for context.
+
 ## 1. Summary
 
 Artificial-Planeswalker is an MTG deck-building AI assistant. Today it is a 4-layer Python modular monolith: PydanticAI agent + Chainlit UI + business logic + SQLite (60k Scryfall cards & decks).
@@ -147,7 +149,7 @@ The exact list is refinable during build; this is the starting shape.
 - **Existing `tests/unit`** for `data`/`logic` stay valid (core behavior unchanged).
 - **New `tests/integration/test_mcp_tools.py`** — drive each tool through an in-process MCP client; assert results and error handling.
 - **RAG sanity eval** — a small fixture of `query → expected card appears in top-K` checks to guard regressions in the embedding/index path.
-- **`legacy/`** tests excluded from the active suite (kept for reference).
+- **`legacy/`** tests were excluded from the active suite and have since been removed for public release (see the note at the top; preserved in git history).
 
 ---
 

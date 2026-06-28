@@ -251,13 +251,13 @@ tests/
     test_mcp_tools.py                   # MODIFIED — end-to-end search_cards via in-memory MCP client
 ```
 
-- **Alignment:** matches spec §4 (`src/mcp_server` = server + tools) and §5 (tools import core repositories directly; `search_cards` = FR5). Import direction stays `data → mcp_server` (no upward imports). Schemas stay in `src/data/schemas` per the layer contract. [Source: [design spec §4/§5](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md)]
+- **Alignment:** matches spec §4 (`src/mcp_server` = server + tools) and §5 (tools import core repositories directly; `search_cards` = FR5). Import direction stays `data → mcp_server` (no upward imports). Schemas stay in `src/data/schemas` per the layer contract. [Source: [design spec §4/§5](../../docs/architecture.md)]
 - **Variances to record (Dev Agent Record):** (a) `search_cards` returns the new lightweight `CardSummary` (not full `Card`) to bound list payloads — D-1.4e; (b) the legacy `max_results` alias and the session-stored pagination cursor are intentionally **not** ported (FR3/D-1.4d); (c) the epic's "set" filter is intentionally **out of scope** (D-1.4b).
 
 ### References
 
 - [epics.md — Epic 1 / Story 1.4](../planning-artifacts/epics.md) — user story + ACs (FR5, FR3).
-- [design spec §4 / §5 / §8](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md) — tool catalog, statelessness (D5), in-process MCP test approach.
+- [design spec §4 / §5 / §8](../../docs/architecture.md) — tool catalog, statelessness (D5), in-process MCP test approach.
 - [project-context.md](../project-context.md) — MCP rules (structured returns, wrap repositories, sync-vs-async, `format`-as-param), schema-layer contract, testing layout, ruff/mypy gates.
 - [src/data/repositories/card.py](../../src/data/repositories/card.py#L346) — `search_advanced` (the method to wrap). [src/data/schemas/card.py](../../src/data/schemas/card.py) — `Card` (add `CardSummary` here). [pagination.py](../../src/data/schemas/pagination.py) — `PaginatedResult`.
 - [src/mcp_server/server.py](../../src/mcp_server/server.py) / [tools/card_lookup.py](../../src/mcp_server/tools/card_lookup.py) / [tools/bug_report.py](../../src/mcp_server/tools/bug_report.py) — the exact tool/result patterns to mirror.

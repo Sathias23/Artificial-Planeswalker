@@ -25,9 +25,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-# Import BugReportStatus enum from the agent tools
+# Import BugReportStatus enum from the data-layer schemas
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from legacy.agent.tools.bug_report import BugReportStatus
+from src.data.schemas.bug_report import BugReportStatus
 
 
 def read_bug_reports(file_path: Path) -> dict[str, dict[str, Any]]:

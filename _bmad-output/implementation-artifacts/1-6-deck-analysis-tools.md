@@ -377,13 +377,13 @@ tests/
     test_mcp_tools.py                       # MODIFIED — end-to-end analysis via the in-memory MCP client
 ```
 
-- **Alignment:** matches spec §5 (Analysis tools = `analyze_mana_curve`/`detect_synergies`/`validate_deck`, FR9–FR11; tools wrap `src/logic`) and §5.2 (format/games as **parameters**, statelessness D5). Import direction stays `logic → mcp_server` and `data → mcp_server` (no upward imports). The new validator stays in `src/logic` per the layer contract. [Source: [design spec §5](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md)]
+- **Alignment:** matches spec §5 (Analysis tools = `analyze_mana_curve`/`detect_synergies`/`validate_deck`, FR9–FR11; tools wrap `src/logic`) and §5.2 (format/games as **parameters**, statelessness D5). Import direction stays `logic → mcp_server` and `data → mcp_server` (no upward imports). The new validator stays in `src/logic` per the layer contract. [Source: [design spec §5](../../docs/architecture.md)]
 - **Variances to record (Dev Agent Record):** (a) `validate_deck` is a **new** logic-layer function (no legacy whole-deck validator existed to port) — the one additive `src/logic` change, D-1.6a; (b) it implements the **constructed 60-card** rule generically (Commander/singleton out of scope — D-1.6b); (c) `games` is an **optional advisory** availability check (D-1.6c); (d) the throttled `generate_contextual_feedback` auto-feedback is **not** ported (D-1.6g); (e) `ManaCurveResult` **flattens** the dataclass while `SynergyResult` reuses the logic Pydantic models + an explicit `synergy_count` (the `total_count` property is non-serializing — D-1.6e).
 
 ### References
 
 - [epics.md — Epic 1 / Story 1.6](../planning-artifacts/epics.md) — user story + ACs (FR9, FR10, FR11, FR3, NFR7).
-- [design spec §5 / §5.2 / §8](../../docs/superpowers/specs/2026-06-20-mcp-server-architecture-design.md) — analysis tool catalog, statelessness (format/games as params, D5), in-process MCP test approach.
+- [design spec §5 / §5.2 / §8](../../docs/architecture.md) — analysis tool catalog, statelessness (format/games as params, D5), in-process MCP test approach.
 - [project-context.md](../project-context.md) — MCP rules (structured returns, wrap logic/repos, sync-vs-async, `format`-as-param), layer contract (`src/data`/`src/logic` are the framework-free core; repos return schemas), testing layout, ruff/mypy gates.
 - Logic to wrap: [mana_curve.py:58](../../src/logic/mana_curve.py#L58) (`analyze_mana_curve`, raises on `[]`), [synergy.py:80](../../src/logic/synergy.py#L80) (`detect_synergies`) + [synergy.py:36](../../src/logic/synergy.py#L36) (`SynergyPattern`/`SynergyAnalysis`, `total_count` property), [deck_validator.py:30](../../src/logic/deck_validator.py#L30) (`is_basic_land`; where `validate_deck` is added).
 - Data: [deck.py:521](../../src/data/repositories/deck.py#L521) (`get_deck_with_cards`, eager full cards), [schemas/deck.py:14](../../src/data/schemas/deck.py#L14) (`DeckCard` nests full `Card`), [schemas/card.py:47](../../src/data/schemas/card.py#L47) (`legalities: dict[str,str]`) + [schemas/card.py:57](../../src/data/schemas/card.py#L57) (`games: list[str]`).
