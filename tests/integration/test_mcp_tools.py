@@ -7,12 +7,15 @@ is wired to a file-backed, seeded DB via the shared ``seeded_card_db`` fixture
 verifies persistence by querying the same session factory.
 """
 
+from pathlib import Path
+
 from mcp.shared.memory import create_connected_server_and_client_session
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.data.models.bug_report import BugReportModel
 from src.mcp_server.server import build_server
+from src.viewer import present
 from tests.integration.conftest import SeededVecDB
 
 
@@ -219,6 +222,36 @@ async def test_add_card_to_bogus_deck_is_graceful(
     sc = result.structuredContent
     assert sc is not None
     assert sc["status"] == "deck_not_found"
+
+
+async def test_view_deck_through_client(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+    tmp_path: Path,
+    monkeypatch,
+):
+    """view_deck renders through the MCP client and reports a reachable file path (AC7).
+
+    ``open_browser=False`` keeps CI headless; the temp dir is redirected to ``tmp_path``
+    so nothing leaks into the system temp.
+    """
+    monkeypatch.setattr(present.tempfile, "gettempdir", lambda: str(tmp_path))
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        created = await client.call_tool("create_deck", {"name": "Client Deck"})
+        deck_id = created.structuredContent["deck"]["id"]
+        await client.call_tool(
+            "add_card_to_deck", {"deck_id": deck_id, "name": "Lightning Bolt", "quantity": 1}
+        )
+        result = await client.call_tool("view_deck", {"deck_id": deck_id, "open_browser": False})
+
+    assert result.isError is False
+    sc = result.structuredContent
+    assert sc is not None
+    assert sc["status"] == "ok"
+    assert sc["opened_in_browser"] is False
+    assert sc["deck_name"] == "Client Deck"
+    assert sc["file_path"]
+    assert Path(sc["file_path"]).exists()
 
 
 async def test_deck_analysis_through_client(

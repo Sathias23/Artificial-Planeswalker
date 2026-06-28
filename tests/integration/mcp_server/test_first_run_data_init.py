@@ -27,6 +27,7 @@ from src.mcp_server.tools.deck_management import add_card_to_deck, create_deck, 
 from src.mcp_server.tools.find_similar import find_similar_cards
 from src.mcp_server.tools.initialize_database import initialize_database
 from src.mcp_server.tools.semantic_search import semantic_search_cards
+from src.mcp_server.tools.view_deck import view_deck
 from src.search import ConnectionFactory, compose_card_text
 from src.search.query import index_is_populated
 from tests.fixtures.embedder import FakeEmbedder
@@ -201,6 +202,13 @@ async def test_add_card_to_deck_guards_uninitialized_db(empty_session_factory) -
     async with empty_session_factory() as session:
         result = await add_card_to_deck(session, deck_id="d-1", name="Bolt")
     assert result.status == "database_not_initialized"
+
+
+async def test_view_deck_guards_uninitialized_db(empty_session_factory) -> None:
+    async with empty_session_factory() as session:
+        result = await view_deck(session, deck_id="d-1")
+    assert result.status == "database_not_initialized"
+    assert "initialize_database" in result.message
 
 
 async def test_analyze_mana_curve_guards_uninitialized_db(empty_session_factory) -> None:
