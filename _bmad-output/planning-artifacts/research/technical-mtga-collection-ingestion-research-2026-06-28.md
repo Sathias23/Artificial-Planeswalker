@@ -188,7 +188,7 @@ and license posture) and **frcaton daemon** (GPL-3.0, .NET, exposes a live local
 How the collection data crosses from "outside the sandbox" (MTGA on the user's machine) into the
 project's `data → logic → mcp_server` layers. Designed against the project's existing conventions
 (FastMCP stdio, **sync `def` tools** on a threadpool with **per-thread SQLite + WAL**, repositories
-return Pydantic schemas, `oracle_cards` dedup, `report_bug` untrusted-input rule, **no per-session
+return Pydantic schemas, `oracle_cards` dedup, untrusted-input handling for user-supplied content, **no per-session
 server state — D5**).
 
 ### A. The ingestion boundary — three interoperability patterns
@@ -262,7 +262,8 @@ Claude hosts consume **Tools** far more reliably than Resources today
 ([MCP server concepts](https://modelcontextprotocol.io/docs/learn/server-concepts)). Proposed surface:
 
 - **`import_collection(path|payload, source)`** (mutation Tool) — P1 ingest; treats the file as
-  **untrusted input** (validate/sanitize like `report_bug`), normalizes (B), resolves (C), upserts (D),
+  **untrusted input** (strict validation/sanitization — size caps, type checks, parameterized SQL),
+  normalizes (B), resolves (C), upserts (D),
   returns a summary `{cards_imported, unmatched, snapshot_at}`.
 - **`refresh_collection()`** (mutation Tool, P2/later) — pulls the local daemon `GET /cards`.
 - **`get_collection_summary()` / `query_owned(card or filter)`** (read Tools) — "how many of X do I own",
@@ -286,9 +287,10 @@ Claude hosts consume **Tools** far more reliably than Resources today
 
 ### G. Security / trust boundary
 
-- Imported files are **untrusted user input** — apply the project's `report_bug` posture: validate
+- Imported files are **untrusted user input** — apply strict untrusted-input handling: validate
   types, cap sizes, never `eval`, parameterized SQL only. An `arena_id` is just an int; a malformed
-  CSV must fail safe.
+  CSV must fail safe. *(Note: the old `report_bug` tool — formerly the project's reference example of
+  this posture — was removed pre-public-release in 9b09d80; the principle stands, the exemplar is gone.)*
 - The collector tools live **outside** our process. We never bundle/launch a memory-reader in v1
   (keeps us clear of the ToS gray area — Step 6), we only **consume a file the user produced**.
 
@@ -361,7 +363,7 @@ Per the locked Phase-2 decision to **build capability-as-tool, not skill**
 - **Trust boundary sits at the file import.** The memory-reader/collector runs in the *user's* trust
   domain, fully outside our process — we never spawn it (v1), never inject, never touch the game.
   We ingest an artifact the user chose to produce.
-- Imported payloads are **untrusted input** (the `report_bug` posture): size caps, type validation,
+- Imported payloads are **untrusted input** (strict untrusted-input handling): size caps, type validation,
   parameterized SQL, no `eval`. A hostile CSV fails safe and reports, it doesn't corrupt the DB.
 
 ### Deployment / operations architecture
@@ -436,6 +438,11 @@ own"). B-stretch/C are additive.
   output table is tiny (only Arena printings). `all_cards` (2.4 GB) is unnecessary.
   ([Scryfall bulk-data](https://scryfall.com/docs/api/bulk-data), sizes verified via
   `api.scryfall.com/bulk-data` 2026-06-28.)
+  - **Hook into the new-set DB update flow** (`Support updating the card database when a new set
+    releases`, commit 4f87dfb): `arena_card_map` should rebuild on the *same* trigger as the card-DB
+    refresh — a new set means new `arena_id`s, so the map and the cards must refresh together or
+    freshly-released cards resolve as unmatched. Wire the builder into that existing path, don't bolt
+    on a separate cron.
 - **Canonical import format = ManaBox CSV** (Step 3): adopting it means *any* tracker that exports
   ManaBox (Archidekt, Mana Pool, …) becomes a valid source — not just MTGA memory-readers. The
   collector becomes pluggable.
