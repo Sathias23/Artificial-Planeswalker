@@ -551,22 +551,32 @@ def build_server(
         )
 
     @mcp.tool()
-    async def initialize_database() -> InitializeDatabaseResult:
-        """Download the Magic card data and set up the local database (one-time first-run step).
+    async def initialize_database(update: bool = False) -> InitializeDatabaseResult:
+        """Download the Magic card data and set up — or update — the local database.
 
         Run this once on a fresh install before using the card/deck tools: a packaged install ships
         with **no card data**, so the first card or deck call returns ``database_not_initialized``
         until this has run. It downloads the latest Scryfall ``oracle_cards`` set (~2-3 minutes)
         into this machine's local data directory and creates the schema. Idempotent — if the cards
-        are already present it returns ``already_initialized`` and downloads nothing. This imports
-        the cards only; to enable semantic search, follow up with ``build_search_index``.
+        are already present it returns ``already_initialized`` and downloads nothing.
+
+        When a **new set releases**, run it again with ``update=true`` to refresh the database: it
+        re-downloads the latest set and upserts it, adding new cards and refreshing existing ones
+        (errata, banlist/legality changes) without dropping anything. This imports the cards only;
+        to enable (or refresh) semantic search, follow up with ``build_search_index``.
+
+        Args:
+            update: When ``true``, refresh an already-populated database with the latest card data
+                (use this after a new set comes out). Default ``false`` — a one-time first-run
+                import that does nothing if cards are already present.
 
         Returns:
-            A result whose ``status`` is ``ok`` (cards imported — see ``cards_imported`` /
-            ``cards_total``), ``already_initialized`` (cards were already present), or ``error``
-            (the import failed; ``message`` explains).
+            A result whose ``status`` is ``ok`` (first-run import — see ``cards_imported`` /
+            ``cards_total``), ``updated`` (an ``update=true`` run — ``cards_imported`` is the count
+            of new cards added), ``already_initialized`` (cards were already present and ``update``
+            was not requested), or ``error`` (the import failed; ``message`` explains).
         """
-        return await _initialize_database_helper()
+        return await _initialize_database_helper(update=update)
 
     @mcp.tool()
     def build_search_index(rebuild: bool = False) -> BuildSearchIndexResult:
