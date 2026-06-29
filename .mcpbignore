@@ -60,8 +60,8 @@ scripts/manage_bug_reports.py
 scripts/validate_data_layer.py
 scripts/verify_image_data.py
 scripts/view_deck.py
-# src/viewer/ is imported only by scripts/view_deck.py (a dev CLI), never by the MCP server.
-src/viewer/
+# NOTE: src/viewer/ must ship — src/mcp_server/tools/view_deck.py imports it at module
+# load (from src.viewer import present_deck), so excluding it breaks server startup.
 
 # Re-include the env template: mcpb's default `.env*` rule would otherwise drop it,
 # but setup.py reads .env.example during the one-time bootstrap.
