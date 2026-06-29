@@ -6,14 +6,14 @@ import src.mcp_server as mcp_pkg
 from src.mcp_server.server import build_server
 
 
-async def test_build_server_returns_fastmcp_with_both_tools():
-    """build_server() returns a FastMCP exposing both async tools by name."""
+async def test_build_server_returns_fastmcp_with_tools():
+    """build_server() returns a FastMCP exposing the registered tools by name."""
     server = build_server()  # default factory; building does not touch the DB
 
     assert isinstance(server, FastMCP)
     tools = await server.list_tools()
     names = {tool.name for tool in tools}
-    assert {"lookup_card_by_name", "report_bug"} <= names
+    assert {"lookup_card_by_name", "search_cards"} <= names
 
 
 def test_build_server_is_exported_from_package():

@@ -35,7 +35,6 @@ from mcp.server.fastmcp import FastMCP
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.data.database import create_engine, create_session_factory
-from src.mcp_server.tools.bug_report import BugReportResult, file_bug_report
 from src.mcp_server.tools.build_search_index import BuildSearchIndexResult
 from src.mcp_server.tools.build_search_index import build_search_index as _build_search_index_helper
 from src.mcp_server.tools.card_lookup import CardLookupResult, lookup_card
@@ -131,24 +130,6 @@ def build_server(
         """
         async with session_factory() as session:
             return await lookup_card(session, card_name, format=format, games=games)
-
-    @mcp.tool()
-    async def report_bug(
-        description: str = "User reported an issue (no details provided).",
-    ) -> BugReportResult:
-        """File a bug report about unexpected behavior.
-
-        Persists the report and returns a confirmation including its id. Only
-        invoke this when the user explicitly asks to report a bug.
-
-        Args:
-            description: The user's description of the bug or issue.
-
-        Returns:
-            A result with the new report ``id`` and a confirmation ``message``.
-        """
-        async with session_factory() as session:
-            return await file_bug_report(session, description)
 
     @mcp.tool()
     async def search_cards(

@@ -89,8 +89,8 @@ async def seeded_card_db(
 
     File-backed (not ``:memory:``) so that separately-opened sessions — the
     seeding session here and each tool's own ``async with session_factory()``
-    block — all share the same database. Both ``cards`` and ``bug_reports``
-    tables are created. Reusable across the Epic-1 MCP tool stories (1.3-1.6).
+    block — all share the same database. Reusable across the Epic-1 MCP tool
+    stories (1.3-1.6).
     """
     db_path = tmp_path / "test.db"
     engine = create_engine(f"sqlite+aiosqlite:///{db_path.as_posix()}")

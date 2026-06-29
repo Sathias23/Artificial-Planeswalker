@@ -30,9 +30,6 @@ authentication surface, and the server stores no secrets.
 
 Things worth knowing for a security review:
 
-- **`report_bug` stores untrusted input.** The tool writes user-supplied text to
-  the local database verbatim. Treat that content as untrusted when reading it
-  back; the server never executes or renders it as code.
 - **Card data is downloaded, not bundled.** On first run the server fetches
   Scryfall bulk data over HTTPS. No card data is committed to the repository.
 - **The database is local.** The server reads and writes a SQLite file in your OS

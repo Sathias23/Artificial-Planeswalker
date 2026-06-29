@@ -15,7 +15,6 @@ from src.data.models.base import Base
 
 # Import models to register them with Base.metadata
 # These imports ensure SQLAlchemy knows about all tables when creating the schema
-from src.data.models.bug_report import BugReportModel  # noqa: F401
 from src.data.models.card import CardModel  # noqa: F401
 from src.data.models.deck import DeckModel  # noqa: F401
 from src.data.models.deck_card import DeckCardModel  # noqa: F401
