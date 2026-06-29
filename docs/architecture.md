@@ -107,9 +107,6 @@ Built with **FastMCP**, importing core repositories/validators directly. Tools p
 **Analysis**
 - `analyze_mana_curve`, `detect_synergies`, `validate_deck`.
 
-**Misc**
-- `report_bug` — kept as a simple tool.
-
 ### Statelessness (D5)
 
 The old per-session state is removed:

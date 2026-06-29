@@ -21,7 +21,6 @@ your client supplies the model, the server supplies fast, accurate MTG data and 
 | **Deck management** | `create_deck`, `list_decks`, `load_deck`, `delete_deck`, `add_card_to_deck`, `remove_card_from_deck` |
 | **Deck analysis** | `analyze_mana_curve`, `detect_synergies`, `validate_deck` |
 | **First-run setup** | `initialize_database`, `build_search_index` |
-| **Feedback** | `report_bug` |
 
 Four companion **skills** layer expert reasoning on top of the tools —
 `magic-deckbuilding` (the orchestrator), `synergy-discovery`, `mana-curve-analysis`, and

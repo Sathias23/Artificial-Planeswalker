@@ -49,7 +49,6 @@
     { "name": "view_deck", "description": "Render a saved deck and open it in the default browser (returns the HTML file path)." },
     { "name": "analyze_mana_curve", "description": "Analyze a deck's mana curve and land count." },
     { "name": "detect_synergies", "description": "Detect card synergies within a deck." },
-    { "name": "validate_deck", "description": "Validate a deck against a format's construction rules." },
-    { "name": "report_bug", "description": "File a bug report about the assistant." }
+    { "name": "validate_deck", "description": "Validate a deck against a format's construction rules." }
   ]
 }
