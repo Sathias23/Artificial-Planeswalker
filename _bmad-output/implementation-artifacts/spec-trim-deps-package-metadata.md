@@ -67,7 +67,7 @@ still pass. No runtime behaviour changes.
   `tenacity`, `python-dotenv`; move `logfire` into a new
   `[project.optional-dependencies]` → `observability = ["logfire>=3.0.0"]`.
 - [x] `pyproject.toml` -- `[project].description`: replace the PydanticAI sentence with an
-  MCP-server description; `authors`: name "Brad Sprigg", email `sathias@slopstudio.net`.
+  MCP-server description; `authors`: name "Sathias", email `sathias@slopstudio.net`.
 - [x] `pyproject.toml` -- add `[project.scripts]`:
   `artificial-planeswalker = "src.mcp_server.__main__:main"`.
 - [x] `pyproject.toml` -- delete the `[dependency-groups] legacy` block.
