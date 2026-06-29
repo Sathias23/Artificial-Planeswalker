@@ -6,7 +6,7 @@
   "description": "MTG deckbuilding assistant: card lookup, deck management & validation, mana-curve & synergy analysis, and local semantic card search — over a local Scryfall database.",
   "long_description": "A stateless Model Context Protocol (MCP) server that gives an LLM expert Magic: The Gathering deckbuilding tools — keyword and semantic card search, deck management, and format-legality, mana-curve, and synergy analysis — over a local Scryfall card database. Runs entirely on your machine via uv; makes no LLM calls of its own.",
   "author": {
-    "name": "Brad Sprigg",
+    "name": "Sathias",
     "email": "sathias@slopstudio.net",
     "url": "https://github.com/Sathias23"
   },

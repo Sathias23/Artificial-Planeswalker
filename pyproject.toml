@@ -5,7 +5,7 @@ description = "A stateless Model Context Protocol (MCP) server that gives an LLM
 requires-python = ">=3.12"
 readme = "README.md"
 authors = [
-    { name = "Brad Sprigg", email = "sathias@slopstudio.net" }
+    { name = "Sathias", email = "sathias@slopstudio.net" }
 ]
 dependencies = [
     "aiosqlite>=0.21.0",
