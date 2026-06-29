@@ -133,6 +133,69 @@ async def test_initialize_database_imports_then_is_idempotent(tmp_path, monkeypa
     assert again.cards_total == 2
 
 
+async def test_initialize_database_update_refreshes_populated_db(tmp_path, monkeypatch) -> None:
+    """``update=True`` re-runs the importer on a populated DB, adding new cards (``updated``)."""
+    monkeypatch.setenv(
+        "CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{(tmp_path / 'update.db').as_posix()}"
+    )
+
+    first = await initialize_database(import_fn=_fake_importer)
+    assert first.status == "ok"
+    assert first.cards_total == 2
+
+    async def _new_set_importer(session, *, bulk_type: str = "oracle_cards") -> ImportStatistics:
+        """Upserts an existing card (refresh) and a brand-new one (new set release)."""
+        await session.merge(_card("c-1", "Lightning Bolt"))  # existing id → refreshed in place
+        session.add(_card("c-3", "Boros Charm"))  # new id → added
+        await session.commit()
+        stats = ImportStatistics()
+        stats.total_processed = 2
+        stats.total_inserted = 2
+        return stats
+
+    updated = await initialize_database(import_fn=_new_set_importer, update=True)
+    assert updated.status == "updated"
+    assert updated.cards_imported == 1  # one *new* card (c-3); c-1 was refreshed, not added
+    assert updated.cards_total == 3
+
+
+async def test_initialize_database_update_on_empty_db_is_a_first_run(tmp_path, monkeypatch) -> None:
+    """``update=True`` against an empty DB behaves as a normal first-run import (status ``ok``)."""
+    monkeypatch.setenv(
+        "CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{(tmp_path / 'update_empty.db').as_posix()}"
+    )
+
+    result = await initialize_database(import_fn=_fake_importer, update=True)
+    assert result.status == "ok"
+    assert result.cards_total == 2
+
+
+async def test_initialize_database_failed_update_preserves_existing_cards(
+    tmp_path, monkeypatch
+) -> None:
+    """A failed ``update`` reports ``error`` but never wipes the already-populated database."""
+    monkeypatch.setenv(
+        "CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{(tmp_path / 'update_err.db').as_posix()}"
+    )
+
+    first = await initialize_database(import_fn=_fake_importer)
+    assert first.status == "ok"
+
+    async def _boom(session, *, bulk_type: str = "oracle_cards") -> ImportStatistics:
+        raise RuntimeError("network down mid-update")
+
+    failed = await initialize_database(import_fn=_boom, update=True)
+    assert failed.status == "error"
+
+    # The existing cards must survive the failed update — a plain re-init still sees them.
+    async def _must_not_run(session, *, bulk_type: str = "oracle_cards") -> ImportStatistics:
+        raise AssertionError("importer must not run — existing cards should remain")
+
+    again = await initialize_database(import_fn=_must_not_run)
+    assert again.status == "already_initialized"
+    assert again.cards_total == 2
+
+
 async def test_initialize_database_reports_error_on_import_failure(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv(
         "CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{(tmp_path / 'err.db').as_posix()}"

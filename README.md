@@ -74,7 +74,9 @@ Download `artificial-planeswalker.mcpb` from the
 to install. Requires `uv` on your PATH. The bundle ships no card data, so on first use just ask the
 assistant to run the **`initialize_database`** tool (a one-time card-data download, ~2–3 min) — and
 then **`build_search_index`** if you want semantic search. Until then the card/deck tools reply with
-a `database_not_initialized` hint instead of an error.
+a `database_not_initialized` hint instead of an error. When a new set releases, ask the assistant to
+run `initialize_database` with `update=true` to pull in the new cards (then re-run
+`build_search_index` to index them).
 </details>
 
 <details>
