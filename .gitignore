@@ -84,3 +84,9 @@ scripts/check_*.py
 # GitHub Releases, never committed). The manifest.json + .mcpbignore source files ARE tracked.
 *.mcpb
 
+# Claude Code plugin: the assembled tree at /plugin/ IS committed on purpose — it is the
+# marketplace `source` (.claude-plugin/marketplace.json), so `/plugin marketplace add` clones a
+# repo that already contains the built plugin. Do NOT ignore it. Its runtime cruft (.venv/,
+# __pycache__/, *.egg-info/) is already covered by the rules above. Rebuild with
+# `uv run python -m scripts.build_plugin` and commit the result. (`dist/` stays for scratch builds.)
+

@@ -1,0 +1,92 @@
+[project]
+name = "artificial-planeswalker"
+version = "0.1.0"
+description = "A stateless Model Context Protocol (MCP) server that gives an LLM expert Magic: The Gathering deckbuilding tools — keyword and semantic card search, deck management, and format-legality, mana-curve, and synergy analysis — over a local Scryfall card database"
+requires-python = ">=3.12"
+readme = "README.md"
+authors = [
+    { name = "Sathias", email = "sathias@slopstudio.net" }
+]
+dependencies = [
+    "aiosqlite>=0.21.0",
+    "fastembed>=0.7.1",
+    "httpx>=0.28.1",
+    "ijson>=3.3.0",
+    "mcp>=1.27.0",
+    "numpy>=2.0.0",
+    "platformdirs>=4.0.0",
+    "pydantic-settings>=2.0.0",
+    "sqlalchemy[asyncio]>=2.0.44",
+    "sqlite-vec>=0.1.9",
+]
+
+[project.optional-dependencies]
+# Optional observability integration. Install with: uv sync --extra observability
+# (or pip install "artificial-planeswalker[observability]"). The logfire import in
+# src/data/database.py is guarded, so a default install runs without it as a no-op.
+observability = [
+    "logfire>=3.0.0",
+]
+
+[project.scripts]
+artificial-planeswalker = "src.mcp_server.__main__:main"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.18.2",
+    "pre-commit>=4.3.0",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.14.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "F",  # pyflakes
+    "I",  # isort
+    "N",  # pep8-naming
+    "W",  # pycodestyle warnings
+    "UP", # pyupgrade
+]
+ignore = []
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

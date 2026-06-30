@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble a Claude Code plugin tree under ``dist/plugin/`` from the single ``src/``.
+"""Assemble a Claude Code plugin tree under ``plugin/`` from the single ``src/``.
 
 The ``.mcpb`` bundle ships only the MCP *tools*; it cannot carry Claude **Skills**. A
 Claude Code plugin can ship both, so this script packages the MCP server *and* its four
@@ -14,12 +14,16 @@ Single source of truth:
 * Skills: the four MTG skills under ``.claude/skills/`` (the ``bmad-*`` skills are repo
   dev-tooling and are intentionally excluded).
 
-The script is deterministic and idempotent: it wipes ``dist/plugin/`` and rebuilds it,
-so running it twice yields the same tree.
+The script is deterministic and idempotent: it rebuilds ``plugin/``'s generated contents
+(leaving any runtime ``.venv``/caches in place), so running it twice yields the same committed
+tree. ``plugin/`` is **committed** — it is the marketplace ``source``
+(see ``.claude-plugin/marketplace.json``), so the GitHub two-command install
+(``/plugin marketplace add`` → ``/plugin install``) clones a repo that already contains the
+assembled plugin. Rebuild and commit ``plugin/`` whenever ``src/`` or the skills change.
 
 Usage:
-    uv run python -m scripts.build_plugin            # build into dist/plugin/
-    uv run python -m scripts.build_plugin --out X    # build into X/
+    uv run python -m scripts.build_plugin     # -> plugin/ (committed marketplace source)
+    uv run python -m scripts.build_plugin --out X    # build into X/ (scratch / testing)
 """
 
 import argparse
@@ -47,13 +51,13 @@ SKILLS = [
 ]
 
 # Server files copied verbatim into <plugin>/server/. src/ is handled separately so we
-# can drop caches; these are the rest of the runtime project root.
-SERVER_FILES = ["pyproject.toml", "uv.lock"]
+# can drop caches; these are the rest of the runtime project root. README.md is required
+# at build time: pyproject sets `readme = "README.md"`, so `uv run` (which builds the
+# package before launching the server) hard-fails with "Readme file does not exist" without it.
+SERVER_FILES = ["pyproject.toml", "uv.lock", "README.md"]
 
 # Caches / cruft never copied into the plugin tree.
-IGNORE = shutil.ignore_patterns(
-    "__pycache__", "*.py[cod]", "*.swp", "*.swo", ".DS_Store"
-)
+IGNORE = shutil.ignore_patterns("__pycache__", "*.py[cod]", "*.swp", "*.swo", ".DS_Store")
 
 
 def _load_manifest() -> dict:
@@ -98,28 +102,41 @@ def _mcp_json() -> dict:
 def _write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(payload, indent=2, ensure_ascii=False)
-    path.write_text(text + "\n", encoding="utf-8")
+    # newline="\n" forces LF on every OS. The plugin/ tree is committed, so a build on Windows
+    # (CRLF) must produce the same bytes as the Linux CI rebuild — otherwise the plugin/-in-sync
+    # check would diff on line endings alone.
+    path.write_text(text + "\n", encoding="utf-8", newline="\n")
 
 
 def build(out_dir: Path) -> int:
     """Assemble the plugin tree at *out_dir*. Returns a process exit code."""
     manifest = _load_manifest()
 
-    # 1. Clean slate so stale files never linger between builds.
-    if out_dir.exists():
-        logger.info("Removing existing %s", out_dir)
-        shutil.rmtree(out_dir)
-    out_dir.mkdir(parents=True)
+    # 1. Clean the build's MANAGED outputs only, leaving runtime cruft (a .venv or *.egg-info
+    #    created by running the server in-place during local marketplace testing) untouched. A
+    #    blanket rmtree(out_dir) chokes on a locked .venv on Windows and aborts mid-delete, leaving
+    #    the committed tree half-built. They're gitignored, so they never get committed. (Local
+    #    marketplace testing runs the server in-place; the GitHub install clones to a cache dir.)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    server_dir = out_dir / "server"
+    for managed in (server_dir / "src", out_dir / "skills", out_dir / ".claude-plugin"):
+        if managed.exists():
+            shutil.rmtree(managed)
+    (out_dir / ".mcp.json").unlink(missing_ok=True)
 
     # 2. Server source. src/viewer/ MUST come along — src/mcp_server/tools/view_deck.py
     #    imports it at module load; omitting it broke the first .mcpb build (f567062).
-    server_dir = out_dir / "server"
+    server_dir.mkdir(parents=True, exist_ok=True)
     shutil.copytree(REPO_ROOT / "src", server_dir / "src", ignore=IGNORE)
     if not (server_dir / "src" / "viewer" / "__init__.py").exists():
         logger.error("src/viewer/ missing from copied server — aborting")
         return 1
     for name in SERVER_FILES:
-        shutil.copy2(REPO_ROOT / name, server_dir / name)
+        src_file = REPO_ROOT / name
+        if not src_file.exists():
+            logger.error("Required server file %s missing at %s — aborting", name, src_file)
+            return 1
+        shutil.copy2(src_file, server_dir / name)
     logger.info("Copied server -> %s", server_dir)
 
     # 3. The four MTG skills.
@@ -151,8 +168,8 @@ def main() -> int:
     parser.add_argument(
         "--out",
         type=Path,
-        default=REPO_ROOT / "dist" / "plugin",
-        help="Output directory for the assembled plugin (default: dist/plugin/).",
+        default=REPO_ROOT / "plugin",
+        help="Output directory (default: plugin/, the committed marketplace source).",
     )
     args = parser.parse_args()
     return build(args.out.resolve())

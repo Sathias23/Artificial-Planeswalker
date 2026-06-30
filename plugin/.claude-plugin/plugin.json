@@ -1,0 +1,20 @@
+{
+  "name": "artificial-planeswalker",
+  "description": "MTG deckbuilding assistant: card lookup, deck management & validation, mana-curve & synergy analysis, and local semantic card search — over a local Scryfall database.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Sathias",
+    "email": "sathias@slopstudio.net",
+    "url": "https://github.com/Sathias23"
+  },
+  "homepage": "https://github.com/Sathias23/Artificial-Planeswalker",
+  "repository": "https://github.com/Sathias23/Artificial-Planeswalker",
+  "license": "MIT",
+  "keywords": [
+    "mtg",
+    "magic-the-gathering",
+    "deckbuilding",
+    "scryfall",
+    "mcp"
+  ]
+}

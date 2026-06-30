@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "artificial-planeswalker": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "${CLAUDE_PLUGIN_ROOT}/server",
+        "python",
+        "-m",
+        "src.mcp_server"
+      ],
+      "env": {
+        "MCP_TRANSPORT": "stdio"
+      }
+    }
+  }
+}

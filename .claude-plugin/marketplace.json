@@ -1,0 +1,15 @@
+{
+  "name": "artificial-planeswalker",
+  "description": "Sathias's Magic: The Gathering tooling for Claude — the Artificial Planeswalker deckbuilding plugin (MCP server + deckbuilding skills).",
+  "owner": {
+    "name": "Sathias",
+    "email": "sathias@slopstudio.net"
+  },
+  "plugins": [
+    {
+      "name": "artificial-planeswalker",
+      "source": "./plugin",
+      "description": "MTG deckbuilding assistant: card lookup, deck management & validation, mana-curve & synergy analysis, and local semantic card search — over a local Scryfall database."
+    }
+  ]
+}

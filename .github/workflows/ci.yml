@@ -52,3 +52,16 @@ jobs:
 
       - name: Pytest (excluding integration)
         run: uv run pytest -m "not integration"
+
+      # The committed plugin/ tree is a generated build artifact (the marketplace `source`).
+      # Rebuild it and fail if it drifts from src/ — i.e. someone changed src/skills/README/manifest
+      # without re-running the build. The build writes LF on every OS, so this is platform-stable.
+      - name: Plugin tree in sync with src/
+        run: |
+          uv run python -m scripts.build_plugin
+          if [ -n "$(git status --porcelain -- plugin/)" ]; then
+            echo "::error::plugin/ is stale — run 'uv run python -m scripts.build_plugin' and commit plugin/."
+            git status --porcelain -- plugin/
+            git --no-pager diff -- plugin/
+            exit 1
+          fi

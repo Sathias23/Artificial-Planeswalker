@@ -22,3 +22,14 @@ repos:
           - platformdirs>=4.0.0
           - types-requests
         files: ^src/
+
+  # Keep the committed plugin/ tree (the marketplace `source`) in sync with src/. When a source
+  # input changes, rebuild it; pre-commit then fails if plugin/ was modified, prompting a re-add.
+  - repo: local
+    hooks:
+      - id: build-plugin-sync
+        name: rebuild plugin/ (keep marketplace source in sync with src/)
+        entry: uv run python -m scripts.build_plugin
+        language: system
+        pass_filenames: false
+        files: ^(src/|\.claude/skills/(magic-deckbuilding|mana-curve-analysis|synergy-discovery|format-legality)/|manifest\.json|README\.md|scripts/build_plugin\.py)
