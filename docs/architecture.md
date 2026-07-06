@@ -7,7 +7,7 @@
 **Date:** 2026-06-20
 **Branch:** `feat/mcp-server-architecture`
 **Status:** Approved (Phase 1 design)
-**Supersedes planning direction of:** the Letta-first migration (commit `2b85a71`). Letta is retained, but as a *later* consumer of the MCP server rather than the foundation.
+**Supersedes planning direction of:** the Letta-first migration planning (an unmerged 2026-06 development line, since removed from this repository). Letta is retained, but as a *later* consumer of the MCP server rather than the foundation.
 
 ---
 
