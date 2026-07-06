@@ -80,10 +80,6 @@ chainlit.md
 scripts/check_*.py
 .files/
 
-# MCPB bundle build artifact (produced by `npx @anthropic-ai/mcpb pack`; attached to
-# GitHub Releases, never committed). The manifest.json + .mcpbignore source files ARE tracked.
-*.mcpb
-
 # Claude Code plugin: the assembled tree at /plugin/ IS committed on purpose — it is the
 # marketplace `source` (.claude-plugin/marketplace.json), so `/plugin marketplace add` clones a
 # repo that already contains the built plugin. Do NOT ignore it. Its runtime cruft (.venv/,

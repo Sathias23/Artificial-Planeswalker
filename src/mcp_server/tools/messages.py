@@ -2,7 +2,7 @@
 
 Centralized so every tool's ``database_not_initialized`` (and the semantic tools' index-not-built)
 message stays consistent and — crucially — names the in-client **tool** to run next, never a
-terminal command. A packaged MCPB / Claude Desktop user has no shell to run
+terminal command. A packaged plugin / Claude Desktop user has no shell to run
 ``scripts/build_card_embeddings.py``; they ask the assistant to call the tool.
 """
 

@@ -1,7 +1,8 @@
 """``initialize_database`` MCP tool: in-client Scryfall card import (build-on-first-run + updates).
 
-A fresh MCPB / Claude Desktop install ships no card data by design (the Scryfall/WotC license means
-the bundle carries no DB). This tool is the in-client bootstrap: it creates the schema and imports
+A fresh plugin / Claude Desktop install ships no card data by design (the Scryfall/WotC license
+means the package carries no DB). This tool is the in-client bootstrap: it creates the schema and
+imports
 the ``oracle_cards`` bulk set into the shared central data directory, so the card/deck tools start
 working. It is **explicit and consent-gated** — the assistant calls it on the user's behalf; it
 never runs on startup or from another tool — and **idempotent**: if the ``cards`` table is already

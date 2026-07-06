@@ -33,6 +33,11 @@ def test_build_plugin_copies_build_critical_files(tmp_path: Path) -> None:
     assert (server / "pyproject.toml").is_file()
     assert (server / "uv.lock").is_file()
 
+    # The installed plugin redistributes MIT-licensed code, so the license grant and the
+    # WotC/Scryfall attribution must travel with it.
+    assert (server / "LICENSE").is_file()
+    assert (server / "NOTICE").is_file()
+
     # Contract, not symptom: whatever pyproject's [project].readme points at must ship, so a
     # future `readme = "README.rst"` rename can't silently re-break the package build.
     readme = tomllib.loads((server / "pyproject.toml").read_text(encoding="utf-8"))["project"][
@@ -45,9 +50,16 @@ def test_build_plugin_copies_build_critical_files(tmp_path: Path) -> None:
     for skill in SKILLS:
         assert (out / "skills" / skill / "SKILL.md").is_file()
 
-    # Generated plugin manifest carries the real name.
+    # Generated plugin manifest carries the real metadata, sourced from pyproject.toml
+    # (the .mcpb manifest.json is retired — pyproject is the single metadata source).
     plugin_json = json.loads((out / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     assert plugin_json["name"] == "artificial-planeswalker"
+    assert plugin_json["license"] == "MIT"
+    assert plugin_json["author"] == {"name": "Sathias", "email": "sathias@slopstudio.net"}
+    assert plugin_json["repository"] == "https://github.com/Sathias23/Artificial-Planeswalker"
+    assert "mtg" in plugin_json["keywords"]
+    pyproject = tomllib.loads((server / "pyproject.toml").read_text(encoding="utf-8"))
+    assert plugin_json["version"] == pyproject["project"]["version"]
 
     # Generated MCP config anchors the server to the installed plugin root.
     mcp_json = json.loads((out / ".mcp.json").read_text(encoding="utf-8"))
@@ -79,5 +91,5 @@ async def test_server_registers_expected_tools() -> None:
 
     names = {tool.name for tool in result.tools}
     assert len(names) == 16
-    # The two maintenance tools omitted from manifest.json's display tools[] must still register.
+    # The two first-run maintenance tools must register alongside the 14 card/deck tools.
     assert {"initialize_database", "build_search_index"} <= names

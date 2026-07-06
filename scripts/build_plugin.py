@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Assemble a Claude Code plugin tree under ``plugin/`` from the single ``src/``.
 
-The ``.mcpb`` bundle ships only the MCP *tools*; it cannot carry Claude **Skills**. A
-Claude Code plugin can ship both, so this script packages the MCP server *and* its four
-companion MTG skills as one installable unit. See ``docs/plugin-structure.md`` for the
-design rationale and the resulting layout.
+A Claude Code plugin ships the MCP server *and* its four companion MTG skills as one
+installable unit (an ``.mcpb`` bundle cannot carry Skills, which is why the project
+distributes a plugin instead). See ``docs/plugin-structure.md`` for the design rationale
+and the resulting layout.
 
 Single source of truth:
 
 * Server code: this repo's ``src/`` + ``pyproject.toml`` + ``uv.lock`` (copied verbatim).
-* Plugin/author metadata: ``manifest.json`` (reused so the plugin never drifts from the
-  ``.mcpb``).
+* Plugin/author metadata: ``pyproject.toml`` ``[project]`` (name, version, description,
+  authors, license, keywords, urls).
 * Skills: the four MTG skills under ``.claude/skills/`` (the ``bmad-*`` skills are repo
   dev-tooling and are intentionally excluded).
 
@@ -31,6 +31,7 @@ import json
 import logging
 import shutil
 import sys
+import tomllib
 from pathlib import Path
 
 logging.basicConfig(
@@ -54,28 +55,31 @@ SKILLS = [
 # can drop caches; these are the rest of the runtime project root. README.md is required
 # at build time: pyproject sets `readme = "README.md"`, so `uv run` (which builds the
 # package before launching the server) hard-fails with "Readme file does not exist" without it.
-SERVER_FILES = ["pyproject.toml", "uv.lock", "README.md"]
+# LICENSE + NOTICE must travel with the redistributed MIT code and its WotC/Scryfall attribution.
+SERVER_FILES = ["pyproject.toml", "uv.lock", "README.md", "LICENSE", "NOTICE"]
 
 # Caches / cruft never copied into the plugin tree.
 IGNORE = shutil.ignore_patterns("__pycache__", "*.py[cod]", "*.swp", "*.swo", ".DS_Store")
 
 
-def _load_manifest() -> dict:
-    """Read manifest.json — the shared metadata source for plugin.json."""
-    return json.loads((REPO_ROOT / "manifest.json").read_text(encoding="utf-8"))
+def _load_project() -> dict:
+    """Read pyproject.toml's [project] table — the single metadata source for plugin.json."""
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    return pyproject["project"]
 
 
-def _plugin_json(manifest: dict) -> dict:
-    """Build the plugin manifest from the .mcpb manifest, so the two stay in sync."""
+def _plugin_json(project: dict) -> dict:
+    """Build the plugin manifest from pyproject [project], so the two can't drift."""
+    urls = project.get("urls", {})
     return {
-        "name": manifest["name"],
-        "description": manifest["description"],
-        "version": manifest["version"],
-        "author": manifest["author"],
-        "homepage": manifest.get("homepage"),
-        "repository": manifest.get("repository", {}).get("url"),
-        "license": manifest.get("license"),
-        "keywords": manifest.get("keywords", []),
+        "name": project["name"],
+        "description": project["description"],
+        "version": project["version"],
+        "author": project["authors"][0],
+        "homepage": urls.get("Homepage"),
+        "repository": urls.get("Repository"),
+        "license": project.get("license"),
+        "keywords": project.get("keywords", []),
     }
 
 
@@ -110,7 +114,7 @@ def _write_json(path: Path, payload: dict) -> None:
 
 def build(out_dir: Path) -> int:
     """Assemble the plugin tree at *out_dir*. Returns a process exit code."""
-    manifest = _load_manifest()
+    project = _load_project()
 
     # 1. Clean the build's MANAGED outputs only, leaving runtime cruft (a .venv or *.egg-info
     #    created by running the server in-place during local marketplace testing) untouched. A
@@ -150,14 +154,14 @@ def build(out_dir: Path) -> int:
     logger.info("Copied %d skills -> %s", len(SKILLS), skills_dir)
 
     # 4. Generated manifests.
-    _write_json(out_dir / ".claude-plugin" / "plugin.json", _plugin_json(manifest))
+    _write_json(out_dir / ".claude-plugin" / "plugin.json", _plugin_json(project))
     _write_json(out_dir / ".mcp.json", _mcp_json())
     logger.info("Wrote .claude-plugin/plugin.json and .mcp.json")
 
     logger.info(
         "Plugin assembled at %s (v%s, %d skills)",
         out_dir,
-        manifest["version"],
+        project["version"],
         len(SKILLS),
     )
     return 0

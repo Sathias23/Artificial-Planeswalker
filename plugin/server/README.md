@@ -1,6 +1,6 @@
 # Artificial Planeswalker
 
-![Artificial Planeswalker](docs/hero-image.png)
+![Artificial Planeswalker](https://raw.githubusercontent.com/Sathias23/Artificial-Planeswalker/master/docs/hero-image.png)
 
 An intelligent **Magic: The Gathering** deck-building assistant, exposed as a local
 [MCP](https://modelcontextprotocol.io) server over a Scryfall card database.
@@ -49,7 +49,8 @@ index once too — either ask your MCP client to run the **`build_search_index`*
 `uv run python scripts/build_card_embeddings.py`. (Until then those two tools report
 `index_unavailable` with a build hint; the other tools work as soon as the card data is downloaded.)
 
-Then point any MCP client at it — in this directory, [`.mcp.json`](.mcp.json) already does:
+Then point any MCP client at it — in this directory,
+[`.mcp.json`](https://github.com/Sathias23/Artificial-Planeswalker/blob/master/.mcp.json) already does:
 
 ```bash
 uv run python -m src.mcp_server          # stdio (default; how clients launch it)
@@ -74,21 +75,36 @@ deckbuilding skills in any project — no clone required:
 On first use, ask the assistant to run **`initialize_database`** (one-time card download, ~2–3 min),
 then **`build_search_index`** for semantic search.
 
-*Developing in this repo instead?* [`.mcp.json`](.mcp.json) is auto-detected when you open the
-directory — that gives you the tools (the skills come from the plugin install above).
+*Developing in this repo instead?*
+[`.mcp.json`](https://github.com/Sathias23/Artificial-Planeswalker/blob/master/.mcp.json) is
+auto-detected when you open the directory — that gives you the tools (the skills come from the
+plugin install above).
 </details>
 
 <details>
-<summary><b>Claude Desktop</b> (one-click)</summary>
+<summary><b>Claude Desktop</b></summary>
 
-Download `artificial-planeswalker.mcpb` from the
-[latest release](https://github.com/Sathias23/Artificial-Planeswalker/releases) and double-click
-to install. Requires `uv` on your PATH. The bundle ships no card data, so on first use just ask the
-assistant to run the **`initialize_database`** tool (a one-time card-data download, ~2–3 min) — and
-then **`build_search_index`** if you want semantic search. Until then the card/deck tools reply with
-a `database_not_initialized` hint instead of an error. When a new set releases, ask the assistant to
+Clone the repo, then add the server to `claude_desktop_config.json`
+(Settings → Developer → Edit Config; requires `uv` on your PATH):
+
+```json
+{
+  "mcpServers": {
+    "artificial-planeswalker": {
+      "command": "uv",
+      "args": ["run", "--directory", "/absolute/path/to/Artificial-Planeswalker", "python", "-m", "src.mcp_server"]
+    }
+  }
+}
+```
+
+No card data ships with the repo, so on first use ask the assistant to run the
+**`initialize_database`** tool (a one-time card-data download, ~2–3 min) — and then
+**`build_search_index`** if you want semantic search. Until then the card/deck tools reply with a
+`database_not_initialized` hint instead of an error. When a new set releases, ask the assistant to
 run `initialize_database` with `update=true` to pull in the new cards (then re-run
-`build_search_index` to index them).
+`build_search_index` to index them). Desktop loads the 16 tools; the four skills are a Claude Code
+plugin feature.
 </details>
 
 <details>
@@ -123,14 +139,16 @@ every clone and every client shares them:
 | Linux | `~/.local/share/artificial-planeswalker/` (honours `XDG_DATA_HOME`) |
 
 Override with `PLANESWALKER_DATA_DIR=/your/path`, or point the engine at any SQLite file with
-`CARDS_DATABASE_URL`. See [`.env.example`](.env.example).
+`CARDS_DATABASE_URL`. See
+[`.env.example`](https://github.com/Sathias23/Artificial-Planeswalker/blob/master/.env.example).
 
 ### Semantic search index
 
 `semantic_search_cards` and `find_similar_cards` query a [`sqlite-vec`](https://github.com/asg017/sqlite-vec)
 vector table (`card_vec`) in the **same** SQLite file, embedded locally with
 [`fastembed`](https://github.com/qdrant/fastembed) (`bge-small-en-v1.5` — no API key, no network).
-`setup.py` builds it; to (re)build manually:
+Building it is a separate one-time step (see [Quick start](#quick-start)) — ask your client to run
+the **`build_search_index`** tool, or run it manually:
 
 ```bash
 uv run python scripts/build_card_embeddings.py    # idempotent + incremental
@@ -159,8 +177,10 @@ src/
 tests/           # unit + integration, mirroring src/
 ```
 
-See [`docs/architecture.md`](docs/architecture.md) for the design of record and
-[`CONTRIBUTING.md`](CONTRIBUTING.md) for the workflow.
+See [`docs/architecture.md`](https://github.com/Sathias23/Artificial-Planeswalker/blob/master/docs/architecture.md)
+for the design of record and
+[`CONTRIBUTING.md`](https://github.com/Sathias23/Artificial-Planeswalker/blob/master/CONTRIBUTING.md)
+for the workflow.
 
 ## License & attribution
 

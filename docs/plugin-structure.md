@@ -1,34 +1,38 @@
 # Packaging as a Claude Code Plugin
 
-> **Why this exists:** the `.mcpb` bundle ships only the MCP *tools* to Claude Desktop.
-> It cannot carry Claude **Skills** — that is not part of the MCPB manifest spec. A
-> **Claude Code plugin** is the supported vehicle that bundles the MCP server *and* its
-> four companion MTG skills as a single installable unit, so a user gets both the raw
-> tools and the expert coaching layer in one install.
+> **Status (2026-07-06):** implemented. `scripts/build_plugin.py` assembles the committed
+> `plugin/` tree described here, and `.claude-plugin/marketplace.json` serves it as the
+> repo's built-in marketplace. This document records the design rationale and layout.
 
-This document sketches that plugin. It is a design note, not a build script.
+> **Why a plugin (and not an `.mcpb` bundle):** an MCPB bundle ships only the MCP *tools*
+> to Claude Desktop — carrying Claude **Skills** is not part of the MCPB manifest spec. A
+> **Claude Code plugin** bundles the MCP server *and* its four companion MTG skills as a
+> single installable unit, so a user gets both the raw tools and the expert coaching layer
+> in one install. The project originally shipped both; the `.mcpb` was retired in favour of
+> the plugin as the sole packaged distribution (Claude Desktop users connect via a manual
+> `claude_desktop_config.json` entry instead — see the root README).
 
 ---
 
 ## What goes in the plugin
 
-| Piece | Source today | Role in the plugin |
-|-------|--------------|--------------------|
-| MCP server | `src/` + `pyproject.toml` + `uv.lock` | Exposes the 14 tools (`lookup_card_by_name`, `analyze_mana_curve`, …) |
+| Piece | Source | Role in the plugin |
+|-------|--------|--------------------|
+| MCP server | `src/` + `pyproject.toml` + `uv.lock` | Exposes the 16 tools (`lookup_card_by_name`, `analyze_mana_curve`, …) |
 | `magic-deckbuilding` skill | `.claude/skills/magic-deckbuilding/SKILL.md` | Orchestrator: full "improve my deck" loop |
 | `mana-curve-analysis` skill | `.claude/skills/mana-curve-analysis/SKILL.md` | Deep dive: curve / land count |
 | `synergy-discovery` skill | `.claude/skills/synergy-discovery/SKILL.md` | Deep dive: interactions / combos |
 | `format-legality` skill | `.claude/skills/format-legality/SKILL.md` | Deep dive: legality / banlist / sideboard |
 
-The `bmad-*` skills are **dev tooling for this repo** and should *not* ship in the
+The `bmad-*` skills are **dev tooling for this repo** and do *not* ship in the
 end-user plugin — only the four MTG domain skills above.
 
 ---
 
-## Directory layout
+## Directory layout (the committed `plugin/` tree)
 
 ```
-artificial-planeswalker-plugin/
+plugin/
 ├── .claude-plugin/
 │   └── plugin.json              # plugin manifest (required, this exact path)
 ├── .mcp.json                    # MCP server definition (uses ${CLAUDE_PLUGIN_ROOT})
@@ -44,6 +48,9 @@ artificial-planeswalker-plugin/
 └── server/                      # the bundled Python MCP server
     ├── pyproject.toml
     ├── uv.lock
+    ├── README.md                # required: pyproject's [project].readme
+    ├── LICENSE                  # the MIT grant travels with the redistributed code
+    ├── NOTICE                   # WotC Fan Content / Scryfall attribution
     └── src/                     # copied verbatim from this repo's src/
         ├── mcp_server/
         ├── data/
@@ -56,37 +63,16 @@ artificial-planeswalker-plugin/
 `commands/`, `agents/`, and `hooks/` directories are also supported by the plugin
 format but aren't needed here.
 
----
-
-## `.claude-plugin/plugin.json`
-
-```json
-{
-  "name": "artificial-planeswalker",
-  "description": "MTG deckbuilding assistant: card search, deck management, mana-curve, synergy, and format-legality tools plus an expert deckbuilding coach.",
-  "version": "0.1.0",
-  "author": {
-    "name": "Sathias",
-    "email": "sathias@slopstudio.net",
-    "url": "https://github.com/Sathias23"
-  },
-  "homepage": "https://github.com/Sathias23/Artificial-Planeswalker",
-  "repository": "https://github.com/Sathias23/Artificial-Planeswalker",
-  "license": "MIT",
-  "keywords": ["mtg", "magic-the-gathering", "deckbuilding", "scryfall", "mcp"]
-}
-```
-
-Skills under `skills/` are discovered automatically from this manifest's location —
+Skills under `skills/` are discovered automatically from the manifest's location —
 they do **not** need to be listed in `plugin.json`.
 
 ---
 
 ## `.mcp.json` (plugin root)
 
-The plugin's MCP server config mirrors the repo's existing `.mcp.json`, but anchors
-the working directory to the installed plugin via `${CLAUDE_PLUGIN_ROOT}` so it runs
-no matter where Claude Code installs it:
+The plugin's MCP server config mirrors the repo's `.mcp.json`, but anchors the working
+directory to the installed plugin via `${CLAUDE_PLUGIN_ROOT}` so it runs no matter where
+Claude Code installs it:
 
 ```json
 {
@@ -107,70 +93,56 @@ no matter where Claude Code installs it:
 ```
 
 The skills call the server's tools by name, so the tool names must match exactly what
-`src/mcp_server` registers (they do today).
+`src/mcp_server` registers (guarded by `tests/integration/test_build_plugin.py`).
 
 ---
 
-## Open items before this is shippable
-
-These are the same constraints the `.mcpb` already wrestles with — they don't go away
-in plugin form:
+## Runtime constraints that packaging can't solve
 
 1. **Python + uv must exist on the user's machine.** Unlike a self-contained binary,
-   this server shells out to `uv`. The plugin should document that prerequisite (the
-   MCPB declares `runtimes.python >=3.12`; the plugin has no equivalent manifest field,
-   so it's a README note).
-2. **The ~250 MB Scryfall card DB is not bundled** (correctly — `.mcpbignore` excludes
-   `/data/`). The one-time bootstrap (`scripts/import_scryfall_data.py` →
-   `scripts/build_card_embeddings.py`, run by `setup.py`) still has to happen on first
-   use. Decide whether the plugin ships those two bootstrap scripts and a setup note, or
-   whether a tool triggers the import on demand (the server already exposes
-   `initialize_database` / `build_search_index`).
+   this server shells out to `uv`. The plugin has no manifest field to declare that,
+   so it's a README note.
+2. **The ~250 MB Scryfall card DB is not bundled** (deliberately — Scryfall/WotC license).
+   First-run bootstrap happens in-client via the `initialize_database` /
+   `build_search_index` tools.
 3. **`src/viewer/` must be copied in** — `src/mcp_server/tools/view_deck.py` imports it
-   at module load. This is the exact bug that broke the first `.mcpb` build
-   (commit `f567062`); the plugin's `server/` copy must not repeat it.
-4. **Source duplication — solved by `scripts/build_plugin.py`.** The repo keeps a single
-   `src/` and assembles the plugin's `server/` at build time rather than maintaining a
-   second copy by hand. See "Building it" below.
+   at module load. This is the exact bug that broke the first packaged build
+   (commit `f567062`); the build hard-fails if the copy misses it.
 
 ---
 
 ## Building it
 
-`scripts/build_plugin.py` assembles the whole `dist/plugin/` tree from this repo's single
+`scripts/build_plugin.py` assembles the whole `plugin/` tree from this repo's single
 source of truth, so there's no hand-maintained second copy of `src/` or the skills:
 
 ```bash
-uv run python -m scripts.build_plugin            # build into dist/plugin/
-uv run python -m scripts.build_plugin --out X    # build into X/ instead
+uv run python -m scripts.build_plugin            # -> plugin/ (committed marketplace source)
+uv run python -m scripts.build_plugin --out X    # build into X/ (scratch / testing)
 ```
 
-What it does, deterministically and idempotently (wipes and rebuilds `dist/plugin/`):
+Deterministically and idempotently, it:
 
-1. **Copies the server** — `src/` (caches stripped) + `pyproject.toml` + `uv.lock` into
-   `dist/plugin/server/`. It hard-fails if `src/viewer/` didn't make it across, guarding
-   against repeating the `f567062` startup bug.
-2. **Copies the four MTG skills** — `magic-deckbuilding`, `mana-curve-analysis`,
-   `synergy-discovery`, `format-legality` — into `dist/plugin/skills/`. The `bmad-*`
-   skills are deliberately left out (they're repo dev-tooling).
+1. **Copies the server** — `src/` (caches stripped) + `pyproject.toml` + `uv.lock` +
+   `README.md` + `LICENSE` + `NOTICE` into `plugin/server/`.
+2. **Copies the four MTG skills** into `plugin/skills/`.
 3. **Generates the manifests** — `.claude-plugin/plugin.json` is derived from
-   `manifest.json` (one metadata source shared with the `.mcpb`, so they never drift),
-   and `.mcp.json` is written with the `${CLAUDE_PLUGIN_ROOT}/server` anchor shown above.
+   `pyproject.toml`'s `[project]` table (the single metadata source, so they never
+   drift), and `.mcp.json` is written with the `${CLAUDE_PLUGIN_ROOT}/server` anchor
+   shown above.
 
-`dist/` is already gitignored, so the assembled tree is a build artifact, not committed
-source. The script does **not** solve open items 1 and 2 (the uv/Python prerequisite and
-the one-time data bootstrap) — those remain runtime concerns documented for the end user.
+`plugin/` is **committed** — it is the marketplace `source` in
+`.claude-plugin/marketplace.json`, so the two-command GitHub install clones a repo that
+already contains the assembled plugin. Rebuild and commit `plugin/` whenever `src/`, the
+skills, or the pyproject metadata change. CI rebuilds it and fails on drift.
 
-## How a user would install it
+## How a user installs it
 
-```bash
-# from a marketplace, or a local path during development:
-/plugin install artificial-planeswalker@<marketplace>
-# or point Claude Code at a local checkout for testing:
-/plugin marketplace add ./artificial-planeswalker-plugin
+```
+/plugin marketplace add Sathias23/Artificial-Planeswalker
+/plugin install artificial-planeswalker@artificial-planeswalker
 ```
 
-After install, the user gets all 14 MCP tools **and** the four skills
-(`magic-deckbuilding` and friends) auto-loaded — the coaching layer the bare `.mcpb`
-can't provide.
-```
+After install, the user gets all 16 MCP tools **and** the four skills
+(`magic-deckbuilding` and friends) auto-loaded — the coaching layer a bare MCP server
+config can't provide.

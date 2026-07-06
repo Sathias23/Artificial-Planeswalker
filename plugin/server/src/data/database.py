@@ -114,7 +114,7 @@ async def init_database(engine: AsyncEngine) -> None:
 async def is_database_initialized(session: AsyncSession) -> bool:
     """Return whether the ``cards`` table exists **and** holds at least one row.
 
-    A fresh MCPB / first-run install ships no data (the card set is excluded by design — Scryfall
+    A fresh first-run install ships no data (the card set is excluded by design — Scryfall
     license): the ``cards.db`` file, the schema, or the ``cards`` table itself may be absent, or
     present-but-empty. All three states mean "the one-time ``initialize_database`` step has not
     run yet", so this returns ``False`` **without raising** — letting every relational tool surface
