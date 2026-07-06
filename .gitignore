@@ -4,6 +4,9 @@ temp/
 # Claude Code — track shared skills/config, keep machine-local settings out
 .claude/settings.local.json
 
+# Codex — repo-scoped personal config (the .codex analog of settings.local.json)
+/.codex/
+
 # Dev process tooling — untracked via `git rm --cached` but kept ON DISK locally so the bmad
 # workflow still runs. NOTE: _bmad-output/ is intentionally NOT ignored — its planning +
 # implementation artifacts are the public design record.
@@ -52,6 +55,7 @@ env/
 # Testing
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 .tox/
 
@@ -66,10 +70,18 @@ dmypy.json
 .env
 .env.local
 
-# Database
+# Database (incl. WAL-mode sidecars, which *.db/*.sqlite don't match)
 *.db
 *.sqlite
 *.sqlite3
+*.db-shm
+*.db-wal
+*.sqlite-shm
+*.sqlite-wal
+
+# OS cruft
+.DS_Store
+Thumbs.db
 
 # Chainlit
 .chainlit/
