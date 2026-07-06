@@ -87,8 +87,10 @@ plugin install above).
 <details>
 <summary><b>OpenAI Codex</b> (plugin or manual MCP config)</summary>
 
-**Plugin route** — *experimental: not yet verified on a live Codex install.* Requires Codex CLI
-≥ 0.117.0 (first-class plugin support). Add this repo as a marketplace, then install
+**Plugin route** — verified on the Codex app for Windows. Requires Codex ≥ 0.117.0
+(first-class plugin support); the desktop app has no add-marketplace UI, so run the command
+below with the Codex CLI — on native Windows they share the same `%USERPROFILE%\.codex`, and
+the plugin appears in the app after a restart. Add this repo as a marketplace, then install
 from the `/plugins` browser:
 
 ```
@@ -118,6 +120,10 @@ env = { MCP_TRANSPORT = "stdio" }
 On first use, ask the assistant to run **`initialize_database`** (one-time card download,
 ~2–3 min), then **`build_search_index`** for semantic search. The manual route loads the 16
 tools; the skills come with the plugin route.
+
+> **First launch is slow:** the server's first start builds its Python environment with `uv`
+> (a few minutes on a cold cache). If the tools don't appear in your first session, start a
+> fresh session once the build has finished.
 </details>
 
 <details>
