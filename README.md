@@ -1,6 +1,6 @@
 # Artificial Planeswalker
 
-![Artificial Planeswalker](https://raw.githubusercontent.com/Sathias23/Artificial-Planeswalker/master/docs/hero-image.png)
+![Artificial Planeswalker](docs/hero-image.png)
 
 An intelligent **Magic: The Gathering** deck-building assistant, exposed as a local
 [MCP](https://modelcontextprotocol.io) server over a Scryfall card database.
