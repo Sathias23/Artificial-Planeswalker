@@ -4,9 +4,12 @@ version = "0.1.0"
 description = "A stateless Model Context Protocol (MCP) server that gives an LLM expert Magic: The Gathering deckbuilding tools — keyword and semantic card search, deck management, and format-legality, mana-curve, and synergy analysis — over a local Scryfall card database"
 requires-python = ">=3.12"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE", "NOTICE"]
 authors = [
     { name = "Sathias", email = "sathias@slopstudio.net" }
 ]
+keywords = ["mtg", "magic-the-gathering", "deckbuilding", "scryfall", "mcp"]
 dependencies = [
     "aiosqlite>=0.21.0",
     "fastembed>=0.7.1",
@@ -27,6 +30,10 @@ dependencies = [
 observability = [
     "logfire>=3.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Sathias23/Artificial-Planeswalker"
+Repository = "https://github.com/Sathias23/Artificial-Planeswalker"
 
 [project.scripts]
 artificial-planeswalker = "src.mcp_server.__main__:main"

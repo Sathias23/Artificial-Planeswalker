@@ -1,0 +1,28 @@
+Artificial Planeswalker
+Copyright (c) 2026 Brad Sprigg
+
+This software is released under the MIT License (see LICENSE).
+
+------------------------------------------------------------------------------
+Card data attribution
+------------------------------------------------------------------------------
+
+Magic: The Gathering card data is sourced from Scryfall
+(https://scryfall.com/docs/api) bulk data, used under Scryfall's terms.
+
+This project bundles NO card data. The Scryfall bulk dataset (~60k cards) is
+downloaded locally on first run; it is not redistributed as part of this
+repository or any release artifact.
+
+------------------------------------------------------------------------------
+Wizards of the Coast Fan Content Policy
+------------------------------------------------------------------------------
+
+Artificial Planeswalker is unofficial Fan Content permitted under the Wizards
+of the Coast Fan Content Policy
+(https://company.wizards.com/en/legal/fancontentpolicy).
+
+Not approved or endorsed by Wizards. Portions of the materials used are
+property of Wizards of the Coast. (c) Wizards of the Coast LLC.
+
+Magic: The Gathering is a trademark of Wizards of the Coast LLC.

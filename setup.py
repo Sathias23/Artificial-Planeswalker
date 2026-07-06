@@ -10,6 +10,7 @@ Performs one-time initialization:
 """
 
 import asyncio
+import subprocess
 import sys
 from pathlib import Path
 
@@ -33,8 +34,6 @@ def check_uv_installed() -> bool:
 
 def install_uv() -> None:
     """Install uv package manager."""
-    import subprocess
-
     print("\n📦 Installing uv package manager...")
     try:
         curl_result = subprocess.run(
@@ -57,8 +56,6 @@ def install_uv() -> None:
 
 def sync_dependencies() -> None:
     """Install project dependencies using uv."""
-    import subprocess
-
     print("\n📦 Installing dependencies...")
     try:
         subprocess.run(["uv", "sync"], check=True)
@@ -88,7 +85,21 @@ def setup_environment() -> None:
     print("   editing .env is optional — no API key is required for the MCP server.")
 
 
-async def initialize_database() -> None:
+def initialize_database() -> None:
+    """Run the DB bootstrap inside the uv-managed environment.
+
+    This script is invoked with the *system* interpreter (`python3 setup.py`), where the
+    project's dependencies are not importable — `uv sync` provisions a project venv, not
+    the invoking Python. Re-exec the DB step through `uv run` so the imports resolve.
+    """
+    try:
+        subprocess.run(["uv", "run", "python", "setup.py", "--init-db"], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Failed to initialize database: {e}")
+        sys.exit(1)
+
+
+async def _init_db() -> None:
     """Initialize the database and import Scryfall card data if not already present.
 
     Idempotent: creating the schema is a no-op when it exists, and the (multi-minute)
@@ -97,7 +108,6 @@ async def initialize_database() -> None:
     """
     print("\n💾 Initializing database...")
 
-    # Import here to avoid dependency issues before `uv sync`.
     from sqlalchemy import func, select
 
     from src.data import create_engine, create_session_factory, init_database
@@ -124,8 +134,6 @@ async def initialize_database() -> None:
 
 def install_git_hooks() -> None:
     """Install pre-commit git hooks."""
-    import subprocess
-
     print("\n🪝 Installing git hooks...")
     try:
         subprocess.run(["uv", "run", "pre-commit", "install"], check=True)
@@ -150,8 +158,14 @@ def print_next_steps() -> None:
     print()
 
 
-async def main() -> None:
+def main() -> None:
     """Run the setup process."""
+    if "--init-db" in sys.argv:
+        # Child process re-exec'd by initialize_database(): runs inside the uv venv,
+        # where the project imports resolve. Do only the DB step.
+        asyncio.run(_init_db())
+        return
+
     print("=" * 60)
     print("Artificial-Planeswalker Setup")
     print("=" * 60)
@@ -172,7 +186,7 @@ async def main() -> None:
     setup_environment()
 
     # 5. Initialize database and import card data (idempotent: skips if already populated)
-    await initialize_database()
+    initialize_database()
 
     # 6. Install git hooks
     install_git_hooks()
@@ -183,7 +197,7 @@ async def main() -> None:
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        main()
     except KeyboardInterrupt:
         print("\n\n⚠️  Setup interrupted by user")
         sys.exit(1)
