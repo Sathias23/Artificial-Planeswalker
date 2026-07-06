@@ -111,8 +111,8 @@ def _codex_plugin_json(project: dict) -> dict:
 
     Same single metadata source as :func:`_plugin_json`, plus the two Codex-specific
     pointers: ``skills`` (shared skill tree) and ``mcpServers`` (the Codex MCP config
-    file). ``mcpServers`` is camelCase here per the Codex manifest schema, even though
-    the wrapper key *inside* codex-mcp.json is snake_case ``mcp_servers``.
+    file, which uses the same camelCase ``mcpServers`` wrapper inside — see
+    :func:`_codex_mcp_json`).
 
     Args:
         project: The parsed ``[project]`` table from pyproject.toml.
@@ -133,14 +133,16 @@ def _codex_mcp_json() -> dict:
     Codex performs no ``${...}`` variable substitution in plugin MCP configs
     (openai/codex#19372), so the Claude ``--directory ${CLAUDE_PLUGIN_ROOT}/server``
     anchor can't be reused. Plugin-config paths are ``./``-relative to the plugin root,
-    so ``cwd: "./server"`` + plain ``uv run`` is the least-speculative launch anchor.
-    The ``mcp_servers`` wrapper is snake_case per the documented Codex config schema.
+    so ``cwd: "./server"`` + plain ``uv run`` is the launch anchor. The wrapper key is
+    camelCase ``mcpServers`` — Codex's own plugin-creator scaffold stubs
+    ``{"mcpServers": {}}``; a snake_case ``mcp_servers`` wrapper is silently ignored
+    and no tools mount (found the hard way on the first live install).
 
     Returns:
         The payload for ``plugin/codex-mcp.json``.
     """
     return {
-        "mcp_servers": {
+        "mcpServers": {
             "artificial-planeswalker": {
                 "command": "uv",
                 "args": ["run", "python", "-m", "src.mcp_server"],

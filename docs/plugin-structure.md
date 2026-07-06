@@ -125,8 +125,9 @@ config and `.agents/plugins/marketplace.json` — are guarded by
 `${CLAUDE_PLUGIN_ROOT}/server` anchor would be passed to `uv` literally and break the
 launch. Codex plugin-config paths are documented as `./`-relative to the plugin root, so
 the Codex config instead anchors the launch with `cwd: "./server"` + plain
-`uv run python -m src.mcp_server`, and uses Codex's snake_case `mcp_servers` wrapper
-(the manifest's pointer key `mcpServers` stays camelCase per the Codex manifest schema).
+`uv run python -m src.mcp_server`. Both the manifest pointer key and the wrapper inside
+the file are camelCase `mcpServers` — verified against Codex's own plugin-creator
+scaffold; a snake_case `mcp_servers` wrapper is silently ignored and no tools mount.
 
 The same issue (#19372) reports that Codex **auto-surfaces Claude Code marketplaces** it
 finds in a repo. Since this repo ships `.claude-plugin/marketplace.json` too, a Codex user

@@ -79,14 +79,15 @@ def test_build_plugin_copies_build_critical_files(tmp_path: Path) -> None:
     }
     assert codex_manifest["version"] == pyproject["project"]["version"]
 
-    # Codex MCP config: snake_case `mcp_servers` wrapper (Codex config schema), launch anchored
-    # via cwd because Codex does NOT substitute ${CLAUDE_PLUGIN_ROOT} (openai/codex#19372) — a
-    # leaked Claude variable (or a --directory anchor) would be passed through literally and
-    # break the launch.
+    # Codex MCP config: camelCase `mcpServers` wrapper — verified against Codex's own
+    # plugin-creator scaffold, which stubs `{"mcpServers": {}}`; a snake_case wrapper is
+    # silently dropped and no tools mount. Launch is anchored via cwd because Codex does
+    # NOT substitute ${CLAUDE_PLUGIN_ROOT} (openai/codex#19372) — a leaked Claude variable
+    # (or a --directory anchor) would be passed through literally and break the launch.
     codex_mcp_text = (out / "codex-mcp.json").read_text(encoding="utf-8")
     assert "${CLAUDE_PLUGIN_ROOT}" not in codex_mcp_text
     codex_mcp = json.loads(codex_mcp_text)
-    codex_server = codex_mcp["mcp_servers"]["artificial-planeswalker"]
+    codex_server = codex_mcp["mcpServers"]["artificial-planeswalker"]
     assert codex_server["cwd"] == "./server"
     assert codex_server["args"] == ["run", "python", "-m", "src.mcp_server"]
     assert codex_server["env"] == {"MCP_TRANSPORT": "stdio"}
