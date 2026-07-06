@@ -1,6 +1,9 @@
 # Artificial Planeswalker
 
-![Artificial Planeswalker](https://raw.githubusercontent.com/Sathias23/Artificial-Planeswalker/master/docs/hero-image.png)
+[![CI](https://github.com/Sathias23/Artificial-Planeswalker/actions/workflows/ci.yml/badge.svg)](https://github.com/Sathias23/Artificial-Planeswalker/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+![Artificial Planeswalker](docs/hero-image.jpg)
 
 An intelligent **Magic: The Gathering** deck-building assistant, exposed as a local
 [MCP](https://modelcontextprotocol.io) server over a Scryfall card database.
@@ -41,7 +44,7 @@ python3 setup.py        # installs deps + downloads the card database into a cen
 ```
 
 `setup.py` is idempotent: it checks Python/uv, syncs dependencies, then downloads public
-**Scryfall** bulk data (~60k cards, a few minutes — no API key) into a shared OS location (below),
+**Scryfall** bulk data (~30k cards, a few minutes — no API key) into a shared OS location (below),
 so every project and every MCP client reuses it. Run it once per machine.
 
 To enable **semantic search** (`semantic_search_cards` / `find_similar_cards`), build the embedding
@@ -188,6 +191,7 @@ Released under the [MIT License](LICENSE).
 
 Card data is © Wizards of the Coast, sourced from [Scryfall](https://scryfall.com/docs/api) bulk
 data under Scryfall's terms. **This project bundles no card data** — it is downloaded on first run.
+This project is not produced by, endorsed by, supported by, or affiliated with Scryfall.
 
 > Artificial Planeswalker is unofficial Fan Content permitted under the
 > [Wizards of the Coast Fan Content Policy](https://company.wizards.com/en/legal/fancontentpolicy).

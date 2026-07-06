@@ -15,7 +15,7 @@ cd Artificial-Planeswalker
 python3 setup.py    # checks Python/uv, syncs deps, imports the card DB, installs pre-commit hooks
 ```
 
-`setup.py` downloads public Scryfall bulk data (~60k cards, no API key) into a
+`setup.py` downloads public Scryfall bulk data (~30k cards, no API key) into a
 central OS data directory — see the README for where it lives and how to override
 it. The semantic-search index is separate and optional; build it when you need
 `semantic_search_cards` / `find_similar_cards`:

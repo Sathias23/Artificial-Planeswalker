@@ -15,12 +15,10 @@ repos:
         args: [--strict, --ignore-missing-imports]
         additional_dependencies:
           - pydantic>=2.12.0
-          - pydantic-settings>=2.0.0
           - sqlalchemy>=2.0.44
           - numpy>=2.0.0
           - mcp>=1.27.0
           - platformdirs>=4.0.0
-          - types-requests
         files: ^src/
 
   # Keep the committed plugin/ tree (the marketplace `source`) in sync with src/. When a source
@@ -32,4 +30,4 @@ repos:
         entry: uv run python -m scripts.build_plugin
         language: system
         pass_filenames: false
-        files: ^(src/|\.claude/skills/(magic-deckbuilding|mana-curve-analysis|synergy-discovery|format-legality)/|manifest\.json|README\.md|scripts/build_plugin\.py)
+        files: ^(src/|\.claude/skills/(magic-deckbuilding|mana-curve-analysis|synergy-discovery|format-legality)/|pyproject\.toml|uv\.lock|README\.md|LICENSE|NOTICE|scripts/build_plugin\.py)

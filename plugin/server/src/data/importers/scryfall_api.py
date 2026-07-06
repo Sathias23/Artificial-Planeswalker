@@ -68,6 +68,7 @@ async def download_bulk_data(
     chunk_size: int = 10 * 1024 * 1024,  # 10 MB chunks
     max_retries: int = 3,
     retry_delay: float = 2.0,
+    max_bytes: int | None = None,
 ) -> Path:
     """Download Scryfall bulk data file with streaming and progress logging.
 
@@ -77,12 +78,14 @@ async def download_bulk_data(
         chunk_size: Size of chunks to download (default 10 MB).
         max_retries: Maximum retry attempts on failure.
         retry_delay: Initial delay between retries (exponential backoff).
+        max_bytes: Hard ceiling on downloaded bytes. A response that advertises or
+            streams past it aborts immediately (no retry) — disk-exhaustion guard.
 
     Returns:
         Path to the downloaded file.
 
     Raises:
-        ScryfallAPIError: If download fails after all retries.
+        ScryfallAPIError: If download fails after all retries, or exceeds *max_bytes*.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -100,6 +103,12 @@ async def download_bulk_data(
                     total_size = int(response.headers.get("content-length", 0))
                     total_mb = total_size / (1024 * 1024) if total_size else 0.0
 
+                    if max_bytes is not None and total_size > max_bytes:
+                        raise ScryfallAPIError(
+                            f"Advertised download size ({total_size:,} bytes) exceeds the "
+                            f"{max_bytes:,}-byte ceiling; aborting"
+                        )
+
                     if total_size:
                         logger.info(f"File size: {total_mb:.1f} MB")
 
@@ -108,8 +117,13 @@ async def download_bulk_data(
 
                     with output_path.open("wb") as f:
                         async for chunk in response.aiter_bytes(chunk_size):
-                            f.write(chunk)
                             bytes_downloaded += len(chunk)
+                            if max_bytes is not None and bytes_downloaded > max_bytes:
+                                raise ScryfallAPIError(
+                                    f"Download exceeded the {max_bytes:,}-byte ceiling "
+                                    f"(content-length was absent or wrong); aborting"
+                                )
+                            f.write(chunk)
 
                             # Log progress every 10 MB
                             current_mb = bytes_downloaded / (1024 * 1024)
@@ -127,6 +141,12 @@ async def download_bulk_data(
                 final_mb = bytes_downloaded / (1024 * 1024)
                 logger.info(f"Download complete: {final_mb:.1f} MB")
                 return output_path
+
+            except ScryfallAPIError:
+                # Ceiling violations are deliberate aborts: drop the partial file and
+                # propagate without retrying (the source would just oversend again).
+                output_path.unlink(missing_ok=True)
+                raise
 
             except (httpx.HTTPError, httpx.TimeoutException, OSError) as e:
                 logger.warning(f"Download failed: {e}")

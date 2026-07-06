@@ -81,7 +81,7 @@ def setup_environment() -> None:
     print("\n🔧 Creating .env file...")
     env_path.write_text(env_example.read_text())
     print("✓ .env created from template")
-    print("   Defaults work out of the box (SQLite at ./data/cards.db, stdio transport);")
+    print("   Defaults work out of the box (SQLite in the central OS data dir, stdio transport);")
     print("   editing .env is optional — no API key is required for the MCP server.")
 
 

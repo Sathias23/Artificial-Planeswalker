@@ -1,5 +1,9 @@
 # MCP-Server Architecture Pivot — Design
 
+> **Status (2026-07-06):** implemented — this pivot document is the design of record for the
+> shipped MCP server. It is written as of its 2026-06-20 decision date; for how the server is
+> packaged and distributed today, see [`plugin-structure.md`](plugin-structure.md).
+
 **Date:** 2026-06-20
 **Branch:** `feat/mcp-server-architecture`
 **Status:** Approved (Phase 1 design)

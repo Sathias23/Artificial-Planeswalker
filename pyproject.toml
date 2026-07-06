@@ -1,6 +1,6 @@
 [project]
 name = "artificial-planeswalker"
-version = "0.1.0"
+version = "0.2.0"
 description = "A stateless Model Context Protocol (MCP) server that gives an LLM expert Magic: The Gathering deckbuilding tools — keyword and semantic card search, deck management, and format-legality, mana-curve, and synergy analysis — over a local Scryfall card database"
 requires-python = ">=3.12"
 readme = "README.md"
@@ -10,6 +10,15 @@ authors = [
     { name = "Sathias", email = "sathias@slopstudio.net" }
 ]
 keywords = ["mtg", "magic-the-gathering", "deckbuilding", "scryfall", "mcp"]
+# NB: the wheel installs a top-level package named `src` — fine for git/plugin
+# distribution; renaming is a prerequisite if this is ever published to PyPI.
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Games/Entertainment",
+]
 dependencies = [
     "aiosqlite>=0.21.0",
     "fastembed>=0.7.1",
@@ -18,7 +27,7 @@ dependencies = [
     "mcp>=1.27.0",
     "numpy>=2.0.0",
     "platformdirs>=4.0.0",
-    "pydantic-settings>=2.0.0",
+    "pydantic>=2.0.0",
     "sqlalchemy[asyncio]>=2.0.44",
     "sqlite-vec>=0.1.9",
 ]

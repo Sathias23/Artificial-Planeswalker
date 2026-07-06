@@ -44,7 +44,7 @@ wheels = [
 
 [[package]]
 name = "artificial-planeswalker"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
@@ -54,7 +54,7 @@ dependencies = [
     { name = "mcp" },
     { name = "numpy" },
     { name = "platformdirs" },
-    { name = "pydantic-settings" },
+    { name = "pydantic" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "sqlite-vec" },
 ]
@@ -84,7 +84,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=1.27.0" },
     { name = "numpy", specifier = ">=2.0.0" },
     { name = "platformdirs", specifier = ">=4.0.0" },
-    { name = "pydantic-settings", specifier = ">=2.0.0" },
+    { name = "pydantic", specifier = ">=2.0.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.44" },
     { name = "sqlite-vec", specifier = ">=0.1.9" },
 ]

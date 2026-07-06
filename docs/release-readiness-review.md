@@ -175,3 +175,32 @@ docs will be publicly indexed.
 3. Apply the download-hardening changes (M1 mkdtemp, M2 size cap) before the code gets public scrutiny.
 4. Sweep the should-fixes (deps, pyproject metadata, Scryfall line, hero-image note, CoC,
    CHANGELOG/0.2.0).
+
+---
+
+## Resolution log (2026-07-06)
+
+- **Identity scrub DONE.** `git filter-repo` mailmap rewrite on a fresh clone; the GitHub repo was
+  deleted and recreated (same name, still private) to purge pre-rewrite objects, and all branches +
+  tags re-pushed. Correction to this review: the two addresses existed **only** in commit/tag
+  metadata (author/committer/tagger lines) — a `git cat-file --batch-all-objects` grep found zero
+  hits in any historical file content, so the "66 + 6 blob hits" above overcounted (it appears to
+  have counted author lines in `git log -p` output).
+- **The `.mcpb` distribution was retired** (decision 2026-07-06: MCPB bundles cannot carry Skills;
+  the Claude Code plugin ships tools + skills and is the sole packaged channel). Blockers **3**
+  and **5** became moot; `manifest.json`/`.mcpbignore` deleted and plugin metadata now derives
+  from `pyproject.toml`.
+- **Blockers 1, 2, 4 fixed** (PR #1): setup.py re-execs its DB step via `uv run`; the plugin ships
+  LICENSE + NOTICE and its README's unshipped links are absolutized; the semantic-index claim is
+  corrected.
+- **M1, M2, L3 fixed**: per-run `mkdtemp` download dir, size-derived byte ceiling, and an
+  https+Scryfall-host allowlist on `download_uri` (`tests/unit/data/importers/test_download_hardening.py`).
+- **L4 accepted as-is** (decision 2026-07-06): absolute paths in tool output/diagnostics are fine
+  for a local-first tool talking to the user's own client; no sanitization.
+- **Should-fixes swept**: pydantic declaration swap, pyproject metadata (license/urls/keywords/
+  classifiers), Scryfall non-endorsement line (NOTICE + README), hero image documented as original
+  AI-generated work and compressed 3.4 MB → 0.4 MB JPEG, CODE_OF_CONDUCT.md added, CHANGELOG 0.2.0
+  entry, card-count and stale-path corrections. The `src` package-name PyPI caveat is documented in
+  pyproject as out of scope.
+- **Remaining before flipping public:** blocker **6** — cut tags `v0.1.0` (historical) + `v0.2.0`
+  and a GitHub Release (no `.mcpb` asset anymore), then the final secret-scan + flip.

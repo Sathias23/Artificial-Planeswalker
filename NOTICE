@@ -9,10 +9,12 @@ Card data attribution
 
 Magic: The Gathering card data is sourced from Scryfall
 (https://scryfall.com/docs/api) bulk data, used under Scryfall's terms.
+This project is not produced by, endorsed by, supported by, or affiliated
+with Scryfall.
 
-This project bundles NO card data. The Scryfall bulk dataset (~60k cards) is
-downloaded locally on first run; it is not redistributed as part of this
-repository or any release artifact.
+This project bundles NO card data. The Scryfall oracle-cards bulk dataset
+(~30k cards) is downloaded locally on first run; it is not redistributed as
+part of this repository or any release artifact.
 
 ------------------------------------------------------------------------------
 Wizards of the Coast Fan Content Policy
@@ -26,3 +28,16 @@ Not approved or endorsed by Wizards. Portions of the materials used are
 property of Wizards of the Coast. (c) Wizards of the Coast LLC.
 
 Magic: The Gathering is a trademark of Wizards of the Coast LLC.
+
+------------------------------------------------------------------------------
+Other assets and acknowledgments
+------------------------------------------------------------------------------
+
+The repository hero image (docs/hero-image.jpg) is an original AI-generated
+work created by the project author for this project; it depicts no Magic: The
+Gathering card art and is released under this repository's MIT License.
+
+Local semantic search is powered by fastembed (Apache-2.0,
+https://github.com/qdrant/fastembed) running the BAAI/bge-small-en-v1.5
+embedding model (MIT). Neither is bundled; both are downloaded as ordinary
+dependencies/model artifacts at install/first-index time.
