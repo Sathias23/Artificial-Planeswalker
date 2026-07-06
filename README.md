@@ -85,6 +85,48 @@ plugin install above).
 </details>
 
 <details>
+<summary><b>OpenAI Codex</b> (plugin or manual MCP config)</summary>
+
+**Plugin route** — verified on the Codex app for Windows. Requires Codex ≥ 0.117.0
+(first-class plugin support); the desktop app has no add-marketplace UI, so run the command
+below with the Codex CLI — on native Windows they share the same `%USERPROFILE%\.codex`, and
+the plugin appears in the app after a restart. Add this repo as a marketplace, then install
+from the `/plugins` browser:
+
+```
+codex plugin marketplace add Sathias23/Artificial-Planeswalker
+```
+
+Open the `/plugins` browser inside Codex and install **artificial-planeswalker** — that gives
+you the 16 tools *and* the four deckbuilding skills. If Codex also auto-surfaces this repo's
+*Claude Code* marketplace, skip it — that variant's config only works inside Claude Code
+(see [openai/codex#19372](https://github.com/openai/codex/issues/19372)).
+
+**Manual route** — clone the repo, then register the server with one command:
+
+```bash
+codex mcp add artificial-planeswalker --env MCP_TRANSPORT=stdio -- uv run --directory /absolute/path/to/Artificial-Planeswalker python -m src.mcp_server
+```
+
+or add it to `~/.codex/config.toml` yourself:
+
+```toml
+[mcp_servers.artificial-planeswalker]
+command = "uv"
+args = ["run", "--directory", "/absolute/path/to/Artificial-Planeswalker", "python", "-m", "src.mcp_server"]
+env = { MCP_TRANSPORT = "stdio" }
+```
+
+On first use, ask the assistant to run **`initialize_database`** (one-time card download,
+~2–3 min), then **`build_search_index`** for semantic search. The manual route loads the 16
+tools; the skills come with the plugin route.
+
+> **First launch is slow:** the server's first start builds its Python environment with `uv`
+> (a few minutes on a cold cache). If the tools don't appear in your first session, start a
+> fresh session once the build has finished.
+</details>
+
+<details>
 <summary><b>Claude Desktop</b></summary>
 
 Clone the repo, then add the server to `claude_desktop_config.json`

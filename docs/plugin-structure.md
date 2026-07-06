@@ -34,8 +34,11 @@ end-user plugin — only the four MTG domain skills above.
 ```
 plugin/
 ├── .claude-plugin/
-│   └── plugin.json              # plugin manifest (required, this exact path)
-├── .mcp.json                    # MCP server definition (uses ${CLAUDE_PLUGIN_ROOT})
+│   └── plugin.json              # Claude Code plugin manifest (required, this exact path)
+├── .mcp.json                    # Claude Code MCP server definition (uses ${CLAUDE_PLUGIN_ROOT})
+├── .codex-plugin/
+│   └── plugin.json              # OpenAI Codex plugin manifest (same pyproject metadata)
+├── codex-mcp.json               # Codex MCP server definition (cwd anchor, no ${...} vars)
 ├── skills/                      # auto-discovered; one folder per skill
 │   ├── magic-deckbuilding/
 │   │   └── SKILL.md
@@ -97,6 +100,43 @@ The skills call the server's tools by name, so the tool names must match exactly
 
 ---
 
+## Dual manifests, one tree (OpenAI Codex support)
+
+The same committed `plugin/` tree also installs as an **OpenAI Codex CLI plugin**
+(Codex ≥ 0.117.0, served from the repo-scoped marketplace at
+`.agents/plugins/marketplace.json`). Only the manifests differ per client — `skills/` and
+`server/` are shared unchanged:
+
+| Client | Manifest | MCP config |
+|--------|----------|------------|
+| Claude Code | `.claude-plugin/plugin.json` | `.mcp.json` |
+| OpenAI Codex | `.codex-plugin/plugin.json` | `codex-mcp.json` |
+
+Both manifests are generated from `pyproject.toml`'s `[project]` table by
+`scripts/build_plugin.py` (the Codex one is the Claude manifest plus the `skills` /
+`mcpServers` pointer keys), so the **pyproject-derived fields** cannot drift between
+clients or from the package metadata. The hand-written pieces — `codex-mcp.json`'s launch
+config and `.agents/plugins/marketplace.json` — are guarded by
+`tests/integration/test_build_plugin.py` instead.
+
+**Why a separate `codex-mcp.json` instead of reusing `.mcp.json`:** Codex performs **no
+`${...}` variable substitution** in plugin MCP configs
+([openai/codex#19372](https://github.com/openai/codex/issues/19372)), so the
+`${CLAUDE_PLUGIN_ROOT}/server` anchor would be passed to `uv` literally and break the
+launch. Codex plugin-config paths are documented as `./`-relative to the plugin root, so
+the Codex config instead anchors the launch with `cwd: "./server"` + plain
+`uv run python -m src.mcp_server`. Both the manifest pointer key and the wrapper inside
+the file are camelCase `mcpServers` — verified against Codex's own plugin-creator
+scaffold; a snake_case `mcp_servers` wrapper is silently ignored and no tools mount.
+
+The same issue (#19372) reports that Codex **auto-surfaces Claude Code marketplaces** it
+finds in a repo. Since this repo ships `.claude-plugin/marketplace.json` too, a Codex user
+may be offered the Claude variant of this plugin — whose `.mcp.json` cannot work outside
+Claude Code. The supported Codex route is the `.agents/plugins/marketplace.json`
+marketplace; the README says so next to the install command.
+
+---
+
 ## Runtime constraints that packaging can't solve
 
 1. **Python + uv must exist on the user's machine.** Unlike a self-contained binary,
@@ -126,10 +166,11 @@ Deterministically and idempotently, it:
 1. **Copies the server** — `src/` (caches stripped) + `pyproject.toml` + `uv.lock` +
    `README.md` + `LICENSE` + `NOTICE` into `plugin/server/`.
 2. **Copies the four MTG skills** into `plugin/skills/`.
-3. **Generates the manifests** — `.claude-plugin/plugin.json` is derived from
-   `pyproject.toml`'s `[project]` table (the single metadata source, so they never
-   drift), and `.mcp.json` is written with the `${CLAUDE_PLUGIN_ROOT}/server` anchor
-   shown above.
+3. **Generates the manifests for both clients** — `.claude-plugin/plugin.json` and
+   `.codex-plugin/plugin.json` are derived from `pyproject.toml`'s `[project]` table
+   (the single metadata source, so they never drift); `.mcp.json` is written with the
+   `${CLAUDE_PLUGIN_ROOT}/server` anchor shown above, and `codex-mcp.json` with the
+   `cwd: "./server"` anchor (see the dual-manifest section).
 
 `plugin/` is **committed** — it is the marketplace `source` in
 `.claude-plugin/marketplace.json`, so the two-command GitHub install clones a repo that

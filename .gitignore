@@ -9,6 +9,9 @@ temp/
 # implementation artifacts are the public design record.
 /_bmad/
 .claude/skills/bmad-*/
+# BMAD installer dump for Codex-style agents — dev tooling, not shipped. Scoped to skills/ only:
+# .agents/plugins/ (the Codex marketplace file) IS committed, so never blanket-ignore .agents/.
+.agents/skills/
 
 # Python
 __pycache__/

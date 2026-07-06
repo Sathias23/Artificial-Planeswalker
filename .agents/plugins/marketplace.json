@@ -1,0 +1,21 @@
+{
+  "name": "artificial-planeswalker",
+  "description": "Sathias's Magic: The Gathering tooling — the Artificial Planeswalker deckbuilding plugin (MCP server + deckbuilding skills) for OpenAI Codex.",
+  "owner": {
+    "name": "Sathias",
+    "email": "sathias@slopstudio.net"
+  },
+  "interface": {
+    "displayName": "Artificial Planeswalker"
+  },
+  "plugins": [
+    {
+      "name": "artificial-planeswalker",
+      "source": {
+        "source": "local",
+        "path": "./plugin"
+      },
+      "description": "MTG deckbuilding assistant: card lookup, deck management & validation, mana-curve & synergy analysis, and local semantic card search — over a local Scryfall database."
+    }
+  ]
+}

@@ -8,6 +8,9 @@ assembled plugin must expose:
   server package, and hatchling hard-fails ("Readme file does not exist") without it.
 * A missing ``SERVER_FILES`` entry aborts cleanly (exit 1), not with a raw traceback.
 * The server registers the full 16-tool surface (AC1) — a presence-only build check can't see this.
+* The Codex manifests (``.codex-plugin/plugin.json`` + ``codex-mcp.json``) keep their schema:
+  snake_case ``mcp_servers`` wrapper, ``cwd`` anchor, and no ``${CLAUDE_PLUGIN_ROOT}`` leakage
+  (Codex does no variable substitution — openai/codex#19372).
 """
 
 import json
@@ -65,6 +68,50 @@ def test_build_plugin_copies_build_critical_files(tmp_path: Path) -> None:
     mcp_json = json.loads((out / ".mcp.json").read_text(encoding="utf-8"))
     args = mcp_json["mcpServers"]["artificial-planeswalker"]["args"]
     assert "${CLAUDE_PLUGIN_ROOT}/server" in args
+
+    # Codex manifest must be the Claude manifest plus exactly the two Codex pointer keys —
+    # anything else means the two clients' metadata has drifted.
+    codex_manifest = json.loads((out / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
+    assert codex_manifest == {
+        **plugin_json,
+        "skills": "./skills/",
+        "mcpServers": "./codex-mcp.json",
+    }
+    assert codex_manifest["version"] == pyproject["project"]["version"]
+
+    # Codex MCP config: camelCase `mcpServers` wrapper — verified against Codex's own
+    # plugin-creator scaffold, which stubs `{"mcpServers": {}}`; a snake_case wrapper is
+    # silently dropped and no tools mount. Launch is anchored via cwd because Codex does
+    # NOT substitute ${CLAUDE_PLUGIN_ROOT} (openai/codex#19372) — a leaked Claude variable
+    # (or a --directory anchor) would be passed through literally and break the launch.
+    codex_mcp_text = (out / "codex-mcp.json").read_text(encoding="utf-8")
+    assert "${CLAUDE_PLUGIN_ROOT}" not in codex_mcp_text
+    codex_mcp = json.loads(codex_mcp_text)
+    codex_server = codex_mcp["mcpServers"]["artificial-planeswalker"]
+    assert codex_server["cwd"] == "./server"
+    assert codex_server["args"] == ["run", "python", "-m", "src.mcp_server"]
+    assert codex_server["env"] == {"MCP_TRANSPORT": "stdio"}
+
+
+def test_codex_marketplace_points_at_committed_plugin() -> None:
+    """The hand-written Codex marketplace stays aligned with pyproject and the plugin tree.
+
+    `.agents/plugins/marketplace.json` sits outside the build script and the CI drift
+    check, so this is its only guard against a typo'd path or a renamed plugin.
+    """
+    marketplace = json.loads(
+        (build_plugin.REPO_ROOT / ".agents" / "plugins" / "marketplace.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    pyproject = tomllib.loads(
+        (build_plugin.REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    (entry,) = marketplace["plugins"]
+    assert entry["name"] == pyproject["project"]["name"]
+    assert entry["source"] == {"source": "local", "path": "./plugin"}
+    # The local source path resolves against the repo checkout — the committed plugin tree.
+    assert (build_plugin.REPO_ROOT / "plugin" / ".codex-plugin" / "plugin.json").is_file()
 
 
 def test_build_aborts_on_missing_server_file(
