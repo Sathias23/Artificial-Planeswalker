@@ -1,0 +1,17 @@
+{
+  "mcp_servers": {
+    "artificial-planeswalker": {
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "-m",
+        "src.mcp_server"
+      ],
+      "cwd": "./server",
+      "env": {
+        "MCP_TRANSPORT": "stdio"
+      }
+    }
+  }
+}

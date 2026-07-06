@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Assemble a Claude Code plugin tree under ``plugin/`` from the single ``src/``.
+"""Assemble a Claude Code + OpenAI Codex plugin tree under ``plugin/`` from the single ``src/``.
 
-A Claude Code plugin ships the MCP server *and* its four companion MTG skills as one
-installable unit (an ``.mcpb`` bundle cannot carry Skills, which is why the project
-distributes a plugin instead). See ``docs/plugin-structure.md`` for the design rationale
-and the resulting layout.
+One build emits both clients' manifests from one metadata source: the tree carries the
+Claude Code manifests (``.claude-plugin/plugin.json`` + ``.mcp.json``) *and* the OpenAI
+Codex manifests (``.codex-plugin/plugin.json`` + ``codex-mcp.json``), while ``skills/`` and
+``server/`` are shared unchanged by both clients. A plugin ships the MCP server *and* its
+four companion MTG skills as one installable unit (an ``.mcpb`` bundle cannot carry Skills,
+which is why the project distributes a plugin instead). See ``docs/plugin-structure.md``
+for the design rationale and the resulting layout.
 
 Single source of truth:
 
@@ -103,6 +106,51 @@ def _mcp_json() -> dict:
     }
 
 
+def _codex_plugin_json(project: dict) -> dict:
+    """Build the OpenAI Codex plugin manifest from pyproject [project].
+
+    Same single metadata source as :func:`_plugin_json`, plus the two Codex-specific
+    pointers: ``skills`` (shared skill tree) and ``mcpServers`` (the Codex MCP config
+    file). ``mcpServers`` is camelCase here per the Codex manifest schema, even though
+    the wrapper key *inside* codex-mcp.json is snake_case ``mcp_servers``.
+
+    Args:
+        project: The parsed ``[project]`` table from pyproject.toml.
+
+    Returns:
+        The manifest payload for ``plugin/.codex-plugin/plugin.json``.
+    """
+    return {
+        **_plugin_json(project),
+        "skills": "./skills/",
+        "mcpServers": "./codex-mcp.json",
+    }
+
+
+def _codex_mcp_json() -> dict:
+    """Codex MCP server config, anchored with ``cwd`` instead of ``${CLAUDE_PLUGIN_ROOT}``.
+
+    Codex performs no ``${...}`` variable substitution in plugin MCP configs
+    (openai/codex#19372), so the Claude ``--directory ${CLAUDE_PLUGIN_ROOT}/server``
+    anchor can't be reused. Plugin-config paths are ``./``-relative to the plugin root,
+    so ``cwd: "./server"`` + plain ``uv run`` is the least-speculative launch anchor.
+    The ``mcp_servers`` wrapper is snake_case per the documented Codex config schema.
+
+    Returns:
+        The payload for ``plugin/codex-mcp.json``.
+    """
+    return {
+        "mcp_servers": {
+            "artificial-planeswalker": {
+                "command": "uv",
+                "args": ["run", "python", "-m", "src.mcp_server"],
+                "cwd": "./server",
+                "env": {"MCP_TRANSPORT": "stdio"},
+            }
+        }
+    }
+
+
 def _write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(payload, indent=2, ensure_ascii=False)
@@ -123,10 +171,16 @@ def build(out_dir: Path) -> int:
     #    marketplace testing runs the server in-place; the GitHub install clones to a cache dir.)
     out_dir.mkdir(parents=True, exist_ok=True)
     server_dir = out_dir / "server"
-    for managed in (server_dir / "src", out_dir / "skills", out_dir / ".claude-plugin"):
+    for managed in (
+        server_dir / "src",
+        out_dir / "skills",
+        out_dir / ".claude-plugin",
+        out_dir / ".codex-plugin",
+    ):
         if managed.exists():
             shutil.rmtree(managed)
     (out_dir / ".mcp.json").unlink(missing_ok=True)
+    (out_dir / "codex-mcp.json").unlink(missing_ok=True)
 
     # 2. Server source. src/viewer/ MUST come along — src/mcp_server/tools/view_deck.py
     #    imports it at module load; omitting it broke the first .mcpb build (f567062).
@@ -153,10 +207,13 @@ def build(out_dir: Path) -> int:
         shutil.copytree(src, skills_dir / skill, ignore=IGNORE)
     logger.info("Copied %d skills -> %s", len(SKILLS), skills_dir)
 
-    # 4. Generated manifests.
+    # 4. Generated manifests — one tree, both clients (Claude Code + OpenAI Codex).
     _write_json(out_dir / ".claude-plugin" / "plugin.json", _plugin_json(project))
     _write_json(out_dir / ".mcp.json", _mcp_json())
     logger.info("Wrote .claude-plugin/plugin.json and .mcp.json")
+    _write_json(out_dir / ".codex-plugin" / "plugin.json", _codex_plugin_json(project))
+    _write_json(out_dir / "codex-mcp.json", _codex_mcp_json())
+    logger.info("Wrote .codex-plugin/plugin.json and codex-mcp.json")
 
     logger.info(
         "Plugin assembled at %s (v%s, %d skills)",
