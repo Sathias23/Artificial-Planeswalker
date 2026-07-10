@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-06-27 (Epic 3 retrospective → done; epic-3 → done; Pre-Phase-2 Gate added)
+last_updated: 2026-07-11 (Pre-Phase-2 Gate → done: G-SD2a valid-key guard + G-SD2b // fix + G-R1 Brad acceptance; Phase 2 unblocked)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -76,7 +76,8 @@ development_status:
   epic-3-retrospective: done
 
   # Pre-Phase-2 Gate (from epic-3-retro-2026-06-27.md §6) — all green before Arena import/export build starts
-  # G-SD2a: validate_deck lowercase-format .lower() + valid-key guard
-  # G-SD2b: detect_synergies '//' double-faced-card token fix
-  # G-R1: Brad live-smokes all four skills end-to-end through Claude Code (Phase-1 acceptance)
-  pre-phase-2-gate: backlog
+  # G-SD2a: validate_deck lowercase-format .lower() [done, deck_validator.py:302]
+  #         + valid-key guard [done 2026-07-11 fix/pre-phase-2-gate — _KNOWN_FORMATS + unknown_format violation]
+  # G-SD2b: detect_synergies '//' double-faced-card token fix [done 2026-07-11 fix/pre-phase-2-gate — per-face parse in _extract_creature_types]
+  # G-R1: Brad live-smokes all four skills end-to-end through Claude Code (Phase-1 acceptance) [done 2026-07-11 — Brad hands-on accepted]
+  pre-phase-2-gate: done  # all three green: G-SD2a/G-SD2b (code) + G-R1 (Brad acceptance) — Phase 2 import/export unblocked

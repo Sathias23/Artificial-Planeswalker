@@ -528,29 +528,10 @@ def _detect_card_draw_combo(deck_cards: list[DeckCard], deck_size: int) -> Syner
     )
 
 
-def _extract_creature_types(type_line: str) -> list[str]:
-    """Extract creature types from a card's type line.
-
-    Args:
-        type_line: Card type line (e.g., "Creature — Goblin Scout")
-
-    Returns:
-        List of creature types (e.g., ["Goblin", "Scout"])
-    """
-    # Split on em-dash or regular dash
-    parts = re.split(r"[—-]", type_line)
-    if len(parts) < 2:
-        return []
-
-    # Take everything after the dash (creature types)
-    types_part = parts[1].strip()
-
-    # Split on spaces and filter out empty strings
-    types = [t.strip() for t in types_part.split() if t.strip()]
-
-    # Filter out generic/class types that don't make good synergy tribes
-    # These are too generic and rarely have tribal payoffs
-    excluded_types = {
+#: Generic/class creature types that rarely have tribal payoffs — excluded so
+#: synergy detection focuses on real tribes (Goblins, Elves, ...).
+_EXCLUDED_CREATURE_TYPES = frozenset(
+    {
         "Scout",
         "Warrior",
         "Soldier",
@@ -563,10 +544,41 @@ def _extract_creature_types(type_line: str) -> list[str]:
         "Berserker",
         "Archer",
     }
+)
 
-    # Only keep types that aren't in the exclusion list
-    # This helps focus on actual tribal synergies (Goblins, Elves, etc.)
-    types = [t for t in types if t not in excluded_types]
+
+def _extract_creature_types(type_line: str) -> list[str]:
+    """Extract creature types from a card's type line.
+
+    Double-faced and split cards join their faces with ``//`` (e.g.
+    ``"Creature — Goblin Warrior // Sorcery"``). Each face is parsed
+    independently and only *creature* faces contribute types, so the ``//``
+    separator and a non-creature back face never leak in as bogus "tribes".
+
+    Args:
+        type_line: Card type line (e.g., "Creature — Goblin Scout")
+
+    Returns:
+        List of creature types (e.g., ["Goblin", "Scout"]), de-duplicated
+        across faces in first-seen order.
+    """
+    types: list[str] = []
+    for face in type_line.split("//"):
+        # Only creature (or Tribal) faces carry creature types; skip the rest so
+        # a non-creature back face's words never become spurious tribes.
+        if "Creature" not in face and "Tribal" not in face:
+            continue
+
+        # Split the supertype/type portion from the subtypes on em-dash or dash.
+        parts = re.split(r"[—-]", face)
+        if len(parts) < 2:
+            continue
+
+        # Take the subtypes (everything after the dash), keeping real tribes.
+        for t in parts[1].split():
+            t = t.strip()
+            if t and t not in _EXCLUDED_CREATURE_TYPES and t not in types:
+                types.append(t)
 
     return types
 
