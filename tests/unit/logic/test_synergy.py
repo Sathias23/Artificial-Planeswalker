@@ -7,6 +7,7 @@ from src.data.schemas.deck import DeckCard
 from src.logic.synergy import (
     SynergyAnalysis,
     SynergyPattern,
+    _extract_creature_types,
     detect_synergies,
 )
 
@@ -66,6 +67,44 @@ def make_deck_card(card: Card, quantity: int = 1, sideboard: bool = False) -> De
         quantity=quantity,
         sideboard=sideboard,
     )
+
+
+class TestExtractCreatureTypes:
+    """Test creature-type extraction, including double-faced/split cards."""
+
+    def test_simple_creature(self) -> None:
+        """A plain creature yields its subtypes."""
+        assert _extract_creature_types("Creature — Goblin") == ["Goblin"]
+
+    def test_excluded_generic_types_dropped(self) -> None:
+        """Generic class types (Warrior, Scout, ...) are filtered out."""
+        assert _extract_creature_types("Creature — Goblin Warrior") == ["Goblin"]
+
+    def test_dfc_back_face_does_not_leak_tribes(self) -> None:
+        """The ``//`` separator and a non-creature back face never become tribes.
+
+        Regression for G-SD2b: previously
+        ``"Creature — Goblin Warrior // Sorcery"`` yielded
+        ``["Goblin", "//", "Sorcery"]``.
+        """
+        assert _extract_creature_types("Creature — Goblin Warrior // Sorcery") == ["Goblin"]
+
+    def test_double_creature_face_merges_and_dedups_tribes(self) -> None:
+        """Both creature faces contribute tribes, de-duplicated in first-seen order.
+
+        Delver of Secrets // Insectile Aberration: "Human" appears on both faces
+        (kept once), "Insect" comes from the back face, "Wizard" is an excluded
+        generic type.
+        """
+        assert _extract_creature_types("Creature — Human Wizard // Creature — Human Insect") == [
+            "Human",
+            "Insect",
+        ]
+
+    def test_non_creature_card_yields_nothing(self) -> None:
+        """A card with no creature face has no creature types."""
+        assert _extract_creature_types("Instant") == []
+        assert _extract_creature_types("Sorcery // Land") == []
 
 
 class TestSynergyPattern:

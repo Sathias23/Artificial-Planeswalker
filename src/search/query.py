@@ -32,6 +32,7 @@ import numpy as np
 import sqlite_vec
 from numpy.typing import NDArray
 
+from src.data.import_state import is_import_in_progress_sync
 from src.search.schema import (
     CARD_ID_COL,
     CARD_VEC_TABLE,
@@ -243,7 +244,11 @@ def is_database_initialized(conn: sqlite3.Connection) -> bool:
     if table is None:
         return False
     populated = conn.execute("SELECT EXISTS(SELECT 1 FROM cards)").fetchone()
-    return bool(populated[0])
+    if not populated[0]:
+        return False
+    # A partial (killed mid-import) database has rows but never finished its first-run import;
+    # treat it as not-initialized so the sqlite-vec tools stay graceful (mirrors the async check).
+    return not is_import_in_progress_sync(conn)
 
 
 def hybrid_search(

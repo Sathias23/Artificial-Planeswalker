@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from src.data.import_state import is_import_in_progress
 from src.data.models.base import Base
 
 # Import models to register them with Base.metadata
@@ -37,6 +38,11 @@ def create_engine(database_url: str | None = None) -> AsyncEngine:
     engine = create_async_engine(
         url,
         echo=False,  # Set to True for SQL query logging during development
+        # Wait up to 5s for a competing writer's lock instead of failing instantly with
+        # "database is locked" — the bulk import and index build are both writers, and WAL
+        # lets a reader proceed but not a second writer. (aiosqlite forwards this to
+        # sqlite3.connect(timeout=...), which sets SQLite's busy timeout.)
+        connect_args={"timeout": 5},
     )
 
     # Instrument SQLAlchemy with Logfire if observability is enabled
@@ -121,6 +127,11 @@ async def is_database_initialized(session: AsyncSession) -> bool:
     a graceful ``database_not_initialized`` status instead of leaking a raw ``OperationalError``
     (*no such table: cards*).
 
+    A fourth "not ready" state is a **partial** database — rows present but a first-run import
+    killed mid-way (see :mod:`src.data.import_state`). That also returns ``False`` so the truncated
+    data is treated as not-initialized and ``initialize_database`` re-imports rather than trusting
+    it.
+
     The existence probe reads ``sqlite_master`` (always present) so the missing-table case returns
     ``False`` rather than raising; ``cards`` is a schema constant, never interpolated input. This is
     the async counterpart of :func:`src.search.query.is_database_initialized` (used by the sync
@@ -140,7 +151,11 @@ async def is_database_initialized(session: AsyncSession) -> bool:
     if table is None:
         return False
     populated = (await session.execute(text("SELECT EXISTS(SELECT 1 FROM cards)"))).scalar()
-    return bool(populated)
+    if not populated:
+        return False
+    # A partial (killed mid-import) database has rows but its first-run import never finished; treat
+    # it as not-yet-initialized so tools stay graceful and ``initialize_database`` re-imports.
+    return not await is_import_in_progress(session)
 
 
 async def health_check(session: AsyncSession) -> bool:

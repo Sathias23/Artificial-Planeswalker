@@ -3,6 +3,7 @@
 import hashlib
 import json
 import logging
+import re
 import sqlite3
 import time
 from typing import NamedTuple
@@ -115,6 +116,55 @@ class BuildStatistics:
         )
 
 
+#: A single-line parenthetical span = MTG *reminder text* (mana/costs use ``{...}``, never parens),
+#: e.g. Menace's ``(This creature can't be blocked except by two or more creatures.)``. The inner
+#: class **excludes ``\n``** so an unbalanced ``(`` can never swallow a following ability line — it
+#: also excludes ``()`` so nested reminders are peeled innermost-first by the fixed-point loop.
+_REMINDER_TEXT_RE = re.compile(r"\([^()\n]*\)")
+#: Runs of ASCII spaces left behind after a reminder span is removed mid-line.
+_MULTISPACE_RE = re.compile(r" {2,}")
+
+
+def strip_reminder_text(oracle_text: str) -> str:
+    """Remove parenthetical *reminder text* from a card's oracle text (embedding-time only).
+
+    Reminder text is the italic, parenthetical restatement of a keyword/ability
+    (Menace's ``(This creature can't be blocked except by two or more creatures.)``, Convoke's
+    ``(Your creatures can help cast this spell...)``). Embedded verbatim it pollutes semantic
+    queries — its vocabulary ("blocked", "help cast") makes menace cards surface for "unblockable"
+    and convoke cards for "ramp". In tournament-legal MTG sets a parenthetical is reminder text
+    (mana symbols and costs use ``{...}``), so every ``(...)`` span is stripped; Un-set/playtest
+    cards can carry payload text in parens, an accepted rare exception.
+
+    Nested reminders (rare, e.g. joke cards) are peeled innermost-first by substituting to a fixed
+    point, so no dangling outer span survives. The span pattern excludes ``\\n``, so an unbalanced
+    ``(`` in malformed data strips nothing across the line break rather than deleting the
+    intervening ability (fail-safe: keep text, never silently drop rules). Removal leaves stray
+    double spaces and, for whole-line reminders, blank lines; both are tidied. Internal newlines
+    between surviving abilities are preserved. A card whose oracle text is *entirely* reminder text
+    (e.g. a basic land's ``({T}: Add {G}.)``) becomes ``""`` — safe, because
+    :func:`compose_card_text` still has the non-empty ``name``/``type_line``.
+
+    Args:
+        oracle_text: The raw oracle rules text (``cards.oracle_text``; may be ``""``).
+
+    Returns:
+        The oracle text with all parenthetical reminder spans removed and whitespace tidied.
+
+    Example:
+        >>> strip_reminder_text("Menace (This creature can't be blocked by one creature.)")
+        'Menace'
+    """
+    without = oracle_text
+    while True:
+        stripped = _REMINDER_TEXT_RE.sub("", without)
+        if stripped == without:  # fixed point: no (more) removable spans (handles nesting)
+            break
+        without = stripped
+    lines = [_MULTISPACE_RE.sub(" ", line).strip() for line in without.split("\n")]
+    return "\n".join(line for line in lines if line)
+
+
 def compose_card_text(
     name: str,
     type_line: str,
@@ -125,21 +175,25 @@ def compose_card_text(
     """Compose the canonical per-card embedding text (FR14).
 
     Joins the five card fields in a **fixed, documented order** with a newline separator;
-    ``keywords`` (a ``list[str]``) is first joined on a single space. The ordering and separators
-    are deliberately stable because :func:`content_hash` of this string is the incremental
-    builder's change-detection signal — any change here invalidates every stored hash. Story 2.6's
-    RAG eval must embed *queries* against vectors built from this exact recipe, so it is the single
-    canonical composition.
+    ``keywords`` (a ``list[str]``) is first joined on a single space. ``oracle_text`` is passed
+    through :func:`strip_reminder_text` first, so parenthetical reminder text never reaches the
+    embedding (it dilutes semantic recall). The ordering and separators are deliberately stable
+    because :func:`content_hash` of this string is the incremental builder's change-detection
+    signal — any change here invalidates every stored hash. Because stripping only alters the text
+    of cards that *have* reminder text, a normal incremental build re-embeds exactly those cards
+    and skips the rest (no ``--rebuild`` needed). Story 2.6's RAG eval must embed *queries* against
+    vectors built from this exact recipe, so it is the single canonical composition.
 
     The result is **never empty**: ``cards.name`` is ``NOT NULL`` and non-empty, so the embedder
     (whose single-string :meth:`~src.search.embedder.Embedder.encode` raises on empty input) is
-    always given content.
+    always given content — even for a card whose oracle text is entirely reminder text.
 
     Args:
         name: The card name (``cards.name``; always present).
         type_line: The type line (``cards.type_line``).
         mana_cost: The mana cost string, e.g. ``"{3}{G}"`` (``cards.mana_cost``; ``""`` for lands).
         oracle_text: The oracle rules text (``cards.oracle_text``; may be ``""`` for vanilla cards).
+            Parenthetical reminder text is stripped before composition.
         keywords: The keyword ability list (``cards.keywords``); ``None`` must be coerced to ``[]``
             by the caller before calling this function.
 
@@ -150,7 +204,9 @@ def compose_card_text(
         >>> compose_card_text("Llanowar Elves", "Creature — Elf Druid", "{G}", "{T}: Add {G}.", [])
         'Llanowar Elves\\nCreature — Elf Druid\\n{G}\\n{T}: Add {G}.\\n'
     """
-    return "\n".join([name, type_line, mana_cost, oracle_text, " ".join(keywords)])
+    return "\n".join(
+        [name, type_line, mana_cost, strip_reminder_text(oracle_text), " ".join(keywords)]
+    )
 
 
 def content_hash(text: str) -> str:

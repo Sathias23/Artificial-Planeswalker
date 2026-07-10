@@ -37,3 +37,19 @@ def test_returns_true_when_cards_present() -> None:
         assert is_database_initialized(conn) is True
     finally:
         conn.close()
+
+
+def test_returns_false_when_import_in_progress() -> None:
+    """A partial DB (rows present, first-run import killed mid-way) reads as not-initialized."""
+    conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute("CREATE TABLE cards (id TEXT PRIMARY KEY, name TEXT)")
+        conn.execute("INSERT INTO cards (id, name) VALUES ('c-1', 'Lightning Bolt')")
+        conn.execute(
+            "CREATE TABLE import_state (id INTEGER PRIMARY KEY CHECK (id = 1), in_progress INTEGER)"
+        )
+        conn.execute("INSERT INTO import_state (id, in_progress) VALUES (1, 1)")
+        conn.commit()
+        assert is_database_initialized(conn) is False
+    finally:
+        conn.close()

@@ -19,6 +19,25 @@ from src.data.importers.scryfall import ScryfallImportError, import_scryfall_bul
 from src.data.importers.scryfall_api import ScryfallAPIError, download_bulk_data
 
 
+class _NullSession:
+    """Minimal async session for the download-focused tests.
+
+    The DB layer is faked (``import_cards``/``reconcile_games`` are patched out), so the only
+    real session calls the orchestrator now makes are the empty-``cards`` count probe (returns 0,
+    which short-circuits the in-progress check) and the first-run marker writes — all of which
+    just need to be swallowed here.
+    """
+
+    async def scalar(self, *args, **kwargs) -> int:
+        return 0
+
+    async def execute(self, *args, **kwargs) -> None:
+        return None
+
+    async def commit(self) -> None:
+        return None
+
+
 def _mock_http(monkeypatch: pytest.MonkeyPatch, handler) -> None:
     """Route every httpx.AsyncClient in the module under test through a MockTransport."""
     transport = httpx.MockTransport(handler)
@@ -109,7 +128,7 @@ async def test_import_downloads_into_fresh_private_dir_and_cleans_up(monkeypatch
     seen: dict = {}
     _wire_import(monkeypatch, "https://data.scryfall.io/oracle.json", seen)
 
-    await import_scryfall_bulk_data(session=None)
+    await import_scryfall_bulk_data(session=_NullSession())
 
     downloaded = seen["path"]
     assert downloaded.parent != Path(tempfile.gettempdir()), (
@@ -124,7 +143,7 @@ async def test_import_passes_size_derived_byte_ceiling(monkeypatch):
     seen: dict = {}
     _wire_import(monkeypatch, "https://data.scryfall.io/oracle.json", seen)
 
-    await import_scryfall_bulk_data(session=None)
+    await import_scryfall_bulk_data(session=_NullSession())
 
     max_bytes = seen["kwargs"].get("max_bytes")
     assert max_bytes is not None, "orchestrator must enforce a byte ceiling"
@@ -148,3 +167,25 @@ async def test_import_rejects_untrusted_download_uri(monkeypatch, bad_uri):
         await import_scryfall_bulk_data(session=None)
 
     assert "uri" not in seen, "nothing may be fetched from an untrusted URI"
+
+
+async def test_reconcile_failure_is_non_fatal(monkeypatch):
+    """A reconcile-stage DatabaseError must not fail the whole import.
+
+    The card import commits before reconcile, so a transient reconcile failure that raised would
+    leave the tool reporting an error over a populated DB (and a plain retry short-circuiting as
+    already_initialized with stale games). The orchestrator swallows it and the import succeeds.
+    """
+    from sqlalchemy.exc import DatabaseError
+
+    seen: dict = {}
+    _wire_import(monkeypatch, "https://data.scryfall.io/oracle.json", seen)
+
+    async def boom(session, aggregates):
+        raise DatabaseError("reconcile", {}, Exception("database is locked"))
+
+    monkeypatch.setattr(scryfall, "reconcile_games", boom)
+
+    # Must not raise despite reconcile blowing up.
+    stats = await import_scryfall_bulk_data(session=_NullSession())
+    assert stats is not None

@@ -180,6 +180,39 @@ _SINGLETON_FORMATS = frozenset(
     }
 )
 
+#: Recognized Scryfall legality keys (the format names ``validate_deck`` can
+#: meaningfully check). Mirrors the keys present in every card's ``legalities``
+#: dict; a superset of ``_SINGLETON_FORMATS``. An unrecognized format is
+#: reported as an ``unknown_format`` violation rather than silently flagging
+#: every card illegal (``legalities.get("potato")`` → ``None`` for all cards).
+_KNOWN_FORMATS = frozenset(
+    {
+        "alchemy",
+        "brawl",
+        "commander",
+        "competitivebrawl",
+        "duel",
+        "future",
+        "gladiator",
+        "historic",
+        "legacy",
+        "modern",
+        "oathbreaker",
+        "oldschool",
+        "pauper",
+        "paupercommander",
+        "penny",
+        "pioneer",
+        "predh",
+        "premodern",
+        "standard",
+        "standardbrawl",
+        "timeless",
+        "tlr",
+        "vintage",
+    }
+)
+
 
 class DeckViolation(BaseModel):
     """A single deck-construction rule violation.
@@ -189,7 +222,7 @@ class DeckViolation(BaseModel):
         card_name: The offending card's name when the violation is card-specific
             (``copy_limit`` / ``singleton`` / ``format_legality`` /
             ``game_availability``); ``None`` for whole-deck rules
-            (``min_deck_size`` / ``max_sideboard_size``).
+            (``min_deck_size`` / ``max_sideboard_size`` / ``unknown_format``).
         detail: Human-readable explanation of the violation.
     """
 
@@ -200,6 +233,7 @@ class DeckViolation(BaseModel):
         "singleton",
         "format_legality",
         "game_availability",
+        "unknown_format",
     ]
     card_name: str | None = None
     detail: str
@@ -270,6 +304,22 @@ def validate_deck(
     sideboard_count = sum(dc.quantity for dc in deck.deck_cards if dc.sideboard)
     violations: list[DeckViolation] = []
 
+    # Valid-key guard: an unrecognized format has no key in any card's
+    # ``legalities`` dict, so the per-card legality check below would flag every
+    # card illegal with no hint the format *name* was the problem. Report the bad
+    # format once and skip that check; structural rules (size, copy limits) still
+    # apply since they are format-independent.
+    known_format = format in _KNOWN_FORMATS
+    if not known_format:
+        violations.append(
+            DeckViolation(
+                rule="unknown_format",
+                detail=(
+                    f"'{format}' is not a recognized format; per-card legality was not checked."
+                ),
+            )
+        )
+
     if mainboard_count < _MIN_MAINBOARD:
         violations.append(
             DeckViolation(
@@ -331,7 +381,7 @@ def validate_deck(
 
     # Per-distinct-card format legality + optional game availability.
     for card in card_by_id.values():
-        if card.legalities.get(format) != "legal":
+        if known_format and card.legalities.get(format) != "legal":
             violations.append(
                 DeckViolation(
                     rule="format_legality",

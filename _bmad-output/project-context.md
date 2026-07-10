@@ -114,7 +114,10 @@ _This file contains critical rules and patterns that AI agents must follow when 
 **RAG / semantic search (Phase-1 target — `src/search`)**
 - Vectors live in a **`sqlite-vec` virtual table `card_vec` in the same DB file**, keyed by
   `card_id` so vectors JOIN to relational rows. Embedded text per card =
-  `name + type_line + mana_cost + oracle_text + keywords`.
+  `name + type_line + mana_cost + oracle_text + keywords`, where `oracle_text` is
+  **reminder-stripped** (parenthetical reminder text removed via
+  `index_builder.strip_reminder_text` inside `compose_card_text`) so reminder vocabulary doesn't
+  pollute semantic recall. The raw `cards.oracle_text` column is untouched (display/`search_cards`).
 - Carry the **six de-risk deltas**: (1) a `ConnectionFactory` port that enables
   `load_extension` + calls `sqlite_vec.load`; (2) an `Embedder` port (fastembed singleton);
   (3) pin **`FASTEMBED_CACHE_DIR`** to a persistent path (default is a volatile temp dir);

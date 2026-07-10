@@ -30,11 +30,15 @@
 ## Deferred from: code review of spec-games-union-brawl-singleton (2026-07-10)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-games-union-brawl-singleton.md`
+  status: ✅ RESOLVED (0.3.0, 2026-07-11)
   summary: Face-keyed aggregation (`card_faces[0].oracle_id` fallback in `src/data/importers/aggregate.py`) is inert — `transform_scryfall_card` hard-requires a top-level `oracle_id`, so reversible-layout cards are still rejected downstream, and `reconcile_games` matches aggregates by `CardModel.oracle_id` only.
   evidence: Blind Hunter traced the pass-2 path — cards grouped by the face/self fallbacks reach the transformer and are error-counted there (pre-existing transformer limitation, parity with the old oracle_cards import). Fix belongs in a transformer pass (accept face-level oracle_id) plus a reconcile lookup keyed the same way as `group_key`.
+  resolution: Extracted `resolve_oracle_id` (top-level → `card_faces[0].oracle_id`) as the single oracle-identity source shared by `group_key` and `transform_scryfall_card`; the transformer no longer hard-requires a top-level `oracle_id`, so reversible cards import with `oracle_id == group_key` — which makes the `reconcile_games` lookup-by-`oracle_id` align with `group_key` automatically. Verified end-to-end: a reversible card dedupes to one row with unioned games (was dropped entirely).
 - source_spec: `_bmad-output/implementation-artifacts/spec-games-union-brawl-singleton.md`
+  status: ✅ RESOLVED (0.3.0, 2026-07-11)
   summary: '`reconcile_games` failure after `import_cards` has committed leaves the DB populated but `initialize_database` reports `status="error"`, and a plain retry short-circuits `already_initialized` with games left stale.'
   evidence: Edge Case Hunter, `src/data/importers/scryfall.py` reconcile stage — the import commits per batch, so a reconcile-stage DatabaseError (lock/disk) can't roll it back. Narrow failure window; remedy is `update=true` (re-runs reconcile). Consider catching reconcile errors as a warning or surfacing a "re-run with update=true" hint in the error message.
+  resolution: The orchestrator now catches `IntegrityError`/`DatabaseError` from the reconcile stage and logs a warning instead of failing the run (the cards already committed), so the import reports success and stale pre-existing rows refresh on the next `update=true`. The first-run half is additionally covered by the 0.3.0 `import_state` marker (a first-run failure leaves the DB flagged partial, so a retry re-imports rather than short-circuiting).
 
 ## Deferred from: code review of first-run-data-initialization (2026-06-28)
 
@@ -44,7 +48,7 @@
 > the embedder before the destructive drop) were patched in-branch. The items below are real but
 > either pre-existing config or narrow/concurrency edges left for a focused later pass.
 
-- **No `busy_timeout` → `SQLITE_BUSY` on concurrent writers** (Edge Case Hunter, HIGH). Neither the
+- **✅ RESOLVED (0.3.0, 2026-07-11).** No `busy_timeout` → `SQLITE_BUSY` on concurrent writers (Edge Case Hunter, HIGH). Neither the
   async engine (`src/data/database.py::create_engine`) nor the sync `ConnectionFactory`
   (`src/search/connection.py`) sets `busy_timeout`/`connect_args={"timeout": …}`, so SQLite's
   default-0 timeout makes a second writer fail immediately with `database is locked` rather than
@@ -52,7 +56,7 @@
   (index write) tools make concurrent-writer collisions more likely. Fix project-wide: set
   `PRAGMA busy_timeout=5000` on the sync factory and `connect_args={"timeout": 5}` on the async
   engine (matches the documented WAL topology).
-- **Process-kill mid-import leaves a partial DB mistaken for complete** (Edge Case Hunter, HIGH —
+- **✅ RESOLVED (0.3.0, 2026-07-11) — `import_state` in-progress marker.** Process-kill mid-import leaves a partial DB mistaken for complete (Edge Case Hunter, HIGH —
   *exception* half patched). The importer commits per 1000-card batch; the in-branch fix clears the
   partial `cards` when the import raises, so a *failed* import retries cleanly. But a hard process
   kill between batches can't run that cleanup, leaving e.g. 1000 of ~30k cards — which the ≥1-row

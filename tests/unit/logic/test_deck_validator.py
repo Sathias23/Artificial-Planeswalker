@@ -679,6 +679,32 @@ class TestValidateDeck:
         assert report.format == "modern"
         assert not any(v.rule == "format_legality" for v in report.violations)
 
+    def test_unknown_format_flags_unknown_format_once(self) -> None:
+        """An unrecognized format yields a single ``unknown_format`` violation.
+
+        Regression for the G-SD2a valid-key guard: previously an unknown format
+        key made ``legalities.get(format)`` return ``None`` for every card, so
+        each card was silently flagged ``format_legality``-illegal.
+        """
+        goblin = _vd_card("g", "Goblin", legalities={"standard": "legal"})
+        deck = _vd_deck([_vd_deck_card(goblin, 4)])
+
+        report = validate_deck(deck, format="potato")
+
+        unknown = [v for v in report.violations if v.rule == "unknown_format"]
+        assert len(unknown) == 1
+        assert unknown[0].card_name is None
+        assert "potato" in unknown[0].detail
+
+    def test_unknown_format_skips_per_card_legality(self) -> None:
+        """An unknown format does not produce per-card ``format_legality`` noise."""
+        goblin = _vd_card("g", "Goblin", legalities={"standard": "legal"})
+        deck = _vd_deck([_vd_deck_card(goblin, 4)])
+
+        report = validate_deck(deck, format="potato")
+
+        assert not any(v.rule == "format_legality" for v in report.violations)
+
     def test_combined_mainboard_sideboard_copies_flag_copy_limit(self) -> None:
         """3 mainboard + 2 sideboard copies of one non-basic = 5 combined -> copy_limit."""
         goblin = _vd_card("goblin", "Goblin Guide")

@@ -24,6 +24,7 @@ from src.search import (
     create_card_vec_table,
     drop_card_vec_table,
     get_embedder,
+    strip_reminder_text,
 )
 from src.search.embedder import reset_embedder
 from src.search.schema import (
@@ -124,6 +125,74 @@ def test_content_hash_is_pure_and_field_sensitive() -> None:
     assert content_hash(base) != content_hash(changed_text)
     changed_kw = compose_card_text("Bolt", "Instant", "{R}", "Deal 3 damage.", ["Flash"])
     assert content_hash(base) != content_hash(changed_kw)
+
+
+# --- strip_reminder_text: removes parenthetical reminder text before embedding --------------
+
+
+@pytest.mark.parametrize(
+    ("oracle_text", "expected"),
+    [
+        # Trailing keyword reminder — the polluting "blocked" vocabulary is gone.
+        (
+            "Menace (This creature can't be blocked except by two or more creatures.)",
+            "Menace",
+        ),
+        # Mid-text reminder, internal newline between surviving abilities preserved.
+        (
+            "Convoke (Your creatures can help cast this spell.)\nFlying",
+            "Convoke\nFlying",
+        ),
+        # Multiple parentheticals collapse to single spaces.
+        ("Trample (a) Haste (b)", "Trample Haste"),
+        # Whole-text reminder (basic land) strips to empty.
+        ("({T}: Add {G}.)", ""),
+        # No parentheses — unchanged.
+        ("Deal 3 damage to any target.", "Deal 3 damage to any target."),
+        # Empty input — unchanged.
+        ("", ""),
+        # Braces are not parens — mana/tap costs survive untouched.
+        ("{T}: Add {G}.", "{T}: Add {G}."),
+        # Nested reminder (rare joke cards): peeled innermost-first, no dangling outer span.
+        ("Flying (can fly (mostly) high)", "Flying"),
+    ],
+)
+def test_strip_reminder_text(oracle_text: str, expected: str) -> None:
+    """Parenthetical reminder text is removed; braces and non-parenthetical rules text survive."""
+    assert strip_reminder_text(oracle_text) == expected
+
+
+def test_strip_reminder_text_unbalanced_paren_is_fail_safe() -> None:
+    """A stray/unbalanced ``(`` never swallows a following ability line — text is kept, not dropped.
+
+    The span pattern excludes ``\\n``, so malformed data can't delete real rules text across a line
+    break (which a newline-matching pattern would do silently).
+    """
+    result = strip_reminder_text("Draw a card. (see rule\nGain 1 life.")
+    # Both real ability lines survive; only the stray "(" clutters line one.
+    assert "Draw a card." in result
+    assert "Gain 1 life." in result
+
+
+def test_compose_card_text_strips_reminder_text_and_changes_hash() -> None:
+    """A reminder-bearing card embeds without the reminder vocabulary; its hash differs from raw.
+
+    The hash difference is what makes an incremental build re-embed exactly the reminder-text
+    cards (and skip the rest) — no ``--rebuild`` needed.
+    """
+    reminder = "Menace (This creature can't be blocked except by two or more creatures.)"
+    composed = compose_card_text("Sneaky", "Creature — Rogue", "{1}{B}", reminder, [])
+    assert "Menace" in composed
+    assert "blocked" not in composed
+    # Same card composed from already-stripped text hashes identically (the recipe is canonical)...
+    stripped_equiv = compose_card_text("Sneaky", "Creature — Rogue", "{1}{B}", "Menace", [])
+    assert content_hash(composed) == content_hash(stripped_equiv)
+
+
+def test_compose_card_text_unchanged_for_reminderless_card() -> None:
+    """A card with no parenthetical text hashes identically to a manual join — zero re-embed."""
+    manual = "\n".join(["Bolt", "Instant", "{R}", "Deal 3 damage.", ""])
+    assert compose_card_text("Bolt", "Instant", "{R}", "Deal 3 damage.", []) == manual
 
 
 # --- AC1: first build inserts vectors + populates metadata ----------------------------------
