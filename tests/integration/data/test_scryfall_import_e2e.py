@@ -7,10 +7,13 @@ import pytest
 from sqlalchemy import select
 
 from src.data.database import create_engine, create_session_factory, init_database
+from src.data.importers.aggregate import build_oracle_aggregates
 from src.data.importers.importer import import_cards
 from src.data.importers.parser import stream_cards
+from src.data.importers.scryfall import iter_canonical_models, reconcile_games
 from src.data.importers.transformers import transform_scryfall_card
 from src.data.models.card import CardModel
+from tests.fixtures.card_data import create_om1_spm_cards
 
 
 @pytest.fixture
@@ -165,6 +168,149 @@ async def test_batch_processing(test_db, tmp_path):
         result = await session.execute(stmt)
         all_cards = result.scalars().all()
         assert len(all_cards) == 10
+
+
+# --- Pass-2 dedup/union + reconcile (games-union spec) ----------------------------------
+
+#: The OM1/SPM masking scenario as raw bulk-file printings: same oracle_id, the newer
+#: printing paper-only, the older one arena/mtgo — a per-printing row would mask Arena.
+_SHARED_ORACLE_ID = "b5b43d01-fce6-4a00-9c19-7a7e2a09d833"
+
+
+def _masking_printings() -> list[dict]:
+    base = {
+        "name": "Ultimate Green Goblin",
+        "oracle_id": _SHARED_ORACLE_ID,
+        "type_line": "Legendary Creature — Goblin Villain",
+        "mana_cost": "{4}{R}{G}",
+        "cmc": 6.0,
+        "oracle_text": "Trample, haste.",
+        "colors": ["R", "G"],
+        "color_identity": ["R", "G"],
+        "legalities": {"modern": "legal"},
+        "rarity": "rare",
+    }
+    return [
+        {
+            **base,
+            "id": "spm-276",
+            "set": "spm",
+            "set_name": "Marvel's Spider-Man",
+            "collector_number": "276",
+            "released_at": "2025-09-26",
+            "games": ["paper"],
+        },
+        {
+            **base,
+            "id": "om1-153",
+            "set": "om1",
+            "set_name": "Through the Omenpaths",
+            "collector_number": "153",
+            "released_at": "2025-01-24",
+            "games": ["arena", "mtgo"],
+        },
+    ]
+
+
+async def _run_two_pass_import(session, file_path: Path):
+    """Run the real pass-1 + pass-2 + reconcile pipeline over *file_path*."""
+    aggregates = build_oracle_aggregates(file_path)
+    stats = await import_cards(session, iter_canonical_models(file_path, aggregates))
+    updated = await reconcile_games(session, aggregates)
+    return stats, updated
+
+
+@pytest.mark.asyncio
+async def test_two_pass_import_dedups_and_unions_games(test_db, tmp_path):
+    """Two printings of one oracle id import as ONE row with games = sorted union."""
+    test_json = tmp_path / "printings.json"
+    test_json.write_text(json.dumps(_masking_printings()))
+
+    async with test_db() as session:
+        stats, updated = await _run_two_pass_import(session, test_json)
+
+        assert stats.total_inserted == 1  # non-canonical printing skipped, not errored
+        assert stats.total_errors == 0
+        assert updated == 0  # the only row was just written with the union already
+
+        result = await session.execute(
+            select(CardModel).where(CardModel.oracle_id == _SHARED_ORACLE_ID)
+        )
+        rows = result.scalars().all()
+        assert len(rows) == 1
+        # Canonical = max released_at (the 2025-09-26 paper printing), games overridden
+        # with the union — the paper-only printing no longer masks Arena.
+        assert rows[0].id == "spm-276"
+        assert rows[0].games == ["arena", "mtgo", "paper"]
+
+
+@pytest.mark.asyncio
+async def test_reconcile_updates_stale_preexisting_row(test_db, tmp_path):
+    """A pre-existing stale row (paper-only games) gets the union without being re-pointed."""
+    spm_card = create_om1_spm_cards()[0]  # the paper-only half of the masking pair
+    assert spm_card.games == ["paper"]
+
+    test_json = tmp_path / "printings.json"
+    # Only the OM1 printing is in this run's file, so this run's canonical id (om1-153)
+    # differs from the pre-existing row's id (spm-276) — the reconcile must fix it.
+    printings = [p for p in _masking_printings() if p["id"] == "om1-153"]
+    printings[0]["games"] = ["arena", "mtgo", "paper"]  # union as seen across the new file
+    test_json.write_text(json.dumps(printings))
+
+    async with test_db() as session:
+        # Seed the old DB state: the stale paper-only SPM printing (e.g. an older
+        # oracle_cards import whose canonical pick differed), referenced by decks.
+        session.add(spm_card)
+        await session.commit()
+
+        stats, updated = await _run_two_pass_import(session, test_json)
+
+        assert stats.total_inserted == 1
+        assert updated == 1  # the stale spm-276 row was reconciled
+
+        result = await session.execute(
+            select(CardModel).where(CardModel.oracle_id == _SHARED_ORACLE_ID)
+        )
+        rows = {row.id: row for row in result.scalars().all()}
+        assert set(rows) == {"spm-276", "om1-153"}  # row kept, nothing deleted
+        assert rows["spm-276"].games == ["arena", "mtgo", "paper"]
+        assert rows["om1-153"].games == ["arena", "mtgo", "paper"]
+
+
+@pytest.mark.asyncio
+async def test_two_pass_import_is_noop_for_unique_oracle_ids(test_db, tmp_path):
+    """oracle_cards-style input (one printing per oracle id) imports every card unchanged."""
+    cards_data = []
+    for i in range(4):
+        cards_data.append(
+            {
+                "id": f"card-{i:04d}",
+                "name": f"Test Card {i}",
+                "oracle_id": f"oracle-{i:04d}",
+                "type_line": "Creature",
+                "mana_cost": "{1}",
+                "cmc": 1.0,
+                "released_at": "2024-01-01",
+                "games": ["paper", "arena"],
+                "rarity": "common",
+                "set": "tst",
+                "set_name": "Test Set",
+                "collector_number": str(i),
+            }
+        )
+    test_json = tmp_path / "oracle_style.json"
+    test_json.write_text(json.dumps(cards_data))
+
+    async with test_db() as session:
+        stats, updated = await _run_two_pass_import(session, test_json)
+
+        assert stats.total_inserted == 4
+        assert updated == 0
+
+        result = await session.execute(select(CardModel))
+        rows = result.scalars().all()
+        assert len(rows) == 4
+        assert all(row.games == ["arena", "paper"] for row in rows)
 
 
 @pytest.mark.asyncio

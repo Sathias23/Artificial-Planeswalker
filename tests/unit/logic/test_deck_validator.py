@@ -731,3 +731,131 @@ class TestValidateDeck:
         assert violation.rule == "copy_limit"
         assert violation.card_name == "X"
         assert violation.detail == "too many"
+
+
+class TestValidateDeckSingleton:
+    """Singleton-format copy limit (brawl/standardbrawl/commander/... -> max 1, basics exempt)."""
+
+    @staticmethod
+    def _doubled_deck(legalities: dict[str, str]) -> Deck:
+        """A 60-card deck with one non-basic doubled ACROSS boards (1 main + 1 side)."""
+        island = _vd_card(
+            "island", "Island", type_line="Basic Land — Island", cmc=0.0, legalities=legalities
+        )
+        goblin = _vd_card("goblin", "Goblin Guide", legalities=legalities)
+        return _vd_deck(
+            [
+                _vd_deck_card(island, 59),
+                _vd_deck_card(goblin, 1),
+                _vd_deck_card(goblin, 1, sideboard=True),
+            ]
+        )
+
+    def test_brawl_duplicate_non_basic_flags_singleton(self) -> None:
+        """format='brawl': 2 copies of a non-basic across both boards -> singleton, illegal."""
+        deck = self._doubled_deck({"brawl": "legal"})
+
+        report = validate_deck(deck, format="brawl")
+
+        assert report.is_legal is False
+        singleton_violations = [v for v in report.violations if v.rule == "singleton"]
+        assert len(singleton_violations) == 1
+        assert singleton_violations[0].card_name == "Goblin Guide"
+        assert "Goblin Guide" in singleton_violations[0].detail
+        assert "brawl" in singleton_violations[0].detail
+        # The duplicate is reported as singleton, never doubly as copy_limit.
+        assert not any(v.rule == "copy_limit" for v in report.violations)
+
+    def test_brawl_basics_are_exempt(self) -> None:
+        """20x Island in a brawl deck raises no singleton (or copy_limit) violation."""
+        island = _vd_card(
+            "island",
+            "Island",
+            type_line="Basic Land — Island",
+            cmc=0.0,
+            legalities={"brawl": "legal"},
+        )
+        deck = _vd_deck([_vd_deck_card(island, 60)])
+
+        report = validate_deck(deck, format="brawl")
+
+        assert report.is_legal is True
+        assert not any(v.rule in ("singleton", "copy_limit") for v in report.violations)
+
+    def test_same_doubled_deck_is_legal_in_standard(self) -> None:
+        """The identical doubled deck under format='standard' stays legal (limit is 4)."""
+        deck = self._doubled_deck({"brawl": "legal", "standard": "legal"})
+
+        report = validate_deck(deck, format="standard")
+
+        assert report.is_legal is True
+        assert report.violations == []
+
+    def test_standardbrawl_is_also_singleton(self) -> None:
+        """format='standardbrawl' enforces the 1-copy limit too."""
+        deck = self._doubled_deck({"standardbrawl": "legal"})
+
+        report = validate_deck(deck, format="standardbrawl")
+
+        assert report.is_legal is False
+        assert any(
+            v.rule == "singleton" and v.card_name == "Goblin Guide" for v in report.violations
+        )
+
+    def test_commander_is_also_singleton(self) -> None:
+        """format='commander' enforces the 1-copy limit too."""
+        deck = self._doubled_deck({"commander": "legal"})
+
+        report = validate_deck(deck, format="commander")
+
+        assert any(v.rule == "singleton" for v in report.violations)
+
+    def test_five_copies_in_standard_still_copy_limit(self) -> None:
+        """Non-singleton formats keep the 4-copy limit and the copy_limit rule name."""
+        goblin = _vd_card("goblin", "Goblin Guide")
+        island = _vd_card("island", "Island", type_line="Basic Land — Island", cmc=0.0)
+        deck = _vd_deck([_vd_deck_card(island, 55), _vd_deck_card(goblin, 5)])
+
+        report = validate_deck(deck, format="standard")
+
+        copy_violations = [v for v in report.violations if v.rule == "copy_limit"]
+        assert len(copy_violations) == 1
+        assert copy_violations[0].card_name == "Goblin Guide"
+        assert not any(v.rule == "singleton" for v in report.violations)
+
+    def test_gladiator_is_also_singleton(self) -> None:
+        """format='gladiator' (Arena 100-card singleton) enforces the 1-copy limit."""
+        deck = self._doubled_deck({"gladiator": "legal"})
+
+        report = validate_deck(deck, format="gladiator")
+
+        assert any(v.rule == "singleton" for v in report.violations)
+
+    def test_mainboard_only_quantity_two_flags_singleton(self) -> None:
+        """A single deck_cards entry with quantity=2 (mainboard only) trips singleton."""
+        island = _vd_card(
+            "island",
+            "Island",
+            type_line="Basic Land — Island",
+            cmc=0.0,
+            legalities={"brawl": "legal"},
+        )
+        goblin = _vd_card("goblin", "Goblin Guide", legalities={"brawl": "legal"})
+        deck = _vd_deck([_vd_deck_card(island, 58), _vd_deck_card(goblin, 2)])
+
+        report = validate_deck(deck, format="brawl")
+
+        assert any(
+            v.rule == "singleton" and v.card_name == "Goblin Guide" for v in report.violations
+        )
+
+    def test_format_is_normalized_in_the_logic_layer(self) -> None:
+        """Direct callers passing ' BRAWL ' get singleton + legality, not garbage."""
+        deck = self._doubled_deck({"brawl": "legal"})
+
+        report = validate_deck(deck, format=" BRAWL ")
+
+        assert report.format == "brawl"
+        assert any(v.rule == "singleton" for v in report.violations)
+        # Legality resolved via the lowercased key — no all-cards format_legality storm.
+        assert not any(v.rule == "format_legality" for v in report.violations)

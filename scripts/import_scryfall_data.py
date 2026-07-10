@@ -9,6 +9,7 @@ from pathlib import Path
 
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.importers.scryfall import import_scryfall_bulk_data
+from src.paths import database_path
 
 # Configure logging
 logging.basicConfig(
@@ -26,11 +27,16 @@ async def main() -> int:
         description="Import Scryfall bulk data into the Magic: The Gathering card database.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+The importer deduplicates any bulk type to one row per oracle identity and stores
+`games` as the union across all printings (so Arena/MTGO availability is never
+masked by a paper-only printing). Pre-existing rows from older imports get their
+`games` reconciled to the union as a final step.
+
 Examples:
-  # Import default cards (default) into default database
+  # Import default cards (default; ~500 MB, all printings -> deduped rows w/ union games)
   uv run scripts/import_scryfall_data.py
 
-  # Import oracle cards (smaller database) into custom database
+  # Import oracle cards into a throwaway DB (dedup/union is a natural no-op)
   uv run scripts/import_scryfall_data.py --type oracle_cards --db-path /tmp/cards.db
 
   # Import with custom temp directory
@@ -43,14 +49,21 @@ Examples:
         type=str,
         default="default_cards",
         choices=["oracle_cards", "default_cards", "unique_artwork"],
-        help="Bulk data type to import (default: default_cards)",
+        help=(
+            "Bulk data type to import (default: default_cards — all printings, deduplicated "
+            "to one row per oracle identity with union-of-printings games)"
+        ),
     )
 
     parser.add_argument(
         "--db-path",
         type=str,
-        default="data/cards.db",
-        help="Path to SQLite database file (default: data/cards.db)",
+        default=None,
+        help=(
+            "Path to SQLite database file. Defaults to the shared central database "
+            "(CARDS_DATABASE_URL / PLANESWALKER_DATA_DIR aware) — the same file the MCP "
+            "server and setup.py use — so a refresh actually updates the data the tools read."
+        ),
     )
 
     parser.add_argument(
@@ -63,10 +76,11 @@ Examples:
     args = parser.parse_args()
 
     try:
-        # Construct database URL
-        db_path = Path(args.db_path)
+        # Resolve the database: an explicit --db-path wins; otherwise the shared central
+        # DB (the file the MCP server reads — a refresh must land there to take effect).
+        db_path = Path(args.db_path) if args.db_path else database_path()
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        database_url = f"sqlite+aiosqlite:///{db_path.absolute()}"
+        database_url = f"sqlite+aiosqlite:///{db_path.absolute().as_posix()}"
 
         logger.info(f"Database path: {db_path.absolute()}")
         logger.info(f"Bulk data type: {args.type}")

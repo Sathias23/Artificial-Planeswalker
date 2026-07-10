@@ -33,7 +33,7 @@ Four companion **skills** layer expert reasoning on top of the tools —
 
 - **Python 3.12+**
 - **[uv](https://docs.astral.sh/uv/)** (package manager / runner)
-- ~250 MB of disk for the card database + embedding index (downloaded on first run)
+- ~300 MB of disk for the card database + embedding index (built from a one-time ~500 MB download on first run)
 
 ## Quick start
 
@@ -44,8 +44,9 @@ python3 setup.py        # installs deps + downloads the card database into a cen
 ```
 
 `setup.py` is idempotent: it checks Python/uv, syncs dependencies, then downloads public
-**Scryfall** bulk data (~30k cards, a few minutes — no API key) into a shared OS location (below),
-so every project and every MCP client reuses it. Run it once per machine.
+**Scryfall** bulk data (~500 MB covering every printing, deduplicated to ~35k cards with
+cross-printing Arena/MTGO availability; a few minutes — no API key) into a shared OS location
+(below), so every project and every MCP client reuses it. Run it once per machine.
 
 To enable **semantic search** (`semantic_search_cards` / `find_similar_cards`), build the embedding
 index once too — either ask your MCP client to run the **`build_search_index`** tool, or run
@@ -75,8 +76,8 @@ deckbuilding skills in any project — no clone required:
 /plugin install artificial-planeswalker@artificial-planeswalker
 ```
 
-On first use, ask the assistant to run **`initialize_database`** (one-time card download, ~2–3 min),
-then **`build_search_index`** for semantic search.
+On first use, ask the assistant to run **`initialize_database`** (one-time ~500 MB card download,
+a few minutes), then **`build_search_index`** for semantic search.
 
 *Developing in this repo instead?*
 [`.mcp.json`](https://github.com/Sathias23/Artificial-Planeswalker/blob/master/.mcp.json) is
@@ -144,7 +145,7 @@ Clone the repo, then add the server to `claude_desktop_config.json`
 ```
 
 No card data ships with the repo, so on first use ask the assistant to run the
-**`initialize_database`** tool (a one-time card-data download, ~2–3 min) — and then
+**`initialize_database`** tool (a one-time ~500 MB card-data download, a few minutes) — and then
 **`build_search_index`** if you want semantic search. Until then the card/deck tools reply with a
 `database_not_initialized` hint instead of an error. When a new set releases, ask the assistant to
 run `initialize_database` with `update=true` to pull in the new cards (then re-run

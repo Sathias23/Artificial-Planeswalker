@@ -278,17 +278,23 @@ async def validate_deck(
 ) -> ValidateDeckResult:
     """Validate a deck's construction legality for a format (size, copies, legality).
 
-    Loads the deck by ``deck_id`` and checks the constructed (60-card) rules:
-    mainboard size, sideboard size, the 4-copy limit (counted across both boards,
-    basics exempt), per-card legality in ``format``, and — when ``games`` is given
-    — card availability on those platforms. ``format`` and ``games`` are per-call
-    parameters (no server-side state). Returns a structured report listing every
-    violation; ``report.is_legal`` is the overall verdict.
+    Loads the deck by ``deck_id`` and checks the constructed rules: mainboard
+    size, sideboard size, the copy limit (counted across both boards, basics
+    exempt — 4 copies normally, **1 copy in singleton formats**: brawl,
+    standardbrawl, commander, gladiator, competitivebrawl, duel, oathbreaker,
+    paupercommander, predh — reported as
+    ``singleton``), per-card legality in ``format``, and — when ``games`` is
+    given — card availability on those platforms (based on the union of games
+    across all printings). ``format`` is case-insensitive (lowercased here) and,
+    like ``games``, a per-call parameter (no server-side state). Returns a
+    structured report listing every violation; ``report.is_legal`` is the
+    overall verdict.
 
     Args:
         session: Async database session to load the deck from.
         deck_id: The deck id (from ``create_deck`` / ``list_decks``).
-        format: The MTG format to validate against (default ``"standard"``).
+        format: The MTG format to validate against (default ``"standard"``);
+            case-insensitive — it is lowercased before use.
         games: Optional platforms (``paper``/``arena``/``mtgo``) the deck must be
             playable on; omit to skip the availability check.
 
@@ -299,7 +305,7 @@ async def validate_deck(
         ``initialize_database``).
     """
     deck_id = deck_id.strip()
-    format = format.strip() or "standard"
+    format = format.strip().lower() or "standard"
 
     if games:
         for game in games:
