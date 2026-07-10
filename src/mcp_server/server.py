@@ -312,9 +312,11 @@ def build_server(
     async def import_decklist(deck_id: str, arena_export: str) -> DeckImportResult:
         """Bulk-add an MTG Arena export to an existing saved deck.
 
-        Accepts Arena's ``Commander`` / ``Deck`` / ``Sideboard`` sections with
-        card lines shaped like ``1 Card Name (SET) 123``. Commander and Deck
-        entries become mainboard cards; Sideboard entries become sideboard cards.
+        Accepts Arena's ``Commander`` / ``Deck`` / ``Sideboard`` / ``Companion``
+        sections with card lines shaped like ``1 Card Name (SET) 123``; the
+        optional ``About`` / ``Name`` metadata block is skipped. Commander and
+        Deck entries become mainboard cards; Sideboard and Companion entries
+        become sideboard cards.
         The import is additive: it never clears the deck or silently merges an
         existing quantity. Each nonblank card line gets an ordered result such as
         ``ok``, ``ambiguous``, ``not_found``, ``invalid``, or ``exists``. Valid

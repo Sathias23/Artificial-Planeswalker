@@ -63,6 +63,8 @@ context:
 
 ## Design Notes
 
+Review hardening (PR #6): the full documented Arena header set is now accepted — `Companion` maps to the sideboard (its paper-rules home, per AD6 v1 in the 2026-06-27 import/export research) and the optional `About` / `Name` metadata block is skipped, so a standard modern-client export no longer degrades to `partial`. Card-shaped lines inside the `About` block still fail closed.
+
 The export's `(SET) COLLECTOR` suffix is parsed and echoed for traceability, but card identity is name-based. This deliberately survives the importer's oracle-level aggregation choosing a different representative printing. Calling the existing single-card helper per parsed entry preserves its exact/partial ambiguity buckets, duplicate behavior, database rollback discipline, and independently committed partial successes without adding SQL or a second resolver.
 
 ## Verification

@@ -115,6 +115,68 @@ Sidebord
     assert [entry.card.name for entry in loaded.deck.cards] == ["Lightning Bolt"]
 
 
+async def test_import_decklist_skips_about_metadata_block(seeded_card_db) -> None:
+    """The Arena ``About`` / ``Name`` metadata block does not poison a valid import."""
+    deck_id = await _create_saved_deck(seeded_card_db)
+    arena_export = """About
+Name My Burn Deck
+
+Deck
+4 Lightning Bolt (M11) 149
+"""
+
+    async with seeded_card_db() as session:
+        result = await import_decklist(session, deck_id=deck_id, arena_export=arena_export)
+        loaded = await load_deck(session, deck_id=deck_id)
+
+    assert result.status == "ok"
+    assert result.total_lines == 1
+    assert result.imported_lines == 1
+    assert result.results[0].line_number == 5
+    assert loaded.deck is not None
+    assert [entry.card.name for entry in loaded.deck.cards] == ["Lightning Bolt"]
+
+
+async def test_import_decklist_card_line_under_about_is_invalid(seeded_card_db) -> None:
+    """A card-shaped line inside the About block fails closed, never lands in a deck."""
+    deck_id = await _create_saved_deck(seeded_card_db)
+    arena_export = """About
+1 Lightning Bolt (M11) 149
+"""
+
+    async with seeded_card_db() as session:
+        result = await import_decklist(session, deck_id=deck_id, arena_export=arena_export)
+        loaded = await load_deck(session, deck_id=deck_id)
+
+    assert result.status == "invalid"
+    assert [line.status for line in result.results] == ["invalid"]
+    assert loaded.deck is not None
+    assert loaded.deck.cards == []
+
+
+async def test_import_decklist_maps_companion_to_sideboard(seeded_card_db) -> None:
+    """A ``Companion`` section is recognized and its card lands in the sideboard."""
+    deck_id = await _create_saved_deck(seeded_card_db)
+    arena_export = """Companion
+1 Counterspell (DMR) 50
+
+Deck
+4 Lightning Bolt (M11) 149
+"""
+
+    async with seeded_card_db() as session:
+        result = await import_decklist(session, deck_id=deck_id, arena_export=arena_export)
+        loaded = await load_deck(session, deck_id=deck_id)
+
+    assert result.status == "ok"
+    assert result.imported_lines == 2
+    assert result.results[0].section == "companion"
+    assert result.results[0].sideboard is True
+    assert loaded.deck is not None
+    cards = {(entry.card.name, entry.sideboard): entry.quantity for entry in loaded.deck.cards}
+    assert cards == {("Counterspell", True): 1, ("Lightning Bolt", False): 4}
+
+
 async def test_import_decklist_existing_card_does_not_merge_quantity(seeded_card_db) -> None:
     """Re-importing a card reports exists and preserves the stored quantity."""
     deck_id = await _create_saved_deck(seeded_card_db)
