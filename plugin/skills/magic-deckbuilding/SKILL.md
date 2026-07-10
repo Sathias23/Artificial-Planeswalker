@@ -75,8 +75,10 @@ only** — they never modify the deck.
    your evidence for **missing-synergy** swaps; the named synergies tell you what the deck is *trying*
    to do.
 3. `mcp__artificial-planeswalker__validate_deck` (`deck_id`, `format`, `games?`) → read
-   `report.is_legal` and the violations (size, 4-copy limit, per-card legality, platform
-   availability). Any illegal/over-limit card is a **mandatory cut** candidate.
+   `report.is_legal` and the violations (size, copy limit — 4 normally, 1 in singleton formats
+   like brawl/commander (`singleton` rule), per-card legality, platform availability; the
+   `format` key is case-insensitive). Any illegal/over-limit card is a **mandatory cut**
+   candidate. Note the size rules are still constructed-60 (no 100-card Commander/Brawl minima).
 
 Hold these findings — every swap you propose in Step 3 must trace back to one of them.
 

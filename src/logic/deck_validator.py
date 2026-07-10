@@ -1,7 +1,8 @@
-"""Deck construction rule validation for Magic: The Gathering Standard format.
+"""Deck construction rule validation for Magic: The Gathering constructed formats.
 
 This module provides business logic for validating deck construction rules:
-- Maximum 4 copies of any card (except basic lands - unlimited)
+- Maximum 4 copies of any card (except basic lands - unlimited); singleton
+  formats (brawl, commander, ...) get a 1-copy limit instead
 - Format legality checking
 - Clear error messages for rule violations
 
@@ -155,12 +156,29 @@ def validate_card_addition(deck: Deck, card: Card, quantity: int) -> ValidationR
 # --- Whole-deck validation (Story 1.6, additive) ---
 
 # Constructed-format (Standard) construction limits — Phase-1 scope (D-1.6b).
-# These apply regardless of the ``format`` string; only the per-card legality
-# check is format-aware. Commander/Brawl singleton + 100-card minima are out of
-# scope (a documented Phase-1 limitation).
+# The size limits apply regardless of the ``format`` string; the per-card
+# legality check and the copy limit are format-aware (singleton formats get a
+# 1-copy limit). Commander/Brawl 100-card minima remain out of scope (a
+# documented limitation).
 _MIN_MAINBOARD = 60
 _MAX_SIDEBOARD = 15
 _MAX_COPIES = 4
+
+#: Formats whose copy limit is 1 (basics exempt). Matched against the lowercase
+#: Scryfall legality key (``validate_deck`` lowercases ``format`` defensively).
+_SINGLETON_FORMATS = frozenset(
+    {
+        "brawl",
+        "commander",
+        "competitivebrawl",
+        "duel",
+        "gladiator",
+        "oathbreaker",
+        "paupercommander",
+        "predh",
+        "standardbrawl",
+    }
+)
 
 
 class DeckViolation(BaseModel):
@@ -169,8 +187,9 @@ class DeckViolation(BaseModel):
     Attributes:
         rule: The construction rule that was broken.
         card_name: The offending card's name when the violation is card-specific
-            (``copy_limit`` / ``format_legality`` / ``game_availability``);
-            ``None`` for whole-deck rules (``min_deck_size`` / ``max_sideboard_size``).
+            (``copy_limit`` / ``singleton`` / ``format_legality`` /
+            ``game_availability``); ``None`` for whole-deck rules
+            (``min_deck_size`` / ``max_sideboard_size``).
         detail: Human-readable explanation of the violation.
     """
 
@@ -178,6 +197,7 @@ class DeckViolation(BaseModel):
         "min_deck_size",
         "max_sideboard_size",
         "copy_limit",
+        "singleton",
         "format_legality",
         "game_availability",
     ]
@@ -208,7 +228,7 @@ class DeckValidationReport(BaseModel):
 def validate_deck(
     deck: Deck, *, format: str = "standard", games: list[str] | None = None
 ) -> DeckValidationReport:
-    """Validate a deck against constructed (60-card) deck-construction rules.
+    """Validate a deck against constructed deck-construction rules.
 
     Pure business logic (no database or UI). Checks:
 
@@ -216,18 +236,26 @@ def validate_deck(
     - **Sideboard size:** at most 15 cards (``max_sideboard_size``).
     - **Copy limit:** at most 4 copies of any non-basic card, counted across
       mainboard and sideboard combined; basic lands are exempt (``copy_limit``).
+      In singleton formats (``_SINGLETON_FORMATS`` — brawl, standardbrawl,
+      commander, gladiator, etc.) the limit is 1 instead, reported as
+      ``singleton``.
     - **Format legality:** each distinct card must be ``legal`` in ``format``
       (``format_legality``).
     - **Game availability:** when ``games`` is provided, each distinct card must
       be available on at least one requested platform (``game_availability``).
 
     The 60-card / 15-sideboard limits apply regardless of ``format`` (Phase-1
-    scope, D-1.6b); only the per-card legality check is format-aware. Commander/
-    Brawl singleton and 100-card minima are out of scope.
+    scope, D-1.6b); the per-card legality check and the copy limit are
+    format-aware. Commander/Brawl 100-card minima remain out of scope, as do
+    "any number of copies" exemption cards (Seven Dwarves etc.) — the singleton
+    rule shares the plain copy limit's blindness there.
 
     Args:
         deck: The deck to validate (mainboard and sideboard via ``deck_cards``).
         format: The MTG format to check legality against (default ``"standard"``).
+            Lowercased and stripped defensively here (Scryfall legality keys and
+            the singleton-format set are lowercase), so direct callers get the
+            same behavior as the MCP tool layer.
         games: Optional platforms (``paper``/``arena``/``mtgo``) the deck must be
             playable on; ``None`` skips the availability check.
 
@@ -235,6 +263,9 @@ def validate_deck(
         A ``DeckValidationReport`` whose ``is_legal`` is ``True`` iff there are no
         violations.
     """
+    # Defensive normalization: Scryfall legality keys and _SINGLETON_FORMATS are
+    # lowercase, and direct library callers bypass the tool layer's lowercasing.
+    format = format.strip().lower()
     mainboard_count = sum(dc.quantity for dc in deck.deck_cards if not dc.sideboard)
     sideboard_count = sum(dc.quantity for dc in deck.deck_cards if dc.sideboard)
     violations: list[DeckViolation] = []
@@ -268,10 +299,26 @@ def validate_deck(
         combined_counts[dc.card_id] = combined_counts.get(dc.card_id, 0) + dc.quantity
         card_by_id[dc.card_id] = dc.card
 
-    # 4-copy limit — combined across both boards, basic lands exempt.
+    # Copy limit — combined across both boards, basic lands exempt. Singleton
+    # formats cap non-basics at 1 copy (rule="singleton"); everything else at 4.
+    singleton = format in _SINGLETON_FORMATS
+    max_copies = 1 if singleton else _MAX_COPIES
     for card_id, total in combined_counts.items():
         card = card_by_id[card_id]
-        if not is_basic_land(card) and total > _MAX_COPIES:
+        if is_basic_land(card) or total <= max_copies:
+            continue
+        if singleton:
+            violations.append(
+                DeckViolation(
+                    rule="singleton",
+                    card_name=card.name,
+                    detail=(
+                        f"{total} copies of '{card.name}'; {format} is a singleton format "
+                        f"(max 1 copy of any non-basic card)."
+                    ),
+                )
+            )
+        else:
             violations.append(
                 DeckViolation(
                     rule="copy_limit",

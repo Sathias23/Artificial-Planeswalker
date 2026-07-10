@@ -2,16 +2,19 @@
 
 A fresh plugin / Claude Desktop install ships no card data by design (the Scryfall/WotC license
 means the package carries no DB). This tool is the in-client bootstrap: it creates the schema and
-imports
-the ``oracle_cards`` bulk set into the shared central data directory, so the card/deck tools start
-working. It is **explicit and consent-gated** — the assistant calls it on the user's behalf; it
-never runs on startup or from another tool — and **idempotent**: if the ``cards`` table is already
-populated it reports ``already_initialized`` and re-downloads nothing.
+imports the ``default_cards`` bulk set (~500 MB download) into the shared central data directory,
+so the card/deck tools start working. The importer deduplicates to **one row per oracle identity**
+and stores ``games`` as the **union across all printings**, so Arena/MTGO availability is never
+masked by a paper-only representative printing. It is **explicit and consent-gated** — the
+assistant calls it on the user's behalf; it never runs on startup or from another tool — and
+**idempotent**: if the ``cards`` table is already populated it reports ``already_initialized`` and
+re-downloads nothing.
 
 The same tool also keeps the database current. When a new set releases, calling it with
-``update=True`` re-downloads the latest ``oracle_cards`` set and **upserts** it (the importer's
-``INSERT ... ON CONFLICT DO UPDATE``): new cards are added and existing rows refreshed (errata,
-banlist/legality changes), without wiping the user's existing data. Building the semantic index is a
+``update=True`` re-downloads the latest ``default_cards`` set and **upserts** it (the importer's
+``INSERT ... ON CONFLICT DO UPDATE``): new cards are added, existing rows refreshed (errata,
+banlist/legality changes), and stale rows from older imports get their ``games`` reconciled to the
+cross-printing union — without wiping the user's existing data. Building the semantic index is a
 separate, optional step (``build_search_index``) — re-run it after an update to index the new cards.
 """
 
@@ -34,9 +37,9 @@ from src.data.importers.scryfall import import_scryfall_bulk_data
 
 logger = logging.getLogger(__name__)
 
-#: Default Scryfall bulk set — unique by oracle id, smaller/faster than ``default_cards``; the same
-#: set ``setup.py`` imports.
-_DEFAULT_BULK_TYPE = "oracle_cards"
+#: Default Scryfall bulk set — every printing (~500 MB download); the importer deduplicates to one
+#: row per oracle identity with union-of-printings ``games``. The same set ``setup.py`` imports.
+_DEFAULT_BULK_TYPE = "default_cards"
 
 #: The import seam: ``(session, bulk_type=...) -> ImportStatistics``. Defaults to the real Scryfall
 #: importer; tests inject a fake that inserts a few cards with no network/download.
@@ -98,7 +101,8 @@ async def initialize_database(
     Args:
         import_fn: Test seam for the importer; defaults to the real
             :func:`~src.data.importers.scryfall.import_scryfall_bulk_data`.
-        bulk_type: Scryfall bulk set to import (default ``"oracle_cards"``).
+        bulk_type: Scryfall bulk set to import (default ``"default_cards"`` — deduplicated to
+            one row per oracle identity with union-of-printings ``games``).
         update: When ``True``, refresh an already-populated database (pull in new sets) instead of
             short-circuiting with ``already_initialized``. No effect on an empty database — that is
             always a first-run import.

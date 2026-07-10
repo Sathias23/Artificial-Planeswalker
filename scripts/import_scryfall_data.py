@@ -26,11 +26,16 @@ async def main() -> int:
         description="Import Scryfall bulk data into the Magic: The Gathering card database.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+The importer deduplicates any bulk type to one row per oracle identity and stores
+`games` as the union across all printings (so Arena/MTGO availability is never
+masked by a paper-only printing). Pre-existing rows from older imports get their
+`games` reconciled to the union as a final step.
+
 Examples:
-  # Import default cards (default) into default database
+  # Import default cards (default; ~500 MB, all printings -> deduped rows w/ union games)
   uv run scripts/import_scryfall_data.py
 
-  # Import oracle cards (smaller database) into custom database
+  # Import oracle cards (smaller download; dedup/union is a natural no-op)
   uv run scripts/import_scryfall_data.py --type oracle_cards --db-path /tmp/cards.db
 
   # Import with custom temp directory
@@ -43,7 +48,10 @@ Examples:
         type=str,
         default="default_cards",
         choices=["oracle_cards", "default_cards", "unique_artwork"],
-        help="Bulk data type to import (default: default_cards)",
+        help=(
+            "Bulk data type to import (default: default_cards — all printings, deduplicated "
+            "to one row per oracle identity with union-of-printings games)"
+        ),
     )
 
     parser.add_argument(

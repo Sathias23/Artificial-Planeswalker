@@ -408,16 +408,22 @@ def build_server(
     ) -> ValidateDeckResult:
         """Validate a deck's construction legality (size, copy limits, format legality).
 
-        Loads the deck and checks the constructed (60-card) rules: mainboard size,
-        sideboard size, the 4-copy limit (combined across both boards, basics
-        exempt), per-card legality in ``format``, and — when ``games`` is given —
-        card availability on those platforms. ``format``/``games`` are per-call
-        parameters (no server-side state). Returns a report listing every
-        violation; ``report.is_legal`` is the overall verdict.
+        Loads the deck and checks the constructed rules: mainboard size, sideboard
+        size, the copy limit (combined across both boards, basics exempt — 4
+        copies normally, 1 copy in the singleton formats brawl / standardbrawl /
+        commander / gladiator / competitivebrawl / duel / oathbreaker /
+        paupercommander / predh, reported as a
+        ``singleton`` violation), per-card legality in ``format``, and — when
+        ``games`` is given — card availability on those platforms (union of games
+        across all printings). ``format`` is case-insensitive (lowercased before
+        use); ``format``/``games`` are per-call parameters (no server-side
+        state). Returns a report listing every violation; ``report.is_legal`` is
+        the overall verdict.
 
         Args:
             deck_id: The deck id (from ``create_deck`` or ``list_decks``).
-            format: The MTG format to validate against (default "standard").
+            format: The MTG format to validate against (default "standard");
+                case-insensitive.
             games: Optional platforms ("paper"/"arena"/"mtgo") the deck must be
                 playable on; omit to skip the availability check.
 
@@ -556,14 +562,18 @@ def build_server(
 
         Run this once on a fresh install before using the card/deck tools: a packaged install ships
         with **no card data**, so the first card or deck call returns ``database_not_initialized``
-        until this has run. It downloads the latest Scryfall ``oracle_cards`` set (~2-3 minutes)
-        into this machine's local data directory and creates the schema. Idempotent — if the cards
-        are already present it returns ``already_initialized`` and downloads nothing.
+        until this has run. It downloads the latest Scryfall ``default_cards`` set (a **~500 MB**
+        download; allow a few minutes) into this machine's local data directory and creates the
+        schema. The import deduplicates to one row per card (oracle identity) and stores each
+        card's ``games`` as the union across all printings, so Arena/MTGO availability is accurate
+        even when a card's newest printing is paper-only. Idempotent — if the cards are already
+        present it returns ``already_initialized`` and downloads nothing.
 
         When a **new set releases**, run it again with ``update=true`` to refresh the database: it
-        re-downloads the latest set and upserts it, adding new cards and refreshing existing ones
-        (errata, banlist/legality changes) without dropping anything. This imports the cards only;
-        to enable (or refresh) semantic search, follow up with ``build_search_index``.
+        re-downloads the latest set and upserts it, adding new cards, refreshing existing ones
+        (errata, banlist/legality changes), and reconciling older rows' ``games`` to the
+        cross-printing union, without dropping anything. This imports the cards only; to enable
+        (or refresh) semantic search, follow up with ``build_search_index``.
 
         Args:
             update: When ``true``, refresh an already-populated database with the latest card data

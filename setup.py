@@ -123,10 +123,20 @@ async def _init_db() -> None:
         existing = await session.scalar(select(func.count()).select_from(CardModel))
         if existing:
             print(f"✓ Database already has {existing:,} cards — skipping Scryfall import")
+            print(
+                "  (If this database predates the 2026-07 games-union fix, Arena availability"
+                " may be stale — refresh once with `uv run python"
+                " scripts/import_scryfall_data.py` or the `initialize_database` tool with"
+                " update=true.)"
+            )
             return
 
-        print("\n📥 Importing Scryfall card data (this may take 2-3 minutes)...")
-        stats = await import_scryfall_bulk_data(session, bulk_type="oracle_cards")
+        print(
+            "\n📥 Importing Scryfall card data (~500 MB download; this may take a few minutes)..."
+        )
+        # default_cards covers every printing; the importer dedups to one row per oracle
+        # identity and stores games as the union across printings (true Arena/MTGO availability).
+        stats = await import_scryfall_bulk_data(session, bulk_type="default_cards")
 
     print(f"✓ Imported {stats.total_inserted:,} cards in {stats.elapsed_time():.1f}s")
     print(f"  ({stats.cards_per_second():.0f} cards/second)")

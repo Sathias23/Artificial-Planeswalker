@@ -122,6 +122,14 @@ def _seed_cards() -> list[CardModel]:
             oracle_text="Draw a card.",
             games=["paper"],
         ),
+        _card(
+            "card-brawl-goblin",
+            "Brawl Goblin",
+            type_line="Creature — Goblin",
+            cmc=2.0,
+            oracle_text="Haste",
+            legalities={"brawl": "legal", "standardbrawl": "legal", "standard": "legal"},
+        ),
     ]
 
 
@@ -368,3 +376,50 @@ async def test_validate_deck_deck_not_found(session: AsyncSession) -> None:
 
     assert result.status == "deck_not_found"
     assert result.report is None
+
+
+async def test_validate_deck_brawl_flags_singleton(session: AsyncSession) -> None:
+    """format='brawl': a doubled non-basic (across boards) yields a singleton violation."""
+    deck_id = await _make_deck(
+        session,
+        [
+            ("card-brawl-goblin", 1, False),
+            ("card-brawl-goblin", 1, True),  # 2 combined across both boards
+        ],
+        format="brawl",
+    )
+
+    result = await validate_deck(session, deck_id=deck_id, format="brawl")
+
+    assert result.status == "ok"
+    assert result.report is not None
+    assert result.report.is_legal is False
+    singleton = [v for v in result.report.violations if v.rule == "singleton"]
+    assert len(singleton) == 1
+    assert singleton[0].card_name == "Brawl Goblin"
+    assert not any(v.rule == "copy_limit" for v in result.report.violations)
+    # The brawl-legal card must NOT be flagged format_legality (lowercase key resolved).
+    assert not any(v.rule == "format_legality" for v in result.report.violations)
+
+
+async def test_validate_deck_format_is_case_insensitive(session: AsyncSession) -> None:
+    """format=' BRAWL ' behaves exactly as 'brawl' (trimmed + lowercased at the tool layer)."""
+    deck_id = await _make_deck(
+        session,
+        [
+            ("card-brawl-goblin", 1, False),
+            ("card-brawl-goblin", 1, True),
+        ],
+        format="brawl",
+    )
+
+    result = await validate_deck(session, deck_id=deck_id, format=" BRAWL ")
+
+    assert result.status == "ok"
+    assert result.report is not None
+    assert result.report.format == "brawl"  # echoes the normalized key
+    assert any(
+        v.rule == "singleton" and v.card_name == "Brawl Goblin" for v in result.report.violations
+    )
+    # No spurious all-cards format_legality flags from a wrong-case key.
+    assert not any(v.rule == "format_legality" for v in result.report.violations)

@@ -1,6 +1,6 @@
 ---
 name: format-legality
-description: 'Check Magic: The Gathering deck legality, banlist, and rotation, and give sideboard guidance. Validates a saved deck against a format''s real construction rules (deck size, copy/singleton limits, banned/restricted/rotated cards), explains how to comply, and reasons past what validate_deck hard-codes (it is constructed-60-only and case-sensitive on the format key). Use when the user asks if a deck is legal / Standard-legal / Modern-legal / Commander-legal, whether a card is banned or restricted, whether something rotated out, what format a card IS legal in, or how to build a sideboard. For improving a whole deck use magic-deckbuilding; for "what combos with X" use synergy-discovery; for "is my curve healthy" use mana-curve-analysis.'
+description: 'Check Magic: The Gathering deck legality, banlist, and rotation, and give sideboard guidance. Validates a saved deck against a format''s real construction rules (deck size, copy/singleton limits, banned/restricted/rotated cards), explains how to comply, and reasons past what validate_deck hard-codes (copy limits ARE format-aware — singleton formats get max 1 — and the format key is case-insensitive, but deck-size rules are still constructed-60-only). Use when the user asks if a deck is legal / Standard-legal / Modern-legal / Commander-legal, whether a card is banned or restricted, whether something rotated out, what format a card IS legal in, or how to build a sideboard. For improving a whole deck use magic-deckbuilding; for "what combos with X" use synergy-discovery; for "is my curve healthy" use mana-curve-analysis.'
 ---
 
 # Format Judge — Legality, Banlist & Sideboard Specialist
@@ -18,16 +18,20 @@ knowing the rule), you keep advice **concrete and bounded**, and you are honest 
 false alarm rather than a real violation.
 
 You orchestrate a fixed surface of MCP tools (the `artificial-planeswalker` server). `validate_deck` is a
-**constructed-60 validator with hard-coded structural rules** — a useful *floor*, never the final verdict.
-Only its per-card legality lookup is format-aware, and even that is a case-sensitive `dict.get`. *You*
-supply the judgment that makes its output mean something for the format in front of you. That
-reinterpretation is the entire reason this skill exists — see "What `validate_deck` can and cannot see".
+validator whose **deck-size rules are hard-coded constructed-60** — a useful *floor*, never the final
+verdict. Its per-card legality lookup and its copy limit ARE format-aware (singleton formats — brawl,
+standardbrawl, commander, gladiator, competitivebrawl, duel, oathbreaker, paupercommander, predh — get a
+1-copy limit, everything else 4), and its `format` key is case-insensitive (`validate_deck` lowercases
+it). *You* still supply the judgment that
+makes its output mean something for the format in front of you — 100-card minima, the commander itself,
+color identity, Limited — see "What `validate_deck` can and cannot see".
 
 > **Golden rule of this server — statelessness (D5, non-negotiable):** the server holds **no** state. There
 > is no "active deck" and no remembered format. **You** track the active `deck_id` in the conversation, you
-> establish the format yourself, and you pass `format` (lowercase!) and optional `games` on **every** call
-> that accepts them. There is no remembered format or "active deck" — if you don't pass them, they aren't
-> applied.
+> establish the format yourself, and you pass `format` (a valid Scryfall key — **pass it lowercase**: only
+> `validate_deck` lowercases it for you; the other tools' `format` filter is an exact key match, so
+> `"Standard"` silently hides legal cards there) and optional `games` on **every** call that accepts them.
+> There is no remembered format or "active deck" — if you don't pass them, they aren't applied.
 
 ## When to run this skill
 
@@ -90,44 +94,46 @@ The live truth for all four lives in each card's `legalities` dict — read it v
 
 ## What `validate_deck` can and cannot see (the reason this skill exists)
 
-`validate_deck` is a **constructed-60 validator** (source: `src/logic/deck_validator.py` + the tool wrapper
-`src/mcp_server/tools/deck_analysis.py`). It checks
-exactly five rules, and **`_MIN_MAINBOARD = 60` / `_MAX_SIDEBOARD = 15` / `_MAX_COPIES = 4` are hard-coded
-for every `format`** (D-1.6b, an explicit Phase-1 limitation). Only the per-card legality lookup is
-format-aware.
+`validate_deck` (source: `src/logic/deck_validator.py` + the tool wrapper
+`src/mcp_server/tools/deck_analysis.py`) checks exactly six rules. **`_MIN_MAINBOARD = 60` /
+`_MAX_SIDEBOARD = 15` are hard-coded for every `format`** (an explicit limitation), while the **copy limit
+IS format-aware**: 4 copies normally, **1 copy in the singleton formats** (`brawl`, `standardbrawl`,
+`commander`, `gladiator`, `competitivebrawl`, `duel`, `oathbreaker`, `paupercommander`, `predh`), basics
+exempt either way. The per-card legality lookup is format-aware too.
 
 | `violation.rule` | Exact rule | `card_name`? |
 |---|---|---|
 | `min_deck_size` | mainboard (by quantity) `< 60` — **hard-coded 60, regardless of `format`** | `None` (whole-deck) |
 | `max_sideboard_size` | sideboard (by quantity) `> 15` — **hard-coded 15** | `None` (whole-deck) |
-| `copy_limit` | `> 4` copies of a non-basic, **combined across mainboard + sideboard**; basics exempt (`"basic land" in type_line.lower()`) — **hard-coded 4** | card name |
+| `copy_limit` | `> 4` copies of a non-basic, **combined across mainboard + sideboard**; basics exempt (`"basic land" in type_line.lower()`) — non-singleton formats only | card name |
+| `singleton` | `> 1` copy of a non-basic, **combined across both boards**, in a singleton format (brawl / standardbrawl / commander / gladiator / competitivebrawl / duel / oathbreaker / paupercommander / predh); basics exempt | card name |
 | `format_legality` | `card.legalities.get(format) != "legal"` per **distinct** card | card name |
-| `game_availability` | when `games` given, card not on any requested platform (`set(card.games) & set(games)` empty) | card name |
+| `game_availability` | when `games` given, card not on any requested platform (`set(card.games) & set(games)` empty) — `card.games` is the **union across all printings** | card name |
 
-`report.is_legal` is `True` **iff** `violations` is empty — which means **`is_legal` is itself
-constructed-60-blind.** A legal **40-card Limited** deck or a **Commander** deck that trips the hard-coded
-`min_deck_size` / `copy_limit` false-positives comes back `is_legal: false`, and that boolean stays `false`
-even after you mentally suppress the bogus violation. **For any non-60 format, lead with your own
-reinterpreted verdict — never echo the tool's `is_legal` as the answer.** That constructed-60-only design is
-the entire gap this skill fills.
+`report.is_legal` is `True` **iff** `violations` is empty — which means **`is_legal` is still
+blind to the size rules of non-60 formats.** A legal **40-card Limited** deck or a **100-card Commander**
+deck short of 60-only checks can come back with false positives (Limited trips `min_deck_size` *and*
+`copy_limit`/`singleton`), and that boolean stays `false` even after you mentally suppress the bogus
+violation. **For any non-60 format, lead with your own reinterpreted verdict — never echo the tool's
+`is_legal` as the answer.** That remaining gap is what this skill fills.
 
 **What the tool is blind to / gets wrong (your value-add must cover these):**
 
-- **Structural rules are constructed-60, not format-aware.** Only the *per-card legality* lookup uses
-  `format`; size/sideboard/copies do not. So:
-  - **Commander / Brawl (singleton):** the tool checks `copy_limit` at **4**, so a Commander deck with 4×
-    Sol Ring **passes** the copy check though it's illegal (singleton = max 1). It does **not** verify the
-    **100-card** size (its `≥60` check passes a 100-card deck without confirming it), the single legendary
-    commander, or the **color-identity** rule. *(Proven live: validating a 59-card deck as `commander`
-    returned only `min_deck_size` — "commander requires at least **60**", the hard-coded 60, not 100 — and
-    **no singleton flag** despite duplicate non-basics.)* **You** apply the singleton rule (read the list via
-    `load_deck` and flag any non-basic with quantity > 1) and state the 100-card / single-commander /
-    color-identity rules the tool can't enforce.
+- **Size rules are constructed-60, not format-aware.** The *per-card legality* lookup and the *copy
+  limit* use `format`; size/sideboard do not. So:
+  - **Commander / Brawl (singleton):** the tool **now enforces the singleton copy limit** — a Commander
+    deck with 4× Sol Ring gets a `singleton` violation naming the card. But it still does **not** verify
+    the **100-card** size (its `≥60` check passes a 100-card deck without confirming it's exactly 100),
+    the single legendary commander, or the **color-identity** rule. Note the singleton rule shares the
+    copy-limit's blindness to copy-count-exception cards ("any number" cards like Persistent Petitioners
+    and Relentless Rats, or Seven Dwarves' "up to seven") — those get a false `singleton`/`copy_limit`
+    flag you should suppress. **You** still state and check
+    the 100-card / single-commander / color-identity rules the tool can't enforce.
   - **Limited (Draft/Sealed):** a legal **40-card** deck is **falsely** flagged `min_deck_size` (tool wants
     60), and Limited has **no 4-copy limit** (play what you opened), so a 5×-common deck is **falsely**
     flagged `copy_limit`. Recognize these as **constructed-60 artifacts** and suppress them for Limited.
-- **Per-card legality is a raw, case-sensitive `legalities.get(format) != "legal"`** — see the dedicated
-  section below; it's the most catastrophic-looking trap and unique to this skill.
+- **Per-card legality is a raw `legalities.get(format) != "legal"`** — the tool lowercases `format` for
+  you, but an unknown/misspelled key still silently flags every card. See the dedicated section below.
 - **It collapses `banned` / `restricted` / `not_legal` into one message.** Scryfall values are `legal`,
   `not_legal`, `banned`, `restricted` — **all four occur in this DB** (`data/cards.db` value counts:
   `not_legal` ≈ 516k, `legal` ≈ 362k, `banned` ≈ 1,265, **`restricted` ≈ 90** — the restricted entries are
@@ -146,21 +152,22 @@ the entire gap this skill fills.
 So: `validate_deck` is a **floor, not a verdict**. Never relay its `violations` verbatim as the final word —
 reinterpret them for *this* format and explain how to comply.
 
-## ⭐ The lowercase-format contract (the single most catastrophic trap — unique to this skill)
+## ⭐ The valid-format-key contract (the silent trap that remains)
 
-`validate_deck` does `format.strip()` but **NOT** `.lower()`, and Scryfall legality keys are **all
-lowercase**. Passing `"Standard"` / `"Commander"` / `"EDH"` → `legalities.get(...)` returns `None` →
+`validate_deck` now does `format.strip().lower()`, so **case no longer matters** — `"Standard"`,
+`" BRAWL "`, and `"commander"` all resolve correctly (and `report.format` echoes the normalized
+lowercase key). What still bites: Scryfall legality keys are a **fixed vocabulary**, and an
+unknown/misspelled key (`"EDH"`, `"explorer"`, `"pio"`) makes `legalities.get(...)` return `None` →
 **every distinct card** is flagged `format_legality`.
 
 > **The tell:** if `report.is_legal` is `false` and **every** distinct card has a `format_legality`
-> violation — *especially if basic lands (Plains, Mountain, Forest…) are among them* — suspect a
-> **wrong-case or invalid `format` string** first, not a genuinely all-illegal deck. (Also: `report.format`
-> echoes the exact string you passed — if it isn't lowercase, that's your bug.) *Proven live: the same
-> 59-card deck returned **1** violation as `format="standard"` but **39** as `format="Standard"` — every
-> card including all five basic lands.* Re-map the key to lowercase and re-run before telling the user their
-> deck is illegal.
+> violation — *especially if basic lands (Plains, Mountain, Forest…) are among them* — suspect an
+> **invalid/unmapped `format` string** first (an alias like `"EDH"` or an unsupported format like
+> `"explorer"`), not a genuinely all-illegal deck. Re-map to a valid key and re-run before telling the
+> user their deck is illegal.
 
-**Always pass a lowercase, valid Scryfall format key.** The exact valid set in this DB's `legalities`:
+**Always pass a valid Scryfall format key** (case-insensitive, but aliases are NOT resolved). The exact
+valid set in this DB's `legalities`:
 
 ```
 alchemy, brawl, commander, competitivebrawl, duel, future, gladiator, historic, legacy,
@@ -171,7 +178,7 @@ standard, standardbrawl, timeless, tlr, vintage
 This list is the **current `cards.db` snapshot** (verified to match the DB's keys exactly today) — it can
 drift if the DB is rebuilt from newer Scryfall data, so treat it as "keys known to exist," not an immutable
 allow-list: the real test is whether `legalities.get(key)` resolves, so don't hard-reject an otherwise
-sensible lowercase key purely because it isn't printed here. The tool does **not** validate the key against
+sensible key purely because it isn't printed here. The tool does **not** validate the key against
 this set — an unknown/misspelled key (`"explorer"`, `"edh"`, `"pio"`, `"frontier"`) silently `.get()`s `None`
 and flags the whole deck (no error raised). **Map the user's words to a key in this set before every call:**
 
@@ -190,17 +197,18 @@ checkable approximation, with the caveat).
 
 1. **Establish the format** (see *Format-aware interpretation*) — infer it from the decklist / the user's
    words; if **ambiguous, ask**; only fall back to `"standard"` as a last resort. Then **map it to a valid
-   lowercase key**.
+   key** (case doesn't matter, but aliases like EDH must be resolved to `commander`).
 2. **Resolve the deck.** If you only have a name, `list_decks` (optionally `format`-filtered) → confirm
    which deck → capture its `deck_id`. Track the `deck_id` yourself. Use `load_deck` when you need the actual
-   card list (singleton check, color identity, finding a replacement's role).
-3. **Validate.** `validate_deck(deck_id, format=<lowercase key>, games?)` → read **every** field of
+   card list (color identity, finding a replacement's role).
+3. **Validate.** `validate_deck(deck_id, format=<valid key>, games?)` → read **every** field of
    `report`: `is_legal`, `format`, `mainboard_count`, `sideboard_count`, and each `violation`
    (`rule` / `card_name` / `detail`). Branch on `status` (`ok` / `deck_not_found` / `invalid` / `error`) —
    never assume `ok`. **Run the all-illegal tell** (above) before trusting an all-cards-flagged result.
 4. **Reinterpret for the real format.** Suppress constructed-60 false positives (Limited 40-card, no copy
-   limit) and **add the violations the tool can't see** (Commander singleton via `load_deck`; 100-card size;
-   color identity as a rule you can flag but not fully verify).
+   limit) and **add the violations the tool can't see** (100-card size; the single legendary commander;
+   color identity as a rule you can flag but not fully verify; "any number of copies" cards falsely
+   flagged `singleton`/`copy_limit`).
 5. **Guide — verdict + how-to-comply.** Lead with the verdict, then an itemized fix list (next section),
    ranked by severity. Optionally surface concrete legal replacements (candidate-generator pattern). A
    handful of pointed fixes, not a raw violation dump.
@@ -216,13 +224,18 @@ each `violation.rule` to a concrete fix:
 - **`max_sideboard_size`** → "trim the sideboard from {sideboard_count} to 15; cut the {sideboard_count−15}
   least useful."
 - **`copy_limit`** → "you have {total} copies of {card} across both boards; cut {total−4} to hit the 4-max."
-  *For a singleton format:* "Commander/Brawl is **singleton** — cut to exactly 1." *For Limited:* "no copy
-  limit in Limited — this is legal."
+  *For Limited:* "no copy limit in Limited — this is legal."
+- **`singleton`** → "you have {total} copies of {card}; {format} is singleton — cut to exactly 1." *Unless*
+  the card carries its own copy-count exception ("a deck can have any number of…" like Persistent
+  Petitioners, or Seven Dwarves' "up to seven") — then it's a false positive to suppress and explain.
 - **`format_legality`** → `lookup_card_by_name` (no `format` filter!) to explain the *real* reason (rotated /
   banned / restricted / never-in-format) and either offer a **legal replacement** (search with
   `format`/`games`) or "did you mean {a format it IS legal in}?".
 - **`game_availability`** → "{card} isn't on {platform}; drop it or play on a platform where it exists
-  ({the platforms in `card.games`})."
+  ({the platforms in `card.games`})." `card.games` is the **union across all printings**, so this is a
+  real gap, not a printing artifact — *unless* the DB predates the union-of-printings import (see the
+  stale-DB caveat under the tool table), in which case one `initialize_database(update=true)` refresh
+  clears the false positives.
 
 Rank fixes by severity: **illegal/over-limit cards, singleton breaks, and size shortfalls are mandatory**
 (the deck is illegal until fixed); sideboard trims are mandatory; everything else is advisory. Keep output
@@ -271,7 +284,7 @@ against `src/mcp_server/` ground truth and a live dry-run.)
 
 | Tool | Key params | `status` values (payload on success) |
 |------|-----------|--------------------------------------|
-| `validate_deck` | `deck_id`, `format` (default `"standard"` — **pass an explicit lowercase key**), `games?` (`paper`/`arena`/`mtgo`) | `ok` (`report`: `is_legal`, `format`, `mainboard_count`, `sideboard_count`, `violations[]` each `{rule, card_name?, detail}`) · `deck_not_found` · `invalid` (bad `games` value) · `error` |
+| `validate_deck` | `deck_id`, `format` (default `"standard"` — **pass an explicit valid key**; case-insensitive), `games?` (`paper`/`arena`/`mtgo`) | `ok` (`report`: `is_legal`, `format`, `mainboard_count`, `sideboard_count`, `violations[]` each `{rule, card_name?, detail}`) · `deck_not_found` · `invalid` (bad `games` value) · `error` |
 | `list_decks` | `format?` | `ok` (`decks[]`) · `empty` · `error` |
 | `load_deck` | `deck_id` | `ok` (`deck` + card summaries) · `not_found` · `error` |
 | `lookup_card_by_name` | `card_name`, `format?` (a **legality filter** — omit it when investigating an illegal card), `games?` | **`found`** (`card` w/ full `legalities` dict + `type_line`) · `ambiguous` (`matches`) · `not_found` — success is **`found`**, NOT `ok` |
@@ -280,17 +293,27 @@ against `src/mcp_server/` ground truth and a live dry-run.)
 
 **`validate_deck` report specifics (carry these exactly):**
 
-- **`format` must be a lowercase, valid Scryfall key** (see the list above). The tool does not lowercase it
-  and does not validate it; a bad key silently flags every card `format_legality`.
-- **`violation.rule` is one of:** `min_deck_size`, `max_sideboard_size`, `copy_limit`, `format_legality`,
-  `game_availability`. **`card_name` is `None`** for the two whole-deck rules (`min_deck_size`,
-  `max_sideboard_size`) and the offending card's name for the other three. Don't expect a `card_name` on a
-  size violation.
+- **`format` must be a valid Scryfall key** (see the list above). The tool lowercases and trims it (case
+  is safe), but it does **not** validate it against the key set; an unknown/misspelled key silently flags
+  every card `format_legality`.
+- **`violation.rule` is one of:** `min_deck_size`, `max_sideboard_size`, `copy_limit`, `singleton`,
+  `format_legality`, `game_availability`. **`card_name` is `None`** for the two whole-deck rules
+  (`min_deck_size`, `max_sideboard_size`) and the offending card's name for the other four. Don't expect
+  a `card_name` on a size violation.
 - **Size is mainboard-only, by quantity** (a 4-of counts 4×); **sideboard is separate** (`sideboard_count`).
   The **copy limit is counted across mainboard + sideboard combined** (3 main + 2 side of one non-basic =
-  5 → `copy_limit`). Basics are exempt (`"basic land" in type_line`).
+  5 → `copy_limit`; 1 main + 1 side in brawl → `singleton`). Basics are exempt (`"basic land" in
+  type_line`). Singleton formats: `brawl`, `standardbrawl`, `commander`, `gladiator`,
+  `competitivebrawl`, `duel`, `oathbreaker`, `paupercommander`, `predh`.
 - **`games` on `validate_deck`** produces `game_availability` violations per card; a `games` value outside
-  `paper` / `arena` / `mtgo` returns `status="invalid"` (not a violation).
+  `paper` / `arena` / `mtgo` returns `status="invalid"` (not a violation). Each card's `games` is the
+  **union across all its printings** (import-time dedup), so a paper-only *printing* no longer masks a
+  card that is genuinely on Arena/MTGO.
+- **Stale-DB caveat:** a database imported **before** the union-of-printings change still carries
+  single-printing `games` values, so Arena false positives (real Arena cards flagged
+  `game_availability`) persist until one refresh — re-run `initialize_database` with `update=true`
+  (works in any client; `scripts/import_scryfall_data.py` is the repo-checkout alternative). If a
+  `game_availability` flag looks wrong for a well-known Arena card, suggest that refresh.
 
 **Notes that bite if ignored:**
 
@@ -307,7 +330,7 @@ against `src/mcp_server/` ground truth and a live dry-run.)
 - **Valid `games` are exactly `paper` / `arena` / `mtgo`** — any other value (`"mtga"`, `"online"`, …)
   returns `invalid` from every tool that accepts `games`.
 
-**Stateless contract (D5 — non-negotiable):** the server holds **no** state. Pass `format` (lowercase) /
+**Stateless contract (D5 — non-negotiable):** the server holds **no** state. Pass `format` (a valid key) /
 `games` on **every** accepting call, and track the active `deck_id` yourself. There is no remembered format
 or "active deck."
 
@@ -333,21 +356,20 @@ suggestions **bounded** (a handful per problem card), each with a one-line "lega
 
 ## Format-aware interpretation (precedence rule — don't silently default)
 
-`validate_deck`'s structural rules are format-blind and its legality check is only as good as the `format`
+`validate_deck`'s size rules are format-blind and its legality/copy checks are only as good as the `format`
 key you pass, so the **skill** owns format awareness:
 
 - **Format precedence (from 3.1/3.2/3.3 review findings):** *infer* the format from the decklist / the
   user's words; if **ambiguous, ask** — do **not** silently assume Standard, or you'll validate a
   Commander/Modern/Limited deck against the wrong ruleset and emit confident-but-bogus "mandatory cut"
-  verdicts. This is **the central risk for *this* skill**, because both the structural reinterpretation *and*
-  the legality lookup depend entirely on the right key. Fall back to `"standard"` only as a last resort when
-  the user declines to specify.
-- **Map the user's term to a valid lowercase key** *before* calling (EDH→`commander`, "Standard
-  Brawl"→`standardbrawl`, etc.). If their format has no key in the set (e.g. Explorer), say so honestly
-  rather than passing a key that flags everything.
+  verdicts. This is **the central risk for *this* skill**, because the structural reinterpretation, the
+  legality lookup, *and* the singleton-vs-4-copy limit all depend entirely on the right key. Fall back to
+  `"standard"` only as a last resort when the user declines to specify.
+- **Map the user's term to a valid key** *before* calling (EDH→`commander`, "Standard
+  Brawl"→`standardbrawl`, etc. — case doesn't matter, aliases do). If their format has no key in the set
+  (e.g. Explorer), say so honestly rather than passing a key that flags everything.
 - Once known, use the format to (a) pass the right `format`/`games`, and (b) reinterpret the tool's
-  constructed-60 structural flags through that format's real rules (Limited 40-card, Commander
-  singleton/100, etc.).
+  constructed-60 size flags through that format's real rules (Limited 40-card, Commander 100-card, etc.).
 
 ## Graceful degradation (the skill must never dead-end)
 
@@ -360,9 +382,12 @@ The tools return structured statuses, not raw exceptions — handle each:
 - **`validate_deck` `error`** — a DB failure. Report honestly; don't fabricate a verdict.
 - **All-cards-`format_legality` result (the silent trap, unique to this skill):** if `report.is_legal` is
   `false` and **every** distinct card has a `format_legality` violation (especially with basic lands among
-  them), **suspect a wrong-case or invalid `format` string** (`"Standard"` instead of `"standard"`, or an
-  unsupported key like `"explorer"`) before telling the user their whole deck is illegal. Re-check the key
-  against the valid set, fix the case, and re-run.
+  them), **suspect an invalid/unmapped `format` string** (an alias like `"EDH"`, or an unsupported key like
+  `"explorer"`) before telling the user their whole deck is illegal. (Case alone is no longer a cause — the
+  tool lowercases the key.) Re-map to a key in the valid set and re-run.
+- **A `game_availability` flag on a card you know is on that platform:** the DB likely predates the
+  union-of-printings import — suggest one refresh (`initialize_database` with `update=true`, or
+  `scripts/import_scryfall_data.py`), after which `games` reflects all printings.
 - **`lookup_card_by_name` `ambiguous`** — present the `matches`, ask the user to pick. Don't guess.
 - **`lookup_card_by_name` `not_found`** — the name didn't resolve — fix spelling / re-query; don't retry the
   same string. (If you passed `format`, drop it — the filter may be hiding the card.)
@@ -387,12 +412,13 @@ The tools return structured statuses, not raw exceptions — handle each:
   validate a half-built deck** (the size/legality math would run on a deck silently missing cards — exactly
   the failure that fabricates a bogus `min_deck_size` flag). Alternatively, reason about a pasted list's
   legality **yourself** (you know the format rules) without persisting.
-- **Statelessness:** track `deck_id` yourself; pass `format` (lowercase) / `games` on every accepting call.
-  The server remembers nothing.
+- **Statelessness:** track `deck_id` yourself; pass `format` (a valid key) / `games` on every accepting
+  call. The server remembers nothing.
 - **Stay inside the frozen tool surface.** Work within `validate_deck`'s output; if it feels insufficient,
-  reason past it (that's the job) — don't ask to change the tool or `src/`, and specifically **don't try to
-  give `validate_deck` format-aware size/copy/singleton rules** — it doesn't have them by design (D-1.6b);
-  supply them in the skill instead.
+  reason past it (that's the job) — don't ask to change the tool or `src/`. The tool now owns the
+  copy/singleton limits and format-key normalization; **don't try to give it format-aware deck-size rules**
+  (100-card minima, commander, color identity) — those stay out of the tool by design; supply them in the
+  skill instead.
 
 ## Output format (example)
 
@@ -413,25 +439,24 @@ standard requires at least 60"*):
 >
 > Want me to suggest a specific 60th card, or check this against a different format?
 
-**The lowercase trap, in practice** — if you had called `format="Standard"` (capital S), the same deck
-returns **39** violations: the `min_deck_size` *plus* a `format_legality` on **every** distinct card,
-including **Plains, Mountain, Forest, Island, Swamp**. Basics flagged as "not legal in Standard" is the dead
-giveaway:
+**The invalid-key trap, in practice** — `format="Standard"` or `" BRAWL "` is fine now (the tool
+lowercases and trims), but an unmapped alias like `format="EDH"` returns a `format_legality` on **every**
+distinct card, including **Plains, Mountain, Forest, Island, Swamp**. Basics flagged as "not legal in EDH"
+is the dead giveaway:
 
-> ⚠️ I passed the format as `"Standard"` and the tool flagged **every card** as illegal — *including your
-> basic lands* (39 violations: the `min_deck_size` flag + a `format_legality` on every distinct card). That's
-> not a real result; the validator's legality keys are lowercase, so a capitalized
-> format string makes **everything** read as illegal. Re-running with `"standard"` → the deck is fine except
-> for being one card short.
+> ⚠️ I passed the format as `"EDH"` and the tool flagged **every card** as illegal — *including your
+> basic lands*. That's not a real result; `EDH` isn't a Scryfall legality key, so **everything** reads as
+> illegal. Re-running with `"commander"` → only the real violations remain.
 
-**Commander reinterpretation** — `format="commander"` on the same 59-card deck returns only `min_deck_size`
-("commander requires at least **60**"). Don't relay that:
+**Commander reinterpretation** — `format="commander"` on the same 59-card deck returns `min_deck_size`
+("commander requires at least **60**") plus a `singleton` violation for each duplicated non-basic. Relay
+the singleton flags (they're real now), but not the size check as-is:
 
-> Heads up: the validator only checks Commander against a **60-card** floor — but **Commander is exactly
-> 100 cards, singleton (max 1 of each non-basic), with a single legendary commander and a color-identity
-> rule**, none of which the tool verifies. So a "passing" Commander result from this tool isn't a real
-> legality check. If this is meant to be Commander, I'll read the full list (`load_deck`) and check the
-> singleton rule and 100-card count myself.
+> Heads up: the validator now enforces Commander's **singleton** rule (each duplicated non-basic is
+> flagged), but it only checks the deck size against a **60-card** floor — **Commander is exactly 100
+> cards, with a single legendary commander and a color-identity rule**, none of which the tool verifies.
+> So a "passing" Commander result still isn't a full legality check. If this is meant to be Commander,
+> I'll read the full list (`load_deck`) and check the 100-card count and color identity myself.
 
 (If `validate_deck` returns `deck_not_found` / `invalid` / `error`, say so plainly and re-resolve — never
 fabricate a verdict.)
