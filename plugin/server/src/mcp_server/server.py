@@ -48,6 +48,8 @@ from src.mcp_server.tools.deck_analysis import (
 from src.mcp_server.tools.deck_analysis import analyze_mana_curve as _analyze_mana_curve_helper
 from src.mcp_server.tools.deck_analysis import detect_synergies as _detect_synergies_helper
 from src.mcp_server.tools.deck_analysis import validate_deck as _validate_deck_helper
+from src.mcp_server.tools.deck_import import DeckImportResult
+from src.mcp_server.tools.deck_import import import_decklist as _import_decklist_helper
 from src.mcp_server.tools.deck_management import (
     DeckCardResult,
     DeckDeleteResult,
@@ -304,6 +306,32 @@ def build_server(
                 name=name,
                 quantity=quantity,
                 sideboard=sideboard,
+            )
+
+    @mcp.tool()
+    async def import_decklist(deck_id: str, arena_export: str) -> DeckImportResult:
+        """Bulk-add an MTG Arena export to an existing saved deck.
+
+        Accepts Arena's ``Commander`` / ``Deck`` / ``Sideboard`` / ``Companion``
+        sections with card lines shaped like ``1 Card Name (SET) 123``; the
+        optional ``About`` / ``Name`` metadata block is skipped. Commander and
+        Deck entries become mainboard cards; Sideboard and Companion entries
+        become sideboard cards.
+        The import is additive: it never clears the deck or silently merges an
+        existing quantity. Each nonblank card line gets an ordered result such as
+        ``ok``, ``ambiguous``, ``not_found``, ``invalid``, or ``exists``. Valid
+        lines remain persisted when another line fails.
+
+        Args:
+            deck_id: Existing saved deck id from ``create_deck`` or ``list_decks``.
+            arena_export: The complete Arena export text to parse and import.
+
+        Returns:
+            A structured summary with imported line/copy totals and per-line outcomes.
+        """
+        async with session_factory() as session:
+            return await _import_decklist_helper(
+                session, deck_id=deck_id, arena_export=arena_export
             )
 
     @mcp.tool()

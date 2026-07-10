@@ -197,6 +197,48 @@ async def test_add_card_to_bogus_deck_is_graceful(
     assert sc["status"] == "deck_not_found"
 
 
+async def test_import_decklist_through_client(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    """The bulk importer is registered, serializes line results, and persists successes."""
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        created = await client.call_tool("create_deck", {"name": "Arena Import"})
+        deck_id = created.structuredContent["deck"]["id"]
+
+        imported = await client.call_tool(
+            "import_decklist",
+            {
+                "deck_id": deck_id,
+                "arena_export": (
+                    "Deck\n"
+                    "4 Lightning Bolt (M11) 149\n"
+                    "1 Missing Card (TST) 999\n"
+                    "Sideboard\n"
+                    "2 Counterspell (DMR) 50"
+                ),
+            },
+        )
+        loaded = await client.call_tool("load_deck", {"deck_id": deck_id})
+
+    assert imported.isError is False
+    sc = imported.structuredContent
+    assert sc is not None
+    assert sc["status"] == "partial"
+    assert sc["total_lines"] == 3
+    assert sc["imported_lines"] == 2
+    assert sc["imported_copies"] == 6
+    assert [line["status"] for line in sc["results"]] == ["ok", "not_found", "ok"]
+    assert sc["results"][0]["set_code"] == "M11"
+    assert sc["results"][1]["line_number"] == 3
+
+    deck = loaded.structuredContent["deck"]
+    cards = {
+        (entry["card"]["name"], entry["sideboard"]): entry["quantity"] for entry in deck["cards"]
+    }
+    assert cards == {("Lightning Bolt", False): 4, ("Counterspell", True): 2}
+
+
 async def test_view_deck_through_client(
     seeded_card_db: async_sessionmaker[AsyncSession],
     tmp_path: Path,

@@ -7,7 +7,7 @@ assembled plugin must expose:
 * Whatever file ``pyproject [project].readme`` points at must ship — ``uv run`` builds the
   server package, and hatchling hard-fails ("Readme file does not exist") without it.
 * A missing ``SERVER_FILES`` entry aborts cleanly (exit 1), not with a raw traceback.
-* The server registers the full 16-tool surface (AC1) — a presence-only build check can't see this.
+* The server registers the full 17-tool surface (AC1) — a presence-only build check can't see this.
 * The Codex manifests (``.codex-plugin/plugin.json`` + ``codex-mcp.json``) keep their schema:
   snake_case ``mcp_servers`` wrapper, ``cwd`` anchor, and no ``${CLAUDE_PLUGIN_ROOT}`` leakage
   (Codex does no variable substitution — openai/codex#19372).
@@ -131,12 +131,28 @@ def test_ignore_excludes_caches_and_cruft() -> None:
 
 
 async def test_server_registers_expected_tools() -> None:
-    """AC1 guard: the server registers exactly the 16 expected tools."""
+    """AC1 guard: the server registers exactly the 17 expected tools."""
     server = build_server()
     async with create_connected_server_and_client_session(server) as client:
         result = await client.list_tools()
 
     names = {tool.name for tool in result.tools}
-    assert len(names) == 16
-    # The two first-run maintenance tools must register alongside the 14 card/deck tools.
-    assert {"initialize_database", "build_search_index"} <= names
+    assert names == {
+        "lookup_card_by_name",
+        "search_cards",
+        "list_decks",
+        "create_deck",
+        "load_deck",
+        "delete_deck",
+        "add_card_to_deck",
+        "import_decklist",
+        "remove_card_from_deck",
+        "view_deck",
+        "analyze_mana_curve",
+        "detect_synergies",
+        "validate_deck",
+        "semantic_search_cards",
+        "find_similar_cards",
+        "initialize_database",
+        "build_search_index",
+    }
