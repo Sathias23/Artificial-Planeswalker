@@ -5,6 +5,52 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-11
+
+### Added
+
+- **OpenAI Codex CLI plugin support.** One committed `plugin/` tree now serves
+  both Claude Code and Codex: `build_plugin.py` emits `.codex-plugin/plugin.json`
+  + `codex-mcp.json` alongside the Claude manifests, a repo-scoped marketplace
+  enables `codex plugin marketplace add`, and the README gains an OpenAI Codex
+  connect block. Live-smoked on the Codex app (Windows): skills + all 16 MCP
+  tools working.
+- **Bulk Arena deck-import tool.** Import a full MTG Arena decklist blob in one
+  call — per-line resolution with an ok / ambiguous / not-found report — instead
+  of dozens of individual `add_card_to_deck` calls. Recognizes the Companion
+  section (mapped to the sideboard) and skips Arena's optional About/Name
+  metadata block without degrading a valid import to `partial`.
+
+### Changed
+
+- **Reminder text is stripped from oracle text before embedding.** Parenthetical
+  reminder text (Menace, Convoke, ...) was embedded verbatim into `card_vec`,
+  polluting semantic recall (menace cards surfaced for "unblockable", convoke for
+  "ramp"). A canonical `strip_reminder_text()` now cleans oracle text before both
+  the embedded text and its change-detection hash, so a normal incremental
+  `build_card_embeddings.py` re-embeds exactly the affected cards (no `--rebuild`).
+  Query embeddings and the raw `cards.oracle_text` column are untouched.
+- **Card import dedupes to one row per oracle identity with `games` unioned
+  across all printings**, fixing Arena false-positives in `validate_deck` and
+  games-filtered search/semantic tools silently dropping Arena staples. In
+  addition, `validate_deck` now enforces a 1-copy singleton limit (basics exempt)
+  for brawl / standardbrawl / commander / gladiator and friends, with
+  case-insensitive format keys.
+
+### Fixed
+
+- **`validate_deck` no longer flags an entire legal deck as illegal on an
+  unrecognized or capital-cased format.** Format keys are lowercased, and an
+  unknown format now emits a single `unknown_format` violation instead of failing
+  every card's legality check (Pre-Phase-2 Gate G-SD2a).
+- **`detect_synergies` no longer invents phantom tribes from double-faced cards.**
+  The `//` separator and non-creature back faces (e.g. "Sorcery", "Instant") are
+  no longer treated as creature types; both-creature-face DFCs merge their tribes
+  with cross-face de-duplication (Pre-Phase-2 Gate G-SD2b).
+- **The bulk-import CLI defaults to the shared central database**
+  (`src.paths.database_path()`) instead of a stale repo-local `data/cards.db`, so
+  a refresh and the MCP server no longer silently read different files.
+
 ## [0.2.0] - 2026-07-06
 
 The first public release.
@@ -84,5 +130,6 @@ Initial public release.
   action: `setup.py` imports the card database into the central directory
   automatically (the semantic index is built separately, see Added).
 
+[0.3.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.1.0

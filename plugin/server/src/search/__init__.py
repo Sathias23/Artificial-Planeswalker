@@ -21,6 +21,7 @@ from src.search.index_builder import (
     build_card_embeddings,
     compose_card_text,
     content_hash,
+    strip_reminder_text,
 )
 from src.search.query import CardHit, get_card_vector, hybrid_search
 from src.search.schema import (
@@ -50,4 +51,5 @@ __all__ = [
     "get_card_vector",
     "get_embedder",
     "hybrid_search",
+    "strip_reminder_text",
 ]
