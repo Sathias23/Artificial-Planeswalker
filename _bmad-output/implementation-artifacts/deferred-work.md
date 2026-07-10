@@ -44,7 +44,7 @@
 > the embedder before the destructive drop) were patched in-branch. The items below are real but
 > either pre-existing config or narrow/concurrency edges left for a focused later pass.
 
-- **No `busy_timeout` → `SQLITE_BUSY` on concurrent writers** (Edge Case Hunter, HIGH). Neither the
+- **✅ RESOLVED (0.3.0, 2026-07-11).** No `busy_timeout` → `SQLITE_BUSY` on concurrent writers (Edge Case Hunter, HIGH). Neither the
   async engine (`src/data/database.py::create_engine`) nor the sync `ConnectionFactory`
   (`src/search/connection.py`) sets `busy_timeout`/`connect_args={"timeout": …}`, so SQLite's
   default-0 timeout makes a second writer fail immediately with `database is locked` rather than
@@ -52,7 +52,7 @@
   (index write) tools make concurrent-writer collisions more likely. Fix project-wide: set
   `PRAGMA busy_timeout=5000` on the sync factory and `connect_args={"timeout": 5}` on the async
   engine (matches the documented WAL topology).
-- **Process-kill mid-import leaves a partial DB mistaken for complete** (Edge Case Hunter, HIGH —
+- **✅ RESOLVED (0.3.0, 2026-07-11) — `import_state` in-progress marker.** Process-kill mid-import leaves a partial DB mistaken for complete (Edge Case Hunter, HIGH —
   *exception* half patched). The importer commits per 1000-card batch; the in-branch fix clears the
   partial `cards` when the import raises, so a *failed* import retries cleanly. But a hard process
   kill between batches can't run that cleanup, leaving e.g. 1000 of ~30k cards — which the ≥1-row

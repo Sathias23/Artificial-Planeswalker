@@ -111,6 +111,7 @@ async def _init_db() -> None:
     from sqlalchemy import func, select
 
     from src.data import create_engine, create_session_factory, init_database
+    from src.data.import_state import is_import_in_progress
     from src.data.importers.scryfall import import_scryfall_bulk_data
     from src.data.models.card import CardModel
 
@@ -121,7 +122,9 @@ async def _init_db() -> None:
     session_factory = create_session_factory(engine)
     async with session_factory() as session:
         existing = await session.scalar(select(func.count()).select_from(CardModel))
-        if existing:
+        # Skip only a *complete* import; a partial DB (rows present but a prior run was killed
+        # mid-import) still carries the in-progress marker, so fall through and re-import it.
+        if existing and not await is_import_in_progress(session):
             print(f"✓ Database already has {existing:,} cards — skipping Scryfall import")
             print(
                 "  (If this database predates the 2026-07 games-union fix, Arena availability"

@@ -121,9 +121,9 @@ class ConnectionFactory:
 
         Order (verified on CPython 3.12 / SQLite 3.50 / Windows): connect → enable extension
         loading → ``sqlite_vec.load`` → disable extension loading (hardening: only sqlite-vec
-        needs it) → enable WAL. Extension loading is per-connection (not persisted to the file),
-        so every connection must repeat it; WAL is per-file but reporting it per-connection is
-        idempotent.
+        needs it) → enable WAL → set ``busy_timeout``. Extension loading is per-connection (not
+        persisted to the file), so every connection must repeat it; WAL is per-file but reporting
+        it per-connection is idempotent; ``busy_timeout`` is a per-connection setting.
 
         Returns:
             A fully configured ``sqlite3.Connection``.
@@ -134,6 +134,10 @@ class ConnectionFactory:
             sqlite_vec.load(conn)
             conn.enable_load_extension(False)
             wal_result = conn.execute("PRAGMA journal_mode=WAL").fetchone()
+            # Wait up to 5s for a competing writer instead of failing instantly with "database is
+            # locked": under WAL a reader never blocks, but a second writer (bulk import / index
+            # build) can, and the index build runs on this sync connection.
+            conn.execute("PRAGMA busy_timeout=5000")
             logger.debug(
                 "Created sqlite3 connection (db_path=%s, journal_mode=%s)",
                 self._db_path,

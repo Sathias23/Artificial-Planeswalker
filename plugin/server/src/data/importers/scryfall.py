@@ -8,10 +8,15 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import DatabaseError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.data.import_state import (
+    is_import_in_progress,
+    mark_import_finished,
+    mark_import_started,
+)
 from src.data.importers.aggregate import OracleAggregate, build_oracle_aggregates, group_key
 from src.data.importers.importer import ImportStatistics, import_cards
 from src.data.importers.parser import stream_cards
@@ -215,6 +220,17 @@ async def import_scryfall_bulk_data(
             # Stage 4: Pass 2 — re-stream, keep canonical printings, union games
             logger.info("Stage 4/6: Transforming canonical printings (pass 2)...")
 
+            # First-run completion marker: import_cards commits per batch, so a hard process kill
+            # between batches would otherwise leave a partial DB indistinguishable from a complete
+            # one. Flag the import in progress (its own commit, before the first batch) and clear it
+            # only once everything below finishes. Skip for a clean update of an already-populated
+            # DB — it stays usable throughout its upsert — but still manage the marker when resuming
+            # a previously-killed partial import (rows present, flag still set).
+            existing = await session.scalar(select(func.count()).select_from(CardModel)) or 0
+            manage_marker = existing == 0 or await is_import_in_progress(session)
+            if manage_marker:
+                await mark_import_started(session)
+
             # Stage 5: Import cards into database
             logger.info("Stage 5/6: Batch importing into database...")
             stats = await import_cards(session, iter_canonical_models(downloaded_file, aggregates))
@@ -222,6 +238,9 @@ async def import_scryfall_bulk_data(
             # Stage 6: Reconcile pre-existing rows to the union games
             logger.info("Stage 6/6: Reconciling games on pre-existing rows...")
             await reconcile_games(session, aggregates)
+
+            if manage_marker:
+                await mark_import_finished(session)
         finally:
             # Cleanup: the per-run directory (and anything in it), or just the file
             # when the caller owns the directory.

@@ -50,6 +50,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The bulk-import CLI defaults to the shared central database**
   (`src.paths.database_path()`) instead of a stale repo-local `data/cards.db`, so
   a refresh and the MCP server no longer silently read different files.
+- **A process kill mid-import no longer leaves a partial database mistaken for
+  complete.** The card importer commits per batch, so a hard kill between batches
+  could leave a truncated `cards` table that the "≥1 row" idempotency check
+  reported as `already_initialized` — permanently. A first-run import now writes a
+  durable in-progress marker (`import_state`) that is cleared only after the import
+  finishes, so a partial database reads as not-initialized and `initialize_database`
+  re-imports it. Complete databases (including pre-existing ones with no marker) and
+  `update=true` refreshes are unaffected.
+- **Concurrent writers wait instead of failing instantly with "database is
+  locked".** Both the async engine (`connect_args={"timeout": 5}`) and the sync
+  sqlite-vec connection factory (`PRAGMA busy_timeout=5000`) now set a 5-second
+  busy timeout, so a bulk import and an index build (or any two writers) no longer
+  collide immediately under WAL.
 
 ## [0.2.0] - 2026-07-06
 

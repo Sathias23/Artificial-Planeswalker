@@ -14,6 +14,11 @@ from src.data.database import (
     init_database,
     is_database_initialized,
 )
+from src.data.import_state import (
+    is_import_in_progress,
+    mark_import_finished,
+    mark_import_started,
+)
 from src.data.models.card import CardModel
 
 
@@ -67,6 +72,43 @@ async def test_returns_true_when_cards_present(tmp_path: Path) -> None:
             session.add(_card())
             await session.commit()
         async with factory() as session:
+            assert await is_database_initialized(session) is True
+    finally:
+        await engine.dispose()
+
+
+async def test_returns_false_when_import_in_progress(tmp_path: Path) -> None:
+    """A partial DB — rows present but a first-run import was killed mid-way — reads as
+    not-initialized, so ``initialize_database`` re-imports instead of trusting truncated data."""
+    engine = create_engine(f"sqlite+aiosqlite:///{(tmp_path / 'partial.db').as_posix()}")
+    await init_database(engine)
+    factory = create_session_factory(engine)
+    try:
+        async with factory() as session:
+            await mark_import_started(session)  # simulate an import that began...
+            session.add(_card())  # ...committed some rows...
+            await session.commit()
+        async with factory() as session:
+            # ...then the process was killed before mark_import_finished ran.
+            assert await is_import_in_progress(session) is True
+            assert await is_database_initialized(session) is False
+    finally:
+        await engine.dispose()
+
+
+async def test_returns_true_after_import_finished(tmp_path: Path) -> None:
+    """Clearing the marker (import completed) flips a populated DB back to initialized."""
+    engine = create_engine(f"sqlite+aiosqlite:///{(tmp_path / 'finished.db').as_posix()}")
+    await init_database(engine)
+    factory = create_session_factory(engine)
+    try:
+        async with factory() as session:
+            await mark_import_started(session)
+            session.add(_card())
+            await session.commit()
+            await mark_import_finished(session)
+        async with factory() as session:
+            assert await is_import_in_progress(session) is False
             assert await is_database_initialized(session) is True
     finally:
         await engine.dispose()
