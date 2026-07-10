@@ -235,9 +235,22 @@ async def import_scryfall_bulk_data(
             logger.info("Stage 5/6: Batch importing into database...")
             stats = await import_cards(session, iter_canonical_models(downloaded_file, aggregates))
 
-            # Stage 6: Reconcile pre-existing rows to the union games
+            # Stage 6: Reconcile pre-existing rows to the union games. Non-fatal: the card
+            # import above has already committed, so a reconcile failure (a transient lock/disk
+            # error on the bulk UPDATE) must not fail the whole run and leave the tool reporting
+            # status="error" over a fully-populated database — where a plain retry would then
+            # short-circuit as already_initialized with games left stale. The only cost of
+            # skipping it is that some pre-existing rows keep stale games until the next
+            # `update=true` run, which re-runs this reconcile.
             logger.info("Stage 6/6: Reconciling games on pre-existing rows...")
-            await reconcile_games(session, aggregates)
+            try:
+                await reconcile_games(session, aggregates)
+            except (IntegrityError, DatabaseError) as exc:
+                logger.warning(
+                    "games reconciliation failed; the card import still succeeded, so some "
+                    "pre-existing rows may keep stale games until the next update: %s",
+                    exc,
+                )
 
             if manage_marker:
                 await mark_import_finished(session)

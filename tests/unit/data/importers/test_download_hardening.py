@@ -167,3 +167,25 @@ async def test_import_rejects_untrusted_download_uri(monkeypatch, bad_uri):
         await import_scryfall_bulk_data(session=None)
 
     assert "uri" not in seen, "nothing may be fetched from an untrusted URI"
+
+
+async def test_reconcile_failure_is_non_fatal(monkeypatch):
+    """A reconcile-stage DatabaseError must not fail the whole import.
+
+    The card import commits before reconcile, so a transient reconcile failure that raised would
+    leave the tool reporting an error over a populated DB (and a plain retry short-circuiting as
+    already_initialized with stale games). The orchestrator swallows it and the import succeeds.
+    """
+    from sqlalchemy.exc import DatabaseError
+
+    seen: dict = {}
+    _wire_import(monkeypatch, "https://data.scryfall.io/oracle.json", seen)
+
+    async def boom(session, aggregates):
+        raise DatabaseError("reconcile", {}, Exception("database is locked"))
+
+    monkeypatch.setattr(scryfall, "reconcile_games", boom)
+
+    # Must not raise despite reconcile blowing up.
+    stats = await import_scryfall_bulk_data(session=_NullSession())
+    assert stats is not None

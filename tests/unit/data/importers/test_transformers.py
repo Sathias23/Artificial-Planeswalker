@@ -86,6 +86,42 @@ def test_transform_card_missing_required_field(sample_cards):
     assert card is None
 
 
+def test_transform_reversible_card_uses_face_oracle_id():
+    """A reversible/multi-face card with no top-level ``oracle_id`` imports using the face-level
+    id (matching ``group_key``), instead of being dropped as missing-required-field.
+
+    Regression for the inert ``card_faces[0].oracle_id`` fallback: pass 1 grouped such cards by
+    their face oracle id, but the transformer's hard top-level ``oracle_id`` requirement then
+    rejected them, so reversible-layout cards never reached the database.
+    """
+    reversible = {
+        "id": "printing-1",
+        "name": "Zndrsplt, Eye of Wisdom // Okaun, Eye of Chaos",
+        "type_line": "Legendary Creature — Homunculus",
+        "card_faces": [
+            {"oracle_id": "face-oracle-id", "name": "Zndrsplt"},
+            {"name": "Okaun"},
+        ],
+    }
+
+    card = transform_scryfall_card(reversible)
+
+    assert card is not None
+    assert card.oracle_id == "face-oracle-id"
+
+
+def test_transform_card_with_no_oracle_id_anywhere_returns_none():
+    """A card carrying no oracle id at any level (top or face) is still dropped."""
+    card_json = {
+        "id": "printing-2",
+        "name": "No Oracle Anywhere",
+        "type_line": "Instant",
+        "card_faces": [{"name": "front"}],
+    }
+
+    assert transform_scryfall_card(card_json) is None
+
+
 def test_transform_card_with_null_keywords():
     """Test transforming a card with null keywords field."""
     card_json = {

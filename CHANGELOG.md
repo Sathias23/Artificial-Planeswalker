@@ -63,6 +63,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sqlite-vec connection factory (`PRAGMA busy_timeout=5000`) now set a 5-second
   busy timeout, so a bulk import and an index build (or any two writers) no longer
   collide immediately under WAL.
+- **Reversible / multi-face cards are no longer dropped on import.** Cards that
+  carry their `oracle_id` only on `card_faces[0]` (reversible layouts) were grouped
+  correctly in pass 1 but then rejected by the transformer's top-level-`oracle_id`
+  requirement, so they never reached the database. Oracle-identity resolution is now
+  shared between the aggregator and the transformer (`resolve_oracle_id`), so such a
+  card imports as one row (with its cross-printing `games` union).
+- **A failed `games` reconciliation no longer errors out a completed import.** The
+  card import commits before the reconcile pass, so a transient reconcile failure
+  (lock/disk) used to leave `initialize_database` reporting `error` over a fully
+  populated database — and a plain retry then short-circuited as
+  `already_initialized` with games left stale. Reconcile failures are now logged and
+  swallowed; the affected pre-existing rows refresh on the next `update=true` run.
 
 ## [0.2.0] - 2026-07-06
 

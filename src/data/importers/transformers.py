@@ -3,6 +3,7 @@
 import logging
 from typing import Any
 
+from src.data.importers.aggregate import resolve_oracle_id
 from src.data.models.card import CardModel
 
 logger = logging.getLogger(__name__)
@@ -27,9 +28,15 @@ def transform_scryfall_card(card_json: dict[str, Any]) -> CardModel | None:
         CardModel instance if transformation succeeds, None otherwise.
     """
     try:
-        # Validate required fields
-        required_fields = ["id", "name", "oracle_id", "type_line"]
+        # Validate required fields. ``oracle_id`` is resolved with a face-level fallback
+        # (reversible / multi-face layouts carry it on ``card_faces[0]``, not the top level) —
+        # the same resolution ``group_key`` uses, so a reversible card that pass-1 aggregated is
+        # no longer rejected here and dropped downstream.
+        required_fields = ["id", "name", "type_line"]
         missing_fields = [field for field in required_fields if field not in card_json]
+        oracle_id = resolve_oracle_id(card_json)
+        if oracle_id is None:
+            missing_fields.append("oracle_id")
 
         if missing_fields:
             logger.warning(
@@ -38,13 +45,14 @@ def transform_scryfall_card(card_json: dict[str, Any]) -> CardModel | None:
             )
             return None
 
+        assert oracle_id is not None  # a None oracle_id was appended to missing_fields above
+
         # Extract required fields
         card_id = card_json["id"]
         name = card_json["name"]
         printed_name = card_json.get(
             "printed_name"
         )  # Optional (OM1 cards have different printed names)
-        oracle_id = card_json["oracle_id"]
         type_line = card_json["type_line"]
 
         # Non-nullable fields use `get(...) or default`, NOT `get(field, default)`:

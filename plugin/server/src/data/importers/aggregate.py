@@ -36,19 +36,20 @@ class OracleAggregate:
     canonical_released_at: str = ""
 
 
-def group_key(card_json: dict[str, Any]) -> str | None:
-    """Return the oracle-identity group key for a raw Scryfall card object.
+def resolve_oracle_id(card_json: dict[str, Any]) -> str | None:
+    """Return a card's oracle identity: top-level ``oracle_id``, else ``card_faces[0].oracle_id``.
 
-    Precedence: top-level ``oracle_id``, else ``card_faces[0].oracle_id`` (reversible /
-    odd layouts carry oracle ids per face), else the card's own ``id`` (self-group — a
-    card is never dropped just because it lacks an oracle id).
+    Reversible and some other multi-face layouts carry no top-level ``oracle_id`` — the oracle
+    ids live on the faces instead. This is the single source of truth for deriving a card's
+    oracle identity, shared by :func:`group_key` (pass-1 aggregation) and
+    :func:`~src.data.importers.transformers.transform_scryfall_card` (pass-2 row build) so the two
+    can never disagree about which identity a card belongs to.
 
     Args:
         card_json: A raw Scryfall card object from the bulk file.
 
     Returns:
-        The group key, or ``None`` when the card has no usable key at all (no oracle id
-        anywhere and no ``id``) — such cards bypass aggregation entirely.
+        The oracle id string, or ``None`` when the card carries none anywhere.
     """
     oracle_id = card_json.get("oracle_id")
     if oracle_id:
@@ -58,6 +59,26 @@ def group_key(card_json: dict[str, Any]) -> str | None:
         face = faces[0]
         if isinstance(face, dict) and face.get("oracle_id"):
             return str(face["oracle_id"])
+    return None
+
+
+def group_key(card_json: dict[str, Any]) -> str | None:
+    """Return the oracle-identity group key for a raw Scryfall card object.
+
+    Precedence: the resolved oracle id (:func:`resolve_oracle_id` — top-level ``oracle_id``, else
+    ``card_faces[0].oracle_id``), else the card's own ``id`` (self-group — a card is never dropped
+    from *aggregation* just because it lacks an oracle id).
+
+    Args:
+        card_json: A raw Scryfall card object from the bulk file.
+
+    Returns:
+        The group key, or ``None`` when the card has no usable key at all (no oracle id
+        anywhere and no ``id``) — such cards bypass aggregation entirely.
+    """
+    oracle_id = resolve_oracle_id(card_json)
+    if oracle_id:
+        return oracle_id
     card_id = card_json.get("id")
     if card_id:
         return str(card_id)

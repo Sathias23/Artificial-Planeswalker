@@ -3,7 +3,22 @@
 import json
 from pathlib import Path
 
-from src.data.importers.aggregate import build_oracle_aggregates, group_key
+from src.data.importers.aggregate import build_oracle_aggregates, group_key, resolve_oracle_id
+
+
+def test_resolve_oracle_id_precedence() -> None:
+    """Top-level ``oracle_id`` wins; else the first face's; else ``None`` (not the printing id)."""
+    assert resolve_oracle_id({"oracle_id": "top", "card_faces": [{"oracle_id": "face"}]}) == "top"
+    assert resolve_oracle_id({"card_faces": [{"oracle_id": "face"}]}) == "face"
+    assert resolve_oracle_id({"id": "printing-only"}) is None
+
+
+def test_group_key_falls_back_to_id_but_resolve_does_not() -> None:
+    """``group_key`` keeps its printing-``id`` self-group fallback for aggregation; the oracle-id
+    resolver (used by the transformer) does not — a printing id is not an oracle identity."""
+    card = {"id": "printing-only"}
+    assert group_key(card) == "printing-only"
+    assert resolve_oracle_id(card) is None
 
 
 def _write_cards(tmp_path: Path, cards: list[dict]) -> Path:
