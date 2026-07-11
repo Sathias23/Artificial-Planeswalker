@@ -169,9 +169,15 @@ FRs are grouped by pipeline stage (feature group) with globally stable IDs.
 - **NFR5 — Data freshness / versioning.** Game Changers list and Bracket rules change over time; the
   format profile is versioned and the output states which profile/rules version produced it.
 - **NFR6 — Testability / calibration.** A committed benchmark set anchors correctness (see §6).
-- **NFR7 — Architecture conformance.** Tool is a stateless sync `def` (FastMCP threadpool);
-  `format` / `deck_id` are caller-supplied parameters (no per-session server state); `src/data` and
-  `src/logic` stay framework-free. Follows the project's MCP conventions.
+- **NFR7 — Architecture conformance.** Tool is a stateless **async `def`**, registered alongside
+  the existing deck-analysis tools (`analyze_mana_curve` / `detect_synergies` / `validate_deck`),
+  which `await` the async `src/data` repositories on the FastMCP event loop (D-1.3a) — the live
+  Commander Spellbook call likewise uses async httpx on that loop. (This corrects an earlier "sync
+  `def` / threadpool" framing mis-inherited from the Epic-2 sqlite-vec search tools, which are sync
+  only because the vector index is reachable solely on the sync connection — not applicable here;
+  see architecture spine **AD-1**.) `format` / `deck_id` are caller-supplied parameters (no
+  per-session server state); `src/data` and `src/logic` stay framework-free. Follows the project's
+  MCP conventions.
 - **NFR8 — Scoring transparency (architecture deliverable).** The per-dimension signal→0–100
   mappings and the aggregate weighting are defined during the architecture phase, not this PRD. They
   MUST be documented, hand-tuned, adjustable, and validated against the calibration benchmark (§6).

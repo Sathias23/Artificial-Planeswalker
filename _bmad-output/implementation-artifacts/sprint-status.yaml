@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-07-11 (Pre-Phase-2 Gate → done: G-SD2a valid-key guard + G-SD2b // fix + G-R1 Brad acceptance; Phase 2 unblocked)
+last_updated: 2026-07-11 (Deck Power-Level Assessment sprint added — feature Epics 1-4 tracked as epic-4..7, all backlog)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -81,3 +81,55 @@ development_status:
   # G-SD2b: detect_synergies '//' double-faced-card token fix [done 2026-07-11 fix/pre-phase-2-gate — per-face parse in _extract_creature_types]
   # G-R1: Brad live-smokes all four skills end-to-end through Claude Code (Phase-1 acceptance) [done 2026-07-11 — Brad hands-on accepted]
   pre-phase-2-gate: done  # all three green: G-SD2a/G-SD2b (code) + G-R1 (Brad acceptance) — Phase 2 import/export unblocked
+
+  # ============================================================================
+  # DECK POWER-LEVEL ASSESSMENT
+  # Source epics: _bmad-output/planning-artifacts/epics-deck-power-assessment.md
+  # Readiness:    _bmad-output/planning-artifacts/implementation-readiness-report-2026-07-11.md (READY; 0 critical / 0 major)
+  #
+  # Feature epics are renumbered 4-7 here to avoid key collision with the
+  # completed Phase-1 MCP-pivot Epics 1-3 above. Mapping (feature → sprint):
+  #   feature Epic 1 (Game Changer card data)      → epic-4
+  #   feature Epic 2 (Deterministic scoring core)  → epic-5
+  #   feature Epic 3 (Combo detection)             → epic-6
+  #   feature Epic 4 (assess_deck_power tool)      → epic-7
+  # When running create-story, use the epic-4..7 keys below (NOT the epic
+  # file's raw 1-4). Story titles are unchanged from the epic file.
+  #
+  # ORDERING CONSTRAINT: 5-6 (ComboRecord) must precede 6-2 / 6-3
+  #   (the combo client + cache consume the record shape the core defines).
+  # ============================================================================
+
+  # Epic 4 (feature Epic 1): Game Changer card data
+  epic-4: backlog
+  4-1-add-the-nullable-game-changer-field-end-to-end: backlog
+  4-2-migrate-and-backfill-existing-databases: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5 (feature Epic 2): Deterministic scoring core
+  epic-5: backlog
+  5-1-compose-the-calibration-benchmark-set: backlog
+  5-2-format-profile-frozen-data-module: backlog
+  5-3-shared-oracle-text-classifiers: backlog
+  5-4-mana-base-curve-signals: backlog
+  5-5-consistency-interaction-structural-coverage-signals: backlog
+  5-6-combo-record-combo-bracket-mapping: backlog
+  5-7-dimension-vector-commander-bracket-floor-cedh-candidacy: backlog
+  5-8-for-format-aggregate-tier-label-standard-fork-confidence-vocabulary: backlog
+  5-9-pure-score-entry-point-benchmark-validation: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6 (feature Epic 3): Live combo detection via Commander Spellbook
+  epic-6: backlog
+  6-1-canonical-multiplicity-aware-cache-key-helper: backlog
+  6-2-async-spellbook-find-my-combos-client: backlog
+  6-3-ephemeral-combo-cache-table-repository: backlog
+  epic-6-retrospective: optional
+
+  # Epic 7 (feature Epic 4): The assess_deck_power MCP tool & deterministic output
+  epic-7: backlog
+  7-1-register-the-async-tool-load-deck-resolve-format: backlog
+  7-2-combo-orchestration-the-degradation-ladder: backlog
+  7-3-assess-deck-power-result-assembly-deterministic-serialization-human-summary: backlog
+  7-4-end-to-end-tool-test-determinism-diff-regression: backlog
+  epic-7-retrospective: optional
