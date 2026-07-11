@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-07-12 (Story 4.2 code review → done; importer.py game_changer upsert gap fixed)
+last_updated: 2026-07-12 (Epic 4 retrospective → done; game_changer backfilled live — 53 TRUE / 0 NULL)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -104,7 +104,7 @@ development_status:
   epic-4: in-progress
   4-1-add-the-nullable-game-changer-field-end-to-end: done
   4-2-migrate-and-backfill-existing-databases: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done  # epic-4-retro-2026-07-12.md; game_changer backfilled live (53 TRUE / 38180 FALSE / 0 NULL)
 
   # Epic 5 (feature Epic 2): Deterministic scoring core
   epic-5: backlog
@@ -133,3 +133,18 @@ development_status:
   7-3-assess-deck-power-result-assembly-deterministic-serialization-human-summary: backlog
   7-4-end-to-end-tool-test-determinism-diff-regression: backlog
   epic-7-retrospective: optional
+
+# Action items carried out of retrospectives (see epic-N-retro-*.md for full context)
+action_items:
+  - epic: 4
+    action: "'end-to-end field' story checklist must grep ALL four write-path touch-points, incl. importer.py::_insert_batch card_dict + on_conflict_do_update set_ mapping (not just model/schema/transformer)"
+    owner: "Brad"
+    status: open
+  - epic: 4
+    action: "do not assume build-plugin-sync auto-mirrors: .git/hooks/pre-commit is absent in this checkout, so after any src/ commit run 'uv run python -m scripts.build_plugin' + diff-check the plugin mirror (or 'pre-commit install')"
+    owner: "Brad"
+    status: open
+  - epic: 4
+    action: "add a persisted-SQLite round-trip test proving a nullable-bool field (game_changer=False) survives DB write/read — the gap that let the importer.py omission through; also covers the power/toughness precedent"
+    owner: "Brad"
+    status: open
