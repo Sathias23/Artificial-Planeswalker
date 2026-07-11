@@ -1,0 +1,86 @@
+Commander
+1 Tymna the Weaver (CMR) 1
+1 Thrasios, Triton Hero (CMR) 2
+
+Deck
+1 Mana Crypt (CMR) 3
+1 Mana Vault (CMR) 4
+1 Sol Ring (CMR) 5
+1 Chrome Mox (CMR) 6
+1 Mox Diamond (CMR) 7
+1 Jeweled Lotus (CMR) 8
+1 Lotus Petal (CMR) 9
+1 Grim Monolith (CMR) 10
+1 Basalt Monolith (CMR) 11
+1 Arcane Signet (CMR) 12
+1 Fellwar Stone (CMR) 13
+1 Birds of Paradise (CMR) 14
+1 Deathrite Shaman (CMR) 15
+1 Bloom Tender (CMR) 16
+1 Ignoble Hierarch (CMR) 17
+1 Elves of Deep Shadow (CMR) 18
+1 Demonic Tutor (CMR) 19
+1 Vampiric Tutor (CMR) 20
+1 Imperial Seal (CMR) 21
+1 Mystical Tutor (CMR) 22
+1 Enlightened Tutor (CMR) 23
+1 Gamble (CMR) 24
+1 Diabolic Intent (CMR) 25
+1 Wishclaw Talisman (CMR) 26
+1 Grim Tutor (CMR) 27
+1 Worldly Tutor (CMR) 28
+1 Thassa's Oracle (CMR) 29
+1 Demonic Consultation (CMR) 30
+1 Tainted Pact (CMR) 31
+1 Underworld Breach (CMR) 32
+1 Lion's Eye Diamond (CMR) 33
+1 Dramatic Reversal (CMR) 34
+1 Isochron Scepter (CMR) 35
+1 Rhystic Study (CMR) 36
+1 Mystic Remora (CMR) 37
+1 Ad Nauseam (CMR) 38
+1 Necropotence (CMR) 39
+1 Windfall (CMR) 40
+1 Timetwister (CMR) 41
+1 Sylvan Library (CMR) 42
+1 Force of Will (CMR) 43
+1 Force of Negation (CMR) 44
+1 Fierce Guardianship (CMR) 45
+1 Pact of Negation (CMR) 46
+1 Mana Drain (CMR) 47
+1 Swan Song (CMR) 48
+1 Flusterstorm (CMR) 49
+1 Dispel (CMR) 50
+1 An Offer You Can't Refuse (CMR) 51
+1 Deflecting Swat (CMR) 52
+1 Delay (CMR) 53
+1 Mindbreak Trap (CMR) 54
+1 Swords to Plowshares (CMR) 55
+1 Assassin's Trophy (CMR) 56
+1 Abrupt Decay (CMR) 57
+1 Chain of Vapor (CMR) 58
+1 Command Tower (CMR) 59
+1 City of Brass (CMR) 60
+1 Mana Confluence (CMR) 61
+1 Gemstone Mine (CMR) 62
+1 Ancient Tomb (CMR) 63
+1 Underground Sea (CMR) 64
+1 Tropical Island (CMR) 65
+1 Tundra (CMR) 66
+1 Bayou (CMR) 67
+1 Savannah (CMR) 68
+1 Scrubland (CMR) 69
+1 Volcanic Island (CMR) 70
+1 Watery Grave (CMR) 71
+1 Breeding Pool (CMR) 72
+1 Godless Shrine (CMR) 73
+1 Overgrown Tomb (CMR) 74
+1 Flooded Strand (CMR) 75
+1 Polluted Delta (CMR) 76
+1 Scalding Tarn (CMR) 77
+1 Misty Rainforest (CMR) 78
+1 Verdant Catacombs (CMR) 79
+1 Marsh Flats (CMR) 80
+1 Windswept Heath (CMR) 81
+1 Bloodstained Mire (CMR) 82
+18 Island (CMR) 83

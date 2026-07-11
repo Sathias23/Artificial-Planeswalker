@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-07-12 (Epic 4 retrospective → done; game_changer backfilled live — 53 TRUE / 0 NULL)
+last_updated: 2026-07-12 (Story 5.1 benchmark set → done; code review fixed Kinnan duplicate-card bug)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -107,8 +107,8 @@ development_status:
   epic-4-retrospective: done  # epic-4-retro-2026-07-12.md; game_changer backfilled live (53 TRUE / 38180 FALSE / 0 NULL)
 
   # Epic 5 (feature Epic 2): Deterministic scoring core
-  epic-5: backlog
-  5-1-compose-the-calibration-benchmark-set: backlog
+  epic-5: in-progress
+  5-1-compose-the-calibration-benchmark-set: done
   5-2-format-profile-frozen-data-module: backlog
   5-3-shared-oracle-text-classifiers: backlog
   5-4-mana-base-curve-signals: backlog
