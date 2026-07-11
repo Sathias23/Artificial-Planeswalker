@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from sqlalchemy import JSON, Float, String
+from sqlalchemy import JSON, Boolean, Float, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.data.models.base import Base
@@ -43,6 +43,14 @@ class CardModel(Base):
     )
     toughness: Mapped[str | None] = mapped_column(
         String, nullable=True, default=None, kw_only=True, init=True
+    )
+
+    # Official WotC Game Changer status (Commander Brackets initiative; Scryfall `is:gamechanger`).
+    # Three-state and nullable: None = "unknown / not yet backfilled", True = confirmed Game
+    # Changer, False = confirmed not. Never coalesce None to False (AD-4) — a later story lowers
+    # assessment confidence on None and must not lower the Commander Bracket floor on absent data.
+    game_changer: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True, default=None, kw_only=True, init=True
     )
 
     # Rarity and set information

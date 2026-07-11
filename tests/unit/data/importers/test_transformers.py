@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -204,6 +205,7 @@ def test_transform_card_with_defaults():
     assert card.legalities == {}
     assert card.keywords is None
     assert card.card_faces is None
+    assert card.game_changer is None
 
 
 def test_transform_empty_dict():
@@ -341,3 +343,53 @@ def test_transform_noncreature_has_no_power_toughness():
     assert card is not None
     assert card.power is None
     assert card.toughness is None
+
+
+def _minimal_card_json(**overrides: Any) -> dict[str, Any]:
+    """A minimal valid Scryfall card_json, overridable per-field (for game_changer tests)."""
+    base: dict[str, Any] = {
+        "id": "gc-id",
+        "name": "GC Test Card",
+        "oracle_id": "gc-oracle-id",
+        "type_line": "Creature",
+        "mana_cost": "{1}{W}",
+        "cmc": 2.0,
+        "oracle_text": "Test text",
+        "colors": ["W"],
+        "color_identity": ["W"],
+        "legalities": {},
+        "rarity": "common",
+        "set": "tst",
+        "set_name": "Test Set",
+        "collector_number": "1",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_transform_card_game_changer_true():
+    """A Scryfall bulk ``game_changer: true`` surfaces as ``card.game_changer is True``."""
+    card = transform_scryfall_card(_minimal_card_json(game_changer=True))
+
+    assert card is not None
+    assert card.game_changer is True
+
+
+def test_transform_card_game_changer_false():
+    """A Scryfall bulk ``game_changer: false`` surfaces as ``card.game_changer is False``.
+
+    Regression guard against ``None``/``False`` conflation — the reason ``or`` is forbidden in
+    the transformer. ``False`` (confirmed not a Game Changer) must never collapse to ``None``.
+    """
+    card = transform_scryfall_card(_minimal_card_json(game_changer=False))
+
+    assert card is not None
+    assert card.game_changer is False
+
+
+def test_transform_card_game_changer_missing_is_none():
+    """An omitted ``game_changer`` key yields ``None`` ("unknown / not yet backfilled")."""
+    card = transform_scryfall_card(_minimal_card_json())
+
+    assert card is not None
+    assert card.game_changer is None

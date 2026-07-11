@@ -72,6 +72,12 @@ def transform_scryfall_card(card_json: dict[str, Any]) -> CardModel | None:
         power = card_json.get("power")
         toughness = card_json.get("toughness")
 
+        # Official WotC Game Changer flag (Scryfall bulk top-level boolean `game_changer`).
+        # Three distinct states must survive: missing key -> None ("unknown"), true -> True,
+        # false -> False. Use a bare `.get` with NO `or`/`bool(...)`: `or` would turn a
+        # legitimate `False` into `None`, destroying the "confirmed not a GC" state (AD-4).
+        game_changer = card_json.get("game_changer")
+
         # Extract set information with defaults
         rarity = card_json.get("rarity") or "common"
         set_code = card_json.get("set") or "unknown"
@@ -114,6 +120,7 @@ def transform_scryfall_card(card_json: dict[str, Any]) -> CardModel | None:
             oracle_text=oracle_text,
             power=power,
             toughness=toughness,
+            game_changer=game_changer,
             rarity=rarity,
             set_code=set_code,
             set_name=set_name,
