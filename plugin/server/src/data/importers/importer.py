@@ -135,6 +135,7 @@ async def _insert_batch(
                 "card_faces": card.card_faces,
                 "image_uris": card.image_uris,
                 "games": card.games,
+                "game_changer": card.game_changer,
             }
             card_dicts.append(card_dict)
 
@@ -164,6 +165,7 @@ async def _insert_batch(
                 "card_faces": stmt.excluded.card_faces,
                 "image_uris": stmt.excluded.image_uris,
                 "games": stmt.excluded.games,
+                "game_changer": stmt.excluded.game_changer,
             },
         )
 

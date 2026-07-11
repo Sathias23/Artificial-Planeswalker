@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-07-11 (Story 4.1 code review complete; status → done)
+last_updated: 2026-07-12 (Story 4.2 code review → done; importer.py game_changer upsert gap fixed)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -103,7 +103,7 @@ development_status:
   # Epic 4 (feature Epic 1): Game Changer card data
   epic-4: in-progress
   4-1-add-the-nullable-game-changer-field-end-to-end: done
-  4-2-migrate-and-backfill-existing-databases: backlog
+  4-2-migrate-and-backfill-existing-databases: done
   epic-4-retrospective: optional
 
   # Epic 5 (feature Epic 2): Deterministic scoring core

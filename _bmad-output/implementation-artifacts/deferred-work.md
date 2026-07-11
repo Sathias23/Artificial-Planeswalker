@@ -393,6 +393,21 @@
   placeholder (defense-in-depth), with a unit test — otherwise the bug returns. (Source: Brad live
   smoke-test; Severity: was High, now fixed.)
 
+## Deferred from: code review of story-4.2 (2026-07-12)
+
+> 3-reviewer adversarial pass on the `scripts/migrate_add_game_changer.py` diff (Story 4.2). The
+> Blind Hunter's headline finding — the documented backfill re-import can't actually populate
+> `game_changer` because `src/data/importers/importer.py` never lists the column — is a
+> decision-needed item logged in the story file's Review Findings, not deferred here (it blocks
+> the story's own AC5/AC6, so it isn't "not actionable now"). The items below are real but
+> pre-existing/inherited-template gaps out of this story's scope.
+
+- **Pre-`try` engine/session-factory failures + rollback()/dispose() masking secondary exceptions** — `scripts/migrate_add_game_changer.py:42-46,67-72`. `create_engine()`/`create_session_factory()` calls sit outside the `try` block, and neither `session.rollback()` in `except` nor `engine.dispose()` in `finally` is itself guarded — a secondary exception there would mask the original error or an unhandled traceback if session-factory setup fails. Verbatim structure copied from `scripts/migrate_add_power_toughness.py` per this story's own template mandate; not introduced by this diff. (Source: Edge Case Hunter; Severity: Low.)
+- **TOCTOU race between the idempotency check and the `ALTER TABLE`** — `scripts/migrate_add_game_changer.py:50-57`. Two concurrent runs can both pass the `PRAGMA table_info` check before either commits, so the loser hits a raw "duplicate column name" `OperationalError` dressed up as a generic migration failure instead of a benign no-op. Identical race exists in the precedent script. (Source: Edge Case Hunter; Severity: Low.)
+- **`PRAGMA table_info(cards)` on a missing `cards` table silently returns empty rather than erroring** — `scripts/migrate_add_game_changer.py:47-55`. A pre-bootstrap DB (never run through `initialize_database`) makes the script proceed straight to `ALTER TABLE` on a nonexistent table, surfacing a raw "no such table: cards" error with no bootstrap hint. Same gap in `migrate_add_power_toughness.py`; same class as the previously-resolved G3 `index_unavailable` bootstrap gap, but this migration template was never given the equivalent fix. (Source: Blind Hunter + Edge Case Hunter; Severity: Low.)
+- **Upsert-based backfill only touches rows present in the current Scryfall bulk export** — `src/data/importers/importer.py`. A card absent from a freshly-downloaded bulk file keeps its prior (NULL) `game_changer` value indefinitely; the migration docstring's "overwrites every card" framing overstates actual coverage. Inherent to the importer's existing upsert design, not introduced by this diff. (Source: Blind Hunter; Severity: Low.)
+- **Idempotency guard checks column presence only, not type/nullability** — `scripts/migrate_add_game_changer.py:50-53`. A differently-typed partial/failed prior migration attempt would be silently treated as already-satisfied. Identical guard shape in the precedent script. (Source: Blind Hunter; Severity: Low.)
+
 ## Deferred from: code review of story-4.1 (2026-07-11)
 
 - **Untyped `game_changer` value could reach the `Boolean` column unchecked** — `src/data/importers/transformers.py:79`. `card_json.get("game_changer")` performs no type/shape validation; a non-bool value (string/int) would flow straight into a `Boolean` SQLAlchemy column with no coercion or error. Pre-existing pattern: no field in `transform_scryfall_card` has type validation beyond null-coalescing, and Scryfall is a trusted, documented source for this field. (Source: Edge Case Hunter + Blind Hunter; Severity: Low.)
