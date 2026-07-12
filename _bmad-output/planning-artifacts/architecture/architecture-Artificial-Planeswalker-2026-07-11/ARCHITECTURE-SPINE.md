@@ -4,11 +4,11 @@ type: architecture-spine
 purpose: build-substrate
 altitude: feature
 paradigm: 'functional core / imperative shell, inside the existing data→logic→mcp_server layering'
-scope: 'The assess_deck_power MCP capability (PRD 2026-07-11, FG1–FG6): deterministic Commander-first + Standard deck power assessment, one live Commander Spellbook dependency, dual (human + structured) output tuned for caller-side diffing.'
+scope: 'The assess_deck_power + compare_deck_power MCP capability (PRD 2026-07-11, amended 2026-07-12, FG1–FG6): deterministic Commander-first + Standard deck power assessment, fully local (Commander Spellbook consumed as an imported bulk snapshot), dual (human + structured) output with server-side diffing.'
 status: final
 created: '2026-07-11'
-updated: '2026-07-11'
-binds: [FR1, FR2, FR3, FR4, FR5, FR6, FR7, FR8, FR9, FR10, FR11, FR12, FR13, FR14, FR15, FR16, FR17, FR18, FR19, FR20, FR21, FR22, FR23, FR24, NFR1, NFR2, NFR3, NFR4, NFR5, NFR6, NFR7, NFR8]
+updated: '2026-07-12 (sprint-change-proposal-2026-07-12: bulk combo snapshot, commander identity, output-shape corrections)'
+binds: [FR1, FR2, FR3, FR4, FR5, FR6, FR7, FR8, FR9, FR10, FR11, FR12, FR13, FR14, FR15, FR16, FR17, FR18, FR19, FR20, FR21, FR22, FR23, FR24, FR25, FR26, NFR1, NFR2, NFR3, NFR4, NFR5, NFR6, NFR7, NFR8]
 sources:
   - 'docs/deck-assess.md (research paper)'
   - 'PRD: Deck Power-Level Assessment (2026-07-11)'
@@ -23,55 +23,61 @@ companions: []
 **Functional core, imperative shell** — layered onto the project's existing
 `data → logic → mcp_server → ui` import direction.
 
-- **Imperative shell (impure, does all I/O):** the async MCP tool (`src/mcp_server`) plus
-  two data-layer adapters (the Spellbook HTTP client and the combo-cache repository in
-  `src/data`). It loads the deck, fetches/caches combos, and shapes output.
+- **Imperative shell (impure, does all I/O):** the async MCP tools (`src/mcp_server`) plus
+  two data-layer pieces (the Spellbook **bulk-snapshot importer** — an offline script, not on
+  the assessment path — and the combo-snapshot repository in `src/data`). The edge loads the
+  deck, reads the local combo snapshot, and shapes output. **Assessment performs no network
+  I/O at all.**
 - **Functional core (pure, deterministic):** `src/logic/assessment/` — the scorer,
   `FormatProfile` data, Karsten mana math, hypergeometric consistency, oracle-text
-  classifiers, and the combo→bracket mapping. It takes already-resolved inputs
-  (`list[Card]`, combo data as plain values, a `FormatProfile`) and returns the assessment.
-  **No network, no DB, no clock.**
+  classifiers, the **combo matcher** (subset / missing-one), and the combo→bracket mapping.
+  It takes already-resolved inputs (`list[Card]`, commanders, combo variants as plain values,
+  a `FormatProfile`) and returns the assessment. **No network, no DB, no clock.**
 
 This split is the whole architecture: it is what makes determinism (NFR1) hold and the
-diff use case (goal #2) trustworthy — the same deck, snapshot, and cached combo data always
+diff use case (goal #2) trustworthy — the same deck, card snapshot, and combo snapshot always
 produce byte-identical output regardless of network or wall-clock state.
 
 ## Invariants & Rules
 
 ```mermaid
 graph TD
+  subgraph offline["Offline (operator-initiated, not on the assessment path)"]
+    importer["scripts/import_spellbook_combos.py<br/>(bulk download + normalize, Scryfall pattern)"]
+  end
   subgraph shell["Imperative shell (impure I/O)"]
-    tool["mcp_server/tools/assess_deck_power.py<br/>(async edge, orchestrates only)"]
-    sb["data/ Spellbook client<br/>(async httpx adapter)"]
-    cache["data/repositories/ combo-cache repo<br/>(returns Pydantic, never ORM)"]
+    tool["mcp_server/tools/assess_deck_power.py<br/>(+ compare_deck_power; async edge, orchestrates only)"]
+    combos["data/repositories/ combo-snapshot repo<br/>(read-only at assess time; returns Pydantic, never ORM)"]
     deckrepo["data/repositories/deck.py<br/>get_deck_with_cards"]
   end
   subgraph core["Functional core (pure, deterministic)"]
     scorer["logic/assessment/ scorer"]
+    matcher["combo matcher<br/>(subset / missing-one)"]
     profile["FormatProfile<br/>(frozen typed constants)"]
     classifiers["oracle-text classifiers<br/>Karsten · hypergeometric · combo→bracket"]
   end
+  importer --> combos
   tool --> deckrepo
-  tool --> sb
-  tool --> cache
+  tool --> combos
   tool --> scorer
+  scorer --> matcher
   scorer --> profile
   scorer --> classifiers
   %% core NEVER points back into shell
 ```
 
-### AD-1 — assess_deck_power is an async MCP tool, sibling to the Epic-1 analysis tools
+### AD-1 — assess_deck_power and compare_deck_power are async MCP tools, siblings to the Epic-1 analysis tools
 
-- **Binds:** FR1, NFR7; tool registration in `src/mcp_server/server.py`.
+- **Binds:** FR1, FR26, NFR7; tool registration in `src/mcp_server/server.py`.
 - **Prevents:** a sync/threadpool tool diverging from the three analysis tools it sits beside
   and needing a separate connection story.
-- **Rule:** Register `assess_deck_power` as an **`async def`** tool that `await`s
-  `get_deck_with_cards` on the FastMCP event loop (D-1.3a), exactly like `analyze_mana_curve` /
-  `detect_synergies` / `validate_deck`. The live Spellbook call uses **async httpx** on that loop.
-  This **overrides PRD NFR7's "sync `def` (threadpool)"**, which was mis-inherited from the
-  Epic-2 sqlite-vec search tools (those are sync only because the vec index needs the sync
-  connection — not applicable here). Statelessness still holds: `deck_id` / `format` are the only
-  inputs; no per-session server state.
+- **Rule:** Register `assess_deck_power` (and the thin `compare_deck_power`, FR26) as
+  **`async def`** tools that `await` `get_deck_with_cards` on the FastMCP event loop (D-1.3a),
+  exactly like `analyze_mana_curve` / `detect_synergies` / `validate_deck`. (The Epic-2
+  sqlite-vec search tools are sync only because the vec index needs the sync connection — not
+  applicable here.) Statelessness holds: `deck_id`(s) / `format` are the only inputs; no
+  per-session server state. `compare_deck_power` composes two assessments through the same pure
+  pipeline and computes deltas in code — it introduces no second scoring path.
 
 ### AD-2 — Pure deterministic core, impure edge; combo data enters the core frozen
 
@@ -79,10 +85,10 @@ graph TD
 - **Prevents:** network or DB state leaking into scores; two builders tangling fetch into the
   scoring math and breaking the diff guarantee.
 - **Rule:** All scoring lives in `src/logic/assessment/` as pure functions —
-  `score(cards, combos, profile) -> assessment`. The core performs **no** network, DB, or clock
-  access. The edge fetches and caches combo data, then passes it into the core as **frozen plain
-  values**, so a cache hit and a cache miss yield identical scores. Given identical
-  `(cards, combos, profile)` the core is a pure function.
+  `score(cards, commanders, combos, profile) -> assessment`. The core performs **no** network,
+  DB, or clock access. The edge reads combo variants from the local snapshot repository and
+  passes them into the core as **frozen plain values**; matching happens inside the core. Given
+  identical `(cards, commanders, combos, profile)` the core is a pure function.
 
 ### AD-3 — FormatProfile is passive frozen data; the scorer holds all behavior
 
@@ -91,11 +97,13 @@ graph TD
   splitting across per-format strategy classes.
 - **Rule:** Per-dimension signal→0–100 mappings, aggregate weights, expected-win-turn band,
   rubric selector (`brackets | heuristic_only`), and flags (`combos_enabled`,
-  `multiplayer_variance`, `game_changers_version`) live as **typed frozen constants in an
-  in-repo Python `FormatProfile` module**, one profile per format — not an external data file,
-  not inline literals. The profile is a **passive data bag**; the single deterministic scorer
-  reads it and branches on it. Adjusting weights = edit the module, bump the version, re-run
-  the benchmark.
+  `multiplayer_variance_caveat` — drives a fixed `summary` caveat, **not** a confidence reason)
+  live as **typed frozen constants in an in-repo Python `FormatProfile` module**, one profile per
+  format — not an external data file, not inline literals. The profile is a **passive data
+  bag**; the single deterministic scorer reads it and branches on it. Adjusting weights = edit
+  the module, bump the version, re-run the benchmark. The profile does **not** claim a Game
+  Changers or combo-data version — data vintage belongs to the imported snapshots and is
+  surfaced via `data_vintage` (AD-7), so the profile can never lie about what data was used.
 
 ### AD-4 — game_changer is nullable; NULL means "unknown" and degrades confidence
 
@@ -110,44 +118,46 @@ graph TD
   to `False`. Backfilling `game_changer` requires a Scryfall **re-import** (the field can't be
   derived locally); the interim degraded-confidence window is expected until that runs.
 
-### AD-5 — Combo cache is an ephemeral table in cards.db; the assess edge is its sole writer
+### AD-5 — Combo data is a locally imported snapshot table; assessment is read-only
 
 - **Binds:** FR13, FR14, FR15, NFR1, NFR4.
-- **Prevents:** cold re-fetch per call; network state leaking into scores; cache shape coupling to
-  Spellbook's response schema.
-- **Rule:** Cache Spellbook results in a **dedicated ephemeral table in `cards.db`** (D2
-  single-file topology), reached through a repository in `src/data/repositories` that returns
-  Pydantic schemas. Key = the canonical cache key of **AD-12**; row carries `fetched_at` (24h TTL)
-  and a list of canonical `ComboRecord`s (**AD-11**) under a versioned cache-row schema — not raw
-  JSON. The client reads the paginated Spellbook `results` **envelope** and feeds only the
-  **`included`** and **`almostIncluded`** buckets into `ComboRecord`s (the change-commander /
-  add-color buckets are excluded — this is a fixed-commander assessment). The table is
-  truncatable/rebuildable (like `card_vec`). `assess_deck_power` is the **only** writer (the first
-  analysis tool to write to `cards.db`; curve/synergy/validate are read-only) — single
-  upsert-by-hash under WAL. The async engine sets only `busy_timeout=5`, **not** WAL (WAL is set
-  out-of-band by the search connection and persists per-file), so the **migration must ensure
-  `PRAGMA journal_mode=WAL`** — the cache write path must not depend on the search index having
-  been built first.
+- **Prevents:** a live dependency on the assessment path; network state leaking into scores;
+  an analysis tool writing to `cards.db`; snapshot shape coupling to Spellbook's wire schema.
+- **Rule:** The Commander Spellbook **bulk variant export** is imported into a **dedicated
+  snapshot table in `cards.db`** (D2 single-file topology) by an operator-initiated script
+  (`scripts/import_spellbook_combos.py`) — the same operational pattern as the Scryfall import
+  and the `card_vec` build. The import normalizes wire fields into canonical `ComboRecord` rows
+  (**AD-11**) under a versioned row schema — not raw JSON — and writes a **metadata row**
+  carrying `imported_at` and the export version (the source of `data_vintage`, AD-7).
+  **`assess_deck_power` never writes** — every analysis tool remains read-only against
+  `cards.db`, and no WAL/journal coupling with the search connection exists on the assessment
+  path. The table is truncatable/rebuildable and, like `card_vec`, is a **build prerequisite,
+  never committed**: a missing/empty snapshot degrades as `combo_data_unavailable` (AD-6),
+  mirroring `index_unavailable`. The repository in `src/data/repositories` returns Pydantic
+  schemas (never ORM) and exposes the variants plus the metadata row; it performs no matching —
+  matching is pure core (AD-9).
 
 ### AD-6 — Degradation lowers confidence; it never crashes or silently scores zero
 
 - **Binds:** NFR3, FR3, FR21; mirrors the `index_unavailable` pattern.
-- **Prevents:** a Spellbook outage, unresolved cards, or stale GC data producing either a crash
+- **Prevents:** a missing combo snapshot, unresolved cards, or absent GC data producing either a crash
   or a confidently-wrong score.
 - **Rule:** Every degradation maps to a categorical confidence level (`low | medium | high`) and
-  a `reasons[]` drawn from a **closed snake_case token enum** (e.g. `cards_unresolved`,
-  `combo_data_stale`, `combo_data_unavailable`, `game_changer_data_unavailable`,
-  `multiplayer_variance`, `format_profile_stale`), never an exception or a silent zero. A token
-  **never embeds a count or free phrase** — embedded numbers (`"2 cards unresolved"`) break AD-8
-  sorted determinism (`"10…" < "2…"`) and manufacture diff noise; any count lives in a separate
-  structured field, and human phrasing appears **only** in the `summary`. `structural_gaps[]`
-  (FR9) is likewise a closed token enum. Degradation sources:
+  a `reasons[]` drawn from a **closed snake_case token enum** — exactly `cards_unresolved`,
+  `combo_data_unavailable`, `game_changer_data_unavailable`, `commander_unidentified` — never an
+  exception or a silent zero. A token **never embeds a count or free phrase** — embedded numbers
+  (`"2 cards unresolved"`) break AD-8 sorted determinism (`"10…" < "2…"`) and manufacture diff
+  noise; any count lives in a separate structured field, and human phrasing appears **only** in
+  the `summary`. `structural_gaps[]` (FR9) is likewise a closed token enum. Degradation sources:
   - Unresolved/ambiguous cards (FR3) → count field + `cards_unresolved`.
-  - Combo fetch: fresh cache hit → full contribution; expired entry + fetch fails → use the
-    **stale** entry + `combo_data_stale`; no entry + fetch fails → combos absent +
-    `combo_data_unavailable` + degrade.
+  - Combo snapshot missing/empty (FR14) → combos absent + `combo_data_unavailable` + degrade.
   - GC data NULL → `game_changer_data_unavailable` (AD-4).
-  - Commander multiplayer variance and format-profile freshness also lower confidence.
+  - Commander unidentifiable (FR25/AD-13) → `commander_unidentified` + commander-required
+    variants skipped.
+  **Reasons are run-specific degradations only.** Commander's irreducible multiplayer variance is
+  a fixed `summary` caveat driven by the profile (AD-3), not a confidence reason. **No
+  clock-derived reason may exist** (a "staleness" token computed from `now()` would violate AD-8
+  determinism); freshness is the caller's judgment, informed by `data_vintage` (AD-7).
   A categorical level only — **no numeric confidence band in v1** (it would imply calibration the
   deterministic v1 lacks).
 
@@ -161,46 +171,51 @@ graph TD
   `schema_version` (**always present**). When populated, `assessment` carries: the **7-dimension
   vector** whose keys are a **fixed closed set** (`speed, consistency, resilience, interaction,
   mana_efficiency, card_advantage, combo_potential`) — **all seven always present** regardless of
-  format, never omitted; the for-format 0–100 with descriptive tier label; the derived 1–10
-  projection (AD-8); `confidence{level, reasons[]}`; and `flags{game_changers, combos,
-  structural_gaps, mass_land_denial, extra_turn_chains, cedh_candidate}`. **Flags are
-  format-gated:** the Commander-only flags (`bracket`, `mass_land_denial`, `extra_turn_chains`,
-  `cedh_candidate`) are absent/`false` for Standard; `cedh_candidate` is homed **once**, in
-  `flags`. Shape = the `docs/deck-assess.md` schema **minus** `absolute_score`, per-score
-  `low`/`high` band, `percentile`, and EDHREC fields. cEDH (Bracket 5) is **flagged as candidacy,
-  never asserted**.
+  format, never omitted; the for-format 0–100 with descriptive tier label; a **`data_vintage`
+  block** (combo snapshot `imported_at` + export version, `format_profile_version`) sourced only
+  from stored input metadata; `confidence{level, reasons[]}`; and `flags{game_changers, combos,
+  structural_gaps, mass_land_denial, extra_turn_chains, cedh_candidate}`. **The shape is fixed —
+  no format-conditional keys:** every field is always present; for Standard the Commander-only
+  fields hold `bracket: null` and `false` booleans (a diff surface wants a stable shape, and
+  absent-vs-false ambiguity is banned). No 1–10 projection is emitted. `cedh_candidate` is homed
+  **once**, in `flags`. Shape = the `docs/deck-assess.md` schema **minus** `absolute_score`,
+  per-score `low`/`high` band, `percentile`, 1–10, and EDHREC fields. cEDH (Bracket 5) is
+  **flagged as candidacy, never asserted**. `compare_deck_power` (FR26) returns a sibling
+  versioned `CompareDeckPowerResult` — per-dimension deltas, score delta, bracket change, flags
+  added/removed, and **both** `data_vintage` blocks — computed from two `assessment` objects,
+  never re-scored independently.
 
 ### AD-8 — The Result serializes deterministically; the diff surface excludes the clock
 
 - **Binds:** NFR1 at the output boundary; goal #2.
 - **Prevents:** an implementer reaching for `now()` or unsorted sets and silently destroying
   every diff.
-- **Rule:** Two runs of the same deck + snapshot + cache **must** yield byte-identical JSON.
-  Therefore: (1) all flag lists and `confidence.reasons[]` are emitted **sorted ascending by their
-  token/string (bytewise)**, never set/insertion order; (2) dimension scores are **integer
-  0–100**; the 1–10 projection is `1 + for_format_score * 9 / 100`, **half-up rounded to 1 decimal
-  via `Decimal`**, emitted as a JSON **number** (`7.0`, not `7` or `"7.0"`); (3) the Result embeds
-  **no call-time clock** —
-  no `assessed_at` / `now()`, even though project-context mandates `datetime.now(UTC)` elsewhere;
-  "as of" info comes only from inputs (snapshot date, cache `fetched_at`), equal across two runs.
-  The diff surface is the `assessment` block; the human `summary` is a pure, deterministic
-  projection of it.
+- **Rule:** Two runs of the same deck + card snapshot + combo snapshot **must** yield
+  byte-identical JSON. Therefore: (1) all flag lists and `confidence.reasons[]` are emitted
+  **sorted ascending by their token/string (bytewise)**, never set/insertion order; (2) dimension
+  scores are **integer 0–100**; (3) the Result embeds **no call-time clock** — no `assessed_at` /
+  `now()`, even though project-context mandates `datetime.now(UTC)` elsewhere; "as of" info comes
+  **only** from stored input metadata (`data_vintage`: combo snapshot `imported_at` + export
+  version, `format_profile_version`), equal across two runs on the same data. The diff surface is
+  the `assessment` block; the human `summary` is a pure, deterministic projection of it.
 
 ### AD-9 — Layer placement: I/O adapters at the data layer, pure scoring in logic, edge in mcp_server
 
 - **Binds:** all; the `data → logic → mcp_server` import direction.
 - **Prevents:** network/DB creeping into the pure core, or the tool layer accreting domain logic.
-- **Rule:** The live Spellbook client is an **async httpx I/O adapter at the data layer** (sibling
-  to `importers/scryfall_api.py`), never in `src/logic`. The combo-cache repository lives in
-  `src/data/repositories` and returns Pydantic schemas (never ORM, per the layer contract). All
-  scoring/classification lives in `src/logic/assessment/` and stays framework-free. The tool in
-  `src/mcp_server/tools/` orchestrates only. Exact filenames are seed; the boundary is the
-  invariant.
-- **Spellbook client policy (FR14):** the client sets an explicit timeout, required `User-Agent`
-  + `Accept` headers, and polite throttling; it retries 429/network failures with **manual
-  exponential backoff** mirroring `importers/scryfall_api.py` (its `max_retries` / `retry_delay` /
-  `2**attempt` loop — **`tenacity` is not a dependency**). On exhausted retries it returns cleanly
-  so the edge can apply the AD-6 degradation ladder — it never raises to the client.
+- **Rule:** The Spellbook **bulk downloader lives in the importer family at the data layer**
+  (sibling to `importers/scryfall_api.py`), invoked only by the offline import script — never on
+  the assessment path, never in `src/logic`. The combo-snapshot repository lives in
+  `src/data/repositories` and returns Pydantic schemas (never ORM, per the layer contract).
+  **Combo matching is a pure function in `src/logic/assessment/`** (a deterministic subset /
+  missing-one computation belongs in the core, not behind I/O). All scoring/classification lives
+  in `src/logic/assessment/` and stays framework-free. The tools in `src/mcp_server/tools/`
+  orchestrate only. Exact filenames are seed; the boundary is the invariant.
+- **Downloader policy (FR14):** the import script sets an explicit timeout, required
+  `User-Agent` + `Accept` headers, and retries 429/network failures with **manual exponential
+  backoff** mirroring `importers/scryfall_api.py` (its `max_retries` / `retry_delay` /
+  `2**attempt` loop — **`tenacity` is not a dependency**). A failed download aborts the import
+  cleanly and leaves the previous snapshot intact; it never corrupts the table.
 
 ### AD-10 — Oracle-text classifiers are one shared taxonomy in logic, not a forked one
 
@@ -212,40 +227,53 @@ graph TD
   conventions (lowercased matching over `Card.oracle_text` + `Card.keywords`). They are not
   duplicated into the tool layer, and they share vocabulary rather than re-inventing it.
 
-### AD-11 — One canonical ComboRecord is the single combo shape across cache, core, and output
+### AD-11 — One canonical ComboRecord is the single combo shape across snapshot, core, and output
 
-- **Binds:** FR13, FR15, FR23; the cache↔core↔output seam.
-- **Prevents:** FG4, FG5, and FG6 each inventing a different combo shape — a cached record the
+- **Binds:** FR13, FR15, FR23; the snapshot↔core↔output seam.
+- **Prevents:** FG4, FG5, and FG6 each inventing a different combo shape — a stored record the
   scorer can't read the trigger from, or an output flag missing the audit fields.
-- **Rule:** Define one frozen `ComboRecord` used verbatim by the cache repository, the pure
-  scorer, and the `flags.combos` output. It carries **Spellbook-sourced fields only**:
-  `{spellbook_id, cards[] (sorted names), bucket (included | almostIncluded), bracket_tag,
-  produces, popularity}`. **Derived** fields — `type` (e.g. `two_card_infinite`) and
-  `earliest_turn_estimate` — are computed in the **pure core** and are **not cached** (so the
-  earliest-turn heuristic has a single owner, and re-tuning it doesn't require cache
-  invalidation). `bracket_tag` is a **closed enum in exact Spellbook wire casing**
-  (`RUTHLESS→4, SPICY→3, POWERFUL→3, ODDBALL→2, PRECON_APPROPRIATE→2, CASUAL→1`), normalized once
-  at the edge; the core's combo→bracket map keys on it exactly — a casing mismatch must not
-  silently produce a wrong Bracket floor.
+- **Rule:** Define one frozen `ComboRecord` used verbatim by the snapshot repository, the pure
+  scorer, and the `flags.combos` output. It carries **Spellbook-sourced fields plus the local
+  match verdict**: `{spellbook_id, cards[] (sorted names), commander_required, bucket
+  (included | almost_included — assigned by the core matcher, AD-9), bracket_tag, produces,
+  popularity}`. **Derived** fields — `type` (e.g. `two_card_infinite`) and
+  `earliest_turn_estimate` — are computed in the **pure core** and are **not stored** (so the
+  earliest-turn heuristic has a single owner, and re-tuning it doesn't require a re-import).
+  `bracket_tag` is a **closed enum** (`RUTHLESS→4, SPICY→3, POWERFUL→3, ODDBALL→2,
+  PRECON_APPROPRIATE→2, CASUAL→1`), **normalized once at import time**; the core's
+  combo→bracket map keys on it exactly — a casing mismatch must not silently produce a wrong
+  Bracket floor.
 
-### AD-12 — One canonical, multiplicity-aware cache key; builtin `hash()` forbidden
+### AD-12 — Withdrawn (2026-07-12)
 
-- **Binds:** FR14, NFR1; AD-5.
-- **Prevents:** two callers hashing the same deck differently (cache misses), and a name-set key
-  collapsing a Standard 4-of deck with a 1-of deck (wrong combos served silently).
-- **Rule:** The cache key is `sha256` of a **canonical JSON** document
-  `{"commanders": [sorted names], "main": {name: qty}}` that **includes card multiplicities**,
-  produced by **one named pure helper** that both the read and write paths call. Python's builtin
-  `hash()` is forbidden here — it is `PYTHONHASHSEED`-salted and non-deterministic across
-  processes, which would silently defeat the cache and NFR1.
+- The per-deck cache key existed only to serve the live-API response cache. With the bulk
+  snapshot (AD-5) there is no per-deck cache and nothing to key; the matcher (AD-9) consumes
+  the deck directly. Withdrawn by `sprint-change-proposal-2026-07-12.md`; the ID is retired,
+  not reused. (The general prohibition on builtin `hash()` for any persisted key remains good
+  guidance project-wide.)
+
+### AD-13 — Commander identity: explicit flag first, inference fallback, degrade honestly
+
+- **Binds:** FR25, FR13, FR18; `DeckCardModel` / `DeckCard` schema, the Arena importer,
+  `add_card_to_deck`.
+- **Prevents:** the Bracket rules and commander-required combo variants silently guessing wrong
+  — or Epic 7 discovering at integration time that nothing knows which card is the commander.
+- **Rule:** `DeckCardModel` gains `commander: bool` (default `False`, additive hand-written
+  migration mirroring the `sideboard` bool; two flagged cards = partners). `add_card_to_deck`
+  accepts `commander=False`; the Arena importer's `Commander` section sets it. At assess time
+  the edge resolves commanders in strict order: (1) flagged cards; (2) if none and the format
+  is Commander, a **sole legendary creature** in the mainboard is inferred (no confidence
+  penalty); (3) otherwise commanders are unknown — commander-required combo variants are
+  skipped and confidence reason `commander_unidentified` is added (AD-6). The resolved
+  commander list is passed into the pure core as data; the core never queries for it.
 
 ## Consistency Conventions
 
 | Concern | Convention |
 | --- | --- |
-| Naming | Tool `assess_deck_power`; result `AssessDeckPowerResult`; core package `src/logic/assessment/`; profiles `FormatProfile`. ORM `*Model`, Pydantic unsuffixed. `format` shadows the builtin intentionally (MTG domain). |
-| Data & formats | Dimension scores `int` 0–100 (7 fixed keys, all always present); 1–10 projection `1 + score*9/100` half-up to 1 decimal, JSON number; `format_profile_version` a single monotonic string per format; confidence categorical `low\|medium\|high`; `reasons[]` / `structural_gaps[]` / `bucket` / `bracket_tag` are **closed enums**, tokens never embed counts; all output lists sorted bytewise; one canonical `ComboRecord` (AD-11) + one canonical cache key (AD-12). |
-| State & cross-cutting | Stateless tool (`deck_id`/`format` params only); repos return Pydantic, never ORM; core is pure (no network/DB/clock); edge is the only impure code; degradation → `status`/confidence, never exceptions to the client; module-level `logging` with `%`-style lazy args; `mypy --strict`, ruff, Google docstrings. |
+| Naming | Tools `assess_deck_power` / `compare_deck_power`; results `AssessDeckPowerResult` / `CompareDeckPowerResult`; core package `src/logic/assessment/`; profiles `FormatProfile`. ORM `*Model`, Pydantic unsuffixed. `format` shadows the builtin intentionally (MTG domain). |
+| Data & formats | Dimension scores `int` 0–100 (7 fixed keys, all always present); **fixed output shape** (Standard holds `bracket: null` + `false` booleans — no format-conditional keys, no 1–10 projection); `format_profile_version` a single monotonic string per format; `data_vintage` from stored input metadata only; confidence categorical `low\|medium\|high`; `reasons[]` / `structural_gaps[]` / `bucket` / `bracket_tag` are **closed enums**, tokens never embed counts; all output lists sorted bytewise; one canonical `ComboRecord` (AD-11). |
+| State & cross-cutting | Stateless tools (`deck_id`(s)/`format` params only); repos return Pydantic, never ORM; core is pure (no network/DB/clock); the offline import script is the only combo-data writer; assessment never writes; degradation → `status`/confidence, never exceptions to the client; module-level `logging` with `%`-style lazy args; `mypy --strict`, ruff, Google docstrings. |
 
 ## Stack
 
@@ -258,7 +286,7 @@ as of authoring):
 | Python | >=3.12 |
 | mcp / FastMCP | >=1.27.0 |
 | SQLAlchemy `[asyncio]` + aiosqlite | >=2.0.44 / >=0.21.0 |
-| httpx (Spellbook client) | >=0.28.1 |
+| httpx (Spellbook bulk download, offline import only) | >=0.28.1 |
 | pydantic (v2) | >=2.0.0 |
 
 ## Structural Seed
@@ -267,42 +295,46 @@ as of authoring):
 src/
   data/
     models/card.py            # + game_changer: Mapped[bool | None]  (AD-4)
+    models/deck.py            # DeckCardModel + commander: Mapped[bool]  (AD-13)
     schemas/card.py           # + game_changer: bool | None          (AD-4)
+    schemas/deck.py           # DeckCard + commander: bool           (AD-13)
     importers/transformers.py # transform_scryfall_card sets game_changer  (AD-4)
-    <spellbook client>.py     # async httpx adapter, sibling to importers/scryfall_api.py  (AD-9)
-    repositories/<combo_cache>.py  # ephemeral cache table repo, returns Pydantic  (AD-5, AD-9)
+    importers/<spellbook>.py  # bulk-export downloader, sibling to scryfall_api.py  (AD-9)
+    repositories/<combo_snapshot>.py  # snapshot table repo (read at assess time), returns Pydantic  (AD-5, AD-9)
   logic/
-    assessment/               # PURE core (AD-2): scorer, FormatProfile, Karsten,
-                              #   hypergeometric, oracle-text classifiers, combo→bracket  (AD-3, AD-10)
+    assessment/               # PURE core (AD-2): scorer, combo matcher, FormatProfile, Karsten,
+                              #   hypergeometric, oracle-text classifiers, combo→bracket  (AD-3, AD-9, AD-10)
   mcp_server/
-    tools/assess_deck_power.py     # async edge tool, orchestrates only  (AD-1, AD-9)
+    tools/assess_deck_power.py     # async edge tools (assess + compare), orchestrate only  (AD-1, AD-9)
     server.py                      # + registration
 scripts/
   migrate_add_game_changer.py      # hand-written additive migration + backfill  (AD-4)
+  migrate_add_deck_card_commander.py  # additive commander-flag migration  (AD-13)
+  import_spellbook_combos.py       # offline bulk combo-snapshot import  (AD-5)
 ```
 
 ```mermaid
 flowchart LR
   A["deck_id, format?"] --> B["edge: load deck<br/>(get_deck_with_cards)"]
-  B --> C["edge: resolve format → FormatProfile"]
+  B --> C["edge: resolve format → FormatProfile<br/>+ commanders (AD-13)"]
   C --> D{"combos_enabled?"}
-  D -- yes --> E["edge: combo cache → Spellbook client<br/>(24h TTL, degrade per AD-6)"]
+  D -- yes --> E["edge: read local combo snapshot<br/>(absent → degrade per AD-6)"]
   D -- no --> F["(skip combos)"]
-  E --> G["PURE scorer(cards, combos, profile)"]
+  E --> G["PURE scorer(cards, commanders, combos, profile)<br/>(matcher inside the core)"]
   F --> G
-  G --> H["AssessDeckPowerResult<br/>(deterministic serialization, AD-8)"]
+  G --> H["AssessDeckPowerResult<br/>(deterministic serialization + data_vintage, AD-7/AD-8)"]
 ```
 
 ## Capability → Architecture Map
 
 | Feature group | Lives in | Governed by |
 | --- | --- | --- |
-| FG1 Ingest & format resolve | edge tool + `FormatProfile` | AD-1, AD-3, AD-9 |
+| FG1 Ingest, format resolve & commander identity | edge tool + `FormatProfile` + deck `commander` flag | AD-1, AD-3, AD-9, AD-13 |
 | FG2 Heuristic extraction | `logic/assessment` (classifiers, Karsten, hypergeometric) | AD-2, AD-10 |
 | FG3 Card-power (Game Changer) | `Card.game_changer` schema + scorer read | AD-4 |
-| FG4 Combo detection | data-layer Spellbook client + combo-cache repo | AD-5, AD-6, AD-9, AD-11, AD-12 |
+| FG4 Combo detection | offline import script + combo-snapshot repo + pure matcher | AD-5, AD-6, AD-9, AD-11 |
 | FG5 Score & classify | pure scorer + `FormatProfile` | AD-2, AD-3, AD-11 |
-| FG6 Confidence & output | `AssessDeckPowerResult` + serialization | AD-6, AD-7, AD-8, AD-11 |
+| FG6 Confidence & output (+ compare) | `AssessDeckPowerResult` / `CompareDeckPowerResult` + serialization | AD-6, AD-7, AD-8, AD-11 |
 
 ## Deferred
 

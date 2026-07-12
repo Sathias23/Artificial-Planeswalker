@@ -12,8 +12,9 @@ updated: 2026-07-11
 Artificial Planeswalker is an MCP-server toolkit for Magic: The Gathering deckbuilding
 (local Scryfall snapshot, sqlite-vec/fastembed RAG, tools such as `analyze_mana_curve`,
 `detect_synergies`, `validate_deck`). This PRD adds a new capability: **deck power-level
-assessment** — a single MCP tool, `assess_deck_power`, that scores a saved deck and returns
-both a human-readable summary and a structured result.
+assessment** — an MCP tool, `assess_deck_power`, that scores a saved deck and returns
+both a human-readable summary and a structured result, plus a thin `compare_deck_power`
+diff tool (FR26) that answers the comparison question server-side.
 
 The assessment is deterministic, explainable, and honest about uncertainty. It is
 **Commander-first** (using WotC's official Commander Brackets rubric) with **Standard** as a
@@ -25,8 +26,12 @@ The headline is **relative comparison of the owner's own decks** — comparing t
 versions of the same deck, to answer *"did my edit make this stronger, and what changed?"*
 Because the comparison is between the user's own decks, a **consistent, stable for-format score
 plus a per-dimension breakdown** is the real payload; the paper's calibrated cross-format
-"absolute" score is out of scope for v1. Comparison itself is performed caller-side: run
-`assess_deck_power` twice and diff the two structured results. There is no dedicated compare tool.
+"absolute" score is out of scope for v1. Comparison runs server-side via the thin
+`compare_deck_power` tool (FR26), which assesses both decks through the same deterministic
+pipeline and returns the deltas — the arithmetic is never delegated to the calling agent.
+Comparing two *versions* of one deck uses the supported duplication workflow: snapshot the
+current build with `create_deck` + `import_decklist` (its Arena export), edit, then compare
+the two deck ids.
 
 ### 1.2 Vision
 
@@ -39,10 +44,11 @@ plus a per-dimension breakdown** is the real payload; the paper's calibrated cro
 1. **Assess** — score any saved deck: a Commander Bracket (1–5), a for-format 0–100 score, and a
    7-dimension breakdown (speed, consistency, resilience, interaction, mana efficiency, card
    advantage, combo potential).
-2. **Compare / diff** — enable side-by-side comparison of two decks or two versions of one deck
-   by producing stable, diffable structured output (comparison run caller-side). *Headline goal.*
-3. **Detect combos** — real two-card infinite/loop detection via Commander Spellbook, feeding
-   both the Bracket floor and the combo-potential dimension.
+2. **Compare / diff** — enable side-by-side comparison of two decks or two versions of one deck:
+   stable, diffable structured output plus a server-side `compare_deck_power` tool (FR26) that
+   returns the deltas directly. *Headline goal.*
+3. **Detect combos** — real two-card infinite/loop detection via a locally imported Commander
+   Spellbook snapshot, feeding both the Bracket floor and the combo-potential dimension.
 4. **Stay honest** — every score carries a confidence level and reasons; degradation lowers
    confidence rather than crashing or silently scoring zero. No score ships without context.
 
@@ -53,6 +59,9 @@ Explicitly excluded, deferred to the roadmap (§8):
 - Monte Carlo goldfish simulation.
 - ML / embedding-based scoring.
 - Limited / Draft assessment.
+- **Brawl / Historic Brawl** — the Bracket / Game Changers rubric does not map to 1v1 Arena
+  Brawl (different life totals, pool, and social contract); it is the natural *next* format
+  profile once the Commander/Standard fork is proven, but is explicitly out of v1.
 - Calibrated cross-format **absolute** score and per-format offset anchoring.
 - 60-card **meta-tier** scoring via MTGTop8 / MTGGoldfish (would require web scraping).
 - EDHREC enrichment (inclusion %, synergy/lift, salt, community percentile).
@@ -64,24 +73,27 @@ separate UI and no standalone persona section.
 
 > Brad tunes a Commander deck. He asks the agent to assess the current build; the agent calls
 > `assess_deck_power(deck_id)` and reports Bracket 3, a for-format score of 68, and a dimension
-> breakdown, noting the two Game Changers and one late-game two-card combo that set the floor. He
-> swaps three cards, saves a new version, and asks the agent to assess again. The agent runs the
-> tool on the new `deck_id` and diffs the two results: combo-potential up 12, speed up 6, mana
-> efficiency down 3. Brad now knows the edit made the deck faster and more explosive at a small
-> mana cost — the exact question he had.
+> breakdown, noting the two Game Changers and one late-game two-card combo that set the floor.
+> Before editing, he snapshots the build: the agent creates a scratch deck with `create_deck` and
+> `import_decklist` (the current build's Arena export). Brad swaps three cards in the original,
+> then asks what changed. The agent calls `compare_deck_power(old_id, new_id)`: combo-potential
+> up 12, speed up 6, mana efficiency down 3. Brad now knows the edit made the deck faster and
+> more explosive at a small mana cost — the exact question he had — and deletes the scratch copy.
 
 ## 4. Functional Requirements
 
 FRs are grouped by pipeline stage (feature group) with globally stable IDs.
 
-**Score-scale glossary** (three coexisting scales, named once to prevent conflation):
+**Score-scale glossary** (the coexisting scales, named once to prevent conflation):
 
 - **Bracket (1–5)** — Commander only; the WotC categorical tier (Exhibition → cEDH).
 - **For-format score (0–100)** — the weighted-aggregate power score, interpreted *within* its
   format; the basis for deck-to-deck diffs.
-- **1–10 projection** — a familiar rescale of the for-format score for people used to the legacy
-  community scale. Derived, not independent.
 - **Descriptive label** (FR24) — the human-facing tier word attached to every for-format score.
+
+*(The legacy community 1–10 scale is deliberately not emitted — a third numeric scale invites
+exactly the conflation this glossary exists to prevent; the `summary` may reference it in prose
+if useful.)*
 
 ### FG1 — Ingest & format resolve
 - **FR1** — Expose `assess_deck_power(deck_id, format?)`. Load the deck via
@@ -93,7 +105,13 @@ FRs are grouped by pipeline stage (feature group) with globally stable IDs.
 - **FR3** — Resolve every card against the local Scryfall snapshot; count unresolved or ambiguous
   cards and carry that count into confidence (FR21).
 - **FR4** — Load a **versioned format profile** (rubric selector, expected-win-turn band, Bracket
-  rules version, Game Changers list version). Emit `format_profile_version` in the output.
+  rules version). Emit `format_profile_version` in the output. (Game Changer data vintage comes
+  from the card snapshot itself, not a profile constant — see FR22 `data_vintage`.)
+- **FR25** — Determine the deck's **commander(s)**: read the per-card `commander` flag on deck
+  cards (a new nullable-default-`False` field set by the Arena importer's `Commander` section and
+  by `add_card_to_deck`). When no card is flagged in a Commander-format deck, infer a **sole
+  legendary creature** (no confidence penalty). When zero or multiple candidates remain, assess
+  without commander-required combo variants and add confidence reason `commander_unidentified`.
 
 ### FG2 — Heuristic extraction (deterministic, local)
 - **FR5** — Compute mana curve and average mana value (from `cmc`); land count.
@@ -115,11 +133,16 @@ FRs are grouped by pipeline stage (feature group) with globally stable IDs.
 - **FR12** — Detect hard Bracket triggers via oracle-text patterns: **mass land denial** and
   **extra-turn chains**.
 
-### FG4 — Combo detection (single live dependency)
-- **FR13** — Call Commander Spellbook `find-my-combos`; bucket results into `included` vs
-  `almostIncluded`; capture per-combo `bracket_tag`, produced result, popularity, and an
-  earliest-turn estimate.
-- **FR14** — Cache Spellbook responses (≥24h) with polite throttling and 429 backoff.
+### FG4 — Combo detection (local Spellbook snapshot)
+- **FR13** — Match the deck against a **locally imported Commander Spellbook bulk variant
+  snapshot**; bucket matches into `included` (all pieces present and commander requirements
+  satisfied, per FR25) vs `almost_included` (exactly one piece missing); capture per-combo
+  `bracket_tag`, produced results, and popularity. An earliest-turn estimate is derived in the
+  scorer.
+- **FR14** — Import the Spellbook bulk export into a dedicated local table via a **documented,
+  operator-initiated script** (the same operational pattern as the Scryfall import and the
+  `card_vec` index build); record the snapshot's `imported_at` and export version. **Assessment
+  performs no live network call.** A missing/empty snapshot degrades gracefully (NFR3).
 - **FR15** — Map combos to the two-card-infinite Bracket trigger and the combo-potential dimension.
 
 ### FG5 — Score & classify
@@ -132,27 +155,35 @@ FRs are grouped by pipeline stage (feature group) with globally stable IDs.
   turn N (deterministic; no simulation).
 - **FR18** — **Commander:** set the **Bracket floor** (1–5) from Game Changer count + hard triggers
   + combos per the WotC decision tree. Flag cEDH **candidacy** only; never assert Bracket 5.
-- **FR19** — Weighted-aggregate the vector into a **for-format 0–100** score; derive the familiar
-  **1–10** as a secondary projection. No absolute cross-format score in v1.
+- **FR19** — Weighted-aggregate the vector into a **for-format 0–100** score. No absolute
+  cross-format score in v1, and no 1–10 projection in the structured output (see glossary note).
 - **FR20** — **Standard:** heuristic-only for-format score (curve / interaction / Karsten-60 /
   combos). No Bracket, no meta-tier percentile. To avoid shipping a bare number, Standard's score is
   always accompanied by the descriptive label (FR24).
 
 ### FG6 — Confidence & output
 - **FR21** — Emit a **categorical** confidence level (`low | medium | high`) with a `reasons[]`
-  list, derived from card-resolution completeness, combo-data availability, multiplayer variance
-  (Commander lowers confidence), and format-profile freshness. **No numeric low/high band in v1** —
-  a numeric confidence interval implies calibrated precision the deterministic v1 does not have.
-  Degradation lowers confidence; it never crashes or silently scores zero.
+  list, derived from run-specific degradations only: card-resolution completeness, combo-snapshot
+  availability, Game Changer data availability, and commander identification (FR25). Commander's
+  irreducible multiplayer variance is a **fixed caveat in the `summary`**, not a confidence
+  reason — a penalty every Commander run carries discriminates nothing. **No numeric low/high
+  band in v1** — a numeric confidence interval implies calibrated precision the deterministic v1
+  does not have. Degradation lowers confidence; it never crashes or silently scores zero.
 - **FR22** — Return **both** a human-readable formatted **summary** and the **raw structured JSON**
   (the `docs/deck-assess.md` schema, minus the absolute-score, per-score numeric `low`/`high` band,
-  percentile, and EDHREC fields).
+  percentile, and EDHREC fields), including a **`data_vintage` block** (combo snapshot
+  `imported_at` + export version, `format_profile_version`) sourced only from stored input
+  metadata — so a caller diffing two runs can detect that they used different data.
 - **FR23** — A `flags` block surfaces the exact cards/combos/gaps that drove the result: Game
   Changers list, combos, structural gaps, mass-land-denial / extra-turn booleans, `cedh_candidate`.
 - **FR24** — Every for-format score carries a **descriptive tier label** (e.g. Unfocused / Focused /
   Tuned / High-Power / Competitive) so no score — Commander or Standard — is presented as a bare
   number. For Commander this sits alongside the Bracket; for Standard it is the primary human-facing
   tier.
+- **FR26** — Expose `compare_deck_power(deck_id_a, deck_id_b, format?)`: assess both decks through
+  the same deterministic pipeline and return per-dimension deltas, the for-format score delta,
+  Bracket change (Commander), flags added/removed, and **both** `data_vintage` blocks. Stateless,
+  no persistence; the comparison arithmetic is never delegated to the calling agent.
 
 ## 5. Non-Functional Requirements
 
@@ -160,24 +191,23 @@ FRs are grouped by pipeline stage (feature group) with globally stable IDs.
   randomness in v1. This is what makes the diff use case trustworthy.
 - **NFR2 — Explainability.** Every score traces to the cards/signals that produced it (via
   `flags`); no black-box numbers.
-- **NFR3 — Graceful degradation.** Unresolved cards, unreachable Spellbook, or an empty combo DB →
-  lower confidence + reason flag, never a crash or silent zero. Mirrors the existing
-  `index_unavailable` pattern.
-- **NFR4 — Latency.** Local heuristics + hypergeometric are effectively instant. The single live
-  call (Spellbook) is cached (≥24h) with 429 backoff; warm-cache assessment feels interactive, and
-  a cold combo fetch is the only slow path.
-- **NFR5 — Data freshness / versioning.** Game Changers list and Bracket rules change over time; the
-  format profile is versioned and the output states which profile/rules version produced it.
+- **NFR3 — Graceful degradation.** Unresolved cards, a missing/empty combo snapshot, or NULL Game
+  Changer data → lower confidence + reason flag, never a crash or silent zero. Mirrors the
+  existing `index_unavailable` / `card_vec` pattern (a build prerequisite that may be absent).
+- **NFR4 — Latency.** The assessment path is **fully local** — heuristics, hypergeometric math,
+  and combo matching against the local snapshot are effectively instant. The only slow step is
+  the operator-initiated Spellbook snapshot import, which is not on the assessment path.
+- **NFR5 — Data freshness / versioning.** The Game Changers data, combo snapshot, and Bracket
+  rules change over time; the format profile is versioned, the combo snapshot records its
+  `imported_at` + export version, and the output's `data_vintage` states what produced it.
+  Freshness couples to import cadence (as `game_changer` already does).
 - **NFR6 — Testability / calibration.** A committed benchmark set anchors correctness (see §6).
-- **NFR7 — Architecture conformance.** Tool is a stateless **async `def`**, registered alongside
-  the existing deck-analysis tools (`analyze_mana_curve` / `detect_synergies` / `validate_deck`),
-  which `await` the async `src/data` repositories on the FastMCP event loop (D-1.3a) — the live
-  Commander Spellbook call likewise uses async httpx on that loop. (This corrects an earlier "sync
-  `def` / threadpool" framing mis-inherited from the Epic-2 sqlite-vec search tools, which are sync
-  only because the vector index is reachable solely on the sync connection — not applicable here;
-  see architecture spine **AD-1**.) `format` / `deck_id` are caller-supplied parameters (no
-  per-session server state); `src/data` and `src/logic` stay framework-free. Follows the project's
-  MCP conventions.
+- **NFR7 — Architecture conformance.** Both tools are stateless **async `def`**, registered
+  alongside the existing deck-analysis tools (`analyze_mana_curve` / `detect_synergies` /
+  `validate_deck`), which `await` the async `src/data` repositories on the FastMCP event loop
+  (architecture spine **AD-1**). `format` / `deck_id` are caller-supplied parameters (no
+  per-session server state); `src/data` and `src/logic` stay framework-free. Follows the
+  project's MCP conventions.
 - **NFR8 — Scoring transparency (architecture deliverable).** The per-dimension signal→0–100
   mappings and the aggregate weighting are defined during the architecture phase, not this PRD. They
   MUST be documented, hand-tuned, adjustable, and validated against the calibration benchmark (§6).
@@ -187,12 +217,19 @@ FRs are grouped by pipeline stage (feature group) with globally stable IDs.
 
 **Success metrics**
 1. **Calibration benchmark passes** — **composing the benchmark set is the first implementation
-   task** (a handful of WotC precons expected ~Bracket 2, plus known cEDH lists expected to flag as
-   candidates / score high). Once composed, that set is the acceptance signal for the scorer. Framed
-   this way so "done" is decidable rather than blocked on an open question.
+   task**: a handful of WotC precons expected ~Bracket 2, known cEDH lists expected to flag as
+   candidates / score high, **and ≥3 Standard anchors** (a current competitive archetype expected
+   high tier, a coherent-but-untuned deck expected mid, a jank pile expected low) so FR20's tier
+   labels have an acceptance signal. Once composed, that set is the acceptance signal for the
+   scorer. Framed this way so "done" is decidable rather than blocked on an open question.
 2. **Diff sensitivity** — a meaningful edit (adding a Game Changer or a combo piece) produces a
    visible, correctly-directioned score/dimension delta.
 3. **Determinism** — identical inputs → identical output (regression-tested).
+4. **Monotonicity (property-tested)** — a strictly-power-positive edit never moves the affected
+   output the wrong way: adding a Game Changer never lowers the Bracket floor; adding a tutor
+   never lowers consistency; cutting all interaction never raises the interaction dimension.
+   These properties constrain the numeric mid-range — where the diff use case actually operates —
+   which the small categorical benchmark cannot.
 
 **Counter-metrics**
 - **No over-rating "goodstuff piles"** — high average card quality without cohesion must not score
@@ -204,8 +241,14 @@ FRs are grouped by pipeline stage (feature group) with globally stable IDs.
 - **Game Changers data (FR11)** is not currently imported; adding the `game_changer` field requires
   a schema change + backfill migration and re-import (~60k cards, heavy). GC freshness couples to
   import cadence.
-- **Commander Spellbook** is the only external live dependency; it is unofficial-API-adjacent but
-  MIT-licensed and keyless. Mitigated by caching + backoff + graceful degradation (NFR3).
+- **Commander Spellbook bulk export (FR13/FR14)** is the combo data source — imported locally like
+  the Scryfall snapshot, so **no live dependency exists at assessment time**. The export is
+  MIT-licensed and keyless; its exact URL/format is verified at implementation (Epic 6). Combo
+  freshness couples to import cadence (mitigated by `data_vintage` in the output); a missing
+  snapshot degrades gracefully (NFR3).
+- **Commander identification (FR25)** depends on the new per-card `commander` flag; pre-existing
+  decks rely on the sole-legendary inference, and ambiguous decks assess without
+  commander-required combo variants (confidence reason `commander_unidentified`).
 - **Intent is not observable** — Brackets are officially "not an exact science"; auto-classification
   has an irreducible error band, reflected in mandatory confidence (FR21) and "bracket up when in
   doubt."

@@ -4,9 +4,17 @@ Depth that belongs downstream (architecture / implementation), not in the PRD na
 
 ## A. Rejected alternatives & options considered
 
-- **Dedicated `compare_decks` tool** — rejected. `assess_deck_power` is the single primitive;
-  comparison is caller-side (run twice, diff the JSON). Keeps the server stateless and the surface
-  minimal.
+- **Caller-side comparison (no compare tool)** — originally chosen, **reversed 2026-07-12**
+  (sprint change proposal, P8): delegating the arithmetic diff of two JSON blobs to the calling
+  LLM undermined the headline use case. A thin, stateless `compare_deck_power` (FR26) now runs
+  both assessments through the same pure pipeline and returns the deltas. The server stays
+  stateless; nothing is persisted.
+- **Live Spellbook `find-my-combos` + 24h cache** — originally chosen, **reversed 2026-07-12**
+  (sprint change proposal, P1/P2): the bulk variant export imported locally (Scryfall-snapshot
+  pattern) deletes the feature's only live dependency, the cards.db write path, the cache-key
+  invariant (AD-12), and two clock-coupled staleness tokens that latently violated AD-8's
+  no-clock rule. Trade-off: combo freshness couples to import cadence (as `game_changer`
+  already does), surfaced via `data_vintage`.
 - **Game Changers via a versioned static list (Fork 4a)** — rejected in favour of 4b (import
   field). Trade-off: 4a is offline and versioned with the profile but needs manual bumps; 4b is a
   single source of truth (Scryfall bulk `game_changer`) that auto-updates on re-import, at the cost
@@ -31,18 +39,25 @@ Depth that belongs downstream (architecture / implementation), not in the PRD na
 - **Deck loading.** Use `DeckRepository.get_deck_with_cards(deck_id)` — it eager-loads full `Card`
   rows (legalities + oracle_text present). Do **not** use the MCP `load_deck` summary projection,
   which drops `legalities` and `keywords`.
-- **MCP tool shape.** Sync `def` on the FastMCP threadpool; per-thread SQLite connection + WAL;
-  stateless (`deck_id` / `format` as parameters). Lives in `src/mcp_server/tools/`. Domain logic
-  (feature extraction, scoring, hypergeometric) belongs in `src/logic` (framework-free); the tool is
-  a thin wrapper returning structured results + a formatted summary string.
-- **Combo integration.** `find-my-combos` via `httpx`; cache layer keyed by deck contents; 429
-  backoff via `tenacity`. Verify live camelCase keys against the backend Swagger. Bracket-tag→power
-  map: Ruthless 4, Spicy 3, Powerful 3, Oddball 2, Precon-Appropriate 2, Casual 1.
+- **Commander identity (FR25).** `DeckCardModel` gains `commander: bool` (default `False`,
+  additive migration mirroring the `sideboard` bool; handles partners); `add_card_to_deck` gains a
+  `commander` parameter; the Arena importer's `Commander` section sets it. Fallback: sole
+  legendary creature → infer; ambiguous → `commander_unidentified` + skip commander-required
+  variants.
+- **MCP tool shape.** Async `def` on the FastMCP event loop (spine AD-1), stateless (`deck_id` /
+  `format` as parameters). Lives in `src/mcp_server/tools/`. Domain logic (feature extraction,
+  scoring, hypergeometric, combo matching) belongs in `src/logic` (framework-free); the tool is a
+  thin wrapper returning structured results + a formatted summary string.
+- **Combo integration (revised 2026-07-12).** Import the Spellbook **bulk variant export** via
+  `scripts/import_spellbook_combos.py` (download mirrors `importers/scryfall_api.py` backoff — no
+  `tenacity`); verify the export URL/shape at implementation. Matching is a pure subset /
+  missing-one function in `src/logic/assessment`. Bracket-tag→power map: Ruthless 4, Spicy 3,
+  Powerful 3, Oddball 2, Precon-Appropriate 2, Casual 1 — normalized once **at import time**.
 - **Output schema.** Base on the `docs/deck-assess.md` §7.3 JSON, removing `absolute_score`,
-  `percentile`, EDHREC-derived fields, **and the per-score numeric `low`/`high` band** for v1
-  (confidence is categorical only — FR21). Keep `format_profile_version`, the dimension vector,
-  `flags`, `confidence` + `confidence_reasons`, `reasoning`, and add a **descriptive tier label**
-  alongside each for-format score (FR24).
+  `percentile`, EDHREC-derived fields, the per-score numeric `low`/`high` band, **and the 1–10
+  projection** for v1 (confidence is categorical only — FR21). Keep `format_profile_version`, the
+  dimension vector, `flags`, `confidence` + `confidence_reasons`, `reasoning`; add a **descriptive
+  tier label** alongside each for-format score (FR24) and the **`data_vintage` block** (FR22).
 
 ## C. Implementation constants (from source research §Appendix)
 

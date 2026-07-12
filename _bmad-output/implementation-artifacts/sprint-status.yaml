@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-07-12 (Story 5.1 benchmark set → done; code review fixed Kinnan duplicate-card bug)
+last_updated: 2026-07-12 (sprint-change-proposal-2026-07-12: epic-6 re-scoped to commander identity + local combo snapshot; 7-5 compare tool added)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -119,19 +119,21 @@ development_status:
   5-9-pure-score-entry-point-benchmark-validation: backlog
   epic-5-retrospective: optional
 
-  # Epic 6 (feature Epic 3): Live combo detection via Commander Spellbook
+  # Epic 6 (feature Epic 3): Commander identity & local combo snapshot
+  # (re-scoped 2026-07-12 per sprint-change-proposal-2026-07-12.md — bulk snapshot replaces live client/cache/key)
   epic-6: backlog
-  6-1-canonical-multiplicity-aware-cache-key-helper: backlog
-  6-2-async-spellbook-find-my-combos-client: backlog
-  6-3-ephemeral-combo-cache-table-repository: backlog
+  6-1-commander-flag-end-to-end: backlog
+  6-2-spellbook-bulk-combo-snapshot-import: backlog
+  6-3-combo-snapshot-repository: backlog
   epic-6-retrospective: optional
 
-  # Epic 7 (feature Epic 4): The assess_deck_power MCP tool & deterministic output
+  # Epic 7 (feature Epic 4): The assess_deck_power + compare_deck_power MCP tools & deterministic output
   epic-7: backlog
   7-1-register-the-async-tool-load-deck-resolve-format: backlog
-  7-2-combo-orchestration-the-degradation-ladder: backlog
+  7-2-combo-provisioning-the-degradation-ladder: backlog
   7-3-assess-deck-power-result-assembly-deterministic-serialization-human-summary: backlog
   7-4-end-to-end-tool-test-determinism-diff-regression: backlog
+  7-5-compare-deck-power-tool: backlog
   epic-7-retrospective: optional
 
 # Action items carried out of retrospectives (see epic-N-retro-*.md for full context)
