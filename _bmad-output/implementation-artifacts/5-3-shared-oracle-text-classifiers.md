@@ -1,6 +1,10 @@
+---
+baseline_commit: 2ba61e557f25074c88093da9cc0a864396fab84e
+---
+
 # Story 5.3: Shared oracle-text classifiers
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -116,66 +120,66 @@ to match is `src/logic/synergy.py` — lowercased substring/regex matching over 
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Design the classification surface** (AC: 1, 2, 5)
-  - [ ] Add `src/logic/assessment/classifiers.py` with a module docstring naming it the single
+- [x] **Task 1 — Design the classification surface** (AC: 1, 2, 5)
+  - [x] Add `src/logic/assessment/classifiers.py` with a module docstring naming it the single
         AD-10 oracle-text taxonomy (one vocabulary; tools/skills call it, never fork it).
-  - [ ] Define the closed category-token set as a module-level constant (e.g.
+  - [x] Define the closed category-token set as a module-level constant (e.g.
         `CATEGORY_*` string constants or a `Literal` alias — see Dev Notes "Recommended shape").
-  - [ ] Define one internal text-access helper (e.g. `_match_text(card) -> str`) that lowercases
+  - [x] Define one internal text-access helper (e.g. `_match_text(card) -> str`) that lowercases
         `oracle_text` **and falls back to joining `card_faces[*]["oracle_text"]` when the
         top-level text is empty** (trap #1), plus reminder-text stripping (trap #2) — every
         classifier matches through this one helper so the policy has a single owner.
-  - [ ] Per-card entry point (e.g. `classify_card(card: Card) -> frozenset[str]`) + deck-level
+  - [x] Per-card entry point (e.g. `classify_card(card: Card) -> frozenset[str]`) + deck-level
         aggregation over `Sequence[DeckCard]` returning quantity-aware counts and sorted
         card-name tuples per category (the `synergy.py` quantity idiom).
 
-- [ ] **Task 2 — FR6 pattern vocabulary** (AC: 2, 5)
-  - [ ] Ramp: mana-producing artifacts/creatures (`"add {"` mana abilities on non-Land
+- [x] **Task 2 — FR6 pattern vocabulary** (AC: 2, 5)
+  - [x] Ramp: mana-producing artifacts/creatures (`"add {"` mana abilities on non-Land
         `type_line`s), land-fetch-to-battlefield, cost-reduction is OUT of scope (keep v1 tight).
-  - [ ] Card draw/advantage: "draw a card/cards/that many cards", impulse-style exile-to-play is
+  - [x] Card draw/advantage: "draw a card/cards/that many cards", impulse-style exile-to-play is
         optional; document what's in/out at the pattern site.
-  - [ ] Removal/interaction: "destroy target", "exile target", "counter target", damage-to-target
+  - [x] Removal/interaction: "destroy target", "exile target", "counter target", damage-to-target
         removal, mass wipes ("destroy all/each"); consider a `board_wipe` sub-tag only if free —
         5.5 can add it if its 8×8 math needs it.
-  - [ ] Tutors: "search your library for a card / a … card" to hand or top of library, EXCLUDING
+  - [x] Tutors: "search your library for a card / a … card" to hand or top of library, EXCLUDING
         the land-fetch patterns already claimed by ramp (order the checks or make patterns
         disjoint).
-  - [ ] Comment each pattern group with 1–2 canonical card examples (they become the test cases).
+  - [x] Comment each pattern group with 1–2 canonical card examples (they become the test cases).
 
-- [ ] **Task 3 — FR10 win-condition tags** (AC: 3, 5)
-  - [ ] Explicit wincon: "you win the game" / "loses the game" (opponent-facing) patterns.
-  - [ ] Combo-piece heuristics: conservative text signals (untap-other-permanents, copy-spell/
+- [x] **Task 3 — FR10 win-condition tags** (AC: 3, 5)
+  - [x] Explicit wincon: "you win the game" / "loses the game" (opponent-facing) patterns.
+  - [x] Combo-piece heuristics: conservative text signals (untap-other-permanents, copy-spell/
         ability, "any number of times"); document that this is a heuristic pre-signal, superseded
         for combo purposes by 5.6's Spellbook matching.
-  - [ ] Evasive/haymaker finisher: numeric-power parse with `"*"`/`None` guard + evasion from
+  - [x] Evasive/haymaker finisher: numeric-power parse with `"*"`/`None` guard + evasion from
         `keywords` (case-insensitive — Scryfall stores `"Flying"`) and oracle text; haymaker text
         patterns (mass pump/overrun-style).
 
-- [ ] **Task 4 — FR12 hard triggers** (AC: 4, 5)
-  - [ ] Mass land denial: destroy/exile/return-all-lands, "each player sacrifices … lands",
+- [x] **Task 4 — FR12 hard triggers** (AC: 4, 5)
+  - [x] Mass land denial: destroy/exile/return-all-lands, "each player sacrifices … lands",
         lands-don't-untap stax patterns; per-card tag → deck boolean + contributing names.
-  - [ ] Extra turns: "take an extra turn" (self-directed); per-card tag → deck boolean + names.
+  - [x] Extra turns: "take an extra turn" (self-directed); per-card tag → deck boolean + names.
 
-- [ ] **Task 5 — Package exports** (AC: 1, 5)
-  - [ ] Re-export the public names from `src/logic/assessment/__init__.py` (extend the existing
+- [x] **Task 5 — Package exports** (AC: 1, 5)
+  - [x] Re-export the public names from `src/logic/assessment/__init__.py` (extend the existing
         `__all__` additively; do not touch `src/logic/__init__.py`).
-  - [ ] No `profiles.py` change is expected — classifiers are profile-independent raw signals; if
+  - [x] No `profiles.py` change is expected — classifiers are profile-independent raw signals; if
         you find yourself adding a threshold to `FormatProfile`, stop (that's 5.4/5.5/5.8).
 
-- [ ] **Task 6 — Offline unit tests** (AC: 6)
-  - [ ] Add `tests/unit/logic/test_assessment_classifiers.py` (flat, beside
+- [x] **Task 6 — Offline unit tests** (AC: 6)
+  - [x] Add `tests/unit/logic/test_assessment_classifiers.py` (flat, beside
         `test_assessment_profiles.py` — see Project Structure Notes).
-  - [ ] Build a small local `Card`-factory helper (or reuse the `tests/fixtures/card_data.py`
+  - [x] Build a small local `Card`-factory helper (or reuse the `tests/fixtures/card_data.py`
         style) producing minimal valid `Card`s — note `Card` requires many fields; a
         `make_card(**overrides)` helper keeps tests readable.
-  - [ ] Cover the AC6 matrix: per-category positives, negatives/traps, quantity math, multi-face
+  - [x] Cover the AC6 matrix: per-category positives, negatives/traps, quantity math, multi-face
         fallback, determinism/sorting. Failure messages name the card and category.
 
-- [ ] **Task 7 — Quality gates + plugin mirror** (AC: 7)
-  - [ ] `uv run ruff check . --fix && uv run ruff format .`
-  - [ ] `uv run mypy src/` (strict) — full hints on all new functions.
-  - [ ] `uv run pytest -m "not integration"` green (baseline: 729 passing after 5.2 review fix).
-  - [ ] Commit with the regenerated `plugin/` mirror staged (`uv run python -m
+- [x] **Task 7 — Quality gates + plugin mirror** (AC: 7)
+  - [x] `uv run ruff check . --fix && uv run ruff format .`
+  - [x] `uv run mypy src/` (strict) — full hints on all new functions.
+  - [x] `uv run pytest -m "not integration"` green (baseline: 729 passing after 5.2 review fix).
+  - [x] Commit with the regenerated `plugin/` mirror staged (`uv run python -m
         scripts.build_plugin` if the hook is missing). Never `--no-verify`.
 
 ## Dev Notes
@@ -382,8 +386,72 @@ plugin/                                # REGENERATED mirror (commit the diff)
 
 ### Agent Model Used
 
+Claude Fable 5 (claude-fable-5) via Claude Code
+
+### Implementation Plan
+
+- TDD, red-first: wrote `tests/unit/logic/test_assessment_classifiers.py` (48 tests) against
+  the story's recommended shape before the module existed (collection error = red), then
+  implemented `classifiers.py` to green.
+- Shape follows the story sketch exactly: nine `Final` string category tokens + a fixed-order
+  `CATEGORIES` tuple (closed set), `classify_card(Card) -> frozenset[str]` as the joinable
+  per-card primitive, `classify_deck(Sequence[DeckCard]) -> Mapping[str, CategoryCount]`
+  (frozen dataclass; quantity-aware count + sorted unique name tuple, zero-filled over the
+  full closed set), and FR12 convenience wrappers `detect_mass_land_denial` /
+  `detect_extra_turn_cards` returning frozen `HardTriggerFlag(triggered, card_names)`.
+- One text-access helper `_match_text` owns the policy: reminder-text stripping first
+  (local ~10-line fixed-point re-implementation of `index_builder.strip_reminder_text`,
+  cross-referenced in a comment — layer rule forbids importing `src/search`), then lowercase;
+  falls back to joining `card_faces[*]["oracle_text"]` when top-level text is empty (trap #1).
+
 ### Debug Log References
+
+- Red run: `uv run pytest tests/unit/logic/test_assessment_classifiers.py` → collection error
+  (module absent), as expected.
+- Green runs: 48/48 new tests; full fast suite `-m "not integration"` → **777 passed**
+  (729 baseline + 48 new), 5 deselected, no regressions.
+- `uv run ruff check . --fix` clean; `ruff format` reformatted only the new test file;
+  `uv run mypy src/` strict → no issues in 57 files.
+- `uv run python -m scripts.build_plugin` (pre-commit hook absent per epic-4 action item) →
+  mirror regenerated: `plugin/server/src/logic/assessment/{__init__.py,classifiers.py}`.
 
 ### Completion Notes List
 
+- **Vocabulary judgment calls, decided once and commented at pattern sites:**
+  - Ramp excludes any card whose (face-joined) `type_line` contains "Land" — pins the AC2
+    basic-land guardrail and also keeps fetchlands out of both ramp and tutor.
+  - Tutor = library search whose object span mentions no land AND doesn't put onto the
+    battlefield; battlefield-tutors (Natural Order style) are out of v1 scope per Task 2's
+    "to hand or top of library" definition. Land-fetch/tutor disjointness is structural, not
+    order-dependent.
+  - Tutor docstring carries the Oct-2025 "tutors do NOT feed the Bracket floor" note for 5.7.
+  - Finisher = haymaker team-pump text OR (numeric power ≥ 5 AND evasion from lowercased
+    `keywords` or "can't be blocked" oracle text); `"*"`/`"1+*"`/`None` power parses to None
+    and never qualifies (AC3 guard). Threshold documented as provisional (5.9 tunes).
+  - Extra-turn pattern matches "take(s) an extra turn" — Time Warp's "Target player takes an
+    extra turn" wording is the canonical test card, so the pattern is not restricted to
+    literally self-directed phrasing (presence-detection only; refinement is 5.7's).
+- Sideboard rows are deliberately NOT filtered (deck-composition policy belongs to the
+  caller); pinned by test.
+- `classify_deck` zero-fills every token in `CATEGORIES` so consumers never need membership
+  checks; determinism pinned by equal-double-call + sorted-tuple tests (AD-8 spirit).
+- No tool-layer, `profiles.py`, `synergy.py`, or `src/logic/__init__.py` changes (AC5 scope).
+- Tests verify behavior on synthetic canonical cards only — no pattern-list-content
+  assertions, so 5.9 pattern tuning won't shred them (verify-by-shape lesson applied).
+
 ### File List
+
+- `src/logic/assessment/classifiers.py` — NEW: the AD-10 taxonomy module.
+- `src/logic/assessment/__init__.py` — MODIFIED: additive re-exports + `__all__` extension.
+- `tests/unit/logic/test_assessment_classifiers.py` — NEW: 48 offline canonical-card tests.
+- `plugin/server/src/logic/assessment/classifiers.py` — REGENERATED mirror (new).
+- `plugin/server/src/logic/assessment/__init__.py` — REGENERATED mirror (modified).
+- `_bmad-output/implementation-artifacts/5-3-shared-oracle-text-classifiers.md` — story file
+  (frontmatter baseline_commit, checkboxes, Dev Agent Record, Status).
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — status transitions.
+
+## Change Log
+
+- 2026-07-12: Story 5.3 implemented — shared oracle-text classifiers (FR6/FR10/FR12) with
+  48 offline tests; fast suite 777 green; ruff/mypy clean; plugin mirror regenerated.
+  Status → review.
