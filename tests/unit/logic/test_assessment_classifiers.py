@@ -6,10 +6,7 @@ without rewriting these tests. Covers the AC6 matrix — per-category positives,
 negative guardrails/traps, quantity-awareness, multi-face fallback, and determinism.
 """
 
-from typing import Any
-
 from src.data.schemas.card import Card
-from src.data.schemas.deck import DeckCard
 from src.logic.assessment import (
     CARD_DRAW,
     CATEGORIES,
@@ -29,43 +26,9 @@ from src.logic.assessment import (
     detect_mass_land_denial,
 )
 
-# ---------------------------------------------------------------------------
-# Fixture factories
-# ---------------------------------------------------------------------------
-
-
-def make_card(**overrides: Any) -> Card:
-    """Build a minimal valid ``Card``, overriding only the fields a test cares about."""
-    defaults: dict[str, Any] = {
-        "id": "00000000-0000-0000-0000-000000000000",
-        "name": "Test Card",
-        "oracle_id": "11111111-1111-1111-1111-111111111111",
-        "mana_cost": "{1}",
-        "cmc": 1.0,
-        "type_line": "Sorcery",
-        "oracle_text": "",
-        "rarity": "common",
-        "set_code": "tst",
-        "set_name": "Test Set",
-        "collector_number": "1",
-        "colors": [],
-        "color_identity": [],
-        "legalities": {},
-    }
-    defaults.update(overrides)
-    return Card(**defaults)
-
-
-def make_deck_card(card: Card, quantity: int = 1, sideboard: bool = False) -> DeckCard:
-    """Wrap a ``Card`` in a ``DeckCard`` association row."""
-    return DeckCard(
-        deck_id="deck-1",
-        card_id=card.id,
-        quantity=quantity,
-        sideboard=sideboard,
-        card=card,
-    )
-
+# Fixture factories — promoted to tests/fixtures/assessment.py when Story 5.4 became the
+# second consumer (the G1 "consolidate before the second copy" lesson).
+from tests.fixtures.assessment import make_card, make_deck_card
 
 # --- Canonical cards (real oracle wordings; comments name the category they pin) ----------
 
