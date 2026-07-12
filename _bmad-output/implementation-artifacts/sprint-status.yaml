@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-07-12 (story 5-4 code review → done)
+last_updated: 2026-07-12 (story 5-5 created → ready-for-dev)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -112,7 +112,7 @@ development_status:
   5-2-format-profile-frozen-data-module: done
   5-3-shared-oracle-text-classifiers: done
   5-4-mana-base-curve-signals: done
-  5-5-consistency-interaction-structural-coverage-signals: backlog
+  5-5-consistency-interaction-structural-coverage-signals: ready-for-dev
   5-6-combo-record-combo-bracket-mapping: backlog
   5-7-dimension-vector-commander-bracket-floor-cedh-candidacy: backlog
   5-8-for-format-aggregate-tier-label-standard-fork-confidence-vocabulary: backlog
