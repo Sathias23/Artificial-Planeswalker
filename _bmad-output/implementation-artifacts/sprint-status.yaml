@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-07-12 (sprint-change-proposal-2026-07-12: epic-6 re-scoped to commander identity + local combo snapshot; 7-5 compare tool added)
+last_updated: 2026-07-12 (story 5-2 implemented → review)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -109,7 +109,7 @@ development_status:
   # Epic 5 (feature Epic 2): Deterministic scoring core
   epic-5: in-progress
   5-1-compose-the-calibration-benchmark-set: done
-  5-2-format-profile-frozen-data-module: backlog
+  5-2-format-profile-frozen-data-module: review
   5-3-shared-oracle-text-classifiers: backlog
   5-4-mana-base-curve-signals: backlog
   5-5-consistency-interaction-structural-coverage-signals: backlog
