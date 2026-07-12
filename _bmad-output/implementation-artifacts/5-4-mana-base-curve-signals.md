@@ -4,7 +4,7 @@ baseline_commit: 0e6f3982ac5c87f7a0641a8f48504742f7624ed5
 
 # Story 5.4: Mana-base & curve signals
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -188,6 +188,14 @@ define (5.3 deliberately did not pre-filter).
   - [x] `uv run pytest -m "not integration"` green (baseline: **777 passed** at story start).
   - [x] Commit with the regenerated `plugin/` mirror staged (`uv run python -m
         scripts.build_plugin`; hook absent). Never `--no-verify`.
+
+### Review Findings
+
+- [x] [Review][Patch] `_ANY_COLOR_PHRASE` substring match overcounts conditional fixing lands as unconditional 5-color sources — `src/logic/assessment/mana_base.py:941` (`_land_source_colors`). The Dev Notes accept Command Tower's "...in your commander's color identity" as a known false positive, but the same bare substring also matches real, commonly-played *conditional* lands such as Reflecting Pool ("Add one mana of any color **that a land you control could produce**"), which is a materially different and broader miscount than the one case the story calls out. Decision (Brad, 2026-07-12): tighten the detection to exclude conditional grants rather than accept the broader imprecision.
+- [x] [Review][Patch] `_FORMULA_COEFFICIENTS` / `_FORMULA_ANCHORS` are typed `dict[str, ...]` and looked up with an unchecked `[formula]` in both `karsten_land_delta` and `compute_pip_signals` [src/logic/assessment/mana_base.py]. `KarstenFormula` isn't enforced at runtime, so an unexpected string raises an uncaught `KeyError`, undermining the module's own "must degrade, never raise" framing. Retype the dicts as `dict[KarstenFormula, ...]` for static protection; no test currently exercises an invalid `formula`.
+- [x] [Review][Patch] No test constructs a `sideboard=True` `DeckCard` for `compute_curve`/`karsten_land_delta`/`compute_pip_signals` [tests/unit/logic/test_assessment_mana_base.py], unlike the 5.3 precedent (`test_sideboard_cards_are_not_filtered`). Code behavior is correct (none of the three functions reference `sideboard`), but a future regression that starts filtering would go unnoticed.
+- [x] [Review][Patch] Basic-land-type detection (`subtype in type_line`) [src/logic/assessment/mana_base.py:943, `_land_source_colors`] has no word-boundary guard, unlike the sibling `add {color}` regex which uses `\b`. Low realistic risk but inconsistent within the same file.
+- [x] [Review][Patch] The 3+-pip anchor cap is only asserted for the `sixty_card` table (`test_three_plus_pips_use_the_top_anchor`) [tests/unit/logic/test_assessment_mana_base.py] — no equivalent test covers the `commander` table's top anchor (33).
 
 ## Dev Notes
 

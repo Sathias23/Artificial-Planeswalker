@@ -58,7 +58,7 @@ KARSTEN_TOLERANCE_LANDS: Final = 2.0
 #: this module stays profile-independent (the 5.7/5.8 caller picks per format, AC5).
 KarstenFormula = Literal["commander", "sixty_card"]
 
-_FORMULA_COEFFICIENTS: Final[dict[str, tuple[float, float, float]]] = {
+_FORMULA_COEFFICIENTS: Final[dict[KarstenFormula, tuple[float, float, float]]] = {
     "commander": KARSTEN_COMMANDER_COEFFICIENTS,
     "sixty_card": KARSTEN_SIXTY_CARD_COEFFICIENTS,
 }
@@ -240,19 +240,23 @@ _MANA_SYMBOL_RE: Final = re.compile(r"\{([^}]+)\}")
 # Accepted v1 undercounts (5.9 calibration options): fetchlands (produce nothing
 # themselves), unusual production wordings, and non-land sources (dorks/rocks —
 # Karsten's primary tables count lands).
-_BASIC_LAND_TYPE_COLORS: Final[tuple[tuple[str, str], ...]] = (
-    ("plains", "W"),
-    ("island", "U"),
-    ("swamp", "B"),
-    ("mountain", "R"),
-    ("forest", "G"),
+_BASIC_LAND_TYPE_RES: Final[tuple[tuple[re.Pattern[str], str], ...]] = (
+    (re.compile(r"\bplains\b"), "W"),
+    (re.compile(r"\bisland\b"), "U"),
+    (re.compile(r"\bswamp\b"), "B"),
+    (re.compile(r"\bmountain\b"), "R"),
+    (re.compile(r"\bforest\b"), "G"),
 )
 _ADD_SYMBOL_RES: Final[tuple[tuple[re.Pattern[str], str], ...]] = tuple(
     (re.compile(r"\badd\b[^.\n]*\{" + color.lower() + r"\}"), color) for color in WUBRG
 )
-# "Add one mana of any color" -> a source for all five colors. Command Tower's "...in
-# your commander's color identity" also contains this substring — acceptable (v1).
-_ANY_COLOR_PHRASE: Final = "add one mana of any color"
+# "Add one mana of any color" -> a source for all five colors, UNLESS the grant is
+# conditional (e.g. Reflecting Pool "...that a land you control could produce", Exotic
+# Orchard "...that a land your opponents control could produce"): a trailing "that"
+# clause narrows the color to something other than "any", so it is excluded. Command
+# Tower's "...in your commander's color identity" is not narrowed by a "that" clause and
+# stays an accepted v1 false positive (unconditional in practice for most decks).
+_ANY_COLOR_UNCONDITIONAL_RE: Final = re.compile(r"add one mana of any color(?!\s+that\b)")
 
 #: Karsten colored-source anchors, 60-card: max pip intensity -> recommended sources.
 #: 1 pip ≈ 14 and 2 pips ≈ 18 are published values (docs/deck-assess.md:155); the
@@ -263,7 +267,7 @@ PIP_SOURCE_ANCHORS_SIXTY_CARD: Final[dict[int, int]] = {1: 14, 2: 18, 3: 20}
 #: linear scale is an honest v1 that Story 5.9's benchmark pass can replace.
 PIP_SOURCE_ANCHORS_COMMANDER: Final[dict[int, int]] = {1: 23, 2: 30, 3: 33}
 
-_FORMULA_ANCHORS: Final[dict[str, dict[int, int]]] = {
+_FORMULA_ANCHORS: Final[dict[KarstenFormula, dict[int, int]]] = {
     "commander": PIP_SOURCE_ANCHORS_COMMANDER,
     "sixty_card": PIP_SOURCE_ANCHORS_SIXTY_CARD,
 }
@@ -327,9 +331,9 @@ def _land_source_colors(card: Card) -> frozenset[str]:
     """Return the colors a Land-typed card can produce, per the documented v1 policy."""
     type_line = card.type_line.lower()
     text = _source_text(card)
-    if _ANY_COLOR_PHRASE in text:
+    if _ANY_COLOR_UNCONDITIONAL_RE.search(text):
         return frozenset(WUBRG)
-    colors = {color for subtype, color in _BASIC_LAND_TYPE_COLORS if subtype in type_line}
+    colors = {color for pattern, color in _BASIC_LAND_TYPE_RES if pattern.search(type_line)}
     colors.update(color for pattern, color in _ADD_SYMBOL_RES if pattern.search(text))
     return frozenset(colors)
 

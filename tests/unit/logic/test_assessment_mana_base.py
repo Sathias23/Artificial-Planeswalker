@@ -154,6 +154,17 @@ class TestComputeCurve:
         ]
         assert compute_curve(deck) == compute_curve(list(deck))
 
+    def test_sideboard_cards_are_not_filtered(self) -> None:
+        # Deck-composition policy belongs to the caller (the 5.3 precedent) — a
+        # sideboard=True row still counts.
+        deck = [
+            make_deck_card(llanowar_elves(), quantity=4),
+            make_deck_card(divination(), quantity=1, sideboard=True),
+        ]
+        signals = compute_curve(deck)
+        assert signals.spell_count == 5
+        assert signals.distribution == ((1, 4), (3, 1))
+
 
 # ---------------------------------------------------------------------------
 # FR8 Karsten land-count delta (AC3)
@@ -280,6 +291,11 @@ class TestKarstenLandDelta:
         assert first == second
         assert isinstance(first, KarstenLandSignal)
 
+    def test_sideboard_cards_are_not_filtered(self) -> None:
+        deck = [*pinned_karsten_deck(lands=30), make_deck_card(cheap_draw(), sideboard=True)]
+        signal = karsten_land_delta(deck, formula="commander")
+        assert signal.cheap_draw_ramp_count == 11
+
 
 # ---------------------------------------------------------------------------
 # FR8 pip demand & colored sources (AC4)
@@ -367,6 +383,14 @@ class TestPipDemand:
         )
         assert all(signals[color].pip_count == 0 for color in "WUBRG")
 
+    def test_sideboard_cards_are_not_filtered(self) -> None:
+        signals = by_color(
+            compute_pip_signals(
+                [make_deck_card(grizzly_bears(), sideboard=True)], formula="sixty_card"
+            )
+        )
+        assert signals["G"].pip_count == 1
+
 
 class TestColoredSources:
     def test_basic_forest_is_a_green_source(self) -> None:
@@ -414,6 +438,22 @@ class TestColoredSources:
         )
         signals = by_color(compute_pip_signals([make_deck_card(tower)], formula="commander"))
         assert all(signals[color].source_count == 1 for color in "WUBRG")
+
+    def test_conditional_any_color_land_is_not_an_unconditional_source(self) -> None:
+        # Reflecting Pool's color is conditional on lands you control, not "any color"
+        # outright — unlike Command Tower's unconditional grant, a trailing "that" clause
+        # must exclude it from the any-color match (accepted v1 undercount, like fetches).
+        reflecting_pool = make_card(
+            name="Reflecting Pool",
+            type_line="Land",
+            mana_cost="",
+            cmc=0.0,
+            oracle_text="{T}: Add one mana of any color that a land you control could produce.",
+        )
+        signals = by_color(
+            compute_pip_signals([make_deck_card(reflecting_pool)], formula="sixty_card")
+        )
+        assert all(signals[color].source_count == 0 for color in "WUBRG")
 
     def test_fetchland_is_not_a_source(self) -> None:
         # Fetches produce nothing themselves — documented, accepted v1 undercount.
@@ -476,6 +516,16 @@ class TestPipAdequacy:
         )
         white = by_color(compute_pip_signals([make_deck_card(triple)], formula="sixty_card"))["W"]
         assert white.recommended_sources == PIP_SOURCE_ANCHORS_SIXTY_CARD[3]
+
+    def test_three_plus_pips_use_the_top_anchor_for_commander(self) -> None:
+        triple = make_card(
+            name="Triple White",
+            type_line="Sorcery",
+            mana_cost="{W}{W}{W}",
+            cmc=3.0,
+        )
+        white = by_color(compute_pip_signals([make_deck_card(triple)], formula="commander"))["W"]
+        assert white.recommended_sources == PIP_SOURCE_ANCHORS_COMMANDER[3]
 
     def test_commander_formula_selects_the_scaled_anchor_table(self) -> None:
         deck = [make_deck_card(grizzly_bears(), quantity=1)]
