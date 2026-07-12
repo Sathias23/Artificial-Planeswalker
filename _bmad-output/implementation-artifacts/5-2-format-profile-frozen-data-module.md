@@ -434,8 +434,6 @@ claude-fable-5 (Claude Code)
 - `tests/unit/logic/test_assessment_profiles.py` (new)
 - `plugin/server/src/logic/assessment/__init__.py` (new — regenerated mirror)
 - `plugin/server/src/logic/assessment/profiles.py` (new — regenerated mirror)
-- `plugin/.claude-plugin/plugin.json` (modified — line-ending normalization from mirror build)
-- `plugin/.codex-plugin/plugin.json` (modified — line-ending normalization from mirror build)
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified — status tracking)
 - `_bmad-output/implementation-artifacts/5-2-format-profile-frozen-data-module.md` (modified)
 
