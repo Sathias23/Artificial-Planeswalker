@@ -4,7 +4,7 @@ baseline_commit: 8b6ecd9
 
 # Story 5.2: `FormatProfile` frozen-data module
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -174,6 +174,23 @@ passive, typed, frozen, versioned data bag per format; one scorer that reads and
   - [x] `uv run pytest -m "not integration"` green (currently 702 passing + your new tests).
   - [x] Commit: the `build-plugin-sync` hook rebuilds `plugin/` because `src/` changed — re-add
         the regenerated `plugin/` files and complete the commit. Never `--no-verify`.
+
+### Review Findings
+
+- [x] [Review][Patch] `combos_enabled` value is untested per-profile despite a documented specific
+      intent (`True` for both) [tests/unit/logic/test_assessment_profiles.py:165] — unlike
+      `rubric` and `multiplayer_variance_caveat`, which each get a per-format value assertion,
+      `test_combos_enabled_is_bool` only checks the type. A typo'd flip of either constant's
+      `combos_enabled` would ship silently. Fixed: added `test_combos_enabled_per_format`,
+      pinning the current documented value for both profiles (26 tests pass, was 25).
+- [x] [Review][Defer] No construction-time (`__post_init__`) validation for weight-sum /
+      win-turn-band ordering / rubric domain / non-empty version invariants
+      [src/logic/assessment/profiles.py:43,69] — deferred, pre-existing design tradeoff. AC3
+      permits (but doesn't require) `__post_init__` validation; the two hardcoded module
+      constants are already exhaustively covered by the offline test suite, so this is only a
+      gap for hypothetical future dynamic construction (e.g., an Epic 7 `PROFILES` lookup or a
+      5.9 tuning script). Revisit if/when `FormatProfile` instances are constructed anywhere
+      outside this module.
 
 ## Dev Notes
 

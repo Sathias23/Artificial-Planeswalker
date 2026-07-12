@@ -163,10 +163,21 @@ class TestFieldDomains:
         )
 
     def test_combos_enabled_is_bool(self, profile_name: str) -> None:
-        # The *value* is a tunable data edit (Story 5.9 / Epic 7 own flips); only the type
-        # and presence are contractual here.
+        # The exact value is a tunable data edit (Story 5.9 / Epic 7 own flips), but the
+        # *current* documented value (True for both formats, per FR20) is pinned below so an
+        # accidental flip doesn't ship silently.
         profile = _PROFILES[profile_name]
         assert isinstance(profile.combos_enabled, bool), (
             f"{profile_name}.combos_enabled must be a bool, "
             f"got {type(profile.combos_enabled).__name__}"
+        )
+
+    def test_combos_enabled_per_format(self) -> None:
+        assert COMMANDER_PROFILE.combos_enabled is True, (
+            "COMMANDER_PROFILE.combos_enabled must be True (Spellbook combo data is "
+            "Commander-centric)"
+        )
+        assert STANDARD_PROFILE.combos_enabled is True, (
+            "STANDARD_PROFILE.combos_enabled must be True (FR20's heuristic inputs literally "
+            "include combos)"
         )
