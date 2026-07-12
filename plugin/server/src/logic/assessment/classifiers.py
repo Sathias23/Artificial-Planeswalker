@@ -97,7 +97,8 @@ def _match_text(card: Card) -> str:
 
     Policy (trap #1): multi-face cards (split/DFC/MDFC) persist ``oracle_text=""`` with the
     real text in ``card_faces`` — when the top-level text is empty, fall back to joining all
-    faces' ``oracle_text`` values (faces without the key contribute nothing). Reminder text
+    faces' ``oracle_text`` values (faces without the key, or with an explicit ``None`` value
+    per Scryfall's nullable ``card_face.oracle_text``, contribute nothing). Reminder text
     is stripped *before* lowercasing so parenthetical restatements never trip a pattern
     (trap #2). Centralizing here means the fallback + stripping policy has exactly one owner.
 
@@ -109,7 +110,7 @@ def _match_text(card: Card) -> str:
     """
     text = card.oracle_text
     if not text and card.card_faces:
-        text = "\n".join(face.get("oracle_text", "") for face in card.card_faces)
+        text = "\n".join(face.get("oracle_text") or "" for face in card.card_faces)
     return _strip_reminder_text(text).lower()
 
 
@@ -205,7 +206,9 @@ _COMBO_PIECE_RES: Final[tuple[re.Pattern[str], ...]] = (
 _HAYMAKER_RE: Final = re.compile(r"\bcreatures you control (?:get|gain)[^.\n]*\+")
 # Finisher: evasion carried in oracle text ("can't be blocked" — Inkwell Leviathan style).
 _UNBLOCKABLE_RE: Final = re.compile(r"\bcan't be blocked\b")
-#: Evasion keywords (matched lowercased against ``Card.keywords`` and oracle text).
+#: Evasion keywords (matched lowercased against ``Card.keywords`` only; the oracle-text side
+#: of evasion detection only checks the narrower literal ``"can't be blocked"`` phrase via
+#: ``_UNBLOCKABLE_RE``, not these keyword words themselves).
 _EVASION_KEYWORDS: Final[frozenset[str]] = frozenset(
     {"flying", "menace", "trample", "shadow", "fear", "intimidate", "skulk"}
 )
@@ -371,6 +374,9 @@ def detect_mass_land_denial(deck_cards: Sequence[DeckCard]) -> HardTriggerFlag:
     """Detect mass land denial across a deck (FR12; WotC hard bracket trigger).
 
     Symmetric destruction still counts — Armageddon is the canonical mass-land-denial card.
+    Inherits ``classify_deck``'s policy of NOT filtering sideboard rows — callers who only want
+    the trigger status for cards actually played must filter ``deck_cards`` to
+    ``sideboard=False`` before calling.
 
     Args:
         deck_cards: The deck's card associations.
@@ -385,7 +391,9 @@ def detect_extra_turn_cards(deck_cards: Sequence[DeckCard]) -> HardTriggerFlag:
     """Detect extra-turn effects across a deck (FR12; WotC hard bracket trigger).
 
     A single extra-turn spell (Time Warp) sets the signal — chain refinement beyond
-    presence-detection is Story 5.7's concern.
+    presence-detection is Story 5.7's concern. Inherits ``classify_deck``'s policy of NOT
+    filtering sideboard rows — callers who only want the trigger status for cards actually
+    played must filter ``deck_cards`` to ``sideboard=False`` before calling.
 
     Args:
         deck_cards: The deck's card associations.

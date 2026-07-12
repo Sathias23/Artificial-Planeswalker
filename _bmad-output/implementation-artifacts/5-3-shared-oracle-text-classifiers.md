@@ -4,7 +4,7 @@ baseline_commit: 2ba61e557f25074c88093da9cc0a864396fab84e
 
 # Story 5.3: Shared oracle-text classifiers
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -181,6 +181,54 @@ to match is `src/logic/synergy.py` — lowercased substring/regex matching over 
   - [x] `uv run pytest -m "not integration"` green (baseline: 729 passing after 5.2 review fix).
   - [x] Commit with the regenerated `plugin/` mirror staged (`uv run python -m
         scripts.build_plugin` if the hook is missing). Never `--no-verify`.
+
+### Review Findings
+
+- [x] [Review][Patch] `_match_text` crashes if a `card_faces` entry has an explicit `oracle_text:
+      null` — Scryfall's Card Face object documents `oracle_text` as nullable, and
+      `face.get("oracle_text", "")` returns the raw `None` (not the default) when the key is
+      present, so `"\n".join(...)` raises `TypeError`. Fix: `face.get("oracle_text") or ""` in
+      both `src/` and the `plugin/` mirror. [src/logic/assessment/classifiers.py:110-113]
+- [x] [Review][Patch] `_EVASION_KEYWORDS`'s doc comment claims it's "matched lowercased against
+      Card.keywords and oracle text," but `_is_finisher` only checks these terms against
+      `Card.keywords` — the oracle-text side only checks the narrower literal `"can't be
+      blocked"` phrase. Comment overstates the code. [src/logic/assessment/classifiers.py:208-211]
+- [x] [Review][Patch] `detect_mass_land_denial`/`detect_extra_turn_cards` docstrings don't
+      disclose that they inherit `classify_deck`'s "sideboard rows are NOT filtered" policy —
+      for FR12 hard bracket triggers specifically, a caller (Story 5.7) passing raw `deck_cards`
+      including sideboard rows could set a Bracket-floor-relevant flag from a card the deck never
+      plays. Add a one-line caveat to both docstrings.
+      [src/logic/assessment/classifiers.py:370-396]
+- [x] [Review][Patch] Several AC6 test assertions lack the failure-message convention AC6 calls
+      for ("Failure messages name the card and category"): bare asserts at approx. lines 533, 539,
+      598, 632, 664, 685. Additionally, the first `TestMultiFace` fixture's only assertion
+      (`assert classify_card(mdfc) is not None`) is vacuously true since `classify_card` never
+      returns `None` — strengthen or remove it.
+      [tests/unit/logic/test_assessment_classifiers.py]
+- [x] [Review][Defer] `_detect_hard_trigger`-based functions each call `classify_deck`
+      independently with no memoization — checking both MLD and extra-turn back-to-back
+      reclassifies every card in the deck twice. No current caller does this (Story 5.7 not yet
+      built); revisit there. [src/logic/assessment/classifiers.py:364-396] — deferred, no current
+      consumer to be harmed; revisit if Story 5.7 calls both detectors together.
+- [x] [Review][Defer] `classify_card`'s `frozenset[str]` return has no deterministic ordering,
+      unlike the sorted-tuple discipline used everywhere else in the module for its stated
+      determinism goal. Only matters if a future caller serializes per-card output directly
+      instead of routing through `classify_deck`. [src/logic/assessment/classifiers.py:252-304]
+      — deferred, no current direct consumer.
+
+Dismissed as noise / handled elsewhere (not written as action items): ~14 pattern
+precision/recall observations (e.g. Isochron Scepter's copy-effect text untagged as a combo
+piece, MDFC spell-face tutors excluded via the joined `type_line`'s land check, single-target
+"target player loses the game" wincons, untap-enabler wordings like "untap it"/"untap enchanted
+creature", plural/numeric extra-turn phrasing as in Alrund's Epiphany's "takes two extra turns",
+`_HAYMAKER_RE`'s missing magnitude threshold, graveyard-hate cards tagged generic INTERACTION) —
+all explicitly covered by AC5/AC6's "pattern lists are provisional v1 vocabulary... tuned by
+5.9's benchmark pass without rewriting tests." Worth handing this list to Story 5.9 as candidate
+regression fixtures. Also dismissed: a claimed `\blands?\b`/"non-land" false-positive (current
+Oracle text uses the unhyphenated "nonland," which the word-boundary regex does not match), and
+a claimed RAMP/TUTOR gap for land-to-hand tutors (Weathered Wayfarer) — already explicit,
+documented v1 design intent per the RAMP pattern's own comment ("land searches are ramp's, or
+nothing").
 
 ## Dev Notes
 

@@ -530,13 +530,13 @@ class TestHardTriggers:
         deck = [make_deck_card(armageddon()), make_deck_card(divination())]
         flag = detect_mass_land_denial(deck)
         assert isinstance(flag, HardTriggerFlag)
-        assert flag.triggered is True
+        assert flag.triggered is True, "Armageddon must set the mass_land_denial deck flag"
         assert flag.card_names == ("Armageddon",)
 
     def test_detect_extra_turn_deck_flag(self) -> None:
         deck = [make_deck_card(time_warp(), quantity=2)]
         flag = detect_extra_turn_cards(deck)
-        assert flag.triggered is True
+        assert flag.triggered is True, "Time Warp must set the extra_turn deck flag"
         assert flag.card_names == ("Time Warp",)
 
     def test_hard_triggers_false_on_clean_deck(self) -> None:
@@ -594,8 +594,12 @@ class TestMultiFace:
         assert CARD_DRAW in classify_card(mdfc_canonical), (
             "A multi-face card with empty top-level oracle_text must classify from its faces"
         )
-        # And a faces-less empty card must simply classify as nothing, not crash.
-        assert classify_card(mdfc) is not None
+        # Non-canonical draw wording ("draw cards equal to...") doesn't match _DRAW_RE, and the
+        # face without an oracle_text key contributes nothing — the card must classify as
+        # nothing, not crash.
+        assert classify_card(mdfc) == frozenset(), (
+            "A face-having card with no canonical-wording matches must classify as nothing"
+        )
 
     def test_empty_card_with_no_faces_classifies_as_nothing(self) -> None:
         assert classify_card(make_card(name="Blank", oracle_text="")) == frozenset()
@@ -661,7 +665,9 @@ class TestDeckAggregation:
 
     def test_classify_card_is_deterministic(self) -> None:
         card = cultivate()
-        assert classify_card(card) == classify_card(card)
+        assert classify_card(card) == classify_card(card), (
+            f"{card.name} must classify identically across repeated calls"
+        )
 
 
 class TestClosedCategorySet:
@@ -682,7 +688,7 @@ class TestClosedCategorySet:
         assert tokens == set(CATEGORIES), (
             "CATEGORIES must equal exactly the nine exported category tokens"
         )
-        assert len(CATEGORIES) == 9
+        assert len(CATEGORIES) == 9, "CATEGORIES must have exactly nine members, no duplicates"
 
     def test_classify_card_returns_only_known_tokens(self) -> None:
         for card in (sol_ring(), demonic_tutor(), armageddon(), craterhoof_behemoth()):

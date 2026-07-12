@@ -429,3 +429,31 @@
 ## Deferred from: code review of story-5.2 (2026-07-12)
 
 - **No construction-time (`__post_init__`) validation for weight-sum / win-turn-band ordering / rubric domain / non-empty version invariants** — `src/logic/assessment/profiles.py:43,69` (`DimensionWeights`, `FormatProfile`). AC3 permits (doesn't require) `__post_init__` validation on the frozen dataclasses; the two hardcoded module constants are already exhaustively covered by `tests/unit/logic/test_assessment_profiles.py`, so this is only a gap for hypothetical future dynamic construction (e.g., an Epic 7 `PROFILES` lookup or a 5.9 tuning script constructing profiles outside this module). Revisit if/when `FormatProfile`/`DimensionWeights` are ever constructed anywhere else. (Source: Blind Hunter + Edge Case Hunter, independently; Severity: Low.)
+
+## Deferred from: code review of story-5.3 (2026-07-12)
+
+> 3-reviewer adversarial pass on Story 5.3's shared oracle-text classifiers
+> (`src/logic/assessment/classifiers.py`). No decision-needed items — AC5/AC6 explicitly state
+> pattern-list content is provisional v1 vocabulary owned by Story 5.9's benchmark pass ("tests
+> pin canonical-card behavior, not pattern contents"), which pre-answers most of what the review
+> layers surfaced. The real, unambiguous code/doc gaps are logged as `[Review][Patch]` items in
+> the story file instead. The two items below are real but have no current consumer to be harmed
+> by them yet.
+
+- **`_detect_hard_trigger`-based functions (`detect_mass_land_denial`, `detect_extra_turn_cards`) each call `classify_deck` independently, with no memoization** — `src/logic/assessment/classifiers.py:364-396`. Checking both FR12 hard triggers back-to-back reclassifies every card in the deck twice (full 9-category classification each time). No current caller does this — Story 5.7 (Bracket floor) is the first consumer and hasn't been built yet. Revisit there: call `classify_deck` once and read both buckets, or cache within a request scope. (Source: Blind Hunter; Severity: Low.)
+- **`classify_card`'s `frozenset[str]` return has no deterministic ordering**, unlike the sorted-tuple discipline (`CategoryCount.card_names`, `HardTriggerFlag.card_names`) used everywhere else in the module for its stated AD-8-spirit determinism goal — `src/logic/assessment/classifiers.py:252-304`. Only matters if a future caller serializes per-card output directly instead of routing through `classify_deck` (which does sort). No such direct consumer exists yet. (Source: Blind Hunter; Severity: Low.)
+
+Also surfaced but explicitly out of scope per AC5/AC6 (pattern-content tuning is Story 5.9's job,
+not logged as action items — candidate regression fixtures for that story's benchmark pass):
+Isochron Scepter's copy-effect text doesn't match any `WINCON_COMBO_PIECE` pattern despite being
+the module's own implied canonical combo example; MDFC spell-face tutors get excluded from
+`TUTOR` via the joined `type_line`'s land check when the back face is a land (e.g. a
+to-hand/top-of-library tutor printed on a modal DFC); single-target "target player loses the
+game" wincons (Door to Nothingness) don't match `_WINCON_EXPLICIT_RES`; untap-enabler wordings
+like "untap it" / "untap enchanted creature" (Freed from the Real) don't match
+`_COMBO_PIECE_RES`; plural/numeric extra-turn phrasing (Alrund's Epiphany's "takes two extra
+turns") doesn't match `_EXTRA_TURN_RE`; `_HAYMAKER_RE` has no pump-magnitude threshold (any
+"creatures you control get +1/+1"-style anthem matches identically to Craterhoof Behemoth);
+graveyard-hate cards (Tormod's Crypt) get the generic `INTERACTION` tag via the mass-wipe
+`(?:destroy|exile) (?:all|each)` branch. (Sources: Blind Hunter + Edge Case Hunter, batched;
+Severity: n/a — explicitly deferred by the story's own ACs.)
