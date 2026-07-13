@@ -4,7 +4,7 @@ baseline_commit: 9d2e5f9 # 5.5 review-patch commit (review -> done)
 
 # Story 5.6: `ComboRecord` + combo→bracket mapping
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -200,39 +200,39 @@ curves are 5.7/5.8's, the aggregate is 5.8's, and serialization/degradation poli
 
 ## Tasks / Subtasks
 
-- [ ] **Task 0 — Confirm baseline** (AC: —)
-  - [ ] Verify you start from `9d2e5f9` (the 5.5 review→done commit) with a clean working
+- [x] **Task 0 — Confirm baseline** (AC: —)
+  - [x] Verify you start from `9d2e5f9` (the 5.5 review→done commit) with a clean working
         tree apart from this story file.
-- [ ] **Task 1 — `ComboRecord` schema** (AC: 1, 2)
-  - [ ] `src/data/schemas/combo.py`: `ComboBucket` + `ComboBracketTag` Literals,
+- [x] **Task 1 — `ComboRecord` schema** (AC: 1, 2)
+  - [x] `src/data/schemas/combo.py`: `ComboBucket` + `ComboBracketTag` Literals,
         frozen `ComboRecord` with sorted-normalizing validators for `cards`/`produces`,
         Google docstrings stating the AD-11 single-shape contract and who sets `bucket`.
-  - [ ] Re-export from `src/data/schemas/__init__.py` (additive `__all__`).
-- [ ] **Task 2 — Pure matcher** (AC: 3)
-  - [ ] `src/logic/assessment/combos.py` module docstring: FR13/FR15 seam, derived-not-
+  - [x] Re-export from `src/data/schemas/__init__.py` (additive `__all__`).
+- [x] **Task 2 — Pure matcher** (AC: 3)
+  - [x] `src/logic/assessment/combos.py` module docstring: FR13/FR15 seam, derived-not-
         stored rule, the `WINCON_COMBO_PIECE` relationship, decide-once policies.
-  - [ ] Name-availability index (lowercased full + front-face names → quantity) and
+  - [x] Name-availability index (lowercased full + front-face names → quantity) and
         `match_combos` per AC3 (shortfall buckets, commander policy, `model_copy`,
         `spellbook_id`-sorted output).
-- [ ] **Task 3 — Bracket map** (AC: 4)
-  - [ ] `BRACKET_TAG_TO_BRACKET: Final[dict[ComboBracketTag, int]]` with the six pinned
+- [x] **Task 3 — Bracket map** (AC: 4)
+  - [x] `BRACKET_TAG_TO_BRACKET: Final[dict[ComboBracketTag, int]]` with the six pinned
         pairs + source comment (addendum §C / spine AD-11).
-- [ ] **Task 4 — Derived helpers** (AC: 5)
-  - [ ] Type tokens + `COMBO_TYPE_TOKENS` tuple (defined already bytewise-sorted, the 5.5
+- [x] **Task 4 — Derived helpers** (AC: 5)
+  - [x] Type tokens + `COMBO_TYPE_TOKENS` tuple (defined already bytewise-sorted, the 5.5
         tip); `combo_type`; `earliest_turn_estimate` with the documented v1 model + worked
         examples in the docstring, marked provisional/5.9-owned.
-- [ ] **Task 5 — Package exports** (AC: 1, 6)
-  - [ ] Extend `src/logic/assessment/__init__.py` `__all__` additively (matcher, map,
+- [x] **Task 5 — Package exports** (AC: 1, 6)
+  - [x] Extend `src/logic/assessment/__init__.py` `__all__` additively (matcher, map,
         tokens, helpers, and re-export `ComboRecord`/`ComboBucket`/`ComboBracketTag` for
         core consumers).
-- [ ] **Task 6 — Offline unit tests** (AC: 8)
-  - [ ] `make_combo_record` factory in `tests/fixtures/assessment.py`;
+- [x] **Task 6 — Offline unit tests** (AC: 8)
+  - [x] `make_combo_record` factory in `tests/fixtures/assessment.py`;
         `tests/unit/logic/test_assessment_combos.py` covering the full AC8 matrix.
-- [ ] **Task 7 — Quality gates + plugin mirror** (AC: 9)
-  - [ ] `uv run ruff check . --fix && uv run ruff format .`
-  - [ ] `uv run mypy src/` (strict) clean.
-  - [ ] `uv run pytest -m "not integration"` green (baseline: **875 passed**).
-  - [ ] Commit with the regenerated `plugin/` mirror staged (hook rebuilds it — verify both
+- [x] **Task 7 — Quality gates + plugin mirror** (AC: 9)
+  - [x] `uv run ruff check . --fix && uv run ruff format .`
+  - [x] `uv run mypy src/` (strict) clean.
+  - [x] `uv run pytest -m "not integration"` green (baseline: **875 passed**).
+  - [x] Commit with the regenerated `plugin/` mirror staged (hook rebuilds it — verify both
         the `assessment/` and `data/schemas/` mirror paths are staged). Never `--no-verify`.
 
 ## Dev Notes
@@ -503,11 +503,79 @@ plugin/                   # REGENERATED mirror (hook rebuilds; verify staged —
 
 ### Agent Model Used
 
+claude-fable-5 (Claude Fable 5)
+
 ### Debug Log References
+
+- RED: `tests/unit/logic/test_assessment_combos.py` written first — collection error
+  confirmed (modules absent) before any implementation.
+- GREEN: all 47 new tests passed on first run after implementation; no fix cycles.
+- Gates: `ruff check` clean (format joined a few long call lines), `mypy src/` strict
+  clean (61 files), `pytest -m "not integration"` → **922 passed, 5 deselected**
+  (875 baseline + 47 new, zero regressions).
 
 ### Completion Notes List
 
+- **Task 1:** `src/data/schemas/combo.py` — frozen `ComboRecord`
+  (`ConfigDict(frozen=True)`, `tuple[str, ...]` collections) + closed `ComboBucket` /
+  `ComboBracketTag` Literals. A shared `field_validator` normalizes `cards`/`produces`
+  to ascending bytewise order on construction (duplicates preserved). Module docstring
+  documents the AD-11 placement deviation (schema layer, not core — the AD-5/layering
+  triangle) and that only the core matcher sets `bucket`. Additively re-exported from
+  `src/data/schemas/__init__.py`.
+- **Task 2:** `src/logic/assessment/combos.py` — `_name_keys` is the single owner of
+  the name-normalization policy (lowercased full name + DFC front face split on
+  `" // "`); `_availability` (name→quantity) and `_cmc_by_name` (name→cmc, for the
+  earliest-turn join) both delegate to it (the 5.5 one-owner lesson). `match_combos`
+  implements the AC3 shortfall buckets (0→included, 1→almost_included, ≥2→excluded),
+  the availability-neutral commander zone gate (empty commanders or no piece among
+  commanders → excluded; documented v1 proxy), `model_copy(update={"bucket": ...})`
+  outputs, and `spellbook_id`-sorted deterministic ordering. Sideboard rows are NOT
+  filtered (standing 5.3–5.5 policy, documented + pinned).
+- **Task 3:** `BRACKET_TAG_TO_BRACKET: Final[dict[ComboBracketTag, int]]` — six pinned
+  pairs (RUTHLESS→4, SPICY/POWERFUL→3, ODDBALL/PRECON_APPROPRIATE→2, CASUAL→1) with
+  addendum §C source comment; totality over the Literal pinned by test.
+- **Task 4:** `TWO_CARD_INFINITE`/`MULTI_CARD_INFINITE`/`NON_INFINITE` +
+  `COMBO_TYPE_TOKENS` (defined already bytewise-sorted); `combo_type` (lowercased
+  `"infinite"` substring over `produces`; two-card = `len(cards) == 2`);
+  `earliest_turn_estimate` implements the documented v1 one-land-per-turn model
+  (`T >= ceil(max mv)` and `T*(T+1)/2 >= ceil(total mv)`), skips unresolvable pieces
+  (documented optimistic undercount), floor 1, pure integer arithmetic after ceil —
+  all marked provisional/5.9-owned.
+- **Task 5:** `src/logic/assessment/__init__.py` — additive `__all__` (kept
+  bytewise-sorted) exporting the matcher, map, tokens, helpers, and re-exporting
+  `ComboRecord`/`ComboBucket`/`ComboBracketTag` for core consumers.
+- **Task 6:** `make_combo_record` factory added to `tests/fixtures/assessment.py` (G1:
+  one home) with the story-specified defaults; `test_assessment_combos.py` covers the
+  full AC8 matrix in 47 tests (shape/frozen/validators/closed enums, all bucket +
+  quantity branches, case-insensitive + DFC normalization, all four commander-policy
+  branches + case-folded commander compare + the availability-neutral-gate pin,
+  determinism/ordering/no-mutation, map exactness + `get_args` totality, `combo_type`
+  on 2/3-piece infinite + non-infinite + case-insensitivity, earliest-turn docstring
+  worked examples + fractional-cmc ceil + monotonicity + unresolvable-skip + floor +
+  DFC cmc join, empty-variants/empty-deck edges, sideboard-counts pin, and both
+  packages' re-export surface). Every assert carries a failure message naming the
+  variant/signal.
+- **AC6 verified:** 5.7 can compute the two-card-infinite trigger and the
+  `combo_potential` inputs entirely from the public API; no 0–100 mapping, no Bracket
+  floor, no profile read, no confidence tokens, no serialization shipped.
+- **AC7 verified:** no edits to `classifiers.py`, `mana_base.py`, `consistency.py`,
+  `profiles.py`, `synergy.py`, `src/mcp_server`, repositories, models, or `scripts/`;
+  no DB objects; `WINCON_COMBO_PIECE` relationship noted in the module docstring
+  without importing any sibling assessment module.
+
 ### File List
+
+- `src/data/schemas/combo.py` (new)
+- `src/data/schemas/__init__.py` (modified — additive re-export)
+- `src/logic/assessment/combos.py` (new)
+- `src/logic/assessment/__init__.py` (modified — additive re-exports)
+- `tests/fixtures/assessment.py` (modified — + `make_combo_record`)
+- `tests/unit/logic/test_assessment_combos.py` (new)
+- `plugin/server/src/data/schemas/combo.py` (regenerated mirror)
+- `plugin/server/src/data/schemas/__init__.py` (regenerated mirror)
+- `plugin/server/src/logic/assessment/combos.py` (regenerated mirror)
+- `plugin/server/src/logic/assessment/__init__.py` (regenerated mirror)
 
 ## Change Log
 
@@ -515,3 +583,8 @@ plugin/                   # REGENERATED mirror (hook rebuilds; verify staged —
   completed: comprehensive developer guide covering the AD-11 placement triangle
   (Pydantic-at-schema-layer decision), matcher decide-once policies, closed enums,
   bracket map totality, derived-value ownership, and the full offline test matrix.
+- 2026-07-13: Story 5.6 implemented (Tasks 0–7) — frozen `ComboRecord` + closed enums
+  at the schema layer, pure matcher / bracket map / derived helpers in
+  `src/logic/assessment/combos.py`, additive exports, `make_combo_record` factory,
+  47 offline tests. Gates: ruff + mypy --strict clean, fast suite 922 passed
+  (875 baseline + 47 new, 0 regressions). Status → review.

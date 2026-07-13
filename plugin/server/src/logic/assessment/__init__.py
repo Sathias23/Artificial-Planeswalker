@@ -5,6 +5,7 @@ no network, no database, no clock. Format-relative scoring constants live in
 :mod:`src.logic.assessment.profiles` (AD-3); the scoring math lands in later Epic-5 stories.
 """
 
+from src.data.schemas.combo import ComboBracketTag, ComboBucket, ComboRecord
 from src.logic.assessment.classifiers import (
     CARD_DRAW,
     CATEGORIES,
@@ -22,6 +23,16 @@ from src.logic.assessment.classifiers import (
     classify_deck,
     detect_extra_turn_cards,
     detect_mass_land_denial,
+)
+from src.logic.assessment.combos import (
+    BRACKET_TAG_TO_BRACKET,
+    COMBO_TYPE_TOKENS,
+    MULTI_CARD_INFINITE,
+    NON_INFINITE,
+    TWO_CARD_INFINITE,
+    combo_type,
+    earliest_turn_estimate,
+    match_combos,
 )
 from src.logic.assessment.consistency import (
     CARD_DRAW_BELOW_BASELINE,
@@ -57,27 +68,35 @@ from src.logic.assessment.profiles import (
 )
 
 __all__ = [
+    "BRACKET_TAG_TO_BRACKET",
     "CARD_DRAW",
     "CARD_DRAW_BELOW_BASELINE",
     "CATEGORIES",
+    "COMBO_TYPE_TOKENS",
     "COMMANDER_PROFILE",
     "DIMENSIONS",
     "EXTRA_TURN",
     "INTERACTION",
     "INTERACTION_BELOW_BASELINE",
     "MASS_LAND_DENIAL",
+    "MULTI_CARD_INFINITE",
+    "NON_INFINITE",
     "OPENING_HAND_SIZE",
     "RAMP",
     "RAMP_BELOW_BASELINE",
     "STANDARD_PROFILE",
     "STRUCTURAL_GAP_TOKENS",
     "TUTOR",
+    "TWO_CARD_INFINITE",
     "WINCON_COMBO_PIECE",
     "WINCON_EXPLICIT",
     "WINCON_FINISHER",
     "WINCON_MISSING",
     "CategoryCount",
     "ColorPipSignal",
+    "ComboBracketTag",
+    "ComboBucket",
+    "ComboRecord",
     "CurveSignals",
     "DimensionWeights",
     "FormatProfile",
@@ -89,13 +108,16 @@ __all__ = [
     "cards_seen_by_turn",
     "classify_card",
     "classify_deck",
+    "combo_type",
     "compute_curve",
     "compute_pip_signals",
     "detect_extra_turn_cards",
     "detect_mass_land_denial",
+    "earliest_turn_estimate",
     "interaction_signals",
     "karsten_land_delta",
     "land_access_by_turn",
+    "match_combos",
     "probability_at_least",
     "redundancy_signals",
     "structural_gaps",

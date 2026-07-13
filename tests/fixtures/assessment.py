@@ -8,6 +8,7 @@ gate G1). Import these from every ``src/logic/assessment`` test module instead o
 from typing import Any
 
 from src.data.schemas.card import Card
+from src.data.schemas.combo import ComboRecord
 from src.data.schemas.deck import DeckCard
 
 
@@ -42,3 +43,23 @@ def make_deck_card(card: Card, quantity: int = 1, sideboard: bool = False) -> De
         sideboard=sideboard,
         card=card,
     )
+
+
+def make_combo_record(**overrides: Any) -> ComboRecord:
+    """Build a minimal valid ``ComboRecord``, overriding only the fields a test cares about.
+
+    Defaults: two already-sorted piece names, ``CASUAL`` bracket tag, no commander
+    requirement, ``bucket=None`` (the stored/repo state), one infinite ``produces``
+    entry, and ``popularity=None`` (Story 5.6).
+    """
+    defaults: dict[str, Any] = {
+        "spellbook_id": "1000-2000",
+        "cards": ("Combo Piece A", "Combo Piece B"),
+        "commander_required": False,
+        "bucket": None,
+        "bracket_tag": "CASUAL",
+        "produces": ("Infinite mana",),
+        "popularity": None,
+    }
+    defaults.update(overrides)
+    return ComboRecord(**defaults)
