@@ -4,7 +4,7 @@ baseline_commit: 88b1e66 # 5.4 review-patch commit (review -> done)
 
 # Story 5.5: Consistency, interaction & structural-coverage signals
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -178,45 +178,45 @@ Like 5.3 and 5.4, you emit **raw values** (floats/ints/booleans/tokens), never 0
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — Design the signal surface** (AC: 1)
-  - [ ] Add `src/logic/assessment/consistency.py` with a module docstring naming it the
+- [x] **Task 1 — Design the signal surface** (AC: 1)
+  - [x] Add `src/logic/assessment/consistency.py` with a module docstring naming it the
         FR17/FR7/FR9 module (raw signals only; 0–100 mapping is 5.7/5.8's; combo matching
         is 5.6's) and documenting the no-board-wipe-sub-tag decision (AC7).
-  - [ ] Frozen slots dataclasses per Dev Notes "Recommended shape".
-- [ ] **Task 2 — FR17 hypergeometric primitive** (AC: 2)
-  - [ ] `probability_at_least(*, deck_size, copies, drawn, min_count=1)` via `math.comb`,
+  - [x] Frozen slots dataclasses per Dev Notes "Recommended shape".
+- [x] **Task 2 — FR17 hypergeometric primitive** (AC: 2)
+  - [x] `probability_at_least(*, deck_size, copies, drawn, min_count=1)` via `math.comb`,
         summing the survival tail (or 1 − CDF, whichever reads cleaner); all AC2 edge
         clamps; Google docstring stating exactness + determinism.
-  - [ ] `OPENING_HAND_SIZE: Final = 7` and `cards_seen_by_turn(turn)` (= 7 + turn, turn 0 =
+  - [x] `OPENING_HAND_SIZE: Final = 7` and `cards_seen_by_turn(turn)` (= 7 + turn, turn 0 =
         opener) with the convention documented (research-doc worked example cited).
-- [ ] **Task 3 — FR17 access-by-turn signals** (AC: 3)
-  - [ ] `land_access_by_turn(deck_cards, turn)` → P(≥ turn lands among seen), using
+- [x] **Task 3 — FR17 access-by-turn signals** (AC: 3)
+  - [x] `land_access_by_turn(deck_cards, turn)` → P(≥ turn lands among seen), using
         `compute_curve(deck_cards).land_count` and quantity-aware deck size.
-  - [ ] Key-piece access: expose via the primitive (documented recipe in the docstring) —
+  - [x] Key-piece access: expose via the primitive (documented recipe in the docstring) —
         no speculative wrapper if it would just forward arguments.
-- [ ] **Task 4 — FR9 redundancy signals** (AC: 4)
-  - [ ] `redundancy_signals(deck_cards)` → fixed nine-tuple in `CATEGORIES` order joining
+- [x] **Task 4 — FR9 redundancy signals** (AC: 4)
+  - [x] `redundancy_signals(deck_cards)` → fixed nine-tuple in `CATEGORIES` order joining
         `classify_deck` counts to opener probabilities on actual deck size.
-- [ ] **Task 5 — FR7 interaction detail** (AC: 5)
-  - [ ] `interaction_signals(deck_cards)` → count, instant-speed count/ratio (documented
+- [x] **Task 5 — FR7 interaction detail** (AC: 5)
+  - [x] `interaction_signals(deck_cards)` → count, instant-speed count/ratio (documented
         instant/flash policy), CMC distribution as sorted tuple.
-- [ ] **Task 6 — FR9 structural gaps** (AC: 6)
-  - [ ] Token constants + `STRUCTURAL_GAP_TOKENS` tuple; per-formula baseline tables
+- [x] **Task 6 — FR9 structural gaps** (AC: 6)
+  - [x] Token constants + `STRUCTURAL_GAP_TOKENS` tuple; per-formula baseline tables
         (`dict[KarstenFormula, ...]`); `structural_gaps(deck_cards, *, formula)` returning
         a bytewise-sorted token tuple; the lands-exclusion note.
-- [ ] **Task 7 — Package exports** (AC: 1)
-  - [ ] Re-export public names from `src/logic/assessment/__init__.py` (extend `__all__`
+- [x] **Task 7 — Package exports** (AC: 1)
+  - [x] Re-export public names from `src/logic/assessment/__init__.py` (extend `__all__`
         additively; consider also exporting `KarstenFormula` if importing it here makes it
         de-facto public API; do not touch `src/logic/__init__.py` or `profiles.py`).
-- [ ] **Task 8 — Offline unit tests** (AC: 8)
-  - [ ] `tests/unit/logic/test_assessment_consistency.py` using
+- [x] **Task 8 — Offline unit tests** (AC: 8)
+  - [x] `tests/unit/logic/test_assessment_consistency.py` using
         `tests/fixtures/assessment.py` factories; cover the full AC8 matrix; failure
         messages name the card/signal.
-- [ ] **Task 9 — Quality gates + plugin mirror** (AC: 9)
-  - [ ] `uv run ruff check . --fix && uv run ruff format .`
-  - [ ] `uv run mypy src/` (strict) — full hints on all new functions.
-  - [ ] `uv run pytest -m "not integration"` green (baseline: **819 passed**).
-  - [ ] Commit with the regenerated `plugin/` mirror staged (`uv run python -m
+- [x] **Task 9 — Quality gates + plugin mirror** (AC: 9)
+  - [x] `uv run ruff check . --fix && uv run ruff format .`
+  - [x] `uv run mypy src/` (strict) — full hints on all new functions.
+  - [x] `uv run pytest -m "not integration"` green (baseline: **819 passed**).
+  - [x] Commit with the regenerated `plugin/` mirror staged (`uv run python -m
         scripts.build_plugin`; hook absent). Never `--no-verify`.
 
 ## Dev Notes
@@ -505,8 +505,70 @@ plugin/                                # REGENERATED mirror (commit the diff)
 
 ### Agent Model Used
 
+Claude Fable 5 (claude-fable-5) via Claude Code — bmad-dev-story workflow, 2026-07-13.
+
 ### Debug Log References
+
+- Pre-implementation verification of every pinned constant by direct `math.comb`
+  computation: 60/4/7 → 0.39950, 60/8/7 → 0.65359, 60/12/7 → **0.80935** (the story
+  Dev Notes' "0.8085" for 12 copies is itself slightly loose — the published 80.9%
+  matches 0.809 at 1e-3, so tests pin 0.8094); 99/1/12 → 12/99 exactly; the ~91% trap
+  pair confirmed as 0.8573 @ 7 seen / 0.9099 @ 8 seen.
+- TDD red→green: test module written first (import failure confirmed), then
+  `consistency.py` + `__init__.py` exports; 56 tests green on first implementation run.
+- One test-hygiene fix: fixture helper originally named `test_oracle()` was collected
+  by pytest as a test (PytestReturnNotNoneWarning) — renamed to `oracle_wincon()`.
 
 ### Completion Notes List
 
+- `src/logic/assessment/consistency.py` implements all three signal families:
+  - **FR17**: `probability_at_least` (exact `math.comb` hypergeometric, keyword-only,
+    AC2 degradation precedence — `min_count<=0` checked first, then zero/negative → 0.0,
+    clamps, unreachable `min_count` → 0.0; single final division for bit-identical
+    floats), `OPENING_HAND_SIZE=7`, `cards_seen_by_turn` (7+turn, turn 0 = opener,
+    12/99 worked example cited), `land_access_by_turn` (`min_count=turn`, so turn 0 →
+    1.0 via the primitive rule — no special case; land count via 5.4's `compute_curve`,
+    never re-implemented). Key-piece access is the documented primitive recipe in the
+    docstring — no forwarding wrapper added.
+  - **FR9 redundancy**: `RedundancySignal` frozen slots dataclass +
+    `redundancy_signals` — fixed nine-tuple in `CATEGORIES` order (AD-7), counts from
+    `classify_deck`, opener probability against actual deck size; rule-of-8 anchors
+    fall out of the math (pinned in tests, not stored).
+  - **FR7 interaction**: `InteractionSignals` + `interaction_signals` — quantity-aware
+    count, instant-speed count/ratio (policy: `"instant" in type_line.lower()` OR
+    `"flash"` in lowercased keywords; ratio 0.0 on zero interaction), CMC distribution
+    with 5.4's exact bucketing wording (`int(cmc)` floor, front-face value).
+  - **FR9 structural gaps**: the four closed AD-6 tokens (`card_draw_below_baseline`,
+    `interaction_below_baseline`, `ramp_below_baseline`, `wincon_missing`) as `Final`
+    constants + `STRUCTURAL_GAP_TOKENS` (defined already bytewise-sorted);
+    `STRUCTURAL_GAP_BASELINES: Final[dict[KarstenFormula, dict[str, int]]]`
+    (commander 6/6/6 per the "<6 ramp or <6 interaction" line; sixty_card 0/4/6 —
+    ramp baseline 0 never fires; provisional, 5.9-owned, sources commented);
+    `structural_gaps(deck_cards, *, formula)` with strictly-less semantics and the
+    lands-exclusion note (Karsten flood/screw owns land adequacy).
+- AC7 held: no classifier/profile/mana_base/fixture edits; no new categories; the
+  board-wipe sub-tag decision is documented in the module docstring; `KarstenFormula`
+  imported from `mana_base` (now also re-exported from the package `__init__`).
+- All five 5.4 review findings applied proactively: Literal-keyed baseline dicts,
+  sideboard=True test per public function, both formula tables exercised, no new
+  regexes (substring/set-membership only), no bare phrase patterns.
+- Gates: `ruff check` + `format` clean; `mypy --strict src/` clean (59 files);
+  `uv run pytest -m "not integration"` → **875 passed** (819 baseline + 56 new);
+  plugin mirror regenerated via `scripts.build_plugin` and staged in the same commit.
+
 ### File List
+
+- `src/logic/assessment/consistency.py` (NEW)
+- `src/logic/assessment/__init__.py` (MODIFIED — additive re-exports incl. `KarstenFormula`)
+- `tests/unit/logic/test_assessment_consistency.py` (NEW)
+- `plugin/server/src/logic/assessment/consistency.py` (REGENERATED mirror)
+- `plugin/server/src/logic/assessment/__init__.py` (REGENERATED mirror)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (story status tracking)
+- `_bmad-output/implementation-artifacts/5-5-consistency-interaction-structural-coverage-signals.md` (this story file)
+
+## Change Log
+
+- 2026-07-13: Story 5.5 implemented — FR17 hypergeometric access, FR7 interaction
+  detail, FR9 redundancy + closed `structural_gaps` token enum in
+  `src/logic/assessment/consistency.py`; 56 offline tests added (875 total green);
+  status → review.
