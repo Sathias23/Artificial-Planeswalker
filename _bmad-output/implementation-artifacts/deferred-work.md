@@ -457,3 +457,33 @@ turns") doesn't match `_EXTRA_TURN_RE`; `_HAYMAKER_RE` has no pump-magnitude thr
 graveyard-hate cards (Tormod's Crypt) get the generic `INTERACTION` tag via the mass-wipe
 `(?:destroy|exile) (?:all|each)` branch. (Sources: Blind Hunter + Edge Case Hunter, batched;
 Severity: n/a — explicitly deferred by the story's own ACs.)
+
+## Deferred from: code review of story-5.5 (2026-07-13)
+
+> 3-reviewer adversarial pass on Story 5.5's consistency/interaction/structural-coverage
+> signals (`src/logic/assessment/consistency.py`). No decision-needed items. The Edge Case
+> Hunter's one formal finding (`structural_gaps[formula]` unguarded `KeyError`) was dismissed
+> on triage, not deferred — it matches the exact accepted precedent already shipped in
+> `mana_base.py`'s `karsten_land_delta`/`compute_pip_signals` (mypy's `Literal` enforces the
+> contract at call sites, same as every sibling function in the module).
+
+- **`classify_card` (Story 5.3) doesn't exclude land-typed cards from the
+  `INTERACTION`/`CARD_DRAW`/`WINCON_*` tags** (only from `RAMP`/`TUTOR`) —
+  `src/logic/assessment/consistency.py:259`. A land whose oracle text matches an interaction
+  pattern (e.g. a "destroy target artifact" land) is silently folded into
+  `interaction_signals`'s count and CMC-0 bucket. Pre-existing Story 5.3 classifier behavior,
+  not caused by this change — revisit if a downstream consumer (5.7/5.8) needs a
+  nonland-only interaction read. (Source: Blind Hunter; Severity: Low.)
+- **`STRUCTURAL_GAP_BASELINES` is `dict[KarstenFormula, dict[str, int]]`** — the outer
+  `KarstenFormula` key is Literal-checked (the 5.4 review lesson), but the inner category
+  keys (`CARD_DRAW`/`INTERACTION`/`RAMP`) remain plain `str`, so a future typo'd/missing key
+  is a runtime `KeyError` inside `structural_gaps`, not a mypy error —
+  `src/logic/assessment/consistency.py:310`. Root cause is `classifiers.py`'s untyped
+  category constants from Story 5.3; fixing it properly means Literal-typing those constants
+  upstream, out of this story's scope. (Source: Blind Hunter; Severity: Low.)
+- **`probability_at_least` has no property/invariant test** asserting output always stays in
+  `[0.0, 1.0]` for arbitrary valid inputs — `src/logic/assessment/consistency.py:59`. It's the
+  shared primitive every other function in the module (and future 5.6/5.7 combo-probability
+  call sites) delegates to; only pinned exact-value/edge-case tests exist today. Optional
+  hardening beyond AC8's required test matrix — revisit if a future refactor touches the
+  summation/clamp logic. (Source: Blind Hunter; Severity: Low.)

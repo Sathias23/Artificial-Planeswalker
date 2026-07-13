@@ -311,13 +311,13 @@ class TestRedundancySignals:
         ]
         counts = classify_deck(deck)
         for signal in redundancy_signals(deck):
-            assert signal.count == counts[signal.category].count
+            assert signal.count == counts[signal.category].count, signal.category
 
     def test_zero_count_categories_carry_probability_zero(self) -> None:
         deck = [make_deck_card(grizzly_bears(), quantity=40)]
         for signal in redundancy_signals(deck):
-            assert signal.count == 0
-            assert signal.opener_probability == 0.0
+            assert signal.count == 0, signal.category
+            assert signal.opener_probability == 0.0, signal.category
 
     def test_opener_probability_uses_actual_deck_size(self) -> None:
         # 4 draw spells in a 40-card deck, not a hard-coded 60.
@@ -337,8 +337,8 @@ class TestRedundancySignals:
 
     def test_empty_deck_returns_zeroed_signals_without_raising(self) -> None:
         for signal in redundancy_signals([]):
-            assert signal.count == 0
-            assert signal.opener_probability == 0.0
+            assert signal.count == 0, signal.category
+            assert signal.opener_probability == 0.0, signal.category
 
     def test_sideboard_cards_are_not_filtered(self) -> None:
         deck = [make_deck_card(sol_ring(), quantity=2, sideboard=True)]
@@ -470,9 +470,9 @@ class TestStructuralGaps:
     def test_tokens_are_count_free_snake_case(self) -> None:
         # AD-6: tokens never embed counts or phrases.
         for token in STRUCTURAL_GAP_TOKENS:
-            assert token == token.lower()
-            assert not any(character.isdigit() for character in token)
-            assert " " not in token
+            assert token == token.lower(), token
+            assert not any(character.isdigit() for character in token), token
+            assert " " not in token, token
 
     def test_deck_at_every_commander_baseline_emits_no_tokens(self) -> None:
         assert structural_gaps(commander_deck_at_baselines(), formula="commander") == ()
@@ -498,8 +498,14 @@ class TestStructuralGaps:
             ]
             return [*rows, make_deck_card(oracle_wincon(), quantity=1)]
 
-        assert token not in structural_gaps(deck_with(baselines[category]), formula="commander")
-        assert token in structural_gaps(deck_with(baselines[category] - 1), formula="commander")
+        assert token not in structural_gaps(deck_with(baselines[category]), formula="commander"), (
+            category,
+            token,
+        )
+        assert token in structural_gaps(deck_with(baselines[category] - 1), formula="commander"), (
+            category,
+            token,
+        )
 
     def test_sixty_card_table_flips_at_its_own_baselines(self) -> None:
         # The 5.4 review lesson: exercise BOTH formula tables.

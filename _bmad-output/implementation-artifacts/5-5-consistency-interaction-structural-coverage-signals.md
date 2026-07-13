@@ -4,7 +4,7 @@ baseline_commit: 88b1e66 # 5.4 review-patch commit (review -> done)
 
 # Story 5.5: Consistency, interaction & structural-coverage signals
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -217,7 +217,64 @@ Like 5.3 and 5.4, you emit **raw values** (floats/ints/booleans/tokens), never 0
   - [x] `uv run mypy src/` (strict) — full hints on all new functions.
   - [x] `uv run pytest -m "not integration"` green (baseline: **819 passed**).
   - [x] Commit with the regenerated `plugin/` mirror staged (`uv run python -m
-        scripts.build_plugin`; hook absent). Never `--no-verify`.
+        scripts.build_plugin`; hook installed as of `88b1e66` — see Baseline note). Never
+        `--no-verify`.
+
+### Review Findings
+
+- [x] [Review][Patch] `structural_gaps`'s `sixty_card` ramp baseline is `0`, making
+      `ramp_below_baseline` permanently unreachable for the whole format — intentional
+      (ramp isn't a 60-card structural requirement) but undocumented in the
+      `structural_gaps`/`STRUCTURAL_GAP_TOKENS` public docstrings. [src/logic/assessment/consistency.py:310]
+- [x] [Review][Patch] The v1 instant-speed heuristic (`_is_instant_speed`) has no path for
+      permanent-based activated-ability interaction (e.g. a land/artifact "{T}: Destroy
+      target artifact" with no Flash keyword), understating `instant_speed_ratio` for such
+      decks; the module already documents two other v1 gaps but not this one.
+      [src/logic/assessment/consistency.py:208]
+- [x] [Review][Patch] `redundancy_signals` recomputes deck size via its own
+      `sum(deck_card.quantity ...)` instead of reusing `compute_curve`'s
+      `land_count + spell_count` (used two functions above it in the same module) —
+      currently always equal since `_is_land` is an exhaustive land/spell split, but two
+      independently-maintained "total deck size" computations violate the module's own
+      "one owner" principle. [src/logic/assessment/consistency.py:180]
+- [x] [Review][Patch] AC4/Dev Notes prose cites the rule-of-8 anchor for 12 copies as
+      `0.8085`, but the true `math.comb` value is `0.80935…` and the shipped test pins
+      `0.8094` — the Dev Agent's own Debug Log Reference already caught and corrected the
+      number but never amended the AC/Dev-Notes prose above it.
+      [_bmad-output/implementation-artifacts/5-5-consistency-interaction-structural-coverage-signals.md:249,437]
+- [x] [Review][Patch] Story doc self-contradicts on pre-commit hook status: the "Baseline
+      note" (story-creation snapshot) says the hook IS installed as of `88b1e66`, while
+      Task 9 and "Previous-story intelligence" a few sections later still repeat unmodified
+      "hook absent" boilerplate. [_bmad-output/implementation-artifacts/5-5-consistency-interaction-structural-coverage-signals.md:241]
+- [x] [Review][Patch] Task 8 is checked off claiming "failure messages name the card/signal",
+      but every assertion in the new test file is a bare `assert expr` with no message —
+      zero matches for `assert ..., "..."`. [tests/unit/logic/test_assessment_consistency.py]
+- [x] [Review][Defer] `classify_card` (Story 5.3) doesn't exclude land-typed cards from the
+      `INTERACTION`/`CARD_DRAW`/`WINCON_*` tags (only from `RAMP`/`TUTOR`), so a land whose
+      oracle text matches an interaction pattern is silently folded into
+      `interaction_signals`'s count and CMC-0 bucket — deferred, pre-existing Story 5.3
+      classifier behavior, not caused by this change. [src/logic/assessment/consistency.py:259]
+- [x] [Review][Defer] `STRUCTURAL_GAP_BASELINES` is `dict[KarstenFormula, dict[str, int]]` —
+      the outer `KarstenFormula` key is Literal-checked (the 5.4 review lesson), but the
+      inner category keys (`CARD_DRAW`/`INTERACTION`/`RAMP`) remain plain `str`, so a future
+      typo'd/missing key is a runtime `KeyError`, not a mypy error — deferred, root cause is
+      `classifiers.py`'s untyped category constants from Story 5.3, out of this story's
+      scope. [src/logic/assessment/consistency.py:310]
+- [x] [Review][Defer] `probability_at_least` — the shared primitive every other function in
+      this module (and future 5.6/5.7 combo-probability call sites) delegates to — has only
+      pinned exact-value tests, no property/invariant test that output always stays in
+      `[0.0, 1.0]` for arbitrary valid inputs — deferred, optional hardening beyond AC8's
+      required matrix. [src/logic/assessment/consistency.py:59]
+
+Dismissed as noise (documented/accepted precedent, or not a code defect):
+sideboard rows inflating hypergeometric probability math (matches the documented, already-
+accepted 5.3/5.4 "caller filters" policy; Epic 7's caller already passes mainboard-only rows
+per spec); `structural_gaps[formula]` unguarded `KeyError` for an out-of-`Literal` `formula`
+(matches the exact accepted precedent already shipped in `mana_base.py`'s
+`karsten_land_delta`/`compute_pip_signals` — mypy enforces the `Literal` contract at call
+sites, same as every sibling function); the reviewer's diff excerpt omitting the `plugin/`
+mirror files (verified directly against the actual commit that the mirror is present and
+byte-identical to `src/` — an artifact of how the review diff was produced, not a code gap).
 
 ## Dev Notes
 
@@ -246,7 +303,7 @@ commit (the hook rebuilds it; verify it's staged, never `--no-verify`).
 ### The published-constant traps (verified by direct computation at story creation)
 
 - **Rule-of-8 anchors are exact:** P(≥1) with `deck_size=60, drawn=7` gives
-  4 copies → 0.3995, 8 → 0.6537, 12 → 0.8085 — matching the published 39.9/65.4/80.9%
+  4 copies → 0.3995, 8 → 0.6537, 12 → 0.8094 — matching the published 39.9/65.4/80.9%
   (docs/deck-assess.md:124). Safe to pin with `pytest.approx(…, abs=1e-3)`.
 - **The turn-N convention is derivable from the doc itself:** "a single copy in a 99-card
   deck is only ~12% to appear by turn 5" (docs/deck-assess.md:154) = 12 seen cards =
@@ -411,9 +468,9 @@ order" and the AD-8 emission order coincide — one less thing to get wrong.
   `face.get(key) or ""`. (You likely never touch `card_faces` in this story — `cmc`,
   `type_line`, `keywords` are all top-level and non-nullable-coerced — but if you do, this
   rule applies.)
-- **Plugin mirror:** `.git/hooks/pre-commit` is absent in this checkout — run
-  `uv run python -m scripts.build_plugin` explicitly and stage
-  `plugin/server/src/logic/assessment/` in the same commit. Line-ending-only
+- **Plugin mirror:** the pre-commit hook is installed as of `88b1e66` (see Baseline note)
+  and runs `scripts.build_plugin` automatically — verify `plugin/server/src/logic/assessment/`
+  is staged in the same commit rather than running the script manually. Line-ending-only
   `plugin/*.json` diffs are noise; don't chase them.
 - **Fast-suite baseline: 819 passed** (verified at story-creation time, post-5.4-review).
 
@@ -434,7 +491,7 @@ order" and the AD-8 emission order coincide — one less thing to get wrong.
 - `tests.*` is mypy-exempt but write full hints anyway (matches siblings).
 - Useful pinned-math cases (all derivable by hand, verified at story creation):
   `probability_at_least(deck_size=60, copies=4, drawn=7)` ≈ 0.3995;
-  `copies=8` ≈ 0.6537; `copies=12` ≈ 0.8085;
+  `copies=8` ≈ 0.6537; `copies=12` ≈ 0.8094;
   `(deck_size=99, copies=1, drawn=12)` = 12/99 ≈ 0.12121;
   `(deck_size=60, copies=24, drawn=7, min_count=2)` ≈ 0.8573 and `drawn=8` ≈ 0.9099
   (the ~91% trap pair).

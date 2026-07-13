@@ -177,7 +177,8 @@ def redundancy_signals(deck_cards: Sequence[DeckCard]) -> tuple[RedundancySignal
         :data:`CATEGORIES` order.
     """
     counts = classify_deck(deck_cards)
-    deck_size = sum(deck_card.quantity for deck_card in deck_cards)
+    curve = compute_curve(deck_cards)
+    deck_size = curve.land_count + curve.spell_count
     return tuple(
         RedundancySignal(
             category=category,
@@ -200,7 +201,12 @@ def redundancy_signals(deck_cards: Sequence[DeckCard]) -> tuple[RedundancySignal
 #: appears in its lowercased ``type_line`` OR ``"flash"`` is among its lowercased
 #: ``keywords``. Multi-face type lines are ``//``-joined at top level, so an
 #: "Instant // Sorcery" split counts instant-speed — conservative, accepted v1.
-#: Text-granted flash ("as though it had flash") is an accepted v1 undercount.
+#: Text-granted flash ("as though it had flash") is an accepted v1 undercount. A third
+#: gap in the same direction: a permanent (land/artifact/creature) whose activated
+#: ability is ``INTERACTION``-tagged reads as sorcery-speed here even though MTG's own
+#: timing rules make any activated ability instant-speed unless the card says otherwise
+#: — also an accepted v1 undercount, not modeled until a card-level activated-ability
+#: timing signal exists.
 _INSTANT_TYPE: Final = "instant"
 _FLASH_KEYWORD: Final = "flash"
 
@@ -307,6 +313,9 @@ STRUCTURAL_GAP_TOKENS: Final[tuple[str, ...]] = (
 #: reference, the 6-line is the *gap* threshold — 8×8 theory. Sixty-card: ramp is not a
 #: structural requirement (baseline 0 → the token simply never fires); draw 4 /
 #: interaction 6 are honest provisional guesses that 5.9's Standard anchors calibrate.
+#: Consequence: :data:`RAMP_BELOW_BASELINE` is permanently unreachable for every
+#: ``sixty_card`` deck (a quantity-aware count can never be negative) — intentional, not
+#: a bug; ramp simply isn't part of the 60-card structural-coverage read.
 STRUCTURAL_GAP_BASELINES: Final[dict[KarstenFormula, dict[str, int]]] = {
     "commander": {RAMP: 6, CARD_DRAW: 6, INTERACTION: 6},
     "sixty_card": {RAMP: 0, CARD_DRAW: 4, INTERACTION: 6},
