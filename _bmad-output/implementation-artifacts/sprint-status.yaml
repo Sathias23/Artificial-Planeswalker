@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-07-14 (story 5-6 code review → done; 3 patches applied)
+last_updated: 2026-07-14 (story 5-7 implemented → review)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -114,7 +114,7 @@ development_status:
   5-4-mana-base-curve-signals: done
   5-5-consistency-interaction-structural-coverage-signals: done
   5-6-combo-record-combo-bracket-mapping: done
-  5-7-dimension-vector-commander-bracket-floor-cedh-candidacy: backlog
+  5-7-dimension-vector-commander-bracket-floor-cedh-candidacy: review
   5-8-for-format-aggregate-tier-label-standard-fork-confidence-vocabulary: backlog
   5-9-pure-score-entry-point-benchmark-validation: backlog
   epic-5-retrospective: optional

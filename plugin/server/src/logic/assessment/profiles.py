@@ -27,6 +27,8 @@ version, re-run the benchmark. Tests verify shape and invariants only, never exa
 from dataclasses import dataclass
 from typing import Final, Literal
 
+from src.logic.assessment.mana_base import KarstenFormula
+
 #: The AD-7 closed 7-dimension key set, in the AC/spine listing order (the one canonical home —
 #: Story 5.7's vector and 5.8's aggregate import it from here so the key set can never fork).
 DIMENSIONS: Final[tuple[str, ...]] = (
@@ -83,6 +85,9 @@ class FormatProfile:
             Commander Brackets rubric; ``"heuristic_only"`` rides the heuristic-only fork.
         win_turn_band: Inclusive expected-win-turn band ``(lo, hi)``, ``lo <= hi`` — the
             ``speed`` dimension's mapping anchor (Story 5.7).
+        karsten_formula: Which published Karsten regression/anchor family the scorer
+            applies for this format (Story 5.7) — the 5.4/5.5 ``KarstenFormula`` selector,
+            now profile-driven (AD-3) so ``dimension_vector`` needs no ``rubric`` branch.
         weights: Aggregate weights over the closed 7-dimension set; sum to 1.0 (Story 5.8).
         combos_enabled: Whether combo provisioning runs for this format (Epic 7 branches on
             this; Story 4.2 context).
@@ -93,6 +98,7 @@ class FormatProfile:
     format_profile_version: str
     rubric: Literal["brackets", "heuristic_only"]
     win_turn_band: tuple[int, int]
+    karsten_formula: KarstenFormula
     weights: DimensionWeights
     combos_enabled: bool
     multiplayer_variance_caveat: bool
@@ -100,11 +106,12 @@ class FormatProfile:
 
 #: Commander (multiplayer, Bracket-rubric) profile. Provisional values — 5.9 owns tuning.
 COMMANDER_PROFILE: Final[FormatProfile] = FormatProfile(
-    format_profile_version="commander-v1",
+    format_profile_version="commander-v2",  # v2: + karsten_formula (Story 5.7, AD-3 bump rule).
     rubric="brackets",  # Commander scores against the Brackets rubric (FR18).
     # Casual-Commander games are typically decided around turns 7-10 (deck-assess §1 format
     # research); cEDH candidacy (much faster wins) is flagged separately in 5.7.
     win_turn_band=(7, 10),
+    karsten_formula="commander",  # Karsten 99-card regression + Commander pip anchors (5.4).
     # Provisional spread: multiplayer Commander rewards staying power — consistency,
     # resilience, card advantage, and combo potential over raw speed (deck-assess §7.2
     # hand-tuned starting point). Sum = 1.0; Story 5.9 owns tuning (edit → bump → re-benchmark).
@@ -123,11 +130,12 @@ COMMANDER_PROFILE: Final[FormatProfile] = FormatProfile(
 
 #: Standard (1v1, heuristic-only) profile. Provisional values — 5.9 owns tuning.
 STANDARD_PROFILE: Final[FormatProfile] = FormatProfile(
-    format_profile_version="standard-v1",
+    format_profile_version="standard-v2",  # v2: + karsten_formula (Story 5.7, AD-3 bump rule).
     rubric="heuristic_only",  # Standard has no Brackets; heuristic-only fork (FR20).
     # 1v1 Standard games are typically decided around turns 5-8 (deck-assess §1 format
     # research) — faster than multiplayer Commander.
     win_turn_band=(5, 8),
+    karsten_formula="sixty_card",  # Karsten 60-card regression + published pip anchors (5.4).
     # Provisional spread: FR20 emphasizes curve/interaction/Karsten-60 for Standard — speed,
     # interaction, and mana efficiency lead; combo potential is a minor signal in modern
     # Standard. Sum = 1.0; Story 5.9 owns tuning (edit → bump → re-benchmark).

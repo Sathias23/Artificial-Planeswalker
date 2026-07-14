@@ -181,3 +181,29 @@ class TestFieldDomains:
             "STANDARD_PROFILE.combos_enabled must be True (FR20's heuristic inputs literally "
             "include combos)"
         )
+
+    def test_karsten_formula_per_format(self) -> None:
+        # Story 5.7 (AC6): the profile-driven Karsten formula selector — how
+        # dimension_vector picks 5.4/5.5 math without a rubric branch.
+        assert COMMANDER_PROFILE.karsten_formula == "commander", (
+            "COMMANDER_PROFILE.karsten_formula must be 'commander' (99-card regression), "
+            f"got {COMMANDER_PROFILE.karsten_formula!r}"
+        )
+        assert STANDARD_PROFILE.karsten_formula == "sixty_card", (
+            "STANDARD_PROFILE.karsten_formula must be 'sixty_card' (60-card regression), "
+            f"got {STANDARD_PROFILE.karsten_formula!r}"
+        )
+
+    def test_versions_bumped_for_karsten_formula_addition(self) -> None:
+        # AD-3 bump rule: the Story 5.7 additive field change bumps BOTH profile versions
+        # in the same edit (v1 -> v2).
+        assert COMMANDER_PROFILE.format_profile_version == "commander-v2", (
+            "COMMANDER_PROFILE.format_profile_version must be 'commander-v2' after the "
+            f"karsten_formula addition (AD-3 bump rule), got "
+            f"{COMMANDER_PROFILE.format_profile_version!r}"
+        )
+        assert STANDARD_PROFILE.format_profile_version == "standard-v2", (
+            "STANDARD_PROFILE.format_profile_version must be 'standard-v2' after the "
+            f"karsten_formula addition (AD-3 bump rule), got "
+            f"{STANDARD_PROFILE.format_profile_version!r}"
+        )
