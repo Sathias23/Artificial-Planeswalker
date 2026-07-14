@@ -4,7 +4,7 @@ baseline_commit: 05662f1cf0cfb082abda0f01a53c8dc39a8172f2 # "story 5.6 review ->
 
 # Story 5.7: Dimension vector + Commander Bracket floor + cEDH candidacy
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -274,6 +274,16 @@ directions, never exact curve outputs.
         **991 passed** = 925 + 64 dimensions + 2 profile tests).
   - [x] Commit with the regenerated `plugin/` mirror staged (verify `dimensions.py` AND
         `profiles.py` mirror paths). Never `--no-verify`.
+
+## Review Findings
+
+_Code review 2026-07-14 (3 adversarial layers: Blind Hunter, Edge Case Hunter, Acceptance Auditor). All 9 ACs verified SATISFIED; 92 touched tests pass; `mypy --strict` clean; scope guard confirmed. No Critical/Major/correctness/determinism defects — None-vs-False identity checks, `max()`-based idempotent gates, sorted stored tuples, `_to_score` clamp-before-round, gate thresholds, and no-input-mutation all verified. Two low-priority docstring-accuracy patches + three 5.9-calibration defers below._
+
+- [x] [Review][Patch] Module docstring overclaims "one `compute_curve` per entry point" [src/logic/assessment/dimensions.py:611] — FIXED 2026-07-14: module + `dimension_vector` docstrings and the inline comment now state one direct `compute_curve` plus the sanctioned `karsten_land_delta`/`earliest_turn_estimate` internal re-derivations. — `dimension_vector` computes the curve directly (:638) and again inside `karsten_land_delta` (mana_base.py:206), and `earliest_turn_estimate` (which rebuilds `_cmc_by_name`) runs twice per included infinite combo (:662 earliest-infinite loop + :590 in `_combo_potential_score`). Correctness/determinism are fine; the `classify_deck` one-call rule genuinely holds. Fix: tighten the module + `dimension_vector` docstrings (one `classify_deck`; curve computed once directly plus once inside the sanctioned `karsten_land_delta` API); optionally hoist the earliest-turn computation to run once.
+- [x] [Review][Patch] `_speed_score` monotonicity docstring is over-broad [src/logic/assessment/dimensions.py:472] — FIXED 2026-07-14: reworded to the AC8 SWAP directions (cheap-ramp / lower-avgMV / earlier-combo), noting an expensive-ramp add can net-lower and that literal "add X" properties are 5.9's. — "more ramp … never lower the score" holds only under the AC8 SWAP / cheap-ramp reading; an expensive ramp spell that raises `average_mana_value` can net-lower the score. The guarded SWAP test is honest; tighten the docstring wording to the swap-based direction so 5.9 isn't misled.
+- [x] [Review][Defer] `card_advantage` structurally caps at 98 [src/logic/assessment/dimensions.py:562] — deferred, 5.9 calibration. Max is `_CARD_ADVANTAGE_COUNT_WEIGHT` (80) + max tutor bonus (`min(6,·)·3` = 18) = 98; the dimension cannot emit 99/100. Provisional/5.9-owned by design.
+- [x] [Review][Defer] `sixty_card` curve targets are undefended provisional guesses [src/logic/assessment/dimensions.py:177] — deferred, 5.9 calibration. The Commander targets trace to the Command Zone template; the sixty-card values (interaction 8, draw 6, instant/cheap 4) are self-labelled "honest provisional guess," and `mana_efficiency` uses the same land-delta penalty slope for 99- and 60-card decks, so Standard vs Commander vectors are not on a comparable scale until 5.9 anchors them.
+- [x] [Review][Defer] `_speed_score` has no guard for a malformed `win_turn_band` (`lo > hi`) [src/logic/assessment/dimensions.py:484] — deferred, not reachable with current data. Both shipped profiles satisfy the documented `lo <= hi` invariant (`(7,10)`, `(5,8)`) and a profile test pins them; a future 5.9 band edit of the form `hi = lo-4` would divide by zero (`band_hi - band_lo + 4`) and `hi < lo` would invert the mapping. Optional cheap defense-in-depth for the band-editing workflow (the accepted 5.6 guard lesson).
 
 ## Dev Notes
 

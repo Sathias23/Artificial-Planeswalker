@@ -1,5 +1,19 @@
 # Deferred Work
 
+## Deferred from: code review of story-5.7 (2026-07-14)
+
+> All three are Story 5.9 (calibration / benchmark tuning) concerns surfaced during the 5.7 review — none is a correctness defect in the shipped code.
+
+- source_spec: 5-7-dimension-vector-commander-bracket-floor-cedh-candidacy.md
+  summary: '`card_advantage` dimension structurally caps at 98 (80 count-weight + 18 max tutor bonus), never reaching 99/100 — revisit the ceiling during 5.9 calibration.'
+  evidence: dimensions.py:562 `_card_advantage_score`; provisional/5.9-owned mapping by design.
+- source_spec: 5-7-dimension-vector-commander-bracket-floor-cedh-candidacy.md
+  summary: '`sixty_card` curve targets (interaction 8 / draw 6 / instant-cheap 4) are self-labelled provisional guesses, and mana_efficiency shares one land-delta penalty slope across 99- and 60-card decks — Standard vs Commander vectors are not on a comparable scale until 5.9 anchors them.'
+  evidence: dimensions.py:177-201 target dicts; only Commander targets trace to the Command Zone template.
+- source_spec: 5-7-dimension-vector-commander-bracket-floor-cedh-candidacy.md
+  summary: '`_speed_score` has no guard for a malformed `win_turn_band` (`lo > hi`) — unreachable with the shipped frozen+tested profiles, but a future 5.9 band edit of the form `hi = lo-4` divides by zero and `hi < lo` inverts the mapping. Optional cheap defense-in-depth for the band-editing workflow.'
+  evidence: dimensions.py:484 (`slowest - fastest = band_hi - band_lo + 4`); invariant documented at profiles.py:86-87.
+
 ## Deferred by scope-split: Kotis session plugin-improvement leads (2026-07-10)
 
 > Source: `temp/kotis-fangkeeper-brawl.md` §"Plugin improvement leads" (live Brawl sessions

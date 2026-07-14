@@ -28,13 +28,17 @@ Decide-once policies (each documented at its code site):
   tutor counts inform cEDH candidacy and the soft dimensions only.
 - **Sideboard rows are NOT filtered** (standing 5.3-5.6 policy): deck-composition
   belongs to the caller; Epic 7 passes mainboard-only rows.
-- **One ``classify_deck`` / ``compute_curve`` per entry point** (the logged 5.3
-  deferred-work item): each public function gathers shared signals once and feeds every
-  gate/curve from those locals — never ``detect_mass_land_denial`` +
-  ``detect_extra_turn_cards`` back-to-back, and opener/land-access probabilities are
-  computed from the locals via :func:`~src.logic.assessment.consistency.probability_at_least`
-  rather than through ``redundancy_signals``/``land_access_by_turn`` (which would
-  re-classify / re-curve internally).
+- **One ``classify_deck`` per entry point** (the logged 5.3 deferred-work item): each
+  public function classifies the deck exactly once and feeds every gate from those locals
+  — never ``detect_mass_land_denial`` + ``detect_extra_turn_cards`` back-to-back, and
+  opener/land-access probabilities are computed from the locals via
+  :func:`~src.logic.assessment.consistency.probability_at_least` rather than through
+  ``redundancy_signals``/``land_access_by_turn`` (which would re-classify / re-curve
+  internally). ``compute_curve`` is likewise called once directly, but some sanctioned
+  sibling signal APIs re-derive shared data internally (``karsten_land_delta`` re-runs
+  ``compute_curve``; ``earliest_turn_estimate`` rebuilds its name→cmc index per call), so
+  the deck may be scanned more than once per public call — cheap and correctness-neutral;
+  not worth threading pre-computed arguments through their signatures.
 
 All mapping curves and gate constants are PROVISIONAL v1 values — Story 5.9 hand-tunes
 them against the calibration benchmark (NFR8). Tests verify shape, clamps, and monotone
@@ -468,8 +472,12 @@ def _speed_score(
     ``estimate = mid(band) + (avgMV - pivot) - min(cap, ramp / per_turn)``, shortcut to
     ``earliest included infinite combo turn + 1`` when one exists, then linearly mapped
     ``[band hi + 2 -> 0, band lo - 2 -> 100]``. A deck with no spells cannot win at all
-    -> 0 (degrade-not-raise; also keeps the empty-deck vector all-zero). Monotone: more
-    ramp / lower avgMV / an earlier combo never lower the score.
+    -> 0 (degrade-not-raise; also keeps the empty-deck vector all-zero). Monotone under
+    the AC8 SWAP directions (deck size held constant): swapping filler for a CHEAP
+    (cmc <= 2) ramp spell, lowering avgMV, or an earlier included combo never lowers the
+    score. (Adding an EXPENSIVE ramp spell raises avgMV and can net-lower it — the
+    literal "adding X" monotonicity properties are Story 5.9's, asserted on calibrated
+    curves.)
     """
     if curve.spell_count == 0:
         return 0
@@ -607,10 +615,12 @@ def dimension_vector(
     Works identically under both profiles — the only format fork is the
     ``profile.karsten_formula`` selector (no ``rubric`` branch) feeding the Karsten
     formula, structural baselines, and per-formula curve targets. Shared signals are
-    gathered ONCE per call (one :func:`~src.logic.assessment.classifiers.classify_deck`,
-    one :func:`~src.logic.assessment.mana_base.compute_curve` — the 5.3 deferred-work
-    rule) and every dimension helper reads those locals. Every dimension is clamped and
-    rounded through the one shared policy (:func:`_to_score`).
+    gathered once per call (one :func:`~src.logic.assessment.classifiers.classify_deck`
+    and one direct :func:`~src.logic.assessment.mana_base.compute_curve` — the 5.3
+    deferred-work rule; ``karsten_land_delta`` below re-derives the curve internally, a
+    cheap correctness-neutral second scan) and every dimension helper reads those locals.
+    Every dimension is clamped and rounded through the one shared policy
+    (:func:`_to_score`).
 
     **Resilience is a documented proxy.** No protection/recursion classifier category
     exists (adding one is an AD-10 vocabulary change owned by Story 5.9's tuning pass),
@@ -635,7 +645,7 @@ def dimension_vector(
     """
     formula = profile.karsten_formula
     counts = classify_deck(deck_cards)  # the ONE classify_deck call (5.3 deferred item)
-    curve = compute_curve(deck_cards)  # the ONE compute_curve call
+    curve = compute_curve(deck_cards)  # the one direct compute_curve (karsten re-curves internally)
     karsten = karsten_land_delta(deck_cards, formula=formula)
     pip_signals = compute_pip_signals(deck_cards, formula=formula)
     interaction = interaction_signals(deck_cards)
