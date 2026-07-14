@@ -197,18 +197,19 @@ class TestFieldDomains:
             f"got {STANDARD_PROFILE.karsten_formula!r}"
         )
 
-    def test_versions_bumped_for_tier_thresholds_addition(self) -> None:
-        # AD-3 bump rule: the Story 5.8 additive field change bumps BOTH profile versions
-        # in the same edit (v2 -> v3). This pin moves WITH every bump (the 5.5 lesson:
-        # pinned values and prose move together).
-        assert COMMANDER_PROFILE.format_profile_version == "commander-v3", (
-            "COMMANDER_PROFILE.format_profile_version must be 'commander-v3' after the "
-            f"tier_thresholds addition (AD-3 bump rule), got "
+    def test_versions_bumped_for_story_5_9_calibration(self) -> None:
+        # AD-3 bump rule: the Story 5.9 benchmark calibration (Commander weight re-spread,
+        # Standard tier_thresholds anchoring, and the shared CEDH_TUTOR_MIN tuning) bumps
+        # BOTH profile versions in the same edit (v3 -> v4). This pin moves WITH every
+        # bump (the 5.5 lesson: pinned values and prose move together).
+        assert COMMANDER_PROFILE.format_profile_version == "commander-v4", (
+            "COMMANDER_PROFILE.format_profile_version must be 'commander-v4' after the "
+            f"Story 5.9 calibration (AD-3 bump rule), got "
             f"{COMMANDER_PROFILE.format_profile_version!r}"
         )
-        assert STANDARD_PROFILE.format_profile_version == "standard-v3", (
-            "STANDARD_PROFILE.format_profile_version must be 'standard-v3' after the "
-            f"tier_thresholds addition (AD-3 bump rule), got "
+        assert STANDARD_PROFILE.format_profile_version == "standard-v4", (
+            "STANDARD_PROFILE.format_profile_version must be 'standard-v4' after the "
+            f"Story 5.9 calibration (AD-3 bump rule), got "
             f"{STANDARD_PROFILE.format_profile_version!r}"
         )
 

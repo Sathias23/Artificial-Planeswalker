@@ -1,0 +1,23 @@
+Deck
+2 Cenote Scout (JNK) 1
+2 Pugnacious Hammerskull (JNK) 2
+2 Sentinel of the Nameless City (JNK) 3
+1 Ghalta, Stampede Tyrant (JNK) 4
+3 Bashful Beastie (JNK) 5
+2 Elfsworn Giant (JNK) 6
+2 Nurturing Bristleback (JNK) 7
+2 Topiary Panther (JNK) 8
+2 Rust-Shield Rampager (JNK) 9
+3 Boneclub Berserker (JNK) 10
+2 Kav Landseeker (JNK) 11
+2 A.I.M. Scientists (JNK) 12
+2 Didact Echo (JNK) 13
+2 Giant-Sized Flying Ant (JNK) 14
+2 Shipwreck Dowser (JNK) 15
+2 Spellbook Seeker // Careful Study (JNK) 16
+2 Giant Growth (JNK) 17
+2 Titanic Growth (JNK) 18
+1 Hard-Hitting Question (JNK) 19
+8 Forest (JNK) 20
+7 Mountain (JNK) 21
+7 Island (JNK) 22

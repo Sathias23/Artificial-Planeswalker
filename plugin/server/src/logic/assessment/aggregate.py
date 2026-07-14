@@ -33,6 +33,7 @@ Epic 7 edge code; the Commander profile's multiplayer-variance caveat is ``summa
 driven by ``FormatProfile.multiplayer_variance_caveat``, NEVER a member of this enum.
 """
 
+import math
 from bisect import bisect_right
 from typing import Final, Literal
 
@@ -110,9 +111,19 @@ def aggregate_score(vector: DimensionVector, *, profile: FormatProfile) -> int:
         vector: The Story 5.7 ``DimensionVector`` (seven ints in ``[0, 100]``).
         profile: The format's frozen constants; only ``weights`` is read.
 
+    Raises:
+        ValueError: If any weight is negative or non-finite — the 5.9 guard (the 5.6
+            lesson: malformed input must not masquerade as signal; a negative weight
+            silently inverts a dimension's monotone direction). The shipped profiles
+            are pinned valid by test; this protects hand-tuning workflows.
+
     Returns:
         The weighted aggregate as an integer in ``[0, 100]`` (AD-8 discipline).
     """
+    for dimension in DIMENSIONS:
+        weight = getattr(profile.weights, dimension)
+        if not math.isfinite(weight) or weight < 0.0:
+            raise ValueError(f"malformed weight for {dimension!r}: {weight!r}")
     weighted = sum(
         getattr(vector, dimension) * getattr(profile.weights, dimension) for dimension in DIMENSIONS
     )
@@ -140,7 +151,18 @@ def tier_label(score: int, *, profile: FormatProfile) -> TierLabel:
         score: A for-format aggregate score, normally in ``[0, 100]``.
         profile: The format's frozen constants; only ``tier_thresholds`` is read.
 
+    Raises:
+        ValueError: If the cuts are not strictly ascending within ``(0, 100)`` — the
+            5.9 guard: a cut at 0 shadows band 1 entirely and a cut at 100 makes its
+            band a single-score degenerate sliver (the 5.8-deferred domain item); both
+            are tuning mistakes, not meaningful configurations.
+
     Returns:
         The band's :data:`~src.logic.assessment.profiles.TierLabel` word.
     """
-    return TIER_LABELS[bisect_right(profile.tier_thresholds, score)]
+    cuts = profile.tier_thresholds
+    if any(cut <= 0 or cut >= 100 for cut in cuts) or any(
+        low >= high for low, high in zip(cuts, cuts[1:], strict=False)
+    ):
+        raise ValueError(f"malformed tier_thresholds (need strictly ascending in (0, 100)): {cuts}")
+    return TIER_LABELS[bisect_right(cuts, score)]

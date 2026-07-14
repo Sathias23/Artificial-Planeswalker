@@ -293,4 +293,43 @@ _MANIFEST: tuple[BenchmarkEntry, ...] = (
         notes="Heuristic-only fork (FR20): no Bracket, no cEDH flag. Validates that Story 5.9's "
         "Standard path scores without the Commander Bracket machinery.",
     ),
+    # Story 5.9 Standard anchors (sprint-change 2026-07-12, P5): three additional Standard
+    # entries giving four distinct tier bands alongside standard_mono_red_aggro ("Tuned").
+    # Reconstructed from stable public archetypes / current Standard-legal card pools and
+    # validated name-by-name against the local Scryfall snapshot on 2026-07-14; set/collector
+    # annotations are cosmetic (the 5.1 precedent) — resolution rides on exact oracle names.
+    _entry(
+        "standard_dimir_midrange",
+        format="standard",
+        expected_bracket=None,
+        expected_cedh_candidate=False,
+        expected_tier_label="High-Power",
+        source="Standard Dimir Midrange (Duskmourn-era meta archetype: Kaito / Enduring "
+        "Curiosity tempo-midrange shell), top-tier through 2025-26; transcribed 2026-07-14.",
+        notes="The competitive Standard anchor: efficient threats, dense cheap instant-speed "
+        "interaction, strong dual-land manabase — expected to land in the High-Power band.",
+    ),
+    _entry(
+        "standard_mono_white_lifegain",
+        format="standard",
+        expected_bracket=None,
+        expected_cedh_candidate=False,
+        expected_tier_label="Focused",
+        source="Casual mono-white lifegain built from current Standard-legal commons/uncommons "
+        "(Ajani's Pridemate lifegain-payoff theme); composed 2026-07-14.",
+        notes="The coherent-but-untuned anchor: a clear lifegain theme with consistent basics "
+        "manabase but clunky sorcery-speed removal, no draw engines, no tutors — Focused band.",
+    ),
+    _entry(
+        "standard_jank_pile",
+        format="standard",
+        expected_bracket=None,
+        expected_cedh_candidate=False,
+        expected_tier_label="Unfocused",
+        source="Deliberate three-color jank pile of current Standard-legal high-curve commons "
+        "(no archetype; includes one 'Front // Back' DFC name to exercise resolution); "
+        "composed 2026-07-14.",
+        notes="The bottom anchor: top-heavy curve, three-color basics-only manabase, near-zero "
+        "interaction/draw/ramp coherence, no wincon plan — Unfocused band.",
+    ),
 )

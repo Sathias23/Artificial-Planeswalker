@@ -1,0 +1,19 @@
+Deck
+2 Spyglass Siren (DMR) 1
+4 Deep-Cavern Bat (DMR) 2
+4 Floodpits Drowner (DMR) 3
+4 Preacher of the Schism (DMR) 4
+3 Tishana's Tidebinder (DMR) 5
+4 Kaito, Bane of Nightmares (DMR) 6
+4 Enduring Curiosity (DMR) 7
+3 Bitter Triumph (DMR) 8
+2 Long Goodbye (DMR) 9
+2 Shoot the Sheriff (DMR) 10
+2 Three Steps Ahead (DMR) 11
+2 Nowhere to Run (DMR) 12
+4 Undercity Sewers (DMR) 13
+4 Gloomlake Verge (DMR) 14
+3 Restless Reef (DMR) 15
+1 Fountainport (DMR) 16
+6 Island (DMR) 17
+6 Swamp (DMR) 18

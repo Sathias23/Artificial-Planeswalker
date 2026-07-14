@@ -1,29 +1,53 @@
 # Deferred Work
 
+## Deferred from: dev of story-5.9 (2026-07-14)
+
+> Live-DB data-quality issues discovered while closing the 5.9 benchmark gate. Out of the
+> story's frozen scope (AC10: no `src/data/**` / `scripts/` edits); the operational damage was
+> repaired by hand on Brad's machine (documented in the 5.9 Completion Notes) but the root
+> causes live in the importer.
+
+- source_spec: 5-9-pure-score-entry-point-benchmark-validation.md
+  summary: 'Re-running `import_scryfall_data.py` accumulates duplicate rows per card name: Scryfall''s default_cards "preferred printing" per oracle identity changes between bulk snapshots, so each refresh inserts rows under NEW printing ids while the old printing rows persist (observed 2026-07-14: 51,189 rows for ~38k cards; 12,992 stale rows with `game_changer` NULL because the upsert only touches the new ids). Consequences: `find_by_name_exact` (ORDER BY id LIMIT 1) resolves 4,711 names to an arbitrary STALE printing, and any new backfilled column stays NULL on stale rows. Fix candidates: reconcile/delete rows whose oracle_id gained a fresh printing (mind deck_cards FK references), key the upsert by oracle_id, or propagate oracle-level fields (like game_changer) across all rows of the same oracle_id post-import.'
+  evidence: 'Central cards.db state 2026-07-14 pre-repair; epic-4 retro recorded 0 NULL on 2026-07-12, the Jul-14 refresh reintroduced 12,992. Hand-repair applied: copy game_changer across same-oracle_id rows, then set the 36 residual NULLs FALSE (none on the GC list).'
+- source_spec: 5-9-pure-score-entry-point-benchmark-validation.md
+  summary: 'The bulk import reports "Errors: 36" with no per-card diagnostics reaching the operator log tail, and those 36 cards (incl. Blood Crypt, Hallowed Fountain, Reckoner Bankbuster) silently keep stale data — likely the new printing id colliding with a uniqueness constraint while a different-id row for the same oracle identity already exists. Surface the failing card names + exception class in the import summary, and count them against a "stale rows remaining" warning.'
+  evidence: 'b74hepj01 import run 2026-07-14: 38,197 inserted / 36 errors; the 36 error cards exactly matched the 36 names left game_changer-NULL after the oracle_id repair.'
+
 ## Deferred from: code review of story-5.8 (2026-07-14)
 
 > Both are Story 5.9 (calibration / threshold + weight tuning) concerns surfaced during the 5.8 review — neither is a correctness defect in the shipped code (all inputs are frozen, type-pinned, and test-pinned). Parallels the 5.7 `win_turn_band` defer directly below.
 
 - source_spec: 5-8-for-format-aggregate-tier-label-standard-fork-confidence-vocabulary.md
+  status: ✅ RESOLVED (Story 5.9, 2026-07-14)
   summary: '`tier_label`/`aggregate_score` trust their frozen profile''s shape & weight validity: `tier_label` (aggregate.py:146) assumes exactly 4 strictly-ascending `tier_thresholds` (a 5+-tuple → IndexError; non-ascending → silent mislabel), and `aggregate_score` (aggregate.py:116) assumes non-negative + finite weights (NaN → ValueError; negative → silent monotonicity break). Unreachable with the shipped frozen+tested profiles, but 5.9 hand-tunes both `weights` and `tier_thresholds` — optional cheap defense-in-depth for the tuning workflow.'
   evidence: 'aggregate.py:146 `TIER_LABELS[bisect_right(profile.tier_thresholds, score)]`; aggregate.py:116 weighted sum. Invariants pinned by profiles type `tuple[int,int,int,int]` + test_assessment_profiles.py (non_negative, sum-to-1.0, ascending). Same class as the 5.7 `win_turn_band` guard defer.'
+  resolution: '`aggregate_score` now raises `ValueError` on a negative or non-finite weight; `tier_label` raises on cuts not strictly ascending within `(0, 100)`. Test-pinned (`TestStory59Guards` in test_assessment_aggregate.py, incl. a shipped-profiles-pass check).'
 - source_spec: 5-8-for-format-aggregate-tier-label-standard-fork-confidence-vocabulary.md
+  status: ✅ RESOLVED (Story 5.9, 2026-07-14)
   summary: '`tier_thresholds` domain `(0, 100]` permits a cut of exactly 100, making the top band (`Competitive`) a degenerate single-point band reachable only by an exact score of 100. Harmless for the shipped `(20, 40, 60, 80)`; add a guardrail when 5.9 re-cuts per-format anchors.'
   evidence: profiles.py:126 field type + test_assessment_profiles.py in-domain check `0 < cut <= 100`.
+  resolution: 'Domain tightened to `(0, 100)`: `tier_label` guards it and the aggregate profile-shape test now asserts `0 < cut < 100` (a cut at exactly 100 is a tuning mistake, never a meaningful configuration).'
 
 ## Deferred from: code review of story-5.7 (2026-07-14)
 
 > All three are Story 5.9 (calibration / benchmark tuning) concerns surfaced during the 5.7 review — none is a correctness defect in the shipped code.
 
 - source_spec: 5-7-dimension-vector-commander-bracket-floor-cedh-candidacy.md
+  status: ✅ RESOLVED — KEPT AS-IS, documented (Story 5.9, 2026-07-14)
   summary: '`card_advantage` dimension structurally caps at 98 (80 count-weight + 18 max tutor bonus), never reaching 99/100 — revisit the ceiling during 5.9 calibration.'
   evidence: dimensions.py:562 `_card_advantage_score`; provisional/5.9-owned mapping by design.
+  resolution: 'Keep-decision documented in `_card_advantage_score`''s docstring after the calibration pass: the 2-point headroom is invisible under the aggregate weights and benchmark cuts, and re-normalizing the two terms would change every deck''s score for zero benchmark benefit.'
 - source_spec: 5-7-dimension-vector-commander-bracket-floor-cedh-candidacy.md
+  status: ✅ RESOLVED (Story 5.9, 2026-07-14)
   summary: '`sixty_card` curve targets (interaction 8 / draw 6 / instant-cheap 4) are self-labelled provisional guesses, and mana_efficiency shares one land-delta penalty slope across 99- and 60-card decks — Standard vs Commander vectors are not on a comparable scale until 5.9 anchors them.'
   evidence: dimensions.py:177-201 target dicts; only Commander targets trace to the Command Zone template.
+  resolution: 'Closed by per-format `tier_thresholds` anchoring: Standard cuts (28, 45, 65, 85) are anchored against the four Standard benchmark bands independently of Commander''s (20, 40, 60, 80), and raw 0-100 aggregates are never compared across formats — stated in the STANDARD_PROFILE tier_thresholds comment. The sixty_card curve-target VALUES stay provisional (the Standard benchmark orders cleanly without touching them).'
 - source_spec: 5-7-dimension-vector-commander-bracket-floor-cedh-candidacy.md
+  status: ✅ RESOLVED (Story 5.9, 2026-07-14)
   summary: '`_speed_score` has no guard for a malformed `win_turn_band` (`lo > hi`) — unreachable with the shipped frozen+tested profiles, but a future 5.9 band edit of the form `hi = lo-4` divides by zero and `hi < lo` inverts the mapping. Optional cheap defense-in-depth for the band-editing workflow.'
   evidence: dimensions.py:484 (`slowest - fastest = band_hi - band_lo + 4`); invariant documented at profiles.py:86-87.
+  resolution: '`_speed_score` now raises `ValueError` on `lo > hi` (a `lo == hi` pinpoint band stays valid — the ±2 pad keeps the divisor non-zero). Test-pinned (`TestStory59WinTurnBandGuard` in test_assessment_dimensions.py).'
 
 ## Deferred by scope-split: Kotis session plugin-improvement leads (2026-07-10)
 

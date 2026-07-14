@@ -677,6 +677,28 @@ class TestProvisionalCurveAnchors:
 
 
 # ---------------------------------------------------------------------------
+# Story 5.9 (AC9) — malformed-profile guard
+# ---------------------------------------------------------------------------
+
+
+class TestStory59WinTurnBandGuard:
+    """An inverted win_turn_band raises instead of silently flipping the speed map."""
+
+    def test_inverted_band_raises(self) -> None:
+        bad_profile = dataclasses.replace(COMMANDER_PROFILE, win_turn_band=(10, 7))
+        deck = _filler_rows(5) + [make_deck_card(_land(), quantity=5)]
+        with pytest.raises(ValueError, match="malformed win_turn_band"):
+            dimension_vector(deck, matched_combos=(), profile=bad_profile)
+
+    def test_degenerate_equal_band_is_valid(self, profile: FormatProfile) -> None:
+        pinpoint = dataclasses.replace(profile, win_turn_band=(7, 7))
+        vector = dimension_vector(_filler_rows(5), matched_combos=(), profile=pinpoint)
+        assert 0 <= vector.speed <= 100, (
+            f"a lo == hi band is a valid pinpoint anchor and must still score, got {vector.speed!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # AC8 — determinism & input hygiene
 # ---------------------------------------------------------------------------
 

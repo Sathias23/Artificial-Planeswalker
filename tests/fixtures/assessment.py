@@ -63,3 +63,103 @@ def make_combo_record(**overrides: Any) -> ComboRecord:
     }
     defaults.update(overrides)
     return ComboRecord(**defaults)
+
+
+# ---------------------------------------------------------------------------
+# Tagged-card builders (Story 5.9) — promoted from the local builders in
+# tests/unit/logic/test_assessment_dimensions.py when the scorer tests became the
+# second consumer (the _FakeEmbedder "consolidate before the second copy" lesson).
+# Each targets exactly one classifier category via canonical oracle-text phrasing.
+# ---------------------------------------------------------------------------
+
+
+def make_vanilla_card(name: str = "Vanilla Bear", cmc: float = 2.0, **overrides: Any) -> Card:
+    """An untagged filler creature — matches no classifier category."""
+    defaults: dict[str, Any] = {
+        "name": name,
+        "cmc": cmc,
+        "mana_cost": "{2}",
+        "type_line": "Creature — Bear",
+        "oracle_text": "",
+    }
+    defaults.update(overrides)
+    return make_card(**defaults)
+
+
+def make_land_card(name: str = "Barren Land") -> Card:
+    """A colorless land (no colored sources, no ramp tag)."""
+    return make_card(
+        name=name, cmc=0.0, mana_cost="", type_line="Land", oracle_text="{T}: Add {C}."
+    )
+
+
+def make_ramp_card(name: str = "Mana Rock", cmc: float = 2.0) -> Card:
+    """A RAMP-tagged non-land mana producer."""
+    return make_card(
+        name=name, cmc=cmc, mana_cost="{2}", type_line="Artifact", oracle_text="{T}: Add {C}{C}."
+    )
+
+
+def make_tutor_card(name: str = "Grim Tutor Copy", cmc: float = 2.0) -> Card:
+    """A TUTOR-tagged generic library search to hand."""
+    return make_card(
+        name=name,
+        cmc=cmc,
+        mana_cost="{2}",
+        type_line="Sorcery",
+        oracle_text="Search your library for a card, put it into your hand, then shuffle.",
+    )
+
+
+def make_draw_card(name: str = "Divination Copy", cmc: float = 3.0) -> Card:
+    """A CARD_DRAW-tagged spell."""
+    return make_card(
+        name=name, cmc=cmc, mana_cost="{3}", type_line="Sorcery", oracle_text="Draw two cards."
+    )
+
+
+def make_interaction_card(
+    name: str = "Doom Blade Copy", cmc: float = 2.0, type_line: str = "Instant"
+) -> Card:
+    """An INTERACTION-tagged removal spell (instant-speed unless overridden)."""
+    return make_card(
+        name=name,
+        cmc=cmc,
+        mana_cost="{2}",
+        type_line=type_line,
+        oracle_text="Destroy target creature.",
+    )
+
+
+def make_wincon_card(name: str = "Lab Man Copy", cmc: float = 3.0) -> Card:
+    """A WINCON_EXPLICIT-tagged card."""
+    return make_card(
+        name=name,
+        cmc=cmc,
+        mana_cost="{3}",
+        type_line="Creature — Human Wizard",
+        oracle_text="You win the game.",
+    )
+
+
+def make_extra_turn_card(name: str = "Time Warp Copy", cmc: float = 5.0) -> Card:
+    """An EXTRA_TURN-tagged spell."""
+    return make_card(
+        name=name,
+        cmc=cmc,
+        mana_cost="{5}",
+        type_line="Sorcery",
+        oracle_text="Take an extra turn after this one.",
+    )
+
+
+def make_mld_card(name: str = "Armageddon Copy", cmc: float = 4.0) -> Card:
+    """A MASS_LAND_DENIAL-tagged spell."""
+    return make_card(
+        name=name, cmc=cmc, mana_cost="{4}", type_line="Sorcery", oracle_text="Destroy all lands."
+    )
+
+
+def make_gc_card(name: str, value: bool | None) -> Card:
+    """An otherwise-untagged creature with an EXPLICIT game_changer state."""
+    return make_vanilla_card(name=name, game_changer=value)

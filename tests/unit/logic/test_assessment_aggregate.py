@@ -365,21 +365,60 @@ class TestProfileAdditions:
                 f"{profile_name}.tier_thresholds must be strictly ascending, got {cuts!r}"
             )
         for cut in cuts:
-            assert isinstance(cut, int) and 0 < cut <= 100, (
-                f"{profile_name}.tier_thresholds cuts must be ints in (0, 100], got {cut!r}"
+            # Domain tightened (0, 100] -> (0, 100) by Story 5.9 (AC9 item c): a cut at
+            # 100 makes its band a single-score degenerate sliver; tier_label now guards.
+            assert isinstance(cut, int) and 0 < cut < 100, (
+                f"{profile_name}.tier_thresholds cuts must be ints in (0, 100), got {cut!r}"
             )
 
-    def test_versions_read_v3(self) -> None:
-        assert COMMANDER_PROFILE.format_profile_version == "commander-v3", (
-            "COMMANDER_PROFILE.format_profile_version must read 'commander-v3' after "
-            f"the Story 5.8 tier_thresholds addition, got "
+    def test_versions_read_v4(self) -> None:
+        # Amended v3 -> v4 with the Story 5.9 calibration bump (the pin moves WITH the
+        # bump, in the same edit — the 5.8 precedent).
+        assert COMMANDER_PROFILE.format_profile_version == "commander-v4", (
+            "COMMANDER_PROFILE.format_profile_version must read 'commander-v4' after "
+            f"the Story 5.9 benchmark calibration, got "
             f"{COMMANDER_PROFILE.format_profile_version!r}"
         )
-        assert STANDARD_PROFILE.format_profile_version == "standard-v3", (
-            "STANDARD_PROFILE.format_profile_version must read 'standard-v3' after "
-            f"the Story 5.8 tier_thresholds addition, got "
+        assert STANDARD_PROFILE.format_profile_version == "standard-v4", (
+            "STANDARD_PROFILE.format_profile_version must read 'standard-v4' after "
+            f"the Story 5.9 benchmark calibration, got "
             f"{STANDARD_PROFILE.format_profile_version!r}"
         )
+
+
+class TestStory59Guards:
+    """Story 5.9 (AC9): malformed profile values raise instead of masquerading as signal."""
+
+    def test_negative_weight_raises(self) -> None:
+        bad_weights = dataclasses.replace(COMMANDER_PROFILE.weights, speed=-0.1)
+        bad_profile = dataclasses.replace(COMMANDER_PROFILE, weights=bad_weights)
+        with pytest.raises(ValueError, match="malformed weight"):
+            aggregate_score(make_vector(), profile=bad_profile)
+
+    def test_non_finite_weight_raises(self) -> None:
+        bad_weights = dataclasses.replace(COMMANDER_PROFILE.weights, combo_potential=float("nan"))
+        bad_profile = dataclasses.replace(COMMANDER_PROFILE, weights=bad_weights)
+        with pytest.raises(ValueError, match="malformed weight"):
+            aggregate_score(make_vector(), profile=bad_profile)
+
+    def test_valid_profiles_do_not_raise(self, profile_name: str) -> None:
+        profile = _PROFILES[profile_name]
+        score = aggregate_score(make_vector(), profile=profile)
+        assert tier_label(score, profile=profile) in TIER_LABELS, (
+            f"{profile_name}: the shipped profile must pass its own guards"
+        )
+
+    @pytest.mark.parametrize(
+        "cuts",
+        [(20, 40, 60, 100), (0, 40, 60, 80), (20, 20, 60, 80), (60, 40, 20, 80)],
+        ids=["cut-at-100", "cut-at-0", "duplicate-cuts", "descending"],
+    )
+    def test_malformed_tier_thresholds_raise(self, cuts: tuple[int, int, int, int]) -> None:
+        # A cut at 100 leaves its band a single-score degenerate sliver (the 5.8-deferred
+        # domain item); 0 shadows band 1; non-ascending cuts break bisect's contract.
+        bad_profile = dataclasses.replace(COMMANDER_PROFILE, tier_thresholds=cuts)
+        with pytest.raises(ValueError, match="malformed tier_thresholds"):
+            tier_label(50, profile=bad_profile)
 
 
 class TestDeterminism:

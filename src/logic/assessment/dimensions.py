@@ -122,9 +122,15 @@ EARLY_COMBO_TURN_MAX: Final = 6
 #: cEDH candidacy leg (provisional): an included infinite combo deployable by this turn.
 CEDH_COMBO_TURN_MAX: Final = 4
 
-#: cEDH candidacy leg (provisional): quantity-aware ``TUTOR`` count at or above this.
-#: Tutors inform candidacy only — never the floor (see the module docstring).
-CEDH_TUTOR_MIN: Final = 4
+#: cEDH candidacy leg (5.9 benchmark-tuned): quantity-aware ``TUTOR`` count at or above
+#: this. Tutors inform candidacy only — never the floor (see the module docstring).
+#: Tuned 4 -> 3 by the Story 5.9 benchmark: the classifier's FR6 tutor definition
+#: (search to hand/top of library) deliberately excludes battlefield tutors (Green Sun's
+#: Zenith class) and library-exile effects (Demonic Consultation class), so real cEDH
+#: lists undercount — the committed Kinnan list carries exactly 3 tagged tutors (Gamble,
+#: Mystical Tutor, Worldly Tutor) and failed candidacy on this leg alone at 4. A shared
+#: tuning constant: this change bumped BOTH format_profile_versions (v3 -> v4, AC9).
+CEDH_TUTOR_MIN: Final = 3
 
 #: cEDH candidacy leg (provisional): average mana value at or below this (dense fast
 #: mana + compact early combo — docs/deck-assess.md:186).
@@ -482,6 +488,10 @@ def _speed_score(
     if curve.spell_count == 0:
         return 0
     band_lo, band_hi = win_turn_band
+    # 5.9 guard (the 5.6 lesson: malformed input must not masquerade as signal): an
+    # inverted band would flip the linear map's sign and quietly score fast decks slow.
+    if band_lo > band_hi:
+        raise ValueError(f"malformed win_turn_band: lo {band_lo} > hi {band_hi}")
     estimate = (
         (band_lo + band_hi) / 2.0
         + (curve.average_mana_value - _SPEED_AVG_MV_PIVOT)
@@ -568,7 +578,14 @@ def _mana_efficiency_score(land_delta: float, total_pip_deficit: int) -> int:
 
 
 def _card_advantage_score(draw_count: int, tutor_count: int, formula: KarstenFormula) -> int:
-    """Draw density against the per-formula target plus the additive tutor bonus."""
+    """Draw density against the per-formula target plus the additive tutor bonus.
+
+    Structural cap: the count term maxes at 80 and the tutor bonus at 18, so the
+    dimension tops out at 98, never 100 — kept deliberately after the 5.9 calibration
+    pass (the 5.8-deferred disposition): the 2-point headroom is invisible under the
+    aggregate weights and benchmark cuts, and re-normalizing the two terms to sum to
+    100 would change every deck's score for zero benchmark benefit.
+    """
     density = _CARD_ADVANTAGE_COUNT_WEIGHT * min(draw_count / _DRAW_TARGETS[formula], 1.0)
     bonus = min(tutor_count, _TUTOR_BONUS_COUNT_CAP) * _TUTOR_CARD_ADVANTAGE_BONUS
     return _to_score(density + bonus)

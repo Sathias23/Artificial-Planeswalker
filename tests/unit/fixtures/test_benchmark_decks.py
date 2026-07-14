@@ -38,6 +38,10 @@ MIN_PRECONS = 3  # WotC Commander precons at the Bracket-2 floor
 MIN_CEDH = 2  # known cEDH lists (Bracket-4 floor, candidate)
 MIN_STANDARD = 1  # Standard deck for the heuristic-only fork (FR20)
 
+# Story 5.9 (sprint-change P5): the Standard anchors span four distinct tier bands
+# (Unfocused / Focused / Tuned / High-Power) so per-format threshold tuning has anchors.
+MIN_STANDARD_TIER_BANDS = 4
+
 
 def _mainboard_total(entry: BenchmarkEntry) -> int:
     return sum(card.quantity for card in entry.cards)
@@ -147,6 +151,16 @@ def test_membership_minimums() -> None:
     assert len(cedh) >= MIN_CEDH, f"need >= {MIN_CEDH} cEDH lists, found {len(cedh)}"
     assert len(standard) >= MIN_STANDARD, (
         f"need >= {MIN_STANDARD} Standard deck(s), found {len(standard)}"
+    )
+
+
+def test_standard_anchors_span_distinct_tier_bands() -> None:
+    """Story 5.9 (P5): the Standard entries cover >= 4 distinct expected tier bands."""
+    standard = [e for e in load_benchmark() if e.format == "standard"]
+    labels = {e.expected_tier_label for e in standard}
+    assert len(labels) >= MIN_STANDARD_TIER_BANDS, (
+        f"Standard anchors must span >= {MIN_STANDARD_TIER_BANDS} distinct tier bands "
+        f"(per-format threshold tuning needs anchors); found {sorted(labels)}"
     )
 
 

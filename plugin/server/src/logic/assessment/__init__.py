@@ -96,6 +96,7 @@ from src.logic.assessment.profiles import (
     FormatProfile,
     TierLabel,
 )
+from src.logic.assessment.scorer import CoreAssessment, score
 
 __all__ = [
     "BASELINE_BRACKET_FLOOR",
@@ -145,6 +146,7 @@ __all__ = [
     "ComboBucket",
     "ComboRecord",
     "ConfidenceLevel",
+    "CoreAssessment",
     "CurveSignals",
     "DimensionVector",
     "DimensionWeights",
@@ -175,6 +177,7 @@ __all__ = [
     "match_combos",
     "probability_at_least",
     "redundancy_signals",
+    "score",
     "structural_gaps",
     "tier_label",
 ]

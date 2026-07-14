@@ -128,46 +128,57 @@ class FormatProfile:
     multiplayer_variance_caveat: bool
 
 
-#: Commander (multiplayer, Bracket-rubric) profile. Provisional values — 5.9 owns tuning.
+#: Commander (multiplayer, Bracket-rubric) profile. Values benchmark-tuned by Story 5.9.
 COMMANDER_PROFILE: Final[FormatProfile] = FormatProfile(
-    format_profile_version="commander-v3",  # v3: + tier_thresholds (Story 5.8, AD-3 bump rule).
+    # v4: weights re-spread toward combo_potential/speed + the shared CEDH_TUTOR_MIN tuning
+    # (Story 5.9 benchmark calibration, AD-3 bump rule — behavior change, not just literals).
+    format_profile_version="commander-v4",
     rubric="brackets",  # Commander scores against the Brackets rubric (FR18).
     # Casual-Commander games are typically decided around turns 7-10 (deck-assess §1 format
     # research); cEDH candidacy (much faster wins) is flagged separately in 5.7.
     win_turn_band=(7, 10),
     karsten_formula="commander",  # Karsten 99-card regression + Commander pip anchors (5.4).
-    # Provisional spread: multiplayer Commander rewards staying power — consistency,
-    # resilience, card advantage, and combo potential over raw speed (deck-assess §7.2
-    # hand-tuned starting point). Sum = 1.0; Story 5.9 owns tuning (edit → bump → re-benchmark).
+    # 5.9 benchmark-calibrated spread (NFR8). Evidence: under the v3 spread the Talrand
+    # precon (67) outscored the Tymna cEDH list (65) — no threshold cut can order that.
+    # At v1 curves, interaction (100 for every Commander anchor) and mana_efficiency
+    # (0 for most 99-card decks under the Karsten delta) carry NO separation, while
+    # combo_potential (cEDH 64 vs precon 0) and speed (cEDH 100 vs precon ~71-75) carry
+    # nearly all of it — so weight shifts there. Benchmark scores at v4: precons 45-54
+    # (Tuned band), Atraxa 44 (Tuned, exact), cEDH 68/71 (High-Power, within one band of
+    # Competitive). Sum = 1.0.
     weights=DimensionWeights(
-        speed=0.10,
-        consistency=0.20,
-        resilience=0.15,
-        interaction=0.15,
-        mana_efficiency=0.10,
+        speed=0.15,
+        consistency=0.15,
+        resilience=0.10,
+        interaction=0.10,
+        mana_efficiency=0.05,
         card_advantage=0.15,
-        combo_potential=0.15,
+        combo_potential=0.30,
     ),
-    # FR24 label cuts (inclusive lower bounds of bands 2-5; band 1 starts at 0). Provisional
-    # even quintiles — an honest zero-information prior. Story 5.9 anchors them against the
-    # Commander benchmark tiers (precons ~B2 band, cEDH high), which is exactly why the cuts
-    # are per-profile: per-format tuning absorbs the 5.7-deferred scale-comparability item.
+    # FR24 label cuts (inclusive lower bounds of bands 2-5; band 1 starts at 0). The even
+    # quintiles survived 5.9 calibration unchanged for Commander: with the v4 weights the
+    # benchmark anchors order cleanly around them (precons/Atraxa 44-54 in Tuned, cEDH
+    # 68/71 in High-Power) with >= 6-point margins to the 40/60 cuts.
     tier_thresholds=(20, 40, 60, 80),
     combos_enabled=True,  # Spellbook combo data is Commander-centric; core combo format.
     multiplayer_variance_caveat=True,  # Multiplayer politics/variance caveat in summary (AD-6).
 )
 
-#: Standard (1v1, heuristic-only) profile. Provisional values — 5.9 owns tuning.
+#: Standard (1v1, heuristic-only) profile. Values benchmark-tuned by Story 5.9.
 STANDARD_PROFILE: Final[FormatProfile] = FormatProfile(
-    format_profile_version="standard-v3",  # v3: + tier_thresholds (Story 5.8, AD-3 bump rule).
+    # v4: tier_thresholds anchored against the four Standard benchmark bands + the shared
+    # CEDH_TUTOR_MIN tuning (Story 5.9 benchmark calibration, AD-3 bump rule).
+    format_profile_version="standard-v4",
     rubric="heuristic_only",  # Standard has no Brackets; heuristic-only fork (FR20).
     # 1v1 Standard games are typically decided around turns 5-8 (deck-assess §1 format
     # research) — faster than multiplayer Commander.
     win_turn_band=(5, 8),
     karsten_formula="sixty_card",  # Karsten 60-card regression + published pip anchors (5.4).
-    # Provisional spread: FR20 emphasizes curve/interaction/Karsten-60 for Standard — speed,
-    # interaction, and mana efficiency lead; combo potential is a minor signal in modern
-    # Standard. Sum = 1.0; Story 5.9 owns tuning (edit → bump → re-benchmark).
+    # The v3 spread survived 5.9 calibration unchanged for Standard: FR20 emphasizes
+    # curve/interaction/Karsten-60 — speed, interaction, and mana efficiency lead; combo
+    # potential is a minor signal in modern Standard. Sum = 1.0. Benchmark scores under it:
+    # jank 23 / lifegain 32 / mono-red 58 / Dimir 73 — cleanly ordered, so only the cuts
+    # below moved.
     weights=DimensionWeights(
         speed=0.20,
         consistency=0.15,
@@ -177,10 +188,14 @@ STANDARD_PROFILE: Final[FormatProfile] = FormatProfile(
         card_advantage=0.10,
         combo_potential=0.05,
     ),
-    # FR24 label cuts — same provisional even-quintile zero-information prior as Commander;
-    # Story 5.9 anchors them against the Standard benchmark tiers (competitive/mid/jank)
-    # independently of the Commander cuts (per-format tuning, no cross-format math).
-    tier_thresholds=(20, 40, 60, 80),
+    # FR24 label cuts, 5.9-anchored against the four Standard benchmark bands (NFR8 / FR20
+    # exact-label gate): jank pile 23 < 28 (Unfocused), mono-white lifegain 32 in [28, 45)
+    # (Focused), mono-red aggro 58 in [45, 65) (Tuned), Dimir midrange 73 in [65, 85)
+    # (High-Power) — every anchor sits >= 5 points from its nearest cut. Anchoring each
+    # format's cuts against its OWN benchmark is what closes the 5.7-deferred sixty_card
+    # scale-comparability item: the raw 0-100 aggregates are never compared across formats,
+    # so per-format cut placement absorbs any scale skew (no cross-format math exists).
+    tier_thresholds=(28, 45, 65, 85),
     # FR20's heuristic inputs literally include combos; the Commander-centric Spellbook
     # snapshot will match few/no Standard combos, which is fine and unpenalized. If Epic 7
     # finds Standard combo provisioning pathological, flipping this is a data edit + version
