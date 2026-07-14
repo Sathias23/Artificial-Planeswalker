@@ -41,6 +41,25 @@ DIMENSIONS: Final[tuple[str, ...]] = (
     "combo_potential",
 )
 
+#: The FR24 descriptive tier vocabulary (Story 5.8) — a CLOSED set on the AD-7 result shape
+#: and the AD-8 byte-identical diff surface: renaming a label is a breaking schema change,
+#: never a 5.9 tuning knob. Canonical home is here beside :data:`DIMENSIONS` (the
+#: one-canonical-home rule) because ``FormatProfile.tier_thresholds`` parameterizes the
+#: score→label mapping onto it.
+TierLabel = Literal["Unfocused", "Focused", "Tuned", "High-Power", "Competitive"]
+
+#: The five labels in fixed ascending-power order (exactly the FR24 wording, hyphen
+#: included). SEMANTIC order, not an AD-8 emission list — a label is a scalar, so bytewise
+#: sorting does not apply. Band 1 (``Unfocused``) implicitly starts at score 0; a profile's
+#: four ``tier_thresholds`` are the inclusive lower cuts of bands 2-5.
+TIER_LABELS: Final[tuple[TierLabel, ...]] = (
+    "Unfocused",
+    "Focused",
+    "Tuned",
+    "High-Power",
+    "Competitive",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class DimensionWeights:
@@ -73,10 +92,10 @@ class FormatProfile:
     """One format's frozen scoring constants — a passive data bag, no behavior (AD-3).
 
     Per-dimension mapping parameters (the signal→0-100 curve slots, NFR8) currently comprise
-    ``win_turn_band`` (the ``speed`` curve's anchor) and ``weights`` — the only parameters yet
-    defensible from research. Stories 5.3-5.8 extend this shape *additively* as real curves
-    land (an additive field on a frozen dataclass is cheap by design); every such edit bumps
-    ``format_profile_version``.
+    ``win_turn_band`` (the ``speed`` curve's anchor), ``weights``, and ``tier_thresholds``
+    (the FR24 score→label cuts) — the only parameters yet defensible from research. Stories
+    5.3-5.8 extend this shape *additively* as real curves land (an additive field on a frozen
+    dataclass is cheap by design); every such edit bumps ``format_profile_version``.
 
     Attributes:
         format_profile_version: Monotonic per-format version string (FR4). Bumped on ANY
@@ -89,6 +108,10 @@ class FormatProfile:
             applies for this format (Story 5.7) — the 5.4/5.5 ``KarstenFormula`` selector,
             now profile-driven (AD-3) so ``dimension_vector`` needs no ``rubric`` branch.
         weights: Aggregate weights over the closed 7-dimension set; sum to 1.0 (Story 5.8).
+        tier_thresholds: Four strictly ascending inclusive lower cut points in ``(0, 100]``,
+            one per band 2-5 of :data:`TIER_LABELS` (band 1 implicitly starts at 0) — the
+            FR24 score→label mapping parameter (Story 5.8). Per-profile so Story 5.9 anchors
+            each format's cuts against its own benchmark without cross-format math.
         combos_enabled: Whether combo provisioning runs for this format (Epic 7 branches on
             this; Story 4.2 context).
         multiplayer_variance_caveat: Whether the edge emits the fixed multiplayer-variance
@@ -100,13 +123,14 @@ class FormatProfile:
     win_turn_band: tuple[int, int]
     karsten_formula: KarstenFormula
     weights: DimensionWeights
+    tier_thresholds: tuple[int, int, int, int]
     combos_enabled: bool
     multiplayer_variance_caveat: bool
 
 
 #: Commander (multiplayer, Bracket-rubric) profile. Provisional values — 5.9 owns tuning.
 COMMANDER_PROFILE: Final[FormatProfile] = FormatProfile(
-    format_profile_version="commander-v2",  # v2: + karsten_formula (Story 5.7, AD-3 bump rule).
+    format_profile_version="commander-v3",  # v3: + tier_thresholds (Story 5.8, AD-3 bump rule).
     rubric="brackets",  # Commander scores against the Brackets rubric (FR18).
     # Casual-Commander games are typically decided around turns 7-10 (deck-assess §1 format
     # research); cEDH candidacy (much faster wins) is flagged separately in 5.7.
@@ -124,13 +148,18 @@ COMMANDER_PROFILE: Final[FormatProfile] = FormatProfile(
         card_advantage=0.15,
         combo_potential=0.15,
     ),
+    # FR24 label cuts (inclusive lower bounds of bands 2-5; band 1 starts at 0). Provisional
+    # even quintiles — an honest zero-information prior. Story 5.9 anchors them against the
+    # Commander benchmark tiers (precons ~B2 band, cEDH high), which is exactly why the cuts
+    # are per-profile: per-format tuning absorbs the 5.7-deferred scale-comparability item.
+    tier_thresholds=(20, 40, 60, 80),
     combos_enabled=True,  # Spellbook combo data is Commander-centric; core combo format.
     multiplayer_variance_caveat=True,  # Multiplayer politics/variance caveat in summary (AD-6).
 )
 
 #: Standard (1v1, heuristic-only) profile. Provisional values — 5.9 owns tuning.
 STANDARD_PROFILE: Final[FormatProfile] = FormatProfile(
-    format_profile_version="standard-v2",  # v2: + karsten_formula (Story 5.7, AD-3 bump rule).
+    format_profile_version="standard-v3",  # v3: + tier_thresholds (Story 5.8, AD-3 bump rule).
     rubric="heuristic_only",  # Standard has no Brackets; heuristic-only fork (FR20).
     # 1v1 Standard games are typically decided around turns 5-8 (deck-assess §1 format
     # research) — faster than multiplayer Commander.
@@ -148,6 +177,10 @@ STANDARD_PROFILE: Final[FormatProfile] = FormatProfile(
         card_advantage=0.10,
         combo_potential=0.05,
     ),
+    # FR24 label cuts — same provisional even-quintile zero-information prior as Commander;
+    # Story 5.9 anchors them against the Standard benchmark tiers (competitive/mid/jank)
+    # independently of the Commander cuts (per-format tuning, no cross-format math).
+    tier_thresholds=(20, 40, 60, 80),
     # FR20's heuristic inputs literally include combos; the Commander-centric Spellbook
     # snapshot will match few/no Standard combos, which is fine and unpenalized. If Epic 7
     # finds Standard combo provisioning pathological, flipping this is a data edit + version

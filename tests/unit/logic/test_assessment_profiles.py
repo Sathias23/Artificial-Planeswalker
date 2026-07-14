@@ -6,6 +6,7 @@ weight or parameter number — only domains, invariants, and immutability.
 """
 
 import dataclasses
+import typing
 
 import pytest
 
@@ -13,8 +14,10 @@ from src.logic.assessment import (
     COMMANDER_PROFILE,
     DIMENSIONS,
     STANDARD_PROFILE,
+    TIER_LABELS,
     DimensionWeights,
     FormatProfile,
+    TierLabel,
 )
 
 #: Weight-sum tolerance: weights are documented to sum to exactly 1.0.
@@ -194,16 +197,83 @@ class TestFieldDomains:
             f"got {STANDARD_PROFILE.karsten_formula!r}"
         )
 
-    def test_versions_bumped_for_karsten_formula_addition(self) -> None:
-        # AD-3 bump rule: the Story 5.7 additive field change bumps BOTH profile versions
-        # in the same edit (v1 -> v2).
-        assert COMMANDER_PROFILE.format_profile_version == "commander-v2", (
-            "COMMANDER_PROFILE.format_profile_version must be 'commander-v2' after the "
-            f"karsten_formula addition (AD-3 bump rule), got "
+    def test_versions_bumped_for_tier_thresholds_addition(self) -> None:
+        # AD-3 bump rule: the Story 5.8 additive field change bumps BOTH profile versions
+        # in the same edit (v2 -> v3). This pin moves WITH every bump (the 5.5 lesson:
+        # pinned values and prose move together).
+        assert COMMANDER_PROFILE.format_profile_version == "commander-v3", (
+            "COMMANDER_PROFILE.format_profile_version must be 'commander-v3' after the "
+            f"tier_thresholds addition (AD-3 bump rule), got "
             f"{COMMANDER_PROFILE.format_profile_version!r}"
         )
-        assert STANDARD_PROFILE.format_profile_version == "standard-v2", (
-            "STANDARD_PROFILE.format_profile_version must be 'standard-v2' after the "
-            f"karsten_formula addition (AD-3 bump rule), got "
+        assert STANDARD_PROFILE.format_profile_version == "standard-v3", (
+            "STANDARD_PROFILE.format_profile_version must be 'standard-v3' after the "
+            f"tier_thresholds addition (AD-3 bump rule), got "
             f"{STANDARD_PROFILE.format_profile_version!r}"
+        )
+
+
+class TestTierThresholds:
+    """``tier_thresholds`` — the FR24 mapping parameter added by Story 5.8 (AC4).
+
+    Verified by shape/domain/ordering only: the four cut-point INTS are provisional
+    v1 values that Story 5.9 anchors per format against the benchmark.
+    """
+
+    def test_tier_thresholds_is_tuple_of_four_ints(self, profile_name: str) -> None:
+        profile = _PROFILES[profile_name]
+        assert isinstance(profile.tier_thresholds, tuple), (
+            f"{profile_name}.tier_thresholds must be an immutable tuple, "
+            f"got {type(profile.tier_thresholds).__name__}"
+        )
+        assert len(profile.tier_thresholds) == 4, (
+            f"{profile_name}.tier_thresholds must hold exactly four lower cuts "
+            f"(bands 2-5), got {len(profile.tier_thresholds)}"
+        )
+        for cut in profile.tier_thresholds:
+            assert isinstance(cut, int), (
+                f"{profile_name}.tier_thresholds must hold ints (AD-8 integer "
+                f"discipline), got {type(cut).__name__} in {profile.tier_thresholds!r}"
+            )
+
+    def test_tier_thresholds_strictly_ascending(self, profile_name: str) -> None:
+        profile = _PROFILES[profile_name]
+        cuts = profile.tier_thresholds
+        for lower, upper in zip(cuts, cuts[1:], strict=False):
+            assert lower < upper, (
+                f"{profile_name}.tier_thresholds must be strictly ascending "
+                f"(each band needs a non-empty score range), got {cuts!r}"
+            )
+
+    def test_tier_thresholds_in_domain(self, profile_name: str) -> None:
+        profile = _PROFILES[profile_name]
+        for cut in profile.tier_thresholds:
+            assert 0 < cut <= 100, (
+                f"{profile_name}.tier_thresholds cuts must sit in (0, 100] — band 1 "
+                f"implicitly starts at 0 — got {cut} in {profile.tier_thresholds!r}"
+            )
+
+
+class TestTierLabels:
+    """``TierLabel``/``TIER_LABELS`` — the FR24 closed vocabulary (AC3, Story 5.8)."""
+
+    def test_tier_labels_matches_literal_exactly(self) -> None:
+        assert tuple(typing.get_args(TierLabel)) == TIER_LABELS, (
+            "TIER_LABELS must list exactly the TierLabel Literal members in the same "
+            f"(ascending-power) order, got {TIER_LABELS!r} vs "
+            f"{typing.get_args(TierLabel)!r}"
+        )
+
+    def test_tier_labels_is_the_closed_fr24_vocabulary(self) -> None:
+        # Exact pin is sanctioned: labels are a CLOSED vocabulary on the AD-7/AD-8 diff
+        # surface (renaming one is a breaking schema change), unlike the provisional cuts.
+        assert TIER_LABELS == (
+            "Unfocused",
+            "Focused",
+            "Tuned",
+            "High-Power",
+            "Competitive",
+        ), (
+            "TIER_LABELS must be the exact FR24 five-word ascending-power vocabulary "
+            f"(hyphen included), got {TIER_LABELS!r}"
         )

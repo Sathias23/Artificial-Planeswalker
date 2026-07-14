@@ -6,6 +6,17 @@ no network, no database, no clock. Format-relative scoring constants live in
 """
 
 from src.data.schemas.combo import ComboBracketTag, ComboBucket, ComboRecord
+from src.logic.assessment.aggregate import (
+    CARDS_UNRESOLVED,
+    COMBO_DATA_UNAVAILABLE,
+    COMMANDER_UNIDENTIFIED,
+    CONFIDENCE_LEVELS,
+    CONFIDENCE_REASON_TOKENS,
+    GAME_CHANGER_DATA_UNAVAILABLE,
+    ConfidenceLevel,
+    aggregate_score,
+    tier_label,
+)
 from src.logic.assessment.classifiers import (
     CARD_DRAW,
     CATEGORIES,
@@ -80,26 +91,34 @@ from src.logic.assessment.profiles import (
     COMMANDER_PROFILE,
     DIMENSIONS,
     STANDARD_PROFILE,
+    TIER_LABELS,
     DimensionWeights,
     FormatProfile,
+    TierLabel,
 )
 
 __all__ = [
     "BASELINE_BRACKET_FLOOR",
     "BRACKET_FLOOR_MAX",
     "BRACKET_TAG_TO_BRACKET",
+    "CARDS_UNRESOLVED",
     "CARD_DRAW",
     "CARD_DRAW_BELOW_BASELINE",
     "CATEGORIES",
     "CEDH_AVG_MV_MAX",
     "CEDH_COMBO_TURN_MAX",
     "CEDH_TUTOR_MIN",
+    "COMBO_DATA_UNAVAILABLE",
     "COMBO_TYPE_TOKENS",
     "COMMANDER_PROFILE",
+    "COMMANDER_UNIDENTIFIED",
+    "CONFIDENCE_LEVELS",
+    "CONFIDENCE_REASON_TOKENS",
     "DIMENSIONS",
     "EARLY_COMBO_TURN_MAX",
     "EXTRA_TURN",
     "EXTRA_TURN_CHAIN_MIN",
+    "GAME_CHANGER_DATA_UNAVAILABLE",
     "GC_BRACKET_FOUR_MIN",
     "GC_BRACKET_THREE_MIN",
     "INTERACTION",
@@ -112,6 +131,7 @@ __all__ = [
     "RAMP_BELOW_BASELINE",
     "STANDARD_PROFILE",
     "STRUCTURAL_GAP_TOKENS",
+    "TIER_LABELS",
     "TUTOR",
     "TWO_CARD_INFINITE",
     "WINCON_COMBO_PIECE",
@@ -124,6 +144,7 @@ __all__ = [
     "ComboBracketTag",
     "ComboBucket",
     "ComboRecord",
+    "ConfidenceLevel",
     "CurveSignals",
     "DimensionVector",
     "DimensionWeights",
@@ -134,6 +155,8 @@ __all__ = [
     "KarstenFormula",
     "KarstenLandSignal",
     "RedundancySignal",
+    "TierLabel",
+    "aggregate_score",
     "bracket_floor",
     "cards_seen_by_turn",
     "classify_card",
@@ -153,4 +176,5 @@ __all__ = [
     "probability_at_least",
     "redundancy_signals",
     "structural_gaps",
+    "tier_label",
 ]
