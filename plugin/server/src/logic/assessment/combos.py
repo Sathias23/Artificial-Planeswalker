@@ -24,7 +24,8 @@ assessment module.
 
 Decide-once policies (documented at each code site): lowercased name comparison with
 DFC front-face indexing; quantity-aware shortfall buckets; the commander requirement as
-an availability-neutral zone gate; sideboard rows NOT filtered (the standing
+a zone gate that credits the command-zone piece toward availability; sideboard rows NOT
+filtered (the standing
 5.3/5.4/5.5 policy — deck composition belongs to the caller; Epic 7 passes
 mainboard-only rows); ``"infinite"``-substring type detection; and the naive
 one-land-per-turn earliest-turn model. The type tokens and turn heuristic are
@@ -168,14 +169,17 @@ def match_combos(
     variant is excluded from the output entirely.
 
     Commander requirement (decide-once): a command-zone requirement cannot be drawn
-    into, so it is a hard gate, never a shortfall. When ``commander_required`` is true —
-    empty ``commanders`` excludes the variant (FR25: assess without commander-required
+    into, so it is a hard gate. When ``commander_required`` is true — empty
+    ``commanders`` excludes the variant (FR25: assess without commander-required
     variants; the ``commander_unidentified`` confidence token is the edge's job, not
     this module's); otherwise the requirement is satisfied iff at least one of the
-    variant's pieces is among the resolved commander names (lowercased), else excluded.
-    This is a documented v1 proxy — the bool cannot say WHICH piece must command. The
-    gate is availability-neutral: piece counts come solely from ``deck_cards`` rows (a
-    commander that is also a deck row counts via that row).
+    variant's pieces is among the resolved commander names, else excluded. This is a
+    documented v1 proxy — the bool cannot say WHICH piece must command. Commander names
+    are normalized identically to deck cards (:func:`_name_keys` — a DFC commander's
+    front face matches a variant naming just that face). A satisfied command-zone piece
+    is not a shortfall: the command zone always supplies it, so each commander-matching
+    piece is credited one copy of availability (a two-card commander combo whose other
+    piece is in the deck is ``included``, not ``almost_included``).
 
     Matched records are ``model_copy(update={"bucket": ...})`` copies — inputs are
     never mutated and the output is the SAME :class:`ComboRecord` shape (AD-11, no
@@ -193,18 +197,21 @@ def match_combos(
         output.
     """
     available = _availability(deck_cards)
-    commander_names = {name.lower() for name in commanders}
+    commander_keys = {key for name in commanders for key in _name_keys(name)}
     matched: list[ComboRecord] = []
     for variant in variants:
         if variant.commander_required:
-            if not commander_names:
+            if not commander_keys:
                 continue
-            if not any(piece.lower() in commander_names for piece in variant.cards):
+            if not any(piece.lower() in commander_keys for piece in variant.cards):
                 continue
         need = Counter(piece.lower() for piece in variant.cards)
-        shortfall = sum(
-            max(0, required - available.get(name, 0)) for name, required in need.items()
-        )
+        shortfall = 0
+        for name, required in need.items():
+            have = available.get(name, 0)
+            if variant.commander_required and name in commander_keys:
+                have += 1  # the command zone always supplies this piece
+            shortfall += max(0, required - have)
         if shortfall == 0:
             matched.append(variant.model_copy(update={"bucket": "included"}))
         elif shortfall == 1:

@@ -75,6 +75,10 @@ class TestComboRecordShape:
         with pytest.raises(ValidationError):
             make_combo_record(bucket="matched")
 
+    def test_empty_cards_raises(self) -> None:
+        with pytest.raises(ValidationError):
+            make_combo_record(cards=())
+
     def test_bucket_defaults_none(self) -> None:
         record = ComboRecord(
             spellbook_id="1-2",
@@ -196,14 +200,38 @@ class TestCommanderPolicy:
         matched = match_combos(deck, commanders=("COMBO PIECE A",), variants=(variant,))
         assert len(matched) == 1, "commander names must be compared lowercased"
 
-    def test_commander_gate_does_not_add_availability(self) -> None:
+    def test_commander_piece_credited_from_command_zone(self) -> None:
         variant = make_combo_record(commander_required=True)
         deck = [_deck_card("Combo Piece B")]
         matched = match_combos(deck, commanders=("Combo Piece A",), variants=(variant,))
-        assert len(matched) == 1, "gate satisfied; shortfall computed from deck rows only"
+        assert len(matched) == 1, "gate satisfied; the command-zone piece is credited"
+        assert matched[0].bucket == "included", (
+            "the command zone always supplies the commander piece, so a two-card "
+            "commander combo whose other piece is in the deck is included, not almost"
+        )
+
+    def test_commander_credit_does_not_cover_a_second_missing_piece(self) -> None:
+        variant = make_combo_record(commander_required=True)
+        matched = match_combos([], commanders=("Combo Piece A",), variants=(variant,))
+        assert len(matched) == 1, "commander piece credited; second piece still missing"
         assert matched[0].bucket == "almost_included", (
-            "the commander gate is availability-neutral — a piece not among deck rows "
-            "is still a shortfall"
+            "the command zone credits only the commander piece — a second missing "
+            "piece remains a shortfall of 1"
+        )
+
+    def test_dfc_commander_joined_name_matches_front_face_piece(self) -> None:
+        variant = make_combo_record(
+            cards=("Combo Piece B", "Esika, God of the Tree"), commander_required=True
+        )
+        deck = [_deck_card("Combo Piece B")]
+        matched = match_combos(
+            deck,
+            commanders=("Esika, God of the Tree // The Prismatic Bridge",),
+            variants=(variant,),
+        )
+        assert len(matched) == 1, "a DFC commander's joined name must satisfy a front-face piece"
+        assert matched[0].bucket == "included", (
+            "the credited DFC front-face commander piece + the deck piece leave zero shortfall"
         )
 
     def test_commander_not_required_ignores_commanders(self) -> None:

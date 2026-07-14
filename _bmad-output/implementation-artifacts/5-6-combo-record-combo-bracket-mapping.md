@@ -4,7 +4,7 @@ baseline_commit: 9d2e5f9 # 5.5 review-patch commit (review -> done)
 
 # Story 5.6: `ComboRecord` + combo→bracket mapping
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -102,7 +102,14 @@ curves are 5.7/5.8's, the aggregate is 5.8's, and serialization/degradation poli
      iff ≥ 1 of the variant's `cards` is among the resolved commander names (lowercased) —
      unsatisfied → **excluded** (a command-zone requirement cannot be drawn into; this is a
      documented v1 proxy — the bool cannot say WHICH piece must command, 6.2 may refine wire
-     mapping later, the shape is fixed);
+     mapping later, the shape is fixed). Commander names are normalized identically to deck
+     cards (lowercased + DFC front-face split — a DFC commander's joined `"A // B"` name
+     matches a variant naming just `"A"`). A **satisfied** commander piece is credited one
+     copy of availability — the command zone always supplies it, so it is NOT counted as a
+     shortfall: a two-card commander combo whose other piece is in the deck is `included`,
+     not `almost_included` (amended by story-5.6 code review 2026-07-14 — the original
+     "availability-neutral gate" demoted fully-online commander combos and would have
+     suppressed 5.7's FR15 two-card-infinite trigger);
    - matched records are produced with `model_copy(update={"bucket": ...})` — inputs are
      never mutated (frozen anyway) and the output records are the SAME shape (AD-11, no
      parallel "MatchedCombo" type);
@@ -235,6 +242,16 @@ curves are 5.7/5.8's, the aggregate is 5.8's, and serialization/degradation poli
   - [x] Commit with the regenerated `plugin/` mirror staged (hook rebuilds it — verify both
         the `assessment/` and `data/schemas/` mirror paths are staged). Never `--no-verify`.
 
+### Review Findings
+
+_Code review 2026-07-14 (bmad-code-review, 3 adversarial layers). All 3 findings patched; suite now 50 combo tests / 925 fast-suite passing (was 47 / 922), ruff + mypy --strict clean, plugin mirror regenerated._
+
+- [x] [Review][Decision→Patch, applied] **Commander-piece is double-enforced (gate AND shortfall) — fully-assembled commander combos are demoted to `almost_included`** [src/logic/assessment/combos.py:199-212] — RESOLVED: matcher now credits each gate-satisfying commander piece one copy of availability (command zone supplies it); `test_commander_gate_does_not_add_availability` replaced by `test_commander_piece_credited_from_command_zone` (+ a `_credit_does_not_cover_a_second_missing_piece` pin); AC3 + Dev Notes amended. — For a `commander_required` variant whose pieces are `(commander, other)`, the gate at :202 confirms the commander is present (command zone), but :204-207 then rebuilds `need` from ALL pieces including the commander and counts it as a shortfall because the commander is not among `deck_cards` rows. A combo that is online in every real game (commander in the zone + the other piece in the 99) is labeled `almost_included`, never `included`. `test_commander_gate_does_not_add_availability` (test:199-207) pins this behavior. This is spec-compliant on AC3's literal text, but it defeats AC6: 5.7's FR15 two-card-infinite Bracket trigger (`bucket == "included"` AND `two_card_infinite`) can never fire for commander-piece combos — the single most important combo class in Commander. Correctness hinges on the (unbuilt, untested) Epic 7 contract: does it pass the commander as a `deck_cards` row, or only via the `commanders` name list (AD-13's design)? If the latter, every commander combo is silently demoted. **Requires your call** — see options below.
+
+- [x] [Review][Patch, applied] **Commander gate skips the DFC front-face normalization used everywhere else** [src/logic/assessment/combos.py:196,202] — `commander_names = {name.lower() for name in commanders}` compares raw lowercased strings, so a DFC/MDFC commander passed as its joined `"Esika, God of the Tree // The Prismatic Bridge"` name fails `piece.lower() in commander_names` against a Spellbook variant naming the front face `"Esika, God of the Tree"` → the gate fails and the combo is excluded. Deck cards get DFC handling via `_name_keys`; commanders do not — an unintended asymmetry. Fix: build `commander_names` through `_name_keys` (strictly safe — front-face names pass through unchanged).
+
+- [x] [Review][Patch, applied] **`ComboRecord.cards` has no `min_length` guard — an empty-pieces variant is always `included`** [src/data/schemas/combo.py] — `match_combos` on a variant with `cards=()` yields `need={}` → shortfall 0 → `bucket="included"`. 6.2 owns wire validation, but a `Field(min_length=1)` on `cards` is cheap defense-in-depth so a malformed import can never masquerade as a matched combo. Low severity.
+
 ## Dev Notes
 
 ### What this story is — and is NOT
@@ -298,7 +315,9 @@ shape crosses layers, so Pydantic wins here.
   excluded, never `almost_included` (you cannot draw into the command zone). Empty
   `commanders` + `commander_required=True` → excluded (FR25); the edge (Story 7.2) is who
   adds `commander_unidentified` to confidence — emit nothing about confidence here (AD-6
-  tokens are 5.8's vocabulary, edge-assembled).
+  tokens are 5.8's vocabulary, edge-assembled). **A satisfied commander piece is credited
+  one copy of availability** (the command zone supplies it) so it is not a shortfall —
+  code review 2026-07-14; do not revert to an availability-neutral gate.
 - **Sideboard rows are NOT filtered** — the standing 5.3/5.4/5.5 policy: deck-composition
   belongs to the caller/edge; Epic 7 passes mainboard-only rows (+ commanders per AD-13).
   Same one-line caveat in the public docstrings; pin with a test.

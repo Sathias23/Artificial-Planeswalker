@@ -20,7 +20,7 @@ wrong Bracket floor.
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 #: The matcher-assigned inclusion bucket (FR13): every piece present vs. exactly one
 #: missing. Variants missing two or more pieces are excluded from output entirely, so
@@ -49,7 +49,8 @@ class ComboRecord(BaseModel):
     Attributes:
         spellbook_id: Spellbook variant id (e.g. ``"1234-5678"``).
         cards: Piece names, multiplicity-inclusive, normalized to ascending bytewise
-            order on construction.
+            order on construction; at least one piece (a combo with no pieces is
+            meaningless — an empty tuple raises ``ValidationError``).
         commander_required: Whether the variant needs a piece in the command zone.
         bucket: Matcher-assigned inclusion bucket; ``None`` until matched.
         bracket_tag: Spellbook's power-bracket tag (closed six-token enum).
@@ -61,7 +62,7 @@ class ComboRecord(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     spellbook_id: str
-    cards: tuple[str, ...]
+    cards: tuple[str, ...] = Field(min_length=1)
     commander_required: bool
     bucket: ComboBucket | None = None
     bracket_tag: ComboBracketTag
