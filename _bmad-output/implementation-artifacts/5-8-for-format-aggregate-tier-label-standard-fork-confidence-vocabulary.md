@@ -4,7 +4,7 @@ baseline_commit: fde9d8c # "story 5.7 review -> done" docstring-patch commit (tr
 
 # Story 5.8: For-format aggregate, tier label, Standard fork & confidence vocabulary
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -546,8 +546,21 @@ Claude Fable 5 (claude-fable-5) via Claude Code — BMAD dev-story workflow.
 - `_bmad-output/implementation-artifacts/5-8-for-format-aggregate-tier-label-standard-fork-confidence-vocabulary.md`
   (this story file)
 
+## Review Findings
+
+_Code review 2026-07-14 (adversarial: Blind Hunter + Edge Case Hunter + Acceptance Auditor). Acceptance Auditor: **all 9 ACs satisfied, zero violations.** Core math (bisect boundary policy, clamp + half-up rounding) verified correct by hand. All findings below are low severity; every "malformed profile" edge case is unreachable behind the mypy `tuple[int, int, int, int]` type and the pinned non-negative / sum-to-1.0 / strictly-ascending profile tests._
+
+- [x] [Review][Patch] Add a cross-module `_to_score` parity test [tests/unit/logic/test_assessment_aggregate.py] — **APPLIED.** `aggregate._to_score` (aggregate.py:81-94) is a hand-copy of `dimensions._to_score`, and the module docstring calls it the "shared decide-once policy … pinned by tests", yet no test asserted the two implementations agree. Added `TestToScorePolicyParity` (15 parametrized cases across `.5` rounding boundaries + clamp edges) importing both private helpers; makes the "pinned by tests" claim literally true and guards the seam until 5.9 hoists it (the 5.7 no-overclaim lesson). Fast suite 1052 → 1067 green; ruff + mypy clean.
+- [x] [Review][Defer] `tier_label`/`aggregate_score` trust their frozen profile's shape & weight validity [src/logic/assessment/aggregate.py:146,116] — deferred to 5.9. `tier_label` assumes exactly 4 strictly-ascending `tier_thresholds` (a 5+-tuple → `IndexError`; non-ascending → silent mislabel), and `aggregate_score`'s `[0,100]`/monotonicity guarantees assume non-negative, finite weights (a NaN → `ValueError`; a negative weight → silent monotonicity break). All unreachable with the shipped frozen+tested profiles, but 5.9 hand-tunes BOTH `weights` and `tier_thresholds` — optional cheap defense-in-depth for the tuning workflow (parallels the deferred 5.7 `win_turn_band` guard).
+- [x] [Review][Defer] `tier_thresholds` domain `(0, 100]` permits a cut of exactly 100 [src/logic/assessment/profiles.py:126] — deferred to 5.9. A cut at 100 makes the top band (`Competitive`) a single-point band reachable only by an exact score of 100; harmless for the shipped `(20, 40, 60, 80)`, but worth a guardrail when 5.9 re-cuts per-format anchors.
+
+_Dismissed as noise (2): the monotonicity test's `>=` assertion is the **correct** encoding of non-decreasing monotonicity (a strict `>` would over-claim and break on a legitimately zero-weighted dimension); the module docstring's `bracket: null` / `heuristic_only` composition narrative is **mandated by AC5**, not a stray claim about behavior this module implements._
+
 ## Change Log
 
+- 2026-07-14: Story 5.8 code review — all 9 ACs satisfied (0 violations); 1 optional
+  patch (`_to_score` parity test), 2 defers to 5.9 (profile shape/weight-validity guards;
+  `tier_thresholds`=100 domain), 2 dismissed. Status → review (patch left as action item).
 - 2026-07-14: Story 5.8 implemented (review) — `aggregate.py` (aggregate_score,
   tier_label, AD-6 confidence vocabulary), profiles v3 (TierLabel/TIER_LABELS +
   tier_thresholds), additive exports, 61 new offline tests; fast suite 1052 passed,

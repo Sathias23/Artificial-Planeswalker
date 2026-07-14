@@ -34,6 +34,13 @@ from src.logic.assessment import (
     tier_label,
 )
 
+# The two private `_to_score` helpers are imported by their qualified module paths (they
+# are private-by-convention, so not re-exported) purely to pin that this story's restated
+# copy stays byte-for-byte faithful to the dimensions original it documents itself as
+# restating — the review-added guard for the "shared decide-once policy" docstring claim.
+from src.logic.assessment.aggregate import _to_score as _aggregate_to_score
+from src.logic.assessment.dimensions import _to_score as _dimensions_to_score
+
 _PROFILES: dict[str, FormatProfile] = {
     "COMMANDER_PROFILE": COMMANDER_PROFILE,
     "STANDARD_PROFILE": STANDARD_PROFILE,
@@ -126,6 +133,49 @@ class TestRoundingPolicy:
         score = aggregate_score(vector, profile=half_split)
         assert score == 51, (
             f"aggregate_score must round a x.5 weighted sum half-UP (50.5 -> 51), got {score}"
+        )
+
+
+class TestToScorePolicyParity:
+    """The restated `_to_score` must stay faithful to `dimensions._to_score`.
+
+    `aggregate._to_score` is a hand-copy of `dimensions._to_score` (private-by-convention,
+    so restated rather than imported — see the aggregate module docstring). Each copy's own
+    behaviour is pinned elsewhere, but nothing guarded the *seam*: a future edit to one copy
+    would silently diverge while the docstring still claims a single "shared decide-once
+    policy". This pins the two implementations agree across the rounding-critical and
+    clamp-boundary values, so the divergence surfaces as a failing test, not a lie in prose.
+    (Story 5.9 owns hoisting the two into one home; until then this is the guard.)
+    """
+
+    #: Values chosen to exercise both round-half-up behaviour (the `.5` points) and the
+    #: clamp edges (below 0, exactly 0/100, above 100, plus float-dust either side).
+    _POLICY_INPUTS: tuple[float, ...] = (
+        -10.0,
+        -0.0001,
+        0.0,
+        0.4999,
+        0.5,
+        0.5001,
+        49.5,
+        50.4999,
+        50.5,
+        62.3,
+        99.5,
+        99.9999999,
+        100.0,
+        100.5,
+        250.0,
+    )
+
+    @pytest.mark.parametrize("value", _POLICY_INPUTS)
+    def test_restated_to_score_matches_dimensions(self, value: float) -> None:
+        expected = _dimensions_to_score(value)
+        actual = _aggregate_to_score(value)
+        assert actual == expected, (
+            f"aggregate._to_score must restate dimensions._to_score exactly (shared "
+            f"decide-once clamp + half-up policy): the two diverged on {value!r} "
+            f"({actual} != {expected}) — hoist to one home or re-sync the copies"
         )
 
 
