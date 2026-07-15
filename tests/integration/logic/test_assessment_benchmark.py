@@ -12,8 +12,10 @@ operator-local data but must skip LOUDLY, never fail cryptically):
 - no/uninitialized central ``cards.db`` (fresh checkout, CI) → the whole module SKIPS;
 - an UNRESOLVED name → hard ``pytest.fail`` naming the entry + names (5.1 guaranteed
   resolvability, so a miss is a fixture regression, not an environment gap);
-- a resolved card with ``game_changer is None`` → per-entry skip citing the backfill
-  re-import (the AD-4 window; the Atraxa Bracket-3 expectation needs real GC data).
+- a resolved card with ``game_changer is None`` → per-entry skip for COMMANDER entries
+  only, citing the backfill re-import (the AD-4 window; the Atraxa Bracket-3 expectation
+  needs real GC data). Standard scores are ``heuristic_only`` and never read
+  ``game_changer``, so their FR20 exact-tier gate stays live even during a backfill window.
 
 Combo variants are hand-built fixtures verified against the committed decklists (Epic
 6's snapshot does not exist yet — the epic-2 overview mandates fixture-validated, no
@@ -224,7 +226,10 @@ class TestBenchmark:
                 f"{entry.key}: unresolved card names {sorted(resolved.missing)} — 5.1 "
                 f"guaranteed resolvability, so this is a fixture regression, not a skip"
             )
-        if resolved.unknown_gc:
+        # GC data feeds ONLY the commander bracket path (heuristic_only Standard scores
+        # never read game_changer), so an open backfill window must not skip the Standard
+        # FR20 exact-tier gate for an unrelated reason (code review 2026-07-15).
+        if entry.format == "commander" and resolved.unknown_gc:
             pytest.skip(
                 f"{entry.key}: game_changer is None for {len(resolved.unknown_gc)} cards "
                 f"(e.g. {sorted(resolved.unknown_gc)[:5]}) — run the game_changer backfill "

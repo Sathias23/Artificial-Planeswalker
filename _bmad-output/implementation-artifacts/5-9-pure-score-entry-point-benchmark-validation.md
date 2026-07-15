@@ -4,7 +4,7 @@ baseline_commit: a42c537 # "test: pin _to_score cross-module parity (Story 5.8 r
 
 # Story 5.9: Pure `score()` entry point + benchmark validation
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -708,3 +708,36 @@ claude-fable-5 (Claude Fable 5)
   fixtures as the candidacy prerequisite, the decide-once tolerance policy, literal-add
   monotonicity ownership, version-bumps-track-behavior tuning rules, and the five
   deferred-item dispositions. Baseline: clean `a42c537`, 1067 passed / 5 deselected.
+
+## Review Findings
+
+_Code review 2026-07-15 (adversarial: Blind Hunter + Edge Case Hunter + Acceptance
+Auditor). 1 decision-needed, 1 patch, 0 deferred, 10 dismissed. Composition, purity,
+determinism, non-mutation, and all 12 ACs verified sound; plugin mirror confirmed
+byte-identical to `src/` (AC12)._
+
+- [x] **[Review][Decision→Patched] `unknown_gc` skip disables the Standard FR20 gate on data
+  Standard never consumes** [tests/integration/logic/test_assessment_benchmark.py:227] —
+  RESOLVED: skip narrowed to `entry.format == "commander"` (option a); docstring updated;
+  benchmark suite re-run green (12 passed, no Standard skips). —
+  the per-entry skip fires for the WHOLE entry (including the exact-tier FR20 assertion at
+  :179) whenever any resolved card has `game_changer is None`. But Standard scores are
+  `heuristic_only` and never read `game_changer`, so a reopened GC-backfill window (which
+  actually happened mid-story — see the "Environment repair" Completion Note) would
+  silently skip the headline Standard acceptance signal for an unrelated reason. AC6 says
+  literally "skip if any resolved card has `game_changer is None`," but its stated
+  rationale is "the Atraxa B3 expectation needs real GC data" — commander-only. Choice:
+  (a) narrow the skip to `entry.format == "commander"` (honors AC6 intent, keeps the
+  Standard gate live); (b) keep the unconditional skip as literally written in AC6;
+  (c) defer.
+
+- [x] **[Review][Patch] `tier_thresholds` domain split-brain — profiles test still allows a
+  cut of 100 that the runtime guard rejects** [tests/unit/logic/test_assessment_profiles.py:252]
+  — FIXED: assertion `<= 100` → `< 100` + message; docstring prose corrected in both
+  `src/` and `plugin/` mirror. ruff + mypy clean; profiles/aggregate suites green.
+  — AC9(c) narrowed the domain to `(0, 100)` and the guard (`aggregate.py:164`) now raises
+  on `cut >= 100`, but `test_tier_thresholds_in_domain` still asserts `0 < cut <= 100`
+  ("must sit in (0, 100]"). A future tuner setting a cut of 100 would pass this test yet
+  fail `test_assessment_aggregate.py:370` (`0 < cut < 100`) and crash `tier_label` at
+  runtime. Fix: `<= 100` → `< 100` and update its message; also correct the stale
+  `(0, 100]` prose in the `tier_thresholds` docstring (`src/logic/assessment/profiles.py:111`).

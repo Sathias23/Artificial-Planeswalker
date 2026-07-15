@@ -249,8 +249,10 @@ class TestTierThresholds:
     def test_tier_thresholds_in_domain(self, profile_name: str) -> None:
         profile = _PROFILES[profile_name]
         for cut in profile.tier_thresholds:
-            assert 0 < cut <= 100, (
-                f"{profile_name}.tier_thresholds cuts must sit in (0, 100] — band 1 "
+            # Domain (0, 100) — exclusive both ends (Story 5.9 AC9c; tier_label guards on
+            # cut <= 0 or cut >= 100). A cut at 100 makes its band a single-score sliver.
+            assert 0 < cut < 100, (
+                f"{profile_name}.tier_thresholds cuts must sit in (0, 100) — band 1 "
                 f"implicitly starts at 0 — got {cut} in {profile.tier_thresholds!r}"
             )
 

@@ -108,7 +108,7 @@ class FormatProfile:
             applies for this format (Story 5.7) — the 5.4/5.5 ``KarstenFormula`` selector,
             now profile-driven (AD-3) so ``dimension_vector`` needs no ``rubric`` branch.
         weights: Aggregate weights over the closed 7-dimension set; sum to 1.0 (Story 5.8).
-        tier_thresholds: Four strictly ascending inclusive lower cut points in ``(0, 100]``,
+        tier_thresholds: Four strictly ascending inclusive lower cut points in ``(0, 100)``,
             one per band 2-5 of :data:`TIER_LABELS` (band 1 implicitly starts at 0) — the
             FR24 score→label mapping parameter (Story 5.8). Per-profile so Story 5.9 anchors
             each format's cuts against its own benchmark without cross-format math.
