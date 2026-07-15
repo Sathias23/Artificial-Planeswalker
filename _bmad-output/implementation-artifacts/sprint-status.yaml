@@ -124,7 +124,7 @@ development_status:
   # G-I2: import errors surfaced per-card (name + exception class) in the import summary
   # G-I3: import-path regression test (oracle_id dedup + game_changer propagation survive re-import)
   #       — absorbs epic-4 action item 3 (persisted nullable-bool round-trip test)
-  pre-epic-6-importer-gate: review  # spec-pre-epic-6-importer-gate.md done; awaiting Sathias's live-DB acceptance run (G-I1..G-I3 code green)
+  pre-epic-6-importer-gate: done  # spec-pre-epic-6-importer-gate.md; live-DB acceptance 2026-07-15: 38,261 rows (was 51,189), 0 dup oracle_ids, 0 game_changer NULL (53 TRUE), 241 deck refs repointed / 0 dangling; 33 rejects all reversible_card missing top-level type_line (fix = own spec, see deferred-work) — Epic 6 unblocked
 
   # Epic 6 (feature Epic 3): Commander identity & local combo snapshot
   # (re-scoped 2026-07-12 per sprint-change-proposal-2026-07-12.md — bulk snapshot replaces live client/cache/key)
@@ -156,19 +156,19 @@ action_items:
   - epic: 4
     action: "add a persisted-SQLite round-trip test proving a nullable-bool field (game_changer=False) survives DB write/read — the gap that let the importer.py omission through; also covers the power/toughness precedent"
     owner: "Brad"
-    status: open  # superseded by epic-5 G-I3 (import-path regression test in pre-epic-6-importer-gate); close when G-I3 lands
+    status: done  # closed via epic-5 G-I3 (import-path regression tests landed in pre-epic-6-importer-gate, 2026-07-15)
   - epic: 5
     action: "G-I1: stop stale-printing accumulation — key the upsert by oracle_id (or reconcile stale printings, minding deck_cards FKs) and propagate oracle-level fields (game_changer) across same-oracle_id rows; done when a live refresh leaves 0 stale duplicates and 0 game_changer NULLs"
     owner: "Sathias"
-    status: open
+    status: done  # 2026-07-15 live acceptance: 0 dup oracle_ids, 0 NULLs, 12,971 stale rows removed
   - epic: 5
     action: "G-I2: surface silent import errors — failing cards listed in the import summary with name + exception class, counted against a stale-rows-remaining warning"
     owner: "Sathias"
-    status: open
+    status: done  # 2026-07-15: 33 rejects listed with reasons (all reversible_card type_line) on CLI + MCP
   - epic: 5
     action: "G-I3: committed import-path regression test proving oracle_id dedup + game_changer propagation survive a re-import (absorbs/closes epic-4 round-trip-test item)"
     owner: "Sathias"
-    status: open
+    status: done  # 2026-07-15: two-snapshot e2e suite in test_scryfall_import_e2e.py + test_reconcile_plan.py
   - epic: 5
     action: "story-start state verification: any story whose notes assert live-DB/environment state must open with the cheap query that proves it (the 5.9 'imported AND backfilled' saga was one SELECT away from caught)"
     owner: "Sathias"
