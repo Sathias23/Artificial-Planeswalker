@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-07-15 (story 5-9 review → done; 2 patches applied, benchmark gate green)
+last_updated: 2026-07-15 (epic 5 retrospective done; pre-epic-6 importer gate opened)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -107,7 +107,7 @@ development_status:
   epic-4-retrospective: done  # epic-4-retro-2026-07-12.md; game_changer backfilled live (53 TRUE / 38180 FALSE / 0 NULL)
 
   # Epic 5 (feature Epic 2): Deterministic scoring core
-  epic-5: in-progress
+  epic-5: done
   5-1-compose-the-calibration-benchmark-set: done
   5-2-format-profile-frozen-data-module: done
   5-3-shared-oracle-text-classifiers: done
@@ -117,7 +117,14 @@ development_status:
   5-7-dimension-vector-commander-bracket-floor-cedh-candidacy: done
   5-8-for-format-aggregate-tier-label-standard-fork-confidence-vocabulary: done
   5-9-pure-score-entry-point-benchmark-validation: done
-  epic-5-retrospective: optional
+  epic-5-retrospective: done  # epic-5-retro-2026-07-15.md; benchmark gate green (1136 full suite), branch stays feat/deck-power-assessment until feature complete ("experimental" release)
+
+  # Pre-Epic-6 Importer Gate (from epic-5-retro-2026-07-15.md) — blocks Epic 6 story creation.
+  # G-I1: upsert keyed by oracle_id / stale-printing reconcile + oracle-level field propagation
+  # G-I2: import errors surfaced per-card (name + exception class) in the import summary
+  # G-I3: import-path regression test (oracle_id dedup + game_changer propagation survive re-import)
+  #       — absorbs epic-4 action item 3 (persisted nullable-bool round-trip test)
+  pre-epic-6-importer-gate: backlog
 
   # Epic 6 (feature Epic 3): Commander identity & local combo snapshot
   # (re-scoped 2026-07-12 per sprint-change-proposal-2026-07-12.md — bulk snapshot replaces live client/cache/key)
@@ -145,8 +152,40 @@ action_items:
   - epic: 4
     action: "do not assume build-plugin-sync auto-mirrors: .git/hooks/pre-commit is absent in this checkout, so after any src/ commit run 'uv run python -m scripts.build_plugin' + diff-check the plugin mirror (or 'pre-commit install')"
     owner: "Brad"
-    status: open
+    status: done  # closed mid-Epic-5: hook installed as of 88b1e66 (story 5.5); verified present at epic-5 retro
   - epic: 4
     action: "add a persisted-SQLite round-trip test proving a nullable-bool field (game_changer=False) survives DB write/read — the gap that let the importer.py omission through; also covers the power/toughness precedent"
     owner: "Brad"
+    status: open  # superseded by epic-5 G-I3 (import-path regression test in pre-epic-6-importer-gate); close when G-I3 lands
+  - epic: 5
+    action: "G-I1: stop stale-printing accumulation — key the upsert by oracle_id (or reconcile stale printings, minding deck_cards FKs) and propagate oracle-level fields (game_changer) across same-oracle_id rows; done when a live refresh leaves 0 stale duplicates and 0 game_changer NULLs"
+    owner: "Sathias"
+    status: open
+  - epic: 5
+    action: "G-I2: surface silent import errors — failing cards listed in the import summary with name + exception class, counted against a stale-rows-remaining warning"
+    owner: "Sathias"
+    status: open
+  - epic: 5
+    action: "G-I3: committed import-path regression test proving oracle_id dedup + game_changer propagation survive a re-import (absorbs/closes epic-4 round-trip-test item)"
+    owner: "Sathias"
+    status: open
+  - epic: 5
+    action: "story-start state verification: any story whose notes assert live-DB/environment state must open with the cheap query that proves it (the 5.9 'imported AND backfilled' saga was one SELECT away from caught)"
+    owner: "Sathias"
+    status: open
+  - epic: 5
+    action: "real-deck sanity pass: throwaway harness runs pure score() over Sathias's real saved decks (live-DB resolution), tiers compared against his own judgment — early validity signal, ideally before Epic 7 tuning ossifies"
+    owner: "Sathias"
+    status: open
+  - epic: 5
+    action: "story 6.1 must run the epic-4 end-to-end-field checklist: enumerate every deck_cards write path (add_card_to_deck, import_decklist, any upsert column list) before claiming end-to-end"
+    owner: "Sathias"
+    status: open
+  - epic: 5
+    action: "story 6.2 must reuse _name_keys (src/logic/assessment/combos.py) for Spellbook->Scryfall name normalization — the DFC front-face hazard bit stories 5.3, 5.6 and 5.9"
+    owner: "Sathias"
+    status: open
+  - epic: 5
+    action: "after 6.2/6.3 land, re-run the benchmark swapping 5.9's hand-built cEDH combo variants for real snapshot data (candidacy also depends on CEDH_TUTOR_MIN=3)"
+    owner: "Sathias"
     status: open
