@@ -20,6 +20,9 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+#: Cap on individually listed rejected cards in the CLI summary (full list in the logs).
+_MAX_REJECT_LINES = 50
+
 
 async def main() -> int:
     """Main entry point for Scryfall data import."""
@@ -29,8 +32,9 @@ async def main() -> int:
         epilog="""
 The importer deduplicates any bulk type to one row per oracle identity and stores
 `games` as the union across all printings (so Arena/MTGO availability is never
-masked by a paper-only printing). Pre-existing rows from older imports get their
-`games` reconciled to the union as a final step.
+masked by a paper-only printing). Pre-existing rows from older imports are
+reconciled as a final step: stale duplicate printings are removed, deck references
+are repointed to the surviving canonical row, and `games` is rewritten to the union.
 
 Examples:
   # Import default cards (default; ~500 MB, all printings -> deduped rows w/ union games)
@@ -115,6 +119,34 @@ Examples:
         print(f"Errors: {stats.total_errors}")
         print(f"Elapsed time: {stats.elapsed_time():.1f} seconds")
         print(f"Throughput: {stats.cards_per_second():.1f} cards/second")
+        reconcile = stats.reconcile
+        if reconcile.failed:
+            print(
+                "WARNING: reconcile stage failed - stale duplicates may remain; "
+                "re-run the import (or initialize_database update=true) to retry"
+            )
+        else:
+            print(
+                f"Reconcile: {reconcile.rows_deleted:,} stale row(s) deleted, "
+                f"{reconcile.deck_cards_repointed:,} deck reference(s) repointed, "
+                f"{reconcile.deck_cards_merged:,} merged, "
+                f"{reconcile.games_updated:,} games update(s)"
+            )
+        if stats.rejects:
+            print(f"Rejected cards ({len(stats.rejects)}):")
+            for reject in stats.rejects[:_MAX_REJECT_LINES]:
+                print(f"  - {reject.identity}: {reject.reason}")
+            n_more = len(stats.rejects) - _MAX_REJECT_LINES
+            if n_more > 0:
+                print(f"  ... and {n_more} more (see logs)")
+        if reconcile.stale_remaining > 0:
+            noun = "identity" if reconcile.stale_remaining == 1 else "identities"
+            print(
+                f"WARNING: {reconcile.stale_remaining} oracle {noun} kept pre-existing "
+                "rows because their current printing was rejected this run"
+            )
+            for oracle_id in reconcile.stale_sample:
+                print(f"  - {oracle_id}")
         print("=" * 70)
 
         # Cleanup engine

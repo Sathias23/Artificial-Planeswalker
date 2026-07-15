@@ -393,3 +393,60 @@ def test_transform_card_game_changer_missing_is_none():
 
     assert card is not None
     assert card.game_changer is None
+
+
+# --- Reject capture (identity + reason diagnostics channel) ---------------------------
+
+
+def test_reject_collector_captures_missing_field_name_and_identity():
+    """A missing required field appends (card name, missing-field reason) to the collector."""
+    rejects = []
+    card_json = {"id": "printing-9", "name": "Half A Card", "oracle_id": "o-9"}  # no type_line
+
+    assert transform_scryfall_card(card_json, rejects) is None
+
+    assert len(rejects) == 1
+    assert rejects[0].identity == "Half A Card"
+    assert "type_line" in rejects[0].reason
+
+
+def test_reject_identity_falls_back_to_id_then_unknown():
+    """Identity is the name, else the id, else the literal "unknown"."""
+    rejects = []
+
+    assert transform_scryfall_card({"id": "printing-10"}, rejects) is None
+    assert transform_scryfall_card({}, rejects) is None
+
+    assert [r.identity for r in rejects] == ["printing-10", "unknown"]
+
+
+def test_reject_collector_captures_exception_class():
+    """A transform-time exception appends the exception class as the reason."""
+    rejects = []
+    card_json = {
+        "id": "printing-11",
+        "name": "Bad CMC",
+        "oracle_id": "o-11",
+        "type_line": "Instant",
+        "cmc": "not-a-number",  # float() -> ValueError
+    }
+
+    assert transform_scryfall_card(card_json, rejects) is None
+
+    assert len(rejects) == 1
+    assert rejects[0].identity == "Bad CMC"
+    assert rejects[0].reason.startswith("ValueError")
+
+
+def test_reject_collector_untouched_on_success():
+    """A successful transform never appends to the collector."""
+    rejects = []
+    card = transform_scryfall_card(_minimal_card_json(), rejects)
+
+    assert card is not None
+    assert rejects == []
+
+
+def test_reject_none_contract_preserved_without_collector():
+    """Callers that pass no collector keep getting a plain ``None`` (no error raised)."""
+    assert transform_scryfall_card({"id": "printing-12"}) is None

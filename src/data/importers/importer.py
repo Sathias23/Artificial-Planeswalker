@@ -3,13 +3,44 @@
 import logging
 import time
 from collections.abc import Iterator
+from dataclasses import dataclass
 
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.data.importers.transformers import TransformReject
 from src.data.models.card import CardModel
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ReconcileStatistics:
+    """Outcome of the post-import oracle-identity reconcile stage.
+
+    Attributes:
+        games_updated: Surviving pre-existing rows whose ``games`` was rewritten to the
+            cross-printing union.
+        rows_deleted: Stale (non-canonical) ``cards`` rows deleted.
+        deck_cards_repointed: ``deck_cards`` rows whose ``card_id`` was repointed from a
+            stale printing to the canonical row.
+        deck_cards_merged: ``deck_cards`` rows merged (quantity summed) into an existing
+            canonical-row entry because the deck held both printings.
+        stale_remaining: Oracle identities left untouched because their canonical row is
+            absent from the database (its printing was rejected this run).
+        stale_sample: Up to five sorted sample oracle ids of those skipped identities,
+            for user-facing diagnostics (the full set is in the logs).
+        failed: ``True`` when the reconcile stage itself failed and was skipped — the
+            zeroed counters then mean "unknown", not "clean".
+    """
+
+    games_updated: int = 0
+    rows_deleted: int = 0
+    deck_cards_repointed: int = 0
+    deck_cards_merged: int = 0
+    stale_remaining: int = 0
+    stale_sample: tuple[str, ...] = ()
+    failed: bool = False
 
 
 class ImportStatistics:
@@ -19,6 +50,8 @@ class ImportStatistics:
         self.total_processed = 0
         self.total_inserted = 0
         self.total_errors = 0
+        self.rejects: list[TransformReject] = []
+        self.reconcile = ReconcileStatistics()
         self.start_time = time.time()
 
     def elapsed_time(self) -> float:
@@ -44,6 +77,7 @@ async def import_cards(
     session: AsyncSession,
     cards_iterator: Iterator[CardModel | None],
     batch_size: int = 1000,
+    rejects: list[TransformReject] | None = None,
 ) -> ImportStatistics:
     """Import cards into database with batch upserts.
 
@@ -54,11 +88,18 @@ async def import_cards(
         session: AsyncSession for database operations.
         cards_iterator: Iterator yielding CardModel instances or None (for skipped cards).
         batch_size: Number of cards to insert per batch (default 1,000).
+        rejects: Optional shared reject collector (the same list the transformer behind
+            *cards_iterator* appends to). It becomes ``ImportStatistics.rejects``, so each
+            ``None`` counted as an error carries its identity + reason.
 
     Returns:
         ImportStatistics object with import metrics.
     """
     stats = ImportStatistics()
+    if rejects is not None:
+        # Alias, don't copy: the transformer appends to this list lazily as the iterator
+        # is consumed, so by the time the loop below finishes it holds one record per None.
+        stats.rejects = rejects
     batch: list[CardModel] = []
 
     logger.info(f"Starting import with batch size: {batch_size}")

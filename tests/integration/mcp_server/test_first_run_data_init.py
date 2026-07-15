@@ -15,9 +15,11 @@ model download):
 from pathlib import Path
 
 import pytest
+from sqlalchemy import text
 
 from src.data.database import create_engine, create_session_factory, init_database
-from src.data.importers.importer import ImportStatistics
+from src.data.importers.importer import ImportStatistics, ReconcileStatistics
+from src.data.importers.transformers import TransformReject
 from src.data.models.card import CardModel
 from src.mcp_server.tools.build_search_index import build_search_index
 from src.mcp_server.tools.card_lookup import lookup_card
@@ -157,6 +159,98 @@ async def test_initialize_database_update_refreshes_populated_db(tmp_path, monke
     assert updated.status == "updated"
     assert updated.cards_imported == 1  # one *new* card (c-3); c-1 was refreshed, not added
     assert updated.cards_total == 3
+
+
+async def test_initialize_database_surfaces_reject_and_stale_diagnostics(
+    tmp_path, monkeypatch
+) -> None:
+    """The result message names the error count, up to 5 sample rejects, and stale rows."""
+    monkeypatch.setenv(
+        "CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{(tmp_path / 'diag.db').as_posix()}"
+    )
+
+    async def _importer_with_rejects(
+        session, *, bulk_type: str = "oracle_cards"
+    ) -> ImportStatistics:
+        session.add(_card("c-1", "Lightning Bolt"))
+        await session.commit()
+        stats = ImportStatistics()
+        stats.total_processed = 8
+        stats.total_inserted = 1
+        stats.total_errors = 7
+        stats.rejects = [
+            TransformReject(identity=f"Reject Card {i}", reason="missing required field(s): id")
+            for i in range(7)
+        ]
+        stats.reconcile.stale_remaining = 3
+        return stats
+
+    result = await initialize_database(import_fn=_importer_with_rejects)
+    assert result.status == "ok"
+    assert "7 card(s) could not be imported" in result.message
+    assert "Reject Card 0" in result.message
+    assert "Reject Card 4" in result.message  # five samples ...
+    assert "Reject Card 5" not in result.message  # ... and no more
+    assert (
+        "3 oracle identities kept pre-existing rows because their "
+        "current printing was rejected this run" in result.message
+    )
+
+
+async def test_initialize_database_update_clamps_negative_added_and_recommends_prune(
+    tmp_path, monkeypatch
+) -> None:
+    """Reconcile deletions can shrink the total: ``cards_imported`` clamps at 0, msg explains."""
+    monkeypatch.setenv(
+        "CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{(tmp_path / 'clamp.db').as_posix()}"
+    )
+
+    first = await initialize_database(import_fn=_fake_importer)
+    assert first.status == "ok"
+    assert first.cards_total == 2
+
+    async def _dedup_importer(session, *, bulk_type: str = "oracle_cards") -> ImportStatistics:
+        """Simulates a reconcile-heavy update: a stale duplicate row is deleted, none added."""
+        await session.execute(text("DELETE FROM cards WHERE id = 'c-2'"))
+        await session.commit()
+        stats = ImportStatistics()
+        stats.total_processed = 1
+        stats.total_inserted = 1
+        stats.reconcile.rows_deleted = 1
+        return stats
+
+    updated = await initialize_database(import_fn=_dedup_importer, update=True)
+    assert updated.status == "updated"
+    assert updated.cards_imported == 0  # 1 total - 2 before = -1, clamped
+    assert updated.cards_total == 1
+    assert "Removed 1 stale duplicate row(s) during reconcile." in updated.message
+    assert "prune=true" in updated.message  # deleted rows leave vectors to prune
+
+
+async def test_initialize_database_surfaces_reconcile_failure_warning(
+    tmp_path, monkeypatch
+) -> None:
+    """A failed reconcile stage is named in the message instead of masquerading as clean."""
+    monkeypatch.setenv(
+        "CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{(tmp_path / 'recfail.db').as_posix()}"
+    )
+
+    async def _reconcile_failed_importer(
+        session, *, bulk_type: str = "oracle_cards"
+    ) -> ImportStatistics:
+        session.add(_card("c-1", "Lightning Bolt"))
+        await session.commit()
+        stats = ImportStatistics()
+        stats.total_processed = 1
+        stats.total_inserted = 1
+        stats.reconcile = ReconcileStatistics(failed=True)
+        return stats
+
+    result = await initialize_database(import_fn=_reconcile_failed_importer)
+    assert result.status == "ok"
+    assert "reconcile stage failed" in result.message
+    assert "stale duplicates may remain" in result.message
+    assert "update=true" in result.message
 
 
 async def test_initialize_database_update_on_empty_db_is_a_first_run(tmp_path, monkeypatch) -> None:

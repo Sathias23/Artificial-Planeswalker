@@ -1,6 +1,7 @@
 """Data transformation functions to convert Scryfall JSON to SQLAlchemy models."""
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from src.data.importers.aggregate import resolve_oracle_id
@@ -15,14 +16,47 @@ class CardTransformError(Exception):
     pass
 
 
-def transform_scryfall_card(card_json: dict[str, Any]) -> CardModel | None:
+@dataclass(frozen=True, slots=True)
+class TransformReject:
+    """Identity and reason for a card the transformer rejected.
+
+    Attributes:
+        identity: The card's ``name``, else its ``id``, else ``"unknown"`` — whatever
+            best identifies the rejected card to an operator.
+        reason: Why the card was rejected: the missing required field name(s), or the
+            exception class (and message) raised during transformation.
+    """
+
+    identity: str
+    reason: str
+
+
+def _reject_identity(card_json: dict[str, Any]) -> str:
+    """Best-effort identity for a rejected card: name, else id, else "unknown"."""
+    name = card_json.get("name")
+    if name:
+        return str(name)
+    card_id = card_json.get("id")
+    if card_id:
+        return str(card_id)
+    return "unknown"
+
+
+def transform_scryfall_card(
+    card_json: dict[str, Any], rejects: list[TransformReject] | None = None
+) -> CardModel | None:
     """Transform Scryfall JSON card object to CardModel ORM instance.
 
     Handles required and optional fields with appropriate defaults.
-    Returns None for cards that cannot be transformed (invalid data).
+    Returns None for cards that cannot be transformed (invalid data). When *rejects*
+    is supplied, every ``None`` return also appends one :class:`TransformReject`
+    (identity + reason) to it — a second diagnostics channel that leaves the
+    ``None`` return contract untouched.
 
     Args:
         card_json: Dictionary containing Scryfall card data.
+        rejects: Optional collector; a :class:`TransformReject` is appended for every
+            rejected card so callers can report which cards failed and why.
 
     Returns:
         CardModel instance if transformation succeeds, None otherwise.
@@ -43,6 +77,13 @@ def transform_scryfall_card(card_json: dict[str, Any]) -> CardModel | None:
                 f"Skipping card '{card_json.get('name', 'UNKNOWN')}': "
                 f"missing required fields: {missing_fields}"
             )
+            if rejects is not None:
+                rejects.append(
+                    TransformReject(
+                        identity=_reject_identity(card_json),
+                        reason=f"missing required field(s): {', '.join(missing_fields)}",
+                    )
+                )
             return None
 
         assert oracle_id is not None  # a None oracle_id was appended to missing_fields above
@@ -140,9 +181,21 @@ def transform_scryfall_card(card_json: dict[str, Any]) -> CardModel | None:
     except (KeyError, ValueError, TypeError) as e:
         card_name = card_json.get("name", "UNKNOWN")
         logger.warning(f"Failed to transform card '{card_name}': {e}")
+        if rejects is not None:
+            rejects.append(
+                TransformReject(
+                    identity=_reject_identity(card_json), reason=f"{type(e).__name__}: {e}"
+                )
+            )
         return None
 
     except Exception as e:
         card_name = card_json.get("name", "UNKNOWN")
         logger.error(f"Unexpected error transforming card '{card_name}': {e}")
+        if rejects is not None:
+            rejects.append(
+                TransformReject(
+                    identity=_reject_identity(card_json), reason=f"{type(e).__name__}: {e}"
+                )
+            )
         return None

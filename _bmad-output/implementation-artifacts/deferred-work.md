@@ -1,5 +1,14 @@
 # Deferred Work
 
+## Deferred from: code review of spec-pre-epic-6-importer-gate (2026-07-15)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-pre-epic-6-importer-gate.md`
+  summary: 'TOCTOU window in reconcile_oracle_identities: a deck_cards row committed by a concurrent connection (e.g. import_decklist via the live MCP server) between the reconcile''s deck_cards plan-scan and its write phase is never repointed, and the stale cards row is then deleted with FK enforcement OFF — a silently dangling deck_cards.card_id. Fix candidates: re-scan deck_cards after acquiring the write lock (BEGIN IMMEDIATE / first-write upgrade), or verify-and-repoint residual references just before the delete.'
+  evidence: 'Edge Case Hunter trace over scryfall.py plan-scan vs execute+delete phases; SQLite deferred transactions take no lock until the first write, and the central DB is shared with a live MCP server. Window is narrow (scan-to-write span) and requires a concurrent deck write during a bulk import.'
+- source_spec: `_bmad-output/implementation-artifacts/spec-pre-epic-6-importer-gate.md`
+  summary: 'Reconcile deletions orphan card_vec/card_embedding_meta rows until a build_search_index run with prune=true (prune defaults to False): KNN over-fetch returns deleted ids that vanish at the cards JOIN, thinning semantic results. Consider auto-pruning vectors for deleted card ids at reconcile time, or defaulting prune=true when the importer reports rows_deleted > 0.'
+  evidence: 'Both reviewers; src/search/index_builder.py orphan cleanup only runs during index builds, and build_search_index.prune defaults False. Mitigated in-gate by the result message now recommending prune=true after deletions.'
+
 ## Deferred from: dev of story-5.9 (2026-07-14)
 
 > Live-DB data-quality issues discovered while closing the 5.9 benchmark gate. Out of the

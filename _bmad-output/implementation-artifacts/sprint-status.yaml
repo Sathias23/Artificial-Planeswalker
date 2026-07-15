@@ -124,7 +124,7 @@ development_status:
   # G-I2: import errors surfaced per-card (name + exception class) in the import summary
   # G-I3: import-path regression test (oracle_id dedup + game_changer propagation survive re-import)
   #       — absorbs epic-4 action item 3 (persisted nullable-bool round-trip test)
-  pre-epic-6-importer-gate: backlog
+  pre-epic-6-importer-gate: review  # spec-pre-epic-6-importer-gate.md done; awaiting Sathias's live-DB acceptance run (G-I1..G-I3 code green)
 
   # Epic 6 (feature Epic 3): Commander identity & local combo snapshot
   # (re-scoped 2026-07-12 per sprint-change-proposal-2026-07-12.md — bulk snapshot replaces live client/cache/key)
