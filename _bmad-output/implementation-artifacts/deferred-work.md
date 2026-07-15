@@ -3,7 +3,9 @@
 ## Deferred from: code review of spec-pre-epic-6-importer-gate (2026-07-15)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-pre-epic-6-importer-gate.md`
+  status: ✅ RESOLVED (2026-07-16, commit 18880dc)
   summary: 'Transformer rejects all 33 reversible_card printings ("Name // Name") with `missing required field(s): type_line` — Scryfall''s reversible layout carries type_line (and cmc) only on card_faces. Fix = derive required fields from faces in transform_scryfall_card (a transform-contract change held back by the gate spec''s Ask-First boundary); until then those 33 oracle identities keep pre-existing rows and are surfaced by the stale-remaining warning each run.'
+  resolution: 'Shape-gated face derivation in transform_scryfall_card: cards with NO top-level type_line (the reversible signature) derive name (deduped, so "Anje Falkenrath // Anje Falkenrath" -> "Anje Falkenrath" for exact decklist lookups), type_line, mana_cost, cmc, colors (WUBRG-ordered face union) and all-faces-agree power/toughness from card_faces; ijson Decimal face values sanitized to float so the card_faces JSON column serializes. Cards WITH a top-level type_line transform byte-identically (transform/MDFC/split untouched). Test-pinned (4 new unit tests); next import run should show 0 rejects and clear the 33-identity stale warning.'
   evidence: 'Live acceptance run 2026-07-15 (b74-successor): all 33 rejects share the doubled-name + type_line-missing signature (Reckoner Bankbuster, Anje Falkenrath, Zndrsplt, …); the gate''s G-I2 diagnostics made the reason string visible for the first time. Parallels the resolved oracle_id face-fallback fix (resolve_oracle_id, 0.3.0).'
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-pre-epic-6-importer-gate.md`
