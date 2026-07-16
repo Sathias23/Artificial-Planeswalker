@@ -16,11 +16,42 @@ The two ``Literal`` enums are closed on purpose: an unknown ``bracket_tag`` or
 line of defense behind Story 6.2's import-time wire normalization. If Spellbook's
 vocabulary ever drifts, it must fail loudly there or here, never silently map to a
 wrong Bracket floor.
+
+The name-key normalization policy (:func:`name_keys`) lives here for the same reason
+``ComboRecord`` does: the data-layer importer (Story 6.2) and the pure matcher
+(:mod:`src.logic.assessment.combos`) must share ONE normalization — the DFC front-face
+hazard bit stories 5.3, 5.6, and 5.9 — and the strict ``data → logic`` import direction
+means ``src/data`` can never import it from ``src/logic``.
 """
 
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+#: Scryfall's face separator in joined multi-face names (``"Alive // Well"``).
+_FACE_SEPARATOR: Final = " // "
+
+
+def name_keys(name: str) -> tuple[str, ...]:
+    """Return the lookup keys a deck-card name is indexed under.
+
+    The decide-once normalization policy: comparison is lowercased, and a multi-face
+    ``Card.name`` (the ``" // "``-joined form) is indexed under BOTH the full joined
+    name and its front face — Spellbook names single faces, ``Card.name`` may be
+    ``"A // B"`` (the pre-phase-2 ``detect_synergies`` '//' lesson). Variant piece
+    names and commander names are compared lowercased against these keys.
+
+    Args:
+        name: The card name as stored on :class:`~src.data.schemas.card.Card`.
+
+    Returns:
+        One or two lowercased keys (full name, plus the front face when distinct).
+    """
+    lowered = name.lower()
+    if _FACE_SEPARATOR in lowered:
+        return (lowered, lowered.split(_FACE_SEPARATOR)[0])
+    return (lowered,)
+
 
 #: The matcher-assigned inclusion bucket (FR13): every piece present vs. exactly one
 #: missing. Variants missing two or more pieces are excluded from output entirely, so

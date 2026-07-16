@@ -203,6 +203,22 @@ uv run python scripts/build_card_embeddings.py    # idempotent + incremental
 Until built, both semantic tools return a graceful `status="index_unavailable"` (never an error).
 The DB runs in WAL mode — **checkpoint before copying it** (`PRAGMA wal_checkpoint(TRUNCATE);`).
 
+### Combo snapshot (deck power assessment)
+
+Combo detection runs against a **local snapshot** of the
+[Commander Spellbook](https://commanderspellbook.com) bulk combo export (~26 MB download,
+~100k combo variants) stored in the same SQLite file — fully offline once imported, and
+versioned with the export's own timestamp. Building it is a separate operator step:
+
+```bash
+uv run python scripts/import_spellbook_combos.py    # atomic replace, safe to re-run
+```
+
+Upstream regenerates the export roughly every 2 hours; refresh whenever you want fresher
+combo data. Until imported, deck power assessment degrades gracefully
+(`combo_data_unavailable`) instead of erroring. Combo data is provided by
+[Commander Spellbook](https://commanderspellbook.com) via their public bulk export.
+
 ## Development
 
 ```bash
@@ -244,5 +260,6 @@ This project is not produced by, endorsed by, supported by, or affiliated with S
 ## Acknowledgments
 
 - [Scryfall](https://scryfall.com/docs/api) — MTG card data
+- [Commander Spellbook](https://commanderspellbook.com) — combo data (public bulk export)
 - [Model Context Protocol](https://modelcontextprotocol.io) & FastMCP — server framework
 - [sqlite-vec](https://github.com/asg017/sqlite-vec) & [fastembed](https://github.com/qdrant/fastembed) — local semantic search

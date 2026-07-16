@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-07-16 (story 6.1 code-review → done; 2 patches applied, 2 deferred to Epic 7)
+last_updated: 2026-07-16 (story 6.2 implemented → review; live acceptance imported 94,962 variants / 344,176 piece rows into the central DB)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -130,7 +130,7 @@ development_status:
   # (re-scoped 2026-07-12 per sprint-change-proposal-2026-07-12.md — bulk snapshot replaces live client/cache/key)
   epic-6: in-progress
   6-1-commander-flag-end-to-end: done
-  6-2-spellbook-bulk-combo-snapshot-import: backlog
+  6-2-spellbook-bulk-combo-snapshot-import: review
   6-3-combo-snapshot-repository: backlog
   epic-6-retrospective: optional
 
@@ -184,7 +184,7 @@ action_items:
   - epic: 5
     action: "story 6.2 must reuse _name_keys (src/logic/assessment/combos.py) for Spellbook->Scryfall name normalization — the DFC front-face hazard bit stories 5.3, 5.6 and 5.9"
     owner: "Sathias"
-    status: open
+    status: done  # 2026-07-16 story 6.2: _name_keys relocated to src/data/schemas/combo.py as public name_keys(); importer + matcher share it (matcher tests passed untouched)
   - epic: 5
     action: "after 6.2/6.3 land, re-run the benchmark swapping 5.9's hand-built cEDH combo variants for real snapshot data (candidacy also depends on CEDH_TUTOR_MIN=3)"
     owner: "Sathias"

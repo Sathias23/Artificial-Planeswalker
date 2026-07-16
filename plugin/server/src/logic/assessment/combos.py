@@ -38,6 +38,7 @@ from collections.abc import Sequence
 from typing import Final
 
 from src.data.schemas.combo import ComboBracketTag, ComboRecord
+from src.data.schemas.combo import name_keys as _name_keys
 from src.data.schemas.deck import DeckCard
 
 # ---------------------------------------------------------------------------
@@ -80,32 +81,10 @@ COMBO_TYPE_TOKENS: Final[tuple[str, ...]] = (
 )
 
 # ---------------------------------------------------------------------------
-# Name normalization — one owner for the matching-name policy (AC3)
+# Name normalization — the matching-name policy (AC3). The function itself lives at
+# the schema layer (src.data.schemas.combo.name_keys, Story 6.2 relocation) so the
+# data-layer importer shares it; the alias import keeps every call site intact.
 # ---------------------------------------------------------------------------
-
-#: Scryfall's face separator in joined multi-face names (``"Alive // Well"``).
-_FACE_SEPARATOR: Final = " // "
-
-
-def _name_keys(name: str) -> tuple[str, ...]:
-    """Return the lookup keys a deck-card name is indexed under.
-
-    The decide-once normalization policy: comparison is lowercased, and a multi-face
-    ``Card.name`` (the ``" // "``-joined form) is indexed under BOTH the full joined
-    name and its front face — Spellbook names single faces, ``Card.name`` may be
-    ``"A // B"`` (the pre-phase-2 ``detect_synergies`` '//' lesson). Variant piece
-    names and commander names are compared lowercased against these keys.
-
-    Args:
-        name: The card name as stored on :class:`~src.data.schemas.card.Card`.
-
-    Returns:
-        One or two lowercased keys (full name, plus the front face when distinct).
-    """
-    lowered = name.lower()
-    if _FACE_SEPARATOR in lowered:
-        return (lowered, lowered.split(_FACE_SEPARATOR)[0])
-    return (lowered,)
 
 
 def _availability(deck_cards: Sequence[DeckCard]) -> dict[str, int]:
