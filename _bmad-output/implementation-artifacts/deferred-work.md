@@ -1,6 +1,10 @@
 # Deferred Work
 
-## Deferred from: code review of spec-pre-epic-6-importer-gate (2026-07-15)
+## Deferred from: code review of spec-pre-epic-7-real-deck-gate (2026-07-17)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-pre-epic-7-real-deck-gate.md`
+  summary: '`combo_potential` counts `almost_included` variants whose single missing piece is not legal in the deck''s format, inflating the dimension for constructed decks — the matcher (`match_combos`) and the dimension scoring are format-blind on the missing piece.'
+  evidence: 'G-R2 gate run 2026-07-17: Abzan Dragons and Prismatic Dragon (both Standard) each scored combo_potential=100 from Betor-anchored almost_included variants whose missing partners (e.g. Archfiend of Despair, Mycosynth Lattice, Wound Reflection) are not Standard-legal — the combo can never be completed in-format. Pre-existing product behavior (5.6/6.3 design), surfaced by the Blind Hunter review of the gate report; a natural Epic 7 calibration input.'
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-pre-epic-6-importer-gate.md`
   status: ✅ RESOLVED (2026-07-16, commit 18880dc)
