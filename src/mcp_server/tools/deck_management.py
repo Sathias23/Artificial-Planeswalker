@@ -163,6 +163,7 @@ def _deck_detail(deck: Deck) -> DeckDetail:
             card_id=dc.card_id,
             quantity=dc.quantity,
             sideboard=dc.sideboard,
+            commander=dc.commander,
             card=CardSummary.model_validate(dc.card),
         )
         for dc in deck.deck_cards
@@ -407,6 +408,7 @@ async def add_card_to_deck(
     name: str | None = None,
     quantity: int = 1,
     sideboard: bool = False,
+    commander: bool = False,
 ) -> DeckCardResult:
     """Add a card to a deck, identified by ``card_id`` OR ``name`` (exactly one).
 
@@ -424,6 +426,8 @@ async def add_card_to_deck(
         name: A card name to resolve and add (mutually exclusive with ``card_id``).
         quantity: Number of copies to add (must be >= 1; default 1).
         sideboard: Add to the sideboard instead of the mainboard (default False).
+        commander: Mark this card as the deck's commander (default False; flag
+            two cards for partners).
 
     Returns:
         A ``DeckCardResult`` whose ``status`` reports the outcome.
@@ -483,7 +487,7 @@ async def add_card_to_deck(
 
     location = "sideboard" if sideboard else "mainboard"
     try:
-        await deck_repo.add_card_to_deck(deck_id, card.id, quantity, sideboard)
+        await deck_repo.add_card_to_deck(deck_id, card.id, quantity, sideboard, commander=commander)
     except IntegrityError:
         return DeckCardResult(
             status="exists",

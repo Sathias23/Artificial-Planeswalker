@@ -240,6 +240,29 @@ async def test_delete_deck_not_found(session: AsyncSession) -> None:
 # --- add_card_to_deck (AC2, AC3, AC4) ---
 
 
+async def test_add_card_with_commander_flag_surfaces_in_load_deck(session: AsyncSession) -> None:
+    """add_card_to_deck(commander=True) persists; load_deck's DeckCardSummary shows the flag."""
+    created = await create_deck(session, name="Commander Deck", format="commander")
+    assert created.deck is not None
+    deck_id = created.deck.id
+
+    result = await add_card_to_deck(
+        session, deck_id=deck_id, card_id="card-counterspell", quantity=1, commander=True
+    )
+    assert result.status == "ok"
+    await add_card_to_deck(session, deck_id=deck_id, card_id="card-bolt", quantity=4)
+
+    loaded = await load_deck(session, deck_id=deck_id)
+
+    assert loaded.status == "ok"
+    assert loaded.deck is not None
+    flags = {dc.card_id: dc.commander for dc in loaded.deck.cards}
+    assert flags["card-counterspell"] is True
+    assert flags["card-bolt"] is False
+    commander_row = next(dc for dc in loaded.deck.cards if dc.commander)
+    assert commander_row.sideboard is False
+
+
 async def test_add_card_by_id_persists(session: AsyncSession) -> None:
     """add_card_to_deck by card_id persists the association to SQLite."""
     created = await create_deck(session, name="ById")

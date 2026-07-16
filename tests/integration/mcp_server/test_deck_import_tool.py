@@ -58,6 +58,34 @@ Sideboard
     }
 
 
+async def test_import_decklist_commander_section_sets_commander_flag(seeded_card_db) -> None:
+    """Exactly the Commander-section card is flagged; it stays mainboard; others are False."""
+    deck_id = await _create_saved_deck(seeded_card_db)
+    arena_export = """Commander
+1 Counterspell (DMR) 50
+
+Deck
+4 Lightning Bolt (M11) 149
+
+Sideboard
+2 Thunderbolt (WTH) 117
+"""
+
+    async with seeded_card_db() as session:
+        result = await import_decklist(session, deck_id=deck_id, arena_export=arena_export)
+        loaded = await load_deck(session, deck_id=deck_id)
+
+    assert result.status == "ok"
+    assert [line.commander for line in result.results] == [True, False, False]
+
+    assert loaded.deck is not None
+    rows = {entry.card.name: entry for entry in loaded.deck.cards}
+    assert rows["Counterspell"].commander is True
+    assert rows["Counterspell"].sideboard is False
+    assert rows["Lightning Bolt"].commander is False
+    assert rows["Thunderbolt"].commander is False
+
+
 async def test_import_decklist_reports_mixed_failures_and_keeps_successes(
     seeded_card_db,
 ) -> None:

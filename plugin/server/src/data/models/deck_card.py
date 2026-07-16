@@ -15,7 +15,8 @@ if TYPE_CHECKING:
 class DeckCardModel(Base):
     """SQLAlchemy model for deck-card associations.
 
-    Association table linking decks to cards with quantity and sideboard tracking.
+    Association table linking decks to cards with quantity, sideboard, and
+    commander tracking.
     Uses composite primary key (deck_id, card_id, sideboard) to ensure uniqueness.
     """
 
@@ -32,6 +33,11 @@ class DeckCardModel(Base):
     # Association attributes
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, init=True)
     sideboard: Mapped[bool] = mapped_column(Boolean, primary_key=True, default=False, init=True)
+    # Marks this card as one of the deck's commanders (two flagged rows = partners).
+    # Deliberately NOT part of the composite PK: a card's mainboard row is unique
+    # regardless of the flag — making it a PK member would allow duplicate
+    # flagged/unflagged mainboard rows and corrupt quantity semantics.
+    commander: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, init=True)
 
     # Relationships
     deck: Mapped["DeckModel"] = relationship(  # noqa: F821
@@ -44,5 +50,5 @@ class DeckCardModel(Base):
         location = "sideboard" if self.sideboard else "mainboard"
         return (
             f"<DeckCardModel(deck_id='{self.deck_id}', card_id='{self.card_id}', "
-            f"quantity={self.quantity}, location='{location}')>"
+            f"quantity={self.quantity}, location='{location}', commander={self.commander})>"
         )

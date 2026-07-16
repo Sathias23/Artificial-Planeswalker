@@ -277,6 +277,7 @@ def build_server(
         name: str | None = None,
         quantity: int = 1,
         sideboard: bool = False,
+        commander: bool = False,
     ) -> DeckCardResult:
         """Add a card to a deck, identified by ``card_id`` OR ``name`` (exactly one).
 
@@ -293,6 +294,8 @@ def build_server(
             name: A card name to resolve and add (provide this OR ``card_id``).
             quantity: Number of copies to add (must be >= 1; default 1).
             sideboard: Add to the sideboard instead of the mainboard (default False).
+            commander: Mark this card as the deck's commander (default False;
+                flag two cards for partners).
 
         Returns:
             A result whose ``status`` reports the outcome (``ok``/``exists``/
@@ -306,6 +309,7 @@ def build_server(
                 name=name,
                 quantity=quantity,
                 sideboard=sideboard,
+                commander=commander,
             )
 
     @mcp.tool()
@@ -314,8 +318,9 @@ def build_server(
 
         Accepts Arena's ``Commander`` / ``Deck`` / ``Sideboard`` / ``Companion``
         sections with card lines shaped like ``1 Card Name (SET) 123``; the
-        optional ``About`` / ``Name`` metadata block is skipped. Commander and
-        Deck entries become mainboard cards; Sideboard and Companion entries
+        optional ``About`` / ``Name`` metadata block is skipped. Commander
+        entries become mainboard cards **flagged as commanders**; Deck entries
+        become unflagged mainboard cards; Sideboard and Companion entries
         become sideboard cards.
         The import is additive: it never clears the deck or silently merges an
         existing quantity. Each nonblank card line gets an ordered result such as
