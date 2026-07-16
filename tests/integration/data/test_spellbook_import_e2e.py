@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.importers import spellbook
@@ -218,6 +219,34 @@ async def test_zero_eligible_variants_aborts_and_preserves_snapshot(test_db, mon
         assert variant_ids == {"1-2", "3-4", "5-6"}
         assert meta is not None
         assert meta.export_version == "5.6.0"
+
+
+async def test_duplicate_spellbook_id_rolls_back_leaving_snapshot_intact(test_db, monkeypatch):
+    """A corrupt export with a duplicate spellbook_id fails the PK constraint inside the
+    write transaction; the IntegrityError rollback branch fires and the previous snapshot
+    survives (the mid-transaction atomicity guarantee, otherwise only claimed in prose)."""
+    async with test_db() as session:
+        patch_download(monkeypatch, gzipped_payload(FIRST_VARIANTS))
+        await import_spellbook_snapshot(session)
+
+        # Two variants share id "dup-1": both normalize cleanly (transform does not
+        # dedup by id), so the collision surfaces ONLY as a PK IntegrityError in the
+        # batch insert — the one path that exercises the rollback branch.
+        corrupt = [
+            make_wire_variant("dup-1", ["Card A", "Card B"]),
+            make_wire_variant("dup-1", ["Card C", "Card D"]),
+        ]
+        patch_download(monkeypatch, gzipped_payload(corrupt, version="5.7.0"))
+
+        with pytest.raises(IntegrityError):
+            await import_spellbook_snapshot(session)
+
+    async with test_db() as session:
+        variant_ids, pieces, meta = await _snapshot_state(session)
+        assert variant_ids == {"1-2", "3-4", "5-6"}, "first snapshot must survive rollback"
+        assert len(pieces) == 7
+        assert meta is not None
+        assert meta.export_version == "5.6.0", "meta must still describe the first import"
 
 
 async def test_skip_counters_reported(test_db, monkeypatch):

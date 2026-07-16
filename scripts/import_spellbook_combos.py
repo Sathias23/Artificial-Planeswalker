@@ -73,6 +73,7 @@ Examples:
 
     args = parser.parse_args()
 
+    engine = None
     try:
         db_path = Path(args.db_path) if args.db_path else database_path()
         db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -111,8 +112,6 @@ Examples:
         print(f"Elapsed time: {stats.elapsed_seconds:.1f} seconds")
         print("=" * 70)
 
-        await engine.dispose()
-
         logger.info("Combo snapshot import completed successfully")
         return 0
 
@@ -123,6 +122,10 @@ Examples:
     except Exception as e:
         logger.error(f"Import failed: {e}", exc_info=True)
         return 1
+
+    finally:
+        if engine is not None:
+            await engine.dispose()
 
 
 if __name__ == "__main__":

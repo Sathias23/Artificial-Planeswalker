@@ -131,7 +131,8 @@ def transform_spellbook_variant(
         skip cases: non-OK status, non-empty ``requires``, banned bracket tag.
 
     Raises:
-        SpellbookImportError: On a bracket tag outside the seven known letters.
+        SpellbookImportError: On a bracket tag outside the seven known letters, or a
+            combo piece / produced result with no name (a malformed export).
         pydantic.ValidationError: On a malformed variant (e.g. no pieces).
     """
     variant_id = str(variant.get("id") or "unknown")
@@ -162,9 +163,28 @@ def transform_spellbook_variant(
 
     cards: list[str] = []
     for use in variant.get("uses", []):
-        # ijson parses numbers as Decimal; coerce before list repetition.
-        quantity = int(use.get("quantity") or 1)
-        cards.extend([use["card"]["name"]] * quantity)
+        card = use.get("card") or {}
+        name = card.get("name")
+        if not name:
+            raise SpellbookImportError(
+                f"Variant {variant_id!r} has a combo piece with no card name — malformed export"
+            )
+        # ijson parses numbers as Decimal; coerce before list repetition. A missing,
+        # zero, or negative quantity means "at least one" — never drop a listed piece.
+        raw_quantity = use.get("quantity")
+        quantity = int(raw_quantity) if raw_quantity is not None else 1
+        cards.extend([name] * max(quantity, 1))
+
+    produces: list[str] = []
+    for entry in variant.get("produces", []):
+        feature = entry.get("feature") or {}
+        feature_name = feature.get("name")
+        if not feature_name:
+            raise SpellbookImportError(
+                f"Variant {variant_id!r} has a produced result with no feature name — "
+                "malformed export"
+            )
+        produces.append(feature_name)
 
     popularity = variant.get("popularity")
 
@@ -173,7 +193,7 @@ def transform_spellbook_variant(
         cards=tuple(cards),
         commander_required=any(bool(use.get("mustBeCommander")) for use in variant.get("uses", [])),
         bracket_tag=SPELLBOOK_TAG_TO_CANONICAL[wire_tag],
-        produces=tuple(entry["feature"]["name"] for entry in variant.get("produces", [])),
+        produces=tuple(produces),
         popularity=int(popularity) if popularity is not None else None,
     )
 
@@ -196,19 +216,26 @@ def _read_export_header(file_path: Path) -> tuple[str, str]:
     """
     timestamp: str | None = None
     version: str | None = None
-    with gzip.open(file_path, "rb") as fh:
-        for prefix, event, value in ijson.parse(fh):
-            if prefix == "timestamp":
-                timestamp = str(value)
-            elif prefix == "version":
-                version = str(value)
-            elif prefix == "variants" and event == "start_array":
-                if timestamp is None or version is None:
-                    raise SpellbookImportError(
-                        "Export is missing the top-level 'timestamp'/'version' "
-                        "header — broken or truncated file"
-                    )
-                return timestamp, version
+    try:
+        with gzip.open(file_path, "rb") as fh:
+            for prefix, event, value in ijson.parse(fh):
+                if prefix == "timestamp":
+                    timestamp = str(value)
+                elif prefix == "version":
+                    version = str(value)
+                elif prefix == "variants" and event == "start_array":
+                    if timestamp is None or version is None:
+                        raise SpellbookImportError(
+                            "Export is missing the top-level 'timestamp'/'version' "
+                            "header — broken or truncated file"
+                        )
+                    return timestamp, version
+    except (gzip.BadGzipFile, EOFError, ijson.JSONError) as e:
+        # A non-gzip, empty, or truncated download decompresses/parses to garbage —
+        # surface the module's own error type, not a raw gzip/ijson exception.
+        raise SpellbookImportError(
+            f"Could not read the export header — broken or truncated download: {e}"
+        ) from e
     raise SpellbookImportError("Export has no 'variants' array — broken or truncated file")
 
 
@@ -226,8 +253,13 @@ def _stream_variants(file_path: Path) -> Iterator[dict[str, Any]]:
     Yields:
         One wire variant dict per export entry.
     """
-    with gzip.open(file_path, "rb") as fh:
-        yield from ijson.items(fh, "variants.item")
+    try:
+        with gzip.open(file_path, "rb") as fh:
+            yield from ijson.items(fh, "variants.item")
+    except (gzip.BadGzipFile, EOFError, ijson.JSONError) as e:
+        raise SpellbookImportError(
+            f"Could not stream variants — broken or truncated download: {e}"
+        ) from e
 
 
 async def import_spellbook_snapshot(
@@ -267,9 +299,10 @@ async def import_spellbook_snapshot(
     if temp_dir is None:
         created_dir = Path(tempfile.mkdtemp(prefix="spellbook-import-"))
         temp_dir = created_dir
+    download_path = temp_dir / "variants.json.gz"
 
     try:
-        downloaded = await download_variants_export(temp_dir / "variants.json.gz")
+        downloaded = await download_variants_export(download_path)
 
         logger.info("Normalizing variants (streaming parse)...")
         skips: list[VariantSkip] = []
@@ -365,3 +398,7 @@ async def import_spellbook_snapshot(
     finally:
         if created_dir is not None:
             shutil.rmtree(created_dir, ignore_errors=True)
+        else:
+            # Caller-supplied temp_dir: remove only our download file (the scryfall
+            # precedent), leaving the operator's directory otherwise untouched.
+            download_path.unlink(missing_ok=True)

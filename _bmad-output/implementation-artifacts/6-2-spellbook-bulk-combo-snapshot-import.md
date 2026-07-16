@@ -4,7 +4,7 @@ baseline_commit: e1716d295d296e8a197ae11ba61838d8474f24fc
 
 # Story 6.2: Spellbook bulk combo-snapshot import
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -589,3 +589,18 @@ claude-fable-5 (Claude Fable 5)
   `name_keys` relocated to the schema layer (epic-5 retro item 9); 44 new tests;
   full suite 1,219 green; live acceptance imported 94,962 variants into the central
   DB. Status → review.
+
+### Review Findings
+
+Code review 2026-07-16 (adversarial: Blind Hunter + Edge Case Hunter + Acceptance
+Auditor). Verdict: strongly compliant, all 9 ACs satisfied, plugin mirror byte-identical.
+No high/medium findings — all six survivors are Low. Six reviewer claims dismissed
+after verification (see summary in the review conversation). **All six patches applied
+2026-07-16** (32 affected tests green, mypy + ruff clean, plugin mirror re-synced).
+
+- [x] [Review][Patch] `--temp-dir` download file left behind on the operator-supplied path [src/data/importers/spellbook.py:365] — when `--temp-dir` is passed, `created_dir` stays `None` so the `finally` skips cleanup; `variants.json.gz` (~26 MB) is not deleted (overwritten each run, not accumulated). The `scryfall.py` precedent `unlink(missing_ok=True)`s the file even when the caller owns the dir. **Fixed:** `finally` now unlinks the download file on the caller-supplied-dir branch.
+- [x] [Review][Patch] Corrupt/empty/non-gzip download surfaces the wrong exception type [src/data/importers/spellbook.py:199,230] — a truncated/garbage body raises raw `gzip.BadGzipFile`/`EOFError`/`ijson.IncompleteJSONError`, not the `SpellbookImportError` the header/stream docstrings promise for a "broken or truncated file" (the `parser.py` precedent wraps ijson errors). Fails safe (no DB writes; prior snapshot intact) — error-contract inconsistency only. **Fixed:** `_read_export_header` and `_stream_variants` now wrap `(gzip.BadGzipFile, EOFError, ijson.JSONError)` into `SpellbookImportError`.
+- [x] [Review][Patch] Unguarded wire dict access aborts with a bare `KeyError` naming no variant [src/data/importers/spellbook.py:167,176] — `use["card"]["name"]` and `entry["feature"]["name"]` `KeyError` on a structurally malformed variant, aborting the whole import. The abort outcome matches the skip-vs-error table, but the bare `KeyError` (no variant id) falls short of the importer-gate "name + reason" diagnostic standard. **Fixed:** both accesses guarded; a missing card/feature name now raises `SpellbookImportError` naming the variant id.
+- [x] [Review][Patch] Non-positive quantity silently defaults/drops a piece [src/data/importers/spellbook.py:166] — `int(use.get("quantity") or 1)` maps a real `0` → `1` and a negative → `[name]*-1 == []` (piece dropped), storing an incomplete combo (matcher false-positive risk). Dormant: live Spellbook quantities are ≥1. **Fixed:** `quantity = int(raw) if not None else 1`, repeated `max(quantity, 1)` times — never drops a listed piece.
+- [x] [Review][Patch] CLI disposes the engine only on the success path [scripts/import_spellbook_combos.py:114] — `await engine.dispose()` is inside the `try`; any failure returns 1 without disposing. Cosmetic for a short-lived process; belongs in a `finally`. **Fixed:** engine hoisted, disposed in a `finally`.
+- [x] [Review][Patch] Mid-transaction rollback branch is untested [src/data/importers/spellbook.py:344 — test gap] — both atomicity tests abort during normalization, before the transaction opens, so `except (IntegrityError, DatabaseError): rollback` never executes under test. The duplicate-`spellbook_id` → PK-violation → rollback guarantee (docstring + skip-vs-error table) has no covering test. **Fixed:** added `test_duplicate_spellbook_id_rolls_back_leaving_snapshot_intact` (duplicate-PK payload → `IntegrityError`, first snapshot survives).
