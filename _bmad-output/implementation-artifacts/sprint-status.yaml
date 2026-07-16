@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-07-16 (story 6.2 code review → done; 6 Low patches applied, +1 rollback test, mypy/ruff clean, plugin mirror re-synced)
+last_updated: 2026-07-16 (story 6.3 → review; combo-snapshot repository implemented, Epic 6 code complete)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -131,7 +131,7 @@ development_status:
   epic-6: in-progress
   6-1-commander-flag-end-to-end: done
   6-2-spellbook-bulk-combo-snapshot-import: done
-  6-3-combo-snapshot-repository: backlog
+  6-3-combo-snapshot-repository: review
   epic-6-retrospective: optional
 
   # Epic 7 (feature Epic 4): The assess_deck_power + compare_deck_power MCP tools & deterministic output

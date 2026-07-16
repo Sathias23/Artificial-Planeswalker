@@ -105,3 +105,26 @@ class ComboRecord(BaseModel):
     def _sort_names(cls, v: tuple[str, ...]) -> tuple[str, ...]:
         """Normalize name tuples to ascending bytewise order (duplicates preserved)."""
         return tuple(sorted(v))
+
+
+class ComboSnapshotMeta(BaseModel):
+    """The combo snapshot's single metadata row — the ``data_vintage`` source (AD-5/AD-7).
+
+    Mirrors :class:`~src.data.models.combo.ComboSnapshotMetaModel` minus the pinned
+    ``id``. Both timestamps stay ISO-8601 **strings**: they are stored metadata passed
+    through verbatim to Epic 7's ``data_vintage`` serialization — no datetime parsing,
+    nothing clock-derived (AD-8).
+
+    Attributes:
+        imported_at: UTC time the import script wrote the snapshot (ISO-8601 string).
+        export_timestamp: The bulk file's top-level ``timestamp`` (ISO-8601 string).
+        export_version: The bulk file's top-level ``version``.
+        variant_count: Number of variants imported into ``combo_variants``.
+    """
+
+    model_config = ConfigDict(frozen=True, from_attributes=True)
+
+    imported_at: str
+    export_timestamp: str
+    export_version: str
+    variant_count: int
