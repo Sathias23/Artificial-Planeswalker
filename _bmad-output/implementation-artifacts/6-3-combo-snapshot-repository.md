@@ -4,7 +4,7 @@ baseline_commit: fbf121c018db8aaabdcb39a03ab311424e72323a
 
 # Story 6.3: Combo-snapshot repository
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

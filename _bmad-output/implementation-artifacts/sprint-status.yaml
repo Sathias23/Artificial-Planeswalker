@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-07-16 (story 6.3 → review; combo-snapshot repository implemented, Epic 6 code complete)
+last_updated: 2026-07-17 (epic-6 retro done; Pre-Epic-7 Real-Deck Gate (G-R2) opened — blocks Epic 7 story creation)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -128,11 +128,19 @@ development_status:
 
   # Epic 6 (feature Epic 3): Commander identity & local combo snapshot
   # (re-scoped 2026-07-12 per sprint-change-proposal-2026-07-12.md — bulk snapshot replaces live client/cache/key)
-  epic-6: in-progress
+  epic-6: done
   6-1-commander-flag-end-to-end: done
   6-2-spellbook-bulk-combo-snapshot-import: done
-  6-3-combo-snapshot-repository: review
-  epic-6-retrospective: optional
+  6-3-combo-snapshot-repository: done
+  epic-6-retrospective: done  # epic-6-retro-2026-07-17.md; benchmark re-run w/ real snapshot data = zero divergences; epic-5 items 4/6/7/8 closed, item 5 escalated to gate below
+
+  # Pre-Epic-7 Real-Deck Gate (from epic-6-retro-2026-07-17.md) — blocks Epic 7 story creation.
+  # G-R2: real-deck sanity pass — throwaway harness loads Sathias's real saved decks (live DB),
+  #       pulls variants via ComboSnapshotRepository.get_variants_for_names (the exact Epic 7 path),
+  #       runs pure score(); Sathias compares tier/Bracket/cEDH outputs against his own judgment.
+  #       Done when accepted as plausible OR each divergence logged as a named Epic 7 calibration
+  #       input (CEDH_TUTOR_MIN=3 caveat carries over). Closes epic-5 action item 5.
+  pre-epic-7-real-deck-gate: backlog
 
   # Epic 7 (feature Epic 4): The assess_deck_power + compare_deck_power MCP tools & deterministic output
   epic-7: backlog
@@ -148,7 +156,7 @@ action_items:
   - epic: 4
     action: "'end-to-end field' story checklist must grep ALL four write-path touch-points, incl. importer.py::_insert_batch card_dict + on_conflict_do_update set_ mapping (not just model/schema/transformer)"
     owner: "Brad"
-    status: open
+    status: done  # closed 2026-07-17: first real exercise was story 6.1 AC 6 (11-path deck_cards table) — passed; successor discipline (construction-site enumeration) logged as epic-6 item
   - epic: 4
     action: "do not assume build-plugin-sync auto-mirrors: .git/hooks/pre-commit is absent in this checkout, so after any src/ commit run 'uv run python -m scripts.build_plugin' + diff-check the plugin mirror (or 'pre-commit install')"
     owner: "Brad"
@@ -172,20 +180,28 @@ action_items:
   - epic: 5
     action: "story-start state verification: any story whose notes assert live-DB/environment state must open with the cheap query that proves it (the 5.9 'imported AND backfilled' saga was one SELECT away from caught)"
     owner: "Sathias"
-    status: open
+    status: done  # 2026-07-17: ran as Task 0 in all three Epic 6 stories — caught the httpx decoding trap (6.2) and a baseline off-by-one (6.3); promoted to standing team agreement (epic-6 retro)
   - epic: 5
     action: "real-deck sanity pass: throwaway harness runs pure score() over Sathias's real saved decks (live-DB resolution), tiers compared against his own judgment — early validity signal, ideally before Epic 7 tuning ossifies"
     owner: "Sathias"
-    status: open
+    status: open  # escalated 2026-07-17 (epic-6 retro) to the blocking pre-epic-7-real-deck-gate (G-R2) — see gate key above Epic 7
   - epic: 5
     action: "story 6.1 must run the epic-4 end-to-end-field checklist: enumerate every deck_cards write path (add_card_to_deck, import_decklist, any upsert column list) before claiming end-to-end"
     owner: "Sathias"
-    status: open
+    status: done  # 2026-07-17: story 6.1 AC 6 enumerated all 11 deck_cards write paths with per-path dispositions; re-verified against the final diff
   - epic: 5
     action: "story 6.2 must reuse _name_keys (src/logic/assessment/combos.py) for Spellbook->Scryfall name normalization — the DFC front-face hazard bit stories 5.3, 5.6 and 5.9"
     owner: "Sathias"
     status: done  # 2026-07-16 story 6.2: _name_keys relocated to src/data/schemas/combo.py as public name_keys(); importer + matcher share it (matcher tests passed untouched)
   - epic: 5
     action: "after 6.2/6.3 land, re-run the benchmark swapping 5.9's hand-built cEDH combo variants for real snapshot data (candidacy also depends on CEDH_TUTOR_MIN=3)"
+    owner: "Sathias"
+    status: done  # 2026-07-16 story 6.3 Task 5: all 6 Commander benchmark entries met expectations with real snapshot data — zero divergences, no retuning
+  - epic: 6
+    action: "G-R2 real-deck sanity gate (blocks Epic 7 story creation): harness loads Sathias's real saved decks from the live DB, pulls variants via ComboSnapshotRepository.get_variants_for_names, runs pure score(); Sathias compares tier/Bracket/cEDH outputs against his own judgment — done when accepted as plausible or each divergence is logged as a named Epic 7 calibration input. Closes epic-5 real-deck item"
+    owner: "Sathias"
+    status: open
+  - epic: 6
+    action: "construction-site enumeration: when a field threads through multiple constructors, grep EVERY construction site — including error/fallback-path result objects — before claiming end-to-end (6.1 review found the commander flag dropped in the DatabaseError-path DeckImportLineResult, a surface the write-path checklist missed)"
     owner: "Sathias"
     status: open
