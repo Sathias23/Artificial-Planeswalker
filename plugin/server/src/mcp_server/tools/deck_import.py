@@ -441,6 +441,7 @@ async def import_decklist(
                     set_code=item.set_code,
                     collector_number=item.collector_number,
                     sideboard=item.sideboard,
+                    commander=item.commander,
                     status="error",
                     message=f"Line {item.line_number}: a database error occurred.",
                 )

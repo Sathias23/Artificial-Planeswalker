@@ -4,7 +4,7 @@ baseline_commit: 3942fe6fa86647196a960555570a7a54ac2a7283
 
 # Story 6.1: Commander flag end-to-end
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -430,3 +430,15 @@ claude-fable-5 (Claude Code)
 - 2026-07-16: Story 6.1 implemented — commander flag end-to-end (model, schemas, idempotent
   migration run live + no-op re-run, repository + merge propagation, MCP tool layer, Arena
   Commander-section import). 12 new tests; full suite 1174 passed. Status → review.
+
+## Review Findings
+
+_Code review 2026-07-16 (adversarial: Blind Hunter + Edge Case Hunter + Acceptance Auditor).
+All 8 ACs confirmed satisfied by the Auditor. 0 decision-needed, 2 patch, 2 deferred, 5 dismissed._
+
+- [x] [Review][Patch] `import_decklist` DatabaseError fallback drops the commander flag [src/mcp_server/tools/deck_import.py:443] — FIXED 2026-07-16 — the error-path `DeckImportLineResult(...)` constructor passes `sideboard=item.sideboard` but omits `commander=item.commander`, so a Commander-section line that hits a `DatabaseError` reports `commander=None` instead of `True`. The diff threaded `commander` into `_line_result` and `_invalid_line` but missed this third constructor. Report-only (nothing persists on that path), but it is exactly the silent flag-drop class AC 6 was written to prevent. Fix: add `commander=item.commander,`.
+- [x] [Review][Patch] Partners ("two flagged rows") never asserted [tests/integration/data/test_deck_repository.py] — FIXED 2026-07-16 (test_add_two_commanders_partners_round_trip) — every new test flags exactly one card; the model comment and migration docstring both center on "two flagged rows = partners", but no test constructs/round-trips two `commander=True` rows in one deck. In-scope AC 8 coverage gap for the story's headline semantic (low risk — plain non-PK booleans — but the promised behavior is unpinned). Fix: add a two-flagged-rows persistence round-trip test.
+- [x] [Review][Defer] No commander-identity validation on the write paths (count cap of 2 / mainboard-only guard / zero-commander-after-merge warning) [src/data/repositories/deck.py:294,648] — deferred, spec scopes all commander validation to Epic 7 / Story 7.1.
+- [x] [Review][Defer] No API path to change an existing row's commander flag (add→`exists`, update/merge never touch it) [src/mcp_server/tools/deck_management.py:487] — deferred, matches the additive-import contract; a set-commander path belongs to Epic 7 / a deck-edit story.
+
+_Dismissed as noise/by-design: per-line result reports section intent not persisted state on `exists` (mirrors `sideboard`); `DeckCardResult` doesn't echo the flag (consistent result shape, not required); ORM `create_all` vs migration DDL `server_default` divergence (matches the existing `sideboard`/`game_changer` convention, no raw-insert path exists); merge REPLACE/MAXIMUM flag behavior untested (flag handling is strategy-uniform, covered by the COMBINE test); `DeckCardSummary.model_validate` ORM test (covered end-to-end via the `load_deck` tool test)._

@@ -444,6 +444,25 @@ async def test_add_card_to_deck_commander_defaults_false(
     assert loaded.deck_cards[0].commander is False
 
 
+async def test_add_two_commanders_partners_round_trip(
+    deck_repo: DeckRepository, test_cards: list[CardModel]
+) -> None:
+    """Two flagged mainboard rows (partners) both persist as commander=True."""
+    deck = await deck_repo.create_deck(name="Partners Deck", format="commander")
+
+    await deck_repo.add_card_to_deck(
+        deck_id=deck.id, card_id="card-bolt", quantity=1, sideboard=False, commander=True
+    )
+    await deck_repo.add_card_to_deck(
+        deck_id=deck.id, card_id="card-counterspell", quantity=1, sideboard=False, commander=True
+    )
+
+    loaded = await deck_repo.get_deck_with_cards(deck_id=deck.id)
+    assert loaded is not None
+    flags = {dc.card_id: dc.commander for dc in loaded.deck_cards}
+    assert flags == {"card-bolt": True, "card-counterspell": True}
+
+
 async def test_add_duplicate_card_raises_error(
     deck_repo: DeckRepository, test_cards: list[CardModel]
 ) -> None:

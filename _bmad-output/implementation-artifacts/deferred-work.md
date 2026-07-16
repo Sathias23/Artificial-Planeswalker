@@ -551,3 +551,28 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   call sites) delegates to; only pinned exact-value/edge-case tests exist today. Optional
   hardening beyond AC8's required test matrix — revisit if a future refactor touches the
   summation/clamp logic. (Source: Blind Hunter; Severity: Low.)
+
+## Deferred from: code review of story-6-1 (2026-07-16)
+
+> Story 6.1 is the schema/migration/write-path slice of commander identity. Its Dev Notes
+> explicitly scope **all commander validation/inference to Epic 7 / Story 7.1** ("Do not add
+> inference logic anywhere"). These two items are the validation surface that slice will need.
+
+- **No commander-identity validation anywhere on the write paths** — the deck can hold any number
+  of `commander=True` rows (the "two flagged rows = partners" invariant is unguarded and could be
+  exceeded via repeated `add_card_to_deck(commander=True)` or a `merge_decks` that stacks
+  source-flagged cards onto an already-two-commander target); a card can be flagged
+  `commander=True` **and** `sideboard=True` simultaneously (a semantically impossible mainboard-only
+  concept — no cross-field guard in `DeckRepository.add_card_to_deck` `src/data/repositories/deck.py:294`
+  or the tool helper `src/mcp_server/tools/deck_management.py:408`); and `merge_decks`' exists-branch
+  keeps the target's flag, so merging a commander source deck whose commander is already an unflagged
+  card in the target silently yields a "commander deck" with zero flagged commanders
+  (`src/data/repositories/deck.py:648`). All spec-accepted for this slice; Epic 7's edge-resolution
+  should add the count cap, the mainboard-only guard, and a zero/over-count warning.
+  (Source: Blind Hunter + Edge Case Hunter; Severity: Medium; deferred to Epic 7 / Story 7.1.)
+- **No API path to change an existing row's commander flag** — once a card is in the mainboard,
+  `add_card_to_deck` returns `status="exists"` (via `IntegrityError`) and never updates the flag;
+  `update_card_quantity` and the Arena `import_decklist` "exists" path likewise never touch it. So
+  promoting/demoting a commander requires remove-then-re-add. Fine for this slice (matches the
+  established additive-import contract), but Epic 7 (or a deck-edit story) will need an explicit
+  set-commander path. (Source: Blind Hunter; Severity: Low; deferred.)

@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-07-16 (story 6.1 implemented → review; full suite 1174 passed)
+last_updated: 2026-07-16 (story 6.1 code-review → done; 2 patches applied, 2 deferred to Epic 7)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -129,7 +129,7 @@ development_status:
   # Epic 6 (feature Epic 3): Commander identity & local combo snapshot
   # (re-scoped 2026-07-12 per sprint-change-proposal-2026-07-12.md — bulk snapshot replaces live client/cache/key)
   epic-6: in-progress
-  6-1-commander-flag-end-to-end: review
+  6-1-commander-flag-end-to-end: done
   6-2-spellbook-bulk-combo-snapshot-import: backlog
   6-3-combo-snapshot-repository: backlog
   epic-6-retrospective: optional
