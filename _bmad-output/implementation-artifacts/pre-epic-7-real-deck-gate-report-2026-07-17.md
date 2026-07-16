@@ -871,67 +871,71 @@ Factual patterns across the pool — no retuning here; each is a candidate named
 
 ## Review sheet (Sathias)
 
+> **Gate ruling (Sathias, 2026-07-17):** all 20 decks accepted as plausible wholesale — no blocking
+> divergences. Calibration is deliberately deferred to Epic 7: the Cross-deck observations section
+> above stands as the named calibration-input candidates. **G-R2 is CLOSED; Epic 7 story creation is unblocked.**
+
 Mark each deck plausible or name the divergence. The gate closes when every deck has exactly one box checked; divergences become named Epic 7 calibration inputs.
 
 - Abzan Dragons (`4f9d6f52`)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - Astonishing Ant-Man — Simic Counters Tempo (`4d0a55fb`)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - Baron Zemo — Villain Connive (`dcdfa284`)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - Bulk Import Tool Test - Naya Dinosaurs - 2026-07-10 (`94494472`)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - Graveyard Gravy (`baafd58b`, 3-card stub)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - Graveyard Gravy (`e7870022`, 60-card)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - Iron Man, Modern Marvel — reminder (`5cd42e7f`)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - Kotis Saboteur Tempo - Standard Draft (`a380ca25`)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - Kotis, the Fangkeeper — 100-card Brawl (`f02e1faa`)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - Kotis, the Fangkeeper — Standard Brawl (`a839fc0b`)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - Mardu Midrange (`8db441c0`)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - Mardu Midrange v2 (`076ac3ed`)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - MSH — Assemble! — Hexproof Hero Anthem Swarm (`7e86ad5d`)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - MSH — Namor's Tide — Izzet Merfolk Spellslinger Tempo (`d1c18722`)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - MSH — Snakebite Edict — Golgari Deathtouch Villain Aristocrats (`4e6b5959`)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - MSH — The Mad Titan's Gauntlet — Five-Color Power-Up Snap (`c9f5b355`)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - MSH — Ultron's Forge — Artifact Copy Combo Engine (`e684ceb1`)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - Prismatic Dragon (`a6ec5c97`)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - Sephiroth, Fabled SOLDIER — Standard Brawl (`d2ec429d`)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 - Skynet (`99f55404`)
-  - [ ] plausible
+  - [x] plausible
   - [ ] divergence: ______
 
 ### Named-divergence template
