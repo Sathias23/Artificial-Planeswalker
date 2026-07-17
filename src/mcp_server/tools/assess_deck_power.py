@@ -324,6 +324,11 @@ async def assess_deck_power(
 
     # Structural resolution count (FR3): the FK join makes a missing nested card
     # abnormal, but 7.2's cards_unresolved token needs the fact captured.
+    # NOTE: this is structurally 0 today — DeckCard.card is a required (non-optional)
+    # field, so an orphaned deck_cards row fails Deck.model_validate inside
+    # get_deck_with_cards before it ever reaches here; dc.card is never None. Kept per
+    # AC5 ("structural, FK join => normally 0"). Story 7.2 must NOT treat this as a live
+    # cards_unresolved source until the shared load path tolerates a null nested card.
     unresolved_count = sum(1 for dc in mainboard if dc.card is None)
 
     commanders, commander_resolution = _resolve_commanders(

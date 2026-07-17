@@ -4,7 +4,7 @@ baseline_commit: e2b03ff
 
 # Story 7.1: Register the async tool; load deck & resolve format
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -445,3 +445,50 @@ Claude Fable 5 (claude-fable-5) via Claude Code
   (brawl-family excluded by decision), AD-13 commander resolution incl. degenerate flag
   states, `unresolved_count` capture, `ResolvedDeckInputs` seam for 7.2/7.3. 31 new tests;
   full suite 1,270 green; mypy/ruff clean. Status → review.
+
+### Review Findings
+
+_Code review 2026-07-17 (bmad-code-review, 3 layers: Blind Hunter, Edge Case Hunter,
+Acceptance Auditor — all ACs 1–9 + AD-1/AD-7/AD-9/AD-13/NFR7 audited MET; no scope creep).
+2 decision-needed → resolved to 1 patch + 1 accepted; 1 dismissed. Decisions (2026-07-17):
+D1 → accept per AC5 spec + add clarifying comment (in scope); D2 → accept `ok`-with-0 for the
+resolve-only slice (7.2 guards the empty case at scoring)._
+
+- [x] [Review][Patch] Comment `unresolved_count` as structurally-0 given the non-optional
+  `DeckCard.card` schema [src/mcp_server/tools/assess_deck_power.py:327] — APPLIED 2026-07-17
+  (src + plugin mirror; ruff/mypy clean). Resolves D1
+  option (a): the field stays per AC5 intent; a one-line note tells 7.2 not to treat it as a
+  live `cards_unresolved` source. (The shared ungraceful-orphan crash across
+  `get_deck_with_cards` callers is left to a future data-layer story — out of 7.1 scope.)
+- [x] [Review][Accepted] Empty / all-sideboard mainboard resolves to `status="ok"` — accepted
+  as honest for a resolve-only slice; AC4's closed enum is preserved and 7.2's `score()` will
+  guard the empty case. No change.
+- ~~[ ] [Review][Decision] `unresolved_count` is a dead signal and an orphan `deck_cards` row
+  crashes ungracefully (medium)~~ — Root cause: `get_deck_with_cards` returns
+  `Deck.model_validate(...)` and `DeckCard.card: Card` is **required, non-optional**
+  (`src/data/schemas/deck.py:28`), while the helper catches only `DatabaseError`
+  (`assess_deck_power.py:293`). Consequence (blind+edge convergent): (i) a dangling
+  `card_id` (reachable — no `PRAGMA foreign_keys` in `src/data/`, FK enforcement off) makes
+  `selectinload` yield `card=None`, so `model_validate` raises `pydantic.ValidationError`
+  **inside the repo** — not a `DatabaseError` — and it propagates out of the tool (client
+  gets `isError`, not a graceful status); (ii) because such a row can't survive validation,
+  `unresolved_count = sum(1 for dc in mainboard if dc.card is None)` (`assess_deck_power.py:327`)
+  is always 0, so 7.2's `cards_unresolved` token has no live source. The crash is
+  pre-existing and shared with every sibling that calls `get_deck_with_cards`
+  (`analyze_mana_curve`/`detect_synergies`/`validate_deck`); the inert seam field is
+  introduced here but matches AC5's stated intent ("structural, FK join ⇒ normally 0").
+  Decision needed because the obvious fixes touch out-of-scope surface: (a) accept the
+  inert field per spec + add a one-line comment so 7.2 doesn't build on a dead signal;
+  (b) harden the shared load path (catch `ValidationError` / tolerate null nested card) so
+  the count becomes a live signal — but that edits `src/data`, which this story scopes out.
+- [ ] [Review][Decision] Empty / all-sideboard mainboard resolves to `status="ok"` (low) —
+  A deck with zero `sideboard=False` rows returns `status="ok"` with "0 mainboard cards"
+  (`assess_deck_power.py:307,351`). The direct sibling analysis tools carry a distinct
+  `status="empty"` and pre-check for a no-mainboard deck (`deck_analysis.py:65,176`), but
+  AC4's status `Literal` deliberately omits `empty`. This passes an empty `mainboard`/empty
+  `commanders` seam to 7.2's `score()` with no emptiness signal. Decision needed: (a) accept
+  `ok`-with-0 as honest for a resolve-only slice and let 7.2 guard the empty case, or (b)
+  add an `empty` status (widens AC4's closed enum) to match the sibling pattern.
+
+_Dismissed (1): `ResolvedDeckInputs` is assembled but only `.mainboard` is consumed
+(Acceptance Auditor) — by-design seam that 7.2/7.3 wire in; not a defect._
