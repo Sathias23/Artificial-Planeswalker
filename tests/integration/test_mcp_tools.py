@@ -1217,3 +1217,250 @@ async def test_find_similar_invalid_filter_is_graceful(seeded_vec_db: SeededVecD
     assert sc is not None
     assert sc["status"] == "invalid"
     assert "X" in sc["message"]
+
+
+# --- compare_deck_power e2e: delta arithmetic, determinism, graceful failure (Story 7.5) ---
+
+
+async def test_compare_gc_delta_equals_assess_subtraction_through_client(
+    assessment_card_db: async_sessionmaker[AsyncSession],
+):
+    """Compare deltas equal field-wise subtraction of two assess client results (AC 8).
+
+    Two commander decks differing by exactly one confirmed Game Changer card:
+    ``game_changers_added`` names that card, the bracket pair is 2 → 3 (the GC
+    gate — zero-overlap snapshot so no combo lift), and every delta equals the
+    subtraction of the two ``assess_deck_power`` results' ``structuredContent``
+    (the no-second-scoring-path proof, AC 2). The seeded snapshot vintage is
+    positively asserted through ``data_vintage_a/_b`` (covering the 7.4
+    present-path vintage defer incidentally).
+    """
+    async with assessment_card_db() as session:
+        # Healthy zero-overlap snapshot: no combo degradation, no combo bracket lift.
+        await seed_snapshot(
+            session,
+            [snapshot_variant("9-9", ["Thassa's Oracle", "Demonic Consultation"])],
+        )
+    server = build_server(session_factory=assessment_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        base_rows = [
+            ("e2e-krenko", 1, True),
+            ("e2e-goblin-guide", 4, False),
+            ("e2e-shock", 4, False),
+            ("e2e-mountain", 20, False),
+        ]
+        deck_a = await _build_deck(client, name="Compare A", format="commander", rows=base_rows)
+        deck_b = await _build_deck(
+            client,
+            name="Compare B",
+            format="commander",
+            rows=[*base_rows, ("e2e-gc-bolas", 1, False)],
+        )
+        assess_a = await client.call_tool("assess_deck_power", {"deck_id": deck_a})
+        assess_b = await client.call_tool("assess_deck_power", {"deck_id": deck_b})
+        result = await client.call_tool(
+            "compare_deck_power", {"deck_id_a": deck_a, "deck_id_b": deck_b}
+        )
+
+    assert result.isError is False
+    sc = result.structuredContent
+    assert sc is not None
+    assert sc["status"] == "ok"
+    assert sc["schema_version"] == "1"
+    assert sc["deck_id_a"] == deck_a
+    assert sc["deck_id_b"] == deck_b
+    a = assess_a.structuredContent["assessment"]
+    b = assess_b.structuredContent["assessment"]
+    comparison = sc["comparison"]
+    assert comparison is not None
+    assert comparison["format"] == a["format"] == b["format"] == "commander"
+    # Field-wise subtraction equality against the two client-level assess results.
+    for key in _VECTOR_KEYS:
+        assert comparison["vector_delta"][key] == b["vector"][key] - a["vector"][key]
+    assert list(comparison["vector_delta"]) == _VECTOR_KEYS
+    assert comparison["for_format_score_delta"] == b["for_format_score"] - a["for_format_score"]
+    assert comparison["for_format_score_a"] == a["for_format_score"]
+    assert comparison["for_format_score_b"] == b["for_format_score"]
+    assert comparison["tier_a"] == a["tier"]
+    assert comparison["tier_b"] == b["tier"]
+    assert comparison["bracket_a"] == a["bracket"] == 2
+    assert comparison["bracket_b"] == b["bracket"] == 3  # the GC gate lifts the floor
+    assert comparison["game_changers_added"] == ["Bolas's Citadel"]
+    assert comparison["game_changers_removed"] == []
+    # Pass-through blocks arrive verbatim from the two assessments...
+    assert comparison["data_vintage_a"] == a["data_vintage"]
+    assert comparison["data_vintage_b"] == b["data_vintage"]
+    assert comparison["confidence_a"] == a["confidence"]
+    assert comparison["confidence_b"] == b["confidence"]
+    # ...and carry the SEEDED vintage values positively (the 7.4 defer's surface).
+    for vintage in (comparison["data_vintage_a"], comparison["data_vintage_b"]):
+        assert vintage["combo_snapshot_imported_at"] == "2026-07-16T09:07:00+00:00"
+        assert vintage["combo_snapshot_export_version"] == "5.6.0"
+
+
+async def test_compare_combo_completion_through_client(
+    assessment_card_db: async_sessionmaker[AsyncSession],
+):
+    """Combo completion across sides shows in combos_bucket_changed (AC 8)."""
+    async with assessment_card_db() as session:
+        await seed_snapshot(
+            session,
+            [snapshot_variant("1-1", ["Krenko, Mob Boss", "Zada, Hedron Grinder"])],
+        )
+    server = build_server(session_factory=assessment_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        # Deck_a holds exactly one piece of the 2-card variant; deck_b holds both.
+        deck_a = await _build_deck(
+            client,
+            name="One Piece",
+            format="commander",
+            rows=[
+                ("e2e-krenko", 1, True),
+                ("e2e-goblin-guide", 4, False),
+                ("e2e-mountain", 20, False),
+            ],
+        )
+        deck_b = await _build_deck(
+            client,
+            name="Both Pieces",
+            format="commander",
+            rows=[
+                ("e2e-krenko", 1, True),
+                ("e2e-zada", 1, False),
+                ("e2e-goblin-guide", 4, False),
+                ("e2e-mountain", 20, False),
+            ],
+        )
+        result = await client.call_tool(
+            "compare_deck_power", {"deck_id_a": deck_a, "deck_id_b": deck_b}
+        )
+
+    assert result.isError is False
+    sc = result.structuredContent
+    assert sc is not None
+    assert sc["status"] == "ok"
+    comparison = sc["comparison"]
+    assert comparison["combos_added"] == []
+    assert comparison["combos_removed"] == []
+    assert comparison["combos_bucket_changed"] == [
+        {"spellbook_id": "1-1", "bucket_a": "almost_included", "bucket_b": "included"}
+    ]
+    assert comparison["vector_delta"]["combo_potential"] > 0
+
+
+async def test_compare_wire_bytes_deterministic(
+    assessment_card_db: async_sessionmaker[AsyncSession],
+):
+    """Two identical compare calls produce byte-identical wire JSON (AC 8, AD-8/NFR1).
+
+    Byte-comparison surface: ``result.content[0].text`` — the 7.4 Task-0 probe
+    (see test_assess_deck_power_wire_bytes_deterministic) established that
+    ``call_tool`` returns exactly one TextContent whose ``.text`` IS the JSON
+    projection with model-declaration key order, so the wire text is the
+    strictest available surface. String equality, not dict equality.
+    """
+    async with assessment_card_db() as session:
+        # Variant ids deliberately out of insert order: emission must sort, not echo.
+        await seed_snapshot(
+            session,
+            [
+                snapshot_variant("2-2", ["Krenko, Mob Boss", "Zada, Hedron Grinder"]),
+                snapshot_variant("1-1", ["Zada, Hedron Grinder", "Goblin Guide"]),
+            ],
+        )
+    server = build_server(session_factory=assessment_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        deck_a = await _build_deck(
+            client,
+            name="Det Wire A",
+            format="commander",
+            rows=[
+                ("e2e-krenko", 1, True),
+                ("e2e-goblin-guide", 4, False),
+                ("e2e-mountain", 20, False),
+            ],
+        )
+        deck_b = await _build_deck(
+            client,
+            name="Det Wire B",
+            format="commander",
+            rows=[
+                ("e2e-krenko", 1, True),
+                ("e2e-zada", 1, False),
+                ("e2e-goblin-guide", 4, False),
+                ("e2e-gc-bolas", 1, False),
+                ("e2e-gc-aura", 1, False),
+                ("e2e-mountain", 20, False),
+            ],
+        )
+        result_a = await client.call_tool(
+            "compare_deck_power", {"deck_id_a": deck_a, "deck_id_b": deck_b}
+        )
+        result_b = await client.call_tool(
+            "compare_deck_power", {"deck_id_a": deck_a, "deck_id_b": deck_b}
+        )
+
+    assert result_a.isError is False
+    assert result_b.isError is False
+    assert result_a.structuredContent["status"] == "ok"
+    [block_a] = result_a.content
+    [block_b] = result_b.content
+    # Pin the surface to the payload so the equality below can't pass vacuously
+    # (the 7.4 review-hardening pattern).
+    assert block_a.text
+    assert json.loads(block_a.text) == result_a.structuredContent
+    assert block_a.text == block_b.text  # byte-identical serialized JSON at the wire
+    # Sorted diff lists survive the wire (set difference + sorted, never echo):
+    # GCs entered deck_b in reverse bytewise order; variants were seeded "2-2"
+    # first. Deck_a already holds one piece of EACH variant (Krenko for "2-2",
+    # Goblin Guide for "1-1"), so both flip almost_included → included rather
+    # than appearing as additions.
+    comparison = result_a.structuredContent["comparison"]
+    assert comparison["game_changers_added"] == ["Aura Shards", "Bolas's Citadel"]
+    assert comparison["combos_added"] == []
+    assert comparison["combos_bucket_changed"] == [
+        {"spellbook_id": "1-1", "bucket_a": "almost_included", "bucket_b": "included"},
+        {"spellbook_id": "2-2", "bucket_a": "almost_included", "bucket_b": "included"},
+    ]
+
+
+async def test_compare_graceful_failures_through_client(
+    assessment_card_db: async_sessionmaker[AsyncSession],
+):
+    """Bogus side and mismatched formats degrade gracefully, never isError (AC 8)."""
+    server = build_server(session_factory=assessment_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        commander_id = await _build_deck(
+            client,
+            name="Graceful Commander",
+            format="commander",
+            rows=[("e2e-krenko", 1, True), ("e2e-mountain", 20, False)],
+        )
+        standard_id = await _build_deck(
+            client,
+            name="Graceful Standard",
+            format="standard",
+            rows=[("e2e-shock", 4, False), ("e2e-mountain", 20, False)],
+        )
+        bogus = await client.call_tool(
+            "compare_deck_power", {"deck_id_a": commander_id, "deck_id_b": "no-such-deck"}
+        )
+        mismatch = await client.call_tool(
+            "compare_deck_power", {"deck_id_a": commander_id, "deck_id_b": standard_id}
+        )
+
+    assert bogus.isError is False
+    sc = bogus.structuredContent
+    assert sc is not None
+    assert sc["status"] == "deck_b_failed"
+    assert sc["comparison"] is None
+    assert "'no-such-deck'" in sc["summary"]
+    assert "deck_not_found" in sc["summary"]
+
+    assert mismatch.isError is False
+    sc = mismatch.structuredContent
+    assert sc is not None
+    assert sc["status"] == "format_mismatch"
+    assert sc["comparison"] is None
+    assert "commander" in sc["summary"]
+    assert "standard" in sc["summary"]

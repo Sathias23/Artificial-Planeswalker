@@ -44,6 +44,10 @@ from src.mcp_server.tools.build_search_index import build_search_index as _build
 from src.mcp_server.tools.card_lookup import CardLookupResult, lookup_card
 from src.mcp_server.tools.card_search import CardSearchResult
 from src.mcp_server.tools.card_search import search_cards as _search_cards_helper
+from src.mcp_server.tools.compare_deck_power import CompareDeckPowerResult
+from src.mcp_server.tools.compare_deck_power import (
+    compare_deck_power as _compare_deck_power_helper,
+)
 from src.mcp_server.tools.deck_analysis import (
     ManaCurveResult,
     SynergyResult,
@@ -510,6 +514,57 @@ def build_server(
         """
         async with session_factory() as session:
             return await _assess_deck_power_helper(session, deck_id=deck_id, format=format)
+
+    @mcp.tool()
+    async def compare_deck_power(
+        deck_id_a: str, deck_id_b: str, format: str | None = None
+    ) -> CompareDeckPowerResult:
+        """Compare two saved decks' power assessments — deterministic server-side deltas.
+
+        Runs the same assessment pipeline as ``assess_deck_power`` on both
+        decks and returns a structured ``comparison`` block of every
+        difference, so no caller ever re-derives the arithmetic. Delta
+        direction is **b − a**: ``deck_id_a`` is the baseline ("before"),
+        ``deck_id_b`` the candidate ("after") — a positive delta means the
+        candidate is higher. The block carries the 7-dimension
+        ``vector_delta``, the ``for_format_score`` delta with both endpoints
+        and tiers, the Commander bracket pair (``bracket_a``/``bracket_b`` —
+        endpoints, never subtracted; ``null`` for standard), sorted
+        added/removed lists for Game Changers, structural gaps, and combos
+        (plus ``combos_bucket_changed`` for variants whose
+        included/almost_included bucket flipped), per-side booleans, and both
+        sides' ``data_vintage`` and ``confidence`` blocks verbatim.
+        Deterministic: identical inputs serialize byte-identically; comparing
+        a deck with itself (legal) yields all-zero deltas and empty lists. To
+        compare two versions of ONE deck, snapshot it first — export via
+        ``view_deck``/``load_deck``, then ``create_deck`` +
+        ``import_decklist`` (or re-add the rows) to freeze the "before" copy,
+        edit the original, and compare the two ids. If the two decks resolve
+        to different formats the result is ``format_mismatch`` — pass
+        ``format`` explicitly to force both sides. A side that fails to
+        assess yields ``deck_a_failed`` / ``deck_b_failed`` /
+        ``both_decks_failed`` with the underlying reason in ``summary``.
+        Observational — modifies nothing. Stateless: pass both deck ids every
+        call.
+
+        Args:
+            deck_id_a: The baseline deck id (from ``create_deck`` or
+                ``list_decks``).
+            deck_id_b: The candidate deck id; may equal ``deck_id_a``.
+            format: Optional format override ("commander" or "standard",
+                case-insensitive) applied to BOTH decks; omit to let each
+                deck resolve its own format.
+
+        Returns:
+            A result whose ``status`` is ``ok`` (``comparison`` populated,
+            ``summary`` its human projection), ``deck_a_failed``,
+            ``deck_b_failed``, ``both_decks_failed``, ``format_mismatch``,
+            ``database_not_initialized``, or ``error``.
+        """
+        async with session_factory() as session:
+            return await _compare_deck_power_helper(
+                session, deck_id_a=deck_id_a, deck_id_b=deck_id_b, format=format
+            )
 
     @mcp.tool()
     def semantic_search_cards(
