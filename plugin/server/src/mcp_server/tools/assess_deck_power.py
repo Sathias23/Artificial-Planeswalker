@@ -21,7 +21,7 @@ wiring. Stateless (FR1 / NFR7): the deck is the client-supplied ``deck_id`` and
 
 import logging
 from dataclasses import dataclass
-from typing import Final, Literal
+from typing import Final, Literal, cast
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.exc import DatabaseError
@@ -219,11 +219,11 @@ class Assessment(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    format: str
+    format: Literal["commander", "standard"]
     vector: AssessmentVector
     for_format_score: int
     tier: TierLabel
-    bracket: int | None
+    bracket: Literal[2, 3, 4] | None
     data_vintage: DataVintage
     confidence: Confidence
     flags: AssessmentFlags
@@ -561,8 +561,12 @@ def _build_assessment(scored: ScoredAssessment) -> Assessment:
     """
     core = scored.core
     vintage = scored.vintage
+    # The seam carries ``format``/``bracket_floor`` as ``str``/``int | None``; the
+    # closed field types are the boundary's job. The casts are static-only —
+    # Pydantic still validates the ``Literal`` at construction, so a stray value
+    # (e.g. an out-of-domain bracket) raises rather than serializing bad prose.
     return Assessment(
-        format=scored.inputs.format,
+        format=cast('Literal["commander", "standard"]', scored.inputs.format),
         vector=AssessmentVector(
             speed=core.vector.speed,
             consistency=core.vector.consistency,
@@ -574,7 +578,7 @@ def _build_assessment(scored: ScoredAssessment) -> Assessment:
         ),
         for_format_score=core.for_format_score,
         tier=core.tier,
-        bracket=core.bracket_floor,
+        bracket=cast("Literal[2, 3, 4] | None", core.bracket_floor),
         data_vintage=DataVintage(
             combo_snapshot_imported_at=vintage.imported_at if vintage else None,
             combo_snapshot_export_version=vintage.export_version if vintage else None,
@@ -630,6 +634,7 @@ def _build_summary(
     included = sum(1 for c in flags.combos if c.bucket == "included")
     almost = sum(1 for c in flags.combos if c.bucket == "almost_included")
     included_noun = "combo variant" if included == 1 else "combo variants"
+    almost_noun = "combo variant" if almost == 1 else "combo variants"
     gc_count = len(flags.game_changers)
     gc_noun = "Game Changer" if gc_count == 1 else "Game Changers"
 
@@ -650,7 +655,7 @@ def _build_summary(
         f"{mainboard_total} mainboard cards, {unresolved_count} unresolved. "
         f"Scored {assessment.for_format_score}/100 ({assessment.tier})"
         f"{bracket_text}{cedh_text}; "
-        f"{included} {included_noun} included, {almost} one card away; "
+        f"{included} {included_noun} included, {almost} {almost_noun} one card away; "
         f"{gc_count} {gc_noun}{gaps_text}; "
         f"confidence {assessment.confidence.level} ({reasons_text})."
     )

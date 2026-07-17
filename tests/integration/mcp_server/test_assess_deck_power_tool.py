@@ -1223,7 +1223,7 @@ async def test_summary_projects_commander_facts_and_caveat(session: AsyncSession
     assert f"Bracket {a.bracket} floor" in summary
     # Bucket-split counts: 1-1 is fully included; 7-7 is one card away (Chandra absent).
     assert "1 combo variant included" in summary
-    assert "1 one card away" in summary
+    assert "1 combo variant one card away" in summary
     assert "1 Game Changer" in summary
     assert "confidence high" in summary
     assert "no degradations" in summary
@@ -1268,7 +1268,7 @@ async def test_almost_included_never_reads_as_matched(session: AsyncSession) -> 
     assert a is not None
     assert [c.bucket for c in a.flags.combos] == ["almost_included"]
     assert "0 combo variants included" in result.summary
-    assert "1 one card away" in result.summary
+    assert "1 combo variant one card away" in result.summary
     assert "matched" not in result.summary
 
 

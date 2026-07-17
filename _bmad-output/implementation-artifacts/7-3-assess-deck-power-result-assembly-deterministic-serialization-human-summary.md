@@ -4,7 +4,7 @@ baseline_commit: dfc45b2
 
 # Story 7.3: `AssessDeckPowerResult` — assembly, deterministic serialization & human summary
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -523,6 +523,16 @@ claude-fable-5 (Claude Fable 5, Claude Code)
 - `_bmad-output/implementation-artifacts/7-3-assess-deck-power-result-assembly-deterministic-serialization-human-summary.md`
   — this story file
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` — status tracking
+
+## Review Findings
+
+_Code review 2026-07-17 (baseline `dfc45b2`..`15cec07`; 3 layers: Blind Hunter,
+Edge Case Hunter, Acceptance Auditor). Acceptance Auditor found zero AC
+violations. 3 findings survived triage (all low severity), 7 dismissed as noise._
+
+- [x] [Review][Patch] Tighten `bracket` to `Literal[2, 3, 4] | None` (decision resolved 2026-07-17) [src/mcp_server/tools/assess_deck_power.py:226] — Structured field accepted any int; the summary renders `f", Bracket {bracket} floor"` for any non-None value (`assess_deck_power.py:636`). Core `bracket_floor` is documented `{2,3,4}`/None (Brackets 1 & 5 are intent-declared, never computed — FR18). Chosen fix: encode the FR18 invariant at the boundary so a producer regression becomes a loud ValidationError (which 7.4's determinism suite catches) instead of silent "Bracket 5 floor" prose.
+- [x] [Review][Patch] Summary "one card away" clause is ungrammatical for every count except 1 [src/mcp_server/tools/assess_deck_power.py:653] — `f"{included} {included_noun} included, {almost} one card away"` pluralizes the `included` side but hardcodes a bare "one card away" for `almost`, so the common no-shortfall deck reads "0 one card away" and a multi-shortfall deck reads "2 one card away". Standard decks (combos disabled) always render "0 combo variants included, 0 one card away". AC5 leaves phrasing free (conflation is banned, and it is correctly un-conflated), so this is cosmetic on the product surface an LLM relays — but it reads wrong. Fix: pluralize/zero-handle the `almost` clause (e.g. "1 one card away" / "2 one card short" / omit when 0).
+- [x] [Review][Patch] `Assessment.format` is typed `str`, not a closed `Literal`, in a "fixed closed shape" model [src/mcp_server/tools/assess_deck_power.py:222] — Every other constrained field is closed (`tier: TierLabel`, `confidence.level: ConfidenceLevel`) and the field's own docstring promises `"commander" | "standard"`; 7.5 branches on it for `format_mismatch`. `inputs.format` is always one of the two profile keys, so tightening to `Literal["commander", "standard"]` is safe and matches the model's stated intent. Low-value consistency fix.
 
 ## Change Log
 
