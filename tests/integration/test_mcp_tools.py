@@ -382,6 +382,9 @@ async def test_assess_deck_power_through_client(
         assert sc["assessment"] is None
         assert sc["deck_id"] == deck_id
         assert "standard-v4" in sc["summary"]  # create_deck default format resolves via ladder
+        # Story 7.2 summary facts: scored + a categorical confidence with reasons text.
+        assert "/100" in sc["summary"]
+        assert "confidence " in sc["summary"]
 
         # The format param is per-call state: an unsupported value is graceful.
         unsupported = await client.call_tool(

@@ -13,6 +13,7 @@ legendary / non-legendary / DFC / planeswalker cards so every resolution branch
 is reachable without editing the cross-story seed.
 """
 
+import dataclasses
 import logging
 from pathlib import Path
 
@@ -21,9 +22,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
+from src.data.models.combo import (
+    ComboSnapshotMetaModel,
+    ComboVariantModel,
+    ComboVariantPieceModel,
+)
 from src.data.repositories.deck import DeckRepository
+from src.data.schemas.combo import name_keys
+from src.logic.assessment import (
+    CARDS_UNRESOLVED,
+    COMBO_DATA_UNAVAILABLE,
+    COMMANDER_UNIDENTIFIED,
+    CONFIDENCE_REASON_TOKENS,
+    GAME_CHANGER_DATA_UNAVAILABLE,
+    STANDARD_PROFILE,
+)
 from src.mcp_server.tools.assess_deck_power import (
+    _FORMAT_PROFILES,
+    _derive_confidence,
     _is_legendary_creature,
+    _provision_combos,
     _resolve_format,
     assess_deck_power,
 )
@@ -38,8 +56,13 @@ def _card(
     cmc: float = 2.0,
     oracle_text: str = "Does a thing.",
     colors: list[str] | None = None,
+    game_changer: bool | None = False,
 ) -> CardModel:
-    """Build a CardModel with a unique oracle_id (standard-legal, all platforms)."""
+    """Build a CardModel with a unique oracle_id (standard-legal, all platforms).
+
+    ``game_changer`` defaults to ``False`` (confirmed not) so the shared seed never
+    trips ``game_changer_data_unavailable``; the NULL fixture opts in explicitly.
+    """
     return CardModel(
         id=card_id,
         name=name,
@@ -57,6 +80,7 @@ def _card(
         color_identity=colors if colors is not None else ["R"],
         legalities={"standard": "legal", "commander": "legal"},
         games=["paper", "arena", "mtgo"],
+        game_changer=game_changer,
     )
 
 
@@ -112,6 +136,13 @@ def _seed_cards() -> list[CardModel]:
             "Chandra, Torch of Defiance",
             type_line="Legendary Planeswalker — Chandra",
             cmc=4.0,
+        ),
+        _card(
+            "card-gc-null",
+            "Mystery Relic",
+            type_line="Artifact",
+            cmc=2.0,
+            game_changer=None,  # unknown state — the AD-4 unknown_count fixture
         ),
     ]
 
@@ -524,4 +555,307 @@ async def test_ok_result_carries_schema_version_and_null_assessment(
     assert result.status == "ok"
     assert result.schema_version == "1"
     assert result.assessment is None
-    assert "7.2" in result.summary or "pending" in result.summary
+    assert "7.3" in result.summary or "pending" in result.summary
+
+
+# --- pure confidence ladder (Story 7.2, AC 4/5) ---
+
+
+@pytest.mark.parametrize("unresolved_count", [0, 1])
+@pytest.mark.parametrize("combo_data_unavailable", [False, True])
+@pytest.mark.parametrize("gc_unknown_count", [0, 1])
+@pytest.mark.parametrize("commander_unidentified", [False, True])
+def test_derive_confidence_full_matrix(
+    unresolved_count: int,
+    combo_data_unavailable: bool,
+    gc_unknown_count: int,
+    commander_unidentified: bool,
+) -> None:
+    """All 16 fact combinations: token presence, bytewise sort, 0/1/≥2 level mapping."""
+    level, reasons = _derive_confidence(
+        unresolved_count=unresolved_count,
+        combo_data_unavailable=combo_data_unavailable,
+        gc_unknown_count=gc_unknown_count,
+        commander_unidentified=commander_unidentified,
+    )
+
+    expected_reasons = tuple(
+        token
+        for token, active in (
+            (CARDS_UNRESOLVED, unresolved_count > 0),
+            (COMBO_DATA_UNAVAILABLE, combo_data_unavailable),
+            (COMMANDER_UNIDENTIFIED, commander_unidentified),
+            (GAME_CHANGER_DATA_UNAVAILABLE, gc_unknown_count > 0),
+        )
+        if active
+    )
+    assert reasons == expected_reasons
+    # AD-8: emitted bytewise-sorted; every token from the closed enum only.
+    assert list(reasons) == sorted(reasons)
+    assert set(reasons) <= set(CONFIDENCE_REASON_TOKENS)
+
+    expected_level = "high" if len(reasons) == 0 else "medium" if len(reasons) == 1 else "low"
+    assert level == expected_level
+
+
+def test_derive_confidence_reasons_follow_token_tuple_order() -> None:
+    """The all-degradations case emits exactly CONFIDENCE_REASON_TOKENS (already sorted)."""
+    level, reasons = _derive_confidence(
+        unresolved_count=3,
+        combo_data_unavailable=True,
+        gc_unknown_count=2,
+        commander_unidentified=True,
+    )
+
+    assert reasons == CONFIDENCE_REASON_TOKENS
+    assert level == "low"
+
+
+def test_derive_confidence_counts_never_embed_in_tokens() -> None:
+    """Tokens are count-free: a large count changes nothing but presence (AD-6)."""
+    _, reasons_one = _derive_confidence(
+        unresolved_count=1,
+        combo_data_unavailable=False,
+        gc_unknown_count=0,
+        commander_unidentified=False,
+    )
+    _, reasons_many = _derive_confidence(
+        unresolved_count=99,
+        combo_data_unavailable=False,
+        gc_unknown_count=0,
+        commander_unidentified=False,
+    )
+
+    assert reasons_one == reasons_many == (CARDS_UNRESOLVED,)
+
+
+# --- combo provisioning + degradation matrix (Story 7.2, AC 1/2/3/6) ---
+
+
+def _snapshot_variant(
+    spellbook_id: str,
+    cards: list[str],
+    *,
+    commander_required: bool = False,
+    bracket_tag: str = "POWERFUL",
+) -> tuple[ComboVariantModel, list[ComboVariantPieceModel]]:
+    """One variant row + its piece-index rows (the 6.3 test-suite seeding pattern)."""
+    variant = ComboVariantModel(
+        spellbook_id=spellbook_id,
+        commander_required=commander_required,
+        bracket_tag=bracket_tag,
+        popularity=None,
+    )
+    variant.cards_list = cards
+    variant.produces_list = ["Infinite value"]
+    keys = {key for name in cards for key in name_keys(name)}
+    pieces = [
+        ComboVariantPieceModel(spellbook_id=spellbook_id, name_key=key) for key in sorted(keys)
+    ]
+    return variant, pieces
+
+
+async def _seed_snapshot(
+    session: AsyncSession,
+    variants: list[tuple[ComboVariantModel, list[ComboVariantPieceModel]]],
+) -> None:
+    """Seed the meta row + the supplied variants — a healthy, available snapshot."""
+    session.add(
+        ComboSnapshotMetaModel(
+            imported_at="2026-07-16T09:07:00+00:00",
+            export_timestamp="2026-07-16T07:28:23+00:00",
+            export_version="5.6.0",
+            variant_count=len(variants),
+        )
+    )
+    for variant, pieces in variants:
+        session.add(variant)
+        session.add_all(pieces)
+    await session.commit()
+
+
+async def test_absent_snapshot_degrades_and_still_scores(session: AsyncSession) -> None:
+    """Empty snapshot tables → combo_data_unavailable + medium confidence, scored ok (AC 2)."""
+    deck_id = await _make_deck(
+        session,
+        [("card-krenko", 1, False, True), ("card-goblin-guide", 4, False, False)],
+    )
+
+    result = await assess_deck_power(session, deck_id=deck_id)
+
+    assert result.status == "ok"
+    assert "/100" in result.summary  # scoring proceeded despite the degradation
+    assert COMBO_DATA_UNAVAILABLE in result.summary
+    assert "confidence medium" in result.summary
+
+
+async def test_seeded_snapshot_matched_combo_no_token(session: AsyncSession) -> None:
+    """A healthy snapshot with an included combo surfaces the match and no token (AC 1/3)."""
+    await _seed_snapshot(
+        session,
+        [_snapshot_variant("1-1", ["Krenko, Mob Boss", "Zada, Hedron Grinder"])],
+    )
+    deck_id = await _make_deck(
+        session,
+        [
+            ("card-krenko", 1, False, True),
+            ("card-zada", 1, False, False),
+            ("card-goblin-guide", 4, False, False),
+        ],
+    )
+
+    result = await assess_deck_power(session, deck_id=deck_id)
+
+    assert result.status == "ok"
+    assert "1 combo variant" in result.summary
+    assert COMBO_DATA_UNAVAILABLE not in result.summary
+    assert "confidence high" in result.summary
+    assert "no degradations" in result.summary
+
+
+async def test_zero_overlap_healthy_snapshot_no_token(session: AsyncSession) -> None:
+    """A healthy snapshot with zero overlapping variants is NOT a degradation (AC 2, G-R2)."""
+    await _seed_snapshot(
+        session,
+        [_snapshot_variant("9-9", ["Thassa's Oracle", "Demonic Consultation"])],
+    )
+    deck_id = await _make_deck(
+        session,
+        [("card-krenko", 1, False, True), ("card-goblin-guide", 4, False, False)],
+    )
+
+    result = await assess_deck_power(session, deck_id=deck_id)
+
+    assert result.status == "ok"
+    assert "0 combo variants" in result.summary
+    assert COMBO_DATA_UNAVAILABLE not in result.summary
+    assert "confidence high" in result.summary
+
+
+async def test_combos_disabled_profile_skips_repo_and_token(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """combos_enabled=False skips provisioning entirely: no repo read, no token (AC 1).
+
+    The snapshot is ABSENT here — a token would fire if the availability probe ran, so
+    its absence proves the gate short-circuits before the probe (AD-6: a profile choice
+    is not a run-specific degradation).
+    """
+    disabled = dataclasses.replace(STANDARD_PROFILE, combos_enabled=False)
+    monkeypatch.setitem(_FORMAT_PROFILES, "standard", disabled)
+    deck_id = await _make_deck(session, [("card-shock", 4, False, False)], format="standard")
+
+    result = await assess_deck_power(session, deck_id=deck_id)
+
+    assert result.status == "ok"
+    assert COMBO_DATA_UNAVAILABLE not in result.summary
+    assert "confidence high" in result.summary
+
+
+async def test_combos_disabled_never_constructs_repo(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The disabled gate short-circuits before ComboSnapshotRepository is even built (AC 1)."""
+
+    def _explode(*args: object, **kwargs: object) -> None:
+        raise AssertionError("ComboSnapshotRepository must not be constructed when disabled")
+
+    monkeypatch.setattr("src.mcp_server.tools.assess_deck_power.ComboSnapshotRepository", _explode)
+    disabled = dataclasses.replace(STANDARD_PROFILE, combos_enabled=False)
+
+    variants, vintage, unavailable = await _provision_combos(session, (), disabled)
+
+    assert variants == ()
+    assert vintage is None
+    assert unavailable is False
+
+
+async def test_commander_unidentified_token_fires_for_commander_format(
+    session: AsyncSession,
+) -> None:
+    """A Commander deck with an unidentified commander carries the token (AC 4)."""
+    await _seed_snapshot(
+        session,
+        [_snapshot_variant("9-9", ["Thassa's Oracle", "Demonic Consultation"])],
+    )
+    # Two distinct unflagged legendaries → unidentified.
+    deck_id = await _make_deck(
+        session,
+        [("card-krenko", 1, False, False), ("card-zada", 1, False, False)],
+    )
+
+    result = await assess_deck_power(session, deck_id=deck_id)
+
+    assert result.status == "ok"
+    assert COMMANDER_UNIDENTIFIED in result.summary
+    assert "confidence medium" in result.summary
+
+
+async def test_standard_deck_never_carries_commander_unidentified(
+    session: AsyncSession,
+) -> None:
+    """Standard resolves unidentified by construction — no token, no penalty (AC 4)."""
+    await _seed_snapshot(
+        session,
+        [_snapshot_variant("9-9", ["Thassa's Oracle", "Demonic Consultation"])],
+    )
+    deck_id = await _make_deck(session, [("card-shock", 4, False, False)], format="standard")
+
+    result = await assess_deck_power(session, deck_id=deck_id)
+
+    assert result.status == "ok"
+    assert COMMANDER_UNIDENTIFIED not in result.summary
+    assert "confidence high" in result.summary
+    assert "no degradations" in result.summary
+
+
+async def test_null_game_changer_card_degrades(session: AsyncSession) -> None:
+    """A game_changer=None card fires game_changer_data_unavailable via unknown_count (AC 4)."""
+    await _seed_snapshot(
+        session,
+        [_snapshot_variant("9-9", ["Thassa's Oracle", "Demonic Consultation"])],
+    )
+    deck_id = await _make_deck(
+        session,
+        [("card-krenko", 1, False, True), ("card-gc-null", 1, False, False)],
+    )
+
+    result = await assess_deck_power(session, deck_id=deck_id)
+
+    assert result.status == "ok"
+    assert GAME_CHANGER_DATA_UNAVAILABLE in result.summary
+    assert "confidence medium" in result.summary
+
+
+async def test_multi_degradation_is_low_with_sorted_reasons(session: AsyncSession) -> None:
+    """Absent snapshot + unidentified commander + NULL gc → low, sorted reasons (AC 4/5)."""
+    # No snapshot seeded; commander deck with no flags and no sole legendary.
+    deck_id = await _make_deck(
+        session,
+        [
+            ("card-krenko", 1, False, False),
+            ("card-zada", 1, False, False),
+            ("card-gc-null", 1, False, False),
+        ],
+    )
+
+    result = await assess_deck_power(session, deck_id=deck_id)
+
+    assert result.status == "ok"
+    assert "confidence low" in result.summary
+    # The three active tokens must appear in bytewise order (AD-8).
+    expected = ", ".join(
+        [COMBO_DATA_UNAVAILABLE, COMMANDER_UNIDENTIFIED, GAME_CHANGER_DATA_UNAVAILABLE]
+    )
+    assert expected in result.summary
+
+
+async def test_empty_mainboard_deck_scores_without_crash(session: AsyncSession) -> None:
+    """An all-sideboard deck still returns a scored ok result — score() is zero-safe (AC 3/6)."""
+    deck_id = await _make_deck(session, [("card-shock", 4, True, False)])
+
+    result = await assess_deck_power(session, deck_id=deck_id)
+
+    assert result.status == "ok"
+    assert "0 mainboard cards" in result.summary
+    assert "/100" in result.summary

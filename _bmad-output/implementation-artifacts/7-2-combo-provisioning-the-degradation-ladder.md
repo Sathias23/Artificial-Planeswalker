@@ -4,7 +4,7 @@ baseline_commit: 5b17006
 
 # Story 7.2: Combo provisioning & the degradation ladder
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -96,73 +96,73 @@ so that a missing combo snapshot or missing data lowers confidence instead of cr
 
 ## Tasks / Subtasks
 
-- [ ] Task 0: Story-start state verification (standing team agreement) (AC: all)
-  - [ ] `git status` — the working tree currently carries the **uncommitted 7.1 review
+- [x] Task 0: Story-start state verification (standing team agreement) (AC: all)
+  - [x] `git status` — the working tree currently carries the **uncommitted 7.1 review
         patch** (`src/mcp_server/tools/assess_deck_power.py` + plugin mirror comment, story
         file + sprint-status edits). Commit it first (e.g.
         `docs: story 7.1 review findings + unresolved_count patch`) so this story starts
         from a clean tree; verify with `git status` after.
-  - [ ] `uv run pytest --collect-only -q | tail -1` — confirm full-suite baseline **1,270**
+  - [x] `uv run pytest --collect-only -q | tail -1` — confirm full-suite baseline **1,270**
         (7.1's verified count); record the actual number in Dev Agent Record.
-  - [ ] Confirm imports:
+  - [x] Confirm imports:
         `from src.logic.assessment import CARDS_UNRESOLVED, COMBO_DATA_UNAVAILABLE, COMMANDER_UNIDENTIFIED, GAME_CHANGER_DATA_UNAVAILABLE, CONFIDENCE_REASON_TOKENS, ConfidenceLevel, CoreAssessment, score`
         and `from src.data.repositories.combo_snapshot import ComboSnapshotRepository`,
         `from src.data.schemas.combo import ComboSnapshotMeta` (all exist — verified
         2026-07-17).
-  - [ ] Read `ComboSnapshotRepository` (combo_snapshot.py, ~140 lines) and the NOTE comment
+  - [x] Read `ComboSnapshotRepository` (combo_snapshot.py, ~140 lines) and the NOTE comment
         at `assess_deck_power.py:326-332` before writing any code.
-- [ ] Task 1: Pure confidence ladder (TDD — test first) (AC: 4, 5)
-  - [ ] New pure function in `assess_deck_power.py` (e.g.
+- [x] Task 1: Pure confidence ladder (TDD — test first) (AC: 4, 5)
+  - [x] New pure function in `assess_deck_power.py` (e.g.
         `_derive_confidence(*, unresolved_count, combo_data_unavailable, gc_unknown_count,
         commander_unidentified) -> tuple[ConfidenceLevel, tuple[str, ...]]`) — takes plain
         facts, returns level + bytewise-sorted reasons tuple. No I/O, no profile, no clock.
-  - [ ] Unit tests for all 16 fact combinations (or a representative matrix): token
+  - [x] Unit tests for all 16 fact combinations (or a representative matrix): token
         presence/absence, sort order (`CONFIDENCE_REASON_TOKENS` is already the sorted
         order — assert against it), level mapping 0/1/≥2.
-  - [ ] `cards_unresolved` is exercised here (pure inputs) — do NOT invent a live
+  - [x] `cards_unresolved` is exercised here (pure inputs) — do NOT invent a live
         name-matching pipeline to make it fire end-to-end (7.1 review D1).
-- [ ] Task 2: Combo provisioning (AC: 1, 2)
-  - [ ] In the helper's ok path (after `ResolvedDeckInputs` is built): if
+- [x] Task 2: Combo provisioning (AC: 1, 2)
+  - [x] In the helper's ok path (after `ResolvedDeckInputs` is built): if
         `inputs.profile.combos_enabled` → `combo_repo = ComboSnapshotRepository(session)`;
         `available = await combo_repo.snapshot_is_available()`;
         `vintage = await combo_repo.get_metadata()` (may be `None`); variants via
         `get_variants_for_names` over mainboard card names when available, else `()`.
-  - [ ] `combos_enabled=False` short-circuit: no repo construction, `variants=()`,
+  - [x] `combos_enabled=False` short-circuit: no repo construction, `variants=()`,
         `vintage=None`, no token (document the AD-6 rationale in a comment).
-  - [ ] Do NOT catch `pydantic.ValidationError` from a corrupt stored row — loud by design
+  - [x] Do NOT catch `pydantic.ValidationError` from a corrupt stored row — loud by design
         (Story 6.3 contract; consistent with the 7.1 orphan-row deferral).
-- [ ] Task 3: `score()` invocation + seam carrier + summary (AC: 3, 6)
-  - [ ] Call `score(...)` exactly once; new frozen dataclass carrier (e.g.
+- [x] Task 3: `score()` invocation + seam carrier + summary (AC: 3, 6)
+  - [x] Call `score(...)` exactly once; new frozen dataclass carrier (e.g.
         `ScoredAssessment`: `inputs: ResolvedDeckInputs`, `core: CoreAssessment`,
         `vintage: ComboSnapshotMeta | None`, `confidence_level: ConfidenceLevel`,
         `confidence_reasons: tuple[str, ...]`) — the 7.3 seam. Keep `ResolvedDeckInputs`
         untouched.
-  - [ ] Update the ok-path `summary` deterministically: resolution facts + `score`/`tier`
+  - [x] Update the ok-path `summary` deterministically: resolution facts + `score`/`tier`
         facts optional, but at minimum confidence level, sorted reasons (or "no
         degradations"), combos matched count, and "structured assessment pending Story
         7.3". No timestamps, no unsorted iteration anywhere.
-  - [ ] Enumerate every `AssessDeckPowerResult` construction site again (epic-6 retro
+  - [x] Enumerate every `AssessDeckPowerResult` construction site again (epic-6 retro
         discipline) — this story must not add a new early return that forgets
         `schema_version`/`summary` (both required fields keep omissions loud).
-- [ ] Task 4: Integration tests — degradation matrix (AC: 8)
-  - [ ] Extend `tests/integration/mcp_server/test_assess_deck_power_tool.py`. Snapshot
+- [x] Task 4: Integration tests — degradation matrix (AC: 8)
+  - [x] Extend `tests/integration/mcp_server/test_assess_deck_power_tool.py`. Snapshot
         seeding: copy the `_variant`/`seeded_snapshot` pattern from
         `tests/integration/data/test_combo_snapshot_repository.py` (meta row via
         `ComboSnapshotMetaModel(...)`, variants via `ComboVariantModel` + `cards_list`
         setter + `ComboVariantPieceModel` piece rows keyed by `name_keys`).
-  - [ ] Cover: absent snapshot (tables exist via `init_database`, no rows) → token +
+  - [x] Cover: absent snapshot (tables exist via `init_database`, no rows) → token +
         scored; seeded snapshot matching a deck combo → combos surface on the seam/summary,
         no token; zero-overlap healthy snapshot → no token; Commander vs Standard
         `commander_unidentified` gating; NULL-`game_changer` seed card → token;
         multi-degradation → `level="low"` + sorted reasons; empty mainboard → ok.
-  - [ ] MCP-client level (`tests/integration/test_mcp_tools.py`): existing
+  - [x] MCP-client level (`tests/integration/test_mcp_tools.py`): existing
         `assess_deck_power` tests stay green; adjust the happy-path summary assertion if it
         pinned the 7.1 provisional text.
-- [ ] Task 5: Quality gates + story wrap-up (AC: 7)
-  - [ ] `uv run ruff check . --fix && uv run ruff format .`; `uv run mypy src/`;
+- [x] Task 5: Quality gates + story wrap-up (AC: 7)
+  - [x] `uv run ruff check . --fix && uv run ruff format .`; `uv run mypy src/`;
         `uv run pytest` full suite green; pre-commit (plugin mirror re-syncs
         `plugin/server/src/mcp_server/tools/assess_deck_power.py` — expected, commit it).
-  - [ ] Update this story file (Dev Agent Record, File List, Change Log); status → review.
+  - [x] Update this story file (Dev Agent Record, File List, Change Log); status → review.
         Conventional Commit:
         `feat: assess_deck_power combo provisioning + degradation ladder (story 7.2)`.
 
@@ -405,8 +405,101 @@ seam for 7.3. It does **NOT** include:
 
 ### Agent Model Used
 
+claude-fable-5 (Claude Fable 5)
+
 ### Debug Log References
+
+- Task 0 state verification (2026-07-17): working tree CLEAN at start — the 7.1 review
+  patch the story warned about was already committed as `7e2d0cd` ("docs: close story
+  7.1 review + open story 7.2"), so no pre-commit was needed. Full-suite baseline
+  collected: **1,270 tests** (matches 7.1's verified count exactly). All Task-0 imports
+  confirmed resolving in one `uv run python -c` probe; `CONFIDENCE_REASON_TOKENS`
+  echoed back in bytewise order. `baseline_commit: 5b17006` already present in
+  frontmatter — preserved untouched.
+- TDD cycles: Task 1 RED = `ImportError: cannot import name '_derive_confidence'`;
+  GREEN = 48/48 in the story test file. Tasks 2–4 RED = `ImportError` on
+  `_provision_combos`; GREEN = 58/58, then MCP-client level 23/23.
+- Ruff first pass caught 2 E501s in the new tests (fixed); second pass clean, format
+  touched only the test file; `mypy --strict` clean over 69 source files.
+- Full regression suite: **1,298 passed** (baseline 1,270 + 28 new tests), 0 failures.
+
+### Implementation Plan
+
+- Pure ladder `_derive_confidence(*, unresolved_count, combo_data_unavailable,
+  gc_unknown_count, commander_unidentified)` assembles reasons in the
+  `CONFIDENCE_REASON_TOKENS` declaration order (defined pre-sorted, so emission is
+  bytewise-sorted per AD-8 with no runtime sort) and maps count → level (0 high /
+  1 medium / ≥2 low), documented in the docstring as the codebase's first edge
+  confidence policy, hand-tuned and adjustable (NFR8).
+- Provisioning extracted as module-private async `_provision_combos(session,
+  mainboard, profile) -> (variants, vintage, combo_data_unavailable)` rather than
+  inlined — gives the `combos_enabled=False` gate a directly testable seam (the
+  no-repo-construction proof monkeypatches the class and calls the helper). Gate
+  short-circuits before `ComboSnapshotRepository(session)` is built; availability via
+  `snapshot_is_available()` only (never inferred from empty variants — G-R2's
+  zero-overlap-is-legitimate proof); `get_metadata()` carried even when unavailable
+  (decide-once #6); `pydantic.ValidationError` deliberately uncaught (loud corruption,
+  decide-once #5).
+- `score()` invoked exactly once, keyword-only, `variants=` param; result carried on
+  the new frozen `ScoredAssessment` (`inputs`/`core`/`vintage`/`confidence_level`/
+  `confidence_reasons`) — the 7.3 seam; `ResolvedDeckInputs` untouched.
+- `commander_unidentified` gated on `inputs.profile.rubric == "brackets"` (the
+  Commander-format scope, FR25/AD-13) AND `commander_resolution == "unidentified"`.
+- Summary rebuilt as a deterministic projection: resolution facts (unchanged
+  fragments — profile version, commander text, mainboard/unresolved counts) +
+  `Scored N/100 (tier)`, combos-matched count, `confidence <level>` with sorted
+  reasons or "no degradations", closing with the Story 7.3 pointer. No clock, no
+  unsorted iteration.
 
 ### Completion Notes List
 
+- All 8 ACs implemented and test-proven offline (no live DB, no network). AC-by-AC:
+  provisioning gated on `combos_enabled` with read-only snapshot access (AC 1);
+  unavailability probed via `snapshot_is_available()`, zero-overlap ≠ degradation
+  (AC 2); single `score()` call carried on frozen `ScoredAssessment` (AC 3); closed-enum
+  reasons imported (never re-declared), `cards_unresolved` wired honestly and tested
+  through the pure ladder per 7.1 review D1 (AC 4); 0/1/≥2 → high/medium/low ladder
+  (AC 5); every degradation path returns scored `status="ok"`, 7.1's 4-step error
+  pattern untouched, no new construction sites — re-enumerated: 5 early-return sites +
+  1 ok site, all with required `summary` (AC 6); ruff + mypy --strict + pre-commit
+  clean (AC 7); 28 new tests covering the full matrix (AC 8).
+- Tests added (28): 16-combination pure-ladder matrix + all-degradations
+  order pin + count-free token proof (18); degradation-matrix integration: absent
+  snapshot, matched combo (included bucket end-to-end), zero-overlap healthy snapshot,
+  `combos_enabled=False` end-to-end (monkeypatched `_FORMAT_PROFILES`) + never-constructs-
+  repo proof, Commander vs Standard `commander_unidentified` gating, NULL
+  `game_changer`, multi-degradation low + bytewise reason order, empty mainboard (10).
+  MCP-client happy path extended to pin the new summary facts (`/100`, `confidence `).
+- Test-fixture note: the shared `_card` seed now sets `game_changer=False` explicitly
+  (was NULL by model default) so the cross-story seed doesn't trip
+  `game_changer_data_unavailable` in every pre-existing test; the new `card-gc-null`
+  "Mystery Relic" seed card opts into `None` for the AD-4 unknown-count fixture.
+- Scope discipline held: zero changes to `src/logic/`, `src/data/`, or `scripts/`;
+  no calibration touched; `assessment` stays `None` on the result (7.3 widens it).
+- Plugin mirror re-synced via `scripts.build_plugin` (pre-commit hook enforces).
+
 ### File List
+
+- `src/mcp_server/tools/assess_deck_power.py` — modified (provisioning helper, pure
+  ladder, `ScoredAssessment` carrier, single `score()` call, deterministic summary,
+  module docstring updated to the 7.1/7.2 slice)
+- `tests/integration/mcp_server/test_assess_deck_power_tool.py` — modified (28 new
+  tests: pure-ladder matrix + degradation matrix; `_card` gains explicit
+  `game_changer` param; new `card-gc-null` seed card; snapshot seeding helpers)
+- `tests/integration/test_mcp_tools.py` — modified (happy-path summary assertion
+  extended to the new scored/confidence facts)
+- `plugin/server/src/mcp_server/tools/assess_deck_power.py` — generated (mirror
+  re-sync via `scripts.build_plugin`)
+- `_bmad-output/implementation-artifacts/7-2-combo-provisioning-the-degradation-ladder.md`
+  — modified (this story file: checkboxes, Dev Agent Record, File List, Change Log,
+  status)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — modified (7-2 →
+  in-progress → review)
+
+## Change Log
+
+- 2026-07-17: Story 7.2 implemented — snapshot-backed combo provisioning (profile-gated,
+  read-only), single pure-core `score()` invocation on the new frozen `ScoredAssessment`
+  seam, AD-6 confidence ladder (closed-enum reasons, bytewise-sorted; 0/1/≥2 →
+  high/medium/low), deterministic ok-path summary. 28 tests added (full suite
+  1,270 → 1,298, green); ruff + mypy --strict + pre-commit clean. Status → review.

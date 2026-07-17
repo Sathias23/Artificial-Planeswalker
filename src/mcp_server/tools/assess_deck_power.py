@@ -1,18 +1,21 @@
-"""Ingest/resolve slice of the ``assess_deck_power`` edge tool (Story 7.1).
+"""Ingest/resolve/score slice of the ``assess_deck_power`` edge tool (Stories 7.1/7.2).
 
 Loads a deck via ``DeckRepository.get_deck_with_cards`` (full nested ``Card``
 rows — assessment needs ``type_line``/``cmc``/``oracle_text``/``legalities``/
 ``game_changer``, so the lightweight projections are unusable here), resolves
 the scoring format to a profile, resolves commanders per AD-13, and assembles
-the frozen :class:`ResolvedDeckInputs` seam that Stories 7.2/7.3 consume.
-Assessment is **mainboard-only** (sideboard excluded), matching the benchmark
-wiring. Stateless (FR1 / NFR7): the deck is the client-supplied ``deck_id`` and
-``format`` is a per-call parameter — no server-side session state.
+the frozen :class:`ResolvedDeckInputs` seam. Story 7.2 adds snapshot-backed
+combo provisioning (read-only, AD-5), the single ``score()`` invocation (AD-2),
+and the AD-6 degradation ladder — level + reasons carried with the
+:class:`CoreAssessment` on the frozen :class:`ScoredAssessment` seam for Story
+7.3. Assessment is **mainboard-only** (sideboard excluded), matching the
+benchmark wiring. Stateless (FR1 / NFR7): the deck is the client-supplied
+``deck_id`` and ``format`` is a per-call parameter — no server-side session
+state.
 
-This slice does NOT score: combo provisioning and the degradation ladder are
-Story 7.2; ``score()`` invocation, the ``assessment`` block, and deterministic
-serialization are Story 7.3. The provisional ``status="ok"`` result reports
-resolution facts only and marks scoring as pending.
+Result widening is still pending: the ``assessment`` block, deterministic
+serialization, and the full human summary are Story 7.3. The ``status="ok"``
+``summary`` is a deterministic projection of the resolution + scoring facts.
 """
 
 import logging
@@ -24,9 +27,22 @@ from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.database import is_database_initialized
+from src.data.repositories.combo_snapshot import ComboSnapshotRepository
 from src.data.repositories.deck import DeckRepository
+from src.data.schemas.combo import ComboRecord, ComboSnapshotMeta
 from src.data.schemas.deck import Deck, DeckCard
-from src.logic.assessment import COMMANDER_PROFILE, STANDARD_PROFILE, FormatProfile
+from src.logic.assessment import (
+    CARDS_UNRESOLVED,
+    COMBO_DATA_UNAVAILABLE,
+    COMMANDER_PROFILE,
+    COMMANDER_UNIDENTIFIED,
+    GAME_CHANGER_DATA_UNAVAILABLE,
+    STANDARD_PROFILE,
+    ConfidenceLevel,
+    CoreAssessment,
+    FormatProfile,
+    score,
+)
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
 
 logger = logging.getLogger(__name__)
@@ -112,6 +128,126 @@ class ResolvedDeckInputs:
     commanders: tuple[str, ...]
     commander_resolution: CommanderResolution
     unresolved_count: int
+
+
+@dataclass(frozen=True)
+class ScoredAssessment:
+    """Frozen carrier of the scored assessment — the Story 7.3 seam (AD-2).
+
+    Bundles the resolved inputs, the pure core result, the snapshot vintage, and
+    the edge-assembled confidence so 7.3 can serialize the full assessment block
+    without re-deriving anything.
+
+    Attributes:
+        inputs: The resolved-inputs seam this scoring run consumed.
+        core: The frozen ``score()`` result (dimensions, tier, combos, signals).
+        vintage: The combo-snapshot metadata row for 7.3's ``data_vintage``, or
+            ``None`` when combos are disabled or the meta row is absent — may be
+            ``None`` even when no degradation token fired (a profile choice is
+            not a degradation, AD-6).
+        confidence_level: The categorical AD-6 level from the reasons ladder.
+        confidence_reasons: The bytewise-sorted closed-enum reason tokens (AD-8).
+    """
+
+    inputs: ResolvedDeckInputs
+    core: CoreAssessment
+    vintage: ComboSnapshotMeta | None
+    confidence_level: ConfidenceLevel
+    confidence_reasons: tuple[str, ...]
+
+
+async def _provision_combos(
+    session: AsyncSession, mainboard: tuple[DeckCard, ...], profile: FormatProfile
+) -> tuple[tuple[ComboRecord, ...], ComboSnapshotMeta | None, bool]:
+    """Provision combo variants from the local snapshot, gated on the profile (AD-2/AD-5).
+
+    Read-only against the same session — never a live fetch, never a write. When
+    ``profile.combos_enabled`` is ``False`` the gate short-circuits before any repo
+    construction: a profile that disables combos is configuration, not a run-specific
+    degradation, so no ``combo_data_unavailable`` token may fire from this path (AD-6).
+
+    Unavailability is probed via ``snapshot_is_available()`` (meta row present AND ≥1
+    variant row) — never inferred from an empty ``get_variants_for_names`` result: a
+    healthy snapshot with zero overlapping variants is a legitimate no-combos outcome
+    (G-R2 proved this on real decks), not a degradation.
+
+    Args:
+        session: The request's async session (shared with the deck load).
+        mainboard: The deck's mainboard rows — their card names drive the lookup.
+        profile: The resolved format profile carrying the ``combos_enabled`` gate.
+
+    Returns:
+        ``(variants, vintage, combo_data_unavailable)``: the unmatched snapshot
+        records for ``score()``, the metadata row (may be ``None``), and whether
+        the ``combo_data_unavailable`` token applies.
+
+    Raises:
+        pydantic.ValidationError: On a corrupt stored snapshot row — loud by design
+            (Story 6.3 contract); catching it here would hide data corruption behind
+            a fake degradation token.
+    """
+    if not profile.combos_enabled:
+        return (), None, False
+
+    combo_repo = ComboSnapshotRepository(session)
+    available = await combo_repo.snapshot_is_available()
+    vintage = await combo_repo.get_metadata()
+    if not available:
+        return (), vintage, True
+
+    variants = await combo_repo.get_variants_for_names([dc.card.name for dc in mainboard])
+    return variants, vintage, False
+
+
+def _derive_confidence(
+    *,
+    unresolved_count: int,
+    combo_data_unavailable: bool,
+    gc_unknown_count: int,
+    commander_unidentified: bool,
+) -> tuple[ConfidenceLevel, tuple[str, ...]]:
+    """Map run-specific degradation facts to the AD-6 confidence level + reasons (FR21).
+
+    Pure and deterministic: plain facts in, level + reasons out — no I/O, no profile,
+    no clock. Reasons come exclusively from the closed AD-6 enum (imported constants,
+    never re-declared) and are emitted bytewise-sorted (AD-8) — the assembly order
+    below IS the sorted order (``CONFIDENCE_REASON_TOKENS`` is defined pre-sorted).
+    Tokens never embed counts; the counts stay separate structured facts on the seam.
+
+    The reasons→level ladder — the first edge confidence policy in the codebase
+    (decide-once, Story 7.2): **0 reasons → ``"high"``, exactly 1 → ``"medium"``,
+    ≥2 → ``"low"``.** Count-based and symmetric by deliberate v1 choice: no
+    calibration data justifies per-token severity weights yet. Hand-tuned and
+    adjustable (NFR8); Stories 7.3/7.4 pin it in the output contract.
+
+    Args:
+        unresolved_count: Mainboard rows whose card failed to resolve (FR3).
+        combo_data_unavailable: Whether the combo snapshot probe failed (AD-5/AD-6).
+        gc_unknown_count: The core's quantity-aware ``game_changers.unknown_count``
+            (AD-4) — never re-derived at the edge.
+        commander_unidentified: Whether an unidentified commander degrades THIS run
+            (Commander-format decks only — the caller applies the FR25/AD-13 scoping).
+
+    Returns:
+        The categorical :data:`ConfidenceLevel` and the bytewise-sorted reasons tuple.
+    """
+    reasons = tuple(
+        token
+        for token, active in (
+            (CARDS_UNRESOLVED, unresolved_count > 0),
+            (COMBO_DATA_UNAVAILABLE, combo_data_unavailable),
+            (COMMANDER_UNIDENTIFIED, commander_unidentified),
+            (GAME_CHANGER_DATA_UNAVAILABLE, gc_unknown_count > 0),
+        )
+        if active
+    )
+    if not reasons:
+        level: ConfidenceLevel = "high"
+    elif len(reasons) == 1:
+        level = "medium"
+    else:
+        level = "low"
+    return level, reasons
 
 
 def _resolve_format(
@@ -345,12 +481,56 @@ async def assess_deck_power(
         unresolved_count=unresolved_count,
     )
 
+    variants, vintage, combo_data_unavailable = await _provision_combos(
+        session, inputs.mainboard, inputs.profile
+    )
+
+    # The single pure-core invocation (AD-2/AD-9): matching runs INSIDE score() —
+    # the edge never calls match_combos directly. Zero-safe on an empty mainboard.
+    core = score(
+        inputs.mainboard,
+        commanders=inputs.commanders,
+        variants=variants,
+        profile=inputs.profile,
+    )
+
+    # commander_unidentified is scoped to Commander-format decks (FR25/AD-13): a
+    # Standard deck resolves "unidentified" by construction and must not carry a
+    # permanent degradation for a format that has no commanders.
+    commander_unidentified = (
+        inputs.commander_resolution == "unidentified" and inputs.profile.rubric == "brackets"
+    )
+    confidence_level, confidence_reasons = _derive_confidence(
+        unresolved_count=inputs.unresolved_count,
+        combo_data_unavailable=combo_data_unavailable,
+        gc_unknown_count=core.game_changers.unknown_count,
+        commander_unidentified=commander_unidentified,
+    )
+
+    scored = ScoredAssessment(
+        inputs=inputs,
+        core=core,
+        vintage=vintage,
+        confidence_level=confidence_level,
+        confidence_reasons=confidence_reasons,
+    )
+
     mainboard_total = sum(dc.quantity for dc in inputs.mainboard)
+    reasons_text = (
+        f"reasons: {', '.join(scored.confidence_reasons)}"
+        if scored.confidence_reasons
+        else "no degradations"
+    )
+    combos_matched = len(scored.core.combos)
+    combos_noun = "combo variant" if combos_matched == 1 else "combo variants"
     summary = (
         f"Resolved deck '{deck.name}' as {resolved_format} "
         f"(profile {profile.format_profile_version}): "
         f"{_commander_text(commanders, commander_resolution)}; "
         f"{mainboard_total} mainboard cards, {unresolved_count} unresolved. "
-        "Scoring is pending (Stories 7.2/7.3)."
+        f"Scored {scored.core.for_format_score}/100 ({scored.core.tier}), "
+        f"{combos_matched} {combos_noun} matched; "
+        f"confidence {scored.confidence_level} ({reasons_text}). "
+        "The structured assessment block lands in Story 7.3."
     )
     return AssessDeckPowerResult(status="ok", deck_id=deck_id, summary=summary)
