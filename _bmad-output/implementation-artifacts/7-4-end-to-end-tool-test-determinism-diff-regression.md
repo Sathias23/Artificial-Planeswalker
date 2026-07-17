@@ -4,7 +4,7 @@ baseline_commit: 8178fe6
 
 # Story 7.4: End-to-end tool test + determinism & diff regression
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -159,6 +159,18 @@ so that determinism and diff-sensitivity are guarded against regressions.
   - [x] Update this story file (Dev Agent Record, File List, Change Log); status →
         review. Conventional Commit suggestion:
         `test: assess_deck_power e2e client suite — determinism + diff regression (story 7.4)`.
+
+### Review Findings
+
+_Adversarial code review 2026-07-17 (Blind Hunter + Edge Case Hunter + Acceptance Auditor). All 7 ACs + all 4 decide-once decisions verified MET; new e2e suite re-run green (11/11). Findings are test-hardening only — no product defect, no AC violation._
+
+- [x] [Review][Decision] E2E suite doesn't guard against a globally-zero scorer — every vector value is asserted `int, 0–100` but never `> 0` (only `combo_potential` gets a relative check); a scorer regressed to emit all-zeros would pass the whole e2e suite. Add a calibration-free liveness assertion (e.g. `sum(vector.values()) > 0` on the healthy commander deck), or leave non-degeneracy to the unit scorer tests per decide-once #4? [tests/integration/test_mcp_tools.py:646] — **RESOLVED 2026-07-18:** added `assert sum(assessment["vector"].values()) > 0` to `test_assess_commander_deck_through_client` (the healthy, fully-known deck). Calibration-free — asserts non-degeneracy only, no magnitude (AC 6 / decide-once #4 respected).
+- [x] [Review][Patch] Determinism test's wire surface not tied to the payload — `block_a.text == block_b.text` passes vacuously if `.text` were empty/constant on both calls; assert `.text` truthy and `json.loads(block_a.text) == result_a.structuredContent` to enforce the exact probe invariant the docstring claims (decide-once #3) [tests/integration/test_mcp_tools.py:801] — **RESOLVED 2026-07-18:** added `assert block_a.text` + `assert json.loads(block_a.text) == result_a.structuredContent` before the byte-equality assertion (`import json` added).
+- [x] [Review][Patch] `_VECTOR_KEYS` has two sources of truth — `test_assess_deck_power_through_client` still hard-codes the 7-key list inline while the new `_VECTOR_KEYS` constant exists; replace the inline literal with the constant [tests/integration/test_mcp_tools.py:415] — **RESOLVED 2026-07-18:** inline 7-key literal replaced with `_VECTOR_KEYS`; single source of truth.
+- [x] [Review][Defer] Bracket-4 floor (≥4 confirmed GCs) unreachable e2e — fixture has only two `game_changer=True` cards and Commander singleton caps each at qty 1, so `bracket == 4` is never exercised through the client (unit scorer covers the ≥4 gate) [tests/integration/test_mcp_tools.py:494] — deferred, follow-up hardening
+- [x] [Review][Defer] Present-path `data_vintage` values never positively asserted e2e — the null path is pinned but no e2e test asserts the populated vintage equals the seeded `export_version="5.6.0"` / `imported_at`; passthrough bug on the present path caught only at model level [tests/fixtures/combo_snapshot.py:63] — deferred, follow-up hardening
+
+_Dismissed as noise (9): parity `_shape` list-collapse (documented AD-7 design; combo keys pinned at wire by the determinism/diff tests); single-element `reasons == sorted(reasons)` (inert but harmless — the multi-element game_changers/combos sort checks carry the guard); `isinstance(v, int)` accepts bool (implausible regression, values are arithmetic); determinism test narrowness / same-process (explicit sort assertions are the real guard, cross-process out of scope for in-process harness); standard-never-fires-token fixture can't fire it (correct — positive case covered by the sibling unidentified-commander test); no standard matched-combo e2e (covered at tool-function level); non-ok statuses not client-driven here (deck_not_found + unsupported_format ARE; error/db-not-init covered at tool level); fixture color/cost incoherence (no dimension keys off it); Dev Record "73 tests" (FALSE POSITIVE — 73 is pytest's collected count incl. parametrization, verified; 55 is the `def` count)._
 
 ## Dev Notes
 
@@ -463,3 +475,11 @@ Claude Fable 5 (claude-fable-5) via Claude Code
   the NFR3/AD-6 degradation matrix (absent snapshot / NULL GC / unidentified
   commander / standard negative). Tests-only: no product code touched. Full
   suite 1,323 green. Status → review.
+- 2026-07-18: Resolved the three open review findings (test-hardening only,
+  no product change): (1) calibration-free liveness guard
+  `sum(vector.values()) > 0` on the healthy commander deck; (2) determinism test
+  wire surface pinned to the payload (`block_a.text` truthy +
+  `json.loads(block_a.text) == structuredContent`) so byte-equality can't pass
+  vacuously; (3) collapsed the duplicated 7-key vector literal to `_VECTOR_KEYS`.
+  Full suite 1,323 green, ruff/format clean, zero `src/`/`plugin/` diff.
+  Status → done.

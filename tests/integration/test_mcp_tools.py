@@ -22,6 +22,7 @@ test_derive_confidence_full_matrix); orphaned-row handling belongs to the
 deferred data-layer orphan story (7.1 review disposition).
 """
 
+import json
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
@@ -412,15 +413,7 @@ async def test_assess_deck_power_through_client(
         assessment = sc["assessment"]
         assert assessment is not None
         assert assessment["format"] == "standard"
-        assert list(assessment["vector"]) == [
-            "speed",
-            "consistency",
-            "resilience",
-            "interaction",
-            "mana_efficiency",
-            "card_advantage",
-            "combo_potential",
-        ]
+        assert list(assessment["vector"]) == _VECTOR_KEYS
         assert all(isinstance(v, int) for v in assessment["vector"].values())
         assert assessment["bracket"] is None  # standard: fixed shape, null bracket
         assert assessment["flags"]["cedh_candidate"] is False
@@ -644,6 +637,11 @@ async def test_assess_commander_deck_through_client(
     assert assessment["bracket"] in {2, 3, 4}
     assert list(assessment["vector"]) == _VECTOR_KEYS
     assert all(isinstance(v, int) and 0 <= v <= 100 for v in assessment["vector"].values())
+    # Calibration-free liveness (Story 7.4 review): a healthy, fully-known deck must
+    # not score globally zero. Guards against a scorer regressed to all-zeros, which
+    # the per-value 0–100 range checks alone would pass. Asserts no magnitude (AC 6 /
+    # decide-once #4), only non-degeneracy.
+    assert sum(assessment["vector"].values()) > 0
     assert assessment["tier"] in TIER_LABELS
     # Snapshot present + flagged commander + every GC state known → no degradations.
     assert assessment["confidence"]["level"] == "high"
@@ -798,6 +796,11 @@ async def test_assess_deck_power_wire_bytes_deterministic(
     assert result_a.structuredContent["status"] == "ok"
     [block_a] = result_a.content
     [block_b] = result_b.content
+    # Pin the surface to the payload so the equality below can't pass vacuously:
+    # the wire text must be non-empty and parse back to structuredContent (the
+    # decide-once #3 probe invariant), not just equal a constant/empty string.
+    assert block_a.text
+    assert json.loads(block_a.text) == result_a.structuredContent
     assert block_a.text == block_b.text  # byte-identical serialized JSON at the wire
 
     # The sorted-emission facts survive the wire — the edge re-sorts nothing, so

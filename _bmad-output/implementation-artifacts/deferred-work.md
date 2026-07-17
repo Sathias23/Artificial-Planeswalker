@@ -1,5 +1,17 @@
 # Deferred Work
 
+## Deferred from: code review of story-7.4 (2026-07-17)
+
+> Test-hardening gaps in the `assess_deck_power` e2e suite (tests-only story; all 7 ACs met, suite green). Neither is a product defect — both are e2e-coverage extensions whose behavior is already guarded at the unit/model level.
+
+- source_spec: `_bmad-output/implementation-artifacts/7-4-end-to-end-tool-test-determinism-diff-regression.md`
+  summary: 'Bracket-4 floor (≥4 confirmed Game Changers) is unreachable through the e2e client — the `_assessment_cards` fixture seeds only two `game_changer=True` cards and Commander singleton rules cap each at quantity 1, so a `bracket == 4` result (and the GC ≥4 gate in dimensions.py) is never exercised end-to-end. Future hardening: add ≥4 distinct GC cards to reach the floor-4 gate through the tools.'
+  evidence: 'Edge Case Hunter trace: dimensions.py GC gate GC_BRACKET_FOUR_MIN=4, count is quantity-aware; fixture exposes e2e-gc-bolas + e2e-gc-aura only. The ≥4 gate is covered by unit scorer tests (test_assessment_scorer.py), not this client suite.'
+
+- source_spec: `_bmad-output/implementation-artifacts/7-4-end-to-end-tool-test-determinism-diff-regression.md`
+  summary: 'The populated `data_vintage` combo values are never positively asserted at the e2e/wire level — the absent-snapshot test pins the null path (`combo_snapshot_imported_at`/`export_version is None`), but no seeded e2e test asserts the present path equals the fixture''s seeded `export_version="5.6.0"` / `imported_at="2026-07-16T09:07:00+00:00"`. A passthrough bug that dropped or garbled the vintage on the present path is caught only at model level (7.3 helper tests). Future hardening: assert the populated vintage in the commander happy-path test.'
+  evidence: 'Blind Hunter + Acceptance Auditor: null-vs-present vintage contract is half-covered e2e; seeded values live in tests/fixtures/combo_snapshot.py:63-65.'
+
 ## Deferred from: code review of spec-pre-epic-7-real-deck-gate (2026-07-17)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-pre-epic-7-real-deck-gate.md`
