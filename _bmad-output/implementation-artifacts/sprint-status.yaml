@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-07-17 (epic-6 retro done; Pre-Epic-7 Real-Deck Gate (G-R2) opened — blocks Epic 7 story creation)
+last_updated: 2026-07-17 (story 7.1 implemented → review)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -140,11 +140,11 @@ development_status:
   #       runs pure score(); Sathias compares tier/Bracket/cEDH outputs against his own judgment.
   #       Done when accepted as plausible OR each divergence logged as a named Epic 7 calibration
   #       input (CEDH_TUTOR_MIN=3 caveat carries over). Closes epic-5 action item 5.
-  pre-epic-7-real-deck-gate: backlog
+  pre-epic-7-real-deck-gate: done  # CLOSED 2026-07-17 (commit e2b03ff): all 20 decks accepted as plausible wholesale; calibration deferred to Epic 7 — named inputs in pre-epic-7-real-deck-gate-report-2026-07-17.md §Cross-deck observations. Epic 7 unblocked.
 
   # Epic 7 (feature Epic 4): The assess_deck_power + compare_deck_power MCP tools & deterministic output
-  epic-7: backlog
-  7-1-register-the-async-tool-load-deck-resolve-format: backlog
+  epic-7: in-progress
+  7-1-register-the-async-tool-load-deck-resolve-format: review
   7-2-combo-provisioning-the-degradation-ladder: backlog
   7-3-assess-deck-power-result-assembly-deterministic-serialization-human-summary: backlog
   7-4-end-to-end-tool-test-determinism-diff-regression: backlog
@@ -200,7 +200,7 @@ action_items:
   - epic: 6
     action: "G-R2 real-deck sanity gate (blocks Epic 7 story creation): harness loads Sathias's real saved decks from the live DB, pulls variants via ComboSnapshotRepository.get_variants_for_names, runs pure score(); Sathias compares tier/Bracket/cEDH outputs against his own judgment — done when accepted as plausible or each divergence is logged as a named Epic 7 calibration input. Closes epic-5 real-deck item"
     owner: "Sathias"
-    status: open
+    status: done  # closed 2026-07-17 (commit e2b03ff): all 20 decks accepted wholesale; cross-deck observations stand as the named Epic 7 calibration inputs (gate report §Cross-deck observations)
   - epic: 6
     action: "construction-site enumeration: when a field threads through multiple constructors, grep EVERY construction site — including error/fallback-path result objects — before claiming end-to-end (6.1 review found the commander flag dropped in the DatabaseError-path DeckImportLineResult, a surface the write-path checklist missed)"
     owner: "Sathias"

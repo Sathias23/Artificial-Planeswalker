@@ -340,11 +340,56 @@ async def test_analysis_tools_on_bogus_deck_are_graceful(
     """Each analysis tool on a bogus deck_id returns deck_not_found, isError False (AC7)."""
     server = build_server(session_factory=seeded_card_db)
     async with create_connected_server_and_client_session(server) as client:
-        for tool in ("analyze_mana_curve", "detect_synergies", "validate_deck"):
+        for tool in (
+            "analyze_mana_curve",
+            "detect_synergies",
+            "validate_deck",
+            "assess_deck_power",
+        ):
             result = await client.call_tool(tool, {"deck_id": "bogus-deck"})
             assert result.isError is False, tool
             assert result.structuredContent is not None
             assert result.structuredContent["status"] == "deck_not_found", tool
+
+
+async def test_assess_deck_power_through_client(
+    seeded_card_db: async_sessionmaker[AsyncSession],
+):
+    """assess_deck_power is listed, callable, and round-trips structuredContent (Story 7.1).
+
+    Builds a standard deck purely through the tools, then asserts the
+    provisional 7.1 shape: status ok, always-present schema_version, null
+    assessment placeholder, and a resolution-facts summary.
+    """
+    server = build_server(session_factory=seeded_card_db)
+    async with create_connected_server_and_client_session(server) as client:
+        tools = await client.list_tools()
+        assert "assess_deck_power" in {t.name for t in tools.tools}
+
+        created = await client.call_tool("create_deck", {"name": "Bolt Deck"})
+        deck_id = created.structuredContent["deck"]["id"]
+        added = await client.call_tool(
+            "add_card_to_deck", {"deck_id": deck_id, "name": "Lightning Bolt", "quantity": 4}
+        )
+        assert added.structuredContent["status"] == "ok"
+
+        result = await client.call_tool("assess_deck_power", {"deck_id": deck_id})
+        assert result.isError is False
+        sc = result.structuredContent
+        assert sc is not None
+        assert sc["status"] == "ok"
+        assert sc["schema_version"] == "1"
+        assert sc["assessment"] is None
+        assert sc["deck_id"] == deck_id
+        assert "standard-v4" in sc["summary"]  # create_deck default format resolves via ladder
+
+        # The format param is per-call state: an unsupported value is graceful.
+        unsupported = await client.call_tool(
+            "assess_deck_power", {"deck_id": deck_id, "format": "modern"}
+        )
+        assert unsupported.isError is False
+        assert unsupported.structuredContent["status"] == "unsupported_format"
+        assert "Supported formats: commander, standard" in unsupported.structuredContent["summary"]
 
 
 # --- semantic_search_cards: the sync RAG tool through the in-process MCP client (Story 2.4) --

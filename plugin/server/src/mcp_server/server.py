@@ -35,6 +35,10 @@ from mcp.server.fastmcp import FastMCP
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.data.database import create_engine, create_session_factory
+from src.mcp_server.tools.assess_deck_power import AssessDeckPowerResult
+from src.mcp_server.tools.assess_deck_power import (
+    assess_deck_power as _assess_deck_power_helper,
+)
 from src.mcp_server.tools.build_search_index import BuildSearchIndexResult
 from src.mcp_server.tools.build_search_index import build_search_index as _build_search_index_helper
 from src.mcp_server.tools.card_lookup import CardLookupResult, lookup_card
@@ -466,6 +470,35 @@ def build_server(
         """
         async with session_factory() as session:
             return await _validate_deck_helper(session, deck_id=deck_id, format=format, games=games)
+
+    @mcp.tool()
+    async def assess_deck_power(deck_id: str, format: str | None = None) -> AssessDeckPowerResult:
+        """Assess a saved deck's power level by id (provisional — resolution facts only).
+
+        Loads the deck (mainboard only) and resolves the assessment inputs:
+        the scoring format and its profile (explicit ``format`` param first,
+        else the deck's stored format, else a flagged commander implies
+        commander), the commander(s) (flagged rows first, else a sole
+        legendary creature in a commander deck, else unidentified), and the
+        card-resolution count. Supported formats: ``commander`` and
+        ``standard``; anything else (e.g. brawl) returns
+        ``unsupported_format`` — pass ``format`` explicitly to force a
+        profile. Observational — it does not modify the deck. Stateless: pass
+        ``deck_id`` every call. The scored assessment block is not populated
+        yet; the summary reports what was resolved.
+
+        Args:
+            deck_id: The deck id (from ``create_deck`` or ``list_decks``).
+            format: Optional format override ("commander" or "standard",
+                case-insensitive); omit to infer from the deck.
+
+        Returns:
+            A result whose ``status`` is ``ok`` (inputs resolved — see
+            ``summary``), ``deck_not_found``, ``unsupported_format``,
+            ``database_not_initialized``, or ``error``.
+        """
+        async with session_factory() as session:
+            return await _assess_deck_power_helper(session, deck_id=deck_id, format=format)
 
     @mcp.tool()
     def semantic_search_cards(

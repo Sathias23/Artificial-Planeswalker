@@ -131,7 +131,7 @@ def test_ignore_excludes_caches_and_cruft() -> None:
 
 
 async def test_server_registers_expected_tools() -> None:
-    """AC1 guard: the server registers exactly the 17 expected tools."""
+    """AC1 guard: the server registers exactly the 18 expected tools."""
     server = build_server()
     async with create_connected_server_and_client_session(server) as client:
         result = await client.list_tools()
@@ -151,6 +151,7 @@ async def test_server_registers_expected_tools() -> None:
         "analyze_mana_curve",
         "detect_synergies",
         "validate_deck",
+        "assess_deck_power",
         "semantic_search_cards",
         "find_similar_cards",
         "initialize_database",
