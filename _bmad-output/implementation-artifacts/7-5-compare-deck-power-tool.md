@@ -160,10 +160,12 @@ so that the comparison arithmetic is deterministic and never delegated to the ca
         subtraction equality against two client-level assess results; combo-completion test;
         wire byte-determinism (surface `result.content[0].text`, cite the 7.4 probe); graceful
         bogus-side + mismatch tests.
-- [ ] Task 6: Gates + wrap-up (AC: 9)
-  - [ ] `uv run ruff check . --fix && uv run ruff format .`; `uv run pytest` full green;
+- [x] Task 6: Gates + wrap-up (AC: 9)
+  - [x] `uv run ruff check . --fix && uv run ruff format .`; `uv run pytest` full green;
         `uv run mypy src/` clean; commit WITH the regenerated `plugin/` mirror diff.
-  - [ ] Update this story file (Dev Agent Record, File List, Change Log); status → review.
+        **Result: 1,348 passed / mypy clean / ruff clean; committed as `7a71d41` with the
+        regenerated `plugin/` mirror (pre-commit hooks all passed, no `--no-verify`).**
+  - [x] Update this story file (Dev Agent Record, File List, Change Log); status → review.
         Conventional Commit suggestion:
         `feat: compare_deck_power tool — server-side deck diff (story 7.5)`.
 
