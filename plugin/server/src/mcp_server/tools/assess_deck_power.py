@@ -481,9 +481,22 @@ async def assess_deck_power(
         unresolved_count=unresolved_count,
     )
 
-    variants, vintage, combo_data_unavailable = await _provision_combos(
-        session, inputs.mainboard, inputs.profile
-    )
+    # The new combo reads sit under the same DatabaseError → error contract as the
+    # deck load (7.1 AC6/NFR3): they run outside the guard above, and the snapshot
+    # repo swallows only OperationalError, so a sibling DatabaseError here would
+    # otherwise escape uncaught to the client. ValidationError on a corrupt stored
+    # row stays loud by design (decide-once #5) — corruption surfaces, not degrades.
+    try:
+        variants, vintage, combo_data_unavailable = await _provision_combos(
+            session, inputs.mainboard, inputs.profile
+        )
+    except DatabaseError:
+        logger.exception("assess_deck_power combo provisioning failed for deck_id=%s", deck_id)
+        return AssessDeckPowerResult(
+            status="error",
+            deck_id=deck_id,
+            summary="A database error occurred assessing the deck.",
+        )
 
     # The single pure-core invocation (AD-2/AD-9): matching runs INSIDE score() —
     # the edge never calls match_combos directly. Zero-safe on an empty mainboard.

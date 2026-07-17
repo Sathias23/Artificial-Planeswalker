@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-07-17 (story 7.2 implemented → review)
+last_updated: 2026-07-17 (story 7.2 code review → done)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -145,7 +145,8 @@ development_status:
   # Epic 7 (feature Epic 4): The assess_deck_power + compare_deck_power MCP tools & deterministic output
   epic-7: in-progress
   7-1-register-the-async-tool-load-deck-resolve-format: done  # code review 2026-07-17: all ACs MET; 1 patch applied (unresolved_count comment), empty-mainboard ok accepted, orphan-crash deferred to data-layer story
-  7-2-combo-provisioning-the-degradation-ladder: review
+  7-2-combo-provisioning-the-degradation-ladder: done  # code review 2026-07-17: all ACs MET; 1 patch applied (combo-provisioning DB reads brought under DatabaseError→error contract + regression test), 2 deferred (transient-lock mislabel → data-layer; almost_included "matched" wording → 7.3), 7 dismissed
+
   7-3-assess-deck-power-result-assembly-deterministic-serialization-human-summary: backlog
   7-4-end-to-end-tool-test-determinism-diff-regression: backlog
   7-5-compare-deck-power-tool: backlog

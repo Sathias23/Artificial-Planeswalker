@@ -4,7 +4,7 @@ baseline_commit: 5b17006
 
 # Story 7.2: Combo provisioning & the degradation ladder
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -503,3 +503,57 @@ claude-fable-5 (Claude Fable 5)
   seam, AD-6 confidence ladder (closed-enum reasons, bytewise-sorted; 0/1/≥2 →
   high/medium/low), deterministic ok-path summary. 28 tests added (full suite
   1,270 → 1,298, green); ruff + mypy --strict + pre-commit clean. Status → review.
+- 2026-07-17: Code review (3 layers) — all ACs MET; 1 patch applied (combo-provisioning
+  DB reads brought under the `DatabaseError → error` contract + regression test, suite
+  1,298 → 1,299), 2 items deferred (transient-lock mislabeling → data-layer; `almost_included`
+  "matched" wording → Story 7.3), 7 dismissed. Status → done.
+
+## Review Findings
+
+_Code review 2026-07-17 (bmad-code-review, 3 layers: Blind Hunter, Edge Case Hunter,
+Acceptance Auditor — diff `7e2d0cd..HEAD`, commit `ff56563`, 644 lines src+tests).
+Acceptance Auditor: **all 8 ACs + AD-2/AD-4/AD-5/AD-6/AD-8/AD-9/NFR3 MET, no scope creep.**
+1 patch, 2 deferred, 7 dismissed._
+
+- [x] [Review][Patch] Combo-provisioning DB reads run outside the tool's `DatabaseError`
+  guard [src/mcp_server/tools/assess_deck_power.py:484] — APPLIED 2026-07-17: wrapped
+  `_provision_combos` in `try/except DatabaseError → status="error"` (mirrors the deck-load
+  handler); `ValidationError`/`MultipleResultsFound` stay loud (corruption surfaces, not
+  degrades). New regression test `test_provisioning_database_error_returns_error_status`
+  (full suite 1,298 → 1,299 green; ruff + mypy --strict clean). — The `try/except DatabaseError →
+  status="error"` block (`:427-435`) wraps only `get_deck_with_cards`. `_provision_combos`
+  (`:484`) issues three more awaited DB reads *after* that block. `ComboSnapshotRepository`
+  swallows only `OperationalError` (`combo_snapshot.py:59,72,124`), so a sibling
+  `DatabaseError` (`ProgrammingError`/`InternalError`/`DataError` — schema drift or a
+  corrupt DB file), or `MultipleResultsFound` from `get_metadata()`'s `scalar_one_or_none`
+  on a double meta row, propagates **uncaught** to the MCP client instead of the contracted
+  `status="error"`. Convergent (Blind + Edge). This story added the reads; 7.1's DB-failure
+  contract (AC 6 / NFR3) now has a hole on the new code path. Fix: bring `_provision_combos`
+  under the same `DatabaseError → status="error"` handling (keep `ValidationError` loud per
+  decide-once #5 — corruption stays loud, not a fake degradation).
+
+- [x] [Review][Defer] Transient `OperationalError` (DB locked / disk I/O) during provisioning
+  is reported as `combo_data_unavailable` [src/data/repositories/combo_snapshot.py:59]
+  — deferred, pre-existing 6.3 repo behavior (out of 7.2 scope). The repo's broad
+  `except OperationalError → absent` cannot distinguish "no snapshot table" from a
+  momentary "database is locked", so a transient lock mislabels a healthy snapshot as
+  unavailable and lowers confidence. Graceful (no crash); rooted in the Story 6.3 repo
+  contract, not this diff. Fixing means narrowing the repo's catch (edits `src/data`).
+
+- [x] [Review][Defer] Summary counts `almost_included` (shortfall-1) variants as "combo
+  variants matched" [src/mcp_server/tools/assess_deck_power.py:524] — deferred to Story 7.3
+  (owns human-summary serialization). `combos_matched = len(scored.core.combos)` includes
+  both `included` and `almost_included` buckets, so a deck one card short of a single combo
+  reads "1 combo variant matched", implying a live combo. AC 6 only requires a "combos
+  matched count" (satisfied) and this summary is provisional, but 7.3 should disambiguate
+  assembled vs one-away in the client-facing projection.
+
+_Dismissed (7): corrupt-row `ValidationError` stays loud (decide-once #5, by design + auditor-
+confirmed); Standard decks degrade to ≤medium on deployments without the snapshot built
+(AD-5/AD-6 designed behavior — combos genuinely unavailable; env-dependent, not this diff);
+`commander_unidentified` gated on `rubric == "brackets"` (matches AC 4 verbatim; equivalent to
+format today); `unresolved_count` structurally 0 (documented NOTE, wired honestly + pure-ladder
+tested per 7.1 review D1); redundant sequential snapshot round-trips (negligible on local
+SQLite; `get_metadata` before the availability check is deliberate per decide-once #6);
+`vintage`/`commander_required` end-to-end test coverage (vintage is an unconsumed 7.3 seam;
+commander-gate matching is core-tested in `combos.py`)._

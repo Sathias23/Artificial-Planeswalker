@@ -18,6 +18,7 @@ import logging
 from pathlib import Path
 
 import pytest
+from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.database import create_engine, create_session_factory, init_database
@@ -730,6 +731,32 @@ async def test_zero_overlap_healthy_snapshot_no_token(session: AsyncSession) -> 
     assert "0 combo variants" in result.summary
     assert COMBO_DATA_UNAVAILABLE not in result.summary
     assert "confidence high" in result.summary
+
+
+async def test_provisioning_database_error_returns_error_status(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A DatabaseError from combo provisioning is caught → status='error', never uncaught.
+
+    The new snapshot reads run outside the deck-load try/except and the repo swallows
+    only OperationalError, so a sibling DatabaseError would otherwise escape to the
+    client — 7.1's DB-failure contract (AC 6 / NFR3) must hold on the new path too.
+    """
+    deck_id = await _make_deck(
+        session,
+        [("card-krenko", 1, False, True), ("card-goblin-guide", 4, False, False)],
+    )
+
+    async def _boom(*_args: object, **_kwargs: object) -> object:
+        raise DatabaseError("SELECT combo", None, Exception("database is locked"))
+
+    monkeypatch.setattr("src.mcp_server.tools.assess_deck_power._provision_combos", _boom)
+
+    result = await assess_deck_power(session, deck_id=deck_id)
+
+    assert result.status == "error"
+    assert result.deck_id == deck_id
+    assert "database error" in result.summary.lower()
 
 
 async def test_combos_disabled_profile_skips_repo_and_token(

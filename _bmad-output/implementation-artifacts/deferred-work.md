@@ -580,3 +580,21 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   promoting/demoting a commander requires remove-then-re-add. Fine for this slice (matches the
   established additive-import contract), but Epic 7 (or a deck-edit story) will need an explicit
   set-commander path. (Source: Blind Hunter; Severity: Low; deferred.)
+
+## Deferred from: code review of 7-2-combo-provisioning-the-degradation-ladder (2026-07-17)
+
+- **Transient `OperationalError` during combo provisioning is reported as
+  `combo_data_unavailable`** — `ComboSnapshotRepository`'s three read methods catch
+  `OperationalError` broadly and return "absent" (`src/data/repositories/combo_snapshot.py:59,72,124`),
+  so a momentary "database is locked" / "disk I/O error" is indistinguishable from a genuinely
+  missing snapshot: a healthy snapshot gets mislabeled unavailable and confidence is lowered.
+  Graceful (never crashes) and rooted in the Story 6.3 repo contract, not Story 7.2's diff.
+  Fix would narrow the repo's `except OperationalError` to the missing-table case (edits
+  `src/data`, out of 7.2 scope). (Source: Blind Hunter; Severity: Low; deferred — data-layer.)
+- **Deck power summary counts `almost_included` variants as "combo variants matched"** —
+  `combos_matched = len(scored.core.combos)` (`src/mcp_server/tools/assess_deck_power.py:524`)
+  includes both the `included` (shortfall 0) and `almost_included` (shortfall 1) buckets, so a
+  deck one card short of a single combo reads "1 combo variant matched", implying a live combo.
+  AC 6 only requires a "combos matched count" and the 7.2 summary is explicitly provisional;
+  Story 7.3 (human-summary serialization) should disambiguate assembled vs one-away in the
+  client-facing projection. (Source: Blind Hunter; Severity: Low; deferred to Story 7.3.)
