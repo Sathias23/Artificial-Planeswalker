@@ -473,19 +473,29 @@ def build_server(
 
     @mcp.tool()
     async def assess_deck_power(deck_id: str, format: str | None = None) -> AssessDeckPowerResult:
-        """Assess a saved deck's power level by id (provisional — resolution facts only).
+        """Assess a saved deck's power level by id — deterministic 0-100 score with evidence.
 
-        Loads the deck (mainboard only) and resolves the assessment inputs:
-        the scoring format and its profile (explicit ``format`` param first,
-        else the deck's stored format, else a flagged commander implies
-        commander), the commander(s) (flagged rows first, else a sole
-        legendary creature in a commander deck, else unidentified), and the
-        card-resolution count. Supported formats: ``commander`` and
-        ``standard``; anything else (e.g. brawl) returns
-        ``unsupported_format`` — pass ``format`` explicitly to force a
-        profile. Observational — it does not modify the deck. Stateless: pass
-        ``deck_id`` every call. The scored assessment block is not populated
-        yet; the summary reports what was resolved.
+        Loads the deck (mainboard only), resolves the scoring format (explicit
+        ``format`` param first, else the deck's stored format, else a flagged
+        commander implies commander) and the commander(s) (flagged rows first,
+        else a sole legendary creature in a commander deck, else
+        unidentified), then scores the deck and returns a structured
+        ``assessment`` block: a 7-dimension integer vector (speed, consistency,
+        resilience, interaction, mana_efficiency, card_advantage,
+        combo_potential), a ``for_format_score`` (0-100) with its descriptive
+        ``tier`` label, the Commander ``bracket`` floor (``null`` for
+        standard), ``data_vintage`` (combo-snapshot age + profile version — the
+        only "as of" facts), a ``confidence`` level with named reasons, and
+        explainability ``flags`` (Game Changer names, matched combos with
+        included/almost_included buckets, structural gaps, cEDH candidacy).
+        Deterministic: the same deck against the same card + combo data
+        serializes byte-identically, so two results can be diffed. Missing
+        inputs (no combo snapshot, unidentified commander, unknown Game Changer
+        data) degrade ``confidence`` with named reasons — the deck is still
+        scored. Supported formats: ``commander`` and ``standard``; anything
+        else (e.g. brawl) returns ``unsupported_format`` — pass ``format``
+        explicitly to force a profile. Observational — it does not modify the
+        deck. Stateless: pass ``deck_id`` every call.
 
         Args:
             deck_id: The deck id (from ``create_deck`` or ``list_decks``).
@@ -493,9 +503,10 @@ def build_server(
                 case-insensitive); omit to infer from the deck.
 
         Returns:
-            A result whose ``status`` is ``ok`` (inputs resolved — see
-            ``summary``), ``deck_not_found``, ``unsupported_format``,
-            ``database_not_initialized``, or ``error``.
+            A result whose ``status`` is ``ok`` (``assessment`` populated,
+            ``summary`` its human projection), ``deck_not_found``,
+            ``unsupported_format``, ``database_not_initialized``, or
+            ``error``.
         """
         async with session_factory() as session:
             return await _assess_deck_power_helper(session, deck_id=deck_id, format=format)

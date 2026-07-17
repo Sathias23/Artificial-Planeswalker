@@ -355,11 +355,11 @@ async def test_analysis_tools_on_bogus_deck_are_graceful(
 async def test_assess_deck_power_through_client(
     seeded_card_db: async_sessionmaker[AsyncSession],
 ):
-    """assess_deck_power is listed, callable, and round-trips structuredContent (Story 7.1).
+    """assess_deck_power is listed, callable, and round-trips structuredContent (Story 7.1/7.3).
 
-    Builds a standard deck purely through the tools, then asserts the
-    provisional 7.1 shape: status ok, always-present schema_version, null
-    assessment placeholder, and a resolution-facts summary.
+    Builds a standard deck purely through the tools, then asserts the full AD-7
+    shape: status ok, always-present schema_version, the populated assessment
+    block (vector + flags), and the deterministic summary projection.
     """
     server = build_server(session_factory=seeded_card_db)
     async with create_connected_server_and_client_session(server) as client:
@@ -379,8 +379,24 @@ async def test_assess_deck_power_through_client(
         assert sc is not None
         assert sc["status"] == "ok"
         assert sc["schema_version"] == "1"
-        assert sc["assessment"] is None
         assert sc["deck_id"] == deck_id
+        # Story 7.3: the assessment block round-trips through structuredContent.
+        assessment = sc["assessment"]
+        assert assessment is not None
+        assert assessment["format"] == "standard"
+        assert list(assessment["vector"]) == [
+            "speed",
+            "consistency",
+            "resilience",
+            "interaction",
+            "mana_efficiency",
+            "card_advantage",
+            "combo_potential",
+        ]
+        assert all(isinstance(v, int) for v in assessment["vector"].values())
+        assert assessment["bracket"] is None  # standard: fixed shape, null bracket
+        assert assessment["flags"]["cedh_candidate"] is False
+        assert assessment["data_vintage"]["format_profile_version"] == "standard-v4"
         assert "standard-v4" in sc["summary"]  # create_deck default format resolves via ladder
         # Story 7.2 summary facts: scored + a categorical confidence with reasons text.
         assert "/100" in sc["summary"]
