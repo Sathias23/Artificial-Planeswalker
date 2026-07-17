@@ -27,13 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
-from src.data.models.combo import (
-    ComboSnapshotMetaModel,
-    ComboVariantModel,
-    ComboVariantPieceModel,
-)
+from src.data.models.combo import ComboSnapshotMetaModel
 from src.data.repositories.deck import DeckRepository
-from src.data.schemas.combo import name_keys
 from src.logic.assessment import (
     CARDS_UNRESOLVED,
     COMBO_DATA_UNAVAILABLE,
@@ -59,6 +54,12 @@ from src.mcp_server.tools.assess_deck_power import (
     assess_deck_power,
 )
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
+from tests.fixtures.combo_snapshot import (
+    seed_snapshot as _seed_snapshot,
+)
+from tests.fixtures.combo_snapshot import (
+    snapshot_variant as _snapshot_variant,
+)
 
 
 def _card(
@@ -662,48 +663,6 @@ def test_derive_confidence_counts_never_embed_in_tokens() -> None:
 
 
 # --- combo provisioning + degradation matrix (Story 7.2, AC 1/2/3/6) ---
-
-
-def _snapshot_variant(
-    spellbook_id: str,
-    cards: list[str],
-    *,
-    commander_required: bool = False,
-    bracket_tag: str = "POWERFUL",
-) -> tuple[ComboVariantModel, list[ComboVariantPieceModel]]:
-    """One variant row + its piece-index rows (the 6.3 test-suite seeding pattern)."""
-    variant = ComboVariantModel(
-        spellbook_id=spellbook_id,
-        commander_required=commander_required,
-        bracket_tag=bracket_tag,
-        popularity=None,
-    )
-    variant.cards_list = cards
-    variant.produces_list = ["Infinite value"]
-    keys = {key for name in cards for key in name_keys(name)}
-    pieces = [
-        ComboVariantPieceModel(spellbook_id=spellbook_id, name_key=key) for key in sorted(keys)
-    ]
-    return variant, pieces
-
-
-async def _seed_snapshot(
-    session: AsyncSession,
-    variants: list[tuple[ComboVariantModel, list[ComboVariantPieceModel]]],
-) -> None:
-    """Seed the meta row + the supplied variants — a healthy, available snapshot."""
-    session.add(
-        ComboSnapshotMetaModel(
-            imported_at="2026-07-16T09:07:00+00:00",
-            export_timestamp="2026-07-16T07:28:23+00:00",
-            export_version="5.6.0",
-            variant_count=len(variants),
-        )
-    )
-    for variant, pieces in variants:
-        session.add(variant)
-        session.add_all(pieces)
-    await session.commit()
 
 
 async def test_absent_snapshot_degrades_and_still_scores(session: AsyncSession) -> None:

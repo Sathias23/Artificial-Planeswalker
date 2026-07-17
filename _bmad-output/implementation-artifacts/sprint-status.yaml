@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-07-17 (story 7.3 code review → done)
+last_updated: 2026-07-17 (story 7.4 implemented → review)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -148,7 +148,7 @@ development_status:
   7-2-combo-provisioning-the-degradation-ladder: done  # code review 2026-07-17: all ACs MET; 1 patch applied (combo-provisioning DB reads brought under DatabaseError→error contract + regression test), 2 deferred (transient-lock mislabel → data-layer; almost_included "matched" wording → 7.3), 7 dismissed
 
   7-3-assess-deck-power-result-assembly-deterministic-serialization-human-summary: done  # code review 2026-07-17: all 9 ACs MET (auditor: zero violations); 3 low patches applied (bracket→Literal[2,3,4]|None per FR18 decision, "one card away" grammar, format→Literal), 7 dismissed; 1,313 tests green, mypy/ruff clean
-  7-4-end-to-end-tool-test-determinism-diff-regression: backlog
+  7-4-end-to-end-tool-test-determinism-diff-regression: review
   7-5-compare-deck-power-tool: backlog
   epic-7-retrospective: optional
 
