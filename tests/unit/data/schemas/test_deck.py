@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from src.data.schemas.card import Card
-from src.data.schemas.deck import Deck, DeckCard
+from src.data.schemas.deck import Deck, DeckCard, DeckCardSummary
 
 
 def test_deck_schema_validation() -> None:
@@ -173,6 +173,115 @@ def test_deck_card_schema_validation_sideboard() -> None:
 
     assert deck_card.sideboard is True
     assert deck_card.quantity == 2
+
+
+def test_deck_card_schema_default_commander() -> None:
+    """Test DeckCard schema commander defaults to False when omitted."""
+    card_data = {
+        "id": "card-456",
+        "name": "Lightning Bolt",
+        "oracle_id": "oracle-123",
+        "mana_cost": "{R}",
+        "cmc": 1.0,
+        "type_line": "Instant",
+        "oracle_text": "Deals 3 damage",
+        "rarity": "common",
+        "set_code": "LEA",
+        "set_name": "Alpha",
+        "collector_number": "161",
+        "colors": ["R"],
+        "color_identity": ["R"],
+        "legalities": {"standard": "legal"},
+    }
+
+    deck_card = DeckCard(
+        deck_id="deck-123",
+        card_id="card-456",
+        quantity=4,
+        sideboard=False,
+        card=card_data,
+    )
+
+    assert deck_card.commander is False
+
+
+def test_deck_card_schema_commander_from_orm_attributes() -> None:
+    """Test DeckCard.model_validate picks commander=True up from an ORM-like object."""
+
+    class _FakeCardRow:
+        id = "card-atraxa"
+        name = "Atraxa, Praetors' Voice"
+        printed_name = None
+        oracle_id = "oracle-atraxa"
+        mana_cost = "{G}{W}{U}{B}"
+        cmc = 4.0
+        type_line = "Legendary Creature — Phyrexian Angel Horror"
+        oracle_text = "Flying, vigilance, deathtouch, lifelink"
+        rarity = "mythic"
+        set_code = "2X2"
+        set_name = "Double Masters 2022"
+        collector_number = "190"
+        colors = ["W", "U", "B", "G"]
+        color_identity = ["W", "U", "B", "G"]
+        legalities = {"commander": "legal"}
+
+    class _FakeDeckCardRow:
+        deck_id = "deck-123"
+        card_id = "card-atraxa"
+        quantity = 1
+        sideboard = False
+        commander = True
+        card = _FakeCardRow()
+
+    deck_card = DeckCard.model_validate(_FakeDeckCardRow())
+
+    assert deck_card.commander is True
+    assert deck_card.sideboard is False
+
+
+def test_deck_card_summary_default_commander() -> None:
+    """Test DeckCardSummary commander defaults to False when omitted."""
+    summary = DeckCardSummary(
+        card_id="card-456",
+        quantity=4,
+        sideboard=False,
+        card={
+            "id": "card-456",
+            "name": "Lightning Bolt",
+            "mana_cost": "{R}",
+            "cmc": 1.0,
+            "type_line": "Instant",
+            "oracle_text": "Deals 3 damage",
+            "colors": ["R"],
+            "rarity": "common",
+            "set_code": "LEA",
+        },
+    )
+
+    assert summary.commander is False
+
+
+def test_deck_card_summary_commander_true() -> None:
+    """Test DeckCardSummary carries an explicit commander=True."""
+    summary = DeckCardSummary(
+        card_id="card-atraxa",
+        quantity=1,
+        sideboard=False,
+        commander=True,
+        card={
+            "id": "card-atraxa",
+            "name": "Atraxa, Praetors' Voice",
+            "mana_cost": "{G}{W}{U}{B}",
+            "cmc": 4.0,
+            "type_line": "Legendary Creature — Phyrexian Angel Horror",
+            "oracle_text": "Flying, vigilance, deathtouch, lifelink",
+            "colors": ["W", "U", "B", "G"],
+            "rarity": "mythic",
+            "set_code": "2X2",
+        },
+    )
+
+    assert summary.commander is True
 
 
 def test_deck_card_schema_invalid_quantity() -> None:

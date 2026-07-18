@@ -1,0 +1,80 @@
+Commander
+1 Talrand, Sky Summoner (M13) 1
+
+Deck
+1 Sol Ring (M13) 2
+1 Arcane Signet (M13) 3
+1 Mind Stone (M13) 4
+1 Everflowing Chalice (M13) 5
+1 Thought Vessel (M13) 6
+1 Sky Diamond (M13) 7
+1 Worn Powerstone (M13) 8
+1 Gilded Lotus (M13) 9
+1 Dreamstone Hedron (M13) 10
+1 Hedron Archive (M13) 11
+1 Counterspell (M13) 12
+1 Negate (M13) 13
+1 Cancel (M13) 14
+1 Dissipate (M13) 15
+1 Arcane Denial (M13) 16
+1 Swan Song (M13) 17
+1 Disallow (M13) 18
+1 Rewind (M13) 19
+1 Overwhelming Denial (M13) 20
+1 Didn't Say Please (M13) 21
+1 Dream Fracture (M13) 22
+1 Divination (M13) 23
+1 Opt (M13) 24
+1 Ponder (M13) 25
+1 Preordain (M13) 26
+1 Brainstorm (M13) 27
+1 Fact or Fiction (M13) 28
+1 Chart a Course (M13) 29
+1 Behold the Multiverse (M13) 30
+1 Blue Sun's Zenith (M13) 31
+1 Pull from Tomorrow (M13) 32
+1 Windfall (M13) 33
+1 Stroke of Genius (M13) 34
+1 Murmuring Mystic (M13) 35
+1 Docent of Perfection // Final Iteration (M13) 36
+1 Metallurgic Summonings (M13) 37
+1 Snapping Drake (M13) 38
+1 Air Elemental (M13) 39
+1 Cloudkin Seer (M13) 40
+1 Mulldrifter (M13) 41
+1 Peregrine Drake (M13) 42
+1 Sea Gate Oracle (M13) 43
+1 Champion of Wits (M13) 44
+1 Archmage Emeritus (M13) 45
+1 Kefnet the Mindful (M13) 46
+1 Nadir Kraken (M13) 47
+1 Talrand's Invocation (M13) 48
+1 Pongify (M13) 49
+1 Rapid Hybridization (M13) 50
+1 Reality Shift (M13) 51
+1 Blink of an Eye (M13) 52
+1 Into the Roil (M13) 53
+1 Devastation Tide (M13) 54
+1 Curse of the Swine (M13) 55
+1 Whelming Wave (M13) 56
+1 River's Rebuke (M13) 57
+1 Boomerang (M13) 58
+1 Bident of Thassa (M13) 59
+1 Coastal Piracy (M13) 60
+1 Propaganda (M13) 61
+1 Jace's Sanctum (M13) 62
+1 Swiftfoot Boots (M13) 63
+1 Lightning Greaves (M13) 64
+1 Command Tower (M13) 65
+1 Reliquary Tower (M13) 66
+1 Myriad Landscape (M13) 67
+1 Rogue's Passage (M13) 68
+1 Halimar Depths (M13) 69
+1 Lonely Sandbar (M13) 70
+1 Mystic Sanctuary (M13) 71
+1 Castle Vantress (M13) 72
+1 Faerie Conclave (M13) 73
+1 Zhalfirin Void (M13) 74
+1 Evolving Wilds (M13) 75
+1 Terramorphic Expanse (M13) 76
+24 Island (M13) 77

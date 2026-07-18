@@ -13,9 +13,11 @@ re-downloads nothing.
 The same tool also keeps the database current. When a new set releases, calling it with
 ``update=True`` re-downloads the latest ``default_cards`` set and **upserts** it (the importer's
 ``INSERT ... ON CONFLICT DO UPDATE``): new cards are added, existing rows refreshed (errata,
-banlist/legality changes), and stale rows from older imports get their ``games`` reconciled to the
-cross-printing union — without wiping the user's existing data. Building the semantic index is a
-separate, optional step (``build_search_index``) — re-run it after an update to index the new cards.
+banlist/legality changes), and a final reconcile pass collapses duplicates left by older imports —
+stale printing rows are **removed**, deck references are repointed to the surviving canonical row
+(user decks are preserved), and ``games`` is rewritten to the cross-printing union. Building the
+semantic index is a separate, optional step (``build_search_index``) — re-run it after an update to
+index the new cards (with ``prune=true`` when the reconcile removed rows, so their vectors go too).
 """
 
 import logging
@@ -55,7 +57,8 @@ class InitializeDatabaseResult(BaseModel):
             were already present and ``update`` was not requested — nothing downloaded), or
             ``error`` (the import failed; ``message`` explains).
         cards_imported: On ``ok``, the cards inserted on this run; on ``updated``, the number of
-            *new* cards added (existing rows are also refreshed in place). ``0`` for
+            *new* cards added (existing rows are also refreshed in place), clamped at ``0`` —
+            the reconcile can delete more stale duplicate rows than the update adds. ``0`` for
             ``already_initialized`` / ``error``.
         cards_total: Total cards in the database after this run.
         message: Human-facing summary, including the next step (build the index) on success.
@@ -65,6 +68,47 @@ class InitializeDatabaseResult(BaseModel):
     cards_imported: int = 0
     cards_total: int = 0
     message: str
+
+
+#: How many reject identities to name in the result message (the full list is in the logs).
+_REJECT_SAMPLE_SIZE = 5
+
+
+def _import_notes(stats: ImportStatistics) -> str:
+    """Diagnostics suffix for a successful import: rejects, reconcile outcome, stale warning.
+
+    Args:
+        stats: The importer's statistics for this run.
+
+    Returns:
+        An empty string when the run was clean; otherwise sentences (leading space
+        included) naming the reject count, up to five sample card names, rows removed
+        by the reconcile, and warnings when the reconcile failed or skipped identities.
+    """
+    notes = ""
+    if stats.total_errors > 0:
+        notes += f" {stats.total_errors} card(s) could not be imported"
+        sample = [reject.identity for reject in stats.rejects[:_REJECT_SAMPLE_SIZE]]
+        if sample:
+            notes += f" (e.g. {', '.join(sample)})"
+        notes += "."
+    if stats.reconcile.failed:
+        notes += (
+            " Warning: the reconcile stage failed - stale duplicates may remain; "
+            "run this again with `update=true` to retry."
+        )
+    if stats.reconcile.rows_deleted > 0:
+        notes += (
+            f" Removed {stats.reconcile.rows_deleted:,} stale duplicate row(s) during reconcile."
+        )
+    if stats.reconcile.stale_remaining > 0:
+        count = stats.reconcile.stale_remaining
+        noun = "identity" if count == 1 else "identities"
+        notes += (
+            f" Warning: {count} oracle {noun} kept pre-existing rows because their "
+            "current printing was rejected this run; a later `update=true` run will retry."
+        )
+    return notes
 
 
 async def _card_count(session: AsyncSession) -> int:
@@ -148,15 +192,29 @@ async def initialize_database(
                     raise
                 total = await _card_count(session)
                 if already_populated:
-                    added = total - cards_before
+                    # The reconcile deletes stale duplicate rows, so the net change can be
+                    # negative — clamp; _import_notes names the deletions that explain it.
+                    added = max(0, total - cards_before)
+                    if stats.reconcile.rows_deleted > 0:
+                        index_hint = (
+                            " If you use semantic search, re-run `build_search_index` with "
+                            "`prune=true` to index the new cards and drop the vectors of "
+                            "the removed rows."
+                        )
+                    else:
+                        index_hint = (
+                            " If you use semantic search, re-run `build_search_index` to "
+                            "index the new cards."
+                        )
                     return InitializeDatabaseResult(
                         status="updated",
                         cards_imported=added,
                         cards_total=total,
                         message=(
                             f"Card database updated: {added:,} new card(s) added and existing "
-                            f"cards refreshed ({total:,} total). If you use semantic search, "
-                            "re-run `build_search_index` to index the new cards."
+                            f"cards refreshed ({total:,} total)."
+                            f"{_import_notes(stats)}"
+                            f"{index_hint}"
                         ),
                     )
                 return InitializeDatabaseResult(
@@ -164,7 +222,9 @@ async def initialize_database(
                     cards_imported=stats.total_inserted,
                     cards_total=total,
                     message=(
-                        f"Imported {stats.total_inserted:,} cards ({total:,} total). Card and deck "
+                        f"Imported {stats.total_inserted:,} cards ({total:,} total)."
+                        f"{_import_notes(stats)}"
+                        " Card and deck "
                         "tools are ready. To enable semantic search (`semantic_search_cards` / "
                         "`find_similar_cards`), ask me to run `build_search_index` next."
                     ),

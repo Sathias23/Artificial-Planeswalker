@@ -4,15 +4,22 @@ import json
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.importers.aggregate import build_oracle_aggregates
 from src.data.importers.importer import import_cards
 from src.data.importers.parser import stream_cards
-from src.data.importers.scryfall import iter_canonical_models, reconcile_games
-from src.data.importers.transformers import transform_scryfall_card
+from src.data.importers.scryfall import (
+    import_scryfall_bulk_data,
+    iter_canonical_models,
+    reconcile_oracle_identities,
+)
+from src.data.importers.transformers import TransformReject, transform_scryfall_card
 from src.data.models.card import CardModel
+from src.data.models.deck import DeckModel
+from src.data.models.deck_card import DeckCardModel
+from src.data.repositories.card import CardRepository
 from tests.fixtures.card_data import create_om1_spm_cards
 
 
@@ -215,9 +222,13 @@ def _masking_printings() -> list[dict]:
 async def _run_two_pass_import(session, file_path: Path):
     """Run the real pass-1 + pass-2 + reconcile pipeline over *file_path*."""
     aggregates = build_oracle_aggregates(file_path)
-    stats = await import_cards(session, iter_canonical_models(file_path, aggregates))
-    updated = await reconcile_games(session, aggregates)
-    return stats, updated
+    rejects: list[TransformReject] = []
+    stats = await import_cards(
+        session, iter_canonical_models(file_path, aggregates, rejects), rejects=rejects
+    )
+    reconcile = await reconcile_oracle_identities(session, aggregates)
+    stats.reconcile = reconcile
+    return stats, reconcile
 
 
 @pytest.mark.asyncio
@@ -227,11 +238,12 @@ async def test_two_pass_import_dedups_and_unions_games(test_db, tmp_path):
     test_json.write_text(json.dumps(_masking_printings()))
 
     async with test_db() as session:
-        stats, updated = await _run_two_pass_import(session, test_json)
+        stats, reconcile = await _run_two_pass_import(session, test_json)
 
         assert stats.total_inserted == 1  # non-canonical printing skipped, not errored
         assert stats.total_errors == 0
-        assert updated == 0  # the only row was just written with the union already
+        assert reconcile.games_updated == 0  # the only row was just written with the union
+        assert reconcile.rows_deleted == 0
 
         result = await session.execute(
             select(CardModel).where(CardModel.oracle_id == _SHARED_ORACLE_ID)
@@ -245,35 +257,36 @@ async def test_two_pass_import_dedups_and_unions_games(test_db, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_reconcile_updates_stale_preexisting_row(test_db, tmp_path):
-    """A pre-existing stale row (paper-only games) gets the union without being re-pointed."""
+async def test_reconcile_dedups_stale_preexisting_row(test_db, tmp_path):
+    """A pre-existing stale row is deleted; only this run's canonical row survives."""
     spm_card = create_om1_spm_cards()[0]  # the paper-only half of the masking pair
     assert spm_card.games == ["paper"]
 
     test_json = tmp_path / "printings.json"
     # Only the OM1 printing is in this run's file, so this run's canonical id (om1-153)
-    # differs from the pre-existing row's id (spm-276) — the reconcile must fix it.
+    # differs from the pre-existing row's id (spm-276) — the reconcile must collapse the
+    # identity down to the canonical row.
     printings = [p for p in _masking_printings() if p["id"] == "om1-153"]
     printings[0]["games"] = ["arena", "mtgo", "paper"]  # union as seen across the new file
     test_json.write_text(json.dumps(printings))
 
     async with test_db() as session:
         # Seed the old DB state: the stale paper-only SPM printing (e.g. an older
-        # oracle_cards import whose canonical pick differed), referenced by decks.
+        # oracle_cards import whose canonical pick differed).
         session.add(spm_card)
         await session.commit()
 
-        stats, updated = await _run_two_pass_import(session, test_json)
+        stats, reconcile = await _run_two_pass_import(session, test_json)
 
         assert stats.total_inserted == 1
-        assert updated == 1  # the stale spm-276 row was reconciled
+        assert reconcile.rows_deleted == 1  # the stale spm-276 row was collapsed away
+        assert reconcile.stale_remaining == 0
 
         result = await session.execute(
             select(CardModel).where(CardModel.oracle_id == _SHARED_ORACLE_ID)
         )
         rows = {row.id: row for row in result.scalars().all()}
-        assert set(rows) == {"spm-276", "om1-153"}  # row kept, nothing deleted
-        assert rows["spm-276"].games == ["arena", "mtgo", "paper"]
+        assert set(rows) == {"om1-153"}  # one row per oracle identity — the canonical
         assert rows["om1-153"].games == ["arena", "mtgo", "paper"]
 
 
@@ -302,15 +315,341 @@ async def test_two_pass_import_is_noop_for_unique_oracle_ids(test_db, tmp_path):
     test_json.write_text(json.dumps(cards_data))
 
     async with test_db() as session:
-        stats, updated = await _run_two_pass_import(session, test_json)
+        stats, reconcile = await _run_two_pass_import(session, test_json)
 
         assert stats.total_inserted == 4
-        assert updated == 0
+        assert reconcile.games_updated == 0
+        assert reconcile.rows_deleted == 0
 
         result = await session.execute(select(CardModel))
         rows = result.scalars().all()
         assert len(rows) == 4
         assert all(row.games == ["arena", "paper"] for row in rows)
+
+
+# --- Oracle-identity reconcile (pre-Epic-6 importer gate) --------------------------------
+
+
+def _snapshot_a() -> list[dict]:
+    """Snapshot A: only the OM1 printing exists (older Scryfall data, no game_changer)."""
+    return [p for p in _masking_printings() if p["id"] == "om1-153"]
+
+
+def _snapshot_b(game_changer: bool = True) -> list[dict]:
+    """Snapshot B: both printings, canonical shifted to spm-276, game_changer populated."""
+    return [{**p, "game_changer": game_changer} for p in _masking_printings()]
+
+
+@pytest.mark.asyncio
+async def test_reimport_with_shifted_canonical_collapses_to_one_row(test_db, tmp_path):
+    """Two-snapshot re-import over a persisted DB: one row per oracle id, snapshot-B data wins."""
+    snapshot_a = tmp_path / "snapshot_a.json"
+    snapshot_a.write_text(json.dumps(_snapshot_a()))
+    snapshot_b = tmp_path / "snapshot_b.json"
+    snapshot_b.write_text(json.dumps(_snapshot_b()))
+
+    # Snapshot A lands the om1-153 row (game_changer unknown back then -> NULL).
+    async with test_db() as session:
+        stats, _ = await _run_two_pass_import(session, snapshot_a)
+        assert stats.total_inserted == 1
+        result = await session.execute(select(CardModel))
+        rows = result.scalars().all()
+        assert [row.id for row in rows] == ["om1-153"]
+        assert rows[0].game_changer is None
+
+    # Snapshot B (new session over the SAME persisted DB file) shifts the canonical to
+    # spm-276 — the damaged-DB shape a plain re-import must repair.
+    async with test_db() as session:
+        stats, reconcile = await _run_two_pass_import(session, snapshot_b)
+        assert stats.total_inserted == 1
+        assert reconcile.rows_deleted == 1
+        assert reconcile.stale_remaining == 0
+
+        result = await session.execute(
+            select(CardModel).where(CardModel.oracle_id == _SHARED_ORACLE_ID)
+        )
+        rows = result.scalars().all()
+        assert len(rows) == 1  # exactly one row per oracle identity
+        survivor = rows[0]
+        assert survivor.id == "spm-276"  # the snapshot-B canonical
+        assert survivor.game_changer is True  # snapshot-B data on the survivor, not NULL
+        assert survivor.games == ["arena", "mtgo", "paper"]
+
+        # Name resolution lands on the canonical row (no stale printing shadows it).
+        found = await CardRepository(session).find_by_name_exact("Ultimate Green Goblin")
+        assert found is not None
+        assert found.id == "spm-276"
+
+    # Idempotence: an unchanged re-import performs zero deletes/repoints/updates.
+    async with test_db() as session:
+        _, reconcile = await _run_two_pass_import(session, snapshot_b)
+        assert reconcile.rows_deleted == 0
+        assert reconcile.deck_cards_repointed == 0
+        assert reconcile.deck_cards_merged == 0
+        assert reconcile.games_updated == 0
+        assert reconcile.stale_remaining == 0
+
+
+@pytest.mark.asyncio
+async def test_reconcile_repoints_deck_cards_to_canonical(test_db, tmp_path):
+    """A deck referencing the stale printing is repointed before the stale row is deleted."""
+    snapshot_b = tmp_path / "snapshot_b.json"
+    snapshot_b.write_text(json.dumps(_snapshot_b()))
+
+    async with test_db() as session:
+        # Old DB state: the om1-153 row from an earlier import, referenced by a deck.
+        session.add(create_om1_spm_cards()[1])  # om1-153
+        deck = DeckModel(name="Goblin Deck", format="modern")
+        session.add(deck)
+        await session.flush()
+        session.add(DeckCardModel(deck_id=deck.id, card_id="om1-153", quantity=4))
+        await session.commit()
+        deck_id = deck.id
+
+    async with test_db() as session:
+        _, reconcile = await _run_two_pass_import(session, snapshot_b)
+        assert reconcile.rows_deleted == 1
+        assert reconcile.deck_cards_repointed == 1
+        assert reconcile.deck_cards_merged == 0
+
+        result = await session.execute(
+            select(DeckCardModel).where(DeckCardModel.deck_id == deck_id)
+        )
+        deck_cards = result.scalars().all()
+        assert len(deck_cards) == 1
+        assert deck_cards[0].card_id == "spm-276"  # repointed, not dangling
+        assert deck_cards[0].quantity == 4
+
+        result = await session.execute(
+            select(CardModel).where(CardModel.oracle_id == _SHARED_ORACLE_ID)
+        )
+        assert [row.id for row in result.scalars().all()] == ["spm-276"]
+
+
+@pytest.mark.asyncio
+async def test_reconcile_merges_deck_quantities_when_deck_holds_both_printings(test_db, tmp_path):
+    """Composite-PK collision: quantities sum onto the canonical row, stale entry removed."""
+    snapshot_b = tmp_path / "snapshot_b.json"
+    snapshot_b.write_text(json.dumps(_snapshot_b()))
+
+    async with test_db() as session:
+        spm_card, om1_card = create_om1_spm_cards()[:2]
+        session.add(spm_card)
+        session.add(om1_card)
+        deck = DeckModel(name="Both Printings", format="modern")
+        session.add(deck)
+        await session.flush()
+        # Same deck, same sideboard flag, both printings of one oracle identity.
+        session.add(DeckCardModel(deck_id=deck.id, card_id="spm-276", quantity=2))
+        session.add(DeckCardModel(deck_id=deck.id, card_id="om1-153", quantity=3))
+        await session.commit()
+        deck_id = deck.id
+
+    async with test_db() as session:
+        _, reconcile = await _run_two_pass_import(session, snapshot_b)
+        assert reconcile.rows_deleted == 1
+        assert reconcile.deck_cards_merged == 1
+        assert reconcile.deck_cards_repointed == 0
+
+        result = await session.execute(
+            select(DeckCardModel).where(DeckCardModel.deck_id == deck_id)
+        )
+        deck_cards = result.scalars().all()
+        assert len(deck_cards) == 1  # the stale association row is gone
+        assert deck_cards[0].card_id == "spm-276"
+        assert deck_cards[0].quantity == 5  # 2 + 3 summed onto the canonical row
+
+
+def _stale_printing(card_id: str) -> CardModel:
+    """A pre-existing stale printing row of the shared oracle identity (older import)."""
+    return CardModel(
+        id=card_id,
+        name="Ultimate Green Goblin",
+        oracle_id=_SHARED_ORACLE_ID,
+        mana_cost="{4}{R}{G}",
+        cmc=6.0,
+        type_line="Legendary Creature — Goblin Villain",
+        oracle_text="Trample, haste.",
+        rarity="rare",
+        set_code="OLD",
+        set_name="Old Snapshot Set",
+        collector_number="1",
+        colors=["R", "G"],
+        color_identity=["R", "G"],
+        color_indicator=None,
+        keywords=["Trample", "Haste"],
+        legalities={"modern": "legal"},
+        card_faces=None,
+        games=["paper"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_reconcile_collapses_two_stale_printings_held_by_one_deck(test_db, tmp_path):
+    """TWO stale printings in one deck collapse onto the canonical row with summed quantity.
+
+    Neither pre-existing row is the canonical: the repoint of the first stale entry
+    *creates* the canonical ``(deck_id, card_id, sideboard)`` key, and the second stale
+    entry must then merge into it rather than collide.
+    """
+    snapshot_b = tmp_path / "snapshot_b.json"
+    snapshot_b.write_text(json.dumps(_snapshot_b()))
+
+    async with test_db() as session:
+        session.add(_stale_printing("old-a"))
+        session.add(_stale_printing("old-b"))
+        deck = DeckModel(name="Two Stale Printings", format="modern")
+        session.add(deck)
+        await session.flush()
+        session.add(DeckCardModel(deck_id=deck.id, card_id="old-a", quantity=2))
+        session.add(DeckCardModel(deck_id=deck.id, card_id="old-b", quantity=3))
+        await session.commit()
+        deck_id = deck.id
+
+    async with test_db() as session:
+        _, reconcile = await _run_two_pass_import(session, snapshot_b)
+        assert reconcile.rows_deleted == 2  # both stale printings collapsed away
+        assert reconcile.deck_cards_repointed == 1  # first stale entry creates the key
+        assert reconcile.deck_cards_merged == 1  # second merges into it
+        assert reconcile.stale_remaining == 0
+
+        result = await session.execute(
+            select(DeckCardModel).where(DeckCardModel.deck_id == deck_id)
+        )
+        deck_cards = result.scalars().all()
+        assert len(deck_cards) == 1
+        assert deck_cards[0].card_id == "spm-276"  # this run's canonical printing
+        assert deck_cards[0].quantity == 5  # 2 + 3 summed
+
+        result = await session.execute(
+            select(CardModel).where(CardModel.oracle_id == _SHARED_ORACLE_ID)
+        )
+        assert [row.id for row in result.scalars().all()] == ["spm-276"]
+
+
+@pytest.mark.asyncio
+async def test_reconcile_failure_is_nonfatal_and_leaves_session_usable(
+    test_db, tmp_path, monkeypatch
+):
+    """A failing reconcile sets ``failed`` without failing the import or the session.
+
+    The failing reconcile poisons the session with a genuine constraint failure (a
+    failed flush leaves the session in pending-rollback state), so this also pins the
+    stage-6 rollback: without it, the very next session use (``mark_import_finished``)
+    raises ``PendingRollbackError`` and escalates the non-fatal stage into a failed
+    import. The session must stay usable for follow-up queries.
+    """
+
+    async def _fake_fetch_bulk_data_list():
+        return [
+            {
+                "type": "default_cards",
+                "download_uri": "https://data.scryfall.io/default_cards.json",
+                "size": 1024,
+            }
+        ]
+
+    async def _fake_download(uri, output_file, max_bytes=0):
+        output_file.write_text(json.dumps(_masking_printings()))
+        return output_file
+
+    async def _failing_reconcile(session, aggregates):
+        # Raise a genuine in-family failure (IntegrityError, a DatabaseError sibling in
+        # the stage-6 handler tuple) that leaves the session dirty: the failed flush
+        # puts the session in pending-rollback state as the exception propagates.
+        session.add(_stale_printing("spm-276"))  # PK collides with the imported canonical
+        await session.flush()
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    monkeypatch.setattr(
+        "src.data.importers.scryfall.fetch_bulk_data_list", _fake_fetch_bulk_data_list
+    )
+    monkeypatch.setattr("src.data.importers.scryfall.download_bulk_data", _fake_download)
+    monkeypatch.setattr(
+        "src.data.importers.scryfall.reconcile_oracle_identities", _failing_reconcile
+    )
+
+    async with test_db() as session:
+        stats = await import_scryfall_bulk_data(
+            session, bulk_type="default_cards", temp_dir=tmp_path
+        )
+
+        assert stats.total_inserted == 1  # the card import itself succeeded
+        assert stats.reconcile.failed is True  # ... but the reconcile did not masquerade as clean
+        assert stats.reconcile.rows_deleted == 0
+
+        # The session must remain usable (stage 6 rolled the failure back).
+        count = await session.scalar(select(func.count()).select_from(CardModel))
+        assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_reconcile_leaves_identity_untouched_when_canonical_rejected(test_db, tmp_path):
+    """When the canonical printing is rejected, existing rows survive and get counted."""
+    printings = _masking_printings()
+    for printing in printings:
+        if printing["id"] == "spm-276":  # the canonical pick (max released_at)
+            del printing["type_line"]  # required field -> transformer rejects it
+    snapshot = tmp_path / "snapshot_rejected_canonical.json"
+    snapshot.write_text(json.dumps(printings))
+
+    async with test_db() as session:
+        om1_card = create_om1_spm_cards()[1]  # pre-existing row, games ["arena", "mtgo"]
+        session.add(om1_card)
+        await session.commit()
+
+    async with test_db() as session:
+        stats, reconcile = await _run_two_pass_import(session, snapshot)
+
+        assert stats.total_errors == 1
+        assert len(stats.rejects) == 1
+        assert stats.rejects[0].identity == "Ultimate Green Goblin"
+        assert "type_line" in stats.rejects[0].reason
+        assert reconcile.stale_remaining == 1  # the identity is reported, not repaired
+        assert reconcile.stale_sample == (_SHARED_ORACLE_ID,)  # sample names the oracle id
+        assert reconcile.rows_deleted == 0
+        assert reconcile.games_updated == 0  # touch nothing for the skipped identity
+
+        result = await session.execute(
+            select(CardModel).where(CardModel.oracle_id == _SHARED_ORACLE_ID)
+        )
+        rows = result.scalars().all()
+        assert [row.id for row in rows] == ["om1-153"]  # existing row untouched
+        assert rows[0].games == ["arena", "mtgo"]  # even its games stay as they were
+
+
+@pytest.mark.asyncio
+async def test_import_captures_reject_identity_and_reason(test_db, tmp_path):
+    """A transformer reject surfaces its identity + reason on ImportStatistics.rejects."""
+    cards_data = [
+        {
+            "id": "good-0001",
+            "name": "Good Card",
+            "oracle_id": "oracle-good-0001",
+            "type_line": "Instant",
+            "released_at": "2024-01-01",
+            "games": ["paper"],
+        },
+        {
+            "id": "bad-0001",
+            "name": "Bad Card",
+            "oracle_id": "oracle-bad-0001",
+            # no type_line -> rejected with a missing-field reason
+            "released_at": "2024-01-01",
+            "games": ["paper"],
+        },
+    ]
+    snapshot = tmp_path / "with_reject.json"
+    snapshot.write_text(json.dumps(cards_data))
+
+    async with test_db() as session:
+        stats, _ = await _run_two_pass_import(session, snapshot)
+
+        assert stats.total_inserted == 1
+        assert stats.total_errors == 1
+        assert len(stats.rejects) == 1
+        assert stats.rejects[0].identity == "Bad Card"
+        assert "type_line" in stats.rejects[0].reason
 
 
 @pytest.mark.asyncio

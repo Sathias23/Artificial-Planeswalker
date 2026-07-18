@@ -24,6 +24,7 @@ class DeckCard(BaseModel):
     card_id: str
     quantity: int
     sideboard: bool
+    commander: bool = False
     card: Card  # Nested full card details
 
     @field_validator("quantity")
@@ -114,6 +115,7 @@ class DeckCardSummary(BaseModel):
     card_id: str
     quantity: int
     sideboard: bool
+    commander: bool = False
     card: CardSummary
 
 

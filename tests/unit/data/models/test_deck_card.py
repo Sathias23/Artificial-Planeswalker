@@ -46,6 +46,21 @@ def test_deck_card_model_composite_primary_key() -> None:
     assert mainboard_card.sideboard != sideboard_card.sideboard
 
 
+def test_deck_card_model_default_commander() -> None:
+    """Test DeckCardModel commander defaults to False when omitted."""
+    deck_card = DeckCardModel(deck_id="deck-abc", card_id="card-def", quantity=1)
+
+    assert deck_card.commander is False
+
+
+def test_deck_card_model_explicit_commander_true() -> None:
+    """Test DeckCardModel persists an explicit commander=True."""
+    deck_card = DeckCardModel(deck_id="deck-cmd", card_id="card-atraxa", quantity=1, commander=True)
+
+    assert deck_card.commander is True
+    assert deck_card.sideboard is False
+
+
 def test_deck_card_model_repr() -> None:
     """Test DeckCardModel string representation."""
     deck_card = DeckCardModel(deck_id="deck-test", card_id="card-test", quantity=3, sideboard=False)

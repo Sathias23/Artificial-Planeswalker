@@ -406,6 +406,63 @@ async def test_add_card_to_deck_sideboard(
     assert deck_card.quantity == 2
 
 
+async def test_add_card_to_deck_commander_round_trip(
+    deck_repo: DeckRepository, test_cards: list[CardModel]
+) -> None:
+    """A commander=True write survives the round-trip back as a Pydantic DeckCard."""
+    deck = await deck_repo.create_deck(name="Commander Deck", format="commander")
+
+    deck_card = await deck_repo.add_card_to_deck(
+        deck_id=deck.id, card_id="card-bolt", quantity=1, sideboard=False, commander=True
+    )
+
+    assert isinstance(deck_card, DeckCard)
+    assert deck_card.commander is True
+    assert deck_card.sideboard is False
+
+    loaded = await deck_repo.get_deck_with_cards(deck_id=deck.id)
+    assert loaded is not None
+    assert len(loaded.deck_cards) == 1
+    assert loaded.deck_cards[0].commander is True
+    assert loaded.deck_cards[0].sideboard is False
+
+
+async def test_add_card_to_deck_commander_defaults_false(
+    deck_repo: DeckRepository, test_cards: list[CardModel]
+) -> None:
+    """Omitting commander keeps the existing call shape and persists False."""
+    deck = await deck_repo.create_deck(name="Plain Deck", format="standard")
+
+    deck_card = await deck_repo.add_card_to_deck(
+        deck_id=deck.id, card_id="card-bolt", quantity=4, sideboard=False
+    )
+
+    assert deck_card.commander is False
+
+    loaded = await deck_repo.get_deck_with_cards(deck_id=deck.id)
+    assert loaded is not None
+    assert loaded.deck_cards[0].commander is False
+
+
+async def test_add_two_commanders_partners_round_trip(
+    deck_repo: DeckRepository, test_cards: list[CardModel]
+) -> None:
+    """Two flagged mainboard rows (partners) both persist as commander=True."""
+    deck = await deck_repo.create_deck(name="Partners Deck", format="commander")
+
+    await deck_repo.add_card_to_deck(
+        deck_id=deck.id, card_id="card-bolt", quantity=1, sideboard=False, commander=True
+    )
+    await deck_repo.add_card_to_deck(
+        deck_id=deck.id, card_id="card-counterspell", quantity=1, sideboard=False, commander=True
+    )
+
+    loaded = await deck_repo.get_deck_with_cards(deck_id=deck.id)
+    assert loaded is not None
+    flags = {dc.card_id: dc.commander for dc in loaded.deck_cards}
+    assert flags == {"card-bolt": True, "card-counterspell": True}
+
+
 async def test_add_duplicate_card_raises_error(
     deck_repo: DeckRepository, test_cards: list[CardModel]
 ) -> None:
@@ -769,6 +826,48 @@ async def test_merge_decks_combine_strategy(
     assert source_check is not None
     assert len(source_check.deck_cards) == 1
     assert source_check.deck_cards[0].quantity == 3  # Still 3
+
+
+async def test_merge_decks_propagates_commander_flag(
+    deck_repo: DeckRepository, test_cards: list[CardModel]
+) -> None:
+    """A flagged source card lands in the target still flagged as commander."""
+    target = await deck_repo.create_deck(name="Target Deck", format="commander")
+    source = await deck_repo.create_deck(name="Source Deck", format="commander")
+    await deck_repo.add_card_to_deck(
+        deck_id=source.id, card_id="card-counterspell", quantity=1, sideboard=False, commander=True
+    )
+    await deck_repo.add_card_to_deck(
+        deck_id=source.id, card_id="card-bolt", quantity=1, sideboard=False
+    )
+
+    merged = await deck_repo.merge_decks(target.id, source.id)
+
+    assert merged is not None
+    flags = {dc.card_id: dc.commander for dc in merged.deck_cards}
+    assert flags["card-counterspell"] is True
+    assert flags["card-bolt"] is False
+
+
+async def test_merge_decks_existing_card_keeps_target_flag(
+    deck_repo: DeckRepository, test_cards: list[CardModel]
+) -> None:
+    """When the card already exists in the target, the merge keeps the target's flag."""
+    target = await deck_repo.create_deck(name="Target Deck", format="commander")
+    await deck_repo.add_card_to_deck(
+        deck_id=target.id, card_id="card-bolt", quantity=1, sideboard=False, commander=False
+    )
+    source = await deck_repo.create_deck(name="Source Deck", format="commander")
+    await deck_repo.add_card_to_deck(
+        deck_id=source.id, card_id="card-bolt", quantity=2, sideboard=False, commander=True
+    )
+
+    merged = await deck_repo.merge_decks(target.id, source.id)
+
+    assert merged is not None
+    assert len(merged.deck_cards) == 1
+    assert merged.deck_cards[0].quantity == 3  # COMBINE: 1 + 2
+    assert merged.deck_cards[0].commander is False  # target's flag wins
 
 
 async def test_merge_decks_maximum_strategy(

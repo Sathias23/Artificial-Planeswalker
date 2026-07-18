@@ -22,7 +22,8 @@ from src.data.importers.scryfall_api import ScryfallAPIError, download_bulk_data
 class _NullSession:
     """Minimal async session for the download-focused tests.
 
-    The DB layer is faked (``import_cards``/``reconcile_games`` are patched out), so the only
+    The DB layer is faked (``import_cards``/``reconcile_oracle_identities`` are patched out or
+    short-circuit on empty aggregates), so the only
     real session calls the orchestrator now makes are the empty-``cards`` count probe (returns 0,
     which short-circuits the in-progress check) and the first-run marker writes — all of which
     just need to be swallowed here.
@@ -184,7 +185,7 @@ async def test_reconcile_failure_is_non_fatal(monkeypatch):
     async def boom(session, aggregates):
         raise DatabaseError("reconcile", {}, Exception("database is locked"))
 
-    monkeypatch.setattr(scryfall, "reconcile_games", boom)
+    monkeypatch.setattr(scryfall, "reconcile_oracle_identities", boom)
 
     # Must not raise despite reconcile blowing up.
     stats = await import_scryfall_bulk_data(session=_NullSession())

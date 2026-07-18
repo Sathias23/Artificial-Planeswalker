@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import DatabaseError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,11 +18,12 @@ from src.data.import_state import (
     mark_import_started,
 )
 from src.data.importers.aggregate import OracleAggregate, build_oracle_aggregates, group_key
-from src.data.importers.importer import ImportStatistics, import_cards
+from src.data.importers.importer import ImportStatistics, ReconcileStatistics, import_cards
 from src.data.importers.parser import stream_cards
 from src.data.importers.scryfall_api import download_bulk_data, fetch_bulk_data_list
-from src.data.importers.transformers import transform_scryfall_card
+from src.data.importers.transformers import TransformReject, transform_scryfall_card
 from src.data.models.card import CardModel
+from src.data.models.deck_card import DeckCardModel
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,9 @@ def _max_download_bytes(advertised_size: int) -> int:
 
 
 def iter_canonical_models(
-    file_path: Path, aggregates: dict[str, OracleAggregate]
+    file_path: Path,
+    aggregates: dict[str, OracleAggregate],
+    rejects: list[TransformReject] | None = None,
 ) -> Iterator[CardModel | None]:
     """Stream pass 2: transform each identity's canonical printing with union ``games``.
 
@@ -74,6 +77,8 @@ def iter_canonical_models(
         file_path: Path to the bulk JSON file (same file pass 1 aggregated).
         aggregates: Per-identity aggregates from
             :func:`~src.data.importers.aggregate.build_oracle_aggregates`.
+        rejects: Optional collector passed through to the transformer; gains one
+            :class:`TransformReject` (identity + reason) per rejected card.
 
     Yields:
         A transformed :class:`CardModel` per canonical printing, or ``None`` when the
@@ -86,55 +91,203 @@ def iter_canonical_models(
             card_id = str(card_json.get("id") or "")
             if card_id != aggregate.canonical_id:
                 continue  # non-canonical printing — deduplicated away
-        card = transform_scryfall_card(card_json)
+        card = transform_scryfall_card(card_json, rejects)
         if card is not None and aggregate is not None:
             card.games = sorted(aggregate.games)
         yield card
 
 
-async def reconcile_games(session: AsyncSession, aggregates: dict[str, OracleAggregate]) -> int:
-    """Batch-update ``games`` on pre-existing rows whose value differs from the union.
+def plan_identity_dedup(
+    aggregates: dict[str, OracleAggregate],
+    rows_by_oracle: dict[str, list[str]],
+) -> tuple[dict[str, str], set[str]]:
+    """Pure dedup decision: which stale rows to collapse into which canonical row.
 
-    The importer upserts by printing ``id`` and never deletes, so rows imported by an
-    older run (e.g. Scryfall's own ``oracle_cards`` canonical picks) can carry a stale,
-    single-printing ``games`` value while decks still reference them. This scans the
-    ``cards`` table and rewrites ``games`` to the sorted union for every row whose
-    ``oracle_id`` has an aggregate and whose stored value differs — no rows are deleted
-    or re-pointed.
+    For every oracle id present in *rows_by_oracle* whose aggregate exists, the survivor
+    is the aggregate's ``canonical_id``. Rows with any other id are marked stale. When
+    the canonical row is absent from the database (its printing was rejected this run),
+    the whole identity is skipped — nothing may be touched for it, because deleting the
+    old rows would lose the card entirely.
+
+    Args:
+        aggregates: Per-identity aggregates from pass 1 (keyed by oracle id / group key).
+        rows_by_oracle: Mapping of ``cards.oracle_id`` to the row ids currently stored
+            under that identity. Identities absent from *aggregates* are left untouched.
+
+    Returns:
+        A ``(remap, skipped)`` pair: *remap* maps each stale row id to its canonical row
+        id; *skipped* holds the oracle ids left untouched because their canonical row is
+        absent (counted as stale-remaining).
+    """
+    remap: dict[str, str] = {}
+    skipped: set[str] = set()
+    for oracle_id, row_ids in rows_by_oracle.items():
+        aggregate = aggregates.get(oracle_id)
+        if aggregate is None or not aggregate.canonical_id:
+            continue  # out-of-snapshot identity — not this run's concern
+        if aggregate.canonical_id not in row_ids:
+            skipped.add(oracle_id)  # canonical printing rejected this run — touch nothing
+            continue
+        for row_id in row_ids:
+            if row_id != aggregate.canonical_id:
+                remap[row_id] = aggregate.canonical_id
+    return remap, skipped
+
+
+#: Chunk size for bulk ``DELETE ... WHERE id IN (...)`` (stays well under SQLite's
+#: bound-parameter limit even on conservative builds).
+_DELETE_CHUNK_SIZE = 500
+
+#: How many skipped oracle ids to surface on ``ReconcileStatistics.stale_sample``.
+_STALE_SAMPLE_SIZE = 5
+
+
+async def reconcile_oracle_identities(
+    session: AsyncSession, aggregates: dict[str, OracleAggregate]
+) -> ReconcileStatistics:
+    """Collapse duplicate rows per oracle identity and reconcile ``games`` (one transaction).
+
+    The importer upserts by printing ``id`` and never deletes, so when the canonical
+    printing shifts between snapshots each refresh inserts a new row while the old one
+    persists. Per oracle id in *aggregates* this keeps only the aggregate's
+    ``canonical_id`` row: ``deck_cards`` references are repointed to the canonical row
+    **before** the stale rows are deleted (FK enforcement is OFF — a delete would
+    silently dangle), merging quantities when the deck already holds the canonical
+    printing under the same ``(deck_id, card_id, sideboard)`` key. Surviving rows whose
+    ``games`` differs from the cross-printing union are batch-updated (the pre-existing
+    games propagation). Identities whose canonical row is absent (rejected this run) and
+    rows whose oracle id has no aggregate are left untouched. Idempotent: a clean
+    database yields all-zero statistics and no write transaction.
 
     Args:
         session: AsyncSession for database operations.
         aggregates: Per-identity aggregates from pass 1 (keyed by oracle id / group key).
 
     Returns:
-        Number of rows updated.
+        A :class:`~src.data.importers.importer.ReconcileStatistics` with counts of games
+        updates, deleted rows, deck repoints/merges, and stale-remaining identities
+        (plus up to five sample skipped oracle ids).
 
     Raises:
         IntegrityError: Re-raised after rollback on constraint failure.
         DatabaseError: Re-raised after rollback on database failure.
     """
+    stats = ReconcileStatistics()
     if not aggregates:
-        return 0
+        return stats
+
     rows = await session.execute(select(CardModel.id, CardModel.oracle_id, CardModel.games))
-    params: list[dict[str, Any]] = []
+    rows_by_oracle: dict[str, list[str]] = {}
+    games_by_id: dict[str, list[str]] = {}
     for row_id, oracle_id, games in rows.all():
-        aggregate = aggregates.get(oracle_id or "")
+        rows_by_oracle.setdefault(oracle_id or "", []).append(row_id)
+        games_by_id[row_id] = games or []
+
+    remap, skipped = plan_identity_dedup(aggregates, rows_by_oracle)
+    stats.stale_remaining = len(skipped)
+    stats.stale_sample = tuple(sorted(skipped)[:_STALE_SAMPLE_SIZE])
+
+    # Games propagation on surviving rows only: stale rows are about to be deleted, and
+    # skipped identities (canonical rejected) must not be touched at all.
+    games_params: list[dict[str, Any]] = []
+    for oracle_id, row_ids in rows_by_oracle.items():
+        if oracle_id in skipped:
+            continue
+        aggregate = aggregates.get(oracle_id)
         if aggregate is None:
             continue
         union = sorted(aggregate.games)
-        if (games or []) != union:
-            params.append({"id": row_id, "games": union})
-    if not params:
-        return 0
+        for row_id in row_ids:
+            if row_id not in remap and games_by_id[row_id] != union:
+                games_params.append({"id": row_id, "games": union})
+
+    # Plan deck_cards repoints/merges. The deck_cards table is small (user decks), so one
+    # full scan beats chunked IN-queries over potentially tens of thousands of stale ids.
+    repoints: list[tuple[str, str, bool, str]] = []  # (deck_id, stale_id, sideboard, canonical)
+    merges: list[tuple[str, str, bool, str, int]] = []  # ... + quantity to sum
+    if remap:
+        deck_rows = await session.execute(
+            select(
+                DeckCardModel.deck_id,
+                DeckCardModel.card_id,
+                DeckCardModel.sideboard,
+                DeckCardModel.quantity,
+            )
+        )
+        all_deck_cards = deck_rows.all()
+        occupied = {
+            (deck_id, card_id, sideboard) for deck_id, card_id, sideboard, _ in all_deck_cards
+        }
+        for deck_id, card_id, sideboard, quantity in all_deck_cards:
+            canonical = remap.get(card_id)
+            if canonical is None:
+                continue
+            target_key = (deck_id, canonical, sideboard)
+            if target_key in occupied:
+                # Composite-PK collision: the deck holds both printings — merge quantities.
+                merges.append((deck_id, card_id, sideboard, canonical, quantity))
+            else:
+                repoints.append((deck_id, card_id, sideboard, canonical))
+                occupied.add(target_key)  # later stale printings of the same identity merge
+
+    if not (games_params or remap):
+        return stats  # already clean — no write transaction at all
+
     try:
-        # ORM bulk UPDATE by primary key: each param dict carries the pk + new value.
-        await session.execute(update(CardModel), params)
+        if games_params:
+            # ORM bulk UPDATE by primary key: each param dict carries the pk + new value.
+            await session.execute(update(CardModel), games_params)
+        # Repoint/merge deck references BEFORE deleting stale rows, in the same transaction.
+        for deck_id, stale_id, sideboard, canonical in repoints:
+            await session.execute(
+                update(DeckCardModel)
+                .where(
+                    DeckCardModel.deck_id == deck_id,
+                    DeckCardModel.card_id == stale_id,
+                    DeckCardModel.sideboard == sideboard,
+                )
+                .values(card_id=canonical)
+            )
+        for deck_id, stale_id, sideboard, canonical, quantity in merges:
+            await session.execute(
+                update(DeckCardModel)
+                .where(
+                    DeckCardModel.deck_id == deck_id,
+                    DeckCardModel.card_id == canonical,
+                    DeckCardModel.sideboard == sideboard,
+                )
+                .values(quantity=DeckCardModel.quantity + quantity)
+            )
+            await session.execute(
+                delete(DeckCardModel).where(
+                    DeckCardModel.deck_id == deck_id,
+                    DeckCardModel.card_id == stale_id,
+                    DeckCardModel.sideboard == sideboard,
+                )
+            )
+        stale_ids = list(remap)
+        for start in range(0, len(stale_ids), _DELETE_CHUNK_SIZE):
+            chunk = stale_ids[start : start + _DELETE_CHUNK_SIZE]
+            await session.execute(delete(CardModel).where(CardModel.id.in_(chunk)))
         await session.commit()
     except (IntegrityError, DatabaseError):
         await session.rollback()
         raise
-    logger.info("Reconciled games on %d pre-existing card rows", len(params))
-    return len(params)
+
+    stats.games_updated = len(games_params)
+    stats.rows_deleted = len(remap)
+    stats.deck_cards_repointed = len(repoints)
+    stats.deck_cards_merged = len(merges)
+    logger.info(
+        "Oracle-identity reconcile: %d stale rows deleted, %d deck references repointed, "
+        "%d merged, %d games updates, %d identities skipped (canonical absent)",
+        stats.rows_deleted,
+        stats.deck_cards_repointed,
+        stats.deck_cards_merged,
+        stats.games_updated,
+        stats.stale_remaining,
+    )
+    return stats
 
 
 async def import_scryfall_bulk_data(
@@ -151,8 +304,10 @@ async def import_scryfall_bulk_data(
        (union of ``games`` + deterministic canonical-printing choice)
     4. Pass 2 — re-stream, keep only canonical printings, override ``games`` with the
        sorted union, and batch-upsert into the database
-    5. Reconcile — batch-update ``games`` on pre-existing rows (stale printings from an
-       older import) whose value differs from the union
+    5. Reconcile — collapse duplicate rows per oracle identity (stale printings from an
+       older import: repoint ``deck_cards`` to the canonical row, then delete the stale
+       rows) and batch-update ``games`` on surviving rows whose value differs from the
+       union; the outcome lands on ``ImportStatistics.reconcile``
 
     The dedup/union runs uniformly for any ``bulk_type``; for ``oracle_cards`` (one
     printing per oracle id) it is a natural no-op. Importing ``default_cards`` yields
@@ -233,22 +388,42 @@ async def import_scryfall_bulk_data(
 
             # Stage 5: Import cards into database
             logger.info("Stage 5/6: Batch importing into database...")
-            stats = await import_cards(session, iter_canonical_models(downloaded_file, aggregates))
+            rejects: list[TransformReject] = []
+            stats = await import_cards(
+                session,
+                iter_canonical_models(downloaded_file, aggregates, rejects),
+                rejects=rejects,
+            )
 
-            # Stage 6: Reconcile pre-existing rows to the union games. Non-fatal: the card
+            # Stage 6: Reconcile pre-existing rows per oracle identity (dedup stale
+            # printings, repoint decks, propagate union games). Non-fatal: the card
             # import above has already committed, so a reconcile failure (a transient lock/disk
             # error on the bulk UPDATE) must not fail the whole run and leave the tool reporting
             # status="error" over a fully-populated database — where a plain retry would then
             # short-circuit as already_initialized with games left stale. The only cost of
-            # skipping it is that some pre-existing rows keep stale games until the next
+            # skipping it is that some pre-existing rows keep stale data until the next
             # `update=true` run, which re-runs this reconcile.
-            logger.info("Stage 6/6: Reconciling games on pre-existing rows...")
+            logger.info("Stage 6/6: Reconciling oracle identities on pre-existing rows...")
             try:
-                await reconcile_games(session, aggregates)
+                stats.reconcile = await reconcile_oracle_identities(session, aggregates)
             except (IntegrityError, DatabaseError) as exc:
+                # The reconcile's read phase runs before its internal write-guard, so a
+                # failure there (e.g. "database is locked") reaches this handler with the
+                # session still in pending-rollback state. Roll back here, or the next
+                # session use (mark_import_finished below, or the caller's follow-up
+                # queries) raises PendingRollbackError and escalates a non-fatal stage
+                # into a failed import.
+                try:
+                    await session.rollback()
+                except Exception:
+                    logger.warning(
+                        "session rollback after failed reconciliation also failed",
+                        exc_info=True,
+                    )
+                stats.reconcile = ReconcileStatistics(failed=True)
                 logger.warning(
-                    "games reconciliation failed; the card import still succeeded, so some "
-                    "pre-existing rows may keep stale games until the next update: %s",
+                    "oracle-identity reconciliation failed; the card import still succeeded, "
+                    "so some pre-existing rows may keep stale data until the next update: %s",
                     exc,
                 )
 

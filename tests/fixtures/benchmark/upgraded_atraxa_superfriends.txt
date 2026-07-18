@@ -1,0 +1,83 @@
+Commander
+1 Atraxa, Praetors' Voice (C16) 1
+
+Deck
+1 Sol Ring (C16) 2
+1 Arcane Signet (C16) 3
+1 Fellwar Stone (C16) 4
+1 Mind Stone (C16) 5
+1 Chromatic Lantern (C16) 6
+1 Coalition Relic (C16) 7
+1 Birds of Paradise (C16) 8
+1 Farhaven Elf (C16) 9
+1 Sakura-Tribe Elder (C16) 10
+1 Cultivate (C16) 11
+1 Kodama's Reach (C16) 12
+1 Nature's Lore (C16) 13
+1 Three Visits (C16) 14
+1 Farseek (C16) 15
+1 Teferi, Hero of Dominaria (C16) 16
+1 Elspeth, Sun's Champion (C16) 17
+1 Vraska, Golgari Queen (C16) 18
+1 Kaya, Orzhov Usurper (C16) 19
+1 Nissa, Voice of Zendikar (C16) 20
+1 Garruk Wildspeaker (C16) 21
+1 Kiora, the Crashing Wave (C16) 22
+1 Tamiyo, Field Researcher (C16) 23
+1 Sorin, Lord of Innistrad (C16) 24
+1 Ajani, Mentor of Heroes (C16) 25
+1 Vivien, Champion of the Wilds (C16) 26
+1 Tezzeret, Agent of Bolas (C16) 27
+1 Doubling Season (C16) 28
+1 The Chain Veil (C16) 29
+1 Deepglow Skate (C16) 30
+1 Oath of Teferi (C16) 31
+1 Oath of Gideon (C16) 32
+1 Deploy the Gatewatch (C16) 33
+1 Call the Gatewatch (C16) 34
+1 Inexorable Tide (C16) 35
+1 Evolution Sage (C16) 36
+1 Flux Channeler (C16) 37
+1 Hardened Scales (C16) 38
+1 Corpsejack Menace (C16) 39
+1 Master Biomancer (C16) 40
+1 Forgotten Ancient (C16) 41
+1 Reyhan, Last of the Abzan (C16) 42
+1 Swords to Plowshares (C16) 43
+1 Path to Exile (C16) 44
+1 Anguished Unmaking (C16) 45
+1 Assassin's Trophy (C16) 46
+1 Despark (C16) 47
+1 Generous Gift (C16) 48
+1 Cyclonic Rift (C16) 49
+1 Supreme Verdict (C16) 50
+1 Toxic Deluge (C16) 51
+1 Counterspell (C16) 52
+1 Swan Song (C16) 53
+1 Fierce Guardianship (C16) 54
+1 Sylvan Library (C16) 55
+1 Night's Whisper (C16) 56
+1 Painful Truths (C16) 57
+1 Fact or Fiction (C16) 58
+1 Eternal Witness (C16) 59
+1 Command Tower (C16) 60
+1 Exotic Orchard (C16) 61
+1 Path of Ancestry (C16) 62
+1 City of Brass (C16) 63
+1 Mana Confluence (C16) 64
+1 Reflecting Pool (C16) 65
+1 Breeding Pool (C16) 66
+1 Godless Shrine (C16) 67
+1 Watery Grave (C16) 68
+1 Overgrown Tomb (C16) 69
+1 Temple Garden (C16) 70
+1 Hallowed Fountain (C16) 71
+1 Windswept Heath (C16) 72
+1 Verdant Catacombs (C16) 73
+1 Marsh Flats (C16) 74
+1 Misty Rainforest (C16) 75
+1 Yavimaya Coast (C16) 76
+1 Llanowar Wastes (C16) 77
+1 Fortified Village (C16) 78
+1 Sunpetal Grove (C16) 79
+21 Forest (C16) 80

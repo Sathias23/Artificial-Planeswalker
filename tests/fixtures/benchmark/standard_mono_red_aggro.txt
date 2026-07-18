@@ -1,0 +1,21 @@
+Deck
+4 Monastery Swiftspear (FDN) 1
+4 Heartfire Hero (FDN) 2
+4 Emberheart Challenger (FDN) 3
+4 Manifold Mouse (FDN) 4
+3 Screaming Nemesis (FDN) 5
+2 Hearthborn Battler (FDN) 6
+4 Kumano Faces Kakkazan // Etching of Kumano (FDN) 7
+4 Monstrous Rage (FDN) 8
+4 Play with Fire (FDN) 9
+3 Lightning Strike (FDN) 10
+2 Witchstalker Frenzy (FDN) 11
+22 Mountain (FDN) 12
+
+Sideboard
+3 Urabrask's Forge (FDN) 13
+2 Lithomantic Barrage (FDN) 14
+3 Obliterating Bolt (FDN) 15
+2 Torch the Tower (FDN) 16
+2 Scorching Shot (FDN) 17
+3 Pest Control (FDN) 18

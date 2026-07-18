@@ -1,5 +1,85 @@
 # Deferred Work
 
+## Deferred from: code review of story-7.4 (2026-07-17)
+
+> Test-hardening gaps in the `assess_deck_power` e2e suite (tests-only story; all 7 ACs met, suite green). Neither is a product defect — both are e2e-coverage extensions whose behavior is already guarded at the unit/model level.
+
+- source_spec: `_bmad-output/implementation-artifacts/7-4-end-to-end-tool-test-determinism-diff-regression.md`
+  summary: 'Bracket-4 floor (≥4 confirmed Game Changers) is unreachable through the e2e client — the `_assessment_cards` fixture seeds only two `game_changer=True` cards and Commander singleton rules cap each at quantity 1, so a `bracket == 4` result (and the GC ≥4 gate in dimensions.py) is never exercised end-to-end. Future hardening: add ≥4 distinct GC cards to reach the floor-4 gate through the tools.'
+  evidence: 'Edge Case Hunter trace: dimensions.py GC gate GC_BRACKET_FOUR_MIN=4, count is quantity-aware; fixture exposes e2e-gc-bolas + e2e-gc-aura only. The ≥4 gate is covered by unit scorer tests (test_assessment_scorer.py), not this client suite.'
+
+- source_spec: `_bmad-output/implementation-artifacts/7-4-end-to-end-tool-test-determinism-diff-regression.md`
+  summary: 'The populated `data_vintage` combo values are never positively asserted at the e2e/wire level — the absent-snapshot test pins the null path (`combo_snapshot_imported_at`/`export_version is None`), but no seeded e2e test asserts the present path equals the fixture''s seeded `export_version="5.6.0"` / `imported_at="2026-07-16T09:07:00+00:00"`. A passthrough bug that dropped or garbled the vintage on the present path is caught only at model level (7.3 helper tests). Future hardening: assert the populated vintage in the commander happy-path test.'
+  evidence: 'Blind Hunter + Acceptance Auditor: null-vs-present vintage contract is half-covered e2e; seeded values live in tests/fixtures/combo_snapshot.py:63-65.'
+
+## Deferred from: code review of spec-pre-epic-7-real-deck-gate (2026-07-17)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-pre-epic-7-real-deck-gate.md`
+  summary: '`combo_potential` counts `almost_included` variants whose single missing piece is not legal in the deck''s format, inflating the dimension for constructed decks — the matcher (`match_combos`) and the dimension scoring are format-blind on the missing piece.'
+  evidence: 'G-R2 gate run 2026-07-17: Abzan Dragons and Prismatic Dragon (both Standard) each scored combo_potential=100 from Betor-anchored almost_included variants whose missing partners (e.g. Archfiend of Despair, Mycosynth Lattice, Wound Reflection) are not Standard-legal — the combo can never be completed in-format. Pre-existing product behavior (5.6/6.3 design), surfaced by the Blind Hunter review of the gate report; a natural Epic 7 calibration input.'
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-pre-epic-6-importer-gate.md`
+  status: ✅ RESOLVED (2026-07-16, commit 18880dc)
+  summary: 'Transformer rejects all 33 reversible_card printings ("Name // Name") with `missing required field(s): type_line` — Scryfall''s reversible layout carries type_line (and cmc) only on card_faces. Fix = derive required fields from faces in transform_scryfall_card (a transform-contract change held back by the gate spec''s Ask-First boundary); until then those 33 oracle identities keep pre-existing rows and are surfaced by the stale-remaining warning each run.'
+  resolution: 'Shape-gated face derivation in transform_scryfall_card: cards with NO top-level type_line (the reversible signature) derive name (deduped, so "Anje Falkenrath // Anje Falkenrath" -> "Anje Falkenrath" for exact decklist lookups), type_line, mana_cost, cmc, colors (WUBRG-ordered face union) and all-faces-agree power/toughness from card_faces; ijson Decimal face values sanitized to float so the card_faces JSON column serializes. Cards WITH a top-level type_line transform byte-identically (transform/MDFC/split untouched). Test-pinned (4 new unit tests); next import run should show 0 rejects and clear the 33-identity stale warning.'
+  evidence: 'Live acceptance run 2026-07-15 (b74-successor): all 33 rejects share the doubled-name + type_line-missing signature (Reckoner Bankbuster, Anje Falkenrath, Zndrsplt, …); the gate''s G-I2 diagnostics made the reason string visible for the first time. Parallels the resolved oracle_id face-fallback fix (resolve_oracle_id, 0.3.0).'
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-pre-epic-6-importer-gate.md`
+  summary: 'TOCTOU window in reconcile_oracle_identities: a deck_cards row committed by a concurrent connection (e.g. import_decklist via the live MCP server) between the reconcile''s deck_cards plan-scan and its write phase is never repointed, and the stale cards row is then deleted with FK enforcement OFF — a silently dangling deck_cards.card_id. Fix candidates: re-scan deck_cards after acquiring the write lock (BEGIN IMMEDIATE / first-write upgrade), or verify-and-repoint residual references just before the delete.'
+  evidence: 'Edge Case Hunter trace over scryfall.py plan-scan vs execute+delete phases; SQLite deferred transactions take no lock until the first write, and the central DB is shared with a live MCP server. Window is narrow (scan-to-write span) and requires a concurrent deck write during a bulk import.'
+- source_spec: `_bmad-output/implementation-artifacts/spec-pre-epic-6-importer-gate.md`
+  summary: 'Reconcile deletions orphan card_vec/card_embedding_meta rows until a build_search_index run with prune=true (prune defaults to False): KNN over-fetch returns deleted ids that vanish at the cards JOIN, thinning semantic results. Consider auto-pruning vectors for deleted card ids at reconcile time, or defaulting prune=true when the importer reports rows_deleted > 0.'
+  evidence: 'Both reviewers; src/search/index_builder.py orphan cleanup only runs during index builds, and build_search_index.prune defaults False. Mitigated in-gate by the result message now recommending prune=true after deletions.'
+
+## Deferred from: dev of story-5.9 (2026-07-14)
+
+> Live-DB data-quality issues discovered while closing the 5.9 benchmark gate. Out of the
+> story's frozen scope (AC10: no `src/data/**` / `scripts/` edits); the operational damage was
+> repaired by hand on Brad's machine (documented in the 5.9 Completion Notes) but the root
+> causes live in the importer.
+
+- source_spec: 5-9-pure-score-entry-point-benchmark-validation.md
+  summary: 'Re-running `import_scryfall_data.py` accumulates duplicate rows per card name: Scryfall''s default_cards "preferred printing" per oracle identity changes between bulk snapshots, so each refresh inserts rows under NEW printing ids while the old printing rows persist (observed 2026-07-14: 51,189 rows for ~38k cards; 12,992 stale rows with `game_changer` NULL because the upsert only touches the new ids). Consequences: `find_by_name_exact` (ORDER BY id LIMIT 1) resolves 4,711 names to an arbitrary STALE printing, and any new backfilled column stays NULL on stale rows. Fix candidates: reconcile/delete rows whose oracle_id gained a fresh printing (mind deck_cards FK references), key the upsert by oracle_id, or propagate oracle-level fields (like game_changer) across all rows of the same oracle_id post-import.'
+  evidence: 'Central cards.db state 2026-07-14 pre-repair; epic-4 retro recorded 0 NULL on 2026-07-12, the Jul-14 refresh reintroduced 12,992. Hand-repair applied: copy game_changer across same-oracle_id rows, then set the 36 residual NULLs FALSE (none on the GC list).'
+- source_spec: 5-9-pure-score-entry-point-benchmark-validation.md
+  summary: 'The bulk import reports "Errors: 36" with no per-card diagnostics reaching the operator log tail, and those 36 cards (incl. Blood Crypt, Hallowed Fountain, Reckoner Bankbuster) silently keep stale data — likely the new printing id colliding with a uniqueness constraint while a different-id row for the same oracle identity already exists. Surface the failing card names + exception class in the import summary, and count them against a "stale rows remaining" warning.'
+  evidence: 'b74hepj01 import run 2026-07-14: 38,197 inserted / 36 errors; the 36 error cards exactly matched the 36 names left game_changer-NULL after the oracle_id repair.'
+
+## Deferred from: code review of story-5.8 (2026-07-14)
+
+> Both are Story 5.9 (calibration / threshold + weight tuning) concerns surfaced during the 5.8 review — neither is a correctness defect in the shipped code (all inputs are frozen, type-pinned, and test-pinned). Parallels the 5.7 `win_turn_band` defer directly below.
+
+- source_spec: 5-8-for-format-aggregate-tier-label-standard-fork-confidence-vocabulary.md
+  status: ✅ RESOLVED (Story 5.9, 2026-07-14)
+  summary: '`tier_label`/`aggregate_score` trust their frozen profile''s shape & weight validity: `tier_label` (aggregate.py:146) assumes exactly 4 strictly-ascending `tier_thresholds` (a 5+-tuple → IndexError; non-ascending → silent mislabel), and `aggregate_score` (aggregate.py:116) assumes non-negative + finite weights (NaN → ValueError; negative → silent monotonicity break). Unreachable with the shipped frozen+tested profiles, but 5.9 hand-tunes both `weights` and `tier_thresholds` — optional cheap defense-in-depth for the tuning workflow.'
+  evidence: 'aggregate.py:146 `TIER_LABELS[bisect_right(profile.tier_thresholds, score)]`; aggregate.py:116 weighted sum. Invariants pinned by profiles type `tuple[int,int,int,int]` + test_assessment_profiles.py (non_negative, sum-to-1.0, ascending). Same class as the 5.7 `win_turn_band` guard defer.'
+  resolution: '`aggregate_score` now raises `ValueError` on a negative or non-finite weight; `tier_label` raises on cuts not strictly ascending within `(0, 100)`. Test-pinned (`TestStory59Guards` in test_assessment_aggregate.py, incl. a shipped-profiles-pass check).'
+- source_spec: 5-8-for-format-aggregate-tier-label-standard-fork-confidence-vocabulary.md
+  status: ✅ RESOLVED (Story 5.9, 2026-07-14)
+  summary: '`tier_thresholds` domain `(0, 100]` permits a cut of exactly 100, making the top band (`Competitive`) a degenerate single-point band reachable only by an exact score of 100. Harmless for the shipped `(20, 40, 60, 80)`; add a guardrail when 5.9 re-cuts per-format anchors.'
+  evidence: profiles.py:126 field type + test_assessment_profiles.py in-domain check `0 < cut <= 100`.
+  resolution: 'Domain tightened to `(0, 100)`: `tier_label` guards it and the aggregate profile-shape test now asserts `0 < cut < 100` (a cut at exactly 100 is a tuning mistake, never a meaningful configuration).'
+
+## Deferred from: code review of story-5.7 (2026-07-14)
+
+> All three are Story 5.9 (calibration / benchmark tuning) concerns surfaced during the 5.7 review — none is a correctness defect in the shipped code.
+
+- source_spec: 5-7-dimension-vector-commander-bracket-floor-cedh-candidacy.md
+  status: ✅ RESOLVED — KEPT AS-IS, documented (Story 5.9, 2026-07-14)
+  summary: '`card_advantage` dimension structurally caps at 98 (80 count-weight + 18 max tutor bonus), never reaching 99/100 — revisit the ceiling during 5.9 calibration.'
+  evidence: dimensions.py:562 `_card_advantage_score`; provisional/5.9-owned mapping by design.
+  resolution: 'Keep-decision documented in `_card_advantage_score`''s docstring after the calibration pass: the 2-point headroom is invisible under the aggregate weights and benchmark cuts, and re-normalizing the two terms would change every deck''s score for zero benchmark benefit.'
+- source_spec: 5-7-dimension-vector-commander-bracket-floor-cedh-candidacy.md
+  status: ✅ RESOLVED (Story 5.9, 2026-07-14)
+  summary: '`sixty_card` curve targets (interaction 8 / draw 6 / instant-cheap 4) are self-labelled provisional guesses, and mana_efficiency shares one land-delta penalty slope across 99- and 60-card decks — Standard vs Commander vectors are not on a comparable scale until 5.9 anchors them.'
+  evidence: dimensions.py:177-201 target dicts; only Commander targets trace to the Command Zone template.
+  resolution: 'Closed by per-format `tier_thresholds` anchoring: Standard cuts (28, 45, 65, 85) are anchored against the four Standard benchmark bands independently of Commander''s (20, 40, 60, 80), and raw 0-100 aggregates are never compared across formats — stated in the STANDARD_PROFILE tier_thresholds comment. The sixty_card curve-target VALUES stay provisional (the Standard benchmark orders cleanly without touching them).'
+- source_spec: 5-7-dimension-vector-commander-bracket-floor-cedh-candidacy.md
+  status: ✅ RESOLVED (Story 5.9, 2026-07-14)
+  summary: '`_speed_score` has no guard for a malformed `win_turn_band` (`lo > hi`) — unreachable with the shipped frozen+tested profiles, but a future 5.9 band edit of the form `hi = lo-4` divides by zero and `hi < lo` inverts the mapping. Optional cheap defense-in-depth for the band-editing workflow.'
+  evidence: dimensions.py:484 (`slowest - fastest = band_hi - band_lo + 4`); invariant documented at profiles.py:86-87.
+  resolution: '`_speed_score` now raises `ValueError` on `lo > hi` (a `lo == hi` pinpoint band stays valid — the ±2 pad keeps the divisor non-zero). Test-pinned (`TestStory59WinTurnBandGuard` in test_assessment_dimensions.py).'
+
 ## Deferred by scope-split: Kotis session plugin-improvement leads (2026-07-10)
 
 > Source: `temp/kotis-fangkeeper-brawl.md` §"Plugin improvement leads" (live Brawl sessions
@@ -392,3 +472,141 @@
   harden `src/paths.py::data_dir` to ignore an override that still contains an unsubstituted `${...}`
   placeholder (defense-in-depth), with a unit test — otherwise the bug returns. (Source: Brad live
   smoke-test; Severity: was High, now fixed.)
+
+## Deferred from: code review of story-4.2 (2026-07-12)
+
+> 3-reviewer adversarial pass on the `scripts/migrate_add_game_changer.py` diff (Story 4.2). The
+> Blind Hunter's headline finding — the documented backfill re-import can't actually populate
+> `game_changer` because `src/data/importers/importer.py` never lists the column — is a
+> decision-needed item logged in the story file's Review Findings, not deferred here (it blocks
+> the story's own AC5/AC6, so it isn't "not actionable now"). The items below are real but
+> pre-existing/inherited-template gaps out of this story's scope.
+
+- **Pre-`try` engine/session-factory failures + rollback()/dispose() masking secondary exceptions** — `scripts/migrate_add_game_changer.py:42-46,67-72`. `create_engine()`/`create_session_factory()` calls sit outside the `try` block, and neither `session.rollback()` in `except` nor `engine.dispose()` in `finally` is itself guarded — a secondary exception there would mask the original error or an unhandled traceback if session-factory setup fails. Verbatim structure copied from `scripts/migrate_add_power_toughness.py` per this story's own template mandate; not introduced by this diff. (Source: Edge Case Hunter; Severity: Low.)
+- **TOCTOU race between the idempotency check and the `ALTER TABLE`** — `scripts/migrate_add_game_changer.py:50-57`. Two concurrent runs can both pass the `PRAGMA table_info` check before either commits, so the loser hits a raw "duplicate column name" `OperationalError` dressed up as a generic migration failure instead of a benign no-op. Identical race exists in the precedent script. (Source: Edge Case Hunter; Severity: Low.)
+- **`PRAGMA table_info(cards)` on a missing `cards` table silently returns empty rather than erroring** — `scripts/migrate_add_game_changer.py:47-55`. A pre-bootstrap DB (never run through `initialize_database`) makes the script proceed straight to `ALTER TABLE` on a nonexistent table, surfacing a raw "no such table: cards" error with no bootstrap hint. Same gap in `migrate_add_power_toughness.py`; same class as the previously-resolved G3 `index_unavailable` bootstrap gap, but this migration template was never given the equivalent fix. (Source: Blind Hunter + Edge Case Hunter; Severity: Low.)
+- **Upsert-based backfill only touches rows present in the current Scryfall bulk export** — `src/data/importers/importer.py`. A card absent from a freshly-downloaded bulk file keeps its prior (NULL) `game_changer` value indefinitely; the migration docstring's "overwrites every card" framing overstates actual coverage. Inherent to the importer's existing upsert design, not introduced by this diff. (Source: Blind Hunter; Severity: Low.)
+- **Idempotency guard checks column presence only, not type/nullability** — `scripts/migrate_add_game_changer.py:50-53`. A differently-typed partial/failed prior migration attempt would be silently treated as already-satisfied. Identical guard shape in the precedent script. (Source: Blind Hunter; Severity: Low.)
+
+## Deferred from: code review of story-4.1 (2026-07-11)
+
+- **Untyped `game_changer` value could reach the `Boolean` column unchecked** — `src/data/importers/transformers.py:79`. `card_json.get("game_changer")` performs no type/shape validation; a non-bool value (string/int) would flow straight into a `Boolean` SQLAlchemy column with no coercion or error. Pre-existing pattern: no field in `transform_scryfall_card` has type validation beyond null-coalescing, and Scryfall is a trusted, documented source for this field. (Source: Edge Case Hunter + Blind Hunter; Severity: Low.)
+- **No cross-printing `game_changer` reconciliation in oracle aggregation** — `src/data/importers/aggregate.py`. Unlike `games` (unioned across all printings of an oracle identity), `game_changer` is taken from whichever printing happens to be canonical, with no explicit cross-printing reconciliation. Mirrors the identical, deliberate gap already present for `power`/`toughness`; out of this story's scope per its own Dev Notes (extraction only, not aggregation semantics). (Source: Edge Case Hunter; Severity: Low.)
+- **`tests/fixtures/scryfall_sample.json` not updated with a realistic `game_changer` key** — the three new unit tests use a hand-built minimal `card_json` dict rather than the shared Scryfall fixture, so a real-world schema drift in the live field (e.g. Scryfall renaming/nesting it) wouldn't be caught. Story Dev Notes explicitly scope this story to synthetic-input unit tests only ("no live Scryfall data or re-import is required"). (Source: Blind Hunter; Severity: Low.)
+- **No DB round-trip test for `game_changer`** — only the in-memory `CardModel` object returned by `transform_scryfall_card` is asserted; nothing proves `False` survives an actual SQLite INSERT/SELECT rather than being coerced to `NULL` on the real dialect. Identical gap already exists for the `power`/`toughness` precedent — no such round-trip test exists anywhere in the suite today. Somewhat more load-bearing here than a typical gap, since defending against exactly this `None`/`False` conflation is this field's whole purpose. (Source: Blind Hunter; Severity: Medium, but pre-existing pattern.)
+- **No Pydantic schema-layer test for `game_changer`** — nothing constructs/validates a `Card` (via `model_validate`/`model_dump`) with `game_changer=False` to prove the "no coercion validator" claim rather than merely asserting it in a comment. Identical gap already exists for `power`/`toughness` in `tests/unit/data/test_schemas.py`. (Source: Blind Hunter; Severity: Low.)
+- **Sprint-status prose doesn't note the feature isn't usable end-to-end until Story 4.2's migration ships** — `epic-4` flips to `in-progress` and `4-1` to `done` while `4-2-migrate-and-backfill-existing-databases` stays `backlog`; a reader of `sprint-status.yaml` alone can't tell "done" here means "additive schema only, unusable on existing DBs until 4.2 ships." Already documented clearly in this story's own Dev Notes ("What this story is (and is NOT)"). (Source: Blind Hunter; Severity: Low.)
+
+## Deferred from: code review of story-5.1 (2026-07-12)
+
+> 3-reviewer adversarial pass on Story 5.1's calibration benchmark set (`tests/fixtures/benchmark_decks.py` + 7 decklist fixtures + offline self-validation test). The headline finding — a rules-illegal duplicate "Kinnan, Bonder Prodigy" card in `cedh_kinnan_bonder_prodigy.txt`, rooted in the Dev Agent's admitted departure from AC3/Task 2's "copy verbatim from source" mandate — is a decision-needed item logged in the story file's Review Findings, not deferred here (it's a defect in the acceptance-gate data itself, not a pre-existing/out-of-scope gap). The items below are real but low-severity hardening gaps, not blocking.
+
+- **Parser silently drops cards under an unrecognized/misspelled section header** — `tests/fixtures/benchmark_decks.py:120-147`. A future manifest refresh with a typo'd header (e.g. "Deck:" or "Side Board") would silently lose every card line under it with no diagnostic, undermining the "actionable failures" intent behind AC7. No occurrence in the current 7 entries. (Source: Edge Case Hunter; Severity: Low.)
+- **Missing/unreadable `decklist_file` raises an unlabeled `FileNotFoundError`** — `tests/fixtures/benchmark_decks.py:174-182`. `load_benchmark()` doesn't wrap the read with the offending entry's `key` in the error message. No current occurrence. (Source: Edge Case Hunter; Severity: Low.)
+- **Parser accepts a zero-quantity card line with no guard** — `tests/fixtures/benchmark_decks.py:149-158`. `BenchmarkCard.quantity`'s docstring claims `>= 1` but nothing enforces it; a `0 Foo (SET) 1` line would parse as a phantom zero-quantity card. No current occurrence. (Source: Edge Case Hunter; Severity: Low.)
+- **No guard against split-quantity duplicate non-commander cards** — `tests/fixtures/benchmark_decks.py:149-158`. Generalizes the Kinnan bug class beyond commanders; `_mainboard_total` sums by line, not by distinct name, so the same card split across two lines would inflate the total silently. No current occurrence outside Kinnan; would be caught by the same duplicate-name-check patch tracked in the story file, once implemented. (Source: Blind Hunter; Severity: Low.)
+
+## Deferred from: code review of story-5.2 (2026-07-12)
+
+- **No construction-time (`__post_init__`) validation for weight-sum / win-turn-band ordering / rubric domain / non-empty version invariants** — `src/logic/assessment/profiles.py:43,69` (`DimensionWeights`, `FormatProfile`). AC3 permits (doesn't require) `__post_init__` validation on the frozen dataclasses; the two hardcoded module constants are already exhaustively covered by `tests/unit/logic/test_assessment_profiles.py`, so this is only a gap for hypothetical future dynamic construction (e.g., an Epic 7 `PROFILES` lookup or a 5.9 tuning script constructing profiles outside this module). Revisit if/when `FormatProfile`/`DimensionWeights` are ever constructed anywhere else. (Source: Blind Hunter + Edge Case Hunter, independently; Severity: Low.)
+
+## Deferred from: code review of story-5.3 (2026-07-12)
+
+> 3-reviewer adversarial pass on Story 5.3's shared oracle-text classifiers
+> (`src/logic/assessment/classifiers.py`). No decision-needed items — AC5/AC6 explicitly state
+> pattern-list content is provisional v1 vocabulary owned by Story 5.9's benchmark pass ("tests
+> pin canonical-card behavior, not pattern contents"), which pre-answers most of what the review
+> layers surfaced. The real, unambiguous code/doc gaps are logged as `[Review][Patch]` items in
+> the story file instead. The two items below are real but have no current consumer to be harmed
+> by them yet.
+
+- **`_detect_hard_trigger`-based functions (`detect_mass_land_denial`, `detect_extra_turn_cards`) each call `classify_deck` independently, with no memoization** — `src/logic/assessment/classifiers.py:364-396`. Checking both FR12 hard triggers back-to-back reclassifies every card in the deck twice (full 9-category classification each time). No current caller does this — Story 5.7 (Bracket floor) is the first consumer and hasn't been built yet. Revisit there: call `classify_deck` once and read both buckets, or cache within a request scope. (Source: Blind Hunter; Severity: Low.)
+- **`classify_card`'s `frozenset[str]` return has no deterministic ordering**, unlike the sorted-tuple discipline (`CategoryCount.card_names`, `HardTriggerFlag.card_names`) used everywhere else in the module for its stated AD-8-spirit determinism goal — `src/logic/assessment/classifiers.py:252-304`. Only matters if a future caller serializes per-card output directly instead of routing through `classify_deck` (which does sort). No such direct consumer exists yet. (Source: Blind Hunter; Severity: Low.)
+
+Also surfaced but explicitly out of scope per AC5/AC6 (pattern-content tuning is Story 5.9's job,
+not logged as action items — candidate regression fixtures for that story's benchmark pass):
+Isochron Scepter's copy-effect text doesn't match any `WINCON_COMBO_PIECE` pattern despite being
+the module's own implied canonical combo example; MDFC spell-face tutors get excluded from
+`TUTOR` via the joined `type_line`'s land check when the back face is a land (e.g. a
+to-hand/top-of-library tutor printed on a modal DFC); single-target "target player loses the
+game" wincons (Door to Nothingness) don't match `_WINCON_EXPLICIT_RES`; untap-enabler wordings
+like "untap it" / "untap enchanted creature" (Freed from the Real) don't match
+`_COMBO_PIECE_RES`; plural/numeric extra-turn phrasing (Alrund's Epiphany's "takes two extra
+turns") doesn't match `_EXTRA_TURN_RE`; `_HAYMAKER_RE` has no pump-magnitude threshold (any
+"creatures you control get +1/+1"-style anthem matches identically to Craterhoof Behemoth);
+graveyard-hate cards (Tormod's Crypt) get the generic `INTERACTION` tag via the mass-wipe
+`(?:destroy|exile) (?:all|each)` branch. (Sources: Blind Hunter + Edge Case Hunter, batched;
+Severity: n/a — explicitly deferred by the story's own ACs.)
+
+## Deferred from: code review of story-5.5 (2026-07-13)
+
+> 3-reviewer adversarial pass on Story 5.5's consistency/interaction/structural-coverage
+> signals (`src/logic/assessment/consistency.py`). No decision-needed items. The Edge Case
+> Hunter's one formal finding (`structural_gaps[formula]` unguarded `KeyError`) was dismissed
+> on triage, not deferred — it matches the exact accepted precedent already shipped in
+> `mana_base.py`'s `karsten_land_delta`/`compute_pip_signals` (mypy's `Literal` enforces the
+> contract at call sites, same as every sibling function in the module).
+
+- **`classify_card` (Story 5.3) doesn't exclude land-typed cards from the
+  `INTERACTION`/`CARD_DRAW`/`WINCON_*` tags** (only from `RAMP`/`TUTOR`) —
+  `src/logic/assessment/consistency.py:259`. A land whose oracle text matches an interaction
+  pattern (e.g. a "destroy target artifact" land) is silently folded into
+  `interaction_signals`'s count and CMC-0 bucket. Pre-existing Story 5.3 classifier behavior,
+  not caused by this change — revisit if a downstream consumer (5.7/5.8) needs a
+  nonland-only interaction read. (Source: Blind Hunter; Severity: Low.)
+- **`STRUCTURAL_GAP_BASELINES` is `dict[KarstenFormula, dict[str, int]]`** — the outer
+  `KarstenFormula` key is Literal-checked (the 5.4 review lesson), but the inner category
+  keys (`CARD_DRAW`/`INTERACTION`/`RAMP`) remain plain `str`, so a future typo'd/missing key
+  is a runtime `KeyError` inside `structural_gaps`, not a mypy error —
+  `src/logic/assessment/consistency.py:310`. Root cause is `classifiers.py`'s untyped
+  category constants from Story 5.3; fixing it properly means Literal-typing those constants
+  upstream, out of this story's scope. (Source: Blind Hunter; Severity: Low.)
+- **`probability_at_least` has no property/invariant test** asserting output always stays in
+  `[0.0, 1.0]` for arbitrary valid inputs — `src/logic/assessment/consistency.py:59`. It's the
+  shared primitive every other function in the module (and future 5.6/5.7 combo-probability
+  call sites) delegates to; only pinned exact-value/edge-case tests exist today. Optional
+  hardening beyond AC8's required test matrix — revisit if a future refactor touches the
+  summation/clamp logic. (Source: Blind Hunter; Severity: Low.)
+
+## Deferred from: code review of story-6-1 (2026-07-16)
+
+> Story 6.1 is the schema/migration/write-path slice of commander identity. Its Dev Notes
+> explicitly scope **all commander validation/inference to Epic 7 / Story 7.1** ("Do not add
+> inference logic anywhere"). These two items are the validation surface that slice will need.
+
+- **No commander-identity validation anywhere on the write paths** — the deck can hold any number
+  of `commander=True` rows (the "two flagged rows = partners" invariant is unguarded and could be
+  exceeded via repeated `add_card_to_deck(commander=True)` or a `merge_decks` that stacks
+  source-flagged cards onto an already-two-commander target); a card can be flagged
+  `commander=True` **and** `sideboard=True` simultaneously (a semantically impossible mainboard-only
+  concept — no cross-field guard in `DeckRepository.add_card_to_deck` `src/data/repositories/deck.py:294`
+  or the tool helper `src/mcp_server/tools/deck_management.py:408`); and `merge_decks`' exists-branch
+  keeps the target's flag, so merging a commander source deck whose commander is already an unflagged
+  card in the target silently yields a "commander deck" with zero flagged commanders
+  (`src/data/repositories/deck.py:648`). All spec-accepted for this slice; Epic 7's edge-resolution
+  should add the count cap, the mainboard-only guard, and a zero/over-count warning.
+  (Source: Blind Hunter + Edge Case Hunter; Severity: Medium; deferred to Epic 7 / Story 7.1.)
+- **No API path to change an existing row's commander flag** — once a card is in the mainboard,
+  `add_card_to_deck` returns `status="exists"` (via `IntegrityError`) and never updates the flag;
+  `update_card_quantity` and the Arena `import_decklist` "exists" path likewise never touch it. So
+  promoting/demoting a commander requires remove-then-re-add. Fine for this slice (matches the
+  established additive-import contract), but Epic 7 (or a deck-edit story) will need an explicit
+  set-commander path. (Source: Blind Hunter; Severity: Low; deferred.)
+
+## Deferred from: code review of 7-2-combo-provisioning-the-degradation-ladder (2026-07-17)
+
+- **Transient `OperationalError` during combo provisioning is reported as
+  `combo_data_unavailable`** — `ComboSnapshotRepository`'s three read methods catch
+  `OperationalError` broadly and return "absent" (`src/data/repositories/combo_snapshot.py:59,72,124`),
+  so a momentary "database is locked" / "disk I/O error" is indistinguishable from a genuinely
+  missing snapshot: a healthy snapshot gets mislabeled unavailable and confidence is lowered.
+  Graceful (never crashes) and rooted in the Story 6.3 repo contract, not Story 7.2's diff.
+  Fix would narrow the repo's `except OperationalError` to the missing-table case (edits
+  `src/data`, out of 7.2 scope). (Source: Blind Hunter; Severity: Low; deferred — data-layer.)
+- **Deck power summary counts `almost_included` variants as "combo variants matched"** —
+  `combos_matched = len(scored.core.combos)` (`src/mcp_server/tools/assess_deck_power.py:524`)
+  includes both the `included` (shortfall 0) and `almost_included` (shortfall 1) buckets, so a
+  deck one card short of a single combo reads "1 combo variant matched", implying a live combo.
+  AC 6 only requires a "combos matched count" and the 7.2 summary is explicitly provisional;
+  Story 7.3 (human-summary serialization) should disambiguate assembled vs one-away in the
+  client-facing projection. (Source: Blind Hunter; Severity: Low; deferred to Story 7.3.)

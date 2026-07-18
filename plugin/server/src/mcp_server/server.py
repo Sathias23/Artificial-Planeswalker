@@ -35,11 +35,19 @@ from mcp.server.fastmcp import FastMCP
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.data.database import create_engine, create_session_factory
+from src.mcp_server.tools.assess_deck_power import AssessDeckPowerResult
+from src.mcp_server.tools.assess_deck_power import (
+    assess_deck_power as _assess_deck_power_helper,
+)
 from src.mcp_server.tools.build_search_index import BuildSearchIndexResult
 from src.mcp_server.tools.build_search_index import build_search_index as _build_search_index_helper
 from src.mcp_server.tools.card_lookup import CardLookupResult, lookup_card
 from src.mcp_server.tools.card_search import CardSearchResult
 from src.mcp_server.tools.card_search import search_cards as _search_cards_helper
+from src.mcp_server.tools.compare_deck_power import CompareDeckPowerResult
+from src.mcp_server.tools.compare_deck_power import (
+    compare_deck_power as _compare_deck_power_helper,
+)
 from src.mcp_server.tools.deck_analysis import (
     ManaCurveResult,
     SynergyResult,
@@ -277,6 +285,7 @@ def build_server(
         name: str | None = None,
         quantity: int = 1,
         sideboard: bool = False,
+        commander: bool = False,
     ) -> DeckCardResult:
         """Add a card to a deck, identified by ``card_id`` OR ``name`` (exactly one).
 
@@ -293,6 +302,8 @@ def build_server(
             name: A card name to resolve and add (provide this OR ``card_id``).
             quantity: Number of copies to add (must be >= 1; default 1).
             sideboard: Add to the sideboard instead of the mainboard (default False).
+            commander: Mark this card as the deck's commander (default False;
+                flag two cards for partners).
 
         Returns:
             A result whose ``status`` reports the outcome (``ok``/``exists``/
@@ -306,6 +317,7 @@ def build_server(
                 name=name,
                 quantity=quantity,
                 sideboard=sideboard,
+                commander=commander,
             )
 
     @mcp.tool()
@@ -314,8 +326,9 @@ def build_server(
 
         Accepts Arena's ``Commander`` / ``Deck`` / ``Sideboard`` / ``Companion``
         sections with card lines shaped like ``1 Card Name (SET) 123``; the
-        optional ``About`` / ``Name`` metadata block is skipped. Commander and
-        Deck entries become mainboard cards; Sideboard and Companion entries
+        optional ``About`` / ``Name`` metadata block is skipped. Commander
+        entries become mainboard cards **flagged as commanders**; Deck entries
+        become unflagged mainboard cards; Sideboard and Companion entries
         become sideboard cards.
         The import is additive: it never clears the deck or silently merges an
         existing quantity. Each nonblank card line gets an ordered result such as
@@ -461,6 +474,97 @@ def build_server(
         """
         async with session_factory() as session:
             return await _validate_deck_helper(session, deck_id=deck_id, format=format, games=games)
+
+    @mcp.tool()
+    async def assess_deck_power(deck_id: str, format: str | None = None) -> AssessDeckPowerResult:
+        """Assess a saved deck's power level by id — deterministic 0-100 score with evidence.
+
+        Loads the deck (mainboard only), resolves the scoring format (explicit
+        ``format`` param first, else the deck's stored format, else a flagged
+        commander implies commander) and the commander(s) (flagged rows first,
+        else a sole legendary creature in a commander deck, else
+        unidentified), then scores the deck and returns a structured
+        ``assessment`` block: a 7-dimension integer vector (speed, consistency,
+        resilience, interaction, mana_efficiency, card_advantage,
+        combo_potential), a ``for_format_score`` (0-100) with its descriptive
+        ``tier`` label, the Commander ``bracket`` floor (``null`` for
+        standard), ``data_vintage`` (combo-snapshot age + profile version — the
+        only "as of" facts), a ``confidence`` level with named reasons, and
+        explainability ``flags`` (Game Changer names, matched combos with
+        included/almost_included buckets, structural gaps, cEDH candidacy).
+        Deterministic: the same deck against the same card + combo data
+        serializes byte-identically, so two results can be diffed. Missing
+        inputs (no combo snapshot, unidentified commander, unknown Game Changer
+        data) degrade ``confidence`` with named reasons — the deck is still
+        scored. Supported formats: ``commander`` and ``standard``; anything
+        else (e.g. brawl) returns ``unsupported_format`` — pass ``format``
+        explicitly to force a profile. Observational — it does not modify the
+        deck. Stateless: pass ``deck_id`` every call.
+
+        Args:
+            deck_id: The deck id (from ``create_deck`` or ``list_decks``).
+            format: Optional format override ("commander" or "standard",
+                case-insensitive); omit to infer from the deck.
+
+        Returns:
+            A result whose ``status`` is ``ok`` (``assessment`` populated,
+            ``summary`` its human projection), ``deck_not_found``,
+            ``unsupported_format``, ``database_not_initialized``, or
+            ``error``.
+        """
+        async with session_factory() as session:
+            return await _assess_deck_power_helper(session, deck_id=deck_id, format=format)
+
+    @mcp.tool()
+    async def compare_deck_power(
+        deck_id_a: str, deck_id_b: str, format: str | None = None
+    ) -> CompareDeckPowerResult:
+        """Compare two saved decks' power assessments — deterministic server-side deltas.
+
+        Runs the same assessment pipeline as ``assess_deck_power`` on both
+        decks and returns a structured ``comparison`` block of every
+        difference, so no caller ever re-derives the arithmetic. Delta
+        direction is **b − a**: ``deck_id_a`` is the baseline ("before"),
+        ``deck_id_b`` the candidate ("after") — a positive delta means the
+        candidate is higher. The block carries the 7-dimension
+        ``vector_delta``, the ``for_format_score`` delta with both endpoints
+        and tiers, the Commander bracket pair (``bracket_a``/``bracket_b`` —
+        endpoints, never subtracted; ``null`` for standard), sorted
+        added/removed lists for Game Changers, structural gaps, and combos
+        (plus ``combos_bucket_changed`` for variants whose
+        included/almost_included bucket flipped), per-side booleans, and both
+        sides' ``data_vintage`` and ``confidence`` blocks verbatim.
+        Deterministic: identical inputs serialize byte-identically; comparing
+        a deck with itself (legal) yields all-zero deltas and empty lists. To
+        compare two versions of ONE deck, snapshot it first — export via
+        ``view_deck``/``load_deck``, then ``create_deck`` +
+        ``import_decklist`` (or re-add the rows) to freeze the "before" copy,
+        edit the original, and compare the two ids. If the two decks resolve
+        to different formats the result is ``format_mismatch`` — pass
+        ``format`` explicitly to force both sides. A side that fails to
+        assess yields ``deck_a_failed`` / ``deck_b_failed`` /
+        ``both_decks_failed`` with the underlying reason in ``summary``.
+        Observational — modifies nothing. Stateless: pass both deck ids every
+        call.
+
+        Args:
+            deck_id_a: The baseline deck id (from ``create_deck`` or
+                ``list_decks``).
+            deck_id_b: The candidate deck id; may equal ``deck_id_a``.
+            format: Optional format override ("commander" or "standard",
+                case-insensitive) applied to BOTH decks; omit to let each
+                deck resolve its own format.
+
+        Returns:
+            A result whose ``status`` is ``ok`` (``comparison`` populated,
+            ``summary`` its human projection), ``deck_a_failed``,
+            ``deck_b_failed``, ``both_decks_failed``, ``format_mismatch``,
+            ``database_not_initialized``, or ``error``.
+        """
+        async with session_factory() as session:
+            return await _compare_deck_power_helper(
+                session, deck_id_a=deck_id_a, deck_id_b=deck_id_b, format=format
+            )
 
     @mcp.tool()
     def semantic_search_cards(

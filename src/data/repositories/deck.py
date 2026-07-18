@@ -292,7 +292,12 @@ class DeckRepository(BaseRepository):
         return Deck.model_validate(deck_model)
 
     async def add_card_to_deck(
-        self, deck_id: str, card_id: str, quantity: int, sideboard: bool = False
+        self,
+        deck_id: str,
+        card_id: str,
+        quantity: int,
+        sideboard: bool = False,
+        commander: bool = False,
     ) -> DeckCard:
         """Add a card to a deck (mainboard or sideboard).
 
@@ -304,6 +309,8 @@ class DeckRepository(BaseRepository):
             card_id: Card UUID
             quantity: Number of copies (must be >= 1)
             sideboard: True for sideboard, False for mainboard
+            commander: Mark this card as one of the deck's commanders
+                (flag two cards for partners)
 
         Returns:
             DeckCard schema with card details
@@ -318,7 +325,8 @@ class DeckRepository(BaseRepository):
                 deck_id="deck-123",
                 card_id="card-456",
                 quantity=4,
-                sideboard=False
+                sideboard=False,
+                commander=False
             )
         """
         if quantity < 1:
@@ -329,7 +337,11 @@ class DeckRepository(BaseRepository):
 
         try:
             deck_card_model = DeckCardModel(
-                deck_id=deck_id, card_id=card_id, quantity=quantity, sideboard=sideboard
+                deck_id=deck_id,
+                card_id=card_id,
+                quantity=quantity,
+                sideboard=sideboard,
+                commander=commander,
             )
             self.session.add(deck_card_model)
             await self.session.commit()
@@ -634,7 +646,8 @@ class DeckRepository(BaseRepository):
                 card_key = (source_card.card_id, source_card.sideboard)
 
                 if card_key in target_card_map:
-                    # Card exists in target - apply merge strategy
+                    # Card exists in target - apply merge strategy. Quantity-only
+                    # merge: the target's commander flag is kept as-is by design.
                     target_quantity = target_card_map[card_key]
                     source_quantity = source_card.quantity
 
@@ -664,6 +677,7 @@ class DeckRepository(BaseRepository):
                         card_id=source_card.card_id,
                         quantity=source_card.quantity,
                         sideboard=source_card.sideboard,
+                        commander=source_card.commander,
                     )
                     cards_added += 1
 

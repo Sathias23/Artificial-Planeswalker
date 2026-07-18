@@ -1,7 +1,9 @@
 """Unit tests for Scryfall card transformation logic."""
 
 import json
+from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -204,6 +206,7 @@ def test_transform_card_with_defaults():
     assert card.legalities == {}
     assert card.keywords is None
     assert card.card_faces is None
+    assert card.game_changer is None
 
 
 def test_transform_empty_dict():
@@ -341,3 +344,218 @@ def test_transform_noncreature_has_no_power_toughness():
     assert card is not None
     assert card.power is None
     assert card.toughness is None
+
+
+def _minimal_card_json(**overrides: Any) -> dict[str, Any]:
+    """A minimal valid Scryfall card_json, overridable per-field (for game_changer tests)."""
+    base: dict[str, Any] = {
+        "id": "gc-id",
+        "name": "GC Test Card",
+        "oracle_id": "gc-oracle-id",
+        "type_line": "Creature",
+        "mana_cost": "{1}{W}",
+        "cmc": 2.0,
+        "oracle_text": "Test text",
+        "colors": ["W"],
+        "color_identity": ["W"],
+        "legalities": {},
+        "rarity": "common",
+        "set": "tst",
+        "set_name": "Test Set",
+        "collector_number": "1",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_transform_card_game_changer_true():
+    """A Scryfall bulk ``game_changer: true`` surfaces as ``card.game_changer is True``."""
+    card = transform_scryfall_card(_minimal_card_json(game_changer=True))
+
+    assert card is not None
+    assert card.game_changer is True
+
+
+def test_transform_card_game_changer_false():
+    """A Scryfall bulk ``game_changer: false`` surfaces as ``card.game_changer is False``.
+
+    Regression guard against ``None``/``False`` conflation — the reason ``or`` is forbidden in
+    the transformer. ``False`` (confirmed not a Game Changer) must never collapse to ``None``.
+    """
+    card = transform_scryfall_card(_minimal_card_json(game_changer=False))
+
+    assert card is not None
+    assert card.game_changer is False
+
+
+def test_transform_card_game_changer_missing_is_none():
+    """An omitted ``game_changer`` key yields ``None`` ("unknown / not yet backfilled")."""
+    card = transform_scryfall_card(_minimal_card_json())
+
+    assert card is not None
+    assert card.game_changer is None
+
+
+# --- Reject capture (identity + reason diagnostics channel) ---------------------------
+
+
+def test_reject_collector_captures_missing_field_name_and_identity():
+    """A missing required field appends (card name, missing-field reason) to the collector."""
+    rejects = []
+    card_json = {"id": "printing-9", "name": "Half A Card", "oracle_id": "o-9"}  # no type_line
+
+    assert transform_scryfall_card(card_json, rejects) is None
+
+    assert len(rejects) == 1
+    assert rejects[0].identity == "Half A Card"
+    assert "type_line" in rejects[0].reason
+
+
+def test_reject_identity_falls_back_to_id_then_unknown():
+    """Identity is the name, else the id, else the literal "unknown"."""
+    rejects = []
+
+    assert transform_scryfall_card({"id": "printing-10"}, rejects) is None
+    assert transform_scryfall_card({}, rejects) is None
+
+    assert [r.identity for r in rejects] == ["printing-10", "unknown"]
+
+
+def test_reject_collector_captures_exception_class():
+    """A transform-time exception appends the exception class as the reason."""
+    rejects = []
+    card_json = {
+        "id": "printing-11",
+        "name": "Bad CMC",
+        "oracle_id": "o-11",
+        "type_line": "Instant",
+        "cmc": "not-a-number",  # float() -> ValueError
+    }
+
+    assert transform_scryfall_card(card_json, rejects) is None
+
+    assert len(rejects) == 1
+    assert rejects[0].identity == "Bad CMC"
+    assert rejects[0].reason.startswith("ValueError")
+
+
+def test_reject_collector_untouched_on_success():
+    """A successful transform never appends to the collector."""
+    rejects = []
+    card = transform_scryfall_card(_minimal_card_json(), rejects)
+
+    assert card is not None
+    assert rejects == []
+
+
+def test_reject_none_contract_preserved_without_collector():
+    """Callers that pass no collector keep getting a plain ``None`` (no error raised)."""
+    assert transform_scryfall_card({"id": "printing-12"}) is None
+
+
+def _reversible_face(**overrides: Any) -> dict[str, Any]:
+    """One reversible-card face with the fields the derivation gate reads."""
+    face: dict[str, Any] = {
+        "name": "Anje Falkenrath",
+        "type_line": "Legendary Creature — Vampire",
+        "mana_cost": "{1}{B}{R}",
+        "cmc": Decimal("3"),
+        "colors": ["B", "R"],
+        "power": "1",
+        "toughness": "3",
+    }
+    face.update(overrides)
+    return face
+
+
+def test_transform_reversible_card_derives_scalar_fields_from_faces():
+    """A reversible card (no top-level ``type_line``) derives its scalars from the faces.
+
+    Regression for the 33 live rejects (`missing required field(s): type_line`): Scryfall's
+    ``reversible_card`` layout carries ``type_line``/``mana_cost``/``cmc``/``colors``/combat
+    stats only on ``card_faces``. The doubled top-level name is replaced by the deduped face
+    name so ``find_by_name_exact`` matches decklist names, and ijson ``Decimal`` face values
+    are sanitized so the ``card_faces`` JSON column can serialize at flush.
+    """
+    reversible = {
+        "id": "printing-rev-1",
+        "name": "Anje Falkenrath // Anje Falkenrath",
+        "layout": "reversible_card",
+        "color_identity": ["B", "R"],
+        "card_faces": [
+            _reversible_face(oracle_id="anje-oracle"),
+            _reversible_face(colors=["R", "B"]),
+        ],
+    }
+
+    card = transform_scryfall_card(reversible)
+
+    assert card is not None
+    assert card.name == "Anje Falkenrath"  # deduped face name, not the doubled top-level form
+    assert card.type_line == "Legendary Creature — Vampire"
+    assert card.mana_cost == "{1}{B}{R}"
+    assert card.cmc == 3.0
+    assert card.colors == ["B", "R"]  # face union in canonical WUBRG order
+    assert card.power == "1"
+    assert card.toughness == "3"
+    assert card.oracle_id == "anje-oracle"
+    # Decimal face values must be gone or the JSON column crashes at flush time.
+    assert card.card_faces is not None
+    assert isinstance(card.card_faces[0]["cmc"], float)
+    json.dumps(card.card_faces)  # raises TypeError if any Decimal survived
+
+
+def test_transform_reversible_card_combat_stat_disagreement_yields_none():
+    """Faces that disagree on a combat stat leave it ``None`` (multi-face convention)."""
+    reversible = {
+        "id": "printing-rev-2",
+        "name": "Two Bodies // Two Bodies",
+        "card_faces": [
+            _reversible_face(oracle_id="two-bodies-oracle"),
+            _reversible_face(power="4"),
+        ],
+    }
+
+    card = transform_scryfall_card(reversible)
+
+    assert card is not None
+    assert card.power is None
+    assert card.toughness == "3"  # toughness still agrees across faces
+
+
+def test_transform_gated_card_with_no_type_line_anywhere_still_rejected():
+    """The gate does not invent data: no ``type_line`` on any face is still a reject."""
+    rejects: list[Any] = []
+    gated = {
+        "id": "printing-rev-3",
+        "name": "Faceless // Faceless",
+        "card_faces": [{"oracle_id": "faceless-oracle", "name": "Faceless"}],
+    }
+
+    assert transform_scryfall_card(gated, rejects) is None
+    assert len(rejects) == 1
+    assert "type_line" in rejects[0].reason
+
+
+def test_transform_card_with_top_level_type_line_bypasses_face_derivation():
+    """The shape gate only opens when top-level ``type_line`` is absent.
+
+    Transform/MDFC/split cards carry a top-level ``type_line`` and must transform exactly as
+    before — including keeping their genuine ``"Front // Back"`` top-level name verbatim.
+    """
+    dfc = {
+        "id": "printing-dfc-1",
+        "name": "Delver of Secrets // Insectile Aberration",
+        "oracle_id": "delver-oracle",
+        "type_line": "Creature — Human Wizard // Creature — Human Insect",
+        "card_faces": [
+            {"name": "Delver of Secrets", "type_line": "Creature — Human Wizard"},
+            {"name": "Insectile Aberration", "type_line": "Creature — Human Insect"},
+        ],
+    }
+
+    card = transform_scryfall_card(dfc)
+
+    assert card is not None
+    assert card.name == "Delver of Secrets // Insectile Aberration"
+    assert card.type_line == "Creature — Human Wizard // Creature — Human Insect"

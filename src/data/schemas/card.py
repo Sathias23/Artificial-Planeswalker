@@ -34,6 +34,11 @@ class Card(BaseModel):
     power: str | None = None
     toughness: str | None = None
 
+    # Official WotC Game Changer status. Three-state (AD-4): None = unknown / not yet backfilled,
+    # True = confirmed Game Changer, False = confirmed not. Intentionally NOT in any coercion
+    # validator below — None must survive as None so downstream confidence signalling stays honest.
+    game_changer: bool | None = None
+
     # Rarity and set information
     rarity: str
     set_code: str

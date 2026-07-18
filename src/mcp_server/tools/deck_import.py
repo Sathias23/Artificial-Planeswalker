@@ -41,7 +41,12 @@ _CARD_LINE_RE = re.compile(
 
 
 class DeckImportLineResult(BaseModel):
-    """Outcome for one nonblank, non-header Arena export line."""
+    """Outcome for one nonblank, non-header Arena export line.
+
+    ``sideboard`` and ``commander`` are both derived from the line's section
+    (``commander`` is True exactly for ``Commander``-section lines); either is
+    None when no section could be determined.
+    """
 
     line_number: int
     raw_line: str
@@ -51,6 +56,7 @@ class DeckImportLineResult(BaseModel):
     set_code: str | None = None
     collector_number: str | None = None
     sideboard: bool | None = None
+    commander: bool | None = None
     status: ImportLineStatus
     card_id: str | None = None
     matches: list[CardSummary] = Field(default_factory=list)
@@ -93,6 +99,11 @@ class _ParsedArenaLine:
         """Return whether this line belongs in the deck's sideboard."""
         return self.section in _SIDEBOARD_SECTIONS
 
+    @property
+    def commander(self) -> bool:
+        """Return whether this line flags its card as the deck's commander."""
+        return self.section == "commander"
+
 
 def _invalid_line(
     *,
@@ -115,6 +126,7 @@ def _invalid_line(
         set_code=set_code,
         collector_number=collector_number,
         sideboard=section in _SIDEBOARD_SECTIONS if section is not None else None,
+        commander=section == "commander" if section is not None else None,
         status="invalid",
         message=f"Line {line_number}: {message}",
     )
@@ -294,6 +306,7 @@ def _line_result(parsed: _ParsedArenaLine, outcome: DeckCardResult) -> DeckImpor
         set_code=parsed.set_code,
         collector_number=parsed.collector_number,
         sideboard=parsed.sideboard,
+        commander=parsed.commander,
         status=status,
         card_id=outcome.card_id,
         matches=outcome.matches,
@@ -307,7 +320,8 @@ async def import_decklist(
     """Import an Arena export into an existing saved deck.
 
     The import is additive and line-independent: ``Commander`` and ``Deck`` cards
-    go to the mainboard, ``Sideboard`` and ``Companion`` cards go to the
+    go to the mainboard (``Commander`` cards additionally flagged as the deck's
+    commanders), ``Sideboard`` and ``Companion`` cards go to the
     sideboard, and successful lines remain committed when another line fails.
     Arena's optional ``About`` / ``Name`` metadata block is skipped. Set and
     collector annotations are reported but do not constrain name resolution
@@ -409,6 +423,7 @@ async def import_decklist(
                 name=item.name,
                 quantity=item.quantity,
                 sideboard=item.sideboard,
+                commander=item.commander,
             )
         except DatabaseError:
             logger.exception(
@@ -426,6 +441,7 @@ async def import_decklist(
                     set_code=item.set_code,
                     collector_number=item.collector_number,
                     sideboard=item.sideboard,
+                    commander=item.commander,
                     status="error",
                     message=f"Line {item.line_number}: a database error occurred.",
                 )
