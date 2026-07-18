@@ -1,6 +1,6 @@
 [project]
 name = "artificial-planeswalker"
-version = "0.3.0"
+version = "0.4.0"
 description = "A stateless Model Context Protocol (MCP) server that gives an LLM expert Magic: The Gathering deckbuilding tools — keyword and semantic card search, deck management, and format-legality, mana-curve, and synergy analysis — over a local Scryfall card database"
 requires-python = ">=3.12"
 readme = "README.md"
