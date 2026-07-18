@@ -59,6 +59,35 @@ class ComboSnapshotRepository(BaseRepository):
         except OperationalError:
             return False
 
+    async def get_snapshot_state(self) -> tuple[ComboSnapshotMeta | None, bool]:
+        """Return ``(vintage, available)`` from one consistent read — the edge probe.
+
+        The meta row is fetched once and serves both outputs, so ``available=True``
+        structurally implies ``vintage is not None`` — the two facts can never
+        disagree the way independent ``snapshot_is_available()`` / ``get_metadata()``
+        calls could if an import replaced the snapshot between them (AD-6).
+        ``available`` is ``True`` iff the meta row exists AND ``combo_variants``
+        holds at least one row; a meta row with zero variants still carries its
+        vintage (``(vintage, False)``) — the edge decides how to render that.
+
+        Returns:
+            ``(vintage, available)``: the :class:`ComboSnapshotMeta` row or ``None``,
+            and the availability bool; ``(None, False)`` when the row or the tables
+            themselves are absent.
+        """
+        try:
+            result = await self.session.execute(select(ComboSnapshotMetaModel))
+            meta_model = result.scalar_one_or_none()
+            if meta_model is None:
+                return None, False
+            vintage = ComboSnapshotMeta.model_validate(meta_model)
+            variant_row = await self.session.execute(
+                select(ComboVariantModel.spellbook_id).limit(1)
+            )
+            return vintage, variant_row.first() is not None
+        except OperationalError:
+            return None, False
+
     async def get_metadata(self) -> ComboSnapshotMeta | None:
         """Return the single snapshot-metadata row — the ``data_vintage`` source.
 

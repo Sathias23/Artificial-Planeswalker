@@ -331,10 +331,12 @@ async def _provision_combos(
     construction: a profile that disables combos is configuration, not a run-specific
     degradation, so no ``combo_data_unavailable`` token may fire from this path (AD-6).
 
-    Unavailability is probed via ``snapshot_is_available()`` (meta row present AND ≥1
-    variant row) — never inferred from an empty ``get_variants_for_names`` result: a
-    healthy snapshot with zero overlapping variants is a legitimate no-combos outcome
-    (G-R2 proved this on real decks), not a degradation.
+    Unavailability is probed via ``get_snapshot_state()`` (meta row present AND ≥1
+    variant row, with the vintage carried from the same read so availability and
+    vintage can never disagree) — never inferred from an empty
+    ``get_variants_for_names`` result: a healthy snapshot with zero overlapping
+    variants is a legitimate no-combos outcome (G-R2 proved this on real decks),
+    not a degradation.
 
     Args:
         session: The request's async session (shared with the deck load).
@@ -355,8 +357,7 @@ async def _provision_combos(
         return (), None, False
 
     combo_repo = ComboSnapshotRepository(session)
-    available = await combo_repo.snapshot_is_available()
-    vintage = await combo_repo.get_metadata()
+    vintage, available = await combo_repo.get_snapshot_state()
     if not available:
         return (), vintage, True
 
@@ -715,6 +716,11 @@ async def assess_deck_power(
         deck = await repo.get_deck_with_cards(deck_id)
     except DatabaseError:
         logger.exception("assess_deck_power failed for deck_id=%s", deck_id)
+        # A disconnect-classified error invalidates the connection; without this
+        # rollback the next statement on the shared session (compare_deck_power's
+        # second assess call) raises PendingRollbackError — an InvalidRequestError
+        # that no DatabaseError guard catches.
+        await session.rollback()
         return AssessDeckPowerResult(
             status="error",
             deck_id=deck_id,
@@ -779,6 +785,8 @@ async def assess_deck_power(
         )
     except DatabaseError:
         logger.exception("assess_deck_power combo provisioning failed for deck_id=%s", deck_id)
+        # Same session-restoring rollback as the deck-load handler above.
+        await session.rollback()
         return AssessDeckPowerResult(
             status="error",
             deck_id=deck_id,

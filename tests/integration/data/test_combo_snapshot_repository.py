@@ -7,6 +7,7 @@ DB, no network.
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.database import create_engine, create_session_factory, init_database
@@ -109,6 +110,25 @@ async def seeded_snapshot(session: AsyncSession):
     await session.commit()
 
 
+class TestSchemaInvariants:
+    """DDL-level guarantees mirroring the ``ComboRecord`` application invariants."""
+
+    async def test_null_cards_rejected_at_schema_level(self, session: AsyncSession):
+        """``cards`` is semantically required (``ComboRecord`` min_length=1): a row
+        written without it must fail loudly AT THE WRITE SITE (IntegrityError on
+        flush), not later as a surprising ValidationError in the repository."""
+        variant = ComboVariantModel(
+            spellbook_id="null-cards",
+            commander_required=False,
+            bracket_tag="POWERFUL",
+            popularity=None,
+        )
+        session.add(variant)
+        with pytest.raises(IntegrityError):
+            await session.flush()
+        await session.rollback()
+
+
 class TestSnapshotIsAvailable:
     """The edge's ``combo_data_unavailable`` probe (AD-6)."""
 
@@ -117,6 +137,39 @@ class TestSnapshotIsAvailable:
 
     async def test_initialized_but_empty_tables_read_as_unavailable(self, repo):
         assert await repo.snapshot_is_available() is False
+
+
+class TestGetSnapshotState:
+    """The merged single-read probe consumed by the edge's ``_provision_combos``.
+
+    One consistent read: ``available=True`` structurally implies the vintage row is
+    present (both derive from the same meta fetch), so the edge can never emit
+    ``combo_data_unavailable=False`` alongside a ``None`` vintage.
+    """
+
+    async def test_seeded_returns_vintage_and_available(self, repo, seeded_snapshot):
+        vintage, available = await repo.get_snapshot_state()
+        assert available is True
+        assert vintage is not None
+        assert vintage.export_version == "5.6.0"
+
+    async def test_meta_without_variants_carries_vintage_but_unavailable(self, repo, session):
+        session.add(
+            ComboSnapshotMetaModel(
+                imported_at="2026-07-16T09:07:00+00:00",
+                export_timestamp="2026-07-16T07:28:23+00:00",
+                export_version="5.6.0",
+                variant_count=0,
+            )
+        )
+        await session.commit()
+
+        vintage, available = await repo.get_snapshot_state()
+        assert available is False
+        assert vintage is not None
+
+    async def test_empty_tables_return_none_and_unavailable(self, repo):
+        assert await repo.get_snapshot_state() == (None, False)
 
 
 class TestGetMetadata:
@@ -206,6 +259,9 @@ class TestMissingTables:
 
     async def test_get_metadata_returns_none(self, bare_repo):
         assert await bare_repo.get_metadata() is None
+
+    async def test_get_snapshot_state_returns_none_and_unavailable(self, bare_repo):
+        assert await bare_repo.get_snapshot_state() == (None, False)
 
     async def test_get_variants_for_names_returns_empty(self, bare_repo):
         assert await bare_repo.get_variants_for_names(["Basalt Monolith"]) == ()

@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.database import create_engine, create_session_factory, init_database
@@ -552,6 +553,44 @@ async def test_both_decks_failed_names_distinct_tokens(session: AsyncSession) ->
     assert "'bogus-a'" in result.summary
     assert "deck_not_found" in result.summary
     assert "unsupported_format" in result.summary
+
+
+async def test_deck_a_database_error_does_not_poison_session_for_deck_b(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A DatabaseError on side A must not leave the shared session unusable (AC 4).
+
+    Both assess calls share one AsyncSession. A plain statement error keeps the
+    transaction usable, but a disconnect-classified DatabaseError (disk I/O error,
+    malformed database image) also invalidates the connection — SQLAlchemy then
+    refuses every subsequent statement with ``PendingRollbackError`` ("Can't
+    reconnect until invalid transaction is rolled back"), an
+    ``InvalidRequestError``, NOT a ``DatabaseError`` — escaping every guard and
+    surfacing as a tool-level crash instead of ``deck_a_failed``. Only a rollback
+    in assess's DatabaseError handler restores the session for side B.
+    """
+    deck_a = await _make_deck(session, _BASE_ROWS, name="Poisoned A")
+    deck_b = await _make_deck(session, _BASE_ROWS, name="Healthy B")
+
+    original = DeckRepository.get_deck_with_cards
+
+    async def fail_only_deck_a(self: DeckRepository, deck_id: str) -> object:
+        if deck_id == deck_a:
+            # Mirror SQLAlchemy's own disconnect handling: the connection is
+            # invalidated mid-transaction and the wrapped DBAPI error raised.
+            connection = await self.session.connection()
+            await connection.invalidate()
+            raise DatabaseError("SELECT deck", None, Exception("disk I/O error"))
+        return await original(self, deck_id)
+
+    monkeypatch.setattr(DeckRepository, "get_deck_with_cards", fail_only_deck_a)
+
+    result = await compare_deck_power(session, deck_id_a=deck_a, deck_id_b=deck_b)
+
+    assert result.status == "deck_a_failed"
+    assert result.comparison is None
+    assert f"'{deck_a}'" in result.summary
+    assert "error" in result.summary
 
 
 async def test_explicit_unsupported_format_fails_both_sides(session: AsyncSession) -> None:

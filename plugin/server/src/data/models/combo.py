@@ -31,8 +31,11 @@ class ComboVariantModel(Base):
 
     spellbook_id: Mapped[str] = mapped_column(String, primary_key=True, init=True)
 
-    # Piece names, multiplicity-inclusive (JSON array of strings).
-    cards: Mapped[str | None] = mapped_column(Text, nullable=True, default=None, init=False)
+    # Piece names, multiplicity-inclusive (JSON array of strings). NOT NULL mirrors
+    # ComboRecord's cards min_length=1: a row written without pieces fails at the
+    # write site (IntegrityError), never later as a repository ValidationError.
+    # Python-side the attribute is transiently None until assigned (init=False).
+    cards: Mapped[str | None] = mapped_column(Text, nullable=False, default=None, init=False)
     commander_required: Mapped[bool] = mapped_column(Boolean, nullable=False, init=True)
     bracket_tag: Mapped[str] = mapped_column(String, nullable=False, init=True)
     # Produced results, e.g. "Infinite mana" (JSON array of strings).
