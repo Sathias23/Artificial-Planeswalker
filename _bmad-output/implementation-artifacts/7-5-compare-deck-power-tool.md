@@ -4,7 +4,7 @@ baseline_commit: bbb87e6
 
 # Story 7.5: The `compare_deck_power` tool
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -456,3 +456,56 @@ claude-fable-5 (Claude Fable 5)
 - 2026-07-18: Story implemented (dev-story workflow, TDD) — `compare_deck_power` tool: result
   models, compose-two-assessments helper with pure b − a delta assembly, server registration,
   21 helper-level + 4 e2e tests. Full suite 1,348 green, mypy/ruff clean. Status: review.
+
+- 2026-07-18: Code review (3 adversarial layers) — 2 decision-needed reviewed by Sathias and
+  accepted as-spec'd (combos_added bucket; failure-token-in-summary), 2 low patches applied
+  (asymmetric both-fail token test; `Deck A`/`Deck B` summary casing), 10 dismissed. Full compare
+  helper suite 22 green (baseline 21 + 1), mypy/ruff clean. Status: review → done.
+
+## Review Findings
+
+Code review 2026-07-18 (3 adversarial layers: Blind Hunter, Edge Case Hunter, Acceptance
+Auditor). All 9 ACs and 6 decide-once decisions verified MET by the auditor; the delta
+arithmetic, b − a direction, set-difference+`sorted()` determinism, frozen models, single
+shared-session usage, `database_not_initialized` global-before-side hoist, and `format_mismatch`
+logic all hold. 2 patch findings survived triage; 12 dismissed (2 decision-needed reviewed by
+Sathias and accepted as-spec'd, plus 10 spec-compliant / defensive-only / noise).
+
+- [x] [Review][Patch] `both_decks_failed` is never tested with asymmetric per-side tokens — add a
+  case (deck_a=`deck_not_found`, deck_b=`unsupported_format`) asserting BOTH distinct tokens
+  render in the summary [tests/integration/mcp_server/test_compare_deck_power_tool.py] —
+  FIXED: `test_both_decks_failed_names_distinct_tokens` added (deck_b uses a commander-free
+  `format="modern"` deck so it resolves `unsupported_format`); 22 helper tests green.
+- [x] [Review][Patch] Summary casing inconsistency — the `both_decks_failed` branch writes
+  lowercase "deck A"/"deck B" while the single-side branches write "Deck A"/"Deck B"
+  [compare_deck_power.py:377-378] — FIXED: capitalized to "Deck A"/"Deck B"; no test pinned the
+  old casing; mypy/ruff clean.
+
+### Dismissed (12) — rationale for the record
+
+- `combos_added`/`_removed` carry no bucket (Blind, decision 1a): Sathias accepted as-spec'd —
+  decide-once #4's bare `spellbook_id` tuples stand; `combos_bucket_changed` covers the flip.
+- Failure token only in prose `summary`, not a structured field (Blind, decision 2a): Sathias
+  accepted the decide-once #1 as-is — no `status_a`/`status_b` fields added.
+- Assess-side `error` triaged as the side-failure status (Blind): explicitly prescribed by
+  decide-once #1 ("side-failure statuses cover it") and documented in code.
+- Reserved-but-unreachable top-level `error` token in the status Literal (Blind): spec-sanctioned
+  by decide-once #1 ("unreachable-but-reserved, mirroring assess").
+- Failure summaries drop assess's descriptive hints / top-level `error` summary is contentless
+  (Blind ×2): AC 4 requires only the token(s) named; the contentless branch is the unreachable
+  reserved one.
+- `schema_version: str` default not `Literal["1"]` / not frozen (Blind): a deliberate mirror of
+  the `AssessDeckPowerResult` sibling; tightening only compare would diverge the two contracts.
+- No compare-layer `format` casing/whitespace pass-through test (Blind): `assess_deck_power` owns
+  normalization and its own tests; compare only forwards `format` verbatim.
+- Byte-determinism asserted as "two calls agree" not a golden payload (Blind): `sorted()` at every
+  list makes the order source-stable; the wire test already hardens with
+  `json.loads(text) == structuredContent`.
+- Matched combo with `bucket=None` silently dropped (Blind+Edge): unreachable —
+  `flags.combos` arrives with buckets populated (assess_deck_power.py:170); the `is not None`
+  filter documents the invariant.
+- Duplicate `spellbook_id` on one side collapsed by the dict comprehension (Edge): unreachable —
+  matched variants each have a unique `spellbook_id`.
+- `TierLabel` imported from `src.logic.assessment` rather than the sibling re-export (Auditor):
+  the auditor itself confirms it is within decide-once #6's permitted exception (a result-contract
+  type) and mirrors the sibling.

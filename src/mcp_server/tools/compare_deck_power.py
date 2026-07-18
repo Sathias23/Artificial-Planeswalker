@@ -374,8 +374,8 @@ async def compare_deck_power(
             deck_id_a=deck_id_a,
             deck_id_b=deck_id_b,
             summary=(
-                f"Both decks failed — deck A ('{deck_id_a}'): {result_a.status}; "
-                f"deck B ('{deck_id_b}'): {result_b.status}."
+                f"Both decks failed — Deck A ('{deck_id_a}'): {result_a.status}; "
+                f"Deck B ('{deck_id_b}'): {result_b.status}."
             ),
         )
     if a_failed:

@@ -528,6 +528,32 @@ async def test_both_decks_failed_names_both_tokens(session: AsyncSession) -> Non
     assert "deck_not_found" in result.summary
 
 
+async def test_both_decks_failed_names_distinct_tokens(session: AsyncSession) -> None:
+    """Asymmetric per-side failures each render distinctly in the summary (AC 4).
+
+    Guards the ``both_decks_failed`` summary interpolation against a bug that
+    renders only one branch: a bogus ``deck_id_a`` (``deck_not_found``) paired
+    with a deck whose stored format resolves unsupported (``unsupported_format``
+    — ``format`` omitted so each side resolves its own, and no flagged commander
+    so ``modern`` never falls through to the commander signal) must surface BOTH
+    tokens, not a single shared one.
+    """
+    no_commander_rows: list[tuple[str, int, bool, bool]] = [
+        ("card-goblin-guide", 4, False, False),
+        ("card-shock", 4, False, False),
+        ("card-mountain", 20, False, False),
+    ]
+    deck_b = await _make_deck(session, no_commander_rows, name="Modern B", format="modern")
+
+    result = await compare_deck_power(session, deck_id_a="bogus-a", deck_id_b=deck_b)
+
+    assert result.status == "both_decks_failed"
+    assert result.comparison is None
+    assert "'bogus-a'" in result.summary
+    assert "deck_not_found" in result.summary
+    assert "unsupported_format" in result.summary
+
+
 async def test_explicit_unsupported_format_fails_both_sides(session: AsyncSession) -> None:
     """An unsupported explicit format surfaces via the underlying assess status (AC 5)."""
     deck_a = await _make_deck(session, _BASE_ROWS, name="A")
