@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-06-20
-last_updated: 2026-07-18 (story 7.5 code review → done)
+last_updated: 2026-07-18 (epic-7 retrospective → done; epic-7 → done; calibration gate + orphan-story keys added)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -143,14 +143,35 @@ development_status:
   pre-epic-7-real-deck-gate: done  # CLOSED 2026-07-17 (commit e2b03ff): all 20 decks accepted as plausible wholesale; calibration deferred to Epic 7 — named inputs in pre-epic-7-real-deck-gate-report-2026-07-17.md §Cross-deck observations. Epic 7 unblocked.
 
   # Epic 7 (feature Epic 4): The assess_deck_power + compare_deck_power MCP tools & deterministic output
-  epic-7: in-progress
+  epic-7: done  # all 5 stories done 2026-07-18; final epic of the deck-power-assessment roadmap
   7-1-register-the-async-tool-load-deck-resolve-format: done  # code review 2026-07-17: all ACs MET; 1 patch applied (unresolved_count comment), empty-mainboard ok accepted, orphan-crash deferred to data-layer story
   7-2-combo-provisioning-the-degradation-ladder: done  # code review 2026-07-17: all ACs MET; 1 patch applied (combo-provisioning DB reads brought under DatabaseError→error contract + regression test), 2 deferred (transient-lock mislabel → data-layer; almost_included "matched" wording → 7.3), 7 dismissed
 
   7-3-assess-deck-power-result-assembly-deterministic-serialization-human-summary: done  # code review 2026-07-17: all 9 ACs MET (auditor: zero violations); 3 low patches applied (bracket→Literal[2,3,4]|None per FR18 decision, "one card away" grammar, format→Literal), 7 dismissed; 1,313 tests green, mypy/ruff clean
   7-4-end-to-end-tool-test-determinism-diff-regression: done
   7-5-compare-deck-power-tool: done  # code review 2026-07-18: all 9 ACs MET (auditor: zero violations); 2 decision-needed accepted as-spec'd, 2 low patches applied (asymmetric both-fail token test + Deck A/B summary casing), 10 dismissed; compare suite 22 green, mypy/ruff clean
-  epic-7-retrospective: optional
+  epic-7-retrospective: done  # epic-7-retro-2026-07-18.md; ship-first ruling (merge → manual-testing acceptance → "experimental" release); calibration gated below, non-blocking
+
+  # Post-Epic-7 Calibration Gate (from epic-7-retro-2026-07-18.md) — NON-BLOCKING for release
+  # (ship-first ruling 2026-07-18). Homes the five named G-R2 calibration inputs
+  # (pre-epic-7-real-deck-gate-report-2026-07-17.md §Cross-deck observations) + anything
+  # Sathias's post-PR comprehensive manual testing surfaces:
+  #   C1: card_advantage saturation at 80
+  #   C2: interaction railing 0/100
+  #   C3: Brawl mana_efficiency floor (brawl-family currently unsupported_format by 7.1 decision)
+  #   C4: almost_included dominance of combo_potential
+  #   C5: format-blind almost_included inflation (missing piece not format-legal; deferred-work.md)
+  # CEDH_TUTOR_MIN=3 caveat carries over. Done when each input is tuned, or closed with a
+  # documented keep-decision (the 5.7 card_advantage-ceiling precedent).
+  post-epic-7-calibration-gate: backlog
+
+  # Data-layer orphan handling (epic-7 retro action item 3; deferred from 7.1 review):
+  # an orphaned deck_cards row (FK enforcement off) raises pydantic.ValidationError inside
+  # get_deck_with_cards — shared ungraceful crash across analyze_mana_curve / detect_synergies /
+  # validate_deck / assess_deck_power; also the only live source that could ever make
+  # cards_unresolved fire. Includes the 7.2-deferred transient-lock mislabel
+  # (combo_snapshot.py broad OperationalError → "unavailable") if the repo catch is narrowed.
+  data-layer-orphan-handling: backlog
 
 # Action items carried out of retrospectives (see epic-N-retro-*.md for full context)
 action_items:
@@ -205,4 +226,20 @@ action_items:
   - epic: 6
     action: "construction-site enumeration: when a field threads through multiple constructors, grep EVERY construction site — including error/fallback-path result objects — before claiming end-to-end (6.1 review found the commander flag dropped in the DatabaseError-path DeckImportLineResult, a surface the write-path checklist missed)"
     owner: "Sathias"
+    status: done  # closed 2026-07-18 (epic-7 retro): exercised in all five Epic 7 stories; 7.3's re-verification caught the stale site count (7, not 6). Promoted to a standing team agreement.
+  - epic: 7
+    action: "gate-output homing rule: any gate/review that produces 'named inputs' must attach each to a story key, spec, or sprint-status gate in the same commit that closes the gate — a label with no key is how the G-R2 calibration inputs went unowned for a whole epic"
+    owner: "Sathias"
     status: open
+  - epic: 7
+    action: "error-contract enumeration: when a story adds awaited I/O to an existing tool path, enumerate every call against the error-contract guard that covers it (7.2 review found _provision_combos' three DB reads outside the DatabaseError→error guard — sibling discipline to construction-site enumeration)"
+    owner: "Sathias"
+    status: open
+  - epic: 7
+    action: "data-layer orphan story keyed in sprint-status (data-layer-orphan-handling) so the thrice-documented get_deck_with_cards ValidationError crash + dead cards_unresolved signal stop floating in story notes"
+    owner: "Sathias"
+    status: done  # keyed 2026-07-18 at this retro (backlog key above Epic 7's action-item source)
+  - epic: 7
+    action: "close + promote construction-site enumeration to the standing team agreements"
+    owner: "Amelia"
+    status: done  # executed in-retro 2026-07-18 (epic-6 item above flipped to done; agreement recorded in epic-7-retro-2026-07-18.md)
