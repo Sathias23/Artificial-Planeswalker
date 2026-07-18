@@ -8,8 +8,9 @@
 An intelligent **Magic: The Gathering** deck-building assistant, exposed as a local
 [MCP](https://modelcontextprotocol.io) server over a Scryfall card database.
 
-Card lookup, multi-format deck validation, mana-curve and synergy analysis, and **local
-semantic card search** — all driven by your MCP client (Claude Code, Claude Desktop, Cursor, …).
+Card lookup, multi-format deck validation, mana-curve and synergy analysis, **deck power
+assessment**, and **local semantic card search** — all driven by your MCP client (Claude Code,
+Claude Desktop, Cursor, …).
 The server is **stateless** and makes **no LLM calls** of its own, so **no API key is required**:
 your client supplies the model, the server supplies fast, accurate MTG data and analysis.
 
@@ -21,13 +22,31 @@ your client supplies the model, the server supplies fast, accurate MTG data and 
 |------------|-------|
 | **Card lookup & search** | `lookup_card_by_name`, `search_cards` |
 | **Semantic search** (local embeddings, no network) | `semantic_search_cards`, `find_similar_cards` |
-| **Deck management** | `create_deck`, `list_decks`, `load_deck`, `delete_deck`, `add_card_to_deck`, `remove_card_from_deck`, `view_deck` |
+| **Deck management** | `create_deck`, `list_decks`, `load_deck`, `delete_deck`, `add_card_to_deck`, `remove_card_from_deck`, `view_deck`, `import_decklist` (bulk Arena import) |
 | **Deck analysis** | `analyze_mana_curve`, `detect_synergies`, `validate_deck` |
+| **Deck power assessment** *(experimental)* | `assess_deck_power`, `compare_deck_power` |
 | **First-run setup** | `initialize_database`, `build_search_index` |
 
 Four companion **skills** layer expert reasoning on top of the tools —
 `magic-deckbuilding` (the orchestrator), `synergy-discovery`, `mana-curve-analysis`, and
 `format-legality` — so a client can go from "improve my deck" to ranked, reasoned swaps.
+
+### Deck power assessment (experimental)
+
+**`assess_deck_power`** scores a saved deck 0–100 for its format with a seven-dimension
+vector (speed, consistency, resilience, interaction, mana efficiency, card advantage,
+combo potential), a descriptive tier label, and — for Commander — a
+[WotC Bracket](https://magic.wizards.com/en/news/announcements/commander-brackets-beta-update-april-22-2025)
+floor plus cEDH candidacy. Every score comes with evidence: Game Changer names, detected
+combos (in the deck, or one piece away), structural gaps, and a confidence block that names
+any degraded inputs instead of silently guessing. **`compare_deck_power`** diffs two
+assessments server-side — "did my edit make the deck stronger, and what changed?" Output is
+deterministic (identical inputs serialize byte-identically), so results can be diffed and
+tracked over time. Supported formats: Commander and Standard. Combo detection reads the
+local [Commander Spellbook snapshot](#combo-snapshot-deck-power-assessment); without it,
+assessment still runs at reduced confidence. *Experimental:* scoring calibration is still
+being tuned — expect the numbers (not the shape of the output) to shift in upcoming
+releases.
 
 ## Requirements
 
@@ -68,7 +87,7 @@ The launch command is the same everywhere — only the config file differs.
 <details>
 <summary><b>Claude Code</b> (plugin — tools + skills, two commands)</summary>
 
-Install the plugin from this repo's built-in marketplace to get all 16 tools **and** the four
+Install the plugin from this repo's built-in marketplace to get all 19 tools **and** the four
 deckbuilding skills in any project — no clone required:
 
 ```
@@ -99,7 +118,7 @@ codex plugin marketplace add Sathias23/Artificial-Planeswalker
 ```
 
 Open the `/plugins` browser inside Codex and install **artificial-planeswalker** — that gives
-you the 16 tools *and* the four deckbuilding skills. If Codex also auto-surfaces this repo's
+you the 19 tools *and* the four deckbuilding skills. If Codex also auto-surfaces this repo's
 *Claude Code* marketplace, skip it — that variant's config only works inside Claude Code
 (see [openai/codex#19372](https://github.com/openai/codex/issues/19372)).
 
@@ -119,7 +138,7 @@ env = { MCP_TRANSPORT = "stdio" }
 ```
 
 On first use, ask the assistant to run **`initialize_database`** (one-time card download,
-~2–3 min), then **`build_search_index`** for semantic search. The manual route loads the 16
+~2–3 min), then **`build_search_index`** for semantic search. The manual route loads the 19
 tools; the skills come with the plugin route.
 
 > **First launch is slow:** the server's first start builds its Python environment with `uv`
@@ -149,7 +168,7 @@ No card data ships with the repo, so on first use ask the assistant to run the
 **`build_search_index`** if you want semantic search. Until then the card/deck tools reply with a
 `database_not_initialized` hint instead of an error. When a new set releases, ask the assistant to
 run `initialize_database` with `update=true` to pull in the new cards (then re-run
-`build_search_index` to index them). Desktop loads the 16 tools; the four skills are a Claude Code
+`build_search_index` to index them). Desktop loads the 19 tools; the four skills are a Claude Code
 plugin feature.
 </details>
 
@@ -232,7 +251,7 @@ uv run pre-commit install           # gate every commit
 ```
 src/
 ├── data/        # SQLAlchemy models, Scryfall importers, repositories, schemas
-├── logic/       # deck validation, mana curve, synergy detection
+├── logic/       # deck validation, mana curve, synergy detection, power assessment
 ├── search/      # sqlite-vec connection + fastembed embedder (semantic search)
 ├── paths.py     # central data-dir resolution
 └── mcp_server/  # FastMCP server + tool definitions (python -m src.mcp_server)

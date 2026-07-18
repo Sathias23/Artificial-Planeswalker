@@ -5,6 +5,55 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-18
+
+### Added
+
+- **Deck power assessment (experimental)** — the new **`assess_deck_power`** tool
+  scores a saved deck 0–100 for its format with a seven-dimension vector (speed,
+  consistency, resilience, interaction, mana efficiency, card advantage, combo
+  potential), a descriptive tier label, and — for Commander — a WotC Bracket
+  floor plus cEDH candidacy. Every score carries its evidence: Game Changer
+  names, detected combos (in the deck, or one piece away), structural gaps,
+  a `data_vintage` block dating the combo data, and a confidence level that
+  names any degraded inputs (missing combo snapshot, unidentified commander,
+  unknown Game Changer data) instead of silently guessing. Output is
+  deterministic — the same deck against the same data serializes
+  byte-identically. Supported formats: `commander` and `standard`.
+  *Experimental:* scoring calibration is still being tuned; expect the numbers
+  (not the shape of the output) to shift in upcoming releases.
+- **`compare_deck_power`** — server-side diff of two assessments ("did my edit
+  make the deck stronger, and what changed?"): per-dimension deltas, score
+  endpoints and tiers, the Commander bracket pair, and sorted added/removed
+  lists for Game Changers, combos (including included ↔ almost-included bucket
+  flips), and structural gaps. Delta direction is always candidate − baseline.
+- **Local Commander Spellbook combo snapshot.** Combo detection reads a local
+  import of the [Commander Spellbook](https://commanderspellbook.com) bulk
+  export (~26 MB download, ~100k variants) stored in the same SQLite file —
+  fully offline once imported, refreshed on demand with
+  `uv run python scripts/import_spellbook_combos.py` (atomic replace; a failed
+  run keeps the previous snapshot). Without it, assessment still runs at
+  reduced confidence (`combo_data_unavailable`) rather than erroring.
+- **Commander identity on deck cards.** `add_card_to_deck` accepts a
+  `commander` flag (two flagged rows = partners), used by format resolution
+  and commander-gated combo matching; a sole legendary creature in a
+  commander deck is inferred when nothing is flagged.
+- **`game_changer` card field**, imported from Scryfall's curated Game
+  Changers list and surfaced in assessment evidence.
+
+### Upgrade notes
+
+- **Existing databases need two additive columns** (`cards.game_changer`,
+  `deck_cards.commander`) that new installs get automatically. Easiest path:
+  delete the central data directory and re-run `initialize_database` +
+  `build_search_index`. To keep saved decks instead, run the two idempotent
+  migrations from a clone —
+  `uv run python scripts/migrate_add_game_changer.py` and
+  `uv run python scripts/migrate_add_deck_card_commander.py` — then refresh
+  card data (`initialize_database` with `update=true`) to backfill
+  `game_changer` values.
+- Combo detection is empty until the snapshot import above has been run once.
+
 ## [0.3.0] - 2026-07-11
 
 ### Added
@@ -155,6 +204,7 @@ Initial public release.
   action: `setup.py` imports the card database into the central directory
   automatically (the semantic index is built separately, see Added).
 
+[0.4.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.1.0
