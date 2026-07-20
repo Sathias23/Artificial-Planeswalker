@@ -1,7 +1,8 @@
-# Step-0 Spike: MTGA Collection Collector on the Live 2026 Client — **GO** (provisional)
+# Step-0 Spike: MTGA Collection Collector on the Live 2026 Client — **GO**
 
-**Date:** 2026-07-20 · **Verdict:** **GO on feasibility** — provisional until Brad's in-client count
-eyeball (the one step only a human can do). See "The reframed question" for the supplier-viability half.
+**Date:** 2026-07-20 · **Verdict:** **GO on feasibility** — confirmed 2026-07-20 by Brad's
+in-client count check (Yuna, Hope of Spira ×3, Get Lost ×3, Omnath, Locus of the Roil ×1 all
+match the export). See "The reframed question" for the supplier-viability half.
 **Question under test** (from [technical-mtga-collection-ingestion-research-2026-06-28.md](technical-mtga-collection-ingestion-research-2026-06-28.md)):
 *Can a collector produce a usable owned-count snapshot from the live 2026 MTGA client?* — plus the
 2026-06-28 addendum's reframe: *is there a MAINTAINED collector with a CONSUMABLE export?*
@@ -16,7 +17,7 @@ against the live Steam client, extracted **7,935 per-printing `{grpId: qty}` ent
 | Memory scan (pymem, anchor-calibrated) | ✅ collection block found; 7,935 entries |
 | Local id→name resolution (`Raw_CardDatabase_*.mtga`) | ✅ **7,935/7,935 (100%)** |
 | Scryfall `arena_id` join (30-card random sample) | ✅ **30/30 resolved**; all 30 names exactly equal (note: the checker's match predicate was looser than exact — exactness was confirmed after the fact) |
-| Known-count eyeball | ⚠️ **provisional** — self-consistent (below), Brad's in-client confirmation pending |
+| Known-count eyeball | ✅ Brad confirmed in-client 2026-07-20: Yuna ×3, Get Lost ×3, Omnath ×1 all match |
 
 **Count evidence, honestly bounded.** Four cards seeded as qty-1 anchors from Brawl singleton decks
 came back ×1 in the export (Omnath, Locus of the Roil; Nylea, Keen-Eyed; Craterhoof Behemoth (TDM);
@@ -25,7 +26,8 @@ came back ×4, plausible from their Standard builds but not externally confirmed
 and Assassin's Trophy ×4 are deck-derived plausibility only. Note the scan log shows Sephiroth's
 qty-1 anchor *did* pattern-match somewhere (likely a deck-list structure holding `(grpId, 1)`), so
 anchor hits are NOT proof of exact collection counts — the export's counts rest on the 1-of
-agreements and the pending human eyeball, not on scan mechanics. No completeness cross-check of the
+agreements and Brad's in-client confirmation (Yuna ×3, Get Lost ×3, Omnath ×1 — includes
+non-anchor, non-4-capped counts), not on scan mechanics. No completeness cross-check of the
 7,935 total was possible in-session (no in-client total compared, single scan run); `find_blocks`'s
 largest-block heuristic could in principle truncate — worth a second-run diff in Phase A testing.
 
