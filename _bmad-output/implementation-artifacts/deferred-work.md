@@ -610,3 +610,17 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   AC 6 only requires a "combos matched count" and the 7.2 summary is explicitly provisional;
   Story 7.3 (human-summary serialization) should disambiguate assembled vs one-away in the
   client-facing projection. (Source: Blind Hunter; Severity: Low; deferred to Story 7.3.)
+
+## Deferred from: code review of c1-2-side-effect-free-asgi-app-with-a-lifespan-and-a-health-endpoint (2026-07-25)
+
+- **`lifespan_client` seam is not parameterizable for its named inheritors** — the conftest helper
+  hardcodes `BASE_URL = "http://testserver"` and accepts no headers/base-url kwargs
+  (`tests/unit/companion/conftest.py:26-43`), but c1-5's Host-validation/CORS/token tests must vary
+  exactly those. Extending the signature with optional kwargs is backward-compatible, so the
+  extension belongs to c1-5 when the need is concrete rather than speculative here.
+  (Source: Blind Hunter; Severity: Low; deferred to c1-5.)
+- **mypy pre-commit hook `additional_dependencies` drift from `uv.lock`** — the hook's isolated env
+  resolves `fastapi>=0.139.2` (and the pre-existing pydantic/sqlalchemy entries) independently at
+  hook-install time (`.pre-commit-config.yaml:9`), so pre-commit mypy may check a different FastAPI
+  than the locked 0.140.0 CI/runtime uses. Pre-existing pattern extended, not introduced, by c1-2.
+  (Source: Blind Hunter; Severity: Low; deferred — pre-existing tooling pattern.)
