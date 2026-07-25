@@ -175,10 +175,18 @@ class Database:
             logger.info("Card database not found at %s; serving database_not_initialized", path)
             raise CompanionError("database_not_initialized")
         engine = create_engine(url)
+        # Factory first, engine published second: if the factory construction ever raised, a
+        # half-initialized holder would re-enter _create and orphan this engine's pool.
+        factory = create_session_factory(engine)
         self._engine = engine
         # The one line an operator reads to confirm which database the companion actually found.
-        logger.info("Card database engine created for %s", url)
-        return create_session_factory(engine)
+        # Rendered with the password hidden: the URL can be user-supplied via CARDS_DATABASE_URL,
+        # and a non-SQLite URL may carry credentials.
+        logger.info(
+            "Card database engine created for %s",
+            make_url(url).render_as_string(hide_password=True),
+        )
+        return factory
 
     async def dispose(self) -> None:
         """Release the engine's connection pool, if one was ever created.
@@ -187,14 +195,18 @@ class Database:
         data request has nothing to release. The cached factory is dropped along with the engine so
         the holder stays honest — a post-dispose caller gets a fresh engine rather than sessions
         bound to a disposed one.
+
+        Runs under the same lock as creation, so a first request racing shutdown cannot re-create
+        an engine in the window where dispose has cleared the cache but not yet released the pool.
         """
-        engine = self._engine
-        if engine is None:
-            return
-        self._engine = None
-        self._session_factory = None
-        await engine.dispose()
-        logger.debug("Card database engine disposed")
+        async with self._lock:
+            engine = self._engine
+            if engine is None:
+                return
+            self._engine = None
+            self._session_factory = None
+            await engine.dispose()
+            logger.debug("Card database engine disposed")
 
 
 def database(app: FastAPI) -> Database | None:

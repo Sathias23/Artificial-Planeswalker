@@ -8,7 +8,7 @@ story_branch: feat/companion-c1-6-lazy-database-engine
 
 # Story C1.6: Lazy database engine so a fresh install starts instead of erroring
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -285,6 +285,20 @@ with. c3-1 (`GET /api/decks`) says in its own AC that it "uses the shared lazy e
   - [x] Confirm by command that the AC 17 forbidden files are untouched:
         `git status --porcelain -- tests/unit/companion/test_app.py tests/unit/companion/test_security.py tests/unit/companion/test_server.py tests/unit/companion/test_import_boundary.py .github/workflows/ci.yml pyproject.toml uv.lock .pre-commit-config.yaml src/data src/mcp_server`
         returns empty.
+
+### Review Findings
+
+- [x] [Review][Decision] AC 7's specified `gather` concurrency tests are vacuous and ship anyway with the AC text unamended — measured (dev + auditor independently): with the lock removed, both `gather`+counting-spy tests stay green because `_create()` is fully synchronous, so single-threaded asyncio cannot interleave the check-then-assign. The two replacement assertions in `TestTheCreationLock` are good and one (`test_the_lock_is_held_while_the_engine_is_created`) genuinely fails under the mutation; the other (per-instance lock) guards Gotcha 3 but not lock removal. **RESOLVED (Brad, 2026-07-25): signed off as-is** — lock kept, documented vacuous `gather` tests kept as future-proofing, `TestTheCreationLock` carries the mutation teeth. No AC text change.
+- [x] [Review][Patch] `dispose()` mutates holder state without taking the creation lock — an in-flight first request racing `_shutdown` can re-create an engine after dispose cleared it (post-shutdown pool nothing disposes); take `self._lock` in `dispose()` [src/companion/app/deps.py:183-197]
+- [x] [Review][Patch] `_create()` publishes `self._engine` before the factory exists — if `create_session_factory` ever raised, the holder is half-initialized and the next call orphans the first pool; build the factory first, then assign both [src/companion/app/deps.py:177-181]
+- [x] [Review][Patch] Engine-created INFO log prints the raw URL — a user-supplied non-SQLite `CARDS_DATABASE_URL` can carry credentials; log `make_url(url).render_as_string(hide_password=True)` instead [src/companion/app/deps.py:180]
+- [x] [Review][Patch] Dev Record overstates the seam usage — "all 37 tests through the `lifespan_client` seam (sole exception the no-holder test)" is inaccurate: ~14 tests drive the holder or `database_file` directly with no client; one-line correction to the AC 14 completion note [story file, Completion Notes]
+- [x] [Review][Patch] Shutdown-clean test asserts zero WARNING+ records from *any* logger — a third-party warning during the lifespan fails it as a "teardown failure"; scope the filter by record name as the AC 9 log test does [tests/unit/companion/test_deps.py:795]
+- [x] [Review][Patch] `_data_app() -> object` mis-annotates the helper — it returns a `FastAPI` app and callers use FastAPI-only surface [tests/unit/companion/test_deps.py:102]
+- [x] [Review][Defer] Cached-engine path never re-runs the existence check — `cards.db` deleted while the companion runs means the next connection re-plants a zero-byte file (the response token stays a correct 503); includes the narrower exists→connect TOCTOU window. The no-plant guarantee is scoped to before-first-engine by design; per-request re-stat is c10-3-adjacent machinery with no failing user story behind it [src/companion/app/deps.py:148-176] — deferred, homed in deferred-work.md
+- [x] [Review][Defer] A durably corrupt `cards.db` is classified transient forever — "file is not a database" answers `database_unavailable` (the quiet-retry "Database updating" state) on every request with no path to a repair panel; UX ruling belongs with c2-9's state design [src/companion/app/errors.py database_error_handler] — deferred, homed in deferred-work.md
+- [x] [Review][Defer] URI-form SQLite `CARDS_DATABASE_URL` is misclassified as a file path — `sqlite+aiosqlite:///file::memory:?cache=shared` (or `?uri=true` forms) yields `Path("file::memory:")`, which never exists → permanent 503 for a valid URL; same family as the homed bare-path item, recorded against it [src/companion/app/deps.py:85-91] — deferred, extends the existing bare-path deferral
+- [x] [Review][Defer] `UnhandledErrorMiddleware`'s full-traceback logging can carry `[SQL]`/`[parameters]` — a non-`DatabaseError` `StatementError` (e.g. a wrapped `InterfaceError`) falling through to the 500 path logs the bound parameters AC 9 scrubs on the 503 path; pre-existing c1-4 middleware behavior, not introduced here [src/companion/app/errors.py:382] — deferred, pre-existing
 
 ## Dev Notes
 
@@ -776,9 +790,14 @@ exactly the three changed app files.
 - **AC 13** — `test_import_boundary.py` green unedited; `deps.py` is classified automatically by the
   `app/` branch. Gotcha 8 was respected: no `_SESSION_MUTATORS` name is called on a `database`- or
   `db`-shaped receiver anywhere in the new code.
-- **AC 14** — 37 unmarked unit tests, no network, no server boot, all through the `lifespan_client`
-  seam (the sole exception is the no-holder test, which must *not* enter the lifespan and therefore
-  builds its own client with a matching loopback `base_url` so it still passes c1-5's envelope).
+- **AC 14** — 37 unmarked unit tests, no network, no server boot. Every *request-shaped* behavior
+  (the 503s, health, concurrency, appearance paths, no-holder 500) is driven through the
+  `lifespan_client` seam on a real `build_app()` (the sole exception is the no-holder test, which
+  must *not* enter the lifespan and therefore builds its own client with a matching loopback
+  `base_url` so it still passes c1-5's envelope); ~14 tests additionally drive the `Database`
+  holder or the pure `database_file` directly with no app or client — which AC 3 explicitly wanted
+  ("testable without an engine"). *[Corrected in review: the original note claimed all 37 ran
+  through the seam.]*
   Fixtures are plain `sqlite3`. One test steers via `PLANESWALKER_DATA_DIR` with
   `monkeypatch.delenv("CARDS_DATABASE_URL", raising=False)`, per Gotcha 4. Every 503 is paired with a
   200 from the same route.

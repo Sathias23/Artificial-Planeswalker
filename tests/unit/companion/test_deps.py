@@ -24,6 +24,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.exc import ArgumentError, DatabaseError, OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -99,7 +100,7 @@ bound parameters* (verified), which is why the handler logs ``exc.orig`` instead
 what proves it."""
 
 
-def _data_app() -> object:
+def _data_app() -> FastAPI:
     """Return a real ``build_app()`` with the two test-local routes this story is driven through.
 
     ``/_test/data`` reads through the session it was handed rather than merely accepting it, so a
@@ -791,7 +792,10 @@ class TestShutdownDisposesTheEngine:
         assert holder.engine is None
         assert not absent.exists(), "a health-only run touched the database file"
         # main.lifespan swallows-and-logs a failing teardown, so a raising dispose() would show up
-        # here as an ERROR rather than as a test failure.
-        assert not [record for record in caplog.records if record.levelno >= logging.WARNING], (
-            "teardown logged a failure on an app that never created an engine"
-        )
+        # here as an ERROR rather than as a test failure. Scoped to this package's loggers so a
+        # third-party warning emitted during the lifespan cannot fail the test as a false positive.
+        assert not [
+            record
+            for record in caplog.records
+            if record.levelno >= logging.WARNING and record.name.startswith("src.companion")
+        ], "teardown logged a failure on an app that never created an engine"
