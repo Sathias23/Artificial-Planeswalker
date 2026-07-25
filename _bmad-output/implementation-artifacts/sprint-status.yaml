@@ -1,5 +1,5 @@
 # generated: 2026-06-20
-# last_updated: 2026-07-25 (companion app: 10 epics / 76 stories added under the c-prefix key scheme)
+# last_updated: 2026-07-25 (story c1-1 created — epic-c1 in-progress; companion build starts)
 # project: Artificial-Planeswalker
 # project_key: NOKEY
 # tracking_system: file-system
@@ -46,7 +46,7 @@
 #   epic-c1..10 → _bmad-output/planning-artifacts/epics-companion-app.md          (c-prefixed, numbering UNCHANGED)
 
 generated: 2026-06-20
-last_updated: 2026-07-25 (companion app epics/stories added; epic-c1..c10, all backlog)
+last_updated: 2026-07-25 (story c1-1 implemented, now in review; epic-c1 in-progress)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -224,8 +224,8 @@ development_status:
   # AD-1/2/3/4/10/14/15/16 · depends on nothing
   # NOTE: EPIC-SPLIT calls c1-1's two boundary tests the highest-leverage stories in the
   # whole feature — they land BEFORE the code they guard, so AD-2/AD-3 are structural not aspirational.
-  epic-c1: backlog
-  c1-1-companion-package-skeleton-with-ci-enforced-import-boundaries: backlog
+  epic-c1: in-progress
+  c1-1-companion-package-skeleton-with-ci-enforced-import-boundaries: review
   c1-2-side-effect-free-asgi-app-with-a-lifespan-and-a-health-endpoint: backlog
   c1-3-port-selection-with-ephemeral-fallback-and-a-printed-launch-url: backlog
   c1-4-typed-rest-error-contract-with-closed-reason-tokens: backlog
