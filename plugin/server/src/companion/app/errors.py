@@ -27,13 +27,14 @@ annotation is an ``arg-type`` failure under ``mypy --strict``.
 """
 
 import logging
-from typing import Any
+from collections.abc import Mapping
+from typing import Any, get_args
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.requests import ClientDisconnect, Request
+from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from src.companion.contracts import ErrorReason, ErrorResponse
@@ -45,7 +46,8 @@ STATUS_BY_REASON: dict[ErrorReason, int] = {
     "database_not_initialized": 503,
     "database_unavailable": 503,
     "invalid_request": 400,
-    "payload_too_large": 422,
+    "payload_too_large": 413,
+    "internal_error": 500,
 }
 """The one pairing of reason token to HTTP status (AD-16).
 
@@ -71,13 +73,23 @@ class CompanionError(Exception):
     """
 
     def __init__(self, reason: ErrorReason) -> None:
+        # mypy checks the Literal at typed call sites, but a runtime string from anywhere else
+        # would otherwise surface as a KeyError inside the handler, masked by the middleware as a
+        # misleading internal_error. Fail loudly at the raise site instead.
+        if reason not in get_args(ErrorReason):
+            raise ValueError(f"unknown error reason: {reason!r}")
         # Pass the reason up so the default string form — which is what a log line or a pytest
         # failure prints — names the token rather than showing an empty exception.
         super().__init__(reason)
         self.reason: ErrorReason = reason
 
 
-def error_response(reason: ErrorReason, *, status: int | None = None) -> JSONResponse:
+def error_response(
+    reason: ErrorReason,
+    *,
+    status: int | None = None,
+    headers: Mapping[str, str] | None = None,
+) -> JSONResponse:
     """Render *reason* as the typed error body.
 
     Args:
@@ -86,6 +98,10 @@ def error_response(reason: ErrorReason, *, status: int | None = None) -> JSONRes
             the framework's own status (404 for an unknown path, 405 for a wrong method) is more
             accurate than anything the token could imply. Modelled failures always take the
             mapping — do not pass this from an endpoint.
+        headers: Headers to carry on the response. Also only for the ``HTTPException`` path:
+            Starlette's route-miss 405 arrives with the RFC-mandated ``Allow``, and a later
+            story's exception may carry ``WWW-Authenticate`` or ``Retry-After`` — dropping them
+            would make the typed body a downgrade.
 
     Returns:
         A ``JSONResponse`` whose body is exactly ``{"reason": "<token>"}``.
@@ -93,6 +109,7 @@ def error_response(reason: ErrorReason, *, status: int | None = None) -> JSONRes
     return JSONResponse(
         status_code=STATUS_BY_REASON[reason] if status is None else status,
         content=ErrorResponse(reason=reason).model_dump(),
+        headers=dict(headers) if headers else None,
     )
 
 
@@ -118,7 +135,9 @@ def error_responses(*reasons: ErrorReason) -> dict[int | str, dict[str, Any]]:
         [400, 404]
     """
     grouped: dict[int, list[ErrorReason]] = {}
-    for reason in reasons:
+    # dict.fromkeys: dedupe while keeping declaration order, so a repeated token cannot ship a
+    # "reason: x | x" description into the generated docs.
+    for reason in dict.fromkeys(reasons):
         grouped.setdefault(STATUS_BY_REASON[reason], []).append(reason)
     return {
         status: {
@@ -175,15 +194,21 @@ async def validation_error_handler(request: Request, exc: Exception) -> JSONResp
     return error_response("invalid_request")
 
 
-async def http_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Answer an ``HTTPException`` with the typed body, keeping the framework's status.
+async def http_exception_handler(request: Request, exc: Exception) -> Response:
+    """Answer an ``HTTPException`` with the typed body, keeping the framework's status and headers.
 
     An unknown path's 404, a 405, and any ``HTTPException`` a later story raises are *framework
     misses*, not modelled UX states — there is no token for "you asked for a path that does not
     exist", and inventing one would breach the closed set. So the status is preserved and the token
     says only which half of the world the failure came from: ``invalid_request`` for 4xx (the
-    caller), ``database_unavailable`` for 5xx (us). The property AD-16 actually needs — token to UX
+    caller), ``internal_error`` for 5xx (us, unmodelled — a *modelled* database outage raises
+    :class:`CompanionError` and never lands here). The property AD-16 actually needs — token to UX
     state, 1:1 — is untouched, because nothing in the SPA keys off a bare status code.
+
+    Headers ride along: Starlette's route-miss 405 carries the RFC-mandated ``Allow``, and dropping
+    a ``WWW-Authenticate`` or ``Retry-After`` would make the typed body a downgrade. A sub-400 or
+    bodiless (204/304) status is not an error at all, so it passes through with no body rather
+    than being stamped with a token it cannot honestly carry.
 
     Registered against **Starlette's** ``HTTPException``, which ``fastapi.HTTPException``
     subclasses, so one registration covers both and overrides FastAPI's own default handler.
@@ -193,24 +218,29 @@ async def http_exception_handler(request: Request, exc: Exception) -> JSONRespon
         exc: The exception Starlette dispatched here.
 
     Returns:
-        The typed body at the exception's own status.
+        The typed body at the exception's own status, or a bodiless response for a status that
+        forbids or predates a body.
 
     Raises:
         Exception: Re-raises anything that is not a Starlette ``HTTPException``.
     """
     if not isinstance(exc, StarletteHTTPException):
         raise exc
-    reason: ErrorReason = "invalid_request" if exc.status_code < 500 else "database_unavailable"
-    return error_response(reason, status=exc.status_code)
+    if exc.status_code < 400 or exc.status_code in {204, 304}:
+        return Response(status_code=exc.status_code, headers=exc.headers)
+    reason: ErrorReason = "invalid_request" if exc.status_code < 500 else "internal_error"
+    return error_response(reason, status=exc.status_code, headers=exc.headers)
 
 
 class UnhandledErrorMiddleware:
-    """Turn any unhandled exception into a typed ``503 database_unavailable``, logged once.
+    """Turn any unhandled exception into a typed ``500 internal_error``, logged once.
 
     Pure ASGI rather than an ``Exception`` exception-handler: Starlette's handler path always
     re-raises after writing (see the module docstring), which would give the caller a traceback
     instead of a body. Catches ``Exception`` and never ``BaseException``, so ``CancelledError``
-    still propagates and shutdown and client disconnects keep working.
+    still propagates and shutdown keeps working. ``ClientDisconnect`` — an ``Exception`` subclass —
+    is carved out separately: a client dropping mid-read is routine, not a bug, so it must not
+    produce a false-alarm ``ERROR`` record or a response into a dead stream.
 
     Args:
         app: The next application in the ASGI stack.
@@ -242,17 +272,24 @@ class UnhandledErrorMiddleware:
 
         try:
             await self.app(scope, receive, send_wrapper)
+        except ClientDisconnect:
+            # Routine, not a bug: the caller closed the connection mid-request. Re-raising is
+            # byte-identical to not having this middleware at all — no ERROR record, no attempt
+            # to answer a client that is gone.
+            logger.debug("Client disconnected during %s %s", scope.get("method"), scope.get("path"))
+            raise
         except Exception:
+            if response_started:
+                # Headers are already on the wire; a second response would corrupt the stream, so
+                # let it go up to ServerErrorMiddleware and die honestly — and let that outer
+                # layer do the logging, so every failure is logged exactly once by exactly one net.
+                raise
             # Reaches stderr via logging.lastResort even though no story has configured a root
             # logger yet (c1-9 owns that); the client still gets only the token.
             logger.exception(
                 "Unhandled error serving %s %s", scope.get("method"), scope.get("path")
             )
-            if response_started:
-                # Headers are already on the wire; a second response would corrupt the stream, so
-                # let it go up to ServerErrorMiddleware and die honestly.
-                raise
-            response = error_response("database_unavailable")
+            response = error_response("internal_error")
             await response(scope, receive, send)
 
 

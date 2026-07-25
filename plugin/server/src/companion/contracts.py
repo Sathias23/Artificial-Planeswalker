@@ -49,13 +49,16 @@ ErrorReason = Literal[
     "database_unavailable",
     "invalid_request",
     "payload_too_large",
+    "internal_error",
 ]
 """The closed set of reasons any non-2xx response may give (AD-16).
 
-Closed at **five**. Adding a sixth is a deliberate act with a failing test attached
+Closed at **six**. Adding another is a deliberate act with a failing test attached
 (``tests/unit/companion/test_errors.py``), because AD-16's extension rule is that a new token and
-the UI state it drives are added together — never a token alone. Story c3-2 adds ``card_not_found``
-under exactly that rule; nothing else does.
+the UI state it drives are added together — never a token alone. ``internal_error`` was added under
+exactly that rule by the c1-4 review (Brad, 2026-07-25): an unhandled bug must be distinguishable
+from a transient database outage *before* Epic 2 freezes the TypeScript union, with its state
+panel homed on c2-9. Story c3-2 adds ``card_not_found`` the same way; nothing else does.
 
 A ``Literal`` rather than a ``StrEnum`` so it matches :attr:`HealthResponse.status`, generates a
 plain TypeScript string union from ``openapi-typescript`` (AD-12), and lets a raise site write the
@@ -95,6 +98,9 @@ class ErrorResponse(BaseModel):
       a client bug or a stray caller, and the log is where it is diagnosed.
     * ``payload_too_large`` — an agent push exceeded the ingest cap (c5-5). Surfaced to the *agent*
       through the MCP tool's outcome vocabulary, not to the glass.
+    * ``internal_error`` — the companion itself hit an unhandled bug (500). Deterministic, so the
+      SPA must **not** quietly retry it the way ``database_unavailable`` retries; its state panel
+      is written in Epic 2 (c2-9). The log carries the traceback; the wire carries the token.
 
     Attributes:
         reason: The token, drawn from :data:`ErrorReason`.

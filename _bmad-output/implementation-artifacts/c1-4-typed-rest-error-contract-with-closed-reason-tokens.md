@@ -8,7 +8,7 @@ story_branch: feat/companion-c1-4-typed-rest-error-contract
 
 # Story C1.4: Typed REST error contract with closed reason tokens
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -238,6 +238,80 @@ ends, c2-3 has nothing to generate and the UI's state-panel switch has no types 
   - [x] Confirm by command, not assertion, that the AC 14 forbidden files are untouched:
         `git status --porcelain -- tests/unit/companion/test_app.py tests/unit/companion/test_server.py tests/unit/companion/test_import_boundary.py .github/workflows/ci.yml pyproject.toml uv.lock .pre-commit-config.yaml`
         returns empty.
+
+### Review Findings
+
+Code review 2026-07-25 (Blind Hunter + Edge Case Hunter + Acceptance Auditor; diff
+`4a5695c...4bc5b7a`). Auditor verdict: **all 14 ACs satisfied** — gates reproduced at the review
+commit (1,443 passed / 45 deselected), mirror byte-identical, zero raise sites in `src/` confirmed,
+forbidden-edit list untouched. 26 raw findings deduplicated to 16. The review also credits three
+implementation catches: the shared-status grouping in `error_responses`, the verified
+middleware-vs-`Exception`-handler ruling, and the mid-stream re-raise dead-guard test.
+
+- [x] [Review][Decision] **Unhandled bugs → `internal_error` (500), RESOLVED (Brad, 2026-07-25).**
+      The sixth token was added before Epic 2 freezes the TypeScript union: `ErrorReason` is now
+      closed at six, `STATUS_BY_REASON["internal_error"] = 500`, the unhandled middleware and the
+      5xx branch of `http_exception_handler` return it (a stray 5xx `HTTPException` is "us,
+      unmodelled" — `database_unavailable` now strictly means the modelled transient-DB state),
+      `build_app()` declares it app-wide, and the state panel is homed on Story 2.9 in the epics
+      doc. Resolves the story's Open Question 1.
+- [x] [Review][Decision] **`payload_too_large` → 413, RESOLVED (Brad, 2026-07-25).** Moved from
+      422 to HTTP's native status in `STATUS_BY_REASON`, the test table, AD-16's spine table and
+      the epics REST-semantics table + c5-5 references — all annotated with the ruling. 422 is now
+      unused, and `invalid_request` (400) keeps semantic-validation failures.
+- [x] [Review][Patch] `http_exception_handler` drops `exc.headers` — Starlette's route-miss 405
+      carries `Allow` (RFC 9110 MUST) and its default handler forwards it; the typed replacement
+      loses it, and any future `WWW-Authenticate`/`Retry-After` too. Also: a sub-400 or 204/304
+      `HTTPException` (latent — nothing raises one today) would get an error body on a non-error
+      or bodiless status. Forward headers; pass sub-400/204/304 through bodiless with status +
+      headers preserved. [src/companion/app/errors.py:178-204] (Severity: Medium)
+- [x] [Review][Patch] `ClientDisconnect` is an `Exception` subclass, so a client dropping mid-read
+      would be ERROR-logged as an unhandled bug and answered into a dead stream — false-alarm
+      ERRORs poison the log contract this story establishes (first reachable when c5-5 reads
+      bodies). Carve it out: debug log + re-raise (identical to today's no-middleware behaviour).
+      [src/companion/app/errors.py:243-256] (Severity: Low)
+- [x] [Review][Patch] Mid-stream failures are logged twice — `logger.exception` fires before the
+      `response_started` check, then the re-raise gets logged again by the outer net (uvicorn).
+      Move the log into the not-started branch so every failure is logged exactly once, by exactly
+      one layer. [src/companion/app/errors.py:245-254] (Severity: Low)
+- [x] [Review][Patch] `CompanionError` accepts any string at runtime — mypy guards `src/` only, and
+      a typo'd token from an un-typechecked call site surfaces as a `KeyError` inside the handler,
+      masked by the middleware as a misleading `503 database_unavailable`. Validate in `__init__`
+      (`ValueError` naming the bad token) + a test. [src/companion/app/errors.py:73-77] (Severity: Low)
+- [x] [Review][Patch] `error_responses()` does not dedupe repeated tokens —
+      `error_responses("invalid_request", "invalid_request")` ships "reason: invalid_request |
+      invalid_request" into the OpenAPI description c2-3 generates docs from, and c3-1/c3-2/c5-5
+      reuse this helper. `dict.fromkeys(reasons)`. [src/companion/app/errors.py:120-129] (Severity: Low)
+- [x] [Review][Patch] AC 5's "the validation detail goes to the log" is asserted nowhere — the
+      `logger.warning` with `exc.errors()` can be deleted without a red test (the claim-without-a-
+      pin pattern c1-1's dead-guard lesson warns about). Add a `caplog` assertion to the validation
+      test. [tests/unit/companion/test_errors.py — TestFrameworkFailures] (Severity: Low)
+- [x] [Review][Patch] The AC 9 OpenAPI walk assumes every path-item value is an operation dict and
+      every JSON content entry has a `schema` — a path-level `parameters` list or a schemaless
+      content block turns the structural pin into an `AttributeError`/`KeyError` crash instead of a
+      diagnostic failure. Skip non-dict values; assert `schema` presence with a message.
+      [tests/unit/companion/test_errors.py:298-310] (Severity: Low)
+- [x] [Review][Patch] The non-http passthrough test hands the middleware `None` for
+      `receive`/`send` — the test itself violates the ASGI contract, and any future middleware
+      change touching those channels on non-http scopes fails with `TypeError` instead of a
+      readable assertion. Pass proper async stubs. [tests/unit/companion/test_errors.py:252-261] (Severity: Low)
+- [x] [Review][Patch] Debug Log stale figures — "tests/unit/companion/ is 131 green" (actual at the
+      review commit: 133; the figure predates the two extra ASGI dead-guard tests) and "265 files
+      already formatted" (actual: 266; the paste predates the plugin rebuild). [story Debug Log] (Severity: Low)
+- [x] [Review][Defer] The outermost error middleware means c1-5's future CORS middleware (inner,
+      per the install-last pin) never stamps headers onto an unhandled-503 — a cross-origin caller
+      would see an opaque network error for exactly the failure class this story types. The
+      ordering trade (typed failures *of* the security middleware vs CORS-visible unhandled
+      errors) is real and only c1-5 can weigh it with the actual CORS scope in hand.
+      [src/companion/app/main.py:120-124] — deferred to c1-5
+
+Dismissed as noise (4): double-`install_error_handling` idempotence guard (speculative — one call
+site, and c1-5/c1-6 are told to wire nothing); the "weak" inertness re-assertion (it is exactly the
+cheap re-assertion the spec's Task 4 prescribed, and the strong fresh-import inertness coverage in
+`test_app.py` now traverses `errors.py` via the import chain anyway); decorative doctest examples
+(project-wide Google-docstring convention; no `--doctest-modules` runner is configured anywhere);
+the app-wide 422 on `/health` documenting an impossible response (the story's Open Question 2,
+explicitly ruled "displace globally" with the trade acknowledged).
 
 ## Dev Notes
 
@@ -569,7 +643,8 @@ $ uv run ruff format .
 $ uv run ruff check .
 All checks passed!
 $ uv run ruff format --check .
-265 files already formatted
+265 files already formatted   (review-corrected: 266 at the review commit — the paste predates
+                               the plugin rebuild adding plugin/server/.../errors.py)
 
 $ uv run mypy src/
 Success: no issues found in 78 source files
@@ -578,8 +653,10 @@ $ uv run pytest -m "not integration" -q
 ==================== 1443 passed, 45 deselected in 50.25s =====================
 ```
 
-1,443 − 1,405 = **38 new tests, zero regressions.** `tests/unit/companion/` is 131 green,
-including `test_app.py`, `test_server.py` and `test_import_boundary.py` run unmodified (AC 10).
+1,443 − 1,405 = **38 new tests, zero regressions.** `tests/unit/companion/` is 133 green
+*(review-corrected: the original paste said 131, captured before the two extra ASGI-level
+dead-guard tests were added)*, including `test_app.py`, `test_server.py` and
+`test_import_boundary.py` run unmodified (AC 10).
 
 **Task 5 — scope check (AC 14), by command:**
 
@@ -654,3 +731,4 @@ $ git status --porcelain -- plugin/      # after commit
 | --- | --- |
 | 2026-07-25 | Story c1-4 created from epics Story 1.4 + AD-16/AD-12/AD-10, with the Starlette re-raise behaviour, the `mypy --strict` handler-signature failure, the app-level `responses` schema effect and the middleware ordering all verified against the installed FastAPI 0.140.0 / Starlette 0.48.0 rather than assumed. Baseline re-measured at `4a5695c`: 1,405 passed / 45 deselected. Status → ready-for-dev. |
 | 2026-07-25 | Implemented all 14 ACs across Tasks 0–5. `ErrorReason`/`ErrorResponse` in the leaf; `errors.py` with the single status mapping, `CompanionError`, three `(request, exc: Exception)` handlers and the pure-ASGI `UnhandledErrorMiddleware`; `build_app()` declares the error body app-wide and installs the handling last. 38 new tests (1,405 → 1,443 passed, 45 deselected); ruff, `ruff format --check` and `mypy src/` all clean; plugin mirror rebuilt. Status → review. |
+| 2026-07-25 | Code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor): all 14 ACs verified; 26 raw findings → 16 unique. **Two wire-contract rulings by Brad, applied before Epic 2 freezes the TS union:** `internal_error` (500) added as the sixth token (unhandled bugs + stray 5xx `HTTPException`s no longer masquerade as the retry-forever `database_unavailable`; panel homed on Story 2.9) and `payload_too_large` moved 422 → 413 — spine AD-16 table + epics tables annotated. 9 hardening patches: `http_exception_handler` forwards `exc.headers` (405 keeps RFC-mandated `Allow`) and passes sub-400/204/304 through bodiless; `ClientDisconnect` carved out of the unhandled path (debug + re-raise, no false-alarm ERROR); log-once ordering on mid-stream failures; `CompanionError` validates its token at runtime; `error_responses` dedupes; validation-detail log pinned by caplog; OpenAPI walk hardened; non-http test uses real ASGI channels; Debug Log figures corrected. 1 deferred (CORS-ordering tension → c1-5), 4 dismissed. 1,452 passed / 45 deselected; all gates green; mirror rebuilt. Status → done. |

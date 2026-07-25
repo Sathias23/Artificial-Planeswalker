@@ -119,7 +119,9 @@ def build_app() -> FastAPI:
     app = FastAPI(
         title=_TITLE,
         lifespan=lifespan,
-        responses=error_responses("invalid_request", "payload_too_large", "database_unavailable"),
+        responses=error_responses(
+            "invalid_request", "payload_too_large", "database_unavailable", "internal_error"
+        ),
     )
     app.include_router(health.router)
     # Last, deliberately: user_middleware[0] is the most recently added middleware, so installing

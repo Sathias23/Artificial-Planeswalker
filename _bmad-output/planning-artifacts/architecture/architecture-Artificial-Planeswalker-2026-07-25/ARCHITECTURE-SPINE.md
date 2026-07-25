@@ -340,7 +340,12 @@ graph TD
   snake_case `reason` token** that maps 1:1 onto a UX state: `deck_not_found` (404) →
   no-active-deck; `database_not_initialized` (503) → the fresh-install panel;
   `database_unavailable` (503) → "Database updating"; `invalid_request` (400);
-  `payload_too_large` (422, AD-7). Adding a UI state means adding a token here first.
+  `payload_too_large` (413, AD-7); `internal_error` (500) → an unhandled backend bug, its state
+  panel homed on Story 2.9. Adding a UI state means adding a token here first.
+  *(c1-4 review rulings, Brad 2026-07-25: `payload_too_large` moved from 422 to HTTP's native 413,
+  and `internal_error` added so a deterministic bug is distinguishable from the transient
+  `database_unavailable` retry state — both settled before Epic 2 freezes the generated
+  TypeScript union.)*
   **Deck-existence validation for `companion_set_active_deck` belongs to the MCP tool** — it has
   DB access and it is the one that must report `deck_not_found` to the agent; the backend stores
   what it is given. AD-7's no-DB-read rule governs the *push* path only; `set_active_deck` is

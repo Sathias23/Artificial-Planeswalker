@@ -13,6 +13,7 @@ from typing import get_args
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
+from starlette.requests import ClientDisconnect
 
 from src.companion.app.errors import (
     STATUS_BY_REASON,
@@ -32,7 +33,8 @@ _EXPECTED_STATUS = {
     "database_not_initialized": 503,
     "database_unavailable": 503,
     "invalid_request": 400,
-    "payload_too_large": 422,
+    "payload_too_large": 413,
+    "internal_error": 500,
 }
 
 
@@ -69,17 +71,19 @@ def _app_with_test_routes():
 
 
 class TestReasonTokenContract:
-    """AC 1 + AC 2: the token set is closed at five and the body carries nothing else."""
+    """AC 1 + AC 2: the token set is closed at six and the body carries nothing else."""
 
-    def test_the_token_set_is_exactly_these_five(self):
-        # Adding a sixth token is a deliberate act with a failing test attached (AD-16's own
-        # extension rule); c3-2's `card_not_found` is the only planned addition.
+    def test_the_token_set_is_exactly_these_six(self):
+        # Adding a token is a deliberate act with a failing test attached (AD-16's own extension
+        # rule). `internal_error` was added under that rule by the c1-4 review (Brad, 2026-07-25);
+        # c3-2's `card_not_found` is the only remaining planned addition.
         assert set(_REASONS) == {
             "deck_not_found",
             "database_not_initialized",
             "database_unavailable",
             "invalid_request",
             "payload_too_large",
+            "internal_error",
         }
 
     @pytest.mark.parametrize("reason", _REASONS)
@@ -119,6 +123,12 @@ class TestCompanionError:
     def test_its_string_form_names_the_reason(self):
         assert "deck_not_found" in str(CompanionError("deck_not_found"))
 
+    def test_a_runtime_invalid_token_fails_at_the_raise_site(self):
+        # mypy guards typed call sites only; a dynamic string must fail loudly here, not as a
+        # KeyError inside the handler masked as a misleading internal_error.
+        with pytest.raises(ValueError, match="bogus"):
+            CompanionError("bogus")
+
 
 class TestErrorResponsesHelper:
     """AC 8: one construction site for the OpenAPI declaration; c3-1/c3-2/c5-5 reuse it."""
@@ -138,6 +148,13 @@ class TestErrorResponsesHelper:
         assert set(declared) == {503}
         assert "database_not_initialized" in declared[503]["description"]
         assert "database_unavailable" in declared[503]["description"]
+
+    def test_a_repeated_token_is_documented_once(self):
+        # c3-1/c3-2/c5-5 reuse this helper; a careless double declaration must not ship
+        # "reason: x | x" into the generated docs.
+        declared = error_responses("invalid_request", "invalid_request")
+
+        assert declared[400]["description"] == "reason: invalid_request"
 
 
 class TestRaisedErrorsReachTheWire:
@@ -171,6 +188,21 @@ class TestFrameworkFailuresAreTypedToo:
         assert "detail" not in response.json()
         assert "xx" not in response.text
 
+    async def test_the_validation_detail_reaches_the_log(self, lifespan_client, caplog):
+        # The other half of AC 5's promise — "the detail goes to the log" — needs its own pin, or
+        # the logger.warning could be deleted without a red test (c1-1's dead-guard lesson).
+        with caplog.at_level(logging.WARNING, logger=_ERRORS_MODULE):
+            async with lifespan_client(_app_with_test_routes()) as client:
+                await client.get("/_typed/xx")
+
+        records = [
+            record
+            for record in caplog.records
+            if record.name == _ERRORS_MODULE and record.levelno == logging.WARNING
+        ]
+        assert len(records) == 1
+        assert "xx" in records[0].getMessage(), "the offending value belongs in the log"
+
     async def test_an_unknown_path_is_a_typed_404(self, lifespan_client):
         async with lifespan_client(_app_with_test_routes()) as client:
             response = await client.get("/no-such-path")
@@ -185,27 +217,52 @@ class TestFrameworkFailuresAreTypedToo:
         assert response.status_code == 405
         assert response.json() == {"reason": "invalid_request"}
 
-    async def test_a_5xx_http_exception_keeps_its_status_and_reads_as_unavailable(
+    async def test_a_405_keeps_its_mandatory_allow_header(self, lifespan_client):
+        # RFC 9110: "the origin server MUST generate an Allow header" on a 405. Starlette's
+        # route-miss raises with it; the typed handler must forward it, not swallow it.
+        async with lifespan_client(_app_with_test_routes()) as client:
+            response = await client.post("/health")
+
+        assert "allow" in response.headers
+        assert "GET" in response.headers["allow"]
+
+    async def test_a_5xx_http_exception_keeps_its_status_and_reads_as_internal(
         self, lifespan_client
     ):
+        # A stray 5xx HTTPException is "us, unmodelled" — internal_error. A *modelled* database
+        # outage raises CompanionError("database_unavailable"/"database_not_initialized") and
+        # never lands in this handler.
         async with lifespan_client(_app_with_test_routes()) as client:
             response = await client.get("/_http/503")
 
         assert response.status_code == 503
-        assert response.json() == {"reason": "database_unavailable"}
+        assert response.json() == {"reason": "internal_error"}
+
+    async def test_a_bodiless_status_passes_through_without_an_error_body(self, lifespan_client):
+        # 304 forbids a body; stamping a token onto it would be a protocol violation, and a
+        # sub-400 status is not an error at all.
+        async with lifespan_client(_app_with_test_routes()) as client:
+            response = await client.get("/_http/304")
+
+        assert response.status_code == 304
+        assert response.content == b""
 
 
 class TestUnhandledExceptions:
-    """AC 6: a bug is a typed 503 plus a log record — never a traceback on the wire."""
+    """AC 6: a bug is a typed 500 plus a log record — never a traceback on the wire.
 
-    async def test_it_answers_a_typed_503(self, lifespan_client):
+    ``internal_error`` rather than ``database_unavailable`` per the c1-4 review ruling (Brad,
+    2026-07-25): a deterministic bug must not drive the retry-forever "database is updating" panel.
+    """
+
+    async def test_it_answers_a_typed_500(self, lifespan_client):
         # If this raises RuntimeError instead of returning, the middleware is missing or mis-ordered
         # (Gotcha 10): httpx.ASGITransport propagates an escaping exception to the caller.
         async with lifespan_client(_app_with_test_routes()) as client:
             response = await client.get("/_boom")
 
-        assert response.status_code == 503
-        assert response.json() == {"reason": "database_unavailable"}
+        assert response.status_code == 500
+        assert response.json() == {"reason": "internal_error"}
         assert "kaboom" not in response.text
         assert "Traceback" not in response.text
 
@@ -256,9 +313,45 @@ class TestUnhandledExceptions:
         async def app(scope, receive, send):
             seen.append(scope["type"])
 
-        await UnhandledErrorMiddleware(app)({"type": "lifespan"}, None, None)
+        # Real async channels, not None: the test must honour the ASGI contract itself, so a
+        # future middleware change that touches them on non-http scopes fails readably.
+        async def receive():
+            return {"type": "lifespan.startup"}
+
+        async def send(message):
+            pass
+
+        await UnhandledErrorMiddleware(app)({"type": "lifespan"}, receive, send)
 
         assert seen == ["lifespan"]
+
+    async def test_a_client_disconnect_is_not_logged_as_a_bug(self, caplog):
+        """A client dropping mid-read is routine — no ERROR record, no answer to a dead stream."""
+
+        async def app(scope, receive, send):
+            raise ClientDisconnect()
+
+        async def receive():
+            return {"type": "http.request"}
+
+        sent = []
+
+        async def send(message):
+            sent.append(message)
+
+        with caplog.at_level(logging.DEBUG, logger=_ERRORS_MODULE):
+            with pytest.raises(ClientDisconnect):
+                await UnhandledErrorMiddleware(app)(
+                    {"type": "http", "method": "GET", "path": "/x"}, receive, send
+                )
+
+        assert sent == [], "nothing should be answered into a dead stream"
+        error_records = [
+            record
+            for record in caplog.records
+            if record.name == _ERRORS_MODULE and record.levelno >= logging.ERROR
+        ]
+        assert error_records == [], "a routine disconnect must not raise a false-alarm ERROR"
 
 
 class TestStructuralPins:
@@ -285,7 +378,7 @@ class TestStructuralPins:
     def test_the_error_body_is_declared_on_the_routes(self):
         responses = build_app().openapi()["paths"]["/health"]["get"]["responses"]
 
-        for status in ("400", "422", "503"):
+        for status in ("400", "413", "500", "503"):
             schema = responses[status]["content"]["application/json"]["schema"]
             assert schema == {"$ref": "#/components/schemas/ErrorResponse"}
 
@@ -297,6 +390,8 @@ class TestStructuralPins:
 
         for path, operations in schema["paths"].items():
             for method, operation in operations.items():
+                if not isinstance(operation, dict):
+                    continue  # path-level "parameters" (a list) or "summary" (a str) is legal.
                 for status, response in operation.get("responses", {}).items():
                     if not status.startswith("2"):
                         continue
@@ -304,6 +399,9 @@ class TestStructuralPins:
                     if body is None:
                         continue  # c3-5's image route declares image/*, not JSON.
                     checked.append(f"{method.upper()} {path} {status}")
+                    assert "schema" in body, (
+                        f"{method.upper()} {path} {status} declares JSON content with no schema"
+                    )
                     assert set(body["schema"]) == {"$ref"}, (
                         f"{method.upper()} {path} {status} returns an inline JSON object — declare "
                         "a response_model so the shape is generated, not hand-built (AD-12/AD-16)"

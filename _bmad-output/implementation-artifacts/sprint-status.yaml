@@ -1,5 +1,5 @@
 # generated: 2026-06-20
-# last_updated: 2026-07-25 (story c1-4 implemented → review; c1-3 done + merged via PR #11; epic-c1 in-progress)
+# last_updated: 2026-07-25 (story c1-4 review passed → done — internal_error token + 413 rulings applied; c1-3 merged via PR #11; epic-c1 in-progress)
 # project: Artificial-Planeswalker
 # project_key: NOKEY
 # tracking_system: file-system
@@ -46,7 +46,7 @@
 #   epic-c1..10 → _bmad-output/planning-artifacts/epics-companion-app.md          (c-prefixed, numbering UNCHANGED)
 
 generated: 2026-06-20
-last_updated: 2026-07-25 (story c1-4 implemented → review; c1-3 done + merged via PR #11; epic-c1 in-progress)
+last_updated: 2026-07-25 (story c1-4 review passed → done — internal_error token + 413 rulings applied; c1-3 merged via PR #11; epic-c1 in-progress)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -228,7 +228,7 @@ development_status:
   c1-1-companion-package-skeleton-with-ci-enforced-import-boundaries: done
   c1-2-side-effect-free-asgi-app-with-a-lifespan-and-a-health-endpoint: done
   c1-3-port-selection-with-ephemeral-fallback-and-a-printed-launch-url: done
-  c1-4-typed-rest-error-contract-with-closed-reason-tokens: review
+  c1-4-typed-rest-error-contract-with-closed-reason-tokens: done
   c1-5-localhost-only-security-envelope-host-validation-and-cors: backlog
   c1-6-lazy-database-engine-so-a-fresh-install-starts-instead-of-erroring: backlog
   c1-7-discovery-file-as-the-sole-rendezvous: backlog

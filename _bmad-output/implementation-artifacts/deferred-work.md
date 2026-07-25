@@ -645,3 +645,15 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   suite runs without xdist and the window is tiny — recorded so a future flake on these tests is
   instantly diagnosable (fix = retry loop in `free_port`). (Source: Edge Case Hunter + Blind
   Hunter; Severity: Low; deferred — act on first flake.)
+
+## Deferred from: code review of c1-4-typed-rest-error-contract-with-closed-reason-tokens (2026-07-25)
+
+- **Outermost error middleware vs c1-5's CORS: unhandled-503s will carry no CORS headers** — c1-4
+  pins `UnhandledErrorMiddleware` outermost (`src/companion/app/main.py`, install-last comment) so
+  it can type the failures of every inner middleware, and directs c1-5 to insert *inside* it. The
+  flip side: a 503 minted by the error middleware never passes back through an inner
+  `CORSMiddleware`, so a cross-origin caller sees an opaque network error for exactly the failure
+  class c1-4 exists to type. c1-5 must weigh the ordering trade (typed failures of the security
+  middleware vs CORS-visible unhandled errors) with its actual CORS scope in hand — the tension is
+  recorded here so it is inherited explicitly, not discovered. (Source: Blind Hunter; Severity:
+  Low; deferred to c1-5.)
