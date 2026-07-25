@@ -271,6 +271,19 @@
   `ConnectionFactory` happily uses the bare path — a half-works/half-crashes split. Pre-existing (the
   old `os.getenv("CARDS_DATABASE_URL", default)` had the same risk) and it fails loudly. Fix later by
   validating/normalising the URL form, or document that the `sqlite+aiosqlite:///` prefix is mandatory.
+  - **HOMED (not fixed) by story c1-6, 2026-07-25** — per the epic-7 gate-output-homing rule. On the
+    companion's REST side the crash now has a **defined behaviour instead of an undefined one**: the
+    bare path reaches `sqlalchemy.engine.make_url` inside
+    `src/companion/app/deps.py::database_file`, which raises `ArgumentError`; AD-16 rules that
+    deterministic, so it falls through to `UnhandledErrorMiddleware` and answers
+    `500 internal_error` rather than taking the process down. Pinned by
+    `test_deps.py::TestTransientFailureIsDatabaseUnavailable::
+    test_a_deterministic_argument_error_is_internal_error_not_unavailable`. Note the raise site moved
+    one step earlier than this item's original wording predicted (`make_url`, not
+    `create_async_engine`) because the companion parses the URL to derive the file path before
+    building an engine. The **underlying** half-works/half-crashes split between the async engine and
+    the sync `ConnectionFactory` is untouched and still owned here; a fix belongs in `src/paths.py`,
+    which story c1-6 is forbidden from editing.
 - **UNC `PLANESWALKER_DATA_DIR` yields a malformed async URL** — for `\\server\share\pw`,
   `database_path().as_posix()` collapses the leading `\\` to a single `/`, so the async URL drops the
   UNC authority while the sync factory keeps the native UNC path → divergence. Exotic (SQLite over a
@@ -690,3 +703,32 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   space its creations. Recorded rather than fixed because it is outside c1-5's AC 16 scope
   boundary. (Source: c1-5 full-suite gate run; Severity: Low; needs a home in the data-layer work —
   natural fit is `data-layer-orphan-handling`, the other open `src/data` item.)
+
+## Deferred from: code review of c1-6-lazy-database-engine-so-a-fresh-install-starts-instead-of-erroring (2026-07-25)
+
+- **Cached-engine path never re-runs the existence check** — once an engine is cached, deleting
+  `cards.db` while the companion runs means the next request's connection re-plants a zero-byte
+  file (the response is still a correct `503 database_not_initialized`, via the empty-file probe).
+  Includes the narrower exists→connect TOCTOU window on first creation. AC 3's no-plant guarantee
+  is scoped to before-first-engine by design; a per-request re-stat would restore it at all times
+  but is machinery with no failing user story behind it. Natural revisit point is c10-3 (latency
+  work touches the same per-request path). (Source: Edge Case Hunter; Severity: Low.)
+- **A durably corrupt `cards.db` is classified transient forever** — "file is not a database"
+  answers `database_unavailable`, the quiet-retry "Database updating" state, on every request with
+  no path to the fresh-install/repair panel. Decide-once #4 rules it transient because it might be
+  mid-import, but nothing distinguishes 200 ms of mid-import from a month of garbage. A UX ruling
+  for c2-9 to make with the state designs in hand. (Source: Blind Hunter; Severity: Low.)
+- **URI-form SQLite `CARDS_DATABASE_URL` is misclassified as a file path** — `database_file` handles
+  `:memory:` and empty-database, but `sqlite+aiosqlite:///file::memory:?cache=shared` (or
+  `?uri=true` forms) falls through to `Path(parsed.database)`, which never exists → permanent 503
+  for a valid in-memory URL. Same family and same channel as the bare-path item above (line ~268):
+  an exotic explicit env override, not a supported configuration. Fold into that item's eventual
+  fix (early validation of `CARDS_DATABASE_URL` shapes). (Source: Edge Case Hunter + Blind Hunter;
+  Severity: Low.)
+- **`UnhandledErrorMiddleware`'s full-traceback logging can carry `[SQL]`/`[parameters]`** — a
+  SQLAlchemy `StatementError` that is not a `DatabaseError` (e.g. a wrapped `InterfaceError`)
+  falls through to the 500 path, whose `logger.exception` prints the full traceback including the
+  statement and bound parameters — the exact strings AC 9 scrubs on the 503 path. Pre-existing
+  c1-4 middleware behavior (deliberate: full tracebacks on unhandled bugs), surfaced now that DB
+  paths can route through it. Candidate: scrub `[parameters: ...]` from tracebacks, or accept as
+  local-log-only. (Source: Blind Hunter; Severity: Low.)
