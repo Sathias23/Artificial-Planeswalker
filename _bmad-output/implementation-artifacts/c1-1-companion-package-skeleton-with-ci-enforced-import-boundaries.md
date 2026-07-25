@@ -7,7 +7,7 @@ work_branch: feat/companion-app
 
 # Story C1.1: Companion package skeleton with CI-enforced import boundaries
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -189,6 +189,20 @@ cheapest to write **before** there is any code to retrofit them against. Every o
         `plugin/server/src/companion/` appears and `git status --porcelain -- plugin/` is clean
         after the commit (this is what the CI step checks).
   - [x] Confirm no `pyproject.toml`, `ci.yml` or `.pre-commit-config.yaml` change was made.
+
+### Review Findings
+
+- [x] [Review][Patch] (low) **RESOLVED — Brad's ruling: keep strict, document it.** TYPE_CHECKING imports count as module-level in *all* roles, not just the leaf: `if TYPE_CHECKING: from src.companion.app... ` fails everywhere, including `__main__.py`. Document this in the module docstring and home the consequence on story c1-9 (use string annotations or forgo typing against the app) [tests/unit/companion/test_import_boundary.py:21]
+- [x] [Review][Patch] (high) No companion-surface enumeration pin: a future non-leaf `src/companion` module (incl. `__init__.py`) or a typo'd `_LEAF_MODULES` filename escapes every guard — add a test asserting every `*.py` under `src/companion/**` is either under `app/`, an `__init__.py`, or a member of `_LEAF_MODULES` (fail on anything unclassified, construction-site-enumeration style), and run the leaf import rule over the companion `__init__.py` files [tests/unit/companion/test_import_boundary.py:101]
+- [x] [Review][Patch] (medium) `outside_app` role excuses a *module-level* app import in `__main__.py`, contradicting AC 5's function-local-only exemption (real tree saved only by the overlapping `mcp_server` scan) — drop `and not exempt` in the `outside_app` branch and add a pinning test [tests/unit/companion/test_import_boundary.py:411]
+- [x] [Review][Patch] (medium) `import sqlalchemy as alch` defeats the DML rule (`alch.delete(...)` matches neither receiver set nor import rule; `emit` discards `alias.asname`) — track sqlalchemy import aliases per file as DML receivers, with a negative test [tests/unit/companion/test_import_boundary.py:86]
+- [x] [Review][Patch] (medium) Repository write method referenced without a call bypasses the write guard (`fn = repo.create_deck; fn(...)`) — the names are already deemed unconditionally bannable, so flag bare `Attribute` references to `_REPO_WRITE_METHODS` too [tests/unit/companion/test_import_boundary.py:313]
+- [x] [Review][Patch] (low) Dynamic-form bypasses (`importlib`/`runpy`/`__import__`/`getattr`) are undetectable and unstated — add as a third entry in the module docstring's Known limitations [tests/unit/companion/test_import_boundary.py:21]
+- [x] [Review][Patch] (low) Public classmethods are invisible to guard-the-guard (`classmethod` objects are not `callable` on 3.12) — include `classmethod`/`staticmethod` in `_public_methods` [tests/unit/companion/test_import_boundary.py:910]
+- [x] [Review][Patch] (low) A UTF-8-BOM source file crashes the scans with SyntaxError instead of a clean report — read with `encoding="utf-8-sig"` [tests/unit/companion/test_import_boundary.py:244]
+- [x] [Review][Patch] (low) `resolve_import` with `level` exceeding package depth mis-resolves via a negative slice instead of failing — raise on `level - 1 > len(parts)` [tests/unit/companion/test_import_boundary.py:233]
+- [x] [Review][Patch] (low) `session.flush()` — the banned twin of the documented `file.flush()` false-positive pair — has no negative test — add it to `_WRITE_VIOLATION_CASES` [tests/unit/companion/test_import_boundary.py:562]
+- [x] [Review][Patch] (low) Dev Agent Record inaccuracies: "~750 lines" (actual 944) and gate outputs captured pre-plugin-build ("248 files already formatted"; at `dee555e` it is 250) — correct the Completion Notes [story record]
 
 ## Dev Notes
 
@@ -433,22 +447,26 @@ probes prove the four real scans are wired to the right roots and roles.
 
 **What was built.** Two AST-only import boundaries, landed before the code they guard. The
 `src/companion` package is two docstring-only `__init__.py` files; all the substance is
-`tests/unit/companion/test_import_boundary.py` (40 tests, ~750 lines): pure violation-finding
-functions (`find_write_violations`, `find_import_violations`) plus thin pytest callers, four real
-scans, and synthetic negative/positive coverage per rule.
+`tests/unit/companion/test_import_boundary.py` (49 tests, 1,067 lines after review patches — the
+original claim of "~750 lines" was inaccurate; the pre-review file was 944 lines with 40 tests):
+pure violation-finding functions (`find_write_violations`, `find_import_violations`) plus thin
+pytest callers, five real scans, and synthetic negative/positive coverage per rule.
 
-**Verification output (actual, not asserted).**
+**Verification output (actual, post-review-patches, at final tree state).** The originally
+recorded outputs had been captured *before* the AC-10 plugin build (they reported 248 formatted
+files; the committed tree has 250). Re-verified after applying all 11 review patches:
 
 - `uv run ruff check .` → `All checks passed!`
-- `uv run ruff format --check .` → `248 files already formatted`
+- `uv run ruff format --check .` → `250 files already formatted`
 - `uv run mypy src/` → `Success: no issues found in 72 source files`
-- `uv run pytest tests/unit/companion/ -q` (bare, no marker filter) → `40 passed in 0.68s`
-- `uv run pytest tests/unit/companion/ -m "not integration" -q` → `40 passed` (none deselected —
+- `uv run pytest tests/unit/companion/ -q` (bare, no marker filter) → `49 passed in 1.16s`
+- `uv run pytest tests/unit/companion/ -m "not integration" -q` → `49 passed` (none deselected —
   confirms AC 2's unmarked requirement)
-- `uv run pytest -m "not integration" -q` → **`1350 passed, 45 deselected in 40.96s`** — 1310
-  pre-existing + 40 new, **no new failures, no regressions**
+- `uv run pytest -m "not integration" -q` → **`1359 passed, 45 deselected in 60.39s`** — 1310
+  pre-existing + 49 guard tests, **no new failures, no regressions**
 - `uv run python -m scripts.build_plugin` → `Plugin assembled … (v0.4.0, 4 skills)`;
-  `plugin/server/src/companion/{__init__.py,app/__init__.py}` present and committed
+  `plugin/server/src/companion/{__init__.py,app/__init__.py}` present and committed (review
+  patches touched only `tests/` and story artifacts, so the mirror needed no rebuild)
 
 **Implementation decisions worth carrying forward.**
 
@@ -501,3 +519,4 @@ one-constant edit, but stories c1-9 / c6-1 / c7-1 inherit them as they stand.
 | Date | Change |
 | --- | --- |
 | 2026-07-25 | Story c1-1 implemented: companion package skeleton (two docstring-only `__init__.py`) plus the AD-2 write guard and AD-3 leaf/app guard as 40 AST-based unit tests; plugin mirror rebuilt. All quality gates green, 1350 tests passing, no regressions. Status → review. |
+| 2026-07-25 | Adversarial code review (3 layers): 1 decision + 11 patches applied, 1 dismissed. Brad's ruling: TYPE_CHECKING imports stay module-level in every role (documented; homed on c1-9). Patches: companion-surface enumeration pin + leaf-constrained `__init__.py` (closes the future-non-leaf-module hole); `outside_app` role now fails module-level app imports in `__main__.py` per AC 5; `import sqlalchemy as X` alias-tracked as DML receiver; bare references to repo write methods banned; classmethods visible to guard-the-guard; BOM-tolerant parsing; over-deep relative imports raise instead of laundering; `session.flush()` negative case; dynamic-form limitation documented; Dev Agent Record corrected. 49 tests, 1359 passing, all gates green. Status → done. |

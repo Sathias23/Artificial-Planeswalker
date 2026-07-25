@@ -12,7 +12,14 @@ structural rather than aspirational:
   (``contracts`` / ``discovery`` / ``client``) but never ``src.companion.app``; the leaf may import
   only the stdlib, ``pydantic``, ``httpx``, ``src.paths`` and its siblings; nothing outside
   ``src/companion/app/`` imports the app. ``tests/**`` is not scanned — the integration test in
-  story c5-8 must be free to boot the real app.
+  story c5-8 must be free to boot the real app. Every companion file must sit in a guarded
+  category (``app/``, a ``_LEAF_MODULES`` entry, or a leaf-constrained ``__init__.py``) — the
+  enumeration pin fails on anything unclassified, so a future module cannot sit outside the guard
+  surface.
+
+One deliberate strictness (review ruling, 2026-07-25): ``if TYPE_CHECKING:`` imports count as
+module-level in **every** role, not just the leaf. ``src/mcp_server/__main__.py`` may not even
+*type* against ``src.companion.app`` — story c1-9 must use string annotations or forgo the type.
 
 Both guards are **AST-only**: they ``ast.parse`` source and never import the module under
 inspection, so they run with neither ``fastapi`` nor ``uvicorn`` installed and they see violations
@@ -27,6 +34,11 @@ Known limitations — stated, not hidden:
    passes, because ``s`` is not in :data:`_SESSION_RECEIVERS`; adding single letters would fire on
    ordinary set/list code. Accepted: ``src/data`` uses ``session`` / ``self.session`` throughout,
    and the repository write-method ban catches the realistic path anyway.
+3. **Dynamic forms are not detected.** ``importlib.import_module``, ``runpy``, ``__import__`` and
+   ``getattr(repo, "create_deck")`` all pass — string-based indirection is invisible to an AST
+   walk. Accepted: the story record forbids routing around the guard by convention ("a guard
+   satisfied by obfuscation is theatre"); a reviewer seeing a dynamic import or ``getattr`` of a
+   banned target must treat it as a violation.
 """
 
 import ast
@@ -103,6 +115,9 @@ _LEAF_MODULES = (
     "src/companion/discovery.py",
     "src/companion/client.py",
 )
+# Review ruling (2026-07-25): importing any leaf executes src/companion/__init__.py first, so the
+# package initializer is leaf-constrained too — it can never grow an import a leaf could not hold.
+_COMPANION_INIT = "src/companion/__init__.py"
 _LEAF_ALLOWED_THIRD_PARTY = frozenset({"pydantic", "httpx"})
 # Decide-once #2: the three leaf modules are collectively *the leaf*, so intra-leaf imports are
 # permitted (c6-1's client posts contract models and reads discovery for port + token).
@@ -227,10 +242,16 @@ def resolve_import(module: str | None, level: int, package: str) -> str:
 
     Returns:
         The absolute dotted path the import refers to.
+
+    Raises:
+        ValueError: If *level* reaches beyond the top-level package — real Python would raise
+            ImportError at runtime; the guard must not launder it into an allowed-looking name.
     """
     if level == 0:
         return module or ""
     parts = package.split(".") if package else []
+    if level > len(parts):
+        raise ValueError(f"relative import level {level} exceeds the depth of package {package!r}")
     if level > 1:
         parts = parts[: len(parts) - (level - 1)]
     base = ".".join(parts)
@@ -240,8 +261,9 @@ def resolve_import(module: str | None, level: int, package: str) -> str:
 
 
 def _parse(path: Path) -> ast.Module:
-    """Parse *path* without importing it."""
-    return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    """Parse *path* without importing it. ``utf-8-sig`` so a BOM-saved file is scanned, not a
+    SyntaxError."""
+    return ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
 
 
 def _last_segment(node: ast.expr) -> str:
@@ -309,20 +331,31 @@ def find_write_violations(path: Path, *, rel_path: str | None = None) -> list[Vi
     def flag(line: int, symbol: str, rule: str) -> None:
         violations.append(Violation(rel, line, symbol, rule, note=_SOLE_WRITER))
 
+    # `import sqlalchemy as alch` must not launder the DML receiver: local aliases of the
+    # sqlalchemy module join the receiver set for this file only.
+    dml_receivers = set(_DML_RECEIVERS)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] == "sqlalchemy" and alias.asname:
+                    dml_receivers.add(alias.asname.lower())
+
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
             target = node.func
-            if target.attr in _REPO_WRITE_METHODS:
-                flag(node.lineno, ast.unparse(target), "repository write method")
-            elif (
+            if (
                 target.attr in _SESSION_MUTATORS
                 and _last_segment(target.value) in _SESSION_RECEIVERS
             ):
                 flag(node.lineno, ast.unparse(target), "session mutation")
         if isinstance(node, ast.Attribute):
-            if node.attr in _SCHEMA_CREATION:
+            # A bare reference (`fn = repo.create_deck`) is as banned as the call: the names are
+            # distinctive enough that any reference is a breach, so this also covers the call form.
+            if node.attr in _REPO_WRITE_METHODS:
+                flag(node.lineno, ast.unparse(node), "repository write method")
+            elif node.attr in _SCHEMA_CREATION:
                 flag(node.lineno, ast.unparse(node), "schema creation")
-            elif node.attr in _DML_CONSTRUCTS and _last_segment(node.value) in _DML_RECEIVERS:
+            elif node.attr in _DML_CONSTRUCTS and _last_segment(node.value) in dml_receivers:
                 flag(node.lineno, ast.unparse(node), "sqlalchemy DML construct")
         elif isinstance(node, ast.Name) and node.id in _SCHEMA_CREATION:
             flag(node.lineno, node.id, "schema creation")
@@ -408,7 +441,10 @@ def find_import_violations(
                         "src/mcp_server must not import src.companion.app (AD-3)",
                     )
                 )
-        elif imported.module_level and not exempt:
+        elif imported.module_level:
+            # No `exempt` here: the __main__.py exemption is function-local only, and
+            # function-local imports already pass for this role — a module-level app import
+            # fails everywhere outside the app, exactly as AC 5 states.
             violations.append(
                 Violation(
                     rel,
@@ -480,12 +516,32 @@ class TestLeafAppGuard:
                 f"_LEAF_MODULES entry {rel!r} does not live in src/companion/ — typo?"
             )
         present = [rel for rel in _LEAF_MODULES if (REPO_ROOT / rel).exists()]
+        # The package initializer always exists and is always leaf-constrained (review ruling).
+        present.append(_COMPANION_INIT)
         violations = [
             violation
             for rel in present
             for violation in find_import_violations(REPO_ROOT / rel, role="leaf", rel_path=rel)
         ]
         assert not violations, f"AD-3 leaf import breach:\n{_render(violations)}"
+
+    def test_every_companion_file_sits_in_a_guarded_category(self) -> None:
+        """The enumeration pin: without it, a future src/companion/metrics.py (or a typo'd
+        _LEAF_MODULES entry) would land in no category and could reintroduce the transitive
+        FastAPI import AD-3 exists to prevent."""
+        unclassified = []
+        for file in collect_python_files(_COMPANION_DIR):
+            if _is_under(file, _COMPANION_APP_DIR) or file.name == "__init__.py":
+                continue
+            rel = repo_relative(file)
+            if rel not in _LEAF_MODULES:
+                unclassified.append(rel)
+        assert not unclassified, (
+            "Companion file(s) outside every guarded category: "
+            + ", ".join(sorted(unclassified))
+            + ". Add each to _LEAF_MODULES (leaf-constrained) or move it under "
+            "src/companion/app/ — no companion module may sit outside the AD-3 guard surface."
+        )
 
     def test_nothing_outside_the_app_package_imports_the_app(self) -> None:
         files = [
@@ -537,6 +593,25 @@ def go(session):
     session.execute(sqlalchemy.delete(DeckModel))
 """
 
+_SRC_DML_ALIASED = """\
+import sqlalchemy as alchemy
+
+
+def go(session):
+    session.execute(alchemy.delete(DeckModel))
+"""
+
+_SRC_SESSION_FLUSH = """\
+async def go(self):
+    await self.session.flush()
+"""
+
+_SRC_REPO_WRITE_REFERENCE = """\
+def go(repo):
+    handler = repo.create_deck
+    return handler
+"""
+
 _SRC_SCHEMA_IMPORT = """\
 from src.data.database import init_database
 """
@@ -563,8 +638,11 @@ _WRITE_VIOLATION_CASES = [
     pytest.param(_SRC_REPO_WRITE, 2, "create_deck", id="repository-write-method"),
     pytest.param(_SRC_SESSION_ADD, 2, "session.add", id="session-mutation"),
     pytest.param(_SRC_SESSION_COMMIT, 2, "db.commit", id="session-commit"),
+    pytest.param(_SRC_SESSION_FLUSH, 2, "session.flush", id="session-flush"),
+    pytest.param(_SRC_REPO_WRITE_REFERENCE, 2, "repo.create_deck", id="repo-write-bare-reference"),
     pytest.param(_SRC_DML_IMPORT, 1, "sqlalchemy.delete", id="dml-import"),
     pytest.param(_SRC_DML_REFERENCE, 5, "sqlalchemy.delete", id="dml-reference"),
+    pytest.param(_SRC_DML_ALIASED, 5, "alchemy.delete", id="dml-aliased-module-import"),
     pytest.param(_SRC_SCHEMA_IMPORT, 1, "init_database", id="schema-creation-import"),
     pytest.param(_SRC_SCHEMA_CALL, 2, "init_database", id="schema-creation-call"),
     pytest.param(_SRC_CREATE_ALL, 2, "create_all", id="create-all"),
@@ -680,6 +758,13 @@ _SRC_OUTSIDE_APP_RELATIVE = """\
 from ..companion.app import main
 """
 
+_SRC_MAIN_TYPE_CHECKING_APP = """\
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.companion.app.main import build_app
+"""
+
 _IMPORT_VIOLATION_CASES = [
     pytest.param(
         _SRC_MCP_MODULE_LEVEL_APP,
@@ -704,6 +789,22 @@ _IMPORT_VIOLATION_CASES = [
         2,
         "src.companion.app.main.build_app",
         id="exemption-is-not-extended-to-other-mcp-modules",
+    ),
+    pytest.param(
+        _SRC_MAIN_TYPE_CHECKING_APP,
+        "src/mcp_server/__main__.py",
+        "mcp_server",
+        4,
+        "src.companion.app.main.build_app",
+        id="type-checking-app-import-is-still-module-level",
+    ),
+    pytest.param(
+        _SRC_MAIN_MODULE_LEVEL_APP,
+        "src/mcp_server/__main__.py",
+        "outside_app",
+        1,
+        "src.companion.app.main.build_app",
+        id="outside-app-exempt-file-still-fails-at-module-level",
     ),
     pytest.param(
         _SRC_LEAF_FASTAPI,
@@ -807,6 +908,14 @@ _IMPORT_CLEAN_CASES = [
         "outside_app",
         id="outside-app-may-import-the-leaf",
     ),
+    # AC 5's outside-app rule bans *module-level* imports only, so a function-local app import
+    # passes for every file under this role — which is why the rule needs no exemption at all.
+    pytest.param(
+        _SRC_FUNCTION_LOCAL_APP,
+        "src/logic/deck_analysis.py",
+        "outside_app",
+        id="outside-app-function-local-import-passes",
+    ),
 ]
 
 
@@ -853,6 +962,17 @@ class TestScanCannotPassVacuously:
         assert resolve_import("companion.app", 2, "src.logic") == "src.companion.app"
         assert resolve_import(None, 1, "src.companion") == "src.companion"
         assert resolve_import("src.companion.app", 0, "src.logic") == "src.companion.app"
+
+    def test_beyond_top_level_relative_import_raises_not_launders(self):
+        # A negative slice would otherwise resolve `from ......x` to a plausible absolute name
+        # that could dodge a ban; real Python raises ImportError, so the guard raises too.
+        with pytest.raises(ValueError, match="exceeds the depth"):
+            resolve_import("x", 6, "src.companion")
+
+    def test_bom_saved_source_is_scanned_not_crashed(self, tmp_path):
+        file = tmp_path / "sample.py"
+        file.write_bytes(b"\xef\xbb\xbfimport json\n")
+        assert find_write_violations(file, rel_path="src/companion/discovery.py") == []
 
     def test_package_is_derived_from_the_file_position(self):
         assert package_for("src/companion/client.py") == "src.companion"
@@ -907,7 +1027,10 @@ def _public_methods(cls: type) -> set[str]:
         names |= {
             name
             for name, value in vars(klass).items()
-            if not name.startswith("_") and (callable(value) or isinstance(value, property))
+            # classmethod objects are not callable() on 3.12 — without the isinstance leg a
+            # public @classmethod write helper would silently escape classification (AC 4).
+            if not name.startswith("_")
+            and (callable(value) or isinstance(value, property | classmethod | staticmethod))
         }
     return names
 
