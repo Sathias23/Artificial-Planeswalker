@@ -18,12 +18,20 @@ from src.companion.contracts import HealthResponse
 
 _MAIN_MODULE = "src.companion.app.main"
 
+# Everything the companion's import chain may pull in. src.companion.contracts and src.paths are
+# listed even though main.py does not (must not) reach src.paths today: if a future edit adds an
+# import-time data_dir() call anywhere on the chain, the inertness test only catches it when that
+# module's top-level code actually re-executes.
+_FRESH_PREFIXES = ("src.companion", "src.paths")
+
 
 def _fresh_main(monkeypatch):
     """Import ``src.companion.app.main`` from scratch, restoring ``sys.modules`` afterwards.
 
-    ``monkeypatch.delitem`` puts the original module objects back at teardown, so a fresh import
-    here cannot leave a second copy of the module behind for later tests to trip over.
+    Evicts every module under ``_FRESH_PREFIXES`` (dot-boundary match, so ``src.pathsX`` is not
+    swept) before re-importing. ``monkeypatch.delitem`` puts the original module objects back at
+    teardown, so a fresh import here cannot leave a second copy of the module behind for later
+    tests to trip over.
 
     Args:
         monkeypatch: The pytest monkeypatch fixture.
@@ -31,7 +39,9 @@ def _fresh_main(monkeypatch):
     Returns:
         A freshly executed ``src.companion.app.main`` module.
     """
-    for name in [name for name in sys.modules if name.startswith("src.companion.app")]:
+    dotted = tuple(prefix + "." for prefix in _FRESH_PREFIXES)
+    stale = [name for name in sys.modules if name in _FRESH_PREFIXES or name.startswith(dotted)]
+    for name in stale:
         monkeypatch.delitem(sys.modules, name)
     return importlib.import_module(_MAIN_MODULE)
 
@@ -78,7 +88,11 @@ class TestConstructionIsInert:
 
         monkeypatch.setattr(socket.socket, "bind", explode)
 
-        assert build_app() is not None
+        # Fresh import *after* the patch, so a module-level bind in main.py would explode too —
+        # AC 1 forbids the side effect "at import time or during construction", not just the latter.
+        module = _fresh_main(monkeypatch)
+
+        assert module.build_app() is not None
 
     def test_construction_mints_no_identity(self):
         """AC 3: a constructed-but-never-started app has no identity to leak."""
@@ -174,4 +188,33 @@ class TestShutdown:
             async with main.lifespan(app):
                 pass
 
-        assert "engine dispose failed" in caplog.text
+        # Assert the record itself, not just caplog.text: the failure string only reaches the text
+        # via the traceback logger.exception attaches, so the level and exc_info are the real claim.
+        records = [
+            record
+            for record in caplog.records
+            if record.name == _MAIN_MODULE and record.levelno >= logging.WARNING
+        ]
+        assert len(records) == 1
+        assert records[0].levelno == logging.ERROR
+        assert records[0].exc_info is not None
+        assert "engine dispose failed" in str(records[0].exc_info[1])
+
+    async def test_startup_failure_propagates(self, monkeypatch):
+        """The swallow guard wraps *teardown only* — a failure before ``yield`` must escape.
+
+        Pins the asymmetry so a later refactor that widens the ``try`` (the obvious wrong move
+        when c1-6's engine startup can throw) turns this red instead of silently converting
+        startup failures into swallowed ones.
+        """
+        main = importlib.import_module(_MAIN_MODULE)
+
+        def boom():
+            raise RuntimeError("identity mint failed")
+
+        monkeypatch.setattr(uuid, "uuid4", boom)
+        app = main.build_app()
+
+        with pytest.raises(RuntimeError, match="identity mint failed"):
+            async with main.lifespan(app):
+                pass

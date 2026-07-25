@@ -8,7 +8,7 @@ story_branch: feat/companion-c1-2-asgi-app-lifespan-health
 
 # Story C1.2: Side-effect-free ASGI app with a lifespan and a health endpoint
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -184,6 +184,76 @@ the lifespan, so construction stays inert and the bulk of the backend never need
   - [x] Confirm `tests/unit/companion/test_import_boundary.py` and `.github/workflows/ci.yml` are
         untouched (AC 9, 12).
 
+### Review Findings
+
+Code review 2026-07-25 (Blind Hunter + Edge Case Hunter + Acceptance Auditor; diff
+`ce13f5f...ab0657b`). Auditor verdict: **Accept** — no AC violations, no scope breaches, all four
+gates independently re-run green. Findings below are hardening and record-accuracy items.
+
+- [x] [Review][Patch] Story doc Gotcha 6's failure mode is factually wrong — the pre-commit mypy
+      hook runs `--ignore-missing-imports`, so a missing `additional_dependencies` entry does not
+      fail the hook; it silently types FastAPI as `Any` and passes with degraded checking. Correct
+      the gotcha and record the real hazard (green hook ≠ typed FastAPI when the list drifts).
+      [_bmad-output/implementation-artifacts/c1-2-side-effect-free-asgi-app-with-a-lifespan-and-a-health-endpoint.md — Gotchas #6] (Severity: Medium)
+- [x] [Review][Patch] `/health` docstring overclaims "always 200 / no failure path" — the claim is
+      contingent on the lifespan having run; served without it (`--lifespan off`, bare
+      `ASGITransport`, future mounting), `request.app.state.instance_id` raises `AttributeError`
+      → bare 500. Soften the docstring to state the precondition. (A 503 guard was considered and
+      dismissed: AC 12 forbids the error contract, and Dev Note #3's design is "a companion that
+      cannot answer does not answer" — c1-4 owns failure modelling.)
+      [src/companion/app/routes/health.py:16-17] (Severity: Low)
+- [x] [Review][Patch] Import-time socket bind is never proven absent — `test_construction_binds_no_socket`
+      monkeypatches `bind` but calls `build_app()` on the long-cached module; a module-level bind
+      in `main.py` would pass. Route the test through `_fresh_main` so the import path is covered
+      too (AC 1 says "at import time or during construction"). [tests/unit/companion/test_app.py:75-81] (Severity: Low)
+- [x] [Review][Patch] `_fresh_main` eviction scope is narrower than the inertness claim —
+      only `src.companion.app*` is evicted, so an import-time `data_dir()` call added later to
+      `src.companion.contracts` or `src.paths` would go undetected (both stay cached); the
+      `startswith` prefix also lacks a dot boundary. Widen eviction to `src.companion` +
+      `src.paths` with a dot-boundary match — c1-3..c1-9 inherit this helper.
+      [tests/unit/companion/test_app.py:34-36] (Severity: Low)
+- [x] [Review][Patch] Startup-failure asymmetry is untested — nothing pins that a failure *before*
+      `yield` propagates (only teardown is swallowed). A later refactor that widens the `try` when
+      c1-6's engine startup lands would silently convert startup failures into swallowed ones. Add
+      a test that a raising startup step propagates out of lifespan entry.
+      [src/companion/app/main.py:65-73] (Severity: Low)
+- [x] [Review][Patch] Teardown-logging test asserts the message only incidentally — the string
+      reaches `caplog` via the traceback `logger.exception` attaches; the record's level, logger
+      name and `exc_info` are unasserted. Assert the record directly (ERROR level, exc_info set).
+      [tests/unit/companion/test_app.py:164-177] (Severity: Low)
+- [x] [Review][Patch] Debug Log names the wrong sixth new lock package — the six new `[[package]]`
+      entries are `annotated-doc`, `fastapi`, `httptools`, **`uvloop`**, `watchfiles`,
+      `websockets`; `uvicorn` was a pre-existing transitive upgraded 0.37.0 → 0.51.0 (the same
+      paragraph already says so). [story Debug Log — Task 1] (Severity: Low)
+- [x] [Review][Patch] Baseline delta 1,359 → 1,360 is now identified — the +1 is c1-1's final
+      review commit `57b19c9` (dml-star-import negative test; its commit message records "1360
+      passed"), which landed after this story's notes were written. Record the identification in
+      the Debug Log so the delta is explained, not just observed. [story Debug Log — Task 0] (Severity: Low)
+- [x] [Review][Patch] Dev Notes "Project Structure Notes" omits `sprint-status.yaml` from the
+      modified-files prose ("the only pre-existing tracked files this story modifies are…") while
+      the diff and File List both include it. Align the prose. [story Dev Notes — Project Structure Notes] (Severity: Low)
+- [x] [Review][Patch] `sprint-status.yaml` duplicated header out of sync — the line-2 *comment*
+      copy of `last_updated` still says "story c1-2 created" while the real field (line 49) says
+      "implemented → review"; this commit updated one copy of the hand-maintained pair.
+      [_bmad-output/implementation-artifacts/sprint-status.yaml:2] (Severity: Low)
+- [x] [Review][Defer] The `lifespan_client` seam is not parameterizable for its named inheritors —
+      `BASE_URL` is hardcoded and the helper takes no headers/base-url kwargs, but c1-5's
+      Host-validation tests must vary exactly those. Extending the signature with optional kwargs
+      is backward-compatible, so it belongs to c1-5 when the need is concrete.
+      [tests/unit/companion/conftest.py:26-43] — deferred to c1-5
+- [x] [Review][Defer] mypy hook `additional_dependencies` resolve independently of `uv.lock`, so
+      pre-commit may type-check a different FastAPI than the locked 0.140.0 — pre-existing pattern
+      (pydantic, sqlalchemy already listed) extended here, not introduced.
+      [.pre-commit-config.yaml:9] — deferred, pre-existing
+
+Dismissed as noise (4): teardown `except Exception` not catching `BaseException` (correct asyncio
+semantics — swallowing `CancelledError`/`KeyboardInterrupt` would break cancellation; AC 6's intent
+is teardown *failures*); companion conftest requiring FastAPI to collect the guard suite (fastapi
+is a hard runtime dep in every supported env, root and plugin, and the guard is AST-based);
+`uvicorn[standard]` shipped with zero imports (spec-mandated — AC 8 + c1-1's homing note);
+`instance_id` typed as unconstrained `str` (the spec pins `instance_id: str`; a UUID wire type
+would deviate from the AC).
+
 ## Dev Notes
 
 ### Decide-once rulings (made here so later stories inherit them)
@@ -281,9 +351,13 @@ them here puts a file under a guard no story yet owns.
    unit tests and must pass under both `uv run pytest` and `uv run pytest -m "not integration"`.
 5. **`asyncio_mode = "auto"`** — write `async def test_...` directly; adding
    `@pytest.mark.asyncio` is redundant and inconsistent with the rest of the suite.
-6. **The pre-commit mypy hook runs in its own isolated environment.** `uv run mypy src/` will pass
-   locally after `uv add fastapi` while the hook still fails, because the hook only sees
-   `additional_dependencies`. AC 8 covers both.
+6. **The pre-commit mypy hook runs in its own isolated environment, with
+   `--ignore-missing-imports`.** *(Corrected in review — the original note claimed the hook would
+   fail without the entry.)* Without `fastapi` in `additional_dependencies` the hook does **not**
+   fail: `--ignore-missing-imports` makes it silently type all of FastAPI as `Any` and pass with
+   degraded checking. That is the real hazard — a green hook proves FastAPI-typed code only while
+   `additional_dependencies` tracks the third-party imports `^src/` actually makes. AC 8's third
+   declaration site exists to keep that check honest, not to un-break a red hook.
 7. **`uv.lock` is a `build_plugin` input** (`SERVER_FILES = ["pyproject.toml", "uv.lock", ...]`), so
    a dependency change makes the plugin mirror stale in two places, not one. An epic-4 retro action
    item records a local checkout where `.git/hooks/pre-commit` was missing and the sync silently did
@@ -352,7 +426,8 @@ Suggested commit: `feat(companion): side-effect-free ASGI app with lifespan and 
 ### Project Structure Notes
 
 - Purely additive under `src/companion/`. The only pre-existing tracked files this story modifies
-  are `pyproject.toml`, `uv.lock`, `.pre-commit-config.yaml` and the generated `plugin/` mirror.
+  are `pyproject.toml`, `uv.lock`, `.pre-commit-config.yaml`, the story-tracking
+  `sprint-status.yaml` and the generated `plugin/` mirror.
 - `src/companion/app/__init__.py` is deliberately left unchanged — see AC 9 and gotcha 3.
 - No existing module imports the new code, so there is no regression surface beyond the dependency
   addition itself (a new transitive dependency set entering `uv.lock`).
@@ -401,12 +476,16 @@ this story installs it). **Baseline deviation:** the suite baselined at **1,360 
 deselected**, not the 1,359 the story notes predicted. One extra test exists on
 `feat/companion-app` versus the count recorded when the story was written; no failures either way,
 so the delta is recorded rather than chased. All later counts are measured against 1,360.
+*(Identified in review: the +1 is c1-1's final review commit `57b19c9` — the dml-star-import
+negative test — which landed after these notes were written; its own commit message records the
+same "1360 passed, 45 deselected".)*
 
 **Task 1 — dependency resolution.** `uv add` resolved `fastapi==0.140.0` (the `>=0.139.2` floor)
 and `uvicorn==0.51.0`, which **replaced an existing transitive `uvicorn==0.37.0`** pulled in by
 `mcp` — the first-party `>=0.51.0` floor now governs it. Six new packages entered `uv.lock`
-(`annotated-doc`, `fastapi`, `httptools`, `uvicorn`, `watchfiles`, `websockets`); the full suite was
-re-run afterwards specifically to cover that transitive change.
+(`annotated-doc`, `fastapi`, `httptools`, `uvloop`, `watchfiles`, `websockets` — review corrected
+`uvloop` here: `uvicorn` was not *new*, it was the pre-existing transitive entry upgraded as just
+described); the full suite was re-run afterwards specifically to cover that transitive change.
 
 **Red-green evidence.** Both cycles were driven test-first and observed failing:
 - Task 2 RED: `ModuleNotFoundError: No module named 'src.companion.contracts'` (collection error).
@@ -535,3 +614,4 @@ Success: no issues found in 76 source files
 | --- | --- |
 | 2026-07-25 | Story c1-2 created from epics Story 1.2 + AD-3/4/10/12/16, with c1-1's guard surface as the acceptance constraint. Status → ready-for-dev. |
 | 2026-07-25 | Implemented: `HealthResponse` leaf contract, side-effect-free `build_app()`, module-level lifespan minting `instance_id` with a swallow-and-log teardown, unauthenticated `GET /health`, and the shared `lifespan_client` in-process test seam. FastAPI + uvicorn added across all three declaration sites; plugin mirror rebuilt. 12 new tests; 1,372 passed / 45 deselected; ruff + mypy clean. Status → review. |
+| 2026-07-25 | Code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor): Accept — no AC violations. 10 patches applied (test hardening: fresh-import socket test, widened `_fresh_main` eviction, startup-propagation test, direct log-record assertion; `/health` docstring precision; 5 record corrections incl. the Gotcha 6 `--ignore-missing-imports` fix), 2 deferred (seam kwargs → c1-5; mypy-hook version drift, pre-existing), 4 dismissed. 1,373 passed / 45 deselected; all gates green; mirror rebuilt. Status → done. |
