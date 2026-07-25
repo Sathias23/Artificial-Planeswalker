@@ -73,6 +73,34 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.exception("Companion shutdown step failed; shutting down anyway")
 
 
+def bound_port(app: FastAPI) -> int | None:
+    """Return the port the runner bound for *app*, or ``None`` if it never bound one.
+
+    The runner (:mod:`src.companion.app.server`) binds the socket *before* uvicorn starts and writes
+    the port it really got here, so the value reflects the ephemeral fallback rather than whatever
+    was preferred. Absence means *never bound*, exactly as absence of ``instance_id`` means *not
+    started* — a constructed-but-never-run app cannot masquerade as a serving one. Presence is
+    **not** a liveness signal: the value is never cleared, so after shutdown (or a serve failure)
+    it still names a port whose socket is gone. Within a running process the distinction is moot —
+    the app object dies with :func:`~src.companion.app.server.run` — but do not read this accessor
+    as "the server is up".
+
+    This accessor lives in ``main.py`` rather than in the runner so its callers — c1-5's ``Host``
+    middleware and c1-7's discovery-file writer — reach the port without importing the process
+    runner (and with it uvicorn) from inside a request path.
+
+    Args:
+        app: The application to read.
+
+    Returns:
+        The bound port, or ``None`` before any bind.
+    """
+    # Annotated local rather than `return getattr(...)`: app.state is Any, and warn_return_any
+    # would flag returning it directly.
+    port: int | None = getattr(app.state, "bound_port", None)
+    return port
+
+
 def build_app() -> FastAPI:
     """Construct the companion ASGI application without touching anything outside the process.
 

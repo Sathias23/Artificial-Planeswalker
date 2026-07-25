@@ -20,6 +20,7 @@ repos:
           - numpy>=2.0.0
           - mcp>=1.27.0
           - platformdirs>=4.0.0
+          - uvicorn>=0.51.0
         files: ^src/
 
   # Keep the committed plugin/ tree (the marketplace `source`) in sync with src/. When a source
