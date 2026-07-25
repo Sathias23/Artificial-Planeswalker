@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Companion App — Architecture Walkthrough</title>
+<style>
+:root{
+  --well:#0D0F1A; --base:#12141F; --panel:#191C2B; --overlay:#222639;
+  --hair:#2C3048; --strong:#3D4266;
+  --tx1:#E9EBF5; --tx2:#B3B8CF; --tx3:#8B91AD; --inv:#10121C;
+  --acc:#8B93FF; --accb:#B3BAFF; --accd:#575FBE; --glow:rgba(139,147,255,.22);
+  --pos:#5FD4A0; --neg:#FF7A86; --cau:#FFC266;
+  --r-sm:6px; --r-md:10px; --r-lg:16px; --r-pill:999px;
+  --shadow:0 12px 32px rgba(0,0,0,.5);
+  --raise:0 0 0 1px rgba(139,147,255,.14), 0 12px 32px rgba(0,0,0,.5);
+  --fam:'Space Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--base);color:var(--tx1);font-family:var(--fam);
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1280px;margin:0 auto;padding:32px 32px 64px}
+header{border-bottom:1px solid var(--hair);padding-bottom:24px;margin-bottom:24px}
+.kicker{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--acc);margin:0 0 8px}
+h1{font-size:30px;font-weight:500;letter-spacing:-.02em;line-height:1.1;margin:0 0 8px}
+.sub{color:var(--tx2);margin:0;max-width:70ch}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.badge{font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:3px 10px;
+  border-radius:var(--r-pill);background:var(--overlay);color:var(--tx2);border:1px solid var(--strong)}
+.badge.a{background:rgba(139,147,255,.12);color:var(--accb);border-color:var(--accd)}
+
+nav{display:flex;flex-wrap:wrap;gap:8px;margin:24px 0}
+nav button{font-family:inherit;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  font-weight:500;padding:8px 16px;border-radius:var(--r-pill);background:var(--panel);
+  color:var(--tx2);border:1px solid var(--strong);cursor:pointer;transition:.24s cubic-bezier(.4,0,.2,1)}
+nav button:hover{border-color:var(--accd);color:var(--accb);box-shadow:0 0 16px var(--glow)}
+nav button[aria-selected=true]{background:rgba(139,147,255,.14);color:var(--accb);border-color:var(--acc)}
+nav button:focus-visible,.ad summary:focus-visible,.filt button:focus-visible{
+  outline:2px solid var(--accb);outline-offset:2px}
+
+section[hidden]{display:none}
+.panel{background:var(--panel);border:1px solid var(--hair);border-radius:var(--r-lg);
+  padding:24px;margin-bottom:24px;box-shadow:var(--shadow)}
+.panel h2{font-size:17px;font-weight:500;margin:0 0 4px}
+.panel .lede{color:var(--tx2);margin:0 0 20px;max-width:78ch}
+h3{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx2);
+  font-weight:500;margin:24px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--hair)}
+
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:8px 0 4px}
+.node{background:var(--overlay);border:1px solid var(--hair);border-radius:var(--r-md);
+  padding:12px 16px;flex:1 1 140px;min-width:130px}
+.node b{display:block;font-size:13px}
+.node span{color:var(--tx3);font-size:11px}
+.node.w{border-color:var(--accd);background:rgba(139,147,255,.08)}
+.arw{color:var(--acc);font-size:18px;flex:0 0 auto}
+.callout{border-left:2px solid var(--acc);background:rgba(139,147,255,.07);
+  padding:12px 16px;border-radius:0 var(--r-sm) var(--r-sm) 0;color:var(--tx2);margin:16px 0}
+.callout b{color:var(--tx1)}
+
+.svgwrap{overflow-x:auto;background:var(--well);border:1px solid var(--hair);
+  border-radius:var(--r-md);padding:16px}
+svg{display:block;min-width:720px}
+svg text{font-family:var(--fam)}
+.hot{cursor:pointer}
+.hot:hover rect,.hot:focus-visible rect{stroke:var(--accb);stroke-width:2}
+
+.filt{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.filt button{font-family:inherit;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  padding:5px 12px;border-radius:var(--r-pill);background:var(--well);color:var(--tx3);
+  border:1px solid var(--hair);cursor:pointer}
+.filt button[aria-pressed=true]{color:var(--accb);border-color:var(--acc);background:rgba(139,147,255,.12)}
+
+.ad{background:var(--overlay);border:1px solid var(--hair);border-radius:var(--r-md);margin-bottom:10px}
+.ad[hidden]{display:none}
+.ad summary{list-style:none;cursor:pointer;padding:14px 16px;display:flex;gap:12px;align-items:flex-start}
+.ad summary::-webkit-details-marker{display:none}
+.ad .id{font-size:11px;letter-spacing:.06em;font-weight:700;color:var(--acc);flex:0 0 46px;padding-top:1px}
+.ad .ttl{flex:1;font-size:14px}
+.ad .tag{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);
+  border:1px solid var(--hair);border-radius:var(--r-pill);padding:2px 9px;flex:0 0 auto}
+.ad[open]{box-shadow:var(--raise)}
+.ad[open] .id{color:var(--accb)}
+.body{padding:0 16px 16px 74px}
+.body dl{margin:0;display:grid;grid-template-columns:88px 1fr;gap:6px 14px}
+.body dt{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--tx3);padding-top:3px}
+.body dd{margin:0;color:var(--tx2)}
+.body dd.rule{color:var(--tx1)}
+code{background:var(--well);border:1px solid var(--hair);border-radius:4px;
+  padding:1px 5px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+.tblwrap{overflow-x:auto}
+th{text-align:left;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--tx3);font-weight:500;padding:8px 10px;border-bottom:1px solid var(--strong)}
+td{padding:10px;border-bottom:1px solid var(--hair);color:var(--tx2);vertical-align:top}
+td:first-child{color:var(--acc);font-weight:500;white-space:nowrap}
+tr:hover td{background:rgba(139,147,255,.05)}
+
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.mini{background:var(--well);border:1px solid var(--hair);border-radius:var(--r-md);padding:16px}
+.mini b{display:block;margin-bottom:6px}
+.mini p{margin:0;color:var(--tx2);font-size:13px}
+.mini.warn{border-color:var(--cau)}
+.mini.warn b{color:var(--cau)}
+footer{border-top:1px solid var(--hair);padding-top:16px;margin-top:32px;
+  color:var(--tx2);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="kicker">Architecture Spine · Feature Altitude</p>
+  <h1>Companion App</h1>
+  <p class="sub">A local browser surface that renders the active deck and the agent's structured
+  output, beside the terminal. Three processes, two languages, one direction of flow.</p>
+  <div class="meta">
+    <span class="badge a">16 decisions</span>
+    <span class="badge">FR-01 – FR-23</span>
+    <span class="badge">NFR-01 – NFR-09</span>
+    <span class="badge">2026-07-25</span>
+    <span class="badge">Gate passed · 10 findings fixed</span>
+  </div>
+</header>
+
+<nav role="tablist">
+  <button role="tab" aria-selected="true"  data-t="p1">The paradigm</button>
+  <button role="tab" aria-selected="false" data-t="p2">Topology</button>
+  <button role="tab" aria-selected="false" data-t="p3">Decisions</button>
+  <button role="tab" aria-selected="false" data-t="p4">Work split</button>
+  <button role="tab" aria-selected="false" data-t="p5">What the gate caught</button>
+</nav>
+
+<!-- ───────────── PARADIGM ───────────── -->
+<section id="p1" role="tabpanel">
+  <div class="panel">
+    <h2>Single-writer read model with a fire-and-forget relay</h2>
+    <p class="lede">Two imperative shells over one shared core. The whole architecture is one
+    property: <b>state travels in exactly one direction, and nothing flows back.</b></p>
+
+    <div class="flow">
+      <div class="node w"><b>Agent</b><span>drives everything</span></div><span class="arw">→</span>
+      <div class="node w"><b>MCP tool</b><span>the only writer</span></div><span class="arw">→</span>
+      <div class="node"><b>SQLite</b><span>cards.db · WAL</span></div><span class="arw">→</span>
+      <div class="node"><b>Notification</b><span>fire-and-forget</span></div><span class="arw">→</span>
+      <div class="node"><b>Browser refetch</b><span>read-only glass</span></div>
+    </div>
+
+    <div class="callout"><b>Why this is the whole thing.</b> "The agent drives, the app shows"
+    is the product premise. Making it a <em>structural</em> fact rather than a UI convention is
+    what stops it decaying — which is why AD-2 puts a CI-enforced boundary around the write path
+    rather than trusting a review to catch it.</div>
+
+    <h3>The three roles</h3>
+    <div class="grid2">
+      <div class="mini"><b>The writer — <code>src/mcp_server</code></b><p>FastMCP over stdio,
+      spawned per session, stateless. The only process that mutates the database. After a
+      mutation commits it <em>tells</em> the backend; it never waits on the answer.</p></div>
+      <div class="mini"><b>The relay — <code>src/companion/app</code></b><p>FastAPI, long-running,
+      user-launched. Reads the same database, holds ephemeral display state — active deck,
+      connections, tickets — and broadcasts pushes. Never writes.</p></div>
+      <div class="mini"><b>The glass — the SPA</b><p>State from exactly two inputs: REST responses
+      and WebSocket messages. Issues no writes at all. Every click is inspection or navigation.</p></div>
+    </div>
+
+    <h3>Inherited, not re-decided</h3>
+    <div class="tblwrap"><table>
+      <tr><th>Constraint</th><th>Binds here as</th></tr>
+      <tr><td>data → logic → shells</td><td>No FastAPI import may appear below the shell layer</td></tr>
+      <tr><td>Repos return Pydantic, never ORM</td><td>The wire layer never sees a <code>*Model</code></td></tr>
+      <tr><td>MCP tools are stateless</td><td>Active deck lives in the <em>backend</em>, never the MCP server</td></tr>
+      <tr><td>stdout is the JSON-RPC stream</td><td>Inverted in the companion process — it owns its stdout</td></tr>
+      <tr><td>Closed snake_case status tokens</td><td>The companion outcome vocabulary follows it</td></tr>
+    </table></div>
+  </div>
+</section>
+
+<!-- ───────────── TOPOLOGY ───────────── -->
+<section id="p2" role="tabpanel" hidden>
+  <div class="panel">
+    <h2>Three processes</h2>
+    <p class="lede">Hover any box. The two credentials are deliberately separated — the browser
+    never holds the token that authorises pushing.</p>
+    <div class="svgwrap">
+    <svg viewBox="0 0 900 430" role="img" aria-label="Process topology: agent and MCP server write to SQLite; the companion backend reads it and relays pushes to the browser">
+      <defs>
+        <marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+          <path d="M0,0 L9,4.5 L0,9 z" fill="#8B93FF"/></marker>
+        <marker id="ad" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+          <path d="M0,0 L9,4.5 L0,9 z" fill="#575FBE"/></marker>
+      </defs>
+
+      <g class="hot" tabindex="0"><title>Per-session, stdio, stateless. The ONLY writer.</title>
+        <rect x="20" y="26" width="200" height="86" rx="10" fill="#222639" stroke="#575FBE"/>
+        <text x="36" y="52" fill="#B3BAFF" font-size="12" font-weight="700">Process 1 · per session</text>
+        <text x="36" y="74" fill="#E9EBF5" font-size="14">Agent + MCP server</text>
+        <text x="36" y="94" fill="#8B91AD" font-size="11">stdio · stateless · SOLE WRITER</text></g>
+
+      <g class="hot" tabindex="0"><title>Long-running, foreground, single instance. Never writes.</title>
+        <rect x="350" y="26" width="210" height="86" rx="10" fill="#222639" stroke="#2C3048"/>
+        <text x="366" y="52" fill="#B3B8CF" font-size="12" font-weight="700">Process 2 · long-running</text>
+        <text x="366" y="74" fill="#E9EBF5" font-size="14">Companion backend</text>
+        <text x="366" y="94" fill="#8B91AD" font-size="11">FastAPI · 127.0.0.1 · read + relay</text></g>
+
+      <g class="hot" tabindex="0"><title>State from REST + WebSocket only. Issues no writes.</title>
+        <rect x="690" y="26" width="190" height="86" rx="10" fill="#222639" stroke="#2C3048"/>
+        <text x="706" y="52" fill="#B3B8CF" font-size="12" font-weight="700">Process 3</text>
+        <text x="706" y="74" fill="#E9EBF5" font-size="14">Browser SPA</text>
+        <text x="706" y="94" fill="#8B91AD" font-size="11">read-only glass</text></g>
+
+      <g class="hot" tabindex="0"><title>SQLite WAL. One writer, many readers.</title>
+        <rect x="60" y="290" width="170" height="66" rx="10" fill="#0D0F1A" stroke="#3D4266"/>
+        <text x="76" y="318" fill="#E9EBF5" font-size="14">cards.db</text>
+        <text x="76" y="338" fill="#8B91AD" font-size="11">SQLite · WAL</text></g>
+
+      <g class="hot" tabindex="0"><title>{port, token, instance_id}. Atomic write. The sole rendezvous.</title>
+        <rect x="330" y="290" width="250" height="66" rx="10" fill="#0D0F1A" stroke="#575FBE"/>
+        <text x="346" y="318" fill="#B3BAFF" font-size="14">companion.json</text>
+        <text x="346" y="338" fill="#8B91AD" font-size="11">port · token · instance_id — platformdirs</text></g>
+
+      <g class="hot" tabindex="0"><title>Paced, cached, lazy. URLs come from locally stored image_uris.</title>
+        <rect x="690" y="290" width="190" height="66" rx="10" fill="#0D0F1A" stroke="#3D4266"/>
+        <text x="706" y="318" fill="#E9EBF5" font-size="14">Scryfall CDN</text>
+        <text x="706" y="338" fill="#8B91AD" font-size="11">images only</text></g>
+
+      <path d="M90,112 L90,290" stroke="#8B93FF" stroke-width="1.6" marker-end="url(#a)" fill="none"/>
+      <text x="98" y="205" fill="#8B93FF" font-size="11">writes</text>
+
+      <path d="M420,112 L200,290" stroke="#575FBE" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#ad)" fill="none"/>
+      <text x="248" y="215" fill="#8B91AD" font-size="11">reads</text>
+
+      <path d="M455,112 L455,290" stroke="#575FBE" stroke-width="1.4" marker-end="url(#ad)" fill="none"/>
+      <text x="463" y="180" fill="#8B91AD" font-size="11">writes on start</text>
+      <text x="463" y="196" fill="#8B91AD" font-size="11">removes on stop</text>
+
+      <path d="M330,318 L232,318" stroke="#8B93FF" stroke-width="1.4" marker-end="url(#a)" fill="none"/>
+      <text x="238" y="278" fill="#8B93FF" font-size="11">read before every push</text>
+
+      <path d="M222,58 L348,58" stroke="#8B93FF" stroke-width="1.8" marker-end="url(#a)" fill="none"/>
+      <text x="232" y="22" fill="#8B93FF" font-size="11">POST /agent/events · agent token</text>
+
+      <path d="M562,58 L688,58" stroke="#8B93FF" stroke-width="1.8" marker-end="url(#a)" fill="none"/>
+      <text x="568" y="22" fill="#8B93FF" font-size="11">WebSocket · ticket</text>
+
+      <path d="M700,96 L565,96" stroke="#3D4266" stroke-width="1.4" marker-end="url(#ad)" fill="none"/>
+      <text x="576" y="130" fill="#8B91AD" font-size="11">REST: decks · cards · images</text>
+
+      <path d="M560,318 L688,318" stroke="#575FBE" stroke-width="1.4" marker-end="url(#ad)" fill="none"/>
+      <text x="566" y="382" fill="#8B91AD" font-size="11">paced · cached · lazy</text>
+      <path d="M540,112 L780,286" stroke="#3D4266" stroke-width="1.2" stroke-dasharray="3 4" fill="none"/>
+    </svg></div>
+
+    <div class="callout"><b>Two credentials that never touch.</b> The <em>agent token</em> lives in
+    the discovery file and authorises pushing. The <em>WS ticket</em> is single-use with a 30-second
+    life and authorises receiving. If the browser ever held the agent token, an XSS would escalate
+    from "can read the UI" to "can push arbitrary content into the session."</div>
+
+    <h3>Cold-start reality</h3>
+    <div class="grid2">
+      <div class="mini"><b>~12 MB, ~10 s</b><p>A cold 100-card Commander deck at Scryfall's
+      compliant request rate. Stated so it is expected, not discovered — NFR-05 excludes
+      first-fetch paint, so this is compliant.</p></div>
+      <div class="mini"><b>One choke point</b><p>Pacing lives in the backend, never the UI, and is
+      async throughout. Two rate limiters would jointly exceed the guidance; a blocking one would
+      eat the 250 ms push budget.</p></div>
+      <div class="mini"><b>Never a substitute image</b><p>Failures are signalled distinguishably so
+      the client draws its own named placeholder — name, mana pips, type line. A generic grey card
+      would make that unreachable.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── DECISIONS ───────────── -->
+<section id="p3" role="tabpanel" hidden>
+  <div class="panel">
+    <h2>Sixteen decisions</h2>
+    <p class="lede">Each fixes a point where two independently-built units could otherwise choose
+    incompatibly. Click to open.</p>
+    <div class="filt" id="filt">
+      <button aria-pressed="true"  data-f="all">All</button>
+      <button aria-pressed="false" data-f="Boundaries">Boundaries</button>
+      <button aria-pressed="false" data-f="Contract">Contract</button>
+      <button aria-pressed="false" data-f="Security">Security</button>
+      <button aria-pressed="false" data-f="Runtime">Runtime</button>
+      <button aria-pressed="false" data-f="Delivery">Delivery</button>
+    </div>
+    <div id="ads"></div>
+  </div>
+</section>
+
+<!-- ───────────── WORK SPLIT ───────────── -->
+<section id="p4" role="tabpanel" hidden>
+  <div class="panel">
+    <h2>How it splits</h2>
+    <p class="lede">An epic owns a seam, not a layer. Everything touching the same decision lands
+    in one epic — otherwise two epics eventually disagree about it.</p>
+
+    <div class="svgwrap">
+    <svg viewBox="0 0 900 340" role="img" aria-label="Epic dependency graph: E1 blocks E2, E3, E4 and E7; E4 blocks E5, E6, E9; E8 and E9 block E10">
+      <defs><marker id="b" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+        <path d="M0,0 L8,4 L0,8 z" fill="#575FBE"/></marker></defs>
+      <g font-size="12">
+        <rect x="20" y="130" width="130" height="56" rx="8" fill="rgba(139,147,255,.14)" stroke="#8B93FF"/>
+        <text x="34" y="153" fill="#B3BAFF" font-weight="700">E1 Skeleton</text>
+        <text x="34" y="172" fill="#8B91AD" font-size="10.5">the only bottleneck</text>
+
+        <rect x="215" y="20"  width="130" height="50" rx="8" fill="#222639" stroke="#2C3048"/>
+        <text x="229" y="42" fill="#E9EBF5">E2 Read API</text><text x="229" y="59" fill="#8B91AD" font-size="10.5">AD-16</text>
+        <rect x="215" y="92"  width="130" height="50" rx="8" fill="#222639" stroke="#2C3048"/>
+        <text x="229" y="114" fill="#E9EBF5">E3 Images</text><text x="229" y="131" fill="#8B91AD" font-size="10.5">AD-11</text>
+        <rect x="215" y="164" width="130" height="50" rx="8" fill="#222639" stroke="#575FBE"/>
+        <text x="229" y="186" fill="#B3BAFF">E4 Realtime</text><text x="229" y="203" fill="#8B91AD" font-size="10.5">contracts live here</text>
+        <rect x="215" y="236" width="130" height="50" rx="8" fill="#222639" stroke="#2C3048"/>
+        <text x="229" y="258" fill="#E9EBF5">E7 SPA base</text><text x="229" y="275" fill="#8B91AD" font-size="10.5">AD-12/13</text>
+
+        <rect x="415" y="128" width="130" height="44" rx="8" fill="#222639" stroke="#2C3048"/>
+        <text x="429" y="155" fill="#E9EBF5">E5 Push tools</text>
+        <rect x="415" y="188" width="130" height="44" rx="8" fill="#222639" stroke="#2C3048"/>
+        <text x="429" y="215" fill="#E9EBF5">E6 Deck sync</text>
+
+        <rect x="610" y="60"  width="140" height="44" rx="8" fill="#222639" stroke="#2C3048"/>
+        <text x="624" y="87" fill="#E9EBF5">E8 Deck view</text>
+        <rect x="610" y="160" width="140" height="44" rx="8" fill="#222639" stroke="#2C3048"/>
+        <text x="624" y="187" fill="#E9EBF5">E9 Agent views</text>
+
+        <rect x="790" y="110" width="90" height="44" rx="8" fill="rgba(95,212,160,.12)" stroke="#5FD4A0"/>
+        <text x="804" y="130" fill="#5FD4A0">E10</text><text x="804" y="146" fill="#8B91AD" font-size="10.5">release</text>
+      </g>
+      <g stroke="#575FBE" stroke-width="1.3" fill="none" marker-end="url(#b)">
+        <path d="M152,150 C185,150 185,45 212,45"/>
+        <path d="M152,155 C185,155 185,117 212,117"/>
+        <path d="M152,162 C185,162 185,189 212,189"/>
+        <path d="M152,170 C185,170 185,261 212,261"/>
+        <path d="M347,180 C380,180 380,150 412,150"/>
+        <path d="M347,192 C380,192 380,210 412,210"/>
+        <path d="M347,45  C500,45  500,82  607,82"/>
+        <path d="M347,117 C500,110 500,82  607,82"/>
+        <path d="M347,261 C500,261 500,182 607,182"/>
+        <path d="M547,150 C580,150 580,182 607,182"/>
+        <path d="M752,82  C775,82  775,132 787,132"/>
+        <path d="M752,182 C775,182 775,132 787,132"/>
+      </g>
+    </svg></div>
+
+    <div class="callout"><b>The one serialisation worth respecting.</b> <code>contracts.py</code>
+    lands in E4 and is upstream of E5, E7's type imports, E8 and E9. Land the envelope early and
+    change it rarely — the drift check means a late change ripples through a committed
+    <code>.d.ts</code> and both mirrored bundles.</div>
+
+    <h3>Phase 1 — MVP</h3>
+    <div class="tblwrap"><table>
+      <tr><th>Epic</th><th>Owns</th><th>Governed by</th><th>Blocked by</th></tr>
+      <tr><td>E1 Skeleton</td><td>Leaf/app split, zero-side-effect app, lifespan, discovery file, single instance, CLI dispatch, lazy engine, <b>both CI boundary tests</b></td><td>AD-1,2,3,4,10,14,16</td><td>—</td></tr>
+      <tr><td>E2 Read API</td><td>Deck + card endpoints over existing repos; typed error body</td><td>AD-1,2,16</td><td>E1</td></tr>
+      <tr><td>E3 Images</td><td>Proxy, async pacer, sharded atomic cache, negative cache, face resolution</td><td>AD-11</td><td>E1</td></tr>
+      <tr><td>E4 Realtime</td><td>Ticket, WS upgrade, broadcast, <b>envelope contracts</b>, TS generation + drift check</td><td>AD-5,6,12</td><td>E1</td></tr>
+      <tr><td>E5 Push tools</td><td><code>/agent/events</code> + caps, set-active-deck, show-suggestions, outcome tokens</td><td>AD-7,8,16</td><td>E4</td></tr>
+      <tr><td>E6 Deck sync</td><td>Shared notifier; mutation tools emit after commit</td><td>AD-9</td><td>E4</td></tr>
+      <tr><td>E7 SPA base</td><td>Vite/React/zustand, Voltglass tokens, self-hosted font, build + mirror + drift, card cache</td><td>AD-12,13</td><td>E1</td></tr>
+      <tr><td>E8 Deck view</td><td>Grid, list, curve, colour bar, detail panel, format check, DFC flip, placeholders</td><td>AD-11,12,16</td><td>E2,E3,E7</td></tr>
+      <tr><td>E9 Agent views</td><td>View shell, suggestions, nav, connection pill, four state panels, a11y floor</td><td>AD-6,7,16</td><td>E4,E5,E7</td></tr>
+      <tr><td>E10 Release</td><td><code>view_deck</code> deprecation, cache docs, PRD amendments, <b>SC-5 gate</b></td><td>AD-13,15</td><td>E6,E8,E9</td></tr>
+    </table></div>
+
+    <h3>Later phases</h3>
+    <div class="grid2">
+      <div class="mini"><b>Phase 2 is cheap by design</b><p>Swaps, tier lists and card groups are
+      three new payload models and three new views under an envelope that already exists. Settling
+      AD-6 and AD-7 in Phase 1 is what buys that.</p></div>
+      <div class="mini"><b>Phase 3 changes nothing structural</b><p><code>data_version</code>
+      polling, the power panel, a Tauri wrapper. The power panel is just another push kind; a
+      wrapper loads the same URL.</p></div>
+      <div class="mini warn"><b>UI-initiated edits need their own brief</b><p>AD-2's write boundary
+      is precisely what forces that brief to be <em>written</em> rather than quietly absorbed by a
+      story that finds the path already open.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── GATE ───────────── -->
+<section id="p5" role="tabpanel" hidden>
+  <div class="panel">
+    <h2>What the reviewer gate caught</h2>
+    <p class="lede">Three lenses — technology currency, adversarial seam, good-spine rubric.
+    Ten findings, all fixed in place before the spine was finalised.</p>
+
+    <h3>Critical</h3>
+    <div class="grid2">
+      <div class="mini warn"><b>A column that doesn't exist</b><p>The draft bound DFC face handling
+      to <code>cards.layout</code>. There <em>is</em> no <code>layout</code> column. Now driven by
+      the presence of per-face <code>image_uris</code> inside <code>card_faces</code> — which is
+      the more precise signal anyway, since split/adventure/flip carry faces without per-face
+      images and fall out automatically. No migration, no re-import. <b>PRD FR-04 carries the
+      same defect.</b></p></div>
+      <div class="mini warn"><b>TypeScript 7 would break CI</b><p>TS 7.0 went stable 17 days ago.
+      But <code>typescript-eslint</code> declined TS 7 support on day one and publishes a peer
+      range of <code>&lt;6.1.0</code> — <code>npm ci</code> fails outright. NFR-07 requires eslint,
+      so the asserted open floor would have broken the frontend gate on the first run. Pinned
+      <code>&gt;=5.9,&lt;6.1</code>.</p></div>
+    </div>
+
+    <h3>High</h3>
+    <div class="tblwrap"><table>
+      <tr><th>Hole</th><th>How two builders diverge</th><th>Closed by</th></tr>
+      <tr><td>No REST convention</td><td>One ships <code>{status,data}</code>, another plain schema + 404 — and the UI cannot tell a deleted deck from a missing database from a transient read failure, which are three different state panels</td><td>New AD-16</td></tr>
+      <tr><td>"Placeholder response"</td><td>One serves a grey PNG the UI can't detect, making the designed named placeholder unreachable</td><td>AD-11 tightened</td></tr>
+      <tr><td>Fire-and-forget</td><td><code>create_task</code> can be torn down before it runs — the event never leaves the process and the deck goes silently stale</td><td>AD-9: bounded-timeout await, detached tasks banned</td></tr>
+    </table></div>
+
+    <h3>Medium and low</h3>
+    <div class="tblwrap"><table>
+      <tr><th>Hole</th><th>Closed by</th></tr>
+      <tr><td>Nobody owns validating the active deck exists</td><td>AD-16 — the MCP tool does; the backend stores what it's given</td></tr>
+      <tr><td>WS upgrade validated <code>Host</code> but not <code>Origin</code></td><td>AD-5 — both</td></tr>
+      <tr><td>No owner for client card hydration; hover across 100 tiles would duplicate requests</td><td>AD-12 — one store cache, deduped; no second fetching library</td></tr>
+      <tr><td>Envelope <code>id</code> ordering unstated</td><td>AD-6 — <code>id</code> is opaque; history orders by <code>ts</code></td></tr>
+      <tr><td>NFR-05 had no capability-map row</td><td>Row added</td></tr>
+    </table></div>
+
+    <h3>Amendments this spine owes upstream</h3>
+    <div class="grid2">
+      <div class="mini warn"><b>PRD FR-14 + glossary</b><p>Name <code>~/.artificial-planeswalker/</code>.
+      The discovery file now homes under platformdirs, beside <code>cards.db</code>.</p></div>
+      <div class="mini warn"><b>PRD NFR-02</b><p>States <code>mode=ro</code> as the mechanism.
+      Enforcement is now a CI import boundary on one engine.</p></div>
+      <div class="mini warn"><b>PRD FR-04</b><p>Says face handling is driven by Scryfall
+      <code>layout</code>. No such column exists.</p></div>
+      <div class="mini"><b>PRD OQ-B</b><p>Lists <code>datamodel-code-gen</code>, which generates
+      Python <em>from</em> schemas. It was never a TypeScript candidate.</p></div>
+    </div>
+  </div>
+</section>
+
+<footer>Artificial-Planeswalker · architecture spine companion-app · 2026-07-25 · Voltglass</footer>
+</div>
+
+<script>
+const ADS=[
+ {id:"AD-1",tag:"Boundaries",t:"Two shells over one core; the companion is a peer, not a layer under",b:"all; FR-02, FR-03, NFR-02/03",p:"A second card/deck truth drifting from the repositories.",r:"src/companion is a sibling of src/mcp_server, both on the same data + logic. It consumes the existing repositories and defines no second card or deck shape. It is not an MCP client — the MCP server is per-session, the backend long-running."},
+ {id:"AD-2",tag:"Boundaries",t:"The MCP server is the only writer; src/companion cannot reach a write path",b:"NFR-02, CM-3, NG1, G4",p:"A Phase-3 UI-edit story finding the write path already open and using it — collapsing the premise with no decision made.",r:"One engine. Read-only enforced by a CI import boundary, not mode=ro: a test AST-walks src/companion/** and fails on any repository write method, session.add, commit or delete. mode=ro on WAL drags in the -shm landmine and immutable would foreclose FR-16."},
+ {id:"AD-3",tag:"Boundaries",t:"Leaf / app split; only the leaf is importable by the MCP server",b:"FR-06/08/09/10/12/14/23, NFR-03/07",p:"A stdio MCP session importing FastAPI and uvicorn just to read a port — and the two shells growing a mutual dependency.",r:"contracts.py, discovery.py, client.py import pydantic, httpx and src.paths only. app/ holds FastAPI. CI-checked: mcp_server may import the leaf, never src.companion.app.*"},
+ {id:"AD-4",tag:"Runtime",t:"The discovery file is the sole rendezvous; identity is verified before the token is sent",b:"FR-01/12/14, NFR-01/09",p:"Hardcoded ports; a tool POSTing a live token at a foreign process on a recycled port.",r:"data_dir()/companion.json — platformdirs, honouring PLANESWALKER_DATA_DIR. {port, token, instance_id}, atomic temp+rename, removed on clean shutdown. GET /health must echo a matching instance_id before the token is sent. Exactly one instance: a live entry exits; a stale one is reclaimed."},
+ {id:"AD-5",tag:"Security",t:"Two credentials that never touch",b:"NFR-01, NFR-04",p:"An XSS escalating from 'can read the UI' to 'can push arbitrary content into the session'.",r:"The agent token authorises pushing and never reaches the browser. The WS ticket is single-use, 30 s TTL, minted by same-origin GET /api/session, destroyed at upgrade, fresh per reconnect. Host and Origin both validated on the upgrade; CORS same-origin; bind 127.0.0.1 only."},
+ {id:"AD-6",tag:"Contract",t:"One WebSocket envelope, discriminated by kind",b:"FR-06/08/09/10/11/18/23, NFR-03",p:"One builder shipping {type,data} and another {kind,payload,ts}, leaving two switch statements.",r:"Every message is {kind, id, ts, payload}. kind is closed and covers pushes and deck_changed alike. id is opaque — history orders by ts. Does not reopen OQ-2: that rejected a generic display TOOL, not a shared wire shape."},
+ {id:"AD-7",tag:"Contract",t:"Per-kind payloads over a bare card reference; over-cap rejected, IDs unvalidated at ingest",b:"FR-08/09/10/13/23, NFR-03/05, SC-1, CM-1",p:"Four tools inventing four item shapes; a partial render that reads as the whole answer; a DB round-trip on the latency-critical path.",r:"Scryfall printing UUID only. Per-kind shapes, not one optional-bag. Tier letter is a closed S/A/B/C/D enum so the colour ramp is total; the free name carries the MTG meaning. Caps at the endpoint; over-cap → 422. The backend shape-validates and relays — it never reads the DB on the push path. Empty payloads render an empty state."},
+ {id:"AD-8",tag:"Contract",t:"Closed outcome tokens; tools never raise; auth failure retries once",b:"FR-06, FR-12, CM-1",p:"A tool erroring an agent turn because a browser tab was closed; each tool inventing its own failure vocabulary.",r:"async def with httpx.AsyncClient. Returns one of displayed | app_not_running | no_clients_connected | payload_rejected | backend_error plus the client count. Never raises, never echoes the payload (~200 tokens). On auth rejection, re-read the discovery file and retry once."},
+ {id:"AD-9",tag:"Runtime",t:"deck_changed from one shared notifier, after commit, failure swallowed",b:"FR-11, NFR-04",p:"Each mutation tool growing its own emit path; an emission failure degrading a mutation that already succeeded.",r:"One notifier in the leaf, called after commit, never inside the transaction. Fire-and-forget means a bounded-timeout await (~1 s), NOT a detached task — create_task can be torn down before it runs, losing the event silently. Staleness accepted until FR-16."},
+ {id:"AD-10",tag:"Runtime",t:"build_app() has zero side effects; the lifespan owns everything external",b:"FR-01/14/22, NFR-07",p:"An app object that cannot be constructed in a test without binding a port and overwriting the real discovery file.",r:"Port bind, discovery write, cache dir, engine creation all belong to the lifespan. The engine is lazy and its absence is a served UI state, not a startup failure — that is what makes FR-22 hold. Bulk tests in-process; exactly one real-socket integration test covers port fallback, ticket consume and restart-mints-new-token."},
+ {id:"AD-11",tag:"Runtime",t:"One backend-global pacer; content-addressed atomic cache; never a substitute image",b:"FR-04/19, NFR-05/06/08/09, CM-2",p:"Two components each rate-limiting and jointly exceeding guidance; request storms against an unreachable CDN.",r:"Lazy fetch behind one async semaphore + spacing — never blocking the loop. Faces resolve from the presence of per-face image_uris inside card_faces, never a layout string (no such column). The backend never serves a substitute image, so the client can draw its named placeholder. Sharded temp+rename cache, negative-cached failures, no eviction in MVP."},
+ {id:"AD-12",tag:"Contract",t:"Pydantic is the source of truth; TS generated from FastAPI's own OpenAPI",b:"NFR-03, NFR-07",p:"The Python and TS halves diverging — showing up as a runtime undefined in the browser and nowhere in either test suite.",r:"openapi-typescript over app.openapi() into a committed .d.ts, CI drift-checked with git diff --exit-code. One generator covers REST and the WS envelope, because /agent/events declares the envelope as its request body. UI state from exactly two inputs. One card-hydration cache in the store, deduped; no second fetching library."},
+ {id:"AD-13",tag:"Delivery",t:"The built SPA is a committed artifact under app/static/",b:"SC-4, NFR-06/07, FR-01",p:"A plugin install shipping a backend with no UI to serve.",r:"Forced by the distribution model — the project ships as a plugin via a cloned tree, so a wheel-build hook leaves plugin users with nothing. Committed, mirrored into plugin/ by existing machinery, never hand-edited. Node is dev/CI-only. The font is self-hosted; no CDN, or the app stops rendering identically offline."},
+ {id:"AD-14",tag:"Delivery",t:"One console script dispatches; bare invocation still runs the MCP server",b:"SC-4, FR-01",p:"A second console script needing PRD and UX copy amended in three places.",r:"No arguments runs the MCP server exactly as today; 'companion' runs the backend. Verified safe — both .mcp.json files invoke python -m src.mcp_server directly, so no client config touches the console script."},
+ {id:"AD-15",tag:"Delivery",t:"The companion supersedes src/viewer; the backend owns its stdout",b:"G1, FR-05/17/19, SC-3, FR-01/12/14",p:"Two renderers of one entity diverging — and a story 'improving' view_deck after the decision to retire it.",r:"view_deck deprecated at Phase 1 but still rendering through Phases 1–2, so SC-3 holds; src/viewer removed at the next minor. Operationally: foreground, user-launched, single-instance. No daemon, no auto-restart. Unlike the MCP process it logs freely to stdout — it owns them."},
+ {id:"AD-16",tag:"Contract",t:"REST is HTTP-native, not MCP-shaped; one typed error body, closed reason tokens",b:"FR-02/03/07/11/22, NFR-03",p:"The UI being unable to tell a deleted deck from a missing database from a transient read failure — three distinct state panels through one endpoint.",r:"Status codes carry outcome; success bodies are the existing Pydantic schemas unwrapped. The MCP status-enum convention stops at the MCP boundary. Non-2xx returns a closed reason token mapping 1:1 to a UX state. Deck-existence validation for set_active_deck belongs to the MCP tool."}
+];
+const box=document.getElementById('ads');
+box.innerHTML=ADS.map(a=>`<details class="ad" data-tag="${a.tag}">
+ <summary><span class="id">${a.id}</span><span class="ttl">${a.t}</span><span class="tag">${a.tag}</span></summary>
+ <div class="body"><dl>
+  <dt>Binds</dt><dd>${a.b}</dd>
+  <dt>Prevents</dt><dd>${a.p}</dd>
+  <dt>Rule</dt><dd class="rule">${a.r}</dd>
+ </dl></div></details>`).join('');
+
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('nav button').forEach(x=>x.setAttribute('aria-selected',x===b));
+  document.querySelectorAll('section[role=tabpanel]').forEach(s=>s.hidden=(s.id!==b.dataset.t));
+});
+document.querySelectorAll('#filt button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#filt button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  const f=b.dataset.f;
+  document.querySelectorAll('.ad').forEach(d=>d.hidden=(f!=='all'&&d.dataset.tag!==f));
+});
+</script>
+</body>
+</html>
