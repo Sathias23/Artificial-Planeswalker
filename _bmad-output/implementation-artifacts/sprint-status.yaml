@@ -1,5 +1,5 @@
 # generated: 2026-06-20
-# last_updated: 2026-06-21 (Story 2.3 code review → done; stats.pruned fix applied)
+# last_updated: 2026-07-25 (story c1-1 created — epic-c1 in-progress; companion build starts)
 # project: Artificial-Planeswalker
 # project_key: NOKEY
 # tracking_system: file-system
@@ -27,15 +27,26 @@
 #   - optional: Can be completed but not required
 #   - done: Retrospective has been completed
 #
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+#
 # WORKFLOW NOTES:
 # ===============
 # - Epic transitions to 'in-progress' automatically when first story is created
 # - Stories can be worked in parallel if team capacity allows
 # - Developer typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; sprint-status surfaces open ones
+#
+# KEY NAMESPACES (three epic files feed this one status file):
+#   epic-1..3   → _bmad-output/planning-artifacts/epics.md                        (MCP-server pivot, Phase 1)
+#   epic-4..7   → _bmad-output/planning-artifacts/epics-deck-power-assessment.md  (renumbered from its raw 1-4)
+#   epic-c1..10 → _bmad-output/planning-artifacts/epics-companion-app.md          (c-prefixed, numbering UNCHANGED)
 
 generated: 2026-06-20
-last_updated: 2026-07-18 (epic-7 retrospective → done; epic-7 → done; calibration gate + orphan-story keys added)
+last_updated: 2026-07-25 (story c1-1 code-reviewed — 11 patches applied, done; epic-c1 in-progress)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -172,6 +183,192 @@ development_status:
   # cards_unresolved fire. Includes the 7.2-deferred transient-lock mislabel
   # (combo_snapshot.py broad OperationalError → "unavailable") if the repo catch is narrowed.
   data-layer-orphan-handling: backlog
+
+  # ============================================================================
+  # COMPANION APP  (added 2026-07-25)
+  # Source epics: _bmad-output/planning-artifacts/epics-companion-app.md
+  #   (NOT epics.md — that file is the MCP pivot. This is a feature-level epic
+  #    set layered onto the brownfield repo: src/companion/, ui/, new MCP tools.)
+  # Inputs: PRD 2026-07-22 (+addendum) · UX Voltglass 2026-07-25 · ARCHITECTURE-SPINE 2026-07-25 (16 ADs)
+  #
+  # KEY SCHEME — c-prefix, epic-file numbering PRESERVED (Brad's call 2026-07-25).
+  #   epic file "Epic 4"    → epic-c4
+  #   epic file "Story 4.6" → c4-6-<kebab-title>
+  # Chosen over renumbering to 8..17 so the 76 story references never need a
+  # +7 translation. When running create-story / dev-story, use the c-keys below.
+  #
+  # WORK BRANCH: feat/companion-app. Each dev-story starts a NEW branch off it
+  # (feat/companion-<story-slug>); story PRs target feat/companion-app; one
+  # integration PR to master at the end.
+  #
+  # PHASING: Epics c1-c8 are Phase 1 (MVP, 70 stories). Epics c9-c10 are Phase 2
+  # (6 stories). Phase 3 (FR-16, FR-21, Tauri, UI-initiated edits) is OUT OF SCOPE
+  # for this breakdown — the last needs its own brief per AD-2.
+  #
+  # DEPENDENCY ORDER (from the epic file's "Depends on" lines):
+  #   c1 ← nothing         c2 ← c1        c3 ← c1 (independent of c2)
+  #   c4 ← c2, c3          c5 ← c2, c3    c6 ← c4, c5
+  #   c7 ← c6              c8 ← c7        c9 ← c6        c10 ← c7
+  #   c3 is the SC-4 close; c4 makes SC-5 answerable; c6 closes SC-1 + SC-3; c7 closes SC-2.
+  #
+  # SUCCESS CRITERIA (human gates):
+  #   SC-5 = Brad's own judgement against DESIGN.md + EXPERIENCE.md (UX-DR49) — story c8-6.
+  #          Cannot be automated or delegated.
+  #
+  # KNOWN OPEN ITEM: FR-18's session-history home (nav extension vs per-view header
+  # strip) is undecided. Blocks c10-2 ONLY — no Phase-1 story waits on it.
+  # ============================================================================
+
+  # Epic C1: Launch the Companion
+  # FR-01, FR-14, FR-22 (backend half) · NFR-01, NFR-02 (both CI boundary tests), NFR-07
+  # AD-1/2/3/4/10/14/15/16 · depends on nothing
+  # NOTE: EPIC-SPLIT calls c1-1's two boundary tests the highest-leverage stories in the
+  # whole feature — they land BEFORE the code they guard, so AD-2/AD-3 are structural not aspirational.
+  epic-c1: in-progress
+  c1-1-companion-package-skeleton-with-ci-enforced-import-boundaries: done
+  c1-2-side-effect-free-asgi-app-with-a-lifespan-and-a-health-endpoint: backlog
+  c1-3-port-selection-with-ephemeral-fallback-and-a-printed-launch-url: backlog
+  c1-4-typed-rest-error-contract-with-closed-reason-tokens: backlog
+  c1-5-localhost-only-security-envelope-host-validation-and-cors: backlog
+  c1-6-lazy-database-engine-so-a-fresh-install-starts-instead-of-erroring: backlog
+  c1-7-discovery-file-as-the-sole-rendezvous: backlog
+  c1-8-single-instance-enforcement-with-verified-identity: backlog
+  c1-9-one-console-script-that-dispatches-without-disturbing-the-mcp-server: backlog
+  epic-c1-retrospective: optional
+
+  # Epic C2: The Glass — Foundation, Identity & Honest States
+  # FR-20, FR-22 (state-panel surface + copy) · NFR-03, NFR-06, NFR-07, NFR-08 · AD-12, AD-13
+  # depends on c1
+  # NOTE: c2-1 carries the greenfield ui/ scaffold — the only new toolchain in the feature.
+  # The TypeScript >=5.9,<6.1 pin is load-bearing (typescript-eslint peer range <6.1.0) and belongs to it.
+  epic-c2: backlog
+  c2-1-frontend-scaffold-with-the-full-quality-gate-from-the-first-commit: backlog
+  c2-2-the-backend-serves-the-built-spa-as-a-committed-artifact: backlog
+  c2-3-typescript-types-generated-from-the-backends-own-openapi-drift-checked-in-ci: backlog
+  c2-4-the-voltglass-token-layer: backlog
+  c2-5-self-hosted-space-grotesk-with-offline-parity-and-tabular-numerals: backlog
+  c2-6-the-two-column-application-shell: backlog
+  c2-7-presentation-only-primitives-panel-badge-statchip-group-header: backlog
+  c2-8-manapip-and-manacost-with-complete-scryfall-cost-parsing: backlog
+  c2-9-the-shared-state-panel-and-every-system-state-message: backlog
+  c2-10-footer-attribution-on-every-surface: backlog
+  epic-c2-retrospective: optional
+
+  # Epic C3: Deck Data & Card Imagery on Tap
+  # FR-02, FR-03, FR-04, FR-07 (backend state slot + both transports), FR-22 (closes SC-4)
+  # NFR-02 (WAL reads), NFR-06, NFR-08, NFR-09, CM-2 · AD-11, AD-16 · depends on c1 (independent of c2)
+  # NOTE: only externally-paced work in the feature. A cold 100-card deck at ~12 MB / ~10 s to
+  # fully paint is an EXPECTED OBSERVATION in acceptance, not a defect.
+  epic-c3: backlog
+  c3-1-deck-list-and-deck-detail-endpoints: backlog
+  c3-2-card-detail-endpoint: backlog
+  c3-3-format-check-endpoint-over-the-existing-validators: backlog
+  c3-4-the-active-deck-readable-by-the-glass-settable-by-the-agent: backlog
+  c3-5-card-image-endpoint-with-face-resolution-and-a-defined-parameter-contract: backlog
+  c3-6-paced-concurrency-capped-cdn-fetching-at-one-global-choke-point: backlog
+  c3-7-sharded-atomically-written-disk-cache: backlog
+  c3-8-distinguishable-failure-signalling-and-negative-caching: backlog
+  c3-9-fresh-install-guides-instead-of-erroring-and-comes-alive-on-its-own: backlog
+  epic-c3-retrospective: optional
+
+  # Epic C4: The Deck on the Glass
+  # FR-05, FR-17, FR-19 · NFR-05 (1 s deck render, warm cache) · AD-11, AD-12, AD-16 · depends on c2, c3
+  # NOTE: largest UX surface in the feature; first epic where SC-5 becomes answerable.
+  # c4-6 (DFC flip control, UX-DR15) is the densest single component in the whole feature.
+  epic-c4: backlog
+  c4-1-a-single-card-hydration-cache-with-in-flight-deduping: backlog
+  c4-2-deck-state-bootstrap-and-the-type-grouped-decklist: backlog
+  c4-3-card-placeholders-named-unknown-and-loading-wells: backlog
+  c4-4-card-tile-and-the-card-art-grid: backlog
+  c4-5-persistent-card-detail-panel-with-transient-and-pinned-inspection: backlog
+  c4-6-double-faced-card-flip-control: backlog
+  c4-7-deck-list-panel: backlog
+  c4-8-mana-curve-panel: backlog
+  c4-9-colour-distribution-panel: backlog
+  c4-10-format-check-panel: backlog
+  c4-11-keyboard-floor-skip-link-tab-order-and-focus-management: backlog
+  c4-12-empty-deck-state-and-the-cold-open-render-budget: backlog
+  epic-c4-retrospective: optional
+
+  # Epic C5: The Agent's Channel
+  # FR-06, FR-13 (ID-only contract) · NFR-01 (ticket, Origin, token separation), NFR-03, NFR-04
+  # AD-5, AD-6, AD-7 · depends on c2, c3
+  # NOTE: all four payload shapes are frozen HERE in Phase 1 (c5-1), not added incrementally —
+  # the discriminated union needs every member; a late change ripples through the committed
+  # .d.ts and both mirrored plugin bundles. This is why Phase 2 is only 6 stories.
+  # c5-8 is the ONE integration-marked real-socket test in the feature (AD-10).
+  epic-c5: backlog
+  c5-1-the-event-envelope-and-every-per-kind-payload-contract: backlog
+  c5-2-same-origin-session-endpoint-minting-single-use-websocket-tickets: backlog
+  c5-3-authenticated-websocket-upgrade-with-host-and-origin-validation: backlog
+  c5-4-broadcast-to-every-connected-client: backlog
+  c5-5-token-authenticated-event-ingest-that-reports-who-is-listening: backlog
+  c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt: backlog
+  c5-7-connection-pill: backlog
+  c5-8-the-one-real-socket-integration-test: backlog
+  epic-c5-retrospective: optional
+
+  # Epic C6: The Agent Pushes to the Glass
+  # FR-07 (MCP tool + deck-existence validation), FR-08, FR-12 · NFR-05 (250 ms push)
+  # AD-8 · depends on c4, c5 · closes SC-1 and SC-3
+  epic-c6: backlog
+  c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary: backlog
+  c6-2-companion-set-active-deck-the-agent-chooses-what-the-glass-shows: backlog
+  c6-3-the-glass-follows-the-agents-active-deck-choice: backlog
+  c6-4-companion-show-suggestions-the-agents-first-push: backlog
+  c6-5-agent-view-shell-with-focus-management-and-dismissal: backlog
+  c6-6-a-push-opens-its-view-and-a-repeat-push-replaces-it-in-place: backlog
+  c6-7-suggestions-view: backlog
+  c6-8-agent-views-nav-unread-markers-re-open-and-kind-switching: backlog
+  c6-9-degradation-with-the-app-closed-and-the-250-ms-push-budget: backlog
+  epic-c6-retrospective: optional
+
+  # Epic C7: The Deck Updates Itself
+  # FR-11, FR-12 (notifier swallow) · NFR-04 (refetch coalescing) · AD-9 · depends on c6 · closes SC-2
+  # NOTE: AD-9 — "fire-and-forget" means a bounded-timeout await (~1 s), NOT a detached task.
+  # asyncio.create_task is BANNED on this path. Emission is always after commit, never inside the txn.
+  epic-c7: backlog
+  c7-1-one-shared-notifier-with-a-bounded-await-and-no-detached-tasks: backlog
+  c7-2-every-deck-mutation-tool-emits-after-its-transaction-commits: backlog
+  c7-3-the-glass-refetches-on-deck-changed-coalesced-and-latest-wins: backlog
+  c7-4-refetch-never-tears-down-whats-on-screen: backlog
+  c7-5-the-change-is-announced-once-and-motion-is-never-the-only-signal: backlog
+  c7-6-deck-deletion-and-agent-views-during-a-refetch: backlog
+  c7-7-the-loop-closes-uj-1-end-to-end: backlog
+  epic-c7-retrospective: optional
+
+  # Epic C8: Release Readiness
+  # NFR-08 (release notice), NFR-09 (README + uninstall notes) · AD-15 · depends on c7
+  # NOTE: c8-3 owns folding the six story-writing gaps + the four confirmed UX rulings back
+  # into the PRD, plus the three PRD amendments owed (NFR-02 mode=ro, FR-14 path, FR-04 layout).
+  # c8-6 is the SC-5 human gate — Brad only, cannot be automated or delegated.
+  epic-c8: backlog
+  c8-1-deprecate-view-deck-and-freeze-src-viewer: backlog
+  c8-2-image-cache-stewardship-documented-location-inspection-and-removal: backlog
+  c8-3-reconcile-the-prd-with-what-was-built: backlog
+  c8-4-release-documentation-for-the-companion-app: backlog
+  c8-5-plugin-distribution-parity: backlog
+  c8-6-the-sc-5-gate: backlog
+  epic-c8-retrospective: optional
+
+  # Epic C9: The Remaining Push Kinds  *(Phase 2)*
+  # FR-09, FR-10, FR-23 · UX-DR25/26/27 · depends on c6
+  # NOTE: cheap because c5-1 already froze all four payload shapes — each story is tool + view only.
+  epic-c9: backlog
+  c9-1-proposed-swaps-tool-and-view: backlog
+  c9-2-tier-lists-tool-and-view: backlog
+  c9-3-card-groups-tool-and-view: backlog
+  epic-c9-retrospective: optional
+
+  # Epic C10: Session History, Status Detail & Performance Polish  *(Phase 2)*
+  # FR-15, FR-18 · NFR-05 hardening · depends on c7
+  # BLOCKED ITEM: c10-2 waits on the FR-18 session-history home decision (extend the nav,
+  # or a strip inside each view's header) — the one open UX item carried into story work.
+  epic-c10: backlog
+  c10-1-connection-pill-status-detail: backlog
+  c10-2-session-history: backlog
+  c10-3-measure-the-latency-budgets-and-close-the-gaps: backlog
+  epic-c10-retrospective: optional
 
 # Action items carried out of retrospectives (see epic-N-retro-*.md for full context)
 action_items:
