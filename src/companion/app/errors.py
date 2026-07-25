@@ -148,6 +148,48 @@ def error_responses(*reasons: ErrorReason) -> dict[int | str, dict[str, Any]]:
     }
 
 
+_AUTO_VALIDATION_COMPONENTS = ("HTTPValidationError", "ValidationError")
+
+
+def without_auto_validation_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Strip FastAPI's auto-generated 422 validation response from an OpenAPI *schema*.
+
+    The ``invalid_request`` handler makes that response permanently unreachable — validation
+    failures answer ``400`` — but FastAPI re-documents it on every route with validated input,
+    which would put a shape the API never emits into c2-3's generated TypeScript. Declaring an
+    explicit 422 used to displace it as a side effect; the 413 ruling freed 422 entirely, so the
+    displacement now happens here, at schema-build time, for every current and future route
+    (caught by Greptile on PR #12: the first validated route silently resurrected the auto-422).
+
+    Only entries referencing the auto-generated component are removed — a deliberate, explicitly
+    declared 422 would survive untouched.
+
+    Args:
+        schema: The schema produced by ``FastAPI.openapi()``; modified in place.
+
+    Returns:
+        The same schema, without the auto-generated validation response or its components.
+    """
+    for path_item in schema.get("paths", {}).values():
+        for operation in path_item.values():
+            if not isinstance(operation, dict):
+                continue
+            responses = operation.get("responses", {})
+            declared = responses.get("422", {})
+            ref = (
+                declared.get("content", {})
+                .get("application/json", {})
+                .get("schema", {})
+                .get("$ref", "")
+            )
+            if str(ref).endswith("/HTTPValidationError"):
+                del responses["422"]
+    components = schema.get("components", {}).get("schemas", {})
+    for name in _AUTO_VALIDATION_COMPONENTS:
+        components.pop(name, None)
+    return schema
+
+
 async def companion_error_handler(request: Request, exc: Exception) -> JSONResponse:
     """Convert a raised :class:`CompanionError` into its typed response.
 

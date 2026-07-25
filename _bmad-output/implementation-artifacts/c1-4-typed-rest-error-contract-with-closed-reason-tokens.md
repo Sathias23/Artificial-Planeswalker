@@ -305,6 +305,16 @@ middleware-vs-`Exception`-handler ruling, and the mid-stream re-raise dead-guard
       errors) is real and only c1-5 can weigh it with the actual CORS scope in hand.
       [src/companion/app/main.py:120-124] — deferred to c1-5
 
+- [x] [Review][Patch] **Greptile (PR #12, post-review): the 413 ruling silently removed the
+      auto-422 displacement.** Declaring an explicit 422 was what suppressed FastAPI's
+      auto-generated `HTTPValidationError` (Gotcha 3); with 422 freed, the first *validated* route
+      resurrects it in the schema while runtime returns 400 — and the displacement test passed
+      vacuously because no shipped route has validated input. Confirmed by probe. Fixed
+      structurally: `without_auto_validation_schema()` in `errors.py` strips the auto-422 at
+      schema-build time via the `_CompanionFastAPI.openapi()` hook, covering every future route;
+      the displacement test now runs against an app carrying the validated `/_typed/{n}` route and
+      pins `"422" not in` its responses. [src/companion/app/main.py — _CompanionFastAPI] (Severity: Medium)
+
 Dismissed as noise (4): double-`install_error_handling` idempotence guard (speculative — one call
 site, and c1-5/c1-6 are told to wire nothing); the "weak" inertness re-assertion (it is exactly the
 cheap re-assertion the spec's Task 4 prescribed, and the strong fresh-import inertness coverage in
@@ -732,3 +742,4 @@ $ git status --porcelain -- plugin/      # after commit
 | 2026-07-25 | Story c1-4 created from epics Story 1.4 + AD-16/AD-12/AD-10, with the Starlette re-raise behaviour, the `mypy --strict` handler-signature failure, the app-level `responses` schema effect and the middleware ordering all verified against the installed FastAPI 0.140.0 / Starlette 0.48.0 rather than assumed. Baseline re-measured at `4a5695c`: 1,405 passed / 45 deselected. Status → ready-for-dev. |
 | 2026-07-25 | Implemented all 14 ACs across Tasks 0–5. `ErrorReason`/`ErrorResponse` in the leaf; `errors.py` with the single status mapping, `CompanionError`, three `(request, exc: Exception)` handlers and the pure-ASGI `UnhandledErrorMiddleware`; `build_app()` declares the error body app-wide and installs the handling last. 38 new tests (1,405 → 1,443 passed, 45 deselected); ruff, `ruff format --check` and `mypy src/` all clean; plugin mirror rebuilt. Status → review. |
 | 2026-07-25 | Code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor): all 14 ACs verified; 26 raw findings → 16 unique. **Two wire-contract rulings by Brad, applied before Epic 2 freezes the TS union:** `internal_error` (500) added as the sixth token (unhandled bugs + stray 5xx `HTTPException`s no longer masquerade as the retry-forever `database_unavailable`; panel homed on Story 2.9) and `payload_too_large` moved 422 → 413 — spine AD-16 table + epics tables annotated. 9 hardening patches: `http_exception_handler` forwards `exc.headers` (405 keeps RFC-mandated `Allow`) and passes sub-400/204/304 through bodiless; `ClientDisconnect` carved out of the unhandled path (debug + re-raise, no false-alarm ERROR); log-once ordering on mid-stream failures; `CompanionError` validates its token at runtime; `error_responses` dedupes; validation-detail log pinned by caplog; OpenAPI walk hardened; non-http test uses real ASGI channels; Debug Log figures corrected. 1 deferred (CORS-ordering tension → c1-5), 4 dismissed. 1,452 passed / 45 deselected; all gates green; mirror rebuilt. Status → done. |
+| 2026-07-25 | Greptile (PR #12, 3/5) caught a real consequence of the 413 ruling: with no 422 declared, a validated route resurrects FastAPI's auto-`HTTPValidationError` in the schema while runtime returns 400 (the displacement test was vacuous — no shipped route validates input). Confirmed by probe; fixed with `without_auto_validation_schema()` + the `_CompanionFastAPI.openapi()` hook, stripping the auto-422 at schema-build time for all future routes; displacement test un-vacuoused against `/_typed/{n}`. 1,452 passed / 45 deselected; gates green; mirror rebuilt. |

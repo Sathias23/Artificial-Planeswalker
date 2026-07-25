@@ -369,11 +369,18 @@ class TestStructuralPins:
 
     def test_fastapis_own_validation_shape_is_gone(self):
         # AC 5 makes a 422 HTTPValidationError permanently unreachable; leaving it in the schema
-        # would put a shape we never emit into c2-3's generated TypeScript.
-        schema = build_app().openapi()
+        # would put a shape we never emit into c2-3's generated TypeScript. Non-vacuous since the
+        # Greptile finding on PR #12: the app under test must carry a *validated* route
+        # (/_typed/{n}), because that is exactly what resurrects FastAPI's auto-422 — a bare
+        # build_app() has none and passes this test with the stripping deleted.
+        schema = _app_with_test_routes().openapi()
 
         assert "HTTPValidationError" not in schema["components"]["schemas"]
         assert "ValidationError" not in schema["components"]["schemas"]
+        assert "422" not in schema["paths"]["/_typed/{n}"]["get"]["responses"], (
+            "the auto-422 is back on a validated route — the schema now documents a response "
+            "the runtime 400 handler never emits"
+        )
 
     def test_the_error_body_is_declared_on_the_routes(self):
         responses = build_app().openapi()["paths"]["/health"]["get"]["responses"]
