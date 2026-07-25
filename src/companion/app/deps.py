@@ -203,9 +203,12 @@ class Database:
             engine = self._engine
             if engine is None:
                 return
+            await engine.dispose()
+            # Cleared only after the dispose succeeds: a raising dispose leaves the holder still
+            # pointing at the engine, rather than stranding an undisposed pool behind a None that
+            # no retry could ever reach.
             self._engine = None
             self._session_factory = None
-            await engine.dispose()
             logger.debug("Card database engine disposed")
 
 
