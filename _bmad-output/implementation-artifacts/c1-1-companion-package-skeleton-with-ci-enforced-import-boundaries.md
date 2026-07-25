@@ -203,6 +203,7 @@ cheapest to write **before** there is any code to retrofit them against. Every o
 - [x] [Review][Patch] (low) `resolve_import` with `level` exceeding package depth mis-resolves via a negative slice instead of failing — raise on `level - 1 > len(parts)` [tests/unit/companion/test_import_boundary.py:233]
 - [x] [Review][Patch] (low) `session.flush()` — the banned twin of the documented `file.flush()` false-positive pair — has no negative test — add it to `_WRITE_VIOLATION_CASES` [tests/unit/companion/test_import_boundary.py:562]
 - [x] [Review][Patch] (low) Dev Agent Record inaccuracies: "~750 lines" (actual 944) and gate outputs captured pre-plugin-build ("248 files already formatted"; at `dee555e` it is 250) — correct the Completion Notes [story record]
+- [x] [Review][Patch] (medium) **Greptile P1 (PR #9):** `from sqlalchemy import *` + bare `delete(...)` bypassed the write guard — star imports were recorded as bare `base`, and bare-name DML calls are unattributable. Fixed: star imports are now recorded as `base.*` and a sqlalchemy star import is banned at the import site, with a negative test [tests/unit/companion/test_import_boundary.py:296]
 
 ## Dev Notes
 
@@ -519,4 +520,5 @@ one-constant edit, but stories c1-9 / c6-1 / c7-1 inherit them as they stand.
 | Date | Change |
 | --- | --- |
 | 2026-07-25 | Story c1-1 implemented: companion package skeleton (two docstring-only `__init__.py`) plus the AD-2 write guard and AD-3 leaf/app guard as 40 AST-based unit tests; plugin mirror rebuilt. All quality gates green, 1350 tests passing, no regressions. Status → review. |
+| 2026-07-25 | Greptile P1 on PR #9 fixed: `from sqlalchemy import *` + bare DML call bypassed the write guard; star imports now recorded as `base.*` and a sqlalchemy star import fails at the import site. 50 tests, 1360 passing. |
 | 2026-07-25 | Adversarial code review (3 layers): 1 decision + 11 patches applied, 1 dismissed. Brad's ruling: TYPE_CHECKING imports stay module-level in every role (documented; homed on c1-9). Patches: companion-surface enumeration pin + leaf-constrained `__init__.py` (closes the future-non-leaf-module hole); `outside_app` role now fails module-level app imports in `__main__.py` per AC 5; `import sqlalchemy as X` alias-tracked as DML receiver; bare references to repo write methods banned; classmethods visible to guard-the-guard; BOM-tolerant parsing; over-deep relative imports raise instead of laundering; `session.flush()` negative case; dynamic-form limitation documented; Dev Agent Record corrected. 49 tests, 1359 passing, all gates green. Status → done. |

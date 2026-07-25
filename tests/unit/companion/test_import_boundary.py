@@ -294,7 +294,11 @@ def imported_names(tree: ast.Module, package: str) -> list[ImportedName]:
         base = resolve_import(node.module, node.level, package)
         for alias in node.names:
             if alias.name == "*":
-                names.append(ImportedName(base, node.lineno, module_level, parent=base))
+                # A star import is recorded as `base.*`, not bare `base`: the rules must be able
+                # to tell `from sqlalchemy import *` (exposes insert/update/delete as bare names
+                # no AST walk can attribute) apart from `import sqlalchemy`.
+                dotted_star = f"{base}.*" if base else "*"
+                names.append(ImportedName(dotted_star, node.lineno, module_level, parent=base))
                 continue
             dotted = f"{base}.{alias.name}" if base else alias.name
             names.append(ImportedName(dotted, node.lineno, module_level, parent=base))
@@ -368,6 +372,10 @@ def find_write_violations(path: Path, *, rel_path: str | None = None) -> list[Vi
         elif last in _SCHEMA_CREATION:
             flag(imported.line, dotted, "schema creation")
         elif top == "sqlalchemy" and last in _DML_CONSTRUCTS:
+            flag(imported.line, dotted, "sqlalchemy DML construct")
+        elif top == "sqlalchemy" and last == "*":
+            # `from sqlalchemy import *` would expose insert/update/delete as bare names that
+            # no receiver or import rule could attribute afterwards — ban it at the import site.
             flag(imported.line, dotted, "sqlalchemy DML construct")
 
     return violations
@@ -601,6 +609,14 @@ def go(session):
     session.execute(alchemy.delete(DeckModel))
 """
 
+_SRC_DML_STAR = """\
+from sqlalchemy import *
+
+
+def go(session):
+    session.execute(delete(DeckModel))
+"""
+
 _SRC_SESSION_FLUSH = """\
 async def go(self):
     await self.session.flush()
@@ -643,6 +659,7 @@ _WRITE_VIOLATION_CASES = [
     pytest.param(_SRC_DML_IMPORT, 1, "sqlalchemy.delete", id="dml-import"),
     pytest.param(_SRC_DML_REFERENCE, 5, "sqlalchemy.delete", id="dml-reference"),
     pytest.param(_SRC_DML_ALIASED, 5, "alchemy.delete", id="dml-aliased-module-import"),
+    pytest.param(_SRC_DML_STAR, 1, "sqlalchemy.*", id="dml-star-import"),
     pytest.param(_SRC_SCHEMA_IMPORT, 1, "init_database", id="schema-creation-import"),
     pytest.param(_SRC_SCHEMA_CALL, 2, "init_database", id="schema-creation-call"),
     pytest.param(_SRC_CREATE_ALL, 2, "create_all", id="create-all"),
