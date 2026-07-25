@@ -732,3 +732,19 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   c1-4 middleware behavior (deliberate: full tracebacks on unhandled bugs), surfaced now that DB
   paths can route through it. Candidate: scrub `[parameters: ...]` from tracebacks, or accept as
   local-log-only. (Source: Blind Hunter; Severity: Low.)
+
+## Deferred from: story c1-7-discovery-file-as-the-sole-rendezvous (2026-07-26)
+
+- **`os.replace` fails with `PermissionError [WinError 5]` while another process holds the target
+  open** — measured on this machine during story writing and re-confirmed in implementation. The
+  window is microseconds (a reader does one `read_bytes()` and closes), and the write happens once
+  per process start, so no retry machinery was added. The consequence to inherit: under c1-7's
+  Decide-once #3 a publish failure **aborts the launch**, so a companion started at the exact
+  instant an agent tool was reading the file could fail to start with a permissions error that has
+  nothing to do with permissions. No failing user story stands behind it today — startup contends
+  with an existing file for the first time in **c1-8**, whose entire subject is a second launch
+  meeting a file it did not write, which is why that story is the natural home. Candidate fix if it
+  ever bites: a bounded retry (2–3 attempts, short sleep) around the `os.replace` alone, or
+  narrowing Decide-once #3 so a *transient* replace failure degrades where an unwritable directory
+  still aborts. Windows-only. (Source: c1-7 story-writing probe 3, re-verified at implementation;
+  Severity: Low; deferred to c1-8.)
