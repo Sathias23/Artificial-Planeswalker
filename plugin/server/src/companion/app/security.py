@@ -50,8 +50,9 @@ _DEFAULT_HTTP_PORT = 80
 """The port an HTTP client omits from ``Host`` — the one case where a bare authority is honest."""
 
 _MAX_LOGGED_HOST = 100
-"""Cap on the ``Host`` value written to the log; it is attacker-controlled input on its way into
-a file, so it is truncated rather than echoed in full."""
+"""Precision cap on the attacker-controlled values (``Host``, path) written to the rejection log;
+they are truncated rather than echoed in full. The cap bounds the ``%r`` output, whose opening
+quote counts toward it, so at most 99 characters of the value itself survive."""
 
 _VALIDATED_SCOPE_TYPES = frozenset({"http", "websocket"})
 """The scope types that carry a ``Host``. Everything else (``lifespan``) passes through untouched —
@@ -170,12 +171,13 @@ class HostValidationMiddleware:
 
         # WARNING because no story has configured a root logger yet (c1-9 owns that) and
         # logging.lastResort surfaces WARNING+ to stderr — an INFO line would vanish in every real
-        # run, and this is the one event an operator needs to see. The precision on %r truncates
-        # the attacker-controlled value while keeping the argument lazy.
+        # run, and this is the one event an operator needs to see. The precision on the %r
+        # conversions truncates both attacker-controlled values while keeping the arguments lazy.
         logger.warning(
-            "Rejecting %s request for %r: Host %.*r (%d header(s)) is not an allowed authority "
+            "Rejecting %s request for %.*r: Host %.*r (%d header(s)) is not an allowed authority "
             "for bound port %r",
             scope["type"],
+            _MAX_LOGGED_HOST,
             scope.get("path"),
             _MAX_LOGGED_HOST,
             hosts[0] if hosts else None,
@@ -198,7 +200,10 @@ def install_security(app: FastAPI) -> None:
     is the most recently added middleware, so installing security first leaves
     :class:`~src.companion.app.errors.UnhandledErrorMiddleware` outermost — which is what makes a
     fault in the ``Host`` check itself answer as a typed ``500 internal_error`` rather than an
-    untyped traceback.
+    untyped traceback. That net covers ``http`` scopes only: the error middleware passes
+    ``websocket`` scopes straight through (there is no JSON body to send on those), so a fault
+    while validating a handshake escapes raw — acceptable while nothing on the ws path can raise,
+    and c5-3 owns the question when it adds the upgrade.
 
     Stories c5-2 (ticket mint) and c5-5 (agent token) add their pieces here, so the wiring in
     ``build_app()`` never grows a second security line.

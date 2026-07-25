@@ -8,7 +8,7 @@ story_branch: feat/companion-c1-5-localhost-security-envelope
 
 # Story C1.5: Localhost-only security envelope — Host validation and CORS
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -271,6 +271,17 @@ rather than duplicating it (AD-5)". If the check is not middleware, or if it doe
   - [x] Confirm by command that the AC 16 forbidden files are untouched:
         `git status --porcelain -- tests/unit/companion/test_app.py tests/unit/companion/test_errors.py tests/unit/companion/test_import_boundary.py .github/workflows/ci.yml pyproject.toml uv.lock .pre-commit-config.yaml`
         returns empty.
+
+### Review Findings
+
+- [x] [Review][Patch] The "fault in the Host check answers as a typed 500" claim is http-only — `UnhandledErrorMiddleware` passes non-`http` scopes straight through (`errors.py:308-310`), so the ordering comment in `main.py:153-157` and the `install_security` docstring overstate the net for `websocket` scopes; scope the claim to `http` (no realistic raiser exists on the ws path today; ws fault-handling is c5-3's to decide) [src/companion/app/main.py:153, src/companion/app/security.py:196]
+- [x] [Review][Patch] `scope.get("path")` is logged unbounded in the rejection WARNING while the equally attacker-controlled `Host` beside it is truncated to `_MAX_LOGGED_HOST`; apply the same `%.*r` cap to the path [src/companion/app/security.py:176]
+- [x] [Review][Patch] `install_error_handling`'s docstring still claims "c1-5 … raise `CompanionError`" — stale after Decide-once #1 (c1-5 sends, never raises) and after c1-5 wired `install_security`; the Task 6 accuracy fix missed this second reference in the same file [src/companion/app/errors.py:346]
+- [x] [Review][Patch] `test_security.py`'s `_PORT = 54321` re-declares conftest's `_TEST_BOUND_PORT` by value, with a comment asserting a sameness nothing enforces (divergence is functionally harmless — reword the comment or derive one from the other) [tests/unit/companion/test_security.py:31]
+- [x] [Review][Patch] Conftest seam docstring gaps: `bound_port=None` "leaves the state unset" only in the sense of not touching it (an app arriving with a port keeps it), and the stamp deliberately persists beyond the context manager (one test already relies on that across two `async with` blocks) — document both [tests/unit/companion/conftest.py:56]
+- [x] [Review][Patch] The `port == 80` bare-hostname branch of `allowed_authorities` is exercised only through the pure functions, never through the middleware/wire path — the story's own dead-guard standard; add one wire test with a port-80 app and a bare-host `base_url` [src/companion/app/security.py:78, tests/unit/companion/test_security.py:127]
+- [x] [Review][Patch] The websocket rejection's WARNING is unpinned — AC 13 claims one WARNING per rejection, but `TestRejectionLogging` drives only `http`; assert `caplog` in the existing ASGI ws denial test [tests/unit/companion/test_security.py:265]
+- [x] [Review][Patch] `%.*r` precision counts the repr's opening quote, so at most 99 characters of the host value survive, not the documented 100 — fix `_MAX_LOGGED_HOST`'s docstring (and AC 13's "≤ 100" reading stays true) [src/companion/app/security.py:53]
 
 ## Dev Notes
 

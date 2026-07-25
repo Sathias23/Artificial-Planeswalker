@@ -63,8 +63,11 @@ async def _lifespan_client(
         headers: Headers sent on every request, for a test that needs to override ``Host`` (or
             anything else) per client.
         bound_port: Stamped onto ``app.state.bound_port`` **only if the app has none**, so an app
-            that arrives with its own port keeps it. Pass ``None`` to leave the state unset, which
-            is how the never-bound case is driven.
+            that arrives with its own port keeps it. Pass ``None`` to skip stamping — which drives
+            the never-bound case on a fresh ``build_app()``, but does **not** unset a port the app
+            already carries. The stamp lands on ``app.state`` and therefore outlives this context
+            manager: re-entering the seam with the same app reuses the same port, which is what
+            lets a test address one app through two consecutive clients.
 
     Yields:
         An ``httpx.AsyncClient`` whose requests are dispatched in-process via ``ASGITransport``,

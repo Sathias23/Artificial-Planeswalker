@@ -28,8 +28,10 @@ from src.companion.app.security import (
 )
 
 _PORT = 54321
-"""The port these tests pretend the runner bound. Deliberately not ``server.DEFAULT_PORT``, and the
-same value the conftest seam stamps."""
+"""The port these tests pretend the runner bound. Deliberately not ``server.DEFAULT_PORT``. It
+happens to equal the conftest seam's ``_TEST_BOUND_PORT``, but nothing enforces or relies on that:
+the wire tests derive their ``base_url`` from whatever the seam actually stamped, and the
+pure-function tests carry this value themselves."""
 
 _OTHER_PORT = server.DEFAULT_PORT
 """A different port — and specifically the production default, so a check that quietly fell back to
@@ -218,6 +220,28 @@ class TestTheEnvelopeOnTheWire:
         assert response.status_code == 400
         assert response.json() == {"reason": "invalid_request"}
 
+    async def test_on_port_80_a_bare_hostname_is_accepted_on_the_wire(self, lifespan_client):
+        """The one case where a portless authority is honest, proven through the shipped stack.
+
+        httpx omits the default port from ``Host`` for an ``http://`` URL, exactly as a browser
+        would — so this drives the ``port == 80`` branch of ``allowed_authorities`` through the
+        middleware rather than only through the pure functions.
+        """
+        async with lifespan_client(_app_bound_to(80), base_url="http://localhost") as client:
+            response = await client.get("/health")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
+
+    async def test_on_any_other_port_the_same_bare_hostname_is_refused(self, lifespan_client):
+        # Non-vacuity for the port-80 acceptance above: the same bare Host against a non-80 bound
+        # port is refused, so the acceptance is the special case doing the work, not a loose match.
+        async with lifespan_client(build_app(), base_url="http://localhost") as client:
+            response = await client.get("/health")
+
+        assert response.status_code == 400
+        assert response.json() == {"reason": "invalid_request"}
+
 
 class TestDuplicateHostHeaders:
     """AC 7: two Host headers are ambiguous by construction, so they are refused.
@@ -262,17 +286,24 @@ class TestDuplicateHostHeaders:
 class TestNonHttpScopes:
     """AC 6: websocket shares the code path; everything else passes through untouched."""
 
-    async def test_a_disallowed_websocket_is_closed_before_it_is_accepted(self):
+    async def test_a_disallowed_websocket_is_closed_before_it_is_accepted(self, caplog):
         """Close-before-accept is the ASGI-legal denial; uvicorn renders it as an HTTP 403."""
         inner = _RecordingApp()
         scope = _scope(
             "websocket", app=_app_bound_to(_PORT), hosts=[f"evil.example.com:{_PORT}"], path="/ws"
         )
 
-        sent = await _drive(HostValidationMiddleware(inner), scope)
+        with caplog.at_level(logging.WARNING, logger=_SECURITY_LOGGER):
+            sent = await _drive(HostValidationMiddleware(inner), scope)
 
         assert sent == [{"type": "websocket.close", "code": 1008}]
         assert inner.seen == [], "a denied connection must never reach a route expecting to accept"
+        # AC 13 claims one WARNING per rejection with no scope-type carve-out, so the ws denial
+        # must log exactly like the http one — this pins the claim on the second scope type.
+        records = [record for record in caplog.records if record.name == _SECURITY_LOGGER]
+        assert len(records) == 1
+        assert records[0].levelname == "WARNING"
+        assert "evil.example.com" in records[0].getMessage()
 
     async def test_an_allowed_websocket_reaches_the_inner_app(self):
         # Non-vacuity for the close above, and the property c5-3 inherits: the upgrade is validated

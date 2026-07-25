@@ -155,7 +155,8 @@ def build_app() -> FastAPI:
     # middleware, so the error middleware must be installed *last* to end up outermost — where it
     # can type the failures of every middleware added before it. The Host check goes above this
     # line so that a fault in the security envelope itself answers as a typed 500 rather than an
-    # untyped traceback; c5-2 and c5-5 add their pieces inside install_security, not here.
+    # untyped traceback (on http scopes — the error middleware passes websocket scopes through,
+    # a gap c5-3 owns); c5-2 and c5-5 add their pieces inside install_security, not here.
     install_security(app)
     install_error_handling(app)
     return app
