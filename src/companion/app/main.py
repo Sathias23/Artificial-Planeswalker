@@ -23,6 +23,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from src.companion.app.errors import error_responses, install_error_handling
 from src.companion.app.routes import health
 
 logger = logging.getLogger(__name__)
@@ -104,11 +105,25 @@ def bound_port(app: FastAPI) -> int | None:
 def build_app() -> FastAPI:
     """Construct the companion ASGI application without touching anything outside the process.
 
+    The app-level ``responses`` is what puts the typed error body into ``app.openapi()`` (AD-12,
+    NFR-03): a Pydantic model no route references never reaches ``components.schemas``, so c2-3's
+    generator would have nothing to emit and the UI's state panels nothing to switch on. Declaring
+    422 explicitly also displaces FastAPI's auto-generated ``HTTPValidationError``, a shape the
+    ``invalid_request`` handler makes permanently unreachable.
+
     Returns:
         A configured ``FastAPI`` instance whose startup work has **not** yet run. Enter its
         lifespan (serving it, or ``async with lifespan(app)`` in tests) before expecting
         ``app.state`` to hold anything.
     """
-    app = FastAPI(title=_TITLE, lifespan=lifespan)
+    app = FastAPI(
+        title=_TITLE,
+        lifespan=lifespan,
+        responses=error_responses("invalid_request", "payload_too_large", "database_unavailable"),
+    )
     app.include_router(health.router)
+    # Last, deliberately: user_middleware[0] is the most recently added middleware, so installing
+    # here is what makes the error middleware outermost — where it can type the failures of every
+    # middleware added before it. c1-5's Host middleware belongs *above* this line, not below.
+    install_error_handling(app)
     return app

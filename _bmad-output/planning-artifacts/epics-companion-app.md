@@ -1556,7 +1556,7 @@ So that I can hydrate names, costs, type lines, oracle text and prices for cards
 **Given** a well-formed uuid that is not in the local database
 **When** the endpoint is called
 **Then** the response is `404` with `reason: "card_not_found"`
-**And** the closed reason-token set from Story 1.5 is **extended** with `card_not_found`, following AD-16's own rule that a new UI state — here, the unknown-card placeholder of FR-13 — requires a token first
+**And** the closed reason-token set from Story 1.4 is **extended** with `card_not_found`, following AD-16's own rule that a new UI state — here, the unknown-card placeholder of FR-13 — requires a token first
 
 **Given** a malformed card id
 **When** the endpoint is called
