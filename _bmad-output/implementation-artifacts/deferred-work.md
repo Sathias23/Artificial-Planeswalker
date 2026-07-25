@@ -624,6 +624,11 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   hook-install time (`.pre-commit-config.yaml:9`), so pre-commit mypy may check a different FastAPI
   than the locked 0.140.0 CI/runtime uses. Pre-existing pattern extended, not introduced, by c1-2.
   (Source: Blind Hunter; Severity: Low; deferred — pre-existing tooling pattern.)
+  *Update 2026-07-25: re-flagged by the c1-3 review (dismissed as this known item) and by Greptile
+  as the sole P2 on PR #11 (`uvicorn>=0.51.0`, same pattern). Brad's ruling: merge as-is, leave
+  deferred — the hook is a fast local smoke; CI's `uv sync --locked` + `mypy src/` is the
+  authoritative typed gate against the real locked versions. Pinning one dep would be inconsistent
+  with the other seven floors; pinning all seven would go stale against `uv.lock` unchecked.*
 
 ## Deferred from: code review of c1-3-port-selection-with-ephemeral-fallback-and-a-printed-launch-url (2026-07-25)
 
