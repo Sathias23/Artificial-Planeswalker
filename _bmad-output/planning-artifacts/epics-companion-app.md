@@ -258,7 +258,10 @@ bound to the AD that governs it.
   existing Pydantic schemas **unwrapped**. Every non-2xx returns one typed error body with a closed
   snake_case `reason` token mapping 1:1 onto a UX state: `deck_not_found` (404),
   `database_not_initialized` (503), `database_unavailable` (503), `invalid_request` (400),
-  `payload_too_large` (422), **`card_not_found` (404 — added in Story 3.2 under AD-16's own rule,
+  `payload_too_large` (413 — **moved from 422 to HTTP's native status by the c1-4 review ruling,
+  Brad 2026-07-25**), **`internal_error` (500 — added by the same ruling so an unhandled backend
+  bug is distinguishable from the transient `database_unavailable` retry state; its state panel is
+  homed on Story 2.9)**, **`card_not_found` (404 — added in Story 3.2 under AD-16's own rule,
   since FR-13's unknown-card placeholder is a UI state and therefore needs a token)**. Adding a UI
   state means adding a token here first. Deck-existence validation for
   `companion_set_active_deck` belongs to the **MCP tool**, not the backend. *(AD-16)*
@@ -991,7 +994,7 @@ So that each backend failure maps 1:1 onto a defined user-facing state instead o
 
 **Given** the error contract module
 **When** its reason token type is inspected
-**Then** it is a closed enum of exactly `deck_not_found`, `database_not_initialized`, `database_unavailable`, `invalid_request`, `payload_too_large` (AD-16)
+**Then** it is a closed enum of exactly `deck_not_found`, `database_not_initialized`, `database_unavailable`, `invalid_request`, `payload_too_large`, `internal_error` (AD-16; `internal_error` and the 413 status for `payload_too_large` added by the c1-4 review ruling, Brad 2026-07-25)
 **And** adding a UI state requires adding a token here first
 
 **Given** any endpoint raises a defined failure
@@ -1451,6 +1454,10 @@ So that I am never shown an error page or left guessing at a terminal command.
 **When** their copy is inspected
 **Then** it matches `EXPERIENCE.md` verbatim for no-active-deck, database-not-initialized, database-updating and disconnected/backend-restarted (UX-DR33)
 
+**Given** the `internal_error` (500) reason token — added to AD-16's closed set by the c1-4 review ruling (Brad, 2026-07-25), whose state panel is homed **here**
+**When** the backend reports an unhandled bug
+**Then** a fifth state panel renders with its own EXPERIENCE.md-reviewed copy — deterministic, so it must **not** quietly retry the way database-updating does; the concrete next action is restarting the companion / reporting the bug (UX-DR30, UX-DR33)
+
 **Given** the no-active-deck state
 **When** it renders
 **Then** it lists available deck names beneath the guidance, **non-clickable** — the agent drives (UX-DR33, NG1)
@@ -1556,7 +1563,7 @@ So that I can hydrate names, costs, type lines, oracle text and prices for cards
 **Given** a well-formed uuid that is not in the local database
 **When** the endpoint is called
 **Then** the response is `404` with `reason: "card_not_found"`
-**And** the closed reason-token set from Story 1.5 is **extended** with `card_not_found`, following AD-16's own rule that a new UI state — here, the unknown-card placeholder of FR-13 — requires a token first
+**And** the closed reason-token set from Story 1.4 is **extended** with `card_not_found`, following AD-16's own rule that a new UI state — here, the unknown-card placeholder of FR-13 — requires a token first
 
 **Given** a malformed card id
 **When** the endpoint is called
@@ -2429,7 +2436,7 @@ So that I can report to Brad whether his content was actually displayed.
 
 **Given** a payload exceeding any cap from Story 5.1
 **When** it is validated
-**Then** the response is **422** with `reason: "payload_too_large"` — **rejected, never truncated** (AD-7, AD-16)
+**Then** the response is **413** with `reason: "payload_too_large"` — **rejected, never truncated** (AD-7, AD-16; 413 per the c1-4 review ruling, was 422)
 **And** a partial render that reads as the complete answer is thereby impossible
 
 **Given** a payload referencing card ids
@@ -2580,7 +2587,7 @@ So that every tool fails the same way and none of them can break an agent turn.
 **Then** it **re-reads the discovery file and retries exactly once**, so the restart is picked up transparently (FR-12, AD-8)
 **And** a second failure returns `backend_error` rather than retrying again
 
-**Given** the backend returns `422 payload_too_large`
+**Given** the backend returns `413 payload_too_large` (413 per the c1-4 review ruling, was 422)
 **When** the client maps it
 **Then** the outcome is `payload_rejected` (AD-7, AD-8)
 

@@ -20,9 +20,15 @@ import logging
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 
+from src.companion.app.errors import (
+    error_responses,
+    install_error_handling,
+    without_auto_validation_schema,
+)
 from src.companion.app.routes import health
 
 logger = logging.getLogger(__name__)
@@ -101,14 +107,51 @@ def bound_port(app: FastAPI) -> int | None:
     return port
 
 
+class _CompanionFastAPI(FastAPI):
+    """A ``FastAPI`` whose schema never carries the auto-generated 422 validation response.
+
+    Validation failures answer ``400 invalid_request`` (AC 5), so FastAPI's per-route auto-422
+    would document a shape the API never emits — straight into c2-3's generated TypeScript. The
+    explicit 422 declaration that used to displace it went away with the 413 ruling, so the
+    displacement now lives here, on the schema-build path itself, covering every future validated
+    route (c3-1 onward) with no per-route ceremony.
+    """
+
+    def openapi(self) -> dict[str, Any]:
+        """Build (and cache) the schema, stripped of the unreachable auto-422.
+
+        Returns:
+            The OpenAPI schema with FastAPI's auto-generated validation response removed.
+        """
+        if self.openapi_schema is None:
+            self.openapi_schema = without_auto_validation_schema(super().openapi())
+        return self.openapi_schema
+
+
 def build_app() -> FastAPI:
     """Construct the companion ASGI application without touching anything outside the process.
+
+    The app-level ``responses`` is what puts the typed error body into ``app.openapi()`` (AD-12,
+    NFR-03): a Pydantic model no route references never reaches ``components.schemas``, so c2-3's
+    generator would have nothing to emit and the UI's state panels nothing to switch on. The
+    :class:`_CompanionFastAPI` schema hook keeps FastAPI's auto-generated ``HTTPValidationError``
+    — a shape the ``invalid_request`` handler makes permanently unreachable — out of it.
 
     Returns:
         A configured ``FastAPI`` instance whose startup work has **not** yet run. Enter its
         lifespan (serving it, or ``async with lifespan(app)`` in tests) before expecting
         ``app.state`` to hold anything.
     """
-    app = FastAPI(title=_TITLE, lifespan=lifespan)
+    app = _CompanionFastAPI(
+        title=_TITLE,
+        lifespan=lifespan,
+        responses=error_responses(
+            "invalid_request", "payload_too_large", "database_unavailable", "internal_error"
+        ),
+    )
     app.include_router(health.router)
+    # Last, deliberately: user_middleware[0] is the most recently added middleware, so installing
+    # here is what makes the error middleware outermost — where it can type the failures of every
+    # middleware added before it. c1-5's Host middleware belongs *above* this line, not below.
+    install_error_handling(app)
     return app
