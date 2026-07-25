@@ -30,6 +30,7 @@ from src.companion.app.errors import (
     without_auto_validation_schema,
 )
 from src.companion.app.routes import health
+from src.companion.app.security import install_security
 
 logger = logging.getLogger(__name__)
 
@@ -150,8 +151,11 @@ def build_app() -> FastAPI:
         ),
     )
     app.include_router(health.router)
-    # Last, deliberately: user_middleware[0] is the most recently added middleware, so installing
-    # here is what makes the error middleware outermost — where it can type the failures of every
-    # middleware added before it. c1-5's Host middleware belongs *above* this line, not below.
+    # Ordering, and it is the whole point: user_middleware[0] is the most recently added
+    # middleware, so the error middleware must be installed *last* to end up outermost — where it
+    # can type the failures of every middleware added before it. The Host check goes above this
+    # line so that a fault in the security envelope itself answers as a typed 500 rather than an
+    # untyped traceback; c5-2 and c5-5 add their pieces inside install_security, not here.
+    install_security(app)
     install_error_handling(app)
     return app

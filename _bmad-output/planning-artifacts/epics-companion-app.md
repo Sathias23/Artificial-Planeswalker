@@ -2378,7 +2378,7 @@ So that a malicious local page cannot attach to my session and read what my agen
 **Then** the `Host` header is checked against `127.0.0.1:{port}` / `localhost:{port}` **and** the `Origin` header is checked against the app's own origin (AD-5)
 **And** both are required, because `Host` identifies what was addressed while `Origin` identifies the calling page, and the threat model is a malicious local page
 
-**Given** the Host middleware from Story 1.4
+**Given** the Host middleware from Story 1.5
 **When** the upgrade path is implemented
 **Then** it reuses that check rather than duplicating it (AD-5)
 

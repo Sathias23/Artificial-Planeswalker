@@ -232,6 +232,22 @@ class TestBind:
 
         assert enabled is (os.name == "posix")
 
+    def test_exclusiveaddruse_is_set_on_windows_only(self, loopback):
+        """c1-5 AC 10: nothing else on the machine may bind over a port the companion holds.
+
+        The complement of the rule above — omitting ``SO_REUSEADDR`` stops *us* binding over
+        someone else; this stops another local process's ``SO_REUSEADDR`` binding over *us*.
+        """
+        option = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+        sock = loopback.track(server.bind_localhost_socket(loopback.free_port()))
+
+        if option is None:
+            # Absent everywhere but Windows; asserting that keeps this from silently becoming a
+            # no-op test if the constant ever appears elsewhere.
+            assert os.name != "nt"
+            return
+        assert bool(sock.getsockopt(socket.SOL_SOCKET, option)) is (os.name == "nt")
+
     def test_a_failing_ephemeral_bind_propagates(self, monkeypatch):
         """AC 2: the fallback absorbs a conflict, not a machine with no usable sockets at all."""
 
