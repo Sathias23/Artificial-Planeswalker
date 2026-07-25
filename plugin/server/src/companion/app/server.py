@@ -117,12 +117,26 @@ def _new_socket() -> socket.socket:
     ``TIME_WAIT`` connections, while on Windows it would permit binding a port another process is
     *actively listening on* — silently defeating the conflict detection this module depends on.
 
+    Windows gets ``SO_EXCLUSIVEADDRUSE`` instead, and the two are complements rather than
+    contradictions: omitting ``SO_REUSEADDR`` stops *us* from binding over someone else, and
+    ``SO_EXCLUSIVEADDRUSE`` stops *someone else* — any other local process setting ``SO_REUSEADDR``
+    — from binding over a port we already hold. Without it the single-instance premise c1-8 is
+    built on is only half enforced. Nothing else changes: a port that is now harder to get simply
+    takes the ephemeral fallback :func:`bind_localhost_socket` already provides.
+
+    The option exists only on Windows, so it is referenced inside a platform branch. The branch is
+    written against ``sys.platform`` rather than ``os.name`` because that is the form mypy
+    understands: on a Linux checker the body is unreachable and never type-checked, which is what
+    keeps CI green against a constant its typeshed does not have.
+
     Returns:
         An unbound ``AF_INET``/``SOCK_STREAM`` socket.
     """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     if os.name == "posix":
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    elif sys.platform == "win32":
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
     return sock
 
 

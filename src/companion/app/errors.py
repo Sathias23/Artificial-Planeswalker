@@ -60,9 +60,14 @@ class CompanionError(Exception):
     """A modelled failure: one of the closed reason tokens, on its way to a typed response.
 
     Endpoints raise this instead of building a response, so the status, the body shape and the
-    serialisation all stay in one place. Nothing in ``src/`` raises it yet — stories c1-5 (bad
-    ``Host``), c1-6 (missing database), c3-1 (missing deck) and c5-5 (oversized push) are the first
-    callers.
+    serialisation all stay in one place. Nothing in ``src/`` raises it yet — stories c1-6 (missing
+    database), c3-1 (missing deck) and c5-5 (oversized push) are the first callers.
+
+    **Middleware does not raise this.** A user middleware sits *outside* Starlette's
+    ``ExceptionMiddleware``, so a handler registered with ``add_exception_handler`` can never see
+    what one of them raises — the caller would get ``500 internal_error`` and a false traceback
+    instead of the intended token. c1-5's ``Host`` check therefore calls :func:`error_response` and
+    sends the body itself; any later middleware must do the same.
 
     Args:
         reason: The token this failure reports; its status comes from :data:`STATUS_BY_REASON`.
@@ -338,8 +343,10 @@ class UnhandledErrorMiddleware:
 def install_error_handling(app: FastAPI) -> None:
     """Register every error path on *app*, in one call.
 
-    Kept as a single function so c1-5 and c1-6 wire nothing new — they raise
-    :class:`CompanionError` and the plumbing is already there.
+    Kept as a single function so the endpoint stories (c1-6, c3-1, c5-5) wire nothing new — they
+    raise :class:`CompanionError` and the plumbing is already there. c1-5's middleware is the
+    deliberate exception: it *sends* its typed body rather than raising (see
+    :class:`CompanionError`'s docstring) and installs through ``install_security``, not here.
 
     Call this **last** in ``build_app()``: ``app.user_middleware[0]`` is the most recently added
     middleware, so adding :class:`UnhandledErrorMiddleware` last is what puts it outermost, where it

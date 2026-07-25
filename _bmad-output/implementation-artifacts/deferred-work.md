@@ -619,6 +619,11 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   exactly those. Extending the signature with optional kwargs is backward-compatible, so the
   extension belongs to c1-5 when the need is concrete rather than speculative here.
   (Source: Blind Hunter; Severity: Low; deferred to c1-5.)
+  **CLOSED 2026-07-25 by c1-5 (AC 11).** `_lifespan_client` now takes `base_url=`, `headers=` and
+  `bound_port=` kwargs and stamps `app.state.bound_port` when the app has none, deriving a matching
+  loopback `base_url` from it. The acceptance signal was that all 149 pre-existing companion tests
+  pass **unedited** — which also means the whole suite now flows through the real `Host` envelope
+  rather than around it.
 - **mypy pre-commit hook `additional_dependencies` drift from `uv.lock`** — the hook's isolated env
   resolves `fastapi>=0.139.2` (and the pre-existing pydantic/sqlalchemy entries) independently at
   hook-install time (`.pre-commit-config.yaml:9`), so pre-commit mypy may check a different FastAPI
@@ -639,6 +644,13 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   own reuse policy", and c1-8's instance_id probe detects a wrong server downstream; deciding
   whether the socket itself should be hardened belongs to c1-5's security envelope.
   (Source: Edge Case Hunter + Blind Hunter; Severity: Low; deferred to c1-5.)
+  **CLOSED 2026-07-25 by c1-5 (AC 10).** `_new_socket()` now sets `SO_EXCLUSIVEADDRUSE` on Windows,
+  as the complement of (not a replacement for) the POSIX-only `SO_REUSEADDR`, pinned by
+  `test_exclusiveaddruse_is_set_on_windows_only`. The platform branch is written against
+  `sys.platform == "win32"` rather than `os.name == "nt"`: the two are runtime-identical here, but
+  only `sys.platform` is narrowed by mypy, and CI type-checks on ubuntu where typeshed has no such
+  constant (verified: the `os.name` form fails `mypy src/ --platform linux` with
+  `Module has no attribute "SO_EXCLUSIVEADDRUSE"`).
 - **`free_port()` bind-close-reuse TOCTOU in the c1-3 test helper** — between releasing the probe
   socket and the test re-binding the returned port (`tests/unit/companion/test_server.py:52-65`),
   another process can take it; latent flake class for the four tests asserting on `wanted`. The
@@ -657,3 +669,24 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   middleware vs CORS-visible unhandled errors) with its actual CORS scope in hand — the tension is
   recorded here so it is inherited explicitly, not discovered. (Source: Blind Hunter; Severity:
   Low; deferred to c1-5.)
+  **CLOSED 2026-07-25 by c1-5 (AC 9, Decide-once #3) — resolved by the no-CORS ruling, not by an
+  ordering change.** c1-5 installs no `CORSMiddleware` at all: AD-13 serves the SPA from this same
+  backend, so every legitimate request is same-origin and the empty grant *is* "restricted to the
+  app's own origin". With no inner CORS middleware there is no trade left to make — the
+  "outer-503 never passes back through inner CORS" tension cannot arise. Pinned by three
+  assertions in `test_security.py::TestCorsIsDeliberatelyAbsent`, so a later story that wants CORS
+  must revisit this ruling first.
+
+## Deferred from: story c1-5-localhost-only-security-envelope-host-validation-and-cors (2026-07-25)
+
+- **`test_list_decks_with_strategy_field` is order-flaky on a same-tick tie** — observed failing
+  once in a full-suite run during c1-5 and passing in isolation and on two subsequent full runs;
+  **pre-existing and unrelated to c1-5**, which touches nothing under `src/data`. The test creates
+  three decks back-to-back and asserts a strict newest-first ordering
+  (`tests/integration/data/test_deck_repository.py:320-333`), but `list_decks` orders by
+  `DeckModel.created_at.desc(), DeckModel.id` (`src/data/repositories/deck.py:262`) — so when two
+  `created_at` values land in the same clock tick the tie-breaker is a **random UUID**, which does
+  not correlate with insertion order. Fix = tie-break on something monotonic, or have the test
+  space its creations. Recorded rather than fixed because it is outside c1-5's AC 16 scope
+  boundary. (Source: c1-5 full-suite gate run; Severity: Low; needs a home in the data-layer work —
+  natural fit is `data-layer-orphan-handling`, the other open `src/data` item.)
