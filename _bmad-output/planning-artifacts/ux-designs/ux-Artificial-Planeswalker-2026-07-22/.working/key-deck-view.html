@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Key screen — Deck view (grid + text list)</title>
+<style>
+/* ============================================================
+   SPINE TRACE — key-deck-view.html
+   DESIGN.md: frontmatter tokens (colors, typography, rounded,
+   spacing, card-tile, quantity-badge, view-toggle, text-list-row,
+   curve-bar, status-pill, footer-attribution, card-placeholder);
+   Components: Card tile, DFC flip control, Quantity badge,
+   View toggle, Text list row, Mana curve bars, Connection status
+   pill, Footer attribution; Colors (surface ramp, WUBRG data ink);
+   Typography (display/heading/label/micro/numeric roles);
+   Layout & Spacing (gutter 24, tile gaps 8-12, group gap 24).
+   EXPERIENCE.md: IA rows "Deck view — card-art grid",
+   "Deck view — text list view", "Mana curve summary",
+   "Connection status pill", "Footer attribution";
+   Component Patterns rows: Card tile, DFC flip control,
+   Quantity badge, View toggle, Text list row, Mana curve bars,
+   Connection status pill, Footer attribution;
+   State Patterns row: "Cold open, backend live, deck set";
+   Key Flow 1 step 2 (deck fills, grouped by type, curve on edge).
+   Stand-in card faces use the Card placeholder vocabulary
+   (pips above centered name, type line below) over dark gradient
+   washes — deliberately NOT MTG card-frame chrome.
+   ============================================================ */
+:root{
+  --s-base:#131110; --s-raised:#1B1815; --s-over:#232019; --s-inset:#0D0C0B;
+  --scrim:#0D0C0BCC; --hair:#2E2A24; --strong:#453F35;
+  --t1:#F2EDE4; --t2:#A89F90; --t3:#9A9080; --tinv:#1A1610;
+  --gold:#E8B44A; --goldb:#F5CE73; --goldd:#8A6B2F; --glow:#E8B44A40;
+  --pos:#8CBF7E; --neg:#D9776B; --cau:#D98E4A;
+  --mW:#E9E7DA; --mU:#5A8FC7; --mB:#A69BB0; --mR:#D9704F; --mG:#6FA860;
+  --mC:#9A948C; --mGold:#C9A85C;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#080706;font-family:Inter,'Segoe UI',system-ui,sans-serif;padding:32px 0 64px}
+.slab{width:1260px;margin:0 auto 10px;color:#6F675C;font-size:12px;font-weight:550;letter-spacing:.08em;text-transform:uppercase;line-height:1.3}
+/* browser chrome frame (mock scaffolding, not product chrome) */
+.browser{width:1260px;margin:0 auto 56px;border-radius:10px;overflow:hidden;border:1px solid #2A2724;box-shadow:0 24px 64px #000000CC;background:var(--s-base);position:relative}
+.chrome{display:flex;align-items:center;gap:7px;background:#211E1A;padding:10px 14px;border-bottom:1px solid #2E2A24}
+.dot{width:11px;height:11px;border-radius:50%;background:#3B3733}
+.url{margin-left:12px;background:#131110;border-radius:6px;padding:5px 16px;font-size:12px;color:#A89F90;min-width:300px}
+.view{height:780px;overflow-y:auto;position:relative;background:var(--s-base)}
+/* deck header — typography.display, view-toggle component */
+.hdr{display:flex;align-items:baseline;gap:16px;padding:24px 24px 0}
+.hdr h1{font-size:24px;font-weight:650;line-height:1.2;letter-spacing:-.01em;color:var(--t1)}
+.meta{font-size:13px;font-weight:500;line-height:1.3;font-feature-settings:'tnum';color:var(--t2)}
+.vt{margin-left:auto;display:flex;background:var(--s-inset);border:1px solid var(--hair);border-radius:4px;overflow:hidden}
+.vt span{font-size:12px;font-weight:550;letter-spacing:.06em;text-transform:uppercase;line-height:1.3;padding:6px 14px;color:var(--t2);cursor:pointer}
+.vt .on{background:var(--s-over);color:var(--t1)}
+/* mana curve summary — curve-bar component, WUBRG data ink only */
+.curve{display:flex;align-items:flex-end;gap:12px;padding:16px 24px 14px;border-bottom:1px solid var(--hair)}
+.cb{display:flex;flex-direction:column;align-items:center;gap:4px}
+.cnt{font-size:13px;font-weight:500;line-height:1.3;font-feature-settings:'tnum';color:var(--t1)}
+.well{width:26px;height:60px;background:var(--s-inset);border-radius:4px;display:flex;flex-direction:column-reverse;gap:1px;overflow:hidden}
+.seg{width:100%;flex:0 0 auto}
+.sW{background:var(--mW)}.sG{background:var(--mG)}.sX{background:var(--mGold)}.sC{background:var(--mC)}
+.ax{font-size:11px;font-weight:500;line-height:1.2;color:var(--t2)}
+/* card grid — Layout & Spacing: tight tile gaps, spacing.5 between groups */
+.deck{padding:0 24px 96px}
+.ghead{font-size:12px;font-weight:550;letter-spacing:.06em;text-transform:uppercase;line-height:1.3;color:var(--t2);margin:24px 0 12px;font-feature-settings:'tnum'}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:12px 8px;list-style:none}
+.tile{position:relative;cursor:pointer}
+/* stand-in card face: card radius reserved for cards only */
+.face{aspect-ratio:63/88;border-radius:4.75%/3.4%;border:1px solid var(--strong);display:flex;flex-direction:column;padding:14px 10px 12px;text-align:center;box-shadow:inset 0 0 44px #00000059}
+.cost{display:flex;gap:3px;align-items:center;justify-content:center;min-height:13px}
+.mid{flex:1;display:flex;align-items:center;justify-content:center}
+.nm{font-size:14px;font-weight:600;line-height:1.3;color:var(--t1);text-shadow:0 1px 3px #000000B3}
+.tp{font-size:11px;font-weight:500;line-height:1.2;color:var(--t2);text-shadow:0 1px 2px #000000B3}
+.pip{display:inline-block;width:9px;height:9px;border-radius:9999px}
+.pW{background:var(--mW)}.pG{background:var(--mG)}
+.pGW{background:linear-gradient(90deg,var(--mG) 50%,var(--mW) 50%)}
+.gn{min-width:13px;height:13px;border-radius:9999px;background:var(--mC);color:var(--tinv);font-size:9px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;padding:0 3px}
+/* quantity badge — quantity-badge component, typography.micro */
+.qty{position:absolute;right:6px;bottom:6px;background:var(--s-inset);color:var(--t1);border:1px solid var(--strong);border-radius:9999px;font-size:11px;font-weight:500;line-height:1.2;font-feature-settings:'tnum';padding:2px 7px}
+/* DFC flip control — >=32px target, surface-inset 80%, opacity .65 at rest */
+.flip{position:absolute;top:8px;right:8px;width:32px;height:32px;border-radius:9999px;background:#0D0C0BCC;color:var(--t1);border:none;font:600 14px/1 Inter,'Segoe UI',system-ui,sans-serif;opacity:.65;cursor:pointer}
+/* stand-in art washes — varied hues so the grid reads richly */
+.f-g1{background:linear-gradient(155deg,#26331E 0%,#141A0E 55%,#0E130A 100%)}
+.f-g2{background:radial-gradient(120% 90% at 70% 15%,#2E3D22 0%,#16200F 60%,#0D120A 100%)}
+.f-g3{background:linear-gradient(200deg,#1F2E1A 0%,#101709 100%)}
+.f-g4{background:radial-gradient(100% 100% at 30% 80%,#243019 0%,#12180C 100%)}
+.f-w1{background:linear-gradient(155deg,#3A342A 0%,#211D14 60%,#15120C 100%)}
+.f-w2{background:radial-gradient(110% 85% at 30% 20%,#403A2C 0%,#1D1912 100%)}
+.f-w3{background:linear-gradient(200deg,#35311F 0%,#1A170F 100%)}
+.f-x1{background:linear-gradient(155deg,#3B3018 0%,#1E1809 60%,#120E06 100%)}
+.f-x2{background:radial-gradient(120% 90% at 60% 20%,#443B1E 0%,#201A0C 100%)}
+.f-a1{background:linear-gradient(155deg,#302C26 0%,#161412 100%)}
+.f-a2{background:radial-gradient(110% 90% at 40% 25%,#363028 0%,#181511 100%)}
+.f-l1{background:linear-gradient(155deg,#2C2417 0%,#140F09 100%)}
+.f-l2{background:radial-gradient(120% 90% at 35% 20%,#33291A 0%,#170F08 100%)}
+.f-l3{background:linear-gradient(200deg,#26211A 0%,#120E08 100%)}
+.f-d1{background:linear-gradient(155deg,#3A2C26 0%,#1B1410 100%)}
+/* connection status pill — status-pill component, text names the state */
+.pill{position:absolute;left:16px;bottom:52px;display:flex;align-items:center;gap:8px;background:var(--s-raised);border:1px solid var(--hair);border-radius:9999px;padding:6px 14px;font-size:11px;font-weight:500;line-height:1.2;color:var(--t1);z-index:5}
+.pd{width:8px;height:8px;border-radius:50%;background:var(--pos)}
+/* footer attribution — footer-attribution component, text-muted, persistent underlines */
+.foot{position:absolute;left:0;right:0;bottom:0;border-top:1px solid var(--hair);background:var(--s-base);padding:5px 24px;font-size:11px;font-weight:500;line-height:1.2;color:var(--t3)}
+.foot a{color:var(--t3);text-decoration:underline;display:inline-block;padding:7px 1px}
+.foot a:hover{color:var(--t2)}
+/* text list view — text-list-row component */
+.list{list-style:none;margin:0}
+.row{display:flex;align-items:center;gap:12px;min-height:32px;padding:4px 8px;border-radius:4px;cursor:pointer}
+.row:hover{background:var(--s-raised)}
+.rn{font-size:14px;font-weight:600;line-height:1.5;color:var(--t1)}
+.rc{display:flex;gap:3px;align-items:center}
+.rq{margin-left:auto;font-size:13px;font-weight:500;line-height:1.3;font-feature-settings:'tnum';color:var(--t1)}
+</style>
+</head>
+<body>
+
+<div class="slab">Deck view — canonical state (card-art grid)</div>
+<div class="browser">
+  <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765</span></div>
+  <div class="view">
+    <header class="hdr">
+      <h1>Rhys Tokens</h1>
+      <span class="meta">Commander &middot; 100 cards</span>
+      <div class="vt"><span class="on">Grid</span><span>List</span></div>
+    </header>
+
+    <!-- Mana curve summary: segments stacked W·U·B·R·G·gold·colorless, 1px inset hairline gaps -->
+    <figure class="curve">
+      <div class="cb"><span class="cnt">7</span><div class="well"><div class="seg sW" style="height:9px"></div><div class="seg sG" style="height:6px"></div><div class="seg sC" style="height:6px"></div></div><span class="ax">1</span></div>
+      <div class="cb"><span class="cnt">14</span><div class="well"><div class="seg sW" style="height:12px"></div><div class="seg sG" style="height:9px"></div><div class="seg sX" style="height:9px"></div><div class="seg sC" style="height:12px"></div></div><span class="ax">2</span></div>
+      <div class="cb"><span class="cnt">17</span><div class="well"><div class="seg sW" style="height:12px"></div><div class="seg sG" style="height:21px"></div><div class="seg sX" style="height:18px"></div></div><span class="ax">3</span></div>
+      <div class="cb"><span class="cnt">10</span><div class="well"><div class="seg sW" style="height:12px"></div><div class="seg sG" style="height:12px"></div><div class="seg sX" style="height:6px"></div></div><span class="ax">4</span></div>
+      <div class="cb"><span class="cnt">11</span><div class="well"><div class="seg sW" style="height:6px"></div><div class="seg sG" style="height:15px"></div><div class="seg sX" style="height:9px"></div><div class="seg sC" style="height:3px"></div></div><span class="ax">5</span></div>
+      <div class="cb"><span class="cnt">0</span><div class="well"></div><span class="ax">6</span></div>
+      <div class="cb"><span class="cnt">4</span><div class="well"><div class="seg sW" style="height:3px"></div><div class="seg sG" style="height:9px"></div></div><span class="ax">7+</span></div>
+    </figure>
+
+    <main class="deck">
+      <h2 class="ghead">Commander — 1</h2>
+      <ul class="grid">
+        <li class="tile"><div class="face f-x1"><div class="cost"><span class="pip pGW"></span></div><div class="mid"><span class="nm">Rhys the Redeemed</span></div><span class="tp">Legendary Creature — Elf Warrior</span></div><span class="qty">×1</span></li>
+      </ul>
+
+      <h2 class="ghead">Creatures — 25</h2>
+      <ul class="grid">
+        <li class="tile"><div class="face f-g1"><div class="cost"><span class="pip pG"></span></div><div class="mid"><span class="nm">Avacyn's Pilgrim</span></div><span class="tp">Creature — Human Druid</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g2"><div class="cost"><span class="pip pG"></span></div><div class="mid"><span class="nm">Llanowar Elves</span></div><span class="tp">Creature — Elf Druid</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g3"><div class="cost"><span class="gn">1</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Bloom Tender</span></div><span class="tp">Creature — Elf Druid</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-x1"><div class="cost"><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Voice of Resurgence</span></div><span class="tp">Creature — Elemental</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-x2"><div class="cost"><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Emmara, Soul of the Accord</span></div><span class="tp">Legendary Creature — Elf Cleric</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-d1"><div class="cost"><span class="gn">1</span><span class="pip pW"></span></div><div class="mid"><span class="nm">Hanweir Militia Captain</span></div><span class="tp">Creature — Human Soldier</span></div><button class="flip" aria-label="Flip card">&#8644;</button><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-w1"><div class="cost"><span class="gn">1</span><span class="pip pW"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Adeline, Resplendent Cathar</span></div><span class="tp">Legendary Creature — Human Knight</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g4"><div class="cost"><span class="gn">2</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Imperious Perfect</span></div><span class="tp">Creature — Elf Warrior</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g1"><div class="cost"><span class="gn">2</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Rishkar, Peema Renegade</span></div><span class="tp">Legendary Creature — Elf Druid</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g2"><div class="cost"><span class="gn">2</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Scute Swarm</span></div><span class="tp">Creature — Insect</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-x2"><div class="cost"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Champion of Lambholt</span></div><span class="tp">Creature — Human Warrior</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-w2"><div class="cost"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Good-Fortune Unicorn</span></div><span class="tp">Creature — Unicorn</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-x1"><div class="cost"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">King Darien XLVIII</span></div><span class="tp">Legendary Creature — Human Soldier</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-w3"><div class="cost"><span class="gn">2</span><span class="pip pW"></span></div><div class="mid"><span class="nm">Mirror Entity</span></div><span class="tp">Creature — Shapeshifter</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g3"><div class="cost"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Selvala, Explorer Returned</span></div><span class="tp">Legendary Creature — Elf Scout</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-x2"><div class="cost"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Wayfaring Temple</span></div><span class="tp">Creature — Golem</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-x1"><div class="cost"><span class="gn">3</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Karametra, God of Harvests</span></div><span class="tp">Legendary Enchantment Creature — God</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g4"><div class="cost"><span class="gn">3</span><span class="pip pG"></span><span class="pip pG"></span></div><div class="mid"><span class="nm">Mycoloth</span></div><span class="tp">Creature — Fungus</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g1"><div class="cost"><span class="gn">3</span><span class="pip pG"></span><span class="pip pG"></span></div><div class="mid"><span class="nm">Seedborn Muse</span></div><span class="tp">Creature — Spirit</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g2"><div class="cost"><span class="gn">4</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Tendershoot Dryad</span></div><span class="tp">Creature — Dryad</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-x2"><div class="cost"><span class="gn">3</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Trostani, Selesnya's Voice</span></div><span class="tp">Legendary Creature — Dryad</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-w1"><div class="cost"><span class="gn">3</span><span class="pip pW"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Geist-Honored Monk</span></div><span class="tp">Creature — Human Monk</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g3"><div class="cost"><span class="gn">4</span><span class="pip pG"></span><span class="pip pG"></span><span class="pip pG"></span></div><div class="mid"><span class="nm">Hornet Queen</span></div><span class="tp">Creature — Insect</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g2"><div class="cost"><span class="gn">5</span><span class="pip pG"></span><span class="pip pG"></span></div><div class="mid"><span class="nm">Avenger of Zendikar</span></div><span class="tp">Creature — Elemental</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g4"><div class="cost"><span class="gn">5</span><span class="pip pG"></span><span class="pip pG"></span><span class="pip pG"></span></div><div class="mid"><span class="nm">Craterhoof Behemoth</span></div><span class="tp">Creature — Beast</span></div><span class="qty">×1</span></li>
+      </ul>
+
+      <h2 class="ghead">Instants — 9</h2>
+      <ul class="grid">
+        <li class="tile"><div class="face f-w2"><div class="cost"><span class="pip pW"></span></div><div class="mid"><span class="nm">Swords to Plowshares</span></div><span class="tp">Instant</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-w1"><div class="cost"><span class="pip pW"></span></div><div class="mid"><span class="nm">Path to Exile</span></div><span class="tp">Instant</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g1"><div class="cost"><span class="gn">1</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Heroic Intervention</span></div><span class="tp">Instant</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-w3"><div class="cost"><span class="gn">2</span><span class="pip pW"></span></div><div class="mid"><span class="nm">Generous Gift</span></div><span class="tp">Instant</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-w2"><div class="cost"><span class="gn">2</span><span class="pip pW"></span></div><div class="mid"><span class="nm">Rootborn Defenses</span></div><span class="tp">Instant</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g3"><div class="cost"><span class="gn">2</span><span class="pip pG"></span><span class="pip pG"></span></div><div class="mid"><span class="nm">Second Harvest</span></div><span class="tp">Instant</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-w1"><div class="cost"><span class="gn">2</span><span class="pip pW"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Return to Dust</span></div><span class="tp">Instant</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-w2"><div class="cost"><span class="gn">X</span><span class="pip pW"></span></div><div class="mid"><span class="nm">Secure the Wastes</span></div><span class="tp">Instant</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-x1"><div class="cost"><span class="gn">X</span><span class="pip pG"></span><span class="pip pW"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">March of the Multitudes</span></div><span class="tp">Instant</span></div><span class="qty">×1</span></li>
+      </ul>
+
+      <h2 class="ghead">Sorceries — 8</h2>
+      <ul class="grid">
+        <li class="tile"><div class="face f-g2"><div class="cost"><span class="gn">1</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Rampant Growth</span></div><span class="tp">Sorcery</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g4"><div class="cost"><span class="gn">2</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Cultivate</span></div><span class="tp">Sorcery</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g1"><div class="cost"><span class="gn">2</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Kodama's Reach</span></div><span class="tp">Sorcery — Arcane</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g3"><div class="cost"><span class="gn">2</span><span class="pip pG"></span><span class="pip pG"></span></div><div class="mid"><span class="nm">Harmonize</span></div><span class="tp">Sorcery</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g2"><div class="cost"><span class="gn">3</span><span class="pip pG"></span><span class="pip pG"></span></div><div class="mid"><span class="nm">Shamanic Revelation</span></div><span class="tp">Sorcery</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-x2"><div class="cost"><span class="gn">3</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Camaraderie</span></div><span class="tp">Sorcery</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-w1"><div class="cost"><span class="gn">X</span><span class="pip pW"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Finale of Glory</span></div><span class="tp">Sorcery</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-w3"><div class="cost"><span class="gn">4</span><span class="pip pW"></span><span class="pip pW"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Hour of Reckoning</span></div><span class="tp">Sorcery</span></div><span class="qty">×1</span></li>
+      </ul>
+
+      <h2 class="ghead">Enchantments — 12</h2>
+      <ul class="grid">
+        <li class="tile"><div class="face f-w2"><div class="cost"><span class="gn">1</span><span class="pip pW"></span></div><div class="mid"><span class="nm">Intangible Virtue</span></div><span class="tp">Enchantment</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-w1"><div class="cost"><span class="gn">1</span><span class="pip pW"></span></div><div class="mid"><span class="nm">Luminarch Ascension</span></div><span class="tp">Enchantment</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g4"><div class="cost"><span class="gn">2</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Beastmaster Ascension</span></div><span class="tp">Enchantment</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-x1"><div class="cost"><span class="gn">2</span><span class="pip pGW"></span><span class="pip pGW"></span></div><div class="mid"><span class="nm">Growing Ranks</span></div><span class="tp">Enchantment</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-x2"><div class="cost"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Aura Shards</span></div><span class="tp">Enchantment</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g3"><div class="cost"><span class="gn">2</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Glare of Subdual</span></div><span class="tp">Enchantment</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-w3"><div class="cost"><span class="gn">2</span><span class="pip pW"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Felidar Retreat</span></div><span class="tp">Enchantment</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-w1"><div class="cost"><span class="gn">3</span><span class="pip pW"></span></div><div class="mid"><span class="nm">Smothering Tithe</span></div><span class="tp">Enchantment</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-w2"><div class="cost"><span class="gn">3</span><span class="pip pW"></span></div><div class="mid"><span class="nm">Anointed Procession</span></div><span class="tp">Enchantment</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-w3"><div class="cost"><span class="gn">3</span><span class="pip pW"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Cathars' Crusade</span></div><span class="tp">Enchantment</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g1"><div class="cost"><span class="gn">3</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Parallel Lives</span></div><span class="tp">Enchantment</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g2"><div class="cost"><span class="gn">4</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Doubling Season</span></div><span class="tp">Enchantment</span></div><span class="qty">×1</span></li>
+      </ul>
+
+      <h2 class="ghead">Artifacts — 8</h2>
+      <ul class="grid">
+        <li class="tile"><div class="face f-a1"><div class="cost"><span class="gn">1</span></div><div class="mid"><span class="nm">Sol Ring</span></div><span class="tp">Artifact</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-a2"><div class="cost"><span class="gn">1</span></div><div class="mid"><span class="nm">Skullclamp</span></div><span class="tp">Artifact — Equipment</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-a1"><div class="cost"><span class="gn">2</span></div><div class="mid"><span class="nm">Arcane Signet</span></div><span class="tp">Artifact</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-a2"><div class="cost"><span class="gn">2</span></div><div class="mid"><span class="nm">Selesnya Signet</span></div><span class="tp">Artifact</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-a1"><div class="cost"><span class="gn">2</span></div><div class="mid"><span class="nm">Talisman of Unity</span></div><span class="tp">Artifact</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-a2"><div class="cost"><span class="gn">2</span></div><div class="mid"><span class="nm">Idol of Oblivion</span></div><span class="tp">Artifact</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-g4"><div class="cost"><span class="gn">3</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Esika's Chariot</span></div><span class="tp">Legendary Artifact — Vehicle</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-a1"><div class="cost"><span class="gn">5</span></div><div class="mid"><span class="nm">Coat of Arms</span></div><span class="tp">Artifact</span></div><span class="qty">×1</span></li>
+      </ul>
+
+      <h2 class="ghead">Lands — 37</h2>
+      <ul class="grid">
+        <li class="tile"><div class="face f-l1"><div class="cost"></div><div class="mid"><span class="nm">Forest</span></div><span class="tp">Basic Land — Forest</span></div><span class="qty">×12</span></li>
+        <li class="tile"><div class="face f-l2"><div class="cost"></div><div class="mid"><span class="nm">Plains</span></div><span class="tp">Basic Land — Plains</span></div><span class="qty">×11</span></li>
+        <li class="tile"><div class="face f-l3"><div class="cost"></div><div class="mid"><span class="nm">Command Tower</span></div><span class="tp">Land</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-l1"><div class="cost"></div><div class="mid"><span class="nm">Path of Ancestry</span></div><span class="tp">Land</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-l2"><div class="cost"></div><div class="mid"><span class="nm">Temple Garden</span></div><span class="tp">Land — Forest Plains</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-l3"><div class="cost"></div><div class="mid"><span class="nm">Sunpetal Grove</span></div><span class="tp">Land</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-l1"><div class="cost"></div><div class="mid"><span class="nm">Canopy Vista</span></div><span class="tp">Land — Forest Plains</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-l2"><div class="cost"></div><div class="mid"><span class="nm">Fortified Village</span></div><span class="tp">Land</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-l3"><div class="cost"></div><div class="mid"><span class="nm">Overgrown Farmland</span></div><span class="tp">Land</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-l1"><div class="cost"></div><div class="mid"><span class="nm">Brushland</span></div><span class="tp">Land</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-l2"><div class="cost"></div><div class="mid"><span class="nm">Krosan Verge</span></div><span class="tp">Land</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-l3"><div class="cost"></div><div class="mid"><span class="nm">Gavony Township</span></div><span class="tp">Land</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-l2"><div class="cost"></div><div class="mid"><span class="nm">Castle Ardenvale</span></div><span class="tp">Land</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-l1"><div class="cost"></div><div class="mid"><span class="nm">Windbrisk Heights</span></div><span class="tp">Land</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-l3"><div class="cost"></div><div class="mid"><span class="nm">Grove of the Guardian</span></div><span class="tp">Land</span></div><span class="qty">×1</span></li>
+        <li class="tile"><div class="face f-l2"><div class="cost"></div><div class="mid"><span class="nm">Mosswort Bridge</span></div><span class="tp">Land</span></div><span class="qty">×1</span></li>
+      </ul>
+    </main>
+
+    <div class="pill"><span class="pd"></span>Live &middot; Rhys Tokens</div>
+    <footer class="foot">Card data and imagery courtesy of <a href="https://scryfall.com">Scryfall</a>. Unofficial Fan Content permitted under the Wizards of the Coast <a href="https://company.wizards.com/en/legal/fancontentpolicy">Fan Content Policy</a>. Not approved/endorsed by Wizards.</footer>
+  </div>
+</div>
+
+<div class="slab">Alternate state — the same deck in text list view</div>
+<div class="browser">
+  <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765</span></div>
+  <div class="view">
+    <header class="hdr">
+      <h1>Rhys Tokens</h1>
+      <span class="meta">Commander &middot; 100 cards</span>
+      <div class="vt"><span>Grid</span><span class="on">List</span></div>
+    </header>
+
+    <figure class="curve">
+      <div class="cb"><span class="cnt">7</span><div class="well"><div class="seg sW" style="height:9px"></div><div class="seg sG" style="height:6px"></div><div class="seg sC" style="height:6px"></div></div><span class="ax">1</span></div>
+      <div class="cb"><span class="cnt">14</span><div class="well"><div class="seg sW" style="height:12px"></div><div class="seg sG" style="height:9px"></div><div class="seg sX" style="height:9px"></div><div class="seg sC" style="height:12px"></div></div><span class="ax">2</span></div>
+      <div class="cb"><span class="cnt">17</span><div class="well"><div class="seg sW" style="height:12px"></div><div class="seg sG" style="height:21px"></div><div class="seg sX" style="height:18px"></div></div><span class="ax">3</span></div>
+      <div class="cb"><span class="cnt">10</span><div class="well"><div class="seg sW" style="height:12px"></div><div class="seg sG" style="height:12px"></div><div class="seg sX" style="height:6px"></div></div><span class="ax">4</span></div>
+      <div class="cb"><span class="cnt">11</span><div class="well"><div class="seg sW" style="height:6px"></div><div class="seg sG" style="height:15px"></div><div class="seg sX" style="height:9px"></div><div class="seg sC" style="height:3px"></div></div><span class="ax">5</span></div>
+      <div class="cb"><span class="cnt">0</span><div class="well"></div><span class="ax">6</span></div>
+      <div class="cb"><span class="cnt">4</span><div class="well"><div class="seg sW" style="height:3px"></div><div class="seg sG" style="height:9px"></div></div><span class="ax">7+</span></div>
+    </figure>
+
+    <main class="deck" style="max-width:640px">
+      <h2 class="ghead">Commander — 1</h2>
+      <ul class="list">
+        <li class="row"><span class="rn">Rhys the Redeemed</span><span class="rc"><span class="pip pGW"></span></span><span class="rq">×1</span></li>
+      </ul>
+      <h2 class="ghead">Creatures — 25</h2>
+      <ul class="list">
+        <li class="row"><span class="rn">Avacyn's Pilgrim</span><span class="rc"><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Llanowar Elves</span><span class="rc"><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Bloom Tender</span><span class="rc"><span class="gn">1</span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Voice of Resurgence</span><span class="rc"><span class="pip pG"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Emmara, Soul of the Accord</span><span class="rc"><span class="pip pG"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Hanweir Militia Captain</span><span class="rc"><span class="gn">1</span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Adeline, Resplendent Cathar</span><span class="rc"><span class="gn">1</span><span class="pip pW"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Imperious Perfect</span><span class="rc"><span class="gn">2</span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Rishkar, Peema Renegade</span><span class="rc"><span class="gn">2</span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Scute Swarm</span><span class="rc"><span class="gn">2</span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Champion of Lambholt</span><span class="rc"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Good-Fortune Unicorn</span><span class="rc"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">King Darien XLVIII</span><span class="rc"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Mirror Entity</span><span class="rc"><span class="gn">2</span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Selvala, Explorer Returned</span><span class="rc"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Wayfaring Temple</span><span class="rc"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Karametra, God of Harvests</span><span class="rc"><span class="gn">3</span><span class="pip pG"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Mycoloth</span><span class="rc"><span class="gn">3</span><span class="pip pG"></span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Seedborn Muse</span><span class="rc"><span class="gn">3</span><span class="pip pG"></span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Tendershoot Dryad</span><span class="rc"><span class="gn">4</span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Trostani, Selesnya's Voice</span><span class="rc"><span class="gn">3</span><span class="pip pG"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Geist-Honored Monk</span><span class="rc"><span class="gn">3</span><span class="pip pW"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Hornet Queen</span><span class="rc"><span class="gn">4</span><span class="pip pG"></span><span class="pip pG"></span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Avenger of Zendikar</span><span class="rc"><span class="gn">5</span><span class="pip pG"></span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Craterhoof Behemoth</span><span class="rc"><span class="gn">5</span><span class="pip pG"></span><span class="pip pG"></span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+      </ul>
+      <h2 class="ghead">Instants — 9</h2>
+      <ul class="list">
+        <li class="row"><span class="rn">Swords to Plowshares</span><span class="rc"><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Path to Exile</span><span class="rc"><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Heroic Intervention</span><span class="rc"><span class="gn">1</span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Generous Gift</span><span class="rc"><span class="gn">2</span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Rootborn Defenses</span><span class="rc"><span class="gn">2</span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Second Harvest</span><span class="rc"><span class="gn">2</span><span class="pip pG"></span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Return to Dust</span><span class="rc"><span class="gn">2</span><span class="pip pW"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Secure the Wastes</span><span class="rc"><span class="gn">X</span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">March of the Multitudes</span><span class="rc"><span class="gn">X</span><span class="pip pG"></span><span class="pip pW"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+      </ul>
+      <h2 class="ghead">Sorceries — 8</h2>
+      <ul class="list">
+        <li class="row"><span class="rn">Rampant Growth</span><span class="rc"><span class="gn">1</span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Cultivate</span><span class="rc"><span class="gn">2</span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Kodama's Reach</span><span class="rc"><span class="gn">2</span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Harmonize</span><span class="rc"><span class="gn">2</span><span class="pip pG"></span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Shamanic Revelation</span><span class="rc"><span class="gn">3</span><span class="pip pG"></span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Camaraderie</span><span class="rc"><span class="gn">3</span><span class="pip pG"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Finale of Glory</span><span class="rc"><span class="gn">X</span><span class="pip pW"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Hour of Reckoning</span><span class="rc"><span class="gn">4</span><span class="pip pW"></span><span class="pip pW"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+      </ul>
+      <h2 class="ghead">Enchantments — 12</h2>
+      <ul class="list">
+        <li class="row"><span class="rn">Intangible Virtue</span><span class="rc"><span class="gn">1</span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Luminarch Ascension</span><span class="rc"><span class="gn">1</span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Beastmaster Ascension</span><span class="rc"><span class="gn">2</span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Growing Ranks</span><span class="rc"><span class="gn">2</span><span class="pip pGW"></span><span class="pip pGW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Aura Shards</span><span class="rc"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Glare of Subdual</span><span class="rc"><span class="gn">2</span><span class="pip pG"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Felidar Retreat</span><span class="rc"><span class="gn">2</span><span class="pip pW"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Smothering Tithe</span><span class="rc"><span class="gn">3</span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Anointed Procession</span><span class="rc"><span class="gn">3</span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Cathars' Crusade</span><span class="rc"><span class="gn">3</span><span class="pip pW"></span><span class="pip pW"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Parallel Lives</span><span class="rc"><span class="gn">3</span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Doubling Season</span><span class="rc"><span class="gn">4</span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+      </ul>
+      <h2 class="ghead">Artifacts — 8</h2>
+      <ul class="list">
+        <li class="row"><span class="rn">Sol Ring</span><span class="rc"><span class="gn">1</span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Skullclamp</span><span class="rc"><span class="gn">1</span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Arcane Signet</span><span class="rc"><span class="gn">2</span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Selesnya Signet</span><span class="rc"><span class="gn">2</span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Talisman of Unity</span><span class="rc"><span class="gn">2</span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Idol of Oblivion</span><span class="rc"><span class="gn">2</span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Esika's Chariot</span><span class="rc"><span class="gn">3</span><span class="pip pG"></span></span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Coat of Arms</span><span class="rc"><span class="gn">5</span></span><span class="rq">×1</span></li>
+      </ul>
+      <h2 class="ghead">Lands — 37</h2>
+      <ul class="list">
+        <li class="row"><span class="rn">Forest</span><span class="rq">×12</span></li>
+        <li class="row"><span class="rn">Plains</span><span class="rq">×11</span></li>
+        <li class="row"><span class="rn">Command Tower</span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Path of Ancestry</span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Temple Garden</span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Sunpetal Grove</span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Canopy Vista</span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Fortified Village</span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Overgrown Farmland</span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Brushland</span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Krosan Verge</span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Gavony Township</span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Castle Ardenvale</span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Windbrisk Heights</span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Grove of the Guardian</span><span class="rq">×1</span></li>
+        <li class="row"><span class="rn">Mosswort Bridge</span><span class="rq">×1</span></li>
+      </ul>
+    </main>
+
+    <div class="pill"><span class="pd"></span>Live &middot; Rhys Tokens</div>
+    <footer class="foot">Card data and imagery courtesy of <a href="https://scryfall.com">Scryfall</a>. Unofficial Fan Content permitted under the Wizards of the Coast <a href="https://company.wizards.com/en/legal/fancontentpolicy">Fan Content Policy</a>. Not approved/endorsed by Wizards.</footer>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,15 @@
+/* Voltglass — candidate theme 2. Cool blue-violet glass — luminous periwinkle over translucent panes. */
+:root, [data-theme="voltglass"]{
+--font-sans:'Space Grotesk',sans-serif;
+--surface-well:#0d0f1a;--surface-base:#12141f;--surface-panel:#191c2b;--surface-overlay:#222639;
+--scrim:rgba(8,9,18,0.75);
+--border-hairline:#2c3048;--border-strong:#3d4266;
+--text-primary:#e9ebf5;--text-secondary:#b3b8cf;--text-tertiary:#8b91ad;--text-inverse:#10121c;
+--accent:#8b93ff;--accent-bright:#b3baff;--accent-dim:#575fbe;--accent-glow:rgba(139,147,255,0.22);
+--focus-ring:#b3baff;
+--positive:#5fd4a0;--negative:#ff7a86;--caution:#ffc266;
+--mana-w:#e8e6d6;--mana-u:#5cb2f0;--mana-b:#ab93cf;--mana-r:#f0716b;--mana-g:#5ec98a;--mana-gold:#e0b95e;--mana-colorless:#9aa0b5;
+--radius-sm:6px;--radius-md:10px;--radius-lg:16px;--radius-pill:999px;
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;--space-7:48px;
+--shadow-raise:0 0 0 1px rgba(139,147,255,0.14), 0 12px 32px rgba(0,0,0,0.5);
+}

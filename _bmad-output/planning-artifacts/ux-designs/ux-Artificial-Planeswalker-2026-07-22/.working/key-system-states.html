@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Key screen — System states (no active deck, database not initialized)</title>
+<style>
+/* ============================================================
+   SPINE TRACE — key-system-states.html
+   DESIGN.md: state-panel component (centered surface-raised
+   panel, hairline border, radius lg 12px, max-width 480px;
+   headline heading, guidance body text-secondary, concrete next
+   action on its own line in body-strong accent gold, commands in
+   a monospace inline chip on surface-inset; no illustrations,
+   no sad-face icons), status-pill component, footer-attribution
+   component, Colors (gold = the next action; no red error fills),
+   Do's and Don'ts (calm state panels, no error pages).
+   EXPERIENCE.md: Voice and Tone rows "No-active-deck" and
+   "Database not initialized" (copy verbatim); IA rows
+   "No-active-deck state", "'Database not initialized' state";
+   Component Patterns row: State panel (one at a time, centered
+   in the deck view area, footer remains functional around it;
+   deck list names only, non-clickable — the agent drives);
+   State Patterns rows: "Cold open, no active deck",
+   "Fresh install, DB missing" (FR-22, transitions on its own);
+   Key Flow 2 (Cold start) step 3.
+   ============================================================ */
+:root{
+  --s-base:#131110; --s-raised:#1B1815; --s-over:#232019; --s-inset:#0D0C0B;
+  --hair:#2E2A24; --strong:#453F35;
+  --t1:#F2EDE4; --t2:#A89F90; --t3:#9A9080; --tinv:#1A1610;
+  --gold:#E8B44A; --goldb:#F5CE73; --goldd:#8A6B2F;
+  --pos:#8CBF7E; --neg:#D9776B; --cau:#D98E4A;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#080706;font-family:Inter,'Segoe UI',system-ui,sans-serif;padding:32px 0 64px}
+.slab{width:1260px;margin:0 auto 10px;color:#6F675C;font-size:12px;font-weight:550;letter-spacing:.08em;text-transform:uppercase;line-height:1.3}
+.browser{width:1260px;margin:0 auto 56px;border-radius:10px;overflow:hidden;border:1px solid #2A2724;box-shadow:0 24px 64px #000000CC;background:var(--s-base);position:relative}
+.chrome{display:flex;align-items:center;gap:7px;background:#211E1A;padding:10px 14px;border-bottom:1px solid #2E2A24}
+.dot{width:11px;height:11px;border-radius:50%;background:#3B3733}
+.url{margin-left:12px;background:#131110;border-radius:6px;padding:5px 16px;font-size:12px;color:#A89F90;min-width:300px}
+.view{height:560px;position:relative;background:var(--s-base);display:flex;align-items:center;justify-content:center}
+/* state panel — calm text on a calm panel, one at a time, centered */
+.panel{width:480px;max-width:480px;background:var(--s-raised);border:1px solid var(--hair);border-radius:12px;padding:32px}
+.panel h2{font-size:17px;font-weight:600;line-height:1.3;color:var(--t1);margin-bottom:12px}
+.action{font-size:14px;font-weight:600;line-height:1.5;color:var(--gold);margin-bottom:8px}
+.body{font-size:14px;font-weight:400;line-height:1.5;color:var(--t2)}
+.cmd{font-family:ui-monospace,'Cascadia Mono',Consolas,monospace;font-size:12.5px;background:var(--s-inset);border:1px solid var(--hair);border-radius:4px;padding:2px 6px;color:var(--gold)}
+/* available-deck list — names only, non-clickable (the agent drives) */
+.dlabel{font-size:12px;font-weight:550;letter-spacing:.06em;text-transform:uppercase;line-height:1.3;color:var(--t2);margin:24px 0 8px;font-feature-settings:'tnum'}
+.dlist{list-style:none}
+.dlist li{font-size:14px;font-weight:400;line-height:1.5;color:var(--t1);padding:6px 0;border-bottom:1px solid var(--hair);cursor:default}
+.dlist li:last-child{border-bottom:none}
+/* connection status pill — text names the state, dot never carries it alone */
+.pill{position:absolute;left:16px;bottom:52px;display:flex;align-items:center;gap:8px;background:var(--s-raised);border:1px solid var(--hair);border-radius:9999px;padding:6px 14px;font-size:11px;font-weight:500;line-height:1.2;color:var(--t1);z-index:5}
+.pd{width:8px;height:8px;border-radius:50%;background:var(--pos)}
+/* footer attribution — always visible, text-muted, persistent underlines */
+.foot{position:absolute;left:0;right:0;bottom:0;border-top:1px solid var(--hair);background:var(--s-base);padding:5px 24px;font-size:11px;font-weight:500;line-height:1.2;color:var(--t3)}
+.foot a{color:var(--t3);text-decoration:underline;display:inline-block;padding:7px 1px}
+.foot a:hover{color:var(--t2)}
+</style>
+</head>
+<body>
+
+<div class="slab">System state — no active deck (cold open, backend live; also after backend restart or deck deletion)</div>
+<div class="browser">
+  <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765</span></div>
+  <div class="view">
+    <section class="panel" role="region" aria-label="No deck on the glass.">
+      <h2>No deck on the glass.</h2>
+      <p class="action">Ask your agent to set an active deck — it will appear here the moment it does.</p>
+      <div class="dlabel">Available decks — 5</div>
+      <ul class="dlist">
+        <li>Rhys Tokens</li>
+        <li>Atraxa Proliferate</li>
+        <li>Muldrotha Value Engine</li>
+        <li>Gruul Stompy (Standard)</li>
+        <li>Izzet Murktide (Modern)</li>
+      </ul>
+    </section>
+    <div class="pill"><span class="pd"></span>Live &middot; no active deck</div>
+    <footer class="foot">Card data and imagery courtesy of <a href="https://scryfall.com">Scryfall</a>. Unofficial Fan Content permitted under the Wizards of the Coast <a href="https://company.wizards.com/en/legal/fancontentpolicy">Fan Content Policy</a>. Not approved/endorsed by Wizards.</footer>
+  </div>
+</div>
+
+<div class="slab">System state — database not initialized (fresh install, FR-22; the page transitions on its own when the build lands)</div>
+<div class="browser">
+  <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765</span></div>
+  <div class="view">
+    <section class="panel" role="region" aria-label="Card database not set up yet.">
+      <h2>Card database not set up yet.</h2>
+      <p class="action">In your agent session, ask it to initialize the database (<code class="cmd">initialize_database</code>).</p>
+      <p class="body">First build takes a few minutes — this page will come alive on its own when it's ready.</p>
+    </section>
+    <div class="pill"><span class="pd"></span>Live &middot; no active deck</div>
+    <footer class="foot">Card data and imagery courtesy of <a href="https://scryfall.com">Scryfall</a>. Unofficial Fan Content permitted under the Wizards of the Coast <a href="https://company.wizards.com/en/legal/fancontentpolicy">Fan Content Policy</a>. Not approved/endorsed by Wizards.</footer>
+  </div>
+</div>
+
+</body>
+</html>

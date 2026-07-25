@@ -129,6 +129,7 @@ Priorities: P0 = MVP-blocking, P1 = MVP-desirable, P2 = post-MVP.
 | FR-09 | MCP tool `companion_show_swaps(payload)` renders proposed swaps as out-card / in-card pairs with rationale. | P1 |
 | FR-10 | MCP tool `companion_show_tier_list(payload)` renders tiered buckets (e.g. S/A/B/C) of card IDs with optional notes. | P1 |
 | FR-18 | A lightweight session history (capped, e.g. last 20 pushes, labeled by kind and time) lets the user revisit earlier pushes; revisited entries re-hydrate against current card data. History is in-browser only and clears on refresh. | P1 |
+| FR-23 | MCP tool `companion_show_groups(payload)` renders titled groups of cards, each with a prose rationale and a card-ID list — the agent's answer to "show me the X in this deck" (one-drops that carry the curve, answers to a specific threat, budget substitutes, sideboard cards for a matchup). Distinct from FR-08 suggestions (flat list, one-line reasons, no grouping) in that a group carries a title and a paragraph of reasoning over an arbitrary card set, including cards *not* in the active deck. Added 2026-07-25 from the UX design; consistent with the OQ-2 ruling that each push kind gets its own tool rather than a generic `companion_display`. | P1 |
 
 ### Feature E — Deck sync & agent control
 
@@ -211,7 +212,7 @@ with the UX spec that sets FR-20/SC-5's concrete visual direction.
 
 - **Phase 1 (MVP):** FR-01–FR-08, FR-11–FR-14, FR-17, FR-19, FR-20, FR-22;
   NFR-01–NFR-04, NFR-06, NFR-08, NFR-09.
-- **Phase 2:** FR-09, FR-10, FR-15, FR-18; NFR-05 hardening.
+- **Phase 2:** FR-09, FR-10, FR-15, FR-18, FR-23; NFR-05 hardening.
 - **Phase 3:** FR-16, FR-21 (power panel), Tauri wrapper, UI-initiated deck edits (new
   brief).
 

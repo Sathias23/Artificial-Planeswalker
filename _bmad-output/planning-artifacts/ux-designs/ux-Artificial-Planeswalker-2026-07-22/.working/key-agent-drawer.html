@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Key screen — Agent drawer (suggestion push)</title>
+<style>
+/* ============================================================
+   SPINE TRACE — key-agent-drawer.html
+   DESIGN.md: agent-drawer component (40% width, surface-raised,
+   -16px 0 48px shadow, 1px border-strong edge + gold glow on
+   arrival), suggestion-row component (surface-overlay, radius md,
+   art-forward full-height thumb, category chip micro on
+   surface-inset), session-history component (surface-inset strip,
+   entry-radius sm, active-border accent-dim), card-placeholder
+   unknown-card variant, Elevation & Depth (gold glow = the thing
+   the agent just did), Colors (gold marks live agent attention).
+   EXPERIENCE.md: IA rows "Agent panel (slide-over drawer)",
+   "— Suggestion panel", "Session history";
+   Component Patterns rows: Agent drawer (covers right 40%, deck
+   view remains visible/interactive on left 60%, close x, header
+   focus target), Suggestion row (card + one-line reason +
+   optional category chip; unknown-ID entry renders the unknown
+   placeholder, reason still renders), Session history (kind +
+   time chips, newest first, active chip marked);
+   State Patterns row: "Unknown card in a push" (FR-13 — one row
+   degrades, push never fails wholesale);
+   Key Flow 1 (UJ-1) step 4: six cards, art-forward, one-line
+   reasons, drawer slides in over the right 40% within 250 ms.
+   Underlying deck view: same spine sections as key-deck-view.html.
+   ============================================================ */
+:root{
+  --s-base:#131110; --s-raised:#1B1815; --s-over:#232019; --s-inset:#0D0C0B;
+  --scrim:#0D0C0BCC; --hair:#2E2A24; --strong:#453F35;
+  --t1:#F2EDE4; --t2:#A89F90; --t3:#9A9080; --tinv:#1A1610;
+  --gold:#E8B44A; --goldb:#F5CE73; --goldd:#8A6B2F; --glow:#E8B44A40;
+  --pos:#8CBF7E; --neg:#D9776B; --cau:#D98E4A;
+  --mW:#E9E7DA; --mU:#5A8FC7; --mB:#A69BB0; --mR:#D9704F; --mG:#6FA860;
+  --mC:#9A948C; --mGold:#C9A85C;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#080706;font-family:Inter,'Segoe UI',system-ui,sans-serif;padding:32px 0 64px}
+.slab{width:1260px;margin:0 auto 10px;color:#6F675C;font-size:12px;font-weight:550;letter-spacing:.08em;text-transform:uppercase;line-height:1.3}
+.browser{width:1260px;margin:0 auto 56px;border-radius:10px;overflow:hidden;border:1px solid #2A2724;box-shadow:0 24px 64px #000000CC;background:var(--s-base);position:relative}
+.chrome{display:flex;align-items:center;gap:7px;background:#211E1A;padding:10px 14px;border-bottom:1px solid #2E2A24}
+.dot{width:11px;height:11px;border-radius:50%;background:#3B3733}
+.url{margin-left:12px;background:#131110;border-radius:6px;padding:5px 16px;font-size:12px;color:#A89F90;min-width:300px}
+.win{position:relative;height:780px;background:var(--s-base)}
+.view{height:100%;overflow-y:auto;position:relative}
+/* deck view (left, still visible and interactive — no scrim) */
+.hdr{display:flex;align-items:baseline;gap:16px;padding:24px 24px 0}
+.hdr h1{font-size:24px;font-weight:650;line-height:1.2;letter-spacing:-.01em;color:var(--t1)}
+.meta{font-size:13px;font-weight:500;line-height:1.3;font-feature-settings:'tnum';color:var(--t2)}
+.vt{margin-left:auto;margin-right:42%;display:flex;background:var(--s-inset);border:1px solid var(--hair);border-radius:4px;overflow:hidden}
+.vt span{font-size:12px;font-weight:550;letter-spacing:.06em;text-transform:uppercase;line-height:1.3;padding:6px 14px;color:var(--t2);cursor:pointer}
+.vt .on{background:var(--s-over);color:var(--t1)}
+.curve{display:flex;align-items:flex-end;gap:12px;padding:16px 24px 14px;border-bottom:1px solid var(--hair)}
+.cb{display:flex;flex-direction:column;align-items:center;gap:4px}
+.cnt{font-size:13px;font-weight:500;line-height:1.3;font-feature-settings:'tnum';color:var(--t1)}
+.well{width:26px;height:60px;background:var(--s-inset);border-radius:4px;display:flex;flex-direction:column-reverse;gap:1px;overflow:hidden}
+.seg{width:100%;flex:0 0 auto}
+.sW{background:var(--mW)}.sG{background:var(--mG)}.sX{background:var(--mGold)}.sC{background:var(--mC)}
+.ax{font-size:11px;font-weight:500;line-height:1.2;color:var(--t2)}
+.deck{padding:0 24px 96px}
+.ghead{font-size:12px;font-weight:550;letter-spacing:.06em;text-transform:uppercase;line-height:1.3;color:var(--t2);margin:24px 0 12px;font-feature-settings:'tnum'}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:12px 8px;list-style:none}
+.tile{position:relative;cursor:pointer}
+.face{aspect-ratio:63/88;border-radius:4.75%/3.4%;border:1px solid var(--strong);display:flex;flex-direction:column;padding:14px 10px 12px;text-align:center;box-shadow:inset 0 0 44px #00000059}
+.cost{display:flex;gap:3px;align-items:center;justify-content:center;min-height:13px}
+.mid{flex:1;display:flex;align-items:center;justify-content:center}
+.nm{font-size:14px;font-weight:600;line-height:1.3;color:var(--t1);text-shadow:0 1px 3px #000000B3}
+.tp{font-size:11px;font-weight:500;line-height:1.2;color:var(--t2);text-shadow:0 1px 2px #000000B3}
+.pip{display:inline-block;width:9px;height:9px;border-radius:9999px}
+.pW{background:var(--mW)}.pG{background:var(--mG)}
+.pGW{background:linear-gradient(90deg,var(--mG) 50%,var(--mW) 50%)}
+.gn{min-width:13px;height:13px;border-radius:9999px;background:var(--mC);color:var(--tinv);font-size:9px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;padding:0 3px}
+.qty{position:absolute;right:6px;bottom:6px;background:var(--s-inset);color:var(--t1);border:1px solid var(--strong);border-radius:9999px;font-size:11px;font-weight:500;line-height:1.2;font-feature-settings:'tnum';padding:2px 7px}
+.flipb{position:absolute;top:8px;right:8px;width:32px;height:32px;border-radius:9999px;background:#0D0C0BCC;color:var(--t1);border:none;font:600 14px/1 Inter,'Segoe UI',system-ui,sans-serif;opacity:.65;cursor:pointer}
+.f-g1{background:linear-gradient(155deg,#26331E 0%,#141A0E 55%,#0E130A 100%)}
+.f-g2{background:radial-gradient(120% 90% at 70% 15%,#2E3D22 0%,#16200F 60%,#0D120A 100%)}
+.f-g3{background:linear-gradient(200deg,#1F2E1A 0%,#101709 100%)}
+.f-g4{background:radial-gradient(100% 100% at 30% 80%,#243019 0%,#12180C 100%)}
+.f-w1{background:linear-gradient(155deg,#3A342A 0%,#211D14 60%,#15120C 100%)}
+.f-w2{background:radial-gradient(110% 85% at 30% 20%,#403A2C 0%,#1D1912 100%)}
+.f-w3{background:linear-gradient(200deg,#35311F 0%,#1A170F 100%)}
+.f-x1{background:linear-gradient(155deg,#3B3018 0%,#1E1809 60%,#120E06 100%)}
+.f-x2{background:radial-gradient(120% 90% at 60% 20%,#443B1E 0%,#201A0C 100%)}
+.f-d1{background:linear-gradient(155deg,#3A2C26 0%,#1B1410 100%)}
+.pill{position:absolute;left:16px;bottom:52px;display:flex;align-items:center;gap:8px;background:var(--s-raised);border:1px solid var(--hair);border-radius:9999px;padding:6px 14px;font-size:11px;font-weight:500;line-height:1.2;color:var(--t1);z-index:5}
+.pd{width:8px;height:8px;border-radius:50%;background:var(--pos)}
+.foot{position:absolute;left:0;right:0;bottom:0;border-top:1px solid var(--hair);background:var(--s-base);padding:5px 24px;font-size:11px;font-weight:500;line-height:1.2;color:var(--t3);z-index:4}
+.foot a{color:var(--t3);text-decoration:underline;display:inline-block;padding:7px 1px}
+.foot a:hover{color:var(--t2)}
+/* ---- Agent drawer: right 40%, raised surface, gold live-attention edge ---- */
+.drawer{position:absolute;top:0;right:0;bottom:37px;width:40%;background:var(--s-raised);border-left:1px solid var(--strong);box-shadow:-16px 0 48px #000000A6,-1px 0 0 var(--goldd),-12px 0 20px var(--glow);display:flex;flex-direction:column;z-index:6}
+.dhead{display:flex;align-items:baseline;gap:10px;padding:20px 20px 14px}
+.dhead h2{font-size:17px;font-weight:600;line-height:1.3;color:var(--t1)}
+.dtime{font-size:11px;font-weight:500;line-height:1.2;font-feature-settings:'tnum';color:var(--t2)}
+.dx{margin-left:auto;width:28px;height:28px;border:none;background:none;color:var(--t2);font:400 18px/1 Inter,'Segoe UI',system-ui,sans-serif;cursor:pointer;border-radius:4px}
+.dx:hover{color:var(--t1)}
+.dbody{flex:1;overflow-y:auto;padding:0 20px 16px;display:flex;flex-direction:column;gap:8px}
+.srow{display:flex;gap:12px;background:var(--s-over);border-radius:8px;padding:8px;cursor:pointer}
+.thumb{width:58px;flex:0 0 58px;aspect-ratio:63/88;border-radius:4.75%/3.4%;border:1px solid var(--strong);display:flex;align-items:center;justify-content:center;gap:3px}
+.thumb .pip{width:7px;height:7px}
+.sinfo{flex:1;display:flex;flex-direction:column;justify-content:center;gap:3px;min-width:0}
+.snm{font-size:14px;font-weight:600;line-height:1.5;color:var(--t1)}
+.srsn{font-size:14px;font-weight:400;line-height:1.5;color:var(--t2)}
+.schip{align-self:flex-start;font-size:11px;font-weight:500;line-height:1.2;color:var(--t2);background:var(--s-inset);border-radius:4px;padding:3px 8px;margin-top:2px}
+/* unknown-card placeholder variant — name slot "Unknown card", id micro (never text-muted) */
+.unk{background:var(--s-over);flex-direction:column;padding:4px;text-align:center}
+.unm{font-size:9px;font-weight:600;line-height:1.2;color:var(--t1)}
+.uid{font-size:8px;font-weight:500;line-height:1.2;color:var(--t2);margin-top:2px}
+/* session history strip — surface-inset, text chips only, active border accent-dim */
+.hist{background:var(--s-inset);padding:10px 16px;display:flex;gap:8px;overflow-x:auto;flex:0 0 auto}
+.chip{white-space:nowrap;font-size:11px;font-weight:500;line-height:1.2;font-feature-settings:'tnum';color:var(--t2);border:1px solid transparent;border-radius:4px;padding:6px 10px;cursor:pointer}
+.chip:hover{background:var(--s-over)}
+.chip.on{border-color:var(--goldd);color:var(--t1)}
+</style>
+</head>
+<body>
+
+<div class="slab">Agent drawer — suggestion push just arrived (UJ-1 step 4); deck view stays live on the left 60%</div>
+<div class="browser">
+  <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765</span></div>
+  <div class="win">
+    <div class="view">
+      <header class="hdr">
+        <h1>Rhys Tokens</h1>
+        <span class="meta">Commander &middot; 100 cards</span>
+        <div class="vt"><span class="on">Grid</span><span>List</span></div>
+      </header>
+      <figure class="curve">
+        <div class="cb"><span class="cnt">7</span><div class="well"><div class="seg sW" style="height:9px"></div><div class="seg sG" style="height:6px"></div><div class="seg sC" style="height:6px"></div></div><span class="ax">1</span></div>
+        <div class="cb"><span class="cnt">14</span><div class="well"><div class="seg sW" style="height:12px"></div><div class="seg sG" style="height:9px"></div><div class="seg sX" style="height:9px"></div><div class="seg sC" style="height:12px"></div></div><span class="ax">2</span></div>
+        <div class="cb"><span class="cnt">17</span><div class="well"><div class="seg sW" style="height:12px"></div><div class="seg sG" style="height:21px"></div><div class="seg sX" style="height:18px"></div></div><span class="ax">3</span></div>
+        <div class="cb"><span class="cnt">10</span><div class="well"><div class="seg sW" style="height:12px"></div><div class="seg sG" style="height:12px"></div><div class="seg sX" style="height:6px"></div></div><span class="ax">4</span></div>
+        <div class="cb"><span class="cnt">11</span><div class="well"><div class="seg sW" style="height:6px"></div><div class="seg sG" style="height:15px"></div><div class="seg sX" style="height:9px"></div><div class="seg sC" style="height:3px"></div></div><span class="ax">5</span></div>
+        <div class="cb"><span class="cnt">0</span><div class="well"></div><span class="ax">6</span></div>
+        <div class="cb"><span class="cnt">4</span><div class="well"><div class="seg sW" style="height:3px"></div><div class="seg sG" style="height:9px"></div></div><span class="ax">7+</span></div>
+      </figure>
+      <main class="deck">
+        <h2 class="ghead">Commander — 1</h2>
+        <ul class="grid">
+          <li class="tile"><div class="face f-x1"><div class="cost"><span class="pip pGW"></span></div><div class="mid"><span class="nm">Rhys the Redeemed</span></div><span class="tp">Legendary Creature — Elf Warrior</span></div><span class="qty">×1</span></li>
+        </ul>
+        <h2 class="ghead">Creatures — 25</h2>
+        <ul class="grid">
+          <li class="tile"><div class="face f-g1"><div class="cost"><span class="pip pG"></span></div><div class="mid"><span class="nm">Avacyn's Pilgrim</span></div><span class="tp">Creature — Human Druid</span></div><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-g2"><div class="cost"><span class="pip pG"></span></div><div class="mid"><span class="nm">Llanowar Elves</span></div><span class="tp">Creature — Elf Druid</span></div><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-g3"><div class="cost"><span class="gn">1</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Bloom Tender</span></div><span class="tp">Creature — Elf Druid</span></div><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-x1"><div class="cost"><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Voice of Resurgence</span></div><span class="tp">Creature — Elemental</span></div><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-x2"><div class="cost"><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Emmara, Soul of the Accord</span></div><span class="tp">Legendary Creature — Elf Cleric</span></div><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-d1"><div class="cost"><span class="gn">1</span><span class="pip pW"></span></div><div class="mid"><span class="nm">Hanweir Militia Captain</span></div><span class="tp">Creature — Human Soldier</span></div><button class="flipb" aria-label="Flip card">&#8644;</button><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-w1"><div class="cost"><span class="gn">1</span><span class="pip pW"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Adeline, Resplendent Cathar</span></div><span class="tp">Legendary Creature — Human Knight</span></div><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-g4"><div class="cost"><span class="gn">2</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Imperious Perfect</span></div><span class="tp">Creature — Elf Warrior</span></div><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-g1"><div class="cost"><span class="gn">2</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Rishkar, Peema Renegade</span></div><span class="tp">Legendary Creature — Elf Druid</span></div><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-g2"><div class="cost"><span class="gn">2</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Scute Swarm</span></div><span class="tp">Creature — Insect</span></div><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-x2"><div class="cost"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Champion of Lambholt</span></div><span class="tp">Creature — Human Warrior</span></div><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-w2"><div class="cost"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Good-Fortune Unicorn</span></div><span class="tp">Creature — Unicorn</span></div><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-x1"><div class="cost"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">King Darien XLVIII</span></div><span class="tp">Legendary Creature — Human Soldier</span></div><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-w3"><div class="cost"><span class="gn">2</span><span class="pip pW"></span></div><div class="mid"><span class="nm">Mirror Entity</span></div><span class="tp">Creature — Shapeshifter</span></div><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-g3"><div class="cost"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Selvala, Explorer Returned</span></div><span class="tp">Legendary Creature — Elf Scout</span></div><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-x2"><div class="cost"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Wayfaring Temple</span></div><span class="tp">Creature — Golem</span></div><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-x1"><div class="cost"><span class="gn">3</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Karametra, God of Harvests</span></div><span class="tp">Legendary Enchantment Creature — God</span></div><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-g4"><div class="cost"><span class="gn">3</span><span class="pip pG"></span><span class="pip pG"></span></div><div class="mid"><span class="nm">Mycoloth</span></div><span class="tp">Creature — Fungus</span></div><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-g1"><div class="cost"><span class="gn">3</span><span class="pip pG"></span><span class="pip pG"></span></div><div class="mid"><span class="nm">Seedborn Muse</span></div><span class="tp">Creature — Spirit</span></div><span class="qty">×1</span></li>
+          <li class="tile"><div class="face f-g2"><div class="cost"><span class="gn">4</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Tendershoot Dryad</span></div><span class="tp">Creature — Dryad</span></div><span class="qty">×1</span></li>
+        </ul>
+      </main>
+    </div>
+
+    <!-- Agent drawer: suggestion push, gold edge glow marks arrival -->
+    <aside class="drawer" aria-label="Suggestions">
+      <div class="dhead">
+        <h2>Suggestions</h2>
+        <span class="dtime">14:02</span>
+        <button class="dx" aria-label="Close panel">&times;</button>
+      </div>
+      <div class="dbody">
+        <div class="srow">
+          <div class="thumb f-w1"><span class="gn">2</span><span class="pip pW"></span></div>
+          <div class="sinfo"><span class="snm">Teferi's Protection</span><span class="srsn">Phases your whole board out of a wrath for three mana.</span><span class="schip">Protection</span></div>
+        </div>
+        <div class="srow">
+          <div class="thumb f-w2"><span class="gn">2</span><span class="pip pW"></span></div>
+          <div class="sinfo"><span class="snm">Flawless Maneuver</span><span class="srsn">Free indestructible any turn Rhys is on the battlefield.</span><span class="schip">Protection</span></div>
+        </div>
+        <div class="srow">
+          <div class="thumb f-w3"><span class="gn">1</span><span class="pip pW"></span></div>
+          <div class="sinfo"><span class="snm">Selfless Spirit</span><span class="srsn">A flying body that trades itself to save the token army.</span><span class="schip">Protection</span></div>
+        </div>
+        <div class="srow">
+          <div class="thumb f-w1"><span class="gn">2</span><span class="pip pW"></span></div>
+          <div class="sinfo"><span class="snm">Unbreakable Formation</span><span class="srsn">Wrath insurance that doubles as an attack-step finisher.</span><span class="schip">Protection</span></div>
+        </div>
+        <div class="srow">
+          <div class="thumb f-x2"><span class="gn">X</span><span class="pip pG"></span><span class="pip pW"></span></div>
+          <div class="sinfo"><span class="snm">Grand Crescendo</span><span class="srsn">Instant-speed bodies that also shield everything you control.</span><span class="schip">Resilience</span></div>
+        </div>
+        <div class="srow">
+          <div class="thumb unk"><span class="unm">Unknown card</span><span class="uid">5f0c1d9a&hellip;</span></div>
+          <div class="sinfo"><span class="snm">Unknown card</span><span class="srsn">Rebuilds your board the turn after a sweeper resolves.</span><span class="schip">Recovery</span></div>
+        </div>
+      </div>
+      <div class="hist">
+        <span class="chip on">Suggestions &middot; 14:02</span>
+        <span class="chip">Suggestions &middot; 13:44</span>
+        <span class="chip">Tier list &middot; 13:29</span>
+        <span class="chip">Swaps &middot; 13:12</span>
+      </div>
+    </aside>
+
+    <div class="pill"><span class="pd"></span>Live &middot; Rhys Tokens</div>
+    <footer class="foot">Card data and imagery courtesy of <a href="https://scryfall.com">Scryfall</a>. Unofficial Fan Content permitted under the Wizards of the Coast <a href="https://company.wizards.com/en/legal/fancontentpolicy">Fan Content Policy</a>. Not approved/endorsed by Wizards.</footer>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,15 @@
+/* Verdigris Table — candidate theme 4. Green-black felt and copper — the tournament table after hours. */
+[data-theme="verdigris"]{
+--font-sans:'Manrope',sans-serif;
+--surface-well:#0e1310;--surface-base:#131a16;--surface-panel:#1a231e;--surface-overlay:#243029;
+--scrim:rgba(7,10,8,0.72);
+--border-hairline:#2e3c34;--border-strong:#3f5146;
+--text-primary:#eaf0ea;--text-secondary:#b7c4ba;--text-tertiary:#8fa094;--text-inverse:#0f1512;
+--accent:#d08a5a;--accent-bright:#e8ab7e;--accent-dim:#8a5a38;--accent-glow:rgba(208,138,90,0.2);
+--focus-ring:#e8ab7e;
+--positive:#6cc98f;--negative:#e6796b;--caution:#e0b45c;
+--mana-w:#e4dcc2;--mana-u:#62a8de;--mana-b:#a693c4;--mana-r:#e06e5c;--mana-g:#71cc7e;--mana-gold:#d6ae56;--mana-colorless:#a2aaa2;
+--radius-sm:6px;--radius-md:10px;--radius-lg:14px;--radius-pill:999px;
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;--space-7:48px;
+--shadow-raise:0 6px 20px rgba(0,0,0,0.4);
+}

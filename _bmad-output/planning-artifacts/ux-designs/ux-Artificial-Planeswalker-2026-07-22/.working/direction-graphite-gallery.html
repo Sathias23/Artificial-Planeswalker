@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Direction — Graphite gallery</title>
+<style>
+/* ============================================================
+   DIRECTION 2 — GRAPHITE GALLERY
+   Achromatic graphite and slate chrome. NO accent color in the
+   chrome at all — the five mana colors and the card art are the
+   only color on screen. Generous whitespace, hairline dividers,
+   museum-label typography: small tracked-out caps, restrained
+   sizes. The most minimal direction.
+
+   HEX DOCUMENTATION
+   Surfaces:  base #141518 · raised #1A1C1F · overlay #202226
+              inset #0E0F11
+   Hairlines: hair #26282C · strong #3A3D42
+   Text:      primary #EDEDEA · secondary #A2A4A8 · tertiary #85878C
+              inverse #131417
+   Accent:    none in chrome. Active/selected states are carried
+              by primary-text borders and underlines (#EDEDEA).
+   Status:    the live dot borrows mana green #6FA860 — the only
+              status color, and it is a mana color; the pill text
+              names the state, so color never carries it alone.
+   Mana:      W #E9E7DA · U #5A8FC7 · B #A69BB0 · R #D9704F
+              G #6FA860 · gold #C9A85C · colorless #9A948C
+   Card-art stand-ins: shared GW gradient faces (see arcane-glass
+   file for the range) — art is identical across directions.
+   ============================================================ */
+:root{
+  --s-base:#141518; --s-raised:#1A1C1F; --s-over:#202226; --s-inset:#0E0F11;
+  --hair:#26282C; --strong:#3A3D42;
+  --t1:#EDEDEA; --t2:#A2A4A8; --t3:#85878C; --tinv:#131417;
+  --mW:#E9E7DA; --mU:#5A8FC7; --mB:#A69BB0; --mR:#D9704F; --mG:#6FA860;
+  --mC:#9A948C; --mGold:#C9A85C;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0B0C0D;font-family:Inter,'Segoe UI',system-ui,sans-serif;padding:32px 0 64px}
+/* rationale card */
+.why{width:1260px;margin:0 auto 18px;background:#17181B;border:1px solid var(--hair);border-radius:2px;padding:16px 20px}
+.why h1{font-size:11px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--t1);margin-bottom:8px}
+.why p{font-size:13px;font-weight:400;line-height:1.6;color:var(--t2);max-width:96ch}
+.browser{width:1260px;margin:0 auto 56px;border-radius:8px;overflow:hidden;border:1px solid #222327;box-shadow:0 24px 64px #000000B3;background:var(--s-base)}
+.chrome{display:flex;align-items:center;gap:7px;background:#18191C;padding:10px 14px;border-bottom:1px solid var(--hair)}
+.dot{width:11px;height:11px;border-radius:50%;background:#2E3034}
+.url{margin-left:12px;background:var(--s-inset);border-radius:4px;padding:5px 16px;font-size:12px;color:var(--t2);min-width:300px}
+.win{position:relative;height:1060px;background:var(--s-base);overflow:hidden}
+.view{height:100%;overflow:hidden;position:relative}
+/* deck view — museum wall: air, hairlines, art */
+.hdr{display:flex;align-items:baseline;gap:18px;padding:32px 32px 0}
+.hdr h1{font-size:22px;font-weight:500;line-height:1.25;letter-spacing:.01em;color:var(--t1)}
+.meta{font-size:12px;font-weight:400;line-height:1.3;font-feature-settings:'tnum';color:var(--t2)}
+.vt{margin-left:auto;margin-right:42%;display:flex;gap:18px}
+.vt span{font-size:10px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;line-height:1.3;padding:6px 0;color:var(--t3);cursor:pointer;border-bottom:1px solid transparent}
+.vt .on{color:var(--t1);border-bottom-color:var(--t1)}
+.curve{display:flex;align-items:flex-end;gap:14px;padding:20px 32px 18px;border-bottom:1px solid var(--hair)}
+.cb{display:flex;flex-direction:column;align-items:center;gap:5px}
+.cnt{font-size:12px;font-weight:400;line-height:1.3;font-feature-settings:'tnum';color:var(--t1)}
+.well{width:24px;height:60px;background:var(--s-inset);border-radius:2px;display:flex;flex-direction:column-reverse;gap:1px;overflow:hidden}
+.seg{width:100%;flex:0 0 auto}
+.sW{background:var(--mW)}.sG{background:var(--mG)}.sX{background:var(--mGold)}.sC{background:var(--mC)}
+.ax{font-size:9px;font-weight:600;letter-spacing:.18em;line-height:1.2;color:var(--t3)}
+.deck{padding:0 32px 96px}
+.ghead{font-size:10px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;line-height:1.3;color:var(--t3);margin:30px 0 16px;font-feature-settings:'tnum'}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:18px 12px;list-style:none}
+.tile{position:relative;cursor:pointer}
+.face{aspect-ratio:63/88;border-radius:4.75%/3.4%;border:1px solid var(--strong);display:flex;flex-direction:column;padding:14px 10px 12px;text-align:center;box-shadow:inset 0 0 44px #00000059}
+.cost{display:flex;gap:3px;align-items:center;justify-content:center;min-height:13px}
+.mid{flex:1;display:flex;align-items:center;justify-content:center}
+.nm{font-size:14px;font-weight:600;line-height:1.3;color:#F1F1EE;text-shadow:0 1px 3px #000000B3}
+.tp{font-size:11px;font-weight:400;line-height:1.2;color:#B7B8BB;text-shadow:0 1px 2px #000000B3}
+.pip{display:inline-block;width:9px;height:9px;border-radius:9999px}
+.pW{background:var(--mW)}.pG{background:var(--mG)}
+.pGW{background:linear-gradient(90deg,var(--mG) 50%,var(--mW) 50%)}
+.gn{min-width:13px;height:13px;border-radius:9999px;background:var(--mC);color:var(--tinv);font-size:9px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;padding:0 3px}
+/* quantity badge — only rendered where quantity >= 2 (singletons stay clean) */
+.qty{position:absolute;right:6px;bottom:6px;background:var(--s-inset);color:var(--t1);border:1px solid var(--strong);border-radius:2px;font-size:11px;font-weight:500;line-height:1.2;font-feature-settings:'tnum';padding:2px 7px}
+.flipb{position:absolute;top:8px;right:8px;width:32px;height:32px;border-radius:2px;background:#0E0F11CC;color:var(--t1);border:none;font:500 14px/1 Inter,'Segoe UI',system-ui,sans-serif;opacity:.7;cursor:pointer}
+/* card-art stand-ins (shared across directions) */
+.f-g1{background:linear-gradient(155deg,#26331E 0%,#141A0E 55%,#0E130A 100%)}
+.f-g2{background:radial-gradient(120% 90% at 70% 15%,#2E3D22 0%,#16200F 60%,#0D120A 100%)}
+.f-g3{background:linear-gradient(200deg,#1F2E1A 0%,#101709 100%)}
+.f-g4{background:radial-gradient(100% 100% at 30% 80%,#243019 0%,#12180C 100%)}
+.f-w1{background:linear-gradient(155deg,#3A342A 0%,#211D14 60%,#15120C 100%)}
+.f-w2{background:radial-gradient(110% 85% at 30% 20%,#403A2C 0%,#1D1912 100%)}
+.f-w3{background:linear-gradient(200deg,#35311F 0%,#1A170F 100%)}
+.f-x1{background:linear-gradient(155deg,#3B3018 0%,#1E1809 60%,#120E06 100%)}
+.f-x2{background:radial-gradient(120% 90% at 60% 20%,#443B1E 0%,#201A0C 100%)}
+.f-d1{background:linear-gradient(155deg,#3A2C26 0%,#1B1410 100%)}
+.f-l1{background:radial-gradient(120% 90% at 40% 20%,#1E2C18 0%,#0E140A 100%)}
+.f-l2{background:linear-gradient(155deg,#37311F 0%,#181509 100%)}
+.f-l3{background:linear-gradient(200deg,#2A3120 0%,#14170D 100%)}
+.pill{position:absolute;left:20px;bottom:56px;display:flex;align-items:center;gap:8px;background:var(--s-raised);border:1px solid var(--hair);border-radius:2px;padding:6px 14px;font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;line-height:1.2;color:var(--t1);z-index:5}
+.pd{width:7px;height:7px;border-radius:50%;background:var(--mG)}
+.foot{position:absolute;left:0;right:0;bottom:0;border-top:1px solid var(--hair);background:var(--s-base);padding:5px 32px;font-size:11px;font-weight:400;line-height:1.2;color:var(--t3);z-index:4}
+.foot a{color:var(--t3);text-decoration:underline;display:inline-block;padding:7px 1px}
+.foot a:hover{color:var(--t2)}
+/* ---- Agent drawer: a quiet second wall; hairline seam, neutral shadow ---- */
+.drawer{position:absolute;top:0;right:0;bottom:37px;width:40%;background:var(--s-raised);border-left:1px solid var(--strong);box-shadow:-16px 0 48px #00000080;display:flex;flex-direction:column;z-index:6}
+.dhead{display:flex;align-items:baseline;gap:12px;padding:28px 28px 18px}
+.dhead h2{font-size:11px;font-weight:600;letter-spacing:.24em;text-transform:uppercase;line-height:1.3;color:var(--t1)}
+.dtime{font-size:11px;font-weight:400;line-height:1.2;font-feature-settings:'tnum';color:var(--t3)}
+.dx{margin-left:auto;width:28px;height:28px;border:none;background:none;color:var(--t3);font:300 18px/1 Inter,'Segoe UI',system-ui,sans-serif;cursor:pointer;border-radius:2px}
+.dx:hover{color:var(--t1)}
+/* suggestion rows: no card backgrounds — hairline dividers, like gallery labels */
+.dbody{flex:1;overflow:hidden;padding:0 28px 16px;display:flex;flex-direction:column}
+.srow{display:flex;gap:16px;padding:14px 0;cursor:pointer;border-top:1px solid var(--hair)}
+.srow:first-child{border-top:none}
+.thumb{width:56px;flex:0 0 56px;aspect-ratio:63/88;border-radius:4.75%/3.4%;border:1px solid var(--strong);display:flex;align-items:center;justify-content:center;gap:3px}
+.thumb .pip{width:7px;height:7px}
+.sinfo{flex:1;display:flex;flex-direction:column;justify-content:center;gap:3px;min-width:0}
+.snm{font-size:14px;font-weight:600;line-height:1.5;color:var(--t1)}
+.srsn{font-size:13px;font-weight:400;line-height:1.6;color:var(--t2)}
+.schip{align-self:flex-start;font-size:9px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;line-height:1.2;color:var(--t3);border:1px solid var(--hair);border-radius:2px;padding:3px 8px;margin-top:4px}
+/* unknown-card state variant — FR-13: one row degrades, push never fails wholesale */
+.unk{background:var(--s-over);flex-direction:column;padding:4px;text-align:center}
+.unm{font-size:9px;font-weight:600;line-height:1.2;color:var(--t1)}
+.uid{font-size:8px;font-weight:400;line-height:1.2;color:var(--t2);margin-top:2px}
+/* session history strip — text chips; the active entry is underlined, not colored */
+.hist{background:var(--s-inset);border-top:1px solid var(--hair);padding:12px 24px;display:flex;gap:16px;overflow-x:auto;flex:0 0 auto}
+.chip{white-space:nowrap;font-size:10px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;line-height:1.2;font-feature-settings:'tnum';color:var(--t3);border-bottom:1px solid transparent;padding:6px 0;cursor:pointer}
+.chip:hover{color:var(--t2)}
+.chip.on{color:var(--t1);border-bottom-color:var(--t1)}
+</style>
+</head>
+<body>
+
+<section class="why">
+  <h1>Direction 2 — Graphite gallery</h1>
+  <p>Achromatic graphite chrome with no accent color anywhere — the five mana colors and the card art are the only color on screen, hung on a dark wall with generous air and hairline dividers. Labels are small, tracked-out caps in the museum register; selection is carried by underlines and borders in the text color itself. The quietest direction: the app disappears and the deck is the exhibition.</p>
+</section>
+
+<div class="browser">
+  <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="url">localhost:8765</span></div>
+  <div class="win">
+    <div class="view">
+      <header class="hdr">
+        <h1>Rhys Tokens</h1>
+        <span class="meta">Commander &middot; 100 cards</span>
+        <div class="vt"><span class="on">Grid</span><span>List</span></div>
+      </header>
+      <figure class="curve">
+        <div class="cb"><span class="cnt">7</span><div class="well"><div class="seg sW" style="height:9px"></div><div class="seg sG" style="height:6px"></div><div class="seg sC" style="height:6px"></div></div><span class="ax">1</span></div>
+        <div class="cb"><span class="cnt">14</span><div class="well"><div class="seg sW" style="height:12px"></div><div class="seg sG" style="height:9px"></div><div class="seg sX" style="height:9px"></div><div class="seg sC" style="height:12px"></div></div><span class="ax">2</span></div>
+        <div class="cb"><span class="cnt">17</span><div class="well"><div class="seg sW" style="height:12px"></div><div class="seg sG" style="height:21px"></div><div class="seg sX" style="height:18px"></div></div><span class="ax">3</span></div>
+        <div class="cb"><span class="cnt">10</span><div class="well"><div class="seg sW" style="height:12px"></div><div class="seg sG" style="height:12px"></div><div class="seg sX" style="height:6px"></div></div><span class="ax">4</span></div>
+        <div class="cb"><span class="cnt">11</span><div class="well"><div class="seg sW" style="height:6px"></div><div class="seg sG" style="height:15px"></div><div class="seg sX" style="height:9px"></div><div class="seg sC" style="height:3px"></div></div><span class="ax">5</span></div>
+        <div class="cb"><span class="cnt">0</span><div class="well"></div><span class="ax">6</span></div>
+        <div class="cb"><span class="cnt">4</span><div class="well"><div class="seg sW" style="height:3px"></div><div class="seg sG" style="height:9px"></div></div><span class="ax">7+</span></div>
+      </figure>
+      <main class="deck">
+        <h2 class="ghead">Commander — 1</h2>
+        <ul class="grid">
+          <li class="tile"><div class="face f-x1"><div class="cost"><span class="pip pGW"></span></div><div class="mid"><span class="nm">Rhys the Redeemed</span></div><span class="tp">Legendary Creature — Elf Warrior</span></div></li>
+        </ul>
+        <h2 class="ghead">Creatures — 25</h2>
+        <ul class="grid">
+          <li class="tile"><div class="face f-g1"><div class="cost"><span class="pip pG"></span></div><div class="mid"><span class="nm">Avacyn's Pilgrim</span></div><span class="tp">Creature — Human Druid</span></div></li>
+          <li class="tile"><div class="face f-g2"><div class="cost"><span class="pip pG"></span></div><div class="mid"><span class="nm">Llanowar Elves</span></div><span class="tp">Creature — Elf Druid</span></div></li>
+          <li class="tile"><div class="face f-g3"><div class="cost"><span class="gn">1</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Bloom Tender</span></div><span class="tp">Creature — Elf Druid</span></div></li>
+          <li class="tile"><div class="face f-x1"><div class="cost"><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Voice of Resurgence</span></div><span class="tp">Creature — Elemental</span></div></li>
+          <li class="tile"><div class="face f-x2"><div class="cost"><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Emmara, Soul of the Accord</span></div><span class="tp">Legendary Creature — Elf Cleric</span></div></li>
+          <li class="tile"><div class="face f-d1"><div class="cost"><span class="gn">1</span><span class="pip pW"></span></div><div class="mid"><span class="nm">Hanweir Militia Captain</span></div><span class="tp">Creature — Human Soldier</span></div><button class="flipb" aria-label="Flip card">&#8644;</button></li>
+          <li class="tile"><div class="face f-w1"><div class="cost"><span class="gn">1</span><span class="pip pW"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Adeline, Resplendent Cathar</span></div><span class="tp">Legendary Creature — Human Knight</span></div></li>
+          <li class="tile"><div class="face f-g4"><div class="cost"><span class="gn">2</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Imperious Perfect</span></div><span class="tp">Creature — Elf Warrior</span></div></li>
+          <li class="tile"><div class="face f-g1"><div class="cost"><span class="gn">2</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Rishkar, Peema Renegade</span></div><span class="tp">Legendary Creature — Elf Druid</span></div></li>
+          <li class="tile"><div class="face f-g2"><div class="cost"><span class="gn">2</span><span class="pip pG"></span></div><div class="mid"><span class="nm">Scute Swarm</span></div><span class="tp">Creature — Insect</span></div></li>
+          <li class="tile"><div class="face f-x2"><div class="cost"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Champion of Lambholt</span></div><span class="tp">Creature — Human Warrior</span></div></li>
+          <li class="tile"><div class="face f-w2"><div class="cost"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">Good-Fortune Unicorn</span></div><span class="tp">Creature — Unicorn</span></div></li>
+          <li class="tile"><div class="face f-x1"><div class="cost"><span class="gn">1</span><span class="pip pG"></span><span class="pip pW"></span></div><div class="mid"><span class="nm">King Darien XLVIII</span></div><span class="tp">Legendary Creature — Human Soldier</span></div></li>
+          <li class="tile"><div class="face f-w3"><div class="cost"><span class="gn">2</span><span class="pip pW"></span></div><div class="mid"><span class="nm">Mirror Entity</span></div><span class="tp">Creature — Shapeshifter</span></div></li>
+        </ul>
+        <h2 class="ghead">Lands — 36</h2>
+        <ul class="grid">
+          <li class="tile"><div class="face f-l1"><div class="cost"></div><div class="mid"><span class="nm">Forest</span></div><span class="tp">Basic Land — Forest</span></div><span class="qty">×12</span></li>
+          <li class="tile"><div class="face f-l2"><div class="cost"></div><div class="mid"><span class="nm">Plains</span></div><span class="tp">Basic Land — Plains</span></div><span class="qty">×9</span></li>
+          <li class="tile"><div class="face f-l3"><div class="cost"></div><div class="mid"><span class="nm">Sunpetal Grove</span></div><span class="tp">Land</span></div></li>
+          <li class="tile"><div class="face f-l1"><div class="cost"></div><div class="mid"><span class="nm">Canopy Vista</span></div><span class="tp">Land — Forest Plains</span></div></li>
+          <li class="tile"><div class="face f-l3"><div class="cost"></div><div class="mid"><span class="nm">Gavony Township</span></div><span class="tp">Land</span></div></li>
+          <li class="tile"><div class="face f-l2"><div class="cost"></div><div class="mid"><span class="nm">Overgrown Farmland</span></div><span class="tp">Land — Forest Plains</span></div></li>
+          <li class="tile"><div class="face f-l1"><div class="cost"></div><div class="mid"><span class="nm">Krosan Verge</span></div><span class="tp">Land</span></div></li>
+        </ul>
+      </main>
+    </div>
+
+    <!-- Agent drawer: suggestion push just arrived; hairline seam, no accent -->
+    <aside class="drawer" aria-label="Suggestions">
+      <div class="dhead">
+        <h2>Suggestions</h2>
+        <span class="dtime">14:02</span>
+        <button class="dx" aria-label="Close panel">&times;</button>
+      </div>
+      <div class="dbody">
+        <div class="srow">
+          <div class="thumb f-w1"><span class="gn">2</span><span class="pip pW"></span></div>
+          <div class="sinfo"><span class="snm">Teferi's Protection</span><span class="srsn">Phases your whole board out of a wrath for three mana.</span><span class="schip">Protection</span></div>
+        </div>
+        <div class="srow">
+          <div class="thumb f-w2"><span class="gn">2</span><span class="pip pW"></span></div>
+          <div class="sinfo"><span class="snm">Flawless Maneuver</span><span class="srsn">Free indestructible any turn Rhys is on the battlefield.</span><span class="schip">Protection</span></div>
+        </div>
+        <div class="srow">
+          <div class="thumb f-w3"><span class="gn">1</span><span class="pip pW"></span></div>
+          <div class="sinfo"><span class="snm">Selfless Spirit</span><span class="srsn">A flying body that trades itself to save the token army.</span><span class="schip">Protection</span></div>
+        </div>
+        <div class="srow">
+          <div class="thumb f-w1"><span class="gn">2</span><span class="pip pW"></span></div>
+          <div class="sinfo"><span class="snm">Unbreakable Formation</span><span class="srsn">Wrath insurance that doubles as an attack-step finisher.</span><span class="schip">Protection</span></div>
+        </div>
+        <div class="srow">
+          <div class="thumb f-x2"><span class="gn">X</span><span class="pip pG"></span><span class="pip pW"></span></div>
+          <div class="sinfo"><span class="snm">Grand Crescendo</span><span class="srsn">Instant-speed bodies that also shield everything you control.</span><span class="schip">Resilience</span></div>
+        </div>
+        <div class="srow">
+          <div class="thumb unk"><span class="unm">Unknown card</span><span class="uid">5f0c1d9a&hellip;</span></div>
+          <div class="sinfo"><span class="snm">Unknown card</span><span class="srsn">Rebuilds your board the turn after a sweeper resolves.</span><span class="schip">Recovery</span></div>
+        </div>
+      </div>
+      <div class="hist">
+        <span class="chip on">Suggestions &middot; 14:02</span>
+        <span class="chip">Suggestions &middot; 13:44</span>
+        <span class="chip">Tier list &middot; 13:29</span>
+        <span class="chip">Swaps &middot; 13:12</span>
+      </div>
+    </aside>
+
+    <div class="pill"><span class="pd"></span>Live &middot; Rhys Tokens</div>
+    <footer class="foot">Card data and imagery courtesy of <a href="https://scryfall.com">Scryfall</a>. Unofficial Fan Content permitted under the Wizards of the Coast <a href="https://company.wizards.com/en/legal/fancontentpolicy">Fan Content Policy</a>. Not approved/endorsed by Wizards.</footer>
+  </div>
+</div>
+
+</body>
+</html>

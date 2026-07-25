@@ -95,6 +95,41 @@ requirements (full analysis in `review-edge-case-hunter.md`):
   re-renders (a snap-back reads as a bug); cross-tab history divergence (FR-06
   broadcasts to all tabs, FR-18 history is per-tab) (UX spec).
 
+## 2026-07-25 — deltas from the Voltglass UX design
+
+The companion UX was designed directly in Claude Design rather than from the handoff
+prompts, and the resulting screen architecture differs from what the PRD assumed. The
+UX reviewer gate (`ux-designs/…/validation-report-2026-07-25.md`) surfaced four items
+that reach back into this PRD. Recorded here; the PRD body carries only the new FR.
+
+- **FR-23 added** (`companion_show_groups`, P1, Feature D / Phase 2). The design
+  introduced a fourth agent view — titled card groups with a rationale paragraph each —
+  that no existing tool produced. The UX spine had invented a tool name to fill the
+  gap; this makes it real. Note the payload shape is *not* covered by OQ-A's parked
+  constraints: groups carry a title and a prose rationale per group, and may reference
+  cards **outside** the active deck (budget substitutes, sideboard options, answers the
+  deck doesn't yet run). OQ-A's schema work must extend to cover it.
+- **FR-19's flip control is unchanged and still required.** The Voltglass design ships
+  no flip affordance, so the gate raised it as a missing design, not a missing
+  requirement — FR-19 already mandates "a dedicated flip control — distinct from
+  clicking the card". The control is now specified in `DESIGN.md` and `EXPERIENCE.md`;
+  no PRD change was needed, and no duplicate FR was created.
+- **FR-17's "opens a detail view" is now satisfied by a persistent panel.** The design
+  replaced the modal detail overlay with an always-present right-column panel that
+  tracks hover/focus, with click *pinning* it. The requirement's intent — click any card
+  in any panel, get full face + oracle text + prices — holds; the wording assumes a view
+  that opens. No change made; flagged so nobody reads the FR as mandating a modal.
+- **FR-05 is satisfied differently.** Grid and text list are now simultaneous columns
+  rather than a toggled pair, which removes the view toggle the previous UX draft
+  specified. The requirement says "renders … a card-art grid and a text list view" and
+  does not mandate a toggle, so this is compliant as written.
+- **Read-only-glass pressure.** The design reaches agent content from a header nav, not
+  only from an arriving push. The UX spine preserves the premise by ruling that a push
+  still opens its own view and the nav only re-opens a dismissed one — but this is the
+  one place where the design and §5's non-goals rub. If the ruling is reversed (nav
+  becomes the primary path), SC-1's "250 ms push-to-render" needs restating as
+  time-to-notification, because nothing would render on a push.
+
 ## Rejected alternatives (rationale preserved)
 
 - **Full persistent push history** (OQ-4): rejected — requires the backend to retain
