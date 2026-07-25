@@ -1,5 +1,5 @@
 # generated: 2026-06-20
-# last_updated: 2026-07-25 (story c1-5 code review passed → done, 8 low-severity review patches applied; epic-c1 in-progress)
+# last_updated: 2026-07-25 (story c1-6 → review; suite 1,532 passed / 45 deselected, +37 vs the 1,495 baseline)
 # project: Artificial-Planeswalker
 # project_key: NOKEY
 # tracking_system: file-system
@@ -46,7 +46,7 @@
 #   epic-c1..10 → _bmad-output/planning-artifacts/epics-companion-app.md          (c-prefixed, numbering UNCHANGED)
 
 generated: 2026-06-20
-last_updated: 2026-07-25 (story c1-5 code review passed → done, 8 low-severity review patches applied; epic-c1 in-progress)
+last_updated: 2026-07-25 (story c1-6 → review; suite 1,532 passed / 45 deselected, +37 vs the 1,495 baseline)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -230,7 +230,7 @@ development_status:
   c1-3-port-selection-with-ephemeral-fallback-and-a-printed-launch-url: done
   c1-4-typed-rest-error-contract-with-closed-reason-tokens: done
   c1-5-localhost-only-security-envelope-host-validation-and-cors: done
-  c1-6-lazy-database-engine-so-a-fresh-install-starts-instead-of-erroring: backlog
+  c1-6-lazy-database-engine-so-a-fresh-install-starts-instead-of-erroring: review
   c1-7-discovery-file-as-the-sole-rendezvous: backlog
   c1-8-single-instance-enforcement-with-verified-identity: backlog
   c1-9-one-console-script-that-dispatches-without-disturbing-the-mcp-server: backlog

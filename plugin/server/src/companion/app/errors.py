@@ -32,6 +32,7 @@ from typing import Any, get_args
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from sqlalchemy.exc import DatabaseError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import ClientDisconnect, Request
 from starlette.responses import JSONResponse, Response
@@ -279,6 +280,51 @@ async def http_exception_handler(request: Request, exc: Exception) -> Response:
     return error_response(reason, status=exc.status_code, headers=exc.headers)
 
 
+async def database_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Answer a transient database failure with ``503 database_unavailable``.
+
+    **Why ``DatabaseError`` and not the wider ``SQLAlchemyError``.** ``sqlalchemy.exc`` splits
+    cleanly along the line AD-16 cares about. ``DatabaseError`` — and its ``OperationalError`` /
+    ``IntegrityError`` / ``DataError`` children — is the database telling us something went wrong
+    *now*: "database is locked", "unable to open database file", "file is not a database". That is
+    the **"Database updating"** state, which the UI retries quietly. ``ArgumentError``,
+    ``InvalidRequestError`` and ``CompileError`` are us telling ourselves we wrote bad code; they
+    are deterministic, retrying them is pointless, and they must fall through to
+    :class:`UnhandledErrorMiddleware`'s ``500 internal_error`` — the distinction the c1-4 review
+    added ``internal_error`` for. The MCP side catches ``DatabaseError`` in every tool, so a reader
+    moving between the two shells meets one rule (AD-1).
+
+    Registering it here rather than in :mod:`src.companion.app.deps` is what makes every data-backed
+    route inherit the mapping with no per-route ceremony — the dependency's own readiness probe as
+    much as the route bodies c3-1 onward will add.
+
+    **Why the parameters are never logged.** ``str(exc)`` carries the failing statement *and its
+    bound parameters* (verified: ``[parameters: (...)]``), which on this path can be anything a
+    caller passed in. So the log names the exception class and ``exc.orig`` — the DBAPI error, the
+    part an operator actually needs — and stops there.
+
+    Args:
+        request: The request whose database read failed.
+        exc: The exception Starlette dispatched here.
+
+    Returns:
+        The typed body at 503.
+
+    Raises:
+        Exception: Re-raises anything that is not a ``DatabaseError``.
+    """
+    if not isinstance(exc, DatabaseError):
+        raise exc
+    logger.warning(
+        "Database read failed serving %s %s: %s: %s",
+        request.method,
+        request.url.path,
+        type(exc).__name__,
+        exc.orig,
+    )
+    return error_response("database_unavailable")
+
+
 class UnhandledErrorMiddleware:
     """Turn any unhandled exception into a typed ``500 internal_error``, logged once.
 
@@ -343,6 +389,18 @@ class UnhandledErrorMiddleware:
 def install_error_handling(app: FastAPI) -> None:
     """Register every error path on *app*, in one call.
 
+    Which exception becomes which token, in one place — the enumeration a new route should read
+    instead of adding a handler of its own:
+
+    * :class:`CompanionError` — a *modelled* failure; the token it carries, at its mapped status.
+    * ``RequestValidationError`` — ``400 invalid_request``.
+    * ``sqlalchemy.exc.DatabaseError`` — ``503 database_unavailable``; transient, and deliberately
+      narrower than ``SQLAlchemyError`` (see :func:`database_error_handler`).
+    * Starlette's ``HTTPException`` — the framework's own status, with ``invalid_request`` for 4xx
+      and ``internal_error`` for 5xx.
+    * anything else — ``500 internal_error`` from :class:`UnhandledErrorMiddleware`, which is where
+      a deterministic ``ArgumentError`` or ``InvalidRequestError`` correctly lands.
+
     Kept as a single function so the endpoint stories (c1-6, c3-1, c5-5) wire nothing new — they
     raise :class:`CompanionError` and the plumbing is already there. c1-5's middleware is the
     deliberate exception: it *sends* its typed body rather than raising (see
@@ -358,5 +416,6 @@ def install_error_handling(app: FastAPI) -> None:
     """
     app.add_exception_handler(CompanionError, companion_error_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
+    app.add_exception_handler(DatabaseError, database_error_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_middleware(UnhandledErrorMiddleware)

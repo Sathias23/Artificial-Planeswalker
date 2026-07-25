@@ -271,6 +271,19 @@
   `ConnectionFactory` happily uses the bare path — a half-works/half-crashes split. Pre-existing (the
   old `os.getenv("CARDS_DATABASE_URL", default)` had the same risk) and it fails loudly. Fix later by
   validating/normalising the URL form, or document that the `sqlite+aiosqlite:///` prefix is mandatory.
+  - **HOMED (not fixed) by story c1-6, 2026-07-25** — per the epic-7 gate-output-homing rule. On the
+    companion's REST side the crash now has a **defined behaviour instead of an undefined one**: the
+    bare path reaches `sqlalchemy.engine.make_url` inside
+    `src/companion/app/deps.py::database_file`, which raises `ArgumentError`; AD-16 rules that
+    deterministic, so it falls through to `UnhandledErrorMiddleware` and answers
+    `500 internal_error` rather than taking the process down. Pinned by
+    `test_deps.py::TestTransientFailureIsDatabaseUnavailable::
+    test_a_deterministic_argument_error_is_internal_error_not_unavailable`. Note the raise site moved
+    one step earlier than this item's original wording predicted (`make_url`, not
+    `create_async_engine`) because the companion parses the URL to derive the file path before
+    building an engine. The **underlying** half-works/half-crashes split between the async engine and
+    the sync `ConnectionFactory` is untouched and still owned here; a fix belongs in `src/paths.py`,
+    which story c1-6 is forbidden from editing.
 - **UNC `PLANESWALKER_DATA_DIR` yields a malformed async URL** — for `\\server\share\pw`,
   `database_path().as_posix()` collapses the leading `\\` to a single `/`, so the async URL drops the
   UNC authority while the sync factory keeps the native UNC path → divergence. Exotic (SQLite over a

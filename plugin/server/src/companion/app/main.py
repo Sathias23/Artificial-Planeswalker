@@ -24,6 +24,7 @@ from typing import Any
 
 from fastapi import FastAPI
 
+from src.companion.app import deps
 from src.companion.app.errors import (
     error_responses,
     install_error_handling,
@@ -40,15 +41,21 @@ _TITLE = "Artificial Planeswalker Companion"
 async def _shutdown(app: FastAPI) -> None:
     """Release everything the lifespan acquired, in reverse order of acquisition.
 
-    Nothing is acquired yet — this story's startup only mints an identity, which needs no release.
-    The helper exists so the teardown that stories c1-6 (engine dispose) and c1-7 (discovery-file
-    removal) hang their work on is already correct and already covered by a test, rather than being
-    retrofitted onto a bare ``yield``.
+    Today that is the database engine's connection pool, if a data-backed request ever caused one to
+    be created (c1-6). :meth:`~src.companion.app.deps.Database.dispose` is a no-op when it was not,
+    which is the ordinary case for a companion that only ever answered ``/health`` — so there is one
+    unconditional call rather than a condition per resource. Story c1-7 removes the discovery file
+    here too.
 
     Args:
         app: The application whose startup resources are being released.
     """
     logger.debug("Companion instance %s shutting down", getattr(app.state, "instance_id", None))
+    holder = deps.database(app)
+    # Guarded on the accessor, not on hasattr: None means the lifespan never ran, which is possible
+    # when a test drives _shutdown directly.
+    if holder is not None:
+        await holder.dispose()
 
 
 @asynccontextmanager
@@ -58,6 +65,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     ``instance_id`` is minted **here** rather than in :func:`build_app` so a constructed-but-never
     -started app has no identity to leak, and so every fresh start is distinguishable — that is
     what lets a caller tell a restarted companion from the one it was talking to (AD-4, FR-14).
+
+    The :class:`~src.companion.app.deps.Database` holder is created beside it, and for the same
+    reason it is safe to do so: like the identity mint it is an inert in-process object that cannot
+    fail. The **engine** inside it is not created here — a fresh install has no card database yet,
+    and AD-10 makes that a served UI state rather than a startup crash (FR-22). Startup therefore
+    still has no failure path, which is why nothing needs to move into the ``try``
+    (``test_app.py::test_startup_failure_propagates`` pins that).
 
     Teardown runs under ``try/finally`` and swallows its own failures: a shutdown that raises would
     mask the real reason the process is stopping and could strand later teardown steps. The failure
@@ -70,6 +84,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         None — the application is serving for the duration of the ``yield``.
     """
     app.state.instance_id = str(uuid.uuid4())
+    app.state.database = deps.Database()
     logger.info("Companion instance %s started", app.state.instance_id)
     try:
         yield
