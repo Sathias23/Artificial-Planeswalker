@@ -8,7 +8,7 @@ story_branch: feat/companion-c1-7-discovery-file-rendezvous
 
 # Story C1.7: Discovery file as the sole rendezvous
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -243,85 +243,85 @@ directory, which is why **test isolation is an AC rather than a side effect** (A
 
 ## Tasks / Subtasks
 
-- [ ] **Task 0 — State verification** (standing team agreement since the epic-6 retro: any story
+- [x] **Task 0 — State verification** (standing team agreement since the epic-6 retro: any story
       whose notes assert repository state opens with the cheap check that proves it)
-  - [ ] Create `feat/companion-c1-7-discovery-file-rendezvous` **off `feat/companion-app`**
+  - [x] Create `feat/companion-c1-7-discovery-file-rendezvous` **off `feat/companion-app`**
         (currently at `2461ade`); the story PR targets `feat/companion-app`.
-  - [ ] Confirm `src/companion/discovery.py` and `tests/unit/companion/test_discovery.py` do **not**
+  - [x] Confirm `src/companion/discovery.py` and `tests/unit/companion/test_discovery.py` do **not**
         exist, and that `main.lifespan` today mints `instance_id`, creates `deps.Database()`, logs,
         then `try/yield/finally`.
-  - [ ] Baseline the suite: `uv run pytest -m "not integration" -q` → expected **1,532 passed, 45
+  - [x] Baseline the suite: `uv run pytest -m "not integration" -q` → expected **1,532 passed, 45
         deselected**; `uv run pytest tests/unit/companion -q` → **222 passed**. Record any delta
         rather than chasing it.
-  - [ ] Re-confirm the three findings the ACs are shaped around, in a few lines each: `os.rename`
+  - [x] Re-confirm the three findings the ACs are shaped around, in a few lines each: `os.rename`
         over an existing file raises `FileExistsError` on Windows while `os.replace` succeeds;
         `pydantic.ValidationError` is a `ValueError`; and the real data dir
         (`src.paths.data_dir()`) currently holds **no** `companion.json`.
 
-- [ ] **Task 1 — Isolate the tests first** (AC: 12)
-  - [ ] Add the autouse `PLANESWALKER_DATA_DIR` fixture to `tests/unit/companion/conftest.py`,
+- [x] **Task 1 — Isolate the tests first** (AC: 12)
+  - [x] Add the autouse `PLANESWALKER_DATA_DIR` fixture to `tests/unit/companion/conftest.py`,
         with a docstring saying *why* (the lifespan is about to acquire a real filesystem effect and
         ~94 lifespan entries would land it in the developer's data directory).
-  - [ ] Run the companion suite **before** writing any production code: still **222 passed**. This
+  - [x] Run the companion suite **before** writing any production code: still **222 passed**. This
         ordering is deliberate — the fixture must be proven inert against today's behaviour, so a
         later failure is attributable to the feature and not to the fixture.
 
-- [ ] **Task 2 — The leaf, test-first** (AC: 1, 2, 3, 4, 6, 7)
-  - [ ] Write AC 6's reader matrix and AC 7's shape matrix as parametrized tests against
+- [x] **Task 2 — The leaf, test-first** (AC: 1, 2, 3, 4, 6, 7)
+  - [x] Write AC 6's reader matrix and AC 7's shape matrix as parametrized tests against
         `read_discovery` first; watch them fail on the missing module (red-phase evidence for the
         Debug Log).
-  - [ ] `src/companion/discovery.py` — module docstring covering: why this file is the *sole*
+  - [x] `src/companion/discovery.py` — module docstring covering: why this file is the *sole*
         rendezvous (AD-4), why it is a leaf and what that forbids (AD-3 — a stdio MCP session must
         not import FastAPI to learn a port), why the write is temp + `os.replace` and why
         `os.rename` is wrong on Windows, why a parse failure is *app not running* rather than an
         error, and that the token must never be logged. Module-level
         `logger = logging.getLogger(__name__)`.
-  - [ ] `COMPANION_FILENAME`, `discovery_path()`, `DiscoveryRecord` (with `Field(repr=False)` on
+  - [x] `COMPANION_FILENAME`, `discovery_path()`, `DiscoveryRecord` (with `Field(repr=False)` on
         `token` and the constraints from AC 7), `mint_token()`, `write_discovery()`,
         `read_discovery()`, `remove_discovery()` — Google docstrings on each, `Raises:` on
         `write_discovery` (the only one that may raise) and an explicit "never raises" line on the
         other two.
-  - [ ] Keep every local name clear of `_SESSION_RECEIVERS` (Gotcha 5).
+  - [x] Keep every local name clear of `_SESSION_RECEIVERS` (Gotcha 5).
 
-- [ ] **Task 3 — Publish from the lifespan** (AC: 8, 9, 10, 14)
-  - [ ] `src/companion/app/main.py` — `app.state.agent_token = discovery.mint_token()` beside the
+- [x] **Task 3 — Publish from the lifespan** (AC: 8, 9, 10, 14)
+  - [x] `src/companion/app/main.py` — `app.state.agent_token = discovery.mint_token()` beside the
         identity mint; a module-level `_publish_discovery(app)` helper that reads `bound_port(app)`,
         skips with a `WARNING` when it is `None`, otherwise builds the record and writes it, logging
         the resulting **path and port** at `INFO` (never the token).
-  - [ ] `agent_token(app)` accessor, mirroring `bound_port` line for line.
-  - [ ] Change nothing else in `main.py` — `build_app`, `_CompanionFastAPI`, the middleware ordering
+  - [x] `agent_token(app)` accessor, mirroring `bound_port` line for line.
+  - [x] Change nothing else in `main.py` — `build_app`, `_CompanionFastAPI`, the middleware ordering
         and the app-level `responses=` are untouched, and no new work moves inside the lifespan's
         `try`.
-  - [ ] Re-run `test_app.py` **unedited** — especially `TestConstructionIsInert` and
+  - [x] Re-run `test_app.py` **unedited** — especially `TestConstructionIsInert` and
         `test_startup_failure_propagates`.
 
-- [ ] **Task 4 — Retract on shutdown** (AC: 11)
-  - [ ] `_shutdown` — `remove_discovery(instance_id)` **before** the engine dispose, guarded on the
+- [x] **Task 4 — Retract on shutdown** (AC: 11)
+  - [x] `_shutdown` — `remove_discovery(instance_id)` **before** the engine dispose, guarded on the
         `instance_id` being present at all (a test may drive `_shutdown` on an app whose lifespan
         never ran). Update the docstring: it now releases two things, and says which order and why.
-  - [ ] Verify by test that a foreign entry survives byte-for-byte.
+  - [x] Verify by test that a foreign entry survives byte-for-byte.
 
-- [ ] **Task 5 — Tests** (AC: 3, 5, 8, 9, 10, 11, 15)
-  - [ ] `tests/unit/companion/test_discovery.py` per AC 15, with the non-vacuity pairings called out
+- [x] **Task 5 — Tests** (AC: 3, 5, 8, 9, 10, 11, 15)
+  - [x] `tests/unit/companion/test_discovery.py` per AC 15, with the non-vacuity pairings called out
         in comments.
-  - [ ] The AC 3 atomicity tests must have teeth: the `os.rename`-explodes mutation, and the
+  - [x] The AC 3 atomicity tests must have teeth: the `os.rename`-explodes mutation, and the
         interrupted-write assertion on **observable filesystem state** (target content unchanged,
         no leftover temp file) — never "a mock went uncalled".
-  - [ ] AC 5's leak test captures the **root** logger at DEBUG for the whole lifespan, and checks
+  - [x] AC 5's leak test captures the **root** logger at DEBUG for the whole lifespan, and checks
         `record.getMessage()` *and* `record.args` (a `%`-style record hides its arguments from the
         unformatted `msg`).
 
-- [ ] **Task 6 — Gates, mirror, deferred-work and scope** (AC: 13, 16, 17, 18)
-  - [ ] `uv run ruff check . --fix` · `uv run ruff format .` · `uv run mypy src/` ·
+- [x] **Task 6 — Gates, mirror, deferred-work and scope** (AC: 13, 16, 17, 18)
+  - [x] `uv run ruff check . --fix` · `uv run ruff format .` · `uv run mypy src/` ·
         `uv run mypy src/ --platform linux` · `uv run pytest -m "not integration"` — paste actual
         counts into the Debug Log.
-  - [ ] `_bmad-output/implementation-artifacts/deferred-work.md`: record the **Windows
+  - [x] `_bmad-output/implementation-artifacts/deferred-work.md`: record the **Windows
         replace-while-open** hazard (Gotcha 2) — measured here, no failing user story behind it,
         natural home is c1-8, which is the story that makes startup contend with an existing file.
         Per the epic-7 gate-output rule, home it rather than fix it.
-  - [ ] `uv run python -m scripts.build_plugin`, `git add plugin/`, verify
+  - [x] `uv run python -m scripts.build_plugin`, `git add plugin/`, verify
         `git status --porcelain -- plugin/` is clean after the commit.
-  - [ ] Confirm by command that the AC 18 forbidden files are untouched:
+  - [x] Confirm by command that the AC 18 forbidden files are untouched:
         `git status --porcelain -- tests/unit/companion/test_app.py tests/unit/companion/test_deps.py tests/unit/companion/test_errors.py tests/unit/companion/test_security.py tests/unit/companion/test_server.py tests/unit/companion/test_import_boundary.py .github/workflows/ci.yml pyproject.toml uv.lock .pre-commit-config.yaml src/data src/mcp_server src/paths.py src/companion/contracts.py src/companion/app/deps.py src/companion/app/errors.py src/companion/app/security.py src/companion/app/server.py`
         returns empty.
 
@@ -642,16 +642,174 @@ Neither blocks implementation.
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+claude-opus-5[1m] (Amelia / bmad-dev-story)
 
 ### Debug Log References
 
+**Task 0 — state verification (2026-07-26).** `HEAD = 2461ade` on `feat/companion-app`, tree clean
+apart from the story file and sprint-status. Branch `feat/companion-c1-7-discovery-file-rendezvous`
+created off it. `src/companion/discovery.py` and `tests/unit/companion/test_discovery.py` both
+confirmed absent.
+
+Baseline, as the notes predicted:
+
+```
+uv run pytest -m "not integration" -q   →  1532 passed, 45 deselected in 43.10s
+uv run pytest tests/unit/companion -q   →  222 passed in 1.12s
+```
+
+The three findings the ACs are shaped around, re-confirmed in this environment:
+
+```
+1  ValidationError is ValueError     : True
+1b JSONDecodeError is ValueError     : True
+1c UnicodeDecodeError is ValueError  : True
+13 os.rename over existing           : FileExistsError - [WinError 183] Cannot create a file when
+                                       that file already exists
+2  os.replace over existing          : OK, target now = A
+   real data_dir                     : C:\Users\brads\AppData\Local\artificial-planeswalker
+   companion.json present            : False
+   contents                          : ['cards.db', 'fastembed_cache']
+4  len(token_urlsafe(32))            : 43
+```
+
+One immaterial delta from the story notes: the data dir holds `cards.db` and `fastembed_cache` but
+no `-shm`/`-wal` siblings today (no session had the DB open). The load-bearing claim — **no
+`companion.json`** — holds.
+
+**Task 1 — fixture proven inert before any production code.** With the autouse
+`PLANESWALKER_DATA_DIR` fixture added and nothing else changed: `222 passed in 1.30s`. So any later
+failure is attributable to the feature, not the fixture.
+
+**Red-phase evidence.** AC 6 / AC 7 matrices written first, run against the missing module:
+
+```
+tests\unit\companion\test_discovery.py:25: in <module>
+    from src.companion import discovery
+E   ImportError: cannot import name 'discovery' from 'src.companion'
+Interrupted: 1 error during collection
+```
+
+After `discovery.py` landed: `25 passed, 1 skipped` (the skip is the POSIX-only unreadable-file
+case — `chmod` does not remove read access on Windows). The lifespan ACs were then written before
+`main.py` was touched, and went red on their own terms:
+
+```
+8 failed, 45 passed, 1 skipped
+FAILED test_the_lifespan_publishes_the_port_it_actually_bound
+FAILED test_the_published_record_round_trips_through_the_real_reader
+FAILED test_no_bound_port_means_no_file
+FAILED test_a_failed_publish_fails_the_launch
+FAILED test_a_clean_shutdown_retracts_the_rendezvous
+FAILED test_agent_token_is_none_before_the_lifespan_runs
+FAILED test_agent_token_returns_the_minted_credential
+FAILED test_the_token_leaks_into_no_log_response_or_schema
+```
+
+One of those failures was a **test** bug worth recording: the leak test read the file back *after*
+the lifespan exited, where AC 11's retraction had already removed it. The read moved inside the
+`async with`; the assertion it anchors (non-vacuity — the token really is discoverable, just not on
+the four forbidden surfaces) is unchanged.
+
+**Task 6 — gates (actual output).**
+
+```
+uv run ruff check .                     →  All checks passed!
+uv run ruff format --check .            →  275 files already formatted
+uv run mypy src/                        →  Success: no issues found in 81 source files
+uv run mypy src/ --platform linux       →  Success: no issues found in 81 source files
+uv run pytest -m "not integration" -q   →  1585 passed, 1 skipped, 45 deselected in 52.50s
+uv run pytest tests/unit/companion -q   →  275 passed, 1 skipped in 2.24s
+```
+
+1,585 = the 1,532 baseline + 53 new tests, **no regressions and no edits to any pre-existing test
+file except `conftest.py`** (AC 12's single sanctioned exception). Ruff first flagged four
+over-long docstring lines (E501, 101–102 chars); all four were reworded, not `noqa`'d.
+
+**AC 12 verified against the machine, not just the fixture.** After the full suite ran, the real
+data directory still holds `['cards.db', 'fastembed_cache']` and `companion.json present: False` —
+the ~94 lifespan entries all wrote into their own `tmp_path`.
+
+**AC 17 — plugin mirror.** `uv run python -m scripts.build_plugin` regenerated
+`plugin/server/src/companion/discovery.py` and refreshed `main.py`; both committed, and
+`git status --porcelain -- plugin/` is empty afterwards. The pre-commit `rebuild plugin/` hook also
+passed on the commit itself.
+
+**AC 18 — scope boundary verified by command, not assumed.** `git status --porcelain --` over all
+17 protected paths (`test_app.py`, `test_deps.py`, `test_errors.py`, `test_security.py`,
+`test_server.py`, `test_import_boundary.py`, `ci.yml`, `pyproject.toml`, `uv.lock`,
+`.pre-commit-config.yaml`, `src/data`, `src/mcp_server`, `src/paths.py`, `contracts.py`, `deps.py`,
+`errors.py`, `security.py`, `server.py`) returned **empty**. `test_import_boundary.py` classified
+the new leaf with no edit, exactly as AC 13 predicted, and `test_app.py`'s
+`TestConstructionIsInert` and `test_startup_failure_propagates` stayed green unedited.
+
 ### Completion Notes List
 
+**What shipped.** `src/companion/discovery.py` — the second leaf module — owning
+`COMPANION_FILENAME`, `DiscoveryRecord`, `discovery_path()`, `mint_token()`, `write_discovery()`,
+`read_discovery()` and `remove_discovery()`; plus the lifespan half in `src/companion/app/main.py`
+(`_publish_discovery()`, `agent_token()`, the token mint, and a `_shutdown` that retracts before it
+disposes). All 18 ACs satisfied.
+
+**Implementation decisions worth a reviewer's attention:**
+
+- **The failure branch is `except BaseException: unlink; raise`**, not `except Exception`. A
+  `KeyboardInterrupt` mid-write should still take the temp file with it; the exception is always
+  re-raised, so nothing is swallowed. AC 3 asked for the temp file gone "on any failure" and this
+  is the literal reading.
+- **`_shutdown` guards on `instance_id is not None`, then calls `remove_discovery` unconditionally.**
+  The ownership guard lives in the leaf (one small read), so a process that never published removes
+  nothing with no special case — AC 9 and AC 11 compose exactly as Decide-once #2 predicted.
+- **`remove_discovery` returns `False` on an unlink `OSError`** as well as on a foreign/absent/
+  unparseable file. The AC named the logging and the never-raises property; `False` is the honest
+  return for "removal did not happen".
+- **The AC 3 mutation test has real teeth.** `test_write_does_not_use_os_rename` patches `os.rename`
+  to raise `AssertionError` and asserts the write still succeeds over an existing file — it goes red
+  the instant someone "simplifies" `os.replace` to `os.rename`, which is the c1-6 vacuous-test
+  lesson applied. The interrupted-write tests assert **observable filesystem state** (previous bytes
+  intact, directory free of `.tmp` litter), never a mock's call count.
+- **Non-vacuity pairings, per AC 15.** Each AC 6 `None` case sits beside
+  `test_reader_returns_a_record_for_a_well_formed_file`; the AC 7 rejection matrix is paired with
+  `test_reader_accepts_every_port_at_and_inside_the_bounds` (1 / 8765 / 65535) and the
+  extra-key round-trip; the AC 11 refusals are paired with `test_removal_deletes_our_own_entry`; and
+  the AC 5 leak test ends by proving the token *is* in the file it searched four other surfaces for.
+- **Gotcha 5 respected:** no local in `discovery.py` is named `session`, `sess`, `db`, `db_session`,
+  `database`, `conn` or `connection`. The file handle is `handle`, the directory `directory`, the
+  model `record`.
+- **`discovery.py` names no port number at all**, so AD-4's "8765 appears only in `server.py`" holds.
+
+**Deferred, not fixed (AC 16 / Task 6, per the epic-7 gate-output homing rule):** the Windows
+`os.replace`-while-open `PermissionError` (Gotcha 2) is recorded in `deferred-work.md` under a new
+c1-7 section and homed against **c1-8**, the story where startup first contends with an existing
+file. It is measured, Windows-only, has no failing user story behind it, and interacts with
+Decide-once #3 (a transient replace failure would currently abort a launch) — the note spells that
+out so c1-8 inherits the trade rather than rediscovering it.
+
+**Open questions for Brad are unchanged and still non-blocking.** Q1 (abort vs degrade on an
+unwritable data directory) was implemented as Decide-once #3 chose — abort — and the reverse is
+still a two-line change. Q2 (the token is never rotated within a process) stands as recorded.
+
+**Known pre-existing flake, not seen here:** `test_list_decks_with_strategy_field`'s same-tick
+ordering flake did not fire in any of the four full-suite runs during this story.
+
 ### File List
+
+- `src/companion/discovery.py` — **new**; the discovery-file leaf (AD-3, AD-4).
+- `src/companion/app/main.py` — modified; token mint, `_publish_discovery()`, `agent_token()`,
+  `_shutdown` retraction, lifespan docstring.
+- `tests/unit/companion/test_discovery.py` — **new**; 54 tests (53 run, 1 POSIX-only skip).
+- `tests/unit/companion/conftest.py` — modified; autouse `PLANESWALKER_DATA_DIR` isolation (AC 12).
+- `_bmad-output/implementation-artifacts/deferred-work.md` — modified; c1-7 section homing the
+  Windows replace-while-open hazard against c1-8.
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — modified; c1-7 → review.
+- `_bmad-output/implementation-artifacts/c1-7-discovery-file-as-the-sole-rendezvous.md` — modified;
+  this record.
+- `plugin/server/src/companion/discovery.py` — **new** (generated mirror).
+- `plugin/server/src/companion/app/main.py` — modified (generated mirror).
 
 ## Change Log
 
 | Date | Change |
 | --- | --- |
+| 2026-07-26 | Story implemented on `feat/companion-c1-7-discovery-file-rendezvous` (commit `3ea6732`, baseline `2461ade`). New leaf `src/companion/discovery.py` publishes and reads `companion.json` — atomic `mkstemp`(in the target's own directory) + `fsync` + `chmod 0o600` + `os.replace`, a reader whose single `except (OSError, ValueError)` turns every unusable file into *app not running*, and an `instance_id`-guarded removal. `main.lifespan` mints the per-process agent token, publishes a record naming `bound_port(app)` **before** the `try` so a failed publish aborts the launch, and `_shutdown` retracts our own entry before disposing the engine; `agent_token(app)` joins `bound_port(app)`. `tests/unit/companion/conftest.py` gained the autouse `PLANESWALKER_DATA_DIR` fixture (AC 12) and was proven inert at 222 passed before any production code was written. All 18 ACs met; 53 new tests take the suite from **1,532 → 1,585 passed** (1 POSIX-only skip, 45 deselected) with ruff, `mypy src/` and `mypy src/ --platform linux` clean and **no edit to any file AC 18 protects** (verified by `git status --porcelain` over all 17 paths). Windows `os.replace`-while-open hazard homed in `deferred-work.md` against c1-8. Status → review. |
 | 2026-07-26 | Story c1-7 created from epics Story 1.7 + AD-4/AD-3/AD-5/AD-10/AD-15, with every load-bearing claim verified against the installed pydantic 2.12.0 / Python 3.12.13 on Windows rather than assumed: `os.rename` over an existing file raises `FileExistsError` while `os.replace` succeeds, `os.replace` fails with `PermissionError` while a reader holds the target open, `ValidationError`/`JSONDecodeError`/`UnicodeDecodeError` are all `ValueError`s, `Field(repr=False)` hides the token from `repr` and `str` while `model_dump_json` still writes it, pydantic ignores unknown keys by default, `os.chmod(0o600)` is a no-op on Windows, and `mkstemp(dir=…)` + `fdopen` + `os.replace` leaves no litter. Baseline re-measured at `2461ade`: 1,532 passed / 45 deselected (222 in `tests/unit/companion`), and the real data dir confirmed to hold no `companion.json` today. Five decide-once rulings: the record's model lives in `discovery.py` not `contracts.py`; shutdown removal is ownership-guarded by `instance_id`; a failed publish fails the launch; `Field(repr=False)` over `SecretStr`; and test isolation (the autouse `PLANESWALKER_DATA_DIR` fixture) is a first-class AC because ~94 existing lifespan entries would otherwise write into the developer's real data directory. Homes (does not fix) the Windows replace-while-open hazard against c1-8. Status → ready-for-dev. |
