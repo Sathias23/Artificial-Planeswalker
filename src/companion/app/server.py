@@ -18,9 +18,11 @@ and it lives behind :func:`run`, so ``build_app()`` stays inert (AD-10) and the 
 remains testable without a port.
 """
 
+import io
 import logging
 import os
 import socket
+import sys
 
 import uvicorn
 from fastapi import FastAPI
@@ -135,8 +137,13 @@ def bind_localhost_socket(preferred: int) -> socket.socket:
     The socket is bound but deliberately **not** listened on; ``loop.create_server(sock=…)`` calls
     ``listen()`` itself, and binding is all that is needed to reserve the port and learn its number.
 
+    Invariant :func:`run` relies on: when the preferred bind succeeds, the returned socket holds
+    **exactly** *preferred* — so a caller may infer "the fallback was taken" from the bound port
+    differing from the preferred one.
+
     Args:
-        preferred: The port to attempt first. ``0`` skips straight to an ephemeral port.
+        preferred: The port to attempt first. ``0`` *is already* the ephemeral request, so it is
+            bound exactly once — a failure propagates directly, with no pointless identical retry.
 
     Returns:
         A bound socket. Read the port it actually got from ``getsockname()[1]``.
@@ -149,10 +156,14 @@ def bind_localhost_socket(preferred: int) -> socket.socket:
         sock.bind((HOST, preferred))
     except OSError:
         sock.close()
+        if preferred == 0:
+            raise
     else:
         return sock
 
-    logger.info("Port %d unavailable; falling back to an ephemeral port", preferred)
+    # WARNING, not INFO: no root handler is configured yet (see run()), and logging.lastResort
+    # surfaces WARNING+ to stderr — an INFO record here would be dropped in every real run.
+    logger.warning("Port %d unavailable; falling back to an ephemeral port", preferred)
     fallback = _new_socket()
     try:
         fallback.bind((HOST, 0))
@@ -198,6 +209,12 @@ def run(port: int | None = None) -> None:
         port: A port to prefer over the environment variable and the default. Invalid values are
             ignored with a warning rather than raising — see :func:`resolve_preferred_port`.
     """
+    # The launch lines contain an em dash (AC 6's exact text). A redirected stdout under a
+    # non-UTF-8 locale (LANG=C service capture, cp437 console) would otherwise raise
+    # UnicodeEncodeError on the one line that must never fail — this process owns its stdout
+    # (AD-15), so degrade unencodable characters instead of crashing.
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(errors="replace")
     preferred = resolve_preferred_port(port)
     sock = bind_localhost_socket(preferred)
     try:

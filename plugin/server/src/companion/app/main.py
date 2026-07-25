@@ -74,12 +74,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def bound_port(app: FastAPI) -> int | None:
-    """Return the port this process is actually serving on, or ``None`` if it is not serving.
+    """Return the port the runner bound for *app*, or ``None`` if it never bound one.
 
     The runner (:mod:`src.companion.app.server`) binds the socket *before* uvicorn starts and writes
     the port it really got here, so the value reflects the ephemeral fallback rather than whatever
-    was preferred. Absence means *not bound*, exactly as absence of ``instance_id`` means *not
-    started* — a constructed-but-never-run app cannot masquerade as a serving one.
+    was preferred. Absence means *never bound*, exactly as absence of ``instance_id`` means *not
+    started* — a constructed-but-never-run app cannot masquerade as a serving one. Presence is
+    **not** a liveness signal: the value is never cleared, so after shutdown (or a serve failure)
+    it still names a port whose socket is gone. Within a running process the distinction is moot —
+    the app object dies with :func:`~src.companion.app.server.run` — but do not read this accessor
+    as "the server is up".
 
     This accessor lives in ``main.py`` rather than in the runner so its callers — c1-5's ``Host``
     middleware and c1-7's discovery-file writer — reach the port without importing the process

@@ -44,8 +44,24 @@ class _Loopback:
             The listening socket.
         """
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # Tracked before bind/listen: if either raises, teardown still closes the socket.
+        self._opened.append(sock)
         sock.bind((server.HOST, port))
         sock.listen(1)
+        return sock
+
+    def track(self, sock: socket.socket) -> socket.socket:
+        """Adopt an externally created socket into this helper's teardown.
+
+        This is how tests own sockets returned by ``bind_localhost_socket()`` without per-test
+        ``try/finally`` — the testing standard this story set for itself.
+
+        Args:
+            sock: The socket to close at teardown.
+
+        Returns:
+            The same socket, for inline use.
+        """
         self._opened.append(sock)
         return sock
 
@@ -65,9 +81,12 @@ class _Loopback:
         return port
 
     def close_all(self) -> None:
-        """Close every socket this helper opened."""
+        """Close every socket this helper opened; one failing close must not strand the rest."""
         for sock in self._opened:
-            sock.close()
+            try:
+                sock.close()
+            except OSError:
+                pass
 
 
 @pytest.fixture
@@ -160,39 +179,31 @@ class TestBind:
     def test_a_free_port_is_taken_exactly(self, loopback):
         wanted = loopback.free_port()
 
-        sock = server.bind_localhost_socket(wanted)
-        try:
-            assert _port_of(sock) == wanted
-        finally:
-            sock.close()
+        sock = loopback.track(server.bind_localhost_socket(wanted))
+
+        assert _port_of(sock) == wanted
 
     def test_the_socket_is_loopback_ipv4_stream(self, loopback):
-        sock = server.bind_localhost_socket(loopback.free_port())
-        try:
-            assert sock.family == socket.AF_INET
-            assert sock.type == socket.SOCK_STREAM
-            assert sock.getsockname()[0] == "127.0.0.1"
-        finally:
-            sock.close()
+        sock = loopback.track(server.bind_localhost_socket(loopback.free_port()))
+
+        assert sock.family == socket.AF_INET
+        assert sock.type == socket.SOCK_STREAM
+        assert sock.getsockname()[0] == "127.0.0.1"
 
     def test_an_occupied_port_falls_back_to_a_different_one(self, loopback):
         taken = _port_of(loopback.occupy())
 
-        sock = server.bind_localhost_socket(taken)
-        try:
-            actual = _port_of(sock)
-            assert actual != taken
-            assert actual != 0
-            assert sock.getsockname()[0] == "127.0.0.1"
-        finally:
-            sock.close()
+        sock = loopback.track(server.bind_localhost_socket(taken))
+        actual = _port_of(sock)
 
-    def test_zero_goes_straight_to_an_ephemeral_port(self):
-        sock = server.bind_localhost_socket(0)
-        try:
-            assert _port_of(sock) != 0
-        finally:
-            sock.close()
+        assert actual != taken
+        assert actual != 0
+        assert sock.getsockname()[0] == "127.0.0.1"
+
+    def test_zero_goes_straight_to_an_ephemeral_port(self, loopback):
+        sock = loopback.track(server.bind_localhost_socket(0))
+
+        assert _port_of(sock) != 0
 
     def test_the_failed_attempt_is_closed_before_the_fallback(self, loopback, monkeypatch):
         """AC 9: the conflicting socket is released, not left dangling for the GC to reap."""
@@ -208,21 +219,16 @@ class TestBind:
         # Patched *after* the port is occupied, so only the sockets this call creates are recorded.
         monkeypatch.setattr(server.socket, "socket", recording)
 
-        sock = server.bind_localhost_socket(taken)
-        try:
-            assert len(created) == 2, "expected one failed attempt and one ephemeral fallback"
-            assert created[0].fileno() == -1, "the socket whose bind failed was not closed"
-            assert created[1] is sock
-        finally:
-            sock.close()
+        sock = loopback.track(server.bind_localhost_socket(taken))
+
+        assert len(created) == 2, "expected one failed attempt and one ephemeral fallback"
+        assert created[0].fileno() == -1, "the socket whose bind failed was not closed"
+        assert created[1] is sock
 
     def test_reuseaddr_follows_asyncios_own_platform_policy(self, loopback):
         """Gotcha 2: wanted on POSIX (``TIME_WAIT``), actively harmful on Windows."""
-        sock = server.bind_localhost_socket(loopback.free_port())
-        try:
-            enabled = bool(sock.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR))
-        finally:
-            sock.close()
+        sock = loopback.track(server.bind_localhost_socket(loopback.free_port()))
+        enabled = bool(sock.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR))
 
         assert enabled is (os.name == "posix")
 
@@ -394,12 +400,9 @@ class TestServeConfiguration:
                 captured["sockets"] = sockets
 
         monkeypatch.setattr(server.uvicorn, "Server", FakeServer)
-        sock = server.bind_localhost_socket(loopback.free_port())
-        try:
-            port = _port_of(sock)
-            server._serve(build_app(), sock, port)
-        finally:
-            sock.close()
+        sock = loopback.track(server.bind_localhost_socket(loopback.free_port()))
+        port = _port_of(sock)
+        server._serve(build_app(), sock, port)
 
         config = captured["config"]
         assert captured["sockets"] == [sock], (
@@ -422,16 +425,16 @@ def _python_files(*directories: Path) -> list[Path]:
         A sorted list of Python source files.
 
     Raises:
-        AssertionError: If the walk finds nothing — a vacuous scan is a dead guard (c1-1's lesson).
+        AssertionError: If any *single* directory yields nothing — an aggregate check would let a
+            renamed or typo'd directory silently narrow the scan while the other side keeps it
+            green (c1-1's dead-guard lesson, one level down).
     """
-    files = sorted(
-        path
-        for directory in directories
-        for path in directory.rglob("*.py")
-        if "__pycache__" not in path.parts
-    )
-    assert files, f"scan found no Python files under {directories} — check the path constants"
-    return files
+    files: list[Path] = []
+    for directory in directories:
+        found = [path for path in directory.rglob("*.py") if "__pycache__" not in path.parts]
+        assert found, f"scan found no Python files under {directory} — check the path constants"
+        files.extend(found)
+    return sorted(files)
 
 
 class TestNothingElseHardcodesThePort:
@@ -440,11 +443,20 @@ class TestNothingElseHardcodesThePort:
     def test_only_the_runner_names_the_default_port(self):
         # tests/ is out of scope — this very file must name the number — and plugin/ is a verbatim
         # generated copy of src/, so scanning it would only ever double-report src/'s findings.
+        # AST numeric literals, not a substring match: `8_765` and hex spellings cannot evade the
+        # scan, and `18765` or a hash in a comment cannot false-positive it.
         offenders: list[str] = []
         legal = 0
 
         for path in _python_files(REPO_ROOT / "src", REPO_ROOT / "scripts"):
-            if "8765" not in path.read_text(encoding="utf-8-sig"):
+            tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+            names_the_port = any(
+                isinstance(node, ast.Constant)
+                and not isinstance(node.value, bool)
+                and node.value == 8765
+                for node in ast.walk(tree)
+            )
+            if not names_the_port:
                 continue
             relative = path.resolve().relative_to(REPO_ROOT).as_posix()
             if relative == "src/companion/app/server.py":
@@ -487,7 +499,9 @@ class TestNothingBindsBeyondLoopback:
             "no bind() call found under src/companion/ — the NFR-01 guard is vacuous. If the bind "
             "moved, point this scan at its new home rather than deleting it."
         )
-        offenders = [entry for entry in binds if entry[2].split(".")[-1] != "HOST"]
+        # Exactly the bare name `HOST`, not a suffix match: `other_module.HOST` could carry any
+        # value, so an attribute that merely *ends* in HOST must fail loudly and be reviewed here.
+        offenders = [entry for entry in binds if entry[2] != "HOST"]
         assert not offenders, (
             f"a bind target other than the HOST constant was found: {offenders}. NFR-01 makes "
             "127.0.0.1 the security envelope — 0.0.0.0, '::', '' and 'localhost' are all forbidden."

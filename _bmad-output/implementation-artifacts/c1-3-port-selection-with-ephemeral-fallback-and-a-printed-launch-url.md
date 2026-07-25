@@ -8,7 +8,7 @@ story_branch: feat/companion-c1-3-port-selection-ephemeral-fallback
 
 # Story C1.3: Port selection with ephemeral fallback and a printed launch URL
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -209,6 +209,78 @@ through it. Get the seam wrong here and four stories inherit the mistake.
         `git status --porcelain -- plugin/` is clean after the commit.
   - [x] Confirm `test_import_boundary.py`, `test_app.py`, `ci.yml`, `pyproject.toml` and `uv.lock`
         are untouched (AC 16).
+
+### Review Findings
+
+Code review 2026-07-25 (Blind Hunter + Edge Case Hunter + Acceptance Auditor; diff
+`a7e1355...041dd95`). Auditor verdict: **no AC violations, no scope breaches** — ACs 1–14 and 16
+verified directly (gates reproduced at the review commit: 1,405 passed / 45 deselected, mirror
+blob-identical, forbidden-edit list untouched); AC 15 verified as recorded. 29 raw findings
+deduplicated to 16; everything below is hardening or record accuracy.
+
+- [x] [Review][Patch] The em dash in both mandatory launch lines can crash `run()` with
+      `UnicodeEncodeError` — the one line the user *must* see is the one that can throw, when
+      stdout is redirected under a non-UTF-8 locale (`LANG=C` service/cron capture; cp437 console).
+      Fix without changing AC 6's string: reconfigure stdout to `errors="replace"` in the runner,
+      which owns the stream per AD-15 — exact output where encodable, `?` instead of a crash where
+      not. [src/companion/app/server.py:209-218] (Severity: Medium)
+- [x] [Review][Patch] The AC 1 AST guard's offender filter is a name-suffix match
+      (`.split(".")[-1] != "HOST"`), so any attribute *named* `HOST` (e.g. `evil.HOST = "0.0.0.0"`)
+      passes, and the Completion Notes oversell it as "a direct proof of 'no other bind target'".
+      Tighten to the exact bare name `HOST` and re-word the claim as a `.bind()`-scoped tripwire.
+      [tests/unit/companion/test_server.py:490] (Severity: Low)
+- [x] [Review][Patch] The AC 5 scan is a substring match — `8_765`/`0x223D` evade it and `18765`
+      or a hash in a comment false-positives it. Replace with an AST numeric-literal scan
+      (`ast.Constant` int equal to 8765), keeping the non-vacuity assertion.
+      [tests/unit/companion/test_server.py:447] (Severity: Low)
+- [x] [Review][Patch] `bind_localhost_socket(0)` treats a failed ephemeral bind as a conflict:
+      it logs "Port 0 unavailable — falling back to an ephemeral port" and retries an *identical*
+      `(HOST, 0)` bind before propagating. Give `preferred == 0` an early single-bind path, and
+      document the invariant `run()`'s fallback-line inference relies on (success on the preferred
+      path returns exactly `preferred`). [src/companion/app/server.py:147-162] (Severity: Low)
+- [x] [Review][Patch] The fallback `logger.info` is dead code by the module's own doctrine — no
+      root handler exists and `logging.lastResort` surfaces only WARNING+, so the record is dropped
+      in every real run. Raise to `logger.warning`, matching the invalid-config path's level.
+      [src/companion/app/server.py:155] (Severity: Low)
+- [x] [Review][Patch] `bound_port()`'s docstring over-claims: "the port this process is actually
+      serving on" — but the value is stamped before serving and never cleared (not on `_serve`
+      raising, not after shutdown), so presence does not imply liveness. State absence ⇒ never
+      bound; presence ⇒ the port the runner bound, which may since have closed. c1-5/c1-7 read
+      this docstring. [src/companion/app/main.py:76-92] (Severity: Low)
+- [x] [Review][Patch] Test socket hygiene deviates from this story's own testing standard ("via a
+      fixture, not `try/finally` in each test"): sockets returned by `bind_localhost_socket()` are
+      closed by per-test `try/finally`; `occupy()` appends to the teardown list only *after*
+      bind/listen (a raise leaks the socket); `close_all()` stops at the first failing close. Add
+      a `track()` to the fixture, adopt it in the bind tests, append-before-bind, and make
+      `close_all` exception-tolerant. [tests/unit/companion/test_server.py:26-98] (Severity: Low)
+- [x] [Review][Patch] `_python_files` asserts non-vacuity in aggregate — if `scripts/` were renamed
+      or a path constant typo'd, the AC 5 scan would silently narrow to `src/` and stay green
+      (c1-1's dead-guard failure mode, one level down). Assert each directory yields files.
+      [tests/unit/companion/test_server.py:427-434] (Severity: Low)
+- [x] [Review][Patch] Story-record accuracy: the File List row for this record says "Modified" but
+      the diff creates it (**NEW**), and the Debug Log's format gate says "262 files already
+      formatted" where the review commit reports 263. [story File List + Debug Log] (Severity: Low)
+- [x] [Review][Defer] No `SO_EXCLUSIVEADDRUSE` on Windows — without it another local process can
+      bind over the held port *with* `SO_REUSEADDR`, weakening AD-4's single-instance premise at
+      the socket layer. The story's ruling was "mirror asyncio's policy", and c1-8's identity probe
+      detects a wrong server downstream; whether to harden the socket itself belongs to c1-5's
+      security envelope. [src/companion/app/server.py:109-124] — deferred to c1-5
+- [x] [Review][Defer] `free_port()` is a bind-close-reuse TOCTOU — between release and re-bind
+      another process can take the port, a latent flake class for the four tests that assert on
+      `wanted`. Suite runs without xdist and the window is tiny; recorded so a future flake is
+      instantly diagnosable rather than patched speculatively.
+      [tests/unit/companion/test_server.py:52-65] — deferred, act on first flake
+
+Dismissed as noise (5): non-int/bool `run(port=)` crashing instead of warn-and-default (`int | None`
+is mypy-strict-enforced across `src/` and c1-9 feeds argparse `type=int`; `True`→port-1 unreachable
+from real callers); POSIX bind→listen double-bind race (wrong premise — `SO_REUSEADDR` does not
+permit two live sockets on one addr:port on Linux/macOS, that is `SO_REUSEPORT`); `_new_socket`
+setsockopt-failure fd leak (`SO_REUSEADDR` on a fresh socket effectively cannot fail); invalid
+explicit port not consulting a valid env var (AC 3 explicitly rules "the default is used");
+`int(raw)` leniency (`"8_765"`, `" 8765 "`, `"+8765"`) plus the `-1` warning phrasing (all lenient
+forms yield valid ports; "not an integer in 0..65535" parses correctly as not-an-integer-in-range).
+The Blind Hunter's note that AC 15's *scripted* occupied-port smoke never ran stands as already
+honestly recorded — the accidental second-companion scenario was a strict superset.
 
 ## Dev Notes
 
@@ -485,7 +557,7 @@ required, not preferred.
 
 ```text
 $ uv run ruff check .            → All checks passed!
-$ uv run ruff format --check .   → 262 files already formatted
+$ uv run ruff format --check .   → 263 files already formatted   (review-corrected: the original paste said 262; the re-run at the review commit reports 263)
 $ uv run mypy src/               → Success: no issues found in 77 source files
 $ uv run pytest -m "not integration" -q
                                  → 1405 passed, 45 deselected in 41.65s
@@ -556,11 +628,13 @@ returned empty. All five untouched.
 - **Both source-scan guards assert their own non-vacuity** (c1-1's dead-guard lesson): the AC 5 scan
   fails if it does *not* find the one legal `8765`, and the AC 1 scan fails if it finds no `bind()`
   call at all. A guard that silently stops visiting files would go red, not green.
-- **The AC 1 guard is AST-based, not a string search.** It walks every `bind()` call under
-  `src/companion/` and asserts the address tuple's host element is the `HOST` **constant** — a
-  direct proof of "no other bind target" rather than an approximation via banned substrings. It also
-  avoids a trap: a blanket ban on the literal `"localhost"` would wrongly fire on c1-5, which must
-  accept both spellings in `Host`.
+- **The AC 1 guard is AST-based, not a string search.** It walks every `.bind()` call under
+  `src/companion/` and asserts the address tuple's host element is exactly the bare name `HOST`
+  *(review-tightened from a name-suffix match, which `other_module.HOST` could have spoofed)*. It
+  is a `.bind()`-scoped **tripwire**, not a total proof — listener APIs that bind internally
+  (`socket.create_server`, a `host=` kwarg) are outside its sight, and no companion code uses one.
+  It also avoids a trap: a blanket ban on the literal `"localhost"` would wrongly fire on c1-5,
+  which must accept both spellings in `Host`.
 - **Test-design correction made during implementation.** The first `run()` tests read the port back
   off the socket *after* `run()` returned — but `run()` closes it, so they failed with
   `WinError 10038`. Fixed by having the `_serve` stub record `sock.getsockname()[1]` **during** the
@@ -592,7 +666,7 @@ returned empty. All five untouched.
 | `plugin/server/src/companion/app/server.py` | **NEW** — generated mirror |
 | `plugin/server/src/companion/app/main.py` | Modified — generated mirror |
 | `_bmad-output/implementation-artifacts/sprint-status.yaml` | Modified — c1-3 → in-progress → review |
-| `_bmad-output/implementation-artifacts/c1-3-…-launch-url.md` | Modified — this record |
+| `_bmad-output/implementation-artifacts/c1-3-…-launch-url.md` | **NEW** — this record (review-corrected: previously listed as "Modified", but the diff creates it) |
 
 ## Change Log
 
@@ -600,3 +674,4 @@ returned empty. All five untouched.
 | --- | --- |
 | 2026-07-25 | Story c1-3 created from epics Story 1.3 + AD-4/AD-10/AD-15/NFR-01, with c1-2's inertness contract as the standing constraint and uvicorn 0.51.0's startup ordering verified against the installed source. Status → ready-for-dev. |
 | 2026-07-25 | Implemented all 6 tasks. New `src/companion/app/server.py` (port resolution → loopback bind with ephemeral fallback → pre-bound socket handed to uvicorn → stdout launch URL); `main.bound_port(app)` accessor added. 32 new tests, incl. two non-vacuous source-scan guards (AC 5 port literal, AC 1 AST bind-target). uvicorn added to the mypy hook and the hook *proven* to resolve it via a staged type-error probe. Gates green (ruff/mypy clean, 1405 passed / 45 deselected, zero regressions); manual smoke recorded for both the free-port and occupied-port paths. Status → review. |
+| 2026-07-25 | Code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor): no AC violations; 29 raw findings deduped to 16. 9 patches applied — stdout `errors="replace"` so the em-dash launch lines cannot crash under a non-UTF-8 locale; `bind_localhost_socket(0)` single-bind path + documented success-returns-exactly-preferred invariant; fallback log INFO→WARNING (lastResort visibility); `bound_port()` docstring no longer implies liveness; AC 5 scan substring→AST literal; AC 1 filter suffix→exact `HOST`; per-directory scan non-vacuity; fixture `track()` + append-before-bind + tolerant `close_all`; record corrections (File List NEW, 263 format count, AC-1-guard claim reworded as tripwire). 2 deferred (`SO_EXCLUSIVEADDRUSE` → c1-5; `free_port` TOCTOU — act on first flake), 5 dismissed. 1,405 passed / 45 deselected; all gates green; mirror rebuilt. Status → done. |

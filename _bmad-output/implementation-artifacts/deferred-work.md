@@ -624,3 +624,19 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   hook-install time (`.pre-commit-config.yaml:9`), so pre-commit mypy may check a different FastAPI
   than the locked 0.140.0 CI/runtime uses. Pre-existing pattern extended, not introduced, by c1-2.
   (Source: Blind Hunter; Severity: Low; deferred — pre-existing tooling pattern.)
+
+## Deferred from: code review of c1-3-port-selection-with-ephemeral-fallback-and-a-printed-launch-url (2026-07-25)
+
+- **No `SO_EXCLUSIVEADDRUSE` on the Windows bind** — `_new_socket` correctly omits `SO_REUSEADDR`
+  on Windows (`src/companion/app/server.py:109-124`), but does not set `SO_EXCLUSIVEADDRUSE`, so
+  another local process binding with `SO_REUSEADDR` can still bind over the companion's held port —
+  weakening AD-4's single-instance premise at the socket layer. c1-3's ruling was "mirror asyncio's
+  own reuse policy", and c1-8's instance_id probe detects a wrong server downstream; deciding
+  whether the socket itself should be hardened belongs to c1-5's security envelope.
+  (Source: Edge Case Hunter + Blind Hunter; Severity: Low; deferred to c1-5.)
+- **`free_port()` bind-close-reuse TOCTOU in the c1-3 test helper** — between releasing the probe
+  socket and the test re-binding the returned port (`tests/unit/companion/test_server.py:52-65`),
+  another process can take it; latent flake class for the four tests asserting on `wanted`. The
+  suite runs without xdist and the window is tiny — recorded so a future flake on these tests is
+  instantly diagnosable (fix = retry loop in `free_port`). (Source: Edge Case Hunter + Blind
+  Hunter; Severity: Low; deferred — act on first flake.)
