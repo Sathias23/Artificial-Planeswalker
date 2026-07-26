@@ -1,5 +1,5 @@
 # generated: 2026-06-20
-# last_updated: 2026-07-25 (story c1-6 → done after code review: 6 patches applied, AC 7 deviation signed off, 4 deferrals homed; suite 1,532 passed / 45 deselected)
+# last_updated: 2026-07-26 (story c1-8 → done: code review complete, 6 patches applied)
 # project: Artificial-Planeswalker
 # project_key: NOKEY
 # tracking_system: file-system
@@ -46,7 +46,7 @@
 #   epic-c1..10 → _bmad-output/planning-artifacts/epics-companion-app.md          (c-prefixed, numbering UNCHANGED)
 
 generated: 2026-06-20
-last_updated: 2026-07-25 (story c1-6 → done after code review: 6 patches applied, AC 7 deviation signed off, 4 deferrals homed; suite 1,532 passed / 45 deselected)
+last_updated: 2026-07-26 (story c1-8 → done: code review complete — 2 decisions ruled (total-deadline patch sanctioned, StubFleet share accepted), 6 patches applied incl. trust_env=False on the probe (the one high — HTTP_PROXY would have defeated single-instance enforcement) and a 5 s whole-probe deadline; 1,629 passed / 1 skipped / 45 deselected; PR #15 two-story push pending)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -231,8 +231,8 @@ development_status:
   c1-4-typed-rest-error-contract-with-closed-reason-tokens: done
   c1-5-localhost-only-security-envelope-host-validation-and-cors: done
   c1-6-lazy-database-engine-so-a-fresh-install-starts-instead-of-erroring: done
-  c1-7-discovery-file-as-the-sole-rendezvous: backlog
-  c1-8-single-instance-enforcement-with-verified-identity: backlog
+  c1-7-discovery-file-as-the-sole-rendezvous: done
+  c1-8-single-instance-enforcement-with-verified-identity: done
   c1-9-one-console-script-that-dispatches-without-disturbing-the-mcp-server: backlog
   epic-c1-retrospective: optional
 

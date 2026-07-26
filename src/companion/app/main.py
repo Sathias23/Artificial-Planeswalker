@@ -24,6 +24,7 @@ from typing import Any
 
 from fastapi import FastAPI
 
+from src.companion import discovery
 from src.companion.app import deps
 from src.companion.app.errors import (
     error_responses,
@@ -38,22 +39,68 @@ logger = logging.getLogger(__name__)
 _TITLE = "Artificial Planeswalker Companion"
 
 
+def _publish_discovery(app: FastAPI) -> None:
+    """Publish where this process is and how to authenticate to it (AD-4).
+
+    The record names :func:`bound_port` — the port the runner *actually* bound — so an ephemeral
+    fallback is what lands in the file rather than whatever was preferred. ``None`` means nobody
+    bound a socket (a ``build_app()`` served directly, or a test entering the lifespan without a
+    port), and there is nothing truthful to publish: the write is skipped and startup continues.
+    That skip logs at WARNING rather than INFO because no root handler is configured until c1-9 and
+    ``logging.lastResort`` only surfaces WARNING and above to stderr — the same reasoning as
+    ``server.py``'s bind fallback.
+
+    The resulting path and port are logged; the token never is (AD-5).
+
+    Args:
+        app: The application being started, with its identity and token already on ``app.state``.
+
+    Raises:
+        OSError: Propagated from :func:`~src.companion.discovery.write_discovery`. The caller does
+            not catch it — see the lifespan.
+    """
+    port = bound_port(app)
+    if port is None:
+        logger.warning(
+            "Companion instance %s bound no port; skipping the discovery file, so agent tools "
+            "will report the app as not running",
+            app.state.instance_id,
+        )
+        return
+    record = discovery.DiscoveryRecord(
+        port=port,
+        token=app.state.agent_token,
+        instance_id=app.state.instance_id,
+    )
+    path = discovery.write_discovery(record)
+    logger.info("Published discovery file %s for port %d", path, port)
+
+
 async def _shutdown(app: FastAPI) -> None:
     """Release everything the lifespan acquired, in reverse order of acquisition.
 
-    Today that is the database engine's connection pool, if a data-backed request ever caused one to
-    be created (c1-6). :meth:`~src.companion.app.deps.Database.dispose` is a no-op when it was not,
-    which is the ordinary case for a companion that only ever answered ``/health`` — so there is one
-    unconditional call rather than a condition per resource. Story c1-7 removes the discovery file
-    here too.
+    Two things, in this order:
+
+    1. **The discovery file** (c1-7). Retracted first, so the process stops advertising itself as
+       early as possible — a tool that reads the file during teardown gets *app not running*
+       rather than a port whose socket is about to close.
+       :func:`~src.companion.discovery.remove_discovery` is ownership-guarded and never raises, so
+       a foreign entry survives and an unlink failure cannot strand the dispose below it.
+    2. **The database engine's connection pool**, if a data-backed request ever caused one to be
+       created (c1-6). :meth:`~src.companion.app.deps.Database.dispose` is a no-op when it was not,
+       which is the ordinary case for a companion that only ever answered ``/health`` — so there is
+       one unconditional call rather than a condition per resource.
 
     Args:
         app: The application whose startup resources are being released.
     """
-    logger.debug("Companion instance %s shutting down", getattr(app.state, "instance_id", None))
+    instance_id = getattr(app.state, "instance_id", None)
+    logger.debug("Companion instance %s shutting down", instance_id)
+    # Guarded on the value, not on hasattr: None means the lifespan never ran, which is possible
+    # when a test drives _shutdown directly — and there is then nothing of ours to retract.
+    if instance_id is not None:
+        discovery.remove_discovery(instance_id)
     holder = deps.database(app)
-    # Guarded on the accessor, not on hasattr: None means the lifespan never ran, which is possible
-    # when a test drives _shutdown directly.
     if holder is not None:
         await holder.dispose()
 
@@ -66,12 +113,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     -started app has no identity to leak, and so every fresh start is distinguishable — that is
     what lets a caller tell a restarted companion from the one it was talking to (AD-4, FR-14).
 
-    The :class:`~src.companion.app.deps.Database` holder is created beside it, and for the same
+    The agent token is minted beside it and for the same reason — a constructed-but-never-started
+    app holds no credential — and it is minted **fresh per process**, so two starts never share one
+    and a restarted backend invalidates the token a tool was holding (c6-1's retry-once absorbs
+    exactly that). It reaches only two places: ``app.state`` and the discovery file (AD-5).
+
+    The :class:`~src.companion.app.deps.Database` holder is created beside them, and for the same
     reason it is safe to do so: like the identity mint it is an inert in-process object that cannot
     fail. The **engine** inside it is not created here — a fresh install has no card database yet,
-    and AD-10 makes that a served UI state rather than a startup crash (FR-22). Startup therefore
-    still has no failure path, which is why nothing needs to move into the ``try``
-    (``test_app.py::test_startup_failure_propagates`` pins that).
+    and AD-10 makes that a served UI state rather than a startup crash (FR-22).
+
+    Publishing the discovery file is the **one** startup step that can fail, and it sits
+    deliberately **before** the ``try`` so an ``OSError`` propagates and uvicorn exits loudly with
+    the traceback (AD-15). That is a ruling, not an oversight (Decide-once #3): without the file
+    the app is reachable only by a human reading the printed URL, so every agent tool reports
+    ``app_not_running`` while the app is visibly running, and nothing on either surface explains
+    the contradiction. An unwritable data directory is narrow and actionable; a half-launched
+    rendezvous is not. Nothing else moves into the ``try``
+    (``test_app.py::test_startup_failure_propagates`` pins the asymmetry).
 
     Teardown runs under ``try/finally`` and swallows its own failures: a shutdown that raises would
     mask the real reason the process is stopping and could strand later teardown steps. The failure
@@ -82,9 +141,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     Yields:
         None — the application is serving for the duration of the ``yield``.
+
+    Raises:
+        OSError: The discovery file could not be published, which fails the launch.
     """
     app.state.instance_id = str(uuid.uuid4())
+    app.state.agent_token = discovery.mint_token()
     app.state.database = deps.Database()
+    _publish_discovery(app)
     logger.info("Companion instance %s started", app.state.instance_id)
     try:
         yield
@@ -121,6 +185,32 @@ def bound_port(app: FastAPI) -> int | None:
     # would flag returning it directly.
     port: int | None = getattr(app.state, "bound_port", None)
     return port
+
+
+def agent_token(app: FastAPI) -> str | None:
+    """Return the agent credential minted for *app*, or ``None`` if the lifespan never ran.
+
+    The token is minted once per process by :func:`lifespan` and published in the discovery file so
+    an agent-side caller can present it. Story c5-5 is the production consumer: ``POST
+    /agent/events`` compares the presented credential against this value, and nothing else may.
+
+    **Never serialize it.** It must not enter a response body, a header, a log line, a pydantic
+    model that reaches ``app.openapi()``, or a WebSocket frame (AD-5). It lives behind this
+    accessor — on ``app.state`` rather than in any declared shape — precisely so there is no schema
+    for it to leak through; ``test_discovery.py`` pins the four surfaces that exist today (body,
+    headers, logs, schema). The WebSocket frame is c5-3's to pin when the socket exists — nothing
+    guards it yet.
+
+    Args:
+        app: The application to read.
+
+    Returns:
+        The minted token, or ``None`` before startup.
+    """
+    # Annotated local rather than `return getattr(...)`: app.state is Any, and warn_return_any
+    # would flag returning it directly.
+    token: str | None = getattr(app.state, "agent_token", None)
+    return token
 
 
 class _CompanionFastAPI(FastAPI):

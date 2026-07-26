@@ -732,3 +732,133 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   c1-4 middleware behavior (deliberate: full tracebacks on unhandled bugs), surfaced now that DB
   paths can route through it. Candidate: scrub `[parameters: ...]` from tracebacks, or accept as
   local-log-only. (Source: Blind Hunter; Severity: Low.)
+
+## Deferred from: story c1-7-discovery-file-as-the-sole-rendezvous (2026-07-26)
+
+- **`os.replace` fails with `PermissionError [WinError 5]` while another process holds the target
+  open** — measured on this machine during story writing and re-confirmed in implementation. The
+  window is microseconds (a reader does one `read_bytes()` and closes), and the write happens once
+  per process start, so no retry machinery was added. The consequence to inherit: under c1-7's
+  Decide-once #3 a publish failure **aborts the launch**, so a companion started at the exact
+  instant an agent tool was reading the file could fail to start with a permissions error that has
+  nothing to do with permissions. No failing user story stands behind it today — startup contends
+  with an existing file for the first time in **c1-8**, whose entire subject is a second launch
+  meeting a file it did not write, which is why that story is the natural home. Candidate fix if it
+  ever bites: a bounded retry (2–3 attempts, short sleep) around the `os.replace` alone, or
+  narrowing Decide-once #3 so a *transient* replace failure degrades where an unwritable directory
+  still aborts. Windows-only. (Source: c1-7 story-writing probe 3, re-verified at implementation;
+  Severity: Low; deferred to c1-8.)
+
+  **Ruling (c1-8, 2026-07-26): still accepted, re-homed to c6-1.** c1-8 did not make this more
+  likely, and it is worth being precise about why. The startup check reads `companion.json` through
+  `read_discovery` — once before the probe is dialled, and (on the reclaim path only) once more in
+  `_note_reclaimed_entry` to decide whether the INFO line has anything to say; each read is a single
+  `read_bytes()` whose handle closes immediately — and it does so in a launch that either *returns
+  without publishing* (a live instance was found) or publishes much later, from the lifespan, long
+  after both handles are gone. **A process
+  therefore cannot collide with itself**, which was the one new self-inflicted way this could have
+  started firing. The only concurrent reader of the file in production still arrives with **c6-1**,
+  whose client reads the rendezvous before every push — that is the first code that will hold the
+  file open at an arbitrary moment while some other process starts. Re-homed there; nothing to do
+  in c1-8.
+
+- **TOCTOU in `remove_discovery`'s ownership guard** — the read → compare-`instance_id` → `unlink`
+  sequence in `src/companion/discovery.py::remove_discovery` is check-then-act: a second instance
+  that `os.replace`s its own record in between our read and our unlink loses its live rendezvous to
+  our deletion — the exact scenario the guard exists to prevent, in a microsecond window on a path
+  that runs once per process lifetime. No code fix wanted now: an atomic verify-and-delete has no
+  clean cross-platform shape (Windows cannot unlink-by-open-handle portably from Python), and until
+  c1-8 lands there is never a second live instance to collide with. Acknowledged in the function's
+  docstring. Candidate fixes if it ever bites: open-with-`O_RDWR`-verify-then-unlink on POSIX with a
+  documented Windows residual, or serializing shutdown/startup around a lock file. (Source: c1-7
+  code review 2026-07-26, Blind Hunter + Edge Case Hunter; Severity: Low; deferred to c1-8, which
+  owns the contending-instances design.)
+
+  **Ruling (c1-8, 2026-07-26): accepted, and materially narrowed — entry kept.** The window needs a
+  *second live instance* to be harmful: our shutdown must unlink a record that some other running
+  companion published in between our read and our unlink. That second instance is now precisely the
+  case c1-8 refuses — a launch that finds a verified-live companion prints its URL and returns
+  without ever publishing, so the ordinary route to two contending writers is closed. What remains
+  is the narrow residual recorded in the c1-8 section below: two launches racing inside the same
+  startup window (a couple of seconds at the outside) can still both start, and only then can this
+  unlink hit a foreign live record. So the guard is not redundant and the entry stays open, but its reachability now depends
+  on a race that is itself deferred, not on ordinary use. No code change; `remove_discovery`'s
+  docstring was reworded (c1-8 AC 16) because it previously pointed forward to c1-8 as the story
+  that "first makes two instances contend for this file", which is stale in both halves now that
+  c1-8 has landed and *prevents* the ordinary second instance.
+
+## Deferred from: story c1-8-single-instance-enforcement-with-verified-identity (2026-07-26)
+
+- **Two launches started within the same startup window can both start** — the
+  single-instance check is **check-then-act**, and nothing makes the check and the publish one
+  atomic step. `run()` asks `client.live_instance()`, gets "nothing there", and only much later
+  does the lifespan write `companion.json`; a second process entering that same gap reads the same
+  "nothing there" and starts too, publishing over the first. That is the *baseline* failure this
+  story was written to fix — two live companions with one rendezvous, the first still running and
+  unreachable through the file — surviving in a window narrowed from **forever** to **startup**.
+  Deliberately not fixed here: a real fix needs an OS-level mutex, and the shapes on the table
+  (an `O_EXCL` lock file with the stale-lock-after-crash problem AD-15 guarantees will happen, or
+  treating the bound port itself as the lock, which inverts the story's ordering by moving the
+  check *after* the bind) are a design decision rather than a tweak — and the port option would
+  need c1-3's ephemeral fallback rethought, since falling back to a different port is exactly how
+  a second instance currently succeeds. The window is wider than it first looks (review finding,
+  c1-8): it runs from the first launch's check to its lifespan publish, and with production
+  timeouts the probe alone can spend up to ~3 s against a stale entry (1 s connect on a dead port,
+  2 s read on a silent one, now also bounded overall at 5 s) — so a human double-launching a
+  couple of seconds apart after a crash can hit it, no script required. Still a deliberate,
+  repeated human act against an unlucky interleaving, not ordinary use. Candidate revisit: c1-9,
+  which owns the console-script entry point and is the natural
+  home for a launch-time lock. (Source: c1-8 AC 15, homed at implementation; Severity: Low.)
+
+- **A live instance whose event loop is blocked for longer than the read timeout is judged dead**
+  — `PROBE_TIMEOUT` gives the read 2 s, and a companion wedged past that (a pathological request,
+  a stop-the-world pause, a debugger breakpoint) answers `/health` too late. The probe then reports
+  *app not running*, the launch proceeds, and the machine ends up in the two-instance state above.
+  The 2 s read was chosen against a measured ~15 ms live response, so the margin is ~130×, and
+  lengthening it has a real cost on the far more common path: every post-crash launch would stall
+  for whatever the new deadline is. Accepted as the right side of the trade rather than fixed. If
+  it ever bites, the fix is not a longer timeout but a different question — retry the probe once
+  before concluding *dead*, which is machinery c6-1 is already building for its push path and
+  could share. (Source: c1-8 AC 15, homed at implementation; Severity: Low.)
+
+## Raised by Brad, outside a story (2026-07-26)
+
+- **`assess_deck_power` ignores mana *quality* — it only counts mana** — the `mana_efficiency`
+  dimension is built from two count-based signals and nothing else: Karsten land-**count** delta
+  (`mana_base.karsten_land_delta`) and per-colour **source-count** deficits
+  (`mana_base.compute_pip_signals` → `dimensions._mana_efficiency_score`, which starts at 100 and
+  subtracts a penalty per land outside the tolerance band and per missing colour source). A source
+  is any Land whose type line or "add {X}" text names the colour, and **every source counts the
+  same**. Concretely, today's scorer cannot tell apart:
+  - a **shockland from a Guildgate** — enters-tapped is invisible, so the tempo cost of a slow
+    mana base is unscored, and this is the single biggest quality gap in Commander and 60-card
+    alike;
+  - a **fetchland or triome from a basic** — fixing depth and land-type synergy are unmodelled;
+  - **painlands / filters / bounce lands** from clean duals — the *cost* of fixing is unmodelled;
+  - a **mana dork or Signet from nothing at all** — `compute_pip_signals` `continue`s on every
+    non-land, so **non-land colour sources contribute zero** to the deficit calculation. A
+    rock-heavy or dork-heavy deck is scored as though its colours were unsupported, which is a
+    correctness gap and not merely a missing refinement;
+  - a **utility/colourless land** (Ancient Tomb, creature-lands, Cabal Coffers) beyond its
+    non-contribution to colour — the upside is uncredited and the colour cost is only implicit.
+
+  So two decks with identical curve and identical colour-source *counts* score identically on
+  `mana_efficiency` even when one is an optimised mana base and the other is all taplands and
+  basics — which is exactly the distinction an experienced player makes first. Weighting makes it
+  matter: `mana_efficiency` is 0.20 of the 60-card profile (0.05 in Commander,
+  `profiles.py:154/187`), so on the Standard/Modern fork this is a fifth of the score resting on a
+  signal that is blind to mana quality.
+
+  **Not a defect against any shipped AC** — Epic 5 scoped 5.4 to "raw numeric mana signals" and the
+  Karsten regressions deliberately, and the benchmark passed on that basis. This is a **missing
+  signal**, not a mistuned one, which is why it likely wants its **own story** (a
+  `mana_quality`-style signal in `mana_base.py` + a dimension term) rather than a coefficient tweak.
+  Feasibility is good: enters-tapped and produced-mana are both derivable from data already
+  imported (oracle text / type line, the same inputs `_land_source_colors` reads), so no schema
+  change or re-import is implied — the non-land-source fix in particular is close to free.
+
+  **Homed against `post-epic-7-calibration-gate`** (sprint-status, currently `backlog`), which is
+  the open bucket for scoring-quality inputs C1–C5; this joins them as a sixth, distinguished by
+  being additive rather than corrective. Per the epic-7 gate-output homing rule it gets a key
+  rather than a label. (Source: Brad, unprompted during story c1-7; Severity: Medium — it is
+  weighted at 0.20 on the 60-card fork; no user-visible failure, but a systematic blind spot.)

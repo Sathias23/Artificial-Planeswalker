@@ -45,6 +45,29 @@ was actually given.
 """
 
 
+@pytest.fixture(autouse=True)
+def isolated_data_dir(tmp_path, monkeypatch):
+    """Point ``PLANESWALKER_DATA_DIR`` at this test's own ``tmp_path``, for every test here.
+
+    **Why this is autouse, and why it is a deliverable rather than hygiene (c1-7 AC 12).** From
+    c1-7 onward the lifespan writes a real ``companion.json`` into ``src.paths.data_dir()``, so
+    every one of the ~94 ``lifespan_client`` / ``async with lifespan(app)`` entries already in this
+    package acquires a filesystem effect on the *developer's* machine. Unisolated, they would race
+    each other over one path in ``%LOCALAPPDATA%\\artificial-planeswalker`` and — the damage that
+    matters — clobber the discovery file of a companion the user actually has running. The
+    ownership guard in ``remove_discovery`` saves the deletion but not the overwrite.
+
+    Only ``PLANESWALKER_DATA_DIR`` is set. Deliberately **not** ``CARDS_DATABASE_URL``: discovery
+    never reads it, and c1-6's tests manage that variable per-test. A test that sets
+    ``PLANESWALKER_DATA_DIR`` itself still wins, because its ``monkeypatch.setenv`` runs after
+    fixture setup.
+
+    ``test_discovery.py::test_the_isolation_fixture_is_active`` pins this, so deleting the fixture
+    turns a test red rather than quietly polluting a machine.
+    """
+    monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path))
+
+
 @asynccontextmanager
 async def _lifespan_client(
     app: FastAPI,

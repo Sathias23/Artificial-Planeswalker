@@ -10,15 +10,20 @@ real companion, another dev process, or a parallel CI job holding 8765 (Gotcha 8
 """
 
 import ast
+import io
 import logging
 import os
 import socket
+import sys
 from pathlib import Path
 
+import httpx
 import pytest
 
+from src.companion import client, discovery
 from src.companion.app import server
 from src.companion.app.main import bound_port, build_app
+from tests.unit.companion.test_client import StubFleet, health_bytes, plant_discovery
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -102,6 +107,22 @@ def loopback():
     helper = _Loopback()
     yield helper
     helper.close_all()
+
+
+@pytest.fixture
+def stub_server():
+    """Yield the stub-server factory c1-8's ``run()`` cases stand a live companion up with.
+
+    Shares :class:`~tests.unit.companion.test_client.StubFleet` with ``test_client.py`` rather than
+    copying its shutdown-and-join teardown; see that class's docstring for why the fixture itself
+    is declared per module.
+
+    Yields:
+        ``start(*, status=200, body=b"", content_type="application/json")``.
+    """
+    fleet = StubFleet()
+    yield fleet.start
+    fleet.close_all()
 
 
 def _port_of(sock: socket.socket) -> int:
@@ -400,6 +421,230 @@ class TestRun:
             server.run(port=loopback.free_port())
 
         assert captured[0].fileno() == -1
+
+
+class TestSingleInstanceCheck:
+    """Story c1-8, AC 7-12: a live companion refuses the launch; anything else is reclaimed.
+
+    Every test here plants its own discovery file, because ``recorded_serve`` means the lifespan
+    never runs in this module and so nothing writes one. The files are written by hand rather than
+    through ``write_discovery`` — a fixture built by the code under test proves nothing.
+
+    The class pairs deliberately: each *refuses* case sits beside a *proceeds* case driven through
+    the same ``run()`` call, so the suite cannot pass by refusing everything or by never refusing.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _fast_probe(self, monkeypatch):
+        """Shrink the probe deadline for this class, so the dead-port cases cost milliseconds.
+
+        ``run()`` takes no timeout argument — AC 20 keeps its signature — so the module constant is
+        the only seam a test has. The *production* connect/read split is pinned by
+        ``test_client.py::TestExportedSurface``, so shrinking it here cannot quietly erase the
+        measured trade AC 3 made.
+        """
+        monkeypatch.setattr(
+            client,
+            "PROBE_TIMEOUT",
+            httpx.Timeout(connect=0.25, read=0.25, write=0.25, pool=0.25),
+        )
+
+    def test_a_verified_live_instance_refuses_and_names_its_url(
+        self, recorded_serve, stub_server, loopback, capsys
+    ):
+        """AC 8: one line on stdout carrying the *live* instance's port, not this launch's."""
+        stub = stub_server(body=health_bytes("inst-live"))
+        plant_discovery(port=stub.port, instance_id="inst-live")
+
+        server.run(port=loopback.free_port())
+
+        out = capsys.readouterr().out
+        assert (
+            f"[planeswalker] companion is already running at http://127.0.0.1:{stub.port} — "
+            "open that URL, or stop the other instance before starting a new one"
+        ) in out
+        assert "companion running at" not in out, "the launch line must not also be printed"
+
+    def test_a_refusal_returns_rather_than_raising(self, recorded_serve, stub_server, loopback):
+        """Decide-once #3: refusing is a success, so ``run()`` returns and the process exits 0."""
+        stub = stub_server(body=health_bytes("inst-live"))
+        plant_discovery(port=stub.port, instance_id="inst-live")
+
+        assert server.run(port=loopback.free_port()) is None
+
+    def test_a_refusal_builds_no_app_and_never_serves(self, recorded_serve, stub_server, loopback):
+        """AC 9: a launch that will not serve must not construct what it will never use."""
+        stub = stub_server(body=health_bytes("inst-live"))
+        plant_discovery(port=stub.port, instance_id="inst-live")
+
+        server.run(port=loopback.free_port())
+
+        assert recorded_serve.calls == []
+
+    def test_a_refusal_never_reaches_the_bind(self, recorded_serve, stub_server, loopback, capsys):
+        """AC 7: ordering is behaviour — a refusing launch must not momentarily hold a port.
+
+        The preferred port is occupied *first*. Had ``run()`` reached the bind it would have taken
+        the ephemeral fallback and said so on stdout, exactly as
+        ``TestRun::test_a_conflict_prints_the_fallback_line_then_the_real_url`` shows it does.
+        Silence on that line is the evidence the bind never happened.
+        """
+        stub = stub_server(body=health_bytes("inst-live"))
+        plant_discovery(port=stub.port, instance_id="inst-live")
+        taken = _port_of(loopback.occupy())
+
+        server.run(port=taken)
+
+        out = capsys.readouterr().out
+        assert "already running" in out
+        assert "falling back" not in out
+
+    def test_a_refusal_leaves_the_preferred_port_free(self, recorded_serve, stub_server, loopback):
+        """AC 9: nothing was claimed, so the port this launch wanted is still free afterwards."""
+        stub = stub_server(body=health_bytes("inst-live"))
+        plant_discovery(port=stub.port, instance_id="inst-live")
+        preferred = loopback.free_port()
+
+        server.run(port=preferred)
+
+        sock = loopback.track(server.bind_localhost_socket(preferred))
+        assert _port_of(sock) == preferred
+
+    def test_a_refusal_leaves_the_discovery_file_byte_identical(
+        self, recorded_serve, stub_server, loopback
+    ):
+        """AC 9: the live instance's rendezvous survives a refused launch untouched.
+
+        Not automatic — it is a consequence of returning before the lifespan, and a refactor that
+        moved the check into the lifespan would break it silently.
+        """
+        stub = stub_server(body=health_bytes("inst-live"))
+        path = plant_discovery(port=stub.port, instance_id="inst-live")
+        before = path.read_bytes()
+
+        server.run(port=loopback.free_port())
+
+        assert path.read_bytes() == before
+
+    def test_the_refusal_line_survives_a_non_utf8_stdout(
+        self, recorded_serve, stub_server, loopback, monkeypatch
+    ):
+        """AC 8: printed *after* the reconfigure — it carries an em dash like every launch line.
+
+        Encoding the message strictly as ASCII would raise ``UnicodeEncodeError``; the replacement
+        character in its place is what proves the guard ran before the print rather than after it.
+        """
+        buffer = io.BytesIO()
+        monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(buffer, encoding="ascii"))
+        stub = stub_server(body=health_bytes("inst-live"))
+        plant_discovery(port=stub.port, instance_id="inst-live")
+
+        server.run(port=loopback.free_port())
+        sys.stdout.flush()
+
+        text = buffer.getvalue().decode("ascii")
+        assert "companion is already running at" in text
+        assert "?" in text, "the em dash should have been replaced, not raised on"
+
+    def test_a_stale_entry_is_reclaimed_and_the_launch_proceeds(
+        self, recorded_serve, loopback, capsys
+    ):
+        """AC 10 (AD-15): a crashed instance's leftovers are the ordinary post-crash state."""
+        path = plant_discovery(port=loopback.free_port(), instance_id="inst-crashed")
+        before = path.read_bytes()
+
+        server.run(port=loopback.free_port())
+
+        assert recorded_serve.calls, "a stale file must not stop the launch"
+        assert "already running" not in capsys.readouterr().out
+        assert path.read_bytes() == before, "Decide-once #4: a reclaim deletes nothing"
+
+    def test_the_reclaim_logs_at_info_not_warning(self, recorded_serve, loopback, caplog):
+        """AC 10: a stale file after a crash is expected, not something worth warning about."""
+        plant_discovery(port=loopback.free_port(), instance_id="inst-crashed")
+
+        with caplog.at_level(logging.DEBUG, logger=server.__name__):
+            server.run(port=loopback.free_port())
+
+        reclaims = [r for r in caplog.records if "reclaim" in r.getMessage().lower()]
+        assert len(reclaims) == 1, [r.getMessage() for r in caplog.records]
+        assert reclaims[0].levelno == logging.INFO
+        # Scoped to this project's loggers: a third-party library warning about something
+        # unrelated must not read as "the reclaim path warned" (review finding, c1-8).
+        assert not [
+            r for r in caplog.records if r.name.startswith("src.") and r.levelno >= logging.WARNING
+        ]
+
+    def test_a_clean_machine_logs_no_reclaim(self, recorded_serve, loopback, caplog):
+        """Non-vacuity for the test above: the INFO names a *reclaim*, so a first start is quiet."""
+        assert not discovery.discovery_path().exists()
+
+        with caplog.at_level(logging.DEBUG, logger=server.__name__):
+            server.run(port=loopback.free_port())
+
+        assert recorded_serve.calls
+        assert not [r for r in caplog.records if "reclaim" in r.getMessage().lower()]
+
+    def test_a_foreign_identity_on_the_recorded_port_is_treated_as_dead(
+        self, recorded_serve, stub_server, loopback, capsys
+    ):
+        """AC 11: something answered, but it is not the process the file describes.
+
+        The mechanism test for the runner half — delete the check and this launch would refuse
+        rather than proceed.
+        """
+        stub = stub_server(body=health_bytes("some-other-process"))
+        path = plant_discovery(port=stub.port, instance_id="inst-crashed", token="tok-not-sent")
+        before = path.read_bytes()
+
+        server.run(port=loopback.free_port())
+
+        assert recorded_serve.calls
+        assert "already running" not in capsys.readouterr().out
+        assert path.read_bytes() == before
+        assert len(stub.requests) == 1, "it was asked, and its answer was disbelieved"
+        assert "tok-not-sent" not in stub.requests[0].as_text(), (
+            "AC 11: a foreign process is reclaimed *having been sent nothing*"
+        )
+
+    def test_a_server_that_is_not_a_companion_at_all_is_treated_as_dead(
+        self, recorded_serve, stub_server, loopback, capsys
+    ):
+        """AC 11: a recycled port held by an unrelated local server answering 200 to everything."""
+        stub = stub_server(body=b"<html>some other dev server</html>", content_type="text/html")
+        plant_discovery(port=stub.port, instance_id="inst-crashed")
+
+        server.run(port=loopback.free_port())
+
+        assert recorded_serve.calls
+        assert "already running" not in capsys.readouterr().out
+
+    def test_an_explicit_port_does_not_bypass_the_check(
+        self, recorded_serve, stub_server, loopback, capsys
+    ):
+        """AC 12: the rendezvous is the singleton, not the port — one file, one instance."""
+        stub = stub_server(body=health_bytes("inst-live"))
+        plant_discovery(port=stub.port, instance_id="inst-live")
+        elsewhere = loopback.free_port()
+        assert elsewhere != stub.port
+
+        server.run(port=elsewhere)
+
+        assert "already running" in capsys.readouterr().out
+        assert recorded_serve.calls == []
+
+    def test_the_env_var_port_does_not_bypass_the_check(
+        self, recorded_serve, stub_server, loopback, monkeypatch, capsys
+    ):
+        """AC 12: the environment override is a port preference, not an escape hatch."""
+        stub = stub_server(body=health_bytes("inst-live"))
+        plant_discovery(port=stub.port, instance_id="inst-live")
+        monkeypatch.setenv(server.PORT_ENV_VAR, str(loopback.free_port()))
+
+        server.run()
+
+        assert "already running" in capsys.readouterr().out
+        assert recorded_serve.calls == []
 
 
 class TestServeConfiguration:
