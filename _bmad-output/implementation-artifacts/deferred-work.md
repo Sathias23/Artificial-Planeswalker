@@ -787,6 +787,25 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   that "first makes two instances contend for this file", which is stale in both halves now that
   c1-8 has landed and *prevents* the ordinary second instance.
 
+  **Ruling (c1-9, 2026-07-26): CLOSED by unreachability — no code change to `remove_discovery`.**
+  The harm scenario requires a second *live* instance inside one data directory, and c1-9's held
+  advisory lock (`src/companion/app/singleton.py`) makes that state unconstructible: `run()` takes
+  the lock before it resolves a port, binds or builds an app, and holds it until the process dies,
+  so the launch that would have become the second live writer refuses instead. The check-then-act
+  sequence in `remove_discovery` is unchanged and still not atomic — the entry is closed because
+  nothing can reach it, not because the code was made safe. Its docstring was corrected accordingly
+  (c1-9 AC 16), replacing c1-8's "two launches colliding within the same fraction of a second"
+  wording.
+
+  **What would reopen it, stated plainly rather than discovered later:** two companions run
+  deliberately under *different* `PLANESWALKER_DATA_DIR` values. That is a supported configuration
+  and it is not a defect — each instance then gets its own lock file, its own `companion.json` and
+  no shared state, so the two never contend over one record and the TOCTOU still has no reachable
+  harm. The residual would only return if a future story reintroduced two live instances sharing a
+  single data directory, which the lock is specifically there to prevent. (This is the c1-8-review
+  lesson about `trust_env=False` applied in advance: an environment variable that legitimately
+  partitions the guard's scope must be *stated*, not left to be found.)
+
 ## Deferred from: story c1-8-single-instance-enforcement-with-verified-identity (2026-07-26)
 
 - **Two launches started within the same startup window can both start** — the
@@ -817,6 +836,40 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   zero (its harm scenario needs a second live instance, which the lock makes impossible), which
   is the substance of Greptile's 3/5 hold on PR #15. Close this entry when c1-9 lands.
   (Source: c1-8 AC 15, homed at implementation; Severity: Low → fix scheduled c1-9.)
+
+  **CLOSED (c1-9, 2026-07-26) — shipped as `src/companion/app/singleton.py`.** What landed, rather
+  than what was planned:
+
+  - **The primitive.** `os.open(lock_path(), O_RDWR | O_CREAT, 0o600)` then
+    `msvcrt.locking(fd, LK_NBLCK, 1)` on Windows / `fcntl.flock(fd, LOCK_EX | LOCK_NB)` on POSIX,
+    behind a module-level `sys.platform` branch. `LK_NBLCK` not `LK_LOCK` (which blocks ten times
+    over ten seconds) and `flock` not `lockf` (record locks are process-owned, so a second `lockf`
+    on another descriptor in the same process succeeds — it would have weakened the guarantee *and*
+    made the same-process contention test silently vacuous). The lock file is `companion.lock`,
+    separate from the rendezvous, zero-length, and **never unlinked** — on POSIX `flock` binds to
+    the inode, so unlink-and-recreate would hand two processes "the lock".
+  - **Where it sits in `run()`.** Probe first, lock second: the acquire is below c1-8's refusal and
+    above `_note_reclaimed_entry`, the port resolution and the bind, with the release in `run()`'s
+    outermost `finally` so the lock outlives the socket. Probing first keeps all fourteen of c1-8's
+    `TestSingleInstanceCheck` cases passing **unedited**, and leaves the informative refusal (the
+    one that can name a URL) as the common path. A contended launch prints one line naming no URL
+    and returns `0`; there is deliberately no second probe, which would have cost up to five
+    seconds on the one path whose job is to get out of the way.
+  - **Release-on-death, measured.** Re-confirmed on this machine at implementation time (win32,
+    py3.12.13): a second descriptor *in the same process* is refused (`PermissionError`, errno 13),
+    closing the holder releases it, another process holding it refuses this one, and after a **hard
+    kill** of the holder the lock is immediately available again with the file still present at
+    0 bytes. That is the property that makes the held design correct under AD-15 — a crash is
+    ordinary, and there is no stale-lock state to recover from and no PID-liveness heuristic.
+  - **The race, before and after.** The baseline probe at `8bfc909` spawned two `run(0)` launches
+    6 ms apart and left **two** live companions with one rendezvous. Re-run against the fix, one
+    process survives, its port is the one `companion.json` names, and the loser prints a refusal
+    line (see the c1-9 story record's live check 1 for the pasted before/after).
+
+  Because contention reports as `PermissionError` — indistinguishable from a genuine permission
+  problem — only the *lock* call is guarded; the `os.open` sits outside it, so an unwritable data
+  directory fails loudly instead of being misreported as "someone else has it".
+  (Severity: Low → **CLOSED**; no residual carried forward.)
 
 - **A live instance whose event loop is blocked for longer than the read timeout is judged dead**
   — `PROBE_TIMEOUT` gives the read 2 s, and a companion wedged past that (a pathological request,
@@ -870,3 +923,43 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   being additive rather than corrective. Per the epic-7 gate-output homing rule it gets a key
   rather than a label. (Source: Brad, unprompted during story c1-7; Severity: Medium — it is
   weighted at 0.20 on the 60-card fork; no user-visible failure, but a systematic blind spot.)
+
+## Deferred from: story c1-9-one-console-script-that-dispatches-without-disturbing-the-mcp-server (2026-07-26)
+
+- **Windows Ctrl-Break ends the companion with exit status `3`, and interactive Ctrl-C is
+  unverified** — live check 3 (real `CTRL_BREAK_EVENT` to a detached child) confirmed everything
+  the AC names: no traceback, graceful uvicorn shutdown, `companion.json` removed,
+  `companion.lock` retained, lock released for the next launch. But the observed exit status is
+  `3`, not the dispatcher's `0` — traced, not assumed: uvicorn completes its graceful shutdown and
+  the Windows console-control path then terminates the process before `main()` can return
+  (`MAIN RETURNED` never prints under instrumentation), so the `3` is imposed outside our code.
+  Interactive `CTRL_C_EVENT` could not be verified in the harness (it cannot be delivered to a
+  detached child without also signalling the driver); `CTRL_BREAK_EVENT` is the proxy the story
+  specifies. **Check during manual testing:** what an interactive Ctrl-C in a real terminal
+  yields. Deliberately not "fixed" by trapping the signal, which would be new behaviour outside
+  c1-9's ACs; if the exit status matters, c8-4's documentation story is where the observed
+  behaviour gets written down. (Source: story c1-9 live check 3 / Completion Notes deviation 3;
+  Severity: Low — Decide-once #5's exit vocabulary is about statuses *we* mint, and AD-15 rules
+  out any supervisor that would read this one.)
+- **`test_entry_point.py`'s autouse `isolated_data_dir` fixture also re-points the two
+  pre-existing transport tests** — the story said "leave the two old ones alone", and the
+  documented deviation 1 covers only the forced `main()` → `main([])` edit. The new autouse
+  fixture additionally moves `PLANESWALKER_DATA_DIR` to `tmp_path` for those two old tests, so
+  they no longer exercise the real-data-dir path they did at baseline. Their assertions are
+  unaffected and the change is an isolation *improvement* (they previously opened the developer's
+  real card database); recorded here so the departure is stated rather than silent. Reopen only
+  if a future story wants a test that deliberately exercises the real-data-dir diagnostics path.
+  (Source: c1-9 code review, Acceptance Auditor; Severity: Low.)
+
+## Deferred from: code review of c1-9 (2026-07-26)
+
+- **The "both mypy runs are mandatory" comment is enforced by no gate** — `singleton.py`'s platform
+  branch declares `uv run mypy src/` and `uv run mypy src/ --platform linux` both mandatory, but no
+  pre-commit hook or CI step passes `--platform linux`: the POSIX (`fcntl`) half is strict-checked
+  only because CI happens to run on ubuntu, and the Windows (`msvcrt`) half only by Brad's local
+  runs. A POSIX contributor could merge a type-broken Windows branch through a green CI, and if the
+  CI matrix ever changes the "mandate" evaporates silently. Fix is one line in either
+  `.pre-commit-config.yaml` or `ci.yml` (an extra mypy invocation with the opposite `--platform`),
+  both of which AC 19 froze for story c1-9 — hence deferred rather than patched.
+  (Source: c1-9 code review, Blind Hunter; Severity: Low — both halves are covered today, the gap
+  is that the coverage is accidental rather than pinned.)

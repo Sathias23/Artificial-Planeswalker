@@ -377,8 +377,9 @@ class UnhandledErrorMiddleware:
                 # let it go up to ServerErrorMiddleware and die honestly — and let that outer
                 # layer do the logging, so every failure is logged exactly once by exactly one net.
                 raise
-            # Reaches stderr via logging.lastResort even though no story has configured a root
-            # logger yet (c1-9 owns that); the client still gets only the token.
+            # Reaches stderr through the root handler c1-9's entry point configures (and via
+            # logging.lastResort in any process that configures none); the client still gets only
+            # the token.
             logger.exception(
                 "Unhandled error serving %s %s", scope.get("method"), scope.get("path")
             )
