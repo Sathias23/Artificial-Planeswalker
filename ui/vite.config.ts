@@ -25,8 +25,14 @@ export default defineConfig({
           environment: 'node',
           // Gate-proving suites: the ESLint/stylelint Node APIs, a real Vite dev server,
           // and the package.json contract. `tests/fixtures/**` holds inputs to those
-          // suites, not test files, and is excluded by the `*.test.ts` pattern itself.
-          include: ['tests/**/*.test.ts'],
+          // suites, not test files, and is excluded by the `*.test.*` pattern itself.
+          //
+          // `{ts,tsx}` on BOTH projects is deliberate. With `tests/**/*.test.ts` here and
+          // `src/**/*.test.{ts,tsx}` in the dom project, a file at `tests/foo.test.tsx`
+          // matched NEITHER glob: vitest would collect nothing, report every other suite
+          // green, and the missing coverage would be invisible. Overlap is impossible
+          // because the two roots are disjoint, so widening both is free.
+          include: ['tests/**/*.test.{ts,tsx}'],
         },
       },
       {
@@ -34,6 +40,8 @@ export default defineConfig({
         test: {
           name: 'dom',
           environment: 'jsdom',
+          // See the note on the `node` project: both roots take `{ts,tsx}` so no test file
+          // can fall between them.
           include: ['src/**/*.test.{ts,tsx}'],
           // Registers the jest-dom matchers and — the part that is easy to miss — an
           // afterEach(cleanup). Without globals enabled, @testing-library/react does NOT

@@ -8,7 +8,7 @@ story_branch: feat/companion-c2-1-frontend-scaffold
 
 # Story C2.1: Frontend scaffold with the full quality gate from the first commit
 
-Status: review
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -402,6 +402,68 @@ story since c1-2 permitted to edit `.github/workflows/ci.yml`.
         not `400 invalid_request`. This is R1 end to end with two real processes; the vitest proxy
         test uses a stub target and cannot prove the middleware accepts the rewritten `Host`
   - [x] Repeat once with `COMPANION_PORT` set to a non-default value on both sides
+
+### Review Findings
+
+Code review 2026-07-26 (bmad-code-review: Blind Hunter + Edge Case Hunter + Acceptance Auditor, diff `50dddc3..HEAD`). 26 raw findings triaged to 4 decisions + 14 patches; 3 dismissed as noise; 0 deferred. Auditor verdict: 21/22 ACs met, AC 9 partially (glob scope). No high-severity findings.
+
+- [x] [Review][Patch] (was Decision — **Brad's ruling 2026-07-26: widen now**) UX-DR46 gate bans only the two literal spellings — extend `declaration-property-value-disallowed-list` to also catch `outline: 0px`, `outline-style: none`, `outline-width: 0`, with the fixture pair extended to prove it (medium) [ui/.stylelintrc.json:4-6]
+- [x] [Review][Patch] (was Decision — **Brad's ruling 2026-07-26: replace with placeholder**) `favicon.svg` is a third-party-looking lightning-bolt Figma export in a public MIT repo — swap in a trivial neutral placeholder SVG; the real icon comes with c2-4's visual work (medium) [ui/public/favicon.svg:1]
+- [x] [Review][Patch] (was Decision — **Brad's ruling 2026-07-26: enforce**) `engines.node >=20.19.0` is advisory — add `ui/.npmrc` with `engine-strict=true` so the declared floor is enforced at install (low) [ui/package.json:6-8]
+- [x] [Review][Decision] The `frontend` CI job has no `paths` filter — **Brad's ruling 2026-07-26: keep unconditional, dismissed.** Matches the repo's unconditional `quality` job, stays required-check-compatible; npm cache keeps the cost low. [.github/workflows/ci.yml]
+- [x] [Review][Patch] React hooks rules apply only to `**/*.tsx` — future custom hooks in plain `.ts` files (`src/hooks/useThing.ts`) silently escape `rules-of-hooks`/`exhaustive-deps` (medium) [ui/eslint.config.js:42]
+- [x] [Review][Patch] A `tests/**/*.test.tsx` file matches neither vitest project's include glob — the suite stays green while the test never runs (medium) [ui/vite.config.ts:29-37]
+- [x] [Review][Patch] Vite `root` built from `URL.pathname` resolves to `C:\C:\…` on Windows (works today only because root is never dereferenced; breaks on paths with spaces). Sibling suite already uses `fileURLToPath`. (low) [ui/tests/devProxyRoundTrip.test.ts:72]
+- [x] [Review][Patch] `resolveBackendPort` diverges from the backend parser it claims to mirror: `Number()` accepts `0x50`/`1e3` (Python `int()` rejects), Python accepts `8_080` (JS rejects), and `0` — legal backend-side, "assign me one" — is silently swallowed into 8765. Split-brain ports with zero warning. (low) [ui/config/devProxy.ts:44-45]
+- [x] [Review][Patch] `devProxy.ts` docstring names nonexistent `tests/dev-proxy.test.ts` and claims it "exercises the very same object through a real Vite server" — the config-reading test is `devProxy.test.ts`, the real-server one is `devProxyRoundTrip.test.ts` (low) [ui/config/devProxy.ts:5-6]
+- [x] [Review][Patch] Proxy paths are prefix matches — a future `/healthcheck` or `/api-docs` frontend route is silently forwarded to the backend (low) [ui/config/devProxy.ts:28]
+- [x] [Review][Patch] stylelint gate glob is `src/**/*.css`, narrower than AC 9's stated `ui/**/*.css` — CSS under `config/` or new top-level dirs is outside the gate (low, AC 9 partial) [ui/package.json:13]
+- [x] [Review][Patch] `coverage/` is ignored by ESLint and Prettier but not by git — first `vitest --coverage` run produces a committable HTML tree (low) [ui/.gitignore]
+- [x] [Review][Patch] `package-lock.json` is not in `.prettierignore` — `format:check` gates npm's machine-written output; a serialization change reds the gate on an unrelated commit (low) [ui/.prettierignore:1-3]
+- [x] [Review][Patch] `DOM.Iterable` dropped from the template's `lib` with no recorded reason — first `for...of` over a NodeList/FormData downstream is a mystery strict-mode error (low) [ui/tsconfig.app.json:5]
+- [x] [Review][Patch] Vite server closer registered only after `listen()` succeeds — a bind failure leaks the created server, the exact hang the file's own `afterEach` comment guards against (low) [ui/tests/devProxyRoundTrip.test.ts:70-80]
+- [x] [Review][Patch] Stub backend `listen` promise has no rejection path — a bind error becomes an opaque test timeout (low) [ui/tests/devProxyRoundTrip.test.ts:51]
+- [x] [Review][Patch] `stylelint.lint` results indexed as `results[0]` with no empty-result guard — a fixture move fails as a confusing TypeError instead of "fixture never linted" (low) [ui/tests/lint-gates.test.ts:78,91]
+- [x] [Review][Patch] Completion Notes say "all nine banned libraries" — the spec and `package-contract.test.ts` correctly have ten; record-only miscount (low) [this file, Completion Notes]
+
+#### Patch application notes (2026-07-26)
+
+All 17 patches applied; the one decision was already dismissed by ruling. Frontend suite **32 → 50
+tests**, all gates green, Python side untouched. Five of them changed behaviour rather than text,
+and those are worth reading before re-review:
+
+- **The DR46 ban is now six spellings, not two** — `outline: none|0|0px`, `outline-style: none`,
+  `outline-width: 0|0px`. Proved both ways from one run: the fixture reports exactly 6
+  `declaration-property-value-disallowed-list` errors, and the clean fixture still reports none.
+- **The proxy keys are now anchored regexes** (`^/api(?:/|$)`, `^/health$`) rather than bare
+  prefixes, because Vite treats a plain string key as a prefix. Backed by a new round-trip pair:
+  `/health` and `/api/deck/1` reach the stub backend, `/healthcheck` and `/api-docs` reach it
+  **not at all** — the negative half is what the old config would have failed.
+- **`resolveBackendPort` now mirrors Python's `int()`** via an explicit regex rather than `Number()`,
+  and every discarded value warns. `0x50`, `1e3` and `80.5` now fall back exactly as the backend
+  does (before: `0x50` → 80, `1e3` → 1000, i.e. the frontend proxying a port the backend never
+  bound), and `8_080` is now accepted as the backend accepts it (before: NaN → 8765). Port `0` —
+  legal backend-side, meaning "bind ephemeral" — gets its own explicit warning naming the discovery
+  file, instead of silently becoming 8765.
+- **The stylelint gate widened from `src/**/*.css` to the whole of `ui/`** (AC 9's stated scope; the
+  auditor's one partial). Fixtures are excluded with CLI `--ignore-pattern` rather than a
+  `.stylelintignore`, deliberately: an ignore *file* would also be honoured by the Node API and
+  would silently neuter `lint-gates.test.ts`. Non-vacuity re-proved after the change — the gate glob
+  reports `2 sources checked`, and the same glob without the fixture exclusion goes red with all
+  six bans firing.
+- **`.npmrc` with `engine-strict=true`** turns the advisory Node floor into an install error. Because
+  that applies to **every** package and CI runs node 20, it was verified rather than assumed: all
+  **331** installed packages declaring `engines.node` satisfy 20.19.0 / 20.19.5 / 20.99.0 (checked
+  with the real `semver` implementation, not a hand-rolled range parser — the first attempt gave 12
+  false positives on ranges like `">= 8"`), and `npm ci` still exits 0.
+
+Two follow-on edits the patches implied but the findings did not name: the react-hooks widening was
+split into two config blocks (hooks on `**/*.{ts,tsx}`, jsx-a11y and react-refresh left on `**/*.tsx`
+where JSX actually exists) rather than widening all three plugins, and `ui/README.md` gained the
+port-parsing, anchored-pattern and `engine-strict` notes so the behaviour is documented where a
+developer meets it.
+
+Dismissed as noise (3): stub-server keep-alive close stall (Node ≥ 19 `close()` closes idle connections; floor is 20.19); missing `--allow-empty-input` on stylelint (loud failure on an empty glob is the non-vacuity discipline this story wants — see gotcha #6); `8765` literal in `devProxy.test.ts`/README (a test asserting the documented default and docs documenting it are the intended "one documented default").
 
 ## Dev Notes
 
@@ -974,7 +1036,7 @@ to no tsconfig — noted in both the tsconfig and `ui/README.md`, since it is th
 a source directory will trip over.
 
 **AC 3's ban test is non-vacuous by construction.** `tests/package-contract.test.ts` asserts all
-nine banned libraries are absent, that `zustand` **is** present (so a typo in the package-reading
+ten banned libraries are absent, that `zustand` **is** present (so a typo in the package-reading
 code cannot make the bans pass by finding nothing), that `openapi-typescript` is in
 `devDependencies` and not `dependencies`, and that `engines.node` is the honest floor. One file
 reads `package.json`; four facts come out.
@@ -1014,6 +1076,7 @@ entry says so.
 
 - `ui/.gitattributes`
 - `ui/.gitignore`
+- `ui/.npmrc` *(added by review patch — `engine-strict=true`)*
 - `ui/.prettierignore`
 - `ui/.prettierrc`
 - `ui/.stylelintrc.json`
@@ -1064,4 +1127,5 @@ baseline in the shipped commit.
 |---|---|---|
 | 2026-07-26 | Story created — comprehensive context analysis; four measured landmines (eslint 10 ERESOLVE, oxlint template default, prettier/CRLF, `@eslint/css` rule gap), R1 and retro action item 3 folded in | Amelia (create-story) |
 | 2026-07-26 | All five open questions asked and answered before implementation — rulings B1–B5 recorded; B2 (`openapi-typescript` installed here) folded into AC 3, AC 4, Task 1, Task 2 and the version table; B5 into AC 15. **No open questions remain.** | Brad + Amelia |
+| 2026-07-26 | Review patches applied — all 17, plus the 1 decision already dismissed by ruling; 0 findings left open. Suite 32 → 50 tests, all gates green, Python untouched at 1,684. AC 9's partial closed (stylelint now covers all of `ui/`). Behavioural changes re-proved rather than assumed: DR46 ban widened 2 → 6 spellings; proxy keys anchored to regexes (live-confirmed `/healthcheck` is no longer forwarded, and R1's proxied `/health` still returns the real `instance_id`); `resolveBackendPort` now mirrors Python `int()` and warns on every discarded value, with port `0` explained rather than swallowed; `engine-strict=true` verified against all 331 packages declaring `engines.node` for node 20. | Amelia (dev-story) |
 | 2026-07-26 | Implemented. `ui/` scaffolded and re-toolchained (oxlint out, eslint + stylelint + prettier + vitest in); lock verified at `3 20` / `typescript@5.9.3` / `eslint@9.39.5`; CI gains a `frontend` job and `mypy --platform win32`; c1-9 mypy-gate entry and the C1 `COMPANION_PORT` residual closed in `deferred-work.md`. All 22 ACs met; 32 frontend tests, Python suite at baseline 1,684. **Three deviations recorded, none silent:** AC 16 ships `--platform win32` not `linux` (the epic's letter would be a no-op on ubuntu — the retro's success criterion wins); a third load-bearing pin `@testing-library/jest-dom ~6.9.1` was required (newer releases need Node ≥ 22); `"strict": true` added to both tsconfigs, which the template omits. | Amelia (dev-story) |

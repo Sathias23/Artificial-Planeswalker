@@ -25,6 +25,13 @@ Open the URL Vite prints. Requests to `/api` and `/health` are proxied to the ba
 `http://127.0.0.1:8765`; set `COMPANION_PORT` to move it — **the same variable the backend
 reads**, so export it once for both processes.
 
+The proxy parses that variable the way the backend's `int()` does, not the way JavaScript's
+`Number()` does, so the two processes cannot end up on different ports over `0x50`, `1e3` or
+`8_080`. Anything it discards, it says so on the console. One value is worth knowing about:
+`COMPANION_PORT=0` is **legal for the backend** — it means "bind an ephemeral port" — but a
+dev proxy is configured once, before the backend starts, so it cannot discover that port.
+It warns and falls back rather than pretending to work.
+
 ### Why the proxy sets `changeOrigin: true`
 
 Because without it every proxied request fails with `400 {"reason": "invalid_request"}`.
@@ -71,7 +78,12 @@ Some notes that are easy to trip over:
   `core.autocrlf=true`. Without it `prettier --check` is red on Windows and green on CI from
   the same commit.
 - `tests/fixtures/` holds deliberately-broken files. They are inputs to the lint-gate tests,
-  are excluded from `npm run lint`, and should stay broken.
+  are excluded from `npm run lint` (ESLint via config `ignores`, stylelint via
+  `--ignore-pattern` so the Node-API tests are unaffected), and should stay broken.
+- **The proxy keys are anchored regexes, not path prefixes.** Vite treats a plain `'/api'`
+  key as a prefix, so it would also swallow a future frontend route named `/api-docs`.
+- `engine-strict=true` in `.npmrc` makes the declared Node floor an install-time error
+  rather than a warning npm prints and ignores.
 
 ## Adding a source directory
 

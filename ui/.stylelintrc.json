@@ -2,7 +2,9 @@
   "extends": ["stylelint-config-standard"],
   "rules": {
     "declaration-property-value-disallowed-list": {
-      "outline": ["/^none$/", "/^0$/"]
+      "outline": ["/^none$/", "/^0$/", "/^0[a-z%]+$/"],
+      "outline-style": ["/^none$/"],
+      "outline-width": ["/^0$/", "/^0[a-z%]+$/"]
     }
   }
 }

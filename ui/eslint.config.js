@@ -39,14 +39,27 @@ export default tseslint.config(
   },
 
   {
-    files: ['**/*.tsx'],
-    plugins: { 'jsx-a11y': jsxA11y },
+    // The hooks rules must cover `.ts` as well as `.tsx`. A custom hook lives in a plain
+    // `.ts` file more often than not (`src/hooks/useDeck.ts`), and scoping this to `.tsx`
+    // would let `rules-of-hooks` and `exhaustive-deps` — the two rules most likely to catch
+    // a real bug in c4-1's store work — silently skip exactly those files.
+    files: ['**/*.{ts,tsx}'],
     // `reactHooks.configs.flat[...]`, NOT `reactHooks.configs[...]`: eslint-plugin-react-hooks@7
     // exports BOTH shapes under near-identical names, and the top-level one is the legacy
     // eslintrc config (`plugins: ["react-hooks"]`, an array of strings). Passing it to flat
     // config fails the whole run with "A config object has a 'plugins' key defined as an
     // array of strings" — it does not degrade quietly.
-    extends: [reactHooks.configs.flat['recommended-latest'], reactRefresh.configs.vite],
+    extends: [reactHooks.configs.flat['recommended-latest']],
+  },
+
+  {
+    // JSX-only concerns, deliberately NOT widened to `.ts`: a11y rules need JSX elements to
+    // look at, and react-refresh reasons about component exports, which a `.ts` file cannot
+    // have. Keeping them here rather than in the block above avoids arguing with every
+    // non-component module in `config/` and `tests/`.
+    files: ['**/*.tsx'],
+    plugins: { 'jsx-a11y': jsxA11y },
+    extends: [reactRefresh.configs.vite],
     rules: {
       // UX-DR47. Enabled by name rather than by spreading jsx-a11y's recommended config:
       // these two are the ones the design requirement actually names, and an explicit

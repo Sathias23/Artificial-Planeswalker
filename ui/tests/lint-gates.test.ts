@@ -65,23 +65,38 @@ describe('eslint accessibility gate (UX-DR47, AC 8)', () => {
 })
 
 describe('stylelint focus-ring gate (UX-DR46, AC 9)', () => {
-  const lintCss = (file: string) =>
-    stylelint.lint({
+  const lintCss = async (file: string) => {
+    const result = await stylelint.lint({
       files: [fixture(file)],
       configFile: fileURLToPath(new URL('../.stylelintrc.json', import.meta.url)),
     })
 
-  it('reports outline:none even when a :focus-visible replacement is present', async () => {
+    // Without this, a moved or renamed fixture makes `results[0]` undefined and the failure
+    // reads as a TypeError deep in an expectation rather than "the fixture was never linted"
+    // — which is the same vacuous-gate trap this whole file exists to close.
+    expect(
+      result.results,
+      `stylelint linted no file for ${file} — the fixture is missing or was ignored`,
+    ).toHaveLength(1)
+
+    return result
+  }
+
+  it('reports every spelling of a removed focus ring, replacement or not', async () => {
     const result = await lintCss('css/violation.css')
 
     expect(result.errored).toBe(true)
-    const warnings = result.results[0].warnings
-    const outlineWarnings = warnings.filter((w) => w.rule === OUTLINE_RULE)
+    const outlineWarnings = result.results[0].warnings.filter((w) => w.rule === OUTLINE_RULE)
 
-    // Both `outline: none` and `outline: 0` are banned, so both declarations are reported —
-    // and the :focus-visible replacement in the same file does not buy an exemption.
-    expect(outlineWarnings).toHaveLength(2)
+    // Five banned declarations in the fixture: `outline: none`, `outline: 0`, `outline: 0px`,
+    // `outline-style: none`, `outline-width: 0` and `outline-width: 0px` — six. A ban on only
+    // the two literal spellings is one a search-and-replace walks straight around, so the
+    // longhands and the zero-with-unit forms are banned too.
+    expect(outlineWarnings).toHaveLength(6)
     expect(new Set(outlineWarnings.map((w) => w.severity))).toEqual(new Set(['error']))
+
+    // And the :focus-visible replacement in the same file bought no exemption.
+    expect(result.results[0].source).toContain('violation.css')
   })
 
   it('leaves a stylesheet with no outline declaration alone', async () => {

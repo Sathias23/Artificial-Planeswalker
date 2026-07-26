@@ -2,7 +2,11 @@
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "target": "es2023",
-    "lib": ["ES2023", "DOM"],
+    /* `DOM.Iterable` is restored deliberately — the create-vite@9 template drops it, and
+       without it the first `for...of` over a NodeList, FormData, URLSearchParams or
+       Headers downstream fails type-checking with an error that reads like a tsconfig
+       mystery rather than a missing lib. Restored by story c2-1 (review patch). */
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "esnext",
     "types": ["vite/client"],
     "allowArbitraryExtensions": true,

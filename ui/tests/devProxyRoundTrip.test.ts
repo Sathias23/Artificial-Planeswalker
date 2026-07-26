@@ -18,6 +18,7 @@
 
 import { createServer as createHttpServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
+import { fileURLToPath } from 'node:url'
 
 import { createServer as createViteServer } from 'vite'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -29,6 +30,7 @@ interface StubBackend {
   server: Server
   port: number
   receivedHosts: string[]
+  receivedPaths: string[]
 }
 
 const openResources: Array<() => Promise<void>> = []
@@ -42,16 +44,29 @@ afterEach(async () => {
 
 async function startStubBackend(): Promise<StubBackend> {
   const receivedHosts: string[] = []
+  const receivedPaths: string[] = []
   const server = createHttpServer((req, res) => {
     receivedHosts.push(req.headers.host ?? '<absent>')
+    receivedPaths.push(req.url ?? '<absent>')
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(JSON.stringify({ status: 'ok' }))
   })
 
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  // Registered BEFORE listen: if the bind fails, the server object still exists and still
+  // needs closing. Registering after would leak it on exactly the path that fails.
   openResources.push(() => new Promise<void>((resolve) => server.close(() => resolve())))
 
-  return { server, port: (server.address() as AddressInfo).port, receivedHosts }
+  await new Promise<void>((resolve, reject) => {
+    // Without this the promise simply never settles on a bind error, and the failure
+    // surfaces as an opaque test timeout instead of the actual EADDRINUSE/EACCES.
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      server.off('error', reject)
+      resolve()
+    })
+  })
+
+  return { server, port: (server.address() as AddressInfo).port, receivedHosts, receivedPaths }
 }
 
 async function startViteProxying(
@@ -61,23 +76,28 @@ async function startViteProxying(
   // The proxy entries come from the shipped factory, so this exercises the real config;
   // only `changeOrigin` is overridden, to produce the negative half of the pair.
   const proxy = Object.fromEntries(
-    Object.entries(createDevProxy({ COMPANION_PORT: String(targetPort) })).map(([path, entry]) => [
-      path,
-      { ...entry, changeOrigin },
-    ]),
+    Object.entries(
+      createDevProxy({ COMPANION_PORT: String(targetPort) }, () => {
+        /* a valid port never warns; silence keeps test output clean if that ever changes */
+      }),
+    ).map(([pattern, entry]) => [pattern, { ...entry, changeOrigin }]),
   )
 
   const vite = await createViteServer({
     configFile: false,
-    root: new URL('..', import.meta.url).pathname,
+    // `fileURLToPath`, never `new URL(...).pathname` — on Windows the latter yields
+    // "/C:/Users/..." which Vite resolves against the cwd into "C:\C:\Users\...", and it
+    // also leaves %20 escapes in any path containing a space.
+    root: fileURLToPath(new URL('..', import.meta.url)),
     logLevel: 'silent',
     server: { port: 0, host: '127.0.0.1', proxy },
   })
 
-  await vite.listen()
+  // Same ordering rule as the stub above: a failed `listen()` must still be cleaned up.
   openResources.push(async () => {
     await vite.close()
   })
+  await vite.listen()
 
   const address = vite.httpServer!.address() as AddressInfo
   return { origin: `http://127.0.0.1:${address.port}` }
@@ -109,5 +129,31 @@ describe('dev proxy Host rewriting (ruling R1, AC 13)', () => {
 
     // And the two really are different, or the assertion above proves nothing at all.
     expect(viteAuthority).not.toBe(`127.0.0.1:${backend.port}`)
+  })
+})
+
+describe('dev proxy path matching is anchored, not prefixed', () => {
+  it('proxies the real surfaces', async () => {
+    const backend = await startStubBackend()
+    const { origin } = await startViteProxying(backend.port, true)
+
+    await fetch(`${origin}/health`)
+    await fetch(`${origin}/api/deck/1`)
+
+    expect(backend.receivedPaths).toEqual(['/health', '/api/deck/1'])
+  })
+
+  // The non-vacuity pair, and the reason the patterns are regexes rather than bare prefixes:
+  // Vite treats a plain string key as a PREFIX, so '/api' would swallow a future frontend
+  // route called '/api-docs' and '/health' would swallow '/healthcheck' — forwarding them to
+  // a backend that has never heard of them, with nothing on screen to explain the 404.
+  it('does not proxy paths that merely share a prefix', async () => {
+    const backend = await startStubBackend()
+    const { origin } = await startViteProxying(backend.port, true)
+
+    await fetch(`${origin}/healthcheck`)
+    await fetch(`${origin}/api-docs`)
+
+    expect(backend.receivedPaths).toEqual([])
   })
 })

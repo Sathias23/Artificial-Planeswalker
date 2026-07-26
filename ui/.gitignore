@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# `vitest --coverage` writes an HTML tree here. ESLint and Prettier already ignore it;
+# without this line the first coverage run leaves a committable directory behind.
+coverage
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
