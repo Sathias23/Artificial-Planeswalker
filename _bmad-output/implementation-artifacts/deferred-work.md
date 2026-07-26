@@ -760,3 +760,45 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   documented Windows residual, or serializing shutdown/startup around a lock file. (Source: c1-7
   code review 2026-07-26, Blind Hunter + Edge Case Hunter; Severity: Low; deferred to c1-8, which
   owns the contending-instances design.)
+
+## Raised by Brad, outside a story (2026-07-26)
+
+- **`assess_deck_power` ignores mana *quality* — it only counts mana** — the `mana_efficiency`
+  dimension is built from two count-based signals and nothing else: Karsten land-**count** delta
+  (`mana_base.karsten_land_delta`) and per-colour **source-count** deficits
+  (`mana_base.compute_pip_signals` → `dimensions._mana_efficiency_score`, which starts at 100 and
+  subtracts a penalty per land outside the tolerance band and per missing colour source). A source
+  is any Land whose type line or "add {X}" text names the colour, and **every source counts the
+  same**. Concretely, today's scorer cannot tell apart:
+  - a **shockland from a Guildgate** — enters-tapped is invisible, so the tempo cost of a slow
+    mana base is unscored, and this is the single biggest quality gap in Commander and 60-card
+    alike;
+  - a **fetchland or triome from a basic** — fixing depth and land-type synergy are unmodelled;
+  - **painlands / filters / bounce lands** from clean duals — the *cost* of fixing is unmodelled;
+  - a **mana dork or Signet from nothing at all** — `compute_pip_signals` `continue`s on every
+    non-land, so **non-land colour sources contribute zero** to the deficit calculation. A
+    rock-heavy or dork-heavy deck is scored as though its colours were unsupported, which is a
+    correctness gap and not merely a missing refinement;
+  - a **utility/colourless land** (Ancient Tomb, creature-lands, Cabal Coffers) beyond its
+    non-contribution to colour — the upside is uncredited and the colour cost is only implicit.
+
+  So two decks with identical curve and identical colour-source *counts* score identically on
+  `mana_efficiency` even when one is an optimised mana base and the other is all taplands and
+  basics — which is exactly the distinction an experienced player makes first. Weighting makes it
+  matter: `mana_efficiency` is 0.20 of the 60-card profile (0.05 in Commander,
+  `profiles.py:154/187`), so on the Standard/Modern fork this is a fifth of the score resting on a
+  signal that is blind to mana quality.
+
+  **Not a defect against any shipped AC** — Epic 5 scoped 5.4 to "raw numeric mana signals" and the
+  Karsten regressions deliberately, and the benchmark passed on that basis. This is a **missing
+  signal**, not a mistuned one, which is why it likely wants its **own story** (a
+  `mana_quality`-style signal in `mana_base.py` + a dimension term) rather than a coefficient tweak.
+  Feasibility is good: enters-tapped and produced-mana are both derivable from data already
+  imported (oracle text / type line, the same inputs `_land_source_colors` reads), so no schema
+  change or re-import is implied — the non-land-source fix in particular is close to free.
+
+  **Homed against `post-epic-7-calibration-gate`** (sprint-status, currently `backlog`), which is
+  the open bucket for scoring-quality inputs C1–C5; this joins them as a sixth, distinguished by
+  being additive rather than corrective. Per the epic-7 gate-output homing rule it gets a key
+  rather than a label. (Source: Brad, unprompted during story c1-7; Severity: Medium — it is
+  weighted at 0.20 on the 60-card fork; no user-visible failure, but a systematic blind spot.)
