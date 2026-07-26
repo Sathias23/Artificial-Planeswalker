@@ -1,0 +1,20 @@
+/* FIXTURE — deliberately violates UX-DR46. Not part of the app's styles.
+   `npm run lint` runs stylelint over src/**\/*.css only, so this file is not in that glob;
+   tests/lint-gates.test.ts lints it explicitly through the stylelint Node API.
+
+   Note the :focus-visible replacement below. The rule is deliberately blunt: this file is
+   STILL reported even though the focus ring is replaced. Whether a replacement is adequate
+   is asserted by human review and by c2-4's token work, not by the linter. */
+
+.kills-focus-ring {
+  outline: none;
+}
+
+.kills-focus-ring:focus-visible {
+  outline: 2px solid;
+  outline-offset: 2px;
+}
+
+.kills-focus-ring-with-zero {
+  outline: 0;
+}

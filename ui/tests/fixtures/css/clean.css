@@ -1,0 +1,8 @@
+/* FIXTURE — the acceptance half of the pair. No `outline` declaration at all, so the
+   UX-DR46 rule must stay silent. Without this file a passing test cannot tell "the rule
+   fired on the violation" from "stylelint reports every file it is given". */
+
+.no-outline-declaration {
+  display: block;
+  padding: 4px;
+}

@@ -1,0 +1,55 @@
+{
+  "name": "artificial-planeswalker-ui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . && stylelint \"src/**/*.css\"",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zustand": "^5.0.14"
+  },
+  "//": {
+    "typescript": "PINNED >=5.9 <6.1 — not an open floor. Two measured reasons, both needed. (1) Unconstrained, an open floor resolves to TypeScript 7: `npm view typescript dist-tags` gives latest 7.0.2, and typescript-eslint@8 publishes peer `typescript: >=4.8.4 <6.1.0`, so TS 7 breaks the ESLint gate outright. (2) With typescript-eslint present npm back-solves rather than failing — the same open floor resolves to 6.0.3, not 7 — so the pin's job is also to keep the constraint explicit and OWNED HERE instead of emergent from a transitive peer that a future bump could relax silently. openapi-typescript's `typescript: ^5.x` peer is what lands the resolved version on 5.9.x. Decided in story c2-1 (AC 4).",
+    "eslint": "PINNED ^9 — eslint@10 CANNOT coexist with eslint-plugin-jsx-a11y. jsx-a11y@6.10.2 is `latest` (no newer release) and peers at `eslint ^3 || ... || ^9`; ESLint's own `latest` dist-tag is 10.x, so an unpinned eslint makes `npm ci` fail with ERESOLVE — not warn. Raising ESLint deletes the UX-DR47 accessibility gate. EXIT CONDITION: lift this pin when eslint-plugin-jsx-a11y publishes an ^10 peer range. Decided in story c2-1 (AC 5, Decide-once #1, Ruling B3 — which also declined oxlint outright).",
+    "openapi-typescript": "Installed by story c2-1 (Ruling B2) and deliberately UNWIRED — there is no generation script, no ui/src/api/types.d.ts and no CI step in this story. Story c2-3 owns wiring it. It lives here now so the lockfile lands on typescript@5.9.x from the first commit, instead of c2-3 having to downgrade TypeScript under two stories of existing code. devDependencies only, never dependencies (c2-3's own AC).",
+    "@testing-library/jest-dom": "PINNED ~6.9.1 — a THIRD load-bearing pin, found while implementing c2-1 (the story predicted two). Both `latest` (7.0.0) and 6.10.0 declare `engines.node >= 22`, which is above this project's declared floor of >=20.19.0 and above the CI job's `node-version: 20`; 6.10.0 is additionally deprecated upstream as an incorrect minor release. 6.9.1 is the last release with `engines.node >= 14`. Lifting this pin requires raising the whole project's Node floor to 22 (an AC 2 / AC 15 change), not just bumping the dependency. Verified with `npm view @testing-library/jest-dom@<v> engines`.",
+    "no-second-state-library": "AD-12 — zustand is the one store. No second data-fetching or state-management library joins it. Enforced by tests/package-contract.test.ts, not by convention."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "~6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "eslint": "^9",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^16.5.0",
+    "jsdom": "^29.1.1",
+    "openapi-typescript": "^7.13.0",
+    "prettier": "^3.9.6",
+    "stylelint": "^17.14.1",
+    "stylelint-config-standard": "^40.0.0",
+    "typescript": ">=5.9 <6.1",
+    "typescript-eslint": "^8.65.0",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
+  }
+}
