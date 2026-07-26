@@ -1,0 +1,13 @@
+/* Motion vocabulary. Named durations differ per theme personality; easings shared. */
+:root{--ease-out:cubic-bezier(0.25,0.1,0.25,1); /* @kind other */
+--ease-glide:cubic-bezier(0.4,0,0.2,1); /* @kind other */
+--ease-snap:cubic-bezier(0.2,0,0,1); /* @kind other */
+--dur-1:100ms; /* @kind other */
+--dur-2:240ms; /* @kind other */
+--dur-3:480ms; /* @kind other */
+--dur-4:900ms; /* @kind other */
+}
+[data-theme="gilt"]{--dur-1:120ms; /* @kind other */ --dur-2:220ms; /* @kind other */ --dur-3:400ms; /* @kind other */ --dur-4:650ms; /* @kind other */}
+[data-theme="graphite"]{--dur-1:80ms; /* @kind other */ --dur-2:160ms; /* @kind other */ --dur-3:320ms; /* @kind other */ --dur-4:320ms; /* @kind other */}
+[data-theme="verdigris"]{--dur-1:140ms; /* @kind other */ --dur-2:260ms; /* @kind other */ --dur-3:420ms; /* @kind other */ --dur-4:700ms; /* @kind other */}
+[data-theme="ink"]{--dur-1:0ms; /* @kind other */ --dur-2:140ms; /* @kind other */ --dur-3:280ms; /* @kind other */ --dur-4:280ms; /* @kind other */}

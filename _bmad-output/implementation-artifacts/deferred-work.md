@@ -271,6 +271,19 @@
   `ConnectionFactory` happily uses the bare path — a half-works/half-crashes split. Pre-existing (the
   old `os.getenv("CARDS_DATABASE_URL", default)` had the same risk) and it fails loudly. Fix later by
   validating/normalising the URL form, or document that the `sqlite+aiosqlite:///` prefix is mandatory.
+  - **HOMED (not fixed) by story c1-6, 2026-07-25** — per the epic-7 gate-output-homing rule. On the
+    companion's REST side the crash now has a **defined behaviour instead of an undefined one**: the
+    bare path reaches `sqlalchemy.engine.make_url` inside
+    `src/companion/app/deps.py::database_file`, which raises `ArgumentError`; AD-16 rules that
+    deterministic, so it falls through to `UnhandledErrorMiddleware` and answers
+    `500 internal_error` rather than taking the process down. Pinned by
+    `test_deps.py::TestTransientFailureIsDatabaseUnavailable::
+    test_a_deterministic_argument_error_is_internal_error_not_unavailable`. Note the raise site moved
+    one step earlier than this item's original wording predicted (`make_url`, not
+    `create_async_engine`) because the companion parses the URL to derive the file path before
+    building an engine. The **underlying** half-works/half-crashes split between the async engine and
+    the sync `ConnectionFactory` is untouched and still owned here; a fix belongs in `src/paths.py`,
+    which story c1-6 is forbidden from editing.
 - **UNC `PLANESWALKER_DATA_DIR` yields a malformed async URL** — for `\\server\share\pw`,
   `database_path().as_posix()` collapses the leading `\\` to a single `/`, so the async URL drops the
   UNC authority while the sync factory keeps the native UNC path → divergence. Exotic (SQLite over a
@@ -610,3 +623,390 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   AC 6 only requires a "combos matched count" and the 7.2 summary is explicitly provisional;
   Story 7.3 (human-summary serialization) should disambiguate assembled vs one-away in the
   client-facing projection. (Source: Blind Hunter; Severity: Low; deferred to Story 7.3.)
+
+## Deferred from: code review of c1-2-side-effect-free-asgi-app-with-a-lifespan-and-a-health-endpoint (2026-07-25)
+
+- **`lifespan_client` seam is not parameterizable for its named inheritors** — the conftest helper
+  hardcodes `BASE_URL = "http://testserver"` and accepts no headers/base-url kwargs
+  (`tests/unit/companion/conftest.py:26-43`), but c1-5's Host-validation/CORS/token tests must vary
+  exactly those. Extending the signature with optional kwargs is backward-compatible, so the
+  extension belongs to c1-5 when the need is concrete rather than speculative here.
+  (Source: Blind Hunter; Severity: Low; deferred to c1-5.)
+  **CLOSED 2026-07-25 by c1-5 (AC 11).** `_lifespan_client` now takes `base_url=`, `headers=` and
+  `bound_port=` kwargs and stamps `app.state.bound_port` when the app has none, deriving a matching
+  loopback `base_url` from it. The acceptance signal was that all 149 pre-existing companion tests
+  pass **unedited** — which also means the whole suite now flows through the real `Host` envelope
+  rather than around it.
+- **mypy pre-commit hook `additional_dependencies` drift from `uv.lock`** — the hook's isolated env
+  resolves `fastapi>=0.139.2` (and the pre-existing pydantic/sqlalchemy entries) independently at
+  hook-install time (`.pre-commit-config.yaml:9`), so pre-commit mypy may check a different FastAPI
+  than the locked 0.140.0 CI/runtime uses. Pre-existing pattern extended, not introduced, by c1-2.
+  (Source: Blind Hunter; Severity: Low; deferred — pre-existing tooling pattern.)
+  *Update 2026-07-25: re-flagged by the c1-3 review (dismissed as this known item) and by Greptile
+  as the sole P2 on PR #11 (`uvicorn>=0.51.0`, same pattern). Brad's ruling: merge as-is, leave
+  deferred — the hook is a fast local smoke; CI's `uv sync --locked` + `mypy src/` is the
+  authoritative typed gate against the real locked versions. Pinning one dep would be inconsistent
+  with the other seven floors; pinning all seven would go stale against `uv.lock` unchecked.*
+
+## Deferred from: code review of c1-3-port-selection-with-ephemeral-fallback-and-a-printed-launch-url (2026-07-25)
+
+- **No `SO_EXCLUSIVEADDRUSE` on the Windows bind** — `_new_socket` correctly omits `SO_REUSEADDR`
+  on Windows (`src/companion/app/server.py:109-124`), but does not set `SO_EXCLUSIVEADDRUSE`, so
+  another local process binding with `SO_REUSEADDR` can still bind over the companion's held port —
+  weakening AD-4's single-instance premise at the socket layer. c1-3's ruling was "mirror asyncio's
+  own reuse policy", and c1-8's instance_id probe detects a wrong server downstream; deciding
+  whether the socket itself should be hardened belongs to c1-5's security envelope.
+  (Source: Edge Case Hunter + Blind Hunter; Severity: Low; deferred to c1-5.)
+  **CLOSED 2026-07-25 by c1-5 (AC 10).** `_new_socket()` now sets `SO_EXCLUSIVEADDRUSE` on Windows,
+  as the complement of (not a replacement for) the POSIX-only `SO_REUSEADDR`, pinned by
+  `test_exclusiveaddruse_is_set_on_windows_only`. The platform branch is written against
+  `sys.platform == "win32"` rather than `os.name == "nt"`: the two are runtime-identical here, but
+  only `sys.platform` is narrowed by mypy, and CI type-checks on ubuntu where typeshed has no such
+  constant (verified: the `os.name` form fails `mypy src/ --platform linux` with
+  `Module has no attribute "SO_EXCLUSIVEADDRUSE"`).
+- **`free_port()` bind-close-reuse TOCTOU in the c1-3 test helper** — between releasing the probe
+  socket and the test re-binding the returned port (`tests/unit/companion/test_server.py:52-65`),
+  another process can take it; latent flake class for the four tests asserting on `wanted`. The
+  suite runs without xdist and the window is tiny — recorded so a future flake on these tests is
+  instantly diagnosable (fix = retry loop in `free_port`). (Source: Edge Case Hunter + Blind
+  Hunter; Severity: Low; deferred — act on first flake.)
+
+## Deferred from: code review of c1-4-typed-rest-error-contract-with-closed-reason-tokens (2026-07-25)
+
+- **Outermost error middleware vs c1-5's CORS: unhandled-503s will carry no CORS headers** — c1-4
+  pins `UnhandledErrorMiddleware` outermost (`src/companion/app/main.py`, install-last comment) so
+  it can type the failures of every inner middleware, and directs c1-5 to insert *inside* it. The
+  flip side: a 503 minted by the error middleware never passes back through an inner
+  `CORSMiddleware`, so a cross-origin caller sees an opaque network error for exactly the failure
+  class c1-4 exists to type. c1-5 must weigh the ordering trade (typed failures of the security
+  middleware vs CORS-visible unhandled errors) with its actual CORS scope in hand — the tension is
+  recorded here so it is inherited explicitly, not discovered. (Source: Blind Hunter; Severity:
+  Low; deferred to c1-5.)
+  **CLOSED 2026-07-25 by c1-5 (AC 9, Decide-once #3) — resolved by the no-CORS ruling, not by an
+  ordering change.** c1-5 installs no `CORSMiddleware` at all: AD-13 serves the SPA from this same
+  backend, so every legitimate request is same-origin and the empty grant *is* "restricted to the
+  app's own origin". With no inner CORS middleware there is no trade left to make — the
+  "outer-503 never passes back through inner CORS" tension cannot arise. Pinned by three
+  assertions in `test_security.py::TestCorsIsDeliberatelyAbsent`, so a later story that wants CORS
+  must revisit this ruling first.
+
+## Deferred from: story c1-5-localhost-only-security-envelope-host-validation-and-cors (2026-07-25)
+
+- **`test_list_decks_with_strategy_field` is order-flaky on a same-tick tie** — observed failing
+  once in a full-suite run during c1-5 and passing in isolation and on two subsequent full runs;
+  **pre-existing and unrelated to c1-5**, which touches nothing under `src/data`. The test creates
+  three decks back-to-back and asserts a strict newest-first ordering
+  (`tests/integration/data/test_deck_repository.py:320-333`), but `list_decks` orders by
+  `DeckModel.created_at.desc(), DeckModel.id` (`src/data/repositories/deck.py:262`) — so when two
+  `created_at` values land in the same clock tick the tie-breaker is a **random UUID**, which does
+  not correlate with insertion order. Fix = tie-break on something monotonic, or have the test
+  space its creations. Recorded rather than fixed because it is outside c1-5's AC 16 scope
+  boundary. (Source: c1-5 full-suite gate run; Severity: Low; needs a home in the data-layer work —
+  natural fit is `data-layer-orphan-handling`, the other open `src/data` item.)
+
+## Deferred from: code review of c1-6-lazy-database-engine-so-a-fresh-install-starts-instead-of-erroring (2026-07-25)
+
+- **Cached-engine path never re-runs the existence check** — once an engine is cached, deleting
+  `cards.db` while the companion runs means the next request's connection re-plants a zero-byte
+  file (the response is still a correct `503 database_not_initialized`, via the empty-file probe).
+  Includes the narrower exists→connect TOCTOU window on first creation. AC 3's no-plant guarantee
+  is scoped to before-first-engine by design; a per-request re-stat would restore it at all times
+  but is machinery with no failing user story behind it. Natural revisit point is c10-3 (latency
+  work touches the same per-request path). (Source: Edge Case Hunter; Severity: Low.)
+- **A durably corrupt `cards.db` is classified transient forever** — "file is not a database"
+  answers `database_unavailable`, the quiet-retry "Database updating" state, on every request with
+  no path to the fresh-install/repair panel. Decide-once #4 rules it transient because it might be
+  mid-import, but nothing distinguishes 200 ms of mid-import from a month of garbage. A UX ruling
+  for c2-9 to make with the state designs in hand. (Source: Blind Hunter; Severity: Low.)
+- **URI-form SQLite `CARDS_DATABASE_URL` is misclassified as a file path** — `database_file` handles
+  `:memory:` and empty-database, but `sqlite+aiosqlite:///file::memory:?cache=shared` (or
+  `?uri=true` forms) falls through to `Path(parsed.database)`, which never exists → permanent 503
+  for a valid in-memory URL. Same family and same channel as the bare-path item above (line ~268):
+  an exotic explicit env override, not a supported configuration. Fold into that item's eventual
+  fix (early validation of `CARDS_DATABASE_URL` shapes). (Source: Edge Case Hunter + Blind Hunter;
+  Severity: Low.)
+- **`UnhandledErrorMiddleware`'s full-traceback logging can carry `[SQL]`/`[parameters]`** — a
+  SQLAlchemy `StatementError` that is not a `DatabaseError` (e.g. a wrapped `InterfaceError`)
+  falls through to the 500 path, whose `logger.exception` prints the full traceback including the
+  statement and bound parameters — the exact strings AC 9 scrubs on the 503 path. Pre-existing
+  c1-4 middleware behavior (deliberate: full tracebacks on unhandled bugs), surfaced now that DB
+  paths can route through it. Candidate: scrub `[parameters: ...]` from tracebacks, or accept as
+  local-log-only. (Source: Blind Hunter; Severity: Low.)
+
+## Deferred from: story c1-7-discovery-file-as-the-sole-rendezvous (2026-07-26)
+
+- **`os.replace` fails with `PermissionError [WinError 5]` while another process holds the target
+  open** — measured on this machine during story writing and re-confirmed in implementation. The
+  window is microseconds (a reader does one `read_bytes()` and closes), and the write happens once
+  per process start, so no retry machinery was added. The consequence to inherit: under c1-7's
+  Decide-once #3 a publish failure **aborts the launch**, so a companion started at the exact
+  instant an agent tool was reading the file could fail to start with a permissions error that has
+  nothing to do with permissions. No failing user story stands behind it today — startup contends
+  with an existing file for the first time in **c1-8**, whose entire subject is a second launch
+  meeting a file it did not write, which is why that story is the natural home. Candidate fix if it
+  ever bites: a bounded retry (2–3 attempts, short sleep) around the `os.replace` alone, or
+  narrowing Decide-once #3 so a *transient* replace failure degrades where an unwritable directory
+  still aborts. Windows-only. (Source: c1-7 story-writing probe 3, re-verified at implementation;
+  Severity: Low; deferred to c1-8.)
+
+  **Ruling (c1-8, 2026-07-26): still accepted, re-homed to c6-1.** c1-8 did not make this more
+  likely, and it is worth being precise about why. The startup check reads `companion.json` through
+  `read_discovery` — once before the probe is dialled, and (on the reclaim path only) once more in
+  `_note_reclaimed_entry` to decide whether the INFO line has anything to say; each read is a single
+  `read_bytes()` whose handle closes immediately — and it does so in a launch that either *returns
+  without publishing* (a live instance was found) or publishes much later, from the lifespan, long
+  after both handles are gone. **A process
+  therefore cannot collide with itself**, which was the one new self-inflicted way this could have
+  started firing. The only concurrent reader of the file in production still arrives with **c6-1**,
+  whose client reads the rendezvous before every push — that is the first code that will hold the
+  file open at an arbitrary moment while some other process starts. Re-homed there; nothing to do
+  in c1-8.
+
+- **TOCTOU in `remove_discovery`'s ownership guard** — the read → compare-`instance_id` → `unlink`
+  sequence in `src/companion/discovery.py::remove_discovery` is check-then-act: a second instance
+  that `os.replace`s its own record in between our read and our unlink loses its live rendezvous to
+  our deletion — the exact scenario the guard exists to prevent, in a microsecond window on a path
+  that runs once per process lifetime. No code fix wanted now: an atomic verify-and-delete has no
+  clean cross-platform shape (Windows cannot unlink-by-open-handle portably from Python), and until
+  c1-8 lands there is never a second live instance to collide with. Acknowledged in the function's
+  docstring. Candidate fixes if it ever bites: open-with-`O_RDWR`-verify-then-unlink on POSIX with a
+  documented Windows residual, or serializing shutdown/startup around a lock file. (Source: c1-7
+  code review 2026-07-26, Blind Hunter + Edge Case Hunter; Severity: Low; deferred to c1-8, which
+  owns the contending-instances design.)
+
+  **Ruling (c1-8, 2026-07-26): accepted, and materially narrowed — entry kept.** The window needs a
+  *second live instance* to be harmful: our shutdown must unlink a record that some other running
+  companion published in between our read and our unlink. That second instance is now precisely the
+  case c1-8 refuses — a launch that finds a verified-live companion prints its URL and returns
+  without ever publishing, so the ordinary route to two contending writers is closed. What remains
+  is the narrow residual recorded in the c1-8 section below: two launches racing inside the same
+  startup window (a couple of seconds at the outside) can still both start, and only then can this
+  unlink hit a foreign live record. So the guard is not redundant and the entry stays open, but its reachability now depends
+  on a race that is itself deferred, not on ordinary use. No code change; `remove_discovery`'s
+  docstring was reworded (c1-8 AC 16) because it previously pointed forward to c1-8 as the story
+  that "first makes two instances contend for this file", which is stale in both halves now that
+  c1-8 has landed and *prevents* the ordinary second instance.
+
+  **Ruling (c1-9, 2026-07-26): CLOSED by unreachability — no code change to `remove_discovery`.**
+  The harm scenario requires a second *live* instance inside one data directory, and c1-9's held
+  advisory lock (`src/companion/app/singleton.py`) makes that state unconstructible: `run()` takes
+  the lock before it resolves a port, binds or builds an app, and holds it until the process dies,
+  so the launch that would have become the second live writer refuses instead. The check-then-act
+  sequence in `remove_discovery` is unchanged and still not atomic — the entry is closed because
+  nothing can reach it, not because the code was made safe. Its docstring was corrected accordingly
+  (c1-9 AC 16), replacing c1-8's "two launches colliding within the same fraction of a second"
+  wording.
+
+  **What would reopen it, stated plainly rather than discovered later:** two companions run
+  deliberately under *different* `PLANESWALKER_DATA_DIR` values. That is a supported configuration
+  and it is not a defect — each instance then gets its own lock file, its own `companion.json` and
+  no shared state, so the two never contend over one record and the TOCTOU still has no reachable
+  harm. The residual would only return if a future story reintroduced two live instances sharing a
+  single data directory, which the lock is specifically there to prevent. (This is the c1-8-review
+  lesson about `trust_env=False` applied in advance: an environment variable that legitimately
+  partitions the guard's scope must be *stated*, not left to be found.)
+
+## Deferred from: story c1-8-single-instance-enforcement-with-verified-identity (2026-07-26)
+
+- **Two launches started within the same startup window can both start** — the
+  single-instance check is **check-then-act**, and nothing makes the check and the publish one
+  atomic step. `run()` asks `client.live_instance()`, gets "nothing there", and only much later
+  does the lifespan write `companion.json`; a second process entering that same gap reads the same
+  "nothing there" and starts too, publishing over the first. That is the *baseline* failure this
+  story was written to fix — two live companions with one rendezvous, the first still running and
+  unreachable through the file — surviving in a window narrowed from **forever** to **startup**.
+  Deliberately not fixed here: a real fix needs an OS-level mutex, and the shapes on the table
+  (an `O_EXCL` lock file with the stale-lock-after-crash problem AD-15 guarantees will happen, or
+  treating the bound port itself as the lock, which inverts the story's ordering by moving the
+  check *after* the bind) are a design decision rather than a tweak — and the port option would
+  need c1-3's ephemeral fallback rethought, since falling back to a different port is exactly how
+  a second instance currently succeeds. The window is wider than it first looks (review finding,
+  c1-8): it runs from the first launch's check to its lifespan publish, and with production
+  timeouts the probe alone can spend up to ~3 s against a stale entry (1 s connect on a dead port,
+  2 s read on a silent one, now also bounded overall at 5 s) — so a human double-launching a
+  couple of seconds apart after a crash can hit it, no script required. Still a deliberate,
+  repeated human act against an unlucky interleaving, not ordinary use.
+
+  **Ruling (Brad, 2026-07-26, post-#15-merge): c1-9 builds the fix — a process-lifetime held
+  lock.** Not a candidate any more: Story 1.9's ACs in `epics-companion-app.md` now carry it. The
+  shape is the held-advisory-lock design, not an `O_EXCL` create-and-delete lock file: hold
+  `msvcrt.locking`/`fcntl.flock` on an open handle for the process's lifetime, and the kernel
+  releases it on any death — so AD-15's guaranteed crashes leave no stale lock and need no
+  PID-liveness heuristics. This also collapses the `remove_discovery` TOCTOU's reachability to
+  zero (its harm scenario needs a second live instance, which the lock makes impossible), which
+  is the substance of Greptile's 3/5 hold on PR #15. Close this entry when c1-9 lands.
+  (Source: c1-8 AC 15, homed at implementation; Severity: Low → fix scheduled c1-9.)
+
+  **CLOSED (c1-9, 2026-07-26) — shipped as `src/companion/app/singleton.py`.** What landed, rather
+  than what was planned:
+
+  - **The primitive.** `os.open(lock_path(), O_RDWR | O_CREAT, 0o600)` then
+    `msvcrt.locking(fd, LK_NBLCK, 1)` on Windows / `fcntl.flock(fd, LOCK_EX | LOCK_NB)` on POSIX,
+    behind a module-level `sys.platform` branch. `LK_NBLCK` not `LK_LOCK` (which blocks ten times
+    over ten seconds) and `flock` not `lockf` (record locks are process-owned, so a second `lockf`
+    on another descriptor in the same process succeeds — it would have weakened the guarantee *and*
+    made the same-process contention test silently vacuous). The lock file is `companion.lock`,
+    separate from the rendezvous, zero-length, and **never unlinked** — on POSIX `flock` binds to
+    the inode, so unlink-and-recreate would hand two processes "the lock".
+  - **Where it sits in `run()`.** Probe first, lock second: the acquire is below c1-8's refusal and
+    above `_note_reclaimed_entry`, the port resolution and the bind, with the release in `run()`'s
+    outermost `finally` so the lock outlives the socket. Probing first keeps all fourteen of c1-8's
+    `TestSingleInstanceCheck` cases passing **unedited**, and leaves the informative refusal (the
+    one that can name a URL) as the common path. A contended launch prints one line naming no URL
+    and returns `0`; there is deliberately no second probe, which would have cost up to five
+    seconds on the one path whose job is to get out of the way.
+  - **Release-on-death, measured.** Re-confirmed on this machine at implementation time (win32,
+    py3.12.13): a second descriptor *in the same process* is refused (`PermissionError`, errno 13),
+    closing the holder releases it, another process holding it refuses this one, and after a **hard
+    kill** of the holder the lock is immediately available again with the file still present at
+    0 bytes. That is the property that makes the held design correct under AD-15 — a crash is
+    ordinary, and there is no stale-lock state to recover from and no PID-liveness heuristic.
+  - **The race, before and after.** The baseline probe at `8bfc909` spawned two `run(0)` launches
+    6 ms apart and left **two** live companions with one rendezvous. Re-run against the fix, one
+    process survives, its port is the one `companion.json` names, and the loser prints a refusal
+    line (see the c1-9 story record's live check 1 for the pasted before/after).
+
+  Because contention reports as `PermissionError` — indistinguishable from a genuine permission
+  problem — only the *lock* call is guarded; the `os.open` sits outside it, so an unwritable data
+  directory fails loudly instead of being misreported as "someone else has it".
+  (Severity: Low → **CLOSED**; no residual carried forward.)
+
+- **A live instance whose event loop is blocked for longer than the read timeout is judged dead**
+  — `PROBE_TIMEOUT` gives the read 2 s, and a companion wedged past that (a pathological request,
+  a stop-the-world pause, a debugger breakpoint) answers `/health` too late. The probe then reports
+  *app not running*, the launch proceeds, and the machine ends up in the two-instance state above.
+  The 2 s read was chosen against a measured ~15 ms live response, so the margin is ~130×, and
+  lengthening it has a real cost on the far more common path: every post-crash launch would stall
+  for whatever the new deadline is. Accepted as the right side of the trade rather than fixed. If
+  it ever bites, the fix is not a longer timeout but a different question — retry the probe once
+  before concluding *dead*, which is machinery c6-1 is already building for its push path and
+  could share. (Source: c1-8 AC 15, homed at implementation; Severity: Low.)
+
+## Raised by Brad, outside a story (2026-07-26)
+
+- **`assess_deck_power` ignores mana *quality* — it only counts mana** — the `mana_efficiency`
+  dimension is built from two count-based signals and nothing else: Karsten land-**count** delta
+  (`mana_base.karsten_land_delta`) and per-colour **source-count** deficits
+  (`mana_base.compute_pip_signals` → `dimensions._mana_efficiency_score`, which starts at 100 and
+  subtracts a penalty per land outside the tolerance band and per missing colour source). A source
+  is any Land whose type line or "add {X}" text names the colour, and **every source counts the
+  same**. Concretely, today's scorer cannot tell apart:
+  - a **shockland from a Guildgate** — enters-tapped is invisible, so the tempo cost of a slow
+    mana base is unscored, and this is the single biggest quality gap in Commander and 60-card
+    alike;
+  - a **fetchland or triome from a basic** — fixing depth and land-type synergy are unmodelled;
+  - **painlands / filters / bounce lands** from clean duals — the *cost* of fixing is unmodelled;
+  - a **mana dork or Signet from nothing at all** — `compute_pip_signals` `continue`s on every
+    non-land, so **non-land colour sources contribute zero** to the deficit calculation. A
+    rock-heavy or dork-heavy deck is scored as though its colours were unsupported, which is a
+    correctness gap and not merely a missing refinement;
+  - a **utility/colourless land** (Ancient Tomb, creature-lands, Cabal Coffers) beyond its
+    non-contribution to colour — the upside is uncredited and the colour cost is only implicit.
+
+  So two decks with identical curve and identical colour-source *counts* score identically on
+  `mana_efficiency` even when one is an optimised mana base and the other is all taplands and
+  basics — which is exactly the distinction an experienced player makes first. Weighting makes it
+  matter: `mana_efficiency` is 0.20 of the 60-card profile (0.05 in Commander,
+  `profiles.py:154/187`), so on the Standard/Modern fork this is a fifth of the score resting on a
+  signal that is blind to mana quality.
+
+  **Not a defect against any shipped AC** — Epic 5 scoped 5.4 to "raw numeric mana signals" and the
+  Karsten regressions deliberately, and the benchmark passed on that basis. This is a **missing
+  signal**, not a mistuned one, which is why it likely wants its **own story** (a
+  `mana_quality`-style signal in `mana_base.py` + a dimension term) rather than a coefficient tweak.
+  Feasibility is good: enters-tapped and produced-mana are both derivable from data already
+  imported (oracle text / type line, the same inputs `_land_source_colors` reads), so no schema
+  change or re-import is implied — the non-land-source fix in particular is close to free.
+
+  **Homed against `post-epic-7-calibration-gate`** (sprint-status, currently `backlog`), which is
+  the open bucket for scoring-quality inputs C1–C5; this joins them as a sixth, distinguished by
+  being additive rather than corrective. Per the epic-7 gate-output homing rule it gets a key
+  rather than a label. (Source: Brad, unprompted during story c1-7; Severity: Medium — it is
+  weighted at 0.20 on the 60-card fork; no user-visible failure, but a systematic blind spot.)
+
+## Deferred from: story c1-9-one-console-script-that-dispatches-without-disturbing-the-mcp-server (2026-07-26)
+
+- **Windows Ctrl-Break ends the companion with exit status `3`, and interactive Ctrl-C is
+  unverified** — live check 3 (real `CTRL_BREAK_EVENT` to a detached child) confirmed everything
+  the AC names: no traceback, graceful uvicorn shutdown, `companion.json` removed,
+  `companion.lock` retained, lock released for the next launch. But the observed exit status is
+  `3`, not the dispatcher's `0` — traced, not assumed: uvicorn completes its graceful shutdown and
+  the Windows console-control path then terminates the process before `main()` can return
+  (`MAIN RETURNED` never prints under instrumentation), so the `3` is imposed outside our code.
+  Interactive `CTRL_C_EVENT` could not be verified in the harness (it cannot be delivered to a
+  detached child without also signalling the driver); `CTRL_BREAK_EVENT` is the proxy the story
+  specifies. **Check during manual testing:** what an interactive Ctrl-C in a real terminal
+  yields. Deliberately not "fixed" by trapping the signal, which would be new behaviour outside
+  c1-9's ACs; if the exit status matters, c8-4's documentation story is where the observed
+  behaviour gets written down. (Source: story c1-9 live check 3 / Completion Notes deviation 3;
+  Severity: Low — Decide-once #5's exit vocabulary is about statuses *we* mint, and AD-15 rules
+  out any supervisor that would read this one.)
+
+  **CLOSED 2026-07-26 by Brad's C1-retro manual testing — real Ctrl-C exits `0`.** Observed in a
+  real PowerShell terminal (venv-activated, `uv run artificial-planeswalker companion`, interrupt
+  from the keyboard, `$LASTEXITCODE` read in the same window):
+
+  ```
+  INFO:     Shutting down
+  INFO:     Waiting for application shutdown.
+  INFO:     Application shutdown complete.
+  INFO:     Finished server process [39616]
+  $LASTEXITCODE -> 0
+  data dir after -> cards.db, fastembed_cache, companion.lock (0 bytes); companion.json GONE
+  ```
+
+  So the `3` is an artifact of delivering `CTRL_BREAK_EVENT` to a **detached** child in the probe
+  harness, **not** user-visible behaviour — the console-control path that imposed it is not the
+  one a foreground Ctrl-C takes. On the real path `main()` does return and its value survives:
+  Decide-once #5's exit vocabulary (0 = intent satisfied) holds end to end, with no signal
+  trapping and no code change. c8-4 documents `0`. Every other condition the AC named also held:
+  no traceback, graceful uvicorn shutdown, the lifespan retraction removed `companion.json`, and
+  `companion.lock` was retained at 0 bytes for the kernel to release.
+- **`test_entry_point.py`'s autouse `isolated_data_dir` fixture also re-points the two
+  pre-existing transport tests** — the story said "leave the two old ones alone", and the
+  documented deviation 1 covers only the forced `main()` → `main([])` edit. The new autouse
+  fixture additionally moves `PLANESWALKER_DATA_DIR` to `tmp_path` for those two old tests, so
+  they no longer exercise the real-data-dir path they did at baseline. Their assertions are
+  unaffected and the change is an isolation *improvement* (they previously opened the developer's
+  real card database); recorded here so the departure is stated rather than silent. Reopen only
+  if a future story wants a test that deliberately exercises the real-data-dir diagnostics path.
+  (Source: c1-9 code review, Acceptance Auditor; Severity: Low.)
+
+## Deferred from: code review of c1-9 (2026-07-26)
+
+- **The "both mypy runs are mandatory" comment is enforced by no gate** — `singleton.py`'s platform
+  branch declares `uv run mypy src/` and `uv run mypy src/ --platform linux` both mandatory, but no
+  pre-commit hook or CI step passes `--platform linux`: the POSIX (`fcntl`) half is strict-checked
+  only because CI happens to run on ubuntu, and the Windows (`msvcrt`) half only by Brad's local
+  runs. A POSIX contributor could merge a type-broken Windows branch through a green CI, and if the
+  CI matrix ever changes the "mandate" evaporates silently. Fix is one line in either
+  `.pre-commit-config.yaml` or `ci.yml` (an extra mypy invocation with the opposite `--platform`),
+  both of which AC 19 froze for story c1-9 — hence deferred rather than patched.
+  (Source: c1-9 code review, Blind Hunter; Severity: Low — both halves are covered today, the gap
+  is that the coverage is accidental rather than pinned.)
+
+## Deferred from: Epic C1 retrospective manual testing (2026-07-26)
+
+Brad ran blocks A–D and G–H and declared himself satisfied; two blocks were not run. Homed here per
+the gate-output rule rather than left as "we meant to".
+
+- **The renamed `COMPANION_PORT` env var has no live confirmation** — ruling R4 renamed
+  `PLANESWALKER_COMPANION_PORT` → `COMPANION_PORT` during the manual-testing pass, and the checklist
+  block that would have exercised it end to end (`$env:COMPANION_PORT = "9125"` → the companion
+  serving on 9125, and `--port` beating it) was not run afterwards. Coverage is otherwise good: the
+  unit suite reads `server.PORT_ENV_VAR` so it followed the rename automatically (1,684 passed), and
+  the *malformed*-input paths were hand-verified in block A. What is unconfirmed is only that a real
+  shell environment variable under the new name reaches `resolve_preferred_port`. **Consequence for
+  c8-4:** document the variable, but do not describe it as hand-verified. Closing it is a
+  thirty-second check whenever the companion is next started. (Severity: Low.)
+
+- **FR-22's fresh-install start has no live confirmation** — the checklist block pointing
+  `PLANESWALKER_DATA_DIR` at an empty directory to prove the companion *starts* rather than crashing
+  with no `cards.db` present was not run. Unit coverage is strong and deliberate (c1-2's inertness
+  tests fresh-import with the data dir pointed at a non-existent path; c1-6's laziness tests assert
+  no engine, no file planted, and a 503 through a test-local route), and the *observable* half — a
+  data endpoint answering `503 database_not_initialized` — has no shipped route until c3-1, so there
+  is genuinely less to see today than there will be. **Natural home: c3-9** ("fresh install guides
+  instead of erroring and comes alive on its own"), which owns that loop in the UI and cannot be
+  accepted without a real empty-data-dir run. Recorded so c3-9 inherits it as a known-unverified
+  precondition rather than assuming Epic C1 closed it. (Severity: Low.)

@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/planeswalker-companion-design-system-fe789506-c23d-4b47-9880-8222daa4d30c/tokens/fonts.css">
+<link rel="stylesheet" href="_ds/planeswalker-companion-design-system-fe789506-c23d-4b47-9880-8222daa4d30c/tokens/theme-gilt.css">
+<link rel="stylesheet" href="_ds/planeswalker-companion-design-system-fe789506-c23d-4b47-9880-8222daa4d30c/tokens/theme-voltglass.css">
+<link rel="stylesheet" href="_ds/planeswalker-companion-design-system-fe789506-c23d-4b47-9880-8222daa4d30c/tokens/theme-graphite.css">
+<link rel="stylesheet" href="_ds/planeswalker-companion-design-system-fe789506-c23d-4b47-9880-8222daa4d30c/tokens/theme-verdigris.css">
+<link rel="stylesheet" href="_ds/planeswalker-companion-design-system-fe789506-c23d-4b47-9880-8222daa4d30c/tokens/theme-ink.css">
+<link rel="stylesheet" href="_ds/planeswalker-companion-design-system-fe789506-c23d-4b47-9880-8222daa4d30c/tokens/typography.css">
+<link rel="stylesheet" href="_ds/planeswalker-companion-design-system-fe789506-c23d-4b47-9880-8222daa4d30c/tokens/motion.css">
+<link rel="stylesheet" href="_ds/planeswalker-companion-design-system-fe789506-c23d-4b47-9880-8222daa4d30c/styles.css">
+<script src="_ds/planeswalker-companion-design-system-fe789506-c23d-4b47-9880-8222daa4d30c/_ds_bundle.js"></script>
+<style>
+body{margin:0;background:var(--surface-base);color:var(--text-primary)}
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--accent-bright)}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--border-hairline);border-radius:999px}
+::-webkit-scrollbar-track{background:transparent}
+@keyframes apc-bloom{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+<div data-theme="{{ theme }}" style="position:relative;width:1720px;min-height:1440px;background:var(--surface-base);font-family:var(--font-sans);padding:32px;box-sizing:border-box;display:flex;flex-direction:column;gap:24px;overflow:hidden">
+
+  <header style="display:flex;align-items:flex-end;gap:24px">
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <span style="font:var(--type-micro);letter-spacing:var(--tracking-micro);text-transform:uppercase;color:var(--text-tertiary)">Artificial Planeswalker</span>
+      <h1 style="margin:0;font:var(--type-display);color:var(--text-primary);letter-spacing:-0.02em">Boros Aggro — RCQ list</h1>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+      <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.Badge" tone="positive" hint-size="auto,22px">standard legal</x-import>
+      <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.Badge" tone="neutral" hint-size="auto,22px">60 maindeck</x-import>
+      <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.Badge" tone="neutral" hint-size="auto,22px">15 sideboard</x-import>
+    </div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:12px">
+      <span style="font:var(--type-micro);letter-spacing:var(--tracking-micro);text-transform:uppercase;color:var(--text-tertiary)">Agent views</span>
+      <div style="display:flex;gap:8px">
+        <div onClick="{{ openGroups }}" style="cursor:pointer;padding:7px 14px;border-radius:var(--radius-pill);border:1px solid var(--border-strong);background:var(--surface-panel);font:var(--type-label);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);transition:all var(--dur-2) var(--ease-glide)" style-hover="border-color:var(--accent-dim);color:var(--accent-bright);box-shadow:0 0 16px var(--accent-glow)">Card groups</div>
+        <div onClick="{{ openSwaps }}" style="cursor:pointer;padding:7px 14px;border-radius:var(--radius-pill);border:1px solid var(--border-strong);background:var(--surface-panel);font:var(--type-label);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);transition:all var(--dur-2) var(--ease-glide)" style-hover="border-color:var(--accent-dim);color:var(--accent-bright);box-shadow:0 0 16px var(--accent-glow)">Swaps</div>
+        <div onClick="{{ openTiers }}" style="cursor:pointer;padding:7px 14px;border-radius:var(--radius-pill);border:1px solid var(--border-strong);background:var(--surface-panel);font:var(--type-label);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);transition:all var(--dur-2) var(--ease-glide)" style-hover="border-color:var(--accent-dim);color:var(--accent-bright);box-shadow:0 0 16px var(--accent-glow)">Tier list</div>
+      </div>
+    </div>
+  </header>
+
+  <div style="display:grid;grid-template-columns:1fr 452px;gap:24px;align-items:start">
+
+    <div style="display:flex;flex-direction:column;gap:24px;min-width:0">
+      <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.Panel" title="Maindeck · 60 cards · 16 distinct" hint-size="100%,760px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(176px,1fr));gap:18px">
+          <sc-for list="{{ deckTiles }}" as="c" hint-placeholder-count="16">
+            <div onMouseEnter="{{ c.onEnter }}" style="position:relative;cursor:default">
+              <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.CardTile" name="{{ c.name }}" art="{{ c.art }}" width="{{ tileWidth }}" live="{{ c.live }}" hint-size="176px,246px"></x-import>
+              <span style="position:absolute;top:8px;right:8px;padding:2px 9px;border-radius:var(--radius-pill);border:1px solid var(--border-strong);background:var(--scrim);backdrop-filter:blur(6px);font:var(--type-numeric);font-variant-numeric:tabular-nums;color:var(--text-primary)">{{ c.count }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </x-import>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+        <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.Panel" title="Mana curve" hint-size="100%,200px">
+          <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.ManaCurve" curve="{{ curve }}" height="{{ curveHeight }}" hint-size="100%,110px"></x-import>
+          <p style="margin:10px 0 0;font:var(--type-body);color:var(--text-tertiary);text-wrap:pretty">37 spells across three turns. Nothing above 3 mana; 15 one-drops carry the opening.</p>
+        </x-import>
+
+        <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.Panel" title="Color distribution" hint-size="100%,200px">
+          <div style="display:flex;height:14px;border-radius:var(--radius-pill);overflow:hidden;background:var(--surface-well)">
+            <sc-for list="{{ pips }}" as="p" hint-placeholder-count="2">
+              <div style="width:{{ p.pct }};height:100%;background:var(--mana-{{ p.key }})"></div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:14px">
+            <sc-for list="{{ pips }}" as="p" hint-placeholder-count="2">
+              <span style="display:inline-flex;align-items:center;gap:7px">
+                <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.ManaPip" color="{{ p.key }}" size="{{ pipSize }}" hint-size="14px,14px"></x-import>
+                <span style="font:var(--type-numeric);font-variant-numeric:tabular-nums;color:var(--text-secondary)">{{ p.count }} pips</span>
+                <span style="font:var(--type-micro);letter-spacing:var(--tracking-micro);text-transform:uppercase;color:var(--text-tertiary)">{{ p.pct }}</span>
+              </span>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:12px;margin-top:16px">
+            <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.StatChip" label="Sources R" value="19" hint-size="90px,52px"></x-import>
+            <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.StatChip" label="Sources W" value="16" hint-size="90px,52px"></x-import>
+            <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.StatChip" label="Deck value" value="{{ totalPrice }}" hint-size="110px,52px"></x-import>
+          </div>
+        </x-import>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:24px">
+      <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.Panel" title="Card detail" level="overlay" hint-size="100%,600px">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div style="width:100%;aspect-ratio:488/680;border-radius:var(--radius-md);border:1px solid var(--border-hairline);box-shadow:0 12px 32px rgba(0,0,0,0.5);background:linear-gradient(160deg, var(--surface-overlay), var(--surface-well));overflow:hidden">
+            {{ previewImage }}
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font:var(--type-heading);color:var(--text-primary)">{{ preview.name }}</span>
+            <span style="margin-left:auto">
+              <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.ManaCost" cost="{{ preview.cost }}" hint-size="auto,16px"></x-import>
+            </span>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font:var(--type-body);color:var(--text-secondary)">{{ preview.type }}</span>
+            <span style="margin-left:auto;font:var(--type-numeric);font-variant-numeric:tabular-nums;color:var(--text-tertiary)">{{ preview.price }}</span>
+          </div>
+          <p style="margin:0;font:var(--type-body);color:var(--text-tertiary);text-wrap:pretty">{{ preview.note }}</p>
+        </div>
+      </x-import>
+
+      <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.Panel" title="Deck list" hint-size="100%,620px">
+        <div style="display:flex;flex-direction:column;gap:14px;max-height:640px;overflow:auto">
+          <sc-for list="{{ listGroups }}" as="g" hint-placeholder-count="4">
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <div style="display:flex;align-items:baseline;gap:8px;padding:0 10px 6px;border-bottom:1px solid var(--border-hairline);margin-bottom:4px">
+                <span style="font:var(--type-label);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary)">{{ g.label }}</span>
+                <span style="margin-left:auto;font:var(--type-numeric);font-variant-numeric:tabular-nums;color:var(--text-tertiary)">{{ g.count }}</span>
+              </div>
+              <sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="4">
+                <div onMouseEnter="{{ r.onEnter }}">
+                  <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.DeckRow" count="{{ r.count }}" name="{{ r.name }}" cost="{{ r.cost }}" price="{{ r.price }}" live="{{ r.live }}" hint-size="100%,30px"></x-import>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+      </x-import>
+
+      <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.Panel" title="Format check" hint-size="100%,220px">
+        <div style="display:flex;flex-direction:column;gap:0">
+          <sc-for list="{{ legality }}" as="l" hint-placeholder-count="5">
+            <div style="display:flex;align-items:center;gap:12px;padding:9px 2px;border-bottom:1px solid var(--border-hairline)">
+              <span style="font:var(--type-body);color:var(--text-secondary)">{{ l.label }}</span>
+              <span style="margin-left:auto">
+                <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.Badge" tone="{{ l.tone }}" hint-size="auto,22px">{{ l.value }}</x-import>
+              </span>
+            </div>
+          </sc-for>
+        </div>
+      </x-import>
+    </div>
+  </div>
+
+  <sc-if value="{{ showGroups }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;background:var(--scrim);backdrop-filter:blur(16px);padding:32px;box-sizing:border-box;display:flex;z-index:20;animation:apc-bloom var(--dur-3) var(--ease-glide)">
+      <div style="flex:1;display:flex;flex-direction:column;background:var(--surface-panel);border:1px solid var(--border-hairline);border-radius:var(--radius-lg);box-shadow:var(--shadow-raise);overflow:hidden;min-width:0">
+        <div style="display:flex;align-items:center;gap:16px;padding:18px 24px;border-bottom:1px solid var(--border-hairline)">
+          <span style="font:var(--type-micro);letter-spacing:var(--tracking-micro);text-transform:uppercase;color:var(--accent)">Agent view</span>
+          <span style="font:var(--type-heading);color:var(--text-primary)">Card groups</span>
+          <span style="font:var(--type-body);color:var(--text-tertiary)">4 groups · 17 cards</span>
+          <div onClick="{{ close }}" style="margin-left:auto;cursor:pointer;padding:7px 14px;border-radius:var(--radius-pill);border:1px solid var(--border-strong);font:var(--type-label);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);transition:all var(--dur-2) var(--ease-glide)" style-hover="border-color:var(--accent-dim);color:var(--accent-bright)">Close · esc</div>
+        </div>
+        <div style="flex:1;overflow:auto;padding:24px;display:flex;flex-direction:column;gap:24px">
+          <sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+            <div style="display:flex;flex-direction:column;gap:14px;padding-bottom:24px;border-bottom:1px solid var(--border-hairline)">
+              <div style="display:flex;align-items:baseline;gap:12px">
+                <span style="font:var(--type-heading);color:var(--text-primary)">{{ g.title }}</span>
+                <span style="font:var(--type-numeric);font-variant-numeric:tabular-nums;color:var(--text-tertiary)">{{ g.count }} cards</span>
+              </div>
+              <p style="margin:0;max-width:900px;font:var(--type-body);color:var(--text-secondary);text-wrap:pretty">{{ g.description }}</p>
+              <div style="display:flex;flex-wrap:wrap;gap:16px">
+                <sc-for list="{{ g.cards }}" as="c" hint-placeholder-count="4">
+                  <div onMouseEnter="{{ c.onEnter }}">
+                    <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.CardTile" name="{{ c.name }}" art="{{ c.art }}" width="{{ groupTileWidth }}" hint-size="164px,230px"></x-import>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ showSwaps }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;background:var(--scrim);backdrop-filter:blur(16px);padding:32px;box-sizing:border-box;display:flex;z-index:20;animation:apc-bloom var(--dur-3) var(--ease-glide)">
+      <div style="flex:1;display:flex;flex-direction:column;background:var(--surface-panel);border:1px solid var(--border-hairline);border-radius:var(--radius-lg);box-shadow:var(--shadow-raise);overflow:hidden;min-width:0">
+        <div style="display:flex;align-items:center;gap:16px;padding:18px 24px;border-bottom:1px solid var(--border-hairline)">
+          <span style="font:var(--type-micro);letter-spacing:var(--tracking-micro);text-transform:uppercase;color:var(--accent)">Agent view</span>
+          <span style="font:var(--type-heading);color:var(--text-primary)">Possible swaps</span>
+          <span style="font:var(--type-body);color:var(--text-tertiary)">4 pairs · net {{ swapNet }}</span>
+          <div onClick="{{ close }}" style="margin-left:auto;cursor:pointer;padding:7px 14px;border-radius:var(--radius-pill);border:1px solid var(--border-strong);font:var(--type-label);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);transition:all var(--dur-2) var(--ease-glide)" style-hover="border-color:var(--accent-dim);color:var(--accent-bright)">Close · esc</div>
+        </div>
+        <div style="flex:1;overflow:auto;padding:24px;display:flex;flex-direction:column;gap:20px">
+          <sc-for list="{{ swaps }}" as="s" hint-placeholder-count="4">
+            <div style="display:grid;grid-template-columns:auto 64px auto 1fr;align-items:center;gap:28px;padding:20px 24px;background:var(--surface-overlay);border:1px solid var(--border-hairline);border-radius:var(--radius-md)">
+              <div style="display:flex;flex-direction:column;gap:8px" onMouseEnter="{{ s.out.onEnter }}">
+                <span style="font:var(--type-micro);letter-spacing:var(--tracking-micro);text-transform:uppercase;color:var(--negative)">Out · {{ s.outCount }}</span>
+                <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.CardTile" name="{{ s.out.name }}" art="{{ s.out.art }}" width="{{ swapTileWidth }}" hint-size="152px,213px"></x-import>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:center;font-size:26px;color:var(--accent);text-shadow:0 0 14px var(--accent-glow)">→</div>
+              <div style="display:flex;flex-direction:column;gap:8px" onMouseEnter="{{ s.in.onEnter }}">
+                <span style="font:var(--type-micro);letter-spacing:var(--tracking-micro);text-transform:uppercase;color:var(--positive)">In · {{ s.inCount }}</span>
+                <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.CardTile" name="{{ s.in.name }}" art="{{ s.in.art }}" width="{{ swapTileWidth }}" live="{{ trueVal }}" hint-size="152px,213px"></x-import>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:14px;align-self:stretch;justify-content:center;min-width:0">
+                <p style="margin:0;max-width:760px;font:var(--type-body);color:var(--text-secondary);text-wrap:pretty">{{ s.rationale }}</p>
+                <div style="display:flex;flex-wrap:wrap;gap:12px">
+                  <sc-for list="{{ s.meta }}" as="m" hint-placeholder-count="3">
+                    <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.StatChip" label="{{ m.label }}" value="{{ m.value }}" delta="{{ m.delta }}" hint-size="96px,52px"></x-import>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ showTiers }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;background:var(--scrim);backdrop-filter:blur(16px);padding:32px;box-sizing:border-box;display:flex;z-index:20;animation:apc-bloom var(--dur-3) var(--ease-glide)">
+      <div style="flex:1;display:flex;flex-direction:column;background:var(--surface-panel);border:1px solid var(--border-hairline);border-radius:var(--radius-lg);box-shadow:var(--shadow-raise);overflow:hidden;min-width:0">
+        <div style="display:flex;align-items:center;gap:16px;padding:18px 24px;border-bottom:1px solid var(--border-hairline)">
+          <span style="font:var(--type-micro);letter-spacing:var(--tracking-micro);text-transform:uppercase;color:var(--accent)">Agent view</span>
+          <span style="font:var(--type-heading);color:var(--text-primary)">Tier list</span>
+          <span style="font:var(--type-body);color:var(--text-tertiary)">18 cards ranked</span>
+          <div onClick="{{ close }}" style="margin-left:auto;cursor:pointer;padding:7px 14px;border-radius:var(--radius-pill);border:1px solid var(--border-strong);font:var(--type-label);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-secondary);transition:all var(--dur-2) var(--ease-glide)" style-hover="border-color:var(--accent-dim);color:var(--accent-bright)">Close · esc</div>
+        </div>
+        <div style="padding:20px 24px;border-bottom:1px solid var(--border-hairline);background:var(--surface-well)">
+          <p style="margin:0;max-width:1100px;font:var(--type-body);color:var(--text-secondary);text-wrap:pretty">{{ tierDescription }}</p>
+        </div>
+        <div style="flex:1;overflow:auto;padding:24px;display:flex;flex-direction:column;gap:16px">
+          <sc-for list="{{ tiers }}" as="t" hint-placeholder-count="5">
+            <div style="display:grid;grid-template-columns:132px 1fr;gap:20px;align-items:stretch;background:var(--surface-overlay);border:1px solid var(--border-hairline);border-radius:var(--radius-md);overflow:hidden">
+              <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:20px 12px;background:var(--surface-well);border-right:1px solid var(--border-hairline)">
+                <span style="font-size:44px;font-weight:500;line-height:1;color:{{ t.color }}">{{ t.tier }}</span>
+                <span style="font:var(--type-micro);letter-spacing:var(--tracking-micro);text-transform:uppercase;color:var(--text-tertiary)">{{ t.name }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:12px;padding:18px 20px;min-width:0">
+                <span style="font:var(--type-body);color:var(--text-tertiary);text-wrap:pretty">{{ t.note }}</span>
+                <div style="display:flex;flex-wrap:wrap;gap:14px">
+                  <sc-for list="{{ t.cards }}" as="c" hint-placeholder-count="3">
+                    <div onMouseEnter="{{ c.onEnter }}">
+                      <x-import component-from-global-scope="PlaneswalkerCompanionDesignSystem_fe7895.CardTile" name="{{ c.name }}" art="{{ c.art }}" width="{{ tierTileWidth }}" hint-size="126px,176px"></x-import>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1720,&quot;height&quot;:1440},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;voltglass&quot;,&quot;gilt&quot;,&quot;graphite&quot;,&quot;verdigris&quot;,&quot;ink&quot;],&quot;default&quot;:&quot;voltglass&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Appearance&quot;},&quot;tileWidth&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;min&quot;:140,&quot;max&quot;:240,&quot;step&quot;:4,&quot;default&quot;:176,&quot;unit&quot;:&quot;px&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Appearance&quot;}}">
+class Component extends DCLogic {
+  state = {overlay: null, preview: 'Adeline, Resplendent Cathar'};
+
+  db = {
+    'Monastery Swiftspear': {cost:'R', cmc:1, type:'Creature — Human Monk · 1/2', price:2.30, g:'Creatures', note:'Prowess plus haste; the reason the curve starts at one.'},
+    'Kumano Faces Kakkazan': {cost:'R', cmc:1, type:'Enchantment — Saga', price:1.10, g:'Creatures', note:'Chapter damage, a counter, then a hasty body. Counts as a one-drop threat.'},
+    'Phoenix Chick': {cost:'R', cmc:1, type:'Creature — Phoenix · 1/1', price:0.80, g:'Creatures', note:'Recursion matters less post-rotation; first cut candidate.'},
+    'Thalia, Guardian of Thraben': {cost:'1W', cmc:2, type:'Legendary Creature — Human Soldier · 2/1', price:8.40, g:'Creatures', note:'Taxes the sweeper decks and attacks into removal favourably.'},
+    'Adeline, Resplendent Cathar': {cost:'1WW', cmc:3, type:'Legendary Creature — Human Knight · */*', price:12.60, g:'Creatures', note:'Highest-impact three-drop in the list. Wins unanswered games in two attacks.'},
+    'Bloodthirsty Adversary': {cost:'2R', cmc:3, type:'Creature — Vampire · 2/3', price:3.20, g:'Creatures', note:'Late-game mana sink; rebuys a burn spell when the game goes long.'},
+    'Lightning Strike': {cost:'1R', cmc:2, type:'Instant', price:0.35, g:'Spells', note:'Reach and removal in one slot.'},
+    'Play with Fire': {cost:'R', cmc:1, type:'Instant', price:0.60, g:'Spells', note:'One mana, scries on a kill; keeps the one-drop count high.'},
+    'Obliterating Bolt': {cost:'1R', cmc:2, type:'Sorcery', price:0.90, g:'Spells', note:'Sorcery speed is the weak point against flash threats.'},
+    'Get Lost': {cost:'1W', cmc:2, type:'Instant', price:6.10, g:'Spells', note:'Catch-all answer; the two Map tokens are an acceptable cost.'},
+    'Chandra, Dressed to Kill': {cost:'2R', cmc:3, type:'Legendary Planeswalker — Chandra', price:4.50, g:'Planeswalkers', note:'Grind insurance, but slow on an aggressive curve.'},
+    'Sacred Foundry': {cost:'', cmc:0, type:'Land', price:9.20, g:'Lands', note:'Untapped dual; the manabase is built around four copies.'},
+    'Battlefield Forge': {cost:'', cmc:0, type:'Land', price:6.80, g:'Lands', note:'Painland; the life loss is real against mirror matches.'},
+    'Inspiring Vantage': {cost:'', cmc:0, type:'Land', price:5.40, g:'Lands', note:'Enters untapped on the turns that matter.'},
+    'Den of the Bugbear': {cost:'', cmc:0, type:'Land', price:4.10, g:'Lands', note:'Creature land; the two copies convert flood into damage.'},
+    'Mountain': {cost:'', cmc:0, type:'Basic Land — Mountain', price:0.10, g:'Lands', note:'Five basics keep the painland count survivable.'},
+    'Plains': {cost:'', cmc:0, type:'Basic Land — Plains', price:0.10, g:'Lands', note:'Four basics support the white double-pip on Adeline.'},
+    'Slickshot Show-Off': {cost:'1R', cmc:2, type:'Creature — Bird Rogue · 1/3', price:5.70, g:'Creatures', note:'Plot makes it uncounterable pressure and a burn finisher.'},
+    'Torch the Tower': {cost:'R', cmc:1, type:'Instant', price:0.70, g:'Spells', note:'Bargain scales it to three damage; instant speed over Obliterating Bolt.'},
+    'Rockface Village': {cost:'', cmc:0, type:'Land', price:2.20, g:'Lands', note:'Grants haste to a Lizard or Dragon; low cost to the manabase.'},
+    "Urabrask's Forge": {cost:'4R', cmc:5, type:'Artifact', price:3.90, g:'Spells', note:'Sideboard inevitability against removal-heavy control.'},
+    'Sunspine Lynx': {cost:'4R', cmc:5, type:'Creature — Elemental Cat · 5/4', price:1.40, g:'Creatures', note:'Too expensive for the maindeck; sideboard card against lifegain.'},
+    'Kessig Flamebreather': {cost:'1R', cmc:2, type:'Creature — Human Shaman · 1/3', price:0.40, g:'Creatures', note:'Needs a spell density this list does not have.'},
+    'Voldaren Epicure': {cost:'R', cmc:1, type:'Creature — Vampire · 1/1', price:0.25, g:'Creatures', note:'Budget one-drop; the Blood token enables late-game filtering.'},
+    'Reckless Impulse': {cost:'1R', cmc:2, type:'Sorcery', price:0.35, g:'Spells', note:'Two cards for two mana, at the price of a turn of pressure.'},
+    'Bushwhack': {cost:'R', cmc:1, type:'Sorcery', price:0.90, g:'Spells', note:'Flexible: land fixing early, blocker removal late.'},
+    'Lithomantic Barrage': {cost:'R', cmc:1, type:'Instant', price:0.30, g:'Spells', note:'Five damage to a blue or white target; a sideboard scalpel.'},
+    'Witchstalker Frenzy': {cost:'3R', cmc:4, type:'Instant', price:0.35, g:'Spells', note:'Costs less when attacked; awkward on a proactive curve.'},
+    'Destroy Evil': {cost:'1W', cmc:2, type:'Instant', price:0.30, g:'Spells', note:'Answers the biggest toughness in the format, but only sometimes.'},
+    'Sunfall': {cost:'4WW', cmc:6, type:'Sorcery', price:2.10, g:'Spells', note:'Not for this deck — listed as the sweeper it must play around.'}
+  };
+
+  deck = [
+    ['Monastery Swiftspear',4], ['Kumano Faces Kakkazan',4], ['Phoenix Chick',4],
+    ['Thalia, Guardian of Thraben',4], ['Adeline, Resplendent Cathar',4], ['Bloodthirsty Adversary',4],
+    ['Lightning Strike',4], ['Play with Fire',3], ['Obliterating Bolt',2], ['Get Lost',2],
+    ['Chandra, Dressed to Kill',2],
+    ['Sacred Foundry',4], ['Battlefield Forge',4], ['Inspiring Vantage',4], ['Den of the Bugbear',2],
+    ['Mountain',5], ['Plains',4]
+  ];
+
+  componentDidMount() {
+    this._esc = e => { if (e.key === 'Escape') this.setState({overlay: null}); };
+    window.addEventListener('keydown', this._esc);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this._esc); }
+
+  art(name) {
+    return 'https://api.scryfall.com/cards/named?exact=' + encodeURIComponent(name) + '&format=image&version=normal';
+  }
+  money(n) { return '$' + n.toFixed(2); }
+  info(name) {
+    const d = this.db[name] || {};
+    return {
+      name, art: this.art(name), cost: d.cost || '', type: d.type || '',
+      price: d.price != null ? this.money(d.price) : '', note: d.note || '',
+      onEnter: () => this.setState({preview: name})
+    };
+  }
+
+  renderVals() {
+    const preview = this.info(this.state.preview);
+    const previewName = this.state.preview;
+
+    const deckTiles = this.deck.map(([n, q]) => Object.assign(this.info(n), {count: q + '×', live: n === previewName}));
+
+    const order = ['Creatures', 'Spells', 'Planeswalkers', 'Lands'];
+    const listGroups = order.map(label => {
+      const rows = this.deck.filter(([n]) => (this.db[n] || {}).g === label).map(([n, q]) => {
+        const d = this.db[n];
+        return {count: q, name: n, cost: d.cost, price: this.money(d.price), live: n === previewName, onEnter: () => this.setState({preview: n})};
+      });
+      return {label, count: rows.reduce((a, r) => a + r.count, 0), rows};
+    }).filter(g => g.rows.length);
+
+    const curve = [0, 0, 0, 0, 0, 0];
+    let total = 0, w = 0, r = 0;
+    this.deck.forEach(([n, q]) => {
+      const d = this.db[n];
+      total += d.price * q;
+      if (d.g !== 'Lands') curve[Math.min(5, d.cmc)] += q;
+      (d.cost.match(/[WUBRG]/g) || []).forEach(p => { if (p === 'W') w += q; else if (p === 'R') r += q; });
+    });
+    const pipTotal = w + r;
+    const pips = [
+      {key: 'r', count: r, pct: Math.round(r / pipTotal * 100) + '%'},
+      {key: 'w', count: w, pct: Math.round(w / pipTotal * 100) + '%'}
+    ];
+
+    const legality = [
+      {label: 'Standard', value: 'legal', tone: 'positive'},
+      {label: 'Maindeck size', value: '60 / 60', tone: 'positive'},
+      {label: 'Copy limit', value: 'no violations', tone: 'positive'},
+      {label: 'Sideboard', value: '15 / 15', tone: 'positive'},
+      {label: 'Banned or restricted', value: 'none', tone: 'positive'},
+      {label: 'Rotation exposure', value: '11 cards', tone: 'caution'}
+    ];
+
+    const groups = [
+      {
+        title: 'One-mana threats that carry the curve',
+        description: 'Every card here can be cast on turn one off an untapped red source and still matter on turn five. The list runs 15; a fourth Play with Fire would push it to 16 without changing the land count.',
+        cards: ['Monastery Swiftspear', 'Kumano Faces Kakkazan', 'Phoenix Chick', 'Play with Fire', 'Voldaren Epicure']
+      },
+      {
+        title: 'Answers to Sheoldred, the Apocalypse',
+        description: 'Sheoldred is the single most common reason this deck loses a game it was winning. Four of the five options below are already castable in these colors.',
+        cards: ['Get Lost', 'Obliterating Bolt', 'Destroy Evil', 'Torch the Tower']
+      },
+      {
+        title: 'Budget substitutes under $2',
+        description: 'Swapping the three most expensive maindeck slots for these takes the list from $214 to $137. Power drops noticeably against control; the aggro matchups hold.',
+        cards: ['Voldaren Epicure', 'Reckless Impulse', 'Bushwhack', 'Kessig Flamebreather']
+      },
+      {
+        title: 'Sideboard: grindy matchups',
+        description: 'Cards that convert a stalled board into inevitability. Bring these in against removal-heavy control and lifegain decks; leave them out against other aggro.',
+        cards: ["Urabrask's Forge", 'Chandra, Dressed to Kill', 'Lithomantic Barrage', 'Sunspine Lynx']
+      }
+    ].map(g => ({title: g.title, description: g.description, count: g.cards.length, cards: g.cards.map(n => this.info(n))}));
+
+    const swaps = [
+      {
+        out: 'Phoenix Chick', outCount: '2 copies', in: 'Slickshot Show-Off', inCount: '2 copies',
+        rationale: 'Phoenix recursion assumes a long game this deck does not want. Slickshot Show-Off plots on turn two and connects for six or more later, and it cannot be answered on the stack.',
+        meta: [{label: 'Price', value: '+$9.80'}, {label: 'Curve', value: '1 → 2', delta: '+1 cmc'}, {label: 'Confidence', value: '0.88'}]
+      },
+      {
+        out: 'Obliterating Bolt', outCount: '2 copies', in: 'Torch the Tower', inCount: '2 copies',
+        rationale: 'Same damage on a bargained Torch, at instant speed, for one less mana. Loses the planeswalker clause — acceptable while the format is creature-led.',
+        meta: [{label: 'Price', value: '-$0.40'}, {label: 'Curve', value: '2 → 1', delta: '-1 cmc'}, {label: 'Confidence', value: '0.81'}]
+      },
+      {
+        out: 'Mountain', outCount: '2 copies', in: 'Rockface Village', inCount: '2 copies',
+        rationale: 'Only two maindeck creatures benefit from the haste grant, so this is close. Take it if the sideboard adds Dragons; skip it if the painland count is already stressing the life total.',
+        meta: [{label: 'Price', value: '+$4.20'}, {label: 'Untapped', value: '23 → 23'}, {label: 'Confidence', value: '0.54'}]
+      },
+      {
+        out: 'Chandra, Dressed to Kill', outCount: '2 copies', in: 'Monastery Swiftspear', inCount: '0 copies',
+        rationale: 'Chandra is the slowest card in a deck that wants to end on turn five. No fourth Swiftspear exists to promote, so the honest replacement is a second Get Lost plus one Torch the Tower.',
+        meta: [{label: 'Price', value: '-$6.70'}, {label: 'Curve', value: '3 → 1', delta: '-2 cmc'}, {label: 'Confidence', value: '0.72'}]
+      }
+    ].map(s => ({
+      out: this.info(s.out), in: this.info(s.in), outCount: s.outCount, inCount: s.inCount,
+      rationale: s.rationale, meta: s.meta
+    }));
+
+    const tierColors = {S: 'var(--accent-bright)', A: 'var(--accent)', B: 'var(--text-primary)', C: 'var(--text-secondary)', D: 'var(--text-tertiary)'};
+    const tiers = [
+      {tier: 'S', name: 'auto-include', note: 'Wins games on their own. Never cut, never side out.', cards: ['Adeline, Resplendent Cathar', 'Monastery Swiftspear', 'Slickshot Show-Off']},
+      {tier: 'A', name: 'strong', note: 'Format-defining rate. Play the full four unless a matchup argues otherwise.', cards: ['Thalia, Guardian of Thraben', 'Get Lost', 'Lightning Strike', 'Bloodthirsty Adversary']},
+      {tier: 'B', name: 'playable', note: 'Earns its slot in this shell but would not make a stronger one.', cards: ['Kumano Faces Kakkazan', 'Play with Fire', 'Den of the Bugbear', 'Torch the Tower']},
+      {tier: 'C', name: 'filler', note: 'Replaceable. First cards to examine when the list changes.', cards: ['Phoenix Chick', 'Obliterating Bolt', 'Chandra, Dressed to Kill']},
+      {tier: 'D', name: 'cut', note: 'Below the bar for this archetype at this power level.', cards: ['Sunspine Lynx', 'Kessig Flamebreather', 'Witchstalker Frenzy', 'Reckless Impulse']}
+    ].map(t => ({tier: t.tier, name: t.name, note: t.note, color: tierColors[t.tier], cards: t.cards.map(n => this.info(n))}));
+
+    return {
+      theme: this.props.theme ?? 'voltglass',
+      tileWidth: this.props.tileWidth ?? 176,
+      groupTileWidth: 164, swapTileWidth: 152, tierTileWidth: 126,
+      curveHeight: 76, pipSize: 14, trueVal: true,
+      previewImage: React.createElement('img', {src: preview.art, alt: preview.name, style: {width: '100%', height: '100%', objectFit: 'cover', display: 'block'}}),
+      preview, deckTiles, listGroups, curve, pips, legality, groups, swaps, tiers,
+      totalPrice: this.money(total),
+      swapNet: '+$6.90',
+      tierDescription: 'Ranked by how hard each card pushes the turn-five kill in the current Standard meta — not by generic power. Cards that need a different shell to shine sit low here on purpose.',
+      showGroups: this.state.overlay === 'groups',
+      showSwaps: this.state.overlay === 'swaps',
+      showTiers: this.state.overlay === 'tiers',
+      openGroups: () => this.setState({overlay: 'groups'}),
+      openSwaps: () => this.setState({overlay: 'swaps'}),
+      openTiers: () => this.setState({overlay: 'tiers'}),
+      close: () => this.setState({overlay: null})
+    };
+  }
+}
+</script>
+</body>
+</html>

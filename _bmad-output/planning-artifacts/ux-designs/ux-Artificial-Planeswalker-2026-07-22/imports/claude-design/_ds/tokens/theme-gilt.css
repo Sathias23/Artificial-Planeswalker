@@ -1,0 +1,15 @@
+/* Gilt Gallery — candidate theme 1. Warm gold on warm near-black — the dim gallery, lit by brass. */
+[data-theme="gilt"]{
+--font-sans:'Schibsted Grotesk',sans-serif;
+--surface-well:#121010;--surface-base:#191616;--surface-panel:#221e1c;--surface-overlay:#2c2723;
+--scrim:rgba(10,8,7,0.72);
+--border-hairline:#383028;--border-strong:#4a4038;
+--text-primary:#f2ece2;--text-secondary:#c4bbac;--text-tertiary:#9d9584;--text-inverse:#171310;
+--accent:#d4a94f;--accent-bright:#eccb7a;--accent-dim:#8a6f3a;--accent-glow:rgba(212,169,79,0.18);
+--focus-ring:#eccb7a;
+--positive:#86c98b;--negative:#e07862;--caution:#ec9548;
+--mana-w:#e6dcbf;--mana-u:#6aa3e0;--mana-b:#a08cb8;--mana-r:#e2705a;--mana-g:#6fbf73;--mana-gold:#cf9440;--mana-colorless:#a8a29a;
+--radius-sm:4px;--radius-md:8px;--radius-lg:12px;--radius-pill:999px;
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;--space-7:48px;
+--shadow-raise:0 8px 24px rgba(0,0,0,0.35);
+}

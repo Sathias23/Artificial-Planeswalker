@@ -1,0 +1,15 @@
+/* Ink & Ember — candidate theme 5. True-black editorial — paper-white type, one ember of crimson. */
+[data-theme="ink"]{
+--font-sans:'Instrument Sans',sans-serif;
+--surface-well:#000000;--surface-base:#0a0a0a;--surface-panel:#141414;--surface-overlay:#1f1f1f;
+--scrim:rgba(0,0,0,0.8);
+--border-hairline:#2b2b2b;--border-strong:#3d3d3d;
+--text-primary:#f5f2ee;--text-secondary:#c2beb8;--text-tertiary:#96928c;--text-inverse:#0a0a0a;
+--accent:#e25852;--accent-bright:#ff7a6e;--accent-dim:#b23f38;--accent-glow:rgba(226,88,82,0.16);
+--focus-ring:#ff7a6e;
+--positive:#79c791;--negative:#ff9587;--caution:#e6b95c;
+--mana-w:#ece3c6;--mana-u:#66a9e8;--mana-b:#ad94d6;--mana-r:#e5705f;--mana-g:#6cc178;--mana-gold:#d8b056;--mana-colorless:#a6a29c;
+--radius-sm:0px;--radius-md:2px;--radius-lg:4px;--radius-pill:999px;
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;--space-7:48px;
+--shadow-raise:none;
+}
