@@ -169,3 +169,42 @@ jobs:
             git --no-pager diff -- src/companion/app/static/
             exit 1
           fi
+
+      # The NODE half of the AD-12 type pipeline (story c2-3). The PYTHON half — that the
+      # committed ui/src/api/openapi.json still matches what build_app().openapi() produces — is
+      # a pytest snapshot test in the `quality` job (tests/unit/companion/test_openapi_contract.py),
+      # because this job has Node and no Python dependencies while that one has uv and no Node.
+      # Splitting on that boundary adds no toolchain to either job and lets each half fail in the
+      # gate that owns it (c2-3 Decide-once #1).
+      #
+      # `npm run gen:types` rather than a copy of the openapi-typescript invocation: the flags are
+      # part of the committed contract, and CI must not be able to drift from what a developer runs.
+      - name: Generate TypeScript types from the committed schema
+        run: npm run gen:types
+
+      # `git status --porcelain`, NOT the `git diff --exit-code` the epic's AC text names — the
+      # same flagged deviation as the SPA check above, for consistency with the two drift checks
+      # already in this workflow and because porcelain also sees the untracked and newly-ignored
+      # cases git diff cannot.
+      #
+      # working-directory: . overrides this job's `defaults.run.working-directory: ui`. The
+      # generation step above runs in ui/ (that is where package.json is); the git check needs
+      # repo-root-relative pathspecs, and without this override a `ui/src/...` pathspec evaluated
+      # from ui/ matches nothing and the check passes vacuously.
+      - name: Generated types in sync with the schema
+        working-directory: .
+        run: |
+          # Non-vacuity guard on the ignore axis, same reasoning as the SPA check: `git status
+          # --porcelain` reports nothing at all for a gitignored or never-committed path, so a
+          # missing or newly-ignored types.d.ts would sail through the drift check below while
+          # the UI compiled against a file that is not in the repo.
+          if [ -z "$(git ls-files -- ui/src/api/types.d.ts ui/src/api/openapi.json)" ]; then
+            echo "::error::ui/src/api/ has no tracked generated files — types.d.ts and/or openapi.json are not committed (or became gitignored), so the drift check cannot see them."
+            exit 1
+          fi
+          if [ -n "$(git status --porcelain -- ui/src/api/)" ]; then
+            echo "::error::ui/src/api/types.d.ts is stale — run 'cd ui && npm run gen:api' and commit BOTH generated files."
+            git status --porcelain -- ui/src/api/
+            git --no-pager diff -- ui/src/api/
+            exit 1
+          fi

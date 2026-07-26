@@ -41,6 +41,21 @@ const BANNED = [
   'axios',
 ] as const
 
+/**
+ * AD-12: openapi-typescript is the ONE generator, and it consumes the backend's own
+ * `app.openapi()`. A second codegen means a second spelling of every wire shape — precisely
+ * the drift the generated pipeline exists to prevent — and it would arrive quietly, as a
+ * devDependency nobody reviews twice. Wired in story c2-3 (AC 11).
+ */
+const BANNED_CODEGEN = [
+  'swagger-typescript-api',
+  '@hey-api/openapi-ts',
+  'orval',
+  'oazapfts',
+  'openapi-zod-client',
+  '@openapitools/openapi-generator-cli',
+] as const
+
 describe('package.json dependency contract (AD-12, AD-13)', () => {
   it.each(BANNED)('does not depend on %s', (name) => {
     expect(Object.keys(allDeps)).not.toContain(name)
@@ -56,9 +71,18 @@ describe('package.json dependency contract (AD-12, AD-13)', () => {
   // Ruling B2. openapi-typescript is installed here so the lockfile lands on typescript@5.9.x
   // from the first commit; c2-3 wires the generation script against it. Node is dev/CI-only
   // (AD-13), and a code generator is emphatically not a runtime dependency.
+  //
+  // This assertion is ALSO the epic's "openapi-typescript is dev/CI-only" block for story c2-3,
+  // which re-verifies it rather than writing a second copy — and it is the non-vacuity pair for
+  // the codegen ban below: the one generator is provably present while the alternatives are
+  // provably absent.
   it('keeps openapi-typescript in devDependencies and out of dependencies', () => {
     expect(Object.keys(devDeps)).toContain('openapi-typescript')
     expect(Object.keys(deps)).not.toContain('openapi-typescript')
+  })
+
+  it.each(BANNED_CODEGEN)('does not depend on the alternative generator %s', (name) => {
+    expect(Object.keys(allDeps)).not.toContain(name)
   })
 
   // AC 2. The declared floor is >=20.19.0, not the epic's looser ">= 20": vite@8 declares
