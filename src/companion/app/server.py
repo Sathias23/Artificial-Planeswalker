@@ -16,8 +16,16 @@ rather than a default; a configurable bind address would reduce it to a suggesti
 **Nothing here runs at import time.** The socket is this feature's first effect outside the process
 and it lives behind :func:`run`, so ``build_app()`` stays inert (AD-10) and the rest of the backend
 remains testable without a port.
+
+**The single-instance check runs before the bind, not after it.** :func:`run` asks
+:func:`src.companion.client.live_instance` whether a verified companion is already answering
+*before* it resolves a port, binds a socket or builds an app (AD-4). The ordering is behaviour
+rather than tidiness: a launch that is about to refuse must not momentarily hold a port another
+process might want, must not construct an application it will never serve, and — because it returns
+before the lifespan — cannot overwrite the rendezvous of the instance it just found.
 """
 
+import asyncio
 import io
 import logging
 import os
@@ -27,6 +35,7 @@ import sys
 import uvicorn
 from fastapi import FastAPI
 
+from src.companion import client, discovery
 from src.companion.app.main import build_app
 
 logger = logging.getLogger(__name__)
@@ -208,8 +217,54 @@ def _serve(app: FastAPI, sock: socket.socket, port: int) -> None:
     uvicorn.Server(config).run(sockets=[sock])
 
 
+def _note_reclaimed_entry() -> None:
+    """Log, at INFO, that the discovery file's entry is defunct and will be published over.
+
+    "Defunct" covers both of run()'s proceed cases: a dead port with nothing answering (the
+    post-crash state AD-15 describes) and a port answering as some *other* process (a recycled
+    port, a foreign identity) — either way the record no longer describes a live companion. The
+    reclaim itself happens later, at the lifespan's atomic publish, which is why the message says
+    *will* reclaim: a launch that dies at the bind never touches the file, and the log must not
+    claim otherwise.
+
+    Called only once :func:`run` already knows no companion is live, and *only* to decide whether
+    there is anything to say — which is why it re-reads the file rather than threading a value out
+    of :func:`~src.companion.client.live_instance`. The cost lands where it belongs: a clean
+    machine and a live instance each pay a single read (the probe's), and only the defunct-entry
+    path pays a second one. Nothing here influences what :func:`run` does next; a race that changed
+    the file between the two reads would change this log line and nothing else.
+
+    **INFO, not WARNING.** AD-15 describes a stale file after a crash as the *expected* state, and
+    warning about the ordinary case trains a user to ignore warnings. The consequence is accepted
+    and worth stating plainly: no root handler exists until c1-9, and ``logging.lastResort`` only
+    surfaces WARNING and above, so this record is invisible in a real run today. That is what
+    distinguishes it from c1-3's fallback warning and c1-7's discovery warnings, which are
+    deliberately loud enough to reach the user now.
+    """
+    stale = discovery.read_discovery()
+    if stale is None:
+        return
+    logger.info(
+        "Discovery file names port %d but no matching companion is answering; "
+        "this launch will reclaim it when it publishes",
+        stale.port,
+    )
+
+
 def run(port: int | None = None) -> None:
-    """Bind the companion's port, announce the URL and serve until interrupted.
+    """Serve the companion — unless one is already running, in which case say so and stop.
+
+    Two outcomes, and both are successes. When :func:`~src.companion.client.live_instance` finds a
+    companion whose echoed ``instance_id`` matches the discovery file, this launch is redundant:
+    the user's intent — *have the companion running* — is already satisfied, so the URL of the
+    instance that **is** running is printed and the function returns. It does not raise and does
+    not call ``sys.exit``, so the process exits ``0`` (Decide-once #3); AD-15 rules out the daemon,
+    supervisor or auto-restart for which a non-zero status would mean anything. Otherwise the file
+    is absent, stale or held by some unrelated process, and the launch proceeds exactly as it
+    always has, leaving the old file in place for c1-7's atomic publish to overwrite.
+
+    The probe happens **first**, above the port resolution and the bind. See the module docstring:
+    a refusing launch must claim nothing.
 
     The announcement is ``print``ed, not logged, and that is deliberate. ``logging`` writes to
     stderr, while AD-15 puts this line on stdout; and no story has yet configured a root handler, so
@@ -221,14 +276,31 @@ def run(port: int | None = None) -> None:
 
     Args:
         port: A port to prefer over the environment variable and the default. Invalid values are
-            ignored with a warning rather than raising — see :func:`resolve_preferred_port`.
+            ignored with a warning rather than raising — see :func:`resolve_preferred_port`. It is
+            a preference only: an explicit port does **not** bypass the single-instance check,
+            because the discovery file can name just one instance whatever port it holds.
     """
     # The launch lines contain an em dash (AC 6's exact text). A redirected stdout under a
     # non-UTF-8 locale (LANG=C service capture, cp437 console) would otherwise raise
     # UnicodeEncodeError on the one line that must never fail — this process owns its stdout
-    # (AD-15), so degrade unencodable characters instead of crashing.
+    # (AD-15), so degrade unencodable characters instead of crashing. The refusal line below
+    # carries an em dash too, which is why this stays the very first thing run() does.
     if isinstance(sys.stdout, io.TextIOWrapper):
         sys.stdout.reconfigure(errors="replace")
+    # asyncio.run here, before uvicorn exists: the probe is async because c6-1's tools are, and one
+    # shared implementation beats a sync mirror of a network call (AD-8, Decide-once #2). uvicorn
+    # creates its own loop inside _serve later, and two consecutive asyncio.run calls on one thread
+    # are legal — but this must never move below _serve or inside a coroutine, because calling
+    # asyncio.run from within a running loop raises.
+    live = asyncio.run(client.live_instance())
+    if live is not None:
+        print(
+            f"[planeswalker] companion is already running at {client.base_url(live.port)} — "
+            "open that URL, or stop the other instance before starting a new one",
+            flush=True,
+        )
+        return
+    _note_reclaimed_entry()
     preferred = resolve_preferred_port(port)
     sock = bind_localhost_socket(preferred)
     try:

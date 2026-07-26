@@ -749,6 +749,19 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   still aborts. Windows-only. (Source: c1-7 story-writing probe 3, re-verified at implementation;
   Severity: Low; deferred to c1-8.)
 
+  **Ruling (c1-8, 2026-07-26): still accepted, re-homed to c6-1.** c1-8 did not make this more
+  likely, and it is worth being precise about why. The startup check reads `companion.json` through
+  `read_discovery` — once before the probe is dialled, and (on the reclaim path only) once more in
+  `_note_reclaimed_entry` to decide whether the INFO line has anything to say; each read is a single
+  `read_bytes()` whose handle closes immediately — and it does so in a launch that either *returns
+  without publishing* (a live instance was found) or publishes much later, from the lifespan, long
+  after both handles are gone. **A process
+  therefore cannot collide with itself**, which was the one new self-inflicted way this could have
+  started firing. The only concurrent reader of the file in production still arrives with **c6-1**,
+  whose client reads the rendezvous before every push — that is the first code that will hold the
+  file open at an arbitrary moment while some other process starts. Re-homed there; nothing to do
+  in c1-8.
+
 - **TOCTOU in `remove_discovery`'s ownership guard** — the read → compare-`instance_id` → `unlink`
   sequence in `src/companion/discovery.py::remove_discovery` is check-then-act: a second instance
   that `os.replace`s its own record in between our read and our unlink loses its live rendezvous to
@@ -760,6 +773,53 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   documented Windows residual, or serializing shutdown/startup around a lock file. (Source: c1-7
   code review 2026-07-26, Blind Hunter + Edge Case Hunter; Severity: Low; deferred to c1-8, which
   owns the contending-instances design.)
+
+  **Ruling (c1-8, 2026-07-26): accepted, and materially narrowed — entry kept.** The window needs a
+  *second live instance* to be harmful: our shutdown must unlink a record that some other running
+  companion published in between our read and our unlink. That second instance is now precisely the
+  case c1-8 refuses — a launch that finds a verified-live companion prints its URL and returns
+  without ever publishing, so the ordinary route to two contending writers is closed. What remains
+  is the narrow residual recorded in the c1-8 section below: two launches racing inside the same
+  startup window (a couple of seconds at the outside) can still both start, and only then can this
+  unlink hit a foreign live record. So the guard is not redundant and the entry stays open, but its reachability now depends
+  on a race that is itself deferred, not on ordinary use. No code change; `remove_discovery`'s
+  docstring was reworded (c1-8 AC 16) because it previously pointed forward to c1-8 as the story
+  that "first makes two instances contend for this file", which is stale in both halves now that
+  c1-8 has landed and *prevents* the ordinary second instance.
+
+## Deferred from: story c1-8-single-instance-enforcement-with-verified-identity (2026-07-26)
+
+- **Two launches started within the same startup window can both start** — the
+  single-instance check is **check-then-act**, and nothing makes the check and the publish one
+  atomic step. `run()` asks `client.live_instance()`, gets "nothing there", and only much later
+  does the lifespan write `companion.json`; a second process entering that same gap reads the same
+  "nothing there" and starts too, publishing over the first. That is the *baseline* failure this
+  story was written to fix — two live companions with one rendezvous, the first still running and
+  unreachable through the file — surviving in a window narrowed from **forever** to **startup**.
+  Deliberately not fixed here: a real fix needs an OS-level mutex, and the shapes on the table
+  (an `O_EXCL` lock file with the stale-lock-after-crash problem AD-15 guarantees will happen, or
+  treating the bound port itself as the lock, which inverts the story's ordering by moving the
+  check *after* the bind) are a design decision rather than a tweak — and the port option would
+  need c1-3's ephemeral fallback rethought, since falling back to a different port is exactly how
+  a second instance currently succeeds. The window is wider than it first looks (review finding,
+  c1-8): it runs from the first launch's check to its lifespan publish, and with production
+  timeouts the probe alone can spend up to ~3 s against a stale entry (1 s connect on a dead port,
+  2 s read on a silent one, now also bounded overall at 5 s) — so a human double-launching a
+  couple of seconds apart after a crash can hit it, no script required. Still a deliberate,
+  repeated human act against an unlucky interleaving, not ordinary use. Candidate revisit: c1-9,
+  which owns the console-script entry point and is the natural
+  home for a launch-time lock. (Source: c1-8 AC 15, homed at implementation; Severity: Low.)
+
+- **A live instance whose event loop is blocked for longer than the read timeout is judged dead**
+  — `PROBE_TIMEOUT` gives the read 2 s, and a companion wedged past that (a pathological request,
+  a stop-the-world pause, a debugger breakpoint) answers `/health` too late. The probe then reports
+  *app not running*, the launch proceeds, and the machine ends up in the two-instance state above.
+  The 2 s read was chosen against a measured ~15 ms live response, so the margin is ~130×, and
+  lengthening it has a real cost on the far more common path: every post-crash launch would stall
+  for whatever the new deadline is. Accepted as the right side of the trade rather than fixed. If
+  it ever bites, the fix is not a longer timeout but a different question — retry the probe once
+  before concluding *dead*, which is machinery c6-1 is already building for its push path and
+  could share. (Source: c1-8 AC 15, homed at implementation; Severity: Low.)
 
 ## Raised by Brad, outside a story (2026-07-26)
 

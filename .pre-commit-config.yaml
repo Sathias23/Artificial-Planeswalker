@@ -21,6 +21,10 @@ repos:
           - mcp>=1.27.0
           - platformdirs>=4.0.0
           - uvicorn>=0.51.0
+          # httpx ships py.typed, so without it here every httpx call in src/companion/client.py
+          # would be silently `Any` in this isolated hook while `uv run mypy src/` checked it
+          # properly — the hook would pass a file local mypy would reject.
+          - httpx>=0.28.1
         files: ^src/
 
   # Keep the committed plugin/ tree (the marketplace `source`) in sync with src/. When a source

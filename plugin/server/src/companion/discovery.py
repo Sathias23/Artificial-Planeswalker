@@ -223,9 +223,11 @@ def remove_discovery(instance_id: str) -> bool:
     own guard for the same reason: :func:`discovery_path` ends in a ``mkdir`` that can fail.
 
     The read-compare-unlink sequence is not atomic: a second instance that replaces the file
-    between our read and our unlink loses its rendezvous. The window is microseconds on a path
-    that runs once per process lifetime; the accepted trade is recorded in ``deferred-work.md``
-    against c1-8, the story that first makes two instances contend for this file.
+    between our read and our unlink loses its rendezvous. The window is microseconds on a path that
+    runs once per process lifetime, and it is narrower still since c1-8, whose startup check makes
+    a launch that finds a verified-live companion refuse rather than publish — so reaching this
+    race now takes two launches colliding within the same fraction of a second, not merely a second
+    launch. The trade is accepted, and recorded in ``deferred-work.md`` along with that residual.
 
     Args:
         instance_id: The caller's own identity, as minted by the lifespan.
