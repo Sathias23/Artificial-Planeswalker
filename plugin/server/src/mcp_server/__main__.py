@@ -51,9 +51,9 @@ subcommands:
   companion      run the companion backend in the foreground until interrupted
 
 options:
-  --port PORT    port the companion should prefer, overriding
-                 PLANESWALKER_COMPANION_PORT and the default port; a value
-                 outside 0..65535 is ignored with a warning
+  --port PORT    port the companion should prefer, overriding COMPANION_PORT
+                 and the default port; a value outside 0..65535 is ignored
+                 with a warning
   -h, --help     show this message and exit
 """
 """The usage text, deliberately naming **no port number**.
@@ -159,7 +159,7 @@ def _parse_companion_port(args: Sequence[str]) -> int | None | str:
     variable it is something the user typed in this invocation — while an out-of-range integer is
     not: it flows through to
     :func:`src.companion.app.server.resolve_preferred_port`, which logs a warning and uses the
-    default, exactly as it treats ``PLANESWALKER_COMPANION_PORT``.
+    default, exactly as it treats ``COMPANION_PORT``.
 
     Args:
         args: Everything after the ``companion`` subcommand.

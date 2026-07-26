@@ -55,10 +55,14 @@ HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 """The preferred port (FR-01). This is the single place in ``src/`` that names the number."""
 
-PORT_ENV_VAR = "PLANESWALKER_COMPANION_PORT"
+PORT_ENV_VAR = "COMPANION_PORT"
 """Environment override for the preferred port.
 
-Named for symmetry with ``PLANESWALKER_DATA_DIR``.
+Renamed from ``PLANESWALKER_COMPANION_PORT`` by Brad's ruling at the C1 retro (2026-07-26), before
+any documentation shipped. The vendor prefix went; the ``COMPANION`` disambiguator deliberately
+stayed, because ``MCP_TRANSPORT`` already contemplates ``sse``/``streamable-http`` and an MCP
+server running over HTTP would need a port of its own — a bare ``PLANESWALKER_PORT`` could not tell
+the two processes apart.
 """
 
 _MIN_PORT = 0
