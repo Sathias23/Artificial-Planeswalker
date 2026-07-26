@@ -197,7 +197,9 @@ def agent_token(app: FastAPI) -> str | None:
     **Never serialize it.** It must not enter a response body, a header, a log line, a pydantic
     model that reaches ``app.openapi()``, or a WebSocket frame (AD-5). It lives behind this
     accessor — on ``app.state`` rather than in any declared shape — precisely so there is no schema
-    for it to leak through; ``test_discovery.py`` pins all four surfaces.
+    for it to leak through; ``test_discovery.py`` pins the four surfaces that exist today (body,
+    headers, logs, schema). The WebSocket frame is c5-3's to pin when the socket exists — nothing
+    guards it yet.
 
     Args:
         app: The application to read.

@@ -136,6 +136,20 @@ def test_reader_returns_none_when_the_file_is_unreadable():
         path.chmod(0o600)
 
 
+def test_reader_returns_none_when_the_data_directory_cannot_be_created(tmp_path, monkeypatch):
+    """Path *resolution* can fail too — ``data_dir()`` mkdirs — and that is also *not running*.
+
+    A file sits where the data directory's parent must go, so the ``mkdir`` inside
+    ``discovery_path()`` raises ``OSError`` before any read happens. Review finding (2026-07-26):
+    this used to escape the reader's net and crash c6-1's probe.
+    """
+    blocker = tmp_path / "blocker"
+    blocker.write_text("a file where a directory must go", encoding="utf-8")
+    monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(blocker / "data"))
+
+    assert read_discovery() is None
+
+
 def test_reader_logs_a_rejection_at_debug_not_warning(caplog):
     """For c6-1's client the expected case is no file at all; a WARNING per push is noise."""
     _write_raw("not json")
@@ -335,6 +349,27 @@ def test_an_interrupted_first_write_creates_no_file(monkeypatch):
     assert list(directory.iterdir()) == []
 
 
+def test_a_cleanup_failure_does_not_displace_the_original_error(monkeypatch):
+    """The failure that aborts the launch must name the real problem, not the cleanup's.
+
+    Windows can fail the cleanup unlink too (an AV/indexer briefly holding the fresh temp file);
+    if that error propagated it would replace the replace-failure a person needs to diagnose.
+    Review finding (2026-07-26).
+    """
+
+    def replace_explodes(*args, **kwargs):
+        raise OSError("replace failed")
+
+    def unlink_explodes(*args, **kwargs):
+        raise OSError("unlink failed")
+
+    monkeypatch.setattr(os, "replace", replace_explodes)
+    monkeypatch.setattr(discovery.Path, "unlink", unlink_explodes)
+
+    with pytest.raises(OSError, match="replace failed"):
+        write_discovery(DiscoveryRecord(port=1, token="t", instance_id="i"))
+
+
 def test_the_temp_file_is_created_in_the_target_directory(monkeypatch, tmp_path):
     """``os.replace`` is atomic only within one filesystem; the system temp dir may be elsewhere."""
     seen = {}
@@ -424,6 +459,19 @@ def test_removal_leaves_an_unparseable_file_alone():
     assert discovery_path().read_text(encoding="utf-8") == "not json at all"
 
 
+def test_removal_returns_false_when_the_data_directory_cannot_be_created(tmp_path, monkeypatch):
+    """Path resolution failing during teardown must not raise — it would strand the engine dispose.
+
+    Same fault as the reader's sibling test: a file blocks the data directory's parent, so the
+    ``mkdir`` inside ``discovery_path()`` raises. Review finding (2026-07-26).
+    """
+    blocker = tmp_path / "blocker"
+    blocker.write_text("a file where a directory must go", encoding="utf-8")
+    monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(blocker / "data"))
+
+    assert remove_discovery("ours") is False
+
+
 def test_removal_swallows_and_logs_an_unlink_failure(monkeypatch, caplog):
     """On Windows another process holding the file open is enough — and teardown must not raise."""
     write_discovery(DiscoveryRecord(port=1, token="t", instance_id="ours"))
@@ -477,7 +525,10 @@ async def test_no_bound_port_means_no_file(lifespan_client, caplog):
         async with lifespan_client(app, bound_port=None):
             assert not discovery_path().exists()
 
-    assert any(record.levelno == logging.WARNING for record in caplog.records)
+    assert any(
+        record.levelno == logging.WARNING and "skipping the discovery file" in record.getMessage()
+        for record in caplog.records
+    ), "the skip must be announced, not merely logged-something-at-WARNING"
 
 
 async def test_a_failed_publish_fails_the_launch(monkeypatch):

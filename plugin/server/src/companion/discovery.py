@@ -34,6 +34,7 @@ Three design rules are load-bearing:
   serialize to ``"**********"`` and write a file no tool could authenticate with.
 """
 
+import contextlib
 import logging
 import os
 import secrets
@@ -71,7 +72,7 @@ class DiscoveryRecord(BaseModel):
             that whatever answered on that port is the process this record describes (FR-14).
 
     Example:
-        >>> record = DiscoveryRecord(port=8765, token="s3cret", instance_id="0f6e")
+        >>> record = DiscoveryRecord(port=51234, token="s3cret", instance_id="0f6e")
         >>> "s3cret" in repr(record)
         False
     """
@@ -116,8 +117,9 @@ def write_discovery(record: DiscoveryRecord) -> Path:
     The sequence is deliberate: write the serialized record to a uniquely-named temp file **in the
     target's own directory**, ``flush`` and ``fsync`` it so the bytes are on disk before it is
     visible under the real name, restrict its permissions, then ``os.replace`` it into place. A
-    failure at any step removes the temp file and re-raises, leaving no ``.tmp`` litter and the
-    previous file (if any) exactly as it was.
+    failure at any step removes the temp file (best-effort — a cleanup failure of its own never
+    displaces the original error) and re-raises, leaving no ``.tmp`` litter and the previous file
+    (if any) exactly as it was.
 
     ``mkstemp`` rather than a fixed ``companion.json.tmp`` so two processes starting at once cannot
     write the same temp file and hand each other a spliced record. ``os.replace`` rather than
@@ -151,14 +153,24 @@ def write_discovery(record: DiscoveryRecord) -> Path:
     )
     temp_path = Path(temp_name)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        try:
+            handle = os.fdopen(descriptor, "w", encoding="utf-8")
+        except BaseException:
+            # fdopen only takes ownership of the descriptor on success; without this close the
+            # descriptor leaks, and on Windows it would also hold the temp file against the unlink.
+            os.close(descriptor)
+            raise
+        with handle:
             handle.write(record.model_dump_json())
             handle.flush()
             os.fsync(handle.fileno())
         os.chmod(temp_path, 0o600)
         os.replace(temp_path, target)
     except BaseException:
-        temp_path.unlink(missing_ok=True)
+        # The cleanup itself can fail (Windows: an AV/indexer briefly holding the fresh temp file
+        # open) — that must not displace the original exception, which names the real problem.
+        with contextlib.suppress(OSError):
+            temp_path.unlink(missing_ok=True)
         raise
     return target
 
@@ -166,14 +178,16 @@ def write_discovery(record: DiscoveryRecord) -> Path:
 def read_discovery() -> DiscoveryRecord | None:
     """Read the published rendezvous, or ``None`` when there is no usable one.
 
-    **Never raises.** Every unusable state — no file, a directory at the path, no read permission,
-    bytes that are not UTF-8, bytes that are not JSON, JSON of the wrong shape, a file truncated
-    mid-write by some other writer — means the same thing to a caller: *the app is not running*.
-    One ``read_bytes`` plus one ``model_validate_json`` puts decode, parse and shape validation
-    inside a single ``except (OSError, ValueError)``, which is a complete net because
-    ``pydantic.ValidationError``, ``json.JSONDecodeError`` and ``UnicodeDecodeError`` are all
-    ``ValueError`` subclasses. It is deliberately **not** ``except Exception``: a ``MemoryError``
-    during a read is not "app not running".
+    **Never raises.** Every unusable state — an unresolvable data directory, no file, a directory
+    at the path, no read permission, bytes that are not UTF-8, bytes that are not JSON, JSON of
+    the wrong shape, a file truncated mid-write by some other writer — means the same thing to a
+    caller: *the app is not running*. One ``read_bytes`` plus one ``model_validate_json`` puts
+    decode, parse and shape validation inside a single ``except (OSError, ValueError)``, which is
+    a complete net because ``pydantic.ValidationError``, ``json.JSONDecodeError`` and
+    ``UnicodeDecodeError`` are all ``ValueError`` subclasses. The path resolution sits under its
+    own ``OSError`` guard because :func:`discovery_path` ends in a ``mkdir`` that can itself fail.
+    It is deliberately **not** ``except Exception``: a ``MemoryError`` during a read is not "app
+    not running".
 
     Rejections log at DEBUG, not WARNING — for c6-1's client the expected case is that no file
     exists, and a warning per push would be noise in the user's terminal.
@@ -181,7 +195,11 @@ def read_discovery() -> DiscoveryRecord | None:
     Returns:
         The published record, or ``None`` if there is no usable one.
     """
-    path = discovery_path()
+    try:
+        path = discovery_path()
+    except OSError as exc:
+        logger.debug("Data directory unresolvable (%s); treating as app not running", exc)
+        return None
     try:
         return DiscoveryRecord.model_validate_json(path.read_bytes())
     except (OSError, ValueError) as exc:
@@ -201,7 +219,13 @@ def remove_discovery(instance_id: str) -> bool:
 
     **Never raises.** An ``OSError`` — on Windows, another process holding the file open is
     enough — is logged at WARNING and swallowed, because this runs inside the lifespan's teardown
-    where a raise would strand the engine dispose that follows it.
+    where a raise would strand the engine dispose that follows it. The path resolution carries its
+    own guard for the same reason: :func:`discovery_path` ends in a ``mkdir`` that can fail.
+
+    The read-compare-unlink sequence is not atomic: a second instance that replaces the file
+    between our read and our unlink loses its rendezvous. The window is microseconds on a path
+    that runs once per process lifetime; the accepted trade is recorded in ``deferred-work.md``
+    against c1-8, the story that first makes two instances contend for this file.
 
     Args:
         instance_id: The caller's own identity, as minted by the lifespan.
@@ -210,7 +234,11 @@ def remove_discovery(instance_id: str) -> bool:
         ``True`` if our file was removed; ``False`` if there was nothing of ours to remove or the
         unlink failed.
     """
-    path = discovery_path()
+    try:
+        path = discovery_path()
+    except OSError:
+        logger.warning("Data directory unresolvable; nothing of ours to remove", exc_info=True)
+        return False
     record = read_discovery()
     if record is None:
         logger.debug("No discovery file of ours to remove at %s", path)

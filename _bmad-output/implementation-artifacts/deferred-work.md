@@ -748,3 +748,15 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   narrowing Decide-once #3 so a *transient* replace failure degrades where an unwritable directory
   still aborts. Windows-only. (Source: c1-7 story-writing probe 3, re-verified at implementation;
   Severity: Low; deferred to c1-8.)
+
+- **TOCTOU in `remove_discovery`'s ownership guard** — the read → compare-`instance_id` → `unlink`
+  sequence in `src/companion/discovery.py::remove_discovery` is check-then-act: a second instance
+  that `os.replace`s its own record in between our read and our unlink loses its live rendezvous to
+  our deletion — the exact scenario the guard exists to prevent, in a microsecond window on a path
+  that runs once per process lifetime. No code fix wanted now: an atomic verify-and-delete has no
+  clean cross-platform shape (Windows cannot unlink-by-open-handle portably from Python), and until
+  c1-8 lands there is never a second live instance to collide with. Acknowledged in the function's
+  docstring. Candidate fixes if it ever bites: open-with-`O_RDWR`-verify-then-unlink on POSIX with a
+  documented Windows residual, or serializing shutdown/startup around a lock file. (Source: c1-7
+  code review 2026-07-26, Blind Hunter + Edge Case Hunter; Severity: Low; deferred to c1-8, which
+  owns the contending-instances design.)

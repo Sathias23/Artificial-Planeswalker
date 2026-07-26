@@ -8,7 +8,7 @@ story_branch: feat/companion-c1-7-discovery-file-rendezvous
 
 # Story C1.7: Discovery file as the sole rendezvous
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -324,6 +324,53 @@ directory, which is why **test isolation is an AC rather than a side effect** (A
   - [x] Confirm by command that the AC 18 forbidden files are untouched:
         `git status --porcelain -- tests/unit/companion/test_app.py tests/unit/companion/test_deps.py tests/unit/companion/test_errors.py tests/unit/companion/test_security.py tests/unit/companion/test_server.py tests/unit/companion/test_import_boundary.py .github/workflows/ci.yml pyproject.toml uv.lock .pre-commit-config.yaml src/data src/mcp_server src/paths.py src/companion/contracts.py src/companion/app/deps.py src/companion/app/errors.py src/companion/app/security.py src/companion/app/server.py`
         returns empty.
+
+### Review Findings
+
+Code review 2026-07-26 (Blind Hunter + Edge Case Hunter + Acceptance Auditor over `2461ade..HEAD`).
+7 patch findings; 0 decision-needed; 0 deferred; 9 dismissed as spec-mandated behaviour, unreachable
+paths, or noise.
+
+- [x] [Review][Patch] `read_discovery` can raise despite its "Never raises" contract —
+      `discovery_path()` (whose `data_dir()` ends in `mkdir`) sits *outside* the
+      `except (OSError, ValueError)` net, so an uncreatable data directory crashes c6-1's
+      "is the app running?" probe instead of returning `None` [src/companion/discovery.py:184]
+- [x] [Review][Patch] `remove_discovery` can raise the same way (`discovery_path()` at line 213,
+      outside any net), breaking its own "Never raises" docstring; a raise there aborts `_shutdown`
+      before the engine dispose it promises not to strand [src/companion/discovery.py:213]
+- [x] [Review][Patch] TOCTOU in the ownership guard: between `read_discovery()` and `unlink()` a
+      second instance can `os.replace` its own record in, and our unlink then deletes the live
+      instance's rendezvous — the exact scenario the guard exists for. No code fix wanted (the
+      window is microseconds and the spec chose read-compare-unlink); home it in
+      `deferred-work.md` against c1-8 and acknowledge it in the docstring, per the epic-7
+      gate-output rule [src/companion/discovery.py:214-227]
+- [x] [Review][Patch] The write's failure-branch cleanup can mask the original exception and leak
+      the fd: if `os.fdopen` raises, the `mkstemp` descriptor is never closed and the Windows
+      unlink of that open file raises `PermissionError` *instead of* the real error; an AV/indexer
+      briefly holding the fresh `.tmp` does the same. Close the fd on the fdopen-failure path and
+      wrap the cleanup unlink in `contextlib.suppress(OSError)` [src/companion/discovery.py:160-162]
+- [x] [Review][Patch] `test_no_bound_port_means_no_file` asserts only that *some* WARNING record
+      exists — no message match — so the one behaviour it exists to pin (the skip is announced) is
+      not pinned; assert the "skipping the discovery file" substring
+      [tests/unit/companion/test_discovery.py:480]
+- [x] [Review][Patch] `agent_token`'s docstring lists **five** forbidden surfaces then claims
+      "`test_discovery.py` pins all four surfaces" — miscounted, and the WebSocket surface is
+      pinned nowhere (none exists until c5-3); a later implementer would assume a net that isn't
+      there [src/companion/app/main.py:200]
+- [x] [Review][Patch] AC 8 violation (Acceptance Auditor, confirmed): the `DiscoveryRecord`
+      docstring example names port **8765**, which AC 8 forbids anywhere in `discovery.py`, and the
+      Completion Notes claim "`discovery.py` names no port number at all" is therefore false — use
+      a non-default port in the example and correct the story record
+      [src/companion/discovery.py:74]
+
+Dismissed (for the record): read-side `mkdir` side effect (AC 2 mandates `data_dir()`); no xfail
+pin on the deferred WinError-5 hazard (deferred-work.md is the mechanism); `uvicorn --factory`
+no-port serving degrades (AC 9 mandates the skip); redundant port stamp in the AC 8 test (satisfies
+the AC as written); per-directory isolation scope (AC 12 mandates it; c5-8's story already owns its
+own isolation); unbounded `read_bytes` (writer owns the file; ~150-byte records); redundant
+`os.chmod` after `mkstemp` (AC 3 mandates the sequence); `remove_discovery` requiring full-shape
+validity (AC 11 mandates leaving unparseable files alone); `port=0` `ValidationError` in
+`_publish_discovery` (unreachable — the port comes from a bound socket).
 
 ## Dev Notes
 
@@ -776,7 +823,10 @@ disposes). All 18 ACs satisfied.
 - **Gotcha 5 respected:** no local in `discovery.py` is named `session`, `sess`, `db`, `db_session`,
   `database`, `conn` or `connection`. The file handle is `handle`, the directory `directory`, the
   model `record`.
-- **`discovery.py` names no port number at all**, so AD-4's "8765 appears only in `server.py`" holds.
+- **`discovery.py` never names 8765** (its docstring example uses 51234, the tests' arbitrary
+  port), so AD-4's "8765 appears only in `server.py`" holds. *Corrected in review 2026-07-26: this
+  bullet originally claimed "names no port number at all" while the `DiscoveryRecord` docstring
+  example used `port=8765` — an AC 8 violation, patched by the review.*
 
 **Deferred, not fixed (AC 16 / Task 6, per the epic-7 gate-output homing rule):** the Windows
 `os.replace`-while-open `PermissionError` (Gotcha 2) is recorded in `deferred-work.md` under a new

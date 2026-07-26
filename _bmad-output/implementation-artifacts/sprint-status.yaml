@@ -1,5 +1,5 @@
 # generated: 2026-06-20
-# last_updated: 2026-07-26 (story c1-7 → review: discovery-file leaf + lifespan publish/retract shipped at 3ea6732; all 18 ACs met, 1,585 passed / 1 skipped / 45 deselected, no edits to the AC-18 protected files)
+# last_updated: 2026-07-26 (story c1-7 → done: code review complete — 7 patch findings applied, suite 1,588 passed / 1 skipped)
 # project: Artificial-Planeswalker
 # project_key: NOKEY
 # tracking_system: file-system
@@ -46,7 +46,7 @@
 #   epic-c1..10 → _bmad-output/planning-artifacts/epics-companion-app.md          (c-prefixed, numbering UNCHANGED)
 
 generated: 2026-06-20
-last_updated: 2026-07-26 (story c1-7 → review: discovery-file leaf + lifespan publish/retract shipped at 3ea6732; all 18 ACs met, 1,585 passed / 1 skipped / 45 deselected, no edits to the AC-18 protected files)
+last_updated: 2026-07-26 (story c1-7 → done: code review complete — 7 patch findings applied (never-raises guards on discovery_path resolution, cleanup-masking fix, test hardening, AC-8 8765 removal), 0 deferred, 9 dismissed; suite 1,588 passed / 1 skipped incl. 3 new review-regression tests)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -231,7 +231,7 @@ development_status:
   c1-4-typed-rest-error-contract-with-closed-reason-tokens: done
   c1-5-localhost-only-security-envelope-host-validation-and-cors: done
   c1-6-lazy-database-engine-so-a-fresh-install-starts-instead-of-erroring: done
-  c1-7-discovery-file-as-the-sole-rendezvous: review
+  c1-7-discovery-file-as-the-sole-rendezvous: done
   c1-8-single-instance-enforcement-with-verified-identity: backlog
   c1-9-one-console-script-that-dispatches-without-disturbing-the-mcp-server: backlog
   epic-c1-retrospective: optional
