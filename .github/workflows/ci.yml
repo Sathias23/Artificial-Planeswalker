@@ -154,6 +154,15 @@ jobs:
       - name: SPA bundle in sync with ui/
         working-directory: .
         run: |
+          # Non-vacuity guard on the ignore axis: `git status --porcelain` reports nothing for
+          # gitignored paths, so if the bundle tree ever became ignored (the root .gitignore has
+          # unanchored dist/, build/ and lib/ patterns a future asset directory could match) the
+          # drift check below would pass vacuously — while hatchling silently dropped the
+          # now-VCS-ignored bundle from the wheel.
+          if [ -z "$(git ls-files -- src/companion/app/static/)" ]; then
+            echo "::error::src/companion/app/static/ has no tracked files — the bundle is not committed (or became gitignored), so the drift check cannot see it."
+            exit 1
+          fi
           if [ -n "$(git status --porcelain -- src/companion/app/static/)" ]; then
             echo "::error::src/companion/app/static/ is stale — run 'cd ui && npm run build' and commit the bundle."
             git status --porcelain -- src/companion/app/static/

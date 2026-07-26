@@ -85,8 +85,22 @@ _MEDIA_TYPES: tuple[tuple[str, str], ...] = (
     (".woff", "font/woff"),  # c2-5
 )
 
-for _suffix, _media_type in _MEDIA_TYPES:
-    mimetypes.add_type(_media_type, _suffix)
+
+def _register_media_types() -> None:
+    """Register this bundle's media types with the process-global ``mimetypes`` database.
+
+    Idempotent, and called from two places on purpose: once at import (so the types are right
+    as early as possible) and again in :func:`install_spa` — because ``mimetypes.init()``
+    rebuilds the maps from scratch and **discards every prior** ``add_type``, and any
+    third-party import is free to call it. On Windows ``init()`` re-reads the very registry
+    this module exists to defend against, so a single import-time registration can be silently
+    undone before the app is even built.
+    """
+    for suffix, media_type in _MEDIA_TYPES:
+        mimetypes.add_type(media_type, suffix)
+
+
+_register_media_types()
 
 
 def _route_paths(routes: Iterable[BaseRoute], prefix: str = "") -> Iterator[str]:
@@ -201,8 +215,16 @@ class _SpaMount(Mount):
             scope: The ASGI connection scope.
 
         Returns:
-            Starlette's ``(match, child_scope)`` pair; ``Match.NONE`` for a reserved path.
+            Starlette's ``(match, child_scope)`` pair; ``Match.NONE`` for a reserved path or a
+            non-HTTP scope.
         """
+        # Starlette's Mount matches websocket scopes too, but StaticFiles serves only HTTP — its
+        # first line is `assert scope["type"] == "http"`. Without this decline, a WebSocket
+        # handshake to any unreserved path (c5-6's /ws, or any client route) would be dispatched
+        # into that assert and die as a server error instead of getting the router's clean
+        # no-such-route rejection.
+        if scope["type"] != "http":
+            return Match.NONE, {}
         segments = [segment for segment in _route_path(scope).split("/") if segment]
         if segments and segments[0] in self._reserved_prefixes:
             return Match.NONE, {}
@@ -273,6 +295,9 @@ class _SpaFiles(StaticFiles):
           ``200`` that the browser then fails to parse as JavaScript.
         * **First segment not reserved.** ``/api/deckz`` — a typo, no extension — must not answer
           with the index.
+        * **Not inside** ``assets/``. That directory is guaranteed asset territory, so an
+          extension-less miss there (``/assets/does-not-exist``) is still a broken deployment —
+          the extension test alone would have called it a client route.
         * **No parent traversal.** A path that climbed out of the bundle is not a client route.
 
         The query string is deliberately absent from all of this: an ASGI ``scope["path"]`` never
@@ -298,6 +323,8 @@ class _SpaFiles(StaticFiles):
         if not meaningful:
             return True
         if meaningful[0] in self._reserved_prefixes:
+            return False
+        if meaningful[0] == _ASSETS_DIR_NAME:
             return False
         return "." not in meaningful[-1]
 
@@ -357,6 +384,9 @@ def install_spa(app: FastAPI, *, static_dir: Path | None = None) -> None:
             f"cd ui && npm run build"
         )
     logger.debug("Serving the SPA bundle from %s", directory)
+    # Registered at import too, but a later `mimetypes.init()` anywhere in the process discards
+    # add_type registrations — re-registering here (idempotent) repairs that before serving.
+    _register_media_types()
     reserved = _reserved_prefixes(app)
     # Appended directly rather than via app.mount(), which would build a plain Mount and lose the
     # reserved-prefix decline that keeps 405-with-Allow working (see _SpaMount).

@@ -48,7 +48,11 @@ def _asset(suffix: str) -> str:
             f"No {suffix} asset in {spa.STATIC_DIR / 'assets'} — the bundle is missing or stale. "
             f"Rebuild with: cd ui && npm run build"
         )
-    return f"/assets/{matches[0].name}"
+    # Prefer the entry bundle: once a later story introduces code-split chunks, sorted()[0] is
+    # an arbitrary pick (alphabetical by content hash) and these tests would exercise a random
+    # chunk instead of the entry point.
+    preferred = [match for match in matches if match.name.startswith("index-")]
+    return f"/assets/{(preferred or matches)[0].name}"
 
 
 class TestTheBundleIsPresent:
@@ -160,10 +164,15 @@ class TestContentTypes:
         ],
     )
     def test_the_registration_survives_a_hostile_mimetypes_database(self, suffix, expected):
-        # Registered at import, so the answer cannot depend on a Windows registry entry any
-        # installed application is free to rewrite. .woff2 is the one that is already wrong on
-        # an unpatched machine (it resolves to None, i.e. text/plain).
+        # The hostility is real, not assumed: mimetypes.init() rebuilds the maps from scratch
+        # (on Windows, re-reading the very registry spa.py defends against) and DISCARDS every
+        # prior add_type — and any third-party import is free to call it. install_spa
+        # re-registers, so building an app repairs the damage; .woff2 is the suffix that proves
+        # it (no stock database resolves it, so only the re-registration can make this pass).
         import mimetypes
+
+        mimetypes.init()
+        build_app()
 
         assert mimetypes.guess_type(f"file{suffix}")[0] == expected
 
@@ -191,6 +200,16 @@ class TestTheTypedErrorContractSurvivesTheFallback:
         assert response.headers["content-type"].startswith(_TYPED_ERROR_MEDIA_TYPE)
         assert response.json() == {"reason": "invalid_request"}
 
+    async def test_an_extensionless_asset_miss_is_also_a_typed_404(self, lifespan_client):
+        # assets/ is guaranteed asset territory. Without an explicit rule the extension test
+        # alone would classify /assets/does-not-exist as a client route and answer 200 + HTML —
+        # the same broken deployment as above, hidden behind a success.
+        async with lifespan_client(build_app()) as client:
+            response = await client.get("/assets/does-not-exist")
+
+        assert response.status_code == 404
+        assert response.json() == {"reason": "invalid_request"}
+
     async def test_a_post_to_a_client_route_is_never_the_index(self, lifespan_client):
         async with lifespan_client(build_app()) as client:
             response = await client.post("/decks/42")
@@ -205,6 +224,9 @@ class TestTheTypedErrorContractSurvivesTheFallback:
         async with lifespan_client(build_app()) as client:
             response = await getattr(client, method)("/decks/42")
 
+        # The status matters too: a 200 carrying a typed-error body would be a differently
+        # broken contract, and content-type + body alone cannot see it.
+        assert response.status_code >= 400
         assert response.headers["content-type"].startswith(_TYPED_ERROR_MEDIA_TYPE)
         assert response.json() == {"reason": "invalid_request"}
 
@@ -240,14 +262,21 @@ class TestTheTypedErrorContractSurvivesTheFallback:
         assert body["status"] == "ok"
         assert body["instance_id"] == app.state.instance_id
 
-    @pytest.mark.parametrize("path", ["/docs", "/openapi.json"])
-    async def test_the_documentation_surfaces_still_answer(self, lifespan_client, path):
+    @pytest.mark.parametrize(
+        ("path", "marker"),
+        [("/docs", "swagger"), ("/openapi.json", '"paths"')],
+    )
+    async def test_the_documentation_surfaces_still_answer(self, lifespan_client, path, marker):
         # Retro ruling R2 keeps them enabled. They are registered by FastAPI.__init__, i.e. before
         # any mount, so they precede the catch-all — this is the regression pair for that.
+        # The marker is what makes this non-vacuous: if the route were shadowed or removed, the
+        # SPA fallback would ALSO answer 200 for these extension-less paths — with the index,
+        # which contains neither Swagger's bootstrap nor an OpenAPI document.
         async with lifespan_client(build_app()) as client:
             response = await client.get(path)
 
         assert response.status_code == 200
+        assert marker in response.text.lower()
 
     def test_the_mount_leaks_no_path_into_the_openapi_schema(self):
         # c2-3 generates the UI's types from this schema and drift-checks them in CI. A mount that
@@ -344,30 +373,39 @@ class TestMountOrdering:
             response = await client.get("/health")
 
         assert response.status_code == 200
-        assert response.headers["content-type"].startswith(_TYPED_ERROR_MEDIA_TYPE)
+        # Plain "application/json" here, not the typed-error constant: this is the one response
+        # in the module that is a success, and JSON-ness is all it shares with the contract.
+        assert response.headers["content-type"].startswith("application/json")
         assert "status" in response.json()
 
     def test_the_reserved_prefixes_are_derived_from_the_route_table(self):
         app = build_app()
         reserved = spa._reserved_prefixes(app)
 
-        # `api` is seeded so the reservation holds before c3-1 registers anything under it.
-        assert "api" in reserved
-        # `docs` comes from a plain Route registered by FastAPI.__init__.
-        assert "docs" in reserved
-        # `health` is the one that matters, and it is why this test exists. It arrives via
-        # include_router, which FastAPI wraps in an _IncludedRouter carrying neither .path nor
-        # .routes. A naive `getattr(route, "path", "")` walk misses it — and misses every prefix
-        # c3-1 (/api) and c5-5 (/agent) will register the same way, so their typo paths would
-        # answer 200 with index.html instead of a typed 404.
-        assert "health" in reserved, (
-            "No prefix was derived from an include_router()'d route.\n\n"
-            "spa._route_paths reads FastAPI internals (_IncludedRouter.original_router and "
-            ".include_context.prefix) to descend into included routers. A FastAPI upgrade has "
-            "most likely moved them.\n\n"
-            "FIX: update spa._route_paths to walk the new shape. Until then every router-"
-            "registered prefix falls through to the SPA index instead of the typed error "
-            "contract."
+        # Exact equality, deliberately — it guards BOTH failure directions:
+        #
+        # * Under-reservation. `health` arrives via include_router, which FastAPI wraps in an
+        #   _IncludedRouter carrying neither .path nor .routes. A naive `getattr(route, "path")`
+        #   walk misses it — and misses every prefix c3-1 (/api) and c5-5 (/agent) will register
+        #   the same way, so their typo paths would answer 200 with index.html instead of a
+        #   typed 404. (`api` is seeded; `docs`/`redoc`/`openapi.json` are plain Routes from
+        #   FastAPI.__init__.)
+        #
+        # * Over-reservation. If a future FastAPI gave _IncludedRouter a delegating .routes,
+        #   _route_paths would yield each child twice — once WITHOUT the include prefix — and a
+        #   bare child segment (e.g. `decks` from prefix="/api") would be silently stolen from
+        #   the SPA's client-route namespace. `in`-assertions stay green on that; equality does
+        #   not.
+        assert reserved == {"api", "health", "docs", "redoc", "openapi.json"}, (
+            f"Reserved prefixes changed: {sorted(reserved)}.\n\n"
+            "If a prefix is MISSING: spa._route_paths reads FastAPI internals "
+            "(_IncludedRouter.original_router and .include_context.prefix) to descend into "
+            "included routers, and a FastAPI upgrade has most likely moved them — update the "
+            "walk, or every router-registered prefix falls through to the SPA index instead of "
+            "the typed error contract.\n\n"
+            "If there is an EXTRA prefix: either a new router was added (fine — add it here), "
+            "or the walk is double-yielding paths without their include prefix and stealing "
+            "client-route names from the SPA."
         )
 
     async def test_an_unknown_path_under_a_router_prefix_is_a_typed_404(self, lifespan_client):
@@ -378,6 +416,27 @@ class TestMountOrdering:
 
         assert response.status_code == 404
         assert response.json() == {"reason": "invalid_request"}
+
+    def test_the_mount_declines_non_http_scopes(self):
+        # Starlette's Mount matches websocket scopes too, but StaticFiles serves only HTTP — its
+        # first line is `assert scope["type"] == "http"`. A WebSocket handshake to an unreserved
+        # path (c5-6's /ws, or any client route) must get the router's clean no-such-route
+        # rejection, not an AssertionError dressed as a server error.
+        mount = build_app().routes[-1]
+
+        match, _ = mount.matches({"type": "websocket", "path": "/decks/42", "root_path": ""})
+
+        assert match is spa.Match.NONE
+
+    def test_the_mount_still_claims_http_scopes(self):
+        # The non-vacuity pair: declining everything would also "pass" the test above.
+        mount = build_app().routes[-1]
+
+        match, _ = mount.matches(
+            {"type": "http", "method": "GET", "path": "/decks/42", "root_path": ""}
+        )
+
+        assert match is spa.Match.FULL
 
 
 class TestAMissingBundleFailsLegibly:
@@ -437,10 +496,20 @@ class TestThePluginMirror:
             "rebuild with: uv run python -m scripts.build_plugin, and commit plugin/."
         )
 
-    def test_the_mirrored_asset_names_match(self):
-        assert sorted(p.name for p in (_MIRRORED_STATIC / "assets").iterdir()) == sorted(
-            p.name for p in (spa.STATIC_DIR / "assets").iterdir()
-        )
+    def test_the_mirrored_assets_are_byte_identical(self):
+        # Names AND bytes: CRLF mangling (the fresh-Windows-clone failure the second
+        # .gitattributes line exists for) does not change a filename, so a name-only comparison
+        # would pass with byte-divergent assets.
+        source = sorted((spa.STATIC_DIR / "assets").iterdir())
+        mirrored = sorted((_MIRRORED_STATIC / "assets").iterdir())
+
+        assert [p.name for p in mirrored] == [p.name for p in source]
+        for source_file, mirrored_file in zip(source, mirrored, strict=True):
+            assert mirrored_file.read_bytes() == source_file.read_bytes(), (
+                f"plugin/ holds a byte-divergent copy of assets/{source_file.name}. Both are "
+                f"generated artifacts — rebuild with: uv run python -m scripts.build_plugin, "
+                f"and commit plugin/."
+            )
 
 
 class TestTheBundleIsInternallyConsistent:

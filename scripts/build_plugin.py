@@ -204,6 +204,16 @@ def build(out_dir: Path) -> int:
             spa_index,
         )
         return 1
+    # index.html alone is not the app: a copy that delivered the index but lost assets/ (the
+    # actual JS/CSS) would pass the check above and ship a plugin whose every page is blank.
+    spa_assets = spa_index.parent / "assets"
+    if not spa_assets.is_dir() or not any(spa_assets.iterdir()):
+        logger.error(
+            "companion SPA assets missing from copied server (%s is absent or empty) — "
+            "aborting. Build the bundle with: cd ui && npm run build",
+            spa_assets,
+        )
+        return 1
     for name in SERVER_FILES:
         src_file = REPO_ROOT / name
         if not src_file.exists():

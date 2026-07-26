@@ -74,9 +74,20 @@ Two consequences worth knowing:
   the "this file is generated" notice lives in `ui/index.html`, and the line-ending attribute
   in the repository-root `.gitattributes`.
 
+### Which URLs the SPA may own
+
+The backend serves the bundle behind a fallback rule (c2-2's decide-once ruling): a request
+reaches `index.html` only if it is a `GET`/`HEAD`, its **final path segment contains no dot**,
+and its **first segment is not reserved** — `api` plus every registered backend prefix
+(`health`, `docs`, `redoc`, `openapi.json`, and whatever later stories register), plus
+`assets/`, which never falls back. Design client-side routes inside that shape: `/decks/42`
+renders the app; `/decks/v1.2` (dot in the final segment) and anything under a reserved prefix
+answer a typed JSON 404 instead. The Vite dev server does not enforce this rule, so a route
+that violates it works in dev and 404s in production.
+
 ## The quality gate
 
-All four run in CI and gate the build, and all four are runnable here:
+All five run in CI and gate the build, and all five are runnable here:
 
 | Command                | What it gates                                                                |
 | ---------------------- | ---------------------------------------------------------------------------- |
@@ -84,6 +95,7 @@ All four run in CI and gate the build, and all four are runnable here:
 | `npm run format:check` | Prettier                                                                     |
 | `npm run typecheck`    | `tsc -b` across both sub-projects                                            |
 | `npm test`             | vitest                                                                       |
+| `npm run build`        | the bundle builds — and CI then fails if the committed copy is stale         |
 
 Some notes that are easy to trip over:
 
