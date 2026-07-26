@@ -1222,6 +1222,24 @@ So that the frontend is born under the same discipline as the Python side rather
 **When** eslint runs
 **Then** `outline: none` without a replacement focus style is reported (UX-DR46)
 
+**Given** the Vite dev server runs on its own port and proxies to the companion backend
+**When** the proxy is configured
+**Then** it sets `changeOrigin: true` so the proxied request carries a loopback `Host`
+**And** a test or documented check asserts it, because without the rewrite **every** proxied call
+returns c1-5's typed `400 {"reason": "invalid_request"}` from `HostValidationMiddleware`
+> *Ruling R1 (Brad, C1 retro 2026-07-26) — closes c1-5 Open Question 2. The dev proxy is the
+> committed dev workflow; the second origin it creates in development is accepted, and the
+> `changeOrigin` requirement is asserted rather than left to be discovered as a confusing 400. See
+> `epic-c1-retro-2026-07-26.md` §Rulings.*
+
+**Given** this story is the first since c1-2 permitted to edit `.github/workflows/ci.yml`
+**When** the frontend job is added
+**Then** the opposite-platform mypy invocation (`mypy src/ --platform linux` alongside `mypy src/`)
+is added to the same gate
+> *C1 retro action item 3. `src/companion/app/singleton.py` branches on `sys.platform` and each
+> mypy run type-checks only its own half; today the POSIX half is covered only because CI happens
+> to run on ubuntu, and the Windows half only by Brad's local runs.*
+
 ### Story 2.2: The backend serves the built SPA as a committed artifact
 
 As Brad installing the plugin,

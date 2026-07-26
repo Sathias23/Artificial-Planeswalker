@@ -941,6 +941,27 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   behaviour gets written down. (Source: story c1-9 live check 3 / Completion Notes deviation 3;
   Severity: Low — Decide-once #5's exit vocabulary is about statuses *we* mint, and AD-15 rules
   out any supervisor that would read this one.)
+
+  **CLOSED 2026-07-26 by Brad's C1-retro manual testing — real Ctrl-C exits `0`.** Observed in a
+  real PowerShell terminal (venv-activated, `uv run artificial-planeswalker companion`, interrupt
+  from the keyboard, `$LASTEXITCODE` read in the same window):
+
+  ```
+  INFO:     Shutting down
+  INFO:     Waiting for application shutdown.
+  INFO:     Application shutdown complete.
+  INFO:     Finished server process [39616]
+  $LASTEXITCODE -> 0
+  data dir after -> cards.db, fastembed_cache, companion.lock (0 bytes); companion.json GONE
+  ```
+
+  So the `3` is an artifact of delivering `CTRL_BREAK_EVENT` to a **detached** child in the probe
+  harness, **not** user-visible behaviour — the console-control path that imposed it is not the
+  one a foreground Ctrl-C takes. On the real path `main()` does return and its value survives:
+  Decide-once #5's exit vocabulary (0 = intent satisfied) holds end to end, with no signal
+  trapping and no code change. c8-4 documents `0`. Every other condition the AC named also held:
+  no traceback, graceful uvicorn shutdown, the lifespan retraction removed `companion.json`, and
+  `companion.lock` was retained at 0 bytes for the kernel to release.
 - **`test_entry_point.py`'s autouse `isolated_data_dir` fixture also re-points the two
   pre-existing transport tests** — the story said "leave the two old ones alone", and the
   documented deviation 1 covers only the forced `main()` → `main([])` edit. The new autouse
@@ -963,3 +984,29 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   both of which AC 19 froze for story c1-9 — hence deferred rather than patched.
   (Source: c1-9 code review, Blind Hunter; Severity: Low — both halves are covered today, the gap
   is that the coverage is accidental rather than pinned.)
+
+## Deferred from: Epic C1 retrospective manual testing (2026-07-26)
+
+Brad ran blocks A–D and G–H and declared himself satisfied; two blocks were not run. Homed here per
+the gate-output rule rather than left as "we meant to".
+
+- **The renamed `COMPANION_PORT` env var has no live confirmation** — ruling R4 renamed
+  `PLANESWALKER_COMPANION_PORT` → `COMPANION_PORT` during the manual-testing pass, and the checklist
+  block that would have exercised it end to end (`$env:COMPANION_PORT = "9125"` → the companion
+  serving on 9125, and `--port` beating it) was not run afterwards. Coverage is otherwise good: the
+  unit suite reads `server.PORT_ENV_VAR` so it followed the rename automatically (1,684 passed), and
+  the *malformed*-input paths were hand-verified in block A. What is unconfirmed is only that a real
+  shell environment variable under the new name reaches `resolve_preferred_port`. **Consequence for
+  c8-4:** document the variable, but do not describe it as hand-verified. Closing it is a
+  thirty-second check whenever the companion is next started. (Severity: Low.)
+
+- **FR-22's fresh-install start has no live confirmation** — the checklist block pointing
+  `PLANESWALKER_DATA_DIR` at an empty directory to prove the companion *starts* rather than crashing
+  with no `cards.db` present was not run. Unit coverage is strong and deliberate (c1-2's inertness
+  tests fresh-import with the data dir pointed at a non-existent path; c1-6's laziness tests assert
+  no engine, no file planted, and a 503 through a test-local route), and the *observable* half — a
+  data endpoint answering `503 database_not_initialized` — has no shipped route until c3-1, so there
+  is genuinely less to see today than there will be. **Natural home: c3-9** ("fresh install guides
+  instead of erroring and comes alive on its own"), which owns that loop in the UI and cannot be
+  accepted without a real empty-data-dir run. Recorded so c3-9 inherits it as a known-unverified
+  precondition rather than assuming Epic C1 closed it. (Severity: Low.)

@@ -1,5 +1,5 @@
 # generated: 2026-06-20
-# last_updated: 2026-07-26 (story c1-9 → done: dispatcher + held single-instance lock shipped; code review applied)
+# last_updated: 2026-07-26 (Epic C1 COMPLETE 9/9 + retrospective done; 3 rulings, 6 action items, C2 unblocked)
 # project: Artificial-Planeswalker
 # project_key: NOKEY
 # tracking_system: file-system
@@ -46,7 +46,7 @@
 #   epic-c1..10 → _bmad-output/planning-artifacts/epics-companion-app.md          (c-prefixed, numbering UNCHANGED)
 
 generated: 2026-06-20
-last_updated: 2026-07-26 (story c1-9 → done — Epic C1 complete: subcommand dispatcher (AD-14), root-logger config (AD-15) and the held single-instance lock closing the c1-8 launch race + remove_discovery TOCTOU. Code review: 2 decisions ruled (contention-errno narrowing; companion --help exits 0) + 7 patches applied, 1 deferral logged. Suite 1,683 passed / 1 skipped / 45 deselected; both mypy platform passes green; plugin mirror rebuilt)
+last_updated: 2026-07-26 (Epic C1 retrospective done — epic-c1-retro-2026-07-26.md. 9/9 stories, PRs #9-#16, suite 1,310 → 1,683 passed / 1 skipped / 45 deselected, ~77 review patches, 0 Critical/Major, 5 of 13 deferrals closed in-epic. Epic-7 items 1+2 closed and promoted to standing agreements; non-vacuity pairing promoted as a new one. 3 rulings: R1 Vite dev proxy needs changeOrigin (homed on c2-1, closes c1-5 OQ2), R2 /docs + /openapi.json stay enabled as a keep-decision (closes c1-2 OQ2), R3 integration PR feat/companion-app → master now, merge != release. 6 action items below; 8-item manual-testing checklist in the retro doc. Epic C2 unblocked)
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -224,7 +224,7 @@ development_status:
   # AD-1/2/3/4/10/14/15/16 · depends on nothing
   # NOTE: EPIC-SPLIT calls c1-1's two boundary tests the highest-leverage stories in the
   # whole feature — they land BEFORE the code they guard, so AD-2/AD-3 are structural not aspirational.
-  epic-c1: in-progress
+  epic-c1: done  # 9/9 2026-07-26; PRs #9-#16 merged into feat/companion-app (integration PR to master = R3)
   c1-1-companion-package-skeleton-with-ci-enforced-import-boundaries: done
   c1-2-side-effect-free-asgi-app-with-a-lifespan-and-a-health-endpoint: done
   c1-3-port-selection-with-ephemeral-fallback-and-a-printed-launch-url: done
@@ -234,7 +234,7 @@ development_status:
   c1-7-discovery-file-as-the-sole-rendezvous: done
   c1-8-single-instance-enforcement-with-verified-identity: done
   c1-9-one-console-script-that-dispatches-without-disturbing-the-mcp-server: done
-  epic-c1-retrospective: optional
+  epic-c1-retrospective: done  # epic-c1-retro-2026-07-26.md; 3 rulings (R1 changeOrigin → c2-1, R2 /docs keep-decision, R3 integration PR now), 6 action items, 8-item manual-testing checklist
 
   # Epic C2: The Glass — Foundation, Identity & Honest States
   # FR-20, FR-22 (state-panel surface + copy) · NFR-03, NFR-06, NFR-07, NFR-08 · AD-12, AD-13
@@ -427,11 +427,11 @@ action_items:
   - epic: 7
     action: "gate-output homing rule: any gate/review that produces 'named inputs' must attach each to a story key, spec, or sprint-status gate in the same commit that closes the gate — a label with no key is how the G-R2 calibration inputs went unowned for a whole epic"
     owner: "Sathias"
-    status: open
+    status: done  # closed 2026-07-26 (C1 retro): exercised in all 9 stories — c1-7 homed the Windows replace-while-open hazard, c1-8 ruled on it and re-homed to c6-1, c1-9 closed the launch race + remove_discovery TOCTOU in place recording what shipped. Promoted to a standing team agreement.
   - epic: 7
     action: "error-contract enumeration: when a story adds awaited I/O to an existing tool path, enumerate every call against the error-contract guard that covers it (7.2 review found _provision_combos' three DB reads outside the DatabaseError→error guard — sibling discipline to construction-site enumeration)"
     owner: "Sathias"
-    status: open
+    status: done  # closed 2026-07-26 (C1 retro) in its strongest form: c1-6 registered DatabaseError→503 database_unavailable inside install_error_handling BEFORE any data route existed, so c3-1 onward inherit the guard with no per-route ceremony. Promoted to a standing team agreement.
   - epic: 7
     action: "data-layer orphan story keyed in sprint-status (data-layer-orphan-handling) so the thrice-documented get_deck_with_cards ValidationError crash + dead cards_unresolved signal stop floating in story notes"
     owner: "Sathias"
@@ -440,3 +440,27 @@ action_items:
     action: "close + promote construction-site enumeration to the standing team agreements"
     owner: "Amelia"
     status: done  # executed in-retro 2026-07-18 (epic-6 item above flipped to done; agreement recorded in epic-7-retro-2026-07-18.md)
+  - epic: c1
+    action: "forward-dated-comment homing: a comment or docstring asserting a FUTURE story's state (a log level chosen around an absent root handler, a promised flag, 'story X does this here') is a deferred edit — give it a story key in the same commit that writes it, like a gate output. c1-9 had to repair six such sentences across four files as an AC; it only worked because they were greppable"
+    owner: "Brad"
+    status: open
+  - epic: c1
+    action: "open-question homing: an 'Open questions for Brad' item whose answer changes a LATER story's work is homed on that story key when raised, not left in the story record. 20 were raised across C1 and 5 answered; two of the survivors (c1-5 OQ2 dev-proxy Host, c1-2 OQ2 /docs) landed in C2's path and had to be ruled at the retro"
+    owner: "Brad"
+    status: open
+  - epic: c1
+    action: "close the --platform mypy gate gap in c2-1: add the opposite-platform mypy invocation to ci.yml (or .pre-commit-config.yaml) while c2-1 adds the frontend job. singleton.py branches on sys.platform and each run checks only its own half — today the POSIX half is covered only because CI happens to run on ubuntu. Annotated on epics Story 2.1"
+    owner: "Brad"
+    status: open
+  - epic: c1
+    action: "c2-9 must ship the internal_error state-panel copy (the sixth token shipped without a UI state; AD-16 requires them together) and also inherits the c1-6 corrupt-database ruling — a durably corrupt cards.db answers the quiet-retry 'Database updating' state forever with no repair path. Both need verbatim EXPERIENCE.md copy before the panels are built"
+    owner: "Brad"
+    status: open
+  - epic: c1
+    action: "confirm the PLANESWALKER_COMPANION_PORT env-var name during manual testing (checklist item 5) so c8-4 documents a settled name — unconfirmed since c1-3"
+    owner: "Brad"
+    status: done  # RULED 2026-07-26 at the C1 retro: renamed to COMPANION_PORT. Vendor prefix dropped; the COMPANION disambiguator kept deliberately, because MCP_TRANSPORT already contemplates sse/streamable-http and an MCP server over HTTP would need its own port (a bare PLANESWALKER_PORT could not tell the two apart). One constant in server.py:58 + two docstring/usage sites in __main__.py; tests read server.PORT_ENV_VAR so none changed. Gates green (1,684 passed / 1 skipped); plugin mirror rebuilt.
+  - epic: c1
+    action: "annotate c2-1 with the R1 changeOrigin requirement in epics-companion-app.md, per the gate-output homing rule"
+    owner: "Amelia"
+    status: done  # executed in-retro 2026-07-26; Story 2.1 now carries the changeOrigin AC + the action-item-3 mypy note
