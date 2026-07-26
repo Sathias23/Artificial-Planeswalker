@@ -8,7 +8,7 @@ story_branch: feat/companion-c2-1-frontend-scaffold
 
 # Story C2.1: Frontend scaffold with the full quality gate from the first commit
 
-Status: in-progress
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -464,6 +464,111 @@ port-parsing, anchored-pattern and `engine-strict` notes so the behaviour is doc
 developer meets it.
 
 Dismissed as noise (3): stub-server keep-alive close stall (Node ≥ 19 `close()` closes idle connections; floor is 20.19); missing `--allow-empty-input` on stylelint (loud failure on an empty glob is the non-vacuity discipline this story wants — see gotcha #6); `8765` literal in `devProxy.test.ts`/README (a test asserting the documented default and docs documenting it are the intended "one documented default").
+
+#### Review round 2 (2026-07-26, post-patch re-review)
+
+Second bmad-code-review pass over the final branch state (`feat/companion-c2...HEAD`, all 17 round-1
+patches present — verified individually by the auditor). 23 raw findings triaged to 3 decisions +
+8 patches; 1 dismissed; 0 deferred. Auditor verdict: 22/22 ACs met at the letter; the decisions
+below are intent gaps and gate-hardening calls, not AC violations. No high-severity findings.
+
+- [x] [Review][Decision → Patch] (**Brad's ruling 2026-07-26: add the build step**) The CI `frontend` job never runs `npm run build` — AC 1's own stated
+      failure mode ("a lock without the linux bindings … **dies in CI** with `Cannot find module
+      @rolldown/binding-…`") cannot fire: `npm ci` succeeds against a Windows-only lock, and no step
+      loads the production build path (`tsc -b && vite build`, lightningcss). The round-trip test
+      loads rolldown only incidentally. AC 15's letter names exactly the four NFR-07 gates, so
+      adding a fifth step is a deliberate spec deviation — Brad's call. (medium)
+      [.github/workflows/ci.yml:116-127]
+- [x] [Review][Decision → Patch] (**Brad's ruling 2026-07-26: widen fully**) The six-spelling DR46 outline ban has walk-arounds of the same class the
+      six-spelling ruling was made to close: `OUTLINE: none` (property keys match case-sensitively;
+      stylelint 16+ has no `property-case` rule), `outline: NONE` (caught only incidentally by
+      `value-keyword-case`), multi-token shorthand (`outline: 1px none`, `outline: 0 solid` escape
+      the `^…$` anchors), and `outline-color: transparent` (invisible ring, unbanned). Widening
+      scope is Brad's ruling territory (the six-spelling scope was his ruling). (low)
+      [ui/.stylelintrc.json:4-8]
+- [x] [Review][Decision → Patch] (**Brad's ruling 2026-07-26: guard test**) Gate-geometry file-class holes, three of a kind: (a) a test file outside
+      `src/` and `tests/` (e.g. colocated `config/devProxy.test.ts`) matches neither vitest project
+      and silently never runs — the directory-axis twin of the extension-axis hole round 1 closed;
+      (b) a `tests/**/*.test.tsx` file — the exact class the round-1 vitest-glob patch invites —
+      belongs to no tsconfig (`tests/**/*.ts` doesn't match `.tsx`), so `tsc -b` never checks it
+      and `eslint .` fails on it with a projectService error; (c) a `.jsx` file under `src/`
+      matches no ESLint `files` block and no tsconfig — `<div onClick>` in `src/Foo.jsx` passes the
+      a11y gate and the type gate wholesale (`.mjs`/`.cjs` similarly lint with zero rules).
+      Candidate fix for all three is one package-contract-style guard test (the repo's
+      "enforced by tests, not convention" idiom); alternatives are widening the configs to admit
+      the classes, or accepting a documented residual. (low)
+      [ui/vite.config.ts:35,45; ui/tsconfig.node.json:28; ui/eslint.config.js:26,60]
+- [x] [Review][Patch] Query strings silently bypass the anchored proxy patterns — Vite tests regex
+      keys against the full `req.url` including the search string, so `GET /health?verbose=1` fails
+      `^/health$` at the `?` and is served the SPA index.html with a 200 instead of being proxied
+      (worse than the 404 the anchoring patch removed: a health probe gets HTML that claims
+      success). Same for `/api?page=2` vs `(?:/|$)`. Fix: admit the query in the anchors
+      (`^/api(?:[/?]|$)`, `^/health(?:\?|$)`) and extend the round-trip pair with a query-string
+      case. (medium) [ui/config/devProxy.ts:50-51]
+- [x] [Review][Patch] The stylelint gate is the one tool that doesn't ignore `coverage/**` — the
+      first local `vitest run --coverage` writes istanbul's HTML tree (`coverage/base.css`,
+      `prettify.css`), and the round-1-widened `**/*.css` glob then lints generated third-party
+      CSS: `npm run lint` goes red on a machine the CI patch trio (git/ESLint/Prettier) already
+      protects. Add `--ignore-pattern "coverage/**"`. (medium) [ui/package.json:13]
+- [x] [Review][Patch] The not-an-integer warning overclaims: "The backend parses this variable with
+      Python's int(), which also rejects it" is false for Unicode digits — Python's `int("８０８０")`
+      is 8080 (backend binds it) while `\d` rejects it (frontend defaults to 8765), a split-brain
+      accompanied by a warning that actively misdirects. Scope the claim to what the regex actually
+      guarantees. (low) [ui/config/devProxy.ts:105-110]
+- [x] [Review][Patch] The a11y clean-fixture assertion gates on every ESLint rule
+      (`clean!.messages).toEqual([])`), not the a11y pair — any future rule addition that emits
+      even a warning on `clean.tsx` breaks a test named "leaves a real `<button>` alone",
+      misattributing the failure. Filter to the two a11y rule IDs, mirroring the violation half.
+      (low) [ui/tests/lint-gates.test.ts:62]
+- [x] [Review][Patch] `@types/node ^24` while the enforced runtime floor is 20.19 — code using a
+      Node 22/24-only API type-checks clean and fails only when CI's node 20 executes it; the same
+      types-vs-floor skew class the jest-dom pin exists for. Pin to the Node 20 line. (low)
+      [ui/package.json:36]
+- [x] [Review][Patch] README's dev loop recommends `npm install`, which on package.json/lock drift
+      resolves by rewriting the lockfile CI treats as canonical — recommend `npm ci` instead.
+      (low) [ui/README.md:20]
+- [x] [Review][Patch] Stale fixture comment claims exclusion "via `.stylelintignore`" — the shipped
+      mechanism is CLI `--ignore-pattern`, chosen deliberately because an ignore *file* is honoured
+      by the Node API and would neuter `lint-gates.test.ts`; the comment steers a future tidier
+      into exactly that trap. Reword to name the real mechanism and the reason. (low)
+      [ui/tests/fixtures/css/violation.css:2-3]
+- [x] [Review][Patch] "Five banned declarations … — six": the comment lists six and the assertion
+      expects six; the leading "Five" is a stale miscount — the same record-miscount class round 1
+      patched in the Completion Notes. (low) [ui/tests/lint-gates.test.ts:91-95]
+
+Dismissed (1): blank-but-set `COMPANION_PORT` ("  ") silently defaults where the backend warns —
+both processes land on 8765 (zero behavioral divergence), treating blank as unset is a defensible
+reading of "a value the user actually set", and the no-warn behavior is deliberately asserted by
+`devProxy.test.ts`.
+
+#### Round-2 patch application notes (2026-07-26)
+
+All 11 patches applied (3 by ruling, 8 direct). Frontend suite **50 → 55 tests**, all five gates
+green locally including the new `npm run build`. Two findings emerged **during** application and
+were fixed under the same review:
+
+- **Vite's dep optimizer made round-trip teardown nondeterministic.** Relocking `@types/node`
+  changed the lockfile hash, which invalidated `node_modules/.vite` — and the one round-trip test
+  that serves index.html then started a dep scan that `vite.close()` awaits: **~40 s cold** against
+  a 10 s hook timeout, and the timed-out worker never persists the cache, so the failure repeats
+  until a run is allowed to finish. Confirmed against the pre-patch baseline via stash (the hang is
+  not caused by any round-2 change; **any** dependency bump would have failed the next local
+  `npm test` once, confusingly). Fix: `optimizeDeps: { noDiscovery: true }` in the test's Vite
+  config — the proxy needs no optimization, and teardown is now instant on a cold cache.
+- **All round-trip Vite servers shared origin 5173, a latent ECONNRESET flake.** `server.port: 0`
+  is falsy to Vite, so every test's server landed on the default port; undici pools keep-alive
+  sockets by origin, so a test's first fetch could reuse a stale socket to the previous test's
+  just-closed server (~1 in 3 runs once the file reached five tests — surfaced by the new
+  query-string test, but pre-existing). Fix: a real ephemeral port per server via a bind-probe +
+  `strictPort: true` (a TOCTOU collision is a loud EADDRINUSE, not a silent wrong-server pass).
+  Six consecutive suite runs green, including one with `node_modules/.vite` deleted.
+
+Also measured while patching: **Prettier lowercases CSS property names** (it rewrote the fixture's
+`OUTLINE:` to `outline:`), so the uppercase-property evasion of the DR46 ban cannot survive the
+format gate at all — the config's `/^outline$/i` keys stay as defense in depth, and the fixture's
+uppercase case proves the value axis (`outline: NONE`). The DR46 fixture now proves **10** banned
+declarations. The `@types/node` relock resolved to `20.19.43` (lock delta: `@types/node` +
+`undici-types` only).
 
 ## Dev Notes
 
