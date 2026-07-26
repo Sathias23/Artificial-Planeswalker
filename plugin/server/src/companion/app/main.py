@@ -46,9 +46,10 @@ def _publish_discovery(app: FastAPI) -> None:
     fallback is what lands in the file rather than whatever was preferred. ``None`` means nobody
     bound a socket (a ``build_app()`` served directly, or a test entering the lifespan without a
     port), and there is nothing truthful to publish: the write is skipped and startup continues.
-    That skip logs at WARNING rather than INFO because no root handler is configured until c1-9 and
-    ``logging.lastResort`` only surfaces WARNING and above to stderr — the same reasoning as
-    ``server.py``'s bind fallback.
+    That skip logs at WARNING rather than INFO because a companion nobody can find is a real
+    problem for the user to see, not ordinary news — the same reasoning as ``server.py``'s bind
+    fallback. (Until c1-9 configured the root logger it was also the only level that surfaced at
+    all, via ``logging.lastResort``; the level stands on its own merits now that both do.)
 
     The resulting path and port are logged; the token never is (AD-5).
 

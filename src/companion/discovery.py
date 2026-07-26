@@ -223,11 +223,15 @@ def remove_discovery(instance_id: str) -> bool:
     own guard for the same reason: :func:`discovery_path` ends in a ``mkdir`` that can fail.
 
     The read-compare-unlink sequence is not atomic: a second instance that replaces the file
-    between our read and our unlink loses its rendezvous. The window is microseconds on a path that
-    runs once per process lifetime, and it is narrower still since c1-8, whose startup check makes
-    a launch that finds a verified-live companion refuse rather than publish — so reaching this
-    race now takes two launches colliding within the same fraction of a second, not merely a second
-    launch. The trade is accepted, and recorded in ``deferred-work.md`` along with that residual.
+    between our read and our unlink would lose its rendezvous. Since c1-9 that second instance
+    cannot exist for companions launched through :func:`src.companion.app.server.run` — a held OS
+    advisory lock (``src.companion.app.singleton``), acquired there, enforces single-instance
+    mutual exclusion for a process's whole life, so within one ``PLANESWALKER_DATA_DIR`` there is
+    never a second live ``run()``-launched companion to race against. (A ``build_app()`` served
+    directly takes no lock and sits outside that guarantee.) The race is closed by unreachability
+    rather than by a change here; two instances deliberately run under *different* data
+    directories reopen nothing, because each then has its own lock, its own rendezvous and no
+    shared state.
 
     Args:
         instance_id: The caller's own identity, as minted by the lifespan.

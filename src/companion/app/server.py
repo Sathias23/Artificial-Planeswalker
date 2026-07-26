@@ -23,6 +23,14 @@ remains testable without a port.
 rather than tidiness: a launch that is about to refuse must not momentarily hold a port another
 process might want, must not construct an application it will never serve, and — because it returns
 before the lifespan — cannot overwrite the rendezvous of the instance it just found.
+
+**The instance lock is held for the whole serve, and it is taken *after* the probe.** The probe
+alone could not close the startup window — two launches that both probe before either publishes both
+see an empty rendezvous and both proceed, which reproduced here with two live companions spawned
+6 ms apart. :mod:`src.companion.app.singleton` supplies the atomic *whether*; the probe keeps
+supplying the informative *who and where*, since only it can name a URL the user can open. Hence the
+order: probe, then lock. The descriptor is released in :func:`run`'s outermost ``finally``, after
+the socket close, so the lock outlives every other resource this process claims.
 """
 
 import asyncio
@@ -36,6 +44,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from src.companion import client, discovery
+from src.companion.app import singleton
 from src.companion.app.main import build_app
 
 logger = logging.getLogger(__name__)
@@ -73,8 +82,10 @@ def resolve_preferred_port(explicit: int | None = None) -> int:
 
     A value from either source that is not an integer in ``0..65535`` is ignored with a logged
     warning and the default is used — a typo'd environment variable must never stop the launch, and
-    c1-9 feeds a user-supplied ``--port`` through *explicit*, so both must validate identically.
-    ``0`` is a legal configured value meaning "go straight to an ephemeral port".
+    the entry point feeds a user-supplied ``--port`` through *explicit*, so both validate
+    identically. (A ``--port`` that is not an integer at all never arrives here: that is a usage
+    error the dispatcher rejects, because unlike a stale environment variable it was typed in this
+    invocation.) ``0`` is a legal configured value meaning "go straight to an ephemeral port".
 
     Args:
         explicit: A port supplied in code or on the command line, if any.
@@ -184,8 +195,10 @@ def bind_localhost_socket(preferred: int) -> socket.socket:
     else:
         return sock
 
-    # WARNING, not INFO: no root handler is configured yet (see run()), and logging.lastResort
-    # surfaces WARNING+ to stderr — an INFO record here would be dropped in every real run.
+    # WARNING, not INFO, and it stays that way now that c1-9's entry point configures the root
+    # logger at INFO on stderr: a bind fallback is a genuine warning on its own merits — the user
+    # asked for one port and got another. Note the fallback is now announced twice, as a record
+    # here and as the stdout line run() prints; the duplication is accepted, not a defect.
     logger.warning("Port %d unavailable; falling back to an ephemeral port", preferred)
     fallback = _new_socket()
     try:
@@ -235,11 +248,10 @@ def _note_reclaimed_entry() -> None:
     the file between the two reads would change this log line and nothing else.
 
     **INFO, not WARNING.** AD-15 describes a stale file after a crash as the *expected* state, and
-    warning about the ordinary case trains a user to ignore warnings. The consequence is accepted
-    and worth stating plainly: no root handler exists until c1-9, and ``logging.lastResort`` only
-    surfaces WARNING and above, so this record is invisible in a real run today. That is what
-    distinguishes it from c1-3's fallback warning and c1-7's discovery warnings, which are
-    deliberately loud enough to reach the user now.
+    warning about the ordinary case trains a user to ignore warnings. Since c1-9 the companion's
+    entry point configures the root logger at INFO on stderr, so this record now reaches the user
+    in a real run — which is the payoff, and why the level needs no revisiting: it is ordinary news
+    rather than something to act on, unlike c1-3's fallback warning and c1-7's discovery warnings.
     """
     stale = discovery.read_discovery()
     if stale is None:
@@ -252,25 +264,30 @@ def _note_reclaimed_entry() -> None:
 
 
 def run(port: int | None = None) -> None:
-    """Serve the companion — unless one is already running, in which case say so and stop.
+    """Serve the companion — unless one is already running or starting up.
 
-    Two outcomes, and both are successes. When :func:`~src.companion.client.live_instance` finds a
-    companion whose echoed ``instance_id`` matches the discovery file, this launch is redundant:
-    the user's intent — *have the companion running* — is already satisfied, so the URL of the
-    instance that **is** running is printed and the function returns. It does not raise and does
-    not call ``sys.exit``, so the process exits ``0`` (Decide-once #3); AD-15 rules out the daemon,
-    supervisor or auto-restart for which a non-zero status would mean anything. Otherwise the file
-    is absent, stale or held by some unrelated process, and the launch proceeds exactly as it
-    always has, leaving the old file in place for c1-7's atomic publish to overwrite.
+    Three outcomes, and all three are successes that exit ``0``. When
+    :func:`~src.companion.client.live_instance` finds a companion whose echoed ``instance_id``
+    matches the discovery file, this launch is redundant: the user's intent — *have the companion
+    running* — is already satisfied, so the URL of the instance that **is** running is printed and
+    the function returns. When the probe finds nothing but
+    :func:`~src.companion.app.singleton.acquire_instance_lock` is refused, another launch is inside
+    its own startup window: this one says so and returns without naming a URL, because no URL can
+    be named honestly yet (c1-9 Decide-once #3). Otherwise the launch proceeds, holding the lock for
+    as long as it serves, and leaves any old discovery file in place for c1-7's atomic publish to
+    overwrite. None of the three raises or calls ``sys.exit``, so the process exits ``0``
+    (Decide-once #3); AD-15 rules out the daemon, supervisor or auto-restart for which a non-zero
+    status would mean anything.
 
-    The probe happens **first**, above the port resolution and the bind. See the module docstring:
-    a refusing launch must claim nothing.
+    The probe happens **first**, above the lock, the port resolution and the bind. See the module
+    docstring: a refusing launch must claim nothing, and only the probe can name *where* the other
+    instance is. The lock is taken second and released last, in the outermost ``finally``.
 
-    The announcement is ``print``ed, not logged, and that is deliberate. ``logging`` writes to
-    stderr, while AD-15 puts this line on stdout; and no story has yet configured a root handler, so
-    an ``INFO`` record from this module would propagate to a handler-less root and be dropped
-    entirely. The URL is the one thing the user *must* see, so it cannot depend on logging
-    configuration that does not exist yet. The host is printed as the literal ``127.0.0.1`` rather
+    The announcement is ``print``ed, not logged, and that is deliberate: ``logging`` writes to
+    stderr, while AD-15 puts this line on stdout. That is now the whole reason — c1-9's entry point
+    configures the root logger, so an ``INFO`` record would no longer be dropped; it would simply
+    land on the wrong stream, mixed in with uvicorn's own records, where the one thing the user
+    *must* see would be harder to find. The host is printed as the literal ``127.0.0.1`` rather
     than ``localhost`` because the socket is IPv4-only and ``localhost`` resolves to ``::1`` first
     on Windows and modern Linux.
 
@@ -300,27 +317,46 @@ def run(port: int | None = None) -> None:
             flush=True,
         )
         return
-    _note_reclaimed_entry()
-    preferred = resolve_preferred_port(port)
-    sock = bind_localhost_socket(preferred)
-    try:
-        actual: int = sock.getsockname()[1]
-        app = build_app()
-        app.state.bound_port = actual
-        # `preferred == 0` asked for an ephemeral port, so getting one is success, not a conflict.
-        if preferred != 0 and actual != preferred:
-            print(
-                f"[planeswalker] port {preferred} is unavailable — "
-                "falling back to an ephemeral port",
-                flush=True,
-            )
+    # The atomic "am I first?", and the one thing the probe cannot answer during another launch's
+    # startup window. Deliberately no second probe here: reaching this branch means the probe has
+    # already said nothing findable is running, so there is no honest URL to print, and re-probing
+    # would spend up to five seconds on the one path whose whole job is to get out of the way fast.
+    lock = singleton.acquire_instance_lock()
+    if lock is None:
         print(
-            f"[planeswalker] companion running at http://{HOST}:{actual} — "
-            "open this URL in your browser (Ctrl-C to stop)",
+            "[planeswalker] another companion is already starting up — "
+            "wait for it to print its URL, or stop it before starting a new one",
             flush=True,
         )
-        _serve(app, sock, actual)
+        return
+    try:
+        _note_reclaimed_entry()
+        preferred = resolve_preferred_port(port)
+        sock = bind_localhost_socket(preferred)
+        try:
+            actual: int = sock.getsockname()[1]
+            app = build_app()
+            app.state.bound_port = actual
+            # `preferred == 0` asked for an ephemeral port, so getting one is success, not a
+            # conflict.
+            if preferred != 0 and actual != preferred:
+                print(
+                    f"[planeswalker] port {preferred} is unavailable — "
+                    "falling back to an ephemeral port",
+                    flush=True,
+                )
+            print(
+                f"[planeswalker] companion running at http://{HOST}:{actual} — "
+                "open this URL in your browser (Ctrl-C to stop)",
+                flush=True,
+            )
+            _serve(app, sock, actual)
+        finally:
+            # Belt-and-braces: uvicorn's shutdown() already closes the sockets it was handed, and a
+            # double close is harmless. This covers every path that never reached uvicorn at all.
+            sock.close()
     finally:
-        # Belt-and-braces: uvicorn's shutdown() already closes the sockets it was handed, and a
-        # double close is harmless. This covers every path that never reached uvicorn at all.
-        sock.close()
+        # Outside the socket's finally, so the lock is the last thing this process gives up. On any
+        # death that never reaches here — Ctrl-C during the bind, a kill, a crash — the kernel
+        # releases it, which is why there is no stale-lock state to recover from (AD-15).
+        singleton.release_instance_lock(lock)

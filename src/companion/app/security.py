@@ -169,10 +169,11 @@ class HostValidationMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # WARNING because no story has configured a root logger yet (c1-9 owns that) and
-        # logging.lastResort surfaces WARNING+ to stderr — an INFO line would vanish in every real
-        # run, and this is the one event an operator needs to see. The precision on the %r
-        # conversions truncates both attacker-controlled values while keeping the arguments lazy.
+        # WARNING because a refused authority is the one event here an operator needs to see, and
+        # that judgement is what fixes the level — c1-9's entry point now configures the root
+        # logger at INFO on stderr, so an INFO line would reach the user too, just alongside
+        # ordinary chatter. The precision on the %r conversions truncates both attacker-controlled
+        # values while keeping the arguments lazy.
         logger.warning(
             "Rejecting %s request for %.*r: Host %.*r (%d header(s)) is not an allowed authority "
             "for bound port %r",

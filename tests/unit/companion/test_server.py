@@ -21,7 +21,7 @@ import httpx
 import pytest
 
 from src.companion import client, discovery
-from src.companion.app import server
+from src.companion.app import server, singleton
 from src.companion.app.main import bound_port, build_app
 from tests.unit.companion.test_client import StubFleet, health_bytes, plant_discovery
 
@@ -645,6 +645,151 @@ class TestSingleInstanceCheck:
 
         assert "already running" in capsys.readouterr().out
         assert recorded_serve.calls == []
+
+
+class TestHeldInstanceLock:
+    """Story c1-9, AC 12-15: the lock closes the startup window the identity probe cannot.
+
+    These pair with :class:`TestSingleInstanceCheck` above rather than duplicating it. That class
+    covers the *informative* refusal — a verified-live companion whose URL can be named; this one
+    covers the *atomic* refusal, where the probe has already found nothing findable and only the
+    lock can answer "am I first?". Every test here contends with a lock the test itself holds, on a
+    real descriptor under this test's own ``PLANESWALKER_DATA_DIR``.
+
+    Refuses-cases sit beside proceeds-cases here too, so the class cannot pass by refusing
+    everything: with the lock free, the identical ``run()`` call serves.
+    """
+
+    @pytest.fixture
+    def held_elsewhere(self):
+        """Hold the instance lock for the duration of a test, as a competing launch would.
+
+        AC 9's primitive choice is what makes this possible in one process: ``flock`` is per
+        open-file-description and Windows' ``msvcrt.locking`` denies a second descriptor outright,
+        so the test needs no child process to contend realistically. Swap in ``lockf`` and this
+        fixture stops contending at all — which is precisely the mutation AC 15 requires to go red.
+        """
+        fd = singleton.acquire_instance_lock()
+        assert fd is not None, "the lock must be free before a contention test can hold it"
+        try:
+            yield fd
+        finally:
+            singleton.release_instance_lock(fd)
+
+    def test_a_contended_launch_prints_the_refusal_line(
+        self, recorded_serve, loopback, held_elsewhere, capsys
+    ):
+        """AC 13: one line, naming no URL, because none can be named honestly."""
+        server.run(port=loopback.free_port())
+
+        out = capsys.readouterr().out
+        assert (
+            "[planeswalker] another companion is already starting up — "
+            "wait for it to print its URL, or stop it before starting a new one"
+        ) in out
+        assert "companion running at" not in out
+        assert "already running at" not in out, "no second probe, so no URL may be claimed"
+
+    def test_a_contended_launch_never_serves(self, recorded_serve, loopback, held_elsewhere):
+        server.run(port=loopback.free_port())
+
+        assert recorded_serve.calls == []
+
+    def test_an_uncontended_launch_serves(self, recorded_serve, loopback):
+        """The paired proceeds-case: the same call, with the lock free, does serve.
+
+        Without this, deleting the ``acquire_instance_lock`` call from ``run()`` would leave the
+        contention tests red and everything else green — but a ``run()`` that refused
+        unconditionally would pass the contention tests too.
+        """
+        server.run(port=loopback.free_port())
+
+        assert len(recorded_serve.calls) == 1
+
+    def test_a_contended_launch_returns_rather_than_raising(
+        self, recorded_serve, loopback, held_elsewhere
+    ):
+        """Decide-once #5: both refusals are successes, so the process exits 0."""
+        assert server.run(port=loopback.free_port()) is None
+
+    def test_a_contended_launch_leaves_the_preferred_port_free(
+        self, recorded_serve, loopback, held_elsewhere
+    ):
+        """AC 13: a refusal touches nothing — no port resolution, no bind."""
+        preferred = loopback.free_port()
+
+        server.run(port=preferred)
+
+        sock = loopback.track(server.bind_localhost_socket(preferred))
+        assert _port_of(sock) == preferred
+
+    def test_a_contended_launch_leaves_the_discovery_file_byte_identical(
+        self, recorded_serve, loopback, held_elsewhere
+    ):
+        """AC 13: the rendezvous of whoever is starting up survives untouched."""
+        path = plant_discovery(port=51234, instance_id="inst-other")
+        before = path.read_bytes()
+
+        server.run(port=loopback.free_port())
+
+        assert path.read_bytes() == before
+
+    def test_the_probe_runs_before_the_lock(self, recorded_serve, stub_server, loopback, capsys):
+        """Decide-once #2: a verified-live instance still gets the *informative* refusal.
+
+        The lock is free here, so a lock-first ordering would proceed to serve and this launch
+        would never name the live instance's URL — which is exactly what would have invalidated
+        c1-8's fourteen ``TestSingleInstanceCheck`` cases had the order been reversed.
+        """
+        stub = stub_server(body=health_bytes("inst-live"))
+        plant_discovery(port=stub.port, instance_id="inst-live")
+
+        server.run(port=loopback.free_port())
+
+        assert "already running at" in capsys.readouterr().out
+        assert recorded_serve.calls == []
+
+    def test_the_lock_is_released_when_run_returns(self, recorded_serve, loopback):
+        """AC 12: the release is in the outermost ``finally``, so a fresh acquire succeeds after."""
+        server.run(port=loopback.free_port())
+
+        fd = singleton.acquire_instance_lock()
+        assert fd is not None, "run() must not still be holding the lock after it returns"
+        singleton.release_instance_lock(fd)
+
+    def test_the_lock_file_survives_a_normal_run(self, recorded_serve, loopback, tmp_path):
+        """AC 10: never unlinked — on POSIX ``flock`` binds to the inode."""
+        server.run(port=loopback.free_port())
+
+        assert (tmp_path / singleton.LOCK_FILENAME).exists()
+
+    def test_the_lock_is_released_when_serving_raises(self, monkeypatch, loopback):
+        """The outer ``finally`` sits below the socket's, so the lock outlives every resource."""
+
+        def boom(app, sock, port):
+            raise RuntimeError("serve exploded")
+
+        monkeypatch.setattr(server, "_serve", boom)
+
+        with pytest.raises(RuntimeError, match="serve exploded"):
+            server.run(port=loopback.free_port())
+
+        fd = singleton.acquire_instance_lock()
+        assert fd is not None, "a crashing serve must still release the lock"
+        singleton.release_instance_lock(fd)
+
+    def test_the_lock_is_held_while_serving(self, monkeypatch, loopback):
+        """The non-vacuity anchor for "held": during ``_serve`` the lock must be unavailable."""
+        observed: list[int | None] = []
+
+        def capture(app, sock, port):
+            observed.append(singleton.acquire_instance_lock())
+
+        monkeypatch.setattr(server, "_serve", capture)
+
+        server.run(port=loopback.free_port())
+
+        assert observed == [None], "run() must hold the lock for the whole serve"
 
 
 class TestServeConfiguration:
