@@ -36,11 +36,6 @@ import logging
 import sys
 from pathlib import Path
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -85,6 +80,14 @@ def main() -> int:
         ``0`` — the process exit code. The render itself raises rather than returning a failure
         code, so a broken schema surfaces as a traceback naming the offending model.
     """
+    # Configured here, not at module level: the snapshot test imports this module, and a
+    # module-level basicConfig would install a root stdout handler as an import side effect —
+    # for the entire pytest process (c2-3 review, 2026-07-27).
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
+    )
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     # newline="\n" is load-bearing: the default translates "\n" to os.linesep, which on Windows
     # would write CRLF and make the byte-comparing snapshot test red locally and green in CI from

@@ -59,6 +59,11 @@ def _descriptions(node: Any) -> list[str]:
 
 def test_committed_schema_matches_the_live_app() -> None:
     """The committed schema is byte-identical to what the current app renders."""
+    # Guarded so a deleted (or never-generated) file fails with the fix, not a bare
+    # FileNotFoundError traceback — the instructive message is this test's whole point.
+    assert OUTPUT_PATH.exists(), (
+        f"{OUTPUT_PATH} is missing entirely — run `{REGENERATE}` and commit the result"
+    )
     committed = OUTPUT_PATH.read_bytes()
     rendered = render_schema().encode("utf-8")
 
@@ -117,9 +122,11 @@ class TestDescriptionsAreSummaries:
         assert not offenders, (
             "OpenAPI descriptions must be summaries, not whole docstrings: "
             f"{[marker for marker, _ in offenders]} reached the schema. "
-            "without_python_docstring_sections() on _CompanionFastAPI.openapi() is what "
-            "truncates them; if it was removed or reordered, the generated TypeScript now "
-            "carries Python's Args:/Attributes:/doctests as JSDoc."
+            "without_python_docstring_sections() truncates at the FIRST Google-style section "
+            "header, so a marker got through one of two ways: the normaliser was removed or "
+            "reordered on _CompanionFastAPI.openapi(), or a docstring carries the marker ABOVE "
+            "any section header (e.g. a bare doctest in the opening prose — move it under "
+            "Example:, where truncation cuts it)."
         )
 
     def test_the_source_docstrings_do_contain_them(self) -> None:
@@ -180,6 +187,43 @@ class TestDescriptionsAreSummaries:
         assert "description" not in result["OnlySections"]
         assert result["HasSummary"]["description"] == "A summary."
         assert result["NotAString"]["description"] == {"nested": "left alone"}
+
+    def test_example_data_is_not_documentation(self) -> None:
+        """A ``description`` key inside example/default payload data is left byte-identical.
+
+        c3-1's decks carry a ``description`` field, so example payloads will too. Truncating —
+        or even whitespace-stripping — data would make the committed schema misrepresent the
+        payload, and a value that *is* a bare section header would lose its key entirely.
+        A property merely *named* ``example`` is still documentation, though: ``properties``
+        keys are field names, not data markers.
+        """
+        schema: dict[str, Any] = {
+            "components": {
+                "schemas": {
+                    "Deck": {
+                        "description": "A deck.\n\nArgs:\n    gone: cut.",
+                        "examples": [{"description": "Returns:"}],
+                        "default": {"description": "Trailing space is data too.  "},
+                        "properties": {
+                            "example": {"description": "A field named example.\n\nArgs:\n    x."}
+                        },
+                    }
+                }
+            }
+        }
+
+        result = without_python_docstring_sections(schema)["components"]["schemas"]["Deck"]
+
+        assert result["description"] == "A deck."
+        assert result["examples"] == [{"description": "Returns:"}]
+        assert result["default"] == {"description": "Trailing space is data too.  "}
+        assert result["properties"]["example"]["description"] == "A field named example."
+
+    def test_keyword_sections_also_terminate(self) -> None:
+        """``Keyword Args:`` and its siblings are section headers too (c2-3 review)."""
+        schema: dict[str, Any] = {"description": "A summary.\n\nKeyword Args:\n    x: internal."}
+
+        assert without_python_docstring_sections(schema)["description"] == "A summary."
 
     def test_note_sections_are_kept(self) -> None:
         """``Note:`` is prose worth keeping, and is deliberately not a terminator."""

@@ -197,13 +197,17 @@ jobs:
           # Non-vacuity guard on the ignore axis, same reasoning as the SPA check: `git status
           # --porcelain` reports nothing at all for a gitignored or never-committed path, so a
           # missing or newly-ignored types.d.ts would sail through the drift check below while
-          # the UI compiled against a file that is not in the repo.
-          if [ -z "$(git ls-files -- ui/src/api/types.d.ts ui/src/api/openapi.json)" ]; then
-            echo "::error::ui/src/api/ has no tracked generated files — types.d.ts and/or openapi.json are not committed (or became gitignored), so the drift check cannot see them."
-            exit 1
-          fi
+          # the UI compiled against a file that is not in the repo. Checked PER FILE: a joint
+          # ls-files over both paths stays non-empty while either one slips out of tracking
+          # (c2-3 review, 2026-07-27).
+          for f in ui/src/api/types.d.ts ui/src/api/openapi.json; do
+            if [ -z "$(git ls-files -- "$f")" ]; then
+              echo "::error::$f is not tracked — never committed, or became gitignored — so the drift check below cannot see it."
+              exit 1
+            fi
+          done
           if [ -n "$(git status --porcelain -- ui/src/api/)" ]; then
-            echo "::error::ui/src/api/types.d.ts is stale — run 'cd ui && npm run gen:api' and commit BOTH generated files."
+            echo "::error::ui/src/api/ is out of sync with the committed tree (status below). If types.d.ts changed, the committed types are stale: run 'cd ui && npm run gen:types' and commit it — gen:types alone is the Node-half fix; 'npm run gen:api' (needs uv) regenerates the pair."
             git status --porcelain -- ui/src/api/
             git --no-pager diff -- ui/src/api/
             exit 1

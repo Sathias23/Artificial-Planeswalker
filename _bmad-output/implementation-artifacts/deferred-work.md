@@ -1119,3 +1119,25 @@ the gate-output rule rather than left as "we meant to".
   confirming the placeholder app paints. Reason for deferral: only a human can close SC-4's render
   half, and the epic retro checklist is its established home. (Severity: Low — every proxy signal
   is green; this is the eyes-on-pixels confirmation.)
+
+## Deferred from: code review of c2-3 (2026-07-27)
+
+- **`_truncate_descriptions`'s drop-the-key branch can void a Response Object's required
+  `description` (spec-invalid OpenAPI).** `del node["description"]` at
+  `src/companion/app/main.py:304` applies to every node, but the OpenAPI spec *requires*
+  `description` on Response Objects. A route/response docstring consisting only of a Google-style
+  section header would render a schema `openapi-typescript` (exit non-zero on a bad schema) may
+  reject in the `frontend` job with a message pointing nowhere near the cause. Trigger is
+  pathological today — every current response description is real prose — and the drop-the-key
+  behavior is deliberately test-pinned
+  (`test_a_description_that_is_only_a_section_loses_the_key`), so changing it is a design edit,
+  not a patch. Natural fix when it matters: keep `""` (or skip the delete) when the parent context
+  is a `responses` entry. (Severity: Low — unreachable without a degenerate docstring, and the
+  failure is loud in CI.)
+
+- **The sprint-status `last_updated` mega-line grew again in the same c2-3 diff that documented
+  the file no longer parsing as YAML.** The upgraded entry above (2026-07-26) already homes the
+  fix at the epic retro; recording here that c2-3's own bookkeeping commit lengthened the
+  offending unquoted scalar rather than taking the one-edit quote fix — the retro fix should also
+  re-check that nothing started parsing the file in the meantime. (Severity: Low — pre-existing,
+  fix already homed.)

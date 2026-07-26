@@ -8,7 +8,7 @@ story_branch: feat/companion-c2-3-openapi-types
 
 # Story C2.3: TypeScript types generated from the backend's own OpenAPI, drift-checked in CI
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -303,6 +303,168 @@ is still an AC (standing agreement: a story must leave the system working end to
   - [x] Forward-dated comments keyed (c5-1 envelope union, c3-1 new routes)
   - [x] Scope-boundary proof pasted (empty)
   - [x] Both suites + all four Python gates + all five frontend gates green
+
+### Review Findings
+
+Code review 2026-07-27 (Blind Hunter + Edge Case Hunter + Acceptance Auditor, triaged). Severity
+in brackets. The auditor verified ACs 1–5, 8 (letter), 9, 11–14, 16, 17 clean, all 9 new Python
+tests passing live, and the `plugin/` mirror byte-identical. **All decisions ruled and all
+patches applied same day; proofs re-run below.**
+
+- [x] [Review][Decision] **Guard coverage beyond AC 10's letter** — RULED (Brad, 2026-07-27):
+      **widen both.** The ban list now also carries every alias `src/api/schema.ts` exports (read
+      from the file's `export type` lines, not hard-coded, preserving the growth property), and
+      the scan covers `src` + `tests` + `config`, self-excluded. Teeth proven below (`ErrorReason`
+      offender in `ui/tests/` goes red).
+- [x] [Review][Decision] **AC 7/15 proofs are summarized, not pasted** — RULED (Brad,
+      2026-07-27): **re-run and paste.** All proofs re-run against the patched tree; raw outputs
+      in "Review proofs, re-run and pasted" below.
+- [x] [Review][Patch] [medium] **CI non-vacuity guard is joint, not per-file** — one `git ls-files`
+      over both generated files, so a newly-gitignored/untracked `types.d.ts` alone still passes
+      (openapi.json keeps the output non-empty) and porcelain then reports nothing: exactly the
+      vacuity the guard's own comment says it closes [.github/workflows/ci.yml:201] — **fixed:**
+      per-file loop; separating case proven below (old guard passes, new guard red)
+- [x] [Review][Patch] [medium] **AC 10 regex defeated by `extends` / `class` / `enum`** — the
+      tail `(?:=|\{|<)` means `interface HealthResponse extends X {}` never matches, and the
+      alternation omits `class`/`enum` declaration forms [ui/tests/wire-contract.test.ts:67] —
+      **fixed:** `\b(?:interface|type|class|enum)\s+<name>\b`, nothing anchored after the name;
+      `extends` offender proven red below
+- [x] [Review][Patch] [medium] **`_truncate_descriptions` mutates data, not just docs** — the walk
+      recursed into `example`/`examples`/`default`/`const`/`enum` subtrees, so a payload key named
+      `description` (c3-1: decks have descriptions) would be rstripped/truncated/deleted as if it
+      were documentation [src/companion/app/main.py:291] — **fixed:** `_DATA_KEYS` subtrees are
+      left byte-identical, with a `properties`-map exception so a *field named* `example` is still
+      documentation; non-vacuous test added (`test_example_data_is_not_documentation`)
+- [x] [Review][Patch] [low] **`_DOCSTRING_SECTIONS` omits Google headers** — `Keyword Args:`,
+      `Keyword Arguments:`, `Warns:`, `Todo:` shipped onto the wire [src/companion/app/main.py:218]
+      — **fixed:** all four added (set is now twelve); `Note:`/`Warning:` stay prose by design;
+      test added; regenerated artifacts byte-identical (no current docstring uses them)
+- [x] [Review][Patch] [low] **AC 17 failure message misattributes doctests** — the normaliser only
+      cuts at headers, but the test's message said it "is what truncates them"
+      [tests/unit/companion/test_openapi_contract.py:117] — **fixed:** message now names both
+      causes (normaliser removed/reordered, or a marker above any section header)
+- [x] [Review][Patch] [low] **Single-reader check had evasions and a blind spot** — type-position
+      `import('../api/types')` and extension-suffixed specifiers escaped the `from`-anchored
+      regex, and files inside `src/api/` were never scanned while `ui/README.md` claimed the rule
+      enforced [ui/tests/wire-contract.test.ts:77] — **fixed:** regex covers `from` + `import(` +
+      optional extensions; scan now includes `src/api/` minus `schema.ts` itself, with a
+      non-vacuity assertion that `schema.test.ts` is in the scanned set; README wording aligned
+- [x] [Review][Patch] [low] **Schema keys interpolated into RegExp unescaped** — a future
+      `components.schemas` key containing `.` or `-` would mis-match or crash the guard
+      [ui/tests/wire-contract.test.ts:67] — **fixed:** `escapeRegExp` on every interpolated name
+- [x] [Review][Patch] [low] **`logging.basicConfig` ran at import time** — the unit test imports
+      `scripts.dump_openapi`, installing a root stdout handler for the entire pytest process
+      [scripts/dump_openapi.py:39] — **fixed:** moved into `main()` with a comment saying why
+- [x] [Review][Patch] [low] **CI drift message named the wrong file and a heavier fix** — any
+      stray under `ui/src/api/` produced "`types.d.ts` is stale", prescribing `gen:api` (needs
+      uv) where `gen:types` suffices [.github/workflows/ci.yml:206] — **fixed:** message reports
+      the directory is out of sync, names `gen:types` as the Node-half fix and `gen:api` as the
+      pair-regenerator
+- [x] [Review][Patch] [low] **Snapshot test's missing-file mode was a raw traceback** — a deleted
+      `openapi.json` raised `FileNotFoundError` instead of the instructive message
+      [tests/unit/companion/test_openapi_contract.py:62] — **fixed:** existence asserted first,
+      failure names the regenerate command
+- [x] [Review][Patch] [low] **Codegen ban checked dependency keys only** — `npx orval` inside an
+      npm script would arrive without touching dependencies [ui/tests/package-contract.test.ts:84]
+      — **fixed:** the scripts block is scanned for the same six names, with `gen:types`'s own
+      `openapi-typescript` invocation as the non-vacuity pair
+- [x] [Review][Patch] [low] **Record claimed "186 → 160 lines"; the committed `types.d.ts` is
+      161** — off-by-one in the Completion Notes and Change Log [story record] — **fixed:** both
+      corrected to 161
+- [x] [Review][Defer] **`del node["description"]` can void a Response Object's required field**
+      [src/companion/app/main.py:304] — deferred: OpenAPI requires `description` on responses, so
+      an all-section route docstring would yield a spec-invalid document `openapi-typescript` may
+      reject; trigger is pathological today and the drop-the-key behavior is test-pinned
+- [x] [Review][Defer] **sprint-status `last_updated` mega-line grown again in the same diff that
+      documents the file no longer parses as YAML** [sprint-status.yaml:49] — deferred,
+      pre-existing; the fix (date + one clause, or quote the scalar) is already homed in
+      deferred-work for the epic retro
+
+### Review proofs, re-run and pasted (2026-07-27, against the patched tree)
+
+**AC 7a — Pydantic field added (`review_probe: int = 0` on `HealthResponse`), no regeneration.**
+Mutation verified landed first (`git status --porcelain` → `M src/companion/contracts.py`, the
+CRLF lesson), then:
+
+```
+FAILED tests/unit/companion/test_openapi_contract.py::test_committed_schema_matches_the_live_app
+E   AssertionError: openapi.json is stale: the committed schema no longer matches what the app
+    produces. A companion contract, route or docstring changed without regenerating. Fix: run
+    `uv run python -m scripts.dump_openapi`, then `cd ui && npm run gen:types`, and commit BOTH
+    files (`npm run gen:api` does the pair in one command). ...
+E   At index 5474 diff: b'\n' != b','
+```
+
+**AC 7b — `openapi.json` regenerated with the mutation, `types.d.ts` left stale; patched CI
+snippet run verbatim:**
+
+```
+::error::ui/src/api/ is out of sync with the committed tree (status below). If types.d.ts
+changed, the committed types are stale: run 'cd ui && npm run gen:types' and commit it —
+gen:types alone is the Node-half fix; 'npm run gen:api' (needs uv) regenerates the pair.
+ M ui/src/api/openapi.json
+EXIT 1
+```
+
+Revert + regenerate → `git status --porcelain -- src/companion/contracts.py ui/src/api/` empty;
+contract suite 11/11 green.
+
+**P1 separating case — `git rm --cached ui/src/api/types.d.ts` (untracked, `openapi.json` still
+tracked):** the old joint guard `[ -z "$(git ls-files -- types.d.ts openapi.json)" ]` **passes**
+(ls-files output non-empty via openapi.json); the patched per-file guard goes red:
+
+```
+::error::ui/src/api/types.d.ts is not tracked — never committed, or became gitignored — so the
+drift check cannot see it.
+EXIT 1
+```
+
+Index restored (`git add`), porcelain clean.
+
+**AC 9 — generated `status: "ok"` → `status: string`:** `npm test` **78/78 green** (vitest is
+not the gate), `npx tsc -b` → **exit code 2**:
+
+```
+src/api/schema.test.ts(29,50): error TS2344: Type '{ status: "ok"; instance_id: string; }' does
+not satisfy the constraint '{ status: "Expected: literal string: ok, Actual: string";
+instance_id: string; }'.
+```
+
+Reverted; `tsc -b` green after revert.
+
+**Widened-guard teeth (AC 10, both widenings at once)** — planted `ui/tests/offender.ts`
+containing `export type ErrorReason = string` (an alias name, in the previously unscanned
+`tests/` root), `git add -N`:
+
+```
+FAIL  |node| tests/wire-contract.test.ts > declares no wire shape outside src/api/
++   "tests/offender.ts declares ErrorReason",
+```
+
+And the `extends` evasion separately — `interface HealthResponse extends Error { … }`:
+
+```
++   "tests/offender.ts declares HealthResponse",
+```
+
+Both offenders removed; suite 3/3 green; `ui/` porcelain shows only the three patched files.
+
+**AC 15 scope proof, re-run after all patches:**
+
+```
+$ git status --porcelain -- pyproject.toml uv.lock ui/package-lock.json .gitignore \
+    .gitattributes README.md CONTRIBUTING.md .mcp.json
+(empty)
+```
+
+**Gates after patches.** Python **1,753** passed / 1 skipped / 45 deselected (+2:
+`test_example_data_is_not_documentation`, `test_keyword_sections_also_terminate`); `ruff check`,
+`ruff format --check` (286 files), `mypy src/` and `mypy src/ --platform win32` (84 files) all
+green. Frontend **78** tests / 9 files (+7: six per-generator scripts-scan cases + its
+non-vacuity pair); lint, format:check, typecheck, test, build all green; `npm run build` left
+the committed bundle byte-identical. Both regenerated artifacts byte-identical to the committed
+tree (the normaliser patches change no current output — no docstring uses the new headers and no
+schema node sits under a data key today). `plugin/` mirror rebuilt for the `main.py` patch.
 
 ## Dev Notes
 
@@ -739,7 +901,8 @@ Every mutation reverted; `git diff` empty on every touched path afterwards.
 **AC 17 (Q1) — what actually changed.** `_CompanionFastAPI.openapi()` composes the new
 `without_python_docstring_sections()` with the existing `without_auto_validation_schema()` on the
 one schema-build path, so there is still exactly one schema and `/docs` improves identically.
-Generated types **186 → 160 lines**; schema **7,059 → 6,146 bytes**. The eight terminators are
+Generated types **186 → 161 lines** (corrected at review — the record originally said 160; the
+committed file measures 161 by `wc -l` and by its own diff hunk); schema **7,059 → 6,146 bytes**. The eight terminators are
 `Args/Arguments/Attributes/Example/Examples/Raises/Returns/Yields`; `Note:` is deliberately kept.
 The walk is depth-first over every `description` at any depth, so a c3-1 `Field(description=...)`
 is covered with no further work, and a description that is *only* a section loses the key rather
@@ -803,5 +966,6 @@ CI drift checks run locally against the committed tree: clean.
 
 | Date | Change | By |
 |---|---|---|
-| 2026-07-27 | Story implemented → review. All 17 ACs met on branch `feat/companion-c2-3-openapi-types` (2 commits). Q1-Q4 all answered "as proposed" before Task 0, so AC 17 was in scope. Pipeline: `contracts.py` →(uv)→ committed `ui/src/api/openapi.json` →(npm)→ committed `ui/src/api/types.d.ts` →(`import type`)→ `ui/src/api/schema.ts`, both halves gated (pytest snapshot in `quality`, `git status --porcelain` step in `frontend`). Three deviations, all flagged: AC 5 is a test not a CI diff step (Q3a), AC 6 uses porcelain not `git diff --exit-code` (Q3b), and `gen:api` needed a `cd ui` the AC's literal command omitted (measured: npm errno -4058 without it). Three owed mutation proofs pasted and reverted, plus a fourth on AC 10's ban. AC 17 truncation took the generated file 186 → 160 lines and the schema 7,059 → 6,146 bytes while keeping `ErrorResponse`'s per-token enumeration. One unforeseen finding: AD-3's leaf/app guard scans `scripts/` and forbade the dump script's module-level `build_app` import — resolved with the function-local form the guard already permits, not by widening the guard. One near-miss recorded: a CRLF-defeated regex left a mutation unapplied and the drift check reported a vacuous "no drift". Suites 1,742 → 1,751 Python / 59 → 71 frontend; nine gates green; scope proof empty; `plugin/` mirror regenerated as predicted | Amelia (dev-story) |
+| 2026-07-27 | Code review → done. Three layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor); auditor verified the ACs and all three flagged deviations clean, mirror byte-identical. 14 patches applied (3 medium, 11 low), 2 deferred to deferred-work, 3 dismissed. The theme: every regex/list-based guard had at least one evasion its own mutation proofs never probed. Mediums: the CI `ls-files` non-vacuity guard was joint over both generated files (a newly-gitignored `types.d.ts` alone sailed through — now per-file, separating case proven); the AC 10 regex was defeated by `extends`/`class`/`enum` (now any declaration form, unanchored after the name); `_truncate_descriptions` recursed into `example`/`default`/`const`/`enum` payload subtrees (now skipped via `_DATA_KEYS`, with a `properties`-map exception, non-vacuously tested). Two rulings (Brad): widen the AC 10 guard to schema.ts's exported aliases + the `tests`/`config` roots; re-run and paste all proofs (done — AC 7a/7b, AC 9, AC 15, plus new separating-case and widened-guard proofs). Also: four missing Google headers added (`Keyword Args:`/`Keyword Arguments:`/`Warns:`/`Todo:`), `basicConfig` out of import scope, instructive missing-file mode on the snapshot test, codegen ban extended to the npm scripts block, CI drift message names `gen:types` as the Node-half fix, record's 186→160 corrected to 161. Regenerated artifacts byte-identical (no behavior change for today's schema). Suites 1,753 Python / 78 frontend, nine gates green | Claude Fable (code-review) |
+| 2026-07-27 | Story implemented → review. All 17 ACs met on branch `feat/companion-c2-3-openapi-types` (2 commits). Q1-Q4 all answered "as proposed" before Task 0, so AC 17 was in scope. Pipeline: `contracts.py` →(uv)→ committed `ui/src/api/openapi.json` →(npm)→ committed `ui/src/api/types.d.ts` →(`import type`)→ `ui/src/api/schema.ts`, both halves gated (pytest snapshot in `quality`, `git status --porcelain` step in `frontend`). Three deviations, all flagged: AC 5 is a test not a CI diff step (Q3a), AC 6 uses porcelain not `git diff --exit-code` (Q3b), and `gen:api` needed a `cd ui` the AC's literal command omitted (measured: npm errno -4058 without it). Three owed mutation proofs pasted and reverted, plus a fourth on AC 10's ban. AC 17 truncation took the generated file 186 → 161 lines and the schema 7,059 → 6,146 bytes while keeping `ErrorResponse`'s per-token enumeration. One unforeseen finding: AD-3's leaf/app guard scans `scripts/` and forbade the dump script's module-level `build_app` import — resolved with the function-local form the guard already permits, not by widening the guard. One near-miss recorded: a CRLF-defeated regex left a mutation unapplied and the drift check reported a vacuous "no drift". Suites 1,742 → 1,751 Python / 59 → 71 frontend; nine gates green; scope proof empty; `plugin/` mirror regenerated as predicted | Amelia (dev-story) |
 | 2026-07-26 | Story created — five landmines measured at `9b612eb` (the CI toolchain split that forces the drift check into two halves; prettier reformatting the generated `.d.ts`, whose `.prettierignore` entry c2-1 pre-placed; prettier also reformatting `json.dumps(indent=2)`, so the schema needs its own entry; the entire Python docstring landing in the generated TypeScript as JSDoc — 186 lines, ~130 prose, `Args:` and doctests included; and `expectTypeOf` being erased at runtime so `tsc -b`, not vitest, is the gate) plus four risks measured dead (schema byte-identical on Python 3.12/3.13, generator reruns byte-identical, the generated `.d.ts` lints clean inside the existing tsconfig, LF endings already covered by `ui/.gitattributes`). ACs 5, 8, 9, 10, 11 added beyond the epic's five blocks; the epic's dev/CI-only block is already satisfied by c2-1's `package-contract.test.ts`. Four open questions homed with recommendations | Amelia (create-story) |

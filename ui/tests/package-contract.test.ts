@@ -17,6 +17,7 @@ interface PackageJson {
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
   engines?: Record<string, string>
+  scripts?: Record<string, string>
 }
 
 const pkg = JSON.parse(
@@ -26,6 +27,7 @@ const pkg = JSON.parse(
 const deps = pkg.dependencies ?? {}
 const devDeps = pkg.devDependencies ?? {}
 const allDeps = { ...deps, ...devDeps }
+const scripts = pkg.scripts ?? {}
 
 /** AD-12: no second data-fetching or state-management library joins zustand. */
 const BANNED = [
@@ -83,6 +85,19 @@ describe('package.json dependency contract (AD-12, AD-13)', () => {
 
   it.each(BANNED_CODEGEN)('does not depend on the alternative generator %s', (name) => {
     expect(Object.keys(allDeps)).not.toContain(name)
+  })
+
+  // A second generator can also arrive without touching the dependency keys at all — `npx orval`
+  // inside an npm script downloads and runs it on the fly, and nobody reviews a scripts one-liner
+  // twice. So the scripts block is scanned for the same names (c2-3 review, 2026-07-27).
+  it.each(BANNED_CODEGEN)('does not invoke %s from an npm script either', (name) => {
+    expect(JSON.stringify(scripts)).not.toContain(name)
+  })
+
+  // The non-vacuity pair for the scripts scan: the ONE generator is provably invoked from a
+  // script (`gen:types`), so the scan above is reading a populated, real scripts block.
+  it('invokes openapi-typescript from gen:types, so the scripts scan reads real scripts', () => {
+    expect(scripts['gen:types']).toContain('openapi-typescript')
   })
 
   // AC 2. The declared floor is >=20.19.0, not the epic's looser ">= 20": vite@8 declares

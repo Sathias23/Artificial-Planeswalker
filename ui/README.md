@@ -150,8 +150,10 @@ reasons unrelated to whatever is being bisected.
 file is shaped for a generator, not a reader — reaching a response body means indexing
 `components['schemas'][…]`. `schema.ts` does that once and re-exports narrow aliases
 (`HealthResponse`, `ErrorResponse`, `ErrorReason`). Both rules are enforced by
-`tests/wire-contract.test.ts`, which also bans re-declaring any shape the backend already
-describes anywhere under `src/` outside `src/api/`.
+`tests/wire-contract.test.ts`, which bans re-declaring any shape the backend describes — or any
+alias `schema.ts` exports, `ErrorReason` included — anywhere in tracked TypeScript (`src/`,
+`tests/`, `config/`) outside `src/api/`, and scans everything but `schema.ts` itself (files
+inside `src/api/` included) for direct imports of the generated `./types`.
 
 ### Which job checks which half, and why it splits
 
