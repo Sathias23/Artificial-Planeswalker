@@ -152,9 +152,12 @@ def _usage_error(message: str) -> int:
 def _parse_companion_port(args: Sequence[str]) -> int | None | str:
     """Parse ``companion``'s arguments down to a preferred port.
 
-    Accepts ``--port N`` and ``--port=N``, in that one form pair only. A non-integer value is a
-    *usage* error — unlike a stale environment variable it is something the user typed in this
-    invocation — while an out-of-range integer is not: it flows through to
+    Accepts ``--port N`` and ``--port=N``, in that one form pair only, **at most once** — this CLI
+    has no alias-override use case, so a repeated ``--port`` is almost certainly a typo and
+    silently letting the last one win could select an unintended port (Greptile PR #16, ruled by
+    Brad 2026-07-26). A non-integer value is likewise a *usage* error — unlike a stale environment
+    variable it is something the user typed in this invocation — while an out-of-range integer is
+    not: it flows through to
     :func:`src.companion.app.server.resolve_preferred_port`, which logs a warning and uses the
     default, exactly as it treats ``PLANESWALKER_COMPANION_PORT``.
 
@@ -177,6 +180,8 @@ def _parse_companion_port(args: Sequence[str]) -> int | None | str:
             raw = arg.partition("=")[2]
         else:
             return f"unrecognized argument: {arg}"
+        if port is not None:
+            return "--port given more than once"
         try:
             port = int(raw)
         except ValueError:

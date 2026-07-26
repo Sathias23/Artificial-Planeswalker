@@ -557,6 +557,11 @@ this one, and all of it is measurable at the baseline commit:
 - [x] [Review][Patch] `sprint-status.yaml`'s two `last_updated` strings still read "story c1-9 →
       ready-for-dev" while `development_status` says `review` — the header is two transitions
       stale. [_bmad-output/implementation-artifacts/sprint-status.yaml]
+- [x] [Review][Patch] (post-PR: Greptile #16's one P1, overruling this review's dismissal) repeated
+      `--port` silently last-won — argparse-conventional, but this CLI has no alias-override use
+      case, so a duplicate is a typo that could select an unintended port. RULED (Brad,
+      2026-07-26): a second `--port` is now a usage error (exit 2), `duplicate-port` parametrize
+      case added. [src/mcp_server/__main__.py:181]
 - [x] [Review][Defer] The "both mypy runs are mandatory" comment is wired into no gate — no
       pre-commit hook or CI step passes `--platform linux`; the POSIX half is strict-checked only
       because CI happens to run on ubuntu, and the Windows half only on Brad's machine. Real, but
