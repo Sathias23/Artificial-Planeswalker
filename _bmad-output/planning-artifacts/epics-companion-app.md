@@ -1167,6 +1167,20 @@ So that there is a single documented entry point and no existing MCP client conf
 **When** it logs
 **Then** it logs freely to stdout and stderr, because it owns them — unlike the MCP process (AD-15)
 
+**Given** a companion instance is starting (Brad's ruling 2026-07-26, closing the two c1-8 residuals
+homed in `deferred-work.md`: the check-then-act launch race and, through it, the only reachable path
+to `remove_discovery`'s ownership-guard TOCTOU — the finding Greptile held PR #15 at 3/5 over)
+**When** it acquires single-instance mutual exclusion
+**Then** it holds an OS-level advisory lock on a lock file under `src.paths.data_dir()` for the
+process's whole lifetime (`msvcrt.locking` on Windows, `fcntl.flock` on POSIX) — the **held-lock**
+design, never create-and-delete-on-exit: the kernel releases the lock on any death, so AD-15's
+crash-is-ordinary stance holds with no stale-lock state and no PID heuristics
+**And** a second launch that fails the non-blocking acquire refuses without racing — c1-8's probe
+still supplies the *who/where* for the refusal message, the lock supplies the atomic *whether*
+**And** the lock file is a separate file from `companion.json` (the rendezvous stays c1-7's atomic
+publish; the lock is never read for data) and lives under `PLANESWALKER_DATA_DIR` isolation so the
+autouse test fixture keeps tests contention-free
+
 ---
 
 ## Epic 2: The Glass — Foundation, Identity & Honest States

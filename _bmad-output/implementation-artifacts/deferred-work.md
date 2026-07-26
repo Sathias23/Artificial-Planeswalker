@@ -806,9 +806,17 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   timeouts the probe alone can spend up to ~3 s against a stale entry (1 s connect on a dead port,
   2 s read on a silent one, now also bounded overall at 5 s) — so a human double-launching a
   couple of seconds apart after a crash can hit it, no script required. Still a deliberate,
-  repeated human act against an unlucky interleaving, not ordinary use. Candidate revisit: c1-9,
-  which owns the console-script entry point and is the natural
-  home for a launch-time lock. (Source: c1-8 AC 15, homed at implementation; Severity: Low.)
+  repeated human act against an unlucky interleaving, not ordinary use.
+
+  **Ruling (Brad, 2026-07-26, post-#15-merge): c1-9 builds the fix — a process-lifetime held
+  lock.** Not a candidate any more: Story 1.9's ACs in `epics-companion-app.md` now carry it. The
+  shape is the held-advisory-lock design, not an `O_EXCL` create-and-delete lock file: hold
+  `msvcrt.locking`/`fcntl.flock` on an open handle for the process's lifetime, and the kernel
+  releases it on any death — so AD-15's guaranteed crashes leave no stale lock and need no
+  PID-liveness heuristics. This also collapses the `remove_discovery` TOCTOU's reachability to
+  zero (its harm scenario needs a second live instance, which the lock makes impossible), which
+  is the substance of Greptile's 3/5 hold on PR #15. Close this entry when c1-9 lands.
+  (Source: c1-8 AC 15, homed at implementation; Severity: Low → fix scheduled c1-9.)
 
 - **A live instance whose event loop is blocked for longer than the read timeout is judged dead**
   — `PROBE_TIMEOUT` gives the read 2 s, and a companion wedged past that (a pathological request,
