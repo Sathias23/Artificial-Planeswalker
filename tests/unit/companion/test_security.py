@@ -26,6 +26,7 @@ from src.companion.app.security import (
     allowed_authorities,
     host_is_allowed,
 )
+from tests.unit.companion.conftest import keep_spa_mount_last
 
 _PORT = 54321
 """The port these tests pretend the runner bound. Deliberately not ``server.DEFAULT_PORT``. It
@@ -185,6 +186,11 @@ class TestTheEnvelopeOnTheWire:
         async def reached_route():
             reached.append(True)
             return {"ok": True}
+
+        # A decorator can only append, and build_app() ends with the SPA mount at "/" (c2-2),
+        # which matches every path. Without this the route above is shadowed: the accepted
+        # request would get 200 + index.html and the handler would never run.
+        keep_spa_mount_last(app)
 
         async with lifespan_client(app, base_url=f"http://evil.example.com:{_PORT}") as client:
             rejected = await client.get("/_reached")

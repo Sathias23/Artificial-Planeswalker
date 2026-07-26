@@ -52,6 +52,28 @@ Note that `changeOrigin` affects the **`Host`** header only. It does not touch t
 `Origin` header; the WebSocket upgrade validates `Origin` as well, and that is **c5-3**'s
 problem, not this proxy's.
 
+### Where the build output goes
+
+`npm run build` writes into **`../src/companion/app/static/`** — inside the Python package,
+not `ui/dist`. **That tree is committed**, because it is what lets a fresh install serve the
+UI with no Node toolchain anywhere on the machine (AD-13, SC-4): `pyproject.toml` still knows
+nothing about this directory, and the wheel ships the bundle as ordinary package data.
+
+It is **generated output — never hand-edit it.** Edit the source here and rebuild. CI rebuilds
+the bundle on every run and fails if the committed copy differs, so a stale bundle cannot
+reach master. The same applies to the mirrored copy under `plugin/`, which
+`scripts/build_plugin.py` regenerates.
+
+Two consequences worth knowing:
+
+- **`npm run build` now mutates `src/`.** It is no longer a no-op on the Python tree, so check
+  `git status` before committing. (`npm test` does not build, so the test loop is unaffected.)
+- **Nothing hand-written can live in `src/companion/app/static/`.** `emptyOutDir: true` wipes
+  that directory on every build, and Vite's skip list is exactly `.git` — a README, a
+  `.gitattributes` or an `__init__.py` placed there is deleted by the next build. That is why
+  the "this file is generated" notice lives in `ui/index.html`, and the line-ending attribute
+  in the repository-root `.gitattributes`.
+
 ## The quality gate
 
 All four run in CI and gate the build, and all four are runnable here:
@@ -92,8 +114,11 @@ on any file that does not. `src` and `tests/fixtures/a11y` are in `tsconfig.app.
 `vite.config.ts`, `config/` and `tests/` are in `tsconfig.node.json`. A new top-level
 directory needs adding to one of those two `include` lists.
 
-## Not in this story
+## Not here yet
 
-`ui/dist` is the build output for now. Redirecting it into `src/companion/app/static/`,
-committing the bundle and serving it from FastAPI is **c2-2**. The generated
-`src/api/types.d.ts` is **c2-3**. The `/ws` proxy entry is **c5-6**.
+The generated `src/api/types.d.ts` is **c2-3**. The `/ws` proxy entry is **c5-6**. The
+self-hosted Space Grotesk `.woff2` fonts land in the same build output directory in **c2-5**.
+
+`ui/dist` is no longer produced. A few ignore patterns still name it (`ui/.gitignore`,
+`.prettierignore`, the stylelint `--ignore-pattern`); they are harmless and deliberately left
+alone — each removal is a chance to break a gate for nothing.

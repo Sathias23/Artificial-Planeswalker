@@ -208,6 +208,28 @@ class TestTheTypedErrorContractSurvivesTheFallback:
         assert response.headers["content-type"].startswith(_TYPED_ERROR_MEDIA_TYPE)
         assert response.json() == {"reason": "invalid_request"}
 
+    async def test_a_wrong_method_on_a_real_route_keeps_its_allow_header(self, lifespan_client):
+        # The regression this story nearly shipped. Starlette's router takes the first Match.FULL
+        # and returns, and a Mount at "/" matches everything — so it beat the Match.PARTIAL that
+        # /health reports for a wrong method, which is precisely how Starlette produces a 405 with
+        # the RFC-mandated Allow header. _SpaMount declines reserved prefixes so the router gets
+        # the request back and answers correctly.
+        async with lifespan_client(build_app()) as client:
+            response = await client.post("/health")
+
+        assert response.status_code == 405
+        assert "GET" in response.headers["allow"]
+        assert response.json() == {"reason": "invalid_request"}
+
+    async def test_the_mounts_own_405_also_names_its_methods(self, lifespan_client):
+        # The other half: for a path the API has not reserved, the mount answers the 405 itself
+        # and must still say what it allows. StaticFiles raises a bare one.
+        async with lifespan_client(build_app()) as client:
+            response = await client.post("/decks/42")
+
+        assert response.status_code == 405
+        assert response.headers["allow"] == "GET, HEAD"
+
     async def test_health_still_answers_json(self, lifespan_client):
         app = build_app()
         async with lifespan_client(app) as client:

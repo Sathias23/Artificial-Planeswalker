@@ -26,9 +26,7 @@ const uiRoot = fileURLToPath(new URL('..', import.meta.url))
  * `ui/`. Two independent derivations agreeing is the point; re-importing the config's own
  * constant would assert nothing.
  */
-const EXPECTED_OUT_DIR = fileURLToPath(
-  new URL('../../src/companion/app/static', import.meta.url),
-)
+const EXPECTED_OUT_DIR = fileURLToPath(new URL('../../src/companion/app/static', import.meta.url))
 
 describe('build output contract (AD-13)', () => {
   it('builds into the committed bundle directory inside the Python package', async () => {
@@ -42,9 +40,7 @@ describe('build output contract (AD-13)', () => {
   it('ends the resolved path at src/companion/app/static and nowhere shallower', async () => {
     const config = await resolveConfig({ root: uiRoot }, 'build')
 
-    expect(config.build.outDir.replace(/\\/g, '/')).toMatch(
-      /\/src\/companion\/app\/static$/,
-    )
+    expect(config.build.outDir.replace(/\\/g, '/')).toMatch(/\/src\/companion\/app\/static$/)
   })
 
   it('empties the output directory, so a rebuild removes stale hashed assets', async () => {

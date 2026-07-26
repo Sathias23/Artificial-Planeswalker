@@ -37,7 +37,7 @@ from pathlib import Path, PurePath
 from fastapi import FastAPI
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
-from starlette.routing import BaseRoute
+from starlette.routing import BaseRoute, Match, Mount
 from starlette.staticfiles import StaticFiles
 from starlette.types import Scope
 
@@ -67,6 +67,9 @@ table (:func:`_reserved_prefixes`), so c3-1's ``/api/decks`` reserves ``api`` on
 
 _IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable"
 _REVALIDATE_CACHE_CONTROL = "no-cache"
+
+_ALLOWED_METHODS = "GET, HEAD"
+"""What a static document surface supports, for the ``Allow`` header a 405 must carry."""
 
 # Declared, not guessed — see the module docstring. `.woff2` is the one that is already wrong on
 # this machine (mimetypes resolves it to None, so Starlette would ship a font as text/plain);
@@ -148,6 +151,64 @@ def _reserved_prefixes(app: FastAPI) -> frozenset[str]:
     return frozenset(prefixes)
 
 
+def _route_path(scope: Scope) -> str:
+    """Return the request path with any mounted ``root_path`` removed.
+
+    Reimplemented rather than imported: Starlette keeps ``get_route_path`` in a private module,
+    and the whole body is these four lines.
+
+    Args:
+        scope: The ASGI connection scope.
+
+    Returns:
+        The path this router should match against.
+    """
+    path: str = scope.get("path", "")
+    root_path: str = scope.get("root_path", "")
+    if root_path and path.startswith(root_path):
+        return path[len(root_path) :]
+    return path
+
+
+class _SpaMount(Mount):
+    """A mount at ``/`` that **declines** every path belonging to the API surface.
+
+    Declining matters more than it looks. Starlette's router takes the first ``Match.FULL`` and
+    returns immediately, so a mount at ``/`` — which matches everything — beats the
+    ``Match.PARTIAL`` a real route reports when the path matches but the method does not. That
+    partial is exactly how Starlette produces ``405`` with the RFC-mandated ``Allow`` header, and
+    ``errors.py`` deliberately preserves those headers because dropping them "would make the typed
+    body a downgrade". Without this class, ``POST /health`` answers ``405`` with no ``Allow``, and
+    once c5-5 adds a POST-only ``/agent/events`` a plain ``GET`` of it would answer ``404``
+    instead of ``405 Allow: POST``.
+
+    Returning ``Match.NONE`` for reserved prefixes hands those paths back to the router, which
+    knows each route's real method set. Everything else still falls through to the SPA.
+
+    Args:
+        app: The static-files application to serve.
+        reserved_prefixes: First path segments this mount must not claim.
+    """
+
+    def __init__(self, *, app: StaticFiles, reserved_prefixes: frozenset[str]) -> None:
+        super().__init__("/", app=app, name="spa")
+        self._reserved_prefixes = reserved_prefixes
+
+    def matches(self, scope: Scope) -> tuple[Match, Scope]:
+        """Match *scope* unless its first path segment is reserved for the API.
+
+        Args:
+            scope: The ASGI connection scope.
+
+        Returns:
+            Starlette's ``(match, child_scope)`` pair; ``Match.NONE`` for a reserved path.
+        """
+        segments = [segment for segment in _route_path(scope).split("/") if segment]
+        if segments and segments[0] in self._reserved_prefixes:
+            return Match.NONE, {}
+        return super().matches(scope)
+
+
 class _SpaFiles(StaticFiles):
     """``StaticFiles`` whose 404 falls back to the SPA index for client-side routes.
 
@@ -187,6 +248,11 @@ class _SpaFiles(StaticFiles):
         try:
             response = await super().get_response(path, scope)
         except StarletteHTTPException as exc:
+            if exc.status_code == 405:
+                # RFC 9110 requires a 405 to name the methods it does allow, and StaticFiles
+                # raises a bare one. For a path the API has not reserved, the honest answer is
+                # that this surface serves documents and nothing else.
+                raise StarletteHTTPException(405, headers={"Allow": _ALLOWED_METHODS}) from exc
             if exc.status_code != 404 or not self._should_fall_back(path, scope):
                 raise
             served = _INDEX_NAME
@@ -291,8 +357,12 @@ def install_spa(app: FastAPI, *, static_dir: Path | None = None) -> None:
             f"cd ui && npm run build"
         )
     logger.debug("Serving the SPA bundle from %s", directory)
-    app.mount(
-        "/",
-        _SpaFiles(directory=directory, reserved_prefixes=_reserved_prefixes(app)),
-        name="spa",
+    reserved = _reserved_prefixes(app)
+    # Appended directly rather than via app.mount(), which would build a plain Mount and lose the
+    # reserved-prefix decline that keeps 405-with-Allow working (see _SpaMount).
+    app.router.routes.append(
+        _SpaMount(
+            app=_SpaFiles(directory=directory, reserved_prefixes=reserved),
+            reserved_prefixes=reserved,
+        )
     )

@@ -28,6 +28,7 @@ from contextlib import asynccontextmanager
 import httpx
 import pytest
 from fastapi import FastAPI
+from starlette.routing import Mount
 
 from src.companion.app import main
 from src.companion.app.main import lifespan
@@ -43,6 +44,40 @@ Deliberately **not** :data:`src.companion.app.server.DEFAULT_PORT` (8765), so no
 can pass by accidentally agreeing with the production default instead of reading the port the app
 was actually given.
 """
+
+
+def keep_spa_mount_last(app: FastAPI) -> FastAPI:
+    """Move the SPA mount back to the end of *app*'s route table, and return *app*.
+
+    **Why any test needs this.** ``build_app()`` finishes with ``install_spa(app)``, which mounts
+    the committed SPA bundle at ``/`` (c2-2). A mount at ``/`` matches every path and Starlette
+    matches routes in list order, so **anything appended afterwards is shadowed** — the endpoint
+    never runs and the caller gets ``200`` plus ``index.html``. Production code never hits this
+    because every router is registered *above* the ``install_spa(app)`` line, exactly as
+    ``main.py`` says.
+
+    Test modules that attach throwaway routes to a real ``build_app()`` instance — the
+    raise-on-demand routes in ``test_errors.py``, the database-touching routes in
+    ``test_deps.py`` — are the one place that ordering is genuinely inverted, because a decorator
+    can only append. This helper restores the production shape after the fact rather than making
+    each test reason about route indices.
+
+    Args:
+        app: An application whose test routes have just been attached.
+
+    Returns:
+        The same application, with the SPA mount once again the final route.
+    """
+    routes = app.router.routes
+    for index, route in enumerate(routes):
+        if isinstance(route, Mount) and route.name == "spa":
+            routes.append(routes.pop(index))
+            return app
+    raise AssertionError(
+        "No SPA mount found on this app. build_app() is expected to end with install_spa(app); "
+        "if that changed, this helper (and tests/unit/companion/test_spa.py::TestMountOrdering) "
+        "need updating together."
+    )
 
 
 @pytest.fixture(autouse=True)
