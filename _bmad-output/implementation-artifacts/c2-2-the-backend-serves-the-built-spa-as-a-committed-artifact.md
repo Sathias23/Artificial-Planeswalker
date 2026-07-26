@@ -8,7 +8,7 @@ story_branch: feat/companion-c2-2-serve-spa
 
 # Story C2.2: The backend serves the built SPA as a committed artifact
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -285,61 +285,65 @@ is still an AC (standing agreement: a story must leave the system working end to
 
 ## Tasks / Subtasks
 
-- [ ] **Task 0 — Baseline verification** (standing agreement; before touching anything)
-  - [ ] `git rev-parse --short HEAD` = `9d47b24`, `git status --porcelain` empty, branch cut from
+- [x] **Task 0 — Baseline verification** (standing agreement; before touching anything)
+  - [x] `git rev-parse --short HEAD` = `9d47b24`, `git status --porcelain` empty, branch cut from
         `feat/companion-c2` as `feat/companion-c2-2-serve-spa`
-  - [ ] `uv run pytest -m "not integration"` → record exact counts (expected 1,684 / 1 / 45; if it
-        differs, investigate before proceeding — c2-1's Task 0 caught a real order-flake this way,
-        already homed in `deferred-work.md`)
-  - [ ] `cd ui && npm ci && npm test` → record the count (expected 55)
-  - [ ] `git check-ignore -v src/companion/app/static/index.html` → no match (verified at story
-        creation; re-confirm, it is the premise of AC 4)
+  - [x] `uv run pytest -m "not integration"` → **1,684 / 1 / 45**, exactly as predicted
+  - [x] `cd ui && npm ci && npm test` → **55**, exactly as predicted
+  - [x] `git check-ignore -v src/companion/app/static/index.html` → no match (exit 1)
 
-- [ ] **Task 1 — Redirect the build output** (AC 1, 2, 3)
-  - [ ] `vite.config.ts`: `build.outDir` via `fileURLToPath(new URL('../src/companion/app/static',
+- [x] **Task 1 — Redirect the build output** (AC 1, 2, 3)
+  - [x] `vite.config.ts`: `build.outDir` via `fileURLToPath(new URL('../src/companion/app/static',
         import.meta.url))`, `emptyOutDir: true`, with a comment naming landmines #1 and #2
-  - [ ] Delete the now-stale c2-2 forward-reference comment in `vite.config.ts` (c2-1 left one
-        saying "c2-2 owns redirecting `outDir`") — this is that story
-  - [ ] `npm run build`, then the junk-file emptying proof; paste both
-  - [ ] Config-assertion test (`ui/tests/`, `node` project) for the resolved path and `emptyOutDir`
+  - [x] Stale c2-2 forward-reference comment in `vite.config.ts` deleted
+  - [x] `npm run build`, then the junk-file emptying proof; both pasted (redone after a
+        self-inflicted vacuity — see Completion Note 9)
+  - [x] Config-assertion test `ui/tests/buildOutput.test.ts` (`node` project), proven red on a
+        mistyped path
 
-- [ ] **Task 2 — Commit the bundle, and make its bytes deterministic** (AC 4, 5, 6)
-  - [ ] Root `.gitattributes` with the single scoped `-text` line (nowhere else — landmine #2)
-  - [ ] `git add src/companion/app/static`; run the two AC 4 commands and paste both
-  - [ ] Generated-file comment in `ui/index.html`; rebuild; confirm it survives into the output
-  - [ ] Confirm no repo-wide renormalisation: `git ls-files --eol -- src/ | grep -c 'w/crlf'`
-        unchanged before/after
+- [x] **Task 2 — Commit the bundle, and make its bytes deterministic** (AC 4, 5, 6)
+  - [x] Root `.gitattributes` — **two** scoped `-text` lines, not one (deviation, Completion Note 2)
+  - [x] `git add src/companion/app/static`; both AC 4 commands run and pasted
+  - [x] Generated-file notice in `ui/index.html`; confirmed present in the built output and pinned
+        by a test
+  - [x] No repo-wide renormalisation: `w/crlf` count **83 before, 83 after**
 
-- [ ] **Task 3 — Serve it** (AC 7, 8, 9, 10, 11)
-  - [ ] New module (suggested `src/companion/app/spa.py`) exporting `STATIC_DIR` and
-        `install_spa(app)`, following the `install_security` / `install_error_handling` naming
-  - [ ] `StaticFiles` subclass whose 404 falls back to `index.html` for extension-less GET/HEAD
-        paths outside the reserved prefixes; explicit `mimetypes.add_type` registrations
-  - [ ] Call `install_spa(app)` **last** in `build_app()`, with the ordering comment
-  - [ ] Tests: index, asset + content types, client-route fallback, the four AC 9 contract cases,
-        the mount-order guard with its instructive message, inertness unchanged, missing-bundle
-        error
+- [x] **Task 3 — Serve it** (AC 7, 8, 9, 10, 11)
+  - [x] `src/companion/app/spa.py` exporting `STATIC_DIR` and `install_spa(app)`, matching the
+        `install_security` / `install_error_handling` naming
+  - [x] `StaticFiles` subclass with the fallback rule (`html=False`, Completion Note 6); explicit
+        `mimetypes.add_type` registrations; **plus** `_SpaMount`, which the story did not
+        anticipate (Completion Note 4)
+  - [x] `install_spa(app)` **last** in `build_app()`, with the ordering comment
+  - [x] Tests: index, asset + content types, client-route fallback, all four AC 9 contract cases,
+        the mount-order guard with its instructive message, `TestConstructionIsInert` passing
+        **unchanged**, missing-bundle error, cache headers, ETag/304, query strings, near-miss
+        prefixes
 
-- [ ] **Task 4 — CI drift check** (AC 12, 13)
-  - [ ] New step after `Build` in the `frontend` job; `working-directory: .`; plugin-check shape
-  - [ ] Local teeth proof (stale → red, rebuilt → green); paste both
+- [x] **Task 4 — CI drift check** (AC 12, 13)
+  - [x] New `SPA bundle in sync with ui/` step after `Build`; `working-directory: .`; plugin-check
+        shape
+  - [x] Teeth proof (stale → red, rebuilt → green) pasted, **plus** the scenario that actually
+        separates `git status` from `git diff` (Completion Note 1)
 
-- [ ] **Task 5 — Plugin mirror and the wheel** (AC 14, 15, 16)
-  - [ ] `scripts/build_plugin.py` sentinel for the mirrored `index.html`, in the `src/viewer` shape
-  - [ ] `uv run python -m scripts.build_plugin`; commit the regenerated `plugin/` tree
-  - [ ] pytest byte-identity test for the mirrored `index.html`
-  - [ ] `uv build` + wheel listing; paste; confirm `pyproject.toml` untouched
+- [x] **Task 5 — Plugin mirror and the wheel** (AC 14, 15, 16)
+  - [x] `scripts/build_plugin.py` sentinel in the `src/viewer` shape; proven to abort with exit 1
+  - [x] `uv run python -m scripts.build_plugin`; regenerated `plugin/` tree committed
+  - [x] pytest byte-identity test for the mirrored `index.html` (+ asset-name parity)
+  - [x] `uv build` + wheel listing pasted; `pyproject.toml` untouched; `dist/` deleted
 
-- [ ] **Task 6 — Records and gates** (AC 18, 19, 20, 21)
-  - [ ] Forward-dated comments keyed; `ui/README.md` paragraph
-  - [ ] Scope-boundary proof pasted
-  - [ ] Both suites + all four Python gates + all five frontend gates green
+- [x] **Task 6 — Records and gates** (AC 18, 19, 20, 21)
+  - [x] Forward-dated comments keyed (c2-5 fonts, c3-1 routers, c2-3 types, c8-5 parity, c2-6 shell)
+  - [x] `ui/README.md` build-output section; stale "Not in this story" re-pointed
+  - [x] Scope-boundary proof pasted (empty)
+  - [x] Both suites + all four Python gates + all five frontend gates green
 
-- [ ] **Task 7 — Live checks a test cannot close** (AC 17)
-  - [ ] Temporary worktree/clone with no `node_modules`; `uv run artificial-planeswalker companion`;
-        browser open; paste what you saw
-  - [ ] While there: confirm `/health` still answers JSON and `/docs` still renders, from the
-        **same** running instance (R2's keep-decision, now behind a catch-all mount)
+- [x] **Task 7 — Live checks a test cannot close** (AC 17)
+  - [x] Fresh `git worktree` with **no `node_modules`**; `uv run artificial-planeswalker companion`;
+        every surface probed live and pasted. **The browser render itself is not confirmed by me** —
+        see the note under AC 17; it belongs on Brad's manual-testing checklist.
+  - [x] `/health` answers JSON and `/docs` + `/openapi.json` still answer, from the **same**
+        running instance behind the catch-all mount (R2's keep-decision holds)
 
 ## Dev Notes
 
@@ -673,14 +677,303 @@ correctness fix, not a preference.
 
 ### Agent Model Used
 
+Claude Opus 5 (1M context) — `claude-opus-5[1m]`, via bmad `dev-story`.
+
 ### Debug Log References
+
+All four open questions were answered **as proposed** by Brad before implementation began (Q1
+fallback rule, Q2 cache headers here, Q3 scoped `.gitattributes`, Q4 `git status --porcelain`).
+No question remained open during development.
+
+**Task 0 baseline, confirmed on this machine at `9d47b24`:**
+
+- `git rev-parse --short HEAD` = `9d47b24`; branch cut as `feat/companion-c2-2-serve-spa`
+- `uv run pytest -m "not integration"` → **1,684 passed / 1 skipped / 45 deselected** (exactly as
+  the story predicted; no investigation needed)
+- `cd ui && npm ci && npm test` → **55 tests / 6 files** (as predicted)
+- `git check-ignore -v src/companion/app/static/index.html` → exit 1, no match (AC 4's premise
+  re-confirmed)
 
 ### Completion Notes List
 
+#### Deviations, flagged not silently taken
+
+1. **AC 12 — `git status --porcelain`, not `git diff --exit-code`** (Q4, ruled as proposed). Shipped
+   as the story directed, and the deviation is now **proven rather than argued**. The first
+   scenario tested (edit `App.tsx`, rebuild) turned *both* commands red, because `index.html`
+   changed too — so it did **not** justify the deviation. The scenario that actually separates them
+   is a **new emitted asset with no tracked file changing** (a file added to `ui/public/`):
+
+   ```
+   -- git diff --exit-code -- src/companion/app/static/  -> 0   (PASSES: ships a stale bundle)
+   -- git status --porcelain -- src/companion/app/static/ -> ?? src/companion/app/static/manifest.json
+   ```
+
+2. **AC 5 — the root `.gitattributes` has TWO scoped lines, not one.** The story called for one
+   (`src/companion/app/static/** -text`). One is measurably not enough: the **plugin mirror** of the
+   same bundle is compared byte-for-byte against the source of truth (by the `plugin/` drift check
+   and by AC 15's test), and it had no attribute. Measured, not reasoned — deleting both copies and
+   letting git restore them (which applies the `core.autocrlf` smudge filter exactly as a fresh
+   clone does) produced:
+
+   ```
+   src/    .../index.html  1093 bytes  (i/lf  w/lf   attr/-text)
+   plugin/ .../index.html  1119 bytes  (i/lf  w/crlf attr/)      <- 26 line endings apart
+   byte-identical? NO
+   ```
+
+   So on any **fresh Windows clone** AC 15's test fails and the plugin drift check reports drift on
+   an untouched tree. **CI could never have caught this** — CI is ubuntu, where `autocrlf` is off,
+   so it is Windows-only *and* fresh-clone-only. Second line added:
+   `plugin/server/src/companion/app/static/** -text`. Still path-scoped, so AC 5's actual concern
+   (a repo-wide pattern renormalising every tracked file, which is why c2-1 declined this file)
+   is untouched: `git ls-files --eol -- src/ | grep -c 'w/crlf'` is **83 before and 83 after**.
+
+#### Two real bugs found during implementation, both invisible to the story's analysis
+
+3. **`_IncludedRouter` made the reserved-prefix derivation silently empty.** Decide-once #1 says to
+   derive reserved prefixes from `app.routes` so c3-1's `/api/decks` reserves `api` on its own. A
+   plain `getattr(route, "path", "")` walk finds **nothing** from `include_router`: FastAPI 0.140
+   wraps an included router in an `_IncludedRouter` that carries neither `.path` nor `.routes` (its
+   routes hang off `.original_router`, its prefix off `.include_context`). `/health` was therefore
+   never reserved, and every prefix c3-1 (`/api`) and c5-5 (`/agent`) will register the same way
+   would have fallen through to the SPA index instead of the typed 404. `api` masked it, because it
+   is seeded. Fixed with a recursive `_route_paths` walk covering all three nesting shapes; the
+   reads of FastAPI internals are `getattr` with fallbacks and are **pinned by a test with an
+   instructive failure message**, so a FastAPI upgrade goes red rather than quietly emptying the
+   reservation.
+
+4. **The mount destroyed `405 Allow`, an existing error-contract guarantee.** Starlette's router
+   takes the first `Match.FULL` and returns immediately; a `Mount("/")` reports `FULL` for every
+   path, so it beat the `Match.PARTIAL` a real route reports when the path matches but the method
+   does not — and that partial is precisely how Starlette produces `405` with the RFC-9110-mandated
+   `Allow` header, which [errors.py](src/companion/app/errors.py) deliberately forwards ("dropping
+   them would make the typed body a downgrade"). `POST /health` was answering **405 with no
+   `Allow`**, and once c5-5 adds a POST-only `/agent/events`, a plain `GET` of it would have
+   answered **404 instead of `405 Allow: POST`**. Fixed with `_SpaMount.matches()` returning
+   `Match.NONE` for reserved prefixes — handing those paths back to the router, which knows each
+   route's real method set — plus `Allow: GET, HEAD` on the mount's own 405, which `StaticFiles`
+   omits. Both directions are now pinned by tests. This is the **error-contract enumeration**
+   standing agreement doing its job.
+
+5. **32 tests were being served `index.html` instead of running.** `test_errors.py`,
+   `test_deps.py` and `test_security.py` attach throwaway routes to a real `build_app()` with
+   `@app.get(...)`, which can only *append* — i.e. below `install_spa(app)`, the one thing
+   `main.py` forbids. This is AC 10's failure mode, found by the guard it predicts. Fixed in the
+   tests, not by weakening the rule: `conftest.keep_spa_mount_last(app)` restores the production
+   ordering after the fact. `test_errors.py::test_an_unknown_path_is_a_typed_404` was re-pointed:
+   with a SPA mounted, an extension-less path outside the API is a **client route** and correctly
+   answers 200 (pinned in `test_spa.py`); the three shapes that must still 404 (reserved prefix,
+   file extension, under a registered route) are what it now guards.
+
+#### Implementation decisions worth knowing
+
+6. **`html=False`, not `html=True`.** Gotcha 6 warned that `StaticFiles(html=True)` looks for a
+   `404.html` before raising, so a later story adding one would silently change every client route
+   to a 404-status HTML document. `html=False` removes that hazard **entirely** rather than
+   commenting on it: `GET /` reaches the index through the explicit fallback rule (normpath renders
+   the site root as `"."`, which has no meaningful segments), which is the same code path every
+   client route takes and the one the tests pin.
+
+7. **AC 4's command needed adjusting to stay non-vacuous.** As written it runs `git check-ignore` on
+   `git ls-files -o` (untracked) output — which is empty *after* `git add`, so `check-ignore` gets
+   no arguments and exits 128 `fatal: no path specified`. Run instead over every path actually on
+   disk, which is the stronger form: it would also catch a file that was ignored and therefore never
+   tracked. Result: exit 1 (nothing ignored) against 4 tracked files.
+
+8. **AC 16 needed no packaging change.** `uv build` puts all four bundle files in the wheel with
+   `pyproject.toml` untouched — AD-13's "Node is never required at install" proved by the packaging
+   config staying ignorant of `ui/`. `dist/` deleted afterwards.
+
+9. **A self-inflicted vacuity, caught and redone.** The first AC 2 emptying proof was invalid: a
+   PowerShell `Set-Location` had left the shell in `ui/`, so the junk file was planted at
+   `ui/src/companion/app/static/` — a directory Vite never touches — and the "it's gone" check read
+   the real directory. Redone with absolute paths on both sides (see the proof below). The stray
+   tree was deleted. Recorded because the *class* of error is what this project's reviews punish,
+   and it nearly shipped inside a proof.
+
+#### The proofs the story asked for
+
+**AC 2 — `emptyOutDir` really empties (and nothing hand-written can live there):**
+
+```
+=== BEFORE npm run build (absolute paths) ===
+/c/.../src/companion/app/static/JUNK-STALE-BUNDLE.txt
+/c/.../src/companion/app/static/assets/index-kbn8nqvM.js
+/c/.../src/companion/app/static/assets/index-tIQG_ZwB.css
+/c/.../src/companion/app/static/favicon.svg
+/c/.../src/companion/app/static/index.html
+
+=== AFTER npm run build (absolute paths) ===
+/c/.../src/companion/app/static/assets/index-kbn8nqvM.js
+/c/.../src/companion/app/static/assets/index-tIQG_ZwB.css
+/c/.../src/companion/app/static/favicon.svg
+/c/.../src/companion/app/static/index.html
+
+JUNK-STALE-BUNDLE.txt still present: NO
+```
+
+**AC 3 — the config assertion has teeth.** Mistyping `outDir` to `../src/companion/app` (which
+`emptyOutDir: true` would have recursively deleted) turns 2 of the 4 assertions red:
+
+```
+FAIL |node| tests/buildOutput.test.ts > ends the resolved path at src/companion/app/static
+  Expected: /\/src\/companion\/app\/static$/
+  Received: "C:/Users/brads/Projects/Artificial-Planeswalker/src/companion/app"
+```
+
+**AC 4 — nothing ignored, and the tree is really tracked:**
+
+```
+git check-ignore -v $(find src/companion/app/static -type f)  -> exit 1  (no path is ignored)
+git ls-files src/companion/app/static/ | wc -l                -> 4      (non-vacuity pair)
+```
+
+**AC 5 — no repo-wide renormalisation, attribute scoped:**
+
+```
+w/crlf count across src/:  83 BEFORE  ->  83 AFTER
+src/companion/app/static/index.html:  text: unset
+src/companion/app/main.py:            text: unspecified
+README.md:                            text: unspecified
+```
+
+**AC 13 — the drift check red, then green:**
+
+```
+=== RED (after editing ui/src and rebuilding, as CI does) ===
+::error::src/companion/app/static/ is stale — run 'cd ui && npm run build' and commit the bundle.
+ D src/companion/app/static/assets/index-kbn8nqvM.js
+ M src/companion/app/static/index.html
+?? src/companion/app/static/assets/index-D5XWiX32.js        <- the untracked half git diff cannot see
+
+=== GREEN (after a clean rebuild) ===
+   entries: 0
+```
+
+**AC 14 — the plugin sentinel aborts rather than shipping a UI-less plugin:**
+
+```
+$ (index.html temporarily removed) uv run python -m scripts.build_plugin
+ERROR - companion SPA bundle missing from copied server (...\static\index.html) — aborting.
+        Build it with: cd ui && npm run build
+build_plugin real exit code: 1
+```
+
+**AC 16 — the bundle is in the wheel, `pyproject.toml` untouched:**
+
+```
+$ git status --porcelain -- pyproject.toml        (empty)
+$ uv build && python -m zipfile -l dist/artificial_planeswalker-0.4.0-py3-none-any.whl | grep static
+src/companion/app/static/favicon.svg                        806
+src/companion/app/static/index.html                        1093
+src/companion/app/static/assets/index-kbn8nqvM.js        190581
+src/companion/app/static/assets/index-tIQG_ZwB.css          354
+```
+
+**AC 17 — fresh install, no Node, live (`git worktree add --detach` at a short temp path; the
+scratchpad path hit Windows' 260-char limit — the repo's known "longpaths note pending" item):**
+
+```
+ui/node_modules: ABSENT        (the bundle came from the checkout alone)
+$ COMPANION_PORT=9222 uv run artificial-planeswalker companion
+  Creating virtual environment at: .venv ... Installed 81 packages in 2.98s
+  [planeswalker] companion running at http://127.0.0.1:9222
+
+PATH                                  STATUS  CONTENT-TYPE
+/                                  -> 200  text/html; charset=utf-8
+/decks/42                          -> 200  text/html; charset=utf-8
+/assets/index-kbn8nqvM.js          -> 200  text/javascript; charset=utf-8
+/assets/index-tIQG_ZwB.css         -> 200  text/css; charset=utf-8
+/favicon.svg                       -> 200  image/svg+xml
+/health                            -> 200  application/json   {"status":"ok","instance_id":"136cd7d8-…"}
+/docs                              -> 200  text/html; charset=utf-8      <- R2 keep-decision holds
+/openapi.json                      -> 200  application/json              <- behind a catch-all mount
+/api/anything-unknown              -> 404  application/json   {"reason":"invalid_request"}
+/assets/does-not-exist.js          -> 404  application/json   {"reason":"invalid_request"}
+POST /decks/42                     -> 405  application/json   {"reason":"invalid_request"}
+
+cache-control: no-cache                                  (index.html)
+cache-control: public, max-age=31536000, immutable       (hashed asset, with an ETag)
+POST /health -> HTTP/1.1 405 / allow: GET                (the AC 9 + Allow fix, live)
+
+served /assets/index-kbn8nqvM.js is byte-identical to the committed file: YES
+the served bundle contains "Artificial Planeswalker", "createRoot", "useState"
+```
+
+> **One half of AC 17 is Brad's, not mine.** I verified the document, the assets, the content
+> types and that the served bundle is the real React app — everything short of eyes on pixels.
+> **I did not open a browser and watch it paint**, so "the page renders" is unconfirmed by me and
+> belongs on the manual-testing checklist. Everything a non-human can check is green.
+> The worktree, the temp venv and the stale discovery file the killed process left behind were all
+> removed; `git status` is clean and `git worktree list` shows only the main checkout.
+
+**AC 20 — scope proof:**
+
+```
+$ git status --porcelain -- pyproject.toml uv.lock .pre-commit-config.yaml .gitignore \
+    README.md CONTRIBUTING.md .mcp.json
+(empty)
+$ git status --porcelain -- ui/package.json ui/package-lock.json
+(empty)
+```
+
+**The known flake surfaced once, and is not this story's.** On one full-suite run,
+`tests/integration/data/test_deck_repository.py::test_list_decks_with_strategy_field` failed; it
+passed 3/3 in isolation and the very next full run was 1,739 green. This is the **pre-existing
+order-flake c2-1 found at its own Task 0** (a `created_at` tie with no secondary sort key), already
+homed in `deferred-work.md`. `git diff --name-only feat/companion-c2 -- src/data/ tests/integration/`
+returns **0 files**, so this story touches neither the repository nor its tests. Recorded rather
+than re-run into silence.
+
+**AC 21 — both suites, at or above baseline:**
+
+| Gate | Baseline | Now |
+|---|---|---|
+| `uv run pytest -m "not integration"` | 1,684 / 1 skipped / 45 deselected | **1,739 passed / 1 skipped / 45 deselected** |
+| `uv run ruff check .` | green | green |
+| `uv run ruff format --check .` | green | green (284 files) |
+| `uv run mypy src/` | green | green (84 files) |
+| `uv run mypy src/ --platform win32` | green | green (84 files) |
+| `npm run lint` / `format:check` / `typecheck` / `test` / `build` | 55 tests | **59 tests**, all five green |
+
 ### File List
+
+**New**
+
+- `.gitattributes` — two scoped `-text` lines (AC 5, + the mirror deviation)
+- `src/companion/app/spa.py` — `STATIC_DIR`, `install_spa`, `_SpaMount`, `_SpaFiles`
+- `src/companion/app/static/index.html` — generated, committed
+- `src/companion/app/static/favicon.svg` — generated, committed
+- `src/companion/app/static/assets/index-kbn8nqvM.js` — generated, committed
+- `src/companion/app/static/assets/index-tIQG_ZwB.css` — generated, committed
+- `tests/unit/companion/test_spa.py` — 53 tests
+- `ui/tests/buildOutput.test.ts` — the `outDir` / `emptyOutDir` config assertion
+- `plugin/server/src/companion/app/spa.py` + `plugin/server/src/companion/app/static/**` —
+  generated by `scripts/build_plugin.py`
+
+**Modified**
+
+- `src/companion/app/main.py` — `install_spa(app)` last, with the ordering comment
+- `scripts/build_plugin.py` — mirrored-bundle sentinel
+- `.github/workflows/ci.yml` — SPA drift check on the `frontend` job
+- `ui/vite.config.ts` — `outDir` + `emptyOutDir`; the stale c2-2 forward-reference removed
+- `ui/index.html` — generated-output notice (copied through by Vite)
+- `ui/README.md` — where the build output goes; "Not in this story" re-pointed
+- `tests/unit/companion/conftest.py` — `keep_spa_mount_last`
+- `tests/unit/companion/test_errors.py` — mount ordering; 404 test re-pointed
+- `tests/unit/companion/test_deps.py` — mount ordering
+- `tests/unit/companion/test_security.py` — mount ordering
+- `plugin/server/src/companion/app/main.py` — generated mirror
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — status transitions
+
+**Deleted**
+
+- `ui/dist/` — no longer produced (was untracked/gitignored)
 
 ## Change Log
 
 | Date | Change | By |
 |---|---|---|
+| 2026-07-26 | Implemented → review. All 21 ACs met. Two deviations flagged: AC 12's `git status --porcelain` (ruled, and now *proven* — the separating case is a new emitted asset, where `git diff --exit-code` returns 0), and AC 5 shipping **two** scoped `.gitattributes` lines rather than one, because the plugin mirror diverged by 26 line endings on a simulated fresh Windows clone (1093 vs 1119 bytes) — a Windows-only, fresh-clone-only failure CI could never catch. Two real bugs the story's analysis could not foresee: FastAPI 0.140's `_IncludedRouter` exposes neither `.path` nor `.routes`, so the reserved-prefix derivation was silently empty for every `include_router` prefix (c3-1's `/api`, c5-5's `/agent`); and a `Mount("/")` reports `Match.FULL` for every path, beating the `Match.PARTIAL` that produces `405` with the RFC-mandated `Allow` header — `POST /health` was answering 405 with no `Allow`, and a future GET of a POST-only route would have answered 404 instead of `405 Allow: POST`. Fixed with `_SpaMount` declining reserved prefixes. AC 10's guard also caught 32 existing tests appending routes below the mount. Suites 1,684 → 1,739 (Python) and 55 → 59 (frontend); all nine gates green | Amelia (dev-story) |
 | 2026-07-26 | Story created — five measured landmines (Vite's outside-root `emptyOutDir` skip, `emptyDir`'s `.git`-only skip list, `git diff --exit-code` blindness to content-hash renames, Starlette's `text/plain` fallback with `.woff2` unresolved, mount-at-`/` route shadowing); AC 9's error-contract preservation and AC 10's mount-order guard added beyond the epic's five blocks; four open questions homed with recommendations | Amelia (create-story) |
