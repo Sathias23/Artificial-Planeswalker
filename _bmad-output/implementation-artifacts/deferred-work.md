@@ -1102,6 +1102,15 @@ the gate-output rule rather than left as "we meant to".
   story merely doubled down on it). Natural fix: keep `last_updated` to a date + one clause and let
   the story records carry the narrative — a process/tooling nit for the epic retro, not any story's
   code. (Severity: Low — cosmetic, but it degrades every future diff of the file.)
+  **Upgraded 2026-07-26 while contexting c2-3, and it is no longer only cosmetic: the file does not
+  parse as YAML.** Measured on the committed tree at `9b612eb` — `yaml.safe_load` raises
+  `ScannerError: mapping values are not allowed here` at **line 49**, the `last_updated` mega-line,
+  because a YAML plain scalar may not contain `": "` and that line now contains dozens of them
+  ("ruled by Brad: AC 5's…"). Every BMad workflow reads and rewrites this file textually, which is
+  why nothing has noticed. Consequence if that ever changes — a status dashboard, a script, a future
+  workflow using a real parser — is a hard failure on the whole sprint file, not a degraded read.
+  Fix is the same fix (date + one clause), or quote/block-scalar the value; either way it is one
+  edit, and it should land before something starts parsing it.
 
 - **AC 17's browser-render half of c2-2 is Brad's, deferred to the C2 epic manual-testing
   checklist (ruled at review, 2026-07-26).** Every machine-checkable probe passed from a Node-less
