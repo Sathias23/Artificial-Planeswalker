@@ -33,6 +33,7 @@ from src.companion.app import deps
 from src.companion.app.deps import Database, DbSession, database, database_file
 from src.companion.app.errors import CompanionError
 from src.companion.app.main import build_app
+from tests.unit.companion.conftest import keep_spa_mount_last
 
 _DEPS_MODULE = "src.companion.app.deps"
 _ERRORS_MODULE = "src.companion.app.errors"
@@ -123,7 +124,10 @@ def _data_app() -> FastAPI:
         )
         raise AssertionError("unreachable: the statement above always raises")
 
-    return app
+    # A decorator can only append, and build_app() ends with the SPA mount at "/" (c2-2), which
+    # matches every path. Without this both routes above are shadowed and answer 200 with
+    # index.html instead of running.
+    return keep_spa_mount_last(app)
 
 
 def _corrupt(path: Path) -> Path:

@@ -1,16 +1,42 @@
 /// <reference types="vitest/config" />
+import { fileURLToPath } from 'node:url'
+
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 import { createDevProxy } from './config/devProxy.ts'
 
+// AD-13: the build output is a COMMITTED artifact inside the Python package, so a fresh
+// install serves the UI with no Node toolchain anywhere. This is the one place the path is
+// computed; `tests/buildOutput.test.ts` pins the resolved value, because `emptyOutDir` below
+// makes a typo here a recursive delete of a real source directory.
+//
+// `fileURLToPath`, never `new URL(...).pathname` — the latter yields "/C:/..." on Windows,
+// which Vite then resolves against the cwd into `C:\C:\...` (patched out of
+// devProxyRoundTrip.test.ts in c2-1's round-1 review for exactly this reason).
+const outDir = fileURLToPath(new URL('../src/companion/app/static', import.meta.url))
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  build: {
+    outDir,
+    // Load-bearing, not tidiness. Vite only empties an outDir that is INSIDE the project
+    // root; outside it, it skips the wipe and merely warns ("outDir ... is not inside project
+    // root and will not be emptied. Use --emptyOutDir to override."). Without this flag every
+    // rebuild ADDS content-hashed assets and never removes the old ones, so the drift check
+    // would stay green while `static/` grew a graveyard of dead bundles that all ship.
+    //
+    // The flip side, and the reason nothing hand-written may live in that directory: Vite's
+    // emptyDir() skip list is exactly [".git"]. A .gitattributes, a README or an __init__.py
+    // placed in `static/` is eaten by the next build. The byte-determinism attribute therefore
+    // lives in the ROOT .gitattributes, and the "this is generated" notice lives in
+    // `ui/index.html` (the source template), which Vite copies through.
+    emptyOutDir: true,
+  },
   server: {
     // Dev-only. The built SPA is served by FastAPI from the same origin, so nothing
-    // proxies in production. c2-2 owns redirecting `outDir` into
-    // src/companion/app/static/ and serving it; this story keeps the default `ui/dist`.
+    // proxies in production.
     proxy: createDevProxy(process.env),
   },
   test: {

@@ -33,6 +33,7 @@ from src.companion.app.errors import (
 )
 from src.companion.app.routes import health
 from src.companion.app.security import install_security
+from src.companion.app.spa import install_spa
 
 logger = logging.getLogger(__name__)
 
@@ -265,4 +266,11 @@ def build_app() -> FastAPI:
     # a gap c5-3 owns); c5-2 and c5-5 add their pieces inside install_security, not here.
     install_security(app)
     install_error_handling(app)
+    # MUST STAY LAST. install_spa mounts the SPA bundle at "/", and Starlette matches routes in
+    # list order, so a mount at "/" matches every path and shadows everything registered after it
+    # — silently: GET /api/decks would answer 200 with index.html instead of running the endpoint.
+    # c3-1 (and c5-2, c5-5) add their routers ABOVE this line. The mount also reads the route table
+    # to decide which prefixes never fall back to the index, so it needs that table complete.
+    # test_spa.py::TestMountOrdering fails with these instructions if the line ever moves.
+    install_spa(app)
     return app
