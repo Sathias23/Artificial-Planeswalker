@@ -191,6 +191,19 @@ def build(out_dir: Path) -> int:
     if not (server_dir / "src" / "viewer" / "__init__.py").exists():
         logger.error("src/viewer/ missing from copied server — aborting")
         return 1
+    # The companion's SPA bundle rides along inside src/ automatically (AD-13) — and "automatic"
+    # is exactly how a UI-less plugin ships unnoticed: the copy would succeed, the plugin would
+    # install, and opening the companion would fail at startup on a missing bundle. Same shape as
+    # the src/viewer check above, which exists because that omission broke the first .mcpb build.
+    # Plugin distribution parity is c8-5's acceptance; this is the guard it relies on.
+    spa_index = server_dir / "src" / "companion" / "app" / "static" / "index.html"
+    if not spa_index.exists():
+        logger.error(
+            "companion SPA bundle missing from copied server (%s) — aborting. "
+            "Build it with: cd ui && npm run build",
+            spa_index,
+        )
+        return 1
     for name in SERVER_FILES:
         src_file = REPO_ROOT / name
         if not src_file.exists():

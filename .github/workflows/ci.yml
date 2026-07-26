@@ -135,3 +135,28 @@ jobs:
       # (Review round 2, decision D1: a fifth step beyond AC 15's four, by ruling.)
       - name: Build
         run: npm run build
+
+      # The build writes into src/companion/app/static/, which is COMMITTED (AD-13) so a fresh
+      # install serves the UI with no Node toolchain. Rebuilt just above; if the result differs
+      # from what is committed, someone changed ui/ without rebuilding.
+      #
+      # `git status --porcelain`, NOT the `git diff --exit-code` the epic's AC text names. A
+      # deliberate deviation, flagged rather than silently taken (the c1-9 / c2-1 precedent):
+      # Vite emits content-hashed filenames, so a source change produces one DELETION (which
+      # git diff sees) plus one UNTRACKED ADDITION (which it does not). `git diff --exit-code`
+      # would therefore pass on exactly the staleness this step exists to catch. The same AC
+      # sentence says to mirror the plugin/ drift check, and that check's shape — the one
+      # copied here — is `git status --porcelain`.
+      #
+      # working-directory: . overrides this job's `defaults.run.working-directory: ui`. Without
+      # it, a `src/...` pathspec evaluated from ui/ matches nothing and the check passes
+      # vacuously.
+      - name: SPA bundle in sync with ui/
+        working-directory: .
+        run: |
+          if [ -n "$(git status --porcelain -- src/companion/app/static/)" ]; then
+            echo "::error::src/companion/app/static/ is stale — run 'cd ui && npm run build' and commit the bundle."
+            git status --porcelain -- src/companion/app/static/
+            git --no-pager diff -- src/companion/app/static/
+            exit 1
+          fi
