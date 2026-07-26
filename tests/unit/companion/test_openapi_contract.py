@@ -20,13 +20,41 @@ would wave through and which would make this test red on Windows and green on ub
 commit.
 """
 
+import inspect
 import json
 from typing import Any
 
 from scripts.dump_openapi import OUTPUT_PATH, render_schema
-from src.companion.app.main import build_app
+from src.companion import contracts
+from src.companion.app.main import build_app, without_python_docstring_sections
+from src.companion.app.routes import health
 
 REGENERATE = "uv run python -m scripts.dump_openapi"
+
+#: Markers that must never cross the wire: two Google-style section headers and a doctest prompt.
+PYTHON_INTERNALS = ("Args:", "Attributes:", ">>> ")
+
+
+def _descriptions(node: Any) -> list[str]:
+    """Collect every ``description`` string in a decoded schema, at any depth.
+
+    Args:
+        node: Any part of the schema document.
+
+    Returns:
+        Every description found, in traversal order.
+    """
+    found: list[str] = []
+    if isinstance(node, dict):
+        description = node.get("description")
+        if isinstance(description, str):
+            found.append(description)
+        for value in node.values():
+            found.extend(_descriptions(value))
+    elif isinstance(node, list):
+        for item in node:
+            found.extend(_descriptions(item))
+    return found
 
 
 def test_committed_schema_matches_the_live_app() -> None:
@@ -72,6 +100,94 @@ def test_render_schema_is_the_writers_own_rendering() -> None:
     assert rendered.endswith("}\n")
     assert not rendered.endswith("}\n\n")
     assert "\r" not in rendered
+
+
+class TestDescriptionsAreSummaries:
+    """AC 17 (Q1, Brad 2026-07-27): a description stops at the first Google-style section header."""
+
+    def test_no_description_carries_a_python_internal_section(self) -> None:
+        """Nothing the wire carries names a Python parameter, attribute or doctest."""
+        offenders = [
+            (marker, description)
+            for description in _descriptions(build_app().openapi())
+            for marker in PYTHON_INTERNALS
+            if marker in description
+        ]
+
+        assert not offenders, (
+            "OpenAPI descriptions must be summaries, not whole docstrings: "
+            f"{[marker for marker, _ in offenders]} reached the schema. "
+            "without_python_docstring_sections() on _CompanionFastAPI.openapi() is what "
+            "truncates them; if it was removed or reordered, the generated TypeScript now "
+            "carries Python's Args:/Attributes:/doctests as JSDoc."
+        )
+
+    def test_the_source_docstrings_do_contain_them(self) -> None:
+        """The non-vacuity pair: the assertion above has something to strip.
+
+        Without this, deleting the normaliser *and* the prose from every docstring would leave the
+        test green while the rule it enforces had quietly stopped existing.
+        """
+        sources = [
+            inspect.getdoc(contracts.HealthResponse) or "",
+            inspect.getdoc(contracts.ErrorResponse) or "",
+            inspect.getdoc(health.read_health) or "",
+        ]
+        combined = "\n".join(sources)
+
+        for marker in PYTHON_INTERNALS:
+            assert marker in combined, (
+                f"no source docstring contains {marker!r}, so the truncation test above proves "
+                "nothing — add the marker back, or retire both tests together"
+            )
+
+    def test_the_summary_itself_survives(self) -> None:
+        """Truncation keeps the useful half — the prose c2-9 needs on hover.
+
+        The point of Q1 was to cut Python's sections, not the documentation. If this goes red
+        alongside a passing truncation test, the normaliser has become "strip descriptions
+        entirely", which is the alternative Q1 explicitly declined.
+        """
+        schemas = build_app().openapi()["components"]["schemas"]
+
+        health_description = schemas["HealthResponse"]["description"]
+        assert health_description.startswith("The body of ``GET /health``")
+        assert "FR-14" in health_description
+
+        error_description = schemas["ErrorResponse"]["description"]
+        # The per-token enumeration is the half c2-9's state panels are written against.
+        assert "``database_not_initialized``" in error_description
+        assert "``internal_error``" in error_description
+
+    def test_a_description_that_is_only_a_section_loses_the_key(self) -> None:
+        """An all-sections description drops out rather than becoming an empty string.
+
+        A bare ``"description": ""`` would emit an empty ``@description`` block in the generated
+        TypeScript — noise in a drift-checked file.
+        """
+        schema: dict[str, Any] = {
+            "components": {
+                "schemas": {
+                    "OnlySections": {"description": "Attributes:\n    x: an attribute."},
+                    "HasSummary": {"description": "A summary.\n\nArgs:\n    y: an argument."},
+                    "NotAString": {"description": {"nested": "left alone"}},
+                }
+            }
+        }
+
+        result = without_python_docstring_sections(schema)["components"]["schemas"]
+
+        assert "description" not in result["OnlySections"]
+        assert result["HasSummary"]["description"] == "A summary."
+        assert result["NotAString"]["description"] == {"nested": "left alone"}
+
+    def test_note_sections_are_kept(self) -> None:
+        """``Note:`` is prose worth keeping, and is deliberately not a terminator."""
+        schema: dict[str, Any] = {"description": "A summary.\n\nNote:\n    Worth reading."}
+
+        assert without_python_docstring_sections(schema)["description"] == (
+            "A summary.\n\nNote:\n    Worth reading."
+        )
 
 
 def test_schema_is_stable_across_builds() -> None:

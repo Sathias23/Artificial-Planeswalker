@@ -21,13 +21,6 @@ export interface paths {
          *     answer does not answer at all — so under a running lifespan the response is always ``200`` with
          *     ``status="ok"``. The lifespan is a real precondition: served without one (no supported path
          *     does), the missing ``instance_id`` is an unhandled error, not a modelled state.
-         *
-         *     Args:
-         *         request: The incoming request, used only to reach ``app.state.instance_id``, which the
-         *             lifespan minted at startup.
-         *
-         *     Returns:
-         *         The health resource itself, unwrapped: AD-16 keeps the MCP result envelope out of REST.
          */
         get: operations["read_health_health_get"];
         put?: never;
@@ -74,13 +67,6 @@ export interface components {
          *     * ``internal_error`` — the companion itself hit an unhandled bug (500). Deterministic, so the
          *       SPA must **not** quietly retry it the way ``database_unavailable`` retries; its state panel
          *       is written in Epic 2 (c2-9). The log carries the traceback; the wire carries the token.
-         *
-         *     Attributes:
-         *         reason: The token, drawn from :data:`ErrorReason`.
-         *
-         *     Example:
-         *         >>> ErrorResponse(reason="deck_not_found").model_dump()
-         *         {'reason': 'deck_not_found'}
          */
         ErrorResponse: {
             /**
@@ -97,17 +83,6 @@ export interface components {
          *     the discovered port is this companion process and not some unrelated local server that happens
          *     to hold the port (AD-4). ``status`` is deliberately **not** the project's MCP result envelope
          *     (AD-16 bans that from REST) — the body *is* the health resource and ``status`` is a field of it.
-         *
-         *     Attributes:
-         *         status: A closed token, extendable only by adding a member to the ``Literal``. Always
-         *             ``"ok"`` today; ``/health`` has no failure path to model, since a companion that cannot
-         *             answer does not answer at all.
-         *         instance_id: The per-process identity minted at startup, echoed so a caller can match it
-         *             against the value the discovery file advertised.
-         *
-         *     Example:
-         *         >>> HealthResponse(status="ok", instance_id="0f6e...").status
-         *         'ok'
          */
         HealthResponse: {
             /**

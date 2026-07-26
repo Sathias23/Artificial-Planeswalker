@@ -215,24 +215,126 @@ def agent_token(app: FastAPI) -> str | None:
     return token
 
 
+_DOCSTRING_SECTIONS = frozenset(
+    {
+        "Args:",
+        "Arguments:",
+        "Attributes:",
+        "Example:",
+        "Examples:",
+        "Raises:",
+        "Returns:",
+        "Yields:",
+    }
+)
+"""The Google-style section headers that end a description (c2-3, Q1).
+
+``Note:`` is deliberately **absent**: it is ordinary prose a reader of the generated types or
+``/docs`` genuinely wants, where the eight above are Python-internal — parameter names, exception
+classes and doctests mean nothing to a TypeScript consumer.
+"""
+
+
+def _summary_before_sections(description: str) -> str:
+    """Return *description* up to its first Google-style section header.
+
+    Args:
+        description: A docstring-derived description, already dedented by FastAPI.
+
+    Returns:
+        The leading prose, trailing whitespace stripped. Empty if the description opens with a
+        section header.
+    """
+    lines = description.split("\n")
+    for index, line in enumerate(lines):
+        # .strip() rather than an exact match: FastAPI dedents by the common prefix, so a header
+        # sits at column 0 today — but a docstring whose first line is indented differently would
+        # leave one indented, and it should still terminate the summary.
+        if line.strip() in _DOCSTRING_SECTIONS:
+            lines = lines[:index]
+            break
+    return "\n".join(lines).rstrip()
+
+
+def without_python_docstring_sections(schema: dict[str, Any]) -> dict[str, Any]:
+    """Truncate every ``description`` in *schema* at its first Google-style section header.
+
+    FastAPI uses a route's docstring as the operation ``description`` and a Pydantic class's
+    docstring as the schema ``description``, and ``openapi-typescript`` emits both verbatim as
+    JSDoc. Measured at the c2-3 baseline, for one endpoint and two models: **186 generated lines,
+    roughly 130 of them prose**, including ``Args:\\n    request: The incoming request, used only
+    to reach app.state.instance_id`` and ``>>> ErrorResponse(reason="deck_not_found")
+    .model_dump()``. Those sections are Python's business — they name parameters a TypeScript
+    caller cannot pass and exceptions it cannot catch — and every docstring edit anywhere on a wire
+    model would redden both drift gates until the artifacts were regenerated.
+
+    So the boundary is here: **descriptions that cross the wire are summaries, not docstrings.**
+    Write route and model docstrings normally; the leading paragraphs are what the frontend and
+    ``/docs`` see. The useful half survives — ``ErrorResponse``'s enumeration of what each token
+    means on the glass is exactly what c2-9 needs on hover.
+
+    Applies to every ``description`` at any depth, so a ``Field(description=...)`` on a c3-1 model
+    is covered with no further work. A description consisting *only* of a section header loses the
+    key entirely rather than becoming an empty string, which would emit a bare ``@description`` in
+    the generated TypeScript.
+
+    Args:
+        schema: The schema produced by ``FastAPI.openapi()``; modified in place.
+
+    Returns:
+        The same schema, with every description reduced to its summary.
+    """
+    _truncate_descriptions(schema)
+    return schema
+
+
+def _truncate_descriptions(node: Any) -> None:
+    """Walk *node* and truncate every ``description`` string it contains.
+
+    Args:
+        node: Any part of a decoded JSON document; non-container values are ignored.
+    """
+    if isinstance(node, dict):
+        description = node.get("description")
+        if isinstance(description, str):
+            summary = _summary_before_sections(description)
+            if summary:
+                node["description"] = summary
+            else:
+                del node["description"]
+        for value in list(node.values()):
+            _truncate_descriptions(value)
+    elif isinstance(node, list):
+        for item in node:
+            _truncate_descriptions(item)
+
+
 class _CompanionFastAPI(FastAPI):
-    """A ``FastAPI`` whose schema never carries the auto-generated 422 validation response.
+    """A ``FastAPI`` whose schema carries neither the auto-422 nor Python's docstring internals.
 
     Validation failures answer ``400 invalid_request`` (AC 5), so FastAPI's per-route auto-422
     would document a shape the API never emits — straight into c2-3's generated TypeScript. The
     explicit 422 declaration that used to displace it went away with the 413 ruling, so the
     displacement now lives here, on the schema-build path itself, covering every future validated
     route (c3-1 onward) with no per-route ceremony.
+
+    The second normaliser is c2-3's (Q1, Brad 2026-07-27): a description stops at the first
+    Google-style section header, so ``Args:``, ``Attributes:`` and doctests stay on the Python side
+    of the wire. Both run on this one path, so there is still exactly one schema — ``/docs``,
+    ``/openapi.json`` and the committed ``ui/src/api/openapi.json`` cannot disagree.
     """
 
     def openapi(self) -> dict[str, Any]:
-        """Build (and cache) the schema, stripped of the unreachable auto-422.
+        """Build (and cache) the schema, normalised for the generated TypeScript.
 
         Returns:
-            The OpenAPI schema with FastAPI's auto-generated validation response removed.
+            The OpenAPI schema with FastAPI's auto-generated validation response removed and every
+            description reduced to its summary.
         """
         if self.openapi_schema is None:
-            self.openapi_schema = without_auto_validation_schema(super().openapi())
+            self.openapi_schema = without_python_docstring_sections(
+                without_auto_validation_schema(super().openapi())
+            )
         return self.openapi_schema
 
 
