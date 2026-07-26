@@ -8,7 +8,7 @@ story_branch: feat/companion-c2-2-serve-spa
 
 # Story C2.2: The backend serves the built SPA as a committed artifact
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -344,6 +344,84 @@ is still an AC (standing agreement: a story must leave the system working end to
         see the note under AC 17; it belongs on Brad's manual-testing checklist.
   - [x] `/health` answers JSON and `/docs` + `/openapi.json` still answer, from the **same**
         running instance behind the catch-all mount (R2's keep-decision holds)
+
+### Review Findings
+
+Code review 2026-07-26 (bmad-code-review: Blind Hunter + Edge Case Hunter + Acceptance Auditor,
+triaged). Auditor verdict: all 21 ACs met, no spec-intent contradictions; the dev-record's three
+self-reported bug fixes verified real and pinned.
+
+- [x] [Review][Decision] **AC 5 deviation ACCEPTED by Brad (review, 2026-07-26)** — the second
+      scoped `.gitattributes` line (`plugin/server/src/companion/app/static/** -text`) stands as
+      shipped: flagged not silently taken, measured (26-line-ending divergence on a simulated
+      fresh Windows clone), still path-scoped so AC 5's renormalisation concern is untouched.
+- [x] [Review][Decision] **AC 17's browser-render half — DEFERRED to the epic manual-testing
+      checklist (Brad's ruling, review 2026-07-26)** — only a human can close SC-4's render half;
+      the dev already flagged it for the C2 retro checklist. Every machine-checkable probe is
+      green from a Node-less worktree.
+- [x] [Review][Patch] (medium) A WebSocket handshake to any non-reserved path reaches
+      `StaticFiles`' `assert scope["type"] == "http"` and dies as a server error — `_SpaMount`
+      inherits Starlette `Mount`'s http+websocket matching; decline non-http scopes
+      [src/companion/app/spa.py:197]
+- [x] [Review][Patch] (medium) The CI SPA drift check has no non-vacuity guard on the ignore axis —
+      if the tree ever becomes gitignored (root `.gitignore` has unanchored `dist/`, `build/`,
+      `lib/`), `git status --porcelain` reports nothing and the step passes vacuously while
+      hatchling drops the bundle from the wheel; precede with a `git ls-files` non-empty check
+      [.github/workflows/ci.yml:153]
+- [x] [Review][Patch] (low) Module-level `mimetypes.add_type` registrations are discarded by any
+      later `mimetypes.init()` call, reopening landmine #4; re-run the (idempotent) registration
+      inside `install_spa()` and make the "hostile database" test actually simulate hostility
+      [src/companion/app/spa.py:88, tests/unit/companion/test_spa.py:162]
+- [x] [Review][Patch] (low) `keep_spa_mount_last` restores mount *order* but not the *reservation*
+      — the frozen prefix set predates the throwaway test routes, so test apps diverge from the
+      production semantics the docstring claims; re-install the mount instead of moving it
+      [tests/unit/companion/conftest.py:49]
+- [x] [Review][Patch] (low) An extension-less miss inside the asset namespace
+      (`GET /assets/no-dot`) falls back to 200 + index — the one directory guaranteed to be asset
+      territory isn't excluded from fallback; the story's own rationale says asset misses must 404
+      loudly [src/companion/app/spa.py:300]
+- [x] [Review][Patch] (low) The `/docs` regression test is vacuous by this project's own standard —
+      asserts only `status_code == 200`, which the SPA fallback would also produce; assert a
+      Swagger-specific marker in the body [tests/unit/companion/test_spa.py:244]
+- [x] [Review][Patch] (low) The reserved-prefix pin guards under-reservation but not
+      over-reservation — assert the exact reserved set so a future FastAPI `.routes` delegate on
+      `_IncludedRouter` (double-yield without prefix) also goes red
+      [tests/unit/companion/test_spa.py:350]
+- [x] [Review][Patch] (low) `test_no_mutating_method_reaches_the_index` never asserts a status
+      code — a 200 with a typed-error body would pass; add `>= 400`
+      [tests/unit/companion/test_spa.py:204]
+- [x] [Review][Patch] (low) The plugin sentinel checks `index.html` only — a copy that lost
+      `assets/` (the actual application) ships a blank-page plugin; also require a non-empty
+      `assets/` [scripts/build_plugin.py:198]
+- [x] [Review][Patch] (low) The mirror parity test compares `index.html` bytes but only asset
+      *names* — CRLF mangling doesn't change a filename; compare asset bytes too
+      [tests/unit/companion/test_spa.py:425]
+- [x] [Review][Patch] (low) `_asset()` picks `sorted(...)[0]` of all matches — arbitrary once a
+      later story introduces code-split chunks; prefer `index-*`
+      [tests/unit/companion/test_spa.py:32]
+- [x] [Review][Patch] (low) `_TYPED_ERROR_MEDIA_TYPE` is asserted on a success response in
+      `test_a_registered_route_still_wins_over_the_mount` — the constant's name lies there; use a
+      plain `application/json` [tests/unit/companion/test_spa.py:22]
+- [x] [Review][Patch] (low) `ui/README.md` still opens the quality-gate section with "All four run
+      in CI" — c2-1 round 2 made it five (`Build`), and this story's drift check now rides on that
+      fifth step; pre-existing but the file is in this diff [ui/README.md:79]
+- [x] [Review][Patch] (low) The fallback rule is a real contract on which URLs the SPA may own
+      (extension-less final segment, unreserved first segment, GET/HEAD) and nothing tells the
+      frontend authors — document it in `ui/README.md` where client-route authors will look
+      [ui/README.md:55]
+- [x] [Review][Defer] `sprint-status.yaml`'s `last_updated` is a single ever-growing
+      thousands-of-characters line — unreadable and undiffable; pattern predates this story
+      [_bmad-output/implementation-artifacts/sprint-status.yaml:2] — deferred, pre-existing
+
+**Review closure (2026-07-26).** Both decisions ruled by Brad (AC 5 accepted; AC 17 render half
+deferred to the epic manual-testing checklist). All 14 patches applied in one pass; the plugin
+mirror regenerated and byte-identical. Gates after patches: Python **1,742 / 1 skipped / 45
+deselected** (+3: the WS-decline pair and the extension-less asset miss), `ruff check` /
+`ruff format --check` / `mypy src/` (both platforms) green; frontend prettier green, **59/59**
+vitest. Dismissed as noise: case-sensitive prefix matching (HTTP paths are case-sensitive, as is
+the router itself), the dotted-final-segment behaviour (Q1's rule as ruled — the doc gap it
+implied became the `ui/README.md` contract patch), and the drift-check log-legibility nit (the
+porcelain `??` line already names the file).
 
 ## Dev Notes
 
@@ -975,5 +1053,6 @@ than re-run into silence.
 
 | Date | Change | By |
 |---|---|---|
+| 2026-07-26 | Code review → done. Three layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor); auditor verdict all 21 ACs met. 2 decisions ruled (AC 5 second `.gitattributes` line accepted; AC 17 render half → epic manual checklist), 14 patches applied (headliners: `_SpaMount` declines non-http scopes so a WebSocket handshake gets the router's rejection instead of `StaticFiles`' `assert`; CI drift check gained a `git ls-files` non-vacuity guard against the tree ever becoming gitignored; `mimetypes` registration re-run in `install_spa` because `mimetypes.init()` discards `add_type`; `keep_spa_mount_last` re-installs rather than moves so test apps re-derive reservations; extension-less `/assets/*` misses are typed 404s; reserved-prefix pin is now exact-set equality; `/docs` regression test asserts a Swagger marker; mirror parity compares asset bytes), 1 deferred (sprint-status `last_updated` line growth, pre-existing), 3 dismissed. Suites 1,739 → 1,742 Python, 59 frontend; all nine gates green | Fable (code-review) |
 | 2026-07-26 | Implemented → review. All 21 ACs met. Two deviations flagged: AC 12's `git status --porcelain` (ruled, and now *proven* — the separating case is a new emitted asset, where `git diff --exit-code` returns 0), and AC 5 shipping **two** scoped `.gitattributes` lines rather than one, because the plugin mirror diverged by 26 line endings on a simulated fresh Windows clone (1093 vs 1119 bytes) — a Windows-only, fresh-clone-only failure CI could never catch. Two real bugs the story's analysis could not foresee: FastAPI 0.140's `_IncludedRouter` exposes neither `.path` nor `.routes`, so the reserved-prefix derivation was silently empty for every `include_router` prefix (c3-1's `/api`, c5-5's `/agent`); and a `Mount("/")` reports `Match.FULL` for every path, beating the `Match.PARTIAL` that produces `405` with the RFC-mandated `Allow` header — `POST /health` was answering 405 with no `Allow`, and a future GET of a POST-only route would have answered 404 instead of `405 Allow: POST`. Fixed with `_SpaMount` declining reserved prefixes. AC 10's guard also caught 32 existing tests appending routes below the mount. Suites 1,684 → 1,739 (Python) and 55 → 59 (frontend); all nine gates green | Amelia (dev-story) |
 | 2026-07-26 | Story created — five measured landmines (Vite's outside-root `emptyOutDir` skip, `emptyDir`'s `.git`-only skip list, `git diff --exit-code` blindness to content-hash renames, Starlette's `text/plain` fallback with `.woff2` unresolved, mount-at-`/` route shadowing); AC 9's error-contract preservation and AC 10's mount-order guard added beyond the epic's five blocks; four open questions homed with recommendations | Amelia (create-story) |

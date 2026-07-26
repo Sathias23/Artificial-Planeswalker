@@ -1093,3 +1093,20 @@ the gate-output rule rather than left as "we meant to".
   `data-layer-orphan-handling`** (already keyed in sprint-status as the data-layer catch-all) or any
   story that next opens `DeckRepository.list_decks`. (Severity: Low — a false red, never a false
   green; but it will keep costing someone a re-run.)
+
+## Deferred from: code review of c2-2-the-backend-serves-the-built-spa-as-a-committed-artifact (2026-07-26)
+
+- **`sprint-status.yaml`'s `last_updated` comment is a single ever-growing line, thousands of
+  characters long.** Each story appends its entire narrative onto one line chained behind
+  "Previously:", making it unreadable, undiffable, and unbounded. The pattern predates c2-2 (this
+  story merely doubled down on it). Natural fix: keep `last_updated` to a date + one clause and let
+  the story records carry the narrative — a process/tooling nit for the epic retro, not any story's
+  code. (Severity: Low — cosmetic, but it degrades every future diff of the file.)
+
+- **AC 17's browser-render half of c2-2 is Brad's, deferred to the C2 epic manual-testing
+  checklist (ruled at review, 2026-07-26).** Every machine-checkable probe passed from a Node-less
+  worktree (status codes, content types, byte-identical served bundle, cache headers, 405+Allow);
+  what remains is opening `uv run artificial-planeswalker companion`'s printed URL in a browser and
+  confirming the placeholder app paints. Reason for deferral: only a human can close SC-4's render
+  half, and the epic retro checklist is its established home. (Severity: Low — every proxy signal
+  is green; this is the eyes-on-pixels confirmation.)
