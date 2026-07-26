@@ -1,9 +1,11 @@
 name: CI
 
 # Quality gates for the public repo: mirrors the local pre-commit / CONTRIBUTING
-# checks (ruff lint, ruff format, mypy --strict, pytest) on a Python 3.12/3.13 matrix.
-# Runs on pushes to master and on every pull request. No DB, model, network, or
-# secrets are required: pytest is scoped to "not integration".
+# checks (ruff lint, ruff format, mypy --strict, pytest) on a Python 3.12/3.13 matrix,
+# plus the frontend gate for ui/ (eslint + stylelint, prettier, tsc -b, vitest, vite build).
+# Runs on pushes to master and on every pull request. No DB, model or secrets are
+# required and pytest is scoped to "not integration"; the `frontend` job is the one
+# exception to "no network" — it downloads ui/ dependencies from the npm registry.
 
 on:
   push:
@@ -50,6 +52,21 @@ jobs:
       - name: Mypy (strict)
         run: uv run mypy src/
 
+      # Both invocations are mandatory and neither is redundant. mypy type-checks only the
+      # branch matching the target platform, and src/companion/app/singleton.py branches on
+      # sys.platform with a genuinely different implementation per half (msvcrt vs fcntl).
+      # This runner is ubuntu, so the bare run above IS the linux run; without the line
+      # below the Windows half is checked by nobody and a Windows-only type error reaches
+      # master green. Closes C1 retro action item 3.
+      #
+      # The epic text for story c2-1 asked for `--platform linux` here. That was written
+      # from a Windows machine, where the bare run is the win32 run; on ubuntu it would be
+      # a pure no-op and the retro's stated success criterion — "a deliberately
+      # Windows-broken singleton.py fails CI" — would still not hold. The success criterion
+      # wins. See the c2-1 Completion Notes.
+      - name: Mypy (strict, opposite platform)
+        run: uv run mypy src/ --platform win32
+
       - name: Pytest (excluding integration)
         run: uv run pytest -m "not integration"
 
@@ -65,3 +82,56 @@ jobs:
             git --no-pager diff -- plugin/
             exit 1
           fi
+
+  # Deliberately NOT folded into the `quality` matrix job: that job is a Python 3.12/3.13
+  # matrix and would install Node twice for no reason. One job, no Node matrix (ruling B5) —
+  # `node-version: 20` is the declared floor, i.e. the version nobody develops on and
+  # therefore the one worth gating. Current Node is covered incidentally by local runs.
+  frontend:
+    name: lint · types · tests (ui, node 20)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ui
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          # The floor declared by ui/package.json is >=20.19.0; setup-node resolves "20" to
+          # the latest 20.x, which satisfies it. Raising this is an AC 2 decision, not a fix.
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      # `npm ci`, never `npm install`: it fails instead of silently updating when
+      # package.json and the committed lockfile disagree.
+      - name: Install dependencies (locked)
+        run: npm ci
+
+      # The four gates NFR-07 names. Each is a separate step so a failure names itself.
+      - name: ESLint + stylelint
+        run: npm run lint
+
+      - name: Prettier
+        run: npm run format:check
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: Vitest
+        run: npm test
+
+      # AC 1's committed-lockfile contract, gated where it can actually die. `npm ci` succeeds
+      # even against a lock regenerated without the linux bindings (optional deps are simply
+      # absent), and none of the four gates above load the production build path — so without
+      # this step, "a bad lock dies in CI with `Cannot find module @rolldown/binding-…`" was
+      # aspirational, not enforced. Also catches build-only breakage (lightningcss
+      # minification, bundle resolution) before c2-2 starts committing the build output.
+      # (Review round 2, decision D1: a fifth step beyond AC 15's four, by ruling.)
+      - name: Build
+        run: npm run build

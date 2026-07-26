@@ -1,0 +1,16 @@
+# Scoped to ui/ deliberately (story c2-1, AC 10).
+#
+# The repository has core.autocrlf=true and no root .gitattributes, so without this file
+# ui/ checks out CRLF on Windows and LF on ubuntu CI. Prettier's `endOfLine: "lf"` treats
+# CRLF as a formatting violation, which makes `prettier --check` red for the project lead
+# and green in CI from the same commit — worse than no gate at all.
+#
+# A root-level .gitattributes would renormalise every tracked file in the repository, which
+# is not this story's change. Setting prettier's `endOfLine: "auto"` was the alternative and
+# was rejected: it lets CRLF and LF both pass, and c2-2/c2-3's `git diff --exit-code` drift
+# checks need one deterministic byte sequence.
+* text=auto eol=lf
+
+# Binary assets must not be normalised.
+*.png binary
+*.woff2 binary

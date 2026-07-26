@@ -1,0 +1,23 @@
+/* Baseline document styles only.
+
+   c2-4 introduces the Voltglass design tokens (and the stylelint rules banning raw hex,
+   rgba(), box-shadow and border-radius that go with them). c2-5 replaces the system font
+   stack with self-hosted Space Grotesk. Nothing here is a design decision — it is the
+   minimum needed for the placeholder shell to be legible, and the template's demo
+   stylesheet it replaces is gone with the demo. */
+
+:root {
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    roboto,
+    sans-serif;
+  line-height: 1.5;
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}

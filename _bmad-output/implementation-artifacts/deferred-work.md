@@ -974,31 +974,54 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
 
 ## Deferred from: code review of c1-9 (2026-07-26)
 
-- **The "both mypy runs are mandatory" comment is enforced by no gate** — `singleton.py`'s platform
-  branch declares `uv run mypy src/` and `uv run mypy src/ --platform linux` both mandatory, but no
-  pre-commit hook or CI step passes `--platform linux`: the POSIX (`fcntl`) half is strict-checked
-  only because CI happens to run on ubuntu, and the Windows (`msvcrt`) half only by Brad's local
-  runs. A POSIX contributor could merge a type-broken Windows branch through a green CI, and if the
-  CI matrix ever changes the "mandate" evaporates silently. Fix is one line in either
-  `.pre-commit-config.yaml` or `ci.yml` (an extra mypy invocation with the opposite `--platform`),
-  both of which AC 19 froze for story c1-9 — hence deferred rather than patched.
-  (Source: c1-9 code review, Blind Hunter; Severity: Low — both halves are covered today, the gap
-  is that the coverage is accidental rather than pinned.)
+- ~~**The "both mypy runs are mandatory" comment is enforced by no gate**~~ — **CLOSED by c2-1
+  (2026-07-26).** `singleton.py`'s platform branch declares `uv run mypy src/` and
+  `uv run mypy src/ --platform linux` both mandatory, but no pre-commit hook or CI step passed
+  either `--platform`: the POSIX (`fcntl`) half was strict-checked only because CI happens to run
+  on ubuntu, and the Windows (`msvcrt`) half only by Brad's local runs. A POSIX contributor could
+  merge a type-broken Windows branch through a green CI. Fixed in `ci.yml`'s `quality` job, which
+  was unfrozen for c2-1 (c1-9's AC 19 was what froze it).
+
+  **What shipped is `--platform win32`, not the `--platform linux` the epic text asked for**, and
+  the difference is the whole point. CI runs on `ubuntu-latest`, where the bare `mypy src/` **is**
+  the linux run — adding `--platform linux` there would have been a pure no-op that satisfied the
+  epic's letter while leaving the gap exactly as described above. The epic's wording was written
+  from Brad's Windows machine, where the bare run is the win32 run; the retrospective's success
+  criterion ("a deliberately Windows-broken `singleton.py` branch fails CI") is the one that
+  identifies the real gap, and it is the one that was satisfied.
+
+  Proven rather than assumed, per AC 17: with `msvcrt.locking(fd, msvcrt.LK_NBLCK)` (one argument
+  short) temporarily substituted in the `sys.platform == "win32"` branch,
+  `uv run mypy src/ --platform win32` reported
+  `singleton.py:130: error: Too few arguments for "locking"  [call-arg]` and exited 1, while
+  `uv run mypy src/ --platform linux` still reported `Success: no issues found in 83 source files`.
+  The break was reverted; `git status --porcelain -- src/` is empty in the shipped commit.
+  (Source: c1-9 code review, Blind Hunter; closed by story c2-1, C1 retro action item 3.)
 
 ## Deferred from: Epic C1 retrospective manual testing (2026-07-26)
 
 Brad ran blocks A–D and G–H and declared himself satisfied; two blocks were not run. Homed here per
 the gate-output rule rather than left as "we meant to".
 
-- **The renamed `COMPANION_PORT` env var has no live confirmation** — ruling R4 renamed
-  `PLANESWALKER_COMPANION_PORT` → `COMPANION_PORT` during the manual-testing pass, and the checklist
-  block that would have exercised it end to end (`$env:COMPANION_PORT = "9125"` → the companion
-  serving on 9125, and `--port` beating it) was not run afterwards. Coverage is otherwise good: the
-  unit suite reads `server.PORT_ENV_VAR` so it followed the rename automatically (1,684 passed), and
-  the *malformed*-input paths were hand-verified in block A. What is unconfirmed is only that a real
-  shell environment variable under the new name reaches `resolve_preferred_port`. **Consequence for
-  c8-4:** document the variable, but do not describe it as hand-verified. Closing it is a
-  thirty-second check whenever the companion is next started. (Severity: Low.)
+- ~~**The renamed `COMPANION_PORT` env var has no live confirmation**~~ — **CLOSED by c2-1
+  (2026-07-26)**, incidentally, by Task 10's second live check. With `$env:COMPANION_PORT = "9125"`
+  set in a real shell before launch, the companion printed
+  `[planeswalker] companion running at http://127.0.0.1:9125`, published
+  `companion.json` for port 9125, and answered `GET /health` there with
+  `{"status":"ok","instance_id":"9be64dcd-…"}` — while 8765 refused connections. So a real shell
+  environment variable under the new name does reach `resolve_preferred_port`. **c8-4 may now
+  describe `COMPANION_PORT` as hand-verified.**
+
+  *Originally recorded as:* ruling R4 renamed `PLANESWALKER_COMPANION_PORT` → `COMPANION_PORT`
+  during the manual-testing pass, and the checklist block that would have exercised it end to end
+  was not run afterwards. Coverage was otherwise good — the unit suite reads `server.PORT_ENV_VAR`
+  so it followed the rename automatically (1,684 passed), and the *malformed*-input paths were
+  hand-verified in block A — leaving only "does a real shell variable under the new name reach
+  `resolve_preferred_port`" unconfirmed.
+
+  **Still not hand-run:** the other half of that checklist block, `--port` beating the env var.
+  That precedence has unit coverage and was not exercised live here, so c8-4 should describe the
+  *variable* as hand-verified but not the *precedence*. (Severity: Low.)
 
 - **FR-22's fresh-install start has no live confirmation** — the checklist block pointing
   `PLANESWALKER_DATA_DIR` at an empty directory to prove the companion *starts* rather than crashing
@@ -1010,3 +1033,63 @@ the gate-output rule rather than left as "we meant to".
   instead of erroring and comes alive on its own"), which owns that loop in the UI and cannot be
   accepted without a real empty-data-dir run. Recorded so c3-9 inherits it as a known-unverified
   precondition rather than assuming Epic C1 closed it. (Severity: Low.)
+
+## Deferred from: story c2-1 (2026-07-26)
+
+- **`npm audit` reports 8 high-severity advisories in the `ui/` dev toolchain, and no gate looks at
+  it.** All 8 are transitive and dev-only: `brace-expansion`/`minimatch` (a DoS via unbounded
+  expansion) reached through `eslint`, `@eslint/eslintrc`, `@eslint/config-array` and
+  `eslint-plugin-jsx-a11y`, plus `js-yaml` (quadratic CPU on merge-key chains) reached through
+  `@redocly/openapi-core`, a dependency of `openapi-typescript`. Nothing here ships: Node is
+  dev/CI-only (AD-13), `ui/dist` contains none of it, and the Python package never sees it — the
+  realistic exposure is a contributor running `npm run lint` on hostile input.
+
+  **Not fixed here, deliberately.** `npm audit fix --force` resolves it by installing
+  `eslint-plugin-jsx-a11y@6.4.1` — a downgrade across a major boundary, which is the plugin that
+  carries the entire UX-DR47 gate (AC 8). Trading a working accessibility gate for a DoS advisory in
+  a linter is the wrong trade. The non-`--force` fix only reaches the `js-yaml` half. The real
+  resolution is upstream: `eslint-plugin-jsx-a11y` publishing an `^10` peer range would let the
+  `eslint ^9` pin lift and carry a patched `minimatch` with it — the same exit condition already
+  recorded against the pin in `ui/package.json`.
+
+  **Natural home: c8-5** (plugin distribution parity) or c8-4, whichever first has to make a
+  statement about what the release contains. Re-check with `npm audit` then; if jsx-a11y has shipped
+  an `^10` peer by that point this closes itself. Recorded so that the first person to run
+  `npm audit` finds a decision rather than a surprise. (Severity: Low — dev-only, no runtime
+  exposure; the *reporting* gap is the point, not the advisories.)
+
+- **`ui/package.json` declares `engines.node: ">=20.19.0"` but the epic and PRD say "Node >= 20".**
+  The measured floor is higher than the copy: `vite@8.1.5` declares
+  `engines: ^20.19.0 || >=22.12.0` and `stylelint@17` declares `>=20.19.0`, so a literal Node 20.0
+  cannot build `ui/`. `>=20.19.0` is the honest form of the same requirement and is what shipped;
+  CI's `node-version: 20` resolves to the latest 20.x, which satisfies it. **This is a copy fix for
+  c8-4** (release documentation), not a scope change — nothing needs rebuilding, the prose needs to
+  stop saying "20". (Severity: Low.)
+
+- **A third load-bearing version pin exists that no planning document predicts:
+  `@testing-library/jest-dom` at `~6.9.1`.** The story predicted two pins (`typescript`, `eslint`);
+  this one was found at install time. Both `latest` (7.0.0) and 6.10.0 declare
+  `engines.node: ">=22"`, above this project's `>=20.19.0` floor and above CI's `node-version: 20`;
+  6.10.0 is additionally deprecated upstream as an incorrect minor release. 6.9.1 is the last
+  release declaring `>=14`. Unlike the other two pins, npm does **not** fail on this — `engines` is
+  advisory by default, so an unpinned bump would install cleanly and then break only on the Node 20
+  CI job. The reason is recorded in `ui/package.json` beside the dependency. **Relevant to c8-4**
+  (which documents the Node floor) and to whoever eventually proposes raising it: lifting this pin
+  is a Node-floor decision (AC 2 / AC 15), not a dependency bump. (Severity: Low — pinned and
+  documented; recorded because the Spine's stack table now lags reality by two entries, `eslint ^9`
+  being the other.)
+
+- **`tests/integration/data/test_deck_repository.py::test_list_decks_with_strategy_field` is
+  order-flaky under full-suite load.** Observed failing once during c2-1's Task 0 baseline run
+  (`assert 'Control' is None`), then passing 5/5 in isolation and passing on an immediate full-suite
+  re-run at the identical commit — so it is pre-existing at `50dddc3` and unrelated to this story,
+  which adds no Python. Cause: the test creates three decks in immediate succession and asserts
+  `list_decks()` returns them newest-first, but `created_at` can tie at the same microsecond, and the
+  ordering has no secondary tie-breaker — so the two decks created in the same tick can come back in
+  either order. Fix is a deterministic secondary sort key (`id`, or a monotonic sequence) in
+  `list_decks`, or distinct timestamps in the fixture. Not patched here because AC 21 forbids this
+  story touching `tests/` or `src/`. Note this is the *same class* of defect as the flaky-test
+  tie-breaker closed at the Epic 1 retro, in a different query. **Natural home:
+  `data-layer-orphan-handling`** (already keyed in sprint-status as the data-layer catch-all) or any
+  story that next opens `DeckRepository.list_decks`. (Severity: Low — a false red, never a false
+  green; but it will keep costing someone a re-run.)

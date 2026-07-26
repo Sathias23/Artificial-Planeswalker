@@ -1,0 +1,71 @@
+/**
+ * AD-12 made structural, three stories before there is a store to protect.
+ *
+ * "One generator, one store, no second data library" is only enforceable against
+ * something, so zustand is installed in this story (Decide-once #3) and the ban is a test
+ * from the first commit rather than a c4-1 decision.
+ *
+ * One place reads package.json; three facts come out of it (AC 3, AC 4).
+ */
+
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+import { describe, expect, it } from 'vitest'
+
+interface PackageJson {
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+  engines?: Record<string, string>
+}
+
+const pkg = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'),
+) as PackageJson
+
+const deps = pkg.dependencies ?? {}
+const devDeps = pkg.devDependencies ?? {}
+const allDeps = { ...deps, ...devDeps }
+
+/** AD-12: no second data-fetching or state-management library joins zustand. */
+const BANNED = [
+  'react-query',
+  '@tanstack/react-query',
+  'swr',
+  'redux',
+  '@reduxjs/toolkit',
+  'mobx',
+  'jotai',
+  'recoil',
+  'valtio',
+  'axios',
+] as const
+
+describe('package.json dependency contract (AD-12, AD-13)', () => {
+  it.each(BANNED)('does not depend on %s', (name) => {
+    expect(Object.keys(allDeps)).not.toContain(name)
+  })
+
+  // The non-vacuity pair for the ban above. Without this, a typo in the package-reading
+  // code (a wrong path, a missing `devDependencies` merge) would make every ban pass by
+  // finding nothing at all, and the suite would be green and worthless.
+  it('does depend on zustand, so the ban above is reading a populated object', () => {
+    expect(Object.keys(deps)).toContain('zustand')
+  })
+
+  // Ruling B2. openapi-typescript is installed here so the lockfile lands on typescript@5.9.x
+  // from the first commit; c2-3 wires the generation script against it. Node is dev/CI-only
+  // (AD-13), and a code generator is emphatically not a runtime dependency.
+  it('keeps openapi-typescript in devDependencies and out of dependencies', () => {
+    expect(Object.keys(devDeps)).toContain('openapi-typescript')
+    expect(Object.keys(deps)).not.toContain('openapi-typescript')
+  })
+
+  // AC 2. The declared floor is >=20.19.0, not the epic's looser ">= 20": vite@8 declares
+  // engines `^20.19.0 || >=22.12.0` and stylelint@17 declares `>=20.19.0`, so a literal
+  // Node 20.0 does not build. CI's `node-version: 20` resolves to the latest 20.x, which
+  // satisfies this.
+  it('declares the honest Node floor', () => {
+    expect(pkg.engines?.node).toBe('>=20.19.0')
+  })
+})

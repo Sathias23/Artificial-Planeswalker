@@ -1,0 +1,9 @@
+/* Placeholder layout for the placeholder shell. c2-4 owns the Voltglass token layer
+   and c2-6 owns the real two-column shell; neither exists yet. */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 2rem;
+}
