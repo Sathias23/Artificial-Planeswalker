@@ -2,7 +2,7 @@ name: CI
 
 # Quality gates for the public repo: mirrors the local pre-commit / CONTRIBUTING
 # checks (ruff lint, ruff format, mypy --strict, pytest) on a Python 3.12/3.13 matrix,
-# plus the frontend gate for ui/ (eslint + stylelint, prettier, tsc -b, vitest).
+# plus the frontend gate for ui/ (eslint + stylelint, prettier, tsc -b, vitest, vite build).
 # Runs on pushes to master and on every pull request. No DB, model or secrets are
 # required and pytest is scoped to "not integration"; the `frontend` job is the one
 # exception to "no network" — it downloads ui/ dependencies from the npm registry.
@@ -125,3 +125,13 @@ jobs:
 
       - name: Vitest
         run: npm test
+
+      # AC 1's committed-lockfile contract, gated where it can actually die. `npm ci` succeeds
+      # even against a lock regenerated without the linux bindings (optional deps are simply
+      # absent), and none of the four gates above load the production build path — so without
+      # this step, "a bad lock dies in CI with `Cannot find module @rolldown/binding-…`" was
+      # aspirational, not enforced. Also catches build-only breakage (lightningcss
+      # minification, bundle resolution) before c2-2 starts committing the build output.
+      # (Review round 2, decision D1: a fifth step beyond AC 15's four, by ruling.)
+      - name: Build
+        run: npm run build

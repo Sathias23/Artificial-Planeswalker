@@ -1,13 +1,17 @@
 /* FIXTURE — deliberately violates UX-DR46. Not part of the app's styles.
-   `npm run lint` runs stylelint over ui/**\/*.css but this directory is excluded via
-   .stylelintignore; tests/lint-gates.test.ts lints it explicitly through the Node API.
+   `npm run lint` runs stylelint over all of ui/ but excludes this directory with the CLI
+   `--ignore-pattern` in the lint script — deliberately NOT a `.stylelintignore`: an ignore
+   FILE is also honoured by the Node API, so adding one would make the explicit lint in
+   tests/lint-gates.test.ts lint zero files and silently neuter the gate's own proof.
 
    Note the :focus-visible replacement below. The rule is deliberately blunt: this file is
    STILL reported even though the focus ring is replaced. Whether a replacement is adequate
    is asserted by human review and by c2-4's token work, not by the linter.
 
-   Every spelling below removes the focus ring, and each one is banned separately — a ban on
-   only `outline: none` and `outline: 0` is a ban a search-and-replace walks straight around. */
+   Every spelling below removes (or blanks) the focus ring, and each one is banned
+   separately — a ban on only `outline: none` and `outline: 0` is a ban a search-and-replace
+   walks straight around. The last four are the round-2 widening (Brad's ruling: widen
+   fully): case variants, multi-token shorthands and the transparent ring. */
 
 .kills-focus-ring {
   outline: none;
@@ -36,4 +40,20 @@
 
 .kills-focus-ring-with-longhand-width-px {
   outline-width: 0px;
+}
+
+.kills-focus-ring-uppercase {
+  outline: NONE;
+}
+
+.kills-focus-ring-shorthand-none {
+  outline: 1px none;
+}
+
+.kills-focus-ring-shorthand-zero-width {
+  outline: 0 solid;
+}
+
+.kills-focus-ring-invisibly {
+  outline-color: transparent;
 }

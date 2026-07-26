@@ -17,7 +17,7 @@
  */
 
 import { createServer as createHttpServer, type Server } from 'node:http'
-import type { AddressInfo } from 'node:net'
+import { createServer as createNetServer, type AddressInfo } from 'node:net'
 import { fileURLToPath } from 'node:url'
 
 import { createServer as createViteServer } from 'vite'
@@ -69,6 +69,27 @@ async function startStubBackend(): Promise<StubBackend> {
   return { server, port: (server.address() as AddressInfo).port, receivedHosts, receivedPaths }
 }
 
+/**
+ * A real ephemeral port for the Vite server. `server.port: 0` does NOT mean "any port" to
+ * Vite — 0 is falsy, so every server in this file landed on the default 5173. Undici's
+ * fetch pools keep-alive sockets BY ORIGIN, so each test's first fetch could reuse a stale
+ * socket to the previous test's just-closed server and die with ECONNRESET — an
+ * intermittent, order-dependent flake (~1 in 3 runs once the file grew to five tests).
+ * Distinct ports mean distinct origins mean no cross-test socket reuse. The probe-then-bind
+ * gap is a real TOCTOU, accepted: `strictPort: true` makes a collision a loud EADDRINUSE,
+ * not a silent wrong-server test.
+ */
+async function ephemeralPort(): Promise<number> {
+  return await new Promise((resolve, reject) => {
+    const probe = createNetServer()
+    probe.once('error', reject)
+    probe.listen(0, '127.0.0.1', () => {
+      const port = (probe.address() as AddressInfo).port
+      probe.close(() => resolve(port))
+    })
+  })
+}
+
 async function startViteProxying(
   targetPort: number,
   changeOrigin: boolean,
@@ -90,7 +111,14 @@ async function startViteProxying(
     // also leaves %20 escapes in any path containing a space.
     root: fileURLToPath(new URL('..', import.meta.url)),
     logLevel: 'silent',
-    server: { port: 0, host: '127.0.0.1', proxy },
+    // The proxy needs no dependency optimization, and leaving it on makes teardown
+    // nondeterministic: serving index.html (the unproxied-path tests do) starts a dep
+    // scan that `vite.close()` awaits — ~40s on a cold cache, against a 10s hook timeout.
+    // The cache goes cold whenever the lockfile changes, so without this line every
+    // dependency bump fails the NEXT local `npm test` once, unkillably (the timed-out
+    // worker never persists the cache). Measured in review round 2.
+    optimizeDeps: { noDiscovery: true },
+    server: { port: await ephemeralPort(), strictPort: true, host: '127.0.0.1', proxy },
   })
 
   // Same ordering rule as the stub above: a failed `listen()` must still be cleaned up.
@@ -155,5 +183,19 @@ describe('dev proxy path matching is anchored, not prefixed', () => {
     await fetch(`${origin}/api-docs`)
 
     expect(backend.receivedPaths).toEqual([])
+  })
+
+  // Vite tests the regex keys against the FULL req.url — query string included. Before the
+  // round-2 patch, `^/health$` failed at the `?`, so `GET /health?verbose=1` was served the
+  // SPA index.html with a 200: a health probe answered by HTML claiming success, with
+  // nothing on screen to explain it.
+  it('proxies bare paths carrying a query string', async () => {
+    const backend = await startStubBackend()
+    const { origin } = await startViteProxying(backend.port, true)
+
+    await fetch(`${origin}/health?verbose=1`)
+    await fetch(`${origin}/api?page=2`)
+
+    expect(backend.receivedPaths).toEqual(['/health?verbose=1', '/api?page=2'])
   })
 })

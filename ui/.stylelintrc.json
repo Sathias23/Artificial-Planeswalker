@@ -2,9 +2,10 @@
   "extends": ["stylelint-config-standard"],
   "rules": {
     "declaration-property-value-disallowed-list": {
-      "outline": ["/^none$/", "/^0$/", "/^0[a-z%]+$/"],
-      "outline-style": ["/^none$/"],
-      "outline-width": ["/^0$/", "/^0[a-z%]+$/"]
+      "/^outline$/i": ["/(?:^|\\s)none(?:\\s|$)/i", "/(?:^|\\s)0(?:[a-z%]+)?(?:\\s|$)/i"],
+      "/^outline-style$/i": ["/^none$/i"],
+      "/^outline-width$/i": ["/^0(?:[a-z%]+)?$/i"],
+      "/^outline-color$/i": ["/^transparent$/i"]
     }
   }
 }

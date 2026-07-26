@@ -43,12 +43,23 @@ const MAX_PORT = 65535
  *
  * Python also tolerates a sign and surrounding whitespace, both handled below. Underscores
  * are legal only *between* digits, never leading, trailing or doubled.
+ *
+ * ASCII only, knowingly: Python's `int()` additionally accepts Unicode decimal digits
+ * (`int("８０８０")` is 8080), which `\d` rejects. Matching that here would buy an IME
+ * artifact at the cost of a digit-normalization table, so the not-an-integer warning below
+ * scopes its "the backend rejects this too" claim to ASCII instead of overclaiming.
  */
 const PYTHON_BASE_10_INT = /^[+-]?\d+(?:_\d+)*$/
 
-/** Vite treats a key beginning with `^` as a RegExp source rather than a path prefix. */
-const API_PATTERN = '^/api(?:/|$)'
-const HEALTH_PATTERN = '^/health$'
+/**
+ * Vite treats a key beginning with `^` as a RegExp source rather than a path prefix — and it
+ * tests that regex against the FULL `req.url`, query string included. Both anchors therefore
+ * admit a trailing `?…`: without that, `GET /health?verbose=1` fails `^/health$` at the `?`
+ * and is served the SPA index.html with a 200 — a health probe answered by HTML that claims
+ * success, which is strictly worse than the prefix-swallowing the anchors exist to prevent.
+ */
+const API_PATTERN = '^/api(?:[/?]|$)'
+const HEALTH_PATTERN = '^/health(?:\\?|$)'
 
 /**
  * The proxied surfaces, as anchored patterns rather than bare prefixes.
@@ -104,9 +115,11 @@ export function resolveBackendPort(
 
   if (!PYTHON_BASE_10_INT.test(trimmed)) {
     onWarn(
-      `Ignoring ${BACKEND_PORT_ENV_VAR}=${JSON.stringify(raw)}: not an integer; using ` +
+      `Ignoring ${BACKEND_PORT_ENV_VAR}=${JSON.stringify(raw)}: not a base-10 integer; using ` +
         `${DEFAULT_BACKEND_PORT}. The backend parses this variable with Python's int(), which ` +
-        `also rejects it — so both processes will use ${DEFAULT_BACKEND_PORT}.`,
+        `rejects every ASCII spelling this check rejects — so both processes will use ` +
+        `${DEFAULT_BACKEND_PORT}. (The one divergence: int() also accepts non-ASCII Unicode ` +
+        `digits, this proxy does not. Spell the port in ASCII digits.)`,
     )
     return DEFAULT_BACKEND_PORT
   }

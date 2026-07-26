@@ -134,6 +134,13 @@ describe('createDevProxy (AC 12, AC 13 config half)', () => {
     expect(new RegExp(apiPattern).test('/api-docs')).toBe(false)
     expect(new RegExp(healthPattern).test('/health')).toBe(true)
     expect(new RegExp(healthPattern).test('/healthcheck')).toBe(false)
+
+    // Vite matches the key against the FULL req.url, query string included — an anchor that
+    // stops at `$` turns `GET /health?verbose=1` into SPA index.html with a 200 (review
+    // round 2). The behavioural proof is in devProxyRoundTrip.test.ts; this pins the regex.
+    expect(new RegExp(apiPattern).test('/api?page=2')).toBe(true)
+    expect(new RegExp(apiPattern).test('/api/deck/1?fields=name')).toBe(true)
+    expect(new RegExp(healthPattern).test('/health?verbose=1')).toBe(true)
   })
 
   it('does not yet proxy /ws — c5-6 adds it with the WebSocket client', () => {

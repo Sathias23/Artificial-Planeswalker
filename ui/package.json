@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "eslint . && stylelint \"**/*.css\" --ignore-pattern \"dist/**\" --ignore-pattern \"tests/fixtures/**\"",
+    "lint": "eslint . && stylelint \"**/*.css\" --ignore-pattern \"dist/**\" --ignore-pattern \"coverage/**\" --ignore-pattern \"tests/fixtures/**\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc -b",
@@ -26,14 +26,15 @@
     "eslint": "PINNED ^9 — eslint@10 CANNOT coexist with eslint-plugin-jsx-a11y. jsx-a11y@6.10.2 is `latest` (no newer release) and peers at `eslint ^3 || ... || ^9`; ESLint's own `latest` dist-tag is 10.x, so an unpinned eslint makes `npm ci` fail with ERESOLVE — not warn. Raising ESLint deletes the UX-DR47 accessibility gate. EXIT CONDITION: lift this pin when eslint-plugin-jsx-a11y publishes an ^10 peer range. Decided in story c2-1 (AC 5, Decide-once #1, Ruling B3 — which also declined oxlint outright).",
     "openapi-typescript": "Installed by story c2-1 (Ruling B2) and deliberately UNWIRED — there is no generation script, no ui/src/api/types.d.ts and no CI step in this story. Story c2-3 owns wiring it. It lives here now so the lockfile lands on typescript@5.9.x from the first commit, instead of c2-3 having to downgrade TypeScript under two stories of existing code. devDependencies only, never dependencies (c2-3's own AC).",
     "@testing-library/jest-dom": "PINNED ~6.9.1 — a THIRD load-bearing pin, found while implementing c2-1 (the story predicted two). Both `latest` (7.0.0) and 6.10.0 declare `engines.node >= 22`, which is above this project's declared floor of >=20.19.0 and above the CI job's `node-version: 20`; 6.10.0 is additionally deprecated upstream as an incorrect minor release. 6.9.1 is the last release with `engines.node >= 14`. Lifting this pin requires raising the whole project's Node floor to 22 (an AC 2 / AC 15 change), not just bumping the dependency. Verified with `npm view @testing-library/jest-dom@<v> engines`.",
-    "no-second-state-library": "AD-12 — zustand is the one store. No second data-fetching or state-management library joins it. Enforced by tests/package-contract.test.ts, not by convention."
+    "no-second-state-library": "AD-12 — zustand is the one store. No second data-fetching or state-management library joins it. Enforced by tests/package-contract.test.ts, not by convention.",
+    "@types/node": "Tracks the Node FLOOR (20.19, AC 2), not latest. With ^24 types, code in config/ or tests/ using a Node 22/24-only API type-checks clean and fails only when CI's node 20 executes it — the same types-vs-runtime skew class the jest-dom pin exists for. Raising this follows raising the project's Node floor, not the other way round. (Review round 2.)"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "~6.9.1",
     "@testing-library/react": "^16.3.2",
-    "@types/node": "^24.13.2",
+    "@types/node": "^20.19.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",

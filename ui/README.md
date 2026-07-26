@@ -17,7 +17,7 @@ Two processes, two terminals.
 uv run artificial-planeswalker companion
 
 # 2. the frontend dev server (this directory)
-npm install     # first time only; `npm ci` in CI
+npm ci          # exactly the committed lockfile; `npm install` would rewrite it on drift
 npm run dev
 ```
 

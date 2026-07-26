@@ -58,9 +58,14 @@ describe('eslint accessibility gate (UX-DR47, AC 8)', () => {
     const { clean } = await lintBothFixtures()
 
     expect(clean).toBeDefined()
-    // The whole point of the pair: this file goes through the identical config and is clean.
-    expect(clean!.messages).toEqual([])
-    expect(clean!.errorCount).toBe(0)
+    // The whole point of the pair: this file goes through the identical config and the a11y
+    // gate stays silent. Filtered to the two gate rules — mirroring the violation half — so
+    // an unrelated future rule (a c2-4 config change, a typescript-eslint minor growing
+    // recommendedTypeChecked) cannot fail a test named after the accessibility gate.
+    const a11yMessages = clean!.messages.filter(
+      (m) => m.ruleId === A11Y_STATIC || m.ruleId === A11Y_NONINTERACTIVE,
+    )
+    expect(a11yMessages).toEqual([])
   })
 })
 
@@ -88,11 +93,17 @@ describe('stylelint focus-ring gate (UX-DR46, AC 9)', () => {
     expect(result.errored).toBe(true)
     const outlineWarnings = result.results[0].warnings.filter((w) => w.rule === OUTLINE_RULE)
 
-    // Five banned declarations in the fixture: `outline: none`, `outline: 0`, `outline: 0px`,
-    // `outline-style: none`, `outline-width: 0` and `outline-width: 0px` — six. A ban on only
-    // the two literal spellings is one a search-and-replace walks straight around, so the
-    // longhands and the zero-with-unit forms are banned too.
-    expect(outlineWarnings).toHaveLength(6)
+    // Ten banned declarations in the fixture, four axes of evasion. The six spellings of the
+    // original ruling: `outline: none`, `outline: 0`, `outline: 0px`, `outline-style: none`,
+    // `outline-width: 0`, `outline-width: 0px` — a ban on only the two literal spellings is
+    // one a search-and-replace walks straight around. Plus the round-2 widening (Brad's
+    // ruling: widen fully): `outline: NONE` (values match case-insensitively now; the
+    // uppercase-PROPERTY variant cannot even reach stylelint — Prettier lowercases CSS
+    // property names, proven when it rewrote this very fixture, and the config's
+    // `/^outline$/i` keys cover it as defense in depth), `outline: 1px none` and
+    // `outline: 0 solid` (multi-token shorthands escape `^…$`-anchored value regexes), and
+    // `outline-color: transparent` (a ring nobody can see is a ring removed).
+    expect(outlineWarnings).toHaveLength(10)
     expect(new Set(outlineWarnings.map((w) => w.severity))).toEqual(new Set(['error']))
 
     // And the :focus-visible replacement in the same file bought no exemption.
