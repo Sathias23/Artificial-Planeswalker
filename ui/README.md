@@ -118,6 +118,65 @@ Some notes that are easy to trip over:
   key as a prefix, so it would also swallow a future frontend route named `/api-docs`.
 - `engine-strict=true` in `.npmrc` makes the declared Node floor an install-time error
   rather than a warning npm prints and ignores.
+- **CI runs a sixth step these five do not cover:** it regenerates `src/api/types.d.ts` and
+  fails if the committed copy is stale. See _Wire types are generated, never hand-written_
+  below — the fix is always `npm run gen:api`, never editing the generated file.
+
+## Wire types are generated, never hand-written
+
+Every shape that crosses the wire is declared once, in Python, in
+`src/companion/contracts.py`. The TypeScript half is generated from the backend's own
+`app.openapi()` output and committed (AD-12):
+
+```
+src/companion/contracts.py
+        │  uv run python -m scripts.dump_openapi        ← the Python half
+        ▼
+ui/src/api/openapi.json          (generated, committed)
+        │  npm run gen:types                            ← the Node half
+        ▼
+ui/src/api/types.d.ts            (generated, committed)
+        │  import type
+        ▼
+ui/src/api/schema.ts             ← the ONLY module that reads types.d.ts
+```
+
+**After touching a Pydantic model, run `npm run gen:api`** — it does both halves and rewrites
+both generated files. Commit them **together**: a commit carrying a fresh `openapi.json` and a
+stale `types.d.ts` is red in CI, and a bisect landing on it has a broken frontend gate for
+reasons unrelated to whatever is being bisected.
+
+**Import wire types from `src/api/schema.ts`, never from `./types` directly.** The generated
+file is shaped for a generator, not a reader — reaching a response body means indexing
+`components['schemas'][…]`. `schema.ts` does that once and re-exports narrow aliases
+(`HealthResponse`, `ErrorResponse`, `ErrorReason`). Both rules are enforced by
+`tests/wire-contract.test.ts`, which bans re-declaring any shape the backend describes — or any
+alias `schema.ts` exports, `ErrorReason` included — anywhere in tracked TypeScript (`src/`,
+`tests/`, `config/`) outside `src/api/`, and scans everything but `schema.ts` itself (files
+inside `src/api/` included) for direct imports of the generated `./types`.
+
+### Which job checks which half, and why it splits
+
+| Half   | Gate                                                     | CI job     |
+| ------ | -------------------------------------------------------- | ---------- |
+| Python | `tests/unit/companion/test_openapi_contract.py` (pytest) | `quality`  |
+| Node   | `npm run gen:types` + a `git status --porcelain` check   | `frontend` |
+
+CI cannot run the whole pipeline in one job: `quality` has uv and the project's Python
+dependencies and **no Node**, while `frontend` has Node and `npm ci` and never runs `uv sync`.
+So `openapi.json` is a committed hand-off artifact and each half fails in the gate that owns
+it — no new toolchain in either job. A model change with no regeneration reddens pytest; a
+regenerated schema with stale TypeScript reddens the frontend job.
+
+Two smaller things worth knowing:
+
+- **Both generated files are in `.prettierignore`,** and must stay there. Prettier would
+  reformat each of them (the `.d.ts` uses 4-space indent and long union lines; prettier
+  collapses the short arrays `json.dumps(indent=2)` expands), which would fight the generators
+  and redden the drift checks. Never add a formatting pass to either generation step.
+- **`npm test` does not gate `src/api/schema.test.ts`.** Its `expectTypeOf` assertions are
+  erased at runtime, so vitest passes whatever the generated types say. `npm run typecheck` is
+  the gate that catches a drifted shape.
 
 ## Adding a source directory
 
@@ -128,7 +187,9 @@ directory needs adding to one of those two `include` lists.
 
 ## Not here yet
 
-The generated `src/api/types.d.ts` is **c2-3**. The `/ws` proxy entry is **c5-6**. The
+The `/ws` proxy entry is **c5-6**. The runtime `fetch` layer is **c3-1**'s first real
+consumer, and **c4-1** owns the store and its in-flight deduping — c2-3 deliberately ships the
+generated types with no fetch helper, so neither of those designs is pre-empted. The
 self-hosted Space Grotesk `.woff2` fonts land in the same build output directory in **c2-5**.
 
 `ui/dist` is no longer produced. A few ignore patterns still name it (`ui/.gitignore`,
