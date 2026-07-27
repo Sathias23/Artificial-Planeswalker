@@ -201,6 +201,10 @@ else these bans apply, and each one fails the build:
 | anything that pulses, loops or alternates                                        | disallowed-list + a guard                                 |
 | `style={{…}}` on a JSX element                                                   | `no-restricted-syntax` (ESLint)                           |
 | native CSS nesting in a shipped stylesheet                                       | a guard                                                   |
+| a hard-coded `font`/`font-*`/`line-height`/`letter-spacing` value                | `declaration-property-value-allowed-list`                 |
+| `font: var(--type-numeric)` without its `font-variant-numeric` companion         | a guard                                                   |
+| an `@font-face` anywhere but `src/styles/fonts.css`                              | a guard                                                   |
+| any URL to another origin in the built bundle                                    | a guard                                                   |
 
 **The value must be from the right FAMILY, not merely a token.** `padding: var(--radius-pill)`
 is invalid CSS that renders as nothing, and the unknown-token guard cannot catch it because
@@ -211,14 +215,23 @@ neutralises motion by zeroing the four `--motion-*` tokens; a hard-coded `300ms`
 unreachable by it and plays in full for a user who asked for less motion. `0s`/`0ms` stay
 legal, and so do comma-separated lists of tokenised animations.
 
-The exemption for the token file is a **path-scoped `overrides` entry** in
-`.stylelintrc.json`, never a `stylelint-disable` comment — a comment is something any author
-can copy into their own file, and no test can see it. It relaxes exactly three colour rules;
-the shadow, radius, spacing and duration bans are keyed on property _names_, and the token
-file declares custom properties, so they never applied to it in the first place.
-`tests/lint-gates.test.ts` lints the real `tokens.css` under the real config to prove the
-override works, and lints the same hex in a file the override does not name to prove it does
-not leak.
+**Exemptions are path-scoped `overrides` entries** in `.stylelintrc.json`, never a
+`stylelint-disable` comment — a comment is something any author can copy into their own file,
+and no test can see it. There are **exactly two**, and that list is asserted:
+
+- **`src/styles/tokens.css`** relaxes exactly three colour rules. The shadow, radius, spacing
+  and duration bans are keyed on property _names_, and the token file declares custom
+  properties, so they never applied to it in the first place.
+- **`src/styles/fonts.css`** is exempt from the four **typography** entries only, because an
+  `@font-face` legitimately declares `font-family`, `font-weight` and `font-style`. Because a
+  stylelint override _replaces_ a rule's whole option object rather than merging into it, that
+  entry restates the other seven families verbatim — and `tests/lint-gates.test.ts` asserts
+  that the override is exactly the base map minus its four typography keys, so a family added
+  to the base rule later cannot silently stop applying to the font stylesheet.
+
+`tests/lint-gates.test.ts` lints both real files under the real config to prove the overrides
+work, and lints the same hex — and the same `@font-face` — in a file the overrides do not name
+to prove they do not leak.
 
 Why this is a gate rather than a convention: four alternate themes (`gilt`, `graphite`,
 `verdigris`, `ink`) already exist in the imported design system, and **two of them are
@@ -267,6 +280,54 @@ var(--motion-glide) 3`), which a value-level regex cannot tell apart from the nu
   `well → base → panel → overlay`. Be aware this half is a mechanism plus review, not a lint
   gate: which component renders inside which is decided in TSX at runtime and is not
   statically decidable.
+- **Type comes from a role token, always.** The seven `--type-*` tokens are complete `font`
+  shorthands, so `font: var(--type-body)` is the whole declaration; `font-size`,
+  `font-weight` and `line-height` are carried _by_ the role and are never set beside it. The
+  family token `var(--font-sans)` and the `var(--tracking-*)` companions are the only other
+  legal typography values. The ban is keyed on a property-name **family** — `font-stretch`
+  and `font-optical-sizing` fail without anyone having listed them, and so does a property
+  CSS has not shipped yet.
+- **The numeric role never travels alone.** The `font` shorthand cannot carry
+  `font-variant-numeric`, so `font: var(--type-numeric)` on its own renders _proportional_
+  digits and a column of counts stops lining up (UX-DR3). Write both declarations in the same
+  rule block. This one fails plausibly rather than visibly, which is why it is a gate.
+  `tests/token-usage.test.ts` catches the role without the companion in the same block; what
+  it **cannot** see is a later rule undoing a correct pair (`.is-compact
+{ font-variant-numeric: normal; }` on the same element). **Review owns that half.**
+
+## The typeface is self-hosted
+
+`Space Grotesk` ships **in this repository**: a 22 kB variable `.woff2` subset committed at
+`src/assets/fonts/`, declared by the single `@font-face` in `src/styles/fonts.css`, which
+`src/index.css` imports above the token import. The build content-hashes it into the bundle's
+`assets/` directory, which is what earns it a one-year immutable cache from `spa.py`; a font
+in `public/` would land unhashed at the bundle root and be revalidated on every load.
+
+- **Nothing is fetched from a CDN, ever** (UX-DR2, NFR-06). The imported design system's own
+  `fonts.css` is a Google Fonts `@import`, and measured at c2-4's HEAD **nothing in either
+  lint layer objected to one**. `tests/fonts.test.ts` scans the committed bundle and fails on
+  an external reference: totally, in every `.css` and `.html`; by host family and by asset
+  extension everywhere; and against a reviewed list of the hosts that legitimately appear as
+  inert strings (`www.w3.org` namespace URIs, React's `react.dev` error links). A new external
+  host in the bundle is a red test and a review, not a silent diff in a minified line.
+- **One family, forever.** `@font-face` is confined to `fonts.css` by a guard, because an
+  `@font-face` _declares_ a family rather than consuming one and so escapes every value-level
+  rule. The seven role tokens are 400/500/700, which is what makes UX-DR2's "weight ≥ 400" a
+  consequence of the token layer rather than a second rule.
+- **Check the bytes, not the render.** A corrupted font and an unapplied `@font-face` look
+  identical in a browser — both show `system-ui`. `tests/fonts.test.ts` asserts the `wOF2`
+  signature, the exact byte length, and that `git check-attr` resolves the file as binary, so
+  a `core.autocrlf=true` checkout on Windows cannot normalise it. That last one protects a
+  machine CI never runs on.
+- **The licence ships with the font.** `src/assets/fonts/LICENSE-OFL-1.1.txt`, as OFL-1.1
+  requires. UI attribution is **c2-10**'s footer; the fact it needs is the copyright line in
+  `fonts.css`.
+- **`index.html` preloads the font**, with `crossorigin` — font fetches are always CORS-mode,
+  and a preload without it downloads the file twice. The `href` names the _source_ path and
+  Vite rewrites it to the same hashed URL the `@font-face` gets.
+- **What no test here can prove:** that the glyphs on screen are Space Grotesk. jsdom does not
+  load fonts or apply `@font-face`. That check is a browser, with the network throttled to
+  offline, and it lives on the epic's manual-testing checklist.
 
 ## Adding a source directory
 
@@ -281,11 +342,10 @@ directory needs adding to one of those two `include` lists.
 The `/ws` proxy entry is **c5-6**. The runtime `fetch` layer is **c3-1**'s first real
 consumer, and **c4-1** owns the store and its in-flight deduping — c2-3 deliberately ships the
 generated types with no fetch helper, so neither of those designs is pre-empted. The
-self-hosted Space Grotesk `.woff2` fonts land in the same build output directory in **c2-5**,
-which also adds the rule that fails `--type-numeric` being applied without its
-`--type-numeric-features` companion; both tokens already exist for it to point at. The
 application shell is **c2-6** and the presentation primitives are **c2-7** — no component
-consumes these tokens yet, so `src/App.css` is still a placeholder (a tokenised one).
+consumes these tokens yet, so `src/App.css` is still a placeholder (a tokenised one), and
+`c7-2`'s StatChip and `c6-8`'s curve axis are the first things that will apply the numeric
+role. Footer attribution for the typeface is **c2-10**.
 
 `ui/dist` is no longer produced. A few ignore patterns still name it (`ui/.gitignore`,
 `.prettierignore`, the stylelint `--ignore-pattern`); they are harmless and deliberately left

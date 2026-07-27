@@ -1,23 +1,32 @@
 /* Baseline document styles only.
 
-   The Voltglass design tokens live in src/styles/tokens.css and are imported below — that
-   import must stay the FIRST rule in this file, because a CSS @import after any other rule
+   The Voltglass design tokens live in src/styles/tokens.css and are imported below — those
+   imports must stay the FIRST rules in this file, because a CSS @import after any other rule
    is dropped by the browser and by the build. Everything here consumes tokens; the stylelint
    rules that make that mandatory (no raw hex, no rgb()/hsl(), no literal box-shadow,
    border-radius or spacing) are in .stylelintrc.json.
 
-   c2-5 replaces the fallbacks in --font-sans with self-hosted Space Grotesk. Nothing here is
-   a design decision — it is the minimum needed for the placeholder shell to be legible, and
+   'Space Grotesk' is self-hosted: src/styles/fonts.css carries the one @font-face, so
+   --font-sans now names a family the app actually ships rather than one it hoped the machine
+   had. `system-ui` stays in the stack behind it as the fallback, not as the plan. Nothing here
+   is a design decision — it is the minimum needed for the placeholder shell to be legible, and
    the template's demo stylesheet it replaces is gone with the demo. Per-element type comes
    from the seven role tokens (--type-body and friends), not from this file. */
 
-/* `url(…)` notation, not a bare string: stylelint-config-standard's `import-notation` rule
-   requires it. Vite inlines it into the single emitted stylesheet either way. */
+/* TWO imports, BOTH above every rule below. A CSS @import that follows any rule is dropped by
+   the browser and by the build, so this pair has to stay at the top of the file — fonts first,
+   because the @font-face has to be registered before the first rule that can trigger a font
+   load. `url(…)` notation, not a bare string: stylelint-config-standard's `import-notation`
+   rule requires it. Vite inlines both into the single emitted stylesheet either way. */
+@import url('./styles/fonts.css');
 @import url('./styles/tokens.css');
 
 :root {
-  font-family: var(--font-sans);
-  line-height: 1.5;
+  /* The body role, not a hand-written family plus line-height. The `font` shorthand carries
+     family, size, weight and line-height in one token, which is why the typography-literal ban
+     in .stylelintrc.json permits `var(--type-*)` here and nothing else — a bare `line-height:
+     1.5` beside it was the last untokenised value in the shipped CSS. */
+  font: var(--type-body);
 
   /* Dark-only, deliberately: Voltglass has no light theme, and `light dark` would have the
      browser render form controls and scrollbars for a mode the tokens never describe. */

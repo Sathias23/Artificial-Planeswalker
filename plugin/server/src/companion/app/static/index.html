@@ -15,10 +15,27 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!--
+      The font is discovered two stylesheet-parses deep (index.css -> fonts.css -> @font-face),
+      so without this the browser cannot start fetching it until late. `href` names the SOURCE
+      path and Vite rewrites it to the same content-hashed /assets/ URL the @font-face gets —
+      hard-coding a hash here would be invalidated by the next build.
+
+      `crossorigin` is REQUIRED even though this is same-origin: font fetches are always made in
+      CORS mode, and a preload without it is a fetch in a different mode than the real request,
+      so the browser downloads the file TWICE and the optimisation becomes a pessimisation.
+    -->
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="/assets/space-grotesk-latin-wght-normal-BhU9QXUp.woff2"
+      crossorigin
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Artificial Planeswalker</title>
-    <script type="module" crossorigin src="/assets/index-BgTdKi7o.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-D4fjNB-l.css">
+    <script type="module" crossorigin src="/assets/index-Cq6uNogL.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-B0x59ZiK.css">
   </head>
   <body>
     <div id="root"></div>

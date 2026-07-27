@@ -27,6 +27,17 @@ const A11Y_NONINTERACTIVE = 'jsx-a11y/no-noninteractive-element-interactions'
 // an assertion that has stood since c2-1.
 const DISALLOWED_RULE = 'declaration-property-value-disallowed-list'
 const ALLOWED_RULE = 'declaration-property-value-allowed-list'
+
+/**
+ * Just enough of .stylelintrc.json's shape for the override-drift assertion to be typed.
+ * Property key -> the allowed value patterns for it; the rule's second element is its
+ * `{ message }` object, which nothing here reads.
+ */
+type AllowedList = Record<string, string[]>
+interface StylelintConfig {
+  rules: { [ALLOWED_RULE]: [AllowedList, { message: string }] }
+  overrides: { files: string[]; rules: Partial<Record<string, AllowedList>> }[]
+}
 const INLINE_STYLE_RULE = 'no-restricted-syntax'
 const HEX_RULE = 'color-no-hex'
 const NAMED_COLOUR_RULE = 'color-named'
@@ -184,18 +195,22 @@ describe('stylelint literal bans (UX-DR1, UX-DR5, story c2-4 AC 4/5/7)', () => {
   // silent" below genuinely comes from the same run. Splitting them into separate lint()
   // calls would let a config that errors on every file masquerade as four working rules.
   const lintAll = async () => {
-    const files = ['clean', 'violation', 'literals-violation', 'motion-violation'].map((n) =>
-      fixture(`css/${n}.css`),
-    )
+    const files = [
+      'clean',
+      'violation',
+      'literals-violation',
+      'motion-violation',
+      'typography-violation',
+    ].map((n) => fixture(`css/${n}.css`))
     const result = await stylelint.lint({
       files,
       configFile: fileURLToPath(new URL('../.stylelintrc.json', import.meta.url)),
     })
 
-    // The non-vacuity anchor for the whole block: four fixtures in, four results out. A
+    // The non-vacuity anchor for the whole block: five fixtures in, five results out. A
     // moved or ignored fixture would otherwise make every count assertion below read
     // `undefined` warnings and fail confusingly, or — worse for the clean half — pass.
-    expect(result.results, 'stylelint did not lint all four fixtures').toHaveLength(4)
+    expect(result.results, 'stylelint did not lint all five fixtures').toHaveLength(5)
 
     const by = (name: string) => {
       const found = result.results.find((r) => r.source?.endsWith(`${name}.css`))
@@ -492,6 +507,167 @@ describe('stylelint literal bans (UX-DR1, UX-DR5, story c2-4 AC 4/5/7)', () => {
         .map(lineOf)
         .join('\n'),
     ).toContain('drop-shadow')
+  })
+
+  it('fails every hard-coded typography value — LONGHANDS AND SHORTHAND (c2-5 AC 10)', async () => {
+    const { by, countOf } = await lintAll()
+    const source = readFileSync(fixture('css/typography-violation.css'), 'utf8').split('\n')
+
+    // Nineteen: five hand-written longhands, the `font` shorthand that carries five of them at
+    // once, five right-shaped wrong-family vars, four properties the rule never enumerated,
+    // two on-scale-by-hand values and two keyword values. Own fixture file, own count — the
+    // house rule that keeps c2-1's ten and c2-4's twenty independent of this one.
+    expect(countOf('typography-violation', ALLOWED_RULE)).toBe(19)
+
+    const flaggedLines = by('typography-violation')
+      .filter((w) => w.rule === ALLOWED_RULE)
+      .map((w) => source[w.line - 1] ?? '')
+    const mentions = (property: string) =>
+      flaggedLines.some((line) => new RegExp(`^\\s*${property}\\s*:`).test(line))
+
+    // The count alone would pass if the five obvious longhands fired four times each. The set
+    // of PROPERTIES is what proves the family regex reaches where it claims to.
+    for (const property of [
+      'font', // the shorthand — five properties in one declaration
+      'font-family',
+      'font-size',
+      'font-weight',
+      'line-height',
+      'letter-spacing',
+    ]) {
+      expect(mentions(property), `the typography ban never fires on \`${property}\``).toBe(true)
+    }
+  })
+
+  it('bans the FAMILY, not the members — properties nobody enumerated fail too', async () => {
+    const { by } = await lintAll()
+    const source = readFileSync(fixture('css/typography-violation.css'), 'utf8').split('\n')
+    const flagged = by('typography-violation')
+      .filter((w) => w.rule === ALLOWED_RULE)
+      .map((w) => (source[w.line - 1] ?? '').trim())
+
+    // The single most expensive lesson of c2-4, learned twice there: a ban that lists members
+    // is a ban the next member walks around (`calc()` banned, `min`/`max`/`clamp` walked
+    // through). None of these four appear anywhere in .stylelintrc.json, and `font-stretch` and
+    // `font-optical-sizing` are real levers on a VARIABLE font specifically — the exact class
+    // of value a later story would reach for.
+    expect(flagged).toContain('font-stretch: 87.5%;')
+    expect(flagged).toContain('font-optical-sizing: none;')
+    expect(flagged).toContain('font-size-adjust: 0.5;')
+    expect(flagged).toContain('font-synthesis: none;')
+
+    // And the family ban is proven by an INVENTED property, not only by today's list —
+    // otherwise this is an enumeration test wearing a family test's name.
+    const invented = await stylelint.lint({
+      code: '.a { font-hyperkerning: 3; }',
+      codeFilename: fileURLToPath(new URL('../src/probe.css', import.meta.url)),
+      configFile: fileURLToPath(new URL('../.stylelintrc.json', import.meta.url)),
+    })
+    expect(invented.results[0].warnings.map((w) => w.rule)).toContain(ALLOWED_RULE)
+  })
+
+  it('fails a TYPE token of the wrong family — invalid CSS that renders as nothing', async () => {
+    const { by } = await lintAll()
+    const source = readFileSync(fixture('css/typography-violation.css'), 'utf8').split('\n')
+    const flagged = by('typography-violation')
+      .filter((w) => w.rule === ALLOWED_RULE)
+      .map((w) => (source[w.line - 1] ?? '').trim())
+
+    // The c2-4 review theme in its typography spelling. Every token below genuinely exists, so
+    // the unknown-token guard in token-usage.test.ts cannot see any of them, and every one is
+    // invalid for the property it is on — the declaration is discarded and the element
+    // inherits, which reads as "the style didn't apply" rather than as an error. Keying each
+    // property to its OWN family prefix is what catches them.
+    expect(flagged).toContain('font: var(--tracking-label);')
+    expect(flagged).toContain('font-family: var(--type-body);')
+    expect(flagged).toContain('font-weight: var(--space-1);')
+    expect(flagged).toContain('line-height: var(--space-2);')
+    expect(flagged).toContain('letter-spacing: var(--type-label);')
+  })
+
+  it('leaves font-variant-numeric alone — its rule is a pairing guard, not a value ban', async () => {
+    // The deliberate hole in the property regex (Brad's ruling, Q4). font-variant-numeric has
+    // exactly one legal value and the co-occurrence guard in tests/token-usage.test.ts already
+    // requires it; adding it here would be a second rule saying the same thing, and the two
+    // would drift. The `(?!…)` lookahead is what carves it out, so it is asserted directly.
+    const result = await stylelint.lint({
+      code: '.a { font-variant-numeric: var(--type-numeric-features); }',
+      codeFilename: fileURLToPath(new URL('../src/probe.css', import.meta.url)),
+      configFile: fileURLToPath(new URL('../.stylelintrc.json', import.meta.url)),
+    })
+    expect(result.results[0].warnings).toEqual([])
+  })
+
+  it('lints the REAL font stylesheet clean, and the SAME @font-face elsewhere red', async () => {
+    // AC 12's pair, in the shape c2-4 established for tokens.css. An @font-face legitimately
+    // declares font-family, font-weight and font-style — the exact values AC 10 bans — so the
+    // font stylesheet carries a path-scoped `overrides` entry. A typo in that path would be
+    // invisible to the suite otherwise: `npm run lint` would simply go red in CI.
+    const real = await stylelint.lint({
+      files: [fileURLToPath(new URL('../src/styles/fonts.css', import.meta.url))],
+      configFile: fileURLToPath(new URL('../.stylelintrc.json', import.meta.url)),
+    })
+    expect(real.results).toHaveLength(1)
+    expect(real.results[0].warnings).toEqual([])
+
+    // The firing half: the same declarations, the same config, a path the override does not
+    // name. If the exemption were ever widened to `src/styles/**` or to every file, this goes
+    // silent and the ban means nothing.
+    const elsewhere = await stylelint.lint({
+      code: "@font-face { font-family: 'Space Grotesk'; font-weight: 300 700; font-style: normal; }",
+      codeFilename: fileURLToPath(new URL('../src/components/Panel.css', import.meta.url)),
+      configFile: fileURLToPath(new URL('../.stylelintrc.json', import.meta.url)),
+    })
+    expect(elsewhere.results[0].warnings.filter((w) => w.rule === ALLOWED_RULE)).toHaveLength(3)
+  })
+
+  it('exempts the font stylesheet from the TYPE rules only — and proves it stays that way', () => {
+    // AC 12 asks for the narrowest exemption that works. An override REPLACES a rule's whole
+    // option object rather than merging into it, so exempting the font properties means
+    // restating the other seven entries — and a restated map is a map that drifts the first
+    // time someone adds a family to the base rule and forgets this copy. That risk is closed
+    // mechanically here rather than by a comment asking people to remember.
+    // Typed on the way in. `JSON.parse` is `any`, and the type-aware ESLint config rejects
+    // every use of it — which is the rule working: an untyped config object is exactly how a
+    // drift assertion quietly starts comparing `undefined` to `undefined`.
+    const config = JSON.parse(
+      readFileSync(fileURLToPath(new URL('../.stylelintrc.json', import.meta.url)), 'utf8'),
+    ) as StylelintConfig
+
+    const base = config.rules[ALLOWED_RULE][0]
+    const exempted = config.overrides.find((o) => o.files.includes('src/styles/fonts.css'))?.rules[
+      ALLOWED_RULE
+    ]
+    // `throw`, not `expect(...).toBeDefined()`. The latter reads the same but does not NARROW
+    // the type, so everything below would stay `AllowedList | undefined` and the drift
+    // comparison could quietly degrade into `undefined === undefined` — the vacuous-gate
+    // failure this whole file exists to prevent, arriving through the type system.
+    if (!exempted) {
+      throw new Error('no overrides entry names src/styles/fonts.css with an allowed-list')
+    }
+
+    const isTypeRule = (key: string) => /font|letter-spacing|line-height/.test(key)
+    const typeKeys = Object.keys(base).filter(isTypeRule)
+
+    // Four type entries in the base rule, none of them in the override…
+    expect(typeKeys).toHaveLength(4)
+    expect(Object.keys(exempted).filter(isTypeRule)).toEqual([])
+    // …and every OTHER entry present, byte-identical. This is the assertion that fails when a
+    // later story adds a family to the base rule and does not carry it here.
+    for (const key of Object.keys(base).filter((k) => !isTypeRule(k))) {
+      expect(exempted[key], `the fonts.css override has drifted: ${key} is missing`).toEqual(
+        base[key],
+      )
+    }
+    expect(Object.keys(exempted)).toHaveLength(Object.keys(base).length - 4)
+
+    // The exemption list is TWO named paths and stays a list rather than becoming a habit
+    // (AC 12). A third entry is a decision, not a detail — this is where it gets noticed.
+    expect(config.overrides).toHaveLength(2)
+    expect(config.overrides.flatMap((o) => o.files)).toEqual([
+      'src/styles/tokens.css',
+      'src/styles/fonts.css',
+    ])
   })
 
   it('lints the REAL token file clean — the override is proven, not just configured', async () => {

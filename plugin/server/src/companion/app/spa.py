@@ -72,8 +72,9 @@ _ALLOWED_METHODS = "GET, HEAD"
 """What a static document surface supports, for the ``Allow`` header a 405 must carry."""
 
 # Declared, not guessed — see the module docstring. `.woff2` is the one that is already wrong on
-# this machine (mimetypes resolves it to None, so Starlette would ship a font as text/plain);
-# story c2-5 self-hosts Space Grotesk into this same directory and needs it correct.
+# this machine (mimetypes resolves it to None, so Starlette would ship a font as text/plain), and
+# it is now load-bearing: the bundle self-hosts Space Grotesk as a .woff2 in this same directory,
+# and a font served as text/plain does not decode.
 _MEDIA_TYPES: tuple[tuple[str, str], ...] = (
     (".js", "text/javascript"),
     (".mjs", "text/javascript"),
@@ -81,8 +82,8 @@ _MEDIA_TYPES: tuple[tuple[str, str], ...] = (
     (".svg", "image/svg+xml"),
     (".json", "application/json"),
     (".map", "application/json"),
-    (".woff2", "font/woff2"),  # c2-5
-    (".woff", "font/woff"),  # c2-5
+    (".woff2", "font/woff2"),  # the self-hosted Space Grotesk subset
+    (".woff", "font/woff"),  # nothing ships v1 today; kept so a fallback subset cannot regress
 )
 
 

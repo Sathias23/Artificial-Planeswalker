@@ -45,3 +45,35 @@
 .typo-in-token-name {
   box-shadow: var(--shadow-rst);
 }
+
+/* UX-DR3 (story c2-5). The `font` shorthand CANNOT carry font-variant-numeric, so the numeric
+   role applied alone gives PROPORTIONAL digits in a column of counts — the "1" narrower than
+   the "8", every row a different width. This one is worse than the failures above rather than
+   better: it renders something plausible instead of nothing, so nobody looks. */
+.count-cell {
+  font: var(--type-numeric);
+  color: var(--text-primary);
+}
+
+/* Inside a media query, for the same reason the contrast fixture has one. */
+@media (width >= 40em) {
+  .curve-axis-value {
+    font: var(--type-numeric);
+  }
+}
+
+/* The features declaration is PRESENT but hand-written. `tabular-nums` happens to be the right
+   answer today; it is still a literal that the token layer does not control, and a theme that
+   ever changed the feature set would not reach it. */
+.hand-written-features {
+  font: var(--type-numeric);
+  font-variant-numeric: tabular-nums;
+}
+
+/* And the actively-wrong spelling: the companion is present, applied, and says the OPPOSITE of
+   what UX-DR3 asks for. A guard that only checked "is font-variant-numeric present" passes
+   this, which is why the guard checks the VALUE. */
+.opts-out-of-tabular {
+  font: var(--type-numeric);
+  font-variant-numeric: proportional-nums;
+}

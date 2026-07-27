@@ -11,6 +11,17 @@
 # checks need one deterministic byte sequence.
 * text=auto eol=lf
 
-# Binary assets must not be normalised.
+# Binary assets must not be normalised. `* text=auto eol=lf` above would otherwise line-ending-
+# normalise them on checkout under core.autocrlf=true — silently, on Windows only, on a fresh
+# clone — and a font that has been through that does not decode.
+#
+# The FONT FAMILY, not just the one member that ships today (story c2-5). Only .woff2 is
+# committed; .woff, .ttf and .otf are listed because the cost of listing them is nothing and the
+# cost of a later story adding a fallback subset without remembering this line is a corruption
+# that CI cannot see — CI is ubuntu, where core.autocrlf is off. spa.py already registers a
+# media type for .woff for the same reason.
 *.png binary
 *.woff2 binary
+*.woff binary
+*.ttf binary
+*.otf binary

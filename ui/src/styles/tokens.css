@@ -44,8 +44,9 @@
 :root,
 [data-theme='voltglass'] {
   /* ---- Family -------------------------------------------------------------------------
-     c2-5 adds the @font-face rules that make 'Space Grotesk' real; the fallbacks carry the
-     UI until then, and remain the offline-parity answer afterwards. */
+     'Space Grotesk' is real: src/styles/fonts.css declares the one @font-face, over a
+     self-hosted variable subset committed under src/assets/fonts/. The fallbacks behind it
+     stay — they are what a decode failure or a 404 degrades to, not the plan (UX-DR2). */
   --font-sans: 'Space Grotesk', system-ui, sans-serif;
 
   /* ---- Surfaces (the four-step ramp) --------------------------------------------------
@@ -105,8 +106,9 @@
      Seven roles, each a complete `font` shorthand over --font-sans. The shorthand CANNOT
      carry font-variant-numeric or letter-spacing, so those ship as separate companion
      tokens — applying --type-numeric without --type-numeric-features gives proportional
-     digits in a column of counts, which is the exact defect UX-DR3 exists to prevent
-     (c2-5 adds the lint rule that catches it). */
+     digits in a column of counts, which is the exact defect UX-DR3 exists to prevent.
+     `findUnpairedNumericRole` in tests/token-usage.test.ts fails a rule block that applies
+     the role without the companion, so that pairing is a gate rather than a convention. */
   --type-display: 500 30px/1.1 var(--font-sans);
   --type-heading: 500 17px/1.3 var(--font-sans);
   --type-body: 400 14px/1.5 var(--font-sans);

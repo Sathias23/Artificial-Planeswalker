@@ -1,0 +1,66 @@
+/* FIXTURE — the firing half of the typography-literal ban (story c2-5, AC 10). Meant to stay
+   broken.
+
+   This is the family c2-4 left open, and its review homed here by name: the literal bans cover
+   colour, shadow, radius, spacing and duration, but nothing keyed `font`, `font-size`,
+   `font-weight`, `line-height` or `letter-spacing`. Typography was the last value family a
+   component could hard-code with nothing objecting.
+
+   Kept in its own file, per the house rule, so its counts cannot inflate the assertions that
+   have stood over violation.css since c2-1 or over literals-violation.css since c2-4. */
+
+/* The obvious shape: a hand-built type stack instead of a role token. Every value here is
+   drift — DESIGN.md's body role is 400 14px/1.5, and none of this reaches it. */
+.hand-rolled-type {
+  font-family: 'Helvetica Neue', arial, sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: 0.05em;
+}
+
+/* The shorthand, which carries five of the banned properties at once and so would walk past a
+   ban that only listed the longhands. */
+.hand-rolled-shorthand {
+  font:
+    600 15px/1.45 'Helvetica Neue',
+    sans-serif;
+}
+
+/* THE WRONG-FAMILY VAR — the c2-4 review theme, in its typography spelling. Every one of these
+   is a real token, so the unknown-token guard in tests/token-usage.test.ts cannot see them, and
+   every one is invalid CSS for the property it is on: the declaration is discarded and the
+   element inherits, which looks like "the style didn't apply" rather than like an error. */
+.right-shape-wrong-family {
+  font: var(--tracking-label);
+  font-family: var(--type-body);
+  font-weight: var(--space-1);
+  line-height: var(--space-2);
+  letter-spacing: var(--type-label);
+}
+
+/* PROPERTIES THE BAN NEVER ENUMERATED. The rule keys a family regex over `font-*`, so these
+   have to fail without anyone having listed them — that is what makes it a family ban rather
+   than an enumeration. `font-stretch` and `font-optical-sizing` are real levers on a VARIABLE
+   font specifically, which is exactly the class of value a later story would reach for. */
+.unenumerated-longhands {
+  font-stretch: 87.5%;
+  font-optical-sizing: none;
+  font-size-adjust: 0.5;
+  font-synthesis: none;
+}
+
+/* A value that is on-token in NUMBER and off-token in SOURCE — the same argument as
+   `padding: 8px` in literals-violation.css. 14px is the body size; written by hand it still
+   ignores every alternate theme and every future change to the role. */
+.on-scale-by-hand {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Case is an axis of evasion of its own for VALUES (Prettier lowercases property names but not
+   values), and a relative keyword is not a token either. */
+.keywords-are-not-tokens {
+  font-size: LARGER;
+  font-weight: bold;
+}

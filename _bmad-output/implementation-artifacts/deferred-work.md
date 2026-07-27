@@ -1151,3 +1151,53 @@ the gate-output rule rather than left as "we meant to".
   enforcement (the numeric-pairing lint); widening that to a full font-literal ban family — same
   shape as c2-4's four — is c2-5's scope decision. (Severity: Low — no components exist yet;
   c2-5 lands before the first one.)
+
+  **CLOSED by c2-5 (2026-07-28).** Widened to the full family, per Brad's Q4 ruling: the ban is
+  keyed on a property-name family regex covering `font`, every `font-*` longhand and
+  `line-height`/`letter-spacing`, allowing only `var(--type-*)`, `var(--font-*)`,
+  `var(--tracking-*)`, `0` and the CSS-wide keywords, with each property tied to its OWN token
+  family so `font-weight: var(--space-1)` fails too. `font-variant-numeric` is deliberately
+  excluded — its one legal value is already required by the numeric-pairing guard. Proven with
+  `font-stretch`, `font-optical-sizing`, `font-size-adjust`, `font-synthesis` (never enumerated)
+  and an invented `font-hyperkerning`. "Every value is a token" is now true.
+
+## Deferred from: implementation of c2-5-self-hosted-space-grotesk (2026-07-28)
+
+- **AC 4's render half is Brad's, deferred to the C2 epic manual-testing checklist.** The
+  machine-verifiable half is fully closed: the committed binary is a real WOFF2 by signature,
+  exact byte length and WOFF2 header (`tests/fonts.test.ts`), `git check-attr` resolves it as
+  binary so a `core.autocrlf=true` Windows checkout cannot normalise it, it is emitted
+  content-hashed into `assets/` and served `font/woff2`, the `@font-face` reaches it by a
+  relative url the bundler rewrites, and nothing in the committed bundle names another origin.
+  What remains is **opening the app in a browser with the network throttled to offline and
+  confirming the glyphs are Space Grotesk rather than `system-ui`.** Reason for deferral: jsdom
+  does not load fonts, does not apply `@font-face`, and reports whatever family string it was
+  handed — a `getComputedStyle` assertion here would pass on a corrupt font, a missing font and
+  a 404 alike, which is worse than no assertion. Same precedent as c2-2's AC 17. (Severity: Low
+  — every mechanical signal is green; this is the eyes-on-glyphs confirmation. Worth checking in
+  the same pass: that no flash of fallback text is visible on load, which is what `font-display:
+  swap` plus the `index.html` preload is for.)
+
+- **The numeric-pairing guard cannot see the cascade.** `findUnpairedNumericRole` fails a rule
+  block that applies `font: var(--type-numeric)` without
+  `font-variant-numeric: var(--type-numeric-features)` in the SAME block. What it cannot see is a
+  correct pair undone by a later rule — `.is-compact { font-variant-numeric: normal; }` on an
+  element that also carries the paired class. Resolving that needs specificity, source order and
+  the element's real class list, which live in TSX and are chosen at runtime. **Review owns that
+  half** for c7-2's StatChip and c6-8's curve axis, the first components that will apply the role.
+  Documented at the guard, in `ui/README.md`, and asserted as a deliberate blind spot so it fails
+  loudly if the guard ever grows a cross-block reader. (Severity: Low — no component applies the
+  role yet.)
+
+- **The offline guard's JS layer is a reviewed-host baseline, and it is deliberately brittle.**
+  `.css` and `.html` in the bundle carry a TOTAL ban on external URLs; `.js` cannot, because
+  React's DOM code legitimately contains `http://www.w3.org/…` namespace identifiers and a
+  `https://react.dev/errors/` string, and a guard that fired on those is one someone switches
+  off. So JS is covered by three family rules (font-CDN hosts, fetchable asset extensions) plus a
+  snapshot of the reviewed host set. A React or Vite bump that introduces a new URL string will
+  turn `tests/fonts.test.ts` red and require a human to add it to `REVIEWED_HOSTS` with a reason.
+  That is the intent — under AD-13 a dependency bump already means committing a new bundle — but
+  it is a maintenance cost worth naming rather than discovering. A runtime-constructed URL
+  (`fetch('htt' + 'ps://…')`) is invisible to all four rules, as it is to every static check.
+  (Severity: Low — the thing being prevented is a build-time CDN import, which the total ban on
+  `.css`/`.html` covers absolutely.)

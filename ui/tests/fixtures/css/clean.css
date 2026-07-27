@@ -106,3 +106,30 @@
   background: var(--surface-panel);
   border: 1px solid var(--accent-dim);
 }
+
+/* TYPOGRAPHY, all four legal shapes (story c2-5). The ban keys each property to its own token
+   family, so this block is what proves it did not degrade into "no typography at all" — every
+   component from c2-7 onwards writes type exactly like this and must not have to fight a gate. */
+.reads-as-a-heading {
+  font: var(--type-heading);
+}
+
+/* The tracking companions the `font` shorthand cannot express. `letter-spacing` takes
+   var(--tracking-…) and nothing else — a hand-written `0.1em` here is the drift. */
+.reads-as-a-label {
+  font: var(--type-label);
+  letter-spacing: var(--tracking-label);
+}
+
+/* UX-DR3: the numeric role and its features together, which is the ONLY legal way to apply it
+   (tests/token-usage.test.ts fails the role alone). font-variant-numeric is deliberately NOT
+   in the typography ban — its one legal value is already required by that pairing guard. */
+.reads-as-a-count {
+  font: var(--type-numeric);
+  font-variant-numeric: var(--type-numeric-features);
+}
+
+/* The family token on its own, for an element that inherits its size and weight. */
+.family-only {
+  font-family: var(--font-sans);
+}

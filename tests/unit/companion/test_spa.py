@@ -160,7 +160,7 @@ class TestContentTypes:
             (".css", "text/css"),
             (".svg", "image/svg+xml"),
             (".json", "application/json"),
-            (".woff2", "font/woff2"),  # c2-5 ships fonts into this same directory
+            (".woff2", "font/woff2"),  # the self-hosted Space Grotesk subset in the bundle
         ],
     )
     def test_the_registration_survives_a_hostile_mimetypes_database(self, suffix, expected):
