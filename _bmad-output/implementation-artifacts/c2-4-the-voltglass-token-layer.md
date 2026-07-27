@@ -422,6 +422,41 @@ ruled or reported by review rather than chosen unilaterally.
 record) — it is item 7 in that list now, and the review families are item 8. A list that
 invokes the no-silent-widenings convention has to be complete or it is not doing its job.
 
+### Greptile round (PR #21, 2026-07-27) — 2 findings, both accepted
+
+**3/5, all four CI checks green** — including the ubuntu/node-20 frontend job, so the
+cross-platform bundle-determinism risk this story carried is dead for it. Suite 140 → 142.
+
+Both findings are the SAME FAILURE CLASS as the review's wrong-family-token finding, which
+makes it **three instances in one story**: *a value that lints clean and renders as nothing.*
+It is worth naming as the theme, because a fourth spelling of it is likelier than a new one.
+
+- **P1 — `padding: auto` was accepted.** `padding` takes a length or a percentage; `auto` is
+  margin-only, so the browser discards the declaration. The padding and margin keys are now
+  separate rules and only margin admits `auto` (centring a block is the one thing it is
+  needed for; `margin: 0 auto` stays green in `clean.css`).
+
+  **Reported honestly, because the finding overstates the consequence:** measured,
+  `stylelint-config-standard`'s own `declaration-property-value-no-unknown` **already**
+  reported `padding: auto` — so `npm run lint` was red on it and it could never have shipped.
+  The allowed-list was still wrong to accept it, and AC 7's standing rule is that a gate is
+  asserted by its own rule name rather than left to be covered by a neighbour. The new test
+  asserts BOTH rules fire, so reverting the split fails the suite even though the file would
+  still be red.
+
+- **P2 — the shorthand banned literal times without REQUIRING a motion token.** Real, and
+  wholly uncovered: `transition: opacity var(--space-1)` (not a `<time>` at all — the
+  declaration is discarded) and `transition: opacity calc(2s * 3)` (the literal hides inside
+  parentheses, where the time-literal regex cannot reach it) both passed. Neither is reachable
+  by the `@media` block that zeroes `--motion-*`, which is the entire guarantee the ban
+  exists to make. The shorthand now also requires every `var()` to be `--motion-*` or
+  `--ease-*` (a negative lookahead — expressible in the config, so no guard code was needed)
+  and bans `calc()` outright. The duration/delay LONGHANDS never had this gap: they are an
+  allowed-list, so anything unexpected was already rejected.
+
+Three new fixture blocks and two new paired tests; `clean.css` still reports zero, which is
+what proves the `var()` restriction did not degrade into "no `var()` in a transition".
+
 Dismissed as noise (4): AC 7 "same invocation" (substance met — every `lintAll()` lints all four
 fixtures in ONE `stylelint.lint()` call; assertions are merely spread across `it` blocks);
 `parseColour` ignoring non-hex/rgb notations (degrades to a loud false-failure, never a silent
@@ -969,5 +1004,6 @@ is **empty**. Nothing under `src/` changed except the regenerated bundle.
 | Date | Version | Description | Author |
 | --- | --- | --- | --- |
 | 2026-07-27 | 0.1 | Story contexted from epic + DESIGN.md/EXPERIENCE.md; six landmines measured at `26a9fdf` | Bob (SM) |
+| 2026-07-27 | 1.2 | Greptile round on PR #21 (3/5, all 4 CI checks green incl. ubuntu/node 20): 2 findings, both accepted. `padding: auto` no longer accepted (padding and margin split; the neighbouring `declaration-property-value-no-unknown` already caught it — recorded, since the finding overstates the consequence); the `transition`/`animation` shorthand now requires `var(--motion-*)`/`var(--ease-*)` and bans `calc()`. Third instance of one failure class in this story — a value that lints clean and renders as nothing. Suite 140 → 142. | Amelia (Dev) |
 | 2026-07-27 | 1.1 | Review patches: 14 of 14 applied, 1 deferred to c2-5. Three new gate families by Brad's ruling (literal durations, CSS nesting, inline `style`), plus category-prefix value regexes, `text-shadow`/`drop-shadow()`, and comma-aware + numeric parsing in both animation layers (the High finding). Six probes, all reverted; one invalidated my own earlier proof and was replaced rather than re-asserted. Suite 124 → 140. | Amelia (Dev) |
 | 2026-07-27 | 1.0 | Implemented. 64-token layer + 4 literal-ban families (regex property keys) + 5 guards, each proven both ways. All 5 open questions answered "as proposed" before Task 0. Frontend suite 78 → 124 (9 → 12 files); Python unchanged at 1,753. Eleven evasion probes run and reverted, each verified landed first. Three unpredicted landmines (`import-notation: url`, `*/` inside `ui/**/*.css` closing a CSS comment, `hue-degree-notation: angle`) and six flagged widenings recorded. | Amelia (Dev) |
