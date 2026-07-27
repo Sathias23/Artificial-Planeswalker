@@ -1141,3 +1141,13 @@ the gate-output rule rather than left as "we meant to".
   offending unquoted scalar rather than taking the one-edit quote fix — the retro fix should also
   re-check that nothing started parsing the file in the meantime. (Severity: Low — pre-existing,
   fix already homed.)
+
+## Deferred from: code review of c2-4-the-voltglass-token-layer (2026-07-27)
+
+- **Typography literals are the ungated family in the "every value is a token" set.** The c2-4
+  literal bans cover colour/shadow/radius/spacing, but no rule keys `font`, `font-size`,
+  `font-weight`, `line-height` or `letter-spacing`, so a component can hard-code type off the
+  seven `--type-*` roles with no lint or guard firing. Deferred to c2-5, which owns type-role
+  enforcement (the numeric-pairing lint); widening that to a full font-literal ban family — same
+  shape as c2-4's four — is c2-5's scope decision. (Severity: Low — no components exist yet;
+  c2-5 lands before the first one.)

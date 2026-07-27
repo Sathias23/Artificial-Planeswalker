@@ -277,6 +277,158 @@ section; `pyproject.toml` and `uv.lock` are untouched.
         `$`-anchored PowerShell regex against a CRLF tree never mutated anything and the check
         reported a vacuous pass)
 
+### Review Findings
+
+Adversarial review 2026-07-27 (Blind Hunter + Edge Case Hunter + Acceptance Auditor, branch diff
+vs `feat/companion-c2`). All three layers converged on the headline: the story's own review theme
+— an evasion the guard's proofs never probed — recurs in the animation ban.
+
+- [x] [Review][Patch] **[Medium] Literal durations bypass the reduced-motion mechanism**
+      [ui/.stylelintrc.json] — nothing constrains `transition`/`animation` durations to
+      `var(--motion-*)`; `transition: opacity 300ms` plays in full under
+      `prefers-reduced-motion: reduce` and no gate notices. **Brad's ruling 2026-07-27: add the
+      ban family now** — literal `<time>` values disallowed in `transition`/`animation` +
+      longhands, `0s` permitted, proven fixture pair (same shape as the four shipped families).
+- [x] [Review][Patch] **[Medium] Native CSS nesting blinds the shared block parser**
+      [ui/tests/token-usage.test.ts:74] — `blocksIn` matches innermost brace pairs only;
+      declarations in a nesting parent (`.row { background: …; &:hover { … } }`) are never in any
+      `body`, so all three guards silently miss them. **Brad's ruling 2026-07-27: ban nesting in
+      shipped CSS** — a guard failing on `&`/nested braces in `ui/src` stylesheets, proven both
+      ways, keeping the minimal parser's blind spot unreachable.
+- [x] [Review][Patch] **[Medium] TSX inline `style={{…}}` bypasses the entire token layer**
+      [ui/eslint.config.js] — every gate stops at `*.css`; `style={{ padding: '18px' }}` in a
+      c2-6/c2-7 component trips nothing. **Brad's ruling 2026-07-27: add the ESLint ban now**
+      (`no-restricted-syntax` on the style attribute or `react/forbid-dom-props`), with a fixture
+      pair in the a11y-gate style, so the gate exists before the first component is written.
+
+- [x] [Review][Patch] **[High] Comma-separated animation lists evade BOTH enforcement layers**
+      [ui/.stylelintrc.json:45-49, ui/tests/token-usage.test.ts:177-196] — every keyword/number
+      regex anchors on `(?:\s|$)`, and in a multi-animation list (`animation: pulse 2s infinite,
+      fade 1s`; `animation: pulse 2s 3, fade 1s`; `animation-direction: alternate, normal`) a
+      comma follows the token, so nothing fires — verified by execution in two review layers.
+      Scientific-notation counts (`1e2`) evade the bare-number regex the same way. Fix: comma-aware
+      matching in both layers (per-segment parsing in the guard) + comma-list cases in
+      `motion-violation.css` + a legal multi-animation case in the clean half.
+- [x] [Review][Patch] **[Medium] The allowed-lists admit ANY token, not the category —
+      `padding: var(--radius-pill)` lints clean** [ui/.stylelintrc.json:24-33] — AC 5's letter is
+      "the `--space-*` / gutter / panel-gap tokens only", and the rule's own message promises
+      `var(--shadow-…|--radius-…|--space-…)`, but the shipped regex is `var\(--[a-z0-9-]+\)`.
+      A wrong-family var is invalid CSS that renders as nothing, and the unknown-token guard
+      cannot catch it because the token exists. Fix: category-prefix value regexes
+      (`--space-*`; `--radius-*`; `--shadow-*`/`--glow`) + wrong-family cases in the violation
+      fixture + record the change.
+- [x] [Review][Patch] **[Medium] `text-shadow` and `filter: drop-shadow()` sit outside the
+      elevation ban** [ui/.stylelintrc.json:24] — the ban is keyed `/^box-shadow$/i` only, so
+      hard-coded shadow geometry ships through a fourth and fifth property, and the shadowless
+      themes (`graphite`, `ink`) cannot switch it off — the exact hierarchy inversion the gate
+      exists to prevent. Fix: add `/^text-shadow$/i` to the allowed-list and `drop-shadow` to
+      `function-disallowed-list`, as a flagged widening with a proven fixture pair.
+- [x] [Review][Patch] **[Medium] The contrast guard's same-block blind spot is undocumented**
+      [ui/tests/token-usage.test.ts:95-107] — `findAccentDimOnOverlay` requires both tokens in one
+      rule block; parent-sets-background/child-sets-border (the *normal* shape in c6-7/c9-1 rows)
+      escapes. `surfaces.ts` is scrupulously honest about its review-owned half; this guard is
+      presented as "a real guard" with no mention of its equally real limit. Fix: the same honesty
+      — comment + README line stating review owns the cross-block half.
+- [x] [Review][Patch] **[Low] `readTokens()` breaks on the file's own documented extension path**
+      [ui/tests/tokens.test.ts:93-94] — first-`{`/last-`}` slicing before the first `@media`
+      assumes one block; the sibling `[data-theme='gilt']` block the header comment instructs
+      would either pollute the parsed inventory or be invisible to the suite. Fix: anchor
+      extraction to the `:root, [data-theme='voltglass']` selector's block.
+- [x] [Review][Patch] **[Low] The reduced-motion extraction regex is greedy to the last `}` in
+      the file** [ui/tests/token-usage.test.ts:378] — `\{([\s\S]*)\}` works only because the media
+      block ends the file today; any rule appended after it joins the "reduced" body and the four
+      zeroing assertions can be satisfied from outside the media query. Fix: brace-aware
+      extraction.
+- [x] [Review][Patch] **[Low] `stepsExactlyOne`/`nextSurface` answer wrongly for out-of-ramp
+      names** [ui/src/styles/surfaces.ts:46,56] — `indexOf === -1` makes
+      `stepsExactlyOne('bogus', 'surface-well')` true (`0 − (−1) === 1`) and
+      `nextSurface(unknown)` return `'surface-well'`. Type-level protection stops at any
+      `as`-cast/JS boundary. Fix: guard the −1 case (false/null) + two unit tests.
+- [x] [Review][Patch] **[Low] Doc/guard mismatch on what may declare tokens**
+      [ui/src/styles/tokens.css:25, ui/tests/token-usage.test.ts:9] — both say "no stylesheet
+      outside src/styles may declare", but the guard enforces `!== 'src/styles/tokens.css'`
+      (file-level, stricter, correct). Fix: align the two comments to the file-level truth.
+- [x] [Review][Patch] **[Low] The tokens.css override has no paired vitest proof**
+      [ui/.stylelintrc.json:52-60] — every rule ships a firing/silent pair except the one
+      *override*; `lint-gates.test.ts` never lints the real `tokens.css`. `npm run lint` covers
+      the firing half in CI only. Fix: a lint-gates test linting the real `tokens.css` clean under
+      the real config.
+- [x] [Review][Patch] **[Low] `yaml`'s "nothing in src/ may import it" is convention beside two
+      test-enforced siblings** [ui/package.json:33] — `tests/package-contract.test.ts` never
+      mentions `yaml`. Fix: the one-line assertions (devDependencies-only, no `src/` import),
+      matching the sibling notes' pattern.
+- [x] [Review][Patch] **[Low] The `auto` spacing widening is unflagged in the record**
+      [_bmad-output/implementation-artifacts/c2-4-the-voltglass-token-layer.md] — the shipped
+      padding/margin regex admits `auto` (justified in `clean.css`), but the record's "six
+      deliberate widenings, none silent" list omits it, contradicting the convention it invokes.
+      Fix: add it to the record's widening list.
+
+- [x] [Review][Defer] **[Low] Typography literals are the ungated family**
+      [ui/.stylelintrc.json] — no rule keys `font`/`font-size`/`font-weight`/`line-height`/
+      `letter-spacing`, so components can hard-code type off the seven roles — deferred, c2-5
+      owns type-role enforcement (the numeric-pairing lint); widening it to a full font-literal
+      ban is c2-5's scope decision.
+
+### Review patches applied (2026-07-27, same session)
+
+**All 14 applied. Frontend suite 124 → 140 (12 files); Python unchanged at 1,753 passed /
+1 skipped / 45 deselected; all five gates green; bundle and mirror regenerated.** The three
+new gate families Brad ruled in are live, and every one of the fourteen is proven both ways
+from the same invocation, like the four that shipped at implementation.
+
+**The High finding was real and the fix is bigger than the report.** Closing the comma
+evasion in the config alone would have left the guard open, so both layers now split values
+into per-animation segments before testing anything, and the guard parses counts as NUMBERS
+rather than string-comparing to `"1"` — which closes `1e2` in the same move.
+
+**One of my own proofs was invalidated by another patch, and had to be replaced rather than
+re-asserted.** The story record claimed stylelint is silent on `animation: pulse 2s 3`. That
+was true when written; adding the duration ban made stylelint fire on it — for the `2s`, not
+the count. The claim would have kept passing for the wrong reason. Two new fixture blocks
+(`.loops-by-count-with-tokenised-duration`, `.loops-by-scientific-count-with-tokenised-duration`)
+tokenise the duration so the count is the only fault, and `lint-gates.test.ts` now asserts
+stylelint is silent on exactly those two and nothing else.
+
+**Six mutation probes, each verified landed before its verdict was believed, all reverted:**
+
+- **P1 — nesting ban.** First attempt planted `}` + a sibling selector, which is flat CSS, not
+  nesting; the guard stayed silent and was **right to**. Redone with a genuinely nested rule
+  → `× uses no CSS nesting`, naming `.nested` inside `.app-shell`. *The probe was wrong, not
+  the guard — which is the whole reason to read what landed on disk rather than trust the
+  intent of the edit.*
+- **P2 — the `&` form** → caught, two findings (the nested brace pair and the `&`).
+- **P3 — comma-list `infinite`** in a real stylesheet → `× never pulses or loops (AC 12)`.
+- **P4 — removing the `-1` guard** from `stepsExactlyOne` → `× refuses an out-of-ramp name`.
+- **P5 — all five evasions at once** in `src/App.css`: comma-list `infinite`,
+  `transition: opacity 300ms`, `padding: var(--radius-pill)`, a literal `text-shadow` and a
+  `drop-shadow()` → **8 stylelint errors**, each naming its fix.
+- **P6 — inline `style={{ padding: '18px' }}`** in the real `src/App.tsx` → the ESLint ban
+  fires with the message pointing at the README. (First attempt did not land — the harness
+  refused rather than reporting a vacuous pass.)
+
+**One finding not in the review, found while patching:** `tests/fixtures/tsx/` needed adding
+to `tsconfig.app.json`'s `include`, or ESLint's `projectService` errors on a `.tsx` outside
+any tsconfig. Listed individually rather than as a blanket `tests/fixtures`, because
+`tsconfig.node.json` already includes every `.ts` under `tests` and a blanket entry would put
+future `.ts` fixtures in both projects at once.
+
+**A seventh widening for the record** (bringing the flagged list to eight, see below): the
+`(transition|animation)` duration family, `text-shadow`, `drop-shadow()`, the category-prefix
+requirement, the nesting ban and the inline-style ban all go beyond the ACs' letter. Each was
+ruled or reported by review rather than chosen unilaterally.
+
+**Also corrected here:** the record's "six deliberate widenings, none silent" list omitted the
+`auto` allowance in the padding/margin regex (justified in `clean.css`, unflagged in the
+record) — it is item 7 in that list now, and the review families are item 8. A list that
+invokes the no-silent-widenings convention has to be complete or it is not doing its job.
+
+Dismissed as noise (4): AC 7 "same invocation" (substance met — every `lintAll()` lints all four
+fixtures in ONE `stylelint.lint()` call; assertions are merely spread across `it` blocks);
+`parseColour` ignoring non-hex/rgb notations (degrades to a loud false-failure, never a silent
+pass, and Q2 confines the notation); the hand-duplicated 64 in two suites (both sides fail loud);
+CSS system colours (`Canvas`, `Highlight`) evading the colour bans (near-zero probability, and
+under forced-colors the UA repaints regardless).
+
 ## Dev Notes
 
 ### Decide-once rulings (c2-5 … c2-10, c4, c6 and c7 inherit these)
@@ -746,6 +898,17 @@ them:**
    nothing at runtime and passes every rule this story otherwise adds. Landmine 3 records that
    `no-unknown-custom-properties` is the obvious rule and is unusable (file-scoped); the
    cross-file resolution it lacks is ~10 lines in a file the story already creates.
+7. **`auto` is allowed in the padding/margin value regex.** AC 5's letter is "the `--space-*`
+   / gutter / panel-gap tokens only, permitting `0`". `auto` is the only way to centre a block
+   and a token for it would be ceremony, so it ships and is exercised in `clean.css`. *(Added
+   to this list at review — it was a real widening that the list's own "none silent"
+   convention had quietly skipped.)*
+8. **Six more families added by review**, three of them Brad's rulings: the literal-duration
+   ban on `transition`/`animation` and their duration/delay longhands; `text-shadow` and
+   `drop-shadow()` joining the elevation ban; the category-prefix requirement on every value
+   regex; the native-CSS-nesting ban; and the ESLint inline-`style` ban. Each is a gate the
+   ACs did not ask for, each closes a hole a component could have walked through, and each is
+   proven both ways.
 
 **AC 9 is mechanism + review, and says so.** `stepsExactlyOne()` is unit-tested in both
 directions (legal step, two-level skip, three-level skip, standing still, going backwards) and
@@ -806,4 +969,5 @@ is **empty**. Nothing under `src/` changed except the regenerated bundle.
 | Date | Version | Description | Author |
 | --- | --- | --- | --- |
 | 2026-07-27 | 0.1 | Story contexted from epic + DESIGN.md/EXPERIENCE.md; six landmines measured at `26a9fdf` | Bob (SM) |
+| 2026-07-27 | 1.1 | Review patches: 14 of 14 applied, 1 deferred to c2-5. Three new gate families by Brad's ruling (literal durations, CSS nesting, inline `style`), plus category-prefix value regexes, `text-shadow`/`drop-shadow()`, and comma-aware + numeric parsing in both animation layers (the High finding). Six probes, all reverted; one invalidated my own earlier proof and was replaced rather than re-asserted. Suite 124 → 140. | Amelia (Dev) |
 | 2026-07-27 | 1.0 | Implemented. 64-token layer + 4 literal-ban families (regex property keys) + 5 guards, each proven both ways. All 5 open questions answered "as proposed" before Task 0. Frontend suite 78 → 124 (9 → 12 files); Python unchanged at 1,753. Eleven evasion probes run and reverted, each verified landed first. Three unpredicted landmines (`import-notation: url`, `*/` inside `ui/**/*.css` closing a CSS comment, `hue-degree-notation: angle`) and six flagged widenings recorded. | Amelia (Dev) |
