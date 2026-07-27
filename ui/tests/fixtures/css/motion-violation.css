@@ -127,3 +127,30 @@
     opacity 300ms,
     transform 0.2s;
 }
+
+/* ---- DURATIONS THAT ARE TOKENISED BUT STILL UNREACHABLE (Greptile P2) -------------------
+   The shorthand rule bans literal times, which is not the same as REQUIRING a motion token.
+   Both blocks below carry a duration that the reduced-motion override cannot touch:
+
+     - a var() from the wrong family. `var(--space-1)` is `4px`, which is not a <time>, so the
+       browser discards the whole declaration — the same lints-clean-renders-as-nothing class
+       as `padding: var(--radius-pill)` and `padding: auto`, for the third time in this story.
+     - a calc(). Even `calc(var(--motion-glide) * 2)` survives the zeroing only as `0s * 2`
+       by luck of arithmetic; `calc(2s * 3)` hides its literal inside parentheses where the
+       time-literal regex cannot reach it at all.
+
+   So the shorthand additionally requires every var() to be `--motion-*` or `--ease-*`, and
+   bans calc() outright. The duration/delay LONGHANDS never had this gap: they are an
+   allowed-list, so anything unexpected was already rejected. */
+
+.duration-from-the-wrong-family {
+  transition: opacity var(--space-1);
+}
+
+.calculated-duration {
+  transition: opacity calc(2s * 3);
+}
+
+.calculated-duration-from-a-token {
+  animation: bloom calc(var(--motion-bloom) * 2);
+}

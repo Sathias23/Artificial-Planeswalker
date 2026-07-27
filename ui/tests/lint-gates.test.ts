@@ -234,8 +234,9 @@ describe('stylelint literal bans (UX-DR1, UX-DR5, story c2-4 AC 4/5/7)', () => {
     const { by, countOf } = await lintAll()
 
     // 13 at implementation; 18 after review added `text-shadow` and the four wrong-family
-    // token cases (`padding: var(--radius-pill)` and friends).
-    expect(countOf('literals-violation', ALLOWED_RULE)).toBe(18)
+    // token cases; 20 after Greptile's P1 split padding from margin (`padding: auto` and
+    // `padding-inline: auto`).
+    expect(countOf('literals-violation', ALLOWED_RULE)).toBe(20)
 
     // The count alone would pass if thirteen shorthand violations fired and every longhand
     // walked free — which is precisely what happens with plain string property keys
@@ -291,7 +292,8 @@ describe('stylelint literal bans (UX-DR1, UX-DR5, story c2-4 AC 4/5/7)', () => {
     // shorthand, and the uppercase `INFINITE` — Prettier lowercases property names but NOT
     // keyword values, so that spelling really can reach the linter), plus the three
     // COMMA-LIST cases review found walking free, plus the five literal-duration cases.
-    expect(countOf('motion-violation', DISALLOWED_RULE)).toBe(13)
+    // ...and 16 after Greptile's P2 added the wrong-family-var and calc() cases.
+    expect(countOf('motion-violation', DISALLOWED_RULE)).toBe(16)
     // animation-iteration-count 3 and infinite, plus transition-duration and animation-delay.
     expect(countOf('motion-violation', ALLOWED_RULE)).toBe(4)
 
@@ -331,7 +333,7 @@ describe('stylelint literal bans (UX-DR1, UX-DR5, story c2-4 AC 4/5/7)', () => {
     // the allowed-list; the `transition` shorthand (whole-second, fractional, and inside a
     // comma-separated list) hits the disallowed-list.
     expect(countOf('motion-violation', ALLOWED_RULE)).toBe(4)
-    expect(countOf('motion-violation', DISALLOWED_RULE)).toBe(13)
+    expect(countOf('motion-violation', DISALLOWED_RULE)).toBe(16)
 
     // Counts alone would pass if the four keyword cases fired twice each and no duration case
     // fired at all, so the specific declarations are resolved back through their line numbers.
@@ -401,6 +403,53 @@ describe('stylelint literal bans (UX-DR1, UX-DR5, story c2-4 AC 4/5/7)', () => {
         `the ban never fires on \`${wrongFamily}\``,
       ).toBe(true)
     }
+  })
+
+  it('fails `padding: auto` — valid for margin, invalid for padding (Greptile P1)', async () => {
+    const { by } = await lintAll()
+    const source = readFileSync(fixture('css/literals-violation.css'), 'utf8').split('\n')
+    const flaggedByOurRule = by('literals-violation')
+      .filter((w) => w.rule === ALLOWED_RULE)
+      .map((w) => (source[w.line - 1] ?? '').trim())
+
+    // `padding` takes a length or a percentage; `auto` is margin-only, so the browser drops
+    // the declaration — the same lints-clean-renders-as-nothing class as a wrong-family token.
+    expect(flaggedByOurRule).toContain('padding: auto;')
+    expect(flaggedByOurRule).toContain('padding-inline: auto;')
+
+    // HONESTY ABOUT WHAT THIS FIXED. `declaration-property-value-no-unknown`, which comes
+    // free with stylelint-config-standard, ALREADY reported both of these — measured — so
+    // this was never a hole a component could have shipped through. The allowed-list was
+    // still wrong to accept them, and AC 7's rule is that a gate is asserted by its own rule
+    // name rather than left to be covered by a neighbour. Both fire now, and this assertion
+    // would fail if the split were reverted even though the file would still be red.
+    expect(
+      by('literals-violation').filter((w) => w.rule === 'declaration-property-value-no-unknown'),
+    ).toHaveLength(2)
+
+    // And the other half: `auto` is still legal where it is valid. `margin: 0 auto` is the
+    // only way to centre a block and clean.css exercises it.
+    expect(by('clean')).toEqual([])
+  })
+
+  it('fails a duration that is tokenised but still unreachable by reduced motion (P2)', async () => {
+    const { by } = await lintAll()
+    const source = readFileSync(fixture('css/motion-violation.css'), 'utf8').split('\n')
+    const flagged = by('motion-violation')
+      .filter((w) => w.rule === DISALLOWED_RULE)
+      .map((w) => (source[w.line - 1] ?? '').trim())
+
+    // Banning literal times is not the same as REQUIRING a motion token. A var() from the
+    // wrong family is not a <time> at all (the declaration is discarded), and a calc() hides
+    // its literal inside parentheses where the time regex cannot reach it. Neither is
+    // touched by the @media block that zeroes --motion-*, which is the whole guarantee.
+    expect(flagged).toContain('transition: opacity var(--space-1);')
+    expect(flagged).toContain('transition: opacity calc(2s * 3);')
+    expect(flagged).toContain('animation: bloom calc(var(--motion-bloom) * 2);')
+
+    // The clean fixture composes real motion and easing tokens through the same shorthand,
+    // so the new `var()` restriction cannot have degraded into "no var() in a transition".
+    expect(by('clean')).toEqual([])
   })
 
   it('fails shadow geometry written through text-shadow or drop-shadow()', async () => {

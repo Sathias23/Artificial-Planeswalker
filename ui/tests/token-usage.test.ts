@@ -474,13 +474,16 @@ describe('the guards themselves fire (the other half of the pair)', () => {
     const flagged = new Set(
       findings.map((f) => f.slice(f.indexOf('`') + 1, f.indexOf('`', f.indexOf('`') + 1))),
     )
-    const loopBlocks = motion.filter(
-      (b) => b.selector.startsWith('.loops') || b.selector.startsWith('.ping-pongs'),
-    )
-    const durationBlocks = motion.filter((b) => b.selector.startsWith('.literal-'))
+    const isLoopBlock = (selector: string) =>
+      selector.startsWith('.loops') || selector.startsWith('.ping-pongs')
+    const loopBlocks = motion.filter((b) => isLoopBlock(b.selector))
+    // Everything else in the fixture is a DURATION violation — stylelint's ban, not this
+    // guard's. Defined as the complement rather than by prefix, so a block added later cannot
+    // fall between the two lists and be silently unasserted.
+    const durationBlocks = motion.filter((b) => !isLoopBlock(b.selector))
 
     expect(loopBlocks.length).toBe(14)
-    expect(durationBlocks.length).toBe(5)
+    expect(durationBlocks.length).toBe(8)
     expect(loopBlocks.length + durationBlocks.length).toBe(motion.length) // nothing unclassified
     expect(flagged).toEqual(new Set(loopBlocks.map((b) => b.selector)))
     for (const block of durationBlocks) {

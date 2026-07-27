@@ -84,6 +84,19 @@
   gap: var(--motion-glide);
 }
 
+/* THE SAME FAILURE CLASS, THIRD SPELLING (Greptile P1). `auto` is valid for `margin` and NOT
+   for `padding` — the property takes a length or a percentage, nothing else — so `padding:
+   auto` is a declaration the browser DISCARDS. It lints clean and renders as nothing, exactly
+   like a wrong-family token. The padding and margin keys are therefore separate rules; only
+   margin admits `auto`, because centring a block is the one thing it is needed for. */
+.padding-cannot-be-auto {
+  padding: auto;
+}
+
+.padding-longhand-cannot-be-auto {
+  padding-inline: auto;
+}
+
 /* ---- Radii ---- */
 
 .literal-radius {

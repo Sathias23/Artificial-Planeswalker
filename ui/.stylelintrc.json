@@ -27,7 +27,10 @@
         "/^border(-(top|bottom)-(left|right)|-(start|end)-(start|end))?-radius$/i": [
           "/^(0|var\\(--radius-[a-z0-9-]+\\))(\\s+(0|var\\(--radius-[a-z0-9-]+\\)))*$/i"
         ],
-        "/^(padding|margin)(-(top|right|bottom|left|block|inline)(-(start|end))?)?$/i": [
+        "/^padding(-(top|right|bottom|left|block|inline)(-(start|end))?)?$/i": [
+          "/^(0|var\\(--space-[a-z0-9-]+\\))(\\s+(0|var\\(--space-[a-z0-9-]+\\)))*$/i"
+        ],
+        "/^margin(-(top|right|bottom|left|block|inline)(-(start|end))?)?$/i": [
           "/^(0|auto|var\\(--space-[a-z0-9-]+\\))(\\s+(0|auto|var\\(--space-[a-z0-9-]+\\)))*$/i"
         ],
         "/^(grid-)?(gap|row-gap|column-gap)$/i": [
@@ -55,7 +58,9 @@
       ],
       "/^animation-direction$/i": ["/(?:^|[\\s,])alternate(?:-reverse)?(?:[\\s,]|$)/i"],
       "/^(transition|animation)$/i": [
-        "/(?:^|[\\s,])(?!0(?:m?s)?(?:[\\s,]|$))\\d*\\.?\\d+(?:e[+-]?\\d+)?m?s(?:[\\s,]|$)/i"
+        "/(?:^|[\\s,])(?!0(?:m?s)?(?:[\\s,]|$))\\d*\\.?\\d+(?:e[+-]?\\d+)?m?s(?:[\\s,]|$)/i",
+        "/var\\(--(?!motion-|ease-)[a-z0-9-]+\\)/i",
+        "/calc\\(/i"
       ]
     }
   },
