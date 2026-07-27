@@ -1,11 +1,62 @@
 {
   "extends": ["stylelint-config-standard"],
   "rules": {
+    "color-no-hex": [
+      true,
+      {
+        "message": "Hard-coded hex colour. Every colour comes from a token: use var(--…) and see src/styles/tokens.css, which is the only file exempt from this rule."
+      }
+    ],
+    "color-named": [
+      "never",
+      {
+        "message": "Named colour. Every colour comes from a token: use var(--…) and see src/styles/tokens.css, which is the only file exempt from this rule."
+      }
+    ],
+    "function-disallowed-list": [
+      ["/^(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)$/i"],
+      {
+        "message": "Hard-coded colour function. Every colour comes from a token: use var(--…) and see src/styles/tokens.css, which is the only file exempt from this rule."
+      }
+    ],
+    "declaration-property-value-allowed-list": [
+      {
+        "/^box-shadow$/i": ["/^(none|var\\(--[a-z0-9-]+\\)(\\s*,\\s*var\\(--[a-z0-9-]+\\))*)$/i"],
+        "/^border(-(top|bottom)-(left|right)|-(start|end)-(start|end))?-radius$/i": [
+          "/^(0|var\\(--[a-z0-9-]+\\))(\\s+(0|var\\(--[a-z0-9-]+\\)))*$/i"
+        ],
+        "/^(padding|margin)(-(top|right|bottom|left|block|inline)(-(start|end))?)?$/i": [
+          "/^(0|auto|var\\(--[a-z0-9-]+\\))(\\s+(0|auto|var\\(--[a-z0-9-]+\\)))*$/i"
+        ],
+        "/^(grid-)?(gap|row-gap|column-gap)$/i": [
+          "/^(0|var\\(--[a-z0-9-]+\\))(\\s+(0|var\\(--[a-z0-9-]+\\)))*$/i"
+        ],
+        "/^animation-iteration-count$/i": ["/^(1|initial|inherit|revert|revert-layer|unset)$/i"]
+      },
+      {
+        "message": "Not a design token. Shadows, radii and spacing come from src/styles/tokens.css — use var(--shadow-…|--radius-…|--space-…), or 0. The 4/8/12/16/24/32/48 scale is the whole scale; an animation runs exactly once."
+      }
+    ],
     "declaration-property-value-disallowed-list": {
       "/^outline$/i": ["/(?:^|\\s)none(?:\\s|$)/i", "/(?:^|\\s)0(?:[a-z%]+)?(?:\\s|$)/i"],
       "/^outline-style$/i": ["/^none$/i"],
       "/^outline-width$/i": ["/^0(?:[a-z%]+)?$/i"],
-      "/^outline-color$/i": ["/^transparent$/i"]
+      "/^outline-color$/i": ["/^transparent$/i"],
+      "/^animation$/i": [
+        "/(?:^|\\s)infinite(?:\\s|$)/i",
+        "/(?:^|\\s)alternate(?:-reverse)?(?:\\s|$)/i"
+      ],
+      "/^animation-direction$/i": ["/^alternate(?:-reverse)?$/i"]
     }
-  }
+  },
+  "overrides": [
+    {
+      "files": ["src/styles/tokens.css"],
+      "rules": {
+        "color-no-hex": null,
+        "color-named": null,
+        "function-disallowed-list": null
+      }
+    }
+  ]
 }

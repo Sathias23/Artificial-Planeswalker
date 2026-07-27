@@ -1,20 +1,29 @@
 /* Baseline document styles only.
 
-   c2-4 introduces the Voltglass design tokens (and the stylelint rules banning raw hex,
-   rgba(), box-shadow and border-radius that go with them). c2-5 replaces the system font
-   stack with self-hosted Space Grotesk. Nothing here is a design decision — it is the
-   minimum needed for the placeholder shell to be legible, and the template's demo
-   stylesheet it replaces is gone with the demo. */
+   The Voltglass design tokens live in src/styles/tokens.css and are imported below — that
+   import must stay the FIRST rule in this file, because a CSS @import after any other rule
+   is dropped by the browser and by the build. Everything here consumes tokens; the stylelint
+   rules that make that mandatory (no raw hex, no rgb()/hsl(), no literal box-shadow,
+   border-radius or spacing) are in .stylelintrc.json.
+
+   c2-5 replaces the fallbacks in --font-sans with self-hosted Space Grotesk. Nothing here is
+   a design decision — it is the minimum needed for the placeholder shell to be legible, and
+   the template's demo stylesheet it replaces is gone with the demo. Per-element type comes
+   from the seven role tokens (--type-body and friends), not from this file. */
+
+/* `url(…)` notation, not a bare string: stylelint-config-standard's `import-notation` rule
+   requires it. Vite inlines it into the single emitted stylesheet either way. */
+@import url('./styles/tokens.css');
 
 :root {
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    roboto,
-    sans-serif;
+  font-family: var(--font-sans);
   line-height: 1.5;
-  color-scheme: light dark;
+
+  /* Dark-only, deliberately: Voltglass has no light theme, and `light dark` would have the
+     browser render form controls and scrollbars for a mode the tokens never describe. */
+  color-scheme: dark;
+  color: var(--text-primary);
+  background-color: var(--surface-base);
 }
 
 body {

@@ -1,0 +1,55 @@
+/* FIXTURE — the firing half of the no-pulsing/no-looping ban (story c2-4, AC 12). Meant to
+   stay broken; excluded from `npm run lint` by the lint script's `--ignore-pattern`.
+
+   "No element pulses or loops, under any setting" is stated four separate times across
+   DESIGN.md and EXPERIENCE.md, which is a good sign it is a rule people expect to be
+   tempted by. The connection pill (c5-7) is the exact component a future author will want
+   to give a breathing dot, and reduced-motion is NOT the escape hatch for it — a loop is
+   banned at every setting, not just the reduced one. Hence a guard rather than a guideline.
+
+   Kept in its own file so that violation.css's ten-warning UX-DR46 outline count — asserted
+   unfiltered since story c2-1 — is not disturbed by a rule that shares its name. */
+
+.loops-forever {
+  animation: pulse 2s infinite;
+}
+
+.loops-a-few-times {
+  animation-iteration-count: 3;
+}
+
+.loops-forever-by-longhand {
+  animation-iteration-count: infinite;
+}
+
+.ping-pongs {
+  animation-direction: alternate;
+}
+
+.ping-pongs-backwards {
+  animation-direction: alternate-reverse;
+}
+
+/* The shorthand carries direction too, so a value regex anchored to the longhand alone is
+   walked straight around. */
+.ping-pongs-in-shorthand {
+  animation: glow 2s alternate;
+}
+
+/* Case is an evasion in its own right — proven, not assumed. (Prettier does NOT lowercase
+   keyword VALUES, only property names, so this spelling really can reach the linter; the
+   config's regexes carry /i for that reason. `value-keyword-case` also objects, which is
+   defense in depth rather than a substitute — it would not fire on a lowercase loop.) */
+.loops-forever-uppercase {
+  animation: pulse 2s INFINITE;
+}
+
+/* THE ONE THE STYLELINT RULE CANNOT SEE, and the reason tests/token-usage.test.ts carries a
+   second, more precise guard. An iteration count in the `animation` SHORTHAND is a bare
+   number, and a value-level regex cannot distinguish it from the bare numbers inside a
+   `cubic-bezier(0.4, 0, 0.2, 1)` in the same shorthand — banning bare numbers outright would
+   false-positive on a legal easing. The guard strips parenthesised groups first, so it can.
+   This block loops three times and is exactly as banned as `infinite`. */
+.loops-by-numeric-shorthand {
+  animation: pulse 2s 3;
+}
