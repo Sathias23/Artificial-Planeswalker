@@ -53,3 +53,77 @@
 .loops-by-numeric-shorthand {
   animation: pulse 2s 3;
 }
+
+/* ---- COMMA-SEPARATED LISTS (review finding, High) --------------------------------------
+   `animation` and `animation-direction` are LIST properties: one declaration can carry
+   several animations, comma-separated. Every regex here originally anchored on `(?:\s|$)`,
+   so a keyword or count with a COMMA after it matched nothing and the whole family walked
+   free — in both enforcement layers at once. These are the cases that proved it. */
+
+.loops-forever-in-a-list {
+  animation:
+    pulse 2s infinite,
+    fade 1s;
+}
+
+.loops-by-count-in-a-list {
+  animation:
+    pulse 2s 3,
+    fade 1s;
+}
+
+.ping-pongs-in-a-list {
+  animation-direction: alternate, normal;
+}
+
+/* Scientific notation walks around a `\d+(\.\d+)?` bare-number regex the same way a comma
+   does. `1e2` is one hundred iterations. The guard parses the token as a NUMBER rather than
+   string-comparing it to "1", which closes both spellings at once. */
+.loops-by-scientific-notation {
+  animation: pulse 2s 1e2;
+}
+
+/* ---- THE TWO BLOCKS STYLELINT GENUINELY CANNOT SEE ---------------------------------------
+   The duration ban added by review means the earlier shorthand cases now trip stylelint for
+   their LITERAL DURATION (`2s`) rather than for their iteration count — which would make
+   "stylelint is silent on a count in the shorthand" a claim proven by the wrong mechanism.
+   These two tokenise the duration, so the ONLY thing wrong with them is the count, and
+   stylelint is provably silent on both. They are the honest proof that the second guard in
+   tests/token-usage.test.ts earns its place. */
+
+.loops-by-count-with-tokenised-duration {
+  animation: pulse var(--motion-glide) 3;
+}
+
+.loops-by-scientific-count-with-tokenised-duration {
+  animation: pulse var(--motion-glide) 1e2;
+}
+
+/* ---- LITERAL DURATIONS (Brad's ruling 2026-07-27) ---------------------------------------
+   A literal duration is not merely off-scale — it is UNREACHABLE by the reduced-motion
+   mechanism. The @media block at the foot of tokens.css zeroes the four `--motion-*` tokens;
+   a hard-coded 300ms ignores it and plays in full for a user who asked for less motion. That
+   is an accessibility failure, not a style one, which is why it is a gate. */
+
+.literal-transition-duration {
+  transition: opacity 300ms;
+}
+
+.literal-duration-longhand {
+  transition-duration: 300ms;
+}
+
+.literal-delay-longhand {
+  animation-delay: 250ms;
+}
+
+/* Sub-second and comma-list spellings of the same evasion. */
+.literal-fractional-duration {
+  transition: opacity 0.5s ease;
+}
+
+.literal-duration-in-a-list {
+  transition:
+    opacity 300ms,
+    transform 0.2s;
+}

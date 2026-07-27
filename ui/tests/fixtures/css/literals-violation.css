@@ -50,6 +50,40 @@
   box-shadow: 0 0 0 1px var(--accent);
 }
 
+/* `text-shadow` is a third property that paints shadow geometry, and `filter: drop-shadow()`
+   is a fourth. Keying the ban on `box-shadow` alone left both wide open, and neither can be
+   switched off by the shadowless themes (`graphite`, `ink`) — the exact hierarchy inversion
+   the elevation ban exists to prevent. (Review finding, Medium.) */
+.literal-text-shadow {
+  text-shadow: 0 1px 2px rgb(0 0 0 / 50%);
+}
+
+.literal-drop-shadow {
+  filter: drop-shadow(0 12px 32px rgb(0 0 0 / 50%));
+}
+
+/* ---- WRONG-FAMILY TOKENS (review finding, Medium) --------------------------------------
+   The original value regexes accepted `var(--anything)`, so a token from the wrong family
+   passed every gate. This is worse than a literal: `padding: var(--radius-pill)` is INVALID
+   CSS that renders as nothing, and the unknown-token guard cannot catch it either, because
+   the token genuinely exists. The value regexes are now keyed to the category prefix. */
+
+.spacing-from-the-radius-family {
+  padding: var(--radius-pill);
+}
+
+.radius-from-the-spacing-family {
+  border-radius: var(--space-4);
+}
+
+.shadow-from-the-colour-family {
+  box-shadow: var(--accent);
+}
+
+.gap-from-the-motion-family {
+  gap: var(--motion-glide);
+}
+
 /* ---- Radii ---- */
 
 .literal-radius {

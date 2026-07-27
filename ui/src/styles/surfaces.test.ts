@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from 'vitest'
 
+import type { SurfaceName } from './surfaces.ts'
 import { SURFACE_RAMP, nextSurface, stepsExactlyOne, surfaceVar } from './surfaces.ts'
 
 describe('the surface ramp (UX-DR1)', () => {
@@ -55,5 +56,25 @@ describe('the surface ramp (UX-DR1)', () => {
 
   it('renders a token reference callers do not have to retype', () => {
     expect(surfaceVar('surface-panel')).toBe('var(--surface-panel)')
+  })
+
+  // The `SurfaceName` type stops an unknown name at every call site TypeScript checks, and at
+  // none of them once a value arrives via an `as` cast, a JSON payload or plain JS. Unguarded,
+  // `indexOf` returns -1 and the arithmetic answers YES to nonsense — `0 - (-1) === 1`. These
+  // two cast deliberately, because that is exactly how the bug would reach production.
+  // (Review finding, Low.)
+  it('refuses an out-of-ramp name instead of answering confidently', () => {
+    const bogus = 'not-a-surface' as SurfaceName
+
+    expect(stepsExactlyOne(bogus, 'surface-well')).toBe(false)
+    expect(stepsExactlyOne('surface-well', bogus)).toBe(false)
+    expect(stepsExactlyOne(bogus, bogus)).toBe(false)
+  })
+
+  it('returns null rather than the bottom of the ramp for an out-of-ramp name', () => {
+    const bogus = 'not-a-surface' as SurfaceName
+
+    // Unguarded this returned 'surface-well' — the confidently wrong answer, not an obvious one.
+    expect(nextSurface(bogus)).toBeNull()
   })
 })

@@ -43,7 +43,16 @@ export type SurfaceName = (typeof SURFACE_RAMP)[number]
  * a pane.
  */
 export function stepsExactlyOne(from: SurfaceName, to: SurfaceName): boolean {
-  return SURFACE_RAMP.indexOf(to) - SURFACE_RAMP.indexOf(from) === 1
+  const fromIndex = SURFACE_RAMP.indexOf(from)
+  const toIndex = SURFACE_RAMP.indexOf(to)
+  // The -1 guard is not defensive noise. Without it `indexOf` returns -1 for an unknown name
+  // and the arithmetic says YES to nonsense: stepsExactlyOne('bogus', 'surface-well') is
+  // 0 - (-1) === 1. The `SurfaceName` type stops that at every call site TypeScript checks —
+  // and stops at none of them the moment a value arrives through an `as` cast, a JSON payload
+  // or plain JS. A predicate whose whole job is to be trusted must not answer confidently
+  // about a surface that does not exist. (Review finding, Low.)
+  if (fromIndex === -1 || toIndex === -1) return false
+  return toIndex - fromIndex === 1
 }
 
 /**
@@ -53,7 +62,13 @@ export function stepsExactlyOne(from: SurfaceName, to: SurfaceName): boolean {
  * the fix is to flatten the nesting, not to add a fifth surface".
  */
 export function nextSurface(from: SurfaceName): SurfaceName | null {
-  return SURFACE_RAMP[SURFACE_RAMP.indexOf(from) + 1] ?? null
+  const index = SURFACE_RAMP.indexOf(from)
+  // Same -1 hazard as stepsExactlyOne: unguarded, `indexOf(unknown) + 1` is 0 and an unknown
+  // surface would be told its child is `surface-well` — the bottom of the ramp, confidently
+  // wrong. `null` here means "not a surface", which is the same answer as "out of ramp": in
+  // both cases the caller must not nest.
+  if (index === -1) return null
+  return SURFACE_RAMP[index + 1] ?? null
 }
 
 /** The `var(--…)` reference for a surface, so consumers never retype the `--` prefix. */

@@ -22,8 +22,9 @@
    STRUCTURE (AC 2): every token is declared in the ONE block below, selected by
    `:root, [data-theme="voltglass"]`. An alternate theme is added later as a sibling
    `[data-theme="…"]` block in this file and NOTHING in any component changes. The corollary
-   is enforced by tests/token-usage.test.ts: no stylesheet outside this directory may DECLARE
-   a custom property, only consume one.
+   is enforced by tests/token-usage.test.ts: no stylesheet other than THIS FILE may DECLARE a
+   custom property, only consume one. (File-level, not directory-level — a second stylesheet
+   dropped into src/styles/ would be a component like any other.)
 
    VALUES come from the DESIGN.md frontmatter (the contract), asserted token-by-token by
    tests/tokens.test.ts. They are written in this repo's canonical CSS notation — lowercase

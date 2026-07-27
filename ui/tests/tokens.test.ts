@@ -83,15 +83,42 @@ const readFrontmatter = (): DesignFrontmatter => {
 
 const design = readFrontmatter()
 
-/** Custom properties declared in the `:root, [data-theme='voltglass']` block. */
+/**
+ * Custom properties declared in the `:root, [data-theme='voltglass']` block — that block
+ * SPECIFICALLY, found by its selector and closed by brace counting.
+ *
+ * The obvious implementation (slice from the first `{` to the last `}` before the first
+ * `@media`) is correct only while this file holds exactly one block, and the file's own
+ * header comment invites the opposite: an alternate theme ships as a sibling
+ * `[data-theme="gilt"]` block. With one added, that slicing would fold gilt's overrides into
+ * the Voltglass inventory and the set-equality assertion below would start failing for a
+ * reason that has nothing to do with what it is testing. Anchoring on the selector means a
+ * second theme is simply invisible here, which is the correct behaviour for a suite named
+ * after the Voltglass contract. (Review finding, Low.)
+ */
 const readTokens = (): Record<string, string> => {
   const source = readFileSync(TOKENS_CSS, 'utf8')
   // Comments first: they contain colons, semicolons and the odd `--token` mention.
   const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, '')
-  // The theme block is everything up to the reduced-motion @media block, which re-declares
-  // four of the same names and must not be merged into the main inventory.
-  const themeRegion = withoutComments.split('@media')[0]
-  const body = themeRegion.slice(themeRegion.indexOf('{') + 1, themeRegion.lastIndexOf('}'))
+
+  const opener = /:root,\s*\[data-theme='voltglass']\s*\{/.exec(withoutComments)
+  if (!opener) {
+    throw new Error(
+      `No \`:root, [data-theme='voltglass']\` block found in ${TOKENS_CSS} — did the selector change?`,
+    )
+  }
+  const start = opener.index + opener[0].length
+  let depth = 1
+  let end = -1
+  for (let i = start; i < withoutComments.length; i++) {
+    if (withoutComments[i] === '{') depth++
+    else if (withoutComments[i] === '}' && --depth === 0) {
+      end = i
+      break
+    }
+  }
+  if (end === -1) throw new Error(`Unbalanced braces in ${TOKENS_CSS}`)
+  const body = withoutComments.slice(start, end)
 
   const tokens: Record<string, string> = {}
   for (const decl of body.split(';')) {

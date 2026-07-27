@@ -14,27 +14,34 @@
       }
     ],
     "function-disallowed-list": [
-      ["/^(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)$/i"],
+      ["/^(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark|drop-shadow)$/i"],
       {
-        "message": "Hard-coded colour function. Every colour comes from a token: use var(--…) and see src/styles/tokens.css, which is the only file exempt from this rule."
+        "message": "Hard-coded colour or shadow function. Both come from tokens: use var(--…) and see src/styles/tokens.css, which is the only file exempt from this rule."
       }
     ],
     "declaration-property-value-allowed-list": [
       {
-        "/^box-shadow$/i": ["/^(none|var\\(--[a-z0-9-]+\\)(\\s*,\\s*var\\(--[a-z0-9-]+\\))*)$/i"],
+        "/^(box|text)-shadow$/i": [
+          "/^(none|var\\(--(shadow-[a-z0-9-]+|glow)\\)(\\s*,\\s*var\\(--(shadow-[a-z0-9-]+|glow)\\))*)$/i"
+        ],
         "/^border(-(top|bottom)-(left|right)|-(start|end)-(start|end))?-radius$/i": [
-          "/^(0|var\\(--[a-z0-9-]+\\))(\\s+(0|var\\(--[a-z0-9-]+\\)))*$/i"
+          "/^(0|var\\(--radius-[a-z0-9-]+\\))(\\s+(0|var\\(--radius-[a-z0-9-]+\\)))*$/i"
         ],
         "/^(padding|margin)(-(top|right|bottom|left|block|inline)(-(start|end))?)?$/i": [
-          "/^(0|auto|var\\(--[a-z0-9-]+\\))(\\s+(0|auto|var\\(--[a-z0-9-]+\\)))*$/i"
+          "/^(0|auto|var\\(--space-[a-z0-9-]+\\))(\\s+(0|auto|var\\(--space-[a-z0-9-]+\\)))*$/i"
         ],
         "/^(grid-)?(gap|row-gap|column-gap)$/i": [
-          "/^(0|var\\(--[a-z0-9-]+\\))(\\s+(0|var\\(--[a-z0-9-]+\\)))*$/i"
+          "/^(0|var\\(--space-[a-z0-9-]+\\))(\\s+(0|var\\(--space-[a-z0-9-]+\\)))*$/i"
         ],
-        "/^animation-iteration-count$/i": ["/^(1|initial|inherit|revert|revert-layer|unset)$/i"]
+        "/^animation-iteration-count$/i": [
+          "/^(1|initial|inherit|revert|revert-layer|unset)(\\s*,\\s*(1|initial|inherit|revert|revert-layer|unset))*$/i"
+        ],
+        "/^(transition|animation)-(duration|delay)$/i": [
+          "/^(initial|inherit|revert|revert-layer|unset|(0s|0ms|0|var\\(--motion-[a-z0-9-]+\\))(\\s*,\\s*(0s|0ms|0|var\\(--motion-[a-z0-9-]+\\)))*)$/i"
+        ]
       },
       {
-        "message": "Not a design token. Shadows, radii and spacing come from src/styles/tokens.css — use var(--shadow-…|--radius-…|--space-…), or 0. The 4/8/12/16/24/32/48 scale is the whole scale; an animation runs exactly once."
+        "message": "Not a design token of the right family. Shadows are var(--shadow-…) or var(--glow); radii are var(--radius-…); spacing is var(--space-…); durations are var(--motion-…). `0` (and `auto` for margin) is always fine. A var() of the WRONG family is invalid CSS that renders as nothing. An animation runs exactly once."
       }
     ],
     "declaration-property-value-disallowed-list": {
@@ -43,10 +50,13 @@
       "/^outline-width$/i": ["/^0(?:[a-z%]+)?$/i"],
       "/^outline-color$/i": ["/^transparent$/i"],
       "/^animation$/i": [
-        "/(?:^|\\s)infinite(?:\\s|$)/i",
-        "/(?:^|\\s)alternate(?:-reverse)?(?:\\s|$)/i"
+        "/(?:^|[\\s,])infinite(?:[\\s,]|$)/i",
+        "/(?:^|[\\s,])alternate(?:-reverse)?(?:[\\s,]|$)/i"
       ],
-      "/^animation-direction$/i": ["/^alternate(?:-reverse)?$/i"]
+      "/^animation-direction$/i": ["/(?:^|[\\s,])alternate(?:-reverse)?(?:[\\s,]|$)/i"],
+      "/^(transition|animation)$/i": [
+        "/(?:^|[\\s,])(?!0(?:m?s)?(?:[\\s,]|$))\\d*\\.?\\d+(?:e[+-]?\\d+)?m?s(?:[\\s,]|$)/i"
+      ]
     }
   },
   "overrides": [

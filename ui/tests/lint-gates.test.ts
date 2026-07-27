@@ -27,6 +27,7 @@ const A11Y_NONINTERACTIVE = 'jsx-a11y/no-noninteractive-element-interactions'
 // an assertion that has stood since c2-1.
 const DISALLOWED_RULE = 'declaration-property-value-disallowed-list'
 const ALLOWED_RULE = 'declaration-property-value-allowed-list'
+const INLINE_STYLE_RULE = 'no-restricted-syntax'
 const HEX_RULE = 'color-no-hex'
 const NAMED_COLOUR_RULE = 'color-named'
 const COLOUR_FN_RULE = 'function-disallowed-list'
@@ -77,6 +78,47 @@ describe('eslint accessibility gate (UX-DR47, AC 8)', () => {
       (m) => m.ruleId === A11Y_STATIC || m.ruleId === A11Y_NONINTERACTIVE,
     )
     expect(a11yMessages).toEqual([])
+  })
+})
+
+describe('eslint inline-style ban (story c2-4 review ruling)', () => {
+  // Every gate the token layer ships stops at *.css. `style={{ padding: '18px' }}` in a .tsx
+  // file is invisible to all of them — so the ban lives in ESLint, and is proven here in the
+  // same both-ways shape as the a11y gate above.
+  const lintBothFixtures = async () => {
+    const eslint = new ESLint({ cwd: uiRoot, ignore: false })
+    const results = await eslint.lintFiles([
+      fixture('tsx/inline-style-violation.tsx'),
+      fixture('tsx/clean.tsx'),
+    ])
+    expect(results, 'eslint linted the wrong number of fixtures').toHaveLength(2)
+    const byFile = (name: string) => results.find((r) => r.filePath.endsWith(name))
+    return { violation: byFile('inline-style-violation.tsx'), clean: byFile('clean.tsx') }
+  }
+
+  it('reports every inline style attribute, and names the fix', async () => {
+    const { violation } = await lintBothFixtures()
+
+    expect(violation).toBeDefined()
+    const inlineStyle = violation!.messages.filter((m) => m.ruleId === INLINE_STYLE_RULE)
+
+    // Two components in the fixture, one `style` attribute each — including the "one innocent
+    // property" case, because the precedent is the hole, not the value.
+    expect(inlineStyle).toHaveLength(2)
+    expect(new Set(inlineStyle.map((m) => m.severity))).toEqual(new Set([2]))
+    for (const message of inlineStyle) {
+      expect(message.message).toContain('bypasses the whole token layer')
+      expect(message.message).toContain('var(--')
+    }
+  })
+
+  it('leaves class-based styling alone in the same invocation', async () => {
+    const { clean } = await lintBothFixtures()
+
+    expect(clean).toBeDefined()
+    // Filtered to the rule under test, mirroring the a11y pair: an unrelated future rule must
+    // not be able to fail a test named after the inline-style ban.
+    expect(clean!.messages.filter((m) => m.ruleId === INLINE_STYLE_RULE)).toEqual([])
   })
 })
 
@@ -171,10 +213,13 @@ describe('stylelint literal bans (UX-DR1, UX-DR5, story c2-4 AC 4/5/7)', () => {
     expect(countOf('literals-violation', HEX_RULE)).toBe(1)
     // A named colour evades both the hex ban and the function ban, so it gets its own rule.
     expect(countOf('literals-violation', NAMED_COLOUR_RULE)).toBe(1)
-    // rgb(), hsl(), oklch() — and the rgb() inside the hard-coded box-shadow. The modern
+    // rgb(), hsl(), oklch(), the rgb() inside the hard-coded box-shadow and the one inside
+    // text-shadow, plus drop-shadow() and the rgb() nested inside IT — seven. The modern
     // colour spaces are banned alongside the legacy ones: reaching for oklch() is no less
     // hard-coding a colour, and a list naming only rgb/hsl is a list that gets walked around.
-    expect(countOf('literals-violation', COLOUR_FN_RULE)).toBe(4)
+    // `drop-shadow` joined this rule at review: it paints shadow geometry that the shadowless
+    // themes cannot switch off, and it is a FUNCTION, so it has no property key to ban.
+    expect(countOf('literals-violation', COLOUR_FN_RULE)).toBe(7)
 
     // Each ban names its fix, per the house rule. A developer who trips one must not have to
     // go and find out what to write instead.
@@ -188,7 +233,9 @@ describe('stylelint literal bans (UX-DR1, UX-DR5, story c2-4 AC 4/5/7)', () => {
   it('fails every shadow, radius and spacing literal — LONGHANDS INCLUDED', async () => {
     const { by, countOf } = await lintAll()
 
-    expect(countOf('literals-violation', ALLOWED_RULE)).toBe(13)
+    // 13 at implementation; 18 after review added `text-shadow` and the four wrong-family
+    // token cases (`padding: var(--radius-pill)` and friends).
+    expect(countOf('literals-violation', ALLOWED_RULE)).toBe(18)
 
     // The count alone would pass if thirteen shorthand violations fired and every longhand
     // walked free — which is precisely what happens with plain string property keys
@@ -239,12 +286,29 @@ describe('stylelint literal bans (UX-DR1, UX-DR5, story c2-4 AC 4/5/7)', () => {
   it('fails every spelling of a loop or a pulse (AC 12)', async () => {
     const { countOf } = await lintAll()
 
-    // `infinite` in the shorthand, `alternate`, `alternate-reverse`, `alternate` inside the
-    // shorthand, and the uppercase spelling of `infinite` (Prettier lowercases property
-    // names but NOT keyword values, so that spelling really can reach the linter).
-    expect(countOf('motion-violation', DISALLOWED_RULE)).toBe(5)
-    // animation-iteration-count: 3, and animation-iteration-count: infinite.
-    expect(countOf('motion-violation', ALLOWED_RULE)).toBe(2)
+    // Thirteen across the disallowed-list: the five keyword cases from implementation
+    // (`infinite` in the shorthand, `alternate`, `alternate-reverse`, `alternate` inside the
+    // shorthand, and the uppercase `INFINITE` — Prettier lowercases property names but NOT
+    // keyword values, so that spelling really can reach the linter), plus the three
+    // COMMA-LIST cases review found walking free, plus the five literal-duration cases.
+    expect(countOf('motion-violation', DISALLOWED_RULE)).toBe(13)
+    // animation-iteration-count 3 and infinite, plus transition-duration and animation-delay.
+    expect(countOf('motion-violation', ALLOWED_RULE)).toBe(4)
+
+    // The comma cases by name, because the count alone cannot show WHICH five are new.
+    const source = readFileSync(fixture('css/motion-violation.css'), 'utf8').split('\n')
+    const flaggedLines = (await lintAll())
+      .by('motion-violation')
+      .map((w) => source[w.line - 1] ?? '')
+    for (const declaration of [
+      'pulse 2s infinite,', // `infinite` followed by a comma
+      'animation-direction: alternate, normal;', // keyword followed by a comma
+    ]) {
+      expect(
+        flaggedLines.some((line) => line.trim() === declaration),
+        `the comma-list evasion is still open on \`${declaration}\``,
+      ).toBe(true)
+    }
   })
 
   it('leaves the UX-DR46 outline count at exactly ten, sharing a rule name and all', async () => {
@@ -254,6 +318,131 @@ describe('stylelint literal bans (UX-DR1, UX-DR5, story c2-4 AC 4/5/7)', () => {
     // silently inflating an assertion three stories old.
     expect(countOf('violation', DISALLOWED_RULE)).toBe(10)
     expect(countOf('violation', ALLOWED_RULE)).toBe(0)
+  })
+
+  it('fails a literal duration, which the reduced-motion block cannot reach', async () => {
+    const { countOf } = await lintAll()
+    // Brad's ruling 2026-07-27. A hard-coded `300ms` is not merely off-token: the
+    // @media (prefers-reduced-motion: reduce) block neutralises motion by zeroing the four
+    // --motion-* tokens, and a literal ignores it entirely. A user who asked for less motion
+    // gets the full animation and no gate notices. That makes it an accessibility failure.
+    //
+    // Six cases across the two rules: `transition-duration`/`animation-delay` longhands hit
+    // the allowed-list; the `transition` shorthand (whole-second, fractional, and inside a
+    // comma-separated list) hits the disallowed-list.
+    expect(countOf('motion-violation', ALLOWED_RULE)).toBe(4)
+    expect(countOf('motion-violation', DISALLOWED_RULE)).toBe(13)
+
+    // Counts alone would pass if the four keyword cases fired twice each and no duration case
+    // fired at all, so the specific declarations are resolved back through their line numbers.
+    const source = readFileSync(fixture('css/motion-violation.css'), 'utf8').split('\n')
+    const flaggedLines = (await lintAll())
+      .by('motion-violation')
+      .map((w) => source[w.line - 1] ?? '')
+    for (const declaration of [
+      'transition-duration: 300ms;', // longhand
+      'animation-delay: 250ms;', // delay, not just duration
+      'transition: opacity 300ms;', // the shorthand
+      'transition: opacity 0.5s ease;', // fractional seconds
+    ]) {
+      expect(
+        flaggedLines.some((line) => line.trim() === declaration),
+        `the duration ban never fires on \`${declaration}\``,
+      ).toBe(true)
+    }
+    // `0s` and `0ms` stay legal — proven by the clean fixture staying silent below.
+  })
+
+  it('does NOT report the two blocks only the guard can see', async () => {
+    const { by } = await lintAll()
+    const source = readFileSync(fixture('css/motion-violation.css'), 'utf8').split('\n')
+
+    // The honest half of the two-layer claim. Every block in motion-violation.css is a
+    // violation, but stylelint can only see the ones whose fault is a KEYWORD or a literal
+    // duration. An iteration count in the `animation` shorthand is a bare number that a
+    // value-level regex cannot separate from `cubic-bezier(0.4, 0, 0.2, 1)` — so the two
+    // blocks below, whose durations are tokenised and whose only fault is the count, are
+    // provably silent here and provably caught in tests/token-usage.test.ts.
+    const selectorOf = (line: number) => {
+      for (let i = line - 1; i >= 0; i--) {
+        const match = /^\.([a-z0-9-]+)\s*\{/.exec(source[i])
+        if (match) return `.${match[1]}`
+      }
+      return ''
+    }
+    const flaggedSelectors = new Set(by('motion-violation').map((w) => selectorOf(w.line)))
+
+    expect(flaggedSelectors).not.toContain('.loops-by-count-with-tokenised-duration')
+    expect(flaggedSelectors).not.toContain('.loops-by-scientific-count-with-tokenised-duration')
+    // Non-vacuity: the set is populated, so "not contained" means something.
+    expect(flaggedSelectors.size).toBeGreaterThan(8)
+    expect(flaggedSelectors).toContain('.loops-forever')
+  })
+
+  it('fails a token from the WRONG family — invalid CSS the unknown-token guard cannot see', async () => {
+    const { by } = await lintAll()
+    const source = readFileSync(fixture('css/literals-violation.css'), 'utf8').split('\n')
+    const flaggedLines = by('literals-violation')
+      .filter((w) => w.rule === ALLOWED_RULE)
+      .map((w) => source[w.line - 1] ?? '')
+
+    // `padding: var(--radius-pill)` is worse than a literal: it renders as NOTHING, and the
+    // unknown-token guard cannot catch it because --radius-pill genuinely exists. The value
+    // regexes are keyed to the category prefix, so a right-shaped var of the wrong family
+    // fails here. (Review finding, Medium.)
+    for (const wrongFamily of [
+      'padding: var(--radius-pill);',
+      'border-radius: var(--space-4);',
+      'box-shadow: var(--accent);',
+      'gap: var(--motion-glide);',
+    ]) {
+      expect(
+        flaggedLines.some((line) => line.trim() === wrongFamily),
+        `the ban never fires on \`${wrongFamily}\``,
+      ).toBe(true)
+    }
+  })
+
+  it('fails shadow geometry written through text-shadow or drop-shadow()', async () => {
+    const { by } = await lintAll()
+    const source = readFileSync(fixture('css/literals-violation.css'), 'utf8').split('\n')
+    const lineOf = (w: { line: number }) => (source[w.line - 1] ?? '').trim()
+
+    // Keying the elevation ban on `box-shadow` alone left two more properties painting
+    // shadow geometry that the shadowless themes (`graphite`, `ink`) cannot switch off.
+    expect(
+      by('literals-violation')
+        .filter((w) => w.rule === ALLOWED_RULE)
+        .map(lineOf),
+    ).toContain('text-shadow: 0 1px 2px rgb(0 0 0 / 50%);')
+    expect(
+      by('literals-violation')
+        .filter((w) => w.rule === COLOUR_FN_RULE)
+        .map(lineOf)
+        .join('\n'),
+    ).toContain('drop-shadow')
+  })
+
+  it('lints the REAL token file clean — the override is proven, not just configured', async () => {
+    // Every rule in this file ships a firing/silent pair. The path-scoped `overrides` entry
+    // that exempts tokens.css did not: `npm run lint` covered it in CI only, so a typo in the
+    // override path would have been invisible to the suite. This is that pair's silent half —
+    // the real file, the real config, no fixture involved.
+    const result = await stylelint.lint({
+      files: [fileURLToPath(new URL('../src/styles/tokens.css', import.meta.url))],
+      configFile: fileURLToPath(new URL('../.stylelintrc.json', import.meta.url)),
+    })
+    expect(result.results).toHaveLength(1)
+    expect(result.results[0].warnings).toEqual([])
+
+    // And the firing half: the SAME hex, under the SAME config, in a file the override does
+    // not name. If the override were widened to every file, this would go silent.
+    const elsewhere = await stylelint.lint({
+      code: ':root { --smuggled: #0d0f1a; }',
+      codeFilename: fileURLToPath(new URL('../src/not-the-token-file.css', import.meta.url)),
+      configFile: fileURLToPath(new URL('../.stylelintrc.json', import.meta.url)),
+    })
+    expect(elsewhere.results[0].warnings.map((w) => w.rule)).toContain(HEX_RULE)
   })
 
   it('says nothing at all about the clean fixture, in the same invocation', async () => {

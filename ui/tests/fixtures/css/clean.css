@@ -72,6 +72,34 @@
   animation-iteration-count: 1;
 }
 
+/* Comma-separated LISTS are legal too. Closing the comma evasion must not close the legal
+   multi-animation form with it — c6-6's push-replace crossfade composes two. */
+.plays-two-animations-once {
+  animation:
+    bloom var(--motion-bloom) var(--ease-glide),
+    fade var(--motion-glide) var(--ease-out);
+  animation-iteration-count: 1, 1;
+}
+
+/* Durations come from tokens so the reduced-motion block can zero them; `0s` stays legal
+   because "no delay" needs no token, and an explicit easing literal is not a duration. */
+.transitions-through-tokens {
+  transition:
+    opacity var(--motion-glide) var(--ease-out),
+    transform var(--motion-pulse) var(--ease-snap);
+  transition-delay: 0s;
+}
+
+.animation-longhands-through-tokens {
+  animation-duration: var(--motion-bloom);
+  animation-delay: 0ms;
+}
+
+/* text-shadow goes through the same elevation tokens as box-shadow. */
+.text-shadow-from-a-token {
+  text-shadow: var(--shadow-rest);
+}
+
 /* --accent-dim is fine on any surface except overlay; the co-occurrence guard in
    tests/token-usage.test.ts must not degrade into a ban on the token itself. */
 .accent-dim-on-panel {

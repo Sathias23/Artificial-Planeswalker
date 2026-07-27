@@ -67,6 +67,37 @@ export default tseslint.config(
       // no warning tier.
       'jsx-a11y/no-static-element-interactions': 'error',
       'jsx-a11y/no-noninteractive-element-interactions': 'error',
+
+      // THE TOKEN LAYER'S BLIND SPOT, CLOSED BEFORE THE FIRST COMPONENT EXISTS.
+      //
+      // Every gate story c2-4 shipped stops at `*.css`: stylelint bans hard-coded colours,
+      // shadows, radii, spacing and durations, and tests/token-usage.test.ts covers what
+      // stylelint cannot express. None of them can see a single character of
+      // `style={{ padding: '18px', boxShadow: '0 12px 32px rgba(0,0,0,.5)' }}` in a `.tsx`
+      // file — which is the most convenient way to write a style and therefore the way a
+      // component author reaches for under time pressure. c2-6 and c2-7 write the first
+      // components; the gate has to exist first, or the exception becomes the convention.
+      //
+      // `no-restricted-syntax` rather than `react/forbid-dom-props`: the latter needs
+      // eslint-plugin-react, which this project does not install and which AD-12's
+      // one-tool-per-job discipline would make us justify. A selector on the JSX attribute
+      // name costs no dependency and says exactly what it means.
+      //
+      // Escape hatch, deliberately narrow: none. A genuinely dynamic value (a computed bar
+      // height in c4-8, a grid template in c6-6) sets a CSS CUSTOM PROPERTY through the style
+      // attribute's own typing — but that is still this attribute, so a story needing it
+      // changes this rule and says why, in the open, rather than discovering the gate does
+      // not apply to it. (Brad's ruling 2026-07-27.)
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'JSXAttribute[name.name="style"]',
+          message:
+            'Inline style={{…}} bypasses the whole token layer — no stylelint rule and no ' +
+            'guard in tests/token-usage.test.ts can see it. Put the rule in a .css file and ' +
+            'reach values through var(--…). See ui/README.md, "The token layer".',
+        },
+      ],
     },
   },
 
