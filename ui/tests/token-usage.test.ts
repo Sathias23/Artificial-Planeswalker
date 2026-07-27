@@ -323,6 +323,76 @@ const findLoopingAnimation = (blocks: Block[]): string[] => {
   return findings
 }
 
+/**
+ * UX-DR3 (story c2-5, AC 8) — the numeric role never travels alone.
+ *
+ * `--type-numeric` is a `font` SHORTHAND, and the shorthand cannot carry
+ * `font-variant-numeric`. So `font: var(--type-numeric)` on its own renders PROPORTIONAL
+ * digits: in a column of counts the 1 is narrower than the 8, every row is a different width,
+ * and the numbers no longer line up — which is the entire thing UX-DR3 exists to prevent. It
+ * is a worse failure than the ones above rather than a milder one, because it renders
+ * something plausible instead of nothing at all, so nobody goes looking.
+ *
+ * THE VALUE IS CHECKED, NOT JUST THE PRESENCE. `font-variant-numeric: tabular-nums` written by
+ * hand is the right answer today from the wrong source, and `proportional-nums` is the
+ * companion applied to say the opposite. Only `var(--type-numeric-features)` pairs.
+ *
+ * WHAT THIS CANNOT SEE, in the same breath as the guard (AC 9, and the c2-4 review's ruling
+ * that a guard shipped without its limit is worse than one shipped with it). The story
+ * predicted the limit would be a split pair reading as clean; MEASURED, it is the opposite,
+ * and the difference matters enough to write down rather than paper over:
+ *
+ *   NOT A LIMIT — the role in one rule and the features in another IS reported. The guard is
+ *   block-local, so it flags `.stat-value` and asks for the pairing there. That is a false
+ *   FAILURE, not a false pass, and it is the correct direction to be wrong in: it is also
+ *   exactly the decide-once ruling this story sets ("in the same rule block"). c7-2's StatChip
+ *   and c6-8's curve axis write both declarations together, which is what we want them to do.
+ *
+ *   THE REAL LIMIT IS THE CASCADE. A separate rule can undo a correctly paired block. The
+ *   literal spelling of that attack — `.is-compact { font-variant-numeric: normal; }` — is
+ *   now caught by stylelint (review round: the property's allowed-list admits ONLY
+ *   `var(--type-numeric-features)`, keywords included, because every other value turns
+ *   tabular numerals off). What remains invisible is the shape no value rule can object to:
+ *
+ *       .count      { font: var(--type-numeric); font-variant-numeric: var(--type-numeric-features); }
+ *       .is-compact { font: var(--type-micro); }
+ *
+ *   Every declaration there is legal, but the `font` SHORTHAND resets font-variant-numeric
+ *   to normal — so an element carrying both classes renders proportional digits, and this
+ *   guard reports nothing: `.is-compact` applies no numeric role, so it is not a block the
+ *   guard even looks at. Resolving that needs specificity, source order and the element's
+ *   real class list, which lives in TSX and is chosen at runtime. **Review owns that half**,
+ *   the same division of labour findAccentDimOnOverlay declares for its own cross-block case.
+ */
+const findUnpairedNumericRole = (blocks: Block[]): string[] => {
+  // `[,)]`, not `)`. `var(--type-numeric, sans-serif)` is the same fallback evasion c2-4's
+  // review found in the motion ban (`var(--motion-glide, 300ms)`): a closing paren is not the
+  // only thing that can follow a token name, and a `)`-anchored regex reads that as no
+  // reference at all. `--type-numeric-features` is still excluded, because what follows
+  // `--type-numeric` there is `-`.
+  const NUMERIC_ROLE = /var\(\s*--type-numeric\s*[,)]/i
+  const NUMERIC_FEATURES = /var\(\s*--type-numeric-features\s*[,)]/i
+
+  return blocks
+    .filter((block) => {
+      const declarations = declarationsIn(block.body)
+      // `font` is the only property the role token can legally be spent through: it is a
+      // complete shorthand, so `font-family: var(--type-numeric)` is invalid CSS that the
+      // typography ban in .stylelintrc.json catches first.
+      if (!declarations.some(([p, v]) => p === 'font' && NUMERIC_ROLE.test(v))) return false
+      return !declarations.some(
+        ([p, v]) => p === 'font-variant-numeric' && NUMERIC_FEATURES.test(v),
+      )
+    })
+    .map(
+      (block) =>
+        `${block.file} — \`${block.selector}\` applies --type-numeric without ` +
+        `\`font-variant-numeric: var(--type-numeric-features);\` in the same rule. The \`font\` ` +
+        `shorthand cannot carry font-variant-numeric, so the digits render PROPORTIONAL and a ` +
+        `column of counts stops lining up (UX-DR3). Add that declaration to this block.`,
+    )
+}
+
 /** A `var()` naming no real token silently renders nothing. */
 const findUnknownTokenReferences = (files: string[], known: Set<string>): string[] =>
   files.flatMap((file) =>
@@ -370,6 +440,10 @@ describe('token usage across the shipped stylesheets', () => {
 
   it('never pulses or loops (AC 12)', () => {
     expect(findLoopingAnimation(shippedBlocks)).toEqual([])
+  })
+
+  it('never applies the numeric role without its features (UX-DR3, c2-5 AC 8)', () => {
+    expect(findUnpairedNumericRole(shippedBlocks)).toEqual([])
   })
 
   it('uses no CSS nesting, so the block reader above has no blind spot', () => {
@@ -423,6 +497,110 @@ describe('the guards themselves fire (the other half of the pair)', () => {
     expect(findings.join('\n')).toContain('--local-accent')
     expect(findings.join('\n')).toContain('--swap-row-shadow')
     expect(findings[0]).toContain('Only src/styles/tokens.css declares tokens')
+  })
+
+  it('catches the numeric role travelling alone, in all four spellings', () => {
+    const findings = findUnpairedNumericRole(violation())
+
+    // Four blocks, four different ways of getting it wrong: the companion missing entirely,
+    // the same thing inside a media query (so the guard reads innermost blocks, not only
+    // top-level ones), the companion hand-written as a literal, and the companion present but
+    // saying the OPPOSITE. A guard that only checked for the PRESENCE of font-variant-numeric
+    // would pass the last two, which is why it checks the value.
+    expect(findings).toHaveLength(4)
+    const joined = findings.join('\n')
+    expect(joined).toContain('.count-cell')
+    expect(joined).toContain('.curve-axis-value')
+    expect(joined).toContain('.hand-written-features')
+    expect(joined).toContain('.opts-out-of-tabular')
+
+    // The house rule: the message names the exact declaration that is missing, so a developer
+    // who trips it does not have to go and read UX-DR3 to find out what to type.
+    for (const finding of findings) {
+      expect(finding).toContain('font-variant-numeric: var(--type-numeric-features);')
+      expect(finding).toContain('UX-DR3')
+    }
+  })
+
+  it('leaves a correctly paired numeric block alone, and every other role too', () => {
+    // The silent half, over blocks that DO use the role — a guard proven only on blocks with
+    // no `font` declaration at all would be silent for the wrong reason.
+    const legal = blocksIn(
+      'inline',
+      `.stat-chip { font: var(--type-numeric); font-variant-numeric: var(--type-numeric-features); }
+       .heading { font: var(--type-heading); }
+       .label { font: var(--type-label); letter-spacing: var(--tracking-label); }`,
+    )
+    expect(legal).toHaveLength(3)
+    expect(findUnpairedNumericRole(legal)).toEqual([])
+
+    // Declaration ORDER is not part of the rule — CSS does not care and neither may the guard.
+    expect(
+      findUnpairedNumericRole(
+        blocksIn(
+          'inline',
+          '.a { font-variant-numeric: var(--type-numeric-features); font: var(--type-numeric); }',
+        ),
+      ),
+    ).toEqual([])
+  })
+
+  it('reports a split pair rather than passing it — the ruling is "same rule block"', () => {
+    // The story predicted this would read as clean. It does not, and the assertion is written
+    // the way it MEASURES rather than the way it was predicted. Being block-local means a
+    // split pair is a false FAILURE, which is the safe direction: the fix is to write both
+    // declarations together, which is the decide-once ruling anyway.
+    const split = blocksIn(
+      'inline',
+      `.stat-grid { font-variant-numeric: var(--type-numeric-features); }
+       .stat-value { font: var(--type-numeric); }`,
+    )
+    expect(findUnpairedNumericRole(split)).toHaveLength(1)
+    expect(findUnpairedNumericRole(split)[0]).toContain('.stat-value')
+  })
+
+  it('is honest about the cascade it cannot see (AC 9)', () => {
+    // THE DECLARED BLIND SPOT, asserted rather than only described. A correctly paired block
+    // undone by a later rule is invisible to this guard. The undoing block below is made of
+    // entirely LEGAL declarations — stylelint now bans every literal font-variant-numeric
+    // value (review round), so the one spelling of this attack left standing is the `font`
+    // shorthand itself, which resets font-variant-numeric to normal as a side effect. That
+    // block applies no numeric role, so this guard never looks at it, and resolving it would
+    // need the element's real class list. If this ever starts FAILING, the guard grew a
+    // cross-block reader and the comment above it needs rewriting — not deleting.
+    const undone = blocksIn(
+      'inline',
+      `.count { font: var(--type-numeric); font-variant-numeric: var(--type-numeric-features); }
+       .is-compact { font: var(--type-micro); }`,
+    )
+    expect(undone).toHaveLength(2)
+    expect(findUnpairedNumericRole(undone)).toEqual([])
+  })
+
+  it('catches the role hidden behind a var() fallback', () => {
+    // `var(--type-numeric, sans-serif)` is a reference to the role token with a fallback, and
+    // a `)`-anchored regex reads it as no reference at all — the same evasion c2-4's review
+    // found in the motion ban. Proven with BOTH halves carrying a fallback, so neither anchor
+    // can regress alone.
+    expect(
+      findUnpairedNumericRole(blocksIn('inline', '.a { font: var(--type-numeric, sans-serif); }')),
+    ).toHaveLength(1)
+    expect(
+      findUnpairedNumericRole(
+        blocksIn(
+          'inline',
+          `.b { font: var(--type-numeric, sans-serif);
+                font-variant-numeric: var(--type-numeric-features, tabular-nums); }`,
+        ),
+      ),
+    ).toEqual([])
+    // And the near-miss that must NOT be read as the role: the companion token starts with the
+    // same fifteen characters.
+    expect(
+      findUnpairedNumericRole(
+        blocksIn('inline', '.c { font-variant-numeric: var(--type-numeric-features); }'),
+      ),
+    ).toEqual([])
   })
 
   it('catches a var() that names no token', () => {
@@ -554,6 +732,7 @@ describe('the guards themselves fire (the other half of the pair)', () => {
     expect(findAccentDimOnOverlay(clean)).toEqual([])
     expect(findTokenDeclarationsOutsideTokenFile(clean)).toEqual([])
     expect(findLoopingAnimation(clean)).toEqual([])
+    expect(findUnpairedNumericRole(clean)).toEqual([])
   })
 
   it('does not flag --accent-dim beside a surface that is not overlay', () => {

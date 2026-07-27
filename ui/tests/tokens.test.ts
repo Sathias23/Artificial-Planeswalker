@@ -283,8 +283,9 @@ describe('the token layer is DESIGN.md (AC 1)', () => {
 
   it('pairs the numeric role with its font-variant-numeric companion (UX-DR3)', () => {
     // The `font` shorthand cannot carry font-variant-numeric, so a role token alone gives
-    // proportional digits in a column of counts. c2-5 adds the rule that catches the role
-    // being applied without the companion; both tokens have to exist for it to point at.
+    // proportional digits in a column of counts. The rule that fails the role applied without
+    // the companion is `findUnpairedNumericRole` in tests/token-usage.test.ts; this is the
+    // assertion that both tokens it points at still exist and still say what it expects.
     expect(tokens['--type-numeric-features']).toBe(design.typography.numeric.fontVariantNumeric)
     expect(tokens['--type-numeric-features']).toBe('tabular-nums')
   })

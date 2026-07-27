@@ -41,10 +41,26 @@
         ],
         "/^(transition|animation)-(duration|delay)$/i": [
           "/^(initial|inherit|revert|revert-layer|unset|(0s|0ms|0|var\\(--motion-[a-z0-9-]+\\))(\\s*,\\s*(0s|0ms|0|var\\(--motion-[a-z0-9-]+\\)))*)$/i"
+        ],
+        "/^font$/i": [
+          "/^(var\\(--type-(?!numeric-features\\))[a-z0-9-]+\\)|initial|inherit|revert|revert-layer|unset)$/i"
+        ],
+        "/^font-family$/i": [
+          "/^(var\\(--font-[a-z0-9-]+\\)|initial|inherit|revert|revert-layer|unset)$/i"
+        ],
+        "/^font-variant-numeric$/i": ["/^var\\(--type-numeric-features\\)$/i"],
+        "/^letter-spacing$/i": [
+          "/^(0|var\\(--tracking-[a-z0-9-]+\\)|initial|inherit|revert|revert-layer|unset)$/i"
+        ],
+        "/^(line-height|word-spacing|text-indent)$/i": [
+          "/^(0|initial|inherit|revert|revert-layer|unset)$/i"
+        ],
+        "/^(?!font-family$|font-variant-numeric$)font-[a-z-]+$/i": [
+          "/^(initial|inherit|revert|revert-layer|unset)$/i"
         ]
       },
       {
-        "message": "Not a design token of the right family. Shadows are var(--shadow-…) or var(--glow); radii are var(--radius-…); spacing is var(--space-…); durations are var(--motion-…). `0` (and `auto` for margin) is always fine. A var() of the WRONG family is invalid CSS that renders as nothing. An animation runs exactly once."
+        "message": "Not a design token of the right family. Shadows are var(--shadow-…) or var(--glow); radii are var(--radius-…); spacing is var(--space-…); durations are var(--motion-…); TYPE is a role token — `font: var(--type-…)` (but never --type-numeric-features, which is not a font shorthand), family `var(--font-sans)`, tracking `var(--tracking-…)`, and `font-variant-numeric: var(--type-numeric-features)` is that property's ONLY value: every other value, keywords included, turns tabular numerals off (UX-DR3). font-size/font-weight/line-height are carried BY the role, never set beside it; word-spacing and text-indent have no token, so they take 0 or a CSS-wide keyword. `0` (and `auto` for margin) is fine where the property can take it — a font-* longhand cannot. A var() of the WRONG family is invalid CSS that renders as nothing. An animation runs exactly once."
       }
     ],
     "declaration-property-value-disallowed-list": {
@@ -71,6 +87,39 @@
         "color-no-hex": null,
         "color-named": null,
         "function-disallowed-list": null
+      }
+    },
+    {
+      "files": ["src/styles/fonts.css"],
+      "rules": {
+        "declaration-property-value-allowed-list": [
+          {
+            "/^(box|text)-shadow$/i": [
+              "/^(none|var\\(--(shadow-[a-z0-9-]+|glow)\\)(\\s*,\\s*var\\(--(shadow-[a-z0-9-]+|glow)\\))*)$/i"
+            ],
+            "/^border(-(top|bottom)-(left|right)|-(start|end)-(start|end))?-radius$/i": [
+              "/^(0|var\\(--radius-[a-z0-9-]+\\))(\\s+(0|var\\(--radius-[a-z0-9-]+\\)))*$/i"
+            ],
+            "/^padding(-(top|right|bottom|left|block|inline)(-(start|end))?)?$/i": [
+              "/^(0|var\\(--space-[a-z0-9-]+\\))(\\s+(0|var\\(--space-[a-z0-9-]+\\)))*$/i"
+            ],
+            "/^margin(-(top|right|bottom|left|block|inline)(-(start|end))?)?$/i": [
+              "/^(0|auto|var\\(--space-[a-z0-9-]+\\))(\\s+(0|auto|var\\(--space-[a-z0-9-]+\\)))*$/i"
+            ],
+            "/^(grid-)?(gap|row-gap|column-gap)$/i": [
+              "/^(0|var\\(--space-[a-z0-9-]+\\))(\\s+(0|var\\(--space-[a-z0-9-]+\\)))*$/i"
+            ],
+            "/^animation-iteration-count$/i": [
+              "/^(1|initial|inherit|revert|revert-layer|unset)(\\s*,\\s*(1|initial|inherit|revert|revert-layer|unset))*$/i"
+            ],
+            "/^(transition|animation)-(duration|delay)$/i": [
+              "/^(initial|inherit|revert|revert-layer|unset|(0s|0ms|0|var\\(--motion-[a-z0-9-]+\\))(\\s*,\\s*(0s|0ms|0|var\\(--motion-[a-z0-9-]+\\)))*)$/i"
+            ]
+          },
+          {
+            "message": "Not a design token of the right family. Shadows are var(--shadow-…) or var(--glow); radii are var(--radius-…); spacing is var(--space-…); durations are var(--motion-…). `0` (and `auto` for margin) is always fine. A var() of the WRONG family is invalid CSS that renders as nothing. An animation runs exactly once."
+          }
+        ]
       }
     }
   ]
