@@ -1181,13 +1181,16 @@ the gate-output rule rather than left as "we meant to".
 - **The numeric-pairing guard cannot see the cascade.** `findUnpairedNumericRole` fails a rule
   block that applies `font: var(--type-numeric)` without
   `font-variant-numeric: var(--type-numeric-features)` in the SAME block. What it cannot see is a
-  correct pair undone by a later rule — `.is-compact { font-variant-numeric: normal; }` on an
-  element that also carries the paired class. Resolving that needs specificity, source order and
-  the element's real class list, which live in TSX and are chosen at runtime. **Review owns that
-  half** for c7-2's StatChip and c6-8's curve axis, the first components that will apply the role.
-  Documented at the guard, in `ui/README.md`, and asserted as a deliberate blind spot so it fails
-  loudly if the guard ever grows a cross-block reader. (Severity: Low — no component applies the
-  role yet.)
+  correct pair undone by a later rule. *(Review round 2026-07-28 narrowed this: the literal
+  spelling — `.is-compact { font-variant-numeric: normal; }` — is now caught by stylelint, whose
+  `font-variant-numeric` entry admits only the token; the spelling that remains invisible is a
+  later block applying a different role — `.is-compact { font: var(--type-micro); }` — where
+  every declaration is legal and the `font` shorthand resets `font-variant-numeric` as a side
+  effect.)* Resolving that needs specificity, source order and the element's real class list,
+  which live in TSX and are chosen at runtime. **Review owns that half** for c7-2's StatChip and
+  c6-8's curve axis, the first components that will apply the role. Documented at the guard, in
+  `ui/README.md`, and asserted as a deliberate blind spot so it fails loudly if the guard ever
+  grows a cross-block reader. (Severity: Low — no component applies the role yet.)
 
 - **The offline guard's JS layer is a reviewed-host baseline, and it is deliberately brittle.**
   `.css` and `.html` in the bundle carry a TOTAL ban on external URLs; `.js` cannot, because
@@ -1201,3 +1204,23 @@ the gate-output rule rather than left as "we meant to".
   (`fetch('htt' + 'ps://…')`) is invisible to all four rules, as it is to every static check.
   (Severity: Low — the thing being prevented is a build-time CDN import, which the total ban on
   `.css`/`.html` covers absolutely.)
+
+## Deferred from: code review of c2-5-self-hosted-space-grotesk (2026-07-28)
+
+- **`git ls-files`-keyed guards cannot see untracked stylesheets.** `shippedStylesheets` in
+  `ui/tests/fonts.test.ts` and `ui/tests/token-usage.test.ts` builds its file list from
+  `git ls-files '*.css'`, so a not-yet-staged component stylesheet carrying a stray `@font-face`
+  or an unpaired numeric role passes the local vitest run and is only caught once staged
+  (stylelint's filesystem glob still catches value-level violations). This is the deliberate,
+  comment-owned trade-off c2-4 established; if it ever bites, the fix is one sweep appending
+  `git ls-files --others --exclude-standard '*.css'` to every such guard at once, not a
+  per-story patch. (Severity: Low — the window closes at `git add`, and CI never has it.)
+
+- **`:root { font: var(--type-body) }` pins the document rem basis to 14px and overrides the
+  browser's default-font-size preference.** Before c2-5, `:root` set no `font-size`, so `1rem`
+  tracked the user's browser setting; now it is 14px document-wide. Latent — nothing in `ui/`
+  uses `rem`, and the whole token layer is px-based per DESIGN.md, so user font-size preferences
+  were already inert for component text. If an accessibility pass ever revisits px-vs-rem, this
+  root declaration is where the document basis is set. (Severity: Low — design-system-level,
+  pre-dates this story in effect; the 14px change itself is recorded in the c2-5 Completion
+  Notes.)

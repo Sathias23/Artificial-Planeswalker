@@ -9,7 +9,7 @@ baseline_commit: ff39129ed92fd30ee00ee43d0b127fc57ee2ffc0
 
 # Story C2.5: Self-hosted Space Grotesk with offline parity and tabular numerals
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -296,6 +296,104 @@ untouched. `ui/index.html` may be touched **only** for the preload link (Q5).
   - [x] **Verify the mutation landed before believing the verdict**, and **read what landed on
         disk** — c2-4's nesting probe planted flat CSS and the guard was right to stay silent
   - [x] **Ban the family, never enumerate members** — see Gotcha 6
+
+### Review Findings
+
+Adversarial review 2026-07-28 (Blind Hunter + Edge Case Hunter + Acceptance Auditor, triaged):
+1 decision-needed, 14 patch, 2 defer, 0 dismissed. The review theme, one more time: **the one
+exempted thing is where the next evasion lives** — the carve-out property, the exempted file,
+the allowed namespace each turned out to admit exactly the class they were carved out to manage.
+
+**All 15 patches applied 2026-07-28** (the decision resolved to a patch — Brad ruled extend).
+After the round: frontend **173 passed / 13 files** (was 172 — one net new test), Python
+**1,753 passed** unchanged, all five gates exit 0, bundle rebuilt byte-identical (every CSS
+edit was comment-only, and Vite strips comments). The typography fixture now proves **25**
+violations by rule name and count (was 19); the base allowed-list has **six** typography keys
+(was four) and the fonts.css override carries its own message and a drift guard updated to
+base-minus-six.
+
+- [x] [Review][Decision] **`word-spacing` (and `text-indent`) escape the typography-literal
+  ban** — Q4 ruled the six properties plus their longhands; these are siblings, not longhands,
+  so no rule keys them and `word-spacing: 0.5em` lints clean everywhere. Extending the ban is
+  cheap and matches "ban the family", but it widens a Brad ruling, so it is Brad's call:
+  (a) extend the catch-all to cover them (allowed: `0` + CSS-wide keywords — no token governs
+  them), or (b) record them as out-of-scope residue in deferred-work.md.
+  **RESOLVED — Brad ruled (a), extend the ban (2026-07-28).** Applied with the patch round:
+  `word-spacing`/`text-indent` share a key with `line-height`, proven both ways in the fixture
+  and in `clean.css` (`0` stays legal).
+- [x] [Review][Patch] **`font: var(--type-numeric-features)` lints clean and renders as
+  nothing** — the `/^font$/` allowed regex admits the whole `--type-*` namespace, and this
+  member resolves to `tabular-nums`, an invalid `font` shorthand that is discarded; the pairing
+  guard's role regex deliberately excludes it and the unknown-token guard is silent because the
+  token exists. The story's own review theme, alive in its newest rule. [ui/.stylelintrc.json:46]
+- [x] [Review][Patch] **A standalone `font-variant-numeric` literal is invisible to both
+  layers, and the recorded justification overclaims** — the lookahead carves the property out of
+  stylelint entirely, and `findUnpairedNumericRole` only inspects blocks containing the role, so
+  `.foo { font-variant-numeric: oldstyle-nums; }` in a role-less block passes everything while
+  the lint-gates comment asserts that hole does not exist. Give the property its own allowed-list
+  entry (`var(--type-numeric-features)` + CSS-wide keywords) and correct the three comments.
+  [ui/.stylelintrc.json:54, ui/tests/lint-gates.test.ts]
+- [x] [Review][Patch] **A second `@font-face` inside fonts.css itself is caught by nothing** —
+  `findStrayFontFaces` filters the file out, the presence assertion is `toContain` (≥1, not
+  ==1), the family test asserts presence not exclusivity, and the stylelint override exempts the
+  file from the family rules. "One family, forever" needs: exactly one `@font-face` in
+  fonts.css, and every `font-family:` in it is 'Space Grotesk'. [ui/tests/fonts.test.ts:185,217]
+- [x] [Review][Patch] **`src:` extraction is first-match on the unstripped file** — a future
+  comment containing an example `src: url(…)` shadows the real descriptor, and a second `src:`
+  descriptor is never validated. Strip comments, `matchAll`, assert exactly one, validate all.
+  [ui/tests/fonts.test.ts:112]
+- [x] [Review][Patch] **JSON-escaped URLs (`https:\/\/host`) are invisible to all four bundle
+  rules** — the spelling JSON-serialised strings in a minified bundle genuinely use contains no
+  consecutive slashes; IPv6-literal hosts also fail the host class. Normalise `\/` before
+  matching and disclose the IPv6 residue. [ui/tests/fonts.test.ts:316]
+- [x] [Review][Patch] **Base64 `data:` URIs will false-trigger the URL matcher** — the first
+  asset Vite inlines (default `assetsInlineLimit` 4096 B) puts base64 containing `//` into the
+  emitted CSS, and R1's total ban fires on a garbage host. Fails red (safe), but the guard's own
+  header says a guard that fires on clean input is one someone switches off. Strip `data:` spans
+  before matching. [ui/tests/fonts.test.ts:316]
+- [x] [Review][Patch] **Unknown binary types in the bundle are utf8-decoded and regex-scanned**
+  — `isBinary` is a fixed extension list, so a future `.wasm`/`.mp3`/`.pdf` member is read as
+  mojibake and scanned. Make classification exhaustive: known-text read, known-binary listed,
+  unknown extension fails with "classify me". [ui/tests/fonts.test.ts:386]
+- [x] [Review][Patch] **`crossorigin="use-credentials"` satisfies the preload assertion while
+  defeating it** — `toMatch(/crossorigin/)` pins presence, not mode; font fetches are
+  anonymous-mode, so a credentialed preload downloads the file twice — the exact failure the
+  comment says it prevents. Pin the bare/`anonymous` form. [ui/tests/fonts.test.ts:438]
+- [x] [Review][Patch] **`0` is allowed for every `font-*` longhand, and the catch-all lookahead
+  carries two dead alternatives** — `font-weight: 0` / `font-stretch: 0` are invalid CSS that
+  lints clean (the theme again); `0` is only valid for `line-height`. And `font$` /
+  `letter-spacing$` in the lookahead can never match the body `(font-[a-z-]+|line-height)$`, so
+  they misdescribe the mechanics. Split `line-height` out with `0`; drop `0` and the dead
+  alternatives from the catch-all. [ui/.stylelintrc.json:54-55]
+- [x] [Review][Patch] **The unicode-range ".notdef boxes" rationale is factually wrong, in
+  three places** — per CSS font matching, a character inside the range but absent from the cmap
+  falls back to the next family per-glyph; a too-wide range affects download/use triggering, not
+  glyph fallback. The decision (copy verbatim) is right; the recorded reason misteaches.
+  [ui/src/styles/fonts.css:36-38, ui/tests/fonts.test.ts:134-136, ui/README.md]
+- [x] [Review][Patch] **The "fonts first" @import ordering rationale is wrong** — `@font-face`
+  registration is order-independent in the CSSOM; both imports merely need to precede every
+  rule. Stated as load-bearing, it invites a wrong "fix" later. [ui/src/index.css:16-19]
+- [x] [Review][Patch] **README ban-table row overstates the offline guard** — "any URL to
+  another origin in the built bundle | a guard" is false as written: R4 permits the reviewed
+  hosts (`www.w3.org`, `react.dev`). The prose gets it right; the table row is the part people
+  quote. [ui/README.md]
+- [x] [Review][Patch] **The fonts.css override drops the guiding message for the seven restated
+  families** — a spacing/shadow violation inside fonts.css reports stylelint's default text
+  instead of the token-family guidance every other file gets. [ui/.stylelintrc.json:91-113]
+- [x] [Review][Patch] **AC 11's weight proof relocated without a record** — the story's
+  source-tree table homed it in `tokens.test.ts`; it shipped in `fonts.test.ts` (correctly), and
+  the Completion Notes' divergence list does not mention the move. One sentence in the record.
+  [this file, Completion Notes]
+- [x] [Review][Defer] **`git ls-files`-keyed guards cannot see untracked stylesheets**
+  [ui/tests/fonts.test.ts:199, ui/tests/token-usage.test.ts:45] — deferred: deliberate,
+  comment-owned trade-off inherited from c2-4's `shippedStylesheets` pattern; widening every
+  such guard with `--others --exclude-standard` is a one-sweep decision across the suite, not a
+  c2-5 patch.
+- [x] [Review][Defer] **`:root { font: var(--type-body) }` pins the rem basis to 14px and
+  overrides the browser's default-font-size preference** [ui/src/index.css:29] — deferred:
+  consequence of the design system being px-based (DESIGN.md), not of this story; the 14px
+  change itself is recorded in Completion Notes and nothing in `ui/` uses `rem` today. Belongs
+  to any future accessibility/rem pass.
 
 ## Dev Notes
 
@@ -646,6 +744,12 @@ split c2-2 took for its own browser-render half.
   (AC 15: **no dependency added, runtime or dev** — `package.json` and `package-lock.json` are
   not in the diff at all).
 
+**One relocation the divergence list above missed (added at review):** AC 11's role-weight
+proof was planned for `tokens.test.ts` (the story's source-tree table) and shipped in
+`fonts.test.ts` (`proves the role tokens hold only weights 400, 500 and 700`), beside the
+axis assertion it depends on; `tokens.test.ts` received the comment-only repair. The proof
+itself is complete — this line exists because the move went unrecorded.
+
 **One thing widened beyond the ask, cheaply.** `ui/.gitattributes` gained `*.woff`, `*.ttf` and
 `*.otf` beside the existing `*.woff2` (landmine 5 flagged `.woff` as missing). Only `.woff2`
 ships, but the cost of listing the family is nothing and the cost of a later story adding a
@@ -698,5 +802,6 @@ named paths, asserted.
 
 | Date | Version | Description | Author |
 | --- | --- | --- | --- |
+| 2026-07-28 | 1.1 | Adversarial code review (Blind Hunter + Edge Case Hunter + Acceptance Auditor): 1 decision, 14 patches, 2 defers, 0 dismissed. Theme: *the one exempted thing is where the next evasion lives* — `font: var(--type-numeric-features)` passed the namespace-wide `font` rule; a standalone `font-variant-numeric` literal passed both layers through its carve-out; a second `@font-face` inside the one exempted file was caught by nothing. All 15 patches applied (Brad ruled the word-spacing/text-indent extension in): six typography keys in the base allowed-list, `font-variant-numeric` admits only its token, fonts.css pinned to one face/one family, offline guard normalises JSON-escaped URLs and strips data: URIs, exhaustive bundle-member classification, crossorigin mode pinned, two wrong rationale comments corrected (unicode-range, @import order), README/table fixes, override message restored. Two defers to deferred-work.md (ls-files window; rem-basis/px design). Frontend 173, Python 1,753, bundle byte-identical. Status → done. | Claude Fable 5 (code review) |
 | 2026-07-28 | 1.0 | Implemented. All five open questions answered "as proposed" before Task 0. 22,288-byte variable latin subset committed with its OFL licence; one `@font-face` in `src/styles/fonts.css`; preload in `index.html` (Vite rewrote the source href to the hashed asset, emitting the font once). Four new gate families: the offline guard over the committed bundle, the numeric-pairing guard, the typography-literal ban (family regex, four token-keyed entries), and the `@font-face` confinement guard. Suites 172 frontend (was 142) / 1,753 Python (unchanged — landmine 8 held, no Python test edited). Three deliberate divergences recorded in Completion Notes: the offline guard had to split by file type because a clean bundle already contains w3.org and react.dev URLs; AC 9's predicted blind spot was the wrong way round (measured: the guard is block-local, so a split pair is a false failure — the real blind spot is the cascade); AC 12's exemption is the base map minus its four type keys, with a drift guard, because a stylelint override replaces rather than merges. Ten forward-dated sentences repaired, not nine. AC 4's browser-render half deferred to the epic manual-testing checklist (c2-2 precedent). | Amelia (Dev) |
 | 2026-07-27 | 0.1 | Story contexted from epic + DESIGN.md + the imported design system. Ten landmines measured at `c4ddd68` — notably that no font binary exists in the repo at all and the import points at a CDN, that the variable font is 5.6× smaller than the static set (22.3 kB latin, one file, covers 400/500/700), that `function-url-quotes` rejects the obvious `@font-face`, and that NOTHING currently catches a CDN `@import`. 17 ACs, 12 beyond the epic's five blocks; five open questions homed with recommendations. AC 4 split into its machine-verifiable and human halves rather than implied (the c2-2 browser-render precedent); AC 11b added because `@font-face` DECLARES a family and so escapes every value-level rule. Closes c2-4's single deferral (typography literals). BLOCKED on PR #21 merging. | Bob (SM) |

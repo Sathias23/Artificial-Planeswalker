@@ -1,5 +1,6 @@
 # generated: 2026-06-20
-# last_updated: 2026-07-28 (Story c2-5 implemented → review — self-hosted Space Grotesk; 4 new gate families, 7 evasion probes, 172/1,753.
+# last_updated: 2026-07-28 (Story c2-5 review PASSED → done — 15 review patches applied, 2 defers; suites 173/1,753.
+#                Previously — Story c2-5 implemented → review — self-hosted Space Grotesk; 4 new gate families, 7 evasion probes, 172/1,753.
 #                Previously — Story c2-5 → in-progress — PR #21 merged (ff39129), all five open questions answered "as proposed".
 #                Previously — Story c2-5 contexted → ready-for-dev — self-hosted Space Grotesk; BLOCKED until PR #21 merges.
 #                Previously — Story c2-4 PR #21 green (Greptile 5/5); review patches applied → review — 14/14, three new gate families.
@@ -254,7 +255,7 @@ development_status:
   c2-2-the-backend-serves-the-built-spa-as-a-committed-artifact: done  # code review 2026-07-26: 2 decisions ruled + 14 patches applied, suites 1,742/59, nine gates green
   c2-3-typescript-types-generated-from-the-backends-own-openapi-drift-checked-in-ci: done  # reviewed 2026-07-27: 14 patches applied (3 medium guard-vacuity fixes), 2 deferred, proofs re-run; suites 1,753 Python / 78 frontend
   c2-4-the-voltglass-token-layer: review  # PR #21 GREEN 2026-07-27 — Greptile 5/5 "safe to merge" at r3 (3/5 → 4/5 → 5/5), 14 review + 3 Greptile findings all applied; 4/4 CI checks pass incl. ubuntu/node 20; suites 142 frontend / 1,753 Python. Awaiting Brad's merge.
-  c2-5-self-hosted-space-grotesk-with-offline-parity-and-tabular-numerals: review  # implemented 2026-07-28 off ff39129; 22,288-byte variable subset + OFL licence committed, one @font-face, preload rewritten by Vite; 4 new gate families (offline guard, numeric pairing, typography-literal ban, @font-face confinement); 7 evasion probes all fired; suites 172 frontend (was 142) / 1,753 Python unchanged; 10 forward-dated sentences repaired; AC 4's browser-render half deferred to the epic manual-testing checklist
+  c2-5-self-hosted-space-grotesk-with-offline-parity-and-tabular-numerals: done  # review PASSED 2026-07-28 (1 decision + 14 patches, all applied; theme: the one exempted thing is where the next evasion lives — the fvn carve-out, the exempted fonts.css and the --type-* namespace each admitted the class they were carved out to manage; Brad ruled word-spacing/text-indent INTO the ban; 2 defers to deferred-work.md; suites 173/1,753, bundle byte-identical); implemented 2026-07-28 off ff39129; 22,288-byte variable subset + OFL licence committed, one @font-face, preload rewritten by Vite; 4 new gate families (offline guard, numeric pairing, typography-literal ban, @font-face confinement); 7 evasion probes all fired; suites 172 frontend (was 142) / 1,753 Python unchanged; 10 forward-dated sentences repaired; AC 4's browser-render half deferred to the epic manual-testing checklist
   c2-6-the-two-column-application-shell: backlog
   c2-7-presentation-only-primitives-panel-badge-statchip-group-header: backlog
   c2-8-manapip-and-manacost-with-complete-scryfall-cost-parsing: backlog
