@@ -191,20 +191,21 @@ second copy of the tokens in this repo to drift.
 **`src/styles/tokens.css` is the only file in `ui/` where a literal is legal.** Everywhere
 else these bans apply, and each one fails the build:
 
-| Banned                                                                           | Rule                                                      |
-| -------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| a hex colour, a named colour, `rgb()`/`hsl()`/`oklch()`/`drop-shadow()`…         | `color-no-hex`, `color-named`, `function-disallowed-list` |
-| a `box-shadow` or `text-shadow` not built from `--shadow-*`/`--glow`             | `declaration-property-value-allowed-list`                 |
-| a `border-radius` not from `--radius-*` — **including every longhand**           | `declaration-property-value-allowed-list`                 |
-| `padding`/`margin`/`gap` not from `--space-*` — **including every longhand**     | `declaration-property-value-allowed-list`                 |
-| a literal duration in `transition`/`animation` or their duration/delay longhands | allowed-list + disallowed-list                            |
-| anything that pulses, loops or alternates                                        | disallowed-list + a guard                                 |
-| `style={{…}}` on a JSX element                                                   | `no-restricted-syntax` (ESLint)                           |
-| native CSS nesting in a shipped stylesheet                                       | a guard                                                   |
-| a hard-coded `font`/`font-*`/`line-height`/`letter-spacing` value                | `declaration-property-value-allowed-list`                 |
-| `font: var(--type-numeric)` without its `font-variant-numeric` companion         | a guard                                                   |
-| an `@font-face` anywhere but `src/styles/fonts.css`                              | a guard                                                   |
-| any URL to another origin in the built bundle                                    | a guard                                                   |
+| Banned                                                                                                                | Rule                                                      |
+| --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| a hex colour, a named colour, `rgb()`/`hsl()`/`oklch()`/`drop-shadow()`…                                              | `color-no-hex`, `color-named`, `function-disallowed-list` |
+| a `box-shadow` or `text-shadow` not built from `--shadow-*`/`--glow`                                                  | `declaration-property-value-allowed-list`                 |
+| a `border-radius` not from `--radius-*` — **including every longhand**                                                | `declaration-property-value-allowed-list`                 |
+| `padding`/`margin`/`gap` not from `--space-*` — **including every longhand**                                          | `declaration-property-value-allowed-list`                 |
+| a literal duration in `transition`/`animation` or their duration/delay longhands                                      | allowed-list + disallowed-list                            |
+| anything that pulses, loops or alternates                                                                             | disallowed-list + a guard                                 |
+| `style={{…}}` on a JSX element                                                                                        | `no-restricted-syntax` (ESLint)                           |
+| native CSS nesting in a shipped stylesheet                                                                            | a guard                                                   |
+| a hard-coded `font`/`font-*`/`line-height`/`letter-spacing` value — and the sibling `word-spacing`/`text-indent`      | `declaration-property-value-allowed-list`                 |
+| any `font-variant-numeric` value except `var(--type-numeric-features)`                                                | `declaration-property-value-allowed-list`                 |
+| `font: var(--type-numeric)` without its `font-variant-numeric` companion                                              | a guard                                                   |
+| an `@font-face` anywhere but `src/styles/fonts.css`                                                                   | a guard                                                   |
+| any external URL in the built bundle's `.css`/`.html`; font-CDN hosts, fetchable assets and unreviewed hosts anywhere | a guard                                                   |
 
 **The value must be from the right FAMILY, not merely a token.** `padding: var(--radius-pill)`
 is invalid CSS that renders as nothing, and the unknown-token guard cannot catch it because
@@ -222,12 +223,14 @@ and no test can see it. There are **exactly two**, and that list is asserted:
 - **`src/styles/tokens.css`** relaxes exactly three colour rules. The shadow, radius, spacing
   and duration bans are keyed on property _names_, and the token file declares custom
   properties, so they never applied to it in the first place.
-- **`src/styles/fonts.css`** is exempt from the four **typography** entries only, because an
+- **`src/styles/fonts.css`** is exempt from the six **typography** entries only, because an
   `@font-face` legitimately declares `font-family`, `font-weight` and `font-style`. Because a
   stylelint override _replaces_ a rule's whole option object rather than merging into it, that
-  entry restates the other seven families verbatim — and `tests/lint-gates.test.ts` asserts
-  that the override is exactly the base map minus its four typography keys, so a family added
-  to the base rule later cannot silently stop applying to the font stylesheet.
+  entry restates the other seven families verbatim (with a message of its own) — and
+  `tests/lint-gates.test.ts` asserts that the override is exactly the base map minus its six
+  typography keys, so a family added to the base rule later cannot silently stop applying to
+  the font stylesheet. The exemption is not a blank cheque inside the file either:
+  `tests/fonts.test.ts` pins fonts.css to exactly one `@font-face` naming exactly one family.
 
 `tests/lint-gates.test.ts` lints both real files under the real config to prove the overrides
 work, and lints the same hex — and the same `@font-face` — in a file the overrides do not name
@@ -284,16 +287,23 @@ var(--motion-glide) 3`), which a value-level regex cannot tell apart from the nu
   shorthands, so `font: var(--type-body)` is the whole declaration; `font-size`,
   `font-weight` and `line-height` are carried _by_ the role and are never set beside it. The
   family token `var(--font-sans)` and the `var(--tracking-*)` companions are the only other
-  legal typography values. The ban is keyed on a property-name **family** — `font-stretch`
-  and `font-optical-sizing` fail without anyone having listed them, and so does a property
-  CSS has not shipped yet.
+  legal typography values — and `--type-numeric-features` is **not** a role: it lives in the
+  `--type-*` namespace but is not a `font` shorthand, so `font: var(--type-numeric-features)`
+  is banned by name. The ban is keyed on a property-name **family** — `font-stretch` and
+  `font-optical-sizing` fail without anyone having listed them, and so does a property CSS
+  has not shipped yet — and extends to the tracking siblings `word-spacing` and `text-indent`,
+  which are longhands of nothing and have no token: `0` or a CSS-wide keyword only.
 - **The numeric role never travels alone.** The `font` shorthand cannot carry
   `font-variant-numeric`, so `font: var(--type-numeric)` on its own renders _proportional_
   digits and a column of counts stops lining up (UX-DR3). Write both declarations in the same
-  rule block. This one fails plausibly rather than visibly, which is why it is a gate.
-  `tests/token-usage.test.ts` catches the role without the companion in the same block; what
-  it **cannot** see is a later rule undoing a correct pair (`.is-compact
-{ font-variant-numeric: normal; }` on the same element). **Review owns that half.**
+  rule block. This one fails plausibly rather than visibly, which is why it is a gate — twice:
+  stylelint admits only `var(--type-numeric-features)` as a `font-variant-numeric` value
+  anywhere (every other value, `normal` included, turns tabular numerals off), and
+  `tests/token-usage.test.ts` catches the role without the companion in the same block. What
+  neither layer can see is a later rule undoing a correct pair through the `font` shorthand
+  itself (`.is-compact { font: var(--type-micro); }` on the same element — every declaration
+  legal, and the shorthand resets `font-variant-numeric` as a side effect). **Review owns
+  that half.**
 
 ## The typeface is self-hosted
 

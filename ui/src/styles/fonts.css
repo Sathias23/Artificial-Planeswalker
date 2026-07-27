@@ -32,10 +32,12 @@
    2. `format('woff2')`, not `format('woff2-variations')`. The package's own CSS uses the latter;
       it is the deprecated pre-CSS-Fonts-4 spelling, and `format('woff2')` alongside a
       `font-weight` RANGE is how every current browser is told the same thing.
-   3. `unicode-range` is COPIED from the package's wght.css, never widened. It has to describe
-      exactly what this subset contains: a range claiming more than the file carries stops the
-      browser falling back for the missing characters, so a card name outside latin-1 renders
-      .notdef boxes instead of degrading to system-ui — worse than declaring no range at all. */
+   3. `unicode-range` is COPIED from the package's wght.css, never widened or invented. The
+      range decides WHEN this face is used at all; per-glyph fallback to the next family for a
+      character the file lacks happens regardless of it (CSS font matching is per character).
+      So a drifted range does not corrupt rendering — it silently changes which characters ever
+      trigger the font — and the only source that stays truthful to the file's real coverage
+      is the file's own metadata. */
 
 @font-face {
   font-family: 'Space Grotesk';

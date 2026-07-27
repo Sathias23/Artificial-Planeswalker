@@ -30,13 +30,17 @@ const ALLOWED_RULE = 'declaration-property-value-allowed-list'
 
 /**
  * Just enough of .stylelintrc.json's shape for the override-drift assertion to be typed.
- * Property key -> the allowed value patterns for it; the rule's second element is its
- * `{ message }` object, which nothing here reads.
+ * Property key -> the allowed value patterns for it, plus the `{ message }` object — the
+ * override carries the same `[map, { message }]` tuple as the base rule, so a violation
+ * inside fonts.css reports the token-family guidance rather than stylelint's default text.
  */
 type AllowedList = Record<string, string[]>
 interface StylelintConfig {
   rules: { [ALLOWED_RULE]: [AllowedList, { message: string }] }
-  overrides: { files: string[]; rules: Partial<Record<string, AllowedList>> }[]
+  overrides: {
+    files: string[]
+    rules: Partial<Record<string, [AllowedList, { message: string }]>>
+  }[]
 }
 const INLINE_STYLE_RULE = 'no-restricted-syntax'
 const HEX_RULE = 'color-no-hex'
@@ -513,11 +517,14 @@ describe('stylelint literal bans (UX-DR1, UX-DR5, story c2-4 AC 4/5/7)', () => {
     const { by, countOf } = await lintAll()
     const source = readFileSync(fixture('css/typography-violation.css'), 'utf8').split('\n')
 
-    // Nineteen: five hand-written longhands, the `font` shorthand that carries five of them at
-    // once, five right-shaped wrong-family vars, four properties the rule never enumerated,
-    // two on-scale-by-hand values and two keyword values. Own fixture file, own count — the
-    // house rule that keeps c2-1's ten and c2-4's twenty independent of this one.
-    expect(countOf('typography-violation', ALLOWED_RULE)).toBe(19)
+    // Twenty-five: five hand-written longhands, the `font` shorthand that carries five of them
+    // at once, six right-shaped wrong-family vars (the review round added `font:
+    // var(--type-numeric-features)`), four properties the rule never enumerated, two
+    // on-scale-by-hand values, two keyword values, and the review round's five: two standalone
+    // font-variant-numeric literals, the two tracking siblings, and `font-weight: 0`. Own
+    // fixture file, own count — the house rule that keeps c2-1's ten and c2-4's twenty
+    // independent of this one.
+    expect(countOf('typography-violation', ALLOWED_RULE)).toBe(25)
 
     const flaggedLines = by('typography-violation')
       .filter((w) => w.rule === ALLOWED_RULE)
@@ -583,19 +590,46 @@ describe('stylelint literal bans (UX-DR1, UX-DR5, story c2-4 AC 4/5/7)', () => {
     expect(flagged).toContain('font-weight: var(--space-1);')
     expect(flagged).toContain('line-height: var(--space-2);')
     expect(flagged).toContain('letter-spacing: var(--type-label);')
+    // The review round's instance of the same theme, from INSIDE the type namespace:
+    // --type-numeric-features is a real --type-* token, but it resolves to `tabular-nums`,
+    // which is not a `font` shorthand — the declaration is discarded and the element
+    // inherits. The `font` regex now excludes exactly that member.
+    expect(flagged).toContain('font: var(--type-numeric-features);')
   })
 
-  it('leaves font-variant-numeric alone — its rule is a pairing guard, not a value ban', async () => {
-    // The deliberate hole in the property regex (Brad's ruling, Q4). font-variant-numeric has
-    // exactly one legal value and the co-occurrence guard in tests/token-usage.test.ts already
-    // requires it; adding it here would be a second rule saying the same thing, and the two
-    // would drift. The `(?!…)` lookahead is what carves it out, so it is asserted directly.
-    const result = await stylelint.lint({
+  it('closes the review round holes: standalone font-variant-numeric, the tracking siblings, zero weights', async () => {
+    const { by } = await lintAll()
+    const source = readFileSync(fixture('css/typography-violation.css'), 'utf8').split('\n')
+    const flagged = by('typography-violation')
+      .filter((w) => w.rule === ALLOWED_RULE)
+      .map((w) => (source[w.line - 1] ?? '').trim())
+
+    // font-variant-numeric was carved OUT of the ban at implementation, justified as "the
+    // pairing guard already requires its one legal value" — which held only inside blocks
+    // that apply the numeric role. A standalone literal in a role-less block passed both
+    // layers. It now has its own allowed-list entry admitting ONLY the token: `normal` (the
+    // cascade-undo spelling) and every other keyword turn tabular numerals off, so none of
+    // them is legal anywhere (UX-DR3 is unconditional).
+    expect(flagged).toContain('font-variant-numeric: oldstyle-nums;')
+    expect(flagged).toContain('font-variant-numeric: normal;')
+    // The tracking SIBLINGS — not longhands of any banned property, so the family regex never
+    // reached them (Brad's review ruling extends the ban): no token governs them, so `0` and
+    // the CSS-wide keywords are all that is left.
+    expect(flagged).toContain('word-spacing: 0.5em;')
+    expect(flagged).toContain('text-indent: 2ch;')
+    // `0` used to be allowed for every font-* longhand; it is a valid value for none of them
+    // (`font-weight: 0` is discarded — the lints-clean-renders-as-nothing class again).
+    expect(flagged).toContain('font-weight: 0;')
+
+    // The silent halves: the paired numeric block and `word-spacing: 0`/`text-indent: 0` in
+    // clean.css pass the same config in the same lintAll() invocation (asserted unfiltered in
+    // the clean-fixture test below).
+    const legal = await stylelint.lint({
       code: '.a { font-variant-numeric: var(--type-numeric-features); }',
       codeFilename: fileURLToPath(new URL('../src/probe.css', import.meta.url)),
       configFile: fileURLToPath(new URL('../.stylelintrc.json', import.meta.url)),
     })
-    expect(result.results[0].warnings).toEqual([])
+    expect(legal.results[0].warnings).toEqual([])
   })
 
   it('lints the REAL font stylesheet clean, and the SAME @font-face elsewhere red', async () => {
@@ -649,17 +683,24 @@ describe('stylelint literal bans (UX-DR1, UX-DR5, story c2-4 AC 4/5/7)', () => {
     const isTypeRule = (key: string) => /font|letter-spacing|line-height/.test(key)
     const typeKeys = Object.keys(base).filter(isTypeRule)
 
-    // Four type entries in the base rule, none of them in the override…
-    expect(typeKeys).toHaveLength(4)
-    expect(Object.keys(exempted).filter(isTypeRule)).toEqual([])
+    // Six type entries in the base rule (the review round split line-height out with the
+    // tracking siblings and gave font-variant-numeric its own entry), none in the override…
+    expect(typeKeys).toHaveLength(6)
+    expect(Object.keys(exempted[0]).filter(isTypeRule)).toEqual([])
     // …and every OTHER entry present, byte-identical. This is the assertion that fails when a
     // later story adds a family to the base rule and does not carry it here.
     for (const key of Object.keys(base).filter((k) => !isTypeRule(k))) {
-      expect(exempted[key], `the fonts.css override has drifted: ${key} is missing`).toEqual(
+      expect(exempted[0][key], `the fonts.css override has drifted: ${key} is missing`).toEqual(
         base[key],
       )
     }
-    expect(Object.keys(exempted)).toHaveLength(Object.keys(base).length - 4)
+    expect(Object.keys(exempted[0])).toHaveLength(Object.keys(base).length - 6)
+    // The override carries a `{ message }` of its own (review round: a bare map restatement
+    // dropped the guidance, so a spacing violation inside fonts.css reported stylelint's
+    // default text). Not asserted equal to the base message — the base one now speaks mostly
+    // about typography, which is exactly what the override strips — just present and pointed
+    // the same way.
+    expect(exempted[1].message).toContain('design token')
 
     // The exemption list is TWO named paths and stays a list rather than becoming a habit
     // (AC 12). A third entry is a decision, not a detail — this is where it gets noticed.

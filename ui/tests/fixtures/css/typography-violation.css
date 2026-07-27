@@ -39,6 +39,14 @@
   letter-spacing: var(--type-label);
 }
 
+/* The wrong family from INSIDE the type namespace (review round). --type-numeric-features is
+   a real --type-* token, but it resolves to `tabular-nums`, which is not a `font` shorthand:
+   the declaration is discarded and the element inherits. A namespace-wide allowance admitted
+   it; the `font` regex now excludes exactly this member. */
+.role-position-companion {
+  font: var(--type-numeric-features);
+}
+
 /* PROPERTIES THE BAN NEVER ENUMERATED. The rule keys a family regex over `font-*`, so these
    have to fail without anyone having listed them — that is what makes it a family ban rather
    than an enumeration. `font-stretch` and `font-optical-sizing` are real levers on a VARIABLE
@@ -63,4 +71,32 @@
 .keywords-are-not-tokens {
   font-size: LARGER;
   font-weight: bold;
+}
+
+/* THE CARVE-OUT, CLOSED (review round). font-variant-numeric was exempt from this ban at
+   implementation, justified by the pairing guard — which only inspects blocks that apply the
+   numeric role, so a standalone literal in a role-less block passed both layers. Its own
+   entry now admits only var(--type-numeric-features): every other value, `normal` included,
+   turns tabular numerals off, and UX-DR3 is unconditional. */
+.standalone-numeric-literal {
+  font-variant-numeric: oldstyle-nums;
+}
+
+.undo-spelling {
+  font-variant-numeric: normal;
+}
+
+/* SIBLINGS, NOT LONGHANDS (Brad's review ruling). word-spacing and text-indent belong to the
+   same hand-tuned-typography family as letter-spacing but are longhands of nothing banned, so
+   the family regex never reached them. No token governs them: 0 or a CSS-wide keyword only. */
+.tracking-siblings {
+  word-spacing: 0.5em;
+  text-indent: 2ch;
+}
+
+/* Zero is not a weight. `0` was allowed across every font-* longhand at implementation; it is
+   a valid value for none of them, so `font-weight: 0` is a discarded declaration — the
+   lints-clean-renders-as-nothing class, one more time. */
+.zero-is-not-a-weight {
+  font-weight: 0;
 }

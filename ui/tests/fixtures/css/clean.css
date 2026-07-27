@@ -122,8 +122,9 @@
 }
 
 /* UX-DR3: the numeric role and its features together, which is the ONLY legal way to apply it
-   (tests/token-usage.test.ts fails the role alone). font-variant-numeric is deliberately NOT
-   in the typography ban — its one legal value is already required by that pairing guard. */
+   (tests/token-usage.test.ts fails the role alone). The two layers split the work:
+   stylelint's font-variant-numeric entry admits only var(--type-numeric-features) wherever
+   the property appears, and the pairing guard requires the co-occurrence in role blocks. */
 .reads-as-a-count {
   font: var(--type-numeric);
   font-variant-numeric: var(--type-numeric-features);
@@ -132,4 +133,12 @@
 /* The family token on its own, for an element that inherits its size and weight. */
 .family-only {
   font-family: var(--font-sans);
+}
+
+/* The tracking siblings have no token; zero is the only non-keyword value left to them, and it
+   must stay legal (review round — the ban extended to them must not over-reach into "never
+   touch these properties at all"). */
+.flush-prose {
+  word-spacing: 0;
+  text-indent: 0;
 }

@@ -105,21 +105,33 @@ describe('the committed font binary (AC 2, AC 3)', () => {
 // AC 6 — the @font-face itself
 // ---------------------------------------------------------------------------------------
 
+const stripComments = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, '')
+
 describe('the @font-face (AC 6, AC 11b)', () => {
   const fontCss = readFileSync(join(uiRoot, FONT_STYLESHEET), 'utf8')
 
-  /** `src: url('…')` — the URL, unquoted, whatever quote style was used. */
-  const srcUrl = /src:\s*url\(\s*['"]?([^'")]+)['"]?\s*\)/.exec(fontCss)?.[1]
+  /** EVERY `src: url('…')` in the file, comments stripped first — a first-match .exec on the
+   *  raw text had two holes the review round closed: a comment discussing an example
+   *  `src: url(…)` would SHADOW the real descriptor, and a second descriptor (a CDN or
+   *  absolute-path fallback added after the first) would never be validated at all. */
+  const srcUrls = [
+    ...stripComments(fontCss).matchAll(/src:\s*url\(\s*['"]?([^'")]+)['"]?\s*\)/g),
+  ].map((m) => m[1])
 
   it('points at the committed binary by a RELATIVE url the bundler can resolve', () => {
-    expect(srcUrl, 'no src: url() found in the font stylesheet at all').toBeDefined()
+    // Exactly one — a second src: is a second source this file's other assertions never see.
+    expect(
+      srcUrls,
+      'expected exactly one src: url() descriptor in the font stylesheet',
+    ).toHaveLength(1)
+    const srcUrl = srcUrls[0]
     // Relative, so the bundle is position-independent and Vite can content-hash the target.
     // An absolute path (`/src/assets/…`) survives dev and breaks the hashing; an origin
     // (`https://…`) is the CDN this story exists to remove.
-    expect(srcUrl!.startsWith('./') || srcUrl!.startsWith('../')).toBe(true)
+    expect(srcUrl.startsWith('./') || srcUrl.startsWith('../')).toBe(true)
     expect(srcUrl).not.toMatch(/^(https?:)?\/\//)
     // …and it resolves to the file that is actually committed.
-    expect(join(uiRoot, 'src/styles', srcUrl!)).toBe(join(uiRoot, FONT_FILE))
+    expect(join(uiRoot, 'src/styles', srcUrl)).toBe(join(uiRoot, FONT_FILE))
   })
 
   it('declares the whole variable weight axis, so one file serves all seven roles', () => {
@@ -131,9 +143,12 @@ describe('the @font-face (AC 6, AC 11b)', () => {
   })
 
   it('declares the subset range the file actually contains, copied not invented', () => {
-    // Verbatim from @fontsource-variable/space-grotesk@5.3.0's own wght.css. A range WIDER
-    // than the file's real coverage is worse than none: the browser stops falling back for
-    // the characters the font lacks and renders .notdef boxes instead of system-ui.
+    // Verbatim from @fontsource-variable/space-grotesk@5.3.0's own wght.css. The range
+    // governs which characters USE this face at all; per-glyph fallback for a character the
+    // file lacks happens regardless (CSS font matching walks to the next family per
+    // character). Copying it verbatim is what keeps the declaration truthful to the file's
+    // real coverage — a widened or invented range doesn't corrupt anything, it just
+    // misdescribes when the font applies, silently.
     const range = /unicode-range:\s*([^;]+);/.exec(fontCss)?.[1]
     expect(range, 'the @font-face declares no unicode-range').toBeDefined()
     const declared = range!.split(',').map((r) => r.trim().toUpperCase())
@@ -178,8 +193,6 @@ describe('the @font-face (AC 6, AC 11b)', () => {
  * introduces a whole typeface while consuming nothing, and every value rule stays silent. This
  * is the same shape as c2-4's "no component may declare a token", and fails the same way.
  */
-const stripComments = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, '')
-
 const findStrayFontFaces = (files: string[], read: (f: string) => string): string[] =>
   files
     .filter((f) => f !== FONT_STYLESHEET)
@@ -215,6 +228,19 @@ describe('exactly one typeface (AC 11, AC 11b, UX-DR2)', () => {
     // …and the font stylesheet really does carry one, so the ban is not passing because
     // nothing anywhere declares a face.
     expect(readFileSync(join(uiRoot, FONT_STYLESHEET), 'utf8')).toContain('@font-face')
+  })
+
+  it('confines fonts.css itself to ONE face and ONE family (the hole inside the exemption)', () => {
+    // The review round's finding: every layer of "one family, forever" excluded the one
+    // exempted file. findStrayFontFaces filters fonts.css out, the presence check above is
+    // toContain (≥1, not ==1), and the stylelint override exempts it from the family-value
+    // ban — so a SECOND @font-face inside fonts.css, self-hosted so the bundle URL scan stays
+    // silent, was caught by nothing at all. This is the assertion that closes the door: the
+    // exempted file carries exactly one face, and every family it names is Space Grotesk.
+    const fontCss = stripComments(readFileSync(join(uiRoot, FONT_STYLESHEET), 'utf8'))
+    expect(fontCss.match(/@font-face/gi)).toHaveLength(1)
+    const families = [...fontCss.matchAll(/font-family:\s*([^;]+);/gi)].map((m) => m[1].trim())
+    expect(families).toEqual(["'Space Grotesk'"])
   })
 
   it('catches a second @font-face wherever it is hidden (the firing half)', () => {
@@ -296,9 +322,13 @@ describe('exactly one typeface (AC 11, AC 11b, UX-DR2)', () => {
  *       part of that same review rather than a silent diff in a minified line.
  *
  * WHAT IS STILL NOT COVERED, said in the same breath: a runtime-constructed URL
- * (`fetch('htt' + 'ps://…')`) is invisible to all four, as it is to every static check. That is
- * not what this AC is about — the thing being prevented is the design system's CDN font import,
- * which is a build-time, statically visible construct in CSS or HTML, and R1 is absolute there.
+ * (`fetch('htt' + 'ps://…')`) is invisible to all four, as it is to every static check, and an
+ * IPv6-literal host (`https://[2001:db8::1]/x.woff2`) fails the host character class. JSON-
+ * escaped spellings (`https:\/\/host`) WERE a third hole here — the spelling JSON-serialised
+ * strings inside a minified bundle genuinely use — and are now normalised before matching.
+ * None of these is what this AC is about — the thing being prevented is the design system's
+ * CDN font import, which is a build-time, statically visible construct in CSS or HTML, and R1
+ * is absolute there.
  */
 
 /** Hosts the reviewed bundle contains, and why each is not a fetch. */
@@ -311,12 +341,19 @@ const FONT_CDN =
   /(^|\.)(fonts?\.[a-z0-9-]+\.[a-z]{2,}|[a-z0-9-]*font[a-z0-9-]*\.[a-z]{2,}|use\.typekit\.net)$/i
 const FETCHABLE_ASSET = /\.(woff2?|ttf|otf|eot|css|m?js)(\?|#|$)/i
 
-/** Every `https://host/path`, `http://host/path` and protocol-relative `//host/path`. */
-const externalReferences = (text: string): { url: string; host: string }[] =>
-  [...text.matchAll(/(?:https?:)?\/\/([A-Za-z0-9._-]+)(\/[^\s"'`)<>\\]*)?/g)].map((m) => ({
+/** Every `https://host/path`, `http://host/path` and protocol-relative `//host/path`.
+ *  Two normalisations first, both from the review round: `data:` URIs are STRIPPED, because
+ *  base64 legitimately contains `//` and the first asset Vite inlines (assetsInlineLimit,
+ *  default 4096 B) would otherwise turn R1's total ban red on fully self-hosted bytes; and
+ *  JSON-escaped slashes (`https:\/\/host`) are unescaped, because that spelling contains no
+ *  consecutive slashes and matched nothing. */
+const externalReferences = (raw: string): { url: string; host: string }[] => {
+  const text = raw.replace(/data:[^\s"'`)<>]+/g, '[data-uri]').replace(/\\\//g, '/')
+  return [...text.matchAll(/(?:https?:)?\/\/([A-Za-z0-9._-]+)(\/[^\s"'`)<>\\]*)?/g)].map((m) => ({
     url: m[0],
     host: m[1].toLowerCase(),
   }))
+}
 
 const TOTAL_BAN_EXTENSIONS = ['.css', '.html']
 
@@ -382,8 +419,20 @@ const readBundle = (root: string): BundleFile[] => {
       // regex could match by accident. Listing them still matters — the assertion that the
       // font reached assets/ at all is a NAME check, and an earlier version of this walk
       // dropped them entirely, which made that assertion fail for the right reason by luck.
+      //
+      // The classification is EXHAUSTIVE, not an is-binary list with a read-as-text else:
+      // the review round found that shape utf8-decodes any extension nobody enumerated
+      // (.wasm, .mp3, .pdf…) and regex-scans the mojibake. An unknown extension fails loudly
+      // instead, and whoever adds the file type decides which list it belongs in.
       const path = relative(root, full).replace(/\\/g, '/')
-      const isBinary = /\.(woff2?|ttf|otf|eot|png|jpe?g|gif|ico|webp|avif)$/i.test(entry)
+      const isBinary = /\.(woff2?|ttf|otf|eot|png|jpe?g|gif|ico|webp|avif|wasm)$/i.test(entry)
+      const isText = /\.(html?|css|m?js|map|svg|json|txt|webmanifest|xml)$/i.test(entry)
+      if (!isBinary && !isText) {
+        throw new Error(
+          `${path}: unknown bundle member type. Classify its extension in readBundle — ` +
+            `text (scanned for external URLs) or binary (listed, never utf8-decoded).`,
+        )
+      }
       out.push({ path, text: isBinary ? null : readFileSync(full, 'utf8') })
     }
   }
@@ -434,8 +483,11 @@ describe('the shipped bundle reaches no other origin (AC 4, AC 5, NFR-06)', () =
     expect(html.text).toMatch(/rel="preload"/)
     expect(html.text).toContain(`/${fonts[0]}`)
     // `crossorigin` even same-origin: font fetches are always CORS-mode, and without it the
-    // preload is a different request than the real one, so nothing is reused.
-    expect(html.text).toMatch(/crossorigin/)
+    // preload is a different request than the real one, so nothing is reused. The MODE is
+    // pinned too (review round): font requests are anonymous-mode, so
+    // `crossorigin="use-credentials"` is once again a different request — the exact
+    // double-download this attribute exists to prevent, satisfying a bare presence check.
+    expect(html.text).toMatch(/crossorigin(?!\s*=\s*["']?use-credentials)/)
   })
 
   it('names no external host in any .css or .html, and no font CDN anywhere', () => {
@@ -468,14 +520,32 @@ describe('the shipped bundle reaches no other origin (AC 4, AC 5, NFR-06)', () =
       { path: 'assets/index-abc123.js', text: 'loadFont("https://cdn.example.net/x.woff2")' },
       // A host that is neither a CDN nor an asset: caught by the reviewed-host baseline.
       { path: 'assets/index-abc123.js', text: 'fetch("https://telemetry.example.com/beacon")' },
+      // JSON-escaped, the spelling a serialised config inside a minified bundle actually
+      // uses — no consecutive slashes anywhere, so the un-normalised regex saw nothing.
+      {
+        path: 'assets/index-abc123.js',
+        text: '{"stylesheet":"https:\\/\\/fonts.googleapis.com\\/css2?family=Space+Grotesk"}',
+      },
     ])
 
-    expect(planted).toHaveLength(5)
+    expect(planted).toHaveLength(6)
     expect(planted[0]).toContain('No .css or .html in the bundle may name another host')
     expect(planted[1]).toContain('No .css or .html in the bundle may name another host')
     expect(planted[2]).toContain('No .css or .html in the bundle may name another host')
     expect(planted[3]).toContain('fetchable asset on another origin')
     expect(planted[4]).toContain('no reviewer has signed off')
+    expect(planted[5]).toContain('web-font CDN')
+
+    // And the silent half of the data-URI strip: base64 routinely contains `//`, and an asset
+    // Vite inlines must not read as a protocol-relative reference to a garbage host.
+    expect(
+      findExternalReferences([
+        {
+          path: 'assets/index-abc123.css',
+          text: '.a { background: url("data:image/svg+xml;base64,PHN2Zy8vIiB4bWxu//cy8v"); }',
+        },
+      ]),
+    ).toEqual([])
 
     // The font-CDN branch is reachable from a file type the total ban does not cover, which is
     // what proves R2 is doing work rather than being shadowed by R1 on every input.

@@ -14,10 +14,11 @@
    from the seven role tokens (--type-body and friends), not from this file. */
 
 /* TWO imports, BOTH above every rule below. A CSS @import that follows any rule is dropped by
-   the browser and by the build, so this pair has to stay at the top of the file — fonts first,
-   because the @font-face has to be registered before the first rule that can trigger a font
-   load. `url(…)` notation, not a bare string: stylelint-config-standard's `import-notation`
-   rule requires it. Vite inlines both into the single emitted stylesheet either way. */
+   the browser and by the build, so this pair has to stay at the top of the file. Their order
+   relative to EACH OTHER is immaterial — @font-face registration is not order-sensitive, so
+   fonts-then-tokens is nothing but reading order. `url(…)` notation, not a bare string:
+   stylelint-config-standard's `import-notation` rule requires it. Vite inlines both into the
+   single emitted stylesheet either way. */
 @import url('./styles/fonts.css');
 @import url('./styles/tokens.css');
 

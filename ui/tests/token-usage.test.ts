@@ -348,16 +348,21 @@ const findLoopingAnimation = (blocks: Block[]): string[] => {
  *   exactly the decide-once ruling this story sets ("in the same rule block"). c7-2's StatChip
  *   and c6-8's curve axis write both declarations together, which is what we want them to do.
  *
- *   THE REAL LIMIT IS THE CASCADE. A separate rule can undo a correctly paired block:
+ *   THE REAL LIMIT IS THE CASCADE. A separate rule can undo a correctly paired block. The
+ *   literal spelling of that attack — `.is-compact { font-variant-numeric: normal; }` — is
+ *   now caught by stylelint (review round: the property's allowed-list admits ONLY
+ *   `var(--type-numeric-features)`, keywords included, because every other value turns
+ *   tabular numerals off). What remains invisible is the shape no value rule can object to:
  *
  *       .count      { font: var(--type-numeric); font-variant-numeric: var(--type-numeric-features); }
- *       .is-compact { font-variant-numeric: normal; }
+ *       .is-compact { font: var(--type-micro); }
  *
- *   An element carrying both classes renders proportional digits, and this guard reports
- *   nothing — `.is-compact` sets no `font`, so it is not a block the guard even looks at.
- *   Resolving that needs specificity, source order and the element's real class list, which
- *   lives in TSX and is chosen at runtime. **Review owns that half**, the same division of
- *   labour findAccentDimOnOverlay declares for its own cross-block case.
+ *   Every declaration there is legal, but the `font` SHORTHAND resets font-variant-numeric
+ *   to normal — so an element carrying both classes renders proportional digits, and this
+ *   guard reports nothing: `.is-compact` applies no numeric role, so it is not a block the
+ *   guard even looks at. Resolving that needs specificity, source order and the element's
+ *   real class list, which lives in TSX and is chosen at runtime. **Review owns that half**,
+ *   the same division of labour findAccentDimOnOverlay declares for its own cross-block case.
  */
 const findUnpairedNumericRole = (blocks: Block[]): string[] => {
   // `[,)]`, not `)`. `var(--type-numeric, sans-serif)` is the same fallback evasion c2-4's
@@ -556,14 +561,17 @@ describe('the guards themselves fire (the other half of the pair)', () => {
 
   it('is honest about the cascade it cannot see (AC 9)', () => {
     // THE DECLARED BLIND SPOT, asserted rather than only described. A correctly paired block
-    // undone by a later rule is invisible: the undoing block sets no `font`, so it is not a
-    // block this guard looks at, and resolving it would need the element's real class list.
-    // If this ever starts FAILING, the guard grew a cross-block reader and the comment above
-    // it needs rewriting — not deleting.
+    // undone by a later rule is invisible to this guard. The undoing block below is made of
+    // entirely LEGAL declarations — stylelint now bans every literal font-variant-numeric
+    // value (review round), so the one spelling of this attack left standing is the `font`
+    // shorthand itself, which resets font-variant-numeric to normal as a side effect. That
+    // block applies no numeric role, so this guard never looks at it, and resolving it would
+    // need the element's real class list. If this ever starts FAILING, the guard grew a
+    // cross-block reader and the comment above it needs rewriting — not deleting.
     const undone = blocksIn(
       'inline',
       `.count { font: var(--type-numeric); font-variant-numeric: var(--type-numeric-features); }
-       .is-compact { font-variant-numeric: normal; }`,
+       .is-compact { font: var(--type-micro); }`,
     )
     expect(undone).toHaveLength(2)
     expect(findUnpairedNumericRole(undone)).toEqual([])
