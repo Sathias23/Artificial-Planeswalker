@@ -457,6 +457,36 @@ It is worth naming as the theme, because a fourth spelling of it is likelier tha
 Three new fixture blocks and two new paired tests; `clean.css` still reports zero, which is
 what proves the `var()` restriction did not degrade into "no `var()` in a transition".
 
+### Greptile round 2 (4/5, up from 3/5) — one finding, and it names a pattern
+
+**`min()`, `max()` and `clamp()` were not banned, because round 1 banned `calc(` — one member
+of a family.** That is the fourth instance of the same failure class in this story, and worse,
+it is a repeat of a lesson the story had already learned and written down: landmine 5 is
+exactly "a list of members is a list that gets walked around; key the rule on the family".
+I applied that to spacing property keys and to the colour-function list, and then did not
+apply it to motion.
+
+So the fix is not `calc|min|max|clamp`. **The shorthands now ban ANY function call except
+`var()`, `cubic-bezier()` and `steps()`** — which closes every current spelling and every
+future one, and needs no edit when CSS grows another math function. A test proves it with an
+*invented* function name (`futurefn(300ms)`) rather than only with today's list, so it is a
+family test rather than an enumeration test wearing one's clothes.
+
+**Two honest corrections to the finding as written.** Greptile's example was
+`min(300ms, var(--motion-glide))`, which actually reduces correctly — under reduced motion
+that is `min(300ms, 0s)` = `0s`. The mechanism is real but the example is the weakest case;
+**`max()` and `clamp()` are the genuinely broken ones**, because `max(300ms, 0s)` is `300ms`
+and clamp()'s floor survives the same way. The fixture uses all three and the record says
+which is which.
+
+**One evasion found while fixing, not reported by either reviewer:** the time-literal regex's
+trailing boundary was `(?:\s|,|$)`, and a closing paren is none of those — so a literal inside
+*any* parenthesised context was unreachable by it, including a `var()` fallback
+(`var(--motion-glide, 300ms)`). Both boundaries now admit parens. That specific value does
+reduce correctly (the token is defined, so the fallback never fires); it is banned because a
+literal duration is banned, and because `var(--undefined, 300ms)` is the same shape and does
+not reduce.
+
 Dismissed as noise (4): AC 7 "same invocation" (substance met — every `lintAll()` lints all four
 fixtures in ONE `stylelint.lint()` call; assertions are merely spread across `it` blocks);
 `parseColour` ignoring non-hex/rgb notations (degrades to a loud false-failure, never a silent
@@ -1004,6 +1034,7 @@ is **empty**. Nothing under `src/` changed except the regenerated bundle.
 | Date | Version | Description | Author |
 | --- | --- | --- | --- |
 | 2026-07-27 | 0.1 | Story contexted from epic + DESIGN.md/EXPERIENCE.md; six landmines measured at `26a9fdf` | Bob (SM) |
+| 2026-07-27 | 1.3 | Greptile round 2 (4/5, up from 3/5): `min()`/`max()`/`clamp()` escaped a ban that named `calc(` — enumerating one member of a family, the very lesson landmine 5 records. Fixed at family level: the shorthands now ban ANY function call except var/cubic-bezier/steps, proven with an invented function name. Also closed unreported: the time-literal regex could not see a literal inside parentheses (a var() fallback). Fourth instance of "a value that lints clean and renders as nothing". | Amelia (Dev) |
 | 2026-07-27 | 1.2 | Greptile round on PR #21 (3/5, all 4 CI checks green incl. ubuntu/node 20): 2 findings, both accepted. `padding: auto` no longer accepted (padding and margin split; the neighbouring `declaration-property-value-no-unknown` already caught it — recorded, since the finding overstates the consequence); the `transition`/`animation` shorthand now requires `var(--motion-*)`/`var(--ease-*)` and bans `calc()`. Third instance of one failure class in this story — a value that lints clean and renders as nothing. Suite 140 → 142. | Amelia (Dev) |
 | 2026-07-27 | 1.1 | Review patches: 14 of 14 applied, 1 deferred to c2-5. Three new gate families by Brad's ruling (literal durations, CSS nesting, inline `style`), plus category-prefix value regexes, `text-shadow`/`drop-shadow()`, and comma-aware + numeric parsing in both animation layers (the High finding). Six probes, all reverted; one invalidated my own earlier proof and was replaced rather than re-asserted. Suite 124 → 140. | Amelia (Dev) |
 | 2026-07-27 | 1.0 | Implemented. 64-token layer + 4 literal-ban families (regex property keys) + 5 guards, each proven both ways. All 5 open questions answered "as proposed" before Task 0. Frontend suite 78 → 124 (9 → 12 files); Python unchanged at 1,753. Eleven evasion probes run and reverted, each verified landed first. Three unpredicted landmines (`import-notation: url`, `*/` inside `ui/**/*.css` closing a CSS comment, `hue-degree-notation: angle`) and six flagged widenings recorded. | Amelia (Dev) |
