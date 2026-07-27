@@ -30,6 +30,7 @@
     "no-second-codegen": "AD-12 — openapi-typescript is the ONE generator, and it consumes the backend's own app.openapi(). No second codegen (swagger-typescript-api, @hey-api/openapi-ts, orval, oazapfts, openapi-zod-client, @openapitools/openapi-generator-cli) joins it: two generators means two spellings of one wire shape. Enforced by tests/package-contract.test.ts, not by convention. c5-1's POST /agent/events declares the event-envelope union as its request body, so the WebSocket types come out of this same generator with no dummy endpoint.",
     "@testing-library/jest-dom": "PINNED ~6.9.1 — a THIRD load-bearing pin, found while implementing c2-1 (the story predicted two). Both `latest` (7.0.0) and 6.10.0 declare `engines.node >= 22`, which is above this project's declared floor of >=20.19.0 and above the CI job's `node-version: 20`; 6.10.0 is additionally deprecated upstream as an incorrect minor release. 6.9.1 is the last release with `engines.node >= 14`. Lifting this pin requires raising the whole project's Node floor to 22 (an AC 2 / AC 15 change), not just bumping the dependency. Verified with `npm view @testing-library/jest-dom@<v> engines`.",
     "no-second-state-library": "AD-12 — zustand is the one store. No second data-fetching or state-management library joins it. Enforced by tests/package-contract.test.ts, not by convention.",
+    "yaml": "Added by story c2-4 (AC 17, Q3) for ONE job: tests/tokens.test.ts parses the YAML frontmatter of the UX artefact `DESIGN.md` and asserts the token layer against it, token by token. It is a devDependency and nothing in src/ may import it — the token values reach the browser as CSS custom properties, not as parsed YAML, so this never becomes a runtime dependency (AD-13). The alternative considered and declined was committing a derived tokens.json into ui/: that puts a second copy of the token values in the repo and a second thing to drift, which is the exact failure mode AD-12 exists to prevent. A hand-rolled frontmatter parser was also declined — it would be a second thing to get wrong, in the one test whose job is to be right about the contract.",
     "@types/node": "Tracks the Node FLOOR (20.19, AC 2), not latest. With ^24 types, code in config/ or tests/ using a Node 22/24-only API type-checks clean and fails only when CI's node 20 executes it — the same types-vs-runtime skew class the jest-dom pin exists for. Raising this follows raising the project's Node floor, not the other way round. (Review round 2.)"
   },
   "devDependencies": {
@@ -54,6 +55,7 @@
     "typescript": ">=5.9 <6.1",
     "typescript-eslint": "^8.65.0",
     "vite": "^8.1.5",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "yaml": "^2.9.0"
   }
 }

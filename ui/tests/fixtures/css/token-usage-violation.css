@@ -1,0 +1,47 @@
+/* FIXTURE — the firing half of the three guards in tests/token-usage.test.ts (story c2-4,
+   AC 2 and AC 10). Meant to stay broken.
+
+   These are the constraints stylelint cannot express: one relates two declarations to each
+   other, one is about WHICH FILE a declaration lives in, and one needs cross-file resolution
+   that `no-unknown-custom-properties` provably does not do (it is file-scoped, and enabling
+   it reports every legitimate token reference in every component). */
+
+/* UX-DR6: --accent-dim on --surface-overlay is 2.70:1, below the 3:1 non-text floor. The
+   named substitute is --accent (5.5:1). This is the exact pairing c6-7's suggestion rows,
+   c9-1's swap rows and c9-2's tier rows are most likely to reach for, because DESIGN.md
+   gives all three an overlay background. */
+.suggestion-row {
+  background: var(--surface-overlay);
+  border-color: var(--accent-dim);
+}
+
+/* Inside a media query, to prove the guard reads innermost blocks rather than only
+   top-level ones — a nested rule is not an exemption. */
+@media (width >= 40em) {
+  .tier-row-inside-media {
+    background: var(--surface-overlay);
+    color: var(--accent-dim);
+  }
+}
+
+/* AC 2: a token declared in a component is a token the four alternate themes cannot reach.
+   The whole point of the layer is that adding `[data-theme="gilt"]` restyles the app without
+   touching one component file — a local declaration silently opts out of that. */
+.declares-its-own-token {
+  --local-accent: var(--accent-bright);
+
+  color: var(--local-accent);
+}
+
+.declares-its-own-shadow {
+  --swap-row-shadow: var(--shadow-rest);
+
+  box-shadow: var(--swap-row-shadow);
+}
+
+/* A typo in a token name is not a syntax error and not a lint error — it is a property that
+   silently resolves to nothing, which on a box-shadow means the element just has no
+   elevation and nobody notices until a screenshot. */
+.typo-in-token-name {
+  box-shadow: var(--shadow-rst);
+}

@@ -8,10 +8,13 @@
  * One place reads package.json; three facts come out of it (AC 3, AC 4).
  */
 
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
+
+const uiRoot = fileURLToPath(new URL('..', import.meta.url))
 
 interface PackageJson {
   dependencies?: Record<string, string>
@@ -98,6 +101,48 @@ describe('package.json dependency contract (AD-12, AD-13)', () => {
   // script (`gen:types`), so the scan above is reading a populated, real scripts block.
   it('invokes openapi-typescript from gen:types, so the scripts scan reads real scripts', () => {
     expect(scripts['gen:types']).toContain('openapi-typescript')
+  })
+
+  // `yaml` is read by exactly one test suite (tests/tokens.test.ts parses DESIGN.md's
+  // frontmatter). Its package.json "//" note says "nothing in src/ may import it" — and until
+  // this test, that was the only note in that block enforced by convention rather than by a
+  // gate, sitting between two that are. The token VALUES reach the browser as CSS custom
+  // properties; a YAML parser in the bundle would mean the token layer had grown a runtime,
+  // which is exactly what AD-13 forbids. (Review finding, Low.)
+  it('keeps yaml in devDependencies and out of dependencies', () => {
+    expect(Object.keys(devDeps)).toContain('yaml')
+    expect(Object.keys(deps)).not.toContain('yaml')
+  })
+
+  // ANCHORED on `^import`, not a bare substring: this very file mentions the search term in
+  // the argument below, and an unanchored search would report package-contract.test.ts as a
+  // yaml importer — a guard whose first finding is itself.
+  //
+  // `git grep` exits 1 when nothing matches, which execFileSync raises as an error. That is
+  // the PASSING case for the src/ scan, so the non-zero exit is translated to "no matches"
+  // rather than allowed to fail the test for the wrong reason.
+  const importersOf = (pathspec: string): string[] => {
+    try {
+      return execFileSync('git', ['grep', '-lE', "^import .*from 'yaml'", '--', pathspec], {
+        cwd: uiRoot,
+        encoding: 'utf8',
+      })
+        .split('\n')
+        .filter(Boolean)
+    } catch {
+      return []
+    }
+  }
+
+  it('imports yaml from tests only, never from src/', () => {
+    expect(importersOf('src')).toEqual([])
+  })
+
+  // The non-vacuity pair for the scan above: the ONE legitimate importer is provably found by
+  // the SAME search, so "no importers in src/" cannot be an artefact of a broken grep, a wrong
+  // cwd, or the try/catch swallowing a real failure.
+  it('finds the one legitimate yaml importer under tests/', () => {
+    expect(importersOf('tests')).toEqual(['tests/tokens.test.ts'])
   })
 
   // AC 2. The declared floor is >=20.19.0, not the epic's looser ">= 20": vite@8 declares

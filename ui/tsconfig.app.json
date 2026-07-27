@@ -31,9 +31,15 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  /* `tests/fixtures/a11y` is here so the deliberately-inaccessible JSX fixtures belong to
-     a tsconfig — ESLint's `projectService` errors on any .tsx outside one, and
-     tests/lint-gates.test.ts lints them with ignores disabled. They are valid TSX; only
-     the a11y rules object to them. */
-  "include": ["src", "tests/fixtures/a11y"]
+  /* The two fixture directories are here so the deliberately-broken JSX fixtures belong to a
+     tsconfig — ESLint's `projectService` errors on any .tsx outside one, and
+     tests/lint-gates.test.ts lints them with ignores disabled. Both are valid, type-correct
+     TSX; only the lint rules under test object to them (`a11y` → UX-DR47, `tsx` → the
+     inline-style ban added by c2-4's review).
+
+     Listed individually rather than as a blanket `tests/fixtures`: tsconfig.node.json already
+     includes every `.ts` file under `tests`, so a blanket entry would put any future `.ts`
+     fixture in BOTH projects at once, which projectService reports as an error on a file
+     nobody touched. */
+  "include": ["src", "tests/fixtures/a11y", "tests/fixtures/tsx"]
 }

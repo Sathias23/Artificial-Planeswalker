@@ -1,0 +1,151 @@
+/* FIXTURE — the firing half of the literal bans (story c2-4, AC 4 / AC 5 / AC 7). Not part
+   of the app's styles, and meant to stay broken. `npm run lint` excludes this directory with
+   the CLI `--ignore-pattern` in the lint script — deliberately NOT a `.stylelintignore`, an
+   ignore FILE is also honoured by the Node API and would make the explicit lint in
+   tests/lint-gates.test.ts read zero files and silently neuter the gate's own proof.
+
+   Every block is one way a design token gets bypassed. The LONGHAND cases are here because
+   they were measured escaping the obvious form of the rule: with plain string property keys
+   (`padding`, `margin`, `gap`, `border-radius`), `padding-left: 18px`, `margin-top: 9px`,
+   `column-gap: 7px` and `border-bottom-right-radius: 10px` all pass SILENTLY. The shipped
+   config uses regex property keys for exactly that reason, and these blocks are what keeps
+   it that way. */
+
+/* ---- Colour literals ---- */
+
+.hex-colour {
+  color: #8b93ff;
+}
+
+/* A named colour evades both the hex ban and the colour-function ban. */
+.named-colour {
+  color: white;
+}
+
+.rgb-literal {
+  color: rgb(139 147 255);
+}
+
+.hsl-literal {
+  color: hsl(240deg 100% 50%);
+}
+
+/* The modern colour spaces are the other way round the ban — a component author reaching for
+   oklch() is no less hard-coding a colour than one reaching for hex. */
+.oklch-literal {
+  color: oklch(70% 0.1 280deg);
+}
+
+/* ---- Elevation ---- */
+
+/* A hard-coded REST shadow does not merely look wrong under the shadowless themes
+   (`graphite`, `ink`, both elevation tokens `none`) — it INVERTS the hierarchy, because
+   --shadow-raise is the live state there and this element would be the only one casting. */
+.literal-shadow {
+  box-shadow: 0 12px 32px rgb(0 0 0 / 50%);
+}
+
+/* Half-tokenised is still not tokenised: an alternate theme cannot reach the geometry. */
+.partly-tokenised-shadow {
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* `text-shadow` is a third property that paints shadow geometry, and `filter: drop-shadow()`
+   is a fourth. Keying the ban on `box-shadow` alone left both wide open, and neither can be
+   switched off by the shadowless themes (`graphite`, `ink`) — the exact hierarchy inversion
+   the elevation ban exists to prevent. (Review finding, Medium.) */
+.literal-text-shadow {
+  text-shadow: 0 1px 2px rgb(0 0 0 / 50%);
+}
+
+.literal-drop-shadow {
+  filter: drop-shadow(0 12px 32px rgb(0 0 0 / 50%));
+}
+
+/* ---- WRONG-FAMILY TOKENS (review finding, Medium) --------------------------------------
+   The original value regexes accepted `var(--anything)`, so a token from the wrong family
+   passed every gate. This is worse than a literal: `padding: var(--radius-pill)` is INVALID
+   CSS that renders as nothing, and the unknown-token guard cannot catch it either, because
+   the token genuinely exists. The value regexes are now keyed to the category prefix. */
+
+.spacing-from-the-radius-family {
+  padding: var(--radius-pill);
+}
+
+.radius-from-the-spacing-family {
+  border-radius: var(--space-4);
+}
+
+.shadow-from-the-colour-family {
+  box-shadow: var(--accent);
+}
+
+.gap-from-the-motion-family {
+  gap: var(--motion-glide);
+}
+
+/* THE SAME FAILURE CLASS, THIRD SPELLING (Greptile P1). `auto` is valid for `margin` and NOT
+   for `padding` — the property takes a length or a percentage, nothing else — so `padding:
+   auto` is a declaration the browser DISCARDS. It lints clean and renders as nothing, exactly
+   like a wrong-family token. The padding and margin keys are therefore separate rules; only
+   margin admits `auto`, because centring a block is the one thing it is needed for. */
+.padding-cannot-be-auto {
+  padding: auto;
+}
+
+.padding-longhand-cannot-be-auto {
+  padding-inline: auto;
+}
+
+/* ---- Radii ---- */
+
+.literal-radius {
+  border-radius: 16px;
+}
+
+.literal-radius-longhand {
+  border-bottom-right-radius: 10px;
+}
+
+.literal-radius-logical {
+  border-start-start-radius: 10px;
+}
+
+/* ---- Spacing (UX-DR5: the scale is 4/8/12/16/24/32/48 and nothing else) ---- */
+
+/* The imported mock's own drift, reproduced here so it can never be reproduced in a
+   component. */
+.off-scale-padding {
+  padding: 18px;
+}
+
+.off-scale-padding-longhand {
+  padding-left: 18px;
+}
+
+.off-scale-margin-longhand {
+  margin-top: 9px;
+}
+
+.off-scale-margin-logical {
+  margin-block-start: 9px;
+}
+
+.off-scale-margin-shorthand {
+  margin: 14px 9px;
+}
+
+.off-scale-gap {
+  gap: 7px;
+}
+
+.off-scale-gap-longhand {
+  column-gap: 7px;
+}
+
+/* The sneakiest one, and the reason the rule is an allowed-list rather than a list of banned
+   numbers: 8px IS on the scale. It is still a literal, it still ignores every alternate
+   theme, and it must still fail. */
+.on-scale-but-still-a-literal {
+  padding: 8px;
+}

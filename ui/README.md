@@ -105,7 +105,9 @@ Some notes that are easy to trip over:
   also the only way `vite.config.ts` gets checked at all.
 - **CSS rules live in stylelint, not ESLint.** `@eslint/css` ships fifteen rules and none of
   them can restrict a declaration _value_, which is what banning `outline: none` (UX-DR46)
-  requires. c2-4 adds four more rules of the same shape. Decided as ruling B1.
+  requires. The token layer's literal bans are rules of the same shape — see _The token
+  layer_ below. The one exception is the inline-`style` ban, which is necessarily an ESLint
+  rule because its target is a `.tsx` file. Decided as ruling B1.
 - **ESLint is pinned to `^9`** and TypeScript to `>=5.9 <6.1`. Both pins are load-bearing and
   both carry their reason in `package.json` — read it before running `npm update`.
 - **Line endings are forced to LF** by `ui/.gitattributes`, because the repository sets
@@ -178,10 +180,99 @@ Two smaller things worth knowing:
   erased at runtime, so vitest passes whatever the generated types say. `npm run typecheck` is
   the gate that catches a drifted shape.
 
+## The token layer
+
+Every colour, type role, radius, space, motion and elevation value in the app is a named
+custom property in **`src/styles/tokens.css`**, imported first from `src/index.css`. The
+values come from the YAML frontmatter of the UX artefact `DESIGN.md`, and
+`tests/tokens.test.ts` asserts the whole inventory against that file directly — there is no
+second copy of the tokens in this repo to drift.
+
+**`src/styles/tokens.css` is the only file in `ui/` where a literal is legal.** Everywhere
+else these bans apply, and each one fails the build:
+
+| Banned                                                                           | Rule                                                      |
+| -------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| a hex colour, a named colour, `rgb()`/`hsl()`/`oklch()`/`drop-shadow()`…         | `color-no-hex`, `color-named`, `function-disallowed-list` |
+| a `box-shadow` or `text-shadow` not built from `--shadow-*`/`--glow`             | `declaration-property-value-allowed-list`                 |
+| a `border-radius` not from `--radius-*` — **including every longhand**           | `declaration-property-value-allowed-list`                 |
+| `padding`/`margin`/`gap` not from `--space-*` — **including every longhand**     | `declaration-property-value-allowed-list`                 |
+| a literal duration in `transition`/`animation` or their duration/delay longhands | allowed-list + disallowed-list                            |
+| anything that pulses, loops or alternates                                        | disallowed-list + a guard                                 |
+| `style={{…}}` on a JSX element                                                   | `no-restricted-syntax` (ESLint)                           |
+| native CSS nesting in a shipped stylesheet                                       | a guard                                                   |
+
+**The value must be from the right FAMILY, not merely a token.** `padding: var(--radius-pill)`
+is invalid CSS that renders as nothing, and the unknown-token guard cannot catch it because
+`--radius-pill` genuinely exists — so each allowed-list is keyed to its category prefix.
+
+**Literal durations are an accessibility gate, not a preference.** The reduced-motion block
+neutralises motion by zeroing the four `--motion-*` tokens; a hard-coded `300ms` is simply
+unreachable by it and plays in full for a user who asked for less motion. `0s`/`0ms` stay
+legal, and so do comma-separated lists of tokenised animations.
+
+The exemption for the token file is a **path-scoped `overrides` entry** in
+`.stylelintrc.json`, never a `stylelint-disable` comment — a comment is something any author
+can copy into their own file, and no test can see it. It relaxes exactly three colour rules;
+the shadow, radius, spacing and duration bans are keyed on property _names_, and the token
+file declares custom properties, so they never applied to it in the first place.
+`tests/lint-gates.test.ts` lints the real `tokens.css` under the real config to prove the
+override works, and lints the same hex in a file the override does not name to prove it does
+not leak.
+
+Why this is a gate rather than a convention: four alternate themes (`gilt`, `graphite`,
+`verdigris`, `ink`) already exist in the imported design system, and **two of them are
+shadowless**. Under those, `--shadow-raise` is the live state, so a hard-coded _rest_ shadow
+does not merely look wrong — it inverts the elevation hierarchy.
+
+Things worth knowing before writing a stylesheet against it:
+
+- **Composing shadows is supported**: `box-shadow: var(--shadow-rest), var(--glow)` passes,
+  and so does `none`. What does _not_ pass is a partly-tokenised shadow like
+  `0 0 0 1px var(--accent)` — the geometry is still hard-coded and an alternate theme cannot
+  reach it. If you need a new composite (a live ring, a pinned ring), **add a token to the
+  layer**; do not inline it, and do not declare it in your own file.
+- **No component may declare a token.** `tests/token-usage.test.ts` enforces that, along with
+  two constraints stylelint cannot express: `--accent-dim` never sits on `--surface-overlay`
+  (2.70:1, below the 3:1 non-text floor — use `--accent`), and no `var()` may name a token
+  that does not exist. That last one looks like a job for `no-unknown-custom-properties`; it
+  is not — that rule is file-scoped and reports every legitimate cross-file reference.
+- **The contrast guard catches the same-block case only.** `--accent-dim` and
+  `--surface-overlay` in one rule block is a gate. A parent setting the overlay background and
+  a child setting the dim border is **not caught** — and that is the normal shape of c6-7's
+  suggestion rows and c9-1's swap rows, because DESIGN.md gives the container the overlay.
+  Deciding it needs the render tree, which lives in TSX. **Review owns that half**; when you
+  review a row component, check it rather than assuming the gate did.
+- **Do not use native CSS nesting.** The block reader in `tests/token-usage.test.ts` matches
+  innermost braces, so a declaration in a nesting parent is invisible to every guard there —
+  including the contrast one. Rather than grow a real CSS parser three stories early, nesting
+  is banned so the blind spot is unreachable. Write the selector out in full. A story that
+  genuinely needs nesting replaces that reader with PostCSS first; it does not lift the ban.
+- **Nothing pulses or loops, at any setting.** Enforced twice: stylelint catches the keyword
+  spellings on every `npm run lint`, and `tests/token-usage.test.ts` additionally catches an
+  iteration count written into the `animation` shorthand (`animation: pulse
+var(--motion-glide) 3`), which a value-level regex cannot tell apart from the numbers inside
+  a `cubic-bezier()`. Both layers parse comma-separated lists per animation — a keyword with a
+  comma after it used to evade both at once.
+- **No inline `style={{…}}`.** Every rule above stops at `*.css`, so an inline style bypasses
+  the entire token layer; ESLint bans the attribute. If you need a runtime value (a bar
+  height, a grid template), that is a real need — change the rule and say why, in the open,
+  rather than discovering it does not apply to you.
+- **Reduced motion registers in one place.** The `@media (prefers-reduced-motion: reduce)`
+  block at the foot of `tokens.css` zeroes the four duration tokens and carries UX-DR42's
+  full inventory. A story that adds a motion adds its fallback _there_. A motion with no
+  registered fallback is an incomplete story.
+- **The surface ramp is ordered data**, in `src/styles/surfaces.ts`, with a
+  `stepsExactlyOne()` predicate. Nesting steps exactly one level
+  `well → base → panel → overlay`. Be aware this half is a mechanism plus review, not a lint
+  gate: which component renders inside which is decided in TSX at runtime and is not
+  statically decidable.
+
 ## Adding a source directory
 
 Every linted `.ts`/`.tsx` file must belong to a tsconfig — ESLint's `projectService` errors
-on any file that does not. `src` and `tests/fixtures/a11y` are in `tsconfig.app.json`;
+on any file that does not. `src`, `tests/fixtures/a11y` and `tests/fixtures/tsx` are in
+`tsconfig.app.json`;
 `vite.config.ts`, `config/` and `tests/` are in `tsconfig.node.json`. A new top-level
 directory needs adding to one of those two `include` lists.
 
@@ -190,7 +281,11 @@ directory needs adding to one of those two `include` lists.
 The `/ws` proxy entry is **c5-6**. The runtime `fetch` layer is **c3-1**'s first real
 consumer, and **c4-1** owns the store and its in-flight deduping — c2-3 deliberately ships the
 generated types with no fetch helper, so neither of those designs is pre-empted. The
-self-hosted Space Grotesk `.woff2` fonts land in the same build output directory in **c2-5**.
+self-hosted Space Grotesk `.woff2` fonts land in the same build output directory in **c2-5**,
+which also adds the rule that fails `--type-numeric` being applied without its
+`--type-numeric-features` companion; both tokens already exist for it to point at. The
+application shell is **c2-6** and the presentation primitives are **c2-7** — no component
+consumes these tokens yet, so `src/App.css` is still a placeholder (a tokenised one).
 
 `ui/dist` is no longer produced. A few ignore patterns still name it (`ui/.gitignore`,
 `.prettierignore`, the stylelint `--ignore-pattern`); they are harmless and deliberately left
