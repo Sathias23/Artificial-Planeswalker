@@ -457,6 +457,18 @@ It is worth naming as the theme, because a fourth spelling of it is likelier tha
 Three new fixture blocks and two new paired tests; `clean.css` still reports zero, which is
 what proves the `var()` restriction did not degrade into "no `var()` in a transition".
 
+### Greptile round 3 — 5/5, "appears safe to merge", zero findings
+
+Verified by provenance rather than by the score alone: footer reads **Reviews (3)**, last
+reviewed commit is `32ff369` (branch HEAD), and **no inline comment was created after round
+2's 09:27:41**. All four CI checks green. Progression across the three rounds was 3/5 → 4/5 →
+5/5, one finding fixed at each step.
+
+*A note for whoever reads this PR later:* one inline comment displays against commit
+`32ff369` and looks like a fresh finding on the last push. It was **created at 09:15:28**, in
+round 1 — GitHub re-anchors an existing comment to the newest commit that touched that line.
+`created_at` is the tell, the same class of trap as "Greptile edits its summary in place".
+
 ### Greptile round 2 (4/5, up from 3/5) — one finding, and it names a pattern
 
 **`min()`, `max()` and `clamp()` were not banned, because round 1 banned `calc(` — one member
