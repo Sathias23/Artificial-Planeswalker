@@ -292,8 +292,9 @@ describe('stylelint literal bans (UX-DR1, UX-DR5, story c2-4 AC 4/5/7)', () => {
     // shorthand, and the uppercase `INFINITE` — Prettier lowercases property names but NOT
     // keyword values, so that spelling really can reach the linter), plus the three
     // COMMA-LIST cases review found walking free, plus the five literal-duration cases.
-    // ...and 16 after Greptile's P2 added the wrong-family-var and calc() cases.
-    expect(countOf('motion-violation', DISALLOWED_RULE)).toBe(16)
+    // ...16 after Greptile's P2 added the wrong-family-var and calc() cases, and 20 after
+    // round 2 replaced the calc() ban with a family-level one (max/clamp/min + var fallback).
+    expect(countOf('motion-violation', DISALLOWED_RULE)).toBe(20)
     // animation-iteration-count 3 and infinite, plus transition-duration and animation-delay.
     expect(countOf('motion-violation', ALLOWED_RULE)).toBe(4)
 
@@ -333,7 +334,7 @@ describe('stylelint literal bans (UX-DR1, UX-DR5, story c2-4 AC 4/5/7)', () => {
     // the allowed-list; the `transition` shorthand (whole-second, fractional, and inside a
     // comma-separated list) hits the disallowed-list.
     expect(countOf('motion-violation', ALLOWED_RULE)).toBe(4)
-    expect(countOf('motion-violation', DISALLOWED_RULE)).toBe(16)
+    expect(countOf('motion-violation', DISALLOWED_RULE)).toBe(20)
 
     // Counts alone would pass if the four keyword cases fired twice each and no duration case
     // fired at all, so the specific declarations are resolved back through their line numbers.
@@ -446,6 +447,27 @@ describe('stylelint literal bans (UX-DR1, UX-DR5, story c2-4 AC 4/5/7)', () => {
     expect(flagged).toContain('transition: opacity var(--space-1);')
     expect(flagged).toContain('transition: opacity calc(2s * 3);')
     expect(flagged).toContain('animation: bloom calc(var(--motion-bloom) * 2);')
+
+    // ROUND 2: banning `calc(` was enumerating one member of a family. `max()` and `clamp()`
+    // are the genuinely broken ones — under reduced motion `max(300ms, 0s)` is 300ms and the
+    // motion survives — and a fifth member is a CSS release away. The rule now bans ANY
+    // function call in these shorthands except var/cubic-bezier/steps, so this list is
+    // illustrative rather than exhaustive; nothing has to be added when CSS grows one.
+    expect(flagged).toContain('transition: opacity max(300ms, var(--motion-glide));')
+    expect(flagged).toContain('transition: opacity clamp(100ms, 2vw, 300ms);')
+    expect(flagged).toContain('transition: opacity min(300ms, var(--motion-glide));')
+    // A literal hiding in a var() fallback: a closing paren is not the `\s|,|$` the old
+    // trailing boundary required, so the time regex could not reach it.
+    expect(flagged).toContain('transition: opacity var(--motion-glide, 300ms);')
+
+    // The family ban is proven by an invented function name, not only by today's list —
+    // otherwise this is an enumeration test dressed up as a family test.
+    const invented = await stylelint.lint({
+      code: '.a { transition: opacity futurefn(300ms); }',
+      codeFilename: fileURLToPath(new URL('../src/probe.css', import.meta.url)),
+      configFile: fileURLToPath(new URL('../.stylelintrc.json', import.meta.url)),
+    })
+    expect(invented.results[0].warnings.map((w) => w.rule)).toContain(DISALLOWED_RULE)
 
     // The clean fixture composes real motion and easing tokens through the same shorthand,
     // so the new `var()` restriction cannot have degraded into "no var() in a transition".

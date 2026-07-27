@@ -154,3 +154,39 @@
 .calculated-duration-from-a-token {
   animation: bloom calc(var(--motion-bloom) * 2);
 }
+
+/* ---- THE FOURTH SPELLING, AND WHY THE RULE IS NOW FAMILY-SHAPED (Greptile round 2) -------
+   Banning `calc(` was enumerating ONE MEMBER of a family — the same mistake landmine 5 taught
+   about property keys, applied to spacing and then not to motion. `min()`, `max()`, `clamp()`
+   are time-valued too, and a fifth member is a CSS release away.
+
+   `max()` and `clamp()` are the genuinely broken ones: under reduced motion
+   `max(300ms, var(--motion-glide))` is `max(300ms, 0s)` = 300ms and the motion survives, and
+   clamp()'s floor does the same. (`min(300ms, var(--motion-glide))` happens to reduce
+   correctly to 0s — the reported example is the weakest case, the mechanism is still real.)
+
+   So the rule no longer lists math functions. It bans ANY function call in these shorthands
+   except `var()`, `cubic-bezier()` and `steps()` — which closes every current spelling and
+   every future one. An easing that needs `linear()` adds an --ease-* token instead. */
+
+.duration-in-max {
+  transition: opacity max(300ms, var(--motion-glide));
+}
+
+.duration-in-clamp {
+  transition: opacity clamp(100ms, 2vw, 300ms);
+}
+
+.duration-in-min {
+  transition: opacity min(300ms, var(--motion-glide));
+}
+
+/* A literal hiding in a var() FALLBACK. The time-literal regex's trailing boundary used to be
+   `(?:\s|,|$)`, which a closing paren is not — so the literal was unreachable by it. The
+   boundaries now include parens on both sides. (This particular value does reduce correctly,
+   because --motion-glide IS defined and the fallback never fires; it is banned because a
+   literal duration in a stylesheet is banned, and because `var(--undefined, 300ms)` — the
+   spelling that does NOT reduce — is the same shape.) */
+.duration-in-a-var-fallback {
+  transition: opacity var(--motion-glide, 300ms);
+}

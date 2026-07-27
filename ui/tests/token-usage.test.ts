@@ -483,7 +483,7 @@ describe('the guards themselves fire (the other half of the pair)', () => {
     const durationBlocks = motion.filter((b) => !isLoopBlock(b.selector))
 
     expect(loopBlocks.length).toBe(14)
-    expect(durationBlocks.length).toBe(8)
+    expect(durationBlocks.length).toBe(12)
     expect(loopBlocks.length + durationBlocks.length).toBe(motion.length) // nothing unclassified
     expect(flagged).toEqual(new Set(loopBlocks.map((b) => b.selector)))
     for (const block of durationBlocks) {

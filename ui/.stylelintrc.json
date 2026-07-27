@@ -58,9 +58,9 @@
       ],
       "/^animation-direction$/i": ["/(?:^|[\\s,])alternate(?:-reverse)?(?:[\\s,]|$)/i"],
       "/^(transition|animation)$/i": [
-        "/(?:^|[\\s,])(?!0(?:m?s)?(?:[\\s,]|$))\\d*\\.?\\d+(?:e[+-]?\\d+)?m?s(?:[\\s,]|$)/i",
-        "/var\\(--(?!motion-|ease-)[a-z0-9-]+\\)/i",
-        "/calc\\(/i"
+        "/(?:^|[\\s,(])(?!0(?:m?s)?(?:[\\s,)]|$))\\d*\\.?\\d+(?:e[+-]?\\d+)?m?s(?:[\\s,)]|$)/i",
+        "/var\\(\\s*--(?!motion-|ease-)[a-z0-9-]+/i",
+        "/(?:^|[\\s,(])(?!var\\(|cubic-bezier\\(|steps\\()[a-z-]+\\(/i"
       ]
     }
   },
