@@ -215,3 +215,21 @@
   inset: var(--space-gutter);
   z-index: 20;
 }
+
+/* AC 9's last line of defence, and the half `filled()` cannot reach (Greptile, PR #23).
+   The component refuses to mount this wrapper for every empty shape a CALLER can express —
+   null, false, "", " ", [], an empty Set, an empty Fragment — but whether an arbitrary child
+   renders anything is not decidable without rendering it: `overlay={<AgentView />}` is filled
+   by every static measure, and `AgentView` may still `return null`.
+
+   When that happens the wrapper mounts with no child nodes at all, and a full-window FIXED
+   element containing nothing is exactly AC 9's click-swallower: invisible, and it eats every
+   pointer event on the page, presenting as "the app stopped responding to clicks".
+
+   `:empty` matches an element with no children — not even text — so this rule fires in
+   precisely the case the prop-level check cannot see, and never when there is something to
+   show. `display: none` rather than `pointer-events: none` because an empty overlay should
+   not be in the accessibility tree either. */
+.app-shell-overlay:empty {
+  display: none;
+}

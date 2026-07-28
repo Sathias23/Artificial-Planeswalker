@@ -161,6 +161,16 @@ describe('AppShell placeholder copy (AC 21)', () => {
     expect(screen.getByText(/c4-7/)).toBeInTheDocument()
   })
 
+  it('keeps the placeholder for an empty Fragment and an empty Set (Greptile, PR #23)', () => {
+    // Both are shapes every earlier version of `filled()` called "filled": a Fragment is a
+    // React element, and a Set is not an array. Neither renders anything, so both left a
+    // silently blank region with no clue which story owed it.
+    render(<AppShell left={<></>} right={new Set() as never} />)
+
+    expect(screen.getByText(/c4-4/)).toBeInTheDocument()
+    expect(screen.getByText(/c4-7/)).toBeInTheDocument()
+  })
+
   it('still renders a NON-empty array — the empty check must not eat real content', () => {
     // The silent half. A `filled()` that answered "false" for every array would drop c4-4's
     // real grid, which is a far worse failure than the one above.
@@ -195,14 +205,33 @@ describe('AppShell overlay slot (AC 7, AC 9)', () => {
     expect(screen.getByText('agent view')).toBeVisible()
   })
 
-  it('mounts NO overlay element for an empty array or whitespace (review round 2)', () => {
+  it('mounts NO overlay element for any empty shape a caller can express', () => {
     // The slot had been left out of the `filled()` treatment the other regions got, and the
     // stakes here are higher than a missing placeholder: `overlay={views.map(...)}` over an
     // empty list would mount a full-window FIXED element containing nothing — AC 9's
     // click-swallower, presenting as "the app stopped responding to clicks".
+    //
+    // The last two are Greptile's (PR #23), and they are the sharp ones: an empty Fragment is
+    // a React ELEMENT, so every nullish/boolean/string/array check says "filled" while the
+    // browser paints nothing; and a Set is a legal React child that `Array.isArray` denies.
     expect(overlayIn(render(<AppShell overlay={[]} />).container)).toBeNull()
     expect(overlayIn(render(<AppShell overlay={' '} />).container)).toBeNull()
     expect(overlayIn(render(<AppShell overlay={false} />).container)).toBeNull()
+    expect(overlayIn(render(<AppShell overlay={<></>} />).container)).toBeNull()
+    expect(overlayIn(render(<AppShell overlay={<>{[]}</>} />).container)).toBeNull()
+    expect(overlayIn(render(<AppShell overlay={new Set() as never} />).container)).toBeNull()
+  })
+
+  it('still mounts the overlay for a NON-empty Fragment or Set', () => {
+    // The silent half. A `filled()` that answered "false" for every Fragment would stop c6-5's
+    // agent view from ever mounting, which is a far worse failure than the one above.
+    const fragment = render(<AppShell overlay={<>agent view</>} />)
+    expect(overlayIn(fragment.container)).not.toBeNull()
+    expect(fragment.getByText('agent view')).toBeVisible()
+
+    const iterable = render(<AppShell overlay={new Set([<p key="a">from a Set</p>]) as never} />)
+    expect(overlayIn(iterable.container)).not.toBeNull()
+    expect(iterable.getByText('from a Set')).toBeVisible()
   })
 
   it('keeps the overlay OUT of the main landmark', () => {

@@ -527,9 +527,16 @@ const findViewportHeightOnDocumentRoot = (blocks: Block[]): string[] =>
  * makes a perfectly truthful "17.5px — DESIGN.md" citation unsatisfiable for the `5px` it went
  * looking for. The first story to ship a fractional geometry literal would inherit a gate it
  * could not pass by writing the right thing.
+ *
+ * STRINGS ARE BLANKED, NOT JUST COMMENTS (Greptile, PR #23). A px length inside a CSS STRING
+ * is text, not geometry: `content: "16px"` in a c2-7 tooltip or a c4-8 axis label is a value
+ * the user READS, and there is nothing in DESIGN.md to cite for it. Scanning it as a literal
+ * would fail the gate on a stylesheet that is entirely correct — the false positive a later
+ * story fights, which this file's own doctrine calls the worse outcome. `blankStrings` already
+ * exists three helpers up for the parser; the scanner simply was not using it.
  */
 const pxLiteralsIn = (css: string) => [
-  ...new Set(stripComments(css).match(/(?<![\d.])\d+(?:\.\d+)?px\b/g) ?? []),
+  ...new Set(blankStrings(stripComments(css)).match(/(?<![\d.])\d+(?:\.\d+)?px\b/g) ?? []),
 ]
 
 /**
@@ -709,6 +716,20 @@ describe('the overlay slot (AC 7, AC 8, AC 10)', () => {
     expect(valueOf(blockFor('.app-shell-overlay')!, 'position')).toBe('fixed')
   })
 
+  it('hides itself when it has no children at all (AC 9, the residue filled() cannot see)', () => {
+    // READ THE SOURCE — jsdom applies no stylesheet, so `getComputedStyle` here would report
+    // the unstyled default and pass for the wrong reason, which is this file's opening rule.
+    //
+    // The component refuses to mount the wrapper for every empty shape a CALLER can express,
+    // but whether an arbitrary CHILD renders anything is not decidable without rendering it:
+    // `overlay={<AgentView />}` is filled by every static measure and `AgentView` may still
+    // return null. That leaves a full-window fixed element with no child nodes — AC 9's
+    // click-swallower — and `:empty` is what closes it. (Greptile, PR #23.)
+    const hidden = shellBlocks.find((b) => b.selector === '.app-shell-overlay:empty')
+    expect(hidden, 'no .app-shell-overlay:empty rule in the shell stylesheet').toBeDefined()
+    expect(valueOf(hidden!, 'display')).toBe('none')
+  })
+
   it('is the ONLY full-window fixed layer in the app (AC 10, UX-DR38)', () => {
     expect(findUnconfinedOverlays(shippedBlocks)).toEqual([])
     // And exactly one inside the shell's own stylesheet — confinement to a FILE would still
@@ -800,7 +821,13 @@ describe('the shell is presentation-only, and that is asserted (AC 16)', () => {
     // c4-1 own. Asserted as an EXHAUSTIVE list rather than a blocklist: a module nobody
     // thought to ban is exactly the one that would get through — and the stylesheet is in the
     // list rather than checked separately, so a second bare import cannot hide beside it.
-    expect(importedModules.sort()).toEqual(['./AppShell.css', 'react'])
+    //
+    // `./filled` is here deliberately and its presence is the OPEN way to add it: deciding
+    // whether a Fragment is empty needs value imports from react, and the next assertion pins
+    // this file's react import to types only. Rather than carve an exception into a guard made
+    // blunt on purpose, the helper moved to its own module — and this list still pins the set
+    // exhaustively, so the exception is one named entry rather than a widened rule.
+    expect(importedModules.sort()).toEqual(['./AppShell.css', './filled', 'react'])
     // The react import must be TYPE-ONLY. Hooks are VALUE imports, so this one line closes
     // the aliasing evasion (`import { useState as s }` never matches a name-keyed regex) at
     // the door instead of chasing spellings at the call site.
@@ -816,6 +843,21 @@ describe('the shell is presentation-only, and that is asserted (AC 16)', () => {
     expect(shellComponent).not.toMatch(/\buse[A-Z]\w*\s*\(/)
     expect(shellComponent).not.toMatch(/(?<![\w.$])use\s*\(/)
     expect(shellComponent).not.toMatch(/\b(fetch|XMLHttpRequest|EventSource|WebSocket)\s*\(/)
+  })
+
+  it('holds the helper module to the same posture', () => {
+    // `./filled` is allowed react VALUE imports, which is the whole reason it exists — so the
+    // no-state rule has to be asserted there too, or the exemption becomes the hiding place.
+    const helper = sourceOf('src/components/AppShell/filled.ts')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+
+    expect(helper).not.toMatch(/\buse[A-Z]\w*\s*\(/)
+    expect(helper).not.toMatch(/(?<![\w.$])use\s*\(/)
+    expect(helper).not.toMatch(/\b(fetch|XMLHttpRequest|EventSource|WebSocket)\s*\(/)
+    expect(
+      [...helper.matchAll(/import\s+(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/g)].map((m) => m[1]),
+    ).toEqual(['react'])
   })
 
   it('reads code, not the documentation about the code', () => {
@@ -1023,6 +1065,19 @@ describe('the guards themselves fire', () => {
     const shared = `/* 452px — DESIGN.md, the right column. */`
     expect(documented(commentsIn(shared), '452px')).toBe(true)
     expect(documented(commentsIn(shared), '52px')).toBe(false)
+  })
+
+  it('does not read a px length inside a CSS STRING as geometry (Greptile, PR #23)', () => {
+    // `content: "16px"` is text the user READS — a tooltip in c2-7, an axis label in c4-8 —
+    // and there is nothing in DESIGN.md to cite for it. Scanning it as a literal fails the
+    // gate on a stylesheet that is entirely correct, which is the false positive this file's
+    // doctrine calls worse than the defect. Measured before the fix: it returned ['16px'].
+    expect(pxLiteralsIn('.tip::after { content: "16px"; }')).toEqual([])
+    expect(pxLiteralsIn(".tip::after { content: '452px'; }")).toEqual([])
+    // And a REAL declaration beside a string is still found — blanking must not blind it.
+    expect(pxLiteralsIn('.tip { width: 480px; } .tip::after { content: "16px"; }')).toEqual([
+      '480px',
+    ])
   })
 
   it('applies the >= 100 span floor to viewport UNITS, not just percentages', () => {

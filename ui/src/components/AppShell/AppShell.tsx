@@ -1,6 +1,10 @@
 import type { ReactNode } from 'react'
 
 import './AppShell.css'
+// `filled` lives in its own module because deciding whether a Fragment is empty needs VALUE
+// imports from react, and this file's react import is pinned type-only by a guard. See
+// filled.ts for the whole argument and for the limit it cannot cover.
+import { filled } from './filled'
 
 /**
  * The two-column application shell — header, two columns, pinned footer, overlay slot.
@@ -68,33 +72,6 @@ export interface AppShellProps {
    * read literally. The slot is reserved in CSS; the element is conditional.
    */
   overlay?: ReactNode
-}
-
-/**
- * Whether a region prop actually renders anything.
- *
- * `??` alone is the wrong test: the idiomatic `left={hasDeck && <CardGrid />}` passes `false`
- * when empty — not nullish, renders nothing — and the AC 21 placeholder would silently
- * disappear with it, leaving a blank region and no clue which story owed it. React renders
- * nothing for null, undefined, booleans and the empty string.
- *
- * Two more members of the same family, and they are the two the first version of this stopped
- * short of (review round 2, 2026-07-28):
- *
- *   AN EMPTY ARRAY. `left={cards.map(...)}` over an empty list is the single most idiomatic
- *   way a React region ends up rendering nothing, and `[]` is neither nullish nor a boolean
- *   nor `''`. Recursive, because `[false, null]` renders nothing either — the array is empty
- *   of OUTPUT, not necessarily of elements.
- *
- *   A WHITESPACE-ONLY STRING. `deckName=" "` renders an `h1` containing a space: present in
- *   the DOM, invisible on screen, and announced as an empty heading — precisely the
- *   heading-less state Q3 exists to prevent, wearing a shape that passes a `!== ''` check.
- */
-const filled = (content: ReactNode): boolean => {
-  if (content == null || typeof content === 'boolean') return false
-  if (typeof content === 'string') return content.trim() !== ''
-  if (Array.isArray(content)) return content.some((child) => filled(child as ReactNode))
-  return true
 }
 
 /**
