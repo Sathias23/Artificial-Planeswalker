@@ -1224,3 +1224,46 @@ the gate-output rule rather than left as "we meant to".
   root declaration is where the document basis is set. (Severity: Low — design-system-level,
   pre-dates this story in effect; the 14px change itself is recorded in the c2-5 Completion
   Notes.)
+
+## Deferred from: implementation of c2-6-the-two-column-application-shell (2026-07-28)
+
+- **AC 4's and AC 5's render halves are Brad's, deferred to the C2 epic manual-testing
+  checklist.** This is the third story to split an AC this way (c2-2 AC 17, c2-5 AC 4), so it is
+  now a pattern rather than an exception. jsdom has no layout engine — it resolves no grid
+  tracks, evaluates no media queries and returns no box geometry — so every geometry assertion
+  in this story reads CSS source. What is mechanically pinned by `ui/tests/shell.test.ts`: the
+  gutter and panel-gap come from tokens, the right column is exactly `452px`, the breakpoint is
+  exactly `1100px` in the context range form, the fluid track is `minmax(0, 1fr)`, and both the
+  track and the grid item are floored at zero. What a browser still owes:
+
+  1. Open at **1720px** and compare against the composition reference — header, fluid left
+     column, 452px right column, footer, panels floating with visible canvas between them.
+  2. Sweep **~1100px → ~2560px**: no horizontal scrollbar at any width, and below 1100px the
+     right column drops beneath the left rather than compressing.
+  3. On a **long deck**, the footer stays visible without scrolling, and the scrollbar sits at
+     the content region's edge rather than the window's — the intended app-shell appearance and
+     the accepted consequence of Q2.
+
+  (Severity: Medium — the composition is the story's whole point, and no gate can see it.)
+
+- **The shell's guards are static CSS readers, so the cross-file and runtime halves are
+  review's.** `ui/tests/shell.test.ts` decides "is this a full-window fixed layer", "is this a
+  root element" and "does this track floor at min-content" by reading declarations in one rule
+  block at a time. Invisible to all of them: a full-window layer composed at runtime from two
+  classes on one element; a root reached through a class the guard does not recognise as root
+  (it knows `html`, `body`, `:root`, `#root` and `.app-shell`); and any `overflow`, `position`
+  or grid template set from JavaScript. This is the same division of labour
+  `tests/token-usage.test.ts` declares for its contrast and numeric-pairing guards, and it is
+  stated in the guard file's own header. When reviewing c6-5's agent view in particular, check
+  the composed result rather than assuming the confinement guard did. (Severity: Low — the
+  static half covers the shape every story is actually likely to write.)
+
+- **`z-index: 20` is a geometry literal that the AC 18 documentation guard does not cover.**
+  The guard is derived from the code — every `\d+px` literal in `AppShell.css` must carry a
+  `DESIGN.md` citation within a sentence of it — and a bare unitless number cannot be told
+  apart from the ones in `minmax(0, 1fr)`, `flex: 1` and `min-width: 0`. The value is documented
+  in prose beside its rule (it comes from the composition reference, and UX-DR38 fixes the stack
+  at one level deep so there is nothing to order it against), but that documentation is
+  review-enforced rather than gate-enforced. If a later story introduces a second stacking
+  level, the right repair is a `--z-*` token family, not a wider regex. (Severity: Low — one
+  value, one level, and the epic's design says there will never be a second.)

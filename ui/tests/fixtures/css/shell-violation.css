@@ -1,0 +1,148 @@
+/* FIXTURE — the firing half of every guard in tests/shell.test.ts (story c2-6). This file is
+   MEANT to be broken and is excluded from `npm run lint` and from the shipped-stylesheet list
+   the real-tree assertions read.
+
+   Each block below is one way of getting the shell wrong that renders ALMOST right, which is
+   this epic's recurring theme in its layout form. Several are spellings the guards do not
+   enumerate — they are caught by the FAMILY rule or not at all, which is the point: a guard
+   proven only against the members its own author listed is an enumeration test wearing a
+   family test's clothes. */
+
+/* ---- AC 2: the fluid track that silently overflows -------------------------------------
+   `1fr` is shorthand for `minmax(auto, 1fr)`, and `auto` floors at MIN-CONTENT. */
+
+.bare-fr-track {
+  display: grid;
+  grid-template-columns: 1fr 452px;
+}
+
+/* The same hazard written out in full — the spelling that proves the guard reasons about the
+   MINIMUM rather than string-matching `1fr`. */
+.explicit-auto-minimum {
+  grid-template-columns: minmax(auto, 1fr) 452px;
+}
+
+/* `repeat()` hides it one level down, and `grid-template-rows` is the axis nobody checks. */
+.bare-fr-in-repeat {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: 1fr auto;
+}
+
+/* THE UNENUMERATED PROPERTY. `grid-auto-rows` is a track-sizing property the guard's author
+   never listed; the property FAMILY regex catches it anyway. */
+.bare-fr-in-auto-tracks {
+  grid-auto-rows: 1fr;
+}
+
+/* `min-content` is the same floor as `auto` under a different name. */
+.min-content-minimum {
+  grid-template-columns: minmax(min-content, 1fr);
+}
+
+/* ---- AC 6: making "no horizontal scroll" true by CLIPPING -------------------------------
+   Each of these makes AC 5 report success while the overflowing content is merely hidden. */
+
+body {
+  overflow-x: hidden;
+}
+
+html {
+  overflow: clip;
+}
+
+:root {
+  overflow-y: hidden;
+}
+
+/* THE UNENUMERATED PROPERTY AGAIN. `overflow-block` is the logical longhand; no list in the
+   test names it. */
+#root {
+  overflow-block: hidden;
+}
+
+/* The two-value shorthand: the banned keyword is not the whole value, so a `^hidden$` anchor
+   reads this as clean. */
+.app-shell {
+  overflow: hidden auto;
+}
+
+/* ---- AC 10 / UX-DR38: a second full-window overlay --------------------------------------
+   The stack is exactly one level deep. A second component declaring its own full-window fixed
+   layer is how that quietly stops being true, and no value-level rule objects — every
+   declaration here is legal CSS made of legal values. */
+
+.second-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+
+/* The logical-property spelling of the same shape. */
+.second-overlay-logical {
+  position: fixed;
+  inset-block: 0;
+  inset-inline: 0;
+}
+
+/* The four physical longhands, which no `inset` check sees. */
+.second-overlay-longhands {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+}
+
+/* NOT ANCHORED AT ALL — sized to the viewport instead. Same layer, no inset in sight. */
+.second-overlay-by-viewport-units {
+  position: fixed;
+  width: 100vw;
+  height: 100dvh;
+}
+
+/* ---- THE LEGAL HALVES ------------------------------------------------------------------
+   Every block below must stay SILENT under every guard. A rule that fires on these is a rule
+   c4-4, c4-5, c5-7 and c6-5 would each have to fight, and the story that discovered it would
+   be told the gate was working as intended. */
+
+/* c4-4's card grid: a minmax with a real px minimum is the CORRECT form, not the hazard. */
+.legal-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+  gap: var(--space-5);
+}
+
+/* The shell's own scroller. `auto` is not `hidden`, and this is the one legitimate
+   window-level scroll container in the app. */
+.legal-scroller {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* c4-5's detail panel and c6-5's overlay legitimately CLIP. The ban is scoped to root
+   elements precisely so these are untouched. */
+.legal-clipping-panel {
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+}
+
+/* c5-7's connection pill: fixed, but pinned to one corner — not a full-window layer. */
+.legal-corner-pill {
+  position: fixed;
+  top: var(--space-4);
+  right: var(--space-4);
+}
+
+/* Fixed and anchored on ONE axis only — a docked bar, not a layer over the window. */
+.legal-docked-bar {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+}
+
+/* Full-window, but NOT fixed: an absolutely-positioned cover inside a positioned parent is a
+   different thing entirely (a panel's own loading veil), and UX-DR38 does not speak to it. */
+.legal-absolute-cover {
+  position: absolute;
+  inset: 0;
+}

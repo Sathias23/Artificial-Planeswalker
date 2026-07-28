@@ -75,8 +75,14 @@ export default tseslint.config(
       // stylelint cannot express. None of them can see a single character of
       // `style={{ padding: '18px', boxShadow: '0 12px 32px rgba(0,0,0,.5)' }}` in a `.tsx`
       // file — which is the most convenient way to write a style and therefore the way a
-      // component author reaches for under time pressure. c2-6 and c2-7 write the first
-      // components; the gate has to exist first, or the exception becomes the convention.
+      // component author reaches for under time pressure. The gate had to exist BEFORE the
+      // first component, or the exception becomes the convention.
+      //
+      // It held: c2-6 wrote the application shell — the first component in the codebase, and
+      // the one whose whole job is geometry — with no inline style anywhere, and needed no
+      // escape hatch to do it. That is the datum this rule was betting on. If a later story
+      // reaches for a dynamic value, the shell is the precedent to look at first: c2-6 found
+      // that wanting one was a signal the layout was being done in JS that belonged in CSS.
       //
       // `no-restricted-syntax` rather than `react/forbid-dom-props`: the latter needs
       // eslint-plugin-react, which this project does not install and which AD-12's

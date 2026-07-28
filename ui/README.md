@@ -206,6 +206,28 @@ else these bans apply, and each one fails the build:
 | `font: var(--type-numeric)` without its `font-variant-numeric` companion                                              | a guard                                                   |
 | an `@font-face` anywhere but `src/styles/fonts.css`                                                                   | a guard                                                   |
 | any external URL in the built bundle's `.css`/`.html`; font-CDN hosts, fetchable assets and unreviewed hosts anywhere | a guard                                                   |
+| a class name that is not flat kebab-case — BEM's `__` and `--` included                                               | `selector-class-pattern`                                  |
+| a bare `1fr` grid track, or any `minmax()` floored at `auto`/`min-content`                                            | a guard                                                   |
+| `overflow: hidden`/`clip` on `html`/`body`/`:root`/`#root`/`.app-shell`                                               | a guard                                                   |
+| a second full-window `position: fixed` layer outside the shell's stylesheet                                           | a guard                                                   |
+| a viewport height (`vh`/`dvh`/`svh`/`lvh`…) on the document root                                                      | a guard                                                   |
+
+**And one named NON-ban, with its reason: geometry literals.** A track width, a breakpoint, a
+stacking level, a card-tile minimum — these are the one value family that stays a literal, and
+saying so explicitly is what stops the next author reading `452px` as drift. There is no token
+family to point at, and adding one is not available: `tests/token-usage.test.ts` pins
+`declaredTokens.size` at **64** and `tests/tokens.test.ts` asserts every token name
+byte-for-byte against `DESIGN.md`'s frontmatter, which contains no layout-width token. An
+unenforceable ban is worse than a documented exception, so the rule is:
+
+> A geometry literal is allowed, and it carries a comment naming its source in `DESIGN.md`
+> and the reason it is not a token. Where it defines a composition, a test pins it.
+
+`src/components/AppShell/AppShell.css` is the worked example (452px column, 1100px breakpoint,
+both pinned in `tests/shell.test.ts`), and c2-7's 17px StatChip value, c2-9's 480px state-panel
+max-width and c4-4's 176px grid minimum inherit a stated rule rather than a habit. Everything
+that _can_ come from a token still must — spacing, colour, radius, shadow, type and duration
+are gated, and a geometry literal is never a way around one of those.
 
 **The value must be from the right FAMILY, not merely a token.** `padding: var(--radius-pill)`
 is invalid CSS that renders as nothing, and the unknown-token guard cannot catch it because
@@ -339,6 +361,78 @@ in `public/` would land unhashed at the bundle root and be revalidated on every 
   load fonts or apply `@font-face`. That check is a browser, with the network throttled to
   offline, and it lives on the epic's manual-testing checklist.
 
+## Components
+
+Set by story **c2-6**, the first component in the codebase, and inherited by every component
+story after it. A convention discovered per story is thirty-five chances to diverge, so these
+are decided once here rather than re-derived.
+
+**One directory per component, three files, no barrels:**
+
+```
+src/components/<Name>/
+  <Name>.tsx        the component
+  <Name>.css        its stylesheet, imported from the .tsx
+  <Name>.test.tsx   colocated
+```
+
+- The colocated `.test.tsx` lands in the **`dom`** vitest project automatically and satisfies
+  `tests/gate-geometry.test.ts`'s "no `.tsx` test files under `tests/`" rule with no thought.
+  Node-project gate and guard tests still live in `ui/tests/`.
+- `src` is already in `tsconfig.app.json`'s `include`, so a new component needs **no**
+  configuration change. If one seems to, the files have been put somewhere they should not be.
+- **No `index.ts` barrels.** Each would be a file per component existing only to re-export,
+  and they make `react-refresh/only-export-components` harder to reason about. Import the
+  path: `import { AppShell } from './components/AppShell/AppShell'`.
+
+**Class names are flat kebab-case, prefixed with the component** — `app-shell-header`, never
+`app-shell__header`. This is a gate, not taste: stylelint-config-standard's
+`selector-class-pattern` is `^([a-z][a-z0-9]*)(-[a-z0-9]+)*$`, and BEM's `__` produced **12
+`selector-class-pattern` errors** when measured against the shell's own stylesheet. The gate
+had already picked a convention; loosening it to fit a habit would have been the wrong repair.
+
+**A component module may export the component, types and constants — but not a helper
+function.** `react-refresh/only-export-components` is an `error` with `allowConstantExport:
+true`, so a helper exported beside the component turns the gate red. Keep helpers unexported,
+or give them their own module.
+
+**Component tests assert by ROLE**, through `@testing-library/react` — not by class name and
+not by test id. That is what makes a landmark or heading requirement a real check rather than
+a decorative one. The one place the shell's own tests reach for a class is the overlay slot,
+which is an unstyled positioning container with no role by design, and the test says so.
+
+### The shell owns the window, and the scroll
+
+`AppShell` is `height: 100dvh` with the gutter as padding; its `<main>` — the two-column
+region between the header and the footer — is the app's **single scroll container**
+(`flex: 1; min-height: 0; overflow-y: auto`). Three consequences for everything built inside
+it:
+
+- **No later component introduces a second window-level scroller.** A panel that scrolls its
+  own content is fine; a second `100dvh` region is not.
+- **The footer is _literally_ always in the window**, which is what UX-DR32 and NFR-08 require
+  of the Scryfall and Fan Content attribution. The header and footer are `flex-shrink: 0` so
+  the content region is the only child that gives ground.
+- **The scrollbar sits at the content region's edge, not the window's.** That is the normal
+  appearance of an app-shell SPA, and it is deliberate.
+
+The landmarks are `header` / `main` / `footer`, with **both** columns inside the one `main`.
+The right column is a plain container, **not** an `<aside>`: it carries the deck list, which is
+FR-05's primary content satisfied as a permanent second column, and `complementary` would
+demote exactly the thing the redesign promoted. Per-panel `role="region"` labels (UX-DR44)
+belong to the panels.
+
+**There is exactly one full-window overlay layer** (UX-DR38), it lives in `AppShell.css`, and
+it is `position: fixed` — never `absolute`. The composition reference is a fixed 1720×1440
+slab where the two coincide; a real document is taller than the window, so an absolute overlay
+would be sized to the _document_, scroll away with it, and put its 32px inset nowhere near the
+window edge. Render into the shell's `overlay` prop rather than declaring a second layer; a
+guard in `tests/shell.test.ts` fails the build if one appears.
+
+**The shell is presentation-only** — no state, no fetch, no store, no subscriptions; every
+region arrives through a prop, and `tests/shell.test.ts` asserts it. c2-7's primitives restate
+the same posture.
+
 ## Adding a source directory
 
 Every linted `.ts`/`.tsx` file must belong to a tsconfig — ESLint's `projectService` errors
@@ -351,11 +445,22 @@ directory needs adding to one of those two `include` lists.
 
 The `/ws` proxy entry is **c5-6**. The runtime `fetch` layer is **c3-1**'s first real
 consumer, and **c4-1** owns the store and its in-flight deduping — c2-3 deliberately ships the
-generated types with no fetch helper, so neither of those designs is pre-empted. The
-application shell is **c2-6** and the presentation primitives are **c2-7** — no component
-consumes these tokens yet, so `src/App.css` is still a placeholder (a tokenised one), and
-`c7-2`'s StatChip and `c6-8`'s curve axis are the first things that will apply the numeric
-role. Footer attribution for the typeface is **c2-10**.
+generated types with no fetch helper, so neither of those designs is pre-empted.
+
+The application shell landed in **c2-6**, so the token layer now has a real consumer and
+`src/App.css` is gone with the placeholder it styled. What the shell deliberately does _not_
+build is every region it holds open, each of which renders a placeholder line naming its owner
+until that story lands: the presentation primitives are **c2-7**, the shared state panel and
+its copy are **c2-9**, the footer's attribution text is **c2-10**, the card grid is **c4-4**
+and the curve/colour pair below it is **c4-8**, card detail is **c4-5**, the deck list is
+**c4-7**, the format check is **c4-10**, the header badges are **c2-7** filled by **c4-2** and
+**c4-10**, the agent-view nav pills are **c6-8**, and the agent view that drops into the
+overlay slot is **c6-5**. The `h1` carries the product name provisionally; **c4-2** replaces
+its content with the deck name and nothing about the element moves.
+
+The skip link and Tab-order work are **c4-11** — the shell builds no focus management. Nothing
+applies the numeric role yet: `c7-2`'s StatChip and `c6-8`'s curve axis are still the first
+things that will.
 
 `ui/dist` is no longer produced. A few ignore patterns still name it (`ui/.gitignore`,
 `.prettierignore`, the stylelint `--ignore-pattern`); they are harmless and deliberately left
