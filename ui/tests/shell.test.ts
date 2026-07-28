@@ -751,12 +751,18 @@ describe('the scroll, and the pinned footer (AC 11, AC 12, AC 13)', () => {
 
 describe('the overlay slot (AC 7, AC 8, AC 10)', () => {
   it('is inset by the gutter token, not a literal (AC 7)', () => {
-    // `--space-gutter`, not `--space-6` (review round, 2026-07-28 — a deliberate deviation
-    // from AC 7's literal spelling, recorded in the story). The two are both 32px TODAY, but
-    // they are different tokens: the overlay's whole contract is that its inset coincides
-    // with the shell's own frame (Q2 said so in as many words), and if the gutter is ever
-    // retuned, an overlay pinned to `--space-6` would silently stop aligning with the frame
-    // it is documented to align with — while this assertion kept passing.
+    // `--space-gutter`, not `--space-6`. The two are both 32px TODAY, but they are different
+    // tokens with different jobs: `--space-6` is a step on the spacing scale, while
+    // `--space-gutter` is the named distance that frames the window — and the overlay's whole
+    // contract is that its inset COINCIDES with the shell's own frame (Q2 says so in as many
+    // words). Pinned to `--space-6`, a later retune of the gutter would silently stop the
+    // overlay aligning with the frame it is documented to align with, while this assertion
+    // kept passing.
+    //
+    // This shipped as a ruled deviation from AC 7's original wording (review round 1); **AC 7
+    // was then amended to match, by Brad's ruling 2026-07-28**, so the two now agree and this
+    // is no longer a deviation from anything. `DESIGN.md` line 328 is the one artefact still
+    // saying `{spacing.6}` — same 32px, homed against Story 8.3 in deferred-work.md.
     expect(valueOf(blockFor('.app-shell-overlay')!, 'inset')).toBe('var(--space-gutter)')
   })
 

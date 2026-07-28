@@ -1272,3 +1272,21 @@ the gate-output rule rather than left as "we meant to".
   review-enforced rather than gate-enforced. If a later story introduces a second stacking
   level, the right repair is a `--z-*` token family, not a wider regex. (Severity: Low — one
   value, one level, and the epic's design says there will never be a second.)
+
+## Deferred from: c2-6 AC 7 amendment (2026-07-28)
+
+- **`DESIGN.md` line 328 still names `{spacing.6}` for the agent-view overlay inset; the shipped
+  shell uses `--space-gutter`.** Story c2-6's AC 7 was amended to `var(--space-gutter)` by Brad's
+  ruling on 2026-07-28, after review round 1 ruled the implementation that way: the two tokens
+  are both 32px today, but the overlay's contract is that its inset **coincides with the shell's
+  own frame**, and a later retune of the gutter would silently break that alignment while every
+  assertion kept passing. The epic's Story 2.6 block and UX-DR8 both say plain "32px" and needed
+  no change; DESIGN.md is the only artefact still naming the scale step.
+
+  Left alone deliberately — DESIGN.md is the UX artefact, not an implementation record, and
+  nothing renders differently since both values are 32px. **Homed against Story 8.3**, which
+  already owns folding implementation-surfaced corrections back into the planning artefacts (it
+  carries the six spine gaps and the EXPERIENCE.md "unconfirmed" stamps). The fix is one word,
+  and the reason to make it is that the next component to reach for a "window frame" distance
+  should find one name, not two. (Severity: Low — cosmetic today, a real trap only if the
+  gutter is ever retuned.)

@@ -173,7 +173,35 @@ the guard must be narrow enough to say so.
 
 **AC 7 [epic].** **Given** an agent view will later overlay the window, **when** the shell is
 built, **then** it reserves a full-window overlay slot inset by 32px, so Epic 6 adds the view
-without restructuring the shell (UX-DR8) — and the inset is `var(--space-6)`, not a literal.
+without restructuring the shell (UX-DR8) — and the inset is `var(--space-gutter)`, not a literal.
+
+> **Amended 2026-07-28 by Brad's ruling, after the story shipped.** This AC originally said
+> `var(--space-6)`. Review round 1 ruled the implementation should use **`var(--space-gutter)`**
+> instead and it shipped that way; round 2 then asked for the AC text to be brought into line.
+> The dev agent declined to make that edit on process grounds — an implementer rewriting an
+> acceptance criterion to match what was built is what the permitted-sections rule exists to
+> prevent — and homed the decision here. Brad ruled the amendment 2026-07-28.
+>
+> **Why the ruled value is the right one:** the two tokens are both 32px *today*, but they are
+> different tokens with different jobs. `--space-6` is a step on the spacing scale;
+> `--space-gutter` is the named distance that frames the window, and the overlay's whole
+> contract is that its inset **coincides with the shell's own frame** (Q2 says so in as many
+> words). Pinned to `--space-6`, a later retune of the gutter would silently stop the overlay
+> aligning with the frame it is documented to align with — while every assertion kept passing.
+> The original wording named the scale step that happened to have the right value, not the
+> distance that carries the meaning.
+>
+> **The upstream artefacts were checked and only one disagrees.** The epic's own Story 2.6 block
+> and UX-DR8 both say plain "32px" and name no token, so neither needs touching. **DESIGN.md
+> line 328 says `{spacing.6}`** — that is where this AC's original wording came from, and it is
+> now the one place still naming the scale step rather than the gutter. Left as-is deliberately:
+> DESIGN.md is the UX artefact and not this story's to rewrite, and both values are 32px, so
+> nothing renders differently. Homed in `deferred-work.md` for **Story 8.3**, which already owns
+> folding implementation-surfaced corrections back into the planning artefacts.
+>
+> The original text is preserved in this note so the amendment is legible rather than silent;
+> the reasoning also lives on the assertion in `ui/tests/shell.test.ts` and on the declaration
+> in `AppShell.css`.
 
 **AC 8.** **Given** the slot, **when** it is positioned, **then** it is **`position: fixed`**, not
 `absolute`. *Why: landmine 11 — the reference mock is a fixed-height slab where the two coincide;
@@ -320,7 +348,8 @@ components owned by c2-7, c2-9, c2-10, c4-11, c4-4, c5-7, c6-5 or c6-8. `pyproje
   - [x] `npm run lint` after **every** block — the gates are cheap and the feedback is exact
 
 - [x] **Task 4 — the overlay slot** (AC 7, 8, 9, 10)
-  - [x] `position: fixed`, inset `var(--space-6)`, renders and intercepts nothing when empty
+  - [x] `position: fixed`, inset `var(--space-gutter)` (amended with AC 7, 2026-07-28), renders
+        and intercepts nothing when empty
   - [x] Confinement guard over every `ui/src/**/*.css`, proven both ways
   - [x] A test that mounts the shell **with** overlay content, so the slot is proven to work rather
         than proven to be absent
@@ -475,7 +504,7 @@ value-aware for three empty shapes but not the fourth.
 - [x] [Review][Patch] The collapsed-track assertion identifies the media-query variant by array index (`collapsed[1]`) — nothing ties index 1 to "inside the media query"; tie it to the media block's source position [ui/tests/shell.test.ts:426-430]
 - [x] [Review][Patch] `findClippedRoot`'s message says "on a root element" even when firing on `.app-shell-columns`, which the guard's own comment calls "one element below the roots' floor" [ui/tests/shell.test.ts:258]
 - [x] [Review][Patch] `ui/README.md`'s ban-table row for the root-height guard omits that it also fires on `height: 100%` — a reader consulting the table would write `html { height: 100% }` in good faith [ui/README.md:213]
-- [ ] [Review][Patch] **NOT APPLIED — deliberately, and this is the one open item.** AC 7's sentence still says the inset is `var(--space-6)` while the ruled deviation ships `--space-gutter` — the finding asks for the AC text to be amended. Declined on process grounds, not on substance: `dev-story` may modify only the frontmatter `baseline_commit`, the task checkboxes, the Dev Agent Record, File List, Change Log and Status, and **an implementer silently rewriting an acceptance criterion to match what was built is the exact shape that rule exists to prevent** — even when the deviation was ruled and correct. The deviation is instead recorded in three places a reader will hit first: the v1.1 Change Log entry, an eight-line comment on the assertion in `ui/tests/shell.test.ts`, and the CSS declaration's own comment. **Brad's call whether to amend AC 7 itself.** [story file, AC 7]
+- [x] [Review][Patch] **APPLIED 2026-07-28 by Brad's ruling — after being escalated rather than actioned.** AC 7's sentence said the inset is `var(--space-6)` while the ruled deviation ships `--space-gutter`. The dev agent declined to make the edit itself, on process grounds rather than substance: `dev-story` may modify only the frontmatter `baseline_commit`, the task checkboxes, the Dev Agent Record, File List, Change Log and Status, and **an implementer rewriting an acceptance criterion to match what was built is the exact shape that rule exists to prevent** — even when the deviation is ruled and correct. Brad then ruled the amendment, which is the right way round: the AC text now reads `var(--space-gutter)` and carries a visible note preserving the original wording and the reasoning, so the change is legible rather than silent. [story file, AC 7]
 - [x] [Review][Patch] The badges placeholder names c2-7 (the primitive's supplier) but its fillers are c4-2/c4-10 per the prop doc and README — the one region whose replacing stories could delete the line without a test noticing [ui/src/components/AppShell/AppShell.tsx:110; ui/src/components/AppShell/AppShell.test.tsx]
 - [x] [Review][Patch] `App.test.tsx`'s comment overclaims — "`main` alone is enough to prove App composed the shell" is exactly what a bare `<main/>` impostor disproves; the file's *heading* test is what carries the composition proof, and the comment should say so [ui/src/App.test.tsx:28-29]
 
