@@ -21,11 +21,17 @@ describe('App', () => {
   it('renders the application shell', () => {
     render(<App />)
 
-    // By role, not by class name: if App stopped composing the shell — or composed something
-    // that merely looked like it — these three landmarks would go with it.
-    expect(screen.getAllByRole('banner')).toHaveLength(1)
+    // By role, not by class name — and ONE landmark, not the full triple: the landmark
+    // CONTRACT (exactly one banner/main/contentinfo, Q4's structure) is AppShell.test.tsx's,
+    // and re-asserting it here would be exactly the duplication this file's header says was
+    // moved — two files to update when Q4's structure changes, and the second one forgotten.
+    //
+    // What this assertion is and is NOT: `main` alone proves App renders SOMETHING with a
+    // main landmark, which a bare `<main/>` impostor would also satisfy. The composition
+    // proof is the heading test below — the shell supplies that heading, and an impostor
+    // would not. Together they are the pair; neither carries it alone, and an earlier version
+    // of this comment claimed the first one did.
     expect(screen.getAllByRole('main')).toHaveLength(1)
-    expect(screen.getAllByRole('contentinfo')).toHaveLength(1)
   })
 
   it('gives the document a top-level heading before any deck exists', () => {

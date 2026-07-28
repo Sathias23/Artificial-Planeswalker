@@ -71,6 +71,33 @@ export interface AppShellProps {
 }
 
 /**
+ * Whether a region prop actually renders anything.
+ *
+ * `??` alone is the wrong test: the idiomatic `left={hasDeck && <CardGrid />}` passes `false`
+ * when empty — not nullish, renders nothing — and the AC 21 placeholder would silently
+ * disappear with it, leaving a blank region and no clue which story owed it. React renders
+ * nothing for null, undefined, booleans and the empty string.
+ *
+ * Two more members of the same family, and they are the two the first version of this stopped
+ * short of (review round 2, 2026-07-28):
+ *
+ *   AN EMPTY ARRAY. `left={cards.map(...)}` over an empty list is the single most idiomatic
+ *   way a React region ends up rendering nothing, and `[]` is neither nullish nor a boolean
+ *   nor `''`. Recursive, because `[false, null]` renders nothing either — the array is empty
+ *   of OUTPUT, not necessarily of elements.
+ *
+ *   A WHITESPACE-ONLY STRING. `deckName=" "` renders an `h1` containing a space: present in
+ *   the DOM, invisible on screen, and announced as an empty heading — precisely the
+ *   heading-less state Q3 exists to prevent, wearing a shape that passes a `!== ''` check.
+ */
+const filled = (content: ReactNode): boolean => {
+  if (content == null || typeof content === 'boolean') return false
+  if (typeof content === 'string') return content.trim() !== ''
+  if (Array.isArray(content)) return content.some((child) => filled(child as ReactNode))
+  return true
+}
+
+/**
  * `content` if a region was filled, otherwise the placeholder line that names its owner.
  * Module-local on purpose: `react-refresh/only-export-components` is an `error` here and
  * `allowConstantExport` admits constants and types but NOT a helper function, so exporting
@@ -78,17 +105,9 @@ export interface AppShellProps {
  * their own module.
  */
 const slot = (content: ReactNode, placeholder: string): ReactNode =>
-  content ?? <p className="app-shell-placeholder">{placeholder}</p>
+  filled(content) ? content : <p className="app-shell-placeholder">{placeholder}</p>
 
-export function AppShell({
-  deckName = 'Artificial Planeswalker',
-  badges,
-  nav,
-  left,
-  right,
-  footer,
-  overlay,
-}: AppShellProps) {
+export function AppShell({ deckName, badges, nav, left, right, footer, overlay }: AppShellProps) {
   return (
     <div className="app-shell">
       <header className="app-shell-header">
@@ -98,10 +117,23 @@ export function AppShell({
               Q3's accepted consequence of never leaving the page heading-less, not an
               oversight, and c4-2 resolves it by supplying `deckName`. */}
           <span className="app-shell-kicker">Artificial Planeswalker</span>
-          <h1 className="app-shell-deck-name">{deckName}</h1>
+          {/* `filled`, not a default parameter: a default fires only on `undefined`, so an
+              empty string or null from a loading gap would render an EMPTY h1 and leave the
+              page effectively heading-less — the exact state Q3 exists to prevent. */}
+          <h1 className="app-shell-deck-name">
+            {filled(deckName) ? deckName : 'Artificial Planeswalker'}
+          </h1>
         </div>
         <div className="app-shell-badges">
-          {slot(badges, 'Format and size badges land here — c2-7 supplies the Badge primitive.')}
+          {/* Names the FILLERS (c4-2, c4-10) as well as the primitive's supplier (c2-7). AC 21
+              exists so the story that replaces a region finds its own id in the copy — and
+              c2-7 ships Badge without filling this slot, so a line naming only c2-7 is a line
+              the stories that actually fill it would never search for. */}
+          {slot(
+            badges,
+            'Format and size badges land here — c2-7 supplies the Badge primitive, c4-2 and ' +
+              'c4-10 fill them.',
+          )}
         </div>
         <div className="app-shell-nav">{slot(nav, 'Agent-view nav pills land here — c6-8.')}</div>
       </header>
@@ -130,8 +162,14 @@ export function AppShell({
       </footer>
 
       {/* AC 9 — the element is conditional, the SLOT is the CSS rule. Rendering `null` costs
-          nothing and intercepts nothing; an unconditional wrapper would cover the page. */}
-      {overlay ? <div className="app-shell-overlay">{overlay}</div> : null}
+          nothing and intercepts nothing; an unconditional wrapper would cover the page.
+
+          `filled`, not raw truthiness — the same treatment `slot()` got, applied to the one
+          place that had been left out of it. The stakes here are higher than a missing
+          placeholder: `overlay={views.map(...)}` over an empty list, or `overlay={' '}`, would
+          mount a full-window FIXED element containing nothing, which is exactly AC 9's
+          click-swallower presenting as "the app stopped responding to clicks". */}
+      {filled(overlay) ? <div className="app-shell-overlay">{overlay}</div> : null}
     </div>
   )
 }

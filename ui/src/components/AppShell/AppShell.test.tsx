@@ -66,6 +66,30 @@ describe('AppShell header (AC 15, AC 15b, Q3)', () => {
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
   })
 
+  it('never leaves the h1 effectively empty, whatever shape the deck name arrives in', () => {
+    // Q3's requirement is that the page is never heading-less, and a default parameter fires
+    // only on `undefined`. A whitespace-only string (review round 2) renders an h1 that is
+    // present in the DOM, invisible on screen, and announced as an empty heading — the same
+    // state Q3 forbids, wearing a shape a `!== ''` check waves through.
+    for (const empty of ['', ' ', null, undefined, false] as const) {
+      const { unmount } = render(<AppShell deckName={empty} />)
+      expect(
+        screen.getByRole('heading', { level: 1 }),
+        `deckName=${JSON.stringify(empty)} left the h1 without the fallback`,
+      ).toHaveTextContent('Artificial Planeswalker')
+      unmount()
+    }
+  })
+
+  it('never renders an EMPTY h1, even for deckName="" (review, 2026-07-28)', () => {
+    // A default parameter fires only on `undefined`; an empty string from a loading gap in
+    // c4-2's store would render an empty heading and leave the page effectively heading-less
+    // — the exact state Q3 exists to prevent. The fallback is value-aware, and this pins it.
+    render(<AppShell deckName="" />)
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Artificial Planeswalker')
+  })
+
   it('reserves both right-hand slots, prop-fed (AC 15b)', () => {
     // c2-7 supplies Badge and c6-8 supplies the nav pills. If the header did not already
     // have somewhere to put them, each of those stories would restructure the header
@@ -83,12 +107,28 @@ describe('AppShell placeholder copy (AC 21)', () => {
     render(<AppShell />)
 
     // Mechanical repair rather than archaeological: the story that fills each region is in
-    // the copy, so removing a placeholder is a search for its own story id.
-    for (const owner of ['c4-4', 'c4-8', 'c4-5', 'c4-7', 'c4-10', 'c2-10', 'c2-7', 'c6-8']) {
+    // the copy, so removing a placeholder is a search for its own story id. EVERY id the
+    // copy names is in this list — c4-9 was the one the first version omitted, which made
+    // half of the left column's placeholder deletable without failing anything.
+    for (const owner of [
+      'c4-4',
+      'c4-8',
+      'c4-9',
+      'c4-5',
+      'c4-7',
+      'c4-10',
+      'c2-10',
+      'c2-7',
+      'c6-8',
+    ]) {
+      // `getAllByText`, not `getByText`: an owner may legitimately appear in TWO placeholders
+      // — c4-10 both fills a header badge and owns the format-check panel — and the single
+      // getter throws on a second match, which would turn a correct placeholder into a test
+      // failure.
       expect(
-        screen.getByText(new RegExp(owner)),
+        screen.getAllByText(new RegExp(owner)).length,
         `no placeholder names ${owner}`,
-      ).toBeInTheDocument()
+      ).toBeGreaterThan(0)
     }
   })
 
@@ -99,6 +139,35 @@ describe('AppShell placeholder copy (AC 21)', () => {
     expect(screen.queryByText(/c4-4/)).not.toBeInTheDocument()
     // The regions that are still empty keep theirs.
     expect(screen.getByText(/c2-10/)).toBeInTheDocument()
+  })
+
+  it('keeps the placeholder when a region is passed the idiomatic false (review, 2026-07-28)', () => {
+    // `left={hasDeck && <CardGrid />}` passes `false` when there is no deck. `false` is not
+    // nullish and renders nothing, so a `??`-based slot would drop BOTH the content and the
+    // placeholder — the region would just be silently blank.
+    render(<AppShell left={false} />)
+
+    expect(screen.getByText(/c4-4/)).toBeInTheDocument()
+  })
+
+  it('keeps the placeholder for an EMPTY ARRAY — the most idiomatic empty of all', () => {
+    // `left={cards.map(...)}` over an empty list (review round 2). `[]` is not nullish, not a
+    // boolean and not `''`, so the first version of `filled()` called it filled and the region
+    // rendered blank with no clue which story owed it. `[false, null]` is the same defect one
+    // level down: empty of OUTPUT rather than empty of elements.
+    render(<AppShell left={[]} right={[false, null]} />)
+
+    expect(screen.getByText(/c4-4/)).toBeInTheDocument()
+    expect(screen.getByText(/c4-7/)).toBeInTheDocument()
+  })
+
+  it('still renders a NON-empty array — the empty check must not eat real content', () => {
+    // The silent half. A `filled()` that answered "false" for every array would drop c4-4's
+    // real grid, which is a far worse failure than the one above.
+    render(<AppShell left={[<p key="a">the card grid</p>]} />)
+
+    expect(screen.getByText('the card grid')).toBeInTheDocument()
+    expect(screen.queryByText(/c4-4/)).not.toBeInTheDocument()
   })
 })
 
@@ -124,6 +193,16 @@ describe('AppShell overlay slot (AC 7, AC 9)', () => {
 
     expect(overlayIn(container)).not.toBeNull()
     expect(screen.getByText('agent view')).toBeVisible()
+  })
+
+  it('mounts NO overlay element for an empty array or whitespace (review round 2)', () => {
+    // The slot had been left out of the `filled()` treatment the other regions got, and the
+    // stakes here are higher than a missing placeholder: `overlay={views.map(...)}` over an
+    // empty list would mount a full-window FIXED element containing nothing — AC 9's
+    // click-swallower, presenting as "the app stopped responding to clicks".
+    expect(overlayIn(render(<AppShell overlay={[]} />).container)).toBeNull()
+    expect(overlayIn(render(<AppShell overlay={' '} />).container)).toBeNull()
+    expect(overlayIn(render(<AppShell overlay={false} />).container)).toBeNull()
   })
 
   it('keeps the overlay OUT of the main landmark', () => {

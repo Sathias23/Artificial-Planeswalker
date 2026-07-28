@@ -191,26 +191,26 @@ second copy of the tokens in this repo to drift.
 **`src/styles/tokens.css` is the only file in `ui/` where a literal is legal.** Everywhere
 else these bans apply, and each one fails the build:
 
-| Banned                                                                                                                | Rule                                                      |
-| --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| a hex colour, a named colour, `rgb()`/`hsl()`/`oklch()`/`drop-shadow()`…                                              | `color-no-hex`, `color-named`, `function-disallowed-list` |
-| a `box-shadow` or `text-shadow` not built from `--shadow-*`/`--glow`                                                  | `declaration-property-value-allowed-list`                 |
-| a `border-radius` not from `--radius-*` — **including every longhand**                                                | `declaration-property-value-allowed-list`                 |
-| `padding`/`margin`/`gap` not from `--space-*` — **including every longhand**                                          | `declaration-property-value-allowed-list`                 |
-| a literal duration in `transition`/`animation` or their duration/delay longhands                                      | allowed-list + disallowed-list                            |
-| anything that pulses, loops or alternates                                                                             | disallowed-list + a guard                                 |
-| `style={{…}}` on a JSX element                                                                                        | `no-restricted-syntax` (ESLint)                           |
-| native CSS nesting in a shipped stylesheet                                                                            | a guard                                                   |
-| a hard-coded `font`/`font-*`/`line-height`/`letter-spacing` value — and the sibling `word-spacing`/`text-indent`      | `declaration-property-value-allowed-list`                 |
-| any `font-variant-numeric` value except `var(--type-numeric-features)`                                                | `declaration-property-value-allowed-list`                 |
-| `font: var(--type-numeric)` without its `font-variant-numeric` companion                                              | a guard                                                   |
-| an `@font-face` anywhere but `src/styles/fonts.css`                                                                   | a guard                                                   |
-| any external URL in the built bundle's `.css`/`.html`; font-CDN hosts, fetchable assets and unreviewed hosts anywhere | a guard                                                   |
-| a class name that is not flat kebab-case — BEM's `__` and `--` included                                               | `selector-class-pattern`                                  |
-| a bare `1fr` grid track, or any `minmax()` floored at `auto`/`min-content`                                            | a guard                                                   |
-| `overflow: hidden`/`clip` on `html`/`body`/`:root`/`#root`/`.app-shell`                                               | a guard                                                   |
-| a second full-window `position: fixed` layer outside the shell's stylesheet                                           | a guard                                                   |
-| a viewport height (`vh`/`dvh`/`svh`/`lvh`…) on the document root                                                      | a guard                                                   |
+| Banned                                                                                                                                                                                           | Rule                                                      |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| a hex colour, a named colour, `rgb()`/`hsl()`/`oklch()`/`drop-shadow()`…                                                                                                                         | `color-no-hex`, `color-named`, `function-disallowed-list` |
+| a `box-shadow` or `text-shadow` not built from `--shadow-*`/`--glow`                                                                                                                             | `declaration-property-value-allowed-list`                 |
+| a `border-radius` not from `--radius-*` — **including every longhand**                                                                                                                           | `declaration-property-value-allowed-list`                 |
+| `padding`/`margin`/`gap` not from `--space-*` — **including every longhand**                                                                                                                     | `declaration-property-value-allowed-list`                 |
+| a literal duration in `transition`/`animation` or their duration/delay longhands                                                                                                                 | allowed-list + disallowed-list                            |
+| anything that pulses, loops or alternates                                                                                                                                                        | disallowed-list + a guard                                 |
+| `style={{…}}` on a JSX element                                                                                                                                                                   | `no-restricted-syntax` (ESLint)                           |
+| native CSS nesting in a shipped stylesheet                                                                                                                                                       | a guard                                                   |
+| a hard-coded `font`/`font-*`/`line-height`/`letter-spacing` value — and the sibling `word-spacing`/`text-indent`                                                                                 | `declaration-property-value-allowed-list`                 |
+| any `font-variant-numeric` value except `var(--type-numeric-features)`                                                                                                                           | `declaration-property-value-allowed-list`                 |
+| `font: var(--type-numeric)` without its `font-variant-numeric` companion                                                                                                                         | a guard                                                   |
+| an `@font-face` anywhere but `src/styles/fonts.css`                                                                                                                                              | a guard                                                   |
+| any external URL in the built bundle's `.css`/`.html`; font-CDN hosts, fetchable assets and unreviewed hosts anywhere                                                                            | a guard                                                   |
+| a class name that is not flat kebab-case — BEM's `__` and `--` included                                                                                                                          | `selector-class-pattern`                                  |
+| a bare `1fr` grid track, or any `minmax()` floored at `auto`/`min-content`/`max-content`                                                                                                         | a guard                                                   |
+| clipping a root (`html`/`body`/`:root`/`#root`/`.app-shell`) or `.app-shell-columns`, the one scroller — by `overflow: hidden`/`clip`, by `contain: paint`/`strict`/`content`, or by `clip-path` | a guard                                                   |
+| a second full-window `position: fixed` layer outside the shell's stylesheet                                                                                                                      | a guard                                                   |
+| a viewport height on the document root — `vh`/`dvh`/`svh`/`lvh`… **and `%`**, since `html`'s containing block _is_ the viewport                                                                  | a guard                                                   |
 
 **And one named NON-ban, with its reason: geometry literals.** A track width, a breakpoint, a
 stacking level, a card-tile minimum — these are the one value family that stays a literal, and
@@ -225,7 +225,10 @@ unenforceable ban is worse than a documented exception, so the rule is:
 
 `src/components/AppShell/AppShell.css` is the worked example (452px column, 1100px breakpoint,
 both pinned in `tests/shell.test.ts`), and c2-7's 17px StatChip value, c2-9's 480px state-panel
-max-width and c4-4's 176px grid minimum inherit a stated rule rather than a habit. Everything
+max-width and c4-4's 176px grid minimum inherit a stated rule rather than a habit — **and a
+gate, not just prose** (review round, 2026-07-28): `tests/shell.test.ts` runs the DESIGN.md
+citation check over every `px` literal in **every** tracked stylesheet under `src/components/`,
+so a later story's uncited literal fails the moment its CSS is staged. Everything
 that _can_ come from a token still must — spacing, colour, radius, shadow, type and duration
 are gated, and a geometry literal is never a way around one of those.
 
@@ -459,7 +462,7 @@ overlay slot is **c6-5**. The `h1` carries the product name provisionally; **c4-
 its content with the deck name and nothing about the element moves.
 
 The skip link and Tab-order work are **c4-11** — the shell builds no focus management. Nothing
-applies the numeric role yet: `c7-2`'s StatChip and `c6-8`'s curve axis are still the first
+applies the numeric role yet: `c2-7`'s StatChip and `c6-8`'s curve axis are still the first
 things that will.
 
 `ui/dist` is no longer produced. A few ignore patterns still name it (`ui/.gitignore`,

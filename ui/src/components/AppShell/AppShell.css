@@ -122,8 +122,10 @@
    survive.
 
    `overflow-y: auto` here is the app's ONE legitimate scroll container. The guard in
-   ui/tests/shell.test.ts bans `hidden`/`clip` on the ROOT elements only, precisely so this
-   line — and c4-5's panel, and c6-5's overlay, which legitimately clip — are unaffected. */
+   ui/tests/shell.test.ts bans `hidden`/`clip` on the root elements AND on this scroller —
+   the one element where a horizontal clip would bury AC 5's overflow — but it fires on the
+   clipping VALUES, so this `auto` line, c4-5's panel and c6-5's overlay (which legitimately
+   clip, and are not roots) are all unaffected. */
 .app-shell-columns {
   display: grid;
   flex: 1;
@@ -196,8 +198,12 @@
    means fixed. Copying the mock here is the single most likely way to hand c6-5 a broken
    foundation, which is why the reasoning is recorded where c6-5 will read it.
 
-   `inset: var(--space-6)` is the 32px of UX-DR8's "inset by {spacing.6}" — a real token, so
-   this is not a geometry literal at all.
+   `inset: var(--space-gutter)` is the 32px of UX-DR8's "inset by {spacing.6}" — a real
+   token, so this is not a geometry literal at all. THE GUTTER TOKEN, not `--space-6` (review
+   round, 2026-07-28 — a deliberate deviation from AC 7's literal spelling, recorded in the
+   story): the two are the same 32px today, but the overlay's whole contract is that its
+   inset coincides with the shell's own frame, and an overlay pinned to `--space-6` would
+   silently stop aligning with the frame if the gutter were ever retuned.
 
    z-index 20 — the value the composition reference uses, and UX-DR38 fixes the stack at
    EXACTLY ONE level deep, so there is no second layer for it to be ordered against and no
@@ -206,6 +212,6 @@
    how "one level deep" stops being true without any value-level rule objecting. */
 .app-shell-overlay {
   position: fixed;
-  inset: var(--space-6);
+  inset: var(--space-gutter);
   z-index: 20;
 }

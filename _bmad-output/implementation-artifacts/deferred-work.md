@@ -1187,7 +1187,7 @@ the gate-output rule rather than left as "we meant to".
   later block applying a different role — `.is-compact { font: var(--type-micro); }` — where
   every declaration is legal and the `font` shorthand resets `font-variant-numeric` as a side
   effect.)* Resolving that needs specificity, source order and the element's real class list,
-  which live in TSX and are chosen at runtime. **Review owns that half** for c7-2's StatChip and
+  which live in TSX and are chosen at runtime. **Review owns that half** for c2-7's StatChip and
   c6-8's curve axis, the first components that will apply the role. Documented at the guard, in
   `ui/README.md`, and asserted as a deliberate blind spot so it fails loudly if the guard ever
   grows a cross-block reader. (Severity: Low — no component applies the role yet.)
@@ -1251,17 +1251,22 @@ the gate-output rule rather than left as "we meant to".
   root element" and "does this track floor at min-content" by reading declarations in one rule
   block at a time. Invisible to all of them: a full-window layer composed at runtime from two
   classes on one element; a root reached through a class the guard does not recognise as root
-  (it knows `html`, `body`, `:root`, `#root` and `.app-shell`); and any `overflow`, `position`
-  or grid template set from JavaScript. This is the same division of labour
+  (it knows `html`, `body`, `:root`, `#root`, the universal `*`, functional pseudo-class
+  wrappers of those, `.app-shell` in any compound, and `.app-shell-columns` — but not an
+  arbitrary class that happens to be styled onto a root element); any `overflow`, `position`
+  or grid template set from JavaScript; and `var()` indirection, where the banned keyword
+  lives in a custom property declared elsewhere (review round, 2026-07-28 — declared in the
+  guard header alongside the runtime half). This is the same division of labour
   `tests/token-usage.test.ts` declares for its contrast and numeric-pairing guards, and it is
   stated in the guard file's own header. When reviewing c6-5's agent view in particular, check
   the composed result rather than assuming the confinement guard did. (Severity: Low — the
   static half covers the shape every story is actually likely to write.)
 
 - **`z-index: 20` is a geometry literal that the AC 18 documentation guard does not cover.**
-  The guard is derived from the code — every `\d+px` literal in `AppShell.css` must carry a
-  `DESIGN.md` citation within a sentence of it — and a bare unitless number cannot be told
-  apart from the ones in `minmax(0, 1fr)`, `flex: 1` and `min-width: 0`. The value is documented
+  The guard is derived from the code — every `\d+px` literal in every tracked stylesheet under
+  `src/components/` must carry a `DESIGN.md` citation within a sentence of it (widened from
+  `AppShell.css` alone in the 2026-07-28 review round) — and a bare unitless number cannot be
+  told apart from the ones in `minmax(0, 1fr)`, `flex: 1` and `min-width: 0`. The value is documented
   in prose beside its rule (it comes from the composition reference, and UX-DR38 fixes the stack
   at one level deep so there is nothing to order it against), but that documentation is
   review-enforced rather than gate-enforced. If a later story introduces a second stacking

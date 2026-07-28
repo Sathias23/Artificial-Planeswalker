@@ -39,6 +39,12 @@
   grid-template-columns: minmax(min-content, 1fr);
 }
 
+/* `max-content` is the member the first version of the family forgot — a content-derived
+   floor that overflows HARDER than min-content (review round, 2026-07-28). */
+.max-content-minimum {
+  grid-template-columns: minmax(max-content, 1fr);
+}
+
 /* ---- AC 6: making "no horizontal scroll" true by CLIPPING -------------------------------
    Each of these makes AC 5 report success while the overflowing content is merely hidden. */
 
@@ -64,6 +70,50 @@ html {
    reads this as clean. */
 .app-shell {
   overflow: hidden auto;
+}
+
+/* THE UNENUMERATED SELECTORS (review round, 2026-07-28). The universal selector names every
+   element INCLUDING the roots; a functional pseudo-class wraps the root token where a
+   start-or-combinator prefix cannot see it; a compound selector puts a type in front of the
+   shell's class. Each is the same clip in a spelling the first version's patterns missed. */
+* {
+  overflow: hidden;
+}
+
+:where(html) {
+  overflow-x: clip;
+}
+
+div.app-shell {
+  overflow: hidden;
+}
+
+/* THE SCROLLER (review round, 2026-07-28): `.app-shell-columns` is the one element where a
+   horizontal clip would bury AC 5's overflow, one element below the roots' floor. Its
+   legitimate `overflow-y: auto` lives in `.legal-scroller` below and must stay silent. */
+.app-shell-columns {
+  overflow-x: hidden;
+}
+
+/* CLIPPING WITHOUT THE WORD `overflow` (review round 2, 2026-07-28). `contain: paint` clips
+   descendants to the padding box — and on the shell root it additionally becomes a containing
+   block for `position: fixed`, which would capture the very overlay AC 10 protects.
+   `clip-path` clips the painted result outright. Both bury AC 5's overflow exactly as
+   `overflow-x: hidden` does, and neither is an `overflow` declaration, so a guard keyed on
+   that one property family never sees them. */
+:root {
+  contain: paint;
+}
+
+div.app-shell {
+  clip-path: inset(0);
+}
+
+/* NEGATION IS NOT EXEMPTION. `:not(html)` does not NAME the root — and it still matches
+   `body`, so it clips a root all the same. A guard that simply blanks the negation and stops
+   there reads this as "selects nothing in the family" and goes quiet. */
+:not(html) {
+  overflow: hidden;
 }
 
 /* ---- AC 10 / UX-DR38: a second full-window overlay --------------------------------------
@@ -100,6 +150,69 @@ html {
   height: 100dvh;
 }
 
+/* PERCENTAGES, not viewport units: on a fixed box `%` resolves against the viewport, so this
+   is the same layer wearing a unit the `v*` family never matches (review round, 2026-07-28). */
+.second-overlay-by-percentages {
+  position: fixed;
+  width: 100%;
+  height: 100%;
+}
+
+/* MIXED MECHANISMS, one per axis: anchored vertically, viewport-sized horizontally. A guard
+   that requires both axes to use the SAME mechanism sees neither half. */
+.second-overlay-mixed-axes {
+  position: fixed;
+  inset-block: 0;
+  width: 100vw;
+}
+
+/* THE CASCADE, within one block: the LAST `position` wins, and it is fixed. A first-match
+   reader sees `static` and files this under "not a layer". */
+.second-overlay-cascade {
+  position: static;
+  inset: 0;
+  position: fixed;
+}
+
+/* A closing brace INSIDE A STRING. Legal CSS — and a block reader that does not blank string
+   contents desynchronises HERE, which would make the layer directly below invisible. That
+   layer being caught is the parser's own probe. */
+.string-brace-decoy::before {
+  content: '}';
+}
+
+.second-overlay-after-string-brace {
+  position: fixed;
+  inset: 0;
+}
+
+/* AN ESCAPED QUOTE INSIDE A STRING (review round 2, 2026-07-28). Legal CSS, and the identical
+   desynchronisation the `}` decoy above was added to prove fixed: a `"[^"]*"` blanker ends at
+   the ESCAPED quote, leaving the real closing quote to open a second phantom string and
+   mis-parse everything after it. The layer below is this repair's probe.
+
+   THIS BLOCK IS DOCUMENTATION, NOT THE PROOF — and that distinction was measured, not
+   assumed. Two versions of it were written to make the layer below disappear under the naive
+   blanker, and BOTH passed with the repair reverted:
+
+   1. Written as the obvious `content: "\""`, prettier rewrites it to `content: '"'` — a plain
+      single-quoted string with no escape left in it at all.
+   2. With a brace added, the stray brace only truncates THIS block's own body: the reader's
+      `([^{}]+)\{([^{}]*)\}` resynchronises on the next balanced pair, and its character class
+      excludes newlines, so the damage cannot even reach the next line.
+
+   The repair is still correct — a truncated body is a declaration no guard can see — but the
+   assertion that fails when it is reverted lives in tests/shell.test.ts and probes
+   `blankStrings` DIRECTLY. A fixture probe here would pass for the wrong reason. */
+.escaped-quote-decoy::before {
+  content: 'it\'s } "x"';
+}
+
+.second-overlay-after-escaped-quote {
+  position: fixed;
+  inset: 0;
+}
+
 /* ---- THE LEGAL HALVES ------------------------------------------------------------------
    Every block below must stay SILENT under every guard. A rule that fires on these is a rule
    c4-4, c4-5, c5-7 and c6-5 would each have to fight, and the story that discovered it would
@@ -126,11 +239,78 @@ html {
   border-radius: var(--radius-lg);
 }
 
+/* THE UNIVERSAL SELECTOR IN DESCENDANT POSITION (review round 2, 2026-07-28). `*` as the
+   SUBJECT matches the roots and is rightly banned above; `.card-tile *` cannot match `html`
+   or `body` under any document, and flagging c4-4's inner clip as a clipped ROOT is exactly
+   the false positive this file's doctrine calls worse than the defect. The distinction is
+   subject-vs-descendant, not the presence of the character. */
+.card-tile * {
+  overflow: hidden;
+}
+
+/* A negation that leaves something SELECTIVE behind still selects no root. */
+.card-tile :not(.is-live) {
+  overflow: hidden;
+}
+
 /* c5-7's connection pill: fixed, but pinned to one corner — not a full-window layer. */
 .legal-corner-pill {
   position: fixed;
   top: var(--space-4);
   right: var(--space-4);
+}
+
+/* The SAME pill written as an `inset` shorthand: `auto` RELEASES the sides it names, so this
+   is anchored at one corner, not four. A presence-only check on the `inset` property would
+   flag it, and a false positive c5-7 has to fight is the worse outcome (review, 2026-07-28). */
+.legal-corner-pill-shorthand {
+  position: fixed;
+  inset: auto auto 16px 16px;
+}
+
+/* A one-level-nested minimum inside minmax() — a legitimate responsive evolution of c4-4's
+   grid. A matcher that cannot cross the inner parens leaves the minmax unstripped and
+   false-fires on its 1fr; this block staying silent is that matcher's probe. */
+.legal-nested-minmax {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(176px, 25%), 1fr));
+}
+
+/* TWO levels of nesting (review round 2, 2026-07-28). A matcher that crosses exactly one is
+   a matcher that was tuned to the probe above rather than to the problem — regexes cannot
+   count, so the repair has to be a depth counter, and this block is what tells the two apart. */
+.legal-doubly-nested-minmax {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(max(min(176px, 25%), 8rem), 1fr));
+}
+
+/* A corner pill whose shorthand carries a FUNCTION (review round 2, 2026-07-28). Splitting
+   `inset` on all whitespace cuts `var(--pill-gap, 8px)` in two, so every side after it shifts
+   by one and the guard reads anchors that were never declared. */
+.legal-corner-pill-with-function {
+  position: fixed;
+  inset: auto var(--pill-gap, 8px) auto auto;
+}
+
+/* A fixed DRAWER, sized to part of the viewport (review round 2, 2026-07-28). The percentage
+   half of the span family has always required >= 100; the unit half did not, so `40vw` read
+   as "spans the axis" and a drawer was flagged as a second full-window layer — while the
+   identical `40%` passed. */
+.legal-fixed-drawer {
+  position: fixed;
+  inset-block: 0;
+  width: 40vw;
+}
+
+/* A content-sized fixed TOAST with percentage CAPS (review round 2, 2026-07-28). `max-width`
+   is a ceiling, not a size: "never wider than the window" is not "as wide as the window", and
+   reading a cap as a span turns every well-behaved floating element into an overlay. */
+.legal-fixed-toast {
+  position: fixed;
+  bottom: var(--space-4);
+  left: var(--space-4);
+  max-width: 100%;
+  max-height: 100%;
 }
 
 /* Fixed and anchored on ONE axis only — a docked bar, not a layer over the window. */
