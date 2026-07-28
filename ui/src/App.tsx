@@ -1,18 +1,16 @@
-import './App.css'
+import { AppShell } from './components/AppShell/AppShell'
 
 /**
- * Placeholder application shell.
+ * The application root.
  *
- * Deliberately minimal: this story builds the quality gate, not the UI. c2-6 replaces
- * this with the real two-column application shell, c2-7 adds the presentation-only
- * primitives, and c2-9 owns the shared state panel and its copy. What is here exists so
- * the scaffold has something to type-check, lint and render in a test.
+ * It composes the shell and nothing else. Every region the shell holds open — the card grid,
+ * the two analysis panels, the card detail, the deck list, the format check, the footer
+ * attribution, the badges, the agent-view nav and the agent view itself — arrives as a prop
+ * from a later story, so this file's job is to stay one line long for as long as possible.
+ *
+ * c4-1 owns the store that will feed those props and c3-1 owns the fetch layer beneath it.
+ * Until then the shell renders its own placeholders, each naming the story that replaces it.
  */
 export default function App() {
-  return (
-    <main className="app-shell">
-      <h1>Artificial Planeswalker</h1>
-      <p>Companion is running.</p>
-    </main>
-  )
+  return <AppShell />
 }

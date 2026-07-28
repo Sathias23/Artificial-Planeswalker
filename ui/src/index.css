@@ -36,7 +36,36 @@
   background-color: var(--surface-base);
 }
 
+/* THE BOX-SIZING RESET (story c2-6, AC 13). There was none anywhere in ui/ before this
+   line — `git grep box-sizing` returned nothing — so every sized element inherited CSS's
+   `content-box` default, under which padding is added to a declared height rather than
+   living inside it.
+
+   That is not a tidiness issue. The application shell is `height: 100dvh` with
+   `padding: var(--space-gutter)`, and under `content-box` it is a 100dvh + 64px element: the
+   window scrolls, the footer leaves the window, and UX-DR32's release-condition attribution
+   silently stops being visible. The symptom presents as a footer bug and is not one.
+
+   Every component from c2-7 onwards inherits the same hazard the moment it sizes and pads
+   itself, which is why the reset is global and lives here rather than in the shell's own
+   stylesheet. The composition reference's answer to the same problem — `box-sizing:border-box`
+   written INLINE on every sized element — is banned outright by the inline-style rule in
+   eslint.config.js, so this is the only shape available and it is also the right one.
+
+   The `*, *::before, *::after` form, not `html { box-sizing: border-box } * { box-sizing:
+   inherit }`: the inherit idiom exists to let a subtree opt out, nothing in this app wants
+   to, and the extra indirection is one more thing for a component author to reason about. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* No `min-height: 100vh` here any more (story c2-6). The shell owns the window height at
+   `100dvh`, and `vh` is the LARGE viewport height — on a mobile browser with retracting
+   chrome the two disagree, `body` ends up taller than the window, the page scrolls, and the
+   footer the shell just pinned leaves the window. Two height mechanisms fighting is worse
+   than one, and the shell is the one that knows what it is doing. */
 body {
   margin: 0;
-  min-height: 100vh;
 }

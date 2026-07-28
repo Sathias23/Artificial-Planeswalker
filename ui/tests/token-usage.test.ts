@@ -421,7 +421,17 @@ describe('token usage across the shipped stylesheets', () => {
   it('is reading real stylesheets and real tokens', () => {
     expect(shippedStylesheets).toContain(TOKEN_FILE)
     expect(shippedStylesheets).toContain('src/index.css')
-    expect(shippedStylesheets).toContain('src/App.css')
+    // WAS `toContain('src/App.css')` until story c2-6, which deleted that placeholder when the
+    // real shell arrived (AC 19). Naming a third file by path made this anchor fail on a
+    // legitimate RENAME, for a reason that has nothing to do with what the anchor is for — and
+    // an anchor that fails for the wrong reason is one people learn to weaken. What the anchor
+    // actually needs to know is that COMPONENT stylesheets are reaching the guards at all, and
+    // "there is at least one stylesheet under src/components/" is structural: the component
+    // directory convention is the decide-once ruling ~35 later stories inherit, and the app
+    // cannot render without a shell.
+    expect(
+      shippedStylesheets.filter((f) => f.startsWith('src/components/')).length,
+    ).toBeGreaterThan(0)
     expect(shippedBlocks.length).toBeGreaterThan(3)
     expect(declaredTokens.size).toBe(64)
   })
