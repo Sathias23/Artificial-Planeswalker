@@ -422,6 +422,34 @@ code), **both applied**.
 Both fixes mutation-tested: reverting the Fragment/iterable handling turns 2 tests red,
 reverting the string blanking turns 1 red. Suites **223 → 228 frontend**.
 
+**Re-review: 4/5, "appears safe to merge"**, with two narrower findings. Both applied — and the
+second one turned out to invalidate a limit this file had been *declaring* rather than fixing.
+
+- [x] [Greptile][re-review] **A one-shot iterable is exhausted by inspection** — a regression
+      introduced by the fix above: `filled()` spread the iterable to test it, and a generator
+      returns *itself* from `[Symbol.iterator]()`, so the values were consumed before React ever
+      saw them. Measured: `left={views()}` rendered the region **empty and dropped its
+      placeholder** — strictly worse than not looking. (React itself warns that iterators are
+      unsupported as children, which is context, not an excuse: the shell made it worse.) Fixed
+      by identity — a one-shot iterator is *assumed filled* rather than inspected, since
+      inspecting it is destroying it, and `:empty` still covers the case where it turns out
+      empty.
+- [x] [Greptile][re-review] **Comment stripping can swallow executable CSS** — a comment opener
+      inside a string. This was a **declared** blind spot, and the declaration argued the
+      reverse pass order would be worse. Measuring both orders showed **the declaration was
+      half-wrong**: strip-then-blank swallows an entire rule (and `blocksIn` reads the same
+      source, so those rules vanish from *every* guard, not just the literal scan), while
+      blank-then-strip leaks an unstripped comment's prose into the code. *Neither ordering is
+      safe*, so reordering would have traded one rare failure for another. Replaced both passes
+      with a single `scan()` that tracks which construct it is inside — the same move the
+      nesting ban made in `token-usage.test.ts`, removing the class rather than the instance.
+      Both killer inputs are now asserted together, which no ordering can satisfy.
+
+The lesson worth carrying: **a declared blind spot is still a claim, and this one had not been
+measured.** "Neither order is safe" was true; "this one fails on the rarer input" was the part
+that went unchecked, and it was hiding a failure that blinded every guard in the file rather
+than one scan. Suites **228 → 230 frontend**.
+
 #### Round 2 — post-patch state (2026-07-28)
 
 Adversarial review of the working tree vs `feat/companion-c2` (`2a22e19`), i.e. the story

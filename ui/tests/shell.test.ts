@@ -50,10 +50,10 @@
  *   is a claim about what the user sees, not about what this file can parse.
  *   `::backdrop` is the tell a reviewer should look for.
  *
- *   `/*` INSIDE A STRING. `stripComments` runs before `blankStrings`, so `content: "/*"` opens
- *   a comment that swallows source until the next `* /`. The reverse order would break on
- *   quotes inside comments, which this file's own prose is full of; neither order is safe, and
- *   this one fails on the rarer input.
+ *   (RESOLVED, and left here as the record.) `/*` inside a string used to open a comment that
+ *   swallowed source to the next real close, and the reverse pass order broke on quotes inside
+ *   comments instead. Neither ordering was safe. `scan()` below now walks the source once,
+ *   tracking which construct it is inside, so the class is gone rather than traded.
  *
  *   THE TSX HALF READS SOURCE, NOT SEMANTICS. The presentation-only guard strips comments and
  *   keys on spellings; a hook reached through a namespace (`React.useState`) or a value
@@ -108,21 +108,74 @@ interface Block {
   body: string
 }
 
-const stripComments = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, '')
+/**
+ * ONE PASS THAT KNOWS ABOUT BOTH COMMENTS AND STRINGS, because two passes cannot.
+ *
+ * Comments and strings can each contain the other's opener, so whichever runs first is wrong
+ * about the input the second one sees. Both orders were MEASURED (Greptile, PR #23), and both
+ * lose:
+ *
+ *   STRIP-THEN-BLANK loses a whole rule. A comment OPENER inside a string starts a comment
+ *   that runs to the next real comment CLOSE anywhere in the file, swallowing every
+ *   declaration in between — and since `blocksIn` reads the same stripped source, those rules
+ *   vanish from EVERY guard here, not just from the literal scan. Silent, and in the
+ *   safe-looking direction.
+ *
+ *   BLANK-THEN-STRIP loses a comment. A one-line comment ending in an apostrophe — `it's` —
+ *   followed by a declaration carrying a quoted value pairs those two quotes, blanks the
+ *   comment's CLOSE between them, and the comment is then never stripped at all: its prose
+ *   leaks into what the guards read as code. This file's own prose is full of apostrophes.
+ *
+ *   (Neither hazard can be written literally in this comment, which is itself the point.)
+ *
+ * So neither ordering is a fix, and the earlier version of this header was right to say so.
+ * A scanner that tracks which construct it is inside removes the CLASS instead of trading one
+ * rare failure for another — the same move the nesting ban made in tests/token-usage.test.ts,
+ * and the reason that ban exists rather than a cleverer regex.
+ *
+ * String CONTENTS are blanked rather than removed, and the quotes are kept, so
+ * `content: "}"` stays a well-formed declaration that `declarationsIn` can still read.
+ */
+const scan = (css: string): { code: string; comments: string[] } => {
+  let code = ''
+  const comments: string[] = []
+  let i = 0
 
-const commentsIn = (css: string): string[] => css.match(/\/\*[\s\S]*?\*\//g) ?? []
+  while (i < css.length) {
+    if (css.startsWith('/*', i)) {
+      const end = css.indexOf('*/', i + 2)
+      const stop = end === -1 ? css.length : end + 2
+      comments.push(css.slice(i, stop))
+      i = stop
+      continue
+    }
 
-// Quoted string CONTENTS are blanked before block parsing: a brace inside a string —
-// `content: "}"` is legal CSS — would otherwise desynchronise the innermost-brace matcher and
-// silently mis-parse every block after it. No guard here inspects string contents, so
-// blanking loses nothing.
-//
-// `(?:\\.|[^"\\\n])*`, not `[^"\n]*`: an ESCAPED QUOTE is legal CSS too, and `content: "\""`
-// ends the naive match at the escaped quote — leaving the real closing quote to open a second
-// "string" and desynchronising everything after it. That is the identical failure the
-// `content: '}'` decoy was added to prove fixed, one round earlier, in the same function.
-const blankStrings = (css: string) =>
-  css.replace(/"(?:\\.|[^"\\\n])*"/g, '""').replace(/'(?:\\.|[^'\\\n])*'/g, "''")
+    const char = css[i]
+    if (char === '"' || char === "'") {
+      code += char
+      i++
+      // CSS strings do not span an unescaped newline; stopping there keeps an unterminated
+      // quote from eating the rest of the file, which is the failure mode being removed.
+      while (i < css.length && css[i] !== char && css[i] !== '\n') {
+        i += css[i] === '\\' ? 2 : 1
+      }
+      if (css[i] === char) {
+        code += char
+        i++
+      }
+      continue
+    }
+
+    code += char
+    i++
+  }
+
+  return { code, comments }
+}
+
+const stripComments = (css: string) => scan(css).code
+
+const commentsIn = (css: string): string[] => scan(css).comments
 
 /**
  * Split a value on TOP-LEVEL whitespace only. `inset: auto var(--x, 8px) auto auto` is four
@@ -148,7 +201,7 @@ const topLevelParts = (value: string, separator = /\s/): string[] => {
 }
 
 const blocksIn = (file: string, css: string): Block[] =>
-  [...blankStrings(stripComments(css)).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((match) => ({
+  [...stripComments(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((match) => ({
     file,
     selector: match[1].trim().replace(/\s+/g, ' '),
     body: match[2],
@@ -536,7 +589,7 @@ const findViewportHeightOnDocumentRoot = (blocks: Block[]): string[] =>
  * exists three helpers up for the parser; the scanner simply was not using it.
  */
 const pxLiteralsIn = (css: string) => [
-  ...new Set(blankStrings(stripComments(css)).match(/(?<![\d.])\d+(?:\.\d+)?px\b/g) ?? []),
+  ...new Set(stripComments(css).match(/(?<![\d.])\d+(?:\.\d+)?px\b/g) ?? []),
 ]
 
 /**
@@ -1097,6 +1150,29 @@ describe('the guards themselves fire', () => {
     expect(VIEWPORT_SPAN.test('50%')).toBe(false)
   })
 
+  it('scans comments and strings in ONE pass, so neither can hide inside the other', () => {
+    // Both two-pass orderings were measured and both lose (Greptile, PR #23). These are the
+    // two inputs that killed them; they must now BOTH survive, which no ordering achieves.
+    //
+    // Strip-then-blank swallowed the middle rule entirely — and since blocksIn reads the same
+    // source, it vanished from every guard in this file, not just the literal scan.
+    const openerInString =
+      '.marker::after { content: "/*"; }\n.panel { width: 480px; }\n/* 300px — DESIGN.md */\n.detail { height: 300px; }'
+    expect(pxLiteralsIn(openerInString)).toEqual(['480px', '300px'])
+    expect(blocksIn('inline', openerInString).map((b) => b.selector)).toEqual([
+      '.marker::after',
+      '.panel',
+      '.detail',
+    ])
+
+    // Blank-then-strip left this comment unstripped, leaking its prose into the "code": the
+    // apostrophe in `it's` pairs with the declaration's quote and blanks the `*/` between.
+    const apostropheBesideCode = "/* it's */ .a { content: 'x'; width: 480px; }"
+    expect(stripComments(apostropheBesideCode)).not.toContain('it')
+    expect(blocksIn('inline', apostropheBesideCode).map((b) => b.selector)).toEqual(['.a'])
+    expect(commentsIn(apostropheBesideCode)).toEqual(["/* it's */"])
+  })
+
   it('blanks a string containing an ESCAPED quote, braces and all', () => {
     // PROBED DIRECTLY, not through a fixture block — and that is the finding, not a shortcut.
     // Two fixture-shaped probes were written for this repair and BOTH passed against the
@@ -1112,13 +1188,13 @@ describe('the guards themselves fire', () => {
     // but the honest proof is of the function, not of a verdict downstream of it. The fixture
     // keeps its decoy as documentation; this is the assertion that fails if the repair is
     // reverted.
-    expect(blankStrings(`content: 'a\\'b }';`)).not.toContain('}')
-    expect(blankStrings(`content: "a\\"b }";`)).not.toContain('}')
+    expect(stripComments(`content: 'a\\'b }';`)).not.toContain('}')
+    expect(stripComments(`content: "a\\"b }";`)).not.toContain('}')
     // And the plain forms still blank, or the repair would have broken the round-1 case.
-    expect(blankStrings(`content: '}';`)).not.toContain('}')
-    expect(blankStrings(`content: "}";`)).not.toContain('}')
+    expect(stripComments(`content: '}';`)).not.toContain('}')
+    expect(stripComments(`content: "}";`)).not.toContain('}')
     // A real brace OUTSIDE a string must survive — blanking is not deleting.
-    expect(blankStrings(`.a { color: red; }`)).toContain('}')
+    expect(stripComments(`.a { color: red; }`)).toContain('}')
   })
 
   it('splits an inset shorthand on TOP-LEVEL whitespace only', () => {

@@ -222,6 +222,19 @@ describe('AppShell overlay slot (AC 7, AC 9)', () => {
     expect(overlayIn(render(<AppShell overlay={new Set() as never} />).container)).toBeNull()
   })
 
+  it('does not CONSUME a one-shot iterable while inspecting it (Greptile, PR #23)', () => {
+    // A generator returns itself from [Symbol.iterator](), so spreading it to check for
+    // emptiness hands React an exhausted iterator: measured, the region rendered EMPTY and
+    // lost its placeholder as well — strictly worse than not looking at all. React itself
+    // warns that iterators are unsupported as children; the shell must not make that worse.
+    function* views() {
+      yield <p key="a">agent view</p>
+    }
+    const { container } = render(<AppShell left={views()} />)
+
+    expect(container.textContent).toContain('agent view')
+  })
+
   it('still mounts the overlay for a NON-empty Fragment or Set', () => {
     // The silent half. A `filled()` that answered "false" for every Fragment would stop c6-5's
     // agent view from ever mounting, which is a far worse failure than the one above.

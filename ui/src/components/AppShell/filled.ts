@@ -49,7 +49,19 @@ export const filled = (content: ReactNode): boolean => {
   if (Array.isArray(content)) return content.some((child) => filled(child as ReactNode))
 
   if (typeof content === 'object' && Symbol.iterator in content) {
-    return [...(content as Iterable<ReactNode>)].some(filled)
+    // ONE-SHOT ITERATORS ARE NOT INSPECTED — they are CONSUMED by inspection, and a value read
+    // here is a value React never gets. A generator returns ITSELF from `[Symbol.iterator]()`;
+    // an array, a Set or a Map returns a FRESH cursor each time. That identity check is the
+    // whole discriminator, and asking for the iterator does not advance either kind.
+    //
+    // Measured (Greptile, PR #23): spreading a generator here rendered the region EMPTY and
+    // dropped its placeholder too — strictly worse than not looking. React already warns that
+    // iterators are unsupported as children for exactly this reason, so the honest answer is
+    // "assume filled": it preserves whatever the caller passed, and if the generator does turn
+    // out to be empty, `.app-shell-overlay:empty` still stops the wrapper intercepting clicks.
+    const iterable = content as Iterable<ReactNode>
+    if (iterable[Symbol.iterator]() === (content as unknown)) return true
+    return [...iterable].some(filled)
   }
 
   if (isValidElement(content) && content.type === Fragment) {
