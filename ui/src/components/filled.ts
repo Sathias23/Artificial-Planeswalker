@@ -11,6 +11,14 @@ import { Fragment, isValidElement, type ReactNode } from 'react'
  * the one exempted thing is where the next evasion lives — the logic moves here, and the
  * shell's import list grows by one explicit entry that the same guard still pins exhaustively.
  *
+ * WHERE IT LIVES, and why it moved (story c2-7, Q3). It started inside `AppShell/`, with one
+ * consumer. Panel is the second: its header slots take arbitrary nodes and face the identical
+ * `<></>` / `[]` / `' '` / `false` question, and re-deriving that here would be exactly the
+ * reinvention this module exists to prevent. So it sits in `src/components/` — a helper shared
+ * by two components does not live inside one of them, and `../AppShell/filled` would have made
+ * every primitive depend on the shell's directory. `src/lib/` was declined: a new top-level
+ * source folder needing its own tsconfig include, for one file.
+ *
  * WHAT COUNTS AS EMPTY, and why each member is in the family. React renders nothing for:
  *
  *   `null` / `undefined` / booleans — `left={hasDeck && <CardGrid />}` passes `false` when

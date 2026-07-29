@@ -8,11 +8,19 @@
    Adding one is not available either: tests/token-usage.test.ts pins `declaredTokens.size` at
    64 and tests/tokens.test.ts asserts every token name byte-for-byte against DESIGN.md's
    frontmatter, which contains no layout-width token. So the literals below are literals BY
-   NECESSITY, not by laziness. The rule the later stories inherit (c2-7's 17px StatChip value,
-   c2-9's 480px state-panel max-width, c4-4's 176px grid minimum) is: a geometry literal is
+   NECESSITY, not by laziness. The rule the later stories inherit (c2-9's 480px state-panel
+   max-width, c4-4's 176px grid minimum) is: a geometry literal is
    allowed, and it carries a comment naming its source and why it is not a token. It is a
    documented exception rather than a ban, because an unenforceable ban is worse than a stated
    one. ui/README.md carries the same rule in the ban table, as a named non-ban.
+
+   THE PREDICTION THAT WAS WRONG, corrected in story c2-7 rather than left standing. This note
+   used to name "c2-7's 17px StatChip value" as a future geometry literal. It is not one: the
+   value is spent through `font-size`, which IS gated — the font-* allowed-list admits only
+   CSS-wide keywords, so `font-size: 17px` is a lint error no citation could rescue. The
+   boundary the mistake found is worth keeping: a geometry literal is a value with NO token
+   family to point at, and a type size has one. The answer there is a different ROLE token
+   (StatChip ships `font: var(--type-heading)`, which is 500 17px/1.3), never an exception.
 
    THE FOUR NUMBERS THAT DEFINE THE COMPOSITION are pinned by ui/tests/shell.test.ts, so a
    later edit that "tidies" one of them fails rather than drifting: the 452px track, the

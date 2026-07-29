@@ -204,6 +204,7 @@ else these bans apply, and each one fails the build:
 | a hard-coded `font`/`font-*`/`line-height`/`letter-spacing` value — and the sibling `word-spacing`/`text-indent`                                                                                 | `declaration-property-value-allowed-list`                 |
 | any `font-variant-numeric` value except `var(--type-numeric-features)`                                                                                                                           | `declaration-property-value-allowed-list`                 |
 | `font: var(--type-numeric)` without its `font-variant-numeric` companion                                                                                                                         | a guard                                                   |
+| any type role without its companions — `letter-spacing: var(--tracking-*)` where a `--tracking-*` sibling exists, and `text-transform: uppercase` where DESIGN.md declares the role uppercase    | a guard                                                   |
 | an `@font-face` anywhere but `src/styles/fonts.css`                                                                                                                                              | a guard                                                   |
 | any external URL in the built bundle's `.css`/`.html`; font-CDN hosts, fetchable assets and unreviewed hosts anywhere                                                                            | a guard                                                   |
 | a class name that is not flat kebab-case — BEM's `__` and `--` included                                                                                                                          | `selector-class-pattern`                                  |
@@ -224,13 +225,25 @@ unenforceable ban is worse than a documented exception, so the rule is:
 > and the reason it is not a token. Where it defines a composition, a test pins it.
 
 `src/components/AppShell/AppShell.css` is the worked example (452px column, 1100px breakpoint,
-both pinned in `tests/shell.test.ts`), and c2-7's 17px StatChip value, c2-9's 480px state-panel
-max-width and c4-4's 176px grid minimum inherit a stated rule rather than a habit — **and a
+both pinned in `tests/shell.test.ts`), and c2-9's 480px state-panel max-width and c4-4's 176px
+grid minimum inherit a stated rule rather than a habit — **and a
 gate, not just prose** (review round, 2026-07-28): `tests/shell.test.ts` runs the DESIGN.md
 citation check over every `px` literal in **every** tracked stylesheet under `src/components/`,
 so a later story's uncited literal fails the moment its CSS is staged. Everything
 that _can_ come from a token still must — spacing, colour, radius, shadow, type and duration
 are gated, and a geometry literal is never a way around one of those.
+
+**This rule was over-applied once, and the correction is worth more than the rule.** Until
+story c2-7 the paragraph above named "c2-7's 17px StatChip value" as a future geometry literal.
+That prediction was **wrong**, and measuring it is what found the boundary: DESIGN.md's
+`components.stat-chip.value-size` is `17px`, but the value is spent through `font-size`, and
+`font-size` is **gated** — the `font-*` allowed-list admits only CSS-wide keywords, so
+`font-size: 17px` is a lint ERROR with no citation that could rescue it. A geometry literal is
+a value with **no token family to point at**; a type size has one, and the answer there is a
+different **role token**, never an exception. c2-7's StatChip ships
+`font: var(--type-heading)` (which _is_ `500 17px/1.3`) plus
+`font-variant-numeric: var(--type-numeric-features)`. See _Sizes the token layer does not
+carry_ below.
 
 **The value must be from the right FAMILY, not merely a token.** `padding: var(--radius-pill)`
 is invalid CSS that renders as nothing, and the unknown-token guard cannot catch it because
@@ -394,10 +407,15 @@ src/components/<Name>/
 `selector-class-pattern` errors** when measured against the shell's own stylesheet. The gate
 had already picked a convention; loosening it to fit a habit would have been the wrong repair.
 
-**A component module may export the component, types and constants — but not a helper
-function.** `react-refresh/only-export-components` is an `error` with `allowConstantExport:
-true`, so a helper exported beside the component turns the gate red. Keep helpers unexported,
-or give them their own module.
+**A component module may export the component and types — but not a helper function, and not
+an array or object constant either.** `react-refresh/only-export-components` is an `error`
+with `allowConstantExport: true`, and that option is **narrower than its name suggests**:
+measured in c2-7, `export const BADGE_TONES = [...] as const` beside the component is a lint
+error, because the rule does not treat an array initialiser as a constant. (The c2-6 note here
+said constants were fine; that was untested and it is corrected rather than deleted, because
+the next author would otherwise measure it again.) Keep helpers unexported, or give the helper
+_or the datum_ its own module — `src/components/filled.ts` and
+`src/components/Badge/tones.ts` are the two worked examples.
 
 **Component tests assert by ROLE**, through `@testing-library/react` — not by class name and
 not by test id. That is what makes a landmark or heading requirement a real check rather than
@@ -433,8 +451,137 @@ window edge. Render into the shell's `overlay` prop rather than declaring a seco
 guard in `tests/shell.test.ts` fails the build if one appears.
 
 **The shell is presentation-only** — no state, no fetch, no store, no subscriptions; every
-region arrives through a prop, and `tests/shell.test.ts` asserts it. c2-7's primitives restate
-the same posture.
+region arrives through a prop, and `tests/shell.test.ts` asserts it. The four c2-7 primitives
+hold the same posture, asserted by the same suite in the same shape.
+
+### The presentation-only primitives
+
+Set by story **c2-7** — `Panel`, `Badge`, `StatChip`, `GroupHeader` — and inherited by the ~20
+component stories that compose them without opening them again. This is the first component
+_library_ in the codebase, and a library whose rules are re-derived per consumer has stopped
+being one.
+
+**Primitives are hook-free, and that is a category rather than a preference.** No `useState`,
+no `useEffect`, and specifically **no `useId`** — which is the most reasonable-looking hook one
+of these could want, for `aria-labelledby`. The day a primitive needs a hook it has stopped
+being presentation-only, and that is a **signal**: the component belongs in a different
+category and its story should say so. `tests/shell.test.ts` asserts it over every primitive
+with an **exhaustive import list**, hooks keyed by API family (including React 19's lowercase
+`use()`), and no `on*` handler prop, no `ref`.
+
+**Region and heading semantics** (UX-DR44, Q4):
+
+- A **titled** `Panel` is a `<section aria-label={title}>` whose title is an `<h2>`. That is
+  the per-panel `role="region"` labelling the shell deferred to the panels.
+- **`aria-label`, not `aria-labelledby`** — the latter needs a generated id, which needs
+  `useId`, which is a hook. The accepted consequence is that `title` is typed `string`, not
+  `ReactNode`; DESIGN.md already says panel titles are short label strings.
+- An **untitled** `Panel` is a plain unnamed `<section>` and **invents no name**. A section
+  with no name has no role at all, which is right — a generic invented name fills the landmark
+  list with identical entries to navigate past.
+- A **`GroupHeader`** is also an `<h2>`, with its count **beside** the label rather than inside
+  it. UX-DR44 read literally makes a panel title and its "CREATURES" divider siblings; that is
+  the spec's choice, taken as written, and c4-7 may home a correction if a real screen reader
+  disagrees.
+
+**Emptiness is `filled()`, never truthiness.** `src/components/filled.ts` is the settled
+answer to `<></>`, `[]`, `' '`, `false` and one-shot iterables — five shapes that render
+nothing while looking filled to a naive check, and that cost c2-6 a Greptile round and two
+review rounds. It moved up out of `AppShell/` in c2-7 when `Panel` became its second consumer.
+Re-deriving it in a new component is the reinvention it exists to prevent.
+
+**Where `filled()` applies, ruled at c2-7's review (2026-07-29):** it gates **optional slots**
+(Panel's header pieces) and **components whose empty state is visible chrome** — a `Badge` with
+empty children is a bordered, washed, empty pill, so it renders `null`. It does **not** gate
+required content slots (`GroupHeader.label`, `StatChip.label`/`value`): those components are
+only mounted to show that content, so an empty value there is caller error, and each prop's doc
+says so. The same ruling records why those slots are `ReactNode` while Panel's `title` is
+`string` — `title` doubles as the region's `aria-label`, which must be a string in a hook-free
+component; a slot that is never an accessible name loses nothing by admitting markup.
+
+**Badge clamps a runtime-unknown tone to `neutral`** (review 2026-07-29). The type admits only
+the five tones, but tones will arrive as server data (c4-10 legality, c9 tiers), and an
+unchecked `badge-${tone}` renders an unstyled pill. The failure mode is "wrong tone", never
+"no tone".
+
+**A numeric prop is `Number.isFinite`, never `count &&` and never `count ?`.** `{count &&
+<span>{count}</span>}` renders the bare string `0` into the DOM — _something_, so nobody looks
+— and `count ? … : null` drops a real zero. "CREATURES 0" is the honest state of an empty
+group. `isFinite` closes the other end too: a `NaN` from an arithmetic slip renders nothing
+rather than the text "NaN". Deltas follow the same rule and are tinted by `Math.sign`, with
+**zero neutral** — a no-change reading tinted green would report it as a win, and
+`Math.sign(-0) === 0` is why the tone is derived rather than spelled out in branches.
+
+**The consumer half of this rule has no gate — review owns it.** The tests pin the primitives
+themselves; a _consumer_ writing `{count && <GroupHeader …>}` in c4-7's deck list is exactly
+the same defect one call site up, and no lint rule or guard reaches it. Stated here (review
+2026-07-29) so the asymmetry is a decision rather than an oversight: every other decide-once
+ruling in c2-7 got a derived gate, and this one is prose plus review because the failure lives
+in files that do not exist yet.
+
+#### Tinting a surface from a semantic token
+
+The mechanism c6-7's suggestion rows, c9-1's swap rows and c9-2's tier rows reuse rather than
+each inventing one. DESIGN.md asks a tone to "tint background and border from its own semantic
+token — never from hard-coded RGB", and **every obvious spelling of that is banned**:
+`rgba(95,212,160,0.12)` by `function-disallowed-list`, and `color-mix(in srgb, var(--positive)
+12%, transparent)` by the **same rule** (measured). There is no translucent `--positive-wash`
+token and the layer is closed at 64.
+
+The answer is a **pseudo-element wash**:
+
+```css
+.badge {
+  position: relative;
+  isolation: isolate; /* confines the negative layer to this element */
+}
+
+.badge::before {
+  position: absolute;
+  z-index: -1; /* without this the wash covers the element's own text */
+  opacity: 0.12;
+  content: '';
+  inset: 0; /* the PADDING box — so the wash stops at the border */
+}
+
+.badge-positive::before {
+  background: var(--positive);
+}
+```
+
+The colour is still the token, so all four alternate themes restyle it — which is the entire
+reason the literal is banned. `inset: 0` resolving against the padding box is what leaves the
+**border at the token's full strength**, which is how "tints border from its own semantic
+token" reads. The `color-mix()` ban stands unchanged; this story shipped no gate relaxation.
+`src/components/Badge/Badge.css` is the worked example, with the full argument in its header.
+
+#### Sizes the token layer does not carry
+
+**A role token plus its companion — never a `font-size`, never a new token, never a stylelint
+exception.** DESIGN.md's StatChip value is 17px; `font-size: 17px` is a lint error and a
+`--type-stat-value` token would break both `declaredTokens.size === 64` and the byte-for-byte
+name contract against DESIGN.md's frontmatter, which makes it a UX-artefact change rather than
+a frontend one. `--type-heading` **is** `500 17px/1.3`, so:
+
+```css
+.stat-chip-value {
+  font: var(--type-heading);
+  font-variant-numeric: var(--type-numeric-features);
+}
+```
+
+The accepted consequence is a line-height of 1.3 rather than the numeric role's 1.4 —
+immaterial on a single-line number, and the alternative is unavailable rather than merely
+worse.
+
+#### `--accent-dim` is not written in a primitive at all
+
+UX-DR6 puts it at 2.70:1 on `--surface-overlay`, below the 3:1 non-text floor, and badges land
+on overlay surfaces inside every agent view. The `findAccentDimOnOverlay` guard is
+**same-block only**, and a badge whose _container_ supplies the overlay background is precisely
+the cross-block case that guard declares it cannot see. So the rule is not "check the guard" —
+it is **do not write the token here**. The composition reference uses it for the accent badge's
+border; that is the drift this rule exists to stop.
 
 ## Adding a source directory
 
@@ -453,17 +600,26 @@ generated types with no fetch helper, so neither of those designs is pre-empted.
 The application shell landed in **c2-6**, so the token layer now has a real consumer and
 `src/App.css` is gone with the placeholder it styled. What the shell deliberately does _not_
 build is every region it holds open, each of which renders a placeholder line naming its owner
-until that story lands: the presentation primitives are **c2-7**, the shared state panel and
-its copy are **c2-9**, the footer's attribution text is **c2-10**, the card grid is **c4-4**
-and the curve/colour pair below it is **c4-8**, card detail is **c4-5**, the deck list is
-**c4-7**, the format check is **c4-10**, the header badges are **c2-7** filled by **c4-2** and
-**c4-10**, the agent-view nav pills are **c6-8**, and the agent view that drops into the
-overlay slot is **c6-5**. The `h1` carries the product name provisionally; **c4-2** replaces
-its content with the deck name and nothing about the element moves.
+until that story lands: the shared state panel and its copy are **c2-9**, the footer's
+attribution text is **c2-10**, the card grid is **c4-4** and the curve/colour pair below it is
+**c4-8**, card detail is **c4-5**, the deck list is **c4-7**, the format check is **c4-10**,
+the agent-view nav pills are **c6-8**, and the agent view that drops into the overlay slot is
+**c6-5**. The `h1` carries the product name provisionally; **c4-2** replaces its content with
+the deck name and nothing about the element moves.
 
-The skip link and Tab-order work are **c4-11** — the shell builds no focus management. Nothing
-applies the numeric role yet: `c2-7`'s StatChip and `c6-8`'s curve axis are still the first
-things that will.
+The four presentation primitives landed in **c2-7** and are documented under _Components_
+above. They have **no on-screen consumer yet** — nothing imports them, so `npm run build`
+leaves them out of the module graph entirely, and their **appearance is not dev-verified**
+(jsdom applies no stylesheet). Each is checked by eye at its first consuming story: the panel
+at **c2-9**, the group header and deck-row context at **c4-7**, the badge at **c4-2** and
+**c4-10**. The header badge slot in `AppShell.tsx` is **still empty on purpose** — c2-7 shipped
+`Badge` without filling it, and **c4-2** and **c4-10** are its fillers. The remaining
+primitives are `ManaPip`/`ManaCost` (**c2-8**) and the nav pill (**c6-8**).
+
+The skip link and Tab-order work are **c4-11** — the shell builds no focus management. The
+numeric role now has real consumers: the panel count, the group-header count and the StatChip
+delta all landed in **c2-7**, so `findUnpairedNumericRole` is no longer a guard with nothing to
+guard; **c6-8**'s curve axis is next.
 
 `ui/dist` is no longer produced. A few ignore patterns still name it (`ui/.gitignore`,
 `.prettierignore`, the stylelint `--ignore-pattern`); they are harmless and deliberately left

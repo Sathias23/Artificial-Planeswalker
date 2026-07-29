@@ -3,8 +3,10 @@ import type { ReactNode } from 'react'
 import './AppShell.css'
 // `filled` lives in its own module because deciding whether a Fragment is empty needs VALUE
 // imports from react, and this file's react import is pinned type-only by a guard. See
-// filled.ts for the whole argument and for the limit it cannot cover.
-import { filled } from './filled'
+// filled.ts for the whole argument and for the limit it cannot cover. It sits one level up,
+// in `src/components/`, because story c2-7's Panel needs the identical logic for its header
+// slots (Q3) — a helper shared by two components does not live inside one of them.
+import { filled } from '../filled'
 
 /**
  * The two-column application shell — header, two columns, pinned footer, overlay slot.

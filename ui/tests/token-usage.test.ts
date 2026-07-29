@@ -28,6 +28,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { parse } from 'yaml'
 import { describe, expect, it } from 'vitest'
 
 import { SURFACE_RAMP } from '../src/styles/surfaces.ts'
@@ -181,6 +182,50 @@ const findAccentDimOnOverlay = (blocks: Block[]): string[] =>
         `${b.file} — \`${b.selector}\` puts --accent-dim on --surface-overlay (2.70:1, below the ` +
         `3:1 non-text floor, UX-DR6). Use --accent instead (5.5:1); it is the named substitute.`,
     )
+
+/**
+ * THE SAME RULE, ONE SCOPE WIDER — same-FILE rather than same-block (story c2-7, AC 14).
+ *
+ * FOUND BY A PROBE THAT PASSED, which is the c2-6 lesson applied rather than quoted: planting
+ * `border-color: var(--accent-dim)` on `.badge-accent` — the drift the composition reference
+ * ships, so the single most likely way it returns — left every gate green. `.badge-accent`
+ * names no surface, so the block-local guard above never looked at it, while
+ * `.badge-neutral::before` two rules away paints `--surface-overlay` under badges of EVERY
+ * tone. Same stylesheet, same component, same 2.70:1 failure, and AC 14's actual claim ("do
+ * not write the token in this component at all") had nothing enforcing it.
+ *
+ * THE RULE, derived rather than aimed at Badge: a stylesheet that references `--surface-overlay`
+ * ANYWHERE has declared that its component paints on the overlay surface, so `--accent-dim`
+ * anywhere in that same file is a contrast failure waiting for the two rules to meet on one
+ * element. It is exactly the widening c2-6's review made to the citation gate — one file to
+ * every component stylesheet — one axis over.
+ *
+ * WHY NOT BAN `--accent-dim` IN COMPONENTS OUTRIGHT? Because that would be a claim about
+ * surfaces nobody has measured. UX-DR6 states the failure against `--surface-overlay`; the
+ * token is legitimate on lighter surfaces, and a ban resting on an unmeasured number is the
+ * kind a later story switches off. This fires only where the file itself supplies the evidence.
+ *
+ * THE LIMIT THAT REMAINS, still declared and still review's: CROSS-FILE. A Badge with no
+ * `--surface-overlay` in its own stylesheet, rendered inside a `Panel` at `level="overlay"`,
+ * is invisible to both scopes — the render tree lives in TSX and is chosen at runtime. That is
+ * the same division of labour `surfaces.ts` declares, and it is why the primitives ALSO say in
+ * their own headers that they do not write the token at all.
+ */
+const findAccentDimInOverlayFile = (files: string[]): string[] =>
+  files
+    .filter((file) => file !== TOKEN_FILE)
+    .flatMap((file) => {
+      const referenced = referencedTokensIn(sourceOf(file))
+      if (!referenced.includes('--accent-dim') || !referenced.includes('--surface-overlay')) {
+        return []
+      }
+      return [
+        `${file} references --accent-dim in a stylesheet that also paints --surface-overlay. ` +
+          `That pairing is 2.70:1, below the 3:1 non-text floor (UX-DR6), and it does not have ` +
+          `to be in the same rule to meet on the same element. Use --accent (5.5:1); it is the ` +
+          `named substitute.`,
+      ]
+    })
 
 /** AC 2: only the token file declares tokens; everything else consumes them. */
 const findTokenDeclarationsOutsideTokenFile = (blocks: Block[]): string[] =>
@@ -393,6 +438,117 @@ const findUnpairedNumericRole = (blocks: Block[]): string[] => {
     )
 }
 
+/**
+ * AC 13 (story c2-7) — the THIRD member of the pairing family, after the numeric role and the
+ * tracking tokens themselves.
+ *
+ * THE FAILURE IS IDENTICAL IN SHAPE to `findUnpairedNumericRole` above, which is why it lives
+ * beside it rather than in a file of its own. A `font` SHORTHAND cannot carry `letter-spacing`
+ * and cannot carry `text-transform`. So `font: var(--type-label)` written alone renders 11px
+ * LOWERCASE text at the browser's default tracking, where DESIGN.md specifies uppercase at
+ * 0.1em — legible, plausible, and wrong. It is worse than a value that renders as nothing,
+ * because nothing prompts anyone to look. Four new stylesheets arrived in one story (a panel
+ * title, a badge, a stat-chip label, a group-header label), which is the moment to install it.
+ *
+ * WRITTEN AS A DERIVED RULE, NOT A LIST OF TWO. The review theme four stories running has been
+ * "the guards' own family coverage": round after round found a repair that stopped one member
+ * short of its own family. So neither half is enumerated here.
+ *
+ *   THE TRACKING HALF is derived from THE TOKEN NAMES: a role `--type-X` requires
+ *   `letter-spacing: var(--tracking-X)` in the same block if and only if tokens.css declares
+ *   `--tracking-X`. Nobody wrote "label and micro" — and the rule therefore also covers
+ *   `--type-display`, whose `--tracking-display` sibling nothing in this story uses.
+ *
+ *   THE UPPERCASE HALF is derived from DESIGN.md's OWN `textTransform:` keys, because it
+ *   cannot be read off a token name — the `font` shorthand has no uppercase sibling token to
+ *   infer from. Reading the contract is the next best thing to inferring it, and it means the
+ *   day DESIGN.md makes a third role uppercase, this guard already requires it.
+ *
+ * THE VALUE IS CHECKED, NOT JUST THE PRESENCE, for the reason the numeric guard gives:
+ * `letter-spacing: var(--tracking-micro)` on a label is the right PROPERTY carrying the wrong
+ * role's value (0.08em where DESIGN.md says 0.1em), and `text-transform: lowercase` is the
+ * companion applied to say the opposite.
+ *
+ * THE LIMIT, STATED RATHER THAN DISCOVERED (the c2-4 ruling, and c2-6's correction to it: a
+ * declared blind spot is still a CLAIM, so this one is asserted below rather than only
+ * described). It is BLOCK-LOCAL, exactly like its sibling, and inherits the same two
+ * consequences MEASURED rather than predicted: a correct pair SPLIT across two rules is
+ * reported as a failure — the safe direction, and the ruling is "same rule block" anyway — and
+ * a correctly paired block UNDONE by a later `font` shorthand in another rule is invisible,
+ * because the undoing block applies no role this guard looks at. Review owns that half, the
+ * same division of labour `findAccentDimOnOverlay` declares for its own cross-block case.
+ */
+const findRoleWithoutCompanions = (
+  blocks: Block[],
+  requirements: Map<string, { tracking?: string; uppercase: boolean }>,
+): string[] => {
+  // `[,)]`, not `)`: `var(--type-label, sans-serif)` is a reference to the role WITH a
+  // fallback, and a `)`-anchored regex reads it as no reference at all — the evasion c2-4's
+  // review found in the motion ban and c2-5's numeric guard had to be repaired for.
+  const ROLE_IN_FONT = /var\(\s*(--type-[a-z0-9-]+)\s*[,)]/gi
+  const findings: string[] = []
+
+  for (const block of blocks) {
+    const declarations = declarationsIn(block.body)
+    const where = `${block.file} — \`${block.selector}\``
+
+    for (const [property, value] of declarations) {
+      // `font` only. A role token spent through any other property is invalid CSS that the
+      // typography ban in .stylelintrc.json catches first — and `font-variant-numeric:
+      // var(--type-numeric-features)` must not be mistaken for a role application, which
+      // falls out for free: `--type-numeric-features` is not a key in `requirements`.
+      if (property !== 'font') continue
+
+      for (const match of value.matchAll(ROLE_IN_FONT)) {
+        const role = match[1].toLowerCase()
+        const required = requirements.get(role)
+        if (!required) continue
+
+        if (required.tracking) {
+          const paired = declarations.some(
+            ([p, v]) =>
+              p === 'letter-spacing' &&
+              new RegExp(`var\\(\\s*${required.tracking}\\s*[,)]`, 'i').test(v),
+          )
+          if (!paired) {
+            findings.push(
+              `${where} applies ${role} without \`letter-spacing: var(${required.tracking});\` ` +
+                `in the same rule. The \`font\` shorthand cannot carry letter-spacing, so the ` +
+                `text renders at the browser's DEFAULT tracking rather than DESIGN.md's ` +
+                `(UX-DR5, AC 13). Add that declaration to this block.`,
+            )
+          }
+        }
+
+        if (required.uppercase) {
+          // NOT bare equality (review 2026-07-29): the tracking half above tolerates a legal
+          // decoration (`var(--tracking-label, 0.1em)` matches through `[,)]`), and an
+          // exact-string uppercase check gave the two halves inconsistent tolerance — a legal
+          // `uppercase !important` would have produced a FALSE "missing companion" finding,
+          // which is the false positive a later story fights by weakening the guard.
+          const cased = declarations.some(
+            ([p, v]) =>
+              p === 'text-transform' &&
+              v
+                .toLowerCase()
+                .replace(/\s*!important\s*$/, '')
+                .trim() === 'uppercase',
+          )
+          if (!cased) {
+            findings.push(
+              `${where} applies ${role} without \`text-transform: uppercase;\` in the same ` +
+                `rule. The \`font\` shorthand cannot carry text-transform, and DESIGN.md ` +
+                `declares this role uppercase — so the text renders in whatever case the ` +
+                `caller happened to type (AC 13). Add that declaration to this block.`,
+            )
+          }
+        }
+      }
+    }
+  }
+  return findings
+}
+
 /** A `var()` naming no real token silently renders nothing. */
 const findUnknownTokenReferences = (files: string[], known: Set<string>): string[] =>
   files.flatMap((file) =>
@@ -410,6 +566,58 @@ const declaredTokens = new Set(
   blocksIn(TOKEN_FILE, tokenFileSource).flatMap((b) => declaredTokensIn(b.body)),
 )
 const shippedBlocks = shippedStylesheets.flatMap((f) => blocksIn(f, sourceOf(f)))
+
+/**
+ * AC 13's requirements, DERIVED from the two contracts rather than typed out.
+ *
+ * The path is the same one tests/tokens.test.ts pins, and it is written out here rather than
+ * shared because that file's constant is deliberately "the ONE place this path is written" for
+ * the token-fidelity suite. Both files carry a loud anchor that turns a stale path into a
+ * named failure instead of a guard asserting nothing over an empty map — see the `it()` below.
+ */
+const DESIGN_MD = fileURLToPath(
+  new URL(
+    '../../_bmad-output/planning-artifacts/ux-designs/ux-Artificial-Planeswalker-2026-07-22/DESIGN.md',
+    import.meta.url,
+  ),
+)
+
+const designTypography = (): Record<string, { textTransform?: string }> => {
+  const raw = readFileSync(DESIGN_MD, 'utf8')
+  const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(raw)
+  if (!match) {
+    throw new Error(`No YAML frontmatter found in ${DESIGN_MD} — has the artefact moved?`)
+  }
+  const parsed = parse(match[1]) as {
+    typography?: Record<string, { textTransform?: string }>
+  } | null
+  // The SECOND loud anchor (review 2026-07-29): frontmatter that parses but has lost or
+  // renamed its `typography:` key would otherwise reach Object.entries(undefined) — a bare
+  // TypeError at module scope that fails every suite in this file with an unnamed error,
+  // which is exactly what these anchors exist to prevent.
+  if (!parsed?.typography) {
+    throw new Error(
+      `No \`typography\` block in ${DESIGN_MD}'s frontmatter — renamed, or the artefact changed shape?`,
+    )
+  }
+  return parsed.typography
+}
+
+/**
+ * `--type-X` -> what it may not travel without. The tracking half comes from the TOKEN NAMES
+ * (a `--tracking-X` sibling exists, therefore the role requires it); the uppercase half comes
+ * from DESIGN.md's own `textTransform:` keys, because no token name encodes it. Neither is a
+ * list, so a role nobody thought about is covered the moment its sibling or its key exists.
+ */
+const companionRequirements = new Map<string, { tracking?: string; uppercase: boolean }>()
+for (const [name, role] of Object.entries(designTypography())) {
+  const roleToken = `--type-${name}`
+  if (!declaredTokens.has(roleToken)) continue
+  const trackingToken = `--tracking-${name}`
+  const tracking = declaredTokens.has(trackingToken) ? trackingToken : undefined
+  const uppercase = role?.textTransform === 'uppercase'
+  if (tracking || uppercase) companionRequirements.set(roleToken, { tracking, uppercase })
+}
 
 // ---------------------------------------------------------------------------------------
 
@@ -440,6 +648,10 @@ describe('token usage across the shipped stylesheets', () => {
     expect(findAccentDimOnOverlay(shippedBlocks)).toEqual([])
   })
 
+  it('never puts --accent-dim in a stylesheet that paints --surface-overlay (c2-7 AC 14)', () => {
+    expect(findAccentDimInOverlayFile(shippedStylesheets)).toEqual([])
+  })
+
   it('declares tokens in exactly one file (AC 2)', () => {
     expect(findTokenDeclarationsOutsideTokenFile(shippedBlocks)).toEqual([])
   })
@@ -454,6 +666,38 @@ describe('token usage across the shipped stylesheets', () => {
 
   it('never applies the numeric role without its features (UX-DR3, c2-5 AC 8)', () => {
     expect(findUnpairedNumericRole(shippedBlocks)).toEqual([])
+  })
+
+  it('derived AC 13 requirements from the real contracts, not from a hand-typed list', () => {
+    // THE NON-VACUITY ANCHOR for the guard below, and the loud failure a moved DESIGN.md
+    // produces: an empty map would make `findRoleWithoutCompanions` pass over every block in
+    // the tree by requiring nothing of any of them.
+    //
+    // The three expectations are stated as VALUES rather than as "not empty", because the
+    // point of deriving them is that they are checkable: `display` earns a tracking
+    // requirement and NO uppercase one, which is exactly the member a "label and micro" list
+    // would have missed, and `heading` and `body` earn neither so they are absent entirely.
+    expect([...companionRequirements.keys()].sort()).toEqual([
+      '--type-display',
+      '--type-label',
+      '--type-micro',
+    ])
+    expect(companionRequirements.get('--type-display')).toEqual({
+      tracking: '--tracking-display',
+      uppercase: false,
+    })
+    expect(companionRequirements.get('--type-label')).toEqual({
+      tracking: '--tracking-label',
+      uppercase: true,
+    })
+    expect(companionRequirements.get('--type-micro')).toEqual({
+      tracking: '--tracking-micro',
+      uppercase: true,
+    })
+  })
+
+  it('never applies a type role without its companions (AC 13, UX-DR5)', () => {
+    expect(findRoleWithoutCompanions(shippedBlocks, companionRequirements)).toEqual([])
   })
 
   it('uses no CSS nesting, so the block reader above has no blind spot', () => {
@@ -499,6 +743,44 @@ describe('the guards themselves fire (the other half of the pair)', () => {
     // Order-independent: both offending selectors are reported, not just the first.
     expect(findings.join('\n')).toContain('.suggestion-row')
     expect(findings.join('\n')).toContain('.tier-row-inside-media')
+  })
+
+  it('catches --accent-dim meeting --surface-overlay ACROSS blocks in one file (AC 14)', () => {
+    // The firing half for the widened scope, on the shape a probe found passing: two rules,
+    // neither wrong alone, that meet on one element at render time. The block-local guard is
+    // proven SILENT on the same input in the same breath — otherwise this test would pass
+    // because the old guard caught it, and the widening would be untested.
+    const file = 'tests/fixtures/css/accent-dim-cross-block.css'
+    const source = readFileSync(fixture('css/accent-dim-cross-block.css'), 'utf8')
+
+    expect(findAccentDimOnOverlay(blocksIn(file, source))).toEqual([])
+
+    const findings = findAccentDimInOverlayFile([file])
+    expect(findings).toHaveLength(1)
+    expect(findings[0]).toContain('2.70:1')
+    expect(findings[0]).toContain('Use --accent (5.5:1)')
+  })
+
+  it('leaves --accent-dim alone in a file that paints no overlay (the silent half)', () => {
+    // A guard proven only on files containing BOTH tokens would be silent for the wrong
+    // reason. `--accent-dim` is a legitimate token on lighter surfaces; UX-DR6's measured
+    // claim is about `--surface-overlay` specifically, and this guard must not grow into a
+    // ban resting on a number nobody measured.
+    expect(findAccentDimInOverlayFile(['tests/fixtures/css/clean.css'])).toEqual([])
+  })
+
+  it('reads code, not the prose about the code', () => {
+    // EVERY primitive stylesheet explains in its header why it does not use `--accent-dim`,
+    // and Badge.css names BOTH tokens in that prose while genuinely painting the overlay
+    // surface in `.badge-neutral::before`. A guard that read documentation as code would fire
+    // on precisely the files that got it right, and the repair someone would reach for is
+    // deleting the explanation. `referencedTokensIn` strips comments first; this is the
+    // non-vacuity proof that it does, asserted against the real file rather than a mock of it.
+    const badge = sourceOf('src/components/Badge/Badge.css')
+    expect(badge).toContain('--accent-dim')
+    expect(referencedTokensIn(badge)).not.toContain('--accent-dim')
+    expect(referencedTokensIn(badge)).toContain('--surface-overlay')
+    expect(findAccentDimInOverlayFile(['src/components/Badge/Badge.css'])).toEqual([])
   })
 
   it('catches a token declared outside the token file', () => {
@@ -611,6 +893,159 @@ describe('the guards themselves fire (the other half of the pair)', () => {
         blocksIn('inline', '.c { font-variant-numeric: var(--type-numeric-features); }'),
       ),
     ).toEqual([])
+  })
+
+  it('catches every way a type role can travel without its companions (AC 13)', () => {
+    const findings = findRoleWithoutCompanions(violation(), companionRequirements)
+    const joined = findings.join('\n')
+
+    // The TOTAL is pinned per fixture file, never in aggregate (the house standard this test
+    // originally missed — review 2026-07-29): containment assertions alone would pass a guard
+    // regression that ADDED spurious findings on the fixture's clean-looking lines. And the
+    // pin earned its keep the day it was written: this test's own prose undercounted the
+    // fixture at eight — `.bare-label-inside-media` applies the bare role, so it is reported
+    // TWICE, once per missing companion, exactly like `.bare-micro`. Nine, measured.
+    expect(findings).toHaveLength(9)
+
+    // NINE findings across seven blocks: tracking missing, uppercase missing, BOTH missing
+    // (two findings from one block), the role the guard was not written for, the right
+    // property carrying the wrong role's value, the companion saying the opposite, and a bare
+    // role inside a media query (two findings again) so the guard is proven to read innermost
+    // blocks rather than only top-level ones.
+    expect(joined).toContain('.bare-label-tracking')
+    expect(joined).toContain('.bare-label-case')
+    expect(joined).toContain('.bare-micro')
+    expect(joined).toContain('.wrong-tracking-sibling')
+    expect(joined).toContain('.opts-out-of-uppercase')
+    expect(joined).toContain('.bare-label-inside-media')
+
+    // THE MEMBER A LIST OF TWO WOULD HAVE MISSED. `--type-display` is caught for its missing
+    // tracking and — separately — is NOT asked for uppercase, because DESIGN.md does not
+    // declare it uppercase. Both halves of that matter: a guard that demanded uppercase of
+    // every role would turn the shell's own `h1` red.
+    expect(joined).toContain('.bare-display-tracking')
+    expect(findings.filter((f) => f.includes('.bare-display-tracking')).join('\n')).not.toContain(
+      'text-transform',
+    )
+
+    // `.bare-micro` declares NEITHER companion, so it is reported twice — once per missing
+    // companion. A guard that stopped at the first fault per block would tell a developer to
+    // add the tracking, and then tell them about the case only after they had run it again.
+    expect(findings.filter((f) => f.includes('.bare-micro'))).toHaveLength(2)
+
+    // The house rule: every message names the exact declaration that is missing, so a
+    // developer who trips it does not have to go and read DESIGN.md to find out what to type.
+    for (const finding of findings) {
+      expect(finding).toMatch(/letter-spacing: var\(--tracking-|text-transform: uppercase;/)
+      expect(finding).toContain('AC 13')
+    }
+  })
+
+  it('leaves correctly paired blocks alone — including the roles it requires nothing of', () => {
+    // THE SILENT HALF, over blocks that DO apply a role. A guard proven only on blocks with no
+    // `font` declaration at all would be silent for the wrong reason.
+    const legal = blocksIn(
+      'inline',
+      `.title { font: var(--type-label); letter-spacing: var(--tracking-label);
+                text-transform: uppercase; }
+       .kicker { font: var(--type-micro); letter-spacing: var(--tracking-micro);
+                 text-transform: uppercase; }
+       .deck-name { font: var(--type-display); letter-spacing: var(--tracking-display); }
+       .value { font: var(--type-heading); }
+       .row { font: var(--type-body); }
+       .strong { font: var(--type-body-strong); }
+       .count { font: var(--type-numeric); font-variant-numeric: var(--type-numeric-features); }`,
+    )
+    expect(legal).toHaveLength(7)
+    expect(findRoleWithoutCompanions(legal, companionRequirements)).toEqual([])
+
+    // Declaration ORDER is not part of the rule — CSS does not care and neither may the guard.
+    expect(
+      findRoleWithoutCompanions(
+        blocksIn(
+          'inline',
+          `.a { text-transform: uppercase; letter-spacing: var(--tracking-label);
+                font: var(--type-label); }`,
+        ),
+        companionRequirements,
+      ),
+    ).toEqual([])
+
+    // A LEGAL DECORATION is not a missing companion (review 2026-07-29): `!important` is
+    // valid CSS on both companions, and an exact-string uppercase check read it as absence —
+    // a false positive on a block that got the rule RIGHT, which is the kind a later story
+    // repairs by weakening the guard. The tracking half already tolerated it through `[,)]`;
+    // this pins the uppercase half to the same tolerance.
+    expect(
+      findRoleWithoutCompanions(
+        blocksIn(
+          'inline',
+          `.b { font: var(--type-label); letter-spacing: var(--tracking-label) !important;
+                text-transform: uppercase !important; }`,
+        ),
+        companionRequirements,
+      ),
+    ).toEqual([])
+  })
+
+  it('catches the role hidden behind a var() fallback, and the near-miss it must not read', () => {
+    // `var(--type-label, sans-serif)` is a reference to the role WITH a fallback, and a
+    // `)`-anchored regex reads it as no reference at all — the evasion c2-4's review found in
+    // the motion ban. Proven on BOTH sides, so neither anchor can regress alone.
+    expect(
+      findRoleWithoutCompanions(
+        blocksIn('inline', '.a { font: var(--type-label, sans-serif); }'),
+        companionRequirements,
+      ),
+    ).toHaveLength(2)
+    expect(
+      findRoleWithoutCompanions(
+        blocksIn(
+          'inline',
+          `.b { font: var(--type-label, sans-serif);
+                letter-spacing: var(--tracking-label, 0.1em); text-transform: uppercase; }`,
+        ),
+        companionRequirements,
+      ),
+    ).toEqual([])
+    // `--type-numeric-features` shares its first fifteen characters with `--type-numeric` and
+    // is not a role at all: it is not a key in the derived map, so it can never be read as one.
+    expect(
+      findRoleWithoutCompanions(
+        blocksIn('inline', '.c { font-variant-numeric: var(--type-numeric-features); }'),
+        companionRequirements,
+      ),
+    ).toEqual([])
+  })
+
+  it('is honest about the two limits it shares with the numeric guard (AC 13)', () => {
+    // DECLARED BLIND SPOTS, ASSERTED rather than only described — c2-6's keeper lesson was
+    // that a declared limit is still a CLAIM, and its own unmeasured one was hiding a real
+    // failure. Both of these are MEASURED here.
+    //
+    // (1) A SPLIT PAIR is reported, not passed. The guard is block-local, so this is a false
+    //     FAILURE — the safe direction to be wrong in, and "same rule block" is the ruling
+    //     anyway.
+    const split = blocksIn(
+      'inline',
+      `.group { letter-spacing: var(--tracking-label); text-transform: uppercase; }
+       .group-label { font: var(--type-label); }`,
+    )
+    expect(findRoleWithoutCompanions(split, companionRequirements)).toHaveLength(2)
+
+    // (2) THE CASCADE IS INVISIBLE. A correctly paired block undone by a later `font`
+    //     shorthand in ANOTHER rule reads as clean, because the undoing block applies a role
+    //     whose own companions it satisfies vacuously — `--type-body` requires none. Resolving
+    //     it needs specificity, source order and the element's real class list, which live in
+    //     TSX and are chosen at runtime. If this ever starts FAILING, the guard grew a
+    //     cross-block reader and this comment needs rewriting, not deleting.
+    const undone = blocksIn(
+      'inline',
+      `.label { font: var(--type-label); letter-spacing: var(--tracking-label);
+                text-transform: uppercase; }
+       .is-plain { font: var(--type-body); }`,
+    )
+    expect(findRoleWithoutCompanions(undone, companionRequirements)).toEqual([])
   })
 
   it('catches a var() that names no token', () => {

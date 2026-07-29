@@ -1,0 +1,160 @@
+/* Badge — the pill label in five tones (story c2-7, UX-DR10, DESIGN.md "Containers & chrome").
+
+   ==== THE TONE-TINT MECHANISM (AC 8, Q2) — THE DECIDE-ONCE RULING ====================
+   c6-7's suggestion rows, c9-1's swap rows and c9-2's tier rows all need "tint a surface from
+   a semantic token", so this is written once, here, and recorded in ui/README.md.
+
+   THE PROBLEM. DESIGN.md says a semantic tone "tints background and border from its own
+   semantic token — never from hard-coded RGB". The mock's spelling of that is
+   `rgba(95,212,160,0.12)` for the background and `rgba(...,0.35)` for the border: five tones,
+   ten colour literals, and `rgba()` is banned (`function-disallowed-list`). So is the obvious
+   repair — `color-mix(in srgb, var(--positive) 12%, transparent)` is banned by the SAME rule,
+   measured on a probe under the real config. And the token layer is closed at 64 tokens
+   asserted byte-for-byte against DESIGN.md's frontmatter, so there is no translucent
+   `--positive-wash` to reach for and this story does not create one (AC 23).
+
+   THE ANSWER: A PSEUDO-ELEMENT WASH. `::before` covers the badge's padding box, fills it with
+   the tone's OWN token, and carries the opacity. That is exactly what `rgba(…, 0.12)` MEANS,
+   expressed without a colour function — the colour is still the token, so all four alternate
+   themes restyle it, which is the entire reason UX-DR10 forbids the literal. No gate changes:
+   the `color-mix()` ban stands exactly as it shipped (Brad's ruling, Q2).
+
+   WHY THE STACKING DANCE IS NOT OPTIONAL. An absolutely positioned pseudo-element with
+   `z-index: auto` paints AFTER its originating element's inline content — so a wash written
+   the obvious way covers the badge's own text and the badge renders as a solid blank pill.
+   `z-index: -1` puts it behind the text; `isolation: isolate` then confines that negative
+   layer to the badge's own stacking context, so it cannot slide behind an ancestor's
+   background instead. `inset: 0` resolves against the PADDING box, which is why the wash stops
+   at the border rather than washing over it — the border stays the token at full strength,
+   which is what "tints border from its own semantic token" reads as (the mock's 0.35 alpha has
+   no legal spelling, and a hairline at full strength is the honest reading).
+
+   GEOMETRY LITERALS: one, the hairline border, cited beside its value (AC 11). The mock's
+   `letterSpacing: '0.04em'` and `minWidth: 76` are NOT reproduced — the badge's type is
+   `{typography.label}`, whose tracking token is 0.1em, and DESIGN.md's `components.badge`
+   declares no min-width at all, so a citation for 76px would be unsatisfiable by construction.
+
+   THE SURFACE-RAMP TENSION, NAMED BEFORE IT LOOKS LIKE A MISTAKE. DESIGN.md gives the NEUTRAL
+   badge a `--surface-overlay` background, and in the app header a badge sits on
+   `--surface-base` — two steps up the ramp, where UX-DR1 says a nested component steps exactly
+   one. Both statements are DESIGN.md's. The resolution: the ramp rule governs LAYERED SURFACES
+   — a row inside a panel inside the canvas — and a badge is a chip on a line of text, not a
+   layer. DESIGN.md's `components.badge` values ship as written. (src/styles/surfaces.ts's own
+   header already declares that which component renders inside which is review's half, not a
+   gate's.)
+
+   WHAT NO TEST HERE CAN PROVE: any of it. jsdom applies no stylesheet, so every claim above is
+   read as CSS SOURCE by ui/tests/token-usage.test.ts or checked by eye at the first consuming
+   story — c4-10's format check and c4-2's header badges (AC 21). Nothing on screen imports
+   this component yet. */
+
+/* ==== THE PILL =========================================================================
+   `padding: var(--space-1) var(--space-2)` REPLACES the mock's `2px 9px`. Neither 2 nor 9 is
+   on the 4/8/12/16/24/32/48 scale — UX-DR5 calls that drift rather than spec, and the
+   stylelint allowed-list refuses it outright (measured, a lint ERROR).
+
+   The border is declared here at NEUTRAL's colour because neutral is the default tone; the
+   four semantic tones override `border-color` alone, so the 1px hairline and its citation live
+   in exactly one place. */
+.badge {
+  position: relative;
+
+  /* Confines the wash's negative layer to this badge — see the stacking note in the header. */
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+
+  /* 1px — DESIGN.md, `components.panel.border` and `components.group-header.rule` both spell
+     the house hairline "1px solid {colors.…}"; the badge inherits that weight. The borrow is
+     DELIBERATE and RULED (review 2026-07-29): `components.badge` declares no border width, but
+     its tone prose requires a border, and the house has exactly one border weight — citing the
+     components that do spell it out is the truthful citation, not a workaround. */
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  font: var(--type-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* The wash itself. Geometry and opacity here; the COLOUR is per tone below, so each tone
+   supplies its own token and no tone can accidentally share another's.
+
+   `opacity: 0.12` is the mock's alpha, kept because it is the one part of `rgba(…, 0.12)` that
+   was never the problem — the ban is on the colour FUNCTION and its literal channels, not on
+   the strength of the tint. It is a ratio, not a length, so no token family claims it. */
+.badge::before {
+  position: absolute;
+  z-index: -1;
+  border-radius: var(--radius-pill);
+  opacity: 0.12;
+  content: '';
+  inset: 0;
+}
+
+/* ==== THE FIVE TONES ===================================================================
+   DESIGN.md: "5 tones: neutral (surface-overlay / text-secondary / border-strong), accent,
+   positive, negative, caution."
+
+   NOT --accent-dim, ANYWHERE IN THIS FILE (AC 14, UX-DR6). Badges appear on
+   `--surface-overlay` inside agent views — c6-7's suggestion rows, c9-1's swap rows, c9-2's
+   tier rows — where `--accent-dim` is 2.70:1 and fails the 3:1 non-text floor. The
+   `findAccentDimOnOverlay` guard is SAME-BLOCK only, and a badge whose CONTAINER supplies the
+   overlay background is precisely the cross-block case that guard declares it cannot see. So
+   the fix is to not write the token here at all rather than to trust the gate. The mock uses
+   `--accent-dim` for the accent tone's border; that is the drift this AC exists to stop. */
+
+/* Neutral's wash is OPAQUE: `--surface-overlay` is a full surface token, not a tint, so the
+   0.12 above would render it as a barely-there smudge instead of the step up the ramp
+   DESIGN.md asks for. Same mechanism, different strength — which is the point of putting the
+   opacity on the wash rather than baking it into a colour. */
+.badge-neutral::before {
+  background: var(--surface-overlay);
+  opacity: 1;
+}
+
+.badge-accent {
+  /* `--accent-bright` for the text, `--accent` for the border: the brighter of the pair is
+     the readable one over a tint of itself. NOT MEASURED (review 2026-07-29): UX-DR6's table
+     covers `--accent-dim` on `--surface-overlay` only — nobody has measured `--accent-bright`
+     over a 12% wash of `--accent`, nor the positive/negative/caution text over their own
+     washes, on any surface or under the four alternate themes. That measurement rides the
+     AC 21 manual check at the first consuming story (c4-2 / c4-10), where the wash's stacking
+     is checked by eye anyway. */
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+
+.badge-accent::before {
+  background: var(--accent);
+}
+
+.badge-positive {
+  border-color: var(--positive);
+  color: var(--positive);
+}
+
+.badge-positive::before {
+  background: var(--positive);
+}
+
+.badge-negative {
+  border-color: var(--negative);
+  color: var(--negative);
+}
+
+.badge-negative::before {
+  background: var(--negative);
+}
+
+.badge-caution {
+  border-color: var(--caution);
+  color: var(--caution);
+}
+
+.badge-caution::before {
+  background: var(--caution);
+}
