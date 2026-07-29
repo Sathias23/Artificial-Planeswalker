@@ -735,6 +735,94 @@ const findUndeclaredPipColourClasses = (blocks: Block[]): string[] =>
     return []
   })
 
+/**
+ * NO ERROR STYLING, WHERE THAT IS A CONSTRUCTIVE RULE RATHER THAN A REVIEW NOTE (story c2-9,
+ * AC 2, AC 14, UX-DR30).
+ *
+ * The epic bans illustration, icon, red fill, exclamation mark and error styling in one breath,
+ * and exactly one of those is decidable by a machine: the TOKEN. `--negative` exists, and a red
+ * panel is the single most natural thing to reach for on a 500 — so leaving it to review is how
+ * it arrives in c4-10 instead of being impossible.
+ *
+ * IT IS AN ALLOWLIST, NOT A BAN LIST, and that is this epic's own standing finding applied
+ * rather than merely quoted. c2-8's review round measured it directly: a family ban keyed on
+ * `--negative`/`--caution` is still a list its author thought of, and says nothing about
+ * `--positive` used as a reassurance tint, `--mana-r` spent as a red fill by another name, or a
+ * `--danger` a later story adds. The families below are the ones a CALM panel is made of; every
+ * other token fails closed, which is the only form of this rule that covers a token that does
+ * not exist yet.
+ *
+ * SCOPED TO THE STYLESHEETS THAT DECLARE THEMSELVES CALM, and the scope is the reason rather
+ * than an oversight: c4-10's format check maps a violation to `negative` and MUST spend that
+ * token, and c5-7's connection pill spends all three status colours by specification. A
+ * repo-wide ban would be false. A later story that ships a calm surface adds its file here with
+ * its own reason, the way `MANA_DATA_INK` grows.
+ */
+const CALM_STYLESHEETS: Map<string, string> = new Map([
+  [
+    'src/components/StatePanel/StatePanel.css',
+    'the state panel is the surface UX-DR30 bans error styling on by name — "calm text on a ' +
+      'calm panel", including for the 500 (story c2-9).',
+  ],
+])
+
+/**
+ * Token families a calm surface is built from. Everything else fails closed.
+ *
+ * `--accent` is EXACT, not a prefix — the review of 2026-07-29 found the open prefix admitted
+ * `--accent-dim`, the one calm-named token this repo already documents as an alarm in disguise
+ * (2.70:1, failing the 3:1 floor — tokens.css and StatePanel.css both say so). A prefix here
+ * would have been the guard's own fallback evasion: a token that PASSES because its name starts
+ * calmly. Every entry that is a genuine open family stays a prefix.
+ */
+const CALM_TOKEN_FAMILY: { prefix: string; exact?: true; why: string }[] = [
+  { prefix: '--surface-', why: 'the four-step ramp is neutral by construction' },
+  { prefix: '--border-', why: 'hairline and strong are both neutral' },
+  { prefix: '--text-', why: 'the three text tones carry no status' },
+  {
+    prefix: '--accent',
+    exact: true,
+    why: 'UX-DR30 puts the NEXT ACTION in --accent; that is its job here — the ONE token, not the family: --accent-dim fails the 3:1 floor on this text',
+  },
+  { prefix: '--radius-', why: 'geometry' },
+  { prefix: '--space-', why: 'geometry' },
+  { prefix: '--type-', why: 'type roles' },
+  { prefix: '--tracking-', why: 'the companions some type roles require' },
+  { prefix: '--font-', why: 'families, including c2-9 --font-mono for the command chip' },
+]
+
+const findAlarmingTokenInCalmStylesheet = (
+  files: string[],
+  // The reader is injected so the firing half can feed source that is not on disk — the shape
+  // `findStrayFontFaces` in tests/fonts.test.ts already uses. A fixture FILE was declined here:
+  // the thing being proven is a token reference, which needs no valid stylesheet around it.
+  read: (file: string) => string = sourceOf,
+  calm: Map<string, string> = CALM_STYLESHEETS,
+): string[] =>
+  files
+    .filter((file) => calm.has(file))
+    .flatMap((file) => {
+      // `referencedTokensIn` matches `var(` followed by the name, so a FALLBACK spelling —
+      // `var(--negative, transparent)` — is caught by the same call. That evasion has bitten
+      // this repo three times and is probed explicitly below rather than assumed.
+      const spent = [...new Set(referencedTokensIn(read(file)))]
+      return spent
+        .filter(
+          (token) =>
+            !CALM_TOKEN_FAMILY.some(({ prefix, exact }) =>
+              exact ? token === prefix : token.startsWith(prefix),
+            ),
+        )
+        .map(
+          (token) =>
+            `${file} references ${token}. ${calm.get(file)} This stylesheet may ` +
+            `only spend the calm families (${CALM_TOKEN_FAMILY.map((f) => f.prefix).join(', ')}); ` +
+            `an ALLOWLIST rather than a ban list, because "no error styling" has to cover a ` +
+            `status token nobody has invented yet. If this surface genuinely needs ${token}, ` +
+            `that is a UX-DR30 change and it is made HERE, in the open.`,
+        )
+    })
+
 const tokenFileSource = sourceOf(TOKEN_FILE)
 const declaredTokens = new Set(
   blocksIn(TOKEN_FILE, tokenFileSource).flatMap((b) => declaredTokensIn(b.body)),
@@ -815,7 +903,9 @@ describe('token usage across the shipped stylesheets', () => {
       shippedStylesheets.filter((f) => f.startsWith('src/components/')).length,
     ).toBeGreaterThan(0)
     expect(shippedBlocks.length).toBeGreaterThan(3)
-    expect(declaredTokens.size).toBe(64)
+    // 64 until story c2-9's `--font-mono` (Q2). Sibling pin: `expectedNames` in
+    // tests/tokens.test.ts, which is the one that checks the VALUE against DESIGN.md.
+    expect(declaredTokens.size).toBe(65)
   })
 
   it('never puts --accent-dim on --surface-overlay (AC 10, UX-DR6)', () => {
@@ -889,6 +979,23 @@ describe('token usage across the shipped stylesheets', () => {
     expect(shippedMarkupFiles).toContain('src/components/ManaPip/ManaPip.tsx')
     expect(shippedMarkupFiles.length).toBeGreaterThan(10)
     expect(findManaTokenInMarkup(shippedMarkupFiles)).toEqual([])
+  })
+
+  it('styles no calm surface with an alarm token (c2-9 AC 14, UX-DR30)', () => {
+    // NON-VACUITY FIRST: every file that declares itself calm must be one git actually tracks,
+    // or the scan passes by reading nothing — the exact trap c2-4 hit with an unstaged
+    // tokens.css and five stories have re-hit since.
+    expect(CALM_STYLESHEETS.size).toBeGreaterThan(0)
+    for (const file of CALM_STYLESHEETS.keys()) {
+      expect(
+        shippedStylesheets,
+        `CALM_STYLESHEETS names ${file}, which git does not track`,
+      ).toContain(file)
+      // …and the file must actually spend tokens, so a stylesheet that had been emptied could
+      // not pass for a clean one.
+      expect(referencedTokensIn(sourceOf(file)).length).toBeGreaterThan(5)
+    }
+    expect(findAlarmingTokenInCalmStylesheet(shippedStylesheets)).toEqual([])
   })
 
   it('reads the grow-not-clip geometry ManaPip.test.tsx defers to (AC 16)', () => {
@@ -972,6 +1079,70 @@ describe('the guards themselves fire (the other half of the pair)', () => {
     const file = 'tests/fixtures/css/token-usage-violation.css'
     return blocksIn(file, readFileSync(fixture('css/token-usage-violation.css'), 'utf8'))
   }
+
+  // ---- c2-9 AC 14: no error styling on a calm surface -----------------------------------
+  //
+  // Every case below is a spelling the guard does NOT name, which is the whole argument for an
+  // allowlist over a ban list (c2-8's ruling). `--negative` is here because the AC names it;
+  // the other four are the ones a ban list would have missed.
+  const CALM_FIXTURE = new Map([['src/calm.css', 'a calm surface, for the firing half.']])
+  const probeCalm = (css: string) =>
+    findAlarmingTokenInCalmStylesheet(['src/calm.css'], () => css, CALM_FIXTURE)
+
+  it.each([
+    ['the token the AC names', '.p { background: var(--negative); }', '--negative'],
+    ['the other alarm colour', '.p { border-color: var(--caution); }', '--caution'],
+    // THE FALLBACK EVASION, three times bitten. `var(--negative, transparent)` renders as
+    // nothing under this theme and as a red panel under any theme that declares the token
+    // differently — a value that lints clean and looks fine on the author's machine.
+    ['a fallback spelling', '.p { background: var(--negative, transparent); }', '--negative'],
+    // Neither of these is an "error" colour, and a ban list keyed on negative/caution waves
+    // both through: a green reassurance tint on a panel that is telling the user something is
+    // broken, and a red fill spelled as data ink.
+    ['a reassurance tint', '.p { border-color: var(--positive); }', '--positive'],
+    ['a red fill by another name', '.p { background: var(--mana-r); }', '--mana-r'],
+    // THE CALM-NAMED ALARM (review 2026-07-29): the one token an open `--accent` prefix waved
+    // through. It exists, it is documented failing the 3:1 floor on this text, and it is why
+    // that entry is exact-match.
+    [
+      'the dim accent, an alarm with a calm name',
+      '.p { color: var(--accent-dim); }',
+      '--accent-dim',
+    ],
+    // And a token that does not exist yet, which is the case no ban list can ever cover.
+    [
+      'a status token nobody has invented',
+      '.p { background: var(--danger-strong); }',
+      '--danger-strong',
+    ],
+  ])('catches %s', (_label, css, token) => {
+    const findings = probeCalm(css)
+    expect(findings).toHaveLength(1)
+    expect(findings[0]).toContain(token)
+    // The house rule: the message names the fix — here, that changing it is a UX-DR30 decision.
+    expect(findings[0]).toContain('UX-DR30')
+  })
+
+  it('leaves a calm stylesheet alone, including the accent the next action needs (silent half)', () => {
+    expect(
+      probeCalm(
+        `.p { background: var(--surface-panel); border: 1px solid var(--border-hairline);
+              border-radius: var(--radius-lg); padding: var(--space-5); color: var(--accent);
+              font: var(--type-body-strong); font-family: var(--font-mono); }`,
+      ),
+    ).toEqual([])
+  })
+
+  it('says nothing about a stylesheet that never declared itself calm', () => {
+    // c4-10's format check MUST spend --negative. The scope is the rule, not a loophole.
+    expect(
+      findAlarmingTokenInCalmStylesheet(
+        ['src/other.css'],
+        () => '.x { color: var(--negative); }',
+        CALM_FIXTURE,
+      ),
+    ).toEqual([])
+  })
 
   it('catches --accent-dim on --surface-overlay, and names --accent as the fix', () => {
     const findings = findAccentDimOnOverlay(violation())

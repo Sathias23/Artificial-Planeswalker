@@ -49,6 +49,36 @@
      stay — they are what a decode failure or a 404 degrades to, not the plan (UX-DR2). */
   --font-sans: 'Space Grotesk', system-ui, sans-serif;
 
+  /* ---- The second family, and the only one (story c2-9, Q2 — Brad's ruling 2026-07-29) ---
+     DESIGN.md's State panel spec asks for a "monospace-styled inline chip" and, measured at
+     109a7d9, there was NO legal way to spell it: `.stylelintrc.json` admits only
+     `var(--font-*)` for `font-family`, `--font-sans` was the one family token, and DESIGN.md's
+     frontmatter declared no mono at all. A specified property with no legal spelling is this
+     epic's third of a kind (c2-7's `min-width: 76px`, c2-8's pip size); the answer differs from
+     both because this time the VALUE is in the design contract's prose and only the token was
+     missing — so the token was added rather than the property dropped (the c2-4 precedent: a
+     partly-tokenised value fails, and later stories ADD a token rather than inline one).
+
+     UX-DR2 ("hierarchy never comes from a second family") is not contradicted: this family
+     carries no hierarchy. It styles COMMAND LITERALS — a string the user is about to type into
+     a terminal — which is data, the same category as a mana pip's colour. Chrome and display
+     type stay single-family, and `findRoleWithoutCompanions` still governs every type role.
+
+     A SYSTEM STACK, deliberately: no @font-face, no download, no committed binary, so c2-5's
+     offline parity (NFR-06), the one-@font-face guard and the bundle URL scan are all
+     untouched. Source: DESIGN.md frontmatter `fonts.mono`, asserted in tests/tokens.test.ts.
+
+     THE BRANDED NAMES ARE QUOTED, and that is a MEASURED requirement rather than a style
+     choice: unquoted, stylelint-config-standard's `value-keyword-case` reports three errors
+     ("Expected \"SFMono-Regular\" to be \"sfmono-regular\"", and the same for Menlo and
+     Consolas) — and lowercasing them would be the wrong repair, since a family name is a
+     proper noun and `menlo` matches nothing. `--font-sans` already quotes 'Space Grotesk' for
+     the same reason. The two GENERIC keywords, `ui-monospace` and `monospace`, are CSS
+     keywords and must stay bare — quoting those would make them family names that do not
+     exist. DESIGN.md's frontmatter carries the identical string, quoting included, because
+     tests/tokens.test.ts compares the two as strings. */
+  --font-mono: ui-monospace, 'SFMono-Regular', 'Menlo', 'Consolas', monospace;
+
   /* ---- Surfaces (the four-step ramp) --------------------------------------------------
      ORDERED, and the order is load-bearing: a nested component steps EXACTLY one level
      (well -> base -> panel -> overlay), never two (UX-DR1). The ramp is CLOSED at four —

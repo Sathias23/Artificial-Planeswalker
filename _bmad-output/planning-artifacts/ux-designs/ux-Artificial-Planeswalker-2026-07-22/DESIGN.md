@@ -84,6 +84,22 @@ typography:
     lineHeight: '1.4'
     fontVariantNumeric: tabular-nums
     numeric-features: 'font-variant-numeric: tabular-nums'
+fonts:
+  # The UI family is declared per-role above — every `typography.*.fontFamily` is the same
+  # string, which is what "one family" means and what `--font-sans` is derived from.
+  #
+  # `mono` is NOT a type role and never carries hierarchy. It has exactly one job: the command
+  # literals inside State panel copy (`initialize_database`, `artificial-planeswalker
+  # companion`) — DATA the user is about to type into a terminal, never chrome and never
+  # display type. A system stack, deliberately: no @font-face, no download, no new asset, so
+  # the offline guarantee (NFR-06) and the one-@font-face rule are untouched.
+  # Added by story c2-9 (Q2, Brad's ruling 2026-07-29) — the State panel spec below already
+  # said "monospace-styled" and there was no legal way to spell it.
+  # The branded names are QUOTED and the two generic keywords are BARE, and both halves are
+  # measured, not stylistic: unquoted, stylelint's `value-keyword-case` demands `sfmono-regular`
+  # / `menlo` / `consolas`, which name nothing; quoted, `monospace` would stop being the CSS
+  # generic. The shipped token carries this string byte for byte.
+  mono: "ui-monospace, 'SFMono-Regular', 'Menlo', 'Consolas', monospace"
 rounded:
   sm: 6px
   md: 10px
@@ -299,6 +315,8 @@ Surfaces are cool blue-violet, low-chroma. The ramp is shallow because card art 
 
 One family: **Space Grotesk** (fallback `system-ui, sans-serif`). Hierarchy comes from weight and size, never from a second family. Roles:
 
+> **The one exception, and why it is not one.** `{fonts.mono}` is a second family, and it carries no hierarchy: it styles command literals inside State panel copy — a string the user is about to type into a terminal, which is *data*, the same category as a mana pip's colour. Chrome and display type remain single-family. It is a system stack (no `@font-face`, no download), so the offline guarantee stands. Added by story c2-9.
+
 - `{typography.display}` — the deck name. The only 30px moment on screen.
 - `{typography.heading}` — panel titles that carry a real name (card detail name, agent-view title, group titles).
 - `{typography.body}` / `{typography.body-strong}` — reasons, rationale, oracle text, state-panel copy, group descriptions.
@@ -381,7 +399,7 @@ Tonal layering (the surface ramp) does the everyday hierarchy work. Borders are 
 ### System presence & states
 
 - **Connection pill** — bottom-left, `{components.connection-pill.radius}` on `{components.connection-pill.background}` with `{components.connection-pill.border}`: a `{components.connection-pill.dot-size}` dot (`{colors.positive}` live · `{colors.caution}` reconnecting · `{colors.negative}` backend gone — all **static**, no pulse) plus `{typography.micro}` text naming the state and the active deck name. The dot never carries the state alone. Quiet at rest; it never animates. *This replaces `AgentStatus`, whose `idle | thinking | streaming` vocabulary describes agent cognition the app has no signal for.*
-- **State panel** — the shared shell for no-active-deck, database-not-initialized, database-updating and disconnected states: centered on `{components.state-panel.background}` at `{components.state-panel.radius}` with `{components.state-panel.border}`, max-width `{components.state-panel.max-width}`. Headline `{typography.heading}`, guidance `{typography.body}` `{colors.text-secondary}`, the concrete next action on its own line in `{typography.body-strong}` `{colors.accent}` (commands in a monospace-styled inline chip on `{colors.surface-well}`). No illustrations, no sad-face icons — calm text on a calm panel.
+- **State panel** — the shared shell for no-active-deck, database-not-initialized, database-updating and disconnected states: centered on `{components.state-panel.background}` at `{components.state-panel.radius}` with `{components.state-panel.border}`, max-width `{components.state-panel.max-width}`. Headline `{typography.heading}`, guidance `{typography.body}` `{colors.text-secondary}`, the concrete next action on its own line in `{typography.body-strong}` `{colors.accent}` (commands in an inline chip on `{colors.surface-well}` at `{rounded.sm}` in `{fonts.mono}` — the *only* place a second family appears, because a command is data the user retypes). No illustrations, no sad-face icons — calm text on a calm panel. The panel also covers **database-updating-stalled** and **internal-error**, added with their copy in story c2-9; a panel whose state has no honest next action renders none rather than inventing one.
 
 ## Do's and Don'ts
 

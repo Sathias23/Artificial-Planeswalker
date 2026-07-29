@@ -157,6 +157,11 @@ describe('Panel levels and states (AC 1)', () => {
   })
 
   it('mounts no dot when live but header-less — there is nothing to mark', () => {
+    // A title-less live panel DOES NOT EXIST IN THE TYPE (Q6(b), encoded 2026-07-29) — the
+    // union in PanelProps rejects this combination, which is what the expect-error proves.
+    // The render still guards it, because a JS caller is not bound by the union: this test is
+    // the runtime FLOOR under the compile-time gate, and both halves are asserted here.
+    // @ts-expect-error — `live` requires a `title`; a title-less live panel does not exist
     const { container } = render(<Panel live>body</Panel>)
 
     expect(container.querySelector('header')).toBeNull()
@@ -166,6 +171,7 @@ describe('Panel levels and states (AC 1)', () => {
   it('mounts no dot beside a TITLE-LESS header either — a dot next to a bare count marks nothing', () => {
     // Review 2026-07-29: the dot's own comment says it marks the title; a count-only header
     // used to mount it anyway. The dot requires `named`, not merely a header.
+    // @ts-expect-error — same union: `live` without `title` is not a legal Panel (Q6(b))
     const { container } = render(<Panel count={3} live />)
 
     expect(container.querySelector('header')).not.toBeNull()

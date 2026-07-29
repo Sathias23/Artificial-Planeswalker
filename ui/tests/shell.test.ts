@@ -819,8 +819,10 @@ describe('the real tree is clean under every guard', () => {
 
 describe('geometry literals are documented, not merely tolerated (AC 18)', () => {
   // The decide-once ruling this story sets: a geometry literal is ALLOWED — there is no token
-  // family to point at, `declaredTokens.size === 64` is pinned and DESIGN.md's frontmatter is
-  // asserted byte-for-byte, so adding one is not available — and it carries a comment naming
+  // family to point at, the declared-token count is pinned byte-for-byte against DESIGN.md's
+  // frontmatter (65 since c2-9's ruled `--font-mono`; it read 64 here until that same commit
+  // falsified it — review 2026-07-29), so adding one is a DESIGN.md ruling made in the open,
+  // never a route around the pin — and it carries a comment naming
   // its source and why it is not a token. c2-9 (480px state panel) and
   // c4-4 (176px grid minimum) inherit a stated rule rather than a habit — and since the
   // review round of 2026-07-28 they inherit it as a GATE, not prose: the citation check runs
@@ -1008,6 +1010,24 @@ describe('the component primitives are presentation-only, and that is asserted',
       file: 'src/components/ManaCost/ManaCost.tsx',
       imports: ['../ManaPip/ManaPip', './ManaCost.css', './parse'],
     },
+    // Story c2-9's three. The panel imports `../filled` for the same reason Panel does — the
+    // deck list's "is this empty" question is the c2-6 family exactly, and re-deriving it here
+    // is what that module exists to prevent. No react import at all: nothing in its props is a
+    // `ReactNode`, which is the stronger claim.
+    {
+      file: 'src/components/StatePanel/StatePanel.tsx',
+      imports: ['../filled', './StatePanel.css', './copy'],
+    },
+    // The copy, and `imports: []` is the strongest form of "these are words and nothing else".
+    { file: 'src/components/StatePanel/copy.ts', imports: [] },
+    // The wire-token -> panel map. Both of its imports are TYPE-only, and `../../api/schema` is
+    // the narrow alias module rather than the generated `./types` — the rule schema.ts states
+    // and `wire-contract.test.ts` enforces. It reaches OUT of src/components/ for the first
+    // time in this list, which is exactly why it is listed here rather than assumed harmless.
+    {
+      file: 'src/components/StatePanel/states.ts',
+      imports: ['../../api/schema', './copy'],
+    },
     // The three helper modules are held to the same posture, for the reason the shell's own
     // suite gives about `filled`: an exempted module is where the next evasion lives.
     { file: FILLED_TS, imports: ['react'] },
@@ -1023,13 +1043,13 @@ describe('the component primitives are presentation-only, and that is asserted',
   const withoutComments = (source: string) =>
     source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
 
-  it('is reading all six primitives and all three helpers (non-vacuity)', () => {
+  it('is reading all seven primitives and all five helpers (non-vacuity)', () => {
     // Every assertion below loops over PRIMITIVES. A list that had quietly lost a member — a
     // renamed directory, a component moved — would let that member pass by never being read,
     // which is the vacuity failure this file's own doctrine calls the worse outcome. Proving
     // each file EXISTS and is non-trivial is what stops "nothing is wrong" reading the same
     // as "nothing was read".
-    expect(PRIMITIVES).toHaveLength(9)
+    expect(PRIMITIVES).toHaveLength(12)
     for (const { file } of PRIMITIVES) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }

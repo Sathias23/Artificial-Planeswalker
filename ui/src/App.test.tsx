@@ -42,4 +42,16 @@ describe('App', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Artificial Planeswalker' })).toBeVisible()
   })
+
+  it('wires the no-active-deck state panel into the shell — Q1 made this the point', () => {
+    // The review of 2026-07-29 measured that reverting App.tsx's `left` prop — the story's
+    // headline decision, the cause of the bundle change, the thing a human can finally look
+    // at — kept every test green. Landmine 18's "wiring breaks neither file" was permission to
+    // wire without fear, not a reason to leave the wiring unasserted. By role and accessible
+    // name, because that is what the panel IS to a screen reader; c3-9 replaces the static
+    // choice with the wire-driven one and inherits this assertion.
+    render(<App />)
+
+    expect(screen.getByRole('region', { name: 'No deck on the glass.' })).toBeVisible()
+  })
 })
