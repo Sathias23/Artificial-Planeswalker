@@ -138,3 +138,53 @@
     font: var(--type-label);
   }
 }
+
+/* ==== AC 14 (story c2-8) — the WUBRG tokens are DATA INK, never chrome (UX-DR7).
+
+   THE RULE HAS TWO HALVES and this fixture carries the property half. A `--mana-*` token may
+   only be spent through a FILL property — background, background-color, background-image, fill,
+   stop-color. Everything else is chrome: it makes the app look like a card game instead of
+   describing a card, which is the exact thing UX-DR7's "never a button, border, background or
+   an unstacked curve bar" exists to stop.
+
+   THE GUARD IS AN ALLOWLIST OF PROPERTIES, NOT A BAN LIST, so the spellings below are caught by
+   a rule that never names any of them. `outline-color` and `box-shadow` in particular are the
+   members a hand-written ban of "border and color" would have missed. */
+
+/* The obvious one: a coloured hairline. This is the shape a "just tint the row border by
+   colour identity" request arrives in, and it is chrome. */
+.mana-token-as-border {
+  border: 1px solid var(--mana-r);
+}
+
+/* Longhand, so the guard cannot be keyed on the `border` shorthand alone. */
+.mana-token-as-border-longhand {
+  border-block-end-color: var(--mana-w);
+}
+
+/* An OUTLINE, which no ban written as "border and background" would have named. */
+.mana-token-as-outline {
+  outline-color: var(--mana-u);
+}
+
+/* A SHADOW — the spelling furthest from anything the rule's prose mentions. */
+.mana-token-as-shadow {
+  box-shadow: 0 0 0 1px var(--mana-g);
+}
+
+/* And TEXT. A WUBRG colour on text is the least-obvious chrome of the five: it looks like
+   data, and it is 3.2:1 at best against a panel surface. */
+.mana-token-as-text {
+  color: var(--mana-b);
+}
+
+/* THE SILENT HALF, IN THE SAME FILE. A fill IS data ink and must not be reported — a guard
+   proven only on violations would be silent for the wrong reason, and a guard that banned the
+   token outright would be one c4-8 and c4-9 have to fight. */
+.mana-token-as-fill {
+  background: var(--mana-w);
+}
+
+.mana-token-as-gradient-fill {
+  background: linear-gradient(135deg, var(--mana-w) 0 50%, var(--mana-u) 50% 100%);
+}

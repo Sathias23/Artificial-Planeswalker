@@ -212,6 +212,9 @@ else these bans apply, and each one fails the build:
 | clipping a root (`html`/`body`/`:root`/`#root`/`.app-shell`) or `.app-shell-columns`, the one scroller — by `overflow: hidden`/`clip`, by `contain: paint`/`strict`/`content`, or by `clip-path` | a guard                                                   |
 | a second full-window `position: fixed` layer outside the shell's stylesheet                                                                                                                      | a guard                                                   |
 | a viewport height on the document root — `vh`/`dvh`/`svh`/`lvh`… **and `%`**, since `html`'s containing block _is_ the viewport                                                                  | a guard                                                   |
+| a `--mana-*` token in any stylesheet outside the **data-ink allowlist**                                                                                                                          | a guard                                                   |
+| a `--mana-*` token spent through anything but a **fill** property — `background`, `background-color`, `background-image`, `fill`, `stop-color`                                                   | a guard                                                   |
+| a `var(--mana-*)` anywhere outside a stylesheet — an SVG `fill=` attribute, a value in `index.html`; markup has no allowlist to join                                                             | a guard                                                   |
 
 **And one named NON-ban, with its reason: geometry literals.** A track width, a breakpoint, a
 stacking level, a card-tile minimum — these are the one value family that stays a literal, and
@@ -451,15 +454,15 @@ window edge. Render into the shell's `overlay` prop rather than declaring a seco
 guard in `tests/shell.test.ts` fails the build if one appears.
 
 **The shell is presentation-only** — no state, no fetch, no store, no subscriptions; every
-region arrives through a prop, and `tests/shell.test.ts` asserts it. The four c2-7 primitives
-hold the same posture, asserted by the same suite in the same shape.
+region arrives through a prop, and `tests/shell.test.ts` asserts it. The six primitives hold the
+same posture, asserted by the same suite in the same shape.
 
 ### The presentation-only primitives
 
-Set by story **c2-7** — `Panel`, `Badge`, `StatChip`, `GroupHeader` — and inherited by the ~20
-component stories that compose them without opening them again. This is the first component
-_library_ in the codebase, and a library whose rules are re-derived per consumer has stopped
-being one.
+Set by story **c2-7** — `Panel`, `Badge`, `StatChip`, `GroupHeader` — extended by **c2-8** with
+`ManaPip` and `ManaCost`, and inherited by the ~20 component stories that compose them without
+opening them again. This is the first component _library_ in the codebase, and a library whose
+rules are re-derived per consumer has stopped being one.
 
 **Primitives are hook-free, and that is a category rather than a preference.** No `useState`,
 no `useEffect`, and specifically **no `useId`** — which is the most reasonable-looking hook one
@@ -574,6 +577,137 @@ The accepted consequence is a line-height of 1.3 rather than the numeric role's 
 immaterial on a single-line number, and the alternative is unavailable rather than merely
 worse.
 
+**And the sibling ruling, for GEOMETRY DESIGN.md does not carry at all** (story c2-8). A `px`
+literal is a named non-ban _provided its citation is true_ — but DESIGN.md's `components.*`
+frontmatter declares **no mana entry**, so a pip's `16px` would meet the citation gate with
+nothing truthful to cite. That is c2-7's `min-width: 76px` problem with one difference: a chip
+can size to its content and **a pip must have a size**. The answer is to make the problem
+disappear rather than negotiate with it — **express the geometry in `em` off the type role the
+component already carries**, so no literal exists and no citation can be untrue:
+
+```css
+.mana-pip {
+  min-width: 1.25em;
+  height: 1.25em;
+  border-radius: var(--radius-pill);
+  font: var(--type-numeric);
+}
+```
+
+**Measured, and worth knowing before reusing it:** `em` on width and height resolves against the
+**element's own** font-size, not the inherited one. Because this element carries the numeric
+role (13px), the pip is 16.25px everywhere rather than scaling with its container. Moving the
+role to an inner span to recover that is **worse, not merely different** — a glyph's size comes
+from a role token and is therefore fixed, so a context-relative circle would be 12.5px around a
+13px numeral inside a `--type-micro` caption. **A fixed glyph cannot live in a varying circle.**
+
+**And `min-width` + `height`, never `width`** — with **no `overflow: hidden`**. Gleemax's
+`{1000000}` is seven glyphs in one symbol. A fixed width clips it, and clipping is the
+layout-shaped member of "silently wrong": the defect hidden rather than fixed. A pill radius
+already supports the fix, because a circle _is_ a pill whose width equals its height.
+
+#### The WUBRG tokens are data ink, and joining the allowlist is how a story says so
+
+Set by story **c2-8**, which wrote the `--mana-*` tokens' **first consumer in the repository**.
+Measured at that story's baseline: `git grep -- '--mana-'` over `ui/` returned seven hits, all
+seven of them the declarations in `tokens.css`. UX-DR7's "curve bars, mana pips and
+colour-identity dots ONLY, never a button, border, background or an unstacked curve bar" had
+been enforced by nothing for four stories — a rule with no consumer and no gate is a sentence.
+
+The gate is in `tests/token-usage.test.ts` and has two halves (plus a markup half, below):
+
+- **Which files may reference a `--mana-*` at all** — the `MANA_DATA_INK` allowlist, each entry
+  carrying the reason that file is data ink. Today it is `ManaPip.css` alone. **c4-8** (stacked
+  curve segments) and **c4-9** (the colour-distribution bar) add their own entry, in their own
+  story, in the open — the same protocol `PRIMITIVES` uses. A non-vacuity test proves every
+  entry is a path git actually tracks, so a rename fails loudly rather than silently permitting
+  nothing.
+- **Which properties may spend one** — an **allowlist**: `background`, `background-color`,
+  `background-image`, `fill`, `stop-color`. Nothing else. It is an allowlist rather than a ban
+  list on purpose, and that is the general lesson: "ban the family, never enumerate members" has
+  a stronger form than a wider ban. A ban keyed on `/^border/`, `/^outline/` and `/shadow$/` is
+  still a list of families its author thought of, and `caret-color`, `accent-color`,
+  `text-decoration-color` and `column-rule-color` are not in it.
+
+**The markup half** (added at c2-8's review): both halves above read stylesheets, so a
+`var(--mana-*)` spent from markup — an SVG `fill` presentation attribute, a value in
+`index.html` — would be policed by nothing. A third check scans every git-tracked non-CSS source
+file and allows **none**: there is no markup allowlist to join, because the way in is always a
+class in an allowlisted stylesheet, the way `ManaPip` does it. c4-8/c4-9: your chart segments
+take a class, not a `fill=` attribute.
+
+**The half no static reader can decide is review's**, declared in the guard's own comment the
+way `surfaces.ts` declares its own: whether a given curve bar is genuinely **stacked** is a
+property of the data bound to it and the elements composed at runtime. **c4-8's reviewer must
+look**; the gate will not have looked for them. The same comment declares a second residual:
+chrome-shaped spend **through an allowed property in an allowlisted file** (a hover tint, a
+button-like background) passes both halves — the allowlist _reason_ is what review checks it
+against.
+
+**`--mana-gold` is the family's seventh token and has no consumer yet** — deliberately: it is
+not a cost colour, so `MANA_COLOUR_ORDER` (the parser's vocabulary) excludes it and the pip
+class-coverage guard derives 21 classes from six colours. Its first consumer (likely c4-9's
+colour-identity bar) joins `MANA_DATA_INK` in the open and moves the guard's spent-token count
+from 6 to 7 there, not silently.
+
+**One class per colour, never a token name built at runtime.** The composition reference writes
+`'var(--mana-' + color + ')'` into an inline style. The lint error is the least of it: a
+runtime-built token name is invisible to `findUnknownTokenReferences`, so a bad colour renders a
+_transparent_ circle no test can see. The indirection a component author reaches for instead —
+`.mana-pip-w { --pip: var(--mana-w) }` — is a **guard** failure, since only `tokens.css` may
+declare a custom property. So `ManaPip.css` declares all 21 classes (six colours and all fifteen
+unordered pairs), and a guard derives those 21 suffixes from `MANA_COLOUR_ORDER` and proves each
+exists **and names a real token**.
+
+#### A parser is total, or it is silently wrong
+
+Set by story **c2-8**, and it generalises past mana: **scan the whole input; never enumerate what
+you accept and discard the rest.** `c3-*`'s response handling and `c5-*`'s envelope parsing meet
+the same shape.
+
+`ManaCost/parse.ts` returns a token list for **every** string and throws for none. Every
+character of the input survives in some token's `raw` — asserted by re-joining them — so an
+unrecognised braced symbol comes back as `unknown` (rendered as a pip showing its own text) and
+anything outside braces comes back as `text`. There is no `else` branch that discards, because
+there is nothing left for one to discard.
+
+The rule exists because the alternative _looks fine_. The composition reference's
+`String(cost).match(/\d+|[WUBRGC]/gi)` drops hybrid, generic-hybrid, Phyrexian, `{X}`, `{S}` and
+the `//` separator — measured against this repository's own 32,318 real costs — and renders a
+cost that is wrong without looking wrong. A `match()` of known patterns discards the rest **by
+construction**, so "never silently drops" cannot be a property of the symbol table; it has to be
+a property of the tokeniser's shape. Tests prove it with a symbol family **invented for the
+test** (`{Q/W/E}`), which no enumeration in the module mentions.
+
+#### Naming a graphic whose whole meaning is colour
+
+Set by story **c2-8** (UX-DR18, UX-DR44), and **c4-8's curve and c4-9's colour bar reuse it
+rather than each inventing one.**
+
+**`role="img"` plus `aria-label` on the wrapper; the coloured parts inside stay decorative.**
+This is required, not stylistic: `aria-label` on a bare `<span>` is **name-prohibited** on
+`role="generic"`, and screen readers are permitted to ignore it — several do. A `role="img"`
+element's children are presentational, so nothing double-announces.
+
+**The name is built by a pure formatter beside the parser and unit-tested with it.**
+`{2}{W/U}` reads _"2 generic, white or blue"_; `{B/P}` reads _"Phyrexian black"_. An unknown
+symbol reads as its own raw text (`{HW}` → _"HW"_), which is honest rather than silent — the
+same rule the pips follow, in words.
+
+**A standalone `ManaPip` is decorative by default**, with an **opt-in** `label`. c4-9's legend
+puts a pip beside its own text count, and a doubled announcement there is the flooding UX-DR45
+warns about, so the default is the safe direction.
+
+#### No symbol lookalike, including the Phyrexian Φ
+
+UX-DR7's "no symbol lookalikes" is not only a claim about a pip's outline. Reproducing the
+Phyrexian mana symbol, a tap symbol or a set symbol **inside** the pip is the same trade-dress
+imitation by another route. So the pip has no border, no inner ring and no drawn glyph, and the
+Phyrexian marker is a plain letter **`P`** in the app's own typeface — the same glyph slot the
+generic count, `{X}` and every unrecognised symbol already use. That single slot is what keeps
+the ban cheap: **do not add a mana-symbol font or icon set** (UX-DR7 bans "icon fonts styled as
+mana symbols" by name, and it would be a new dependency besides).
+
 #### `--accent-dim` is not written in a primitive at all
 
 UX-DR6 puts it at 2.70:1 on `--surface-overlay`, below the 3:1 non-text floor, and badges land
@@ -607,14 +741,16 @@ the agent-view nav pills are **c6-8**, and the agent view that drops into the ov
 **c6-5**. The `h1` carries the product name provisionally; **c4-2** replaces its content with
 the deck name and nothing about the element moves.
 
-The four presentation primitives landed in **c2-7** and are documented under _Components_
+Six presentation primitives have landed — `Panel`, `Badge`, `StatChip` and `GroupHeader` in
+**c2-7**, `ManaPip` and `ManaCost` in **c2-8** — and all six are documented under _Components_
 above. They have **no on-screen consumer yet** — nothing imports them, so `npm run build`
 leaves them out of the module graph entirely, and their **appearance is not dev-verified**
 (jsdom applies no stylesheet). Each is checked by eye at its first consuming story: the panel
 at **c2-9**, the group header and deck-row context at **c4-7**, the badge at **c4-2** and
-**c4-10**. The header badge slot in `AppShell.tsx` is **still empty on purpose** — c2-7 shipped
-`Badge` without filling it, and **c4-2** and **c4-10** are its fillers. The remaining
-primitives are `ManaPip`/`ManaCost` (**c2-8**) and the nav pill (**c6-8**).
+**c4-10**, and the pip and cost at **c4-3** (card placeholders), **c4-7** (deck rows) and
+**c4-9** (the colour-distribution legend). The header badge slot in `AppShell.tsx` is **still
+empty on purpose** — c2-7 shipped `Badge` without filling it, and **c4-2** and **c4-10** are its
+fillers. The one remaining primitive is the nav pill (**c6-8**).
 
 The skip link and Tab-order work are **c4-11** — the shell builds no focus management. The
 numeric role now has real consumers: the panel count, the group-header count and the StatChip

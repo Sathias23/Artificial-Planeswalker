@@ -957,10 +957,10 @@ describe('the shell is presentation-only, and that is asserted (AC 16)', () => {
 })
 
 // ---------------------------------------------------------------------------------------
-// The four presentation-only primitives (story c2-7, AC 5)
+// The presentation-only primitives (stories c2-7 and c2-8; c2-7 AC 5, c2-8 AC 18)
 // ---------------------------------------------------------------------------------------
 
-describe('the c2-7 primitives are presentation-only, and that is asserted (AC 5)', () => {
+describe('the component primitives are presentation-only, and that is asserted', () => {
   /**
    * The SAME shape the shell's own posture is asserted in, one story up: exhaustive import
    * lists, hooks by FAMILY rather than by name, and comments stripped so documentation does
@@ -995,22 +995,41 @@ describe('the c2-7 primitives are presentation-only, and that is asserted (AC 5)
       file: 'src/components/GroupHeader/GroupHeader.tsx',
       imports: ['./GroupHeader.css', 'react'],
     },
-    // The two helper modules are held to the same posture, for the reason the shell's own
+    // Story c2-8's two: the pip and the whole cost. ManaPip imports the parser's COLOUR ORDER
+    // (a value) and its `ManaColour` type from one statement — two statements naming the same
+    // module would list it twice here, which is the open cost of the exhaustive form working.
+    // Neither imports react at all: the automatic JSX runtime means a presentation component
+    // with no ReactNode prop needs no import, and the shorter list is the stronger assertion.
+    {
+      file: 'src/components/ManaPip/ManaPip.tsx',
+      imports: ['../ManaCost/parse', './ManaPip.css'],
+    },
+    {
+      file: 'src/components/ManaCost/ManaCost.tsx',
+      imports: ['../ManaPip/ManaPip', './ManaCost.css', './parse'],
+    },
+    // The three helper modules are held to the same posture, for the reason the shell's own
     // suite gives about `filled`: an exempted module is where the next evasion lives.
     { file: FILLED_TS, imports: ['react'] },
     { file: 'src/components/Badge/tones.ts', imports: [] },
+    // The mana-cost scanner. It is the first module in this list with a real ALGORITHM in it
+    // rather than a datum, and it is held here for the same reason `tones.ts` is: a pure module
+    // beside a presentation-only component is exactly where state would arrive first, because
+    // nothing in its own file looks like a component. `imports: []` is the strongest form of
+    // that claim — no react, no DOM, no store, nothing.
+    { file: 'src/components/ManaCost/parse.ts', imports: [] },
   ]
 
   const withoutComments = (source: string) =>
     source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
 
-  it('is reading all four primitives and both helpers (non-vacuity)', () => {
+  it('is reading all six primitives and all three helpers (non-vacuity)', () => {
     // Every assertion below loops over PRIMITIVES. A list that had quietly lost a member — a
     // renamed directory, a component moved — would let that member pass by never being read,
     // which is the vacuity failure this file's own doctrine calls the worse outcome. Proving
     // each file EXISTS and is non-trivial is what stops "nothing is wrong" reading the same
     // as "nothing was read".
-    expect(PRIMITIVES).toHaveLength(6)
+    expect(PRIMITIVES).toHaveLength(9)
     for (const { file } of PRIMITIVES) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }
