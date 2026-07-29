@@ -1,0 +1,144 @@
+/* Panel — the universal container (story c2-7, UX-DR9, DESIGN.md "Containers & chrome").
+
+   THE MOCK IS A SOURCE OF ARRANGEMENT, NOT OF VALUES. `_ds/_ds_bundle.js`'s Panel is written
+   entirely in inline styles (an ESLint error here) and four of its values are DRIFT that
+   DESIGN.md's own prose corrects three sections later. Each one is snapped below with a
+   comment naming what it replaces, so a reviewer comparing against the composition reference
+   sees a decision rather than a discrepancy (AC 9).
+
+   GEOMETRY LITERALS ARE A DOCUMENTED NON-BAN, inherited from AppShell.css (c2-6 AC 18) and
+   enforced as a GATE over every component stylesheet since that story's review round. There
+   are two here — the hairline border and the live dot — and each carries its DESIGN.md
+   citation beside the value. Neither can be a token: `declaredTokens.size` is pinned at 64 and
+   tests/tokens.test.ts asserts every name byte-for-byte against DESIGN.md's frontmatter, so
+   adding one is not available (AC 23).
+
+   WHAT NO TEST HERE CAN PROVE: that any of it LOOKS right. jsdom applies no stylesheet and has
+   no layout engine, and this story ships NO ON-SCREEN CONSUMER of the panel at all — nothing
+   imports it yet. Appearance is checked at the first consuming story (c2-9's state panel,
+   c4-7's deck list, c4-10's format check) and carried on the epic manual-testing checklist
+   (AC 21). It is not dev-verified here, and pretending otherwise with a getComputedStyle()
+   assertion would be a test that passes for the wrong reason. */
+
+/* ==== THE PANEL SURFACE ================================================================
+   DESIGN.md: "{components.panel.background} inside {components.panel.border} at
+   {components.panel.radius}". Rest elevation is `--shadow-rest` and the live state raises it
+   to `--shadow-raise` — BOTH via token, which DESIGN.md states twice. The mock hard-codes
+   `0 12px 32px rgba(0,0,0,0.5)` for rest: a literal copy of the token's own value, and under
+   the `graphite` and `ink` themes — which declare both elevation tokens `none` — that literal
+   makes the RESTING panel the only element casting a shadow, inverting the hierarchy.
+
+   `overflow: hidden` IS LEGAL HERE, and this note exists so the next reader does not "fix" it.
+   c2-6's clip ban covers the shell ROOTS and `.app-shell-columns` — the one scroller, where a
+   horizontal clip would bury the overflow its own AC forbids. A panel is neither: it is a
+   nested box, and the clip is load-bearing, because it is what makes the header's rule stop at
+   the `--radius-lg` corner instead of poking out square. */
+.panel {
+  /* 1px — DESIGN.md, `components.panel.border`: "1px solid {colors.border-hairline}". */
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-rest);
+  overflow: hidden;
+}
+
+/* UX-DR1's ramp, stepped EXACTLY one level. DESIGN.md's `level="overlay"` panel — the card
+   detail panel (c4-5) and everything inside an agent view. */
+.panel-overlay {
+  background: var(--surface-overlay);
+}
+
+/* UX-DR9's live state. Elevation only; the title colour and the dot are below. No transition
+   (AC 18): animating the change into this state is c7-5's, together with the reduced-motion
+   fallback it has to register in tokens.css. A motion with no registered fallback is an
+   incomplete story (Decide-once #3), which is why this one is not smuggled in early. */
+.panel-live {
+  box-shadow: var(--shadow-raise);
+}
+
+/* ==== THE HEADER ======================================================================
+   DESIGN.md: "title in {typography.label} {colors.text-secondary}, an optional count in
+   {typography.numeric} {colors.text-tertiary}, badges right-aligned."
+
+   `padding: var(--space-2) var(--space-3)` REPLACES the mock's `10px 14px`. Neither 10 nor 14
+   is on the 4/8/12/16/24/32/48 scale, and UX-DR5 calls a one-off like that drift rather than
+   spec — the stylelint allowed-list refuses it outright, measured. 8/12 is the nearest pair on
+   the scale in both axes. */
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+
+  /* 1px — DESIGN.md, `components.group-header.rule`: "1px solid {colors.border-hairline}",
+     the same hairline the panel's own border uses. */
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+/* AC 13 — the label role NEVER travels without its two companions, and this is a gate rather
+   than a convention (`findRoleWithoutCompanions` in tests/token-usage.test.ts). The `font`
+   shorthand cannot carry `letter-spacing` or `text-transform`, so a bare `font:
+   var(--type-label)` renders 11px lowercase text at default tracking: legible, plausible, and
+   wrong — the identical failure shape as the numeric role travelling alone.
+
+   `margin: 0` because this is an `<h2>` and the UA stylesheet gives it a large block margin
+   that would break the header's flex alignment. */
+.panel-title {
+  margin: 0;
+  color: var(--text-secondary);
+  font: var(--type-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+/* UX-DR9 — `live` swaps the title to --accent. NOT --accent-dim, anywhere in this file: a
+   panel at `level="overlay"` puts its own title on --surface-overlay, where --accent-dim is
+   2.70:1 and fails the 3:1 non-text floor (UX-DR6, AC 14). The `findAccentDimOnOverlay` guard
+   is same-block only and could not see that pairing, so not writing the token at all is the
+   fix rather than trusting the gate. */
+.panel-live .panel-title {
+  color: var(--accent);
+}
+
+/* UX-DR9's "6px accent dot". `var(--glow)`, NOT the mock's `0 0 8px var(--accent-glow), 0 0
+   4px var(--accent)`: that shadow is PARTLY tokenised, and the allowed-list admits only values
+   built entirely from var(--shadow-*) / var(--glow) — so the mock's spelling is a build
+   failure, and `--glow` is `0 0 16px var(--accent-glow)`, which is the whole answer.
+
+   `flex-shrink: 0` so the dot keeps its size when a long title compresses the row. */
+.panel-dot {
+  /* 6px — DESIGN.md, Panel: `live` "adds a 6px accent dot". Twice, for width and height. */
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  box-shadow: var(--glow);
+}
+
+/* AC 12 — the numeric role and its companion in the SAME rule block, which is the decide-once
+   ruling and the shape `findUnpairedNumericRole` enforces. This is one of that guard's first
+   real consumers: the `font` shorthand resets `font-variant-numeric`, so the role applied
+   alone renders PROPORTIONAL digits and a column of counts stops lining up (UX-DR3). */
+.panel-count {
+  color: var(--text-tertiary);
+  font: var(--type-numeric);
+  font-variant-numeric: var(--type-numeric-features);
+}
+
+/* "badges right-aligned" — `margin-left: auto` on the badge group is what pushes it to the far
+   right and leaves the title, dot and count clustered at the left, the same mechanism
+   `.app-shell-nav` uses. The container is unconditional so the header's layout does not change
+   shape when badges arrive; `filled()` in the TSX decides whether the HEADER exists at all. */
+.panel-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+/* `padding: var(--space-3)` REPLACES the mock's `12px 14px`: 12 is on the scale, 14 is not,
+   and a body inset that differs by 2px between its axes is drift rather than a decision. */
+.panel-body {
+  padding: var(--space-3);
+}

@@ -77,3 +77,64 @@
   font: var(--type-numeric);
   font-variant-numeric: proportional-nums;
 }
+
+/* ==== AC 13 (story c2-7) — the label and micro roles never travel without their companions.
+
+   THE SAME FAMILY AS THE FOUR ABOVE, and the same failure shape: the `font` shorthand cannot
+   carry `letter-spacing` OR `text-transform` either, so a role applied bare renders 11px
+   lowercase text at default tracking. Legible, plausible, wrong — and invisible in review
+   because it still looks like text.
+
+   The role names below are deliberately spelled in ways the guard does not enumerate: it
+   derives its requirements from the `--tracking-*` token names in tokens.css and from
+   DESIGN.md's own `textTransform` keys, so `--type-display` is covered by a rule written for
+   nobody in particular. */
+
+/* Tracking missing, uppercase present. */
+.bare-label-tracking {
+  font: var(--type-label);
+  text-transform: uppercase;
+}
+
+/* Uppercase missing, tracking present. Both halves have to be separable or a block that
+   happens to get one right would hide the other. */
+.bare-label-case {
+  font: var(--type-label);
+  letter-spacing: var(--tracking-label);
+}
+
+/* Neither. The realistic shape: someone applies the role and stops. */
+.bare-micro {
+  font: var(--type-micro);
+  color: var(--text-tertiary);
+}
+
+/* THE ROLE THE GUARD WAS NOT WRITTEN FOR. `--type-display` has a `--tracking-display` sibling
+   and no uppercase, so a DERIVED rule catches its missing tracking and must NOT demand
+   uppercase of it. A guard written as a list of "label and micro" passes this silently. */
+.bare-display-tracking {
+  font: var(--type-display);
+}
+
+/* The tracking companion present but from the WRONG ROLE — the value is checked, not merely
+   the property, for the same reason `font-variant-numeric: proportional-nums` is caught above.
+   `--tracking-micro` on a label is 0.08em where DESIGN.md says 0.1em. */
+.wrong-tracking-sibling {
+  font: var(--type-label);
+  letter-spacing: var(--tracking-micro);
+  text-transform: uppercase;
+}
+
+/* `text-transform` present and saying the OPPOSITE. A presence check passes this. */
+.opts-out-of-uppercase {
+  font: var(--type-micro);
+  letter-spacing: var(--tracking-micro);
+  text-transform: lowercase;
+}
+
+/* Inside a media query, for the same reason the two fixtures above have one. */
+@media (width >= 40em) {
+  .bare-label-inside-media {
+    font: var(--type-label);
+  }
+}

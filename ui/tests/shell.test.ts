@@ -76,6 +76,15 @@ const uiRoot = fileURLToPath(new URL('..', import.meta.url))
 const SHELL_CSS = 'src/components/AppShell/AppShell.css'
 const SHELL_TSX = 'src/components/AppShell/AppShell.tsx'
 
+/**
+ * The shared emptiness helper, pinned by PATH because the presentation-only guard below has
+ * to hold it to the same posture as the component that imports it — an exempted module is
+ * where the next evasion lives, and this one is exempted from the type-only react rule by
+ * construction. It moved out of `AppShell/` in story c2-7 (Q3), where Panel became its second
+ * consumer; the exhaustive import list above is the other half of that move.
+ */
+const FILLED_TS = 'src/components/filled.ts'
+
 // git is the file authority, not readdir: it cannot see node_modules, dist or coverage, and a
 // stray stylesheet is caught the moment it is committed — which is when CI sees it. A guard
 // written against an UNTRACKED file passes vacuously; c2-4 and c2-5 both lost time to that.
@@ -582,7 +591,7 @@ const findViewportHeightOnDocumentRoot = (blocks: Block[]): string[] =>
  * could not pass by writing the right thing.
  *
  * STRINGS ARE BLANKED, NOT JUST COMMENTS (Greptile, PR #23). A px length inside a CSS STRING
- * is text, not geometry: `content: "16px"` in a c2-7 tooltip or a c4-8 axis label is a value
+ * is text, not geometry: `content: "16px"` in a tooltip or a c4-8 axis label is a value
  * the user READS, and there is nothing in DESIGN.md to cite for it. Scanning it as a literal
  * would fail the gate on a stylesheet that is entirely correct — the false positive a later
  * story fights, which this file's own doctrine calls the worse outcome. `blankStrings` already
@@ -812,11 +821,21 @@ describe('geometry literals are documented, not merely tolerated (AC 18)', () =>
   // The decide-once ruling this story sets: a geometry literal is ALLOWED — there is no token
   // family to point at, `declaredTokens.size === 64` is pinned and DESIGN.md's frontmatter is
   // asserted byte-for-byte, so adding one is not available — and it carries a comment naming
-  // its source and why it is not a token. c2-7 (17px StatChip), c2-9 (480px state panel) and
+  // its source and why it is not a token. c2-9 (480px state panel) and
   // c4-4 (176px grid minimum) inherit a stated rule rather than a habit — and since the
   // review round of 2026-07-28 they inherit it as a GATE, not prose: the citation check runs
   // over EVERY component stylesheet, so the rule ~35 stories inherit is enforced the moment
   // each of them stages its CSS, not re-implemented per story.
+  //
+  // THIS LIST USED TO NAME "c2-7 (17px StatChip)" FIRST, and that prediction was WRONG —
+  // measured in c2-7 and corrected here rather than left standing, because a prediction that
+  // was measured wrong is exactly the sentence the next author trusts. The StatChip value is
+  // spent through `font-size`, which is GATED (the font-* allowed-list admits only CSS-wide
+  // keywords), so it never reached this rule at all. The boundary that mistake found: a
+  // geometry literal is a value with NO token family to point at; a type size HAS one, and
+  // the answer there is a different role token. c2-7 shipped four component stylesheets and
+  // the only literals in them are hairline borders and a 6px dot — all cited, all caught by
+  // the loop below.
   //
   // Scope stated plainly: px lengths only. `z-index: 20` is also a geometry literal and is
   // documented in prose beside its rule, but a bare unitless number cannot be told apart
@@ -870,9 +889,11 @@ describe('the shell is presentation-only, and that is asserted (AC 16)', () => {
    * Every module this file pulls in, INCLUDING bare side-effect imports. `from '…'` alone
    * misses `import './subscribe'` — no `from` clause, no call parens — which is precisely how
    * a module that subscribes on load would walk past an "imports nothing but React" check.
+   * `export … from` re-exports are matched too (review 2026-07-29) — they load their module
+   * exactly as an import does.
    */
   const importedModules = [
-    ...shellComponent.matchAll(/import\s+(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/g),
+    ...shellComponent.matchAll(/(?:import|export)\s+(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/g),
   ].map((m) => m[1])
 
   it('imports nothing but React types and its own stylesheet', () => {
@@ -881,12 +902,16 @@ describe('the shell is presentation-only, and that is asserted (AC 16)', () => {
     // thought to ban is exactly the one that would get through — and the stylesheet is in the
     // list rather than checked separately, so a second bare import cannot hide beside it.
     //
-    // `./filled` is here deliberately and its presence is the OPEN way to add it: deciding
+    // `../filled` is here deliberately and its presence is the OPEN way to add it: deciding
     // whether a Fragment is empty needs value imports from react, and the next assertion pins
     // this file's react import to types only. Rather than carve an exception into a guard made
     // blunt on purpose, the helper moved to its own module — and this list still pins the set
     // exhaustively, so the exception is one named entry rather than a widened rule.
-    expect(importedModules.sort()).toEqual(['./AppShell.css', './filled', 'react'])
+    //
+    // It moved UP a directory in story c2-7 (Q3): Panel needs the identical logic for its
+    // header slots, and `../AppShell/filled` would have made every primitive depend on the
+    // shell's directory. The path in this list is half the move; FILLED_TS below is the other.
+    expect(importedModules.sort()).toEqual(['../filled', './AppShell.css', 'react'])
     // The react import must be TYPE-ONLY. Hooks are VALUE imports, so this one line closes
     // the aliasing evasion (`import { useState as s }` never matches a name-keyed regex) at
     // the door instead of chasing spellings at the call site.
@@ -905,9 +930,9 @@ describe('the shell is presentation-only, and that is asserted (AC 16)', () => {
   })
 
   it('holds the helper module to the same posture', () => {
-    // `./filled` is allowed react VALUE imports, which is the whole reason it exists — so the
+    // `../filled` is allowed react VALUE imports, which is the whole reason it exists — so the
     // no-state rule has to be asserted there too, or the exemption becomes the hiding place.
-    const helper = sourceOf('src/components/AppShell/filled.ts')
+    const helper = sourceOf(FILLED_TS)
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/(^|[^:])\/\/[^\n]*/g, '$1')
 
@@ -915,7 +940,9 @@ describe('the shell is presentation-only, and that is asserted (AC 16)', () => {
     expect(helper).not.toMatch(/(?<![\w.$])use\s*\(/)
     expect(helper).not.toMatch(/\b(fetch|XMLHttpRequest|EventSource|WebSocket)\s*\(/)
     expect(
-      [...helper.matchAll(/import\s+(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/g)].map((m) => m[1]),
+      [...helper.matchAll(/(?:import|export)\s+(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/g)].map(
+        (m) => m[1],
+      ),
     ).toEqual(['react'])
   })
 
@@ -926,6 +953,181 @@ describe('the shell is presentation-only, and that is asserted (AC 16)', () => {
     // what keeps that from being re-introduced silently.
     expect(shellSourceText).toMatch(/fetches nothing/)
     expect(shellComponent).not.toMatch(/fetches nothing/)
+  })
+})
+
+// ---------------------------------------------------------------------------------------
+// The four presentation-only primitives (story c2-7, AC 5)
+// ---------------------------------------------------------------------------------------
+
+describe('the c2-7 primitives are presentation-only, and that is asserted (AC 5)', () => {
+  /**
+   * The SAME shape the shell's own posture is asserted in, one story up: exhaustive import
+   * lists, hooks by FAMILY rather than by name, and comments stripped so documentation does
+   * not read as code.
+   *
+   * Why it is worth asserting at all rather than left to inspection: "these four hold no
+   * state" is a decide-once ruling ~20 later component stories inherit, and the day one of
+   * them needs a hook it has stopped being a presentation-only primitive. That is a SIGNAL —
+   * the component belongs in a different category and its story should say so — and a signal
+   * nobody is told about is not one. `useId` is included in the ban deliberately: it is the
+   * most reasonable-looking hook a primitive could want (for `aria-labelledby`), which is
+   * exactly why the region naming uses `aria-label` instead (Q4).
+   *
+   * IMPORT LISTS ARE EXHAUSTIVE, not blocklists, for the reason the shell's list gives: a
+   * module nobody thought to ban is precisely the one that would get through. A store import,
+   * a fetch helper or a hooks module would each pre-empt a design c3-1 and c4-1 own.
+   */
+  const PRIMITIVES: { file: string; imports: string[] }[] = [
+    // `../filled` is Panel's one non-obvious entry, and it is the OPEN way to reuse the
+    // helper (AC 17) rather than re-deriving five empty-shape cases that cost c2-6 a Greptile
+    // round and two review rounds.
+    { file: 'src/components/Panel/Panel.tsx', imports: ['../filled', './Panel.css', 'react'] },
+    // Badge grew `../filled` and a VALUE import of `./tones` in review (2026-07-29): empty
+    // children render nothing (the same AC 17 logic as Panel's header) and a runtime-unknown
+    // tone clamps to neutral against the same list the per-tone tests anchor on.
+    {
+      file: 'src/components/Badge/Badge.tsx',
+      imports: ['../filled', './Badge.css', './tones', 'react'],
+    },
+    { file: 'src/components/StatChip/StatChip.tsx', imports: ['./StatChip.css', 'react'] },
+    {
+      file: 'src/components/GroupHeader/GroupHeader.tsx',
+      imports: ['./GroupHeader.css', 'react'],
+    },
+    // The two helper modules are held to the same posture, for the reason the shell's own
+    // suite gives about `filled`: an exempted module is where the next evasion lives.
+    { file: FILLED_TS, imports: ['react'] },
+    { file: 'src/components/Badge/tones.ts', imports: [] },
+  ]
+
+  const withoutComments = (source: string) =>
+    source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+
+  it('is reading all four primitives and both helpers (non-vacuity)', () => {
+    // Every assertion below loops over PRIMITIVES. A list that had quietly lost a member — a
+    // renamed directory, a component moved — would let that member pass by never being read,
+    // which is the vacuity failure this file's own doctrine calls the worse outcome. Proving
+    // each file EXISTS and is non-trivial is what stops "nothing is wrong" reading the same
+    // as "nothing was read".
+    expect(PRIMITIVES).toHaveLength(6)
+    for (const { file } of PRIMITIVES) {
+      expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
+    }
+  })
+
+  it('covers every component module on disk — the list cannot silently fall behind', () => {
+    // The review (2026-07-29) found PRIMITIVES hand-kept while the stylesheet scan is
+    // git-derived: a FIFTH component added under src/components/ would escape every assertion
+    // in this suite by never being listed. Same authority as the stylesheet scan — git, not
+    // readdir — so an untracked module cannot pass vacuously either. Test files are the dom
+    // project's; everything else under src/components/ must be in the list or in the shell's
+    // own suite above.
+    const onDisk = execFileSync(
+      'git',
+      ['ls-files', 'src/components/*.ts', 'src/components/*.tsx'],
+      {
+        cwd: uiRoot,
+        encoding: 'utf8',
+      },
+    )
+      .split('\n')
+      .filter(Boolean)
+      .filter((f) => !/\.test\.tsx?$/.test(f))
+
+    const covered = [...PRIMITIVES.map((p) => p.file), SHELL_TSX].sort()
+    expect(onDisk.sort()).toEqual(covered)
+  })
+
+  it.each(PRIMITIVES)('$file imports exactly what it declares', ({ file, imports }) => {
+    // `from '…'` alone would miss `import './subscribe'` — no `from` clause, no call parens —
+    // which is precisely how a module that subscribes on load walks past an "imports nothing
+    // but React" check. Bare side-effect imports are matched too, and the stylesheet is IN
+    // the list rather than checked separately, so a second bare import cannot hide beside it.
+    // `export … from` and `export * from` are matched too (review 2026-07-29): a RE-EXPORT
+    // loads its module exactly as an import does, and an "exhaustive" list that only read
+    // `import` statements would never see it.
+    const source = withoutComments(sourceOf(file))
+    const modules = [
+      ...source.matchAll(/(?:import|export)\s+(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/g),
+    ].map((m) => m[1])
+    expect(modules.sort()).toEqual(imports)
+
+    // The react import must be TYPE-ONLY. Hooks are VALUE imports, so this one line closes the
+    // aliasing evasion (`import { useState as s }` never matches a name-keyed regex) at the
+    // door instead of chasing spellings at the call site. `filled.ts` is the ONE exemption —
+    // deciding whether a Fragment is empty needs `Fragment` and `isValidElement` as values —
+    // and it is exempted by name here, in the open. The review (2026-07-29) noted the
+    // exemption made it the ONE module where an aliased hook would pass every guard, so its
+    // react import is pinned to the exact three names instead: an aliased
+    // `useSyncExternalStore as f` cannot ride in beside them without failing this match.
+    if (file === FILLED_TS) {
+      expect(source).toMatch(
+        /import\s+\{\s*Fragment,\s*isValidElement,\s*type ReactNode\s*\}\s+from 'react'/,
+      )
+    } else {
+      expect(source).not.toMatch(/import\s+(?!type\b)[^;\n]*?from\s+['"]react['"]/)
+    }
+    // And the two runtime routes around static imports are closed by name.
+    expect(source).not.toMatch(/\b(?:require|import)\s*\(/)
+  })
+
+  it.each(PRIMITIVES)('$file holds no state and subscribes to nothing', ({ file }) => {
+    const source = withoutComments(sourceOf(file))
+
+    // Keyed on the hook API FAMILY rather than on named hooks, so a hook this list never
+    // heard of is still caught — including React 19's `use()`, the one LOWERCASE hook, which
+    // a `use[A-Z]` prefix check alone would wave through.
+    expect(source).not.toMatch(/\buse[A-Z]\w*\s*\(/)
+    expect(source).not.toMatch(/(?<![\w.$])use\s*\(/)
+    expect(source).not.toMatch(/\b(fetch|XMLHttpRequest|EventSource|WebSocket)\s*\(/)
+  })
+
+  it.each(PRIMITIVES)('$file has no behavioural contract — no handler, no ref', ({ file }) => {
+    const source = withoutComments(sourceOf(file))
+
+    // AC 5's "respond to no interaction", as a shape rather than a list of event names: an
+    // `onSomething` PROP declaration and an `onSomething=` JSX attribute are the only two ways
+    // a handler reaches a component, and both are caught by the capital after `on`.
+    expect(source).not.toMatch(/\bon[A-Z]\w*\s*\??\s*:/)
+    expect(source).not.toMatch(/\bon[A-Z]\w*\s*=/)
+    // A ref is state's other door: it is how a presentation-only component starts measuring,
+    // focusing or observing the DOM it was only supposed to describe. BOTH positions (review
+    // 2026-07-29): the handler check reads declaration and JSX, and the ref check used to read
+    // JSX only — a `ref?: Ref<…>` PROP declaration was invisible.
+    expect(source).not.toMatch(/\bref\s*=/)
+    expect(source).not.toMatch(/\bref\s*\??\s*:/)
+    // NO SPREAD in the components (review 2026-07-29). A `{...rest}` onto the DOM node is the
+    // single most common way a presentation component silently grows a behavioural surface:
+    // it defeats the handler check AND the ref check at once, because the names never appear
+    // in this file. Rest/spread has no legitimate use in a component whose entire contract is
+    // a handful of named props — if one ever needs it, that is the category-change signal
+    // AC 5 exists to raise, not a reason to widen this rule. `filled.ts` is exempt for the
+    // stated reason that it is not a component: it takes no props to spread, it legitimately
+    // spreads an iterable into an array, and its own threat model (an aliased hook) is closed
+    // by the pinned react import above.
+    if (file !== FILLED_TS) {
+      expect(source).not.toMatch(/\.\.\./)
+    }
+  })
+
+  it('reads code, not the documentation about the code', () => {
+    // The non-vacuity half of the comment stripping, in the same shape the shell's suite uses.
+    // Panel's prose DOES name `useId` — it explains why the region uses `aria-label` instead —
+    // so if stripping ever regressed, the hook assertion above would fail on the
+    // documentation, and the repair someone would reach for is deleting the explanation.
+    const panel = sourceOf('src/components/Panel/Panel.tsx')
+    expect(panel).toMatch(/useId/)
+    expect(withoutComments(panel)).not.toMatch(/useId/)
+  })
+
+  it("keeps the mock's min-width out of StatChip.css (AC 11), where the source is actually read", () => {
+    // Moved here from StatChip.test.tsx by review (2026-07-29): the DOM version asserted the
+    // inline `style` attribute, which a `min-width` in the STYLESHEET would never touch —
+    // jsdom applies no CSS, so that test passed vacuously for the exact defect it named.
+    // DESIGN.md's `components.stat-chip` declares no min-width, so there is no truthful
+    // citation for one; the chip sizes to its content.
+    expect(sourceOf('src/components/StatChip/StatChip.css')).not.toMatch(/\bmin-width\s*:/)
   })
 })
 
@@ -1112,9 +1314,11 @@ describe('the guards themselves fire', () => {
     // No fractional geometry literal exists yet, so this is the invented member: `\b\d+px\b`
     // tokenises `17.5px` as `5px`, and `documented()`'s own `(?<![\d.])` boundary then makes
     // the truthful "17.5px — DESIGN.md" citation unsatisfiable for the `5px` it went looking
-    // for. The first story to ship one (c2-7's StatChip is a candidate) would inherit a gate
-    // it could not pass by writing the right thing — the worst kind, because the fix looks
-    // like removing the documentation.
+    // for. The first story to ship one would inherit a gate it could not pass by writing the
+    // right thing — the worst kind, because the fix looks like removing the documentation.
+    // (c2-7's StatChip was named here as the likely candidate; it shipped no fractional
+    // literal — its 17px comes from a role token, not from geometry — so the invented member
+    // stays invented, which is the whole reason it was worth inventing.)
     const css = `/* 17.5px — DESIGN.md says the chip is 17.5px tall. */\n.chip { height: 17.5px; }`
     expect(pxLiteralsIn(css)).toEqual(['17.5px'])
     expect(documented(commentsIn(css), '17.5px')).toBe(true)
@@ -1127,7 +1331,7 @@ describe('the guards themselves fire', () => {
   })
 
   it('does not read a px length inside a CSS STRING as geometry (Greptile, PR #23)', () => {
-    // `content: "16px"` is text the user READS — a tooltip in c2-7, an axis label in c4-8 —
+    // `content: "16px"` is text the user READS — a tooltip, an axis label in c4-8 —
     // and there is nothing in DESIGN.md to cite for it. Scanning it as a literal fails the
     // gate on a stylesheet that is entirely correct, which is the false positive this file's
     // doctrine calls worse than the defect. Measured before the fix: it returned ['16px'].

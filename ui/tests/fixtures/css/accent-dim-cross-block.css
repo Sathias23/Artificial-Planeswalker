@@ -1,0 +1,21 @@
+/* FIXTURE — the firing half of `findAccentDimInOverlayFile` (story c2-7, AC 14). Meant to
+   stay broken, and deliberately NOT a copy of the same-block case in
+   token-usage-violation.css: the block-local guard already catches that one, so proving this
+   guard on it would prove nothing new.
+
+   THIS IS THE SHAPE A PASSING PROBE FOUND. Two rules, neither of them wrong on its own, in one
+   stylesheet — the wash paints the overlay surface under every tone, and a tone three rules
+   later sets a border the wash will sit behind. They meet on one element at render time, and
+   the block-local guard looks at each rule separately and sees nothing. It is exactly what the
+   composition reference ships for its accent badge. */
+
+.chip::before {
+  background: var(--surface-overlay);
+  content: '';
+  inset: 0;
+}
+
+.chip-accent {
+  border-color: var(--accent-dim);
+  color: var(--accent-bright);
+}

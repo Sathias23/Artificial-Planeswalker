@@ -1187,10 +1187,18 @@ the gate-output rule rather than left as "we meant to".
   later block applying a different role — `.is-compact { font: var(--type-micro); }` — where
   every declaration is legal and the `font` shorthand resets `font-variant-numeric` as a side
   effect.)* Resolving that needs specificity, source order and the element's real class list,
-  which live in TSX and are chosen at runtime. **Review owns that half** for c2-7's StatChip and
-  c6-8's curve axis, the first components that will apply the role. Documented at the guard, in
-  `ui/README.md`, and asserted as a deliberate blind spot so it fails loudly if the guard ever
-  grows a cross-block reader. (Severity: Low — no component applies the role yet.)
+  which live in TSX and are chosen at runtime. **Review owns that half.** Documented at the
+  guard, in `ui/README.md`, and asserted as a deliberate blind spot so it fails loudly if the
+  guard ever grows a cross-block reader.
+
+  **Updated 2026-07-29 (story c2-7): the blind spot now has real consumers.** The role is
+  applied by `.panel-count`, `.group-header-count` and `.stat-chip-delta`, and the label/micro
+  companion guard added in the same story (`findRoleWithoutCompanions`) inherits the identical
+  block-local limit — its own cascade case is a later `font` shorthand in another rule, which
+  is asserted as a declared blind spot beside it. Reviewing a story that composes these
+  primitives means checking the composed class list rather than assuming the gate did.
+  (Severity: Low → **Low-Med** — three components apply the role now, and every later story
+  that stacks a modifier class onto one of them is in the guard's blind spot.)
 
 - **The offline guard's JS layer is a reviewed-host baseline, and it is deliberately brittle.**
   `.css` and `.html` in the bundle carry a TOTAL ban on external URLs; `.js` cannot, because
@@ -1290,3 +1298,52 @@ the gate-output rule rather than left as "we meant to".
   and the reason to make it is that the next component to reach for a "window frame" distance
   should find one name, not two. (Severity: Low — cosmetic today, a real trap only if the
   gutter is ever retuned.)
+
+## Deferred from: c2-7 — presentation-only primitives (2026-07-29)
+
+- **The four primitives' APPEARANCE is not dev-verified, and cannot be in this story.** `Panel`,
+  `Badge`, `StatChip` and `GroupHeader` ship with **no on-screen consumer** — nothing imports
+  them, deliberately (AC 24: the header badge slot stays empty and keeps naming c4-2/c4-10 as
+  its fillers). jsdom applies no stylesheet and has no layout engine, so every visual claim in
+  the story — the overlay level being one step up the ramp, `--shadow-rest` against
+  `--shadow-raise`, the live dot's `var(--glow)`, and above all **whether the pseudo-element
+  tone wash actually renders behind the badge's text rather than over it** — is read from CSS
+  source or not at all. A `getComputedStyle` assertion here would return the empty string and
+  pass for the wrong reason; this is the fourth story to split an AC this way (c2-2 AC 17, c2-5
+  AC 4, c2-6 AC 4/5) and faking it was explicitly declined.
+
+  **Homed at each primitive's first consuming story**, which is where a real screen can show it:
+  `Panel` at **c2-9** (the shared state panel), `GroupHeader` at **c4-7** (the deck list),
+  `Badge` at **c4-10** (the format check) and **c4-2** (the header badges), `StatChip` at the
+  first surface that carries one. Carried on the **epic manual-testing checklist** as well, so
+  it is not only findable from this file. (Severity: **Medium** — the wash's stacking behaviour
+  is the one mechanism in the story with no static proof available, and the failure mode is a
+  solid blank pill with invisible text, which reads as a content bug rather than a CSS one.
+  Check it first.)
+
+  **Extended by the 2026-07-29 review: the tone-over-wash CONTRAST is also unmeasured.**
+  UX-DR6's table covers `--accent-dim` on `--surface-overlay` only; nobody has measured
+  `--accent-bright` over a 12% `--accent` wash, nor positive/negative/caution text over their
+  own washes, on any surface or under the four alternate themes. `Badge.css`'s accent comment
+  now says so plainly instead of asserting the floors are cleared. Same home, same first
+  consumers: eyeball the wash's stacking AND run the contrast numbers at c4-2 / c4-10.
+
+- **`findRoleWithoutCompanions` derives its uppercase half by reading `DESIGN.md` from a second
+  test file.** `tests/tokens.test.ts` already calls its copy of that path "the ONE place this
+  path is written"; `tests/token-usage.test.ts` now writes it too, because no token NAME encodes
+  case the way `--tracking-X` encodes tracking, and reading the contract beat hand-typing "label
+  and micro". Both copies carry a loud anchor that turns a stale path into a named failure
+  rather than a guard asserting nothing over an empty map, and `tests/package-contract.test.ts`
+  pins the exhaustive list of `yaml` importers so a third one cannot appear quietly. The clean
+  repair is a shared `tests/design-contract.ts` exporting the path and the parsed frontmatter,
+  which was declined here as out of scope for a story that ships components. (Severity: Low —
+  two copies, both anchored, and the UX artefacts are re-exported rarely.)
+
+## Deferred from: code review of c2-7 (2026-07-29)
+
+- **StatChip `signed()` renders raw `String(delta)`** — a fractional delta shows
+  `+0.30000000000000004` and a magnitude ≥ 1e21 shows `+1e+21` as user-facing text
+  (`ui/src/components/StatChip/StatChip.tsx:45`). Q6 already homes delta *formatting* at the
+  first consuming story; that entry now also covers fractional and huge numbers — the consumer
+  either formats before passing or adds the sibling formatted-delta prop Q6 anticipated.
+  (Severity: Low — no current caller passes a non-integer delta.)

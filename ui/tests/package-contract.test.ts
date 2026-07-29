@@ -138,11 +138,22 @@ describe('package.json dependency contract (AD-12, AD-13)', () => {
     expect(importersOf('src')).toEqual([])
   })
 
-  // The non-vacuity pair for the scan above: the ONE legitimate importer is provably found by
+  // The non-vacuity pair for the scan above: the legitimate importers are provably found by
   // the SAME search, so "no importers in src/" cannot be an artefact of a broken grep, a wrong
   // cwd, or the try/catch swallowing a real failure.
-  it('finds the one legitimate yaml importer under tests/', () => {
-    expect(importersOf('tests')).toEqual(['tests/tokens.test.ts'])
+  //
+  // The list is EXHAUSTIVE rather than a floor, so a new yaml importer has to be added here
+  // deliberately. `tests/token-usage.test.ts` joined it in story c2-7: AC 13's companion guard
+  // derives its uppercase requirement from DESIGN.md's own `textTransform:` keys, because no
+  // token NAME encodes case the way `--tracking-X` encodes tracking — reading the contract is
+  // the next best thing to inferring it, and it beats a hand-typed list of two roles. Both
+  // importers are test-only and the `src/` scan above is untouched, which is the invariant
+  // this block actually protects.
+  it('finds exactly the legitimate yaml importers under tests/', () => {
+    expect(importersOf('tests').sort()).toEqual([
+      'tests/token-usage.test.ts',
+      'tests/tokens.test.ts',
+    ])
   })
 
   // AC 2. The declared floor is >=20.19.0, not the epic's looser ">= 20": vite@8 declares
