@@ -1,0 +1,41 @@
+/* ManaCost — a row of pips and separators (story c2-8, UX-DR13, UX-DR5).
+
+   NO px LITERAL, and nothing to cite even if there were one: DESIGN.md's `components.*`
+   frontmatter declares no mana entry at all (see ManaPip.css's header for the full ruling).
+
+   NO MOTION (AC 19): no transition, no animation, nothing to register in the reduced-motion
+   block in tokens.css.
+
+   APPEARANCE IS NOT DEV-VERIFIED (AC 21). jsdom applies no stylesheet and nothing imports this
+   component yet; the row's look is checked by eye at c4-3 / c4-7 / c4-9. */
+
+/* ==== IT WRAPS, AND THAT IS A DECISION (AC 17) ==========================================
+   B.F.M. is FIFTEEN pips in one cost (`{B}` × 15, measured in the shipped database), and the
+   right-hand column of the two-column shell is 452px. `flex-wrap: wrap` is the choice, not the
+   default — `display: inline-flex` alone is `nowrap`, which would push a long cost out of its
+   column and (with the shell's own clip ban) out of the window.
+
+   THE ALTERNATIVE WAS TRUNCATION, and it is declined for the same reason `overflow: hidden` is
+   declined on the pip itself: hiding half a cost is the layout-shaped member of "silently
+   wrong". A cost that wraps onto a second line is legible; a cost that ends in an ellipsis is
+   a different cost.
+
+   `gap: var(--space-1)` REPLACES the mock's `gap: 3`. 3px is off the 4/8/12/16/24/32/48 scale
+   (UX-DR5) and the stylelint allowed-list refuses a bare length outright. */
+.mana-cost {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* The ` // ` split-card separator, and any other non-brace text. `--text-tertiary` because it
+   is punctuation between costs rather than part of either one.
+
+   `white-space: pre` so the separator arrives EXACTLY as the parser read it — the scanner's
+   totality claim ("every character of the input survives in some token") would be undone one
+   layer down by a renderer that let the browser collapse the spaces it preserved. */
+.mana-cost-text {
+  color: var(--text-tertiary);
+  white-space: pre;
+}

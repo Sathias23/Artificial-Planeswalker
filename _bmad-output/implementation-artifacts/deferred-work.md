@@ -1347,3 +1347,65 @@ the gate-output rule rather than left as "we meant to".
   first consuming story; that entry now also covers fractional and huge numbers — the consumer
   either formats before passing or adds the sibling formatted-delta prop Q6 anticipated.
   (Severity: Low — no current caller passes a non-integer delta.)
+
+## Deferred from: c2-8 — ManaPip / ManaCost and the Scryfall cost parser (2026-07-29)
+
+- **`ManaPip` and `ManaCost` APPEARANCE is not dev-verified, and cannot be in this story.**
+  Both ship with **no on-screen consumer** — nothing imports them, deliberately (AC 24:
+  `AppShell.tsx` is untouched) — and jsdom applies no stylesheet and has no layout engine. So
+  every visual claim in the story is read from CSS **source** or not at all: the pip being a
+  **circle** at all (`min-width: 1.25em` + `height: 1.25em` + `--radius-pill`), the **hard-stop
+  two-colour gradient** on the fifteen hybrid classes actually reading as a split rather than a
+  blur, the 13px numeric glyph sitting **legibly** in a 16.25px circle (a 0.8 glyph-to-pip ratio,
+  tighter than the mock's 0.62 — this is the value most likely to want a nudge), the **wide
+  case** (`{1000000}`, `{HW}`) growing into a pill instead of clipping, and the **row wrapping**
+  when fifteen B.F.M. pips meet the 452px right column. A `getComputedStyle` assertion here
+  would return the empty string and pass for the wrong reason; this is the **fifth** story to
+  split an AC this way (c2-2 AC 17, c2-5 AC 4, c2-6 AC 4/5, c2-7 AC 21) and faking it was
+  explicitly declined.
+
+  **Homed at the first consuming stories**, which are where a real screen can show it: **c4-3**
+  (card placeholders — the first render of a cost anywhere), **c4-7** (deck rows, the densest
+  use and the one where the wrap matters), **c4-9** (the colour-distribution legend, which is
+  also where the optional `label` prop gets its first caller). Carried on the **epic
+  manual-testing checklist** as well, so it is not only findable from this file. (Severity:
+  **Medium** — the glyph-to-pip ratio and the gradient's hard stop are the two values with no
+  static proof available, and both fail *legibly-but-wrongly* rather than loudly. Check the
+  `{1000000}` and `{W/U}` cases first.)
+
+- **The `--mana-*` data-ink rule's "unstacked curve bar" half is REVIEW'S, not the gate's.**
+  UX-DR7 bans a WUBRG token on "an unstacked curve bar", and whether a given bar is genuinely
+  stacked is a property of the data bound to it and the elements composed at runtime — both in
+  TSX, neither in CSS. The guard says so in its own comment (the same division of labour
+  `surfaces.ts`'s `stepsExactlyOne()` declares), and `ui/README.md` says so where c4-8's author
+  will be reading. **c4-8's reviewer must look**; the gate will not have looked for them.
+  (Severity: Low — one story owns it, and it is named in three places.)
+
+- **The ` // ` split-card separator is spoken as the literal characters.** `describeManaCost`
+  renders `{2}{B} // {B}` as _"2 generic, black // black"_, so a screen reader says "slash
+  slash". A friendlier reading ("or", "split with") was declined as an invention — nothing in
+  DESIGN.md, EXPERIENCE.md or the epic rules on it, and guessing would put unsourced words in a
+  user's ear. Homed at **c4-3/c4-7**, where a split card first renders and the phrasing can be
+  decided against something real. (Severity: Low — 338 of 32,318 costs, and the literal reading
+  is honest rather than wrong.)
+
+- **For sighted colour-vision-deficient users, a pip's colour IS its sole carrier** (added at
+  c2-8's code review). A `{W}` pip and a `{G}` pip differ in nothing but fill — no letter, no
+  pattern — so the `role="img"` accessible name serves AT users while a sighted CVD user cannot
+  read any cost. DESIGN.md's ruled shape ("a plain circle filled with the mana token") compels
+  this, and UX-DR7's no-lookalikes rule closes the obvious escape of drawing symbols; the entry
+  exists so the trade-off is a **decision on record, not an omission**. Homed at the **c4-3
+  eye-check** with the other visual claims: if the plain circles read as indistinguishable in
+  practice, the available levers are a glyph-slot letter (the mechanism Phyrexian already uses,
+  and plain text is not a lookalike) or a DESIGN.md amendment — Brad's call, made against a real
+  screen. (Severity: **Medium** — an accessibility gap for a real user class, but one the design
+  contract currently mandates.)
+
+- **`{Y}`, `{Z}`, `{S}`, `{L}`, `{D}` and `{HW}` are deliberately NOT in the parser's symbol
+  table.** Each is real in the shipped database and each renders correctly today — as a
+  colourless pip showing its own letter, which is exactly what the totality contract promises
+  and what AC 3 requires. Adding them as recognised families would buy a *colour* for snow and
+  a *name* for the un-set symbols, and neither has a DESIGN.md or epic ruling to source it
+  from. Revisit only if a consuming story shows one of them reading badly. (Severity: Low — the
+  current behaviour is correct, not a gap; this entry exists so a later author knows the
+  omission was a decision.)

@@ -31,6 +31,7 @@ import { fileURLToPath } from 'node:url'
 import { parse } from 'yaml'
 import { describe, expect, it } from 'vitest'
 
+import { MANA_COLOUR_ORDER } from '../src/components/ManaCost/parse.ts'
 import { SURFACE_RAMP } from '../src/styles/surfaces.ts'
 
 const uiRoot = fileURLToPath(new URL('..', import.meta.url))
@@ -561,6 +562,179 @@ const findUnknownTokenReferences = (files: string[], known: Set<string>): string
       ),
   )
 
+// ---------------------------------------------------------------------------------------
+// AC 14 (story c2-8) — UX-DR7's "the WUBRG tokens are DATA INK" becomes a gate
+// ---------------------------------------------------------------------------------------
+
+/**
+ * WHY THIS GUARD EXISTS AT ALL, which is the part worth reading. The `--mana-*` tokens have
+ * shipped since c2-4 with a rule attached to them — "curve bars, mana pips and colour-identity
+ * dots ONLY, never chrome" (tokens.css line 96, UX-DR7) — and MEASURED at c2-8's baseline
+ * commit, `git grep -- '--mana-'` over ui/ returned SEVEN hits: all seven were the declarations
+ * in tokens.css. For four stories the rule had no consumer and no gate, which makes it a
+ * sentence rather than a constraint. c2-8 writes the first consumer and the gate in the same
+ * commit, before c4-8's curve segments and c4-9's colour bar arrive to test whether it was ever
+ * real.
+ *
+ * ==== HALF ONE: WHICH FILES MAY REFERENCE ONE AT ALL ====================================
+ * An allowlist, each entry carrying the reason it is data ink. Today that is ManaPip.css alone.
+ * c4-8 and c4-9 join it IN THE OPEN, in their own stories, which is the same protocol
+ * `PRIMITIVES` in tests/shell.test.ts adopted after review made it git-derived — and the
+ * non-vacuity test below proves every entry is a file git actually tracks, so a renamed
+ * stylesheet fails loudly instead of silently allowing nothing.
+ *
+ * ==== HALF TWO: WHICH PROPERTIES MAY SPEND ONE ==========================================
+ * AN ALLOWLIST OF PROPERTIES, NOT A BAN LIST, and that choice is the whole strength of this
+ * guard. "Ban the family, never enumerate members" has been the review finding in five
+ * consecutive stories, and the strongest available form of it is not a wider ban — it is an
+ * inverted one. A ban keyed on `/^border/`, `/^outline/` and `/shadow$/` is still a list of
+ * families its author happened to think of; `filter`, `caret-color`, `text-decoration-color`,
+ * `accent-color`, `column-rule-color` and `-webkit-text-stroke-color` are all chrome and none
+ * of them is in it. An allowlist cannot be evaded by a property nobody thought of, because
+ * thinking of it is not what makes it fail.
+ *
+ * ==== THE HALF THAT IS NOT STATICALLY DECIDABLE, DECLARED HERE RATHER THAN DISCOVERED ====
+ * UX-DR7's rule ends "…or an UNSTACKED curve bar". Whether a given curve bar is genuinely
+ * stacked is not a property of its stylesheet: it is a property of the data bound to it and the
+ * elements composed at runtime, both of which live in TSX. **Review owns that half**, the same
+ * division of labour `surfaces.ts`'s `stepsExactlyOne()` and `findAccentDimOnOverlay` above
+ * both declare for their own cross-block cases. c4-8's reviewer must LOOK; this file will not
+ * have looked for them.
+ *
+ * A second, smaller limit in the same breath: this is block-local and value-keyed, so a
+ * `--mana-*` reached through an intermediate custom property would be invisible — except that
+ * declaring one outside tokens.css is itself a failure two guards up, which is what makes this
+ * one safe rather than lucky.
+ *
+ * A third residual, declared here because it is REVIEW'S too (review 2026-07-29): a chrome-
+ * SHAPED spend through an ALLOWED property in an ALLOWLISTED file — a hover tint, a button-like
+ * `background: var(--mana-r)` inside ManaPip.css or a file c4-8 adds — passes both halves,
+ * because "is this background a datum or chrome" is the same not-statically-decidable question
+ * as "is this bar stacked". The allowlist REASON is what review checks it against.
+ *
+ * ==== THE MARKUP HALF (review 2026-07-29) ===============================================
+ * Both halves above read STYLESHEETS, so a `--mana-*` spent from markup — an SVG
+ * `fill="var(--mana-r)"` presentation attribute, a value in index.html — would meet neither,
+ * and c4-8/c4-9 draw charts, where SVG fill is the natural spelling. So a third check scans
+ * every git-tracked non-CSS source file for a `var(--mana-` reference and allows NONE: markup
+ * has no allowlist to join, because the way in is always a class in an allowlisted stylesheet,
+ * exactly as ManaPip does it. (`referencedTokensIn` strips block comments first, so prose
+ * ABOUT the tokens — ManaPip.tsx's own header — does not read as a spend.)
+ */
+const isManaToken = (name: string) => /^--mana-/i.test(name)
+
+/** File -> why that file is data ink. Later stories ADD an entry with their own reason. */
+const MANA_DATA_INK: Map<string, string> = new Map([
+  [
+    'src/components/ManaPip/ManaPip.css',
+    'the pip IS the datum: a filled circle whose entire content is the colour of the symbol it ' +
+      'stands for (UX-DR13, story c2-8).',
+  ],
+])
+
+/** Fill properties, and only fill properties. Everything else is chrome by construction. */
+const MANA_INK_PROPERTY = /^(background(-color|-image)?|fill|stop-color)$/i
+
+const findManaTokenOutsideDataInk = (files: string[]): string[] =>
+  files
+    .filter((file) => file !== TOKEN_FILE && !MANA_DATA_INK.has(file))
+    .flatMap((file) => {
+      const spent = [...new Set(referencedTokensIn(sourceOf(file)))].filter(isManaToken)
+      if (spent.length === 0) return []
+      return [
+        `${file} references ${spent.join(', ')}. The WUBRG tokens are DATA INK — pips, colour ` +
+          `bars and STACKED curve segments only, never chrome (UX-DR7). If this file genuinely ` +
+          `draws a datum, add it to MANA_DATA_INK in tests/token-usage.test.ts with the reason, ` +
+          `the way c4-8 and c4-9 will; otherwise use a --surface-*, --border-* or --accent token.`,
+      ]
+    })
+
+// The markup half's file list: everything git tracks that is not a stylesheet and not a
+// fixture. Fixtures exist to be broken and are fed to the guard explicitly below.
+const shippedMarkupFiles = execFileSync(
+  'git',
+  ['ls-files', 'index.html', 'src/*.ts', 'src/*.tsx'],
+  {
+    cwd: uiRoot,
+    encoding: 'utf8',
+  },
+)
+  .split('\n')
+  .filter(Boolean)
+
+const findManaTokenInMarkup = (files: string[]): string[] =>
+  files.flatMap((file) => {
+    const spent = [...new Set(referencedTokensIn(sourceOf(file)))].filter(isManaToken)
+    if (spent.length === 0) return []
+    return [
+      `${file} references ${spent.join(', ')} outside a stylesheet. The data-ink guards read ` +
+        `CSS only, so a var(--mana-*) in markup — an inline style, an SVG fill attribute — ` +
+        `would be policed by NOTHING. There is no markup allowlist to join: give the element a ` +
+        `class in a MANA_DATA_INK stylesheet instead, the way ManaPip does (UX-DR7).`,
+    ]
+  })
+
+const findManaTokenInChromeProperty = (blocks: Block[]): string[] =>
+  blocks.flatMap((block) =>
+    declarationsIn(block.body)
+      .filter(
+        ([property, value]) =>
+          referencedTokensIn(value).some(isManaToken) && !MANA_INK_PROPERTY.test(property),
+      )
+      .map(
+        ([property]) =>
+          `${block.file} — \`${block.selector}\` spends a --mana-* token through \`${property}\`. ` +
+          `A WUBRG colour may only FILL a datum (background, background-color, ` +
+          `background-image, fill, stop-color); every other property is chrome, which is what ` +
+          `UX-DR7 bans. Use a --surface-*, --border-* or --accent token for chrome.`,
+      ),
+  )
+
+/**
+ * The other side of AC 12: every colour class ManaPip.tsx can NAME must exist in ManaPip.css,
+ * and must name a real `--mana-*` token.
+ *
+ * WHY IT IS A GUARD AND NOT A COMMENT. A class that does not exist is not an error anywhere: it
+ * renders an unstyled — which is to say transparent, which is to say INVISIBLE — circle, and
+ * `findUnknownTokenReferences` cannot help because there is no `var()` to be wrong. That is the
+ * same defect the mock's runtime-built `'var(--mana-' + color + ')'` produces, arriving through
+ * the door the fix left open. The 21 suffixes are DERIVED from `MANA_COLOUR_ORDER` — six
+ * singles plus all fifteen unordered pairs — so a seventh colour would demand its classes here
+ * without anyone remembering to ask.
+ */
+const pipColourSuffixes = (): string[] => {
+  const suffixes: string[] = []
+  for (let i = 0; i < MANA_COLOUR_ORDER.length; i++) {
+    suffixes.push(MANA_COLOUR_ORDER[i])
+    for (let j = i + 1; j < MANA_COLOUR_ORDER.length; j++) {
+      suffixes.push(`${MANA_COLOUR_ORDER[i]}${MANA_COLOUR_ORDER[j]}`)
+    }
+  }
+  return suffixes
+}
+
+const MANA_PIP_CSS = 'src/components/ManaPip/ManaPip.css'
+
+const findUndeclaredPipColourClasses = (blocks: Block[]): string[] =>
+  pipColourSuffixes().flatMap((suffix) => {
+    const selector = `.mana-pip-${suffix}`
+    const block = blocks.find((b) => b.file === MANA_PIP_CSS && b.selector === selector)
+    if (!block) {
+      return [
+        `${MANA_PIP_CSS} declares no \`${selector}\`, but ManaPip.tsx can produce that class ` +
+          `from MANA_COLOUR_ORDER. An undeclared class is not an error anywhere — it renders a ` +
+          `TRANSPARENT circle, which is invisible rather than wrong-coloured.`,
+      ]
+    }
+    if (!referencedTokensIn(block.body).some(isManaToken)) {
+      return [
+        `${MANA_PIP_CSS} — \`${selector}\` names no --mana-* token, so the pip it styles has no ` +
+          `fill of its own (AC 12).`,
+      ]
+    }
+    return []
+  })
+
 const tokenFileSource = sourceOf(TOKEN_FILE)
 const declaredTokens = new Set(
   blocksIn(TOKEN_FILE, tokenFileSource).flatMap((b) => declaredTokensIn(b.body)),
@@ -698,6 +872,74 @@ describe('token usage across the shipped stylesheets', () => {
 
   it('never applies a type role without its companions (AC 13, UX-DR5)', () => {
     expect(findRoleWithoutCompanions(shippedBlocks, companionRequirements)).toEqual([])
+  })
+
+  it('spends --mana-* tokens in the data-ink files only (AC 14, UX-DR7)', () => {
+    expect(findManaTokenOutsideDataInk(shippedStylesheets)).toEqual([])
+  })
+
+  it('spends --mana-* tokens through FILL properties only (AC 14, UX-DR7)', () => {
+    expect(findManaTokenInChromeProperty(shippedBlocks)).toEqual([])
+  })
+
+  it('spends no --mana-* token from markup at all (AC 14, the markup half)', () => {
+    // NON-VACUITY FIRST: the list must be reading the real tree — the shell, both components
+    // and index.html — or an empty scan passes for a clean one.
+    expect(shippedMarkupFiles).toContain('index.html')
+    expect(shippedMarkupFiles).toContain('src/components/ManaPip/ManaPip.tsx')
+    expect(shippedMarkupFiles.length).toBeGreaterThan(10)
+    expect(findManaTokenInMarkup(shippedMarkupFiles)).toEqual([])
+  })
+
+  it('reads the grow-not-clip geometry ManaPip.test.tsx defers to (AC 16)', () => {
+    // THE SOURCE READ THAT COMMENT PROMISES (review 2026-07-29 — the first draft promised it
+    // without it existing, c2-7's StatChip lesson verbatim). jsdom cannot see whether a wide
+    // glyph fits, so the claim is pinned where it lives: the pip grows from a MINIMUM, never a
+    // fixed width, and nothing in the file clips what grew.
+    const pipBlock = shippedBlocks.find(
+      (block) => block.file === MANA_PIP_CSS && block.selector === '.mana-pip',
+    )
+    expect(pipBlock, `${MANA_PIP_CSS} declares no .mana-pip block`).toBeTruthy()
+    const properties = declarationsIn(pipBlock!.body).map(([property]) => property.toLowerCase())
+    expect(properties).toContain('min-width')
+    expect(properties).not.toContain('width')
+    for (const block of shippedBlocks.filter((b) => b.file === MANA_PIP_CSS)) {
+      for (const [property] of declarationsIn(block.body)) {
+        expect(
+          property.toLowerCase().startsWith('overflow'),
+          `${MANA_PIP_CSS} — \`${block.selector}\` declares \`${property}\`, which hides AC 16's defect rather than fixing it`,
+        ).toBe(false)
+      }
+    }
+  })
+
+  it('is enforcing a rule that has a real consumer, not an empty one (non-vacuity, AC 14)', () => {
+    // THE ANCHOR THIS GUARD NEEDS MORE THAN MOST. Both halves are filters: with no consumer
+    // anywhere they pass by finding nothing, which is precisely the state the tokens were in
+    // for the four stories before this one — and it is indistinguishable from compliance.
+    //
+    // Every allowlist entry must be a file GIT TRACKS, so a rename fails loudly here rather
+    // than silently permitting a path that no longer exists (and, worse, no longer constrains
+    // the file that replaced it).
+    for (const [file, reason] of MANA_DATA_INK) {
+      expect(shippedStylesheets, `MANA_DATA_INK names ${file}, which git does not track`).toContain(
+        file,
+      )
+      expect(reason.length, `${file}'s allowlist entry carries no reason`).toBeGreaterThan(40)
+    }
+    // And the consumer genuinely spends the tokens, so "no findings" means "checked and clean".
+    // SIX of the family's SEVEN: `--mana-gold` (tokens.css declares it for multicolour
+    // identity) has no pip class and no consumer yet — deliberately, because MANA_COLOUR_ORDER
+    // is the parser's colour vocabulary and "gold" is not a cost colour. Its first consumer
+    // (c4-9's colour-identity bar is the likely one) joins MANA_DATA_INK in the open and spends
+    // it as a fill, and this count moves to 7 THERE, not silently (review 2026-07-29).
+    const spent = referencedTokensIn(sourceOf(MANA_PIP_CSS)).filter(isManaToken)
+    expect(new Set(spent).size).toBe(6)
+  })
+
+  it('declares every colour class ManaPip.tsx can name — all 21 of them (AC 12)', () => {
+    expect(pipColourSuffixes()).toHaveLength(21)
+    expect(findUndeclaredPipColourClasses(shippedBlocks)).toEqual([])
   })
 
   it('uses no CSS nesting, so the block reader above has no blind spot', () => {
@@ -1046,6 +1288,123 @@ describe('the guards themselves fire (the other half of the pair)', () => {
        .is-plain { font: var(--type-body); }`,
     )
     expect(findRoleWithoutCompanions(undone, companionRequirements)).toEqual([])
+  })
+
+  it('catches a --mana-* token in a file that is not data ink (AC 14, half one)', () => {
+    const file = 'tests/fixtures/css/token-usage-violation.css'
+    const findings = findManaTokenOutsideDataInk([file])
+
+    // ONE finding per FILE, not per reference — the fix is "this file should not touch these
+    // tokens", so seven separate messages about one stylesheet would be seven copies of one
+    // instruction. The names are still all listed inside it.
+    expect(findings).toHaveLength(1)
+    expect(findings[0]).toContain('--mana-r')
+    expect(findings[0]).toContain('--mana-b')
+    // The house rule: the message names its fix, INCLUDING the legitimate route — c4-8 and c4-9
+    // must be told how to join rather than left to conclude the tokens are unusable.
+    expect(findings[0]).toContain('MANA_DATA_INK')
+    expect(findings[0]).toContain('UX-DR7')
+  })
+
+  it('leaves the data-ink file and an unrelated file alone (half one, the silent half)', () => {
+    // Both directions, because a guard that fired on ManaPip.css would be repaired by deleting
+    // the allowlist, and one that never fired at all would be indistinguishable from this.
+    expect(findManaTokenOutsideDataInk([MANA_PIP_CSS])).toEqual([])
+    expect(findManaTokenOutsideDataInk(['tests/fixtures/css/clean.css'])).toEqual([])
+  })
+
+  it('catches a --mana-* spent from MARKUP — SVG fill and the inline-style fallback', () => {
+    // The markup half's firing proof, on the two spellings the stylesheet guards cannot see:
+    // an SVG `fill` presentation attribute (not an inline style, so not the ESLint ban either)
+    // and an inline style carrying the `var(--mana-r, transparent)` fallback this repo has
+    // been bitten by three times. ONE finding per file, both token names inside it.
+    const findings = findManaTokenInMarkup(['tests/fixtures/markup/mana-var-in-markup.html'])
+    expect(findings).toHaveLength(1)
+    expect(findings[0]).toContain('--mana-w')
+    expect(findings[0]).toContain('--mana-r')
+    // The house rule: the message names the legitimate route.
+    expect(findings[0]).toContain('MANA_DATA_INK')
+    // And the silent half is proven on a REAL markup file that talks ABOUT the tokens at
+    // length: ManaPip.tsx's header quotes the mock's runtime-built token name inside a block
+    // comment, and prose about the tokens must never read as a spend.
+    expect(sourceOf('src/components/ManaPip/ManaPip.tsx')).toContain('--mana-')
+    expect(findManaTokenInMarkup(['src/components/ManaPip/ManaPip.tsx'])).toEqual([])
+  })
+
+  it('catches a --mana-* spent through chrome, in five spellings it never lists', () => {
+    const file = 'tests/fixtures/css/token-usage-violation.css'
+    const findings = findManaTokenInChromeProperty(
+      blocksIn(file, readFileSync(fixture('css/token-usage-violation.css'), 'utf8')),
+    )
+    const joined = findings.join('\n')
+
+    // The COUNT is pinned PER FIXTURE FILE, never in aggregate (the house standard): a
+    // containment-only assertion would pass a guard regression that also flagged the two legal
+    // fill blocks sitting in the same file.
+    expect(findings).toHaveLength(5)
+    expect(joined).toContain('.mana-token-as-border')
+    expect(joined).toContain('.mana-token-as-border-longhand')
+    expect(joined).toContain('.mana-token-as-outline')
+    expect(joined).toContain('.mana-token-as-shadow')
+    expect(joined).toContain('.mana-token-as-text')
+
+    // THE MEMBERS A HAND-WRITTEN BAN WOULD HAVE MISSED, named so a later story cannot quietly
+    // convert this allowlist back into a ban list: `outline-color`, `box-shadow` and
+    // `border-block-end-color` are not spelled anywhere in the guard.
+    expect(joined).toContain('`outline-color`')
+    expect(joined).toContain('`box-shadow`')
+    expect(joined).toContain('`border-block-end-color`')
+
+    // And the two FILL blocks in the same file are silent — including the gradient, which is
+    // the shape the split hybrid pip actually ships.
+    expect(joined).not.toContain('.mana-token-as-fill')
+    expect(joined).not.toContain('.mana-token-as-gradient-fill')
+
+    for (const finding of findings) {
+      expect(finding).toContain('UX-DR7')
+      expect(finding).toContain('background')
+    }
+  })
+
+  it('catches a property the ban list would have to have guessed (the allowlist’s whole point)', () => {
+    // Written INLINE rather than in the fixture, deliberately: these four are properties nobody
+    // has proposed, which is the only interesting kind. If this guard is ever rewritten as a
+    // ban list, this is the test that fails.
+    const invented = blocksIn(
+      'inline',
+      `.a { caret-color: var(--mana-w); }
+       .b { text-decoration-color: var(--mana-u); }
+       .c { accent-color: var(--mana-b); }
+       .d { filter: drop-shadow(0 0 1px var(--mana-r)); }`,
+    )
+    expect(findManaTokenInChromeProperty(invented)).toHaveLength(4)
+  })
+
+  it('catches a missing pip colour class, and a class with no fill (AC 12)', () => {
+    const missing = blocksIn(MANA_PIP_CSS, '.mana-pip-w { background: var(--mana-w); }')
+    const findings = findUndeclaredPipColourClasses(missing)
+    // 21 suffixes, one declared: twenty are reported, and the message says why an undeclared
+    // class is worse than a wrong one.
+    expect(findings).toHaveLength(20)
+    expect(findings[0]).toContain('TRANSPARENT')
+
+    // A class that EXISTS but names no token — the shape a copy-paste that forgot the
+    // background produces, which lints clean and renders nothing (c2-7's StatChip-padding
+    // lesson, in this component's own currency).
+    const hollow = blocksIn(
+      MANA_PIP_CSS,
+      pipColourSuffixes()
+        .map((suffix) =>
+          suffix === 'wu'
+            ? '.mana-pip-wu { border-radius: var(--radius-pill); }'
+            : `.mana-pip-${suffix} { background: var(--mana-w); }`,
+        )
+        .join('\n'),
+    )
+    const hollowFindings = findUndeclaredPipColourClasses(hollow)
+    expect(hollowFindings).toHaveLength(1)
+    expect(hollowFindings[0]).toContain('.mana-pip-wu')
+    expect(hollowFindings[0]).toContain('no fill of its own')
   })
 
   it('catches a var() that names no token', () => {

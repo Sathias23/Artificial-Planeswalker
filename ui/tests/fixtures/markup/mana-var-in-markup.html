@@ -1,0 +1,8 @@
+<!-- FIXTURE — exists to be broken (story c2-8 review 2026-07-29). The two markup spellings the
+     stylesheet-only data-ink guards cannot see: an SVG fill presentation attribute, and an
+     inline style carrying the var() fallback evasion. Fed to findManaTokenInMarkup explicitly
+     in tests/token-usage.test.ts; excluded from lint and from every git-derived file list. -->
+<svg viewBox="0 0 10 10">
+  <circle cx="5" cy="5" r="5" fill="var(--mana-w)" />
+</svg>
+<div style="background: var(--mana-r, transparent)">chrome wearing a chart's colour</div>
