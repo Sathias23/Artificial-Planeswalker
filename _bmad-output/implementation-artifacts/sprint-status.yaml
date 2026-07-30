@@ -59,7 +59,7 @@
 #   epic-c1..10 → _bmad-output/planning-artifacts/epics-companion-app.md          (c-prefixed, numbering UNCHANGED)
 
 generated: 2026-06-20
-last_updated: '2026-07-30 (Epic C2 DONE + RETRO DONE — 10/10 stories, PRs #18-#27 all merged into feat/companion-c2 at f378c56; 6 action items, a 14-item manual-testing checklist, no plan change for C3. Per-story narrative lives in the story records and the retro documents, not on this line.)'
+last_updated: '2026-07-30 (EPIC C2 SHIPPED TO MASTER — integration PR #28 merged at a52d6f8 after the retrospective; 10/10 stories, PRs #18-#27. Next: fresh umbrella off master, then c3-1. Per-story narrative lives in the story records and the retro documents, not on this line.)'
 project: Artificial-Planeswalker
 project_key: NOKEY
 tracking_system: file-system
@@ -257,7 +257,7 @@ development_status:
   # ALSO load-bearing, discovered while contexting c2-1 (2026-07-26): an `eslint ^9` pin. ESLint's
   # `latest` is 10.8.0 and eslint-plugin-jsx-a11y@6.10.2 (latest, no newer) peers at `^9` — measured
   # `npm ci` ERESOLVE, not a warning. Not in the Spine's stack table; c2-1 adds it.
-  epic-c2: done  # 10/10 2026-07-30; PRs #18-#27 ALL MERGED into feat/companion-c2 (tip f378c56) — remaining: the 14-item manual-testing checklist, then the integration PR to master
+  epic-c2: done  # 10/10 2026-07-30; PRs #18-#27 into feat/companion-c2, retro, then INTEGRATION PR #28 MERGED at a52d6f8 — Epic C2 is on master. Merge != release: no tag/CHANGELOG until c8-4
   c2-1-frontend-scaffold-with-the-full-quality-gate-from-the-first-commit: done  # review round 2 (2026-07-26): 3 rulings + 11 patches applied, suite 50→55, five gates green incl. new CI build step
   c2-2-the-backend-serves-the-built-spa-as-a-committed-artifact: done  # code review 2026-07-26: 2 decisions ruled + 14 patches applied, suites 1,742/59, nine gates green
   c2-3-typescript-types-generated-from-the-backends-own-openapi-drift-checked-in-ci: done  # reviewed 2026-07-27: 14 patches applied (3 medium guard-vacuity fixes), 2 deferred, proofs re-run; suites 1,753 Python / 78 frontend
