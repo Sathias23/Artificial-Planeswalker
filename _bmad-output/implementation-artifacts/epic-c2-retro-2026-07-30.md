@@ -212,6 +212,21 @@ PR.** Same reasoning that paid off in C1, where running it early caught the `COM
 rename while it was still free. Findings are fixes on the C2 umbrella; nothing lands on master
 carrying a known visual defect.
 
+> **R3 AMENDED the same day (Brad, 2026-07-30): the integration PR proceeds with the checklist
+> PARTIALLY run.** 9 of 14 items closed, 5 carried. The amendment is deliberate and the reasoning
+> is recorded rather than left as an omission:
+>
+> - **The item R3 existed for is closed.** Its rationale was "catch it while a fix is still free",
+>   and the only defect of that kind — `inline-flex` suppressing the release-condition underline —
+>   is verified fixed on screen.
+> - **Merge ≠ release.** No tag, no CHANGELOG until c8-4, so nothing carried here reaches a user.
+>   The entire cost of deferring is that a finding becomes a fix on a post-merge branch instead of
+>   on the umbrella — and C3 cuts a fresh umbrella off master regardless, so that difference is
+>   near-zero.
+> - **The carried items are homed, not dropped** — see *Carried checklist residual* below. The one
+>   with a real structural consequence (item 9: if the footer needs scrolling, that is a c2-6 shell
+>   defect) costs one glance and is named first.
+
 **R4 — `last_updated` is a date plus one clause from now on.** Executed in this retro:
 6,438 → 295 characters, `yaml.safe_load` re-verified.
 
@@ -244,7 +259,46 @@ after the fact. Noted because the stale process would have served a bundle preda
 | — | **Footer hairline at content width** | ✅ Spans the content width, aligned with the header and both columns inside the gutter frame — the reading **ratified** at c2-10's code review, now observed rather than argued |
 | — | **Header** | ✅ As designed. The kicker and the `h1` both read *Artificial Planeswalker*; that duplication is **c2-6 Q3's provisional state** — c4-2 replaces the `h1` string with the deck name. Recorded so it is not "fixed" |
 | 9 | **Footer visible without scrolling** | ⏳ **Open — needs confirming from the live window rather than a capture.** c2-6's Q2 promises a `100dvh` shell whose `<main>` is the single scroll container, so the footer must be in the viewport with no scroll. If it required scrolling, that is a **shell** defect (c2-6), not a footer one |
-| 2, 4, 6, 7, 8, 11, 12, 13, 14 | — | ⏳ Not yet run |
+| 2, 11, 12, 13 | **Badge tone wash / the five unseen states / ManaPip+ManaCost / the CVD read** | ✅ **PASS on Brad's verdict ("it looks really good"), via a throwaway eye-check harness.** These four could not be checked at all before: c2-7 and c2-8 shipped with no on-screen consumer by their own AC 24, and five of six states are never true today. A temporary `App.tsx` composing every tone, every primitive, the interesting mana costs, and all six state panels was run through **`npm run dev`** — never a build, so `static/` and the `plugin/` mirror were never touched — and reverted afterwards. `tsc -b` clean; nothing committed. **The specific sub-claims Brad's overall verdict covers but did not individually report are listed below rather than claimed here** |
+| 4, 6, 7, 8, 14 | — | 🔵 **Not run — CARRIED by the R3 amendment.** See *Carried checklist residual* |
+
+### Carried checklist residual (R3 amendment, 2026-07-30)
+
+Five items plus one half-item, each with a named home so none of them floats. Ordered by
+consequence, not by effort. The environment they want is already prepared and verified: a fresh
+companion (PID 12976, started 19:19:46) serving `f378c56`'s bundle — `index-DE70muY2.js` /
+`index-DmxBiI94.css`, both 200, with the content-hashed WOFF2 beside them.
+
+| # | Check | Home | Why it can wait |
+|---|---|---|---|
+| 9 | **Footer in the viewport with no scrolling** | **c2-6** if it fails — a shell defect, not a footer one | One glance, no devtools. Named first because it is the only carried item whose failure implicates a shipped mechanism (Q2's `100dvh` single scroll container) rather than an appearance |
+| 5 | **Space Grotesk with the network throttled offline**, and no flash of fallback text | **c8-4 / c8-5** (release documentation and plugin parity both make claims about what ships) | The mechanical half is fully closed — real WOFF2 by signature and length, git-binary, content-hashed, served `font/woff2`, relative `@font-face`, no external origin in the bundle. Only the eyes-on-glyphs half remains |
+| 4 | **Tab to both footer links — the focus ring** | **c4-11**, which already inherits the focus contract | First render of `--focus-ring*` anywhere; c4-11 needs to look regardless, so checking twice is the only thing avoided |
+| 7–8 | **~1100 → ~2560px sweep**: no horizontal scrollbar, right column drops below 1100px | **Epic 8 release-readiness pass**, which already owns "does this look right" work | Every value is pinned as CSS source by `tests/shell.test.ts`; what is unverified is the browser honouring it, which no story depends on |
+| 14 | **Devtools box inspection of the 24px hit area** | **Epic 8**, beside the 10px legibility question Brad's Q1 ruling already homes there | Both axes and the `display` mode are asserted in source; the open question is only the measured box and whether it grows the 13px line |
+
+**Standing note:** the four unreported sub-claims inside the item-2/12/13 pass (the wash behind the
+text, the unmeasured wash contrast numbers, the CVD read, the 0.8 glyph ratio) keep their existing
+homes at **c4-2 / c4-3 / c4-10** and are unaffected by this amendment.
+
+**Sub-claims inside the item-2/12/13 pass that were NOT individually reported**, recorded so the
+pass is not read as more than it was. Each is cheap to close in the same window:
+
+- **Item 2's actual failure mode** — the `::before` wash rendering *behind* the text rather than over
+  it. "Looks good" almost certainly covers it (the failure is invisible text, which is unmissable),
+  but it is the one Medium in the epic with no static proof available, so it deserves an explicit yes.
+- **The contrast numbers** the c2-7 review flagged as never measured: `--accent-bright` over a 12%
+  `--accent` wash, and positive/negative/caution text over their own washes, on any surface. A look
+  is not a measurement. Still homed at c4-2 / c4-10.
+- **Item 13, the CVD read** — whether a plain `{W}` and a plain `{G}` circle are distinguishable in
+  practice, colour being the sole carrier. A pass here means the design contract stands as written;
+  the levers if not are a glyph-slot letter or a `DESIGN.md` amendment.
+- **The 0.8 glyph-to-pip ratio** (against the mock's 0.62) — flagged in `deferred-work.md` as the
+  single value most likely to want a nudge by eye.
+
+**Also confirmed incidentally by the harness:** two forgotten processes from 2026-07-29 16:28 were
+still alive — the companion on 8765 (PID 42564) and a Vite dev server on 5173 (PID 6804), started
+three seconds apart. The dev server fell back to 5174 without complaint.
 
 **Still owed, in rough order of value:** Tab to both footer links (item 4 — the first focus-ring render
 in the codebase, and c4-11 inherits whatever it shows); the offline-throttled font check (item 5's

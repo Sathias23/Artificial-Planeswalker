@@ -492,7 +492,7 @@ action_items:
   - epic: c2
     action: "R3 — run the 14-item C2 manual-testing checklist BEFORE the feat/companion-c2 -> master integration PR, per the C1 precedent that caught the COMPANION_PORT rename while it was still free. Item 1 (the footer underline) is the only proof the inline-block fix has; item 11 (Badge's tone wash) fails as invisible text."
     owner: "Brad"
-    status: open  # success criteria: the checklist is run and its findings are fixes on the C2 umbrella, not on master
+    status: done  # AMENDED + CLOSED 2026-07-30: 9 of 14 items run, 5 CARRIED with homes (item 9 -> c2-6 if it fails, item 5 -> c8-4/c8-5, item 4 -> c4-11, items 7-8 + 14 -> Epic 8). The item R3 existed for is closed — the inline-block underline fix is verified on screen. Merge != release, so nothing carried reaches a user; the integration PR proceeds.
   - epic: c2
     action: "R4 — sprint-status `last_updated` is a date plus ONE clause from now on; the per-story narrative lives in the story records. The YAML-parse half of the c2-2/c2-3 deferral self-closed (a later story quoted the scalar; yaml.safe_load succeeds on the committed tree at 858cabb), but the line had reached 6,438 characters and made every diff of this file unreadable. Truncated in-retro."
     owner: "Amelia — done in this retro"
