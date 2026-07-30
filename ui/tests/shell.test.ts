@@ -758,6 +758,154 @@ describe('the scroll, and the pinned footer (AC 11, AC 12, AC 13)', () => {
   })
 })
 
+/**
+ * The footer attribution's CSS SOURCE (story c2-10, AC 5, AC 6, AC 7, AC 10, AC 11, AC 12).
+ *
+ * WHY HERE AND NOT IN `Footer.test.tsx`. jsdom applies no stylesheet and has no layout engine,
+ * so a `getComputedStyle` assertion over there reports the defaults and passes over a stylesheet
+ * that was never linked — which is c2-7's StatChip defect exactly (a padding the comment claimed
+ * and the file never shipped, invisible to every gate). This file already reads component
+ * stylesheets as text, which is where those claims are actually decidable. What remains
+ * undecidable in EITHER place — whether 10px all-caps legal text is readable, whether the 24px
+ * box lays out as 24px, what the ring looks like — is on the epic manual-testing checklist and
+ * is claimed nowhere.
+ */
+describe('the footer attribution stylesheet (story c2-10)', () => {
+  const FOOTER_CSS = 'src/components/Footer/Footer.css'
+  const footerBlocks = blocksIn(FOOTER_CSS, sourceOf(FOOTER_CSS))
+  const footerBlock = (selector: string) => footerBlocks.find((b) => b.selector === selector)
+
+  it('is reading the real stylesheet (non-vacuity)', () => {
+    // Every assertion below indexes into this parse. A renamed file or a changed selector would
+    // otherwise make each one pass by finding nothing — and git tracks the file, so an untracked
+    // stylesheet cannot satisfy it either.
+    expect(shippedStylesheets).toContain(FOOTER_CSS)
+    expect(footerBlocks.length).toBeGreaterThan(3)
+    expect(footerBlock('.footer-attribution')).toBeDefined()
+    expect(footerBlock('.footer-attribution-link')).toBeDefined()
+  })
+
+  it('uses the passing text tier, not the muted one (AC 10, UX-DR32)', () => {
+    // 9.3:1 on --surface-base, versus --text-tertiary's 5.9:1. Both pass WCAG AA; the choice is
+    // the AC's own reasoning — this text is legally load-bearing and gets a passing tier rather
+    // than a muted one. Asserted as an EXACT value so a later "tidy-up" to tertiary is red.
+    expect(valueOf(footerBlock('.footer-attribution')!, 'color')).toBe('var(--text-secondary)')
+  })
+
+  it('resolves the colour rather than shadowing it (AC 10)', () => {
+    // Q2's ruling, asserted so it cannot silently regress into the race it was ruled out of.
+    // CONTAINMENT, not selector equality: an exact-string filter is proven only against the two
+    // spellings it lists, and `.app-shell .app-shell-footer { color: ... }` would have re-run
+    // the race unseen (review find, 2026-07-30). Any selector that so much as NAMES either
+    // class is in scope; the link's own blocks are exempt because their rest colour is pinned
+    // to `inherit` below — they take the tier, they do not decide it. DECLARED LIMIT: a
+    // selector reaching the footer through an unrelated name (`footer p`) is review's to
+    // catch, the way this suite's other structural guards declare theirs.
+    const declaringColour = shippedBlocks.filter(
+      (b) =>
+        (b.selector.includes('app-shell-footer') || b.selector.includes('footer-attribution')) &&
+        !b.selector.includes('footer-attribution-link') &&
+        declarationsIn(b.body).some(([property]) => property === 'color'),
+    )
+    expect(declaringColour.map((b) => `${b.file} ${b.selector}`)).toEqual([
+      `${FOOTER_CSS} .footer-attribution`,
+    ])
+    // The exemption's justification, asserted rather than assumed: the link inherits the tier.
+    expect(valueOf(footerBlock('.footer-attribution-link')!, 'color')).toBe('inherit')
+    // And the shell's rule keeps its LAYOUT job — the pinning mechanism is not what moved.
+    expect(valueOf(blockFor('.app-shell-footer')!, 'flex-shrink')).toBe('0')
+  })
+
+  it('takes its surface and rule from the DESIGN.md frontmatter (AC 12)', () => {
+    const block = footerBlock('.footer-attribution')!
+    expect(valueOf(block, 'background')).toBe('var(--surface-base)')
+    expect(valueOf(block, 'border-top')).toBe('1px solid var(--border-hairline)')
+  })
+
+  it('applies the micro role with BOTH companions in the same block (AC 11)', () => {
+    // The block, not the file: `findRoleWithoutCompanions` in token-usage.test.ts reads blocks,
+    // and splitting the companions across a base rule and a modifier fails there even though
+    // the cascade would produce the right pixels. Asserted here too, because this is the story
+    // that took Q1's ruling and the uppercase is the visible half of it.
+    const block = footerBlock('.footer-attribution')!
+    expect(valueOf(block, 'font')).toBe('var(--type-micro)')
+    expect(valueOf(block, 'letter-spacing')).toBe('var(--tracking-micro)')
+    expect(valueOf(block, 'text-transform')).toBe('uppercase')
+  })
+
+  it('underlines the links at REST, not on hover (AC 5, UX-DR47)', () => {
+    // The hover-only affordance UX-DR47 forbids: an underline that appears on hover does not
+    // exist for a keyboard or a touch user. So the rest rule must carry it...
+    expect(valueOf(footerBlock('.footer-attribution-link')!, 'text-decoration')).toBe('underline')
+    // ...and no hover rule may be the thing that introduces it. The FAMILY, not the shorthand:
+    // `text-decoration-line: underline` on :hover is the same evasion spelled longhand, and a
+    // guard that checks one exact property name is proven only against spellings it lists
+    // (review find, 2026-07-30).
+    for (const block of footerBlocks.filter((b) => b.selector.includes(':hover'))) {
+      expect(
+        declarationsIn(block.body)
+          .map(([property]) => property)
+          .filter((property) => property.startsWith('text-decoration')),
+        `${block.selector} introduces a decoration on hover — AC 5 requires it at rest`,
+      ).toEqual([])
+    }
+  })
+
+  it('brightens on hover and on keyboard focus, and rings the focus (AC 6, UX-DR46)', () => {
+    expect(valueOf(footerBlock('.footer-attribution-link:hover')!, 'color')).toBe(
+      'var(--text-primary)',
+    )
+    // `:focus-visible`, and built from the three focus tokens that shipped in c2-1 with nothing
+    // to point at. These are the first focusable elements in the codebase. The colour brightens
+    // here too: hover-only state feedback is the shape UX-DR47 bans, applied to the brightening
+    // rather than the underline (review find, 2026-07-30).
+    const focus = footerBlock('.footer-attribution-link:focus-visible')!
+    expect(valueOf(focus, 'color')).toBe('var(--text-primary)')
+    expect(valueOf(focus, 'outline')).toBe('var(--focus-ring-width) solid var(--focus-ring)')
+    expect(valueOf(focus, 'outline-offset')).toBe('var(--focus-ring-offset)')
+    // No removal anywhere in the file, so there is no replacement to owe. COMMENTS STRIPPED
+    // FIRST, and that was measured rather than reasoned: the prose above the rule in Footer.css
+    // says the words "outline: none" to explain why it does not appear, and the un-stripped
+    // check went red against a stylesheet that is entirely correct. A guard satisfied — or
+    // failed — by something other than the thing it is checking is this epic's standing finding.
+    expect(stripComments(sourceOf(FOOTER_CSS))).not.toMatch(/outline\s*:\s*none/)
+  })
+
+  it('gives each link a >= 24px hit box, both axes, that can actually apply (AC 7)', () => {
+    const link = footerBlock('.footer-attribution-link')!
+    // BOTH AXES — DESIGN.md:418 says "a >= 24x24px hit area", and delivering one axis while
+    // citing the two-axis rule was a review find (2026-07-30).
+    for (const axis of ['min-height', 'min-width']) {
+      const minimum = valueOf(link, axis)
+      expect(minimum, `${axis} is missing from the hit box`).toBeDefined()
+      expect(Number.parseFloat(minimum!)).toBeGreaterThanOrEqual(24)
+    }
+    // THE HALF THAT WOULD BE TRUE IN SOURCE AND FALSE ON SCREEN: the minimums on a plain inline
+    // box do nothing at all. The display mode is what makes the declarations mean anything, so
+    // it is asserted beside them rather than assumed. `inline-block`, NOT `inline-flex`: text
+    // decorations do not propagate into flex items, so a flex anchor renders the release-
+    // condition underline as nothing (review find, 2026-07-30) — pinned as an exact value so a
+    // tidy-up back to flex is red here rather than invisible until the manual eye check.
+    expect(valueOf(link, 'display')).toBe('inline-block')
+  })
+
+  it('spends no accent and no semantic colour (DESIGN.md:288)', () => {
+    // The accent marks LIVE AGENT ATTENTION. A footer link is neither live nor agent attention.
+    // Keyed on the token PREFIX with an exact-match escape hatch for nothing — c2-9's review
+    // found an open `--accent` prefix admitting `--accent-dim`, so this checks the family.
+    const source = stripComments(sourceOf(FOOTER_CSS))
+    for (const banned of ['--accent', '--negative', '--caution', '--positive', '--mana-']) {
+      expect(source, `${FOOTER_CSS} spends ${banned}`).not.toContain(banned)
+    }
+  })
+
+  it('ships no motion, so it owes no reduced-motion fallback (Decide-once #3)', () => {
+    const source = stripComments(sourceOf(FOOTER_CSS))
+    expect(source).not.toContain('transition')
+    expect(source).not.toContain('animation')
+  })
+})
+
 describe('the overlay slot (AC 7, AC 8, AC 10)', () => {
   it('is inset by the gutter token, not a literal (AC 7)', () => {
     // `--space-gutter`, not `--space-6`. The two are both 32px TODAY, but they are different
@@ -1032,6 +1180,18 @@ describe('the component primitives are presentation-only, and that is asserted',
     // suite gives about `filled`: an exempted module is where the next evasion lives.
     { file: FILLED_TS, imports: ['react'] },
     { file: 'src/components/Badge/tones.ts', imports: [] },
+    // Story c2-10's two. The footer takes NO PROPS and imports no react — the shortest import
+    // list any component in this file has, which is the strongest available form of "this is
+    // static" (Q4). Its text runs render as bare strings rather than Fragments, which is what
+    // lets the react import stay absent.
+    {
+      file: 'src/components/Footer/Footer.tsx',
+      imports: ['./Footer.css', './copy'],
+    },
+    // The attribution words and the two hrefs. `imports: []` again — and here it carries more
+    // weight than tidiness: this module is a condition of public release (NFR-08), so a fetch
+    // helper or a config import arriving in it would be the first thing to check.
+    { file: 'src/components/Footer/copy.ts', imports: [] },
     // The mana-cost scanner. It is the first module in this list with a real ALGORITHM in it
     // rather than a datum, and it is held here for the same reason `tones.ts` is: a pure module
     // beside a presentation-only component is exactly where state would arrive first, because
@@ -1043,13 +1203,14 @@ describe('the component primitives are presentation-only, and that is asserted',
   const withoutComments = (source: string) =>
     source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
 
-  it('is reading all seven primitives and all five helpers (non-vacuity)', () => {
+  it('is reading all eight primitives and all six helpers (non-vacuity)', () => {
     // Every assertion below loops over PRIMITIVES. A list that had quietly lost a member — a
     // renamed directory, a component moved — would let that member pass by never being read,
     // which is the vacuity failure this file's own doctrine calls the worse outcome. Proving
     // each file EXISTS and is non-trivial is what stops "nothing is wrong" reading the same
     // as "nothing was read".
-    expect(PRIMITIVES).toHaveLength(12)
+    // 12 until story c2-10's `Footer.tsx` and `Footer/copy.ts`.
+    expect(PRIMITIVES).toHaveLength(14)
     for (const { file } of PRIMITIVES) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }

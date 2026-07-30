@@ -376,8 +376,11 @@ in `public/` would land unhashed at the bundle root and be revalidated on every 
   a `core.autocrlf=true` checkout on Windows cannot normalise it. That last one protects a
   machine CI never runs on.
 - **The licence ships with the font.** `src/assets/fonts/LICENSE-OFL-1.1.txt`, as OFL-1.1
-  requires. UI attribution is **c2-10**'s footer; the fact it needs is the copyright line in
-  `fonts.css`.
+  requires, and the copyright line is in `fonts.css`. **c2-10's footer does not name the
+  typeface**, and that is correct rather than an omission: OFL-1.1 requires the licence to
+  travel with the font, not an on-screen credit, and the footer's sentence is `DESIGN.md`'s
+  verbatim — adding a font credit to it would fail the byte-for-byte gate. If a UI credit is
+  ever wanted it is a `DESIGN.md` amendment first.
 - **`index.html` preloads the font**, with `crossorigin` — font fetches are always CORS-mode,
   and a preload without it downloads the file twice. The `href` names the _source_ path and
   Vite rewrites it to the same hashed URL the `@font-face` gets.
@@ -809,6 +812,93 @@ literals inside state-panel copy and nothing else — a string the user is about
 terminal, which is data. It is a system stack: no `@font-face`, no download, so the offline
 guarantee is untouched. UX-DR2's "hierarchy never comes from a second family" stands.
 
+### The footer attribution
+
+Set by story **c2-10**, the last of Epic C2 and the only one whose deliverable is a **condition
+of public release** rather than a design choice — `DESIGN.md:375` says so in bold, and NFR-08
+and UX-DR32 say it twice more. Every other C2 story could ship slightly wrong and be corrected
+in Epic 4; this one shipping wrong is a licensing defect.
+
+**Copy is gated against the artefact that _wrote_ it — which here is `DESIGN.md`, not
+`EXPERIENCE.md`.** c2-10 inherits c2-9's verbatim-gate _mechanism_, not its source file.
+`EXPERIENCE.md`'s Voice-and-Tone table has **no footer row**: its footer entry (`:101`) is
+behavioural ("Static … links persistently underlined … and open in a new tab") and never writes
+the words. The words exist in exactly one place — `DESIGN.md`'s `Footer attribution` bullet,
+inside one pair of straight double quotes — so `tests/attribution.test.ts` reads that. Two
+artefacts, two gate files, deliberately. **A later story asks which artefact wrote its sentence,
+not which gate file already exists.**
+
+The parse selects the bullet **by structure** (the bold label at the head of a top-level list
+item), never by line number, and it **throws** on all four ways the artefact can change shape
+underneath it: no such bullet, no quoted run, more than one quoted run, and a duplicated label.
+c2-9's review is the reason — a parser that silently tolerates a duplicate is a parser that
+stopped checking.
+
+**The sentence is a list of parts, not three strings.** Two runs are links; the rest is text.
+Five separately-authored fragments could drift apart while each stayed individually plausible,
+so the parts carry link-or-text tags and `sentenceOf()` re-joins them — asserted byte-for-byte
+against the artefact. Nothing is authored that `DESIGN.md` did not write, **link labels
+included**. The hrefs are the canonical ones the repository's `NOTICE` already publishes, and
+that is asserted too, so the app and the licence docs cannot drift.
+
+**The shell owns the footer's layout; the component owns its ink** (Q2, Brad 2026-07-30).
+`.app-shell-footer` used to set `font: var(--type-micro)` and `color: var(--text-tertiary)`,
+while the attribution needs `--text-secondary` (9.3:1 — legally load-bearing text gets a passing
+tier, not a muted one). Two single-class selectors setting `color` is a source-order race
+decided by import order, and this repo has already been bitten once by a cascade it did not
+model. So the appearance moved out **wholesale** rather than being overridden: the shell rule
+keeps `flex-shrink: 0` — the pinning mechanism, a property of the slot — and `Footer.css`
+declares every value `DESIGN.md` assigns to `components.footer-attribution` exactly once.
+`tests/shell.test.ts` asserts that only one block in the whole tree declares that colour, so the
+race cannot reappear.
+
+**"Every surface" is structural, not enumerated** (Q3). There is one `AppShell`, one `footer`
+slot and no router, so **every surface renders through `App.tsx`** — and `App.test.tsx` asserts
+the attribution inside the `contentinfo` landmark by role and by text, plus that the shell's
+placeholder is not what is showing. An enumerated surface list would be a list its author
+thought of, which is this epic's standing finding. It holds through Epic 6 without amendment:
+c6-5's agent view is an **overlay inside the shell**, not a route that replaces it, so the
+footer survives it by construction. **A future surface renders through `AppShell`.**
+
+**The footer declares no landmark of its own.** The shell's `<footer>` is the one `contentinfo`
+(UX-DR44), and `AppShell.test.tsx` asserts exactly one of each landmark. `Footer.test.tsx`
+asserts the absence standalone, so it is a property of the component rather than of today's
+arrangement.
+
+**10px all-caps is the spec, taken deliberately** (Q1). `DESIGN.md` assigns footer attribution
+to `{typography.micro}` and declares that role uppercase, and the companion guard **derives**
+the requirement from the artefact's own `textTransform:` key — so the legal notice renders as
+10px capitals. `text-transform` does not touch the DOM text, so the verbatim gate, the
+copy-rules content half and the screen reader are all unaffected; only the render is. Whether it
+is comfortably readable is on the epic manual-testing checklist, and if it reads badly the
+correction is a `DESIGN.md` amendment in Epic 8's release-readiness pass, made with the rendered
+page in hand.
+
+### Adding an external host to the bundle
+
+`tests/fonts.test.ts` R4 asserts that the set of external hosts in the built bundle equals a
+reviewed baseline, and it is **deliberately brittle**: a new host is the moment a human decides
+whether the offline guarantee (NFR-06) still holds. Story **c2-10** was the first to need one —
+two, in fact — so the protocol is written down rather than inferred from the diff:
+
+1. **Add the exact host string to `REVIEWED_HOSTS`, with the reason it is not a fetch.** A host
+   with no stated reason is a host nobody checked. "It is inert" is a claim about behaviour.
+2. **The exact string, never a family.** `scryfall.com` and `www.scryfall.com` are different
+   hosts to a set check, as are `company.wizards.com` and `magic.wizards.com`. This is the one
+   list in the repo where c2-9's "a guard proven only against spellings it lists" bites hardest,
+   so the evasion probe for a new entry must use a spelling the list does **not** contain —
+   including the protocol-relative form (`//host/path`), which R4 also matches.
+3. **The URL lives in TypeScript only.** R1 bans every external host from any `.css` or `.html`
+   in the bundle outright, so an href belongs in a module — never in `index.html`, never in a
+   `content:` or `url()`. R3 separately bans any fetchable asset extension, so a link to a
+   `.pdf` copy of a policy would be red even from TypeScript.
+
+**Adding a host does not weaken the offline guarantee, and the distinction is the point.** The
+two hosts c2-10 added are `href`s on `<a target="_blank">` elements: a human clicks them, the
+app never requests them, and the page renders identically with the network blocked. R4 is what
+keeps that claim honest instead of asserted — a dependency that starts phoning home goes red and
+a human looks.
+
 ## Adding a source directory
 
 Every linted `.ts`/`.tsx` file must belong to a tsconfig — ESLint's `projectService` errors
@@ -826,25 +916,33 @@ generated types with no fetch helper, so neither of those designs is pre-empted.
 The application shell landed in **c2-6**, so the token layer now has a real consumer and
 `src/App.css` is gone with the placeholder it styled. What the shell deliberately does _not_
 build is every region it holds open, each of which renders a placeholder line naming its owner
-until that story lands: the footer's attribution text is **c2-10**, card detail is **c4-5**,
-the deck list is **c4-7**, the format check is **c4-10**, the agent-view nav pills are
-**c6-8**, and the agent view that drops into the overlay slot is **c6-5**. The `h1` carries the
-product name provisionally; **c4-2** replaces its content with the deck name and nothing about
-the element moves.
+until that story lands: card detail is **c4-5**, the deck list is **c4-7**, the format check is
+**c4-10**, the agent-view nav pills are **c6-8**, and the agent view that drops into the overlay
+slot is **c6-5**. The `h1` carries the product name provisionally; **c4-2** replaces its content
+with the deck name and nothing about the element moves.
 
-**The left column is the exception, as of c2-9.** `App.tsx` passes the no-active-deck
-`StatePanel` into the shell's `left` slot, so the running app shows a real panel rather than
-the placeholder naming c4-4 and c4-8. That placeholder is **displaced, not deleted** — it still
-fires whenever `left` is empty and `AppShell.test.tsx` still asserts it. It is honest rather
-than a demo: with no fetch layer (**c3-1**) and no store (**c4-1**), there genuinely is no
-active deck. **c4-2 / c4-4** replace the static choice with the real one and **c3-9** owns the
-transition (FR-22).
+**Two regions are already filled, and both by displacement rather than deletion.** The pattern
+is c2-9's decide-once ruling, applied twice now: the shell's placeholder still fires whenever
+its slot is empty, `AppShell.test.tsx` still asserts it against the component's own props, and
+what changed is only which of the two the running app shows. Each displacement is recorded in
+`App.tsx` beside the prop that causes it.
 
-Seven presentation primitives have landed — `Panel`, `Badge`, `StatChip` and `GroupHeader` in
-**c2-7**, `ManaPip` and `ManaCost` in **c2-8**, `StatePanel` in **c2-9** — and all seven are
-documented under _Components_ above. **`StatePanel` is the first with an on-screen consumer**;
-the other six still have none, so `npm run build` leaves them out of the module graph entirely
-and their **appearance is not dev-verified** (jsdom applies no stylesheet). Each is checked by
+- **The left column, as of c2-9.** `App.tsx` passes the no-active-deck `StatePanel` into the
+  `left` slot, displacing the placeholder that names c4-4 and c4-8. It is honest rather than a
+  demo: with no fetch layer (**c3-1**) and no store (**c4-1**), there genuinely is no active
+  deck. **c4-2 / c4-4** replace the static choice with the real one and **c3-9** owns the
+  transition (FR-22).
+- **The footer, as of c2-10.** `App.tsx` passes `<Footer />` into the `footer` slot. Unlike
+  every other region this one is **not waiting for data** — the attribution is a condition of
+  public release (NFR-08), correct from day one, and no later story replaces it. See _The
+  footer attribution_ above for the three rulings it carries.
+
+Eight presentation primitives have landed — `Panel`, `Badge`, `StatChip` and `GroupHeader` in
+**c2-7**, `ManaPip` and `ManaCost` in **c2-8**, `StatePanel` in **c2-9**, `Footer` in **c2-10** —
+and all eight are documented under _Components_ above. **`StatePanel` and `Footer` are the two
+with an on-screen consumer**; the other six still have none, so `npm run build` leaves them out
+of the module graph entirely and their **appearance is not dev-verified** (jsdom applies no
+stylesheet). Each is checked by
 eye at its first consuming story: `Panel` at **c4-5** (card detail, the first real
 `level="overlay"` panel) and **c4-7** (the deck list) — **re-homed from c2-9**, which turned out
 not to render a `Panel` at all (Q6) — the group header and deck-row context at **c4-7**, the

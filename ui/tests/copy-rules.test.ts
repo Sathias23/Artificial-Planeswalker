@@ -113,6 +113,13 @@ const COPY_MODULES: Map<string, string> = new Map([
       'with a scheduled death.',
   ],
   [
+    'src/components/Footer/copy.ts',
+    'the Scryfall and Fan Content attribution — the one string in the app that is a condition ' +
+      'of public release (NFR-08) rather than a design choice. Asserted byte-for-byte against ' +
+      'DESIGN.md by tests/attribution.test.ts, which is a DIFFERENT artefact from the state ' +
+      'panel gate above: copy is gated against whatever wrote it (story c2-10).',
+  ],
+  [
     'src/components/ManaCost/parse.ts',
     'the word table `describeManaCost` speaks a mana cost from — "2 generic, white or blue" ' +
       '(story c2-8, UX-DR18). Prose assembled from single words, which is why it is listed ' +
@@ -162,8 +169,39 @@ interface FoundString {
   source: 'jsx-text' | 'attribute' | 'prose' | 'any-string'
 }
 
-/** Attributes whose value is a CLASS NAME, which is chrome by construction — see below. */
-const CLASS_ATTRIBUTE = new Set(['className', 'class'])
+/**
+ * Attributes whose value is a SPACE-SEPARATED MACHINE TOKEN LIST, which is chrome by
+ * construction — see the walker below for why this is keyed on the attribute rather than on the
+ * string.
+ *
+ * `rel` joined in story c2-10, MEASURED not anticipated: the footer's
+ * `rel="noopener noreferrer"` is two space-separated Latin words and matched `PROSE` exactly,
+ * failing the file half against a component that contains no copy at all. It is the same
+ * category as `className` — HTML defines both as an unordered set of unique space-separated
+ * tokens drawn from a fixed vocabulary, so neither can ever be a sentence.
+ *
+ * THIS LIST IS AN EXCLUSION LIST, WHICH IS THE ONE PLACE THIS EPIC'S "BAN THE FAMILY, NEVER
+ * ENUMERATE MEMBERS" RULE INVERTS — and that is worth stating rather than leaving as an
+ * inconsistency. A missing entry here produces a FALSE POSITIVE: a later story adding
+ * `ping="/a /b"` or `sandbox="allow-scripts allow-forms"` goes red, reads this comment, and adds
+ * its attribute in the open. A too-broad entry would produce a false NEGATIVE, which is the
+ * failure that hides. So the list stays narrow and grows visibly, one measured member at a time.
+ */
+const TOKEN_LIST_ATTRIBUTE = new Set(['className', 'class', 'rel'])
+
+/**
+ * True when the attribute sits on an intrinsic (lowercase) JSX element — `<a rel>`, never
+ * `<Hint rel>`. The walker's token-list skip is scoped by this, because HTML's grammar only
+ * constrains HTML's own elements; on a component, any prop can carry any string.
+ */
+const isOnIntrinsicElement = (attribute: ts.JsxAttribute): boolean => {
+  const owner = attribute.parent.parent
+  return (
+    (ts.isJsxOpeningElement(owner) || ts.isJsxSelfClosingElement(owner)) &&
+    ts.isIdentifier(owner.tagName) &&
+    /^[a-z]/.test(owner.tagName.text)
+  )
+}
 
 /** Every literal string node in a file, whatever its position. The CONTENT half reads this. */
 const allStringsIn = (file: string, source: string): FoundString[] =>
@@ -197,11 +235,21 @@ function walk(
     // string instead ("is it all kebab-case?") would wave through a lowercase sentence like
     // 'ask your agent'. Class names have their own gate — stylelint's `selector-class-pattern`
     // — so nothing is left unpoliced by excluding them here. The CONTENT half still reads them.
+    //
+    // `rel` joined the set in c2-10 for the identical reason and with the identical measurement
+    // (`rel="noopener noreferrer"`); see TOKEN_LIST_ATTRIBUTE for why this one list grows by
+    // enumeration while every other rule in this epic bans by family.
+    //
+    // INTRINSIC ELEMENTS ONLY (review find, 2026-07-30): the token-list grammar is a property
+    // of HTML's vocabulary, not of the attribute NAME. A custom component is free to treat a
+    // prop called `rel` (or `className`) as arbitrary copy — `<Hint rel="ask your agent…" />` —
+    // so the skip stops at real HTML, where a lowercase tag is what "real HTML" means to JSX.
     if (
       !includeEverything &&
       ts.isJsxAttribute(node) &&
       ts.isIdentifier(node.name) &&
-      CLASS_ATTRIBUTE.has(node.name.text)
+      TOKEN_LIST_ATTRIBUTE.has(node.name.text) &&
+      isOnIntrinsicElement(node)
     ) {
       return
     }
@@ -417,6 +465,49 @@ describe('the guard itself fires, and stays silent where it should (the other ha
         }
       `),
     ).toEqual([])
+  })
+
+  it('says nothing about a `rel` token list, and still reads the link text (story c2-10)', () => {
+    // THE SILENT HALF, with the exact shape that failed: `rel="noopener noreferrer"` is two
+    // space-separated Latin words and matched PROSE, reddening a component containing no copy.
+    // `target` needs no entry — `_blank` is a single token — which is why only `rel` was added.
+    expect(
+      probeFile(`
+        export const A = () => (
+          <a className="footer-attribution-link" href="https://example.test/x"
+             target="_blank" rel="noopener noreferrer" />
+        )
+      `),
+    ).toEqual([])
+
+    // THE FIRING HALF, and the one that matters: excluding the ATTRIBUTE must not excuse the
+    // ELEMENT. Real copy sitting inside the very same anchor is still caught, so the exclusion
+    // is scoped to the attribute subtree rather than to links.
+    const withCopy = probeFile(`
+      export const A = () => (
+        <a rel="noopener noreferrer" href="https://example.test/x">Read the policy here</a>
+      )
+    `)
+    expect(withCopy).toHaveLength(1)
+    expect(withCopy[0]).toContain('Read the policy here')
+
+    // THE ELEMENT SCOPE (review find, 2026-07-30): the exclusion is a property of HTML's
+    // vocabulary, not of the attribute name. A custom component treating `rel` as arbitrary
+    // copy gets no skip — the grammar that makes the value chrome does not apply there.
+    const onComponent = probeFile(
+      'export const A = () => <Hint rel="ask your agent to add lands" />',
+    )
+    expect(onComponent).toHaveLength(1)
+    expect(onComponent[0]).toContain('ask your agent to add lands')
+  })
+
+  it('keeps the CONTENT half reading token-list attributes (the exclusion is one-sided)', () => {
+    // `includeEverything` ignores TOKEN_LIST_ATTRIBUTE entirely, so an emoji smuggled into a
+    // `rel` or a `className` is still banned. Stated as an assertion because "the content half
+    // still reads them" is a claim the comment makes twice and nothing proved.
+    const found = probeBan('export const A = () => <a rel="noopener 🎉" />')
+    expect(found).toHaveLength(1)
+    expect(found[0]).toContain('an emoji or pictograph')
   })
 
   it('says nothing about prose INSIDE a declared copy module', () => {

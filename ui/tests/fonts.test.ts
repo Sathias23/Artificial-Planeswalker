@@ -331,10 +331,36 @@ describe('exactly one typeface (AC 11, AC 11b, UX-DR2)', () => {
  * is absolute there.
  */
 
-/** Hosts the reviewed bundle contains, and why each is not a fetch. */
+/**
+ * Hosts the reviewed bundle contains, and why each is not a fetch.
+ *
+ * THE PROTOCOL FOR ADDING ONE (story c2-10, the first to need it). R4 is deliberately brittle:
+ * a host arriving here is the point at which a human decides whether the offline guarantee
+ * (NFR-06) still holds. So an entry needs three things, and a later story adding one should
+ * copy the shape rather than the hosts:
+ *
+ *   1. THE EXACT HOST STRING, not a family. `scryfall.com` and `www.scryfall.com` are different
+ *      hosts to a set check, as are `company.wizards.com` and `magic.wizards.com` — c2-9's
+ *      review theme ("a guard proven only against spellings it lists") applies to this list
+ *      more directly than to anything else in the repo. The evasion probe for a new entry must
+ *      use a spelling this list does NOT contain, including the protocol-relative form.
+ *   2. THE REASON IT IS NOT A FETCH, in the comment. "Inert" is a claim about behaviour, and a
+ *      host with no stated reason is a host nobody actually checked.
+ *   3. THE URL LIVES IN TYPESCRIPT ONLY. R1 bans every external host from any `.css` or `.html`
+ *      in the bundle outright, so an href belongs in a module — never in `index.html`, never in
+ *      a `content:` or `url()` in a stylesheet. R3 additionally bans any fetchable asset
+ *      extension, so a link to a `.pdf` copy of a policy would be red even from TypeScript.
+ */
 const REVIEWED_HOSTS = new Set([
   'www.w3.org', // XML/SVG/MathML namespace identifiers — arguments to createElementNS
   'react.dev', // the base of React's error-message links, concatenated into a string
+  // The two attribution hrefs (story c2-10, NFR-08, UX-DR32). NOT fetches: they are `href`s on
+  // two `<a target="_blank">` elements in the footer — a human clicks them, the app never
+  // requests them, and the page renders identically with the network blocked. Both are the
+  // canonical URLs the repository's own `NOTICE` publishes (`NOTICE:11`, `NOTICE:25`), which
+  // `tests/attribution.test.ts` asserts so the app and the licence docs cannot drift.
+  'scryfall.com', // https://scryfall.com/docs/api — the Scryfall data attribution
+  'company.wizards.com', // https://company.wizards.com/en/legal/fancontentpolicy — the Fan Content Policy
 ])
 
 const FONT_CDN =
@@ -488,6 +514,21 @@ describe('the shipped bundle reaches no other origin (AC 4, AC 5, NFR-06)', () =
     // `crossorigin="use-credentials"` is once again a different request — the exact
     // double-download this attribute exists to prevent, satisfying a bare presence check.
     expect(html.text).toMatch(/crossorigin(?!\s*=\s*["']?use-credentials)/)
+  })
+
+  it('contains every reviewed host, so the baseline is an equality and a stale entry is loud', () => {
+    // R4 alone is one-directional: it flags a host that ARRIVED unreviewed, but a host that
+    // LEFT would keep its pre-approval forever — and a stale entry is the one spelling a future
+    // fetch could arrive under without a human ever re-reading the reason beside it (review
+    // find, 2026-07-30). This is the other direction, and together they make the set the
+    // EQUALITY the protocol above and ui/README.md describe.
+    const present = new Set(text.flatMap((f) => externalReferences(f.text)).map((r) => r.host))
+    for (const host of REVIEWED_HOSTS) {
+      expect(
+        present.has(host),
+        `${host} is in REVIEWED_HOSTS but nowhere in the bundle — remove the stale entry`,
+      ).toBe(true)
+    }
   })
 
   it('names no external host in any .css or .html, and no font CDN anywhere', () => {
