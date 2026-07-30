@@ -713,11 +713,21 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   is scoped to before-first-engine by design; a per-request re-stat would restore it at all times
   but is machinery with no failing user story behind it. Natural revisit point is c10-3 (latency
   work touches the same per-request path). (Source: Edge Case Hunter; Severity: Low.)
-- **A durably corrupt `cards.db` is classified transient forever** — "file is not a database"
-  answers `database_unavailable`, the quiet-retry "Database updating" state, on every request with
-  no path to the fresh-install/repair panel. Decide-once #4 rules it transient because it might be
-  mid-import, but nothing distinguishes 200 ms of mid-import from a month of garbage. A UX ruling
-  for c2-9 to make with the state designs in hand. (Source: Blind Hunter; Severity: Low.)
+- **A durably corrupt `cards.db` is classified transient forever** — ~~a UX ruling for c2-9 to
+  make with the state designs in hand~~. **RULED AND HALF-SHIPPED, c2-9 (Q5, Brad 2026-07-29.)**
+  The backend stays as it is: it genuinely cannot distinguish 200 ms of mid-import from a month
+  of garbage, which is why decide-once #4 ruled the condition transient, so the distinguisher is
+  **elapsed time on the client**. A sixth state was added — *Database updating, stalled* — with
+  its copy written into `EXPERIENCE.md`'s table ("Reads haven't resumed for a while. Check your
+  agent session — if no import is running, ask it to rebuild the database (`initialize_database`).")
+  and its panel shipped in `src/components/StatePanel/`. It is declared `RETRIES_QUIETLY: false`
+  in `states.ts` — the escalation of a quiet retry that has not worked.
+  **What remains, homed at c3-9** (which owns the polling): the "for a while" threshold and the
+  switch from `database-updating` to `database-updating-stalled`. Nothing selects the state at
+  runtime until then. The reason the ruling was not "leave it transient": for a durably corrupt
+  file, "Reads will resume automatically — nothing to do here" is simply **false**, and c2-9 is
+  the one story in the feature whose whole subject is whether the words are true.
+  (Source: Blind Hunter; Severity: Low → **ruled**, implementation residue at c3-9.)
 - **URI-form SQLite `CARDS_DATABASE_URL` is misclassified as a file path** — `database_file` handles
   `:memory:` and empty-database, but `sqlite+aiosqlite:///file::memory:?cache=shared` (or
   `?uri=true` forms) falls through to `Path(parsed.database)`, which never exists → permanent 503
@@ -1313,7 +1323,13 @@ the gate-output rule rather than left as "we meant to".
   AC 4, c2-6 AC 4/5) and faking it was explicitly declined.
 
   **Homed at each primitive's first consuming story**, which is where a real screen can show it:
-  `Panel` at **c2-9** (the shared state panel), `GroupHeader` at **c4-7** (the deck list),
+  `Panel` **RE-HOMED by c2-9 to c4-5** (card detail, the first real `level="overlay"` panel) and
+  **c4-7** (the deck list) — this entry assumed the state panel would *be* a `Panel`, and Q6
+  ruled that it is not: `DESIGN.md` declares a separate `components.state-panel.*` block, and the
+  two differ where it matters (a Panel's title is `--type-label`, 11px uppercase tracked; a state
+  panel's headline is `--type-heading`, 17px sentence case). Rendering one through the other
+  would have meant threading a second title role through `Panel`, which is how a primitive stops
+  being one. So `Panel` still has no on-screen consumer. `GroupHeader` at **c4-7** (the deck list),
   `Badge` at **c4-10** (the format check) and **c4-2** (the header badges), `StatChip` at the
   first surface that carries one. Carried on the **epic manual-testing checklist** as well, so
   it is not only findable from this file. (Severity: **Medium** — the wash's stacking behaviour
@@ -1409,3 +1425,70 @@ the gate-output rule rather than left as "we meant to".
   from. Revisit only if a consuming story shows one of them reading badly. (Severity: Low — the
   current behaviour is correct, not a gap; this entry exists so a later author knows the
   omission was a decision.)
+
+## Story c2-9 — the shared state panel and every system-state message
+
+- **The state panel's appearance is dev-verified for the first time in this epic, and only
+  partly.** `App.tsx` renders the no-active-deck panel into the shell's `left` slot (Q1), so
+  unlike c2-7 and c2-8 there IS a screen. What that screen proves is what a browser draws; what
+  it does not prove is everything jsdom is blind to *in the test suite*, which is the same list
+  as ever: **centring, the 480px measure, the hairline border, the large radius, the chip's
+  recessed `--surface-well` material and its mono family, and the accent colour and weight of
+  the next-action line.** jsdom applies no stylesheet and has no layout engine, so there is no
+  `getComputedStyle` assertion in `StatePanel.test.tsx` — one would report the defaults back and
+  pass over a stylesheet that was never linked. This is the **sixth** story to split an AC this
+  way (c2-2 AC 17, c2-5 AC 4, c2-6 AC 4/5, c2-7 AC 21, c2-8 AC 21) and faking it was again
+  declined. What IS statically proven: the token families spent (an allowlist guard), the
+  absence of `--negative`/`--caution`, the absence of `transition`/`animation`, and the
+  DESIGN.md citation beside the one px literal. **On the epic manual-testing checklist.**
+  (Severity: Low — every claim has a static half; the visual half is a first-look, not a risk.)
+
+- **The five states nobody can see yet.** Only `no-active-deck` is on screen, because it is the
+  only one that is TRUE with no fetch layer. `database-not-initialized`, `database-updating`,
+  `database-updating-stalled`, `disconnected` and `internal-error` render correctly in the test
+  suite and have never been looked at in a browser — in particular the **command chip**, which
+  only appears in three of them, and the **two-paragraph** guidance/action stack, which
+  `no-active-deck` does not exercise (it has no guidance). Homed at **c3-9**, which wires the
+  states and is the first story able to show them. Cheapest interim check: temporarily change
+  the `state` prop in `App.tsx` and look. (Severity: Low.)
+
+- **`states.ts` has no runtime consumer.** `PANEL_FOR_REASON`, `CLIENT_ONLY_STATES` and
+  `RETRIES_QUIETLY` are total maps written for **c3-9** to read; nothing imports them today, so
+  they are tree-shaken out of the bundle. This is deliberate — the alternative was leaving the
+  wire-token→panel mapping and the retry contract as prose in a story record, which is where
+  `internal_error` was left in c1-4 and what cost this story an AC to repair. Their correctness
+  is proven by `npm run typecheck` (a seventh `ErrorReason` fails to compile), not by `npm test`.
+  (Severity: Low — a declaration with a named owner and a compile-time gate.)
+
+- **`--font-mono` has exactly one consumer and one job.** The command chip. If a later story
+  reaches for it anywhere else, that is a UX-DR2 conversation (hierarchy never comes from a
+  second family), not a free reuse — the whole argument for admitting the token was that a
+  command literal is *data* the user retypes. No guard enforces the scope today; it is stated in
+  `tokens.css`, in `DESIGN.md`'s Typography section and here. (Severity: Low.)
+
+- **The copy guard cannot decide the half that matters most.** Whether a sentence is
+  second-person, blameless and gives a concrete next action is not statically decidable, and it
+  is the substance of UX-DR33. Declared in `tests/copy-rules.test.ts`'s own header alongside two
+  narrower residues: copy assembled from single words at runtime (`describeManaCost`), and a
+  string reaching `aria-label` through an expression rather than a literal. **Review owns all
+  three** — the same division of labour `surfaces.ts` and `findAccentDimOnOverlay` declare for
+  theirs. A reviewer of c2-10, c4-3, c4-12 and c6-6 must READ the copy. (Severity: Low, but
+  permanent — this does not get closed, it gets honoured.)
+
+## Deferred from: code review of c2-9 (2026-07-29)
+
+- **A runtime-unknown `state` key crashes the StatePanel.** `STATE_COPY[state]` at
+  `StatePanel.tsx:92` has no fallback branch: a value arriving through untyped wiring (a stale
+  enum, a JS caller, a mis-parsed wire token) yields `undefined` and `copy.headline` throws — an
+  unhandled render exception, which is the error screen the story exists to ban. TypeScript
+  guards it today and no runtime caller exists (`App.tsx` passes a literal). **c3-9 owns runtime
+  validation of wire values before they reach this prop** — the same place the polling and the
+  stalled-state threshold live. (Severity: Low today; Medium once wiring exists.)
+
+- **The un-quoted tails of EXPERIENCE.md's copy rows are contract nobody gates.** The verbatim
+  gate captures `Headline:` and `Body:` only; the no-active-deck row's deck-list clause and both
+  retry clauses ("Deterministic: this state never retries itself", the stalled row's threshold
+  note) live outside the captures and can be edited or deleted with every gate green while their
+  TypeScript mirrors (`RETRIES_QUIETLY`, the `decks` prop) drift undetected. Extending the gate
+  is new scope; candidate home is **c3-9**, beside the wiring those clauses constrain.
+  (Severity: Low.)

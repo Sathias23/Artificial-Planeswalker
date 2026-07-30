@@ -191,36 +191,38 @@ second copy of the tokens in this repo to drift.
 **`src/styles/tokens.css` is the only file in `ui/` where a literal is legal.** Everywhere
 else these bans apply, and each one fails the build:
 
-| Banned                                                                                                                                                                                           | Rule                                                      |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
-| a hex colour, a named colour, `rgb()`/`hsl()`/`oklch()`/`drop-shadow()`…                                                                                                                         | `color-no-hex`, `color-named`, `function-disallowed-list` |
-| a `box-shadow` or `text-shadow` not built from `--shadow-*`/`--glow`                                                                                                                             | `declaration-property-value-allowed-list`                 |
-| a `border-radius` not from `--radius-*` — **including every longhand**                                                                                                                           | `declaration-property-value-allowed-list`                 |
-| `padding`/`margin`/`gap` not from `--space-*` — **including every longhand**                                                                                                                     | `declaration-property-value-allowed-list`                 |
-| a literal duration in `transition`/`animation` or their duration/delay longhands                                                                                                                 | allowed-list + disallowed-list                            |
-| anything that pulses, loops or alternates                                                                                                                                                        | disallowed-list + a guard                                 |
-| `style={{…}}` on a JSX element                                                                                                                                                                   | `no-restricted-syntax` (ESLint)                           |
-| native CSS nesting in a shipped stylesheet                                                                                                                                                       | a guard                                                   |
-| a hard-coded `font`/`font-*`/`line-height`/`letter-spacing` value — and the sibling `word-spacing`/`text-indent`                                                                                 | `declaration-property-value-allowed-list`                 |
-| any `font-variant-numeric` value except `var(--type-numeric-features)`                                                                                                                           | `declaration-property-value-allowed-list`                 |
-| `font: var(--type-numeric)` without its `font-variant-numeric` companion                                                                                                                         | a guard                                                   |
-| any type role without its companions — `letter-spacing: var(--tracking-*)` where a `--tracking-*` sibling exists, and `text-transform: uppercase` where DESIGN.md declares the role uppercase    | a guard                                                   |
-| an `@font-face` anywhere but `src/styles/fonts.css`                                                                                                                                              | a guard                                                   |
-| any external URL in the built bundle's `.css`/`.html`; font-CDN hosts, fetchable assets and unreviewed hosts anywhere                                                                            | a guard                                                   |
-| a class name that is not flat kebab-case — BEM's `__` and `--` included                                                                                                                          | `selector-class-pattern`                                  |
-| a bare `1fr` grid track, or any `minmax()` floored at `auto`/`min-content`/`max-content`                                                                                                         | a guard                                                   |
-| clipping a root (`html`/`body`/`:root`/`#root`/`.app-shell`) or `.app-shell-columns`, the one scroller — by `overflow: hidden`/`clip`, by `contain: paint`/`strict`/`content`, or by `clip-path` | a guard                                                   |
-| a second full-window `position: fixed` layer outside the shell's stylesheet                                                                                                                      | a guard                                                   |
-| a viewport height on the document root — `vh`/`dvh`/`svh`/`lvh`… **and `%`**, since `html`'s containing block _is_ the viewport                                                                  | a guard                                                   |
-| a `--mana-*` token in any stylesheet outside the **data-ink allowlist**                                                                                                                          | a guard                                                   |
-| a `--mana-*` token spent through anything but a **fill** property — `background`, `background-color`, `background-image`, `fill`, `stop-color`                                                   | a guard                                                   |
-| a `var(--mana-*)` anywhere outside a stylesheet — an SVG `fill=` attribute, a value in `index.html`; markup has no allowlist to join                                                             | a guard                                                   |
+| Banned                                                                                                                                                                                                                                   | Rule                                                      |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| a hex colour, a named colour, `rgb()`/`hsl()`/`oklch()`/`drop-shadow()`…                                                                                                                                                                 | `color-no-hex`, `color-named`, `function-disallowed-list` |
+| a `box-shadow` or `text-shadow` not built from `--shadow-*`/`--glow`                                                                                                                                                                     | `declaration-property-value-allowed-list`                 |
+| a `border-radius` not from `--radius-*` — **including every longhand**                                                                                                                                                                   | `declaration-property-value-allowed-list`                 |
+| `padding`/`margin`/`gap` not from `--space-*` — **including every longhand**                                                                                                                                                             | `declaration-property-value-allowed-list`                 |
+| a literal duration in `transition`/`animation` or their duration/delay longhands                                                                                                                                                         | allowed-list + disallowed-list                            |
+| anything that pulses, loops or alternates                                                                                                                                                                                                | disallowed-list + a guard                                 |
+| `style={{…}}` on a JSX element                                                                                                                                                                                                           | `no-restricted-syntax` (ESLint)                           |
+| native CSS nesting in a shipped stylesheet                                                                                                                                                                                               | a guard                                                   |
+| a hard-coded `font`/`font-*`/`line-height`/`letter-spacing` value — and the sibling `word-spacing`/`text-indent`                                                                                                                         | `declaration-property-value-allowed-list`                 |
+| any `font-variant-numeric` value except `var(--type-numeric-features)`                                                                                                                                                                   | `declaration-property-value-allowed-list`                 |
+| `font: var(--type-numeric)` without its `font-variant-numeric` companion                                                                                                                                                                 | a guard                                                   |
+| any type role without its companions — `letter-spacing: var(--tracking-*)` where a `--tracking-*` sibling exists, and `text-transform: uppercase` where DESIGN.md declares the role uppercase                                            | a guard                                                   |
+| an `@font-face` anywhere but `src/styles/fonts.css`                                                                                                                                                                                      | a guard                                                   |
+| any external URL in the built bundle's `.css`/`.html`; font-CDN hosts, fetchable assets and unreviewed hosts anywhere                                                                                                                    | a guard                                                   |
+| a class name that is not flat kebab-case — BEM's `__` and `--` included                                                                                                                                                                  | `selector-class-pattern`                                  |
+| a bare `1fr` grid track, or any `minmax()` floored at `auto`/`min-content`/`max-content`                                                                                                                                                 | a guard                                                   |
+| clipping a root (`html`/`body`/`:root`/`#root`/`.app-shell`) or `.app-shell-columns`, the one scroller — by `overflow: hidden`/`clip`, by `contain: paint`/`strict`/`content`, or by `clip-path`                                         | a guard                                                   |
+| a second full-window `position: fixed` layer outside the shell's stylesheet                                                                                                                                                              | a guard                                                   |
+| a viewport height on the document root — `vh`/`dvh`/`svh`/`lvh`… **and `%`**, since `html`'s containing block _is_ the viewport                                                                                                          | a guard                                                   |
+| a `--mana-*` token in any stylesheet outside the **data-ink allowlist**                                                                                                                                                                  | a guard                                                   |
+| a `--mana-*` token spent through anything but a **fill** property — `background`, `background-color`, `background-image`, `fill`, `stop-color`                                                                                           | a guard                                                   |
+| a `var(--mana-*)` anywhere outside a stylesheet — an SVG `fill=` attribute, a value in `index.html`; markup has no allowlist to join                                                                                                     | a guard                                                   |
+| an **alarm token** (`--negative`, `--caution`, `--positive`, `--mana-*`, or one nobody has invented) in a stylesheet declared **calm** — the state panel. An ALLOWLIST of calm families, so a new status token fails closed              | a guard                                                   |
+| user-facing **prose** outside a declared copy module, and `!`, an emoji or `"something went wrong"` in **any** string in `src/` — both halves read the TypeScript AST, so comments and the `!` operator are out of scope by construction | a guard                                                   |
 
 **And one named NON-ban, with its reason: geometry literals.** A track width, a breakpoint, a
 stacking level, a card-tile minimum — these are the one value family that stays a literal, and
 saying so explicitly is what stops the next author reading `452px` as drift. There is no token
 family to point at, and adding one is not available: `tests/token-usage.test.ts` pins
-`declaredTokens.size` at **64** and `tests/tokens.test.ts` asserts every token name
+`declaredTokens.size` at **65** and `tests/tokens.test.ts` asserts every token name
 byte-for-byte against `DESIGN.md`'s frontmatter, which contains no layout-width token. An
 unenforceable ban is worse than a documented exception, so the rule is:
 
@@ -228,8 +230,11 @@ unenforceable ban is worse than a documented exception, so the rule is:
 > and the reason it is not a token. Where it defines a composition, a test pins it.
 
 `src/components/AppShell/AppShell.css` is the worked example (452px column, 1100px breakpoint,
-both pinned in `tests/shell.test.ts`), and c2-9's 480px state-panel max-width and c4-4's 176px
-grid minimum inherit a stated rule rather than a habit — **and a
+both pinned in `tests/shell.test.ts`). **c2-9's 480px state-panel max-width shipped, and this
+paragraph predicted it correctly** — `DESIGN.md`'s frontmatter carries
+`components.state-panel.max-width: 480px`, so the citation beside it in `StatePanel.css` is a
+true one rather than a borrowed one. c4-4's 176px grid minimum inherits the same stated rule
+rather than a habit — **and a
 gate, not just prose** (review round, 2026-07-28): `tests/shell.test.ts` runs the DESIGN.md
 citation check over every `px` literal in **every** tracked stylesheet under `src/components/`,
 so a later story's uncited literal fails the moment its CSS is staged. Everything
@@ -482,6 +487,12 @@ with an **exhaustive import list**, hooks keyed by API family (including React 1
 - An **untitled** `Panel` is a plain unnamed `<section>` and **invents no name**. A section
   with no name has no role at all, which is right — a generic invented name fills the landmark
   list with identical entries to navigate past.
+- A **title-less `live` `Panel` does not exist** — `live` requires a `title` (c2-9, Q6). With
+  no title to recolour and no dot to hang beside it, only the elevation change is left, and
+  `graphite` and `ink` declare both elevation tokens as `none`: under two of the five shipped
+  themes a live panel would render identically to a resting one. That is an absent signal, not
+  a degraded one. A caller wanting a live marker on an unnamed container is being told to name
+  it.
 - A **`GroupHeader`** is also an `<h2>`, with its count **beside** the label rather than inside
   it. UX-DR44 read literally makes a panel title and its "CREATURES" divider siblings; that is
   the spec's choice, taken as written, and c4-7 may home a correction if a real screen reader
@@ -717,6 +728,87 @@ the cross-block case that guard declares it cannot see. So the rule is not "chec
 it is **do not write the token here**. The composition reference uses it for the accent badge's
 border; that is the drift this rule exists to stop.
 
+### The state panel, and where user-facing copy lives
+
+Set by story **c2-9**. Every later story with a sentence in it — c2-10's attribution, c4-3's
+"Unknown card", c4-12's empty-deck line, c6-6's empty push — joins this mechanism rather than
+inventing one.
+
+**`EXPERIENCE.md` is the copy, and a test reads the artefact itself.** `tests/copy.test.ts`
+parses the Voice-and-Tone table out of `EXPERIENCE.md` and asserts every headline and body
+**byte-for-byte** against `src/components/StatePanel/copy.ts` — the same pattern
+`tests/tokens.test.ts` uses for `DESIGN.md`, and for the same reason: two spellings of one
+value is one value that will drift. "Matches verbatim, reviewed by eye" is the claim this repo
+already decided not to accept for tokens.
+
+**`EXPERIENCE.md` writes two fields; `DESIGN.md` renders three slots.** The Body is split at
+sentence boundaries into `guidance` and `action` parts, **in source order**, and the split is
+gated by concatenation: re-joining the parts must reproduce the artefact's Body exactly. So
+nothing is written that `EXPERIENCE.md` did not write — the panel only knows which sentence is
+the action. Two consequences are real states rather than defects: the **action line is
+optional** (`database-updating` has none, and inventing one would be the lie), and the
+**guidance may be empty** (`no-active-deck` is a single sentence which _is_ its action).
+
+**A command chip is derived from the copy's own backticks**, never authored per state. That is
+what let the two states c2-9 added need no bespoke renderer, and it is why
+`` `initialize_database` `` and `` `artificial-planeswalker companion` `` both render as chips
+with one mechanism.
+
+**How a later state joins.** Add the row to `EXPERIENCE.md`'s copy table in the same two-field
+shape; add the `StateKey` and its parts to `copy.ts`; give it a home in `states.ts` — either a
+reason token in `PANEL_FOR_REASON` or an entry in `CLIENT_ONLY_STATES` — and decide its
+`RETRIES_QUIETLY` value. All four are **total maps**, so three of the four steps fail
+`npm run typecheck` if you skip them, and the fourth fails `tests/copy.test.ts`.
+
+**Where copy may live is itself a gate.** `tests/copy-rules.test.ts` enforces UX-DR33 in two
+halves, because either alone is worthless:
+
+- **The file half** — user-facing prose lives only in the modules listed in `COPY_MODULES`,
+  each with the reason it owns copy. A sentence anywhere else fails, naming the module it
+  belongs in. Adding a copy module is the open way to grow this, exactly as `MANA_DATA_INK`
+  grows.
+- **The content half** — no `!`, no emoji, no "something went wrong", in **any** string in
+  `src/`. Keyed by **character family**: emoji by `\p{Extended_Pictographic}`, and exclamation
+  marks by NFKC-normalising first, so Unicode's own compatibility decompositions enumerate
+  `！`, `︕`, `﹗`, `‼` and `⁉` instead of a hand-written list.
+
+Both halves read the **TypeScript AST**, not the file text, and that is load-bearing: the
+generated `types.d.ts` quotes the banned phrase in a JSDoc comment, and `!` is an operator in
+nine of eleven component modules. A comment is not a string node and `!x` is not a string
+literal, so both are out of scope **by construction** rather than by a special case listing
+today's files.
+
+**What the guard does not decide, and review does.** Whether a sentence is _second-person and
+blameless_ is not statically decidable, and it is the most important half of UX-DR33. Copy
+assembled from single words at runtime (`describeManaCost`) and a name reaching `aria-label`
+through an expression are the other two residues. All three are declared in the guard's own
+header, the way `surfaces.ts` declares its half.
+
+**Retry is a property of the state, and it is written where c3-9 will read it.**
+`RETRIES_QUIETLY` in `states.ts` is total over every panel. `database-updating` and
+`database-not-initialized` retry quietly, because their copy promises the page will come alive
+on its own. **`internal-error` must never retry** — `types.d.ts` states it as a wire contract:
+the companion hit a deterministic bug, so re-issuing the request re-hits it, and a quiet loop
+would hammer a broken backend behind a calm panel that never changes. Its next action is a
+manual restart. `database-updating-stalled` is the escalation of the quiet retry that did not
+work, so it stops. **c3-9 owns the polling, the threshold and the transitions**; c2-9 ships no
+fetch, no `setTimeout` and no hook at all.
+
+**"Exactly one panel at a time" is the caller's**, not the component's. There is one `left`
+slot in `AppShell` and no manager — do not build a state-panel registry.
+
+**No error styling is a gate, not a review note.** `tests/token-usage.test.ts` holds
+`StatePanel.css` to an **allowlist** of calm token families, so `--negative`, `--caution`,
+`--positive`, a `--mana-*` red-by-another-name and a status token nobody has invented yet all
+fail closed — including through a `var(--negative, …)` fallback. Other components legitimately
+spend those tokens (c4-10's format check maps a violation to `negative`); the scope is the
+rule, and a later calm surface adds its file with its own reason.
+
+**A second family exists, and it is not a hierarchy.** `--font-mono` (c2-9, Q2) styles command
+literals inside state-panel copy and nothing else — a string the user is about to retype into a
+terminal, which is data. It is a system stack: no `@font-face`, no download, so the offline
+guarantee is untouched. UX-DR2's "hierarchy never comes from a second family" stands.
+
 ## Adding a source directory
 
 Every linted `.ts`/`.tsx` file must belong to a tsconfig — ESLint's `projectService` errors
@@ -734,21 +826,30 @@ generated types with no fetch helper, so neither of those designs is pre-empted.
 The application shell landed in **c2-6**, so the token layer now has a real consumer and
 `src/App.css` is gone with the placeholder it styled. What the shell deliberately does _not_
 build is every region it holds open, each of which renders a placeholder line naming its owner
-until that story lands: the shared state panel and its copy are **c2-9**, the footer's
-attribution text is **c2-10**, the card grid is **c4-4** and the curve/colour pair below it is
-**c4-8**, card detail is **c4-5**, the deck list is **c4-7**, the format check is **c4-10**,
-the agent-view nav pills are **c6-8**, and the agent view that drops into the overlay slot is
-**c6-5**. The `h1` carries the product name provisionally; **c4-2** replaces its content with
-the deck name and nothing about the element moves.
+until that story lands: the footer's attribution text is **c2-10**, card detail is **c4-5**,
+the deck list is **c4-7**, the format check is **c4-10**, the agent-view nav pills are
+**c6-8**, and the agent view that drops into the overlay slot is **c6-5**. The `h1` carries the
+product name provisionally; **c4-2** replaces its content with the deck name and nothing about
+the element moves.
 
-Six presentation primitives have landed — `Panel`, `Badge`, `StatChip` and `GroupHeader` in
-**c2-7**, `ManaPip` and `ManaCost` in **c2-8** — and all six are documented under _Components_
-above. They have **no on-screen consumer yet** — nothing imports them, so `npm run build`
-leaves them out of the module graph entirely, and their **appearance is not dev-verified**
-(jsdom applies no stylesheet). Each is checked by eye at its first consuming story: the panel
-at **c2-9**, the group header and deck-row context at **c4-7**, the badge at **c4-2** and
-**c4-10**, and the pip and cost at **c4-3** (card placeholders), **c4-7** (deck rows) and
-**c4-9** (the colour-distribution legend). The header badge slot in `AppShell.tsx` is **still
+**The left column is the exception, as of c2-9.** `App.tsx` passes the no-active-deck
+`StatePanel` into the shell's `left` slot, so the running app shows a real panel rather than
+the placeholder naming c4-4 and c4-8. That placeholder is **displaced, not deleted** — it still
+fires whenever `left` is empty and `AppShell.test.tsx` still asserts it. It is honest rather
+than a demo: with no fetch layer (**c3-1**) and no store (**c4-1**), there genuinely is no
+active deck. **c4-2 / c4-4** replace the static choice with the real one and **c3-9** owns the
+transition (FR-22).
+
+Seven presentation primitives have landed — `Panel`, `Badge`, `StatChip` and `GroupHeader` in
+**c2-7**, `ManaPip` and `ManaCost` in **c2-8**, `StatePanel` in **c2-9** — and all seven are
+documented under _Components_ above. **`StatePanel` is the first with an on-screen consumer**;
+the other six still have none, so `npm run build` leaves them out of the module graph entirely
+and their **appearance is not dev-verified** (jsdom applies no stylesheet). Each is checked by
+eye at its first consuming story: `Panel` at **c4-5** (card detail, the first real
+`level="overlay"` panel) and **c4-7** (the deck list) — **re-homed from c2-9**, which turned out
+not to render a `Panel` at all (Q6) — the group header and deck-row context at **c4-7**, the
+badge at **c4-2** and **c4-10**, and the pip and cost at **c4-3** (card placeholders), **c4-7**
+(deck rows) and **c4-9** (the colour-distribution legend). The header badge slot in `AppShell.tsx` is **still
 empty on purpose** — c2-7 shipped `Badge` without filling it, and **c4-2** and **c4-10** are its
 fillers. The one remaining primitive is the nav pill (**c6-8**).
 

@@ -30,7 +30,7 @@ import './Panel.css'
 
 export type PanelLevel = 'default' | 'overlay'
 
-export interface PanelProps {
+interface PanelBaseProps {
   /**
    * The header title, rendered as an `<h2>` and used as the section's accessible name. A
    * `string` by ruling, not a `ReactNode` — see the `aria-label` argument above.
@@ -45,16 +45,26 @@ export interface PanelProps {
   badges?: ReactNode
   /** `--surface-panel` by default; `--surface-overlay` one step up the ramp (UX-DR1). */
   level?: PanelLevel
-  /**
-   * The agent has just changed something here (UX-DR9): the title swaps to `--accent`, a 6px
-   * accent dot appears, and elevation rises to `--shadow-raise`. Purely a rendered state —
-   * ANIMATING the transition into it belongs to c7-5, which already owns "the change is
-   * announced once, and motion is never the only signal" together with its reduced-motion
-   * fallback. Nothing here transitions (AC 18).
-   */
-  live?: boolean
   children?: ReactNode
 }
+
+/**
+ * `live`: the agent has just changed something here (UX-DR9): the title swaps to `--accent`, a
+ * 6px accent dot appears, and elevation rises to `--shadow-raise`. Purely a rendered state —
+ * ANIMATING the transition into it belongs to c7-5, which already owns "the change is
+ * announced once, and motion is never the only signal" together with its reduced-motion
+ * fallback. Nothing here transitions (AC 18).
+ *
+ * **`live` REQUIRES a `title`, IN THE TYPE** (c2-9 Q6, Brad's ruling 2026-07-29; encoded by the
+ * review of the same day — the ruling lived only in comments, and `{ live: true }` with no
+ * title still compiled, rendering exactly the absent-signal panel the ruling says does not
+ * exist). A title-less live panel: with no title to recolour and no dot to hang beside it, all
+ * that remains is the elevation change, which `graphite` and `ink` flatten to nothing. See the
+ * dot's comment in the header below for the whole argument. The render path below still guards
+ * (`live && named`) because a JS caller is not bound by this union — the type is the gate, the
+ * guard is the floor.
+ */
+export type PanelProps = PanelBaseProps & ({ live?: false } | { live: true; title: string })
 
 export function Panel({ title, count, badges, level, live, children }: PanelProps) {
   const named = filled(title)
@@ -90,10 +100,20 @@ export function Panel({ title, count, badges, level, live, children }: PanelProp
               dot exposed as an unlabelled node would be noise in the accessibility tree
               without adding information. It renders only beside a TITLE (`named`, not merely
               inside a header — review 2026-07-29): a dot next to a bare count or badge row
-              marks nothing, which is this comment's own claim, now matched by the code. A
-              live panel with no title at all keeps only its elevation change, which the
-              graphite and ink themes flatten to nothing — a declared hole, homed at c2-9,
-              the first consumer that can decide whether a title-less live panel exists. */}
+              marks nothing, which is this comment's own claim, now matched by the code.
+
+              THE TITLE-LESS LIVE PANEL DOES NOT EXIST — hole CLOSED, c2-9 Q6 (Brad's ruling,
+              2026-07-29). `live` requires a `title`. A live panel with no title keeps only its
+              elevation change, and `graphite` and `ink` declare both elevation tokens as
+              `none`, so under two of the five shipped themes it renders IDENTICALLY to a
+              resting panel: the agent changed something and the UI says nothing at all. That
+              is not a degraded signal, it is an absent one. `live` is therefore a modifier on a
+              NAMED panel, and a caller wanting a live marker on an unnamed container is being
+              told to name it. c2-9 closed this as the first story with standing to, which is
+              what this comment asked for — it is NOT the consumer, because the state panel
+              turned out not to be a `Panel` at all (see Q6(a): DESIGN.md declares a separate
+              `components.state-panel.*` block, and its headline is `--type-heading` where a
+              Panel's title is `--type-label`). */}
           {live && named ? <span className="panel-dot" aria-hidden="true" /> : null}
           {counted ? <span className="panel-count">{count}</span> : null}
           <div className="panel-badges">{badges}</div>

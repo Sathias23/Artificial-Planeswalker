@@ -63,6 +63,16 @@ interface TypeRole {
 interface DesignFrontmatter {
   colors: Record<string, string>
   typography: Record<string, TypeRole>
+  /**
+   * Families that are NOT type roles. Added by story c2-9 (Q2): `typography.*` is typed as a
+   * complete `TypeRole` — family, size, weight, line-height — so a bare family has nowhere to
+   * live in it, and putting one there would break both the 7-role loop and the
+   * "every role names the same family" assertion that MAKES `--font-sans` single.
+   * `fonts.mono` is therefore a sibling section rather than an eighth role, which is also the
+   * honest shape: a mono family with a `fontSize` would be claiming a hierarchy it does not
+   * have.
+   */
+  fonts: Record<string, string>
   rounded: Record<string, string>
   spacing: Record<string, string>
   components: {
@@ -211,6 +221,7 @@ const TYPE_ROLES = ['display', 'heading', 'body', 'body-strong', 'label', 'micro
 
 const expectedNames = [
   '--font-sans',
+  '--font-mono',
   ...Object.keys(design.colors).map((k) => `--${k}`),
   ...TYPE_ROLES.map((r) => `--type-${r}`),
   '--tracking-display',
@@ -242,6 +253,10 @@ describe('the token layer is DESIGN.md (AC 1)', () => {
     ).toHaveLength(26)
     expect(Object.keys(design.typography)).toHaveLength(7)
     expect(
+      Object.keys(design.fonts),
+      'DESIGN.md frontmatter has no `fonts:` section — did the c2-9 entry get dropped?',
+    ).toEqual(['mono'])
+    expect(
       Object.keys(tokens).length,
       'the :root block of tokens.css parsed to nothing — did the selector or comment syntax change?',
     ).toBeGreaterThan(50)
@@ -251,7 +266,11 @@ describe('the token layer is DESIGN.md (AC 1)', () => {
     // Set equality both ways: a missing token fails, and so does a smuggled-in extra one
     // that no story wrote down.
     expect(new Set(Object.keys(tokens))).toEqual(new Set(expectedNames))
-    expect(expectedNames).toHaveLength(64)
+    // 64 until story c2-9, which added `--font-mono` (Q2). The count is pinned rather than
+    // derived so that adding a token is a DECISION with a diff, not a side effect — and this
+    // line moving is the open cost the ruling accepted. Its sibling is `declaredTokens.size`
+    // in tests/token-usage.test.ts; both move together or the pair is wrong.
+    expect(expectedNames).toHaveLength(65)
   })
 
   it('ships all 26 colours at exactly the DESIGN.md value', () => {
@@ -279,6 +298,19 @@ describe('the token layer is DESIGN.md (AC 1)', () => {
     )
     expect(tokens['--font-sans']).toBe([...families][0])
     expect(tokens['--font-sans']).toContain('Space Grotesk')
+  })
+
+  it('resolves --font-mono to the one non-role family DESIGN.md declares (c2-9, Q2)', () => {
+    // Byte-for-byte against the artefact, exactly as every other value here. The one thing
+    // worth asserting BESIDE equality: this stack must stay system-generic, because the whole
+    // argument for admitting a second family was that it costs no @font-face, no download and
+    // no committed binary. A webfont name appearing here would silently re-open NFR-06.
+    expect(tokens['--font-mono']).toBe(design.fonts.mono)
+    expect(tokens['--font-mono']).toMatch(/(^|\s)monospace$/)
+    expect(
+      tokens['--font-mono'],
+      'a mono stack that names the UI family is not a mono stack',
+    ).not.toContain('Space Grotesk')
   })
 
   it('pairs the numeric role with its font-variant-numeric companion (UX-DR3)', () => {

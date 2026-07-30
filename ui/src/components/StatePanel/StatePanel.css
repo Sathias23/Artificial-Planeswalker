@@ -1,0 +1,121 @@
+/* The shared state-panel shell (story c2-9, UX-DR30).
+
+   NO COMPOSITION REFERENCE EXISTS FOR THIS COMPONENT. DESIGN.md:348 lists what the imported
+   mock demonstrates and what it does not, and the State panel is on the SECOND list — with the
+   DFC flip control, the suggestion row, the connection pill, the card placeholder, the skip
+   link and the footer attribution. So unlike c2-7 and c2-8 there is no arrangement to read and
+   no drift table to write: DESIGN.md's State panel bullet and EXPERIENCE.md's copy table are
+   the whole source. The nearest-looking thing in `_ds_bundle.js` is a different component; it
+   was not adapted.
+
+   NO ERROR STYLING, AND IT IS A GATE (AC 2, AC 14). `--negative` and `--caution` exist, and a
+   red panel is the single most natural thing to reach for on a 500. This file references
+   NEITHER, and `tests/token-usage.test.ts` fails the build if it ever does — including through
+   a `var(--negative, …)` fallback, which is the evasion this repo has been bitten by three
+   times. Other components legitimately spend those tokens (c4-10's format check maps a
+   violation to `negative`); the ban is scoped to this stylesheet, and that scope is its reason
+   rather than an oversight.
+
+   NO MOTION (AC 19). No `transition`, no `animation`, anywhere in this file. A state panel
+   REPLACES the main surface; animating its arrival would draw the eye to the calmest thing on
+   screen. Nothing here therefore needs a reduced-motion fallback (Decide-once #3). */
+
+/* THE ONE GEOMETRY LITERAL, and its citation is TRUE rather than borrowed — DESIGN.md declares
+   `components.state-panel.max-width: 480px` in its own frontmatter, and the State panel bullet
+   spends it as `max-width {components.state-panel.max-width}`. ui/README.md predicted this
+   literal by name (c2-6's decide-once rule, AC 18) and that prediction was RIGHT — worth saying,
+   because the same list once predicted a 17px StatChip literal and that one was wrong.
+
+   `margin: 0 auto` is the "centered" half of the same bullet. The panel centres within whatever
+   column it is given; it does not know which column that is (AC 2 — "exactly one at a time" and
+   "the left-column area" are the CALLER's, and the caller is the shell's single `left` slot). */
+.state-panel {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: var(--space-5);
+
+  /* 1px — DESIGN.md, `components.state-panel.border`: "1px solid {colors.border-hairline}". */
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel);
+}
+
+/* THE THREE TYPE ROLES THIS PANEL USES ARE THE FREE ONES, and that is stated here rather than
+   left to be rediscovered (AC 17). `--type-heading`, `--type-body` and `--type-body-strong`
+   have no `--tracking-*` sibling in tokens.css and are not declared `textTransform: uppercase`
+   in DESIGN.md, so `findRoleWithoutCompanions` requires nothing beside them — unlike
+   `--type-label` and `--type-micro`, which drag tracking and uppercase, and unlike
+   `--type-numeric`, which drags `font-variant-numeric`. Nothing on this panel is numeric, so
+   `findUnpairedNumericRole` does not apply either.
+
+   Every size and weight here comes FROM the role token. No `font-size`, no `font-weight`, no
+   `line-height` appears in this file — they are carried by the role, never set beside it. */
+.state-panel-headline {
+  margin: 0;
+  color: var(--text-primary);
+  font: var(--type-heading);
+}
+
+.state-panel-guidance {
+  margin: var(--space-3) 0 0;
+  color: var(--text-secondary);
+  font: var(--type-body);
+}
+
+/* THE CONCRETE NEXT ACTION, on its OWN LINE (UX-DR30, AC 1). A `<p>`, so "its own line" is a
+   property of the box rather than of a line break someone can delete. `--accent` is the correct
+   accent here by DESIGN.md's own restriction: this is text, and `--accent-dim` fails the 3:1
+   floor. The accent's job in this design is "live agent attention, inspection, focus, and THE
+   NEXT ACTION" — this is the fourth of those, spelled out in the Do's and Don'ts table. */
+.state-panel-action {
+  margin: var(--space-4) 0 0;
+  color: var(--accent);
+  font: var(--type-body-strong);
+}
+
+/* THE COMMAND CHIP — and the DOWNWARD step on the surface ramp is DELIBERATE (AC 16).
+
+   `--surface-well` inside a `--surface-panel` panel steps DOWN the ramp, and
+   `stepsExactlyOne('surface-panel', 'surface-well')` is FALSE — the predicate in
+   src/styles/surfaces.ts is directional on purpose. This is not a skipped step: it is a
+   RECESS, a hole in the pane rather than a nearer pane, which is what UX-DR1's ordering means.
+   DESIGN.md's State panel bullet specifies exactly this nesting ("an inline chip on
+   {colors.surface-well}"), and StatChip.css:32 already ships the same recess — a well inside
+   panels — as its established precedent. Said here so a reviewer reads it as the ruling it is
+   rather than as a UX-DR1 violation.
+
+   `--font-mono` is the token story c2-9 added (Q2, Brad's ruling): at 109a7d9 there was no
+   legal way to spell "monospace-styled" at all. It carries no hierarchy — this is a string the
+   user is about to retype into a terminal, which is data. See tokens.css for the whole
+   argument.
+
+   NO px LITERAL HERE ON PURPOSE. The chip takes its size from the role token of whatever line
+   it sits in, so it needs no font-size of its own — which is also why it needs no citation
+   DESIGN.md could not have provided (the frontmatter has no chip geometry). */
+.state-panel-command {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--surface-well);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+/* THE AVAILABLE-DECK LIST (AC 5). Names only, and NOTHING that can be clicked — no anchor, no
+   button, no hover affordance, because the agent drives (NG1). There is no hover rule in this
+   file for exactly that reason: a hover state on a non-interactive row is a lie told in CSS.
+
+   No heading over it, and that is a copy decision rather than a layout one: EXPERIENCE.md
+   writes "Below: the available-deck list ... (names only)" and writes no label for it, so a
+   label here would be the one thing this story exists to prevent — a user-facing sentence with
+   no UX review behind it. An unlabelled list still announces as "list, N items". */
+.state-panel-decks {
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  color: var(--text-secondary);
+  font: var(--type-body);
+  list-style: none;
+}
+
+.state-panel-decks li + li {
+  margin-top: var(--space-1);
+}
