@@ -172,16 +172,29 @@
 }
 
 /* ==== FOOTER ==========================================================================
-   An empty landmark with no content is a real landmark, and that is fine — c2-10 fills it
-   with the Scryfall and Fan Content notices. What would NOT be fine is omitting the element
-   and making c2-10 restructure the shell to add it. The type here is the micro role DESIGN.md
-   assigns to footer attribution; the copy, its wording and its links are c2-10's. */
+   The slot c2-6 held open, FILLED by story c2-10: `App.tsx` passes `<Footer />` into the
+   `footer` prop, and `src/components/Footer/Footer.css` owns everything DESIGN.md assigns to
+   `components.footer-attribution` — foreground, background, border-top and type.
+
+   THIS RULE IS LAYOUT ONLY, AND THAT IS A RULING (c2-10 Q2, Brad 2026-07-30). It previously
+   set `font: var(--type-micro)` with its two companions and `color: var(--text-tertiary)`.
+   c2-10's AC requires `--text-secondary` (9.3:1) because the attribution is legally
+   load-bearing and gets a passing tier rather than a muted one — so the two stylesheets would
+   have carried two single-class `color` declarations of EQUAL SPECIFICITY, resolved by import
+   order. This repo has already been bitten once by a cascade it did not model (c2-6's
+   last-wins finding), so rather than add a second rule and reason about which wins, the
+   appearance was moved out wholesale. The shell keeps the window; the component keeps the ink.
+
+   `flex-shrink: 0` STAYS, and it is the reason this rule still exists: it is AC 11's
+   mechanism, the same one the header carries, and it is what makes `.app-shell-columns` the
+   only child that gives ground. That is a layout property of the SLOT, not of whatever fills
+   it — a later story swapping the footer's contents must not be able to unpin it.
+
+   The `.app-shell-placeholder` line below still fires whenever `footer` is empty, and
+   AppShell.test.tsx still asserts it against this component's own props. It is DISPLACED by
+   App.tsx, not deleted (c2-9's decide-once ruling, applied a second time). */
 .app-shell-footer {
   flex-shrink: 0;
-  font: var(--type-micro);
-  letter-spacing: var(--tracking-micro);
-  color: var(--text-tertiary);
-  text-transform: uppercase;
 }
 
 /* Every region the shell holds open renders one of these until its owner story lands (AC 21).

@@ -1,0 +1,111 @@
+/* The footer attribution (story c2-10, UX-DR32, NFR-08).
+
+   NO COMPOSITION REFERENCE EXISTS FOR THIS COMPONENT. `DESIGN.md:366` lists what the imported
+   mock demonstrates and what it does not, and Footer attribution is on the SECOND list — with
+   the State panel, the DFC flip control, the suggestion row, the connection pill, the card
+   placeholder and the skip link. `DESIGN.md`'s own bullet and its `components.footer-attribution`
+   frontmatter are the whole source; there is no arrangement to read and no drift table to write.
+
+   THIS COMPONENT OWNS ITS APPEARANCE, AND THE SHELL OWNS ITS LAYOUT (Q2, Brad 2026-07-30).
+   `.app-shell-footer` shipped `font: var(--type-micro)` and `color: var(--text-tertiary)` while
+   this story's AC requires `--text-secondary`. Two single-class selectors setting `color` is a
+   source-order race decided by import order, and this repo has been bitten by an unmodelled
+   cascade once already (c2-6's last-wins finding). Rather than add a second rule and reason
+   about which wins, the shell was STRIPPED back to `flex-shrink: 0` — its layout job — and
+   everything `DESIGN.md` assigns to `components.footer-attribution` is declared exactly once,
+   here. There is no cascade to reason about because there is no second declaration.
+
+   NO MOTION, DELIBERATELY. AC 6's hover is a colour change and nothing else. A `transition`
+   would have to be built from `--motion-*` tokens AND registered in the reduced-motion inventory
+   at the foot of tokens.css (Decide-once #3, ui/README.md:323) — a motion with no registered
+   fallback is an incomplete story. The cheapest correct answer is no transition, and then there
+   is no inventory entry to owe.
+
+   NO `--accent` ANYWHERE. `DESIGN.md:288` reserves the accent for LIVE AGENT ATTENTION. A footer
+   link is neither live nor agent attention, so the colours here are exactly the two the spec
+   names — `--text-secondary` at rest, `--text-primary` on hover — plus `--focus-ring` for focus.
+   (`--accent-dim` is banned from primitives outright, ui/README.md:722-729.) */
+
+/* THE TYPE ROLE AND BOTH ITS COMPANIONS, IN ONE BLOCK. `--type-micro` drags `--tracking-micro`
+   AND `text-transform: uppercase`, and `findRoleWithoutCompanions` in tests/token-usage.test.ts
+   reads the BLOCK, not the file — splitting them across a base rule and a modifier fails even
+   though the cascade would produce the right pixels. The uppercase half is DERIVED from
+   DESIGN.md's own `textTransform:` key, not from a list.
+
+   SO THE LEGAL NOTICE RENDERS AS 10px ALL-CAPS, and that is the spec as written rather than an
+   accident (Q1, Brad 2026-07-30). `DESIGN.md:324` assigns footer attribution to the micro role
+   and declares that role uppercase; the DOM text is unaffected by `text-transform`, so the
+   verbatim gate, the copy-rules content half and the screen reader all read the sentence exactly
+   as DESIGN.md wrote it. Only the render is capitalised. Whether it is comfortably READABLE at
+   that size is the one thing no gate here can answer — it is first on the epic manual-testing
+   checklist, and if it reads badly the correction is a DESIGN.md amendment in Epic 8's
+   release-readiness pass, made with the rendered page in hand rather than from the spec.
+
+   1px — DESIGN.md, `components.footer-attribution.border-top`: "1px solid
+   {colors.border-hairline}". The background and foreground come from the same frontmatter block.
+
+   `padding` is the top gap between the rule and the text; there is no horizontal padding because
+   `.app-shell` already frames the window with `var(--space-gutter)` and a second inset would
+   push this line out of alignment with the header and the columns above it. */
+.footer-attribution {
+  margin: 0;
+  padding: var(--space-3) 0 0;
+  border-top: 1px solid var(--border-hairline);
+  background: var(--surface-base);
+  color: var(--text-secondary);
+  font: var(--type-micro);
+  letter-spacing: var(--tracking-micro);
+  text-transform: uppercase;
+}
+
+/* THE LINKS (AC 5, AC 6, AC 7).
+
+   `text-decoration: underline` at REST, not on hover. UX-DR32 requires the links be identifiable
+   without hovering, and UX-DR47 forbids a hover-only affordance — an underline that appears on
+   hover is exactly the affordance that does not exist for a keyboard or touch user.
+
+   `color: inherit` rather than a second `--text-secondary`: the link takes the paragraph's tier,
+   so the two can never drift apart, and the hover rule below is then the ONLY colour decision in
+   this file that has to be read.
+
+   24px — DESIGN.md: "each link's hit area ≥ 24px tall" (`:375`), and the same file's global rule
+   "a ≥ 24×24px hit area" (`:418`) — BOTH axes, so `min-width` sits beside `min-height`. This is
+   the named non-ban used correctly: a hit box is geometry with no token family, so it is a
+   literal, and it carries its citation in the same sentence as the value. `inline-block` is what
+   makes the minimums apply at all — on a plain inline box they do nothing, which is the quiet
+   way this AC would have been satisfied in source and false on screen.
+
+   NOT `inline-flex`, AND THAT IS A REVIEW FIND (2026-07-30), NOT A PREFERENCE: text decorations
+   do not propagate into flex items, so an underline declared on an (inline-)flex anchor renders
+   as NO underline in real browsers — true in source, false on screen, on this story's central
+   AC — and every gate here reads source while jsdom applies no stylesheet, so no automated
+   check could have seen it. The rendered underline stays on the epic manual-testing checklist. */
+.footer-attribution-link {
+  display: inline-block;
+  min-width: 24px;
+  min-height: 24px;
+  color: inherit;
+  text-decoration: underline;
+}
+
+.footer-attribution-link:hover {
+  color: var(--text-primary);
+}
+
+/* `:focus-visible`, not `:focus` — a mouse click on a link should not leave a ring behind it,
+   and UX-DR46's requirement is about the KEYBOARD indicator. These are the first focusable
+   elements in the codebase, so this is also the first use of the `--focus-ring*` tokens, which
+   shipped in c2-1 with nothing to point at (tokens.css:113-118).
+
+   `outline`, not `box-shadow`: an outline is not clipped by an ancestor's overflow and does not
+   participate in layout, so a link at the very bottom edge of the window still shows its whole
+   ring. Nothing here sets `outline: none`, so there is no removal needing a replacement.
+
+   THE COLOUR BRIGHTENS HERE TOO (review find, 2026-07-30): hover's move to `--text-primary`
+   with no keyboard equivalent would be state feedback that does not exist for a keyboard user —
+   the same shape UX-DR47 bans for the underline, applied to the brightening. */
+.footer-attribution-link:focus-visible {
+  color: var(--text-primary);
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}

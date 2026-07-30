@@ -12,10 +12,11 @@
  * vitest project in vite.config.ts; nothing needs setting up per file.
  */
 
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import App from './App'
+import { sentenceOf } from './components/Footer/copy'
 
 describe('App', () => {
   it('renders the application shell', () => {
@@ -53,5 +54,53 @@ describe('App', () => {
     render(<App />)
 
     expect(screen.getByRole('region', { name: 'No deck on the glass.' })).toBeVisible()
+  })
+})
+
+/**
+ * The attribution on every top-level surface (story c2-10, AC 15, NFR-08, UX-DR32).
+ *
+ * THIS IS A RELEASE CONDITION, NOT A DESIGN CHOICE — `DESIGN.md:375` says so in bold. So it is
+ * asserted at the ROOT, where a human would look, rather than only in `Footer.test.tsx` where
+ * the component is rendered in isolation. c2-9's review measured the exact hole this closes:
+ * reverting `App.tsx`'s `left` prop kept all 487 tests green, because nothing asserted the
+ * wiring one layer above the component. Reverting the `footer` prop must not stay green.
+ *
+ * "EVERY SURFACE" IS STRUCTURAL, NOT ENUMERATED (Q3, Brad 2026-07-30). There is one `AppShell`,
+ * one `footer` slot and no router, so every surface renders through `App`. An enumerated list of
+ * surfaces would be a list its author thought of — this epic's standing finding. The rule is
+ * written into `App.tsx` and `ui/README.md` where the next surface's author will read it, and
+ * the second test below is what makes it a gate rather than a note.
+ */
+describe('the attribution is on the surface (c2-10, AC 15)', () => {
+  it('renders inside the contentinfo landmark, by role and by text', () => {
+    render(<App />)
+
+    const contentinfo = screen.getByRole('contentinfo')
+    // BY TEXT, against the copy module's own join — so this assertion cannot drift from the
+    // artefact independently of `tests/attribution.test.ts`. `toHaveTextContent` would be a
+    // substring check; the landmark's whole text is the sentence and nothing else.
+    expect(contentinfo.textContent).toBe(sentenceOf())
+  })
+
+  it('exposes both attribution links from the rendered app, not just from the component', () => {
+    render(<App />)
+
+    const links = within(screen.getByRole('contentinfo')).getAllByRole('link')
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      'https://scryfall.com/docs/api',
+      'https://company.wizards.com/en/legal/fancontentpolicy',
+    ])
+  })
+
+  it('leaves no surface without it — the slot is filled, not merely fillable (Q3)', () => {
+    render(<App />)
+
+    // The structural half. The shell renders a PLACEHOLDER whenever `footer` is empty, so a
+    // reverted or dropped `footer` prop presents as the placeholder line rather than as an
+    // empty landmark — which a "is the landmark non-empty" check would happily accept. Naming
+    // the placeholder is what makes that specific regression fail here.
+    expect(screen.getByRole('contentinfo').textContent).not.toContain('lands here')
+    expect(screen.queryByText(/Scryfall and Fan Content attribution lands here/)).toBeNull()
   })
 })

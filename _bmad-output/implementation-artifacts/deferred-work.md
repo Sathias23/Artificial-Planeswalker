@@ -1492,3 +1492,65 @@ the gate-output rule rather than left as "we meant to".
   TypeScript mirrors (`RETRIES_QUIETLY`, the `decks` prop) drift undetected. Extending the gate
   is new scope; candidate home is **c3-9**, beside the wiring those clauses constrain.
   (Severity: Low.)
+
+## Deferred from: story c2-10 (footer attribution, 2026-07-30)
+
+Every entry here is a **visual claim jsdom cannot decide** (AC 22). The source-read half of each
+is asserted in `ui/tests/shell.test.ts` against `Footer.css`; what is deferred is only what the
+CSS *does on screen*. None of these is claimed anywhere as verified.
+
+- **10px ALL-CAPS legal text — is it actually readable?** THIS IS THE FIRST THING TO LOOK AT.
+  `DESIGN.md` assigns footer attribution to `{typography.micro}` (`400 10px/1.3`, `0.08em`
+  tracking) and declares that role uppercase, and the companion guard derives the requirement
+  from the artefact's own `textTransform:` key — so three sentences of legally load-bearing text
+  render at 10px in capitals. Brad ruled **ship the spec as written** (Q1, 2026-07-30): it is
+  what the artefact says, the DOM text is untouched by `text-transform` so nothing about the
+  contract or the screen reader changes, and deviating means amending a UX artefact on a
+  frontend story. The contrast AC exists because this text must be readable — and case and size
+  are the other two halves of readability, which no AC covers. **If it reads badly by eye, the
+  correction is a `DESIGN.md` amendment in Epic 8's release-readiness pass**, made with the
+  rendered page in hand rather than from the spec. (Severity: Medium — it is the one string in
+  the app that has to be readable.)
+
+- **The 24px hit box as laid out.** `min-height: 24px` + `min-width: 24px` with
+  `display: inline-block` is asserted in source (the review of 2026-07-30 changed the display
+  from `inline-flex` — see the underline entry below — and added the width axis), and the
+  display mode is asserted beside the minimums because they do nothing on a plain inline box —
+  but jsdom has no layout engine, so the *measured* box of each link is unverified. Worth a
+  specific look: an `inline-block` box 24px tall inside a 13px line box will grow that line, so
+  the two footer link runs may sit on a visibly taller line than the plain text around them, and
+  the box extends below the baseline rather than centring the text the way the flex version
+  would have. Check with a devtools box inspection, not by eye alone. (Severity: Low.)
+
+- **The persistent underline and the hover brightening — NOW FIRST ON THE CHECKLIST, above the
+  10px readability question.** The code review of 2026-07-30 found `display: inline-flex` was
+  plausibly rendering AC 5's release-condition underline as *no underline at all* — text
+  decoration does not propagate into flex items — and every automated gate reads source, so
+  nothing could see it. The fix is `display: inline-block`, under which the decoration applies
+  to the link's own text; **the browser check is the proof the fix needs**, since the failure
+  mode is exactly "true in source, false on screen". `text-decoration: underline` at rest and
+  `color: var(--text-primary)` on `:hover` *and* `:focus-visible` (the review added the focus
+  half) are read from source, and the guard proves no hover rule introduces the decoration
+  (UX-DR47). Also still unverified by any gate: that the underline is *visible* at 10px against
+  `--text-secondary`, and that the rest→hover step reads as a brightening rather than as a
+  flicker. (Severity: Medium until the eye check — it is the release-condition affordance.)
+
+- **The focus ring's appearance.** These are the **first focusable elements in the codebase**,
+  so this is the first time `--focus-ring` / `--focus-ring-width` / `--focus-ring-offset` have
+  ever been rendered — they shipped in c2-1 with nothing to point at. `outline` was chosen over
+  `box-shadow` so an ancestor's overflow cannot clip it, but whether a 2px ring at 2px offset is
+  clearly visible around a 24px inline-flex box at the very bottom edge of the window is a
+  browser check. **Tab to both links.** (Severity: Medium — it is the token layer's focus
+  contract getting its first real exercise, and c4-11 inherits whatever is learned here.)
+
+- **The border and the surface.** `border-top: 1px solid var(--border-hairline)` over
+  `background: var(--surface-base)` is `DESIGN.md`'s frontmatter verbatim. Note that the
+  background is the same token as the page canvas, so the *only* visible separation is the
+  hairline — and the footer sits inside the shell's `var(--space-gutter)` padding, so the rule
+  spans the content width rather than bleeding to the window edge. That is the shell's existing
+  layout decision (c2-6), not this story's; if the full-bleed rule DESIGN.md's "full width"
+  implies is wanted, it is a shell change and belongs to whoever owns that, not to a footer
+  story. (Severity: Low — a deliberate reading, recorded so it is a decision and not a drift.)
+  **RATIFIED (Brad, 2026-07-30, c2-10 code review): the content-width reading stands** — the
+  hairline aligns with the header and columns inside the gutter frame. No longer a unilateral
+  call; a full-bleed rule would now be a new decision, not a correction.
