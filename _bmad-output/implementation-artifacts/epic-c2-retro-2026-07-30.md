@@ -404,6 +404,40 @@ to observe yet.
 
 ---
 
+## Integration-PR review coverage — closing a C1 prediction
+
+C1's retro predicted: *"Expect this on **every** epic integration PR, worsening once C2 adds `ui/`."*
+It worsened exactly as forecast, and the mechanism is now recorded precisely, because C1's own
+wording ("Greptile **declined** the review") reads as a refusal and it is not one.
+
+**PR #28 is 134 files, above Greptile's 100-file threshold, so a review is SKIPPED PENDING AN
+EXPLICIT REQUEST — not refused.** Requesting it is available and is deliberately **not** exercised,
+per the standing rule that integration PRs get no Greptile pass (OSS free-tier budget). Same call as
+C1's #17, which that retro recorded as "not worth forcing".
+
+**And the C1 rationale does not transfer.** C1's was proportional — 59 prose files plus 16 mirror
+files meant only 29 of 104 were reviewable. Measured on this diff:
+
+| Category | Files |
+|---|---|
+| `_bmad-output` prose | 15 |
+| `plugin/` mirror | 7 |
+| Generated bundle | 5 |
+| Lockfile + binary assets | 4 |
+| **Reviewable code** | **103** |
+
+So the reason a re-review is unnecessary here is **structural, not proportional**: story PRs *are*
+the review gate in this rhythm, all 103 files arrived through one (#18–#27, ten reviews, round-1 5/5
+on the last three), and the only commits above `f378c56` are documentation. No re-slicing gets an
+epic this size under the threshold, and pulling the prose out would save 15 files of 134.
+
+**For C4's retro:** C3 is nine backend stories and will likely fall back under the threshold; **C4
+will not**, and neither will any later frontend-heavy epic. The durable position is the one taken
+here — the story PR is the review gate, the integration PR is CI plus a human — rather than an
+attempt to fit the tool.
+
+---
+
 ## Significant Discovery Alert
 
 **None requiring a plan update.** Every architectural decision C2 tested held: AD-12's
