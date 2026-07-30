@@ -41,28 +41,38 @@ import './StatePanel.css'
  * only place this component's words live.
  */
 
-export interface StatePanelProps {
-  /**
-   * Which system state is on the glass. The copy for it is `EXPERIENCE.md`'s, byte for byte —
-   * see `copy.ts`, and `tests/copy.test.ts` for the gate that proves it.
-   */
-  state: StateKey
-  /**
-   * Available deck names, for the no-active-deck state (AC 5). A PROP: `GET /api/decks` is
-   * **c3-1**'s, and there is no fetch layer yet.
-   *
-   * EMPTY IS THE COMMON CASE, NOT AN EDGE. A fresh install has no decks at all, so an empty
-   * array renders NOTHING EXTRA — no empty `<ul>`, no rule under blank space. That decision
-   * goes through `filled()` rather than truthiness, because `[]`, `' '`, `false` and a one-shot
-   * iterable all render nothing while looking filled to a naive check; it cost c2-6 two review
-   * rounds plus a Greptile round to settle and is not re-derived here.
-   *
-   * Which states carry a list is the CALLER's: EXPERIENCE.md attaches one to the no-active-deck
-   * row and to no other, and this component does not police that any more than it polices
-   * "exactly one panel" — same posture, stated for the same reason.
-   */
-  decks?: readonly string[]
-}
+/**
+ * A DISCRIMINATED UNION, not a flat shape (Greptile round, 2026-07-30): EXPERIENCE.md attaches
+ * a deck list to the no-active-deck row and to NO other, and a flat `decks` prop left future
+ * wiring free to put deck names under database or internal-error copy. The constraint lives in
+ * the TYPE and only there — the renderer below stays exactly as dumb as before, no runtime
+ * policing, which keeps the posture: the component still does not check its caller any more
+ * than it checks "exactly one panel". The prose contract just became a compile-time one.
+ */
+export type StatePanelProps =
+  | {
+      /**
+       * Which system state is on the glass. The copy for it is `EXPERIENCE.md`'s, byte for
+       * byte — see `copy.ts`, and `tests/copy.test.ts` for the gate that proves it.
+       */
+      state: 'no-active-deck'
+      /**
+       * Available deck names — the one state that carries them (AC 5). A PROP: `GET /api/decks`
+       * is **c3-1**'s, and there is no fetch layer yet.
+       *
+       * EMPTY IS THE COMMON CASE, NOT AN EDGE. A fresh install has no decks at all, so an empty
+       * array renders NOTHING EXTRA — no empty `<ul>`, no rule under blank space. That decision
+       * goes through `filled()` rather than truthiness, because `[]`, `' '`, `false` and a
+       * one-shot iterable all render nothing while looking filled to a naive check; it cost
+       * c2-6 two review rounds plus a Greptile round to settle and is not re-derived here.
+       */
+      decks?: readonly string[]
+    }
+  | {
+      state: Exclude<StateKey, 'no-active-deck'>
+      /** Never here: EXPERIENCE.md gives no other state a deck list. See the union's header. */
+      decks?: never
+    }
 
 /**
  * One copy string, with its backticked runs rendered as command chips (AC 11).

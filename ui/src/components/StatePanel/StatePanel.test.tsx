@@ -205,10 +205,33 @@ describe('the copy rules, at the point of render (AC 6)', () => {
     // The static guard over copy.ts is tests/copy-rules.test.ts; this is the same rule asserted
     // against what actually reached the DOM, which is the half a source scan cannot see (a
     // string assembled at render time, a stray character in this component's own JSX).
-    const { container } = render(<StatePanel state={state} decks={['Boros Aggro']} />)
+    // No `decks` here: the prop contract now attaches a list to no-active-deck alone (the
+    // Greptile round), and that state's list-rendering path is covered separately below.
+    const { container } = render(<StatePanel state={state} />)
     const rendered = container.textContent ?? ''
     expect(rendered.normalize('NFKC')).not.toContain('!')
     expect(rendered).not.toMatch(/\p{Extended_Pictographic}/u)
     expect(rendered.toLowerCase()).not.toContain('something went wrong')
+  })
+
+  it('no-active-deck with its list — the one state whose DOM has more than copy in it', () => {
+    const { container } = render(<StatePanel state="no-active-deck" decks={['Boros Aggro']} />)
+    const rendered = container.textContent ?? ''
+    expect(rendered.normalize('NFKC')).not.toContain('!')
+    expect(rendered).not.toMatch(/\p{Extended_Pictographic}/u)
+  })
+})
+
+describe('the prop contract is the gate (Greptile round, 2026-07-30)', () => {
+  it('forbids a deck list under any other state at COMPILE time, with the renderer unchanged', () => {
+    // The constraint is a TYPE, so its firing half is `@ts-expect-error`: if the union ever
+    // flattens back to `decks` on every state, `tsc -b` fails on this line — the same
+    // proven-firing discipline the CSS guards use, at the one layer that can see this.
+    // @ts-expect-error -- decks belongs to the no-active-deck arm alone (EXPERIENCE.md)
+    const forbidden = <StatePanel state="disconnected" decks={['Boros Aggro']} />
+    // And the silent half: the value still renders — the restriction is compile-time only,
+    // the runtime stays exactly as dumb as the component's header promises.
+    const { container } = render(forbidden)
+    expect(container.textContent).toContain('Boros Aggro')
   })
 })
