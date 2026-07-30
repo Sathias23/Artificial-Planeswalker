@@ -1,0 +1,47 @@
+/* Group header — the type-group divider over a hairline rule (story c2-7, UX-DR12, DESIGN.md
+   "Deck data").
+
+   DESIGN.md: "type-group dividers ("CREATURES") in {typography.label}
+   {components.group-header.foreground} with the count right-aligned in {typography.numeric}
+   {colors.text-tertiary}, over {components.group-header.rule}."
+
+   Appearance is NOT dev-verified in this story: nothing imports this component yet, and jsdom
+   applies no stylesheet. It is checked at c4-7, the first story to put real group headers
+   inside a real deck list, and it carries an entry on the epic manual-testing checklist
+   (AC 21). */
+
+/* `padding-bottom: var(--space-1)` lifts the label off its own rule; the rule is the divider,
+   so the two must not touch. No horizontal padding — a group header aligns with the rows it
+   divides, and whatever container holds them owns that inset. */
+.group-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding-bottom: var(--space-1);
+
+  /* 1px — DESIGN.md, `components.group-header.rule`: "1px solid {colors.border-hairline}". */
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+/* AC 13 — the label role with BOTH its companions in this block. `margin: 0` because this is
+   an `<h2>`: the UA stylesheet's block margin would push the rule away from the text and break
+   the baseline alignment above. */
+.group-header-label {
+  margin: 0;
+  color: var(--text-secondary);
+  font: var(--type-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+/* AC 12 — the numeric role and its companion in the SAME rule block; the `font` shorthand
+   resets `font-variant-numeric`, so the role alone renders proportional digits and a stack of
+   group counts down a deck list stops lining up (UX-DR3).
+
+   `margin-left: auto` is "right-aligned", the same mechanism `.panel-badges` uses. */
+.group-header-count {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font: var(--type-numeric);
+  font-variant-numeric: var(--type-numeric-features);
+}

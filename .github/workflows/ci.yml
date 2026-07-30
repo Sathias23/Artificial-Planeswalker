@@ -1,9 +1,11 @@
 name: CI
 
 # Quality gates for the public repo: mirrors the local pre-commit / CONTRIBUTING
-# checks (ruff lint, ruff format, mypy --strict, pytest) on a Python 3.12/3.13 matrix.
-# Runs on pushes to master and on every pull request. No DB, model, network, or
-# secrets are required: pytest is scoped to "not integration".
+# checks (ruff lint, ruff format, mypy --strict, pytest) on a Python 3.12/3.13 matrix,
+# plus the frontend gate for ui/ (eslint + stylelint, prettier, tsc -b, vitest, vite build).
+# Runs on pushes to master and on every pull request. No DB, model or secrets are
+# required and pytest is scoped to "not integration"; the `frontend` job is the one
+# exception to "no network" — it downloads ui/ dependencies from the npm registry.
 
 on:
   push:
@@ -50,6 +52,21 @@ jobs:
       - name: Mypy (strict)
         run: uv run mypy src/
 
+      # Both invocations are mandatory and neither is redundant. mypy type-checks only the
+      # branch matching the target platform, and src/companion/app/singleton.py branches on
+      # sys.platform with a genuinely different implementation per half (msvcrt vs fcntl).
+      # This runner is ubuntu, so the bare run above IS the linux run; without the line
+      # below the Windows half is checked by nobody and a Windows-only type error reaches
+      # master green. Closes C1 retro action item 3.
+      #
+      # The epic text for story c2-1 asked for `--platform linux` here. That was written
+      # from a Windows machine, where the bare run is the win32 run; on ubuntu it would be
+      # a pure no-op and the retro's stated success criterion — "a deliberately
+      # Windows-broken singleton.py fails CI" — would still not hold. The success criterion
+      # wins. See the c2-1 Completion Notes.
+      - name: Mypy (strict, opposite platform)
+        run: uv run mypy src/ --platform win32
+
       - name: Pytest (excluding integration)
         run: uv run pytest -m "not integration"
 
@@ -63,5 +80,135 @@ jobs:
             echo "::error::plugin/ is stale — run 'uv run python -m scripts.build_plugin' and commit plugin/."
             git status --porcelain -- plugin/
             git --no-pager diff -- plugin/
+            exit 1
+          fi
+
+  # Deliberately NOT folded into the `quality` matrix job: that job is a Python 3.12/3.13
+  # matrix and would install Node twice for no reason. One job, no Node matrix (ruling B5) —
+  # `node-version: 20` is the declared floor, i.e. the version nobody develops on and
+  # therefore the one worth gating. Current Node is covered incidentally by local runs.
+  frontend:
+    name: lint · types · tests (ui, node 20)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ui
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          # The floor declared by ui/package.json is >=20.19.0; setup-node resolves "20" to
+          # the latest 20.x, which satisfies it. Raising this is an AC 2 decision, not a fix.
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      # `npm ci`, never `npm install`: it fails instead of silently updating when
+      # package.json and the committed lockfile disagree.
+      - name: Install dependencies (locked)
+        run: npm ci
+
+      # The four gates NFR-07 names. Each is a separate step so a failure names itself.
+      - name: ESLint + stylelint
+        run: npm run lint
+
+      - name: Prettier
+        run: npm run format:check
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: Vitest
+        run: npm test
+
+      # AC 1's committed-lockfile contract, gated where it can actually die. `npm ci` succeeds
+      # even against a lock regenerated without the linux bindings (optional deps are simply
+      # absent), and none of the four gates above load the production build path — so without
+      # this step, "a bad lock dies in CI with `Cannot find module @rolldown/binding-…`" was
+      # aspirational, not enforced. Also catches build-only breakage (lightningcss
+      # minification, bundle resolution) before c2-2 starts committing the build output.
+      # (Review round 2, decision D1: a fifth step beyond AC 15's four, by ruling.)
+      - name: Build
+        run: npm run build
+
+      # The build writes into src/companion/app/static/, which is COMMITTED (AD-13) so a fresh
+      # install serves the UI with no Node toolchain. Rebuilt just above; if the result differs
+      # from what is committed, someone changed ui/ without rebuilding.
+      #
+      # `git status --porcelain`, NOT the `git diff --exit-code` the epic's AC text names. A
+      # deliberate deviation, flagged rather than silently taken (the c1-9 / c2-1 precedent):
+      # Vite emits content-hashed filenames, so a source change produces one DELETION (which
+      # git diff sees) plus one UNTRACKED ADDITION (which it does not). `git diff --exit-code`
+      # would therefore pass on exactly the staleness this step exists to catch. The same AC
+      # sentence says to mirror the plugin/ drift check, and that check's shape — the one
+      # copied here — is `git status --porcelain`.
+      #
+      # working-directory: . overrides this job's `defaults.run.working-directory: ui`. Without
+      # it, a `src/...` pathspec evaluated from ui/ matches nothing and the check passes
+      # vacuously.
+      - name: SPA bundle in sync with ui/
+        working-directory: .
+        run: |
+          # Non-vacuity guard on the ignore axis: `git status --porcelain` reports nothing for
+          # gitignored paths, so if the bundle tree ever became ignored (the root .gitignore has
+          # unanchored dist/, build/ and lib/ patterns a future asset directory could match) the
+          # drift check below would pass vacuously — while hatchling silently dropped the
+          # now-VCS-ignored bundle from the wheel.
+          if [ -z "$(git ls-files -- src/companion/app/static/)" ]; then
+            echo "::error::src/companion/app/static/ has no tracked files — the bundle is not committed (or became gitignored), so the drift check cannot see it."
+            exit 1
+          fi
+          if [ -n "$(git status --porcelain -- src/companion/app/static/)" ]; then
+            echo "::error::src/companion/app/static/ is stale — run 'cd ui && npm run build' and commit the bundle."
+            git status --porcelain -- src/companion/app/static/
+            git --no-pager diff -- src/companion/app/static/
+            exit 1
+          fi
+
+      # The NODE half of the AD-12 type pipeline (story c2-3). The PYTHON half — that the
+      # committed ui/src/api/openapi.json still matches what build_app().openapi() produces — is
+      # a pytest snapshot test in the `quality` job (tests/unit/companion/test_openapi_contract.py),
+      # because this job has Node and no Python dependencies while that one has uv and no Node.
+      # Splitting on that boundary adds no toolchain to either job and lets each half fail in the
+      # gate that owns it (c2-3 Decide-once #1).
+      #
+      # `npm run gen:types` rather than a copy of the openapi-typescript invocation: the flags are
+      # part of the committed contract, and CI must not be able to drift from what a developer runs.
+      - name: Generate TypeScript types from the committed schema
+        run: npm run gen:types
+
+      # `git status --porcelain`, NOT the `git diff --exit-code` the epic's AC text names — the
+      # same flagged deviation as the SPA check above, for consistency with the two drift checks
+      # already in this workflow and because porcelain also sees the untracked and newly-ignored
+      # cases git diff cannot.
+      #
+      # working-directory: . overrides this job's `defaults.run.working-directory: ui`. The
+      # generation step above runs in ui/ (that is where package.json is); the git check needs
+      # repo-root-relative pathspecs, and without this override a `ui/src/...` pathspec evaluated
+      # from ui/ matches nothing and the check passes vacuously.
+      - name: Generated types in sync with the schema
+        working-directory: .
+        run: |
+          # Non-vacuity guard on the ignore axis, same reasoning as the SPA check: `git status
+          # --porcelain` reports nothing at all for a gitignored or never-committed path, so a
+          # missing or newly-ignored types.d.ts would sail through the drift check below while
+          # the UI compiled against a file that is not in the repo. Checked PER FILE: a joint
+          # ls-files over both paths stays non-empty while either one slips out of tracking
+          # (c2-3 review, 2026-07-27).
+          for f in ui/src/api/types.d.ts ui/src/api/openapi.json; do
+            if [ -z "$(git ls-files -- "$f")" ]; then
+              echo "::error::$f is not tracked — never committed, or became gitignored — so the drift check below cannot see it."
+              exit 1
+            fi
+          done
+          if [ -n "$(git status --porcelain -- ui/src/api/)" ]; then
+            echo "::error::ui/src/api/ is out of sync with the committed tree (status below). If types.d.ts changed, the committed types are stale: run 'cd ui && npm run gen:types' and commit it — gen:types alone is the Node-half fix; 'npm run gen:api' (needs uv) regenerates the pair."
+            git status --porcelain -- ui/src/api/
+            git --no-pager diff -- ui/src/api/
             exit 1
           fi

@@ -23,6 +23,7 @@ from src.companion.app.errors import (
 )
 from src.companion.app.main import build_app
 from src.companion.contracts import ErrorReason, ErrorResponse
+from tests.unit.companion.conftest import keep_spa_mount_last
 
 _ERRORS_MODULE = "src.companion.app.errors"
 
@@ -67,7 +68,10 @@ def _app_with_test_routes():
     async def boom():
         raise RuntimeError("kaboom")
 
-    return app
+    # A decorator can only append, and build_app() ends with the SPA mount at "/" (c2-2), which
+    # matches every path. Without this the four routes above are shadowed and answer 200 with
+    # index.html instead of running.
+    return keep_spa_mount_last(app)
 
 
 class TestReasonTokenContract:
@@ -203,9 +207,21 @@ class TestFrameworkFailuresAreTypedToo:
         assert len(records) == 1
         assert "xx" in records[0].getMessage(), "the offending value belongs in the log"
 
-    async def test_an_unknown_path_is_a_typed_404(self, lifespan_client):
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/api/no-such-path",  # reserved prefix: API territory, never a document
+            "/no-such-file.json",  # has an extension: a broken deployment, not a client route
+            "/health/no-such-path",  # under a registered route's prefix
+        ],
+    )
+    async def test_an_unknown_path_is_a_typed_404(self, lifespan_client, path):
+        # Since c2-2 mounted the SPA at "/", "unknown path" splits in two. An extension-less path
+        # outside the API is a **client-side route** and correctly answers 200 with index.html
+        # (pinned in test_spa.py); the paths below are the ones that must still 404, and they are
+        # what this test now guards. The typed body is unchanged either way.
         async with lifespan_client(_app_with_test_routes()) as client:
-            response = await client.get("/no-such-path")
+            response = await client.get(path)
 
         assert response.status_code == 404
         assert response.json() == {"reason": "invalid_request"}

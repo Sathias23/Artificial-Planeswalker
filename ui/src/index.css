@@ -1,0 +1,71 @@
+/* Baseline document styles only.
+
+   The Voltglass design tokens live in src/styles/tokens.css and are imported below — those
+   imports must stay the FIRST rules in this file, because a CSS @import after any other rule
+   is dropped by the browser and by the build. Everything here consumes tokens; the stylelint
+   rules that make that mandatory (no raw hex, no rgb()/hsl(), no literal box-shadow,
+   border-radius or spacing) are in .stylelintrc.json.
+
+   'Space Grotesk' is self-hosted: src/styles/fonts.css carries the one @font-face, so
+   --font-sans now names a family the app actually ships rather than one it hoped the machine
+   had. `system-ui` stays in the stack behind it as the fallback, not as the plan. Nothing here
+   is a design decision — it is the minimum needed for the placeholder shell to be legible, and
+   the template's demo stylesheet it replaces is gone with the demo. Per-element type comes
+   from the seven role tokens (--type-body and friends), not from this file. */
+
+/* TWO imports, BOTH above every rule below. A CSS @import that follows any rule is dropped by
+   the browser and by the build, so this pair has to stay at the top of the file. Their order
+   relative to EACH OTHER is immaterial — @font-face registration is not order-sensitive, so
+   fonts-then-tokens is nothing but reading order. `url(…)` notation, not a bare string:
+   stylelint-config-standard's `import-notation` rule requires it. Vite inlines both into the
+   single emitted stylesheet either way. */
+@import url('./styles/fonts.css');
+@import url('./styles/tokens.css');
+
+:root {
+  /* The body role, not a hand-written family plus line-height. The `font` shorthand carries
+     family, size, weight and line-height in one token, which is why the typography-literal ban
+     in .stylelintrc.json permits `var(--type-*)` here and nothing else — a bare `line-height:
+     1.5` beside it was the last untokenised value in the shipped CSS. */
+  font: var(--type-body);
+
+  /* Dark-only, deliberately: Voltglass has no light theme, and `light dark` would have the
+     browser render form controls and scrollbars for a mode the tokens never describe. */
+  color-scheme: dark;
+  color: var(--text-primary);
+  background-color: var(--surface-base);
+}
+
+/* THE BOX-SIZING RESET (story c2-6, AC 13). There was none anywhere in ui/ before this
+   line — `git grep box-sizing` returned nothing — so every sized element inherited CSS's
+   `content-box` default, under which padding is added to a declared height rather than
+   living inside it.
+
+   That is not a tidiness issue. The application shell is `height: 100dvh` with
+   `padding: var(--space-gutter)`, and under `content-box` it is a 100dvh + 64px element: the
+   window scrolls, the footer leaves the window, and UX-DR32's release-condition attribution
+   silently stops being visible. The symptom presents as a footer bug and is not one.
+
+   Every component from c2-7 onwards inherits the same hazard the moment it sizes and pads
+   itself, which is why the reset is global and lives here rather than in the shell's own
+   stylesheet. The composition reference's answer to the same problem — `box-sizing:border-box`
+   written INLINE on every sized element — is banned outright by the inline-style rule in
+   eslint.config.js, so this is the only shape available and it is also the right one.
+
+   The `*, *::before, *::after` form, not `html { box-sizing: border-box } * { box-sizing:
+   inherit }`: the inherit idiom exists to let a subtree opt out, nothing in this app wants
+   to, and the extra indirection is one more thing for a component author to reason about. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* No `min-height: 100vh` here any more (story c2-6). The shell owns the window height at
+   `100dvh`, and `vh` is the LARGE viewport height — on a mobile browser with retracting
+   chrome the two disagree, `body` ends up taller than the window, the page scrolls, and the
+   footer the shell just pinned leaves the window. Two height mechanisms fighting is worse
+   than one, and the shell is the one that knows what it is doing. */
+body {
+  margin: 0;
+}

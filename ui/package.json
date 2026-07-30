@@ -1,0 +1,61 @@
+{
+  "name": "artificial-planeswalker-ui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . && stylelint \"**/*.css\" --ignore-pattern \"dist/**\" --ignore-pattern \"coverage/**\" --ignore-pattern \"tests/fixtures/**\"",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "gen:types": "openapi-typescript src/api/openapi.json -o src/api/types.d.ts",
+    "gen:api": "cd .. && uv run python -m scripts.dump_openapi && cd ui && npm run gen:types"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zustand": "^5.0.14"
+  },
+  "//": {
+    "typescript": "PINNED >=5.9 <6.1 — not an open floor. Two measured reasons, both needed. (1) Unconstrained, an open floor resolves to TypeScript 7: `npm view typescript dist-tags` gives latest 7.0.2, and typescript-eslint@8 publishes peer `typescript: >=4.8.4 <6.1.0`, so TS 7 breaks the ESLint gate outright. (2) With typescript-eslint present npm back-solves rather than failing — the same open floor resolves to 6.0.3, not 7 — so the pin's job is also to keep the constraint explicit and OWNED HERE instead of emergent from a transitive peer that a future bump could relax silently. openapi-typescript's `typescript: ^5.x` peer is what lands the resolved version on 5.9.x. Decided in story c2-1 (AC 4).",
+    "eslint": "PINNED ^9 — eslint@10 CANNOT coexist with eslint-plugin-jsx-a11y. jsx-a11y@6.10.2 is `latest` (no newer release) and peers at `eslint ^3 || ... || ^9`; ESLint's own `latest` dist-tag is 10.x, so an unpinned eslint makes `npm ci` fail with ERESOLVE — not warn. Raising ESLint deletes the UX-DR47 accessibility gate. EXIT CONDITION: lift this pin when eslint-plugin-jsx-a11y publishes an ^10 peer range. Decided in story c2-1 (AC 5, Decide-once #1, Ruling B3 — which also declined oxlint outright).",
+    "openapi-typescript": "Installed by story c2-1 (Ruling B2) so the lockfile landed on typescript@5.9.x from the first commit; WIRED by story c2-3, which owns the pipeline. `gen:types` is the Node half and is the EXACT command CI runs — the workflow calls this script rather than carrying its own copy of the invocation. `gen:api` is the one command to run after touching a Pydantic model: it regenerates the schema (uv) and then the types (npm). It is `cd ..`, NOT `uv run --project ..`, because `python -m scripts.…` resolves the `scripts` package from the cwd — and it must `cd ui` back afterwards, or the trailing `npm run gen:types` executes at the repo root, where there is no package.json (measured: npm errno -4058 ENOENT). `uv run --directory ..` also works and needs no return trip; the `cd` pair is kept because it is the form story c2-3's AC 4 specifies. FLAGS ARE PART OF THE COMMITTED CONTRACT: `-o` and nothing else — every flag rewrites the whole drift-checked file, so one added later arrives with a comment giving its reason, in the same commit as the regenerated output (c2-3 Decide-once #3). devDependencies only, never dependencies — a code generator is not a runtime dependency (AD-13), asserted by tests/package-contract.test.ts.",
+    "no-second-codegen": "AD-12 — openapi-typescript is the ONE generator, and it consumes the backend's own app.openapi(). No second codegen (swagger-typescript-api, @hey-api/openapi-ts, orval, oazapfts, openapi-zod-client, @openapitools/openapi-generator-cli) joins it: two generators means two spellings of one wire shape. Enforced by tests/package-contract.test.ts, not by convention. c5-1's POST /agent/events declares the event-envelope union as its request body, so the WebSocket types come out of this same generator with no dummy endpoint.",
+    "@testing-library/jest-dom": "PINNED ~6.9.1 — a THIRD load-bearing pin, found while implementing c2-1 (the story predicted two). Both `latest` (7.0.0) and 6.10.0 declare `engines.node >= 22`, which is above this project's declared floor of >=20.19.0 and above the CI job's `node-version: 20`; 6.10.0 is additionally deprecated upstream as an incorrect minor release. 6.9.1 is the last release with `engines.node >= 14`. Lifting this pin requires raising the whole project's Node floor to 22 (an AC 2 / AC 15 change), not just bumping the dependency. Verified with `npm view @testing-library/jest-dom@<v> engines`.",
+    "no-second-state-library": "AD-12 — zustand is the one store. No second data-fetching or state-management library joins it. Enforced by tests/package-contract.test.ts, not by convention.",
+    "yaml": "Added by story c2-4 (AC 17, Q3) for ONE job: tests/tokens.test.ts parses the YAML frontmatter of the UX artefact `DESIGN.md` and asserts the token layer against it, token by token. It is a devDependency and nothing in src/ may import it — the token values reach the browser as CSS custom properties, not as parsed YAML, so this never becomes a runtime dependency (AD-13). The alternative considered and declined was committing a derived tokens.json into ui/: that puts a second copy of the token values in the repo and a second thing to drift, which is the exact failure mode AD-12 exists to prevent. A hand-rolled frontmatter parser was also declined — it would be a second thing to get wrong, in the one test whose job is to be right about the contract.",
+    "@types/node": "Tracks the Node FLOOR (20.19, AC 2), not latest. With ^24 types, code in config/ or tests/ using a Node 22/24-only API type-checks clean and fails only when CI's node 20 executes it — the same types-vs-runtime skew class the jest-dom pin exists for. Raising this follows raising the project's Node floor, not the other way round. (Review round 2.)"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "~6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^20.19.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "eslint": "^9",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^16.5.0",
+    "jsdom": "^29.1.1",
+    "openapi-typescript": "^7.13.0",
+    "prettier": "^3.9.6",
+    "stylelint": "^17.14.1",
+    "stylelint-config-standard": "^40.0.0",
+    "typescript": ">=5.9 <6.1",
+    "typescript-eslint": "^8.65.0",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10",
+    "yaml": "^2.9.0"
+  }
+}

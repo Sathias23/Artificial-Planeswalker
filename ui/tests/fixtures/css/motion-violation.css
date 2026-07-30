@@ -1,0 +1,192 @@
+/* FIXTURE — the firing half of the no-pulsing/no-looping ban (story c2-4, AC 12). Meant to
+   stay broken; excluded from `npm run lint` by the lint script's `--ignore-pattern`.
+
+   "No element pulses or loops, under any setting" is stated four separate times across
+   DESIGN.md and EXPERIENCE.md, which is a good sign it is a rule people expect to be
+   tempted by. The connection pill (c5-7) is the exact component a future author will want
+   to give a breathing dot, and reduced-motion is NOT the escape hatch for it — a loop is
+   banned at every setting, not just the reduced one. Hence a guard rather than a guideline.
+
+   Kept in its own file so that violation.css's ten-warning UX-DR46 outline count — asserted
+   unfiltered since story c2-1 — is not disturbed by a rule that shares its name. */
+
+.loops-forever {
+  animation: pulse 2s infinite;
+}
+
+.loops-a-few-times {
+  animation-iteration-count: 3;
+}
+
+.loops-forever-by-longhand {
+  animation-iteration-count: infinite;
+}
+
+.ping-pongs {
+  animation-direction: alternate;
+}
+
+.ping-pongs-backwards {
+  animation-direction: alternate-reverse;
+}
+
+/* The shorthand carries direction too, so a value regex anchored to the longhand alone is
+   walked straight around. */
+.ping-pongs-in-shorthand {
+  animation: glow 2s alternate;
+}
+
+/* Case is an evasion in its own right — proven, not assumed. (Prettier does NOT lowercase
+   keyword VALUES, only property names, so this spelling really can reach the linter; the
+   config's regexes carry /i for that reason. `value-keyword-case` also objects, which is
+   defense in depth rather than a substitute — it would not fire on a lowercase loop.) */
+.loops-forever-uppercase {
+  animation: pulse 2s INFINITE;
+}
+
+/* THE ONE THE STYLELINT RULE CANNOT SEE, and the reason tests/token-usage.test.ts carries a
+   second, more precise guard. An iteration count in the `animation` SHORTHAND is a bare
+   number, and a value-level regex cannot distinguish it from the bare numbers inside a
+   `cubic-bezier(0.4, 0, 0.2, 1)` in the same shorthand — banning bare numbers outright would
+   false-positive on a legal easing. The guard strips parenthesised groups first, so it can.
+   This block loops three times and is exactly as banned as `infinite`. */
+.loops-by-numeric-shorthand {
+  animation: pulse 2s 3;
+}
+
+/* ---- COMMA-SEPARATED LISTS (review finding, High) --------------------------------------
+   `animation` and `animation-direction` are LIST properties: one declaration can carry
+   several animations, comma-separated. Every regex here originally anchored on `(?:\s|$)`,
+   so a keyword or count with a COMMA after it matched nothing and the whole family walked
+   free — in both enforcement layers at once. These are the cases that proved it. */
+
+.loops-forever-in-a-list {
+  animation:
+    pulse 2s infinite,
+    fade 1s;
+}
+
+.loops-by-count-in-a-list {
+  animation:
+    pulse 2s 3,
+    fade 1s;
+}
+
+.ping-pongs-in-a-list {
+  animation-direction: alternate, normal;
+}
+
+/* Scientific notation walks around a `\d+(\.\d+)?` bare-number regex the same way a comma
+   does. `1e2` is one hundred iterations. The guard parses the token as a NUMBER rather than
+   string-comparing it to "1", which closes both spellings at once. */
+.loops-by-scientific-notation {
+  animation: pulse 2s 1e2;
+}
+
+/* ---- THE TWO BLOCKS STYLELINT GENUINELY CANNOT SEE ---------------------------------------
+   The duration ban added by review means the earlier shorthand cases now trip stylelint for
+   their LITERAL DURATION (`2s`) rather than for their iteration count — which would make
+   "stylelint is silent on a count in the shorthand" a claim proven by the wrong mechanism.
+   These two tokenise the duration, so the ONLY thing wrong with them is the count, and
+   stylelint is provably silent on both. They are the honest proof that the second guard in
+   tests/token-usage.test.ts earns its place. */
+
+.loops-by-count-with-tokenised-duration {
+  animation: pulse var(--motion-glide) 3;
+}
+
+.loops-by-scientific-count-with-tokenised-duration {
+  animation: pulse var(--motion-glide) 1e2;
+}
+
+/* ---- LITERAL DURATIONS (Brad's ruling 2026-07-27) ---------------------------------------
+   A literal duration is not merely off-scale — it is UNREACHABLE by the reduced-motion
+   mechanism. The @media block at the foot of tokens.css zeroes the four `--motion-*` tokens;
+   a hard-coded 300ms ignores it and plays in full for a user who asked for less motion. That
+   is an accessibility failure, not a style one, which is why it is a gate. */
+
+.literal-transition-duration {
+  transition: opacity 300ms;
+}
+
+.literal-duration-longhand {
+  transition-duration: 300ms;
+}
+
+.literal-delay-longhand {
+  animation-delay: 250ms;
+}
+
+/* Sub-second and comma-list spellings of the same evasion. */
+.literal-fractional-duration {
+  transition: opacity 0.5s ease;
+}
+
+.literal-duration-in-a-list {
+  transition:
+    opacity 300ms,
+    transform 0.2s;
+}
+
+/* ---- DURATIONS THAT ARE TOKENISED BUT STILL UNREACHABLE (Greptile P2) -------------------
+   The shorthand rule bans literal times, which is not the same as REQUIRING a motion token.
+   Both blocks below carry a duration that the reduced-motion override cannot touch:
+
+     - a var() from the wrong family. `var(--space-1)` is `4px`, which is not a <time>, so the
+       browser discards the whole declaration — the same lints-clean-renders-as-nothing class
+       as `padding: var(--radius-pill)` and `padding: auto`, for the third time in this story.
+     - a calc(). Even `calc(var(--motion-glide) * 2)` survives the zeroing only as `0s * 2`
+       by luck of arithmetic; `calc(2s * 3)` hides its literal inside parentheses where the
+       time-literal regex cannot reach it at all.
+
+   So the shorthand additionally requires every var() to be `--motion-*` or `--ease-*`, and
+   bans calc() outright. The duration/delay LONGHANDS never had this gap: they are an
+   allowed-list, so anything unexpected was already rejected. */
+
+.duration-from-the-wrong-family {
+  transition: opacity var(--space-1);
+}
+
+.calculated-duration {
+  transition: opacity calc(2s * 3);
+}
+
+.calculated-duration-from-a-token {
+  animation: bloom calc(var(--motion-bloom) * 2);
+}
+
+/* ---- THE FOURTH SPELLING, AND WHY THE RULE IS NOW FAMILY-SHAPED (Greptile round 2) -------
+   Banning `calc(` was enumerating ONE MEMBER of a family — the same mistake landmine 5 taught
+   about property keys, applied to spacing and then not to motion. `min()`, `max()`, `clamp()`
+   are time-valued too, and a fifth member is a CSS release away.
+
+   `max()` and `clamp()` are the genuinely broken ones: under reduced motion
+   `max(300ms, var(--motion-glide))` is `max(300ms, 0s)` = 300ms and the motion survives, and
+   clamp()'s floor does the same. (`min(300ms, var(--motion-glide))` happens to reduce
+   correctly to 0s — the reported example is the weakest case, the mechanism is still real.)
+
+   So the rule no longer lists math functions. It bans ANY function call in these shorthands
+   except `var()`, `cubic-bezier()` and `steps()` — which closes every current spelling and
+   every future one. An easing that needs `linear()` adds an --ease-* token instead. */
+
+.duration-in-max {
+  transition: opacity max(300ms, var(--motion-glide));
+}
+
+.duration-in-clamp {
+  transition: opacity clamp(100ms, 2vw, 300ms);
+}
+
+.duration-in-min {
+  transition: opacity min(300ms, var(--motion-glide));
+}
+
+/* A literal hiding in a var() FALLBACK. The time-literal regex's trailing boundary used to be
+   `(?:\s|,|$)`, which a closing paren is not — so the literal was unreachable by it. The
+   boundaries now include parens on both sides. (This particular value does reduce correctly,
+   because --motion-glide IS defined and the fallback never fires; it is banned because a
+   literal duration in a stylesheet is banned, and because `var(--undefined, 300ms)` — the
+   spelling that does NOT reduce — is the same shape.) */
+.duration-in-a-var-fallback {
+  transition: opacity var(--motion-glide, 300ms);
+}

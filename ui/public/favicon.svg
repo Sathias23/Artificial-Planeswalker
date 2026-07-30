@@ -1,0 +1,14 @@
+<!-- PLACEHOLDER favicon, hand-written for story c2-1.
+
+     It replaces the create-vite template's export, which was a purple lightning bolt
+     carrying Figma layer ids — a third-party-looking mark with no clear licence, shipping
+     in a public MIT repository under our name.
+
+     Deliberately plain: c2-4 brings the Voltglass visual work and owns the real icon.
+     Uses `currentColor` so it follows the browser's light/dark UI rather than baking in a
+     colour this project has not chosen yet. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" fill="none">
+  <title>Artificial Planeswalker</title>
+  <rect x="2.5" y="2.5" width="27" height="27" rx="6" stroke="currentColor" stroke-width="3" />
+  <circle cx="16" cy="16" r="5" fill="currentColor" />
+</svg>

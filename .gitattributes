@@ -1,0 +1,35 @@
+# Two scoped lines, deliberately. See story c2-2 AC 5.
+#
+# src/companion/app/static/ is the committed SPA build output (AD-13). CI rebuilds it and
+# compares the result against the committed bytes, so those bytes must not depend on which
+# machine wrote them — and core.autocrlf is `true` on the maintainer's Windows box. `-text`
+# settles that by declaration rather than by an argument about when git normalises: no eol
+# conversion in either direction, on any platform.
+#
+# Three things this file deliberately is NOT:
+#
+#   * it is not `* text=auto`. A repo-wide pattern would renormalise every tracked file in the
+#     repository, which is why c2-1 declined to create this file at all. A single path-scoped
+#     pattern touches nothing outside that path.
+#   * it is not `text eol=lf`. The bundle now carries a self-hosted Space Grotesk .woff2 in this
+#     same directory, and an eol attribute on a binary font corrupts it. (The SOURCE copy under
+#     ui/src/assets/fonts/ is covered separately, by `*.woff2 binary` in ui/.gitattributes.)
+#   * it is not inside src/companion/app/static/. Vite's emptyOutDir skip list is exactly
+#     [".git"], so any file placed there is deleted by the next build.
+src/companion/app/static/** -text
+
+# The plugin mirror of the same bundle, and it needs the identical treatment for the identical
+# reason — it is compared byte-for-byte against the source of truth (by the plugin/ drift check
+# in CI, and by tests/unit/companion/test_spa.py::TestThePluginMirror).
+#
+# AC 5 called for one line; this second one is a deviation taken deliberately, because one line
+# is measurably not enough. Measured on this machine: with only the src/ rule, a fresh clone
+# under core.autocrlf=true writes src/.../index.html at 1093 bytes (LF, attribute honoured) and
+# plugin/.../index.html at 1119 bytes (CRLF, no attribute) — 26 line endings apart, so the
+# byte-identity test fails and the plugin drift check reports drift on an untouched tree. CI is
+# ubuntu, where autocrlf is off, so CI could never have caught it: the failure is Windows-only
+# and fresh-clone-only.
+#
+# This is still path-scoped. AC 5's actual concern — that a repo-wide pattern would renormalise
+# every tracked file, which is why c2-1 declined to create this file — is untouched.
+plugin/server/src/companion/app/static/** -text

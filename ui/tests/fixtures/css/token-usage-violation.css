@@ -1,0 +1,190 @@
+/* FIXTURE — the firing half of the three guards in tests/token-usage.test.ts (story c2-4,
+   AC 2 and AC 10). Meant to stay broken.
+
+   These are the constraints stylelint cannot express: one relates two declarations to each
+   other, one is about WHICH FILE a declaration lives in, and one needs cross-file resolution
+   that `no-unknown-custom-properties` provably does not do (it is file-scoped, and enabling
+   it reports every legitimate token reference in every component). */
+
+/* UX-DR6: --accent-dim on --surface-overlay is 2.70:1, below the 3:1 non-text floor. The
+   named substitute is --accent (5.5:1). This is the exact pairing c6-7's suggestion rows,
+   c9-1's swap rows and c9-2's tier rows are most likely to reach for, because DESIGN.md
+   gives all three an overlay background. */
+.suggestion-row {
+  background: var(--surface-overlay);
+  border-color: var(--accent-dim);
+}
+
+/* Inside a media query, to prove the guard reads innermost blocks rather than only
+   top-level ones — a nested rule is not an exemption. */
+@media (width >= 40em) {
+  .tier-row-inside-media {
+    background: var(--surface-overlay);
+    color: var(--accent-dim);
+  }
+}
+
+/* AC 2: a token declared in a component is a token the four alternate themes cannot reach.
+   The whole point of the layer is that adding `[data-theme="gilt"]` restyles the app without
+   touching one component file — a local declaration silently opts out of that. */
+.declares-its-own-token {
+  --local-accent: var(--accent-bright);
+
+  color: var(--local-accent);
+}
+
+.declares-its-own-shadow {
+  --swap-row-shadow: var(--shadow-rest);
+
+  box-shadow: var(--swap-row-shadow);
+}
+
+/* A typo in a token name is not a syntax error and not a lint error — it is a property that
+   silently resolves to nothing, which on a box-shadow means the element just has no
+   elevation and nobody notices until a screenshot. */
+.typo-in-token-name {
+  box-shadow: var(--shadow-rst);
+}
+
+/* UX-DR3 (story c2-5). The `font` shorthand CANNOT carry font-variant-numeric, so the numeric
+   role applied alone gives PROPORTIONAL digits in a column of counts — the "1" narrower than
+   the "8", every row a different width. This one is worse than the failures above rather than
+   better: it renders something plausible instead of nothing, so nobody looks. */
+.count-cell {
+  font: var(--type-numeric);
+  color: var(--text-primary);
+}
+
+/* Inside a media query, for the same reason the contrast fixture has one. */
+@media (width >= 40em) {
+  .curve-axis-value {
+    font: var(--type-numeric);
+  }
+}
+
+/* The features declaration is PRESENT but hand-written. `tabular-nums` happens to be the right
+   answer today; it is still a literal that the token layer does not control, and a theme that
+   ever changed the feature set would not reach it. */
+.hand-written-features {
+  font: var(--type-numeric);
+  font-variant-numeric: tabular-nums;
+}
+
+/* And the actively-wrong spelling: the companion is present, applied, and says the OPPOSITE of
+   what UX-DR3 asks for. A guard that only checked "is font-variant-numeric present" passes
+   this, which is why the guard checks the VALUE. */
+.opts-out-of-tabular {
+  font: var(--type-numeric);
+  font-variant-numeric: proportional-nums;
+}
+
+/* ==== AC 13 (story c2-7) — the label and micro roles never travel without their companions.
+
+   THE SAME FAMILY AS THE FOUR ABOVE, and the same failure shape: the `font` shorthand cannot
+   carry `letter-spacing` OR `text-transform` either, so a role applied bare renders 11px
+   lowercase text at default tracking. Legible, plausible, wrong — and invisible in review
+   because it still looks like text.
+
+   The role names below are deliberately spelled in ways the guard does not enumerate: it
+   derives its requirements from the `--tracking-*` token names in tokens.css and from
+   DESIGN.md's own `textTransform` keys, so `--type-display` is covered by a rule written for
+   nobody in particular. */
+
+/* Tracking missing, uppercase present. */
+.bare-label-tracking {
+  font: var(--type-label);
+  text-transform: uppercase;
+}
+
+/* Uppercase missing, tracking present. Both halves have to be separable or a block that
+   happens to get one right would hide the other. */
+.bare-label-case {
+  font: var(--type-label);
+  letter-spacing: var(--tracking-label);
+}
+
+/* Neither. The realistic shape: someone applies the role and stops. */
+.bare-micro {
+  font: var(--type-micro);
+  color: var(--text-tertiary);
+}
+
+/* THE ROLE THE GUARD WAS NOT WRITTEN FOR. `--type-display` has a `--tracking-display` sibling
+   and no uppercase, so a DERIVED rule catches its missing tracking and must NOT demand
+   uppercase of it. A guard written as a list of "label and micro" passes this silently. */
+.bare-display-tracking {
+  font: var(--type-display);
+}
+
+/* The tracking companion present but from the WRONG ROLE — the value is checked, not merely
+   the property, for the same reason `font-variant-numeric: proportional-nums` is caught above.
+   `--tracking-micro` on a label is 0.08em where DESIGN.md says 0.1em. */
+.wrong-tracking-sibling {
+  font: var(--type-label);
+  letter-spacing: var(--tracking-micro);
+  text-transform: uppercase;
+}
+
+/* `text-transform` present and saying the OPPOSITE. A presence check passes this. */
+.opts-out-of-uppercase {
+  font: var(--type-micro);
+  letter-spacing: var(--tracking-micro);
+  text-transform: lowercase;
+}
+
+/* Inside a media query, for the same reason the two fixtures above have one. */
+@media (width >= 40em) {
+  .bare-label-inside-media {
+    font: var(--type-label);
+  }
+}
+
+/* ==== AC 14 (story c2-8) — the WUBRG tokens are DATA INK, never chrome (UX-DR7).
+
+   THE RULE HAS TWO HALVES and this fixture carries the property half. A `--mana-*` token may
+   only be spent through a FILL property — background, background-color, background-image, fill,
+   stop-color. Everything else is chrome: it makes the app look like a card game instead of
+   describing a card, which is the exact thing UX-DR7's "never a button, border, background or
+   an unstacked curve bar" exists to stop.
+
+   THE GUARD IS AN ALLOWLIST OF PROPERTIES, NOT A BAN LIST, so the spellings below are caught by
+   a rule that never names any of them. `outline-color` and `box-shadow` in particular are the
+   members a hand-written ban of "border and color" would have missed. */
+
+/* The obvious one: a coloured hairline. This is the shape a "just tint the row border by
+   colour identity" request arrives in, and it is chrome. */
+.mana-token-as-border {
+  border: 1px solid var(--mana-r);
+}
+
+/* Longhand, so the guard cannot be keyed on the `border` shorthand alone. */
+.mana-token-as-border-longhand {
+  border-block-end-color: var(--mana-w);
+}
+
+/* An OUTLINE, which no ban written as "border and background" would have named. */
+.mana-token-as-outline {
+  outline-color: var(--mana-u);
+}
+
+/* A SHADOW — the spelling furthest from anything the rule's prose mentions. */
+.mana-token-as-shadow {
+  box-shadow: 0 0 0 1px var(--mana-g);
+}
+
+/* And TEXT. A WUBRG colour on text is the least-obvious chrome of the five: it looks like
+   data, and it is 3.2:1 at best against a panel surface. */
+.mana-token-as-text {
+  color: var(--mana-b);
+}
+
+/* THE SILENT HALF, IN THE SAME FILE. A fill IS data ink and must not be reported — a guard
+   proven only on violations would be silent for the wrong reason, and a guard that banned the
+   token outright would be one c4-8 and c4-9 have to fight. */
+.mana-token-as-fill {
+  background: var(--mana-w);
+}
+
+.mana-token-as-gradient-fill {
+  background: linear-gradient(135deg, var(--mana-w) 0 50%, var(--mana-u) 50% 100%);
+}

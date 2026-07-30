@@ -1,0 +1,242 @@
+/* The Voltglass token layer — the single source of every colour, type role, radius, space,
+   motion and elevation value in the application.
+
+   THIS FILE IS THE ONE PLACE A LITERAL IS LEGAL. Everywhere else in ui/, a hex colour, an
+   rgb() call, a box-shadow, a border-radius or an off-scale spacing value is a lint error
+   (.stylelintrc.json bans them; this path is exempted there by an `overrides` entry, never by
+   a stylelint-disable comment — a comment is something any component author can copy into
+   their own file, and no test can see it).
+
+   Why the ban is worth a whole gate rather than a convention:
+
+   1. FOUR ALTERNATE THEMES ALREADY EXIST. `gilt`, `graphite`, `verdigris` and `ink` ship in
+      the imported design system. A hard-coded colour silently ignores every one of them.
+   2. TWO OF THEM ARE SHADOWLESS. `graphite` and `ink` declare both elevation tokens as
+      `none`, which makes `--shadow-raise` the *live* state rather than a stronger version of
+      rest. A hard-coded REST shadow under those themes does not merely look wrong — it
+      INVERTS the elevation hierarchy, because the resting element ends up the only one
+      casting a shadow.
+   3. THE IMPORTED MOCK CONTAINS DRIFT. Its 18/14/9/7px spacing values are not on the
+      4/8/12/16/24/32/48 scale and are not reproduced here (UX-DR5).
+
+   STRUCTURE (AC 2): every token is declared in the ONE block below, selected by
+   `:root, [data-theme="voltglass"]`. An alternate theme is added later as a sibling
+   `[data-theme="…"]` block in this file and NOTHING in any component changes. The corollary
+   is enforced by tests/token-usage.test.ts: no stylesheet other than THIS FILE may DECLARE a
+   custom property, only consume one. (File-level, not directory-level — a second stylesheet
+   dropped into src/styles/ would be a component like any other.)
+
+   VALUES come from the DESIGN.md frontmatter (the contract), asserted token-by-token by
+   tests/tokens.test.ts. They are written in this repo's canonical CSS notation — lowercase
+   hex, modern `rgb(r g b / a%)` — rather than DESIGN.md's own `rgba(8,9,18,0.75)` spelling,
+   so that NO stylelint-config-standard rule has to be disabled anywhere in ui/ (that spelling
+   produces 15 errors across 5 declarations: color-function-alias-notation,
+   color-function-notation and alpha-value-notation). The fidelity test compares NORMALISED
+   colour values, not strings, so the two notations still have to agree.
+
+   Where the imported `_ds/tokens/theme-voltglass.css` already ships a name it is reused
+   verbatim. Its sibling `typography.css` and `motion.css` DRIFT from DESIGN.md — body
+   line-height 1.55, body-strong weight 600, micro `500 10.5px` — and DESIGN.md wins on every
+   value. Durations are deliberately named `--motion-*` rather than the import's `--dur-1..4`:
+   DESIGN.md's prose references `{components.motion.glide}` throughout, and a numbered token
+   throws that name away at the point of use. */
+
+:root,
+[data-theme='voltglass'] {
+  /* ---- Family -------------------------------------------------------------------------
+     'Space Grotesk' is real: src/styles/fonts.css declares the one @font-face, over a
+     self-hosted variable subset committed under src/assets/fonts/. The fallbacks behind it
+     stay — they are what a decode failure or a 404 degrades to, not the plan (UX-DR2). */
+  --font-sans: 'Space Grotesk', system-ui, sans-serif;
+
+  /* ---- The second family, and the only one (story c2-9, Q2 — Brad's ruling 2026-07-29) ---
+     DESIGN.md's State panel spec asks for a "monospace-styled inline chip" and, measured at
+     109a7d9, there was NO legal way to spell it: `.stylelintrc.json` admits only
+     `var(--font-*)` for `font-family`, `--font-sans` was the one family token, and DESIGN.md's
+     frontmatter declared no mono at all. A specified property with no legal spelling is this
+     epic's third of a kind (c2-7's `min-width: 76px`, c2-8's pip size); the answer differs from
+     both because this time the VALUE is in the design contract's prose and only the token was
+     missing — so the token was added rather than the property dropped (the c2-4 precedent: a
+     partly-tokenised value fails, and later stories ADD a token rather than inline one).
+
+     UX-DR2 ("hierarchy never comes from a second family") is not contradicted: this family
+     carries no hierarchy. It styles COMMAND LITERALS — a string the user is about to type into
+     a terminal — which is data, the same category as a mana pip's colour. Chrome and display
+     type stay single-family, and `findRoleWithoutCompanions` still governs every type role.
+
+     A SYSTEM STACK, deliberately: no @font-face, no download, no committed binary, so c2-5's
+     offline parity (NFR-06), the one-@font-face guard and the bundle URL scan are all
+     untouched. Source: DESIGN.md frontmatter `fonts.mono`, asserted in tests/tokens.test.ts.
+
+     THE BRANDED NAMES ARE QUOTED, and that is a MEASURED requirement rather than a style
+     choice: unquoted, stylelint-config-standard's `value-keyword-case` reports three errors
+     ("Expected \"SFMono-Regular\" to be \"sfmono-regular\"", and the same for Menlo and
+     Consolas) — and lowercasing them would be the wrong repair, since a family name is a
+     proper noun and `menlo` matches nothing. `--font-sans` already quotes 'Space Grotesk' for
+     the same reason. The two GENERIC keywords, `ui-monospace` and `monospace`, are CSS
+     keywords and must stay bare — quoting those would make them family names that do not
+     exist. DESIGN.md's frontmatter carries the identical string, quoting included, because
+     tests/tokens.test.ts compares the two as strings. */
+  --font-mono: ui-monospace, 'SFMono-Regular', 'Menlo', 'Consolas', monospace;
+
+  /* ---- Surfaces (the four-step ramp) --------------------------------------------------
+     ORDERED, and the order is load-bearing: a nested component steps EXACTLY one level
+     (well -> base -> panel -> overlay), never two (UX-DR1). The ramp is CLOSED at four —
+     there is no surface above overlay, because `--text-tertiary` on `--surface-overlay` is
+     already 4.8:1 with zero headroom (UX-DR41). The machine-readable copy of this order,
+     with its stepsExactlyOne() predicate, is src/styles/surfaces.ts. */
+  --surface-well: #0d0f1a;
+  --surface-base: #12141f;
+  --surface-panel: #191c2b;
+  --surface-overlay: #222639;
+  --scrim: rgb(8 9 18 / 75%);
+
+  /* ---- Borders ---- */
+  --border-hairline: #2c3048;
+  --border-strong: #3d4266;
+
+  /* ---- Text ---- */
+  --text-primary: #e9ebf5;
+  --text-secondary: #b3b8cf;
+  --text-tertiary: #8b91ad;
+  --text-inverse: #10121c;
+
+  /* ---- Accent -------------------------------------------------------------------------
+     `--accent-dim` is 2.70:1 on `--surface-overlay` and FAILS the 3:1 non-text floor. The
+     substitute is `--accent` (5.5:1). This is a guard, not a note: a rule block that
+     references both is a lint-gate failure (tests/token-usage.test.ts, UX-DR6). */
+  --accent: #8b93ff;
+  --accent-bright: #b3baff;
+  --accent-dim: #575fbe;
+  --accent-glow: rgb(139 147 255 / 22%);
+
+  /* ---- Focus ring ---------------------------------------------------------------------
+     The tokens a compliant replacement for a removed `outline` is written against — the
+     UX-DR46 ban shipped in c2-1 with nothing to point at. */
+  --focus-ring: #b3baff;
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+
+  /* ---- Semantic ---- */
+  --positive: #5fd4a0;
+  --negative: #ff7a86;
+  --caution: #ffc266;
+
+  /* ---- WUBRG data colours -------------------------------------------------------------
+     Curve bars, mana pips and colour-identity dots ONLY. Never chrome. */
+  --mana-w: #e8e6d6;
+  --mana-u: #5cb2f0;
+  --mana-b: #ab93cf;
+  --mana-r: #f0716b;
+  --mana-g: #5ec98a;
+  --mana-gold: #e0b95e;
+  --mana-colorless: #9aa0b5;
+
+  /* ---- Typography ---------------------------------------------------------------------
+     Seven roles, each a complete `font` shorthand over --font-sans. The shorthand CANNOT
+     carry font-variant-numeric or letter-spacing, so those ship as separate companion
+     tokens — applying --type-numeric without --type-numeric-features gives proportional
+     digits in a column of counts, which is the exact defect UX-DR3 exists to prevent.
+     `findUnpairedNumericRole` in tests/token-usage.test.ts fails a rule block that applies
+     the role without the companion, so that pairing is a gate rather than a convention. */
+  --type-display: 500 30px/1.1 var(--font-sans);
+  --type-heading: 500 17px/1.3 var(--font-sans);
+  --type-body: 400 14px/1.5 var(--font-sans);
+  --type-body-strong: 700 14px/1.5 var(--font-sans);
+  --type-label: 500 11px/1.3 var(--font-sans);
+  --type-micro: 400 10px/1.3 var(--font-sans);
+  --type-numeric: 500 13px/1.4 var(--font-sans);
+  --tracking-display: -0.02em;
+  --tracking-label: 0.1em;
+  --tracking-micro: 0.08em;
+  --type-numeric-features: tabular-nums;
+
+  /* ---- Radii --------------------------------------------------------------------------
+     `--radius-card` is the real printed-card corner ratio, a two-value PERCENTAGE radius,
+     and it is EXCLUSIVE to card faces, thumbnails, placeholders and detail art (UX-DR4).
+     Using it on a panel is what makes an interface look like a card game instead of an
+     application. Note it carries no `px`: anything parsing radius values must not assume a
+     unit. */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+  --radius-card: 4.75% / 3.4%;
+
+  /* ---- Spacing ------------------------------------------------------------------------
+     The 4/8/12/16/24/32/48 scale, plus the two named layout distances. These are the ONLY
+     legal spacing values in ui/ — `padding`, `margin`, `gap` and every longhand of each are
+     restricted to them by lint (UX-DR5). */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-gutter: 32px;
+  --space-panel-gap: 24px;
+
+  /* ---- Motion -------------------------------------------------------------------------
+     Four named durations and three easings. See the reduced-motion block below — it is the
+     registration point every later motion must extend. */
+  --motion-pulse: 100ms;
+  --motion-glide: 240ms;
+  --motion-bloom: 480ms;
+  --motion-aurora: 900ms;
+  --ease-out: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-glide: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-snap: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---- Elevation ----------------------------------------------------------------------
+     Three tokens, and the ONLY legal source of a box-shadow. Composing is expected and
+     supported: `box-shadow: var(--shadow-rest), var(--glow)` passes the gate. */
+  --shadow-raise: 0 0 0 1px rgb(139 147 255 / 14%), 0 12px 32px rgb(0 0 0 / 50%);
+  --shadow-rest: 0 12px 32px rgb(0 0 0 / 50%);
+  --glow: 0 0 16px var(--accent-glow);
+}
+
+/* ==== THE REDUCED-MOTION REGISTRATION POINT ============================================
+   THIS BLOCK IS THE SINGLE PLACE EVERY LATER EPIC REGISTERS ITS MOTION FALLBACK.
+
+   Zeroing the four duration tokens neutralises every transition and animation expressed
+   through them, which is the mechanism, not the whole contract. Any motion that cannot be
+   switched off by a duration alone — a transform, a 3D rotation, a crossfade — adds its own
+   declaration HERE, in this block, in the story that builds it. A motion with no registered
+   fallback is an incomplete story (Decide-once #3).
+
+   UX-DR42's inventory is exhaustive. Each motion, its named fallback, and the story that
+   owns it:
+
+     Agent-view bloom (fade + 8px rise)  -> appears in place                        (c6-5)
+     Push-replace crossfade              -> instant content swap                    (c6-6)
+     Card-tile hover pop                 -> no scale, shadow only                   (c4-4)
+     Image fade-in                       -> instant appearance                      (c4-4)
+     Curve-bar height                    -> instant jump                            (c4-8)
+     Deck-row live tint                  -> instant                                 (c4-7)
+     Accent glow fade                    -> glow omitted; count text + live region
+                                            carry the signal                        (c7-5)
+     Refetch header shimmer              -> static "Updating…" in --type-micro
+                                            / --text-secondary                      (c7-5)
+     DFC flip 3D Y-rotation              -> instant face swap                       (c4-6)
+     Detail-panel content swap           -> instant, no crossfade (it changes on
+                                            every hover)                            (c4-5)
+
+   AND, UNDER EVERY SETTING INCLUDING THIS ONE: NOTHING PULSES OR LOOPS. That is not
+   registered here because it is never permitted in the first place — stylelint bans
+   animation-iteration-count other than 1, the `infinite` keyword in an `animation`
+   shorthand, and alternate/alternate-reverse direction, across every stylesheet in ui/.
+   The connection pill (c5-7) is the component this exists to protect.
+
+   This block is asserted by reading the CSS SOURCE, never a rendered DOM: jsdom does not
+   evaluate media queries into computed style, so a getComputedStyle() assertion here would
+   read the UNREDUCED value and pass for the wrong reason. ======================================== */
+@media (prefers-reduced-motion: reduce) {
+  :root,
+  [data-theme='voltglass'] {
+    --motion-pulse: 0ms;
+    --motion-glide: 0ms;
+    --motion-bloom: 0ms;
+    --motion-aurora: 0ms;
+  }
+}

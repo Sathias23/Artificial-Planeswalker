@@ -1,0 +1,21 @@
+dist
+node_modules
+coverage
+
+# npm writes this file, not a human. Gating `format:check` on another tool's serialization
+# means an npm version bump can red the gate on a commit that never touched it.
+package-lock.json
+
+# Both files below are GENERATED and COMMITTED, and neither is prettier's to touch: formatting
+# either one would fight its generator and redden the drift checks that gate them (story c2-3).
+# Regenerate the pair with `npm run gen:api` — never by hand, and never with a formatting pass.
+
+# Written by `uv run python -m scripts.dump_openapi` from the backend's own app.openapi().
+# Prettier would reformat it: it collapses short arrays that json.dumps(indent=2) expands
+# (`"required": [\n  "reason"\n]` -> `"required": ["reason"]`), measured at 7059 -> 7009 bytes.
+src/api/openapi.json
+
+# Written by `npm run gen:types` (openapi-typescript) from the schema above. Prettier would
+# reformat it too: the generator emits 4-space indent and long union lines, against a
+# printWidth of 100.
+src/api/types.d.ts

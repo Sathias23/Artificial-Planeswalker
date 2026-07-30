@@ -1,0 +1,187 @@
+/* ManaPip — one mana symbol as a plain filled circle (story c2-8, UX-DR13, UX-DR7).
+
+   DESIGN.md (line 366): "a plain circle filled with the `mana-*` token, {colors.text-inverse}
+   numeral inside for generic costs".
+
+   ==== NO px LITERAL ANYWHERE IN THIS FILE, AND THAT IS THE POINT (AC 10, Q1) =============
+   THE DECIDE-ONCE RULING for "a component DESIGN.md gives no geometry at all": express the
+   geometry in `em` off the type role the component already carries, so the uncitable literal
+   never exists.
+
+   DESIGN.md's frontmatter declares `panel badge stat-chip card-tile dfc-flip quantity-badge
+   deck-row group-header curve-bar color-bar card-detail legality-row nav-pill agent-view
+   swap-row tier-row suggestion-row connection-pill state-panel card-placeholder skip-link
+   footer-attribution` — and NO mana anything. So the mock's `size = 16` has nothing truthful to
+   cite, and c2-6's citation gate (tests/shell.test.ts, live over every component stylesheet)
+   would demand a citation that cannot honestly be written. That is c2-7's `min-width: 76px`
+   situation with one difference: a chip can size to its content, and a PIP MUST HAVE A SIZE.
+   `1.25em` is the answer that makes the problem disappear rather than negotiating with it —
+   there is no literal, so no citation can be untrue.
+
+   MEASURED, AND HONEST ABOUT WHAT `em` RESOLVES AGAINST. Q1's recommendation reasoned that the
+   pip would size off the INHERITED font, so the same cost would be bigger in a `--type-body`
+   deck row than above a `--type-micro` caption. That is not what ships, and the arithmetic is
+   written down rather than quietly corrected: `em` on width and height resolves against the
+   ELEMENT'S OWN font-size, and this element carries `font: var(--type-numeric)` (13px), so the
+   pip is 16.25px everywhere. The alternative — geometry on an unstyled parent, the role on an
+   inner span — is WORSE, not merely different: the glyph's size comes from a role token and is
+   therefore fixed at 13px, so a context-relative circle would be 12.5px around a 13px numeral
+   inside a `--type-micro` caption. A fixed glyph cannot live in a varying circle. The pip sizes
+   off the font it actually carries, and 16.25px lands within a quarter-pixel of the mock's 16.
+
+   ONE MORE NUMBER IN THAT ARITHMETIC, stated rather than discovered at c4-3 (review
+   2026-07-29): `--type-numeric` is 13px/1.4, so the glyph's LINE BOX is 18.2px inside a
+   16.25px-tall pip. The flex centring below is what keeps a half-leading overflow symmetric,
+   and `line-height` is banned outside tokens.css, so if the glyph reads off-centre by eye at
+   c4-3 the lever is the role token or the pip's em size — not a CSS fix in this file.
+
+   THE GEOMETRY IS min-width + height, NEVER width (AC 16, and NEVER `overflow: hidden`).
+   Gleemax's `{1000000}` is seven glyphs in one symbol and an unrecognised `{HW}` is two. A
+   fixed width clips them, and clipping is the layout-shaped member of "silently wrong" — the
+   defect hidden rather than fixed. A pill radius already supports the fix: a circle IS a pill
+   whose width equals its height, so a wide symbol GROWS sideways and stays pill-shaped.
+
+   NO MOTION (AC 19). No transition, no animation, nothing to register in the reduced-motion
+   block in tokens.css.
+
+   APPEARANCE IS NOT DEV-VERIFIED (AC 21): nothing imports this component in this story and
+   jsdom applies no stylesheet. Every claim above is read as CSS SOURCE by the guards in
+   ui/tests/token-usage.test.ts, or checked by eye at c4-3 / c4-7 / c4-9. */
+
+/* `padding-inline: var(--space-1)` REPLACES the mock's `gap: 3` reasoning at the pip scale:
+   3px is off the 4/8/12/16/24/32/48 scale (UX-DR5) and the stylelint allowed-list refuses a
+   bare length outright. It does NOT break the circle — a single glyph plus 8px is narrower
+   than the 1.25em minimum, so a one-character pip stays round and only a wide one grows.
+
+   `flex: none` so a pip inside a wrapping cost row is never compressed into an ellipse by its
+   container; the row wraps instead (see ManaCost.css, AC 17). */
+.mana-pip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25em;
+  height: 1.25em;
+  padding-inline: var(--space-1);
+  border-radius: var(--radius-pill);
+
+  /* THE DEFAULT FILL IS A REAL TOKEN, NOT ABSENCE (AC 12). Every colour class below overrides
+     it; a pip that somehow reached none of them is still a visible colourless circle rather
+     than a transparent hole — which is the failure a runtime-built `var(--mana-${c})` produces
+     and no test can see. */
+  background: var(--mana-colorless);
+  color: var(--text-inverse);
+
+  /* The numeric role, NOT a font-size (AC 11) — `font-size` has no legal spelling here, a
+     percentage included (measured: `font-size: 62%` is a lint ERROR), so the mock's
+     `fontSize: size * 0.62` and `fontWeight: 700` are both unavailable. `--type-numeric` is
+     500 at 13px: the heaviest weight the token layer carries, which is what a dark glyph on a
+     mid-tone fill wants, and the ONE role with no `--tracking-*` sibling — so it does not drag
+     trailing tracking and a no-op `text-transform: uppercase` onto a single centred glyph
+     (UX-DR3, Q2). The companion is mandatory: the `font` shorthand resets it. */
+  font: var(--type-numeric);
+  font-variant-numeric: var(--type-numeric-features);
+}
+
+/* ==== THE SIX SINGLE COLOURS ===========================================================
+   One class per colour, each naming its own token DIRECTLY — no custom property declared here
+   (a guard failure), no inline style (an ESLint error), no name built at runtime (invisible to
+   every guard). See the component header for why all three routes are closed. */
+.mana-pip-w {
+  background: var(--mana-w);
+}
+
+.mana-pip-u {
+  background: var(--mana-u);
+}
+
+.mana-pip-b {
+  background: var(--mana-b);
+}
+
+.mana-pip-r {
+  background: var(--mana-r);
+}
+
+.mana-pip-g {
+  background: var(--mana-g);
+}
+
+.mana-pip-c {
+  background: var(--mana-colorless);
+}
+
+/* ==== THE FIFTEEN HYBRID PAIRS (Q3) ====================================================
+   A HARD-STOP TWO-COLOUR GRADIENT, one element, no colour function. `linear-gradient()` lints
+   CLEAN (measured on a probe under the real config: `function-disallowed-list` names colour
+   functions and `drop-shadow` only), so the split pip needs no gate change — the opposite of
+   c2-7's `color-mix()` situation, which is why it was measured rather than assumed.
+
+   THE ALTERNATIVE READING OF UX-DR13's "dual-tinted" IS DECLINED: a single blended fill needs
+   `color-mix()`, which IS banned, and a blend of two colours is a THIRD colour that names
+   neither half.
+
+   FIFTEEN, not ten: all ten WUBRG pairs are in the shipped database AND so are the five
+   colourless hybrids (`{C/W}` … `{C/G}`, Ulalek, Fused Atrocity). Class suffixes are
+   canonicalised into WUBRG order by ManaPip.tsx, so each pair needs one class rather than two,
+   and `ui/tests/token-usage.test.ts` derives all 21 suffixes from `MANA_COLOUR_ORDER` and
+   proves every one of them is declared here. */
+.mana-pip-wu {
+  background: linear-gradient(135deg, var(--mana-w) 0 50%, var(--mana-u) 50% 100%);
+}
+
+.mana-pip-wb {
+  background: linear-gradient(135deg, var(--mana-w) 0 50%, var(--mana-b) 50% 100%);
+}
+
+.mana-pip-wr {
+  background: linear-gradient(135deg, var(--mana-w) 0 50%, var(--mana-r) 50% 100%);
+}
+
+.mana-pip-wg {
+  background: linear-gradient(135deg, var(--mana-w) 0 50%, var(--mana-g) 50% 100%);
+}
+
+.mana-pip-wc {
+  background: linear-gradient(135deg, var(--mana-w) 0 50%, var(--mana-colorless) 50% 100%);
+}
+
+.mana-pip-ub {
+  background: linear-gradient(135deg, var(--mana-u) 0 50%, var(--mana-b) 50% 100%);
+}
+
+.mana-pip-ur {
+  background: linear-gradient(135deg, var(--mana-u) 0 50%, var(--mana-r) 50% 100%);
+}
+
+.mana-pip-ug {
+  background: linear-gradient(135deg, var(--mana-u) 0 50%, var(--mana-g) 50% 100%);
+}
+
+.mana-pip-uc {
+  background: linear-gradient(135deg, var(--mana-u) 0 50%, var(--mana-colorless) 50% 100%);
+}
+
+.mana-pip-br {
+  background: linear-gradient(135deg, var(--mana-b) 0 50%, var(--mana-r) 50% 100%);
+}
+
+.mana-pip-bg {
+  background: linear-gradient(135deg, var(--mana-b) 0 50%, var(--mana-g) 50% 100%);
+}
+
+.mana-pip-bc {
+  background: linear-gradient(135deg, var(--mana-b) 0 50%, var(--mana-colorless) 50% 100%);
+}
+
+.mana-pip-rg {
+  background: linear-gradient(135deg, var(--mana-r) 0 50%, var(--mana-g) 50% 100%);
+}
+
+.mana-pip-rc {
+  background: linear-gradient(135deg, var(--mana-r) 0 50%, var(--mana-colorless) 50% 100%);
+}
+
+.mana-pip-gc {
+  background: linear-gradient(135deg, var(--mana-g) 0 50%, var(--mana-colorless) 50% 100%);
+}

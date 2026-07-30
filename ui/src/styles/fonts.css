@@ -1,0 +1,59 @@
+/* The one @font-face in the application, and the only file allowed to declare one.
+
+   WHY THIS FILE EXISTS SEPARATELY FROM tokens.css. `--font-sans` names 'Space Grotesk'; until
+   this file landed, nothing in the repository made that name resolve to anything, so every
+   surface rendered in `system-ui` and looked correct-ish while being the fallback. A token is a
+   promise; an @font-face is the thing that keeps it. They are separate files because tokens.css
+   is exempt from the COLOUR literal bans and this file needs exemption from the TYPOGRAPHY ones
+   — two different exemptions, and merging them would make one path exempt from both.
+
+   OFFLINE IS THE POSTURE, NOT AN OPTIMISATION (UX-DR2, NFR-06). The binary is committed under
+   src/assets/fonts/ and referenced below by a RELATIVE url, so Vite content-hashes it into
+   src/companion/app/static/assets/ and rewrites this url to match. Nothing is fetched from a
+   CDN, at build time or at run time — tests/fonts.test.ts fails the build on any external
+   reference anywhere in the committed bundle, because the imported design system's own
+   fonts.css is a Google Fonts @import and that is exactly the thing this replaces.
+
+   THE VARIABLE FONT, ONE FILE, ALL THREE WEIGHTS. @fontsource-variable/space-grotesk@5.3.0
+   (OFL-1.1) ships a 22,288-byte latin subset carrying the whole 300-700 weight axis. The static
+   package is 377 kB for the same coverage. DESIGN.md's seven roles use 400, 500 and 700, so
+   `font-weight: 300 700` below is what makes all seven resolvable from one request.
+
+   THE LICENCE ships beside the binary as src/assets/fonts/LICENSE-OFL-1.1.txt, which OFL-1.1
+   section 2 requires. Attribution in the UI is c2-10's footer; this file owes it the fact:
+   Copyright 2020 The Space Grotesk Project Authors
+   (https://github.com/floriankarsten/space-grotesk).
+
+   THREE THINGS THAT LOOK LIKE STYLE CHOICES AND ARE NOT:
+
+   1. The url is QUOTED. `function-url-quotes` (stylelint-config-standard) rejects the bare form
+      with "Expected quotes around url function argument" — one error, and the only thing
+      standing between a correct @font-face and a red gate.
+   2. `format('woff2')`, not `format('woff2-variations')`. The package's own CSS uses the latter;
+      it is the deprecated pre-CSS-Fonts-4 spelling, and `format('woff2')` alongside a
+      `font-weight` RANGE is how every current browser is told the same thing.
+   3. `unicode-range` is COPIED from the package's wght.css, never widened or invented. The
+      range decides WHEN this face is used at all; per-glyph fallback to the next family for a
+      character the file lacks happens regardless of it (CSS font matching is per character).
+      So a drifted range does not corrupt rendering — it silently changes which characters ever
+      trigger the font — and the only source that stays truthful to the file's real coverage
+      is the file's own metadata. */
+
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+
+  /* The whole wght axis in one file. --type-micro/-body are 400, four roles are 500 and
+     --type-body-strong is 700; all three are inside this range. */
+  font-weight: 300 700;
+
+  /* `swap`, with the preload in index.html. `block` hides text for up to 3s if anything goes
+     wrong, and `optional` lets the browser skip the font entirely on a slow connection — which
+     is precisely the regression UX-DR2 names. `swap` + preload collapses the flash to nothing
+     for a same-origin 22 kB file and degrades to readable text if it ever does not arrive. */
+  font-display: swap;
+  src: url('../assets/fonts/space-grotesk-latin-wght-normal.woff2') format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}

@@ -713,11 +713,21 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   is scoped to before-first-engine by design; a per-request re-stat would restore it at all times
   but is machinery with no failing user story behind it. Natural revisit point is c10-3 (latency
   work touches the same per-request path). (Source: Edge Case Hunter; Severity: Low.)
-- **A durably corrupt `cards.db` is classified transient forever** — "file is not a database"
-  answers `database_unavailable`, the quiet-retry "Database updating" state, on every request with
-  no path to the fresh-install/repair panel. Decide-once #4 rules it transient because it might be
-  mid-import, but nothing distinguishes 200 ms of mid-import from a month of garbage. A UX ruling
-  for c2-9 to make with the state designs in hand. (Source: Blind Hunter; Severity: Low.)
+- **A durably corrupt `cards.db` is classified transient forever** — ~~a UX ruling for c2-9 to
+  make with the state designs in hand~~. **RULED AND HALF-SHIPPED, c2-9 (Q5, Brad 2026-07-29.)**
+  The backend stays as it is: it genuinely cannot distinguish 200 ms of mid-import from a month
+  of garbage, which is why decide-once #4 ruled the condition transient, so the distinguisher is
+  **elapsed time on the client**. A sixth state was added — *Database updating, stalled* — with
+  its copy written into `EXPERIENCE.md`'s table ("Reads haven't resumed for a while. Check your
+  agent session — if no import is running, ask it to rebuild the database (`initialize_database`).")
+  and its panel shipped in `src/components/StatePanel/`. It is declared `RETRIES_QUIETLY: false`
+  in `states.ts` — the escalation of a quiet retry that has not worked.
+  **What remains, homed at c3-9** (which owns the polling): the "for a while" threshold and the
+  switch from `database-updating` to `database-updating-stalled`. Nothing selects the state at
+  runtime until then. The reason the ruling was not "leave it transient": for a durably corrupt
+  file, "Reads will resume automatically — nothing to do here" is simply **false**, and c2-9 is
+  the one story in the feature whose whole subject is whether the words are true.
+  (Source: Blind Hunter; Severity: Low → **ruled**, implementation residue at c3-9.)
 - **URI-form SQLite `CARDS_DATABASE_URL` is misclassified as a file path** — `database_file` handles
   `:memory:` and empty-database, but `sqlite+aiosqlite:///file::memory:?cache=shared` (or
   `?uri=true` forms) falls through to `Path(parsed.database)`, which never exists → permanent 503
@@ -974,31 +984,54 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
 
 ## Deferred from: code review of c1-9 (2026-07-26)
 
-- **The "both mypy runs are mandatory" comment is enforced by no gate** — `singleton.py`'s platform
-  branch declares `uv run mypy src/` and `uv run mypy src/ --platform linux` both mandatory, but no
-  pre-commit hook or CI step passes `--platform linux`: the POSIX (`fcntl`) half is strict-checked
-  only because CI happens to run on ubuntu, and the Windows (`msvcrt`) half only by Brad's local
-  runs. A POSIX contributor could merge a type-broken Windows branch through a green CI, and if the
-  CI matrix ever changes the "mandate" evaporates silently. Fix is one line in either
-  `.pre-commit-config.yaml` or `ci.yml` (an extra mypy invocation with the opposite `--platform`),
-  both of which AC 19 froze for story c1-9 — hence deferred rather than patched.
-  (Source: c1-9 code review, Blind Hunter; Severity: Low — both halves are covered today, the gap
-  is that the coverage is accidental rather than pinned.)
+- ~~**The "both mypy runs are mandatory" comment is enforced by no gate**~~ — **CLOSED by c2-1
+  (2026-07-26).** `singleton.py`'s platform branch declares `uv run mypy src/` and
+  `uv run mypy src/ --platform linux` both mandatory, but no pre-commit hook or CI step passed
+  either `--platform`: the POSIX (`fcntl`) half was strict-checked only because CI happens to run
+  on ubuntu, and the Windows (`msvcrt`) half only by Brad's local runs. A POSIX contributor could
+  merge a type-broken Windows branch through a green CI. Fixed in `ci.yml`'s `quality` job, which
+  was unfrozen for c2-1 (c1-9's AC 19 was what froze it).
+
+  **What shipped is `--platform win32`, not the `--platform linux` the epic text asked for**, and
+  the difference is the whole point. CI runs on `ubuntu-latest`, where the bare `mypy src/` **is**
+  the linux run — adding `--platform linux` there would have been a pure no-op that satisfied the
+  epic's letter while leaving the gap exactly as described above. The epic's wording was written
+  from Brad's Windows machine, where the bare run is the win32 run; the retrospective's success
+  criterion ("a deliberately Windows-broken `singleton.py` branch fails CI") is the one that
+  identifies the real gap, and it is the one that was satisfied.
+
+  Proven rather than assumed, per AC 17: with `msvcrt.locking(fd, msvcrt.LK_NBLCK)` (one argument
+  short) temporarily substituted in the `sys.platform == "win32"` branch,
+  `uv run mypy src/ --platform win32` reported
+  `singleton.py:130: error: Too few arguments for "locking"  [call-arg]` and exited 1, while
+  `uv run mypy src/ --platform linux` still reported `Success: no issues found in 83 source files`.
+  The break was reverted; `git status --porcelain -- src/` is empty in the shipped commit.
+  (Source: c1-9 code review, Blind Hunter; closed by story c2-1, C1 retro action item 3.)
 
 ## Deferred from: Epic C1 retrospective manual testing (2026-07-26)
 
 Brad ran blocks A–D and G–H and declared himself satisfied; two blocks were not run. Homed here per
 the gate-output rule rather than left as "we meant to".
 
-- **The renamed `COMPANION_PORT` env var has no live confirmation** — ruling R4 renamed
-  `PLANESWALKER_COMPANION_PORT` → `COMPANION_PORT` during the manual-testing pass, and the checklist
-  block that would have exercised it end to end (`$env:COMPANION_PORT = "9125"` → the companion
-  serving on 9125, and `--port` beating it) was not run afterwards. Coverage is otherwise good: the
-  unit suite reads `server.PORT_ENV_VAR` so it followed the rename automatically (1,684 passed), and
-  the *malformed*-input paths were hand-verified in block A. What is unconfirmed is only that a real
-  shell environment variable under the new name reaches `resolve_preferred_port`. **Consequence for
-  c8-4:** document the variable, but do not describe it as hand-verified. Closing it is a
-  thirty-second check whenever the companion is next started. (Severity: Low.)
+- ~~**The renamed `COMPANION_PORT` env var has no live confirmation**~~ — **CLOSED by c2-1
+  (2026-07-26)**, incidentally, by Task 10's second live check. With `$env:COMPANION_PORT = "9125"`
+  set in a real shell before launch, the companion printed
+  `[planeswalker] companion running at http://127.0.0.1:9125`, published
+  `companion.json` for port 9125, and answered `GET /health` there with
+  `{"status":"ok","instance_id":"9be64dcd-…"}` — while 8765 refused connections. So a real shell
+  environment variable under the new name does reach `resolve_preferred_port`. **c8-4 may now
+  describe `COMPANION_PORT` as hand-verified.**
+
+  *Originally recorded as:* ruling R4 renamed `PLANESWALKER_COMPANION_PORT` → `COMPANION_PORT`
+  during the manual-testing pass, and the checklist block that would have exercised it end to end
+  was not run afterwards. Coverage was otherwise good — the unit suite reads `server.PORT_ENV_VAR`
+  so it followed the rename automatically (1,684 passed), and the *malformed*-input paths were
+  hand-verified in block A — leaving only "does a real shell variable under the new name reach
+  `resolve_preferred_port`" unconfirmed.
+
+  **Still not hand-run:** the other half of that checklist block, `--port` beating the env var.
+  That precedence has unit coverage and was not exercised live here, so c8-4 should describe the
+  *variable* as hand-verified but not the *precedence*. (Severity: Low.)
 
 - **FR-22's fresh-install start has no live confirmation** — the checklist block pointing
   `PLANESWALKER_DATA_DIR` at an empty directory to prove the companion *starts* rather than crashing
@@ -1010,3 +1043,514 @@ the gate-output rule rather than left as "we meant to".
   instead of erroring and comes alive on its own"), which owns that loop in the UI and cannot be
   accepted without a real empty-data-dir run. Recorded so c3-9 inherits it as a known-unverified
   precondition rather than assuming Epic C1 closed it. (Severity: Low.)
+
+## Deferred from: story c2-1 (2026-07-26)
+
+- **`npm audit` reports 8 high-severity advisories in the `ui/` dev toolchain, and no gate looks at
+  it.** All 8 are transitive and dev-only: `brace-expansion`/`minimatch` (a DoS via unbounded
+  expansion) reached through `eslint`, `@eslint/eslintrc`, `@eslint/config-array` and
+  `eslint-plugin-jsx-a11y`, plus `js-yaml` (quadratic CPU on merge-key chains) reached through
+  `@redocly/openapi-core`, a dependency of `openapi-typescript`. Nothing here ships: Node is
+  dev/CI-only (AD-13), `ui/dist` contains none of it, and the Python package never sees it — the
+  realistic exposure is a contributor running `npm run lint` on hostile input.
+
+  **Not fixed here, deliberately.** `npm audit fix --force` resolves it by installing
+  `eslint-plugin-jsx-a11y@6.4.1` — a downgrade across a major boundary, which is the plugin that
+  carries the entire UX-DR47 gate (AC 8). Trading a working accessibility gate for a DoS advisory in
+  a linter is the wrong trade. The non-`--force` fix only reaches the `js-yaml` half. The real
+  resolution is upstream: `eslint-plugin-jsx-a11y` publishing an `^10` peer range would let the
+  `eslint ^9` pin lift and carry a patched `minimatch` with it — the same exit condition already
+  recorded against the pin in `ui/package.json`.
+
+  **Natural home: c8-5** (plugin distribution parity) or c8-4, whichever first has to make a
+  statement about what the release contains. Re-check with `npm audit` then; if jsx-a11y has shipped
+  an `^10` peer by that point this closes itself. Recorded so that the first person to run
+  `npm audit` finds a decision rather than a surprise. (Severity: Low — dev-only, no runtime
+  exposure; the *reporting* gap is the point, not the advisories.)
+
+- **`ui/package.json` declares `engines.node: ">=20.19.0"` but the epic and PRD say "Node >= 20".**
+  The measured floor is higher than the copy: `vite@8.1.5` declares
+  `engines: ^20.19.0 || >=22.12.0` and `stylelint@17` declares `>=20.19.0`, so a literal Node 20.0
+  cannot build `ui/`. `>=20.19.0` is the honest form of the same requirement and is what shipped;
+  CI's `node-version: 20` resolves to the latest 20.x, which satisfies it. **This is a copy fix for
+  c8-4** (release documentation), not a scope change — nothing needs rebuilding, the prose needs to
+  stop saying "20". (Severity: Low.)
+
+- **A third load-bearing version pin exists that no planning document predicts:
+  `@testing-library/jest-dom` at `~6.9.1`.** The story predicted two pins (`typescript`, `eslint`);
+  this one was found at install time. Both `latest` (7.0.0) and 6.10.0 declare
+  `engines.node: ">=22"`, above this project's `>=20.19.0` floor and above CI's `node-version: 20`;
+  6.10.0 is additionally deprecated upstream as an incorrect minor release. 6.9.1 is the last
+  release declaring `>=14`. Unlike the other two pins, npm does **not** fail on this — `engines` is
+  advisory by default, so an unpinned bump would install cleanly and then break only on the Node 20
+  CI job. The reason is recorded in `ui/package.json` beside the dependency. **Relevant to c8-4**
+  (which documents the Node floor) and to whoever eventually proposes raising it: lifting this pin
+  is a Node-floor decision (AC 2 / AC 15), not a dependency bump. (Severity: Low — pinned and
+  documented; recorded because the Spine's stack table now lags reality by two entries, `eslint ^9`
+  being the other.)
+
+- **`tests/integration/data/test_deck_repository.py::test_list_decks_with_strategy_field` is
+  order-flaky under full-suite load.** Observed failing once during c2-1's Task 0 baseline run
+  (`assert 'Control' is None`), then passing 5/5 in isolation and passing on an immediate full-suite
+  re-run at the identical commit — so it is pre-existing at `50dddc3` and unrelated to this story,
+  which adds no Python. Cause: the test creates three decks in immediate succession and asserts
+  `list_decks()` returns them newest-first, but `created_at` can tie at the same microsecond, and the
+  ordering has no secondary tie-breaker — so the two decks created in the same tick can come back in
+  either order. Fix is a deterministic secondary sort key (`id`, or a monotonic sequence) in
+  `list_decks`, or distinct timestamps in the fixture. Not patched here because AC 21 forbids this
+  story touching `tests/` or `src/`. Note this is the *same class* of defect as the flaky-test
+  tie-breaker closed at the Epic 1 retro, in a different query. **Natural home:
+  `data-layer-orphan-handling`** (already keyed in sprint-status as the data-layer catch-all) or any
+  story that next opens `DeckRepository.list_decks`. (Severity: Low — a false red, never a false
+  green; but it will keep costing someone a re-run.)
+
+## Deferred from: code review of c2-2-the-backend-serves-the-built-spa-as-a-committed-artifact (2026-07-26)
+
+- **`sprint-status.yaml`'s `last_updated` comment is a single ever-growing line, thousands of
+  characters long.** Each story appends its entire narrative onto one line chained behind
+  "Previously:", making it unreadable, undiffable, and unbounded. The pattern predates c2-2 (this
+  story merely doubled down on it). Natural fix: keep `last_updated` to a date + one clause and let
+  the story records carry the narrative — a process/tooling nit for the epic retro, not any story's
+  code. (Severity: Low — cosmetic, but it degrades every future diff of the file.)
+  **Upgraded 2026-07-26 while contexting c2-3, and it is no longer only cosmetic: the file does not
+  parse as YAML.** Measured on the committed tree at `9b612eb` — `yaml.safe_load` raises
+  `ScannerError: mapping values are not allowed here` at **line 49**, the `last_updated` mega-line,
+  because a YAML plain scalar may not contain `": "` and that line now contains dozens of them
+  ("ruled by Brad: AC 5's…"). Every BMad workflow reads and rewrites this file textually, which is
+  why nothing has noticed. Consequence if that ever changes — a status dashboard, a script, a future
+  workflow using a real parser — is a hard failure on the whole sprint file, not a degraded read.
+  Fix is the same fix (date + one clause), or quote/block-scalar the value; either way it is one
+  edit, and it should land before something starts parsing it.
+
+- **AC 17's browser-render half of c2-2 is Brad's, deferred to the C2 epic manual-testing
+  checklist (ruled at review, 2026-07-26).** Every machine-checkable probe passed from a Node-less
+  worktree (status codes, content types, byte-identical served bundle, cache headers, 405+Allow);
+  what remains is opening `uv run artificial-planeswalker companion`'s printed URL in a browser and
+  confirming the placeholder app paints. Reason for deferral: only a human can close SC-4's render
+  half, and the epic retro checklist is its established home. (Severity: Low — every proxy signal
+  is green; this is the eyes-on-pixels confirmation.)
+
+## Deferred from: code review of c2-3 (2026-07-27)
+
+- **`_truncate_descriptions`'s drop-the-key branch can void a Response Object's required
+  `description` (spec-invalid OpenAPI).** `del node["description"]` at
+  `src/companion/app/main.py:304` applies to every node, but the OpenAPI spec *requires*
+  `description` on Response Objects. A route/response docstring consisting only of a Google-style
+  section header would render a schema `openapi-typescript` (exit non-zero on a bad schema) may
+  reject in the `frontend` job with a message pointing nowhere near the cause. Trigger is
+  pathological today — every current response description is real prose — and the drop-the-key
+  behavior is deliberately test-pinned
+  (`test_a_description_that_is_only_a_section_loses_the_key`), so changing it is a design edit,
+  not a patch. Natural fix when it matters: keep `""` (or skip the delete) when the parent context
+  is a `responses` entry. (Severity: Low — unreachable without a degenerate docstring, and the
+  failure is loud in CI.)
+
+- **The sprint-status `last_updated` mega-line grew again in the same c2-3 diff that documented
+  the file no longer parsing as YAML.** The upgraded entry above (2026-07-26) already homes the
+  fix at the epic retro; recording here that c2-3's own bookkeeping commit lengthened the
+  offending unquoted scalar rather than taking the one-edit quote fix — the retro fix should also
+  re-check that nothing started parsing the file in the meantime. (Severity: Low — pre-existing,
+  fix already homed.)
+
+## Deferred from: code review of c2-4-the-voltglass-token-layer (2026-07-27)
+
+- **Typography literals are the ungated family in the "every value is a token" set.** The c2-4
+  literal bans cover colour/shadow/radius/spacing, but no rule keys `font`, `font-size`,
+  `font-weight`, `line-height` or `letter-spacing`, so a component can hard-code type off the
+  seven `--type-*` roles with no lint or guard firing. Deferred to c2-5, which owns type-role
+  enforcement (the numeric-pairing lint); widening that to a full font-literal ban family — same
+  shape as c2-4's four — is c2-5's scope decision. (Severity: Low — no components exist yet;
+  c2-5 lands before the first one.)
+
+  **CLOSED by c2-5 (2026-07-28).** Widened to the full family, per Brad's Q4 ruling: the ban is
+  keyed on a property-name family regex covering `font`, every `font-*` longhand and
+  `line-height`/`letter-spacing`, allowing only `var(--type-*)`, `var(--font-*)`,
+  `var(--tracking-*)`, `0` and the CSS-wide keywords, with each property tied to its OWN token
+  family so `font-weight: var(--space-1)` fails too. `font-variant-numeric` is deliberately
+  excluded — its one legal value is already required by the numeric-pairing guard. Proven with
+  `font-stretch`, `font-optical-sizing`, `font-size-adjust`, `font-synthesis` (never enumerated)
+  and an invented `font-hyperkerning`. "Every value is a token" is now true.
+
+## Deferred from: implementation of c2-5-self-hosted-space-grotesk (2026-07-28)
+
+- **AC 4's render half is Brad's, deferred to the C2 epic manual-testing checklist.** The
+  machine-verifiable half is fully closed: the committed binary is a real WOFF2 by signature,
+  exact byte length and WOFF2 header (`tests/fonts.test.ts`), `git check-attr` resolves it as
+  binary so a `core.autocrlf=true` Windows checkout cannot normalise it, it is emitted
+  content-hashed into `assets/` and served `font/woff2`, the `@font-face` reaches it by a
+  relative url the bundler rewrites, and nothing in the committed bundle names another origin.
+  What remains is **opening the app in a browser with the network throttled to offline and
+  confirming the glyphs are Space Grotesk rather than `system-ui`.** Reason for deferral: jsdom
+  does not load fonts, does not apply `@font-face`, and reports whatever family string it was
+  handed — a `getComputedStyle` assertion here would pass on a corrupt font, a missing font and
+  a 404 alike, which is worse than no assertion. Same precedent as c2-2's AC 17. (Severity: Low
+  — every mechanical signal is green; this is the eyes-on-glyphs confirmation. Worth checking in
+  the same pass: that no flash of fallback text is visible on load, which is what `font-display:
+  swap` plus the `index.html` preload is for.)
+
+- **The numeric-pairing guard cannot see the cascade.** `findUnpairedNumericRole` fails a rule
+  block that applies `font: var(--type-numeric)` without
+  `font-variant-numeric: var(--type-numeric-features)` in the SAME block. What it cannot see is a
+  correct pair undone by a later rule. *(Review round 2026-07-28 narrowed this: the literal
+  spelling — `.is-compact { font-variant-numeric: normal; }` — is now caught by stylelint, whose
+  `font-variant-numeric` entry admits only the token; the spelling that remains invisible is a
+  later block applying a different role — `.is-compact { font: var(--type-micro); }` — where
+  every declaration is legal and the `font` shorthand resets `font-variant-numeric` as a side
+  effect.)* Resolving that needs specificity, source order and the element's real class list,
+  which live in TSX and are chosen at runtime. **Review owns that half.** Documented at the
+  guard, in `ui/README.md`, and asserted as a deliberate blind spot so it fails loudly if the
+  guard ever grows a cross-block reader.
+
+  **Updated 2026-07-29 (story c2-7): the blind spot now has real consumers.** The role is
+  applied by `.panel-count`, `.group-header-count` and `.stat-chip-delta`, and the label/micro
+  companion guard added in the same story (`findRoleWithoutCompanions`) inherits the identical
+  block-local limit — its own cascade case is a later `font` shorthand in another rule, which
+  is asserted as a declared blind spot beside it. Reviewing a story that composes these
+  primitives means checking the composed class list rather than assuming the gate did.
+  (Severity: Low → **Low-Med** — three components apply the role now, and every later story
+  that stacks a modifier class onto one of them is in the guard's blind spot.)
+
+- **The offline guard's JS layer is a reviewed-host baseline, and it is deliberately brittle.**
+  `.css` and `.html` in the bundle carry a TOTAL ban on external URLs; `.js` cannot, because
+  React's DOM code legitimately contains `http://www.w3.org/…` namespace identifiers and a
+  `https://react.dev/errors/` string, and a guard that fired on those is one someone switches
+  off. So JS is covered by three family rules (font-CDN hosts, fetchable asset extensions) plus a
+  snapshot of the reviewed host set. A React or Vite bump that introduces a new URL string will
+  turn `tests/fonts.test.ts` red and require a human to add it to `REVIEWED_HOSTS` with a reason.
+  That is the intent — under AD-13 a dependency bump already means committing a new bundle — but
+  it is a maintenance cost worth naming rather than discovering. A runtime-constructed URL
+  (`fetch('htt' + 'ps://…')`) is invisible to all four rules, as it is to every static check.
+  (Severity: Low — the thing being prevented is a build-time CDN import, which the total ban on
+  `.css`/`.html` covers absolutely.)
+
+## Deferred from: code review of c2-5-self-hosted-space-grotesk (2026-07-28)
+
+- **`git ls-files`-keyed guards cannot see untracked stylesheets.** `shippedStylesheets` in
+  `ui/tests/fonts.test.ts` and `ui/tests/token-usage.test.ts` builds its file list from
+  `git ls-files '*.css'`, so a not-yet-staged component stylesheet carrying a stray `@font-face`
+  or an unpaired numeric role passes the local vitest run and is only caught once staged
+  (stylelint's filesystem glob still catches value-level violations). This is the deliberate,
+  comment-owned trade-off c2-4 established; if it ever bites, the fix is one sweep appending
+  `git ls-files --others --exclude-standard '*.css'` to every such guard at once, not a
+  per-story patch. (Severity: Low — the window closes at `git add`, and CI never has it.)
+
+- **`:root { font: var(--type-body) }` pins the document rem basis to 14px and overrides the
+  browser's default-font-size preference.** Before c2-5, `:root` set no `font-size`, so `1rem`
+  tracked the user's browser setting; now it is 14px document-wide. Latent — nothing in `ui/`
+  uses `rem`, and the whole token layer is px-based per DESIGN.md, so user font-size preferences
+  were already inert for component text. If an accessibility pass ever revisits px-vs-rem, this
+  root declaration is where the document basis is set. (Severity: Low — design-system-level,
+  pre-dates this story in effect; the 14px change itself is recorded in the c2-5 Completion
+  Notes.)
+
+## Deferred from: implementation of c2-6-the-two-column-application-shell (2026-07-28)
+
+- **AC 4's and AC 5's render halves are Brad's, deferred to the C2 epic manual-testing
+  checklist.** This is the third story to split an AC this way (c2-2 AC 17, c2-5 AC 4), so it is
+  now a pattern rather than an exception. jsdom has no layout engine — it resolves no grid
+  tracks, evaluates no media queries and returns no box geometry — so every geometry assertion
+  in this story reads CSS source. What is mechanically pinned by `ui/tests/shell.test.ts`: the
+  gutter and panel-gap come from tokens, the right column is exactly `452px`, the breakpoint is
+  exactly `1100px` in the context range form, the fluid track is `minmax(0, 1fr)`, and both the
+  track and the grid item are floored at zero. What a browser still owes:
+
+  1. Open at **1720px** and compare against the composition reference — header, fluid left
+     column, 452px right column, footer, panels floating with visible canvas between them.
+  2. Sweep **~1100px → ~2560px**: no horizontal scrollbar at any width, and below 1100px the
+     right column drops beneath the left rather than compressing.
+  3. On a **long deck**, the footer stays visible without scrolling, and the scrollbar sits at
+     the content region's edge rather than the window's — the intended app-shell appearance and
+     the accepted consequence of Q2.
+
+  (Severity: Medium — the composition is the story's whole point, and no gate can see it.)
+
+- **The shell's guards are static CSS readers, so the cross-file and runtime halves are
+  review's.** `ui/tests/shell.test.ts` decides "is this a full-window fixed layer", "is this a
+  root element" and "does this track floor at min-content" by reading declarations in one rule
+  block at a time. Invisible to all of them: a full-window layer composed at runtime from two
+  classes on one element; a root reached through a class the guard does not recognise as root
+  (it knows `html`, `body`, `:root`, `#root`, the universal `*`, functional pseudo-class
+  wrappers of those, `.app-shell` in any compound, and `.app-shell-columns` — but not an
+  arbitrary class that happens to be styled onto a root element); any `overflow`, `position`
+  or grid template set from JavaScript; and `var()` indirection, where the banned keyword
+  lives in a custom property declared elsewhere (review round, 2026-07-28 — declared in the
+  guard header alongside the runtime half). This is the same division of labour
+  `tests/token-usage.test.ts` declares for its contrast and numeric-pairing guards, and it is
+  stated in the guard file's own header. When reviewing c6-5's agent view in particular, check
+  the composed result rather than assuming the confinement guard did. (Severity: Low — the
+  static half covers the shape every story is actually likely to write.)
+
+- **`z-index: 20` is a geometry literal that the AC 18 documentation guard does not cover.**
+  The guard is derived from the code — every `\d+px` literal in every tracked stylesheet under
+  `src/components/` must carry a `DESIGN.md` citation within a sentence of it (widened from
+  `AppShell.css` alone in the 2026-07-28 review round) — and a bare unitless number cannot be
+  told apart from the ones in `minmax(0, 1fr)`, `flex: 1` and `min-width: 0`. The value is documented
+  in prose beside its rule (it comes from the composition reference, and UX-DR38 fixes the stack
+  at one level deep so there is nothing to order it against), but that documentation is
+  review-enforced rather than gate-enforced. If a later story introduces a second stacking
+  level, the right repair is a `--z-*` token family, not a wider regex. (Severity: Low — one
+  value, one level, and the epic's design says there will never be a second.)
+
+## Deferred from: c2-6 AC 7 amendment (2026-07-28)
+
+- **`DESIGN.md` line 328 still names `{spacing.6}` for the agent-view overlay inset; the shipped
+  shell uses `--space-gutter`.** Story c2-6's AC 7 was amended to `var(--space-gutter)` by Brad's
+  ruling on 2026-07-28, after review round 1 ruled the implementation that way: the two tokens
+  are both 32px today, but the overlay's contract is that its inset **coincides with the shell's
+  own frame**, and a later retune of the gutter would silently break that alignment while every
+  assertion kept passing. The epic's Story 2.6 block and UX-DR8 both say plain "32px" and needed
+  no change; DESIGN.md is the only artefact still naming the scale step.
+
+  Left alone deliberately — DESIGN.md is the UX artefact, not an implementation record, and
+  nothing renders differently since both values are 32px. **Homed against Story 8.3**, which
+  already owns folding implementation-surfaced corrections back into the planning artefacts (it
+  carries the six spine gaps and the EXPERIENCE.md "unconfirmed" stamps). The fix is one word,
+  and the reason to make it is that the next component to reach for a "window frame" distance
+  should find one name, not two. (Severity: Low — cosmetic today, a real trap only if the
+  gutter is ever retuned.)
+
+## Deferred from: c2-7 — presentation-only primitives (2026-07-29)
+
+- **The four primitives' APPEARANCE is not dev-verified, and cannot be in this story.** `Panel`,
+  `Badge`, `StatChip` and `GroupHeader` ship with **no on-screen consumer** — nothing imports
+  them, deliberately (AC 24: the header badge slot stays empty and keeps naming c4-2/c4-10 as
+  its fillers). jsdom applies no stylesheet and has no layout engine, so every visual claim in
+  the story — the overlay level being one step up the ramp, `--shadow-rest` against
+  `--shadow-raise`, the live dot's `var(--glow)`, and above all **whether the pseudo-element
+  tone wash actually renders behind the badge's text rather than over it** — is read from CSS
+  source or not at all. A `getComputedStyle` assertion here would return the empty string and
+  pass for the wrong reason; this is the fourth story to split an AC this way (c2-2 AC 17, c2-5
+  AC 4, c2-6 AC 4/5) and faking it was explicitly declined.
+
+  **Homed at each primitive's first consuming story**, which is where a real screen can show it:
+  `Panel` **RE-HOMED by c2-9 to c4-5** (card detail, the first real `level="overlay"` panel) and
+  **c4-7** (the deck list) — this entry assumed the state panel would *be* a `Panel`, and Q6
+  ruled that it is not: `DESIGN.md` declares a separate `components.state-panel.*` block, and the
+  two differ where it matters (a Panel's title is `--type-label`, 11px uppercase tracked; a state
+  panel's headline is `--type-heading`, 17px sentence case). Rendering one through the other
+  would have meant threading a second title role through `Panel`, which is how a primitive stops
+  being one. So `Panel` still has no on-screen consumer. `GroupHeader` at **c4-7** (the deck list),
+  `Badge` at **c4-10** (the format check) and **c4-2** (the header badges), `StatChip` at the
+  first surface that carries one. Carried on the **epic manual-testing checklist** as well, so
+  it is not only findable from this file. (Severity: **Medium** — the wash's stacking behaviour
+  is the one mechanism in the story with no static proof available, and the failure mode is a
+  solid blank pill with invisible text, which reads as a content bug rather than a CSS one.
+  Check it first.)
+
+  **Extended by the 2026-07-29 review: the tone-over-wash CONTRAST is also unmeasured.**
+  UX-DR6's table covers `--accent-dim` on `--surface-overlay` only; nobody has measured
+  `--accent-bright` over a 12% `--accent` wash, nor positive/negative/caution text over their
+  own washes, on any surface or under the four alternate themes. `Badge.css`'s accent comment
+  now says so plainly instead of asserting the floors are cleared. Same home, same first
+  consumers: eyeball the wash's stacking AND run the contrast numbers at c4-2 / c4-10.
+
+- **`findRoleWithoutCompanions` derives its uppercase half by reading `DESIGN.md` from a second
+  test file.** `tests/tokens.test.ts` already calls its copy of that path "the ONE place this
+  path is written"; `tests/token-usage.test.ts` now writes it too, because no token NAME encodes
+  case the way `--tracking-X` encodes tracking, and reading the contract beat hand-typing "label
+  and micro". Both copies carry a loud anchor that turns a stale path into a named failure
+  rather than a guard asserting nothing over an empty map, and `tests/package-contract.test.ts`
+  pins the exhaustive list of `yaml` importers so a third one cannot appear quietly. The clean
+  repair is a shared `tests/design-contract.ts` exporting the path and the parsed frontmatter,
+  which was declined here as out of scope for a story that ships components. (Severity: Low —
+  two copies, both anchored, and the UX artefacts are re-exported rarely.)
+
+## Deferred from: code review of c2-7 (2026-07-29)
+
+- **StatChip `signed()` renders raw `String(delta)`** — a fractional delta shows
+  `+0.30000000000000004` and a magnitude ≥ 1e21 shows `+1e+21` as user-facing text
+  (`ui/src/components/StatChip/StatChip.tsx:45`). Q6 already homes delta *formatting* at the
+  first consuming story; that entry now also covers fractional and huge numbers — the consumer
+  either formats before passing or adds the sibling formatted-delta prop Q6 anticipated.
+  (Severity: Low — no current caller passes a non-integer delta.)
+
+## Deferred from: c2-8 — ManaPip / ManaCost and the Scryfall cost parser (2026-07-29)
+
+- **`ManaPip` and `ManaCost` APPEARANCE is not dev-verified, and cannot be in this story.**
+  Both ship with **no on-screen consumer** — nothing imports them, deliberately (AC 24:
+  `AppShell.tsx` is untouched) — and jsdom applies no stylesheet and has no layout engine. So
+  every visual claim in the story is read from CSS **source** or not at all: the pip being a
+  **circle** at all (`min-width: 1.25em` + `height: 1.25em` + `--radius-pill`), the **hard-stop
+  two-colour gradient** on the fifteen hybrid classes actually reading as a split rather than a
+  blur, the 13px numeric glyph sitting **legibly** in a 16.25px circle (a 0.8 glyph-to-pip ratio,
+  tighter than the mock's 0.62 — this is the value most likely to want a nudge), the **wide
+  case** (`{1000000}`, `{HW}`) growing into a pill instead of clipping, and the **row wrapping**
+  when fifteen B.F.M. pips meet the 452px right column. A `getComputedStyle` assertion here
+  would return the empty string and pass for the wrong reason; this is the **fifth** story to
+  split an AC this way (c2-2 AC 17, c2-5 AC 4, c2-6 AC 4/5, c2-7 AC 21) and faking it was
+  explicitly declined.
+
+  **Homed at the first consuming stories**, which are where a real screen can show it: **c4-3**
+  (card placeholders — the first render of a cost anywhere), **c4-7** (deck rows, the densest
+  use and the one where the wrap matters), **c4-9** (the colour-distribution legend, which is
+  also where the optional `label` prop gets its first caller). Carried on the **epic
+  manual-testing checklist** as well, so it is not only findable from this file. (Severity:
+  **Medium** — the glyph-to-pip ratio and the gradient's hard stop are the two values with no
+  static proof available, and both fail *legibly-but-wrongly* rather than loudly. Check the
+  `{1000000}` and `{W/U}` cases first.)
+
+- **The `--mana-*` data-ink rule's "unstacked curve bar" half is REVIEW'S, not the gate's.**
+  UX-DR7 bans a WUBRG token on "an unstacked curve bar", and whether a given bar is genuinely
+  stacked is a property of the data bound to it and the elements composed at runtime — both in
+  TSX, neither in CSS. The guard says so in its own comment (the same division of labour
+  `surfaces.ts`'s `stepsExactlyOne()` declares), and `ui/README.md` says so where c4-8's author
+  will be reading. **c4-8's reviewer must look**; the gate will not have looked for them.
+  (Severity: Low — one story owns it, and it is named in three places.)
+
+- **The ` // ` split-card separator is spoken as the literal characters.** `describeManaCost`
+  renders `{2}{B} // {B}` as _"2 generic, black // black"_, so a screen reader says "slash
+  slash". A friendlier reading ("or", "split with") was declined as an invention — nothing in
+  DESIGN.md, EXPERIENCE.md or the epic rules on it, and guessing would put unsourced words in a
+  user's ear. Homed at **c4-3/c4-7**, where a split card first renders and the phrasing can be
+  decided against something real. (Severity: Low — 338 of 32,318 costs, and the literal reading
+  is honest rather than wrong.)
+
+- **For sighted colour-vision-deficient users, a pip's colour IS its sole carrier** (added at
+  c2-8's code review). A `{W}` pip and a `{G}` pip differ in nothing but fill — no letter, no
+  pattern — so the `role="img"` accessible name serves AT users while a sighted CVD user cannot
+  read any cost. DESIGN.md's ruled shape ("a plain circle filled with the mana token") compels
+  this, and UX-DR7's no-lookalikes rule closes the obvious escape of drawing symbols; the entry
+  exists so the trade-off is a **decision on record, not an omission**. Homed at the **c4-3
+  eye-check** with the other visual claims: if the plain circles read as indistinguishable in
+  practice, the available levers are a glyph-slot letter (the mechanism Phyrexian already uses,
+  and plain text is not a lookalike) or a DESIGN.md amendment — Brad's call, made against a real
+  screen. (Severity: **Medium** — an accessibility gap for a real user class, but one the design
+  contract currently mandates.)
+
+- **`{Y}`, `{Z}`, `{S}`, `{L}`, `{D}` and `{HW}` are deliberately NOT in the parser's symbol
+  table.** Each is real in the shipped database and each renders correctly today — as a
+  colourless pip showing its own letter, which is exactly what the totality contract promises
+  and what AC 3 requires. Adding them as recognised families would buy a *colour* for snow and
+  a *name* for the un-set symbols, and neither has a DESIGN.md or epic ruling to source it
+  from. Revisit only if a consuming story shows one of them reading badly. (Severity: Low — the
+  current behaviour is correct, not a gap; this entry exists so a later author knows the
+  omission was a decision.)
+
+## Story c2-9 — the shared state panel and every system-state message
+
+- **The state panel's appearance is dev-verified for the first time in this epic, and only
+  partly.** `App.tsx` renders the no-active-deck panel into the shell's `left` slot (Q1), so
+  unlike c2-7 and c2-8 there IS a screen. What that screen proves is what a browser draws; what
+  it does not prove is everything jsdom is blind to *in the test suite*, which is the same list
+  as ever: **centring, the 480px measure, the hairline border, the large radius, the chip's
+  recessed `--surface-well` material and its mono family, and the accent colour and weight of
+  the next-action line.** jsdom applies no stylesheet and has no layout engine, so there is no
+  `getComputedStyle` assertion in `StatePanel.test.tsx` — one would report the defaults back and
+  pass over a stylesheet that was never linked. This is the **sixth** story to split an AC this
+  way (c2-2 AC 17, c2-5 AC 4, c2-6 AC 4/5, c2-7 AC 21, c2-8 AC 21) and faking it was again
+  declined. What IS statically proven: the token families spent (an allowlist guard), the
+  absence of `--negative`/`--caution`, the absence of `transition`/`animation`, and the
+  DESIGN.md citation beside the one px literal. **On the epic manual-testing checklist.**
+  (Severity: Low — every claim has a static half; the visual half is a first-look, not a risk.)
+
+- **The five states nobody can see yet.** Only `no-active-deck` is on screen, because it is the
+  only one that is TRUE with no fetch layer. `database-not-initialized`, `database-updating`,
+  `database-updating-stalled`, `disconnected` and `internal-error` render correctly in the test
+  suite and have never been looked at in a browser — in particular the **command chip**, which
+  only appears in three of them, and the **two-paragraph** guidance/action stack, which
+  `no-active-deck` does not exercise (it has no guidance). Homed at **c3-9**, which wires the
+  states and is the first story able to show them. Cheapest interim check: temporarily change
+  the `state` prop in `App.tsx` and look. (Severity: Low.)
+
+- **`states.ts` has no runtime consumer.** `PANEL_FOR_REASON`, `CLIENT_ONLY_STATES` and
+  `RETRIES_QUIETLY` are total maps written for **c3-9** to read; nothing imports them today, so
+  they are tree-shaken out of the bundle. This is deliberate — the alternative was leaving the
+  wire-token→panel mapping and the retry contract as prose in a story record, which is where
+  `internal_error` was left in c1-4 and what cost this story an AC to repair. Their correctness
+  is proven by `npm run typecheck` (a seventh `ErrorReason` fails to compile), not by `npm test`.
+  (Severity: Low — a declaration with a named owner and a compile-time gate.)
+
+- **`--font-mono` has exactly one consumer and one job.** The command chip. If a later story
+  reaches for it anywhere else, that is a UX-DR2 conversation (hierarchy never comes from a
+  second family), not a free reuse — the whole argument for admitting the token was that a
+  command literal is *data* the user retypes. No guard enforces the scope today; it is stated in
+  `tokens.css`, in `DESIGN.md`'s Typography section and here. (Severity: Low.)
+
+- **The copy guard cannot decide the half that matters most.** Whether a sentence is
+  second-person, blameless and gives a concrete next action is not statically decidable, and it
+  is the substance of UX-DR33. Declared in `tests/copy-rules.test.ts`'s own header alongside two
+  narrower residues: copy assembled from single words at runtime (`describeManaCost`), and a
+  string reaching `aria-label` through an expression rather than a literal. **Review owns all
+  three** — the same division of labour `surfaces.ts` and `findAccentDimOnOverlay` declare for
+  theirs. A reviewer of c2-10, c4-3, c4-12 and c6-6 must READ the copy. (Severity: Low, but
+  permanent — this does not get closed, it gets honoured.)
+
+## Deferred from: code review of c2-9 (2026-07-29)
+
+- **A runtime-unknown `state` key crashes the StatePanel.** `STATE_COPY[state]` at
+  `StatePanel.tsx:92` has no fallback branch: a value arriving through untyped wiring (a stale
+  enum, a JS caller, a mis-parsed wire token) yields `undefined` and `copy.headline` throws — an
+  unhandled render exception, which is the error screen the story exists to ban. TypeScript
+  guards it today and no runtime caller exists (`App.tsx` passes a literal). **c3-9 owns runtime
+  validation of wire values before they reach this prop** — the same place the polling and the
+  stalled-state threshold live. (Severity: Low today; Medium once wiring exists.)
+
+- **The un-quoted tails of EXPERIENCE.md's copy rows are contract nobody gates.** The verbatim
+  gate captures `Headline:` and `Body:` only; the no-active-deck row's deck-list clause and both
+  retry clauses ("Deterministic: this state never retries itself", the stalled row's threshold
+  note) live outside the captures and can be edited or deleted with every gate green while their
+  TypeScript mirrors (`RETRIES_QUIETLY`, the `decks` prop) drift undetected. Extending the gate
+  is new scope; candidate home is **c3-9**, beside the wiring those clauses constrain.
+  (Severity: Low.)
+
+## Deferred from: story c2-10 (footer attribution, 2026-07-30)
+
+Every entry here is a **visual claim jsdom cannot decide** (AC 22). The source-read half of each
+is asserted in `ui/tests/shell.test.ts` against `Footer.css`; what is deferred is only what the
+CSS *does on screen*. None of these is claimed anywhere as verified.
+
+- **10px ALL-CAPS legal text — is it actually readable?** THIS IS THE FIRST THING TO LOOK AT.
+  `DESIGN.md` assigns footer attribution to `{typography.micro}` (`400 10px/1.3`, `0.08em`
+  tracking) and declares that role uppercase, and the companion guard derives the requirement
+  from the artefact's own `textTransform:` key — so three sentences of legally load-bearing text
+  render at 10px in capitals. Brad ruled **ship the spec as written** (Q1, 2026-07-30): it is
+  what the artefact says, the DOM text is untouched by `text-transform` so nothing about the
+  contract or the screen reader changes, and deviating means amending a UX artefact on a
+  frontend story. The contrast AC exists because this text must be readable — and case and size
+  are the other two halves of readability, which no AC covers. **If it reads badly by eye, the
+  correction is a `DESIGN.md` amendment in Epic 8's release-readiness pass**, made with the
+  rendered page in hand rather than from the spec. (Severity: Medium — it is the one string in
+  the app that has to be readable.)
+
+- **The 24px hit box as laid out.** `min-height: 24px` + `min-width: 24px` with
+  `display: inline-block` is asserted in source (the review of 2026-07-30 changed the display
+  from `inline-flex` — see the underline entry below — and added the width axis), and the
+  display mode is asserted beside the minimums because they do nothing on a plain inline box —
+  but jsdom has no layout engine, so the *measured* box of each link is unverified. Worth a
+  specific look: an `inline-block` box 24px tall inside a 13px line box will grow that line, so
+  the two footer link runs may sit on a visibly taller line than the plain text around them, and
+  the box extends below the baseline rather than centring the text the way the flex version
+  would have. Check with a devtools box inspection, not by eye alone. (Severity: Low.)
+
+- **The persistent underline and the hover brightening — NOW FIRST ON THE CHECKLIST, above the
+  10px readability question.** The code review of 2026-07-30 found `display: inline-flex` was
+  plausibly rendering AC 5's release-condition underline as *no underline at all* — text
+  decoration does not propagate into flex items — and every automated gate reads source, so
+  nothing could see it. The fix is `display: inline-block`, under which the decoration applies
+  to the link's own text; **the browser check is the proof the fix needs**, since the failure
+  mode is exactly "true in source, false on screen". `text-decoration: underline` at rest and
+  `color: var(--text-primary)` on `:hover` *and* `:focus-visible` (the review added the focus
+  half) are read from source, and the guard proves no hover rule introduces the decoration
+  (UX-DR47). Also still unverified by any gate: that the underline is *visible* at 10px against
+  `--text-secondary`, and that the rest→hover step reads as a brightening rather than as a
+  flicker. (Severity: Medium until the eye check — it is the release-condition affordance.)
+
+- **The focus ring's appearance.** These are the **first focusable elements in the codebase**,
+  so this is the first time `--focus-ring` / `--focus-ring-width` / `--focus-ring-offset` have
+  ever been rendered — they shipped in c2-1 with nothing to point at. `outline` was chosen over
+  `box-shadow` so an ancestor's overflow cannot clip it, but whether a 2px ring at 2px offset is
+  clearly visible around a 24px inline-flex box at the very bottom edge of the window is a
+  browser check. **Tab to both links.** (Severity: Medium — it is the token layer's focus
+  contract getting its first real exercise, and c4-11 inherits whatever is learned here.)
+
+- **The border and the surface.** `border-top: 1px solid var(--border-hairline)` over
+  `background: var(--surface-base)` is `DESIGN.md`'s frontmatter verbatim. Note that the
+  background is the same token as the page canvas, so the *only* visible separation is the
+  hairline — and the footer sits inside the shell's `var(--space-gutter)` padding, so the rule
+  spans the content width rather than bleeding to the window edge. That is the shell's existing
+  layout decision (c2-6), not this story's; if the full-bleed rule DESIGN.md's "full width"
+  implies is wanted, it is a shell change and belongs to whoever owns that, not to a footer
+  story. (Severity: Low — a deliberate reading, recorded so it is a decision and not a drift.)
+  **RATIFIED (Brad, 2026-07-30, c2-10 code review): the content-width reading stands** — the
+  hairline aligns with the header and columns inside the gutter frame. No longer a unilateral
+  call; a full-bleed rule would now be a new decision, not a correction.
