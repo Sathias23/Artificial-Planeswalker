@@ -2,11 +2,13 @@
 
 Wraps the existing ``DeckRepository`` 1:1 (D-1.4a): these helpers hold no SQL —
 they validate inputs gracefully, await the async repositories, and project each
-deck to lightweight summaries (``DeckSummary`` / ``DeckDetail`` / ``DeckCardSummary``,
+deck to lightweight summaries (``DeckSummary.from_deck`` / ``DeckDetail.from_deck``,
 D-1.5e) so neither ``list_decks`` nor ``load_deck`` dumps full ``Card`` payloads at
-the LLM client. The six helpers back the ``list_decks`` / ``create_deck`` /
-``load_deck`` / ``delete_deck`` / ``add_card_to_deck`` / ``remove_card_from_deck``
-tools.
+the LLM client. Those constructors live on the schemas in ``src.data.schemas.deck``
+(c3-1), so the companion's REST shell projects decks through the same code rather
+than its own copy of the count arithmetic. The six helpers back the ``list_decks`` /
+``create_deck`` / ``load_deck`` / ``delete_deck`` / ``add_card_to_deck`` /
+``remove_card_from_deck`` tools.
 
 Stateless (FR3 / D5 / D-1.5d): the "active deck" is the client-supplied
 ``deck_id`` on every call — there is no server-side active-deck, format-filter,
@@ -29,7 +31,7 @@ from src.data.database import is_database_initialized
 from src.data.repositories.card import CardRepository
 from src.data.repositories.deck import DeckRepository
 from src.data.schemas.card import Card, CardSummary
-from src.data.schemas.deck import Deck, DeckCardSummary, DeckDetail, DeckSummary
+from src.data.schemas.deck import DeckDetail, DeckSummary
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
 
 logger = logging.getLogger(__name__)
@@ -126,64 +128,6 @@ def _blank_to_none(value: str | None) -> str | None:
     return stripped or None
 
 
-def _counts(deck: Deck) -> tuple[int, int]:
-    """Return ``(mainboard_count, sideboard_count)`` summed from a deck's cards."""
-    mainboard = sum(dc.quantity for dc in deck.deck_cards if not dc.sideboard)
-    sideboard = sum(dc.quantity for dc in deck.deck_cards if dc.sideboard)
-    return mainboard, sideboard
-
-
-def _deck_summary(deck: Deck) -> DeckSummary:
-    """Project a full ``Deck`` to a lightweight ``DeckSummary`` (computes counts)."""
-    mainboard, sideboard = _counts(deck)
-    return DeckSummary(
-        id=deck.id,
-        name=deck.name,
-        format=deck.format,
-        strategy=deck.strategy,
-        color_identity=deck.color_identity,
-        tags=deck.tags,
-        mainboard_count=mainboard,
-        sideboard_count=sideboard,
-        distinct_cards=len({dc.card_id for dc in deck.deck_cards}),
-        created_at=deck.created_at,
-        updated_at=deck.updated_at,
-    )
-
-
-def _deck_detail(deck: Deck) -> DeckDetail:
-    """Project a full ``Deck`` to a ``DeckDetail`` with lightweight ``cards``.
-
-    Counts are computed (not ``model_validate``'d); each card becomes a
-    ``DeckCardSummary`` nesting a ``CardSummary`` rather than the full ``Card``.
-    """
-    mainboard, sideboard = _counts(deck)
-    cards = [
-        DeckCardSummary(
-            card_id=dc.card_id,
-            quantity=dc.quantity,
-            sideboard=dc.sideboard,
-            commander=dc.commander,
-            card=CardSummary.model_validate(dc.card),
-        )
-        for dc in deck.deck_cards
-    ]
-    return DeckDetail(
-        id=deck.id,
-        name=deck.name,
-        format=deck.format,
-        strategy=deck.strategy,
-        color_identity=deck.color_identity,
-        tags=deck.tags,
-        mainboard_count=mainboard,
-        sideboard_count=sideboard,
-        distinct_cards=len({dc.card_id for dc in deck.deck_cards}),
-        created_at=deck.created_at,
-        updated_at=deck.updated_at,
-        cards=cards,
-    )
-
-
 def _selector_error(card_id: str | None, name: str | None) -> str | None:
     """Return an error message unless exactly one of ``card_id`` / ``name`` is set.
 
@@ -267,7 +211,7 @@ async def list_decks(session: AsyncSession, *, format: str | None = None) -> Dec
             message=f"No decks found{hint}. Use create_deck to start a new deck.",
         )
 
-    summaries = [_deck_summary(d) for d in decks]
+    summaries = [DeckSummary.from_deck(d) for d in decks]
     return DeckListResult(
         status="ok",
         decks=summaries,
@@ -319,7 +263,7 @@ async def create_deck(
         return DeckResult(status="error", message="A database error occurred creating the deck.")
     return DeckResult(
         status="ok",
-        deck=_deck_detail(created),
+        deck=DeckDetail.from_deck(created),
         message=f"Created deck '{created.name}' (id: {created.id}).",
     )
 
@@ -354,7 +298,7 @@ async def load_deck(session: AsyncSession, *, deck_id: str) -> DeckResult:
 
     return DeckResult(
         status="ok",
-        deck=_deck_detail(deck),
+        deck=DeckDetail.from_deck(deck),
         message=f"Loaded deck '{deck.name}' ({len(deck.deck_cards)} distinct card(s)).",
     )
 

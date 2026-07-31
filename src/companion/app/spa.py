@@ -59,10 +59,13 @@ cache header below safe: a changed file is a changed name."""
 _RESERVED_SEED = frozenset({"api"})
 """Path prefixes reserved before any route claims them.
 
-``/api`` has no routes until c3-1, but the reservation must hold *now* — otherwise a typo like
-``GET /api/deckz`` would answer ``200`` with the index today and ``404`` after c3-1 lands, and the
-UI would have been written against the wrong one. Every other prefix is derived from the live route
-table (:func:`_reserved_prefixes`), so c3-1's ``/api/decks`` reserves ``api`` on its own.
+``/api`` now has routes — c3-1's ``/api/decks`` and ``/api/deck/{deck_id}`` — so
+:func:`_reserved_prefixes` derives ``api`` from the live route table on its own and this seed is
+belt-and-braces. It stays anyway: the seed is what makes the reservation independent of *which*
+routes happen to be registered, so a tree with no ``/api`` route (a future refactor, a test app
+built from a subset of routers) still answers ``404`` to ``GET /api/deckz`` rather than serving the
+index. That was the original reason for seeding it before any route existed, and removing it now
+would quietly re-open exactly the case it was added for.
 """
 
 _IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable"

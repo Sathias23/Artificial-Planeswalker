@@ -11,13 +11,14 @@ import { StatePanel } from './components/StatePanel/StatePanel'
  * arrives as a prop from a later story, so this file's job is to stay as close to one line as it
  * honestly can.
  *
- * c4-1 owns the store that will feed those props and c3-1 owns the fetch layer beneath it.
+ * c4-1 owns the store that will feed those props and the fetch layer beneath it; c3-1 shipped the
+ * endpoints that layer will call, but no client-side code at all.
  * Until then the shell renders its own placeholders, each naming the story that replaces it.
  *
  * ================= WHY THE LEFT COLUMN IS NO LONGER A PLACEHOLDER (c2-9, Q1) ============
  *
  * The no-active-deck panel is rendered into the shell's `left` slot, and this is HONEST rather
- * than a demo: there genuinely is no active deck. There is no fetch layer until c3-1 and no
+ * than a demo: there genuinely is no active deck. There is no fetch layer until c4-1 and no
  * store until c4-1, so "No deck on the glass" with an empty deck list is the application's true
  * state, not a mock of one.
  *
@@ -37,8 +38,9 @@ import { StatePanel } from './components/StatePanel/StatePanel'
  *   this panel when there is not — and **c3-9** owns the transition between them (FR-22).
  *   Until then the choice is a constant, and the constant is the truth.
  *
- * NO `decks` PROP IS PASSED, for the same reason: `GET /api/decks` is c3-1's, so this app does
- * not know any deck names yet. An empty list renders nothing extra, which is the correct
+ * NO `decks` PROP IS PASSED, for the same reason: `GET /api/decks` exists as of c3-1, but
+ * **c4-2** owns calling it, so this app does not know any deck names yet. The endpoint being
+ * live changes nothing here — nothing fetches. An empty list renders nothing extra, the correct
  * day-one render rather than an omission (StatePanel AC 5).
  *
  * ================= WHY THE FOOTER IS NO LONGER A PLACEHOLDER (c2-10) ====================

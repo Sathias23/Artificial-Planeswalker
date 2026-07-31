@@ -1554,3 +1554,161 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   **RATIFIED (Brad, 2026-07-30, c2-10 code review): the content-width reading stands** — the
   hairline aligns with the header and columns inside the gutter frame. No longer a unilateral
   call; a full-bleed rule would now be a new decision, not a correction.
+
+## Deferred from: story c3-1 (deck list and deck detail endpoints, 2026-07-31)
+
+- **`list_decks` materialises every deck's full card list just to count it.**
+  `src/data/repositories/deck.py:263` eager-loads
+  `selectinload(DeckModel.deck_cards).selectinload(DeckCardModel.card)`, so `GET /api/decks`
+  loads the whole corpus of every saved deck and then discards it down to three integers per
+  deck. **Accepted here, not fixed**: it is existing `src/data` behaviour that the `list_decks`
+  MCP tool already pays, the deck count is single digits on a real machine, and NFR-05's budget
+  is the deck *view*, not the deck list. Adding a count-only query in c3-1 would have been a
+  second read path over one shape, which is exactly what AD-1 exists to prevent.
+  **Home: c10-3** (latency hardening). If it is fixed there, the fix belongs in the repository —
+  an aggregate query behind the same method — so both shells inherit it. (Severity: Low now;
+  scales with deck count and deck size.)
+
+- **`DeckRepository.list_decks` ties on `created_at` and falls back to UUID order.**
+  Re-confirmed still open at c3-1. `deck.py:262` orders by `created_at DESC, id`; `id` is a UUID,
+  so decks created within the same clock tick come back in effectively random order.
+  `tests/integration/data/test_deck_repository.py::test_list_decks_with_strategy_field` is
+  order-flaky for exactly this reason and is ledgered twice already (c1-5 and c2-1 entries) —
+  this is the third confirmation, not a new finding. c3-1 did **not** fix it: it is a `src/data`
+  change with MCP blast radius. What c3-1 did instead is make the endpoint's own contract honest
+  — `read_decks`' docstring says a tie is arbitrary, and `test_routes_decks.py` asserts ordering
+  only against seeds whose `created_at` is genuinely distinct. **Home: unowned, ledgered.** Any
+  UI that promises "newest first" to a user (c4-7's deck-list panel) is the first story that
+  actually needs this fixed. (Severity: Low.)
+
+- **`GET /api/decks` and `GET /api/deck/{id}` have never been called by a browser.**
+  c3-1 ships no frontend (AC 18), so both endpoints are proven only through `httpx.ASGITransport`
+  in-process. Not yet exercised: a real `fetch` from the served SPA origin through the security
+  envelope, the Vite dev proxy path (`changeOrigin`, c2-1), and CORS behaviour under a real
+  browser preflight. Nothing suggests a problem — the envelope is gated and `/health` already
+  crosses it — but "a real browser has fetched this" is not yet true of any companion route.
+  **Home: c4-2** (the deck bootstrap, the first real consumer). Worth Brad's eye on the C3
+  manual-testing checklist: open the companion and hit `/api/decks` in the browser address bar.
+  (Severity: Low.)
+
+- **The `openapi.json` byte-comparison gate cannot see *meaning*.**
+  `tests/unit/companion/test_openapi_contract.py` asserts that Python internals (`Args:`,
+  `Attributes:`, `>>> `) never cross the wire, and c3-1 confirmed that is where it stops: the four
+  schemas it exposed carried MCP-internal prose ("keeping `load_deck` payloads small for LLM
+  clients", "Build via the helper's explicit constructor, not `model_validate`", "the Story 1.6
+  deck-analysis tools") straight into `types.d.ts` and `/docs`, and **Sphinx role markup**
+  (`` :class:`DeckSummary` ``) did too — a family the gate's list does not name and which appears
+  in neither already-shipped description. c3-1 fixed its own four by rewriting the leading summary
+  and pushing the Python detail below `Attributes:`, and recorded the scan it used. It did **not**
+  add a gate. Whether one is worth building (ban the role-markup family; the prose half is not
+  statically decidable, like UX-DR33's second-person half) is open. **Home: c3-2**, the next story
+  to add a schema to `components.schemas` — it will face the same question with `Card`.
+  (Severity: Low — cosmetic on the wire, but it is documentation the UI author reads.)
+
+## Deferred from: code review of c3-1 (2026-07-31)
+
+- **A `pydantic.ValidationError` escaping `DeckRepository` has no handler anywhere in the companion
+  stack, and `GET /api/decks` gives it a whole-list blast radius.** `install_error_handling` types
+  `CompanionError`, `RequestValidationError`, `DatabaseError` and `HTTPException`; a
+  `ValidationError` raised inside `Deck.model_validate` matches none of them and lands in
+  `UnhandledErrorMiddleware` as `500 internal_error`. Measured triggers, all live: an orphaned
+  `deck_cards` row (FK enforcement is OFF, so `dc.card` is `None`), a stored `quantity` of `0` or
+  negative (`DeckCard.validate_quantity` rejects `<1` on **read**, and only the repository *write*
+  path enforces it), and `tags`/`color_identity` holding well-formed JSON whose elements are not
+  strings (`[1,2]`, `["W",null]`). On the detail route the deck is permanently unopenable; on the
+  **list** route one bad row in one deck makes *every* deck unreachable.
+  **Pre-existing, not introduced here** — this is the same crash already ledgered as the
+  `data-layer-orphan-handling` backlog item (epic-7 retro action item 3), which names
+  `get_deck_with_cards` and the four MCP tools that share it. c3-1 adds a web surface to it and one
+  new fact: the list-route blast radius. **Not fixed here** because AC 12 forbids error-handling
+  ceremony in a route body and the fix belongs at the data layer for both shells at once.
+  **Home: `data-layer-orphan-handling`** (already in `sprint-status.yaml`, status `backlog`) — this
+  entry adds the blast-radius finding and the two non-orphan triggers to its scope.
+  (Severity: Medium — needs a corrupted row to fire, but degrades ungracefully when it does.)
+
+- **Both new routes can answer `503 database_not_initialized`, and the OpenAPI document says only
+  `database_unavailable`.** `build_app()`'s app-level `error_responses("invalid_request",
+  "payload_too_large", "database_unavailable", "internal_error")` never passes
+  `database_not_initialized`, so the committed schema's `503` on `/api/decks` and
+  `/api/deck/{deck_id}` reads `"description": "reason: database_unavailable"` — while
+  `TestDatabaseStates` asserts the *undocumented* token six times. On a fresh install this is the
+  **most common** 503 the UI will ever see. `error_responses`' own docstring advertises the
+  collapse behaviour ("tokens sharing a status ... a single entry whose description names each of
+  them") and it has never fired. **Not fixed unilaterally**: AC 5 explicitly says "do not add
+  `database_not_initialized` app-wide as a side effect of this story", and declaring it per-route
+  deviates from AC 6's text. **Flagged to Brad as a decision** — see the story's Review section.
+  **Home: c3-9** (the fresh-install story, which owns this state end to end) unless ruled sooner.
+  (Severity: Medium — the wire contract under-documents the state the UI most needs to switch on.)
+
+- **`DeckSummary.from_deck` / `DeckDetail.from_deck` return zero counts, silently, for any `Deck`
+  that was not eager-loaded.** `DeckModel.deck_cards` is `lazy="noload"`, so a `Deck` from
+  `get_deck`, `find_deck_by_name` or `update_deck` arrives with `deck_cards == []` and the
+  projection reports `0 / 0 / 0` with an empty `cards` list — measured: a 4-card deck reads
+  `main=4 side=0 distinct=1` via `get_deck_with_cards` and `0 0 0` via `get_deck`. As module-private
+  helpers in `deck_management.py` this trap had three known callers; as **public classmethods on a
+  shared `src/data` schema** it is now reachable by every future story, and pairing it with the
+  cheaper `get_deck()` yields an HTTP 200 describing a 60-card deck as empty. Mitigated here by
+  documenting it in both constructors' `Args:` (naming which repository methods are safe), which is
+  the honest floor; **the structural fix** is a `Deck`-side marker distinguishing "loaded and empty"
+  from "never loaded" — e.g. `deck_cards: list[DeckCard] | None` — so `from_deck` can raise instead
+  of guessing. That is a `src/data` schema change with MCP blast radius and needs its own story.
+  **Home: unowned, ledgered.** The first consumer to pair a non-eager-loading repository method with
+  `from_deck` is the one that needs it. (Severity: Medium — silent wrongness, no type error.)
+
+- **`HEAD` on either new route answers `405 Allow: GET`.** Measured. FastAPI's `@router.get`
+  registers `methods=["GET"]` only, and unlike Starlette's static-file handling it does not
+  auto-add `HEAD`. RFC 9110 says a server SHOULD support `HEAD` wherever it supports `GET`, and
+  `spa.py` already declares `GET, HEAD` for the static surface — so the API routes are the
+  inconsistent ones. **Pre-existing convention, not a c3-1 regression**: `/health` uses the same
+  decorator and behaves identically, so fixing it here would either leave the two inconsistent or
+  silently change a c1-2 route. **Home: unowned, ledgered** — worth one decision covering every
+  companion route at once (add `methods=["GET", "HEAD"]` to the routers, or record that the
+  companion deliberately serves GET only). (Severity: Low — no known consumer sends HEAD.)
+
+- **`get_session` holds a SQLite SHARED lock for the whole request, and this is the first route
+  long enough for it to matter.** `is_database_initialized(session)` autobegins a transaction and
+  `get_session` yields without commit or rollback, so the read lock is held from the readiness probe
+  through every route query until the `async with` closes. There is no WAL pragma on the companion's
+  engine. Combined with the `list_decks` over-fetch above, a `GET /api/decks` over a large
+  collection blocks a concurrent `initialize_database` writer — which is exactly the concurrency
+  FR-22 presumes ("a database created while the backend runs is picked up with no restart").
+  **Home: c3-9** (which owns the fresh-install/coming-alive transition) or **c10-3** (latency
+  hardening), whichever reaches it first. (Severity: Low-Medium — needs a concurrent import to
+  fire; NFR-02 already calls for WAL reads.)
+
+- **The `Attributes:` sections in the four wire-facing schemas hold prose, not attributes, and
+  nothing says why.** `src/data/schemas/deck.py` (`DeckCardSummary`, `DeckSummary`, `DeckDetail`)
+  and `src/data/schemas/card.py` (`CardSummary`) use `Attributes:` purely as a truncation marker,
+  because `_CompanionFastAPI.openapi()` cuts every description at the first Google-style header
+  (AC 17's suggested mechanism). Two consequences worth knowing: a napoleon/Sphinx render of these
+  four classes now emits a malformed attribute list; and — the one that bites — **the shared core's
+  docstring *structure* is load-bearing for a companion-only rule that `src/data` never mentions**.
+  `test_openapi_contract.py` bans the literal markers from crossing the wire, i.e. it gates the
+  *marker*, not the prose, so an editor who removes a header that plainly documents no attributes
+  silently republishes "keeping `load_deck` payloads small for LLM clients" into `/docs` and
+  `types.d.ts` with no gate going red. **Home: c3-2**, which will do the same thing to `Card` and
+  should decide the convention for all of them (a `Note:`-style marker that reads honestly, an
+  explicit comment in `src/data`, or a gate keyed on the prose). (Severity: Low.)
+
+- **`ui/README.md`'s "What the gates cannot see" index is keyed on line numbers with nothing keeping
+  it accurate.** Twenty-one `file:line` references across nine test files; all verified correct at
+  the time of writing (17 spot-checked by the Acceptance Auditor, 8 by the Blind Hunter, all
+  resolving). But the section is written as a durable index a reviewer consults instead of reading
+  fourteen test files, and the first comment inserted near the top of `token-usage.test.ts`
+  invalidates every reference below it. Every other load-bearing claim in that README is gated; this
+  one is not. **Fix shape**: anchor on a searchable marker string (the guard function name, or the
+  declared-limit sentence itself) rather than a line number, and add a test that every cited anchor
+  still resolves. **Home: unowned, ledgered** — cheap to do, and the next story to add a row is the
+  natural one. (Severity: Low-Medium — a stale index is worse than no index, because it is trusted.)
+
+- **`tests/unit/companion/test_spa.py`'s completeness now rests on a hand-synchronised router
+  list.** The two schema pins that hardcoded `{"/health"}` were repaired (see the c3-1 story record,
+  finding 4), and the differential test `test_the_schema_is_unchanged_by_installing_the_mount` now
+  builds a mount-free app that must mirror `build_app()`'s routers by hand. Every future
+  route-adding story (c3-2, c3-3, c3-4, c3-5, c5-2, c5-5) must add one line there or get a red.
+  That is deliberate and the code says so — a forgotten line is a cheap named failure, versus a
+  mount silently swallowing a route — but it *is* a standing tax, and it is the opposite of the
+  repair's stated motive ("a hardcoded set makes every story that adds a route edit a SPA test for
+  no reason"). **Recorded so it is a decision, not a drift.** If it becomes annoying, the fix is to
+  derive the router list from `build_app()` itself rather than restating it. **Home: unowned.**
+  (Severity: Low.)

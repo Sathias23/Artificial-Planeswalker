@@ -282,9 +282,11 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
 DbSession = Annotated[AsyncSession, Depends(get_session)]
 """The annotation every data-backed handler writes, and the only one it should.
 
-Stories c3-1 (``GET /api/decks``, ``GET /api/decks/{id}``), c3-2 (``GET /api/cards/{id}``) and c3-3
+Stories c3-1 (``GET /api/decks``, ``GET /api/deck/{id}``), c3-2 (``GET /api/cards/{id}``) and c3-3
 (the format check) annotate a parameter with this and inherit the whole contract: the lazy engine,
 the readiness probe, the ``503`` tokens and the shared recipe. None of them re-derives any of it.
+c3-1 is done and did exactly that; the detail route is singular ``/api/deck/{id}``, which is the
+spelling the PRD, the spine, the epic split and c3-3's own format-check route all use.
 
 Example:
     >>> from typing import get_args

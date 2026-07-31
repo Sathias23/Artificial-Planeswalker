@@ -92,6 +92,12 @@ describe('wire shapes are declared once, by the backend (NFR-03, AD-12)', () => 
   it('is reading a populated schema, alias list and source tree', () => {
     expect(wireShapes.length).toBeGreaterThan(0)
     expect(wireShapes).toContain('HealthResponse')
+    // c3-1's deck models, anchored the same way HealthResponse is. This is NOT the ban list —
+    // `bannedShapes` stays derived (landmine 14). It is the non-vacuity anchor, and it is what
+    // makes a regeneration that silently drops the deck shapes from `components.schemas` go red
+    // in CI rather than quietly shrinking the ban to nothing.
+    expect(wireShapes).toContain('DeckSummary')
+    expect(wireShapes).toContain('DeckDetail')
     expect(aliasShapes).toContain('ErrorReason')
     expect(trackedFiles).toContain('src/api/schema.ts')
     expect(outsideApi.length).toBeGreaterThan(0)

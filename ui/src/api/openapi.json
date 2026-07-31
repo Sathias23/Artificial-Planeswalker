@@ -63,10 +63,417 @@
           }
         }
       }
+    },
+    "/api/decks": {
+      "get": {
+        "summary": "Read Decks",
+        "description": "List every saved deck, newest first, with counts but without the cards.\n\nEach deck carries its metadata and three counts summarising its contents — enough\nto render a deck list without transferring any decklist. Having no saved decks is\nan ordinary answer, not an error: the array is simply empty.",
+        "operationId": "read_decks_api_decks_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DeckSummary"
+                  },
+                  "type": "array",
+                  "title": "Response Read Decks Api Decks Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "reason: invalid_request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "reason: payload_too_large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "reason: database_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "reason: internal_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/deck/{deck_id}": {
+      "get": {
+        "summary": "Read Deck",
+        "description": "Return one saved deck in full: its metadata, its counts and every card in it.\n\nThe whole decklist, with each entry naming its quantity, which board it belongs\nto, whether it is the commander, and a summary of the card itself. The order of\n``cards`` is not meaningful — see ``DeckDetail``.",
+        "operationId": "read_deck_api_deck__deck_id__get",
+        "parameters": [
+          {
+            "name": "deck_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Deck Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeckDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "reason: invalid_request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "reason: payload_too_large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "reason: database_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "reason: internal_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "reason: deck_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "CardSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "mana_cost": {
+            "type": "string",
+            "title": "Mana Cost"
+          },
+          "cmc": {
+            "type": "number",
+            "title": "Cmc"
+          },
+          "type_line": {
+            "type": "string",
+            "title": "Type Line"
+          },
+          "oracle_text": {
+            "type": "string",
+            "title": "Oracle Text"
+          },
+          "colors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Colors"
+          },
+          "rarity": {
+            "type": "string",
+            "title": "Rarity"
+          },
+          "set_code": {
+            "type": "string",
+            "title": "Set Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "mana_cost",
+          "cmc",
+          "type_line",
+          "oracle_text",
+          "colors",
+          "rarity",
+          "set_code"
+        ],
+        "title": "CardSummary",
+        "description": "The card fields needed to identify and display a card in a list.\n\nA bounded subset of the full card record: name, mana cost, converted mana\ncost, type line, oracle text, colours, rarity and set code. It omits the\nheavy detail fields — legalities, image URIs and card faces — so a response\ncarrying many cards stays small. Fetch the full card separately when that\ndetail is needed."
+      },
+      "DeckCardSummary": {
+        "properties": {
+          "card_id": {
+            "type": "string",
+            "title": "Card Id"
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity"
+          },
+          "sideboard": {
+            "type": "boolean",
+            "title": "Sideboard"
+          },
+          "commander": {
+            "type": "boolean",
+            "title": "Commander",
+            "default": false
+          },
+          "card": {
+            "$ref": "#/components/schemas/CardSummary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "card_id",
+          "quantity",
+          "sideboard",
+          "card"
+        ],
+        "title": "DeckCardSummary",
+        "description": "One card entry in a deck: how many, which board, and the card itself.\n\nCarries the quantity, whether the entry is sideboard, whether it is the\ncommander, and a summary of the card. The card is a bounded summary rather\nthan the full card record, so a decklist stays small; fetch the full card\nseparately when detail (legalities, images, faces) is needed."
+      },
+      "DeckDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
+          },
+          "strategy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy"
+          },
+          "color_identity": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Color Identity",
+            "default": []
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "default": []
+          },
+          "mainboard_count": {
+            "type": "integer",
+            "title": "Mainboard Count",
+            "default": 0
+          },
+          "sideboard_count": {
+            "type": "integer",
+            "title": "Sideboard Count",
+            "default": 0
+          },
+          "distinct_cards": {
+            "type": "integer",
+            "title": "Distinct Cards",
+            "default": 0
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          },
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/DeckCardSummary"
+            },
+            "type": "array",
+            "title": "Cards",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "format",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DeckDetail",
+        "description": "A saved deck's metadata, card counts and full card list.\n\nEverything ``DeckSummary`` carries, plus ``cards``: one ``DeckCardSummary``\nper entry. This is the whole decklist — the shape a deck view renders from.\n\nThe order of ``cards`` is **not** meaningful and is not the order the cards\nwere added. The underlying relationship declares no ``order_by``, so entries\narrive in the composite primary key's order — effectively ``card_id``, which\nis a Scryfall UUID. A consumer that wants a stable presentation order (by\ntype, by mana value, by name) must sort them itself."
+      },
+      "DeckSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
+          },
+          "strategy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy"
+          },
+          "color_identity": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Color Identity",
+            "default": []
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags",
+            "default": []
+          },
+          "mainboard_count": {
+            "type": "integer",
+            "title": "Mainboard Count",
+            "default": 0
+          },
+          "sideboard_count": {
+            "type": "integer",
+            "title": "Sideboard Count",
+            "default": 0
+          },
+          "distinct_cards": {
+            "type": "integer",
+            "title": "Distinct Cards",
+            "default": 0
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "format",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DeckSummary",
+        "description": "A saved deck's metadata and card counts, without the card list itself.\n\nWhat a deck listing returns for each deck: identity, format, strategy, colour\nidentity, tags, timestamps, and three counts summarising the contents —\n``mainboard_count`` and ``sideboard_count`` (sums of quantities) and\n``distinct_cards`` (how many different cards, counting a card in both boards\nonce). Enough to render a deck in a list without transferring the deck."
+      },
       "ErrorResponse": {
         "properties": {
           "reason": {

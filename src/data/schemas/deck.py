@@ -1,6 +1,7 @@
 """Pydantic schemas for type-safe deck data transfer."""
 
 from datetime import UTC, datetime
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
 
@@ -100,14 +101,27 @@ class Deck(BaseModel):
         return v if isinstance(v, list) else []
 
 
-class DeckCardSummary(BaseModel):
-    """Lightweight projection of a deck-card entry for deck-returning tools.
+def _counts(deck: Deck) -> tuple[int, int]:
+    """Return ``(mainboard_count, sideboard_count)`` summed from a deck's cards."""
+    mainboard = sum(dc.quantity for dc in deck.deck_cards if not dc.sideboard)
+    sideboard = sum(dc.quantity for dc in deck.deck_cards if dc.sideboard)
+    return mainboard, sideboard
 
-    The bounded counterpart to :class:`DeckCard`, which nests the full
-    :class:`Card` (with ``legalities``/``image_uris``/``card_faces``). This nests
-    a :class:`CardSummary` instead, keeping ``load_deck`` payloads small for LLM
-    clients. Callers that need full card detail should follow up with
-    ``lookup_card_by_name``. Reused by the Story 1.6 deck-analysis tools.
+
+class DeckCardSummary(BaseModel):
+    """One card entry in a deck: how many, which board, and the card itself.
+
+    Carries the quantity, whether the entry is sideboard, whether it is the
+    commander, and a summary of the card. The card is a bounded summary rather
+    than the full card record, so a decklist stays small; fetch the full card
+    separately when detail (legalities, images, faces) is needed.
+
+    Attributes:
+        The bounded counterpart to :class:`DeckCard`, which nests the full
+        :class:`Card`. Keeping ``load_deck`` payloads small matters most for LLM
+        clients, which pay for every token of a tool result; those callers follow
+        up with ``lookup_card_by_name``. Reused by the Story 1.6 deck-analysis
+        tools.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -120,16 +134,21 @@ class DeckCardSummary(BaseModel):
 
 
 class DeckSummary(BaseModel):
-    """Lightweight deck projection (metadata + counts, no card list) for list_decks.
+    """A saved deck's metadata and card counts, without the card list itself.
 
-    Mirrors the Story 1.4 ``CardSummary`` decision: returns deck metadata plus
-    aggregate counts without the heavy nested card list, so ``list_decks`` never
-    dumps full decks at the LLM client. The count fields
-    (``mainboard_count``/``sideboard_count``/``distinct_cards``) are **computed by
-    the tool helper** from a source ``Deck``'s ``deck_cards`` — a ``Deck`` has no
-    such attributes, so ``model_validate`` would silently use the ``0`` defaults.
-    Build via the helper's explicit constructor, not ``model_validate``. Reused by
-    the Story 1.6 deck-analysis tools.
+    What a deck listing returns for each deck: identity, format, strategy, colour
+    identity, tags, timestamps, and three counts summarising the contents —
+    ``mainboard_count`` and ``sideboard_count`` (sums of quantities) and
+    ``distinct_cards`` (how many different cards, counting a card in both boards
+    once). Enough to render a deck in a list without transferring the deck.
+
+    Attributes:
+        Build with :meth:`from_deck`, never ``model_validate``: the counts are
+        computed from a source ``Deck``'s ``deck_cards``, and a ``Deck`` has no
+        such attributes, so ``model_validate`` would silently apply the ``0``
+        defaults. Mirrors the Story 1.4 ``CardSummary`` decision so ``list_decks``
+        never dumps full decks at an LLM client. Reused by the Story 1.6
+        deck-analysis tools.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -158,15 +177,107 @@ class DeckSummary(BaseModel):
             value = value.replace(tzinfo=UTC)
         return value.isoformat()
 
+    @classmethod
+    def _summary_fields(cls, deck: Deck) -> dict[str, Any]:
+        """Return every ``DeckSummary`` field, projected from *deck*.
+
+        **The one implementation of the projection**, factored out so that
+        ``DeckDetail`` extends it rather than restating it. Restating was the old
+        shape (``_deck_summary`` and ``_deck_detail`` each listed all eleven
+        fields), and it is precisely how ``distinct_cards`` semantics drift: a
+        field added to ``DeckSummary`` and set in one constructor but not the
+        other silently defaults on the other's route, with no type error.
+        """
+        mainboard, sideboard = _counts(deck)
+        return {
+            "id": deck.id,
+            "name": deck.name,
+            "format": deck.format,
+            "strategy": deck.strategy,
+            "color_identity": deck.color_identity,
+            "tags": deck.tags,
+            "mainboard_count": mainboard,
+            "sideboard_count": sideboard,
+            "distinct_cards": len({dc.card_id for dc in deck.deck_cards}),
+            "created_at": deck.created_at,
+            "updated_at": deck.updated_at,
+        }
+
+    @classmethod
+    def from_deck(cls, deck: Deck) -> Self:
+        """Project a full ``Deck`` into a summary, computing the counts.
+
+        Lives here, beside the fields it computes, so both shells over this core
+        (``src/mcp_server`` and ``src/companion``) share one implementation rather
+        than each keeping its own count arithmetic.
+
+        Constructs ``cls``, not a hardcoded ``DeckSummary``, so a subclass gets its
+        own type back. A subclass that adds a **required** field must override this
+        (as ``DeckDetail`` does for ``cards``); one that adds only optional fields
+        inherits it safely.
+
+        Args:
+            deck: The source deck, with ``deck_cards`` already loaded. The
+                underlying ``DeckModel.deck_cards`` relationship is
+                ``lazy="noload"``, so a ``Deck`` obtained from a repository method
+                that does **not** eager-load (``get_deck``, ``find_deck_by_name``,
+                ``update_deck``) arrives with an empty list and yields **zero
+                counts** rather than raising. Use ``get_deck_with_cards`` or
+                ``list_decks``, both of which eager-load.
+
+        Returns:
+            The summary, with all three counts computed rather than defaulted.
+        """
+        return cls(**cls._summary_fields(deck))
+
 
 class DeckDetail(DeckSummary):
-    """Deck metadata + counts + its cards as lightweight projections.
+    """A saved deck's metadata, card counts and full card list.
 
-    Extends :class:`DeckSummary` with ``cards`` as :class:`DeckCardSummary` rows
-    (each nesting a :class:`CardSummary`, not the full :class:`Card`). Returned by
-    ``create_deck`` (empty ``cards``) and ``load_deck`` (full contents). Like
-    ``DeckSummary``, the counts are computed by the tool helper, not
-    ``model_validate``. Reused by the Story 1.6 deck-analysis tools.
+    Everything ``DeckSummary`` carries, plus ``cards``: one ``DeckCardSummary``
+    per entry. This is the whole decklist — the shape a deck view renders from.
+
+    The order of ``cards`` is **not** meaningful and is not the order the cards
+    were added. The underlying relationship declares no ``order_by``, so entries
+    arrive in the composite primary key's order — effectively ``card_id``, which
+    is a Scryfall UUID. A consumer that wants a stable presentation order (by
+    type, by mana value, by name) must sort them itself.
+
+    Attributes:
+        Returned by ``create_deck`` (empty ``cards``) and ``load_deck`` (full
+        contents), and by ``GET /api/deck/{deck_id}``. Like ``DeckSummary``, build
+        it with :meth:`from_deck` rather than ``model_validate``. Reused by the
+        Story 1.6 deck-analysis tools.
     """
 
     cards: list[DeckCardSummary] = []
+
+    @classmethod
+    def from_deck(cls, deck: Deck) -> Self:
+        """Project a full ``Deck`` into a detail, computing the counts.
+
+        Overrides :meth:`DeckSummary.from_deck` only to add ``cards`` — every
+        other field comes from the shared ``_summary_fields``, so a field added to
+        ``DeckSummary`` reaches this route too without an edit here.
+
+        Args:
+            deck: The source deck, with ``deck_cards`` (and each entry's ``card``)
+                already loaded. See :meth:`DeckSummary.from_deck` for what happens
+                when they are not.
+
+        Returns:
+            The detail, with all three counts computed rather than defaulted. The
+            ``cards`` list is in whatever order the repository returned
+            ``deck_cards`` — see the class docstring.
+        """
+        cards = [
+            DeckCardSummary(
+                card_id=dc.card_id,
+                quantity=dc.quantity,
+                sideboard=dc.sideboard,
+                commander=dc.commander,
+                card=CardSummary.model_validate(dc.card),
+            )
+            for dc in deck.deck_cards
+        ]
+        return cls(**cls._summary_fields(deck), cards=cards)

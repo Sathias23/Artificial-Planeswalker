@@ -899,6 +899,42 @@ app never requests them, and the page renders identically with the network block
 keeps that claim honest instead of asserted — a dependency that starts phoning home goes red and
 a human looks.
 
+## What the gates cannot see
+
+Every guard in `ui/tests/` is a static reader. Several of them are load-bearing enough that it
+matters exactly where they stop — and each one that stops somewhere **says so in its own source**.
+This section is the index of those declarations, so a reviewer can find the edge without reading
+fourteen test files first. It is not a list of bugs: every entry is a limit its author chose,
+usually because closing it needs the cascade, the render tree or a human eye.
+
+The rule this encodes: **a declared blind spot is still a claim.** c2-6 lost a round to one —
+"neither pass order is safe" was true, "this one fails on the rarer input" was never measured, and
+it was hiding a failure that blinded every guard in the file. If an entry here is load-bearing for
+your story, verify it rather than inherit it.
+
+| What is invisible                                                                                                                                                                                                                                                                                                                             | Where it is declared                                                                                                                                                              | Who owns the other half                                   |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| **The cascade.** A correctly paired block undone by a later rule in another block reads as clean — resolving it needs specificity, source order and the element's real runtime class list. Applies to the numeric-pairing guard (UX-DR3 tabular numerals) and to the tracking/text-transform companion it spawned.                            | `tests/token-usage.test.ts:397`, `:473` — and _asserted_, not merely described, at `:1267` and `:1434`                                                                            | Review                                                    |
+| **Untracked files.** Every file-walking guard is keyed on `git ls-files`, so a stylesheet, font or module that is not yet committed passes vacuously. The limit is "invisible until committed", not "never seen" — CI sees it the moment it lands.                                                                                            | `tests/shell.test.ts:88`, and the same construct in `token-usage.test.ts:43`, `gate-geometry.test.ts:23`, `wire-contract.test.ts:60`, `copy-rules.test.ts:86`, `fonts.test.ts:53` | CI, one commit later                                      |
+| **Cross-block and cross-file CSS.** The block reader matches innermost brace pairs, so a declaration in a nesting parent is in no block at all (made unreachable by the nesting ban, which is asserted). `findAccentDimOnOverlay` was widened from block-local to same-file; **cross-file remains open**.                                     | `tests/token-usage.test.ts:74`, `:166`, `:209`; `tests/shell.test.ts:41`                                                                                                          | Review                                                    |
+| **Runtime-composed class lists.** A full-window layer assembled at runtime from two classes, a root selector reached through an unrecognised class, or an overflow set from JavaScript — the render tree lives in TSX and is chosen at runtime.                                                                                               | `tests/shell.test.ts:35`                                                                                                                                                          | Review                                                    |
+| **`var()` indirection.** `overflow: var(--clip)` hides the keyword in a custom property declared elsewhere, evading every value-keyed check. In the data-ink guard the same hole is closed _indirectly_ — declaring a `--mana-*` outside `tokens.css` is itself a failure two guards up, which is what makes that one safe rather than lucky. | `tests/shell.test.ts:39`; `tests/token-usage.test.ts:604`                                                                                                                         | The token-location guard, or review                       |
+| **External hosts (`REVIEWED_HOSTS`).** Deliberately brittle: the _set_ of external hosts must equal a reviewed baseline, in both directions, so both a new host and a stale entry go red. A runtime-constructed URL (`fetch('htt' + 'ps://…')`) and an IPv6-literal host are still invisible.                                                 | `tests/fonts.test.ts:320`, `:337`, `:520`                                                                                                                                         | A human, by design — that is the point of the brittleness |
+| **Whether a curve bar is stacked (UX-DR7).** Not a property of the stylesheet: it is a property of the data bound to it and the elements composed at runtime. c4-8's reviewer must look.                                                                                                                                                      | `tests/token-usage.test.ts:596`                                                                                                                                                   | Review, at c4-8                                           |
+| **Whether copy is second-person and blameless (UX-DR33).** Not statically decidable, and the most important half of the rule. Four further copy residues are declared beside it: runtime-assembled copy, `aria-label={call()}`, Latin-script-only prose detection, and a single word as a JSX expression child.                               | `tests/copy-rules.test.ts:54` and `:57`–`:69`                                                                                                                                     | Review, at c4-3 / c4-12 / c6-6                            |
+| **Anything outside `*.css`.** Every token-layer gate stops at stylesheets: `style={{ padding: '18px' }}` in a `.tsx` file is invisible to all of them.                                                                                                                                                                                        | `tests/lint-gates.test.ts:100`                                                                                                                                                    | Review                                                    |
+| **Rendering, at all.** jsdom has no layout engine and loads no fonts, so "the glyphs on screen are Space Grotesk" and "a wide glyph fits its pip" are both unprovable here; the latter is pinned by a source read instead.                                                                                                                    | `tests/fonts.test.ts:20`; `tests/token-usage.test.ts:1001`                                                                                                                        | The epic manual-testing checklist                         |
+| **Quotes inside copy strings.** Two artefact parsers capture with `"([^"]*)"`, so a copy string containing a double quote truncates the read. Both declare the ceiling; `copy.test.ts` also fails loudly on a duplicated row label rather than silently taking one.                                                                           | `tests/attribution.test.ts:119`; `tests/copy.test.ts:72`                                                                                                                          | The parser fails loudly; review owns the wording          |
+
+Backend guards carry the same discipline. The two that matter most here:
+`tests/unit/companion/test_import_boundary.py` is **AST-only**, so it sees modules no test imports
+but is defeated by `getattr(repo, "create_deck")` — its own docstring forbids routing around it by
+convention, because _"a guard satisfied by obfuscation is theatre"_. And
+`tests/unit/companion/test_openapi_contract.py` compares the committed schema byte-for-byte against
+the live app, which catches drift but **not** meaning: it asserts `Args:` and `>>>` never cross the
+wire, and c3-1 found that MCP-internal prose and Sphinx role markup (`` :class:`X` ``) sail past it
+untouched. That one is a look, not a gate that will tell you.
+
 ## Adding a source directory
 
 Every linted `.ts`/`.tsx` file must belong to a tsconfig — ESLint's `projectService` errors
@@ -909,9 +945,11 @@ directory needs adding to one of those two `include` lists.
 
 ## Not here yet
 
-The `/ws` proxy entry is **c5-6**. The runtime `fetch` layer is **c3-1**'s first real
-consumer, and **c4-1** owns the store and its in-flight deduping — c2-3 deliberately ships the
-generated types with no fetch helper, so neither of those designs is pre-empted.
+The `/ws` proxy entry is **c5-6**. **c4-1** owns the runtime `fetch` layer, the store and its
+in-flight deduping, and **c4-2** owns the deck bootstrap that calls `GET /api/decks` — c2-3
+deliberately ships the generated types with no fetch helper, so neither of those designs is
+pre-empted. **c3-1** shipped the endpoints themselves and no client-side code at all, so the
+generated types still have no runtime consumer.
 
 The application shell landed in **c2-6**, so the token layer now has a real consumer and
 `src/App.css` is gone with the placeholder it styled. What the shell deliberately does _not_
@@ -929,7 +967,7 @@ what changed is only which of the two the running app shows. Each displacement i
 
 - **The left column, as of c2-9.** `App.tsx` passes the no-active-deck `StatePanel` into the
   `left` slot, displacing the placeholder that names c4-4 and c4-8. It is honest rather than a
-  demo: with no fetch layer (**c3-1**) and no store (**c4-1**), there genuinely is no active
+  demo: with no fetch layer and no store (both **c4-1**), there genuinely is no active
   deck. **c4-2 / c4-4** replace the static choice with the real one and **c3-9** owns the
   transition (FR-22).
 - **The footer, as of c2-10.** `App.tsx` passes `<Footer />` into the `footer` slot. Unlike

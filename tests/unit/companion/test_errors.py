@@ -39,6 +39,46 @@ _EXPECTED_STATUS = {
 }
 
 
+_OBJECT_SHAPE_KEYS = frozenset(
+    {"properties", "additionalProperties", "patternProperties", "allOf", "anyOf", "oneOf", "not"}
+)
+"""Keys that give a schema a shape of its own, rather than annotating one it already has."""
+
+
+def _is_ref_rooted(schema: dict) -> bool:
+    """Is *schema* a declared response model, rather than a hand-built inline shape?
+
+    AD-16's ban is on the **envelope** — a ``{"status": "ok", "deck": {...}}`` assembled in a
+    handler, which appears in the OpenAPI document as an inline object with ``properties``. What it
+    permits is any body generated from a ``response_model``, and there are two rooted shapes that
+    can be: a component reference, and an **array of** one (c3-1's ``GET /api/decks`` returns
+    ``list[DeckSummary]``, an unwrapped bare array — AD-16's own example of an unwrapped body).
+
+    Keyed on the family — "the schema bottoms out in a ``$ref``" — rather than on a list of the
+    two spellings seen so far, so a future ``list[list[X]]`` is admitted and an array *of* an
+    inline envelope is still refused.
+
+    Args:
+        schema: The ``content["application/json"]["schema"]`` subtree of one response.
+
+    Returns:
+        ``True`` if the shape is rooted in a component reference.
+    """
+    if set(schema) == {"$ref"}:
+        return True
+    if schema.get("type") == "array" and isinstance(schema.get("items"), dict):
+        # An array that ALSO carries an object-shaping key is a hand-assembled shape wearing an
+        # array's clothes, and a plain "is it an array? recurse into items" check waves it through
+        # (review, 2026-07-31). Keyed on the shaping FAMILY rather than on an allowlist of
+        # permitted siblings, because FastAPI legitimately adds annotation keys of its own —
+        # `title` on every generated array response, and `description` wherever a docstring
+        # reaches it. Those describe the shape; the keys below CHANGE it.
+        if _OBJECT_SHAPE_KEYS & set(schema):
+            return False
+        return _is_ref_rooted(schema["items"])
+    return False
+
+
 def _app_with_test_routes():
     """Return a real ``build_app()`` instance with the routes these tests need attached.
 
@@ -405,6 +445,49 @@ class TestStructuralPins:
             schema = responses[status]["content"]["application/json"]["schema"]
             assert schema == {"$ref": "#/components/schemas/ErrorResponse"}
 
+    @staticmethod
+    def _ref_rooted_cases():
+        """The shapes :func:`_is_ref_rooted` must accept and reject. The table is the proof."""
+        return [
+            ({"$ref": "#/components/schemas/DeckDetail"}, True),
+            (
+                {"type": "array", "items": {"$ref": "#/components/schemas/DeckSummary"}},
+                True,
+            ),
+            # The real generated shape: FastAPI titles every array response. An annotation key
+            # must not be mistaken for a shaping key.
+            (
+                {
+                    "type": "array",
+                    "items": {"$ref": "#/components/schemas/DeckSummary"},
+                    "title": "Response Read Decks Api Decks Get",
+                },
+                True,
+            ),
+            # An envelope: the exact hand-built {"status": ..., "deck": ...} this bans.
+            ({"type": "object", "properties": {"status": {}, "deck": {}}}, False),
+            # An array *of* an envelope — the evasion a shallow "type == array" check would miss.
+            ({"type": "array", "items": {"type": "object", "properties": {}}}, False),
+            # An untyped bag, and a bare scalar: neither is a declared model.
+            ({"type": "object"}, False),
+            ({"type": "string"}, False),
+            # An array carrying a sibling `properties` alongside `items` — the shape a shallow
+            # "type == array, recurse into items" check waves through (review, 2026-07-31).
+            (
+                {
+                    "type": "array",
+                    "items": {"$ref": "#/components/schemas/DeckSummary"},
+                    "properties": {"total": {}},
+                },
+                False,
+            ),
+        ]
+
+    def test_the_ref_rooted_helper_accepts_and_rejects(self):
+        """Non-vacuity for the walk below: the predicate itself has both halves proven."""
+        for shape, expected in self._ref_rooted_cases():
+            assert _is_ref_rooted(shape) is expected, shape
+
     def test_every_success_body_is_a_component_ref_never_an_envelope(self):
         # AD-16 structurally: an inline object is what a hand-built {"status": "ok", "deck": {...}}
         # return looks like in the schema. A $ref means a declared response_model.
@@ -425,13 +508,16 @@ class TestStructuralPins:
                     assert "schema" in body, (
                         f"{method.upper()} {path} {status} declares JSON content with no schema"
                     )
-                    assert set(body["schema"]) == {"$ref"}, (
+                    assert _is_ref_rooted(body["schema"]), (
                         f"{method.upper()} {path} {status} returns an inline JSON object — declare "
                         "a response_model so the shape is generated, not hand-built (AD-12/AD-16)"
                     )
 
         # Non-vacuity (c1-1's dead-guard lesson): a walk that visited nothing passes silently.
+        # Both rooted shapes are named, so a walk that found only one kind cannot pass either.
         assert "GET /health 200" in checked
+        assert "GET /api/decks 200" in checked
+        assert "GET /api/deck/{deck_id} 200" in checked
 
 
 class TestConstructionStaysInert:

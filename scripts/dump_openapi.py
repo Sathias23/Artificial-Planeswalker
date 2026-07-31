@@ -18,7 +18,9 @@ half fail in the gate that owns it (story c2-3, Decide-once #1).
 
 **Adding an endpoint or a model needs no work here.** Declare the route with a ``response_model``
 and ``error_responses(...)``, run ``npm run gen:api``, and commit both generated files — new paths
-and components appear in them automatically. Story **c3-1** (``/api/decks``) is the first to do it.
+and components appear in them automatically. Story **c3-1** (``/api/decks`` and
+``/api/deck/{deck_id}``) was the first to do it, taking the schema from two components to six; story
+**c3-2** (``/api/cards/{card_id}``) is next.
 
 **There is no dummy endpoint, and none is needed.** Story **c5-1**'s ``POST /agent/events`` declares
 the WebSocket event-envelope union as its *request body*, so every per-kind payload lands in

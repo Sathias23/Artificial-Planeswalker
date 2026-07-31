@@ -31,10 +31,217 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/decks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Decks
+         * @description List every saved deck, newest first, with counts but without the cards.
+         *
+         *     Each deck carries its metadata and three counts summarising its contents — enough
+         *     to render a deck list without transferring any decklist. Having no saved decks is
+         *     an ordinary answer, not an error: the array is simply empty.
+         */
+        get: operations["read_decks_api_decks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/deck/{deck_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Deck
+         * @description Return one saved deck in full: its metadata, its counts and every card in it.
+         *
+         *     The whole decklist, with each entry naming its quantity, which board it belongs
+         *     to, whether it is the commander, and a summary of the card itself. The order of
+         *     ``cards`` is not meaningful — see ``DeckDetail``.
+         */
+        get: operations["read_deck_api_deck__deck_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * CardSummary
+         * @description The card fields needed to identify and display a card in a list.
+         *
+         *     A bounded subset of the full card record: name, mana cost, converted mana
+         *     cost, type line, oracle text, colours, rarity and set code. It omits the
+         *     heavy detail fields — legalities, image URIs and card faces — so a response
+         *     carrying many cards stays small. Fetch the full card separately when that
+         *     detail is needed.
+         */
+        CardSummary: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Mana Cost */
+            mana_cost: string;
+            /** Cmc */
+            cmc: number;
+            /** Type Line */
+            type_line: string;
+            /** Oracle Text */
+            oracle_text: string;
+            /** Colors */
+            colors: string[];
+            /** Rarity */
+            rarity: string;
+            /** Set Code */
+            set_code: string;
+        };
+        /**
+         * DeckCardSummary
+         * @description One card entry in a deck: how many, which board, and the card itself.
+         *
+         *     Carries the quantity, whether the entry is sideboard, whether it is the
+         *     commander, and a summary of the card. The card is a bounded summary rather
+         *     than the full card record, so a decklist stays small; fetch the full card
+         *     separately when detail (legalities, images, faces) is needed.
+         */
+        DeckCardSummary: {
+            /** Card Id */
+            card_id: string;
+            /** Quantity */
+            quantity: number;
+            /** Sideboard */
+            sideboard: boolean;
+            /**
+             * Commander
+             * @default false
+             */
+            commander: boolean;
+            card: components["schemas"]["CardSummary"];
+        };
+        /**
+         * DeckDetail
+         * @description A saved deck's metadata, card counts and full card list.
+         *
+         *     Everything ``DeckSummary`` carries, plus ``cards``: one ``DeckCardSummary``
+         *     per entry. This is the whole decklist — the shape a deck view renders from.
+         *
+         *     The order of ``cards`` is **not** meaningful and is not the order the cards
+         *     were added. The underlying relationship declares no ``order_by``, so entries
+         *     arrive in the composite primary key's order — effectively ``card_id``, which
+         *     is a Scryfall UUID. A consumer that wants a stable presentation order (by
+         *     type, by mana value, by name) must sort them itself.
+         */
+        DeckDetail: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Format */
+            format: string | null;
+            /** Strategy */
+            strategy?: string | null;
+            /**
+             * Color Identity
+             * @default []
+             */
+            color_identity: string[];
+            /**
+             * Tags
+             * @default []
+             */
+            tags: string[];
+            /**
+             * Mainboard Count
+             * @default 0
+             */
+            mainboard_count: number;
+            /**
+             * Sideboard Count
+             * @default 0
+             */
+            sideboard_count: number;
+            /**
+             * Distinct Cards
+             * @default 0
+             */
+            distinct_cards: number;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+            /**
+             * Cards
+             * @default []
+             */
+            cards: components["schemas"]["DeckCardSummary"][];
+        };
+        /**
+         * DeckSummary
+         * @description A saved deck's metadata and card counts, without the card list itself.
+         *
+         *     What a deck listing returns for each deck: identity, format, strategy, colour
+         *     identity, tags, timestamps, and three counts summarising the contents —
+         *     ``mainboard_count`` and ``sideboard_count`` (sums of quantities) and
+         *     ``distinct_cards`` (how many different cards, counting a card in both boards
+         *     once). Enough to render a deck in a list without transferring the deck.
+         */
+        DeckSummary: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Format */
+            format: string | null;
+            /** Strategy */
+            strategy?: string | null;
+            /**
+             * Color Identity
+             * @default []
+             */
+            color_identity: string[];
+            /**
+             * Tags
+             * @default []
+             */
+            tags: string[];
+            /**
+             * Mainboard Count
+             * @default 0
+             */
+            mainboard_count: number;
+            /**
+             * Sideboard Count
+             * @default 0
+             */
+            sideboard_count: number;
+            /**
+             * Distinct Cards
+             * @default 0
+             */
+            distinct_cards: number;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
         /**
          * ErrorResponse
          * @description The body of every non-2xx response — the token, and nothing else (AD-16).
@@ -122,6 +329,129 @@ export interface operations {
             };
             /** @description reason: invalid_request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: payload_too_large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: internal_error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: database_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_decks_api_decks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeckSummary"][];
+                };
+            };
+            /** @description reason: invalid_request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: payload_too_large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: internal_error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: database_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_deck_api_deck__deck_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deck_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeckDetail"];
+                };
+            };
+            /** @description reason: invalid_request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: deck_not_found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
