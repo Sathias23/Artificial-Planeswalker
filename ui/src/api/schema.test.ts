@@ -34,13 +34,20 @@ describe('generated wire types (AD-12)', () => {
     expectTypeOf<ErrorResponse>().toEqualTypeOf<{ reason: ErrorReason }>()
   })
 
-  // All six named explicitly. This is the one assertion that cannot be derived from the generated
-  // file, and that is the point: it is a second, independent statement of AD-16's closed set, so a
-  // token dropped on the Python side reddens here instead of quietly deleting a c2-9 state panel.
-  // Adding a seventh token (c3-2's card_not_found) is a deliberate act that edits this line.
-  it('pins the closed six-token reason set', () => {
+  // All seven named explicitly. This is the one assertion that cannot be derived from the
+  // generated file, and that is the point: it is a second, independent statement of AD-16's closed
+  // set, so a token dropped on the Python side reddens here instead of quietly deleting a c2-9
+  // state panel.
+  //
+  // c3-2 edited this line to add `card_not_found`, which is what the previous version of this
+  // comment predicted it would. The rule stands unchanged for an eighth: adding a token is a
+  // deliberate act that edits this line — and `npm test` will NOT tell you that you forgot,
+  // because this file's assertions erase to nothing at runtime (see the header). The failure
+  // arrives from `npm run typecheck`, here and in `components/StatePanel/states.ts`.
+  it('pins the closed seven-token reason set', () => {
     expectTypeOf<ErrorReason>().toEqualTypeOf<
       | 'deck_not_found'
+      | 'card_not_found'
       | 'database_not_initialized'
       | 'database_unavailable'
       | 'invalid_request'

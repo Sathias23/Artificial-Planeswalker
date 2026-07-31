@@ -45,6 +45,7 @@ class HealthResponse(BaseModel):
 
 ErrorReason = Literal[
     "deck_not_found",
+    "card_not_found",
     "database_not_initialized",
     "database_unavailable",
     "invalid_request",
@@ -53,12 +54,15 @@ ErrorReason = Literal[
 ]
 """The closed set of reasons any non-2xx response may give (AD-16).
 
-Closed at **six**. Adding another is a deliberate act with a failing test attached
-(``tests/unit/companion/test_errors.py``), because AD-16's extension rule is that a new token and
-the UI state it drives are added together — never a token alone. ``internal_error`` was added under
-exactly that rule by the c1-4 review (Brad, 2026-07-25): an unhandled bug must be distinguishable
-from a transient database outage *before* Epic 2 freezes the TypeScript union, with its state
-panel homed on c2-9. Story c3-2 adds ``card_not_found`` the same way; nothing else does.
+Closed at **seven**, with nothing planned. Adding another is a deliberate act with a failing test
+attached (``tests/unit/companion/test_errors.py``), because AD-16's extension rule is that a new
+token and the UI state it drives are added together — never a token alone. ``internal_error`` was
+added under exactly that rule by the c1-4 review (Brad, 2026-07-25): an unhandled bug must be
+distinguishable from a transient database outage *before* Epic 2 freezes the TypeScript union,
+with its state panel homed on c2-9. ``card_not_found`` was added the same way by c3-2, under the
+C2 retro's R1 ruling that made the pairing explicit — its UI destination shipped in the same
+commit as the token (see :class:`ErrorResponse` below, and ``ui/src/components/StatePanel/
+states.ts``), because C1 shipping ``internal_error`` alone had already cost c2-9 a repair AC.
 
 A ``Literal`` rather than a ``StrEnum`` so it matches :attr:`HealthResponse.status`, generates a
 plain TypeScript string union from ``openapi-typescript`` (AD-12), and lets a raise site write the
@@ -89,6 +93,11 @@ class ErrorResponse(BaseModel):
 
     * ``deck_not_found`` — the deck the caller asked for is gone (deleted between a push and a
       refetch); the SPA clears to the **No-active-deck** panel.
+    * ``card_not_found`` — no card in the local database carries that printing id. The **only**
+      token whose destination is not a panel: the view that referenced the card renders normally
+      and shows an **"Unknown card"** placeholder in that one slot, with no banner and no apology
+      (FR-13). One unknown card must never fail a whole view or a whole push. The placeholder is
+      built in c4-3.
     * ``database_not_initialized`` — fresh install, no card database yet; the **"Card database not
       set up yet."** panel, which tells the user to ask their agent to run ``initialize_database``.
     * ``database_unavailable`` — reads are failing transiently (a bulk refresh in flight, or an

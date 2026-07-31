@@ -14,7 +14,13 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { CLIENT_ONLY_STATES, PANEL_FOR_REASON, RETRIES_QUIETLY } from './states'
+import {
+  CLIENT_ONLY_STATES,
+  NO_UI_RESPONSE,
+  PANEL_FOR_REASON,
+  PLACEHOLDER_FOR_REASON,
+  RETRIES_QUIETLY,
+} from './states'
 
 describe('the state maps mean what the wire contract says (review 2026-07-29)', () => {
   it('routes each token to its own panel — the values, not merely the totality', () => {
@@ -29,6 +35,31 @@ describe('the state maps mean what the wire contract says (review 2026-07-29)', 
     // over-cap push is surfaced to the agent, never the glass.
     expect(PANEL_FOR_REASON.invalid_request).toBeNull()
     expect(PANEL_FOR_REASON.payload_too_large).toBeNull()
+  })
+
+  // ------------------------------------------------------------------------------------------
+  // c3-2: the THIRD meaning of `null`, pinned by value the way the four panels above are.
+  //
+  // The three type-level asserts in `states.ts` prove every panel-less token is classified as
+  // exactly one of {placeholder, nothing}. They do NOT prove WHICH — swapping `card_not_found`
+  // into `NO_UI_RESPONSE` and dropping `PLACEHOLDER_FOR_REASON` to `{}` type-checks perfectly
+  // and silently deletes c4-3's destination. That is this file's whole reason for existing
+  // (review 2026-07-29), so the seventh token gets the same treatment as the other six.
+  // ------------------------------------------------------------------------------------------
+
+  it('gives card_not_found no panel but a NAMED non-panel destination', () => {
+    // No panel — one unresolvable card must never take a whole view down (FR-13).
+    expect(PANEL_FOR_REASON.card_not_found).toBeNull()
+    // …but not nothing: the placeholder c4-3 renders.
+    expect(PLACEHOLDER_FOR_REASON.card_not_found).toBe('unknown-card')
+  })
+
+  it('does not confuse "no panel" with "no UI response at all"', () => {
+    // The distinction retro R1 exists to force, asserted in both directions so neither list can
+    // quietly absorb the other's members.
+    expect([...NO_UI_RESPONSE]).toEqual(['invalid_request', 'payload_too_large'])
+    expect([...NO_UI_RESPONSE]).not.toContain('card_not_found')
+    expect(Object.keys(PLACEHOLDER_FOR_REASON)).toEqual(['card_not_found'])
   })
 
   it('never lets the two deterministic states quietly retry — the load-bearing falses', () => {

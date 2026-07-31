@@ -81,10 +81,139 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cards/{card_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Card
+         * @description Return everything known about one card printing.
+         *
+         *     The canonical record behind a printing id: its name, mana cost, converted mana cost, type
+         *     line, oracle text, power and toughness, rarity, set, collector number, colours, keywords,
+         *     format legalities, and its images. Views that were given only an id use this to fill
+         *     themselves in.
+         *
+         *     Images arrive in one of two places, and the discriminator is **the presence of per-face
+         *     ``image_uris``, never whether ``card_faces`` is present**. Most cards carry a top-level
+         *     ``image_uris``; a card whose faces have their own artwork carries a null ``image_uris`` and
+         *     per-face ``image_uris`` inside ``card_faces`` instead. Nothing carries both.
+         *
+         *     Branching on ``card_faces !== null`` is the trap: a split card has faces *and* a top-level
+         *     image, because its halves share one piece of artwork, so those faces carry names and costs but
+         *     no images. Some cards have no image data anywhere, which is ordinary and not an error.
+         *
+         *     ``prices`` is absent from this response, not empty: the local database holds no price data of
+         *     any kind.
+         *
+         *     Warning:
+         *         The ``400`` for a malformed id is not unconditional. Dependencies resolve before
+         *         parameter validation is reported, so a malformed id sent while the database is unusable
+         *         answers ``503`` (``database_not_initialized`` or ``database_unavailable``), not ``400``.
+         *         A caller that retries on 503 must not assume the request can ever succeed: a malformed id
+         *         stays malformed whatever the database does.
+         */
+        get: operations["read_card_api_cards__card_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * Card
+         * @description One Magic: The Gathering card printing, as held in the local card database.
+         *
+         *     Everything known about a single printing: its name and mana cost, type line and oracle text,
+         *     power and toughness, rarity, set and collector number, colours, keywords, format legalities,
+         *     and its images.
+         *
+         *     Some fields are always present but may be empty rather than absent — ``mana_cost`` and
+         *     ``oracle_text`` are empty strings on a card that has none, ``colors`` and ``games`` empty
+         *     lists, ``legalities`` an empty object. Combat stats are null on anything that is not a
+         *     creature, and ``game_changer`` is a three-state flag whose null means "not yet determined",
+         *     not "no".
+         *
+         *     Images live in one of two places, and **which one is decided by the presence of per-face
+         *     ``image_uris`` — never by whether ``card_faces`` is present**. Most cards carry a top-level
+         *     ``image_uris``. A card whose faces have their own artwork carries a null ``image_uris`` and
+         *     per-face ``image_uris`` inside its ``card_faces`` entries instead. The two are mutually
+         *     exclusive; nothing carries both.
+         *
+         *     ``card_faces`` is **not** the discriminator, and treating it as one is wrong for real cards:
+         *     a split card has a ``card_faces`` array *and* a top-level image, because its two halves share
+         *     one piece of artwork — so its faces carry names and costs but no images of their own. Reading
+         *     "has faces" as "has per-face images" renders nothing for those cards. Some cards have no image
+         *     data anywhere, which is ordinary and not an error.
+         *
+         *     There is no price data of any kind in this record.
+         */
+        Card: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Printed Name */
+            printed_name?: string | null;
+            /** Oracle Id */
+            oracle_id: string;
+            /** Mana Cost */
+            mana_cost: string;
+            /** Cmc */
+            cmc: number;
+            /** Type Line */
+            type_line: string;
+            /** Oracle Text */
+            oracle_text: string;
+            /** Power */
+            power?: string | null;
+            /** Toughness */
+            toughness?: string | null;
+            /** Game Changer */
+            game_changer?: boolean | null;
+            /** Rarity */
+            rarity: string;
+            /** Set Code */
+            set_code: string;
+            /** Set Name */
+            set_name: string;
+            /** Collector Number */
+            collector_number: string;
+            /** Colors */
+            colors: string[];
+            /** Color Identity */
+            color_identity: string[];
+            /** Color Indicator */
+            color_indicator?: string[] | null;
+            /** Keywords */
+            keywords?: string[] | null;
+            /** Legalities */
+            legalities: {
+                [key: string]: string;
+            };
+            /** Card Faces */
+            card_faces?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Image Uris */
+            image_uris?: {
+                [key: string]: string;
+            } | null;
+            /**
+             * Games
+             * @default []
+             */
+            games: string[];
+        };
         /**
          * CardSummary
          * @description The card fields needed to identify and display a card in a list.
@@ -262,6 +391,11 @@ export interface components {
          *
          *     * ``deck_not_found`` — the deck the caller asked for is gone (deleted between a push and a
          *       refetch); the SPA clears to the **No-active-deck** panel.
+         *     * ``card_not_found`` — no card in the local database carries that printing id. The **only**
+         *       token whose destination is not a panel: the view that referenced the card renders normally
+         *       and shows an **"Unknown card"** placeholder in that one slot, with no banner and no apology
+         *       (FR-13). One unknown card must never fail a whole view or a whole push. The placeholder is
+         *       built in c4-3.
          *     * ``database_not_initialized`` — fresh install, no card database yet; the **"Card database not
          *       set up yet."** panel, which tells the user to ask their agent to run ``initialize_database``.
          *     * ``database_unavailable`` — reads are failing transiently (a bulk refresh in flight, or an
@@ -280,7 +414,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "deck_not_found" | "database_not_initialized" | "database_unavailable" | "invalid_request" | "payload_too_large" | "internal_error";
+            reason: "deck_not_found" | "card_not_found" | "database_not_initialized" | "database_unavailable" | "invalid_request" | "payload_too_large" | "internal_error";
         };
         /**
          * HealthResponse
@@ -451,6 +585,73 @@ export interface operations {
                 };
             };
             /** @description reason: deck_not_found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: payload_too_large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: internal_error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: database_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_card_api_cards__card_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Card"];
+                };
+            };
+            /** @description reason: invalid_request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: card_not_found */
             404: {
                 headers: {
                     [name: string]: unknown;

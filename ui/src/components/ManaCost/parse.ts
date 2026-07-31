@@ -153,9 +153,13 @@ const classify = (raw: string, inner: string): ManaSymbolToken | ManaUnknownToke
  * every character of the input survives in some token's `raw`.
  *
  * `undefined`, `null` and `''` behave identically (AC 4): the absent cost arrives as `''` from
- * this repo's own data — 5,943 lands carry the empty string and `mana_cost` is never NULL — but
- * the wire type c3-2 generates may still be nullable, and handling all three is cheaper than
- * picking one and being wrong.
+ * this repo's own data — 5,943 lands carry the empty string and `mana_cost` is never NULL.
+ *
+ * The wire type is NOT nullable — c3-2 measured it, and it was already non-null at c3-1
+ * (`mana_cost: string` on both `Card` and `CardSummary`, from the schemas' NULL-coercing
+ * validators). All three spellings are still handled, because this is an exported function whose
+ * argument type is `string | null | undefined` for callers the wire does not constrain. See
+ * `ManaCost.tsx`'s `cost` prop for the same correction.
  */
 export const parseManaCost = (cost: string | null | undefined): ManaToken[] => {
   if (cost === undefined || cost === null || cost === '') return []
