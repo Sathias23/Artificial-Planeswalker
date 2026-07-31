@@ -681,20 +681,64 @@ _FORMAT_NAMES = frozenset(
 """The 23 Scryfall legality keys, for the "a format-name set was rebuilt here" family."""
 
 
+_LEGALITIES = "legalities"
+
+_VALIDATOR_PACKAGE, _VALIDATOR_LEAF = _VALIDATOR_MODULE.rsplit(".", 1)
+
+
+def _is_limit(value: object) -> bool:
+    """Is *value* one of the construction limits, in any numeric spelling?
+
+    ``60.0`` counts: ``60.0 in {60, 15, 4}`` is ``True`` and ``n < 60.0`` is the same rule with a
+    decimal point. Booleans are excluded explicitly, because ``True == 1`` and ``False == 0`` in
+    Python would otherwise classify every ``x == True`` as a copy limit — which is why the
+    exclusion is an ``isinstance`` check and not a comment claiming ``is`` handles it.
+    """
+    return (
+        not isinstance(value, bool) and isinstance(value, int | float) and value in _LIMIT_LITERALS
+    )
+
+
+def _format_names_in(elements: list[ast.expr]) -> list[str]:
+    """Return the Scryfall legality keys among *elements*' string constants."""
+    return [
+        e.value
+        for e in elements
+        if isinstance(e, ast.Constant) and isinstance(e.value, str) and e.value in _FORMAT_NAMES
+    ]
+
+
 def find_rule_violations(source: str, rel_path: str) -> list[str]:
     """Return every deck-construction rule reimplemented in *source* (AD-1, AC 5).
 
     Pure and AST-only, so it can be probed against a planted violation without touching a real
     file, and so a rule hidden in a module no test imports is still seen. Four families:
 
-    * **card legality read in the shell** — any ``.legalities`` access or ``["legalities"]``
-      subscript;
-    * **the validator reached past its projection** — any import from the validator module of a
-      name outside :data:`_PROJECTION_SURFACE`;
-    * **a construction limit compared** — an integer from :data:`_LIMIT_LITERALS` inside a
-      comparison;
-    * **a format-name set rebuilt** — a collection display of two or more strings that are all
-      Scryfall legality keys.
+    * **card legality read in the shell** — the name ``legalities`` in *any* position: an
+      attribute, a subscript key, a ``getattr`` argument, or a bare string bound to a variable
+      and used as a key later. Keyed on the word rather than on the syntax, because the syntax
+      is exactly what an evasion varies.
+    * **the validator reached past its projection** — any import of the validator module, or of
+      a name from it, outside :data:`_PROJECTION_SURFACE`. Covers ``from X import y``,
+      ``import X.y``, ``import X.y as z`` and ``from X import y``-of-the-module, because
+      ``import src.logic.deck_validator as dv`` then ``dv.validate_deck(...)`` reaches
+      everything an allowlist on ``from``-imports alone would refuse.
+    * **a construction limit used** — an integer from :data:`_LIMIT_LITERALS` appearing anywhere
+      as an integer constant. Deliberately *not* restricted to comparisons: ``_MIN = 60`` then
+      ``n < _MIN`` is the same rule with one more line, and ``match n: case 60`` is the same rule
+      with different syntax.
+    * **a format-name set rebuilt** — two or more Scryfall legality keys appearing together in a
+      collection display or as dict keys, whatever else is in it.
+    * **copies counted in the shell** — any ``.quantity`` access. AC 5 names "any copy counting"
+      beside the limits, and a shell summing quantities is doing the arithmetic the copy limit is
+      made of, whether or not it then compares against ``4``.
+
+    **Declared limits, so they are decisions rather than discoveries.** ``1`` is outside the
+    limit family (see :data:`_LIMIT_LITERALS`). A rule written in TypeScript is invisible to
+    every Python guard. And a fully dynamic form — a limit read from a config file, a legality
+    key assembled from fragments — defeats an AST walk by construction; the same stance
+    ``test_import_boundary.py`` takes applies, and its wording is the rule: *a guard satisfied by
+    obfuscation is theatre*, so a reviewer seeing one must treat it as a violation.
 
     Args:
         source: Python source text.
@@ -709,43 +753,55 @@ def find_rule_violations(source: str, rel_path: str) -> list[str]:
     def flag(line: int, symbol: str, family: str) -> None:
         found.append(f"{rel_path}:{line} — {symbol} ({family})")
 
+    def flag_validator_import(line: int, dotted: str) -> None:
+        flag(line, dotted, "the validator is reached past its projection")
+
     for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute) and node.attr == "legalities":
+        # --- legality, in any spelling ---
+        if isinstance(node, ast.Attribute) and node.attr == _LEGALITIES:
             flag(node.lineno, ast.unparse(node), "a card's legality is read in the shell")
-        elif (
-            isinstance(node, ast.Subscript)
-            and isinstance(node.slice, ast.Constant)
-            and node.slice.value == "legalities"
-        ):
-            flag(node.lineno, ast.unparse(node), "a card's legality is read in the shell")
-        elif isinstance(node, ast.ImportFrom) and node.module == _VALIDATOR_MODULE:
+        elif isinstance(node, ast.Constant) and node.value == _LEGALITIES:
+            # The string itself, wherever it appears: `card["legalities"]`, `getattr(card,
+            # "legalities")`, and `KEY = "legalities"` followed by `card[KEY]` — the last of
+            # which no subscript-shaped check can see (review, 2026-08-01).
+            flag(node.lineno, repr(node.value), "a card's legality is read in the shell")
+
+        # --- the validator, past its projection ---
+        elif isinstance(node, ast.ImportFrom):
+            if node.module == _VALIDATOR_MODULE:
+                for alias in node.names:
+                    if alias.name not in _PROJECTION_SURFACE:
+                        flag_validator_import(node.lineno, f"{_VALIDATOR_MODULE}.{alias.name}")
+            elif node.module == _VALIDATOR_PACKAGE:
+                # `from src.logic import deck_validator` binds the whole module, so every name
+                # on it is reachable — an allowlist cannot constrain what happens next.
+                for alias in node.names:
+                    if alias.name == _VALIDATOR_LEAF:
+                        flag_validator_import(node.lineno, _VALIDATOR_MODULE)
+        elif isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name not in _PROJECTION_SURFACE:
-                    flag(
-                        node.lineno,
-                        f"{_VALIDATOR_MODULE}.{alias.name}",
-                        "the validator is reached past its projection",
-                    )
-        elif isinstance(node, ast.Compare):
-            for operand in [node.left, *node.comparators]:
-                if isinstance(operand, ast.Constant) and operand.value in _LIMIT_LITERALS:
-                    # `is` not `==`: True == 1 and False == 0 in Python, so a plain membership
-                    # test would let `x == True` masquerade as the copy limit and vice versa.
-                    if any(operand.value is limit for limit in _LIMIT_LITERALS):
-                        flag(
-                            node.lineno,
-                            ast.unparse(node),
-                            "a deck-construction limit is compared in the shell",
-                        )
-                        break
+                if alias.name == _VALIDATOR_MODULE:
+                    flag_validator_import(node.lineno, alias.name)
+
+        # --- a construction limit, in any position ---
+        elif isinstance(node, ast.Constant) and _is_limit(node.value):
+            flag(
+                node.lineno,
+                str(node.value),
+                "a deck-construction limit appears in the shell",
+            )
+
+        # --- copies counted in the shell (AC 5 names "any copy counting" alongside the limits) ---
+        elif isinstance(node, ast.Attribute) and node.attr == "quantity":
+            flag(node.lineno, ast.unparse(node), "deck-card copies are counted in the shell")
+
+        # --- a format-name set, in any container ---
         elif isinstance(node, ast.Set | ast.List | ast.Tuple):
-            values = [e.value for e in node.elts if isinstance(e, ast.Constant)]
-            strings = [v for v in values if isinstance(v, str)]
-            if (
-                len(strings) == len(node.elts)
-                and len(strings) >= 2
-                and all(s in _FORMAT_NAMES for s in strings)
-            ):
+            if len(_format_names_in(node.elts)) >= 2:
+                flag(node.lineno, ast.unparse(node), "a format-name set is rebuilt in the shell")
+        elif isinstance(node, ast.Dict):
+            keys = [k for k in node.keys if k is not None]
+            if len(_format_names_in(keys)) >= 2:
                 flag(node.lineno, ast.unparse(node), "a format-name set is rebuilt in the shell")
 
     return found
@@ -806,17 +862,17 @@ class TestNoRuleInTheShell:
             ),
             pytest.param(
                 "def go(deck):\n    return len(deck.cards) < 60\n",
-                "limit is compared",
+                "limit",
                 id="min-deck-size",
             ),
             pytest.param(
                 "def go(deck):\n    return deck.sideboard > 15\n",
-                "limit is compared",
+                "limit",
                 id="max-sideboard",
             ),
             pytest.param(
                 "def go(entry):\n    return entry.quantity > 4\n",
-                "limit is compared",
+                "limit",
                 id="copy-limit",
             ),
             pytest.param(
@@ -829,6 +885,60 @@ class TestNoRuleInTheShell:
                 "format-name set",
                 id="format-list",
             ),
+            # --- Every spelling the review of 2026-08-01 measured slipping through. The four
+            # families above were keyed on the syntax each plant happened to use, so the guard's
+            # only proven property was that it caught its own four examples. Each of these
+            # returned [] against the first version; each is now pinned.
+            pytest.param(
+                "import src.logic.deck_validator as dv\n",
+                "reached past its projection",
+                id="evasion-aliased-module-import",
+            ),
+            pytest.param(
+                "from src.logic import deck_validator\n",
+                "reached past its projection",
+                id="evasion-from-package-module-import",
+            ),
+            pytest.param(
+                "MIN = 60\n\n\ndef go(deck):\n    return len(deck.cards) < MIN\n",
+                "limit",
+                id="evasion-hoisted-limit",
+            ),
+            pytest.param(
+                "def go(deck):\n    return len(deck.cards) < 60.0\n",
+                "limit",
+                id="evasion-float-limit",
+            ),
+            pytest.param(
+                "def go(n):\n    match n:\n        case 60:\n            return True\n",
+                "limit",
+                id="evasion-match-case-limit",
+            ),
+            pytest.param(
+                "def go(card):\n    return getattr(card, 'legalities')\n",
+                "legality is read",
+                id="evasion-getattr-legalities",
+            ),
+            pytest.param(
+                "KEY = 'legalities'\n\n\ndef go(card):\n    return card[KEY]\n",
+                "legality is read",
+                id="evasion-variable-key-legalities",
+            ),
+            pytest.param(
+                "SINGLETON = {'brawl': 1, 'commander': 1}\n",
+                "format-name set",
+                id="evasion-dict-shaped-format-map",
+            ),
+            pytest.param(
+                "KNOWN = {'standard', 'modern', 'zzz'}\n",
+                "format-name set",
+                id="evasion-format-set-with-a-non-format-member",
+            ),
+            pytest.param(
+                "def go(deck):\n    return sum(e.quantity for e in deck.cards)\n",
+                "copies are counted",
+                id="copy-counting-without-a-limit",
+            ),
         ],
     )
     def test_the_guard_fires_on_a_planted_rule(self, source, family):
@@ -836,9 +946,32 @@ class TestNoRuleInTheShell:
         offenders = find_rule_violations(source, "src/companion/app/routes/decks.py")
 
         assert offenders, f"the {family} family caught nothing"
-        assert any(family.split()[0] in message or family in message for message in offenders), (
-            offenders
+        assert any(family in message for message in offenders), offenders
+
+    def test_the_whole_reimplementation_is_caught(self):
+        """The composite the adversarial layer built: four rules in seven lines, and the first
+        version of this guard returned ``[]`` for all of it.
+
+        Kept as one case rather than split across the parametrised list above, because what it
+        demonstrates is not any single family but that the families **compose** — this is what a
+        real AD-1 breach would look like, and it is the shape the guard exists for.
+        """
+        source = (
+            "MIN = 60\n"
+            "SINGLETON = {'brawl': 1, 'commander': 1}\n"
+            "\n\n"
+            "def check(deck, fmt):\n"
+            "    limit = 1 if fmt in SINGLETON else 4\n"
+            "    bad = [c for c in deck.cards if getattr(c, 'legalities').get(fmt) != 'legal']\n"
+            "    return len(deck.cards) < MIN or bad\n"
         )
+
+        offenders = find_rule_violations(source, "src/companion/app/routes/decks.py")
+
+        families = {message.rsplit("(", 1)[-1].rstrip(")") for message in offenders}
+        assert "a deck-construction limit appears in the shell" in families, offenders
+        assert "a card's legality is read in the shell" in families, offenders
+        assert "a format-name set is rebuilt in the shell" in families, offenders
 
     @pytest.mark.parametrize(
         "source",

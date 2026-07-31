@@ -321,6 +321,13 @@ def validate_deck(
     "any number of copies" exemption cards (Seven Dwarves etc.) — the singleton
     rule shares the plain copy limit's blindness there.
 
+    Because those size limits are **not** format-aware, the ``min_deck_size``
+    violation deliberately does not attribute its minimum to ``format``: it
+    reports "the minimum is 60", not "commander requires at least 60", which
+    would be a false statement about a format this function never consulted.
+    Story c3-3 renders that sentence on a panel a person reads, which is why the
+    wording was made true in every format rather than usually true.
+
     Args:
         deck: The deck to validate (mainboard and sideboard via ``deck_cards``).
         format: The MTG format to check legality against (default ``"standard"``).
@@ -362,8 +369,12 @@ def validate_deck(
             DeckViolation(
                 rule="min_deck_size",
                 detail=(
-                    f"Mainboard has {mainboard_count} cards; "
-                    f"{format} requires at least {_MIN_MAINBOARD}."
+                    # Deliberately does NOT attribute the minimum to `format`. It used to read
+                    # "{format} requires at least 60", which is false for Commander — the limit
+                    # is applied regardless of format (D-1.6b) — and rendered a gap when there
+                    # was no format at all. c3-3 puts this sentence in front of a person for the
+                    # first time, so it was made true in every format rather than usually true.
+                    f"Mainboard has {mainboard_count} cards; the minimum is {_MIN_MAINBOARD}."
                 ),
             )
         )
@@ -543,10 +554,20 @@ class FormatCheckReport(BaseModel):
     with its unanswerable rows marked advisory, never a different body and never an error. Rows
     arrive in a fixed order, so a rendered panel does not reshuffle between refetches.
 
+    Warning:
+        ``is_legal`` is **not** a summary of the rows, and rendering it as the panel's headline
+        will contradict them. When ``format_recognized`` is ``false`` there is nothing to check
+        legality against, which the underlying validator counts as a broken rule — so
+        ``is_legal`` is ``false`` while **every row is a pass or an advisory and not one is a
+        violation**. Read ``is_legal`` as *"certified legal"*, not as *"something is wrong"*:
+        it answers false both for a deck that breaks a rule and for a deck that could not be
+        checked. To show a fault, look for a row whose ``status`` is ``violation``; to show
+        "cannot be checked", branch on ``format_recognized``.
+
     Attributes:
-        is_legal: Whether the deck broke no checked rule at all. An unrecognised format counts
-            as a broken rule in the underlying validator, so this is ``False`` when
-            ``format_recognized`` is ``False``; read the rows for what actually happened.
+        is_legal: Whether the deck was certified legal — no violation **and** nothing that
+            prevented checking. Deliberately identical to the underlying validator's verdict, so
+            the panel and the agent cannot disagree. See the warning above before rendering it.
         format: The format the deck was checked against, lowercased and stripped — which may
             differ in case from the format stored on the deck. Empty when the deck has none.
         format_recognized: Whether ``format`` is a format this project knows how to check.
@@ -582,17 +603,24 @@ honest answer is that this cannot be determined, which is what ``advisory`` is f
 def _summarise(violations: list[DeckViolation]) -> str:
     """Render *violations* as one sentence for a single row.
 
+    The headlined violation is chosen by **sorting on card name**, not by taking the first as
+    produced. Production order follows ``deck.deck_cards``, whose own schema documents that order
+    as not meaningful — effectively Scryfall UUID order — so "the first offender" would have named
+    an arbitrary card that no reader could predict (review, 2026-08-01). Alphabetical is
+    arbitrary too, but it is *stable and explicable*, and it no longer depends on how the
+    relationship happened to load. Whole-deck violations carry no card name and sort first.
+
     Args:
         violations: The violations that landed on one check; never empty.
 
     Returns:
-        The first violation's detail, followed by a count of the rest when there are any. The
-        panel has one row per check, so N faults have to become one sentence somewhere; doing it
-        here keeps the prose beside the rules rather than in a shell.
+        One violation's detail, followed by a count of the rest when there are any. The panel has
+        one row per check, so N faults have to become one sentence somewhere; doing it here keeps
+        the prose beside the rules rather than in a shell.
     """
-    first = violations[0].detail
-    remaining = len(violations) - 1
-    return first if remaining == 0 else f"{first} (+{remaining} more)"
+    ordered = sorted(violations, key=lambda v: (v.card_name is not None, v.card_name or ""))
+    remaining = len(ordered) - 1
+    return ordered[0].detail if remaining == 0 else f"{ordered[0].detail} (+{remaining} more)"
 
 
 def _unanswerable(format: str, subject: str) -> str:
@@ -603,11 +631,13 @@ def _unanswerable(format: str, subject: str) -> str:
         subject: What could not be checked, as a noun phrase.
 
     Returns:
-        A sentence naming the format when there is one to name. A deck with no format at all
-        gets prose rather than a quoted empty string, which is true but reads as a bug.
+        A sentence naming the format when there is one to name. An empty format gets prose
+        rather than a quoted empty string, which is true but reads as a bug. The empty-format
+        wording blames no one: the format can be absent because the deck has none *or* because a
+        caller passed a blank one, and this function cannot tell which (review, 2026-08-01).
     """
     if not format:
-        return f"This deck has no format set, so {subject} could not be checked."
+        return f"There is no format to check against, so {subject} could not be checked."
     return f"'{format}' is not a recognized format, so {subject} could not be checked."
 
 
@@ -647,18 +677,19 @@ def format_check(deck: Deck, *, format: str | None = None) -> FormatCheckReport:
         if row is not None:
             by_check[row].append(violation)
 
-    singleton = normalised in _SINGLETON_FORMATS
+    # THE STRUCTURAL ROWS NEVER NAME A FORMAT, and that is a correctness rule rather than a style
+    # choice (review, 2026-08-01). `_MIN_MAINBOARD` and `_MAX_COPIES` are applied regardless of
+    # format (D-1.6b, restated above), so a sentence of the shape "{format} requires at least 60"
+    # is an affirmative claim about a format the validator never consulted — and for Commander it
+    # is simply false, stated on a panel a person reads. It also read as a bug when there was no
+    # format at all ("Mainboard has 60 cards;  requires at least 60."), and it contradicted the
+    # row above it for an unrecognised one ("'potato' is not a recognized format" / "potato
+    # requires at least 60"). Stating the limit without attributing it is true in every format,
+    # in all three cases, and needs no rule this module does not have.
     passed: dict[FormatCheckName, str] = {
         "legality": f"Every card is legal in {normalised}.",
-        "size": (
-            f"Mainboard has {report.mainboard_count} cards; "
-            f"{normalised} requires at least {_MIN_MAINBOARD}."
-        ),
-        "copy_limit": (
-            f"No non-basic card appears more than once; {normalised} is a singleton format."
-            if singleton
-            else f"No card exceeds {_MAX_COPIES} copies; basic lands are exempt."
-        ),
+        "size": (f"Mainboard has {report.mainboard_count} cards; the minimum is {_MIN_MAINBOARD}."),
+        "copy_limit": "No card exceeds the copy limit; basic lands are exempt.",
         "sideboard": (
             f"Sideboard has {report.sideboard_count} cards; the maximum is {_MAX_SIDEBOARD}."
         ),
@@ -666,8 +697,7 @@ def format_check(deck: Deck, *, format: str | None = None) -> FormatCheckReport:
     }
     # What each format-dependent row says when there is no format to check it against. Only these
     # two are affected: size, copy limit and sideboard are format-independent structural rules
-    # and keep answering (the copy limit's *value* depends on the format, and an unrecognised one
-    # is not singleton, so it falls back to the plain 4-copy rule the validator applies).
+    # and keep answering.
     unanswerable: dict[FormatCheckName, str] = {
         "legality": _unanswerable(normalised, "legality"),
         "banned": _unanswerable(normalised, "banned cards"),
@@ -677,7 +707,14 @@ def format_check(deck: Deck, *, format: str | None = None) -> FormatCheckReport:
     for name in CHECK_ORDER:
         if name == "rotation":
             rows.append(FormatCheckRow(check=name, status="advisory", detail=_ROTATION_DETAIL))
-        elif not recognized and name in unanswerable:
+        # `and not by_check[name]` is defensive, and deliberately so: the advisory arm runs first,
+        # so without it a violation on an unanswerable row would be silently swallowed — reported
+        # as "could not be checked" while `is_legal` said False with nothing to show for it.
+        # Unreachable today (validate_deck skips the per-card check when the format is unknown, so
+        # no legality or banned violation can coexist with an unrecognised format), but the
+        # projection was *assuming* that rather than checking it, and the assumption lives in a
+        # different function (review, 2026-08-01).
+        elif not recognized and name in unanswerable and not by_check[name]:
             rows.append(FormatCheckRow(check=name, status="advisory", detail=unanswerable[name]))
         elif by_check[name]:
             rows.append(

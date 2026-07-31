@@ -103,8 +103,10 @@ export interface paths {
          *     against. A deck in that state is still answered with an ordinary report — the same shape as
          *     every other answer, never an error.
          *
-         *     The verdicts come from the same rules the agent-side deck validator applies, so the two
-         *     surfaces can never disagree about whether a deck is legal.
+         *     The verdicts come from the same rules the agent-side deck validator applies — the *rules* are
+         *     shared, though the inputs need not be: this route always checks a deck against its own saved
+         *     format and never against a platform, so an agent asking about a different format will
+         *     reasonably get a different answer.
          */
         get: operations["read_deck_format_check_api_deck__deck_id__format_check_get"];
         put?: never;
@@ -457,6 +459,16 @@ export interface components {
          *     The same shape whatever the answer: a deck whose format cannot be checked gets this report
          *     with its unanswerable rows marked advisory, never a different body and never an error. Rows
          *     arrive in a fixed order, so a rendered panel does not reshuffle between refetches.
+         *
+         *     Warning:
+         *         ``is_legal`` is **not** a summary of the rows, and rendering it as the panel's headline
+         *         will contradict them. When ``format_recognized`` is ``false`` there is nothing to check
+         *         legality against, which the underlying validator counts as a broken rule — so
+         *         ``is_legal`` is ``false`` while **every row is a pass or an advisory and not one is a
+         *         violation**. Read ``is_legal`` as *"certified legal"*, not as *"something is wrong"*:
+         *         it answers false both for a deck that breaks a rule and for a deck that could not be
+         *         checked. To show a fault, look for a row whose ``status`` is ``violation``; to show
+         *         "cannot be checked", branch on ``format_recognized``.
          */
         FormatCheckReport: {
             /** Is Legal */

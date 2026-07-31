@@ -28,6 +28,8 @@ import pytest
 from src.data.schemas.card import Card
 from src.data.schemas.deck import Deck, DeckCard
 from src.logic.deck_validator import (
+    _KNOWN_FORMATS,
+    _SINGLETON_FORMATS,
     CHECK_FOR_RULE,
     CHECK_ORDER,
     DeckViolationRule,
@@ -469,3 +471,172 @@ class TestReportedFormat:
 
         assert report.format == ""
         assert report.format_recognized is False
+
+
+class TestStructuralRowsNeverNameAFormat:
+    """The size and copy-limit sentences must not attribute their limits to a format.
+
+    Three separate review findings, one root cause. ``_MIN_MAINBOARD`` and ``_MAX_COPIES`` are
+    applied **regardless of format** (D-1.6b), so a sentence of the shape "``{format}`` requires
+    at least 60" asserts something the validator never checked. It was:
+
+    * **a gap** when there was no format — ``"Mainboard has 60 cards;  requires at least 60."``;
+    * **a contradiction** for an unrecognised one — the legality row says ``potato`` is not a
+      format, the size row quotes ``potato``'s requirement;
+    * **simply false** for Commander, which wants 100 — stated affirmatively, on a panel a person
+      reads, beside ``is_legal: true``.
+
+    Stating the limit without attributing it is true in every format. These tests pin the
+    *absence* of the format name, which is the property that makes all three go away.
+    """
+
+    @pytest.mark.parametrize(
+        "format",
+        [None, "", "   ", "potato", "standard", "commander", "brawl"],
+        ids=["null", "blank", "whitespace", "unknown", "standard", "commander", "brawl"],
+    )
+    @pytest.mark.parametrize("count", [60, 10], ids=["passing", "violating"])
+    def test_the_size_row_names_the_limit_and_never_the_format(self, format, count) -> None:
+        report = format_check(_deck([_mountain(count)], format=format))
+
+        assert _detail(report, "size") == f"Mainboard has {count} cards; the minimum is 60."
+
+    @pytest.mark.parametrize(
+        "format",
+        ["commander", "brawl", "standard", None],
+        ids=["commander", "brawl", "std", "none"],
+    )
+    def test_the_copy_limit_row_never_claims_a_format_s_rule(self, format) -> None:
+        report = format_check(_deck([_mountain(60)], format=format))
+
+        detail = _detail(report, "copy_limit")
+        assert detail == "No card exceeds the copy limit; basic lands are exempt."
+        assert "singleton" not in detail
+
+    @pytest.mark.parametrize("format", [None, "", "   "], ids=["null", "blank", "whitespace"])
+    @pytest.mark.parametrize("count", [60, 10], ids=["passing", "violating"])
+    def test_no_row_renders_a_gap_where_a_format_should_be(self, format, count) -> None:
+        report = format_check(_deck([_mountain(count)], format=format))
+
+        for row in report.rows:
+            assert "  " not in row.detail, row
+            assert "''" not in row.detail, row
+            assert not row.detail.startswith(" "), row
+
+    def test_the_format_specific_rows_do_still_name_the_format(self) -> None:
+        """The non-vacuity pair: this is a rule about *structural* rows, not a blanket ban.
+
+        Legality and banned are genuinely format-specific — they read the format's own legality
+        key — so naming it there is correct and must survive.
+        """
+        report = format_check(_deck([_mountain(60)], format="standard"))
+
+        assert _detail(report, "legality") == "Every card is legal in standard."
+        assert _detail(report, "banned") == "No card is banned in standard."
+
+    def test_the_underlying_violation_detail_is_repaired_too(self) -> None:
+        """The same false attribution lived in ``validate_deck``'s own message, which the MCP
+        tool serves to an agent. Fixed at the source, so both surfaces say the true thing."""
+        for format in ("", "commander", "standard"):
+            violations = validate_deck(_deck([_mountain(10)], format=format), format=format)
+            detail = next(v.detail for v in violations.violations if v.rule == "min_deck_size")
+            assert detail == "Mainboard has 10 cards; the minimum is 60.", format
+
+
+class TestIsLegalVersusTheRows:
+    """``is_legal`` is not a summary of the rows, and the report must be honest about that.
+
+    The adversarial layer's headline (2026-08-01): a formatless deck comes back
+    ``is_legal: false`` with **no row saying violation** — every row is a pass or an advisory. A
+    panel rendering ``is_legal`` as its verdict would show "Not legal" above six rows none of
+    which is a fault. The behaviour is deliberate (it mirrors the validator, so the panel and the
+    agent cannot disagree) and the *documentation* was the defect: the explanation lived in an
+    ``Attributes:`` block, which the schema builder truncates before the wire. It is now a
+    ``Warning:``, one of the two headers that deliberately survive into the generated types.
+    """
+
+    def test_an_unchecked_format_is_not_legal_and_has_no_violation_row(self) -> None:
+        report = format_check(_deck([_mountain(60)], format=None))
+
+        assert report.is_legal is False
+        assert report.format_recognized is False
+        assert not [row for row in report.rows if row.status == "violation"]
+
+    def test_a_deck_that_really_breaks_a_rule_does_have_a_violation_row(self) -> None:
+        """The pair: ``is_legal: false`` means two different things, and they are separable."""
+        report = format_check(_deck([_mountain(10)], format="standard"))
+
+        assert report.is_legal is False
+        assert report.format_recognized is True
+        assert [row.check for row in report.rows if row.status == "violation"] == ["size"]
+
+    def test_the_two_cases_are_told_apart_by_format_recognized(self) -> None:
+        unchecked = format_check(_deck([_mountain(60)], format=None))
+        broken = format_check(_deck([_mountain(10)], format="standard"))
+
+        assert unchecked.is_legal == broken.is_legal is False
+        assert unchecked.format_recognized != broken.format_recognized
+
+
+class TestSummaryIsDeterministic:
+    """``(+N more)`` must headline a card a reader could predict, not a load-order accident.
+
+    ``deck.deck_cards`` documents its own order as not meaningful (effectively Scryfall UUID
+    order), so "the first offender" named an arbitrary card. Sorting on card name is arbitrary
+    too, but stable and explicable — and, unlike insertion order, it does not change when the
+    relationship happens to load differently.
+    """
+
+    @pytest.fixture
+    def three_offenders(self) -> list[DeckCard]:
+        return [
+            _mountain(57),
+            _entry(_card("z", "Zenith Spell", legalities={"modern": "legal"}), 1),
+            _entry(_card("a", "Aether Spell", legalities={"modern": "legal"}), 1),
+            _entry(_card("m", "Middle Spell", legalities={"modern": "legal"}), 1),
+        ]
+
+    def test_the_headlined_card_is_the_alphabetically_first(self, three_offenders) -> None:
+        report = format_check(_deck(three_offenders))
+
+        detail = _detail(report, "legality")
+        assert "Aether Spell" in detail
+        assert "(+2 more)" in detail
+
+    def test_the_same_cards_in_a_different_order_headline_the_same_card(
+        self, three_offenders
+    ) -> None:
+        """The teeth: reverse the entries and the sentence must not change.
+
+        Under the previous ``violations[0]`` this assertion fails — which is the whole point.
+        """
+        forward = format_check(_deck(three_offenders))
+        reversed_ = format_check(_deck(list(reversed(three_offenders))))
+
+        assert _detail(forward, "legality") == _detail(reversed_, "legality")
+
+    def test_a_single_violation_carries_the_detail_verbatim(self, three_offenders) -> None:
+        """Non-vacuity: the ``(+N more)`` suffix is added, not always present."""
+        report = format_check(_deck(three_offenders[:2]))
+
+        assert _detail(report, "legality") == "'Zenith Spell' is not legal in standard."
+
+
+class TestFormatSetInvariant:
+    """Every singleton format must also be a *known* one — pinned, not left to coincidence.
+
+    ``format_check``'s copy-limit pass sentence says "``{format}`` is a singleton format" and is
+    only reachable on the non-advisory path, i.e. when the format is recognised. That is safe
+    today purely because the two frozensets happen to nest, and **nothing asserted it** (edge-case
+    review, 2026-08-01). If a singleton format were ever added without being added to
+    ``_KNOWN_FORMATS``, the row would claim the plain 4-copy rule for a format the validator caps
+    at 1 — a wrong sentence beside a correct verdict.
+    """
+
+    def test_every_singleton_format_is_a_known_format(self) -> None:
+        assert _SINGLETON_FORMATS <= _KNOWN_FORMATS
+
+    def test_the_two_sets_are_both_populated(self) -> None:
+        """Non-vacuity: an empty subset satisfies ``<=`` against anything."""
+        assert len(_SINGLETON_FORMATS) >= 9
+        assert len(_KNOWN_FORMATS) == 23

@@ -1753,7 +1753,8 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   list.** The two schema pins that hardcoded `{"/health"}` were repaired (see the c3-1 story record,
   finding 4), and the differential test `test_the_schema_is_unchanged_by_installing_the_mount` now
   builds a mount-free app that must mirror `build_app()`'s routers by hand. Every future
-  route-adding story (c3-2, c3-3, c3-4, c3-5, c5-2, c5-5) must add one line there or get a red.
+  router-adding story (c5-2, c5-5 — **not** c3-2/c3-3/c3-4/c3-5 if their routes join an existing
+  router; see the correction below, which supersedes the original list) must add one line there or get a red.
   That is deliberate and the code says so — a forgotten line is a cheap named failure, versus a
   mount silently swallowing a route — but it *is* a standing tax, and it is the opposite of the
   repair's stated motive ("a hardcoded set makes every story that adds a route edit a SPA test for
@@ -1901,6 +1902,13 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   schema to `components.schemas` and therefore the next to owe this review pass; it is also the
   natural point to anchor the README's citations on marker strings rather than line numbers, as
   the c3-1 entry proposes. (Severity: Low.)
+  **⛔ DECLINED at c3-3 (2026-08-01, Q5 — Brad took the `_is_ref_rooted` half of the question and
+  left this one).** c3-3 *did* pay the review-pass half: it added its blind-spot row and, after
+  the adversarial review found that row under-declared its own guard's holes, rewrote it to
+  enumerate five families and three declared limits. The **re-anchoring** was not done.
+  Re-ledgered in the c3-3 section below as "Home: unowned" — see *"`ui/README.md`'s blind-spot
+  map is still keyed on line numbers"*. Do not read this entry's `Home: c3-3` as outstanding
+  work against a completed story.
 
 - **A `ui/tests/` file may import an app module only if that module has no relative imports of its
   own — and the failure is reported at the wrong place.** Measured at c3-2. `tsconfig.node.json`
@@ -2078,6 +2086,22 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   **Home: c4-10** (the format check panel). If c4-10 renders the panel without ever reading
   `format_recognized`, that is a signal the field was over-built and it should be deleted rather
   than maintained. (Severity: Low.)
+
+- **`format_recognized: true` does not mean the format key is present in the card data.**
+  `_KNOWN_FORMATS` is a hand-maintained frozenset in source; `legalities` comes from a separately
+  imported database. If the two skew — `_KNOWN_FORMATS` updated for a new Scryfall format ahead of
+  a user's re-import, which the upgrade notes acknowledge users defer — every card misses the key,
+  `.get()` returns `None`, and every card is reported not legal. That is the exact "legality
+  storm" `_KNOWN_FORMATS` was introduced to prevent, now rendered as a confident panel with
+  `format_recognized: true` and no advisory. **Not reachable against a synchronised snapshot**:
+  measured 2026-08-01, all 38,261 cards carry all 23 keys, and `set(keys) == _KNOWN_FORMATS`
+  exactly. A second edge in the same area: a *present-but-null* legality value
+  (`{"standard": null}`) fails `Card` validation — `legalities: dict[str, str]` coerces only a
+  wholly-null dict — so the route answers `500 internal_error` rather than a report. **Fix shape**:
+  derive the known-format set from the data (a `SELECT DISTINCT` over the keys) instead of
+  hard-coding it, or gate `format_recognized` on the key being present in at least one card.
+  **Home: unowned** — it belongs with whatever story next touches `_KNOWN_FORMATS`.
+  (Severity: Low today, Medium on version skew.)
 
 - **The format-check report's `format` is the normalised value; the deck detail route's is the
   stored one.** `GET /api/deck/{id}` serves `deck.format` verbatim while

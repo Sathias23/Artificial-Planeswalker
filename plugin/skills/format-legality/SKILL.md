@@ -107,8 +107,10 @@ exempt either way. The per-card legality lookup is format-aware too.
 | `max_sideboard_size` | sideboard (by quantity) `> 15` — **hard-coded 15** | `None` (whole-deck) |
 | `copy_limit` | `> 4` copies of a non-basic, **combined across mainboard + sideboard**; basics exempt (`"basic land" in type_line.lower()`) — non-singleton formats only | card name |
 | `singleton` | `> 1` copy of a non-basic, **combined across both boards**, in a singleton format (brawl / standardbrawl / commander / gladiator / competitivebrawl / duel / oathbreaker / paupercommander / predh); basics exempt | card name |
-| `format_legality` | `card.legalities.get(format) != "legal"` per **distinct** card | card name |
+| `banned_card` | `card.legalities.get(format) == "banned"` per **distinct** card | card name |
+| `format_legality` | `card.legalities.get(format)` is anything else that is not `"legal"` per **distinct** card — i.e. `not_legal`, a missing key, **and `restricted`** | card name |
 | `game_availability` | when `games` given, card not on any requested platform (`set(card.games) & set(games)` empty) — `card.games` is the **union across all printings** | card name |
+| `unknown_format` | `format` is not one of the 23 recognised Scryfall keys; the per-card legality check is **skipped** entirely | `None` (whole-deck) |
 
 `report.is_legal` is `True` **iff** `violations` is empty — which means **`is_legal` is still
 blind to the size rules of non-60 formats.** A legal **40-card Limited** deck or a **100-card Commander**
@@ -134,12 +136,15 @@ violation. **For any non-60 format, lead with your own reinterpreted verdict —
     flagged `copy_limit`. Recognize these as **constructed-60 artifacts** and suppress them for Limited.
 - **Per-card legality is a raw `legalities.get(format) != "legal"`** — the tool lowercases `format` for
   you, but an unknown/misspelled key still silently flags every card. See the dedicated section below.
-- **It collapses `banned` / `restricted` / `not_legal` into one message.** Scryfall values are `legal`,
-  `not_legal`, `banned`, `restricted` — **all four occur in this DB** (`data/cards.db` value counts:
-  `not_legal` ≈ 516k, `legal` ≈ 362k, `banned` ≈ 1,265, **`restricted` ≈ 90** — the restricted entries are
-  the Vintage list). The tool treats **all** non-`legal` as the same `format_legality`
-  violation ("not legal in {format}"). It gives **no** banlist nuance and **over-flags `restricted`** cards
-  (actually legal at 1 copy in Vintage). Your value-add: read the card's `legalities` via
+- **It separates `banned`, but still collapses `restricted` into `not_legal`.** Scryfall values are
+  `legal`, `not_legal`, `banned`, `restricted` — **all four occur in this DB** (measured 2026-08-01 over
+  38,261 cards / 880,003 legality entries: `not_legal` 516,401, `legal` 362,238, `banned` **1,275**,
+  `restricted` **89** — the restricted entries are almost all the Vintage list). Since story c3-3 a
+  **banned** card gets its own `banned_card` violation ("'{card}' is banned in {format}"), so the banlist
+  nuance you used to have to supply is now in the tool's own output. What is still collapsed:
+  **`restricted` is reported as `format_legality`** ("not legal in {format}"), which **over-flags** it —
+  a restricted card is legal in Vintage at 1 copy, and the validator models no per-card copy limit. That
+  one is still yours to correct. Your value-add: read the card's `legalities` via
   `lookup_card_by_name` and explain the *real* reason. *(Proven live: Lightning Bolt is `standard: not_legal`
   but `modern`/`legacy`/`pauper`/`vintage`/`commander: legal` and **`historic: banned`** — three different
   statuses the tool would flatten to one.)*
@@ -228,9 +233,15 @@ each `violation.rule` to a concrete fix:
 - **`singleton`** → "you have {total} copies of {card}; {format} is singleton — cut to exactly 1." *Unless*
   the card carries its own copy-count exception ("a deck can have any number of…" like Persistent
   Petitioners, or Seven Dwarves' "up to seven") — then it's a false positive to suppress and explain.
+- **`banned_card`** → the tool has already told you *why*: the card is on the format's banlist. Say so
+  plainly and offer a **legal replacement** (search with `format`/`games`). Do **not** re-derive the
+  reason with `lookup_card_by_name` — that is the `format_legality` playbook, and using it here reads as
+  uncertainty about a fact the tool stated.
 - **`format_legality`** → `lookup_card_by_name` (no `format` filter!) to explain the *real* reason (rotated /
-  banned / restricted / never-in-format) and either offer a **legal replacement** (search with
-  `format`/`games`) or "did you mean {a format it IS legal in}?".
+  **restricted** / never-in-format — no longer *banned*, which now arrives as `banned_card`) and either
+  offer a **legal replacement** (search with `format`/`games`) or "did you mean {a format it IS legal
+  in}?". **A `restricted` card landing here is a false positive**: it is legal at 1 copy in Vintage, and
+  correcting that is the single most valuable thing you add on this rule.
 - **`game_availability`** → "{card} isn't on {platform}; drop it or play on a platform where it exists
   ({the platforms in `card.games`})." `card.games` is the **union across all printings**, so this is a
   real gap, not a printing artifact — *unless* the DB predates the union-of-printings import (see the
@@ -297,9 +308,9 @@ against `src/mcp_server/` ground truth and a live dry-run.)
   is safe), but it does **not** validate it against the key set; an unknown/misspelled key silently flags
   every card `format_legality`.
 - **`violation.rule` is one of:** `min_deck_size`, `max_sideboard_size`, `copy_limit`, `singleton`,
-  `format_legality`, `game_availability`. **`card_name` is `None`** for the two whole-deck rules
-  (`min_deck_size`, `max_sideboard_size`) and the offending card's name for the other four. Don't expect
-  a `card_name` on a size violation.
+  `format_legality`, `banned_card`, `game_availability`, `unknown_format`. **`card_name` is `None`** for
+  the three whole-deck rules (`min_deck_size`, `max_sideboard_size`, `unknown_format`) and the offending
+  card's name for the other five. Don't expect a `card_name` on a size violation.
 - **Size is mainboard-only, by quantity** (a 4-of counts 4×); **sideboard is separate** (`sideboard_count`).
   The **copy limit is counted across mainboard + sideboard combined** (3 main + 2 side of one non-basic =
   5 → `copy_limit`; 1 main + 1 side in brawl → `singleton`). Basics are exempt (`"basic land" in

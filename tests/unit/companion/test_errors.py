@@ -82,14 +82,20 @@ message would have sent the next author looking for a hand-built body that was n
 def _is_null_branch(schema: dict) -> bool:
     """Is *schema* the bare null type — the other half of an ``X | None`` union?
 
+    Both spellings are accepted: ``{"type": "null"}`` is what Pydantic emits today, and
+    ``{"type": ["null"]}`` is the equally legal JSON Schema 2020-12 form. Refusing the second
+    would be a false red on a shape the spec permits (review, 2026-08-01).
+
     Args:
         schema: One branch of a union.
 
     Returns:
-        ``True`` for ``{"type": "null"}``, with annotation keys tolerated and anything shaping
+        ``True`` for the bare null type, with annotation keys tolerated and anything shaping
         refused.
     """
-    return schema.get("type") == "null" and not (set(schema) - {"type"} - _ANNOTATION_KEYS)
+    if schema.get("type") not in ("null", ["null"]):
+        return False
+    return not (set(schema) - {"type"} - _ANNOTATION_KEYS)
 
 
 def _is_ref_rooted(schema: dict) -> bool:
@@ -131,13 +137,26 @@ def _is_ref_rooted(schema: dict) -> bool:
     if union:
         if len(union) > 1 or (_OBJECT_SHAPE_KEYS & keys):
             return False
+        # ...and array machinery alongside is refused for the same reason. This arm runs BEFORE
+        # the array arm, so without this line a `{"type": "array", "items": {inline envelope},
+        # "anyOf": [$ref]}` reaches the branch walk, finds every *union* branch rooted, and is
+        # waved through — re-opening the exact evasion the array arm was hardened against at
+        # c3-1's review. Caught by the edge-case layer, 2026-08-01: it returned True.
+        if schema.get("type") is not None or "items" in keys:
+            return False
         branches = schema[next(iter(union))]
         if not isinstance(branches, list) or not branches:
             return False
-        return all(
+        if not all(
             isinstance(branch, dict) and (_is_null_branch(branch) or _is_ref_rooted(branch))
             for branch in branches
-        )
+        ):
+            return False
+        # At least one branch must actually BE a reference. `{"anyOf": [{"type": "null"}]}` is
+        # rooted in nothing at all, and the `all()` above says True for it — a union of nulls is
+        # vacuously "every branch rooted". A body that can only ever be `null` is not a declared
+        # response model (review, 2026-08-01: it returned True).
+        return any(not _is_null_branch(branch) for branch in branches)
 
     if schema.get("type") == "array" and isinstance(schema.get("items"), dict):
         # An array that ALSO carries an object-shaping key is a hand-assembled shape wearing an
@@ -656,6 +675,32 @@ class TestStructuralPins:
                     "items": {"$ref": "#/components/schemas/DeckSummary"},
                 },
                 False,
+            ),
+            # --- The three the union arm itself got wrong (edge-case review, 2026-08-01). ---
+            # An envelope smuggled past the ARRAY arm by wearing a union key: the union arm runs
+            # first, finds its own branches rooted, and never looks at `items`. Returned True.
+            (
+                {
+                    "type": "array",
+                    "items": {"type": "object", "properties": {"status": {}}},
+                    "anyOf": [{"$ref": "#/components/schemas/DeckDetail"}],
+                },
+                False,
+            ),
+            # A union rooted in NOTHING. `all()` over a null-only branch list is vacuously True,
+            # which is precisely how a guard acquires a hole. Returned True.
+            ({"anyOf": [{"type": "null"}]}, False),
+            ({"anyOf": [{"type": "null"}, {"type": "null"}]}, False),
+            # ...and the false RED in the same arm: `{"type": ["null"]}` is the equally legal
+            # JSON Schema 2020-12 spelling of the null branch. Returned False.
+            (
+                {
+                    "anyOf": [
+                        {"$ref": "#/components/schemas/DeckDetail"},
+                        {"type": ["null"]},
+                    ]
+                },
+                True,
             ),
         ]
 

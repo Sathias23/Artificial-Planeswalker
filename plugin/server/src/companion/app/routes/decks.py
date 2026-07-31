@@ -110,8 +110,10 @@ async def read_deck_format_check(deck_id: str, session: DbSession) -> FormatChec
     against. A deck in that state is still answered with an ordinary report — the same shape as
     every other answer, never an error.
 
-    The verdicts come from the same rules the agent-side deck validator applies, so the two
-    surfaces can never disagree about whether a deck is legal.
+    The verdicts come from the same rules the agent-side deck validator applies — the *rules* are
+    shared, though the inputs need not be: this route always checks a deck against its own saved
+    format and never against a platform, so an agent asking about a different format will
+    reasonably get a different answer.
 
     Args:
         deck_id: The deck's id. A deck id has no declared shape, so any id this route receives
