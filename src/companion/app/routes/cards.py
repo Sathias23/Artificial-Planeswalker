@@ -89,6 +89,13 @@ async def read_card(card_id: CardId, session: DbSession) -> Card:
     ``prices`` is absent from this response, not empty: the local database holds no price data of
     any kind.
 
+    Warning:
+        The ``400`` for a malformed id is not unconditional. Dependencies resolve before
+        parameter validation is reported, so a malformed id sent while the database is unusable
+        answers ``503`` (``database_not_initialized`` or ``database_unavailable``), not ``400``.
+        A caller that retries on 503 must not assume the request can ever succeed: a malformed id
+        stays malformed whatever the database does.
+
     Args:
         card_id: The Scryfall printing uuid — the value in ``cards.id``, and the same value a
             deck's entries carry in ``card_id`` (FR-13). Constrained to the canonical lowercase
@@ -97,13 +104,12 @@ async def read_card(card_id: CardId, session: DbSession) -> Card:
             that is not a single well-formed path segment — one containing an encoded ``/``, say
             — never reaches routing's card branch at all.)
 
-            **The 400 is not unconditional, measured.** FastAPI solves dependencies and collects
-            parameter-validation errors in one pass, raising ``RequestValidationError`` only
-            afterwards — so ``DbSession`` resolves first, and a malformed id sent to a backend
-            with no usable database answers ``503`` (``database_not_initialized`` or
-            ``database_unavailable``), not ``400``. Both orders are pinned in
-            ``test_routes_cards.py``. It matters to a caller that retries on 503: a request whose
-            id is malformed will never succeed, whatever the database does.
+            **The mechanism behind the Warning above, measured.** FastAPI solves dependencies and
+            collects parameter-validation errors in one pass, raising ``RequestValidationError``
+            only afterwards — so ``DbSession`` resolves first and its 503s outrank the 400. Both
+            orders are pinned in ``test_routes_cards.py``. (The consumer-facing half moved up
+            into the wire-visible ``Warning:`` section at review round 2, 2026-07-31, precisely
+            because this ``Args:`` section is truncated off the wire.)
         session: The request-scoped database session (see ``DbSession``).
 
     Returns:

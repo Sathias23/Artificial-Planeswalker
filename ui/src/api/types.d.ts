@@ -108,6 +108,13 @@ export interface paths {
          *
          *     ``prices`` is absent from this response, not empty: the local database holds no price data of
          *     any kind.
+         *
+         *     Warning:
+         *         The ``400`` for a malformed id is not unconditional. Dependencies resolve before
+         *         parameter validation is reported, so a malformed id sent while the database is unusable
+         *         answers ``503`` (``database_not_initialized`` or ``database_unavailable``), not ``400``.
+         *         A caller that retries on 503 must not assume the request can ever succeed: a malformed id
+         *         stays malformed whatever the database does.
          */
         get: operations["read_card_api_cards__card_id__get"];
         put?: never;

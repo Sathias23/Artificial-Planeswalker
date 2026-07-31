@@ -265,8 +265,9 @@ export type NothingWithAPanelIsClassified = Assert<
  * tokens have no entry); this closes the difference between *absent* and *present but undefined*.
  */
 export type EveryPlaceholderIsAReal = Assert<
-  [Extract<(typeof PLACEHOLDER_FOR_REASON)[keyof typeof PLACEHOLDER_FOR_REASON], undefined>] extends
-    [never]
+  [
+    Extract<(typeof PLACEHOLDER_FOR_REASON)[keyof typeof PLACEHOLDER_FOR_REASON], undefined>,
+  ] extends [never]
     ? true
     : false
 >

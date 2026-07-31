@@ -1943,3 +1943,34 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   to fix. **Fix shape**: give `_descriptions` the same `_DATA_KEYS` skip, ideally by importing the
   constant rather than re-declaring it. **Home: c5-1**, the first story expected to add example
   payloads (the event-envelope union). (Severity: Low, latent.)
+
+## Deferred from: code review of c3-2-card-detail-endpoint, round 2 (2026-07-31)
+
+- **A body-less GET publishes `413 payload_too_large` in its client contract.** The app-wide
+  `error_responses` wiring from `build_app()` lands the 413 row on `GET /api/cards/{card_id}`
+  (and the deck GETs before it), so the generated contract tells c4-1's fetch layer to handle a
+  response the same document describes as "surfaced to the *agent*… The glass never sees it."
+  Pre-existing, inherited, and doubled by every new GET route. **Fix shape**: either curate the
+  app-wide set per-method (drop 413 from body-less GETs at declaration time) or record it as a
+  known wart in the contract docs. **Home: the next story that touches `error_responses`'s
+  declaration helper**, else c3-9. (Severity: Low.)
+
+- **The image-discriminator prose is maintained by hand in two Python docstrings with no drift
+  gate between them.** The same three paragraphs (split-card trap, per-face `image_uris`
+  mutual-exclusivity, no-image-is-ordinary) live in `routes/cards.py`'s route docstring and
+  `src/data/schemas/card.py`'s `Card` docstring, and regenerate into two places in the wire
+  document. The byte-drift gates check Python↔generated only — a future correction applied to one
+  docstring leaves the other confidently wrong on the same `openapi.json`. **Fix shape**: single
+  source (one docstring states the rule, the other points at it), or a gate asserting the two
+  descriptions agree on the discriminator sentence. **Home: c3-5**, which re-tells this rule for
+  the image route and will make it three copies if unaddressed. (Severity: Low.)
+
+- **`card_faces` is untyped on the wire — the discriminator rule has no `tsc` support.**
+  `Card.card_faces` is `list[dict[str, Any]] | None`, generating `{ [key: string]: unknown }[] |
+  null` in `types.d.ts`, while four docstrings teach "decide by the presence of per-face
+  `image_uris`". Every face access in the UI will be a hand-cast `tsc` cannot check. Ruled at the
+  c3-2 round-2 review (Brad, 2026-07-31): the wire schema stays frozen as reviewed with PR #30
+  open. **Fix shape**: a typed `CardFace` Pydantic model (`name`, `mana_cost`, `type_line`,
+  `oracle_text`, `image_uris`), regenerated into the component set (pins move 7→8). **Home: c3-5
+  or c4-3, whichever consumes a face first** — and it must land with the regenerated types in the
+  same commit. (Severity: Medium for c4-3's type safety, zero runtime impact today.)

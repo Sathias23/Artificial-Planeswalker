@@ -169,7 +169,13 @@ class TestStatusMapping:
         # clears the SPA to the No-active-deck panel, `card_not_found` leaves the view intact and
         # replaces one slot with a placeholder (c4-3). Same status, different UI.
         assert STATUS_BY_REASON["deck_not_found"] == STATUS_BY_REASON["card_not_found"] == 404
-        assert "deck_not_found" != "card_not_found"
+        # The exactly-these-two claim, made over the real table. (An earlier spelling compared
+        # the two string literals themselves — an assertion that can never fail; review round 2,
+        # 2026-07-31.)
+        assert {r for r in _REASONS if STATUS_BY_REASON[r] == 404} == {
+            "deck_not_found",
+            "card_not_found",
+        }
 
     @pytest.mark.parametrize("reason", _REASONS)
     def test_the_mapping_is_the_table_in_the_story(self, reason):

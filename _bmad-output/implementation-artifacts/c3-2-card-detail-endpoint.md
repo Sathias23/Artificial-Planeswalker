@@ -9,7 +9,7 @@ baseline_commit: b0fd39b
 
 # Story C3.2: Card detail endpoint
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -492,6 +492,54 @@ them are counts taken from the real 38,261-row card database.
   - [x] Apply patches, then re-run every gate and paste the output
   - [x] Raise the PR into `feat/companion-c3`
 
+### Review Findings (round 2, 2026-07-31 — post-PR #30 full-branch pass)
+
+All 8 patches APPLIED same-day and re-gated green: Python +1 test (the label-pairing gate;
+`-m "not integration"` run = 1848 passed / 1 skipped / 45 deselected), frontend 558 pass,
+`tsc -b` clean, ruff/format/mypy clean, schema + types regenerated — the `Warning:` now
+reaches the wire JSDoc — and the plugin mirror rebuilt. One stowaway fix: the round-1
+`EveryPlaceholderIsAReal` addition to `states.ts` had never been prettier-formatted, so
+`format:check` was red at the branch tip — reformatted, no semantic change.
+
+- [x] [Review][Patch] (was Decision — Brad ruled: promote now, 2026-07-31) The "503 outranks 400"
+      caveat never reaches the wire doc — move it from the truncated `Args:` section into a
+      wire-visible `Warning:` section and regenerate the types, so c4-1's fetch author sees that a
+      malformed id can answer `503` and a naive retry-on-503 loops forever
+      [src/companion/app/routes/cards.py:100-106]
+- [x] [Review][Defer] (was Decision — Brad ruled: ledger, 2026-07-31) `card_faces` ships as
+      `unknown` on the wire (`list[dict[str, Any]]` → `{ [key: string]: unknown }[]`), so the
+      per-face `image_uris` discriminator rule has zero `tsc` support — deferred: wire schema
+      stays frozen as reviewed with PR #30 open; the first face consumer (c3-5 or c4-3) ships a
+      typed `CardFace` [src/data/schemas/card.py, ui/src/api/types.d.ts:2219]
+- [x] [Review][Patch] Vacuous assertion — `assert "deck_not_found" != "card_not_found"` compares
+      two literals and can never fail [tests/unit/companion/test_errors.py:172]
+- [x] [Review][Patch] Canary docstring narrates a discarded `%41`/uppercase design the code does
+      not implement (code sends `%61`, asserts 200) [tests/unit/companion/test_routes_cards.py:669]
+- [x] [Review][Patch] Third, ungated copy of the "Unknown card" label — the `ErrorResponse`
+      docstring quotes the placeholder copy verbatim onto the wire; `unknown-card-copy.test.ts`
+      gates EXPERIENCE.md and `states.ts` but not this quotation [src/companion/contracts.py:98]
+- [x] [Review][Patch] Duplicated hand-synchronised `components.schemas` full enumeration (cards +
+      decks test files), plus a delta assertion fully implied by the equality pin
+      [tests/unit/companion/test_routes_cards.py:966,976]
+- [x] [Review][Patch] `unknown-card-copy.test.ts` parser hardening — comment-stripper is not
+      string-aware (a future `//` in a literal corrupts `STATES_CODE`); `[^\]]*` body-read
+      truncates at a nested `]`; the row regex drops a table line with trailing whitespace after
+      the final pipe; no `ui/README.md` blind-spot row declares any of it
+      [ui/tests/unknown-card-copy.test.ts:91,101,129]
+- [x] [Review][Patch] Family-gate regexes have probed evasions — the section-header family misses
+      digit/underscore and lowercase-initial headers; the Sphinx-role family misses roles with
+      digits/dots/`+` [tests/unit/companion/test_openapi_contract.py:50-60]
+- [x] [Review][Patch] AC 14 deviations unrecorded — `ui/src/api/schema.ts` and
+      `ui/src/components/ManaCost/parse.test.ts` are outside the permitted-file list with no
+      deviation entry (only `states.test.ts` has one) [story record, Dev Agent Record]
+- [x] [Review][Defer] A body-less GET publishes `413 payload_too_large` in its client contract —
+      inherited app-wide from `build_app()`'s `error_responses` wiring; deck routes carry it too
+      [ui/src/api/openapi.json:1791] — deferred, pre-existing
+- [x] [Review][Defer] Image-discriminator prose maintained by hand in two Python docstrings
+      (route + schema) with no drift gate between them — byte-drift gates check Python↔generated
+      only [src/companion/app/routes/cards.py:80-87, src/data/schemas/card.py] — deferred,
+      doc-drift class, no gate shape agreed
+
 ---
 
 ## Dev Notes
@@ -921,6 +969,12 @@ a non-vacuity check that the body genuinely parsed. What adding prices would cos
 3. **The story's "zero grep hits" for `price` is one hit** — see Baseline.
 4. **`test_openapi_contract.py` gained the family gate** rather than the scan living only in the
    record. Q5 asked for a gate; this is where the enumeration it replaces already lived.
+5. **`ui/src/api/schema.ts`'s pin comment edited** ("all six" → seven) — comment-only, the
+   sibling of the `schema.test.ts` union edit AC 14 does permit. Recorded at review round 2:
+   it was outside AC 14's permitted-file list with no deviation entry of its own.
+6. **`ui/src/components/ManaCost/parse.test.ts` comment edited** — the third copy of the
+   falsified nullability prediction, repaired alongside the two copies AC 22 row 8 names.
+   Comment-only. Recorded at review round 2, same reason as deviation 5.
 
 **Not shipped, deliberately:** no component, no fetch, no store, no placeholder renderer. `App.tsx`,
 `StatePanel.tsx`/`copy.ts` (beyond the AC 22 comment re-homing), `security.py`, `client.py`,

@@ -23,6 +23,7 @@ commit.
 import inspect
 import json
 import re
+from pathlib import Path
 from typing import Any
 
 from scripts.dump_openapi import OUTPUT_PATH, render_schema
@@ -47,14 +48,20 @@ of two rather than a ban list of twelve, so an unlisted header (``Parameters:``,
 """
 
 PYTHON_INTERNAL_FAMILIES: dict[str, re.Pattern[str]] = {
-    "Sphinx role markup": re.compile(r":[a-z]+:`"),
+    # The role-name class is wide (`:py:class:`, `:external+python:ref:`) because Sphinx role
+    # names carry dots, plus-signs and digits; the original `[a-z]+` missed every one of those
+    # spellings (review round 2, 2026-07-31).
+    "Sphinx role markup": re.compile(r":[A-Za-z0-9_.+-]+:`"),
     # Deliberately loose about the whitespace and punctuation INSIDE a header, because the
     # evasions are all cosmetic: `Keyword  Args:` (two spaces), `Args :` (space before the
-    # colon), `Non-standard:` (hyphen). The shape being keyed on is "a line that is nothing but
-    # a capitalised phrase and a colon" — anything of that shape is a section header, whatever
-    # it is called (review, 2026-07-31).
+    # colon), `Non-standard:` (hyphen), `OAuth2 Notes:` (digits), `Keyword_Args:` (underscore).
+    # The shape being keyed on is "a line that is nothing but a capitalised phrase and a colon"
+    # — anything of that shape is a section header, whatever it is called (review, 2026-07-31).
+    # A LOWERCASE-initial header (`args:`) stays outside the family on purpose: no doc tool
+    # emits one, and widening would ban ordinary lead-in lines ("for example:") — the
+    # false-positive cost B-round-2 weighed and declined.
     "a Google-style section header": re.compile(
-        r"(?m)^[ \t]*([A-Z][A-Za-z-]*(?:[ \t]+[A-Za-z-]+)*[ \t]*:)[ \t]*$"
+        r"(?m)^[ \t]*([A-Z][A-Za-z0-9_-]*(?:[ \t]+[A-Za-z0-9_-]+)*[ \t]*:)[ \t]*$"
     ),
     "a doctest prompt": re.compile(r"(?m)^[ \t]*>>> "),
 }
@@ -253,6 +260,12 @@ class TestDescriptionsAreSummaries:
         assert section.search("A summary.\n\nKeyword  Args:\n    x: two spaces.")
         assert section.search("A summary.\n\nArgs :\n    x: space before the colon.")
         assert section.search("A summary.\n\nNon-standard:\n    x: hyphenated.")
+        # The round-2 widenings, each probed rather than assumed (review round 2, 2026-07-31).
+        assert section.search("A summary.\n\nOAuth2 Notes:\n    x: a digit in the header.")
+        assert section.search("A summary.\n\nKeyword_Args:\n    x: underscored.")
+        role = PYTHON_INTERNAL_FAMILIES["Sphinx role markup"]
+        assert role.search("See :py:class:`Card` for detail.")
+        assert role.search("See :external+python:ref:`datamodel` for detail.")
         # ...and the allowlist is what spares the two ruled-permitted ones, not the pattern.
         assert section.search("A summary.\n\nNote:\n    still prose.")
         matched = {m.group(0).strip() for m in section.finditer("Note:\nWarning:")}
@@ -297,6 +310,45 @@ class TestDescriptionsAreSummaries:
         # The per-token enumeration is the half c2-9's state panels are written against.
         assert "``database_not_initialized``" in error_description
         assert "``internal_error``" in error_description
+
+    def test_the_quoted_placeholder_label_is_the_artefacts(self) -> None:
+        """The ``ErrorResponse`` docstring quotes the "Unknown card" label onto the wire.
+
+        ``ui/tests/unknown-card-copy.test.ts`` gates that label between ``EXPERIENCE.md`` and
+        ``states.ts`` — but the wire description's quotation of it was a third, ungated copy
+        (review round 2, 2026-07-31): if the artefact reworded the placeholder, the published
+        contract prose would drift stale with no red. This is the Python half of the same
+        pairing: whatever label the artefact's "Unknown card in a view" row declares must be the
+        label the wire description quotes.
+        """
+        artefact_path = (
+            Path(__file__).resolve().parents[3]
+            / "_bmad-output"
+            / "planning-artifacts"
+            / "ux-designs"
+            / "ux-Artificial-Planeswalker-2026-07-22"
+            / "EXPERIENCE.md"
+        )
+        rows = [
+            line
+            for line in artefact_path.read_text(encoding="utf-8").splitlines()
+            if "Unknown card in a view" in line
+        ]
+        assert len(rows) == 1, (
+            f"{len(rows)} artefact lines mention 'Unknown card in a view'; this gate needs "
+            "exactly one to know which label is the contract"
+        )
+        label_match = re.search(r'Placeholder label:\s*"([^"]+)"', rows[0])
+        assert label_match, "the artefact row no longer declares a quoted 'Placeholder label:'"
+        label = label_match.group(1)
+
+        description = build_app().openapi()["components"]["schemas"]["ErrorResponse"]["description"]
+        # Non-vacuity first: the description genuinely carries the card_not_found bullet at all.
+        assert "``card_not_found``" in description
+        assert f'**"{label}"**' in description, (
+            f"the wire description does not quote the artefact's placeholder label {label!r} — "
+            "EXPERIENCE.md and src/companion/contracts.py have drifted; fix at the docstring"
+        )
 
     def test_a_description_that_is_only_a_section_loses_the_key(self) -> None:
         """An all-sections description drops out rather than becoming an empty string.

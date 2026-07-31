@@ -666,10 +666,13 @@ class TestMalformedCardId:
         handler would see a literal ``%0A``, which the pattern rejects for containing ``%`` — the
         same 400, and the canary would be green while testing nothing (review, 2026-07-31).
 
-        So the decode is asserted separately: ``%41`` is ``A``, and an uppercase ``A`` in the id
-        is refused for BEING uppercase. If decoding stopped, the id would contain a literal ``%``
-        and this test would still pass — so the discriminating half is the pair below it, where
-        the same decoded byte inside an otherwise-valid id is what makes the difference.
+        So the decode is asserted positively instead: ``%61`` decodes to ``a``, completing a
+        canonical id that MUST be found — a 200 only percent-decoding can explain. If the
+        transport stopped decoding, that request would carry a literal ``%``, fail the pattern,
+        and turn the first assertion below red. Given decoding is proven, the ``%0A`` request is
+        genuinely exercising the ``$`` anchor. (An earlier draft of this docstring described a
+        discarded ``%41``/uppercase design the code never implemented; review round 2,
+        2026-07-31.)
         """
         async with lifespan_client(build_app()) as client:
             # %61 is 'a' — decodes into a canonical id that MUST be found.
@@ -963,6 +966,11 @@ class TestCommittedSchema:
         assert names, "no component schemas parsed — the fixture is not reading a real document"
         assert "HealthResponse" in names, "the pre-c3-1 shapes are gone; this is not the schema"
 
+        # The same seven-name pin lives in test_routes_decks.py (c3-1's, which c3-2 updated):
+        # two hand-synchronised copies of one fact, so a story adding a component edits both or
+        # gets two reds naming the addition. A set-minus "delta" spelling used to follow this
+        # equality; it was fully implied by it and could never fail independently, so it was
+        # removed (review round 2, 2026-07-31).
         assert names == {
             "Card",
             "CardSummary",
@@ -972,15 +980,6 @@ class TestCommittedSchema:
             "ErrorResponse",
             "HealthResponse",
         }
-        # Stated as a delta, because that is the claim: c3-1's six, plus Card, and nothing else.
-        assert names - {
-            "CardSummary",
-            "DeckCardSummary",
-            "DeckDetail",
-            "DeckSummary",
-            "ErrorResponse",
-            "HealthResponse",
-        } == {"Card"}
 
     def test_the_route_declares_its_own_token_and_no_422(self, schema):
         """AC 6: the 404 is declared; the auto-422 stays stripped on the first validated route."""

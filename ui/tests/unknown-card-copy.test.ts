@@ -93,12 +93,13 @@ const STATES_CODE = STATES_TS.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/
 /**
  * The member tokens of `NO_UI_RESPONSE`, read from the code.
  *
- * Reads the array body up to its closing bracket. Safe on comment-stripped text — the earlier
- * `[^\]]*` form ran against the raw file, where any `]` between the opener and the token (in a
- * comment, or a nested literal) silently disarmed the check.
+ * Reads the array body up to its `] as const` close — the terminator the declaration actually
+ * has — rather than to the first bare `]`. Two earlier forms each had a truncation: `[^\]]*`
+ * against the raw file was disarmed by any `]` in a comment, and the same class against stripped
+ * text would still stop at a `]` inside a future nested literal (review round 2, 2026-07-31).
  */
 const noUiResponseMembers = (): string[] => {
-  const body = /NO_UI_RESPONSE\s*=\s*\[([^\]]*)\]/.exec(STATES_CODE)?.[1] ?? ''
+  const body = /NO_UI_RESPONSE\s*=\s*\[([\s\S]*?)\]\s*as const/.exec(STATES_CODE)?.[1] ?? ''
   return [...body.matchAll(/'([^']+)'/g)].map((m) => m[1])
 }
 
@@ -126,7 +127,9 @@ const ROW_LABEL = 'Unknown card in a view'
  */
 const rowsByLabel = new Map<string, string[]>()
 for (const line of raw.split(/\r?\n/)) {
-  const cells = /^\|\s*([^|]+?)\s*\|\s*(.*?)\s*\|$/.exec(line)
+  // `trimEnd()` because the row regex anchors on a final `|`: trailing whitespace after the
+  // last pipe would silently drop the row from the map (review round 2, 2026-07-31).
+  const cells = /^\|\s*([^|]+?)\s*\|\s*(.*?)\s*\|$/.exec(line.trimEnd())
   if (!cells) continue
   const existing = rowsByLabel.get(cells[1])
   if (existing) existing.push(cells[2])
@@ -201,6 +204,11 @@ describe('the unknown-card placeholder copy exists in EXPERIENCE.md (retro R1)',
     // NO_UI_RESPONSE, so the reader provably finds a token that belongs there.
     expect(STATES_CODE.length).toBeGreaterThan(1000)
     expect(noUiResponseMembers()).toEqual(['invalid_request', 'payload_too_large'])
+    // The stripper above is NOT string-aware: a future `//` or `/*` inside a string literal in
+    // states.ts would truncate live code from that point (declared in ui/README.md's blind-spot
+    // table). This anchor is the file's LAST live statement, so a mid-file truncation cannot
+    // pass silently (review round 2, 2026-07-31).
+    expect(STATES_CODE).toMatch(/EveryPlaceholderIsAReal/)
   })
 
   it('is invisible to copy.test.ts by structure, which is why this file exists', () => {
