@@ -22,6 +22,7 @@ commit.
 
 import inspect
 import json
+import re
 from typing import Any
 
 from scripts.dump_openapi import OUTPUT_PATH, render_schema
@@ -33,6 +34,39 @@ REGENERATE = "uv run python -m scripts.dump_openapi"
 
 #: Markers that must never cross the wire: two Google-style section headers and a doctest prompt.
 PYTHON_INTERNALS = ("Args:", "Attributes:", ">>> ")
+
+WIRE_VISIBLE_SECTIONS = frozenset({"Note:", "Warning:"})
+"""The two section headers a wire description may legitimately keep (c2-3, Q1).
+
+``main._DOCSTRING_SECTIONS`` deliberately does not truncate at these — they are ordinary prose a
+reader of the generated types or ``/docs`` wants. Every other header of that shape is
+Python-internal, which is what :data:`PYTHON_INTERNAL_FAMILIES` keys on. Stated as an allowlist
+of two rather than a ban list of twelve, so an unlisted header (``Parameters:``,
+``Keyword Args:`` misspelled, a numpy-style section) is caught rather than waved through.
+"""
+
+PYTHON_INTERNAL_FAMILIES: dict[str, re.Pattern[str]] = {
+    "Sphinx role markup": re.compile(r":[a-z]+:`"),
+    "a Google-style section header": re.compile(
+        r"(?m)^[ \t]*([A-Z][A-Za-z]*(?: [A-Za-z]+)*:)[ \t]*$"
+    ),
+    "a doctest prompt": re.compile(r"(?m)^[ \t]*>>> "),
+}
+"""Shapes of Python-internal prose, keyed by FAMILY (story c3-2, Q5; standing agreement).
+
+The predecessor :data:`PYTHON_INTERNALS` names three literal markers, which is the shape this
+project has repeatedly measured to be evadable: it catches ``Args:`` and ``Attributes:`` and is
+blind to ``Returns:``, ``Raises:``, ``Parameters:`` and every role marker
+(``:class:`X```, ``:mod:`Y```, ``:data:`Z```) — the last of which c3-1 found in its own new
+docstring, having shipped past a seven-member scan.
+
+**What this does NOT decide, declared** (``deferred-work.md``, homed on review): whether a
+sentence that is structurally clean actually *addresses a TypeScript reader*. "Supports
+conversion from SQLAlchemy CardModel instances" trips no pattern here and is exactly the prose
+c3-2 had to rewrite. That half is not statically decidable — the same limit
+``copy-rules.test.ts`` declares for UX-DR33's second-person rule — and belongs to a human
+reviewer, with a blind-spot row in ``ui/README.md`` saying so.
+"""
 
 
 def _descriptions(node: Any) -> list[str]:
@@ -147,6 +181,54 @@ class TestDescriptionsAreSummaries:
                 f"no source docstring contains {marker!r}, so the truncation test above proves "
                 "nothing — add the marker back, or retire both tests together"
             )
+
+    def test_no_description_matches_a_python_internal_family(self) -> None:
+        """The same rule, keyed on shape rather than on three remembered spellings (c3-2, Q5).
+
+        This is the assertion that would have caught c3-1's ``:class:`X``` and would catch a
+        ``Returns:`` or a ``Parameters:`` — none of which :data:`PYTHON_INTERNALS` names.
+        """
+        offenders = [
+            (family, match.group(0), description[:60])
+            for description in _descriptions(build_app().openapi())
+            for family, pattern in PYTHON_INTERNAL_FAMILIES.items()
+            for match in pattern.finditer(description)
+            if match.group(0).strip() not in WIRE_VISIBLE_SECTIONS
+        ]
+
+        assert not offenders, (
+            f"{len(offenders)} wire description(s) carry Python-internal prose: {offenders}. "
+            "Fix at the PYTHON DOCSTRING — rewrite the leading summary for a TypeScript reader "
+            "and push the detail below a truncating section header — never by editing the "
+            "generated file. If the header is genuinely wire-appropriate prose, it belongs in "
+            "WIRE_VISIBLE_SECTIONS, which is a two-member ruling, not a convenience."
+        )
+
+    def test_each_family_catches_something_it_should(self) -> None:
+        """Non-vacuity for the family scan: each pattern fires on a planted example.
+
+        A regex that matches nothing passes the scan above for free. This proves all three
+        genuinely discriminate — and that the two wire-visible headers are the *only* ones the
+        section family lets through, so the allowlist is not silently absorbing the ban.
+        """
+        fires = {
+            "Sphinx role markup": "See :class:`Card` for detail.",
+            "a Google-style section header": "A summary.\n\nRaises:\n    ValueError: sometimes.",
+            "a doctest prompt": "A summary.\n\n>>> Card(id='x')\n",
+        }
+        for family, sample in fires.items():
+            assert PYTHON_INTERNAL_FAMILIES[family].search(sample), f"{family} matched nothing"
+
+        section = PYTHON_INTERNAL_FAMILIES["a Google-style section header"]
+        # Fires on an unlisted header the truncator has never heard of...
+        assert section.search("A summary.\n\nParameters:\n    x: numpy style.")
+        # ...and the allowlist is what spares the two ruled-permitted ones, not the pattern.
+        assert section.search("A summary.\n\nNote:\n    still prose.")
+        assert {m.group(0).strip() for m in section.finditer("Note:\nWarning:")} <= (
+            WIRE_VISIBLE_SECTIONS
+        )
+        # Ordinary prose containing a colon is NOT a section header — the shape is a whole line.
+        assert not section.search("Two fields answer this: images and faces.")
 
     def test_the_summary_itself_survives(self) -> None:
         """Truncation keeps the useful half — the prose c2-9 needs on hover.

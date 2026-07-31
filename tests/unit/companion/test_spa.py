@@ -17,7 +17,7 @@ from starlette.routing import Mount
 
 from src.companion.app import spa
 from src.companion.app.main import build_app
-from src.companion.app.routes import decks, health
+from src.companion.app.routes import cards, decks, health
 
 _TYPED_ERROR_MEDIA_TYPE = "application/json"
 
@@ -304,6 +304,7 @@ class TestTheTypedErrorContractSurvivesTheFallback:
         without_spa = FastAPI()
         without_spa.include_router(health.router)
         without_spa.include_router(decks.router)
+        without_spa.include_router(cards.router)
 
         assert set(build_app().openapi()["paths"]) == set(without_spa.openapi()["paths"])
 

@@ -1,4 +1,26 @@
-"""Pydantic schemas for type-safe card data transfer."""
+"""Pydantic schemas for type-safe card data transfer.
+
+**The FIRST PARAGRAPH of every class docstring in this module is published to the outside
+world**, and the position of the first Google-style section header (``Attributes:``, ``Args:``,
+``Example:``) is what stops the rest from being. ``Card`` and ``CardSummary`` are both
+``response_model``s of the companion's REST API, so ``src.companion.app.main`` truncates each
+description at that header and ships what is above it into ``ui/src/api/types.d.ts`` as JSDoc
+and into ``/docs`` — read by frontend authors who have never seen this file.
+
+Two consequences, and neither is obvious from inside ``src/data``:
+
+* **A header that documents no attributes is still load-bearing.** The ``Attributes:`` sections
+  below hold prose rather than a field list, which reads like an editing mistake and is not one:
+  the header is the truncation marker. Deleting it because "there are no attributes under it"
+  silently republishes implementation detail — SQLAlchemy, ``model_validate``, layer names — onto
+  a public HTTP surface, and **no gate goes red** (the drift gates compare bytes, not meaning).
+  Rewrite the prose freely; move it above the header only if a TypeScript reader should see it.
+* **The summary is for a consumer, not a maintainer.** Anything about how this class is built,
+  which ORM it converts from, or which internal layer calls it belongs *below* the header.
+
+This module is otherwise ordinary ``src/data``: it neither imports nor knows about the companion
+(AD-1). The rule is written here because this is where it is broken.
+"""
 
 from typing import Any
 
@@ -6,10 +28,34 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class Card(BaseModel):
-    """Pydantic schema for Magic: The Gathering card data.
+    """One Magic: The Gathering card printing, as held in the local card database.
 
-    Provides type-safe data transfer between application layers.
-    Supports conversion from SQLAlchemy CardModel instances.
+    Everything known about a single printing: its name and mana cost, type line and oracle text,
+    power and toughness, rarity, set and collector number, colours, keywords, format legalities,
+    and its images.
+
+    Some fields are always present but may be empty rather than absent — ``mana_cost`` and
+    ``oracle_text`` are empty strings on a card that has none, ``colors`` and ``games`` empty
+    lists, ``legalities`` an empty object. Combat stats are null on anything that is not a
+    creature, and ``game_changer`` is a three-state flag whose null means "not yet determined",
+    not "no".
+
+    Images live in one of two places and never both: a single-faced card carries ``image_uris``
+    and a null ``card_faces``, while a card with distinct faces carries a null ``image_uris`` and
+    per-face image data inside ``card_faces`` entries. Decide which by testing for per-face
+    images, never by a layout name. A card may also carry no image data at all.
+
+    There is no price data of any kind in this record.
+
+    Attributes:
+        The section header above is the boundary between what crosses the HTTP boundary and what
+        does not — see this module's docstring before deleting it. Below it, the Python detail:
+        ``from_attributes=True`` is set, so ``Card.model_validate(card_model)`` builds one
+        directly from a ``CardModel`` ORM row, which is how ``CardRepository`` returns it. The
+        ``field_validator``s at the bottom of the class coerce the NULLs real Scryfall data
+        stores for text/list/dict fields into empty values (Epic 1 retro gate) so a read over the
+        full corpus never raises ``ValidationError``; ``game_changer`` is deliberately excluded
+        from them (AD-4).
     """
 
     model_config = ConfigDict(from_attributes=True)

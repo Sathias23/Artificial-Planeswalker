@@ -40,8 +40,16 @@ export interface ManaCostProps {
   /**
    * A Scryfall cost string. `undefined`, `null`, `''` and a whitespace-only string all render
    * NOTHING, without error (AC 4) — a land's absent cost arrives as `''` from this repo's own
-   * data (5,943 rows; `mana_cost` is never NULL), but the wire type c3-2 generates may still be
-   * nullable, so all four spellings are handled identically rather than one being guessed at.
+   * data (5,943 rows; `mana_cost` is never NULL).
+   *
+   * THE WIRE TYPE IS NOT NULLABLE, MEASURED — and it never was. This comment used to predict
+   * that "the wire type c3-2 generates may still be nullable"; c3-2 measured it false, and it
+   * was already false one story earlier: `Card` and `CardSummary` both coerce a NULL
+   * `mana_cost` to `''` in a validator, so `types.d.ts` declares `mana_cost: string` on both
+   * (`CardSummary` since c3-1). The four-spelling totality STAYS anyway, and the reason is the
+   * honest one rather than the predicted one: this is a prop on a public component, so the
+   * value can arrive from a test, a future caller, or an untyped runtime object — the wire type
+   * constrains only the wire.
    */
   cost?: string | null
 }

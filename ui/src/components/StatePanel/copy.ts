@@ -190,9 +190,14 @@ export const actionOf = (copy: StateCopy): string =>
  *
  * Measured over the four original bodies at 109a7d9: the only backticked run in any of them is
  * `initialize_database`. Deriving the chip from the markup rather than hard-coding that one
- * string is what let the two states this story added — one of which carries
- * `artificial-planeswalker companion` — need no bespoke renderer, and it is what keeps c3-2's
- * and c4-3's future copy from needing one either.
+ * string is what let the two states c2-9 added — one of which carries
+ * `artificial-planeswalker companion` — need no bespoke renderer, and it is what keeps
+ * **c4-3's** future copy from needing one either.
+ *
+ * (Re-homed from c3-2 to c4-3, 2026-07-31: c3-2 ships the `card_not_found` token and records its
+ * destination, but no copy string and no renderer at all. The unknown-card placeholder — and the
+ * `"Unknown card"` string that `copy-rules.test.ts`'s `COPY_MODULES` already homes there — is
+ * c4-3's.)
  *
  * ODD indices are the code runs, which is a property of `split` on a delimiter rather than an
  * assumption about the input: `'a `b` c'` yields `['a ', 'b', ' c']`. An UNPAIRED backtick

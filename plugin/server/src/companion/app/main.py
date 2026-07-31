@@ -31,7 +31,7 @@ from src.companion.app.errors import (
     install_error_handling,
     without_auto_validation_schema,
 )
-from src.companion.app.routes import decks, health
+from src.companion.app.routes import cards, decks, health
 from src.companion.app.security import install_security
 from src.companion.app.spa import install_spa
 
@@ -384,6 +384,7 @@ def build_app() -> FastAPI:
     )
     app.include_router(health.router)
     app.include_router(decks.router)
+    app.include_router(cards.router)
     # Ordering, and it is the whole point: user_middleware[0] is the most recently added
     # middleware, so the error middleware must be installed *last* to end up outermost — where it
     # can type the failures of every middleware added before it. The Host check goes above this
@@ -395,7 +396,8 @@ def build_app() -> FastAPI:
     # MUST STAY LAST. install_spa mounts the SPA bundle at "/", and Starlette matches routes in
     # list order, so a mount at "/" matches every path and shadows everything registered after it
     # — silently: a route would answer 200 with index.html instead of running the endpoint.
-    # c3-1's decks router is registered above this line; c5-2 and c5-5 add theirs there too.
+    # c3-1's decks router and c3-2's cards router are registered above this line; c5-2 and c5-5
+    # add theirs there too.
     #
     # Note that /api specifically is ALSO protected by spa.py's _RESERVED_SEED, so c3-1's two
     # routes survive being registered late (measured: they still answer). That belt-and-braces

@@ -79,9 +79,10 @@ export type StatePanelProps =
  * One copy string, with its backticked runs rendered as command chips (AC 11).
  *
  * The chip is DERIVED from the copy's own markup rather than authored per state, which is what
- * let the two states this story added need no bespoke renderer — and what will keep c3-2's and
- * c4-3's copy from needing one. A string with no backticks yields one plain segment and no
- * chip, without error.
+ * let the two states c2-9 added need no bespoke renderer — and what will keep **c4-3's** copy
+ * from needing one. A string with no backticks yields one plain segment and no chip, without
+ * error. (Re-homed from c3-2 to c4-3, 2026-07-31: c3-2 ships no copy string and no renderer —
+ * see `copy.ts` for the same correction.)
  *
  * Plain segments are returned as bare STRINGS, not wrapped in a `<span>` or a `Fragment`. React
  * requires no key for a string child, so this needs no `Fragment` value import — which keeps

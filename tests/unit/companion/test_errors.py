@@ -31,6 +31,7 @@ _REASONS = get_args(ErrorReason)
 
 _EXPECTED_STATUS = {
     "deck_not_found": 404,
+    "card_not_found": 404,
     "database_not_initialized": 503,
     "database_unavailable": 503,
     "invalid_request": 400,
@@ -115,14 +116,22 @@ def _app_with_test_routes():
 
 
 class TestReasonTokenContract:
-    """AC 1 + AC 2: the token set is closed at six and the body carries nothing else."""
+    """AC 1 + AC 2: the token set is closed at seven and the body carries nothing else."""
 
-    def test_the_token_set_is_exactly_these_six(self):
+    def test_the_token_set_is_exactly_these_seven(self):
         # Adding a token is a deliberate act with a failing test attached (AD-16's own extension
-        # rule). `internal_error` was added under that rule by the c1-4 review (Brad, 2026-07-25);
-        # c3-2's `card_not_found` is the only remaining planned addition.
+        # rule). `internal_error` was added under that rule by the c1-4 review (Brad, 2026-07-25),
+        # and `card_not_found` by c3-2 under the C2 retro's R1 — which tightened the rule: the
+        # token and the UI state it drives land in the SAME COMMIT, because `internal_error`
+        # shipping alone had already cost c2-9 a repair AC.
+        #
+        # THE SET IS NOW CLOSED AT SEVEN WITH NOTHING PLANNED. An eighth is not forbidden, but it
+        # is a decision, not a chore: it reddens this test, `STATUS_BY_REASON`'s pin below,
+        # `ui/src/api/schema.test.ts`'s union and `states.ts`'s `satisfies` clause — and the last
+        # two fail under `npm run typecheck` only, never under `npm test`.
         assert set(_REASONS) == {
             "deck_not_found",
+            "card_not_found",
             "database_not_initialized",
             "database_unavailable",
             "invalid_request",
@@ -149,9 +158,18 @@ class TestStatusMapping:
     """AC 3: the status is derived from the token, in exactly one place."""
 
     def test_every_token_has_a_status_and_no_token_is_invented(self):
-        # The enumeration pin: a sixth token with no status fails here rather than defaulting to
-        # some catch-all at the call site.
+        # The enumeration pin: a token with no status fails here rather than defaulting to some
+        # catch-all at the call site. This is the row c3-2 reddened by adding `card_not_found` to
+        # the Literal — deliberately, and the reason the two sets are compared rather than counted.
         assert set(STATUS_BY_REASON) == set(_REASONS)
+
+    def test_the_two_404_tokens_are_distinct_and_both_map_to_404(self):
+        # Two tokens now share 404, which is new at c3-2 and is the case a naive "one token per
+        # status" reading would have got wrong. They are NOT interchangeable: `deck_not_found`
+        # clears the SPA to the No-active-deck panel, `card_not_found` leaves the view intact and
+        # replaces one slot with a placeholder (c4-3). Same status, different UI.
+        assert STATUS_BY_REASON["deck_not_found"] == STATUS_BY_REASON["card_not_found"] == 404
+        assert "deck_not_found" != "card_not_found"
 
     @pytest.mark.parametrize("reason", _REASONS)
     def test_the_mapping_is_the_table_in_the_story(self, reason):
@@ -175,7 +193,7 @@ class TestCompanionError:
 
 
 class TestErrorResponsesHelper:
-    """AC 8: one construction site for the OpenAPI declaration; c3-1/c3-2/c5-5 reuse it."""
+    """AC 8: one construction site for the OpenAPI declaration; c3-1 and c3-2 use it, c5-5 next."""
 
     def test_it_keys_by_the_mapped_status_and_declares_the_model(self):
         declared = error_responses("deck_not_found", "invalid_request")
@@ -194,11 +212,22 @@ class TestErrorResponsesHelper:
         assert "database_unavailable" in declared[503]["description"]
 
     def test_a_repeated_token_is_documented_once(self):
-        # c3-1/c3-2/c5-5 reuse this helper; a careless double declaration must not ship
-        # "reason: x | x" into the generated docs.
+        # c3-1 and c3-2 reuse this helper and c5-5 will; a careless double declaration must not
+        # ship "reason: x | x" into the generated docs.
         declared = error_responses("invalid_request", "invalid_request")
 
         assert declared[400]["description"] == "reason: invalid_request"
+
+    def test_the_two_404_tokens_collapse_into_one_documented_entry_naming_both(self):
+        # The 503 pair above proved the collapse for tokens that always travel together. c3-2
+        # created a SECOND shared status (404), and no route declares both — so this is the case
+        # where a silent overwrite would be invisible in the shipped schema. Pinned anyway,
+        # because the helper is the thing under test, not any one route's use of it.
+        declared = error_responses("deck_not_found", "card_not_found")
+
+        assert set(declared) == {404}
+        assert "deck_not_found" in declared[404]["description"]
+        assert "card_not_found" in declared[404]["description"]
 
 
 class TestRaisedErrorsReachTheWire:

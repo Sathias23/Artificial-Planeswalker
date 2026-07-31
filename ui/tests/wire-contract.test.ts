@@ -100,6 +100,12 @@ describe('wire shapes are declared once, by the backend (NFR-03, AD-12)', () => 
     // in CI rather than quietly shrinking the ban to nothing.
     expect(wireShapes).toContain('DeckSummary')
     expect(wireShapes).toContain('DeckDetail')
+    // c3-2's `Card`, joining the same way and for the same reason. The ban itself grew with NO
+    // edit to the mechanism — probed 2026-07-31 by staging a `type Card = { x: 1 }` in
+    // `src/`, which this suite caught by name. (Staged, because the scan is keyed on
+    // `git ls-files`: an untracked plant passes vacuously — a declared limit, in the README's
+    // blind-spot map.)
+    expect(wireShapes).toContain('Card')
     expect(aliasShapes).toContain('ErrorReason')
     expect(trackedFiles).toContain('src/api/schema.ts')
     expect(outsideApi.length).toBeGreaterThan(0)
