@@ -487,10 +487,10 @@ them are counts taken from the real 38,261-row card database.
   - [x] `deferred-work.md` entries with named homes; add any new `ui/README.md` blind-spot row
   - [x] Fill the Dev Agent Record; update `sprint-status.yaml`
 
-- [ ] **Task 7 — Same-day three-layer review before the PR** (C2 retro action item 6, standing)
-  - [ ] `bmad-code-review` (Blind Hunter + Edge Case Hunter + Acceptance Auditor) before raising the PR
-  - [ ] Apply patches, then re-run every gate and paste the output
-  - [ ] Raise the PR into `feat/companion-c3`
+- [x] **Task 7 — Same-day three-layer review before the PR** (C2 retro action item 6, standing)
+  - [x] `bmad-code-review` (Blind Hunter + Edge Case Hunter + Acceptance Auditor) before raising the PR
+  - [x] Apply patches, then re-run every gate and paste the output
+  - [x] Raise the PR into `feat/companion-c3`
 
 ---
 
