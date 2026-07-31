@@ -1581,6 +1581,28 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   UI that promises "newest first" to a user (c4-7's deck-list panel) is the first story that
   actually needs this fixed. (Severity: Low.)
 
+  **FOURTH confirmation, c3-2 (2026-07-31), and it FIRED.** `test_list_decks_with_strategy_field`
+  failed once in a full-suite run (`assert 'Control' is None` — the three same-tick decks came back
+  in UUID order) and passed 56/56 in isolation immediately after, and green on the re-run. Nothing
+  in c3-2 touches `DeckRepository`, deck seeding or that test; what c3-2 changed is that the suite
+  is ~50 tests longer, which shifts the timing that decides whether the three `create_deck` calls
+  land in one clock tick. **This is now the only test in the repo that fails for reasons unrelated
+  to the code under change, and it has cost four stories a diagnosis each.** The fix is two lines
+  (distinct `created_at` values in the test, or a deterministic tie-breaker in the repository) and
+  is being deferred purely on `src/data`-blast-radius grounds — but the cost of the deferral is now
+  larger than the fix. Recommend closing it in the next story that touches `src/data`, or as a
+  standalone chore. (Severity: raised to **Medium** — a flaky gate teaches people to re-run.)
+
+  **It fired a SECOND time during the same story**, in the post-review full-suite run (a different
+  deck id, same `assert 'Control' is None`). Two failures in one afternoon, both on a branch that
+  touches no deck code. That is no longer "intermittent under full-suite timing" — at ~1,890 tests
+  the three `create_deck` calls land in one clock tick often enough to be a routine occurrence, and
+  every future story now inherits a suite that goes red for reasons unrelated to its diff. **Raised
+  to Medium-High, and recommended as the next standalone chore rather than waiting for a story that
+  happens to touch `src/data`.** Fix: `.order_by(DeckModel.created_at.desc(), DeckModel.id)` is
+  already the repository's order — the test is what needs distinct `created_at` values, exactly as
+  `test_routes_decks.py::test_orders_newest_first_when_the_timestamps_differ` does it.
+
 - **`GET /api/decks` and `GET /api/deck/{id}` have never been called by a browser.**
   c3-1 ships no frontend (AC 18), so both endpoints are proven only through `httpx.ASGITransport`
   in-process. Not yet exercised: a real `fetch` from the served SPA origin through the security
@@ -1604,6 +1626,16 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   statically decidable, like UX-DR33's second-person half) is open. **Home: c3-2**, the next story
   to add a schema to `components.schemas` — it will face the same question with `Card`.
   (Severity: Low — cosmetic on the wire, but it is documentation the UI author reads.)
+
+  **RESOLVED (partly) at c3-2, 2026-07-31 — Q5's split ruling.** The statically decidable half
+  shipped: `test_openapi_contract.py` gained `PYTHON_INTERNAL_FAMILIES`, keyed on three shapes
+  (Sphinx role markup `:[a-z]+:` before a backtick; any line-anchored Google-style section header,
+  with `Note:`/`Warning:` as a declared two-member allowlist rather than the old twelve-member ban
+  list; a doctest prompt) plus a non-vacuity test proving each family fires. It catches what
+  c3-1 found by hand and what the three-member `PYTHON_INTERNALS` never could. **The prose half is
+  re-homed to REVIEW, not dropped**: whether a structurally clean sentence actually addresses a
+  TypeScript reader ("Supports conversion from SQLAlchemy CardModel instances" trips nothing) is
+  not statically decidable, and now carries a `ui/README.md` blind-spot row saying so.
 
 ## Deferred from: code review of c3-1 (2026-07-31)
 
@@ -1639,6 +1671,13 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   deviates from AC 6's text. **Flagged to Brad as a decision** — see the story's Review section.
   **Home: c3-9** (the fresh-install story, which owns this state end to end) unless ruled sooner.
   (Severity: Medium — the wire contract under-documents the state the UI most needs to switch on.)
+
+  **RE-CONFIRMED at c3-2 (2026-07-31), now on a THIRD route.** `GET /api/cards/{card_id}` answers
+  the undocumented token too, asserted twice in `test_routes_cards.py::TestDatabaseStates`, and
+  c3-2's AC 6 repeats c3-1's constraint ("`build_app()`'s app-level `responses` is **unchanged**"),
+  so it was again not fixed unilaterally. Every data route added from here inherits the gap by
+  construction — it is a property of `get_session`, not of any route — so the count will keep
+  rising until c3-9 rules on it. Severity stands at Medium.
 
 - **`DeckSummary.from_deck` / `DeckDetail.from_deck` return zero counts, silently, for any `Deck`
   that was not eager-loaded.** `DeckModel.deck_cards` is `lazy="noload"`, so a `Deck` from
@@ -1689,6 +1728,15 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   `types.d.ts` with no gate going red. **Home: c3-2**, which will do the same thing to `Card` and
   should decide the convention for all of them (a `Note:`-style marker that reads honestly, an
   explicit comment in `src/data`, or a gate keyed on the prose). (Severity: Low.)
+
+  **RESOLVED at c3-2, 2026-07-31 — Q5: keep the convention, state why it is load-bearing.** The
+  `Attributes:` header stays (it works, and c3-1 used it four times), was applied to `Card`, and
+  the sharpest edge is now closed by the middle option: **`src/data/schemas/card.py`'s MODULE
+  docstring** carries an explicit statement that the first paragraph of every class docstring is
+  published to the outside world, that the header position is the truncation marker, that a header
+  documenting no attributes is still load-bearing, and that **no gate goes red** if it is deleted.
+  Chosen over a gate on the prose (not decidable — see the entry above) and over renaming the
+  marker (would churn four already-shipped schemas and both generated files for a cosmetic gain).
 
 - **`ui/README.md`'s "What the gates cannot see" index is keyed on line numbers with nothing keeping
   it accurate.** Twenty-one `file:line` references across nine test files; all verified correct at
@@ -1754,3 +1802,144 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   unrecognised format string (then the wire type is merely wider than the data and can stay).
   (Severity: Low-Medium — a UI `format === null` branch written against the generated type is
   dead code today.)
+
+## Deferred from: story c3-2 (2026-07-31)
+
+- **There is no price data anywhere in this project, and FR-17's "prices if present in local data"
+  is therefore never satisfied.** Measured at c3-2: `PRAGMA table_info(cards)` lists 23 columns and
+  none of them is a price; `Card` and `CardSummary` declare no price field; a case-insensitive grep
+  for `price` across `src/`, `tests/`, `ui/src` and `scripts/` returns **one** hit, a forward-looking
+  comment in `StatChip.css` about a future micro-role — no column, no field, no importer path, no UI
+  consumer. (The c3-2 story text claimed *zero* hits over those roots; the one CSS-comment hit is
+  the correction, and it changes nothing about the conclusion.) The 2026-07-11 PRD recon recorded
+  the same absence ("ABSENT: game_changer, edhrec_rank, saltiness, prices"). The epic's price AC is
+  therefore satisfied **by absence**, ruled by Brad at Q4, and `GET /api/cards/{card_id}` ships **no
+  price field** rather than a `prices: null` that would be null on 100% of responses — a permanently
+  dead branch c4-5 would have to handle for nothing. **What adding prices would actually cost**: a
+  new `cards` column (or a side table, since Scryfall prices are per-printing and volatile), an
+  `import_scryfall_data.py` change to populate it, a hand-written migration script (this project has
+  no Alembic), a full re-import of 38,261 rows, plus a staleness story — Scryfall prices change
+  daily and a locally cached price with no fetched-at timestamp is a number that lies. **Home:
+  c4-5**, the card detail panel — it is the only surface `EXPERIENCE.md` promises prices on
+  (`:86`, "Prices render only when present in local data"), so it is the story that must either
+  render nothing there deliberately or raise the import work as its own brief. (AC 15 asks for a
+  *named* home; "unowned" was the first draft and the review was right to call it.) The artefact
+  already reads correctly against absence, so nothing is broken today. (Severity: Low.)
+
+- **`503` outranks `400`: a malformed card id sent to a backend with no database answers
+  `database_not_initialized`, not `invalid_request`.** Measured at c3-2 (the test asserting the
+  opposite failed, and the assertion — not the code — was wrong). FastAPI's `solve_dependencies`
+  solves sub-dependencies *and* collects parameter-validation errors in one pass, raising
+  `RequestValidationError` only after the dependencies have run; `get_session`'s `CompanionError`
+  therefore propagates first. Both outcomes are now pinned in `test_routes_cards.py`. Defensible —
+  the backend genuinely cannot serve the request for a reason that outranks the client's spelling —
+  but **invisible from the route source**, and it matters to two named stories: **c3-9** polls the
+  503 states and **c4-1** owns the fetch layer, and a UI that treats `database_unavailable` /
+  `database_not_initialized` as "retry quietly" will retry a request whose id can never succeed.
+  **Home: c3-9**, which owns the polling and the transition. (Severity: Low-Medium.)
+
+- **`card_faces` crosses the wire completely untyped.** `Card.card_faces` is
+  `list[dict[str, Any]] | None`, generating `{ [key: string]: unknown }[] | null` — no per-face
+  contract at all, so a consumer reading `face.image_uris.normal` gets no help from the compiler.
+  Deliberately not fixed here: typing untyped Scryfall JSON would be a second shape over data this
+  project does not control, and it would land on the MCP tools too. Measured face-count histogram
+  (real corpus): **2 → 3,222 cards · 3 → 2 · 5 → 1** — so a `[front, back]` destructuring is wrong
+  for three real cards. **Home: c4-6**, the DFC flip control, which is the story that actually needs
+  a face contract. (Severity: Low.)
+
+- **79 cards carry no image data anywhere — the first concrete population for the Card placeholder.**
+  Measured: of 38,261 rows, 2,857 have a JSON-null `image_uris`; 2,778 of those carry per-face
+  `image_uris` inside `card_faces` instead; **zero** carry both; **79 carry neither**. `c3-2` proves
+  all three shapes round-trip with the nulls surviving as `null`. `EXPERIENCE.md`'s "Card with no
+  image data | Any surface | Named Card placeholder (FR-19)" row has, until now, had no measured
+  population. **Home: c4-3**, which owns the placeholder — and which now knows the unknown-card
+  variant and the no-image variant are different populations reached by different routes (a 404
+  token versus a 200 with null images). (Severity: Low.)
+
+- **The `states.ts` classification of panel-less tokens is gated by the compiler but read by
+  nothing.** c3-2 added `PLACEHOLDER_FOR_REASON`, `NO_UI_RESPONSE` and three type-level asserts so
+  the third meaning of `null` is machine-readable rather than a comment (Q3, satisfying retro R1).
+  Three asserts prove every panel-less token is classified as exactly one of {placeholder, nothing}
+  and that nothing with a panel is classified — but **no runtime code consumes any of it yet**, the
+  same declared state `PANEL_FOR_REASON` itself has been in since c2-9. **Home: c4-3** (the
+  placeholder render) and **c3-9** (the panel wiring). If neither consumes it, that is a signal the
+  structure was over-built and it should be deleted rather than maintained. (Severity: Low.)
+
+- **`ui/README.md`'s blind-spot map now carries the "does this prose address a TypeScript reader"
+  residue, which is a REVIEW obligation with no gate.** Added at c3-2 alongside the family-keyed
+  wire-prose gate. It inherits the pre-existing weakness recorded above at c3-1 — the index is keyed
+  on line numbers with nothing keeping them accurate. **Home: c3-3**, the next story to add a
+  schema to `components.schemas` and therefore the next to owe this review pass; it is also the
+  natural point to anchor the README's citations on marker strings rather than line numbers, as
+  the c3-1 entry proposes. (Severity: Low.)
+
+- **A `ui/tests/` file may import an app module only if that module has no relative imports of its
+  own — and the failure is reported at the wrong place.** Measured at c3-2. `tsconfig.node.json`
+  owns `tests/**/*.ts` with `module: nodenext` (extension required on relative imports);
+  `tsconfig.app.json` owns `src` with `moduleResolution: bundler` (extension forbidden). Importing
+  `states.ts` from `ui/tests/unknown-card-copy.test.ts` pulled it into the node project, where its
+  own extensionless `../../api/schema` and `./copy` imports became `TS2835` — and then **cascaded**:
+  `ErrorReason` failed to resolve, and all three of `states.ts`'s type-level asserts collapsed to
+  `Type 'false' does not satisfy the constraint 'true'`, pointing at the asserts rather than at the
+  import. `copy.test.ts` gets away with importing `copy.ts` only because that module happens to have
+  no relative imports; that is a property of the module, not a general permission. **Two aggravating
+  factors**: `npm test` stays fully green throughout (vitest resolves fine — this is a `tsc`-only
+  failure), and `tsc -b` is incremental, so the error can hide behind a cached build until an
+  unrelated later run surfaces it. `npx tsc -b --force` is what makes it deterministic.
+  **Fix shapes**, none taken here: add explicit extensions in `states.ts` (breaks the app project's
+  convention), exclude `src` from the node project's graph, or keep the current workaround — a
+  source read, with the runtime value pinned in the app-project test beside the module.
+  **Home: c4-1**, the first story that will want to import real app modules into `ui/tests` at any
+  scale (a fetch layer is exactly the thing whose tests reach across). Until then the workaround
+  is documented in `unknown-card-copy.test.ts` and in `ui/README.md`'s blind-spot map.
+  (Severity: Medium — the symptom points at the wrong file, and CI runs `tsc -b` without
+  `--force`, so a cached-clean result can ship.)
+
+## Deferred from: code review of c3-2 (2026-07-31)
+
+- **A malformed card id reaching the UI from DATA renders nothing at all — no placeholder, no
+  state.** `card_not_found` is the token wired to the unknown-card placeholder; a card id that
+  fails the route's shape gate produces `invalid_request`, which `states.ts` classifies as
+  `NO_UI_RESPONSE` — "nothing on the glass, anywhere". Those two answers are one character of
+  input apart. `deck_cards.card_id` carries no shape constraint, FK enforcement is off on the async
+  engine (`CardRepository.get_by_id`'s own docstring says so), and the planned Arena
+  `arena_card_map` work will introduce ids from a second source. Measured today: **0 of 2,027
+  `deck_cards` rows are non-canonical**, so this is latent, not live — but it is not structurally
+  prevented, and the failure mode is the exact one FR-13 exists to stop ("one unknown card must
+  never fail a whole view") wearing a different token. **Fix shape**: either the hydration layer
+  treats a 400 on a card fetch as a placeholder case, or the id shape is validated where deck rows
+  are read. **Home: c4-1** (the hydration cache) with **c4-3** (the placeholder) as its consumer.
+  (Severity: Medium if it ever fires, Low probability today.)
+
+- **`Card` is now a banned type name across all of `ui/`, and there is no sanctioned alias to
+  import instead.** `wire-contract.test.ts` derives its ban from `components.schemas`, so `Card`
+  joined it automatically at c3-2 — correct, and the mechanism working as designed. But
+  `ui/src/api/schema.ts` re-exports only `HealthResponse`, `ErrorResponse` and `ErrorReason`; it
+  exports no `Card` and no deck aliases either. So the first component that needs the card type
+  (c4-3, c4-5) hits a ban with no signposted alternative, and the obvious local workaround —
+  declaring a local `interface Card` — is precisely what the gate rejects. **Fix shape**: add the
+  aliases to `schema.ts` in the story that first needs them (one line each; the barrel is the
+  sanctioned single reader). Not done here because c3-2 ships no component and an unused export
+  would be dead code. **Home: c4-1**, the first frontend story to consume a wire shape.
+  (Severity: Low — a five-minute detour, but an unsignposted one.)
+
+- **`GET /api/cards/{card_id}` sets no cache headers on a resource that is immutable between
+  database refreshes.** `cards.py`'s module docstring claims c3-5's image route shares "the same
+  cache story"; today there is no cache story on this side to share. No `ETag`, no
+  `Cache-Control`, no conditional-request handling — while `spa.py` has a whole
+  `_apply_cache_headers` mechanism for static files. A c4-x deck view hydrating 60–100 cards
+  re-fetches every full record on every render. Low impact today (localhost, SQLite, one user),
+  and deliberately not fixed in a story whose scope is one lookup. **Home: c3-7** (the sharded
+  disk cache) or **c4-1** (the hydration cache), whichever lands first — and whichever it is
+  should either implement the shared story or correct that docstring. (Severity: Low.)
+
+- **`test_openapi_contract._descriptions()` does not mirror the truncator's `_DATA_KEYS` skip.**
+  `without_python_docstring_sections` deliberately does not descend into `example`/`examples`/
+  `default`/`const`/`enum` subtrees, because a `description` key there is payload data reproduced
+  byte-for-byte. `_descriptions` descends everywhere. Measured: **zero** descriptions under a data
+  key in the committed schema today, so nothing fires. The first example payload carrying a
+  `description` whose value contains a colon-terminated line makes the family scan an
+  **unsatisfiable red** — its message says "fix at the Python docstring" and there is no docstring
+  to fix. **Fix shape**: give `_descriptions` the same `_DATA_KEYS` skip, ideally by importing the
+  constant rather than re-declaring it. **Home: c5-1**, the first story expected to add example
+  payloads (the event-envelope union). (Severity: Low, latent.)
