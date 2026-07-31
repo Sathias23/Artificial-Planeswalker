@@ -9,7 +9,7 @@ baseline_commit: 02b2c45
 
 # Story C3.1: Deck list and deck detail endpoints
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -434,6 +434,43 @@ listed below roughly in the order they will bite.
   - [x] `bmad-code-review` (Blind Hunter + Edge Case Hunter + Acceptance Auditor) before raising the PR
   - [x] Apply patches, then re-run every gate and paste the output
   - [ ] Raise the PR into `feat/companion-c3` — **awaiting Brad's go-ahead**
+
+### Review Findings
+
+Post-commit three-layer review, 2026-07-31 (Blind Hunter + Edge Case Hunter + Acceptance Auditor
+over `feat/companion-c3-1-deck-endpoints` vs `feat/companion-c3`, both commits):
+
+- [x] [Review][Patch] Strip committed tool-call residue (`</content>`, `</invoke>`) and the duplicated Change Log row from the story record tail [_bmad-output/implementation-artifacts/c3-1-deck-list-and-deck-detail-endpoints.md:1110-1119]
+- [x] [Review][Patch] Update `wire-contract.test.ts`'s forward-dated docstring — AC 20 row 7's second location was never worked, and "with no edit here" is false since review patch R7 edited the file [ui/tests/wire-contract.test.ts:12-13]
+- [x] [Review][Patch] Reconcile the Dev Agent Record: the File List omits `ui/tests/wire-contract.test.ts` (which R7 modified), the probe-6 narrative ("deliberately not added") contradicts R7 adding exactly that assertion, and the AC-16 horn taken ("mechanism untouched" over "no edit to that file") is nowhere stated [story record §File List, §Review probe outputs]
+- [x] [Review][Patch] Rewrite `sprint-status.yaml`'s c3-1 narrative — it asserts an AC-21 correction the story record explicitly withdrew, and carries pre-review numbers (1827 / 4 deferred entries) where the post-review truth is 1829 / 12 [_bmad-output/implementation-artifacts/sprint-status.yaml:280]
+- [x] [Review][Patch] Qualify the wire-visible "newest first" promise — the same-tick UUID-order tie caveat sits below the truncation header, so `/docs`, `openapi.json` and `types.d.ts` show an unconditional ordering guarantee the ledger says is not real [src/companion/app/routes/decks.py:26; regenerate both wire files]
+- [x] [Review][Patch] Move SQLAlchemy internals ("declares no `order_by`", "composite primary key's order") out of `DeckDetail`'s leading paragraph — same AC-17 failure shape R4 reintroduced; keep "order is not meaningful; sort it yourself" in the summary, push ORM detail below `Attributes:` [src/data/schemas/deck.py:240-244; regenerate both wire files]
+- [x] [Review][Patch] Ledger the `_is_ref_rooted` misfire family with c3-3 as home: a legitimate `response_model=X | None` generates a top-level `anyOf` and is refused as a "hand-built envelope"; a 3.1 `$ref`-with-sibling-keys is a false red; `prefixItems` is a false green [tests/unit/companion/test_errors.py; deferred-work.md]
+- [x] [Review][Patch] Pin the trailing-slash and encoded-slash spellings with tests — `GET /api/decks/`, `/api/deck/`, `/api/deck/{id}/` and `/api/deck/a%2Fb`; the handler docstring's routing-rejects-it claim is asserted, never tested [tests/unit/companion/test_routes_decks.py]
+- [x] [Review][Patch] Cover the legitimate-zero and null-metadata wire cases: a sideboard-only deck (`mainboard_count: 0` beside populated `cards[]`), a card-less deck detail, and `format`/`strategy` `None` crossing the wire [tests/unit/companion/test_routes_decks.py]
+- [x] [Review][Defer] `from_deck` on a non-eager-loaded `Deck` silently yields 0/0/0 with empty `cards` — already ledgered "unowned"; the keyed `data-layer-orphan-handling` story is the natural home [src/data/schemas/deck.py:220-226] — deferred, pre-existing `lazy="noload"` trap; the move widened its reach
+- [x] [Review][Defer] `strategy?: string \| null` vs `format: string \| null` optionality asymmetry and the advertised `@default 0` on counts in generated types — pre-existing schema shape first put on the wire here; natural home c4-1/c4-2 [ui/src/api/types.d.ts] — deferred, pre-existing
+
+All nine patches applied 2026-07-31. Two measured surprises while applying: the trailing-slash
+spellings **redirect (`307`) rather than falling to the reserved-prefix branch** — Starlette's
+`redirect_slashes` partial-match wins over the SPA mount for a route that exists, so the tests pin
+the redirect, and only the empty-id `/api/deck/` answers `invalid_request`; and **`decks.format` is
+a `NOT NULL` column**, so the wire's `format: string | null` null half is unreachable through the
+repository — the story's own gotcha ("a deck can genuinely have no format") is half-false, ledgered
+in `deferred-work.md` homed at c3-3. Post-patch gates, all green: `ruff check` clean, `ruff format
+--check` 289 files, `mypy src/` (both platforms) clean, `uv run pytest` **1836 passed / 1 skipped**
+(+7 tests), all six frontend gates green (549), `test_openapi_contract.py` 11 passed, `gen:types`
+hash-stable through regeneration. Both wire files regenerated (the tie caveat now crosses; the ORM
+prose no longer does) and the plugin mirror rebuilt.
+
+Dismissed as handled elsewhere or noise (7): 503 `database_not_initialized` wire documentation
+(ledgered, c3-9); orphaned `deck_card` → `ValidationError` 500 (pre-existing, keyed story
+`data-layer-orphan-handling`); `Attributes:`-as-truncation-marker malformed Google style (ledgered,
+c3-2); line-number-keyed cross-references (ledgered, unowned); the `test_spa.py` path-pin weakening
+(acknowledged trade-off with a compensating differential test); `_summary_fields` dict-splat rename
+drift (guarded by value-asserting wire/MCP tests); AC 18's letter violation (resolved by Brad's
+recorded comment-only-repairs ruling).
 
 ---
 
@@ -862,8 +899,13 @@ four new shapes in `ui/src/_probe_wire.ts`:
 
 All four caught **by name**, which is a stronger proof than an assertion that `wireShapes` contains
 `DeckSummary` — it demonstrates the ban itself grew, with **no edit to `wire-contract.test.ts`**.
-That is why AC 16's suggested assertion was deliberately *not* added: adding it would have edited
-the very file the AC says must not be edited, to prove something the probe already proves.
+At the time of this probe, AC 16's suggested assertion was deliberately *not* added, on the
+reasoning that adding it would edit the file the AC says must not be edited. **That reasoning was
+later overturned by review finding R7** (the file already carries a `HealthResponse` anchor of
+exactly that kind; landmine 14 bans enumerating the *ban list*, not the anchor), and the two
+`toContain` anchors were added. The final state takes AC 16's mechanism-untouched horn over its
+literal "no edit to that file" clause — `bannedShapes` stays derived; only non-vacuity anchors
+were added.
 
 Reverted (unstaged and deleted), then re-run:
 
@@ -999,6 +1041,8 @@ count-only query would be a second read path over one shape.
   non-vacuity anchors)
 - `tests/unit/companion/test_spa.py` (two schema pins repaired; `decks` router registered in the
   differential)
+- `ui/tests/wire-contract.test.ts` (review R7 — two non-vacuity `toContain` anchors beside the
+  existing `HealthResponse` anchor; the derived ban mechanism is untouched)
 
 **Modified — generated / frontend**
 
@@ -1114,6 +1158,4 @@ the third confirmation, not a regression.
 | 2026-07-31 | Story contexted off `02b2c45`; 19 landmines, 25 ACs, 5 open questions |
 | 2026-07-31 | Implemented off `02b2c45` on `feat/companion-c3-1-deck-endpoints`. All 5 open questions "as proposed"; a 6th (AC 18 vs AC 20) raised and ruled comment-only-repairs. Python 1798 → 1827, frontend unchanged at 549, nine gates green, bundle + mirror byte-identical, plugin `.py` mirror rebuilt. Six mutation probes, all six caught |
 | 2026-07-31 | Three-layer code review: ~40 findings → 14 patches, 8 ledgered, 1 decision for Brad, 1 agent claim rejected. Headlines: the AC 13 tests were vacuous (proven by re-probe), AC 9's "one implementation" was two, and nothing tied a nested card to its entry. Committed `8c0164f`; both drift gates green in CI form. Python 1829, frontend 549. Status → review |
-| 2026-07-31 | Implemented off `02b2c45` on `feat/companion-c3-1-deck-endpoints`. All 5 open questions "as proposed"; a 6th (AC 18 vs AC 20) raised and ruled comment-only-repairs. Python 1798 → 1827, frontend unchanged at 549, nine gates green, bundle + mirror byte-identical, plugin `.py` mirror rebuilt. Six mutation probes, all six caught. Status → review |
-</content>
-</invoke>
+| 2026-07-31 | Post-commit three-layer review over both commits: 0 code defects in the shipped routes; 9 patches (2 wire-docstring honesty fixes + regeneration, 4 record repairs, 3 test additions), 2 deferred, 7 dismissed as already-ledgered/ruled. See § Review Findings |

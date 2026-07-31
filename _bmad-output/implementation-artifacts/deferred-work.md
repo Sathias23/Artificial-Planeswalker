@@ -1712,3 +1712,45 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   no reason"). **Recorded so it is a decision, not a drift.** If it becomes annoying, the fix is to
   derive the router list from `build_app()` itself rather than restating it. **Home: unowned.**
   (Severity: Low.)
+
+## Deferred from: code review of c3-1-deck-list-and-deck-detail-endpoints (2026-07-31, post-commit pass)
+
+- **`from_deck` on a non-eager-loaded `Deck` silently yields 0/0/0 counts and an empty `cards`** —
+  re-confirmed by the post-commit review as the sharpest edge the projection move created:
+  `DeckModel.deck_cards` is `lazy="noload"`, so a `Deck` from `get_deck` / `find_deck_by_name` /
+  `update_deck` feeds the public constructors an HTTP-200-shaped lie, guarded only by a docstring
+  caveat. Already ledgered "unowned" by the story; this pass names a home candidate: the keyed
+  `data-layer-orphan-handling` story (sprint-status.yaml), which already owns the sibling
+  get_deck_with_cards ValidationError crash. (Severity: Medium if a future caller mis-sources;
+  no current caller does.)
+
+- **Generated-type optionality asymmetry: `strategy?: string | null` vs `format: string | null`,
+  plus `@default 0` advertised on the count fields** — the server always serializes every field, so
+  the `?` (a Python-default artifact) forces the UI into a spurious `undefined` branch, and the
+  documented `0` default is exactly the silently-wrong value AC 3 exists to catch, now presented on
+  the wire as normal. Pre-existing schema shape; this story merely put it on the wire. **Home:
+  c4-1/c4-2**, the first real consumers of these types. (Severity: Low.)
+
+- **`_is_ref_rooted` will misfire on the first legitimate union response model.**
+  `tests/unit/companion/test_errors.py` puts `anyOf`/`oneOf`/`allOf` in `_OBJECT_SHAPE_KEYS`, so a
+  future `response_model=X | None` — plausibly c3-3's "no format to check against" answer —
+  generates a top-level `anyOf` and is refused as a "hand-built envelope", which it is not: the
+  guard's family conflates *object-shaping* with *union-forming*. Two smaller 3.1 edges in the same
+  helper: a `$ref` carrying legal sibling annotation keys fails `set(schema) == {"$ref"}` (false
+  red), and `prefixItems` is absent from the key set (false green for a tuple-shaped array). Fix
+  shape when it fires: admit a union whose every branch is itself ref-rooted or `{"type": "null"}`,
+  and add `prefixItems` to the object-shape keys — extending the family, not enumerating members.
+  **Home: c3-3**, the first story likely to hit it; until then the failure is a red test with a
+  misleading message, not a shipped defect. (Severity: Low.)
+
+- **`format: string | null` on the wire is unreachable at the data layer — `decks.format` is a
+  `NOT NULL` column.** Measured while writing the review's null-metadata test:
+  `create_deck(format=None)` raises `IntegrityError` (`NOT NULL constraint failed: decks.format`),
+  so the `null` half of the generated type can never be served from a repository-written deck. The
+  c3-1 story's own gotcha ("a deck can genuinely have no format, and c3-3's 'no format to check
+  against' response depends on it") is therefore half-false as stated: the *schema* allows null,
+  the *database* forbids it. **Home: c3-3**, which must decide whether "no format to check
+  against" is keyed on a null format (then the column constraint is the bug) or on an
+  unrecognised format string (then the wire type is merely wider than the data and can stay).
+  (Severity: Low-Medium — a UI `format === null` branch written against the generated type is
+  dead code today.)

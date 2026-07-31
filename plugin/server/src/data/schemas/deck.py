@@ -238,12 +238,13 @@ class DeckDetail(DeckSummary):
     per entry. This is the whole decklist — the shape a deck view renders from.
 
     The order of ``cards`` is **not** meaningful and is not the order the cards
-    were added. The underlying relationship declares no ``order_by``, so entries
-    arrive in the composite primary key's order — effectively ``card_id``, which
-    is a Scryfall UUID. A consumer that wants a stable presentation order (by
-    type, by mana value, by name) must sort them itself.
+    were added. A consumer that wants a stable presentation order (by type, by
+    mana value, by name) must sort them itself.
 
     Attributes:
+        The order of ``cards`` falls out of the ORM: the underlying relationship
+        declares no ``order_by``, so entries arrive in the composite primary
+        key's order — effectively ``card_id``, which is a Scryfall UUID.
         Returned by ``create_deck`` (empty ``cards``) and ``load_deck`` (full
         contents), and by ``GET /api/deck/{deck_id}``. Like ``DeckSummary``, build
         it with :meth:`from_deck` rather than ``model_validate``. Reused by the

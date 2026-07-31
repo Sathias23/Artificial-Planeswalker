@@ -26,8 +26,10 @@ async def read_decks(session: DbSession) -> list[DeckSummary]:
     """List every saved deck, newest first, with counts but without the cards.
 
     Each deck carries its metadata and three counts summarising its contents — enough
-    to render a deck list without transferring any decklist. Having no saved decks is
-    an ordinary answer, not an error: the array is simply empty.
+    to render a deck list without transferring any decklist. Decks created at the same
+    moment tie-break in arbitrary order, so within a tie newest-first is not a strict
+    guarantee. Having no saved decks is an ordinary answer, not an error: the array is
+    simply empty.
 
     Args:
         session: The request-scoped database session (see ``DbSession``).

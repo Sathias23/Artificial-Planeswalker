@@ -352,6 +352,86 @@ class TestDeckDetail:
         assert len({entry["card"]["id"] for entry in body["cards"]}) > 1
         assert len({entry["card"]["mana_cost"] for entry in body["cards"]}) > 1
 
+    async def test_a_sideboard_only_deck_has_a_legitimate_zero_mainboard(
+        self, ready_db, lifespan_client
+    ):
+        """The legitimate-zero boundary: ``mainboard_count: 0`` beside a populated ``cards[]``.
+
+        AC 3's non-vacuity seeds structurally exclude this case (``0 not in counts``), so without
+        this test the honest zero never crosses the wire at all — and a guard that treated
+        0-with-cards as always-wrong would ship unchallenged.
+        """
+
+        holder: dict[str, str] = {}
+
+        async def seeder(session):
+            repo = DeckRepository(session)
+            session.add(_card("card-sb", "Sideboard Only"))
+            await session.commit()
+            deck = await repo.create_deck(name="Board of One", format="standard")
+            holder["id"] = deck.id
+            await repo.add_card_to_deck(deck.id, "card-sb", quantity=2, sideboard=True)
+
+        await _seed(ready_db, seeder)
+
+        async with lifespan_client(build_app()) as client:
+            body = (await client.get(_DETAIL_PATH.format(deck_id=holder["id"]))).json()
+
+        assert body["mainboard_count"] == 0
+        assert body["sideboard_count"] == 2
+        assert body["distinct_cards"] == 1
+        assert len(body["cards"]) == 1  # the zero sits beside a populated list — that is the point
+
+    async def test_a_cardless_deck_answers_200_with_empty_cards_and_zero_counts(
+        self, ready_db, lifespan_client
+    ):
+        """A deck with no cards is an ordinary answer on the detail route, like the list's."""
+
+        holder: dict[str, str] = {}
+
+        async def seeder(session):
+            deck = await DeckRepository(session).create_deck(name="Empty Shell", format="standard")
+            holder["id"] = deck.id
+
+        await _seed(ready_db, seeder)
+
+        async with lifespan_client(build_app()) as client:
+            response = await client.get(_DETAIL_PATH.format(deck_id=holder["id"]))
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["cards"] == []
+        assert body["mainboard_count"] == 0
+        assert body["sideboard_count"] == 0
+        assert body["distinct_cards"] == 0
+
+    async def test_null_strategy_and_empty_tags_cross_the_wire(self, ready_db, lifespan_client):
+        """``strategy`` is ``string | null`` in the generated types; prove the ``null`` half is
+        real by serving it. Every other seed in this file sets it, so this is the only place that
+        nullability is exercised.
+
+        ``format`` is *also* ``string | null`` on the wire, but that half is **unreachable
+        through the repository**: ``decks.format`` is a ``NOT NULL`` column, and
+        ``create_deck(format=None)`` raises ``IntegrityError`` (measured writing this test,
+        review 2026-07-31). The wire type is wider than the data can be — ledgered in
+        ``deferred-work.md``, homed at c3-3, whose "no format to check against" answer leans on
+        the nullable half.
+        """
+
+        holder: dict[str, str] = {}
+
+        async def seeder(session):
+            deck = await DeckRepository(session).create_deck(name="Strategyless", format="standard")
+            holder["id"] = deck.id
+
+        await _seed(ready_db, seeder)
+
+        async with lifespan_client(build_app()) as client:
+            body = (await client.get(_DETAIL_PATH.format(deck_id=holder["id"]))).json()
+
+        assert body["strategy"] is None
+        assert body["tags"] == []
+
     async def test_timestamps_carry_a_utc_offset(self, ready_db, seeded_deck, lifespan_client):
         """The schemas' ``field_serializer`` coerces naive SQLite datetimes to offset-bearing."""
         async with lifespan_client(build_app()) as client:
@@ -388,6 +468,63 @@ class TestUnknownDeck:
 
         async with lifespan_client(build_app()) as client:
             assert (await client.get(_LIST_PATH)).status_code == 200
+
+
+# --------------------------------------------------------------------------------------------
+# Path spellings that are near-misses of the real routes (review, 2026-07-31)
+# --------------------------------------------------------------------------------------------
+
+
+class TestPathSpellings:
+    """Off-by-one-slash and encoded-slash spellings, pinned rather than assumed.
+
+    Two claims lived only in prose before these tests. ``read_deck``'s docstring says an id
+    containing an encoded ``/`` "never reaches this handler … routing rejects it as
+    ``invalid_request`` first" — asserted, never tested. And the trailing-slash behaviour was
+    assumed, not measured: it turns out Starlette's ``redirect_slashes`` **does** fire for a
+    slash variant of a route that exists (the redirect partial-match wins before the SPA mount is
+    reached), answering ``307`` to the canonical spelling — while a slash spelling that matches
+    no route even partially (``/api/deck/``, whose id segment is empty) falls through to the
+    reserved-prefix branch instead. These pin both measured outcomes, so a change in either (a
+    routing upgrade, a mount change) is a named failure instead of a silent drift.
+    """
+
+    @pytest.mark.parametrize(
+        ("path", "target"),
+        [("/api/decks/", _LIST_PATH), ("/api/deck/some-id/", "/api/deck/some-id")],
+        ids=["list-trailing-slash", "detail-trailing-slash"],
+    )
+    async def test_a_trailing_slash_redirects_to_the_canonical_spelling(
+        self, ready_db, lifespan_client, path, target
+    ):
+        async with lifespan_client(build_app()) as client:
+            response = await client.get(path)
+
+        assert response.status_code == 307
+        assert response.headers["location"].endswith(target)
+
+    async def test_an_empty_id_segment_is_refused_not_redirected(self, ready_db, lifespan_client):
+        """``/api/deck/`` partial-matches nothing (the id segment is empty), so no redirect —
+        the reserved-prefix branch answers."""
+
+        async with lifespan_client(build_app()) as client:
+            response = await client.get("/api/deck/")
+
+        assert response.status_code == 404
+        assert response.json() == {"reason": "invalid_request"}
+
+    async def test_an_encoded_slash_in_the_id_is_rejected_by_routing(
+        self, ready_db, lifespan_client
+    ):
+        """The docstring's claim, measured: ``%2F`` is decoded before matching, so the two-segment
+        result matches no route and the handler never runs — ``invalid_request``, not
+        ``deck_not_found``."""
+
+        async with lifespan_client(build_app()) as client:
+            response = await client.get("/api/deck/a%2Fb")
+
+        assert response.status_code == 404
+        assert response.json() == {"reason": "invalid_request"}
 
 
 # --------------------------------------------------------------------------------------------

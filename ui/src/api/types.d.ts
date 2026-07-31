@@ -43,8 +43,10 @@ export interface paths {
          * @description List every saved deck, newest first, with counts but without the cards.
          *
          *     Each deck carries its metadata and three counts summarising its contents — enough
-         *     to render a deck list without transferring any decklist. Having no saved decks is
-         *     an ordinary answer, not an error: the array is simply empty.
+         *     to render a deck list without transferring any decklist. Decks created at the same
+         *     moment tie-break in arbitrary order, so within a tie newest-first is not a strict
+         *     guarantee. Having no saved decks is an ordinary answer, not an error: the array is
+         *     simply empty.
          */
         get: operations["read_decks_api_decks_get"];
         put?: never;
@@ -144,10 +146,8 @@ export interface components {
          *     per entry. This is the whole decklist — the shape a deck view renders from.
          *
          *     The order of ``cards`` is **not** meaningful and is not the order the cards
-         *     were added. The underlying relationship declares no ``order_by``, so entries
-         *     arrive in the composite primary key's order — effectively ``card_id``, which
-         *     is a Scryfall UUID. A consumer that wants a stable presentation order (by
-         *     type, by mana value, by name) must sort them itself.
+         *     were added. A consumer that wants a stable presentation order (by type, by
+         *     mana value, by name) must sort them itself.
          */
         DeckDetail: {
             /** Id */

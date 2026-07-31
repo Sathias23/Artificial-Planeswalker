@@ -67,7 +67,7 @@
     "/api/decks": {
       "get": {
         "summary": "Read Decks",
-        "description": "List every saved deck, newest first, with counts but without the cards.\n\nEach deck carries its metadata and three counts summarising its contents — enough\nto render a deck list without transferring any decklist. Having no saved decks is\nan ordinary answer, not an error: the array is simply empty.",
+        "description": "List every saved deck, newest first, with counts but without the cards.\n\nEach deck carries its metadata and three counts summarising its contents — enough\nto render a deck list without transferring any decklist. Decks created at the same\nmoment tie-break in arbitrary order, so within a tie newest-first is not a strict\nguarantee. Having no saved decks is an ordinary answer, not an error: the array is\nsimply empty.",
         "operationId": "read_decks_api_decks_get",
         "responses": {
           "200": {
@@ -389,7 +389,7 @@
           "updated_at"
         ],
         "title": "DeckDetail",
-        "description": "A saved deck's metadata, card counts and full card list.\n\nEverything ``DeckSummary`` carries, plus ``cards``: one ``DeckCardSummary``\nper entry. This is the whole decklist — the shape a deck view renders from.\n\nThe order of ``cards`` is **not** meaningful and is not the order the cards\nwere added. The underlying relationship declares no ``order_by``, so entries\narrive in the composite primary key's order — effectively ``card_id``, which\nis a Scryfall UUID. A consumer that wants a stable presentation order (by\ntype, by mana value, by name) must sort them itself."
+        "description": "A saved deck's metadata, card counts and full card list.\n\nEverything ``DeckSummary`` carries, plus ``cards``: one ``DeckCardSummary``\nper entry. This is the whole decklist — the shape a deck view renders from.\n\nThe order of ``cards`` is **not** meaningful and is not the order the cards\nwere added. A consumer that wants a stable presentation order (by type, by\nmana value, by name) must sort them itself."
       },
       "DeckSummary": {
         "properties": {
