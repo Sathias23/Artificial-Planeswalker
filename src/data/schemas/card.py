@@ -1,11 +1,17 @@
 """Pydantic schemas for type-safe card data transfer.
 
 **The FIRST PARAGRAPH of every class docstring in this module is published to the outside
-world**, and the position of the first Google-style section header (``Attributes:``, ``Args:``,
-``Example:``) is what stops the rest from being. ``Card`` and ``CardSummary`` are both
-``response_model``s of the companion's REST API, so ``src.companion.app.main`` truncates each
-description at that header and ships what is above it into ``ui/src/api/types.d.ts`` as JSDoc
-and into ``/docs`` — read by frontend authors who have never seen this file.
+world**, and the position of the first Google-style section header is what stops the rest from
+being. Both classes here reach the companion's OpenAPI document — ``Card`` as the
+``response_model`` of ``GET /api/cards/{card_id}``, ``CardSummary`` indirectly, nested inside
+``DeckCardSummary`` on the deck routes (no route declares it directly). ``src.companion.app.main``
+truncates each description at that header and ships what is above it into ``ui/src/api/types.d.ts``
+as JSDoc and into ``/docs`` — read by frontend authors who have never seen this file.
+
+The truncating set is ``main._DOCSTRING_SECTIONS``: twelve headers, of which ``Attributes:``,
+``Args:``, ``Returns:``, ``Raises:`` and ``Example:`` are the ones that turn up here.
+``Note:`` and ``Warning:`` are deliberately **not** in it — they are prose a consumer wants, so
+they do **not** stop the truncation and anything under them ships.
 
 Two consequences, and neither is obvious from inside ``src/data``:
 
@@ -40,10 +46,17 @@ class Card(BaseModel):
     creature, and ``game_changer`` is a three-state flag whose null means "not yet determined",
     not "no".
 
-    Images live in one of two places and never both: a single-faced card carries ``image_uris``
-    and a null ``card_faces``, while a card with distinct faces carries a null ``image_uris`` and
-    per-face image data inside ``card_faces`` entries. Decide which by testing for per-face
-    images, never by a layout name. A card may also carry no image data at all.
+    Images live in one of two places, and **which one is decided by the presence of per-face
+    ``image_uris`` — never by whether ``card_faces`` is present**. Most cards carry a top-level
+    ``image_uris``. A card whose faces have their own artwork carries a null ``image_uris`` and
+    per-face ``image_uris`` inside its ``card_faces`` entries instead. The two are mutually
+    exclusive; nothing carries both.
+
+    ``card_faces`` is **not** the discriminator, and treating it as one is wrong for real cards:
+    a split card has a ``card_faces`` array *and* a top-level image, because its two halves share
+    one piece of artwork — so its faces carry names and costs but no images of their own. Reading
+    "has faces" as "has per-face images" renders nothing for those cards. Some cards have no image
+    data anywhere, which is ordinary and not an error.
 
     There is no price data of any kind in this record.
 

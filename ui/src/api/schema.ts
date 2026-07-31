@@ -45,6 +45,8 @@ export type ErrorResponse = Schemas['ErrorResponse']
  * Derived from `ErrorResponse` rather than re-listed, so a token added or removed on the Python
  * side arrives here through the generator instead of through someone remembering. This union is
  * what **c2-9**'s state panels switch on — a token silently dropped from it would compile fine and
- * lose a panel, which is why `schema.test.ts` pins all six by name.
+ * lose a panel, which is why `schema.test.ts` pins every member by name. **Seven** as of c3-2
+ * (`card_not_found`); that file is the one place the count is written, so it is the one place an
+ * eighth has to be added.
  */
 export type ErrorReason = ErrorResponse['reason']

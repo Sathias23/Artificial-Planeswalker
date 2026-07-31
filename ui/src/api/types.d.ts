@@ -97,11 +97,14 @@ export interface paths {
          *     format legalities, and its images. Views that were given only an id use this to fill
          *     themselves in.
          *
-         *     Two fields answer the same question and never both do. A single-faced card carries
-         *     ``image_uris`` and a null ``card_faces``; a card with distinct faces carries a null
-         *     ``image_uris`` and per-face image data inside ``card_faces`` instead. Read the presence of
-         *     per-face images, not a layout name. A small number of cards carry no image data at all, which
-         *     is ordinary and not an error.
+         *     Images arrive in one of two places, and the discriminator is **the presence of per-face
+         *     ``image_uris``, never whether ``card_faces`` is present**. Most cards carry a top-level
+         *     ``image_uris``; a card whose faces have their own artwork carries a null ``image_uris`` and
+         *     per-face ``image_uris`` inside ``card_faces`` instead. Nothing carries both.
+         *
+         *     Branching on ``card_faces !== null`` is the trap: a split card has faces *and* a top-level
+         *     image, because its halves share one piece of artwork, so those faces carry names and costs but
+         *     no images. Some cards have no image data anywhere, which is ordinary and not an error.
          *
          *     ``prices`` is absent from this response, not empty: the local database holds no price data of
          *     any kind.
@@ -133,10 +136,17 @@ export interface components {
          *     creature, and ``game_changer`` is a three-state flag whose null means "not yet determined",
          *     not "no".
          *
-         *     Images live in one of two places and never both: a single-faced card carries ``image_uris``
-         *     and a null ``card_faces``, while a card with distinct faces carries a null ``image_uris`` and
-         *     per-face image data inside ``card_faces`` entries. Decide which by testing for per-face
-         *     images, never by a layout name. A card may also carry no image data at all.
+         *     Images live in one of two places, and **which one is decided by the presence of per-face
+         *     ``image_uris`` — never by whether ``card_faces`` is present**. Most cards carry a top-level
+         *     ``image_uris``. A card whose faces have their own artwork carries a null ``image_uris`` and
+         *     per-face ``image_uris`` inside its ``card_faces`` entries instead. The two are mutually
+         *     exclusive; nothing carries both.
+         *
+         *     ``card_faces`` is **not** the discriminator, and treating it as one is wrong for real cards:
+         *     a split card has a ``card_faces`` array *and* a top-level image, because its two halves share
+         *     one piece of artwork — so its faces carry names and costs but no images of their own. Reading
+         *     "has faces" as "has per-face images" renders nothing for those cards. Some cards have no image
+         *     data anywhere, which is ordinary and not an error.
          *
          *     There is no price data of any kind in this record.
          */

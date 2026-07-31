@@ -25,10 +25,13 @@
  * ================= WHAT THIS FILE DOES **NOT** GATE, DECLARED =========================
  *
  * The rendered placeholder. **c4-3 owns it**, along with the `"Unknown card"` string as a copy
- * module (`copy-rules.test.ts`'s `COPY_MODULES` already names c4-3 for exactly this). c3-2 ships
- * no component, so what is checked here is that the artefact says what `states.ts` claims it
- * says — not that anything renders it. The day c4-3 lands, its copy module joins `COPY_MODULES`
- * and the byte-for-byte assertion moves there.
+ * module. Be precise about what that means: `copy-rules.test.ts:99` names "c4-3's 'Unknown card'"
+ * in a PROSE COMMENT above `COPY_MODULES`, not as an entry in it — the Map is git-checked, so it
+ * cannot name a module that does not exist yet. That half is therefore a comment, not a gate, and
+ * an earlier draft of this header wrongly called it machine-checked. c3-2 ships no component, so
+ * what is gated here is that the artefact says what `states.ts` claims it says — not that anything
+ * renders it. The day c4-3 lands, its copy module joins `COPY_MODULES` and the byte-for-byte
+ * assertion moves there.
  */
 
 import { readFileSync } from 'node:fs'
@@ -77,14 +80,70 @@ const STATES_TS = readFileSync(
   'utf8',
 )
 
+/**
+ * `states.ts` with its comments removed — the only text the pairing assertions may match.
+ *
+ * c3-2 added roughly sixty lines of block comment to that file explaining this exact pairing, and
+ * several of them spell `card_not_found` and `unknown-card` in prose. A regex over the raw source
+ * is therefore satisfied by the documentation of the entry rather than the entry, which is a guard
+ * that cannot fail for the reason it exists (review, 2026-07-31).
+ */
+const STATES_CODE = STATES_TS.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+
+/**
+ * The member tokens of `NO_UI_RESPONSE`, read from the code.
+ *
+ * Reads the array body up to its closing bracket. Safe on comment-stripped text — the earlier
+ * `[^\]]*` form ran against the raw file, where any `]` between the opener and the token (in a
+ * comment, or a nested literal) silently disarmed the check.
+ */
+const noUiResponseMembers = (): string[] => {
+  const body = /NO_UI_RESPONSE\s*=\s*\[([^\]]*)\]/.exec(STATES_CODE)?.[1] ?? ''
+  return [...body.matchAll(/'([^']+)'/g)].map((m) => m[1])
+}
+
 /** The row label the artefact uses for the in-view case. */
 const ROW_LABEL = 'Unknown card in a view'
 
-/** Every table line in the artefact, as `label -> cell`. */
-const rowsByLabel = new Map<string, string>()
+/**
+ * Every table line in the artefact, as `label -> cell`, keeping ALL rows for a repeated label.
+ *
+ * `copy.test.ts:93` THROWS on a duplicate label, and its comment says why: *"`Map.set` would keep
+ * the last row and the size pin would still pass — the exact drift this gate exists to catch,
+ * hidden by the shape of Map."* The first version of this file used a bare `Map.set` anyway
+ * (review, 2026-07-31).
+ *
+ * Throwing is wrong HERE, though, and that is a real difference rather than an excuse: `copy.test`
+ * scans only two-field `Headline:`+`Body:` rows, of which the artefact has none repeated. This
+ * file scans EVERY table line, and `EXPERIENCE.md` already repeats eight labels legitimately
+ * (`Card detail panel`, `Agent views nav`, `Empty push`, … — a Voice-and-Tone row and a
+ * State-Patterns row for the same concept). Throwing would make this suite red on an artefact
+ * that is perfectly correct.
+ *
+ * So the map collects a LIST per label, and the assertions below say which row they mean. A
+ * repeated `Unknown card in a view` therefore makes the pairing test fail loudly on an ambiguous
+ * lookup, rather than silently gating whichever row happened to come last.
+ */
+const rowsByLabel = new Map<string, string[]>()
 for (const line of raw.split(/\r?\n/)) {
   const cells = /^\|\s*([^|]+?)\s*\|\s*(.*?)\s*\|$/.exec(line)
-  if (cells) rowsByLabel.set(cells[1], cells[2])
+  if (!cells) continue
+  const existing = rowsByLabel.get(cells[1])
+  if (existing) existing.push(cells[2])
+  else rowsByLabel.set(cells[1], [cells[2]])
+}
+
+/** The one cell for *label*, refusing to guess when the artefact writes more than one. */
+const oneRow = (label: string): string => {
+  const rows = rowsByLabel.get(label) ?? []
+  if (rows.length !== 1) {
+    throw new Error(
+      `EXPERIENCE.md writes ${rows.length} rows labelled "${label}"; this gate needs exactly ` +
+        'one to know which copy is the contract. De-duplicate the artefact, or teach this file ' +
+        'which surface it means.',
+    )
+  }
+  return rows[0]
 }
 
 describe('the unknown-card placeholder copy exists in EXPERIENCE.md (retro R1)', () => {
@@ -99,12 +158,13 @@ describe('the unknown-card placeholder copy exists in EXPERIENCE.md (retro R1)',
     expect(rowsByLabel.has('No-active-deck')).toBe(true)
   })
 
-  it('carries the row the seventh token points at', () => {
-    expect(rowsByLabel.has(ROW_LABEL)).toBe(true)
+  it('carries exactly one row for the label the seventh token points at', () => {
+    // `oneRow` throws on a repeat rather than silently taking the last — see its comment.
+    expect(() => oneRow(ROW_LABEL)).not.toThrow()
   })
 
   it('spells the placeholder label exactly "Unknown card"', () => {
-    const label = /Placeholder label:\s*"([^"]*)"/.exec(rowsByLabel.get(ROW_LABEL) ?? '')
+    const label = /Placeholder label:\s*"([^"]*)"/.exec(oneRow(ROW_LABEL))
 
     expect(label, `no quoted "Placeholder label:" in the ${ROW_LABEL} row`).not.toBeNull()
     expect(label?.[1]).toBe('Unknown card')
@@ -114,14 +174,14 @@ describe('the unknown-card placeholder copy exists in EXPERIENCE.md (retro R1)',
     // The rest of the row is the reason `card_not_found` maps to no panel. If the artefact ever
     // changed its mind and asked for a banner, `states.ts`'s classification would be wrong and
     // this is where that shows up.
-    const cell = rowsByLabel.get(ROW_LABEL) ?? ''
+    const cell = oneRow(ROW_LABEL)
     expect(cell).toContain('No banner, no apology')
     expect(cell).toContain('the rest of the view renders normally')
   })
 
   it('says the same thing for a push, so one unknown card never fails the whole payload', () => {
     // The State-Patterns sibling row (FR-13). Two surfaces, one posture.
-    expect(rowsByLabel.get('Unknown card in a push')).toContain('the push never fails wholesale')
+    expect(oneRow('Unknown card in a push')).toContain('the push never fails wholesale')
   })
 
   it('is the destination states.ts records for card_not_found', () => {
@@ -130,29 +190,30 @@ describe('the unknown-card placeholder copy exists in EXPERIENCE.md (retro R1)',
     // assertion in this file would still pass.
     //
     // A source read rather than an import — see the STATES_TS comment above for the measured
-    // tsconfig reason. Both directions are asserted, so moving the token into NO_UI_RESPONSE
-    // (the exact drift this guards) fails here even though the entry above would still parse.
-    expect(STATES_TS).toMatch(/card_not_found:\s*'unknown-card'/)
-    expect(STATES_TS).not.toMatch(/NO_UI_RESPONSE\s*=\s*\[[^\]]*card_not_found/)
+    // tsconfig reason. Matched against CODE ONLY: c3-2 added ~60 lines of comment to `states.ts`
+    // that discuss this very pairing, so a match anywhere in the raw file would be satisfied by
+    // the prose describing the entry rather than the entry (review, 2026-07-31).
+    expect(STATES_CODE).toMatch(/card_not_found:\s*'unknown-card'/)
+    expect(noUiResponseMembers()).not.toContain('card_not_found')
 
-    // Non-vacuity: the file was genuinely read and the patterns are discriminating rather than
-    // matching anything. `invalid_request` IS in NO_UI_RESPONSE, so the second pattern's shape
-    // provably fires on a token that belongs there.
-    expect(STATES_TS.length).toBeGreaterThan(1000)
-    expect(STATES_TS).toMatch(/NO_UI_RESPONSE\s*=\s*\[[^\]]*invalid_request/)
+    // Non-vacuity: the file was genuinely read, comment-stripping did not eat the code, and the
+    // member reader is discriminating rather than returning nothing. `invalid_request` IS in
+    // NO_UI_RESPONSE, so the reader provably finds a token that belongs there.
+    expect(STATES_CODE.length).toBeGreaterThan(1000)
+    expect(noUiResponseMembers()).toEqual(['invalid_request', 'payload_too_large'])
   })
 
   it('is invisible to copy.test.ts by structure, which is why this file exists', () => {
     // Not a claim in prose — measured against the row itself, using copy.test.ts's own selector.
     // If EXPERIENCE.md ever rewrites this row into a two-field Headline+Body panel, THIS test
     // goes red and the copy should move under the c2-9 gate instead of staying here.
-    const cell = rowsByLabel.get(ROW_LABEL) ?? ''
+    const cell = oneRow(ROW_LABEL)
     expect(/Headline:\s*"([^"]*)"/.test(cell)).toBe(false)
     expect(/Body:\s*"([^"]*)"/.test(cell)).toBe(false)
 
     // Non-vacuity for the two negatives above: the selector genuinely fires on a real panel row,
     // so "no match" means this row's shape, not a broken regex.
-    const panelRow = rowsByLabel.get('No-active-deck') ?? ''
+    const panelRow = oneRow('No-active-deck')
     expect(/Headline:\s*"([^"]*)"/.test(panelRow)).toBe(true)
     expect(/Body:\s*"([^"]*)"/.test(panelRow)).toBe(true)
   })

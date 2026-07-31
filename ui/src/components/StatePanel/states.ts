@@ -33,10 +33,18 @@
  * bottom), not left to this paragraph: a future `null` that is classified as neither, or as
  * both, fails `npm run typecheck` naming the token.
  *
- * The copy itself is deliberately NOT here. "Unknown card" is prose, and prose lives in a copy
- * module — `tests/copy-rules.test.ts`'s `COPY_MODULES` already homes that exact string on c4-3.
+ * The copy itself is deliberately NOT here. "Unknown card" is prose, and prose may only live in a
+ * copy module — `tests/copy-rules.test.ts`'s file half would fail this file for containing it.
  * This file carries the destination's NAME, which is chrome; `tests/unknown-card-copy.test.ts`
- * is what ties that name to the artefact's label.
+ * ties that name to the artefact's label.
+ *
+ * **Precisely where c4-3 is named, because the distinction is the whole point of R1**:
+ * `copy-rules.test.ts:99` is a PROSE COMMENT above `COPY_MODULES` that lists "c4-3's 'Unknown
+ * card'" among the entries later stories will add. It is *not* a `COPY_MODULES` entry — it cannot
+ * be, since the module it would name does not exist yet, and that Map is git-checked. So the
+ * c4-3 half of this pairing is a comment, not a gate, and saying otherwise (as an earlier draft
+ * of this paragraph did) would be exactly the "a comment promises the rest" shape R1 exists to
+ * stop. What IS gated today: the token, its classification here, and the artefact's label.
  *
  * ================= EXHAUSTIVENESS IS PROVED BY THE TYPE, NOT BY A TEST ==================
  *
@@ -245,4 +253,20 @@ export type ReasonClassificationsAreDisjoint = Assert<
 
 export type NothingWithAPanelIsClassified = Assert<
   [Exclude<ClassifiedReason, PanellessReason>] extends [never] ? true : false
+>
+
+/**
+ * …and a classified token's destination is a real one — not an explicit `undefined`.
+ *
+ * `satisfies Partial<Record<ErrorReason, PlaceholderKey>>` permits `some_token: undefined`, which
+ * puts the token in `keyof typeof PLACEHOLDER_FOR_REASON` and therefore satisfies all three
+ * asserts above while the runtime destination is nothing at all — "classified as having a
+ * placeholder that does not exist" (review, 2026-07-31). `Partial` is still the right shape (most
+ * tokens have no entry); this closes the difference between *absent* and *present but undefined*.
+ */
+export type EveryPlaceholderIsAReal = Assert<
+  [Extract<(typeof PLACEHOLDER_FOR_REASON)[keyof typeof PLACEHOLDER_FOR_REASON], undefined>] extends
+    [never]
+    ? true
+    : false
 >

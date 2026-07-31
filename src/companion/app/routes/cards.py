@@ -77,11 +77,14 @@ async def read_card(card_id: CardId, session: DbSession) -> Card:
     format legalities, and its images. Views that were given only an id use this to fill
     themselves in.
 
-    Two fields answer the same question and never both do. A single-faced card carries
-    ``image_uris`` and a null ``card_faces``; a card with distinct faces carries a null
-    ``image_uris`` and per-face image data inside ``card_faces`` instead. Read the presence of
-    per-face images, not a layout name. A small number of cards carry no image data at all, which
-    is ordinary and not an error.
+    Images arrive in one of two places, and the discriminator is **the presence of per-face
+    ``image_uris``, never whether ``card_faces`` is present**. Most cards carry a top-level
+    ``image_uris``; a card whose faces have their own artwork carries a null ``image_uris`` and
+    per-face ``image_uris`` inside ``card_faces`` instead. Nothing carries both.
+
+    Branching on ``card_faces !== null`` is the trap: a split card has faces *and* a top-level
+    image, because its halves share one piece of artwork, so those faces carry names and costs but
+    no images. Some cards have no image data anywhere, which is ordinary and not an error.
 
     ``prices`` is absent from this response, not empty: the local database holds no price data of
     any kind.
@@ -90,9 +93,17 @@ async def read_card(card_id: CardId, session: DbSession) -> Card:
         card_id: The Scryfall printing uuid — the value in ``cards.id``, and the same value a
             deck's entries carry in ``card_id`` (FR-13). Constrained to the canonical lowercase
             hyphenated spelling by :data:`CardId`; anything else is ``400 invalid_request``,
-            answered by the app-wide validation handler before this function runs. (A value that
-            is not a single well-formed path segment — one containing an encoded ``/``, say —
-            never reaches routing's card branch at all.)
+            answered by the app-wide validation handler rather than by anything here. (A value
+            that is not a single well-formed path segment — one containing an encoded ``/``, say
+            — never reaches routing's card branch at all.)
+
+            **The 400 is not unconditional, measured.** FastAPI solves dependencies and collects
+            parameter-validation errors in one pass, raising ``RequestValidationError`` only
+            afterwards — so ``DbSession`` resolves first, and a malformed id sent to a backend
+            with no usable database answers ``503`` (``database_not_initialized`` or
+            ``database_unavailable``), not ``400``. Both orders are pinned in
+            ``test_routes_cards.py``. It matters to a caller that retries on 503: a request whose
+            id is malformed will never succeed, whatever the database does.
         session: The request-scoped database session (see ``DbSession``).
 
     Returns:

@@ -62,6 +62,8 @@ SINGLE_FACE_ID = _uuid("b1")
 MULTI_FACE_ID = _uuid("c2")
 NO_IMAGE_ID = _uuid("d3")
 MANY_FACE_ID = _uuid("e4")
+SPLIT_FACE_ID = _uuid("e5")
+SCHEMA_ONLY_ID = _uuid("e6")
 ABSENT_ID = _uuid("ff")
 
 _TOP_LEVEL_IMAGES = {
@@ -166,22 +168,36 @@ async def ready_db(tmp_path, monkeypatch):
 
 @pytest.fixture
 async def image_shapes(ready_db):
-    """Seed all three image shapes the real corpus contains, plus a many-faced card.
+    """Seed every image shape the real corpus actually contains.
 
-    Measured over the shipped 38,261-row database on 2026-07-31, and re-measured for this story:
+    **RE-MEASURED after the code review of 2026-07-31, because the first version of this fixture
+    was built on a true count read as a false rule.** The story measured "cards carrying BOTH
+    top-level and per-face ``image_uris``: 0" — which is true — and this fixture generalised it to
+    "a card with a top-level image has no ``card_faces``", which is false for 368 real printings.
+    Both review layers caught it independently. The corrected census, over 38,261 rows:
 
-        image_uris JSON-null                            2,857
-          ...of those, carrying per-face image_uris     2,778
-        carrying BOTH top-level and per-face             0
-        no image data anywhere                          79
-        face-count histogram        2 -> 3,222 · 3 -> 2 · 5 -> 1
+        image_uris + card_faces NULL ................................. 35,036   (SINGLE_FACE_ID)
+        image_uris + card_faces present, faces WITHOUT image_uris .....   368   (SPLIT_FACE_ID)
+        image_uris NULL + faces WITH per-face image_uris ..............  2,778   (MULTI_FACE_ID)
+        image_uris NULL + faces present, faces WITHOUT image_uris .....    79   (NO_IMAGE_ID)
+        image_uris NULL + card_faces NULL .............................     0   (does not exist)
+        face-count histogram ....................... 2 -> 3,222 · 3 -> 2 · 5 -> 1
 
-    So the two image sources are **mutually exclusive in this corpus**, and a fixture set that
-    seeded only a top-level-image card would prove half of AC 1's "including ``image_uris`` **and
-    any** ``card_faces``". `card_faces` is also not always two, which is why `MANY_FACE_ID` exists.
+    Two consequences the first version got wrong, and they are the reason the docstrings on
+    ``Card`` and ``read_card`` were rewritten:
+
+    * **``card_faces`` is not the discriminator — per-face ``image_uris`` is.** A split card
+      (``Adventurous Eater // Have a Bite``) has two faces *and* a top-level image, because the
+      halves share one piece of artwork. A consumer branching on ``card_faces !== null`` renders
+      nothing for 368 cards that have a perfectly good image.
+    * **"No image anywhere" does not mean "no faces".** All 79 such cards carry a ``card_faces``
+      array whose entries have no images; the shape the first fixture seeded for that case
+      (``image_uris`` null *and* ``card_faces`` null) matches **zero** rows in the corpus. It is
+      still permitted by the schema, so `SCHEMA_ONLY_ID` keeps it — labelled as what it is.
     """
 
     async def seeder(session):
+        # 35,036 rows: the ordinary case.
         session.add(
             _card(
                 SINGLE_FACE_ID,
@@ -195,6 +211,22 @@ async def image_shapes(ready_db):
                 card_faces=None,
             )
         )
+        # 368 rows: THE SHAPE THE FIRST VERSION OF THIS FIXTURE DENIED EXISTED. Faces and a
+        # top-level image together; no face carries an image of its own.
+        session.add(
+            _card(
+                SPLIT_FACE_ID,
+                "Split Halves",
+                type_line="Sorcery — Adventure // Sorcery",
+                rarity="uncommon",
+                image_uris=_TOP_LEVEL_IMAGES,
+                card_faces=[
+                    {"name": "Split Halves", "mana_cost": "{R}", "type_line": "Sorcery"},
+                    {"name": "Other Half", "mana_cost": "{2}{G}", "type_line": "Sorcery"},
+                ],
+            )
+        )
+        # 2,778 rows: the DFC case — per-face images, no top-level image.
         session.add(
             _card(
                 MULTI_FACE_ID,
@@ -216,12 +248,28 @@ async def image_shapes(ready_db):
                 ],
             )
         )
+        # 79 rows: genuinely no image anywhere — but faces ARE present. This is the real shape.
         session.add(
             _card(
                 NO_IMAGE_ID,
                 "No Image At All",
-                type_line="Token Creature — Zombie",
+                type_line="Token Creature — Zombie // Token Creature — Zombie",
                 rarity="uncommon",
+                image_uris=None,
+                card_faces=[
+                    {"name": "No Image At All", "mana_cost": ""},
+                    {"name": "No Image Either", "mana_cost": ""},
+                ],
+            )
+        )
+        # 0 rows: permitted by the schema, absent from the corpus. Seeded so the wire behaviour of
+        # a shape the importer has never produced is known rather than assumed.
+        session.add(
+            _card(
+                SCHEMA_ONLY_ID,
+                "Neither Field",
+                type_line="Artifact",
+                rarity="common",
                 image_uris=None,
                 card_faces=None,
             )
@@ -321,11 +369,16 @@ class TestCardDetail:
     async def test_no_price_field_is_served(self, image_shapes, lifespan_client):
         """AC 15: the epic's price AC is satisfied BY ABSENCE, and absence is asserted.
 
-        There is no price column, field, importer path or UI consumer anywhere in this project
-        (measured: ``PRAGMA table_info(cards)`` lists 23 columns, none of them a price; a grep for
-        ``price`` over ``src/``, ``tests/``, ``ui/src`` and ``scripts/`` finds one hit, a forward-
-        looking CSS comment). A ``prices: null`` field on 100% of responses would be a permanently
+        The measurement that matters is the **data layer**: ``PRAGMA table_info(cards)`` lists 23
+        columns and none of them is a price, and no ``Card``/``CardSummary`` field, importer path
+        or UI consumer exists. A ``prices: null`` field on 100% of responses would be a permanently
         dead branch in the wire contract that c4-5 must handle for nothing.
+
+        **Do not re-run "grep for ``price`` and expect nothing" as the check** — this story made
+        that self-falsifying (review, 2026-07-31). Before c3-2 it returned one hit, a forward-
+        looking CSS comment; after c3-2 it also returns this docstring, the two rewritten wire
+        docstrings that say prices are absent, and the generated ``types.d.ts`` carrying them. The
+        durable check is the column list and the absence of a field, not the word count.
         """
         async with lifespan_client(build_app()) as client:
             body = (await client.get(_CARD_PATH.format(card_id=SINGLE_FACE_ID))).json()
@@ -351,7 +404,13 @@ class TestCardDetail:
 
 
 class TestImageShapes:
-    """AC 16: the corpus contains both image shapes and never both at once — so both are tested."""
+    """AC 16: every image shape the corpus contains, including the one the story denied existed.
+
+    The two image *sources* (top-level ``image_uris`` and per-face ``image_uris``) are mutually
+    exclusive — that count is real. What is NOT true, and what the first version of this class
+    asserted, is that a card with a top-level image has no ``card_faces``: 368 split cards have
+    both. See the `image_shapes` fixture for the corrected census.
+    """
 
     async def test_a_single_faced_card_carries_top_level_images_and_no_faces(
         self, image_shapes, lifespan_client
@@ -388,21 +447,110 @@ class TestImageShapes:
         ]
         # c3-5's rule depends on this and c3-2 is where it first crosses the wire: decide by the
         # PRESENCE OF PER-FACE image_uris, never by a layout string — `cards` has no layout column.
-        assert all(face["image_uris"]["normal"] for face in body["card_faces"])
+        #
+        # `.get("image_uris")` rather than `["image_uris"]`: 447 real cards carry faces with NO
+        # per-face images, so subscripting is the exact mistake this rule exists to prevent, and
+        # writing it here would have made the test crash on the shape it is teaching about.
+        assert all(face.get("image_uris", {}).get("normal") for face in body["card_faces"])
         assert body["card_faces"][0]["image_uris"] != body["card_faces"][1]["image_uris"]
+
+    async def test_a_split_card_carries_faces_and_a_top_level_image(
+        self, image_shapes, lifespan_client
+    ):
+        """368 real cards, and the shape the first version of this file asserted cannot exist.
+
+        This is the case that breaks a consumer branching on ``card_faces !== null``: the faces
+        are real (names, costs, type lines) but carry no images, and the artwork is the top-level
+        ``image_uris`` the two halves share. Both docstrings on the wire now say so explicitly.
+        """
+        async with lifespan_client(build_app()) as client:
+            response = await client.get(_CARD_PATH.format(card_id=SPLIT_FACE_ID))
+
+        assert response.status_code == 200
+        body = response.json()
+        # Both fields populated at once — the combination the story's prose ruled out.
+        assert body["image_uris"] == _TOP_LEVEL_IMAGES
+        assert len(body["card_faces"]) == 2
+        # …and not one face carries an image of its own, which is what makes per-face presence
+        # the correct discriminator and `card_faces` presence the wrong one.
+        assert all("image_uris" not in face for face in body["card_faces"])
+        assert [face["name"] for face in body["card_faces"]] == ["Split Halves", "Other Half"]
+
+    async def test_the_discriminator_is_per_face_images_not_card_faces_presence(
+        self, image_shapes, lifespan_client
+    ):
+        """The rule c3-5 and c4-3 will code against, asserted as a rule rather than per-fixture.
+
+        Across every seeded shape: a card has per-face images XOR a top-level image, and
+        ``card_faces`` presence predicts neither. Written as a sweep so a future shape added to
+        the fixture is covered without a new test — and so the wrong discriminator is visibly
+        wrong rather than merely undocumented.
+        """
+        async with lifespan_client(build_app()) as client:
+            bodies = {
+                name: (await client.get(_CARD_PATH.format(card_id=cid))).json()
+                for name, cid in (
+                    ("single", SINGLE_FACE_ID),
+                    ("split", SPLIT_FACE_ID),
+                    ("dfc", MULTI_FACE_ID),
+                    ("no-image", NO_IMAGE_ID),
+                    ("neither", SCHEMA_ONLY_ID),
+                    ("five-face", MANY_FACE_ID),
+                )
+            }
+
+        def has_per_face(body) -> bool:
+            return any("image_uris" in face for face in body["card_faces"] or [])
+
+        for name, body in bodies.items():
+            assert not (has_per_face(body) and body["image_uris"] is not None), (
+                f"{name} carries both image sources; they are mutually exclusive"
+            )
+
+        # `card_faces` presence predicts NOTHING about where the image is — proved in both
+        # directions from real shapes, which is the whole finding.
+        assert bodies["split"]["card_faces"] is not None
+        assert bodies["split"]["image_uris"] is not None  # faces, yet top-level image
+        assert bodies["dfc"]["card_faces"] is not None
+        assert bodies["dfc"]["image_uris"] is None  # faces, and no top-level image
+        assert bodies["single"]["card_faces"] is None
+        assert bodies["single"]["image_uris"] is not None  # no faces, top-level image
 
     async def test_a_card_with_no_image_data_anywhere_is_an_ordinary_answer(
         self, image_shapes, lifespan_client
     ):
-        """79 real cards. Not an error, not a 404 — a 200 with both image fields null."""
+        """79 real cards. Not an error, not a 404 — a 200 with no image reachable anywhere.
+
+        **All 79 carry a ``card_faces`` array**; "no image anywhere" does not mean "no faces".
+        The first version of this test seeded ``card_faces: None`` for this case, a combination
+        that matches zero rows in the corpus — see `SCHEMA_ONLY_ID` for that shape, kept and
+        labelled separately.
+        """
         async with lifespan_client(build_app()) as client:
             response = await client.get(_CARD_PATH.format(card_id=NO_IMAGE_ID))
 
         assert response.status_code == 200
         body = response.json()
         assert body["image_uris"] is None
-        assert body["card_faces"] is None
+        assert body["card_faces"] is not None
+        assert all("image_uris" not in face for face in body["card_faces"])
         assert body["name"] == "No Image At All"
+
+    async def test_the_schema_permitted_both_null_shape_round_trips(
+        self, image_shapes, lifespan_client
+    ):
+        """Zero rows in the corpus, but the schema allows it — so its wire behaviour is known.
+
+        Kept deliberately: `Card` types both fields nullable, so a future importer change or a
+        hand-written row could produce this, and "we never checked" is a worse answer than a
+        pinned one. The nulls must survive as ``null`` — not ``{}``, not omitted.
+        """
+        async with lifespan_client(build_app()) as client:
+            body = (await client.get(_CARD_PATH.format(card_id=SCHEMA_ONLY_ID))).json()
+
+        assert body["image_uris"] is None
+        assert body["card_faces"] is None
+        assert "image_uris" in body and "card_faces" in body
 
     async def test_card_faces_is_not_always_two(self, image_shapes, lifespan_client):
         """Measured histogram: 2 -> 3,222 cards, 3 -> 2, 5 -> 1. A `[front, back]` read is wrong."""
@@ -477,12 +625,13 @@ _MALFORMED_IDS = {
     "too-short": _WELL_FORMED[:-1],
     "too-long": _WELL_FORMED + "0",
     "wrong-hyphen-positions": "00000000-00000-400-8000-0000000000a0",
-    "no-hyphens": _WELL_FORMED.replace("-", ""),
     "non-hex-characters": "zzzzzzzz-0000-4000-8000-0000000000a0",
     "empty-segment": "00000000--4000-8000-0000000000a0",
     "free-text": "not a uuid at all",
     # The four spellings `uuid.UUID` would have accepted AND NORMALISED, turning a malformed id
-    # into a FOUND card — Q2's whole reason for rejecting that option.
+    # into a FOUND card — Q2's whole reason for rejecting that option. (The bare "no-hyphens"
+    # entry that used to sit above was byte-identical to this one — 14 ids over 13 distinct
+    # inputs. Removed in review: an enumeration that double-counts overstates its own coverage.)
     "uuid-32-hex-no-dashes": _WELL_FORMED.replace("-", ""),
     "uuid-braced": "{" + _WELL_FORMED + "}",
     "uuid-urn": "urn:uuid:" + _WELL_FORMED,
@@ -506,6 +655,40 @@ class TestMalformedCardId:
 
         assert response.status_code == 400
         assert response.json() == {"reason": "invalid_request"}
+
+    async def test_the_trailing_newline_canary_is_measuring_what_it_claims(
+        self, ready_db, lifespan_client
+    ):
+        """The `%0A` entry above is a regex-ENGINE canary, and a 400 alone does not prove it fired.
+
+        It exists because Python's ``re`` matches ``$`` before a trailing newline while Pydantic's
+        Rust engine does not. But if the transport ever stopped percent-decoding the path, the
+        handler would see a literal ``%0A``, which the pattern rejects for containing ``%`` — the
+        same 400, and the canary would be green while testing nothing (review, 2026-07-31).
+
+        So the decode is asserted separately: ``%41`` is ``A``, and an uppercase ``A`` in the id
+        is refused for BEING uppercase. If decoding stopped, the id would contain a literal ``%``
+        and this test would still pass — so the discriminating half is the pair below it, where
+        the same decoded byte inside an otherwise-valid id is what makes the difference.
+        """
+        async with lifespan_client(build_app()) as client:
+            # %61 is 'a' — decodes into a canonical id that MUST be found.
+            decoded_ok = await client.get(
+                _CARD_PATH.format(card_id=ANCHOR_ID.replace("a", "%61", 1))
+            )
+            # The same id with a real trailing newline byte, percent-encoded.
+            newline = await client.get(_CARD_PATH.format(card_id=ANCHOR_ID + "%0A"))
+
+        # THE TEETH: percent-decoding is provably happening, because %61 reached the handler as
+        # 'a' and found the card. Without decoding this would be a 400 like everything else.
+        assert decoded_ok.status_code == 200, (
+            "%61 did not decode to 'a' — the transport stopped percent-decoding, so the "
+            "trailing-newline canary above is no longer testing the regex engine"
+        )
+        assert decoded_ok.json()["id"] == ANCHOR_ID
+        # …and given decoding happens, the newline case is genuinely exercising the `$` anchor.
+        assert newline.status_code == 400
+        assert newline.json() == {"reason": "invalid_request"}
 
     async def test_the_uppercase_spelling_is_refused_rather_than_normalised(
         self, ready_db, lifespan_client

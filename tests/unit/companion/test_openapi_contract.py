@@ -27,6 +27,7 @@ from typing import Any
 
 from scripts.dump_openapi import OUTPUT_PATH, render_schema
 from src.companion import contracts
+from src.companion.app import main as main_module
 from src.companion.app.main import build_app, without_python_docstring_sections
 from src.companion.app.routes import health
 
@@ -47,18 +48,34 @@ of two rather than a ban list of twelve, so an unlisted header (``Parameters:``,
 
 PYTHON_INTERNAL_FAMILIES: dict[str, re.Pattern[str]] = {
     "Sphinx role markup": re.compile(r":[a-z]+:`"),
+    # Deliberately loose about the whitespace and punctuation INSIDE a header, because the
+    # evasions are all cosmetic: `Keyword  Args:` (two spaces), `Args :` (space before the
+    # colon), `Non-standard:` (hyphen). The shape being keyed on is "a line that is nothing but
+    # a capitalised phrase and a colon" — anything of that shape is a section header, whatever
+    # it is called (review, 2026-07-31).
     "a Google-style section header": re.compile(
-        r"(?m)^[ \t]*([A-Z][A-Za-z]*(?: [A-Za-z]+)*:)[ \t]*$"
+        r"(?m)^[ \t]*([A-Z][A-Za-z-]*(?:[ \t]+[A-Za-z-]+)*[ \t]*:)[ \t]*$"
     ),
     "a doctest prompt": re.compile(r"(?m)^[ \t]*>>> "),
 }
 """Shapes of Python-internal prose, keyed by FAMILY (story c3-2, Q5; standing agreement).
 
 The predecessor :data:`PYTHON_INTERNALS` names three literal markers, which is the shape this
-project has repeatedly measured to be evadable: it catches ``Args:`` and ``Attributes:`` and is
-blind to ``Returns:``, ``Raises:``, ``Parameters:`` and every role marker
-(``:class:`X```, ``:mod:`Y```, ``:data:`Z```) — the last of which c3-1 found in its own new
-docstring, having shipped past a seven-member scan.
+project has repeatedly measured to be evadable: it names ``Args:`` and ``Attributes:`` and is
+blind to every role marker (``:class:`X```, ``:mod:`Y```, ``:data:`Z```) — which c3-1 found in
+its own new docstring, having shipped past a seven-member scan.
+
+**Be precise about the added coverage, because an overstated gate is worse than a modest one**
+(review, 2026-07-31). This scan runs on ``build_app().openapi()``, i.e. **after**
+``_CompanionFastAPI`` truncation, and ``main._DOCSTRING_SECTIONS`` already terminates a
+description at all twelve headers it knows — including ``Returns:`` and ``Raises:``. So those two
+can never reach a wire description, and this gate is not what stops them. What it genuinely adds
+over the three-marker list:
+
+* **Sphinx role markup**, which nothing else catches and which has shipped here before.
+* **Section headers the truncator does not know** — ``Parameters:``, numpy-style sections, a
+  hyphenated or double-spaced spelling — which survive truncation *and* the literal list.
+* A **failure that names the family**, so the fix is "rewrite the summary", not "add a marker".
 
 **What this does NOT decide, declared** (``deferred-work.md``, homed on review): whether a
 sentence that is structurally clean actually *addresses a TypeScript reader*. "Supports
@@ -188,9 +205,20 @@ class TestDescriptionsAreSummaries:
         This is the assertion that would have caught c3-1's ``:class:`X``` and would catch a
         ``Returns:`` or a ``Parameters:`` — none of which :data:`PYTHON_INTERNALS` names.
         """
+        descriptions = _descriptions(build_app().openapi())
+
+        # CORPUS NON-VACUITY, inside the scanning test rather than beside it (review,
+        # 2026-07-31). The paired test below proves each pattern fires against a planted string;
+        # neither proves this loop had anything to iterate. A `_descriptions()` that regressed to
+        # `[]` — a renamed key, a schema shape change — passed both halves green.
+        assert len(descriptions) > 10, (
+            f"only {len(descriptions)} descriptions parsed from the live schema; this scan is "
+            "asserting over an empty or near-empty corpus and proves nothing"
+        )
+
         offenders = [
             (family, match.group(0), description[:60])
-            for description in _descriptions(build_app().openapi())
+            for description in descriptions
             for family, pattern in PYTHON_INTERNAL_FAMILIES.items()
             for match in pattern.finditer(description)
             if match.group(0).strip() not in WIRE_VISIBLE_SECTIONS
@@ -220,15 +248,37 @@ class TestDescriptionsAreSummaries:
             assert PYTHON_INTERNAL_FAMILIES[family].search(sample), f"{family} matched nothing"
 
         section = PYTHON_INTERNAL_FAMILIES["a Google-style section header"]
-        # Fires on an unlisted header the truncator has never heard of...
+        # Fires on headers the truncator has never heard of — the real added coverage.
         assert section.search("A summary.\n\nParameters:\n    x: numpy style.")
+        assert section.search("A summary.\n\nKeyword  Args:\n    x: two spaces.")
+        assert section.search("A summary.\n\nArgs :\n    x: space before the colon.")
+        assert section.search("A summary.\n\nNon-standard:\n    x: hyphenated.")
         # ...and the allowlist is what spares the two ruled-permitted ones, not the pattern.
         assert section.search("A summary.\n\nNote:\n    still prose.")
-        assert {m.group(0).strip() for m in section.finditer("Note:\nWarning:")} <= (
-            WIRE_VISIBLE_SECTIONS
-        )
+        matched = {m.group(0).strip() for m in section.finditer("Note:\nWarning:")}
+        # Asserted as EQUALITY, not `<=`: an empty set is a subset of anything, so the subset
+        # form passed silently if the pattern ever stopped matching (review, 2026-07-31).
+        assert matched == {"Note:", "Warning:"}
+        assert matched == set(WIRE_VISIBLE_SECTIONS)
         # Ordinary prose containing a colon is NOT a section header — the shape is a whole line.
         assert not section.search("Two fields answer this: images and faces.")
+
+    def test_the_wire_visible_allowlist_is_exactly_two_members(self) -> None:
+        """The allowlist must not absorb the ban it guards (review, 2026-07-31).
+
+        Every other assertion about :data:`WIRE_VISIBLE_SECTIONS` is a subset check, so adding
+        ``"Returns:"`` or ``"Parameters:"`` to silence a red build passed the whole file —
+        ``PYTHON_INTERNALS`` names none of them and the family scan skips anything allowlisted.
+        That is the "widen the exception until the rule is empty" shape this project bans.
+
+        Two members, and they are a c2-3 Q1 ruling: ``Note:`` and ``Warning:`` are the only
+        headers ``main._DOCSTRING_SECTIONS`` deliberately does not truncate, because they are
+        prose a TypeScript reader wants. A third is a decision, made here, against this test.
+        """
+        assert WIRE_VISIBLE_SECTIONS == frozenset({"Note:", "Warning:"})
+        # …and the reason they are allowlisted: the truncator lets them through, so they WILL
+        # reach a description. Every other header it knows is cut before the scan ever sees it.
+        assert not (WIRE_VISIBLE_SECTIONS & main_module._DOCSTRING_SECTIONS)
 
     def test_the_summary_itself_survives(self) -> None:
         """Truncation keeps the useful half — the prose c2-9 needs on hover.
