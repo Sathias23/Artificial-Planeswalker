@@ -106,6 +106,12 @@ describe('wire shapes are declared once, by the backend (NFR-03, AD-12)', () => 
     // `git ls-files`: an untracked plant passes vacuously — a declared limit, in the README's
     // blind-spot map.)
     expect(wireShapes).toContain('Card')
+    // c3-3's format-check models, and the first shapes in the ban that come from `src/logic`
+    // rather than `src/data` — the ban does not care which layer described them, only that the
+    // backend did. Probed 2026-08-01 the same way `Card` was, by staging a
+    // `type FormatCheckReport = { x: 1 }` in `src/`, which this suite caught by name.
+    expect(wireShapes).toContain('FormatCheckReport')
+    expect(wireShapes).toContain('FormatCheckRow')
     expect(aliasShapes).toContain('ErrorReason')
     expect(trackedFiles).toContain('src/api/schema.ts')
     expect(outsideApi.length).toBeGreaterThan(0)

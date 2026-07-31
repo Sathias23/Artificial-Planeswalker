@@ -966,11 +966,15 @@ class TestCommittedSchema:
         assert names, "no component schemas parsed — the fixture is not reading a real document"
         assert "HealthResponse" in names, "the pre-c3-1 shapes are gone; this is not the schema"
 
-        # The same seven-name pin lives in test_routes_decks.py (c3-1's, which c3-2 updated):
-        # two hand-synchronised copies of one fact, so a story adding a component edits both or
-        # gets two reds naming the addition. A set-minus "delta" spelling used to follow this
-        # equality; it was fully implied by it and could never fail independently, so it was
+        # The same nine-name pin lives in test_routes_decks.py (c3-1's, which c3-2 and then c3-3
+        # updated): two hand-synchronised copies of one fact, so a story adding a component edits
+        # both or gets two reds naming the addition. A set-minus "delta" spelling used to follow
+        # this equality; it was fully implied by it and could never fail independently, so it was
         # removed (review round 2, 2026-07-31).
+        #
+        # c3-3 found this copy the way c3-2 found the *decks* one — by running the suite, not by
+        # reading the story, which had named only the other. Two copies is now a standing tax on
+        # every schema-adding story; ledgered in deferred-work.md rather than left as folklore.
         assert names == {
             "Card",
             "CardSummary",
@@ -978,6 +982,8 @@ class TestCommittedSchema:
             "DeckDetail",
             "DeckSummary",
             "ErrorResponse",
+            "FormatCheckReport",
+            "FormatCheckRow",
             "HealthResponse",
         }
 

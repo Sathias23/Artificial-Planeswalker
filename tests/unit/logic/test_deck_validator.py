@@ -634,6 +634,40 @@ class TestValidateDeck:
         assert len(legality_violations) == 1
         assert legality_violations[0].card_name == "Modern Staple"
 
+    def test_banned_card_is_its_own_rule_not_format_legality(self) -> None:
+        """A banned card reports ``banned_card``; a merely-not-legal one still reports
+        ``format_legality`` (c3-3, Q2). Both cards sit in the same deck so the two rules are
+        proven to *discriminate* rather than merely to exist."""
+        banned = _vd_card("banned", "Banned Bomb", legalities={"standard": "banned"})
+        elsewhere = _vd_card("elsewhere", "Modern Staple", legalities={"modern": "legal"})
+        deck = _vd_deck([_vd_deck_card(banned, 1), _vd_deck_card(elsewhere, 1)])
+
+        report = validate_deck(deck)
+
+        assert [v.card_name for v in report.violations if v.rule == "banned_card"] == [
+            "Banned Bomb"
+        ]
+        assert [v.card_name for v in report.violations if v.rule == "format_legality"] == [
+            "Modern Staple"
+        ]
+
+    def test_restricted_is_unchanged_by_the_banned_split(self) -> None:
+        """The latent bug the split deliberately did not fix: a restricted card is legal with a
+        1-copy limit, which this validator does not model, so it keeps reporting as not legal.
+        Pinned so a later change to that behaviour is a decision rather than a side effect."""
+        restricted = _vd_card(
+            "restricted", "Restricted Relic", legalities={"vintage": "restricted"}
+        )
+        deck = _vd_deck([_vd_deck_card(restricted, 1)])
+
+        report = validate_deck(deck, format="vintage")
+
+        assert any(
+            v.rule == "format_legality" and v.card_name == "Restricted Relic"
+            for v in report.violations
+        )
+        assert not any(v.rule == "banned_card" for v in report.violations)
+
     def test_null_legalities_and_games_coerce_without_raising(self) -> None:
         """A card whose DB ``legalities``/``games`` were NULL coerces to ``{}``/``[]`` at
         construction, so validate_deck never raises AttributeError/TypeError on

@@ -301,6 +301,13 @@ class TestTheTypedErrorContractSurvivesTheFallback:
         # The routers here must mirror build_app()'s. That coupling is deliberate and self-
         # announcing: a story that adds a router and forgets this line gets a red test naming the
         # missing path, which is a cheaper failure than a mount silently swallowing a route.
+        #
+        # The tax is on adding a ROUTER, not on adding a route. Measured at c3-3, which added
+        # /api/deck/{deck_id}/format-check to the existing decks router and needed no line here:
+        # both sides of the comparison build their path sets from these same router objects, so a
+        # new path on an already-listed router appears on both. deferred-work.md lists c3-3 among
+        # the stories owing this line; it did not. Check which kind of story you are before
+        # assuming you owe an edit.
         without_spa = FastAPI()
         without_spa.include_router(health.router)
         without_spa.include_router(decks.router)

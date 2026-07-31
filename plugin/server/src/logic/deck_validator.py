@@ -3,8 +3,15 @@
 This module provides business logic for validating deck construction rules:
 - Maximum 4 copies of any card (except basic lands - unlimited); singleton
   formats (brawl, commander, ...) get a 1-copy limit instead
-- Format legality checking
+- Format legality checking, with banned cards reported separately from cards
+  that are merely not in the format
 - Clear error messages for rule violations
+
+It also holds the **row projection** both shells render from (:func:`format_check`,
+story c3-3): ``validate_deck`` reports only what is *wrong*, while a panel needs a
+row per check including the ones that passed. The projection lives here rather than
+in a shell so there is one implementation of it (AD-1) — the same reasoning that
+moved c3-1's deck-count projection down into ``src/data/schemas``.
 
 All functions are pure business logic with no database or UI dependencies.
 """
@@ -160,6 +167,15 @@ def validate_card_addition(deck: Deck, card: Card, quantity: int) -> ValidationR
 # legality check and the copy limit are format-aware (singleton formats get a
 # 1-copy limit). Commander/Brawl 100-card minima remain out of scope (a
 # documented limitation).
+#
+# Restated at c3-3, because that story changed WHO READS IT. Until then this
+# limitation was reported to an agent, which could caveat it; c3-3 puts the size
+# check on a panel a person looks at, so a Commander deck is now told in the UI
+# that 60 cards is enough when the format wants 100. Brawl and standardbrawl are
+# genuinely 60, so the 20 brawl-family decks in the real deck table are correct
+# and only Commander is affected — measured, not assumed. Deliberately NOT fixed
+# there: a per-format minimum is a rule change in this module, not a projection
+# concern. Ledgered in deferred-work.md with a named home.
 _MIN_MAINBOARD = 60
 _MAX_SIDEBOARD = 15
 _MAX_COPIES = 4
@@ -214,27 +230,43 @@ _KNOWN_FORMATS = frozenset(
 )
 
 
+DeckViolationRule = Literal[
+    "min_deck_size",
+    "max_sideboard_size",
+    "copy_limit",
+    "singleton",
+    "format_legality",
+    "banned_card",
+    "game_availability",
+    "unknown_format",
+]
+"""The closed vocabulary of construction rules ``validate_deck`` can report.
+
+A named alias rather than an inline ``Literal`` so :data:`CHECK_FOR_RULE` can be pinned against
+its members: a rule added here without a row assignment fails
+``test_format_check.py::TestRuleCoverage`` by name, instead of silently vanishing from the panel.
+
+``banned_card`` is c3-3's addition (Q2, Brad 2026-07-31). Before it, a banned card and a card
+simply not printed into the format were one ``format_legality`` violation, which UX-DR21 lists as
+two separate checks. ``restricted`` is deliberately **not** a member: a restricted card is legal
+with a 1-copy limit, which this validator does not model, so it keeps reporting as
+``format_legality`` exactly as it did before the split.
+"""
+
+
 class DeckViolation(BaseModel):
     """A single deck-construction rule violation.
 
     Attributes:
         rule: The construction rule that was broken.
         card_name: The offending card's name when the violation is card-specific
-            (``copy_limit`` / ``singleton`` / ``format_legality`` /
+            (``copy_limit`` / ``singleton`` / ``format_legality`` / ``banned_card`` /
             ``game_availability``); ``None`` for whole-deck rules
             (``min_deck_size`` / ``max_sideboard_size`` / ``unknown_format``).
         detail: Human-readable explanation of the violation.
     """
 
-    rule: Literal[
-        "min_deck_size",
-        "max_sideboard_size",
-        "copy_limit",
-        "singleton",
-        "format_legality",
-        "game_availability",
-        "unknown_format",
-    ]
+    rule: DeckViolationRule
     card_name: str | None = None
     detail: str
 
@@ -273,8 +305,13 @@ def validate_deck(
       In singleton formats (``_SINGLETON_FORMATS`` — brawl, standardbrawl,
       commander, gladiator, etc.) the limit is 1 instead, reported as
       ``singleton``.
-    - **Format legality:** each distinct card must be ``legal`` in ``format``
-      (``format_legality``).
+    - **Format legality:** each distinct card must be ``legal`` in ``format``.
+      A card whose legality is exactly ``banned`` is reported as ``banned_card``;
+      anything else that is not ``legal`` — ``not_legal``, and also ``restricted``
+      — is reported as ``format_legality`` (c3-3, Q2). The two are separate
+      because UX-DR21 asks for them as separate checks; ``restricted`` stays with
+      the plain legality rule because a restricted card is legal with a 1-copy
+      limit, which this validator does not model.
     - **Game availability:** when ``games`` is provided, each distinct card must
       be available on at least one requested platform (``game_availability``).
 
@@ -381,14 +418,29 @@ def validate_deck(
 
     # Per-distinct-card format legality + optional game availability.
     for card in card_by_id.values():
-        if known_format and card.legalities.get(format) != "legal":
-            violations.append(
-                DeckViolation(
-                    rule="format_legality",
-                    card_name=card.name,
-                    detail=f"'{card.name}' is not legal in {format}.",
+        # Read the value once and branch on it. Scryfall's legality vocabulary is four values
+        # (measured over the shipped corpus: not_legal 516,401 / legal 362,238 / banned 1,275 /
+        # restricted 89) and only `banned` splits off here. Note what this deliberately does NOT
+        # do: `restricted` falls through to the same branch it always did, so the split changes
+        # no verdict for a restricted card (c3-3, Q2 — ledgered, not fixed).
+        if known_format:
+            legality = card.legalities.get(format)
+            if legality == "banned":
+                violations.append(
+                    DeckViolation(
+                        rule="banned_card",
+                        card_name=card.name,
+                        detail=f"'{card.name}' is banned in {format}.",
+                    )
                 )
-            )
+            elif legality != "legal":
+                violations.append(
+                    DeckViolation(
+                        rule="format_legality",
+                        card_name=card.name,
+                        detail=f"'{card.name}' is not legal in {format}.",
+                    )
+                )
         if games and not (set(card.games) & set(games)):
             violations.append(
                 DeckViolation(
@@ -404,4 +456,241 @@ def validate_deck(
         mainboard_count=mainboard_count,
         sideboard_count=sideboard_count,
         violations=violations,
+    )
+
+
+# --- The row projection (Story c3-3) ---
+
+FormatCheckStatus = Literal["pass", "advisory", "violation"]
+"""How one check came out. Exactly three outcomes, and no fourth.
+
+``pass`` — the check ran and the deck satisfies it. ``violation`` — the check ran and the deck
+breaks it. ``advisory`` — the check could **not** be answered from local data, so neither verdict
+would be honest. Domain vocabulary, not presentation: mapping these onto a visual tone is the
+consuming shell's job, not this module's.
+"""
+
+FormatCheckName = Literal["legality", "size", "copy_limit", "sideboard", "banned", "rotation"]
+"""The checks a format-check report covers, one row each."""
+
+CHECK_ORDER: tuple[FormatCheckName, ...] = (
+    "legality",
+    "size",
+    "copy_limit",
+    "sideboard",
+    "banned",
+    "rotation",
+)
+"""The order rows are emitted in, declared rather than left to a dict's insertion accident.
+
+The sequence is UX-DR21's own listing, so a reader can lay this beside the artefact and see they
+agree. A consumer renders a stable panel because of this constant; reordering it reorders every
+panel, which is why it is a named constant with a test on it rather than a literal inside a loop.
+"""
+
+CHECK_FOR_RULE: dict[DeckViolationRule, FormatCheckName | None] = {
+    "min_deck_size": "size",
+    "max_sideboard_size": "sideboard",
+    "copy_limit": "copy_limit",
+    "singleton": "copy_limit",
+    "format_legality": "legality",
+    "banned_card": "banned",
+    # Not a row: UX-DR21 names six checks and platform availability is not one of them. It can
+    # only be produced by passing `games` to validate_deck, which format_check never does — the
+    # mapping is here so the coverage pin below is total rather than selective.
+    "game_availability": None,
+    # Not a row either, and for a different reason: an unrecognised format does not BREAK the
+    # legality check, it makes it unanswerable. It is handled as the advisory branch of the
+    # legality and banned rows rather than as a violation of anything.
+    "unknown_format": None,
+}
+"""Which validator rule feeds which row, for **every** member of :data:`DeckViolationRule`.
+
+Total by construction and pinned that way: ``test_format_check.py`` asserts the key set equals
+the ``Literal``'s members, so a rule added to the vocabulary without a decision here fails by
+name. ``None`` is a decision — *this rule is deliberately not shown* — not an omission.
+
+Note that ``rotation`` appears in no value: nothing in this database can produce it. See
+:func:`format_check`.
+"""
+
+
+class FormatCheckRow(BaseModel):
+    """One check in a deck's format report: what was checked, how it came out, and why.
+
+    ``status`` is one of ``pass``, ``advisory`` or ``violation``. ``advisory`` means the check
+    could not be answered rather than that the deck failed it — an unrecognised format, or a
+    check with no local data behind it — so it should never be presented as a fault in the deck.
+    A row is present for every check whether or not anything is wrong, so a panel can render a
+    complete list rather than only bad news.
+
+    Attributes:
+        check: Which of the six checks this row reports.
+        status: The outcome.
+        detail: A human-readable sentence explaining the outcome. When several cards break the
+            same check, this names the first and counts the rest.
+    """
+
+    check: FormatCheckName
+    status: FormatCheckStatus
+    detail: str
+
+
+class FormatCheckReport(BaseModel):
+    """A deck's construction legality, as one row per check rather than a list of faults.
+
+    The same shape whatever the answer: a deck whose format cannot be checked gets this report
+    with its unanswerable rows marked advisory, never a different body and never an error. Rows
+    arrive in a fixed order, so a rendered panel does not reshuffle between refetches.
+
+    Attributes:
+        is_legal: Whether the deck broke no checked rule at all. An unrecognised format counts
+            as a broken rule in the underlying validator, so this is ``False`` when
+            ``format_recognized`` is ``False``; read the rows for what actually happened.
+        format: The format the deck was checked against, lowercased and stripped — which may
+            differ in case from the format stored on the deck. Empty when the deck has none.
+        format_recognized: Whether ``format`` is a format this project knows how to check.
+            ``False`` means there was nothing to check legality against, which is why the
+            legality and banned rows are advisory rather than passing.
+        mainboard_count: Total mainboard cards, summed by quantity.
+        sideboard_count: Total sideboard cards, summed by quantity.
+        rows: One row per check, in a fixed order.
+    """
+
+    is_legal: bool
+    format: str
+    format_recognized: bool
+    mainboard_count: int
+    sideboard_count: int
+    rows: list[FormatCheckRow]
+
+
+_ROTATION_DETAIL = (
+    "Rotation exposure cannot be checked: the local card data carries no set release dates."
+)
+"""Why the rotation row is permanently advisory (c3-3, Q3).
+
+Measured on the shipped database rather than assumed: ``cards`` has 23 columns and none of them
+is a release date, there is no sets table, and the importer reads ``released_at`` only to pick a
+canonical printing before discarding it. Answering rotation properly needs a schema change, an
+importer change, a migration, a full re-import **and** a rotation-schedule source Scryfall's bulk
+data does not provide — which is its own story, ledgered in ``deferred-work.md``. Until then the
+honest answer is that this cannot be determined, which is what ``advisory`` is for.
+"""
+
+
+def _summarise(violations: list[DeckViolation]) -> str:
+    """Render *violations* as one sentence for a single row.
+
+    Args:
+        violations: The violations that landed on one check; never empty.
+
+    Returns:
+        The first violation's detail, followed by a count of the rest when there are any. The
+        panel has one row per check, so N faults have to become one sentence somewhere; doing it
+        here keeps the prose beside the rules rather than in a shell.
+    """
+    first = violations[0].detail
+    remaining = len(violations) - 1
+    return first if remaining == 0 else f"{first} (+{remaining} more)"
+
+
+def _unanswerable(format: str, subject: str) -> str:
+    """Explain that *subject* could not be checked because *format* is not a usable format.
+
+    Args:
+        format: The normalised format string, possibly empty.
+        subject: What could not be checked, as a noun phrase.
+
+    Returns:
+        A sentence naming the format when there is one to name. A deck with no format at all
+        gets prose rather than a quoted empty string, which is true but reads as a bug.
+    """
+    if not format:
+        return f"This deck has no format set, so {subject} could not be checked."
+    return f"'{format}' is not a recognized format, so {subject} could not be checked."
+
+
+def format_check(deck: Deck, *, format: str | None = None) -> FormatCheckReport:
+    """Project a deck's validation onto one row per check, passes included.
+
+    ``validate_deck`` answers "what is wrong with this deck", which is what an agent asked a
+    question needs. A panel needs the other half too: a row for every check, so a reader can see
+    that the copy limit was examined and satisfied rather than inferring it from silence. This
+    reshapes the former into the latter and reimplements no rule doing it — every verdict below
+    comes from a violation the validator produced, or from its absence.
+
+    Five of the six checks are answerable. **Rotation is not**, at any cost short of a schema
+    change, so its row is permanently advisory; see ``_ROTATION_DETAIL``. An unrecognised or
+    missing format makes two more rows advisory rather than failing them, because a format that
+    cannot be checked is not the same as a deck that breaks the rules.
+
+    Args:
+        deck: The deck to check. It must have been loaded with its cards eagerly attached
+            (``DeckRepository.get_deck_with_cards``) — a deck whose ``deck_cards`` were never
+            loaded reads as empty and produces a confident report about a 0-card deck.
+        format: The format to check against. Defaults to the deck's own ``format``, which is the
+            only thing a caller checking "is this deck legal" wants; pass one explicitly to ask
+            a what-if question instead.
+
+    Returns:
+        A ``FormatCheckReport`` carrying one row per check, in ``CHECK_ORDER``.
+    """
+    checked = deck.format if format is None else format
+    report = validate_deck(deck, format=checked or "")
+    normalised = report.format
+    recognized = not any(v.rule == "unknown_format" for v in report.violations)
+
+    by_check: dict[FormatCheckName, list[DeckViolation]] = {name: [] for name in CHECK_ORDER}
+    for violation in report.violations:
+        row = CHECK_FOR_RULE[violation.rule]
+        if row is not None:
+            by_check[row].append(violation)
+
+    singleton = normalised in _SINGLETON_FORMATS
+    passed: dict[FormatCheckName, str] = {
+        "legality": f"Every card is legal in {normalised}.",
+        "size": (
+            f"Mainboard has {report.mainboard_count} cards; "
+            f"{normalised} requires at least {_MIN_MAINBOARD}."
+        ),
+        "copy_limit": (
+            f"No non-basic card appears more than once; {normalised} is a singleton format."
+            if singleton
+            else f"No card exceeds {_MAX_COPIES} copies; basic lands are exempt."
+        ),
+        "sideboard": (
+            f"Sideboard has {report.sideboard_count} cards; the maximum is {_MAX_SIDEBOARD}."
+        ),
+        "banned": f"No card is banned in {normalised}.",
+    }
+    # What each format-dependent row says when there is no format to check it against. Only these
+    # two are affected: size, copy limit and sideboard are format-independent structural rules
+    # and keep answering (the copy limit's *value* depends on the format, and an unrecognised one
+    # is not singleton, so it falls back to the plain 4-copy rule the validator applies).
+    unanswerable: dict[FormatCheckName, str] = {
+        "legality": _unanswerable(normalised, "legality"),
+        "banned": _unanswerable(normalised, "banned cards"),
+    }
+
+    rows: list[FormatCheckRow] = []
+    for name in CHECK_ORDER:
+        if name == "rotation":
+            rows.append(FormatCheckRow(check=name, status="advisory", detail=_ROTATION_DETAIL))
+        elif not recognized and name in unanswerable:
+            rows.append(FormatCheckRow(check=name, status="advisory", detail=unanswerable[name]))
+        elif by_check[name]:
+            rows.append(
+                FormatCheckRow(check=name, status="violation", detail=_summarise(by_check[name]))
+            )
+        else:
+            rows.append(FormatCheckRow(check=name, status="pass", detail=passed[name]))
+
+    return FormatCheckReport(
+        is_legal=report.is_legal,
+        format=normalised,
+        format_recognized=recognized,
+        mainboard_count=report.mainboard_count,
+        sideboard_count=report.sideboard_count,
+        rows=rows,
     )

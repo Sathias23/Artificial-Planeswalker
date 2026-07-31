@@ -81,6 +81,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/deck/{deck_id}/format-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Deck Format Check
+         * @description Check one saved deck against its own format, as a row per check rather than a fault list.
+         *
+         *     Six checks — legality, deck size, copy limit, sideboard, banned cards and rotation exposure
+         *     — each answered with ``pass``, ``advisory`` or ``violation`` and a sentence explaining the
+         *     outcome. A row is present whether or not anything is wrong, so the whole check list can be
+         *     rendered rather than only the bad news.
+         *
+         *     ``advisory`` means a check could **not** be answered, not that the deck failed it. Two
+         *     things produce it: rotation, which no local data can determine, and a deck whose format is
+         *     missing or unrecognised, which leaves legality and banned cards with nothing to check
+         *     against. A deck in that state is still answered with an ordinary report — the same shape as
+         *     every other answer, never an error.
+         *
+         *     The verdicts come from the same rules the agent-side deck validator applies, so the two
+         *     surfaces can never disagree about whether a deck is legal.
+         */
+        get: operations["read_deck_format_check_api_deck__deck_id__format_check_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cards/{card_id}": {
         parameters: {
             query?: never;
@@ -417,6 +451,52 @@ export interface components {
             reason: "deck_not_found" | "card_not_found" | "database_not_initialized" | "database_unavailable" | "invalid_request" | "payload_too_large" | "internal_error";
         };
         /**
+         * FormatCheckReport
+         * @description A deck's construction legality, as one row per check rather than a list of faults.
+         *
+         *     The same shape whatever the answer: a deck whose format cannot be checked gets this report
+         *     with its unanswerable rows marked advisory, never a different body and never an error. Rows
+         *     arrive in a fixed order, so a rendered panel does not reshuffle between refetches.
+         */
+        FormatCheckReport: {
+            /** Is Legal */
+            is_legal: boolean;
+            /** Format */
+            format: string;
+            /** Format Recognized */
+            format_recognized: boolean;
+            /** Mainboard Count */
+            mainboard_count: number;
+            /** Sideboard Count */
+            sideboard_count: number;
+            /** Rows */
+            rows: components["schemas"]["FormatCheckRow"][];
+        };
+        /**
+         * FormatCheckRow
+         * @description One check in a deck's format report: what was checked, how it came out, and why.
+         *
+         *     ``status`` is one of ``pass``, ``advisory`` or ``violation``. ``advisory`` means the check
+         *     could not be answered rather than that the deck failed it — an unrecognised format, or a
+         *     check with no local data behind it — so it should never be presented as a fault in the deck.
+         *     A row is present for every check whether or not anything is wrong, so a panel can render a
+         *     complete list rather than only bad news.
+         */
+        FormatCheckRow: {
+            /**
+             * Check
+             * @enum {string}
+             */
+            check: "legality" | "size" | "copy_limit" | "sideboard" | "banned" | "rotation";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pass" | "advisory" | "violation";
+            /** Detail */
+            detail: string;
+        };
+        /**
          * HealthResponse
          * @description The body of ``GET /health`` — the companion's unauthenticated identity probe (FR-14).
          *
@@ -573,6 +653,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeckDetail"];
+                };
+            };
+            /** @description reason: invalid_request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: deck_not_found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: payload_too_large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: internal_error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: database_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_deck_format_check_api_deck__deck_id__format_check_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deck_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FormatCheckReport"];
                 };
             };
             /** @description reason: invalid_request */

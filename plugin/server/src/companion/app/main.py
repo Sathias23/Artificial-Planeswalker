@@ -397,7 +397,10 @@ def build_app() -> FastAPI:
     # list order, so a mount at "/" matches every path and shadows everything registered after it
     # — silently: a route would answer 200 with index.html instead of running the endpoint.
     # c3-1's decks router and c3-2's cards router are registered above this line; c5-2 and c5-5
-    # add theirs there too.
+    # add theirs there too. (c3-3 added a route and edited nothing here, by design: its
+    # format-check endpoint is a deck sub-resource that joined the decks router, which is already
+    # above this line. A story adding a route to an EXISTING router inherits the ordering; only a
+    # story adding a router has to touch this block.)
     #
     # Note that /api specifically is ALSO protected by spa.py's _RESERVED_SEED, so c3-1's two
     # routes survive being registered late (measured: they still answer). That belt-and-braces

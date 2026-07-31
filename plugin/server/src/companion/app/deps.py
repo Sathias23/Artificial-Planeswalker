@@ -283,16 +283,17 @@ DbSession = Annotated[AsyncSession, Depends(get_session)]
 """The annotation every data-backed handler writes, and the only one it should.
 
 Stories c3-1 (``GET /api/decks``, ``GET /api/deck/{deck_id}``), c3-2
-(``GET /api/cards/{card_id}``) and c3-3 (the format check) annotate a parameter with this and
-inherit the whole contract: the lazy engine, the readiness probe, the ``503`` tokens and the shared
-recipe. None of them re-derives any of it. **c3-1 and c3-2 are both shipped and did exactly that**
-— neither constructs an engine, calls ``is_database_initialized``, reads ``request.app.state`` or
-writes a ``try/except DatabaseError``, and both prove the two ``503`` answers through their real
-routes.
+(``GET /api/cards/{card_id}``) and c3-3 (``GET /api/deck/{deck_id}/format-check``) annotate a
+parameter with this and inherit the whole contract: the lazy engine, the readiness probe, the
+``503`` tokens and the shared recipe. None of them re-derives any of it. **All three are shipped
+and did exactly that** — none constructs an engine, calls ``is_database_initialized``, reads
+``request.app.state`` or writes a ``try/except DatabaseError``, and each proves the two ``503``
+answers through its real routes.
 
 Mind the two spellings, which are not a typo: the deck detail route is **singular**
 ``/api/deck/{deck_id}`` and the card route is **plural** ``/api/cards/{card_id}``. Each matches
-the PRD, the spine, the epic split and (for the deck) c3-3's own format-check route.
+the PRD, the spine, the epic split — and c3-3's format check hangs off the singular one as
+``/api/deck/{deck_id}/format-check``, so the deck spelling now has two routes behind it.
 
 Example:
     >>> from typing import get_args
