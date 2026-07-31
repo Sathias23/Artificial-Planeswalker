@@ -15,8 +15,9 @@
  * 2. **Nothing outside `src/api/` re-declares a shape the backend already describes** — no
  *    hand-written `interface HealthResponse`. `ui/tests/wire-contract.test.ts` reads the
  *    `components.schemas` keys out of the committed `openapi.json` and fails on any such
- *    declaration, so the rule grows on its own as **c3-1** adds deck models and **c5-1** adds the
- *    event envelope.
+ *    declaration, so the rule grows on its own — it did exactly that when **c3-1** added the four
+ *    deck models, with no edit to the test, and it will again when **c5-1** adds the event
+ *    envelope.
  *
  * `import type` / `export type` only: `verbatimModuleSyntax` is on, and nothing about a `.d.ts`
  * may reach the runtime bundle.

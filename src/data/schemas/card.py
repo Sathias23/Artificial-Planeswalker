@@ -89,17 +89,21 @@ class Card(BaseModel):
 
 
 class CardSummary(BaseModel):
-    """Lightweight card projection for list-returning tools (search, etc.).
+    """The card fields needed to identify and display a card in a list.
 
-    A bounded subset of :class:`Card` for tools that return many cards at once
-    (e.g. ``search_cards``), keeping the payload small for LLM clients. Retains
-    ``oracle_text`` for relevance while omitting the heavy detail fields
-    (``legalities``, ``image_uris``, ``card_faces``). Because
-    ``from_attributes=True`` is set, ``CardSummary.model_validate(card)`` builds
-    a summary directly from a full ``Card``. Callers that need full detail (e.g.
-    legalities/images) should follow up with ``lookup_card_by_name``.
+    A bounded subset of the full card record: name, mana cost, converted mana
+    cost, type line, oracle text, colours, rarity and set code. It omits the
+    heavy detail fields — legalities, image URIs and card faces — so a response
+    carrying many cards stays small. Fetch the full card separately when that
+    detail is needed.
 
-    ``set_name`` may be added later if display needs it.
+    Attributes:
+        Used by list-returning tools (e.g. ``search_cards``), where payload size
+        matters most for LLM clients. Because ``from_attributes=True`` is set,
+        ``CardSummary.model_validate(card)`` builds a summary directly from a full
+        :class:`Card`. Callers needing legalities/images follow up with
+        ``lookup_card_by_name``. ``set_name`` may be added later if display needs
+        it.
     """
 
     model_config = ConfigDict(from_attributes=True)

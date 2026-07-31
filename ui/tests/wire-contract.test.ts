@@ -9,8 +9,10 @@
  * clause.
  *
  * Reading the schema is what gives the rule its authority and its growth: it covers exactly the
- * shapes the backend actually describes today, and it picks up **c3-1**'s deck models and
- * **c5-1**'s event-envelope payloads on the day those routes land, with no edit here. A hard-coded
+ * shapes the backend actually describes today. c3-1's four deck models arrived that way
+ * (2026-07-31) — the ban list grew with no edit to the mechanism; the only additions here were
+ * two non-vacuity anchors asserting the growth happened (c3-1 review). **c5-1**'s event-envelope
+ * payloads will be picked up the same way on the day those routes land. A hard-coded
  * name list would stop growing and become decoration — do not turn it into one. The aliases
  * `src/api/schema.ts` re-exports are read the same way (from that file's `export type` lines),
  * because a derived alias like `ErrorReason` never appears in `components.schemas` yet is
@@ -92,6 +94,12 @@ describe('wire shapes are declared once, by the backend (NFR-03, AD-12)', () => 
   it('is reading a populated schema, alias list and source tree', () => {
     expect(wireShapes.length).toBeGreaterThan(0)
     expect(wireShapes).toContain('HealthResponse')
+    // c3-1's deck models, anchored the same way HealthResponse is. This is NOT the ban list —
+    // `bannedShapes` stays derived (landmine 14). It is the non-vacuity anchor, and it is what
+    // makes a regeneration that silently drops the deck shapes from `components.schemas` go red
+    // in CI rather than quietly shrinking the ban to nothing.
+    expect(wireShapes).toContain('DeckSummary')
+    expect(wireShapes).toContain('DeckDetail')
     expect(aliasShapes).toContain('ErrorReason')
     expect(trackedFiles).toContain('src/api/schema.ts')
     expect(outsideApi.length).toBeGreaterThan(0)
