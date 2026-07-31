@@ -430,10 +430,10 @@ listed below roughly in the order they will bite.
   - [x] `deferred-work.md` entries with named homes
   - [x] Fill the Dev Agent Record; update `sprint-status.yaml`
 
-- [ ] **Task 6 — Same-day three-layer review before the PR** (C2 retro action item 6, standing)
-  - [ ] `bmad-code-review` (Blind Hunter + Edge Case Hunter + Acceptance Auditor) before raising the PR
-  - [ ] Apply patches, then re-run every gate and paste the output
-  - [ ] Raise the PR into `feat/companion-c3`
+- [x] **Task 6 — Same-day three-layer review before the PR** (C2 retro action item 6, standing)
+  - [x] `bmad-code-review` (Blind Hunter + Edge Case Hunter + Acceptance Auditor) before raising the PR
+  - [x] Apply patches, then re-run every gate and paste the output
+  - [ ] Raise the PR into `feat/companion-c3` — **awaiting Brad's go-ahead**
 
 ---
 
@@ -1020,11 +1020,100 @@ count-only query would be a second read path over one shape.
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 - `_bmad-output/implementation-artifacts/c3-1-deck-list-and-deck-detail-endpoints.md`
 
+### Code review (three-layer, same-day, 2026-07-31)
+
+`bmad-code-review` — Blind Hunter + Edge Case Hunter + Acceptance Auditor, launched in parallel with
+no shared context, against `git diff 02b2c45`. **~40 raw findings, 14 patches applied, 8 ledgered,
+1 decision for Brad.** Every disputed claim was re-measured locally before acting on it; two agent
+claims were checked and one was corrected (see "not accepted" below).
+
+**The theme, and it is uncomfortable: the story's own evidence contained the refutation of two of its
+claims, and I read past both.** Probe 1's "19 failed, 9 passed" — I attributed the 9 passes to schema
+tests without checking which they were. Three of them were the AC 13 tests, which passed *because
+they were vacuous*. And the AC 9 grep I pasted showed two line ranges under a caption reading "the
+one implementation".
+
+**Patches applied (14):**
+
+| # | Sev | Finding | Fix |
+| --- | --- | --- | --- |
+| R1 | **High** | **`TestNotShadowedBySpa` passed with the router deleted.** `/api` is in `spa.py`'s `_RESERVED_SEED`, so an unrouted `/api/decks` is refused by the mount and answered `404 application/json {"reason": "invalid_request"}` — JSON, no doctype. Both tests asserted only content-type and absence of doctype, so AC 13 had no test at all | Assert **status and body**; added a third test pinning the unrouted-`/api` outcome as the live contrast case. **Re-probed: both now fail with the router removed** |
+| R2 | **High** | **AC 9's "exactly one implementation" was not achieved.** `DeckSummary.from_deck` and `DeckDetail.from_deck` each restated all eleven fields — the same duplication the deleted `_deck_summary`/`_deck_detail` pair had. Adding a `DeckSummary` field would have silently defaulted it on the detail route | Fields built once in `DeckSummary._summary_fields`; `DeckDetail.from_deck` extends that dict with `cards`. The count arithmetic is now one line |
+| R3 | **High** | **Nothing tied the nested `CardSummary` to its entry.** Mutation-tested by the reviewer: every entry nesting the *wrong* card left all 28 tests green, because every seeded card was identical on the fields asserted | Fixture cards now differ per card (`mana_cost`, `type_line` derived from id); new `test_each_entry_nests_its_own_card` asserts `card.id == card_id` **and** a second independent link, with a non-vacuity check that the entries genuinely differ. **Re-probed: the mutation now fails** |
+| R4 | **High** | **`DeckDetail`'s docstring claimed cards come back "in the order the deck stores them". They do not.** Measured: inserted `zzz, mmm, aaa` → returned `aaa, mmm, zzz`. The relationship declares no `order_by`, so entries arrive in composite-PK (`card_id`) order — a Scryfall UUID, i.e. arbitrary | Both docstrings corrected to state the order is not meaningful and a consumer must sort. The ordering itself is `src/data` with MCP blast radius — not changed here |
+| R5 | Med | **A brand-new forward-dated comment was wrong — the exact defect this story was chartered to fix.** `dump_openapi.py` named c3-2's route `/api/card/{card_id}` (singular) while five artefacts *and `deps.py` in the same diff* say `/api/cards/{card_id}` | Corrected to plural |
+| R6 | Med | **`main.py`'s new comment overclaimed.** It said the shadowing hazard is "not hypothetical any more" and cited `GET /api/decks` as proof — but `/api` is the one prefix structurally immune to it (R1) | Rewritten: names the belt-and-braces, says it does **not** generalise, and cites c5-5's novel `/agent` prefix as the real hazard |
+| R7 | Med | **AC 16's non-vacuity assertion was omitted on reasoning that does not hold.** I argued adding it would edit the file the AC forbids editing — but `wire-contract.test.ts` *already* contains `expect(wireShapes).toContain('HealthResponse')` as exactly that anchor. Landmine 14 bans enumerating the **ban list**, not the anchor | Added `toContain('DeckSummary')` / `toContain('DeckDetail')` beside the existing anchor, with a comment distinguishing the two. `bannedShapes` stays derived |
+| R8 | Med | **`_is_ref_rooted`'s array branch had an unprobed evasion** — it checked `type == "array"` without rejecting a sibling `properties`, so an array *of* an inline envelope passed | Keyed on an object-shaping **family** (`properties`, `additionalProperties`, `allOf`, `anyOf`, …). First attempt was too strict and broke on FastAPI's generated `title` — caught by the suite, and both cases are now in the proof table |
+| R9 | Med | **The "non-vacuity" pair in `test_the_component_names_are_exactly_these` was tautological.** `"HealthResponse" in names` and `len(names) == 6` after `names == {six}` are logically implied and can never fail independently | Anchors moved **before** the equality, where they can genuinely fail, with messages |
+| R10 | Low | **The `ready_db` fixture did not make anything ready** — it only set the env var, so a test that forgot `_ready_database` got `503`, which for the several tests asserting on 503/404 bodies is a plausible false green | The fixture now builds the database; the redundant per-test calls are gone |
+| R11 | Low | **`test_a_healthy_database_answers_normally` accepted `200 or 404`**, so the detail half reduced to "is not one of two bodies" — a handler that 404'd unconditionally would pass | Asserts the exact expected answer per path |
+| R12 | Low | **`read_deck`'s docstring claimed there is "no separate malformed-id answer". Measured false**: `GET /api/deck/a%2Fb` → `404 invalid_request`, because Starlette decodes `%2F` before matching | Docstring now states the routing-level case explicitly |
+| R13 | Low | **`read_decks`' docstring said the list renders "without fetching any deck"**, which the eager-load contradicts | Reworded to "without transferring any decklist", with the cost recorded — see R14 |
+| R14 | Low | **The fix for R13 put internal detail on the wire.** I wrote it as a `Note:` — and `Note:` is one of the two headers `main.py` deliberately does **not** truncate, so "deferred-work.md" and "c10-3" crossed into `types.d.ts` and `/docs`. Caught by re-running my own AC 17 scan, which flagged the new `Note:` | Moved into a code comment, which never crosses the wire. The comment says why |
+
+**Ledgered, not fixed (8)** — all in `deferred-work.md` under "code review of c3-1", each with a
+named home: the `pydantic.ValidationError` escape (no handler in the companion stack; **measured
+four triggers** — orphaned row, `quantity < 1`, non-string JSON elements — with a **whole-list blast
+radius** on `GET /api/decks`; pre-existing, already the `data-layer-orphan-handling` backlog item,
+and AC 12 forbids fixing it in a route body); the `503 database_not_initialized` documentation gap
+(**decision for Brad**, below); `from_deck`'s silent zero counts on a non-eager-loaded `Deck` (now
+documented in both `Args:` blocks, but the structural fix is a `src/data` change); `HEAD` → `405`
+(pre-existing — `/health` behaves identically, so it needs one decision covering every route); the
+request-long SQLite SHARED lock with no WAL pragma; the `Attributes:`-as-truncation-marker hazard
+(the shared core's docstring *structure* is load-bearing for a companion-only rule that `src/data`
+never mentions); the README blind-spot index being line-number-keyed with no gate; and
+`test_spa.py`'s new hand-synchronised router list as a standing tax on c3-2…c5-5.
+
+**Not accepted (1).** The Acceptance Auditor reported that AC 21's own text mislocated the
+cascade-blindness guards in a fonts/typography file. Checked: AC 21 names no file for any entry, so
+there was nothing to correct — the misattribution was mine, in the research prompt. **My "two
+corrections to the AC text" claim was overstated and is withdrawn**; the UX-DR7/UX-DR47 correction is
+real and verified. The auditor also flagged AC 25's evidence as paraphrased rather than pasted, which
+is fair and is why the gate output below is literal.
+
+**Decision for Brad (1) — the undocumented 503.** Both routes can answer
+`503 database_not_initialized`, and the committed schema's `503` says only `database_unavailable`,
+because `build_app()`'s app-level `error_responses(...)` never passes the token. On a fresh install
+this is the **most common 503 the UI will see**, and `error_responses`' advertised
+tokens-sharing-a-status collapse has therefore never fired. Not fixed unilaterally: AC 5 says "do not
+add `database_not_initialized` app-wide as a side effect of this story", and declaring it per-route
+deviates from AC 6. Ledgered and homed at c3-9 pending a ruling.
+
+**Post-patch gates, from commit `8c0164f`:**
+
+```
+$ uv run ruff check .                 All checks passed!
+$ uv run ruff format --check .        289 files already formatted
+$ uv run mypy src/                    Success: no issues found in 85 source files
+$ uv run mypy src/ --platform win32   Success: no issues found in 85 source files
+$ uv run pytest                       1829 passed, 1 skipped in 81.03s
+
+ui/ $ npm run lint          (clean)
+ui/ $ npm run format:check  All matched files use Prettier code style!
+ui/ $ npm run typecheck     (clean)
+ui/ $ npm test              Test Files 28 passed (28) / Tests 549 passed (549)
+ui/ $ npm run build         built in 103ms
+
+# AC 15, both drift gates in their CI form, from the same commit:
+$ uv run pytest tests/unit/companion/test_openapi_contract.py
+  11 passed in 0.13s
+ui/ $ npm run gen:types && git status --porcelain
+  (no output — no drift)
+```
+
+Python **1798 → 1829** (+31). Frontend unchanged at **549** — R7's two assertions joined an existing
+`it` block. `test_list_decks_with_strategy_field` (landmine 16's known `created_at` tie flake) **hit
+once** during the post-patch sweep and passed on re-run in isolation, as its ledger entry predicts —
+the third confirmation, not a regression.
+
 ### Change Log
 
 | Date | Change |
 | --- | --- |
 | 2026-07-31 | Story contexted off `02b2c45`; 19 landmines, 25 ACs, 5 open questions |
+| 2026-07-31 | Implemented off `02b2c45` on `feat/companion-c3-1-deck-endpoints`. All 5 open questions "as proposed"; a 6th (AC 18 vs AC 20) raised and ruled comment-only-repairs. Python 1798 → 1827, frontend unchanged at 549, nine gates green, bundle + mirror byte-identical, plugin `.py` mirror rebuilt. Six mutation probes, all six caught |
+| 2026-07-31 | Three-layer code review: ~40 findings → 14 patches, 8 ledgered, 1 decision for Brad, 1 agent claim rejected. Headlines: the AC 13 tests were vacuous (proven by re-probe), AC 9's "one implementation" was two, and nothing tied a nested card to its entry. Committed `8c0164f`; both drift gates green in CI form. Python 1829, frontend 549. Status → review |
 | 2026-07-31 | Implemented off `02b2c45` on `feat/companion-c3-1-deck-endpoints`. All 5 open questions "as proposed"; a 6th (AC 18 vs AC 20) raised and ruled comment-only-repairs. Python 1798 → 1827, frontend unchanged at 549, nine gates green, bundle + mirror byte-identical, plugin `.py` mirror rebuilt. Six mutation probes, all six caught. Status → review |
 </content>
 </invoke>
