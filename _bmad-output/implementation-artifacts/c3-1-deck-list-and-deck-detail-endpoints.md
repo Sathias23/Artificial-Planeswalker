@@ -433,7 +433,8 @@ listed below roughly in the order they will bite.
 - [x] **Task 6 — Same-day three-layer review before the PR** (C2 retro action item 6, standing)
   - [x] `bmad-code-review` (Blind Hunter + Edge Case Hunter + Acceptance Auditor) before raising the PR
   - [x] Apply patches, then re-run every gate and paste the output
-  - [ ] Raise the PR into `feat/companion-c3` — **awaiting Brad's go-ahead**
+  - [x] Raise the PR into `feat/companion-c3` — **PR #29, raised 2026-07-31 after the post-commit
+        review pass** (Brad's go-ahead via the review workflow's apply-and-PR choice)
 
 ### Review Findings
 
