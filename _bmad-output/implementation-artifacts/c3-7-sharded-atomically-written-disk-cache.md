@@ -564,6 +564,15 @@ through Starlette and httpx. `asyncio.to_thread` is stdlib and needs nothing (Q2
         **sole** source — unmapped means served-not-cached — and removing the now-unused `url`
         parameter from `cache_extension` and `DiskCache.write` (an ignored argument is a lie in
         the contract); the signature test now pins `{"content_type"}`.
+  - [x] **Greptile round 2 (2026-08-02): 4/5, one P1 — *"accepted formats bypass the cache,
+        violating CM-2"* — DECLINED as designed (Brad's ruling), replied on the PR.** The
+        serve-not-store branch for an accepted-but-unmapped `image/*` type is Q4's ruled
+        posture, justified by measurement (exactly two formats across 245,760 URLs; webp/avif at
+        zero); caching an unmapped type means either the round-1 mislabel or widening a measured
+        two-entry map on speculation — the unused-hook mistake. The legitimate kernel (a corpus
+        format migration would silently degrade CM-2 feature-wide) is ledgered in
+        `deferred-work.md` with its trigger: the first *measured* third format widens
+        `CACHE_MEDIA_TYPES` by one entry.
 
 ### Review Findings (2026-08-01, three layers: Blind Hunter + Edge Case Hunter + Acceptance Auditor)
 

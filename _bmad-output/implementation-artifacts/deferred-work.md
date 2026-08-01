@@ -2646,6 +2646,25 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   **Home: c3-8**, beside the transient-startup entry above — both are "the cache's failure
   posture over time" questions. (Severity: Low.)
 
+- **A third image format in the corpus would be served and never cached, silently degrading CM-2
+  feature-wide — and the trigger that changes this is a measurement, not an argument.**
+  `CACHE_MEDIA_TYPES` is a closed two-entry map (`.jpg`/`.png`), justified by the corpus: exactly
+  two formats across all 245,760 stored URLs, `image/webp`/`image/avif` measured at **zero**.
+  `DiskCache.write` therefore treats an accepted-but-unmapped `image/*` header as *served, not
+  stored* — the ruled posture (Q4 + c3-2's "a true count read as a false rule": the count
+  justifies the map; it does not justify caching under a guessed extension, which Greptile's
+  round-1 P1 confirmed mislabels the bytes). Greptile's round-2 P1 flagged the flip side —
+  *"accepted formats bypass the cache, violating CM-2"* — **declined by Brad (2026-08-02)**:
+  CM-2 is satisfied for every image this corpus can produce, and caching formats measured at
+  zero is the unused-hook mistake. The real exposure is a Scryfall format migration behind
+  existing URLs, which would flip every write to the serve-not-store branch and announce itself
+  only as a per-request `INFO` line while the cache quietly stops growing. **The trigger is
+  written down so nobody re-litigates it**: the first *measured* third format in the corpus
+  widens `CACHE_MEDIA_TYPES` by exactly one entry (extension + media type, warm/cold agreement
+  preserved by construction) — a two-line change plus one discrimination test. **Home: whichever
+  story first measures a third format** (the c8-x data-refresh surfaces are the likeliest
+  observers); until then, unowned by design. (Severity: Low.)
+
 - **`DiskCache` trusts its callers for containment: `card_id`/`size`/`face` are validated by the
   route's own constraints, not by the class.** `path_for("../../..", ...)` escapes the root —
   demonstrated by the containment test's own firing half — and nothing in the class refuses it;
