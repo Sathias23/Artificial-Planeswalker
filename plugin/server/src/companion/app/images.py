@@ -6,7 +6,7 @@ the internet, and everything awkward about it follows from that: a response that
 answer for "the card is fine but the picture isn't", and a dependency that can be slow, absent or
 hostile.
 
-Three halves, deliberately separable:
+Four parts, deliberately separable:
 
 * :func:`resolve_face_images` is **pure** — no session, no client, no I/O. It answers *which of
   this card's image maps does face N mean?*, and it is the single piece of code in the app that
@@ -18,6 +18,10 @@ Three halves, deliberately separable:
 * :class:`Pacer` (c3-6) is the queue in front of it — one semaphore plus request spacing, held
   by the app and passed to every fetch. It is a *rate*, which is the one thing in this module
   whose correctness is timing, and it is why the clock and the sleep are constructor parameters.
+* :class:`DiskCache` (c3-7) sits in front of **both** — checked before the pacer is entered, so a
+  warm tile costs neither a permit nor a spacing turn. It is the **first code in**
+  ``src/companion`` **that writes to the user's disk**, and everything that follows from that is
+  on the class itself.
 
 **Why this is a second Scryfall client and not a reuse of the existing one.**
 ``src/data/importers/scryfall_api.py`` already talks to Scryfall, and
@@ -33,21 +37,33 @@ that used to describe it as *"small and UI-less, not closed"* has been replaced 
 than left to read as a live caveat. No code under ``ui/`` fetches an image until **c4-4**, so the
 first client this module ever serves will find the pacer already there.
 
+**The disk cache is here, and the epic's CM-2 criterion is satisfied** (c3-7, 2026-08-01). *"An
+image fetched once is not fetched again within the cache lifetime"* — the one acceptance criterion
+in this epic that another story had been waiting on. c3-6's docstring homed it here by name and
+recorded plainly that it did not satisfy it; :class:`DiskCache` now does, and
+``test_routes_card_image.py`` asserts it on the recorded fetch count rather than on a second
+``200``. The cache directory under ``data_dir()`` is created by the **lifespan**, never by
+``build_app()``, which still creates no directory and resolves no data path (AD-10) — see
+:func:`cache_root` for why that distinction survives being obvious.
+
 **What is deliberately NOT here**, so the absence reads as a decision rather than an omission:
 
-* **no disk cache** — story **c3-7**, which also owns the cache directory under ``data_dir()``.
-  Nothing here writes a file, and ``build_app()`` creates no directory (AD-10). This is also where
-  the epic's CM-2 acceptance criterion lives — *"an image fetched once is not fetched again within
-  the cache lifetime"*. **c3-6 does not satisfy it and does not pretend to**: there is no cache in
-  this module, so a repeat request repeats the fetch. Named here rather than paraphrased into
-  something adjacent, because an unsatisfiable claim gets an owner, not a rewording.
-* **no in-flight coalescing** — also **c3-7** (Q5, Brad 2026-08-01). Two *simultaneous* requests
-  for the same URL each get their own fetch. It is the one storm shape a semaphore does not
-  prevent, and it was declined here on ownership rather than merit: the thing being shared is a
-  *result*, and whether that result is bytes, a disk path or a ``Future`` depends entirely on what
-  c3-7 builds. Measured cost today is **zero extra fetches** on both 99-distinct-id decks, because
-  duplicate printings collapse in ``deck_cards`` before they reach the route; **c6-4**'s suggestion
-  rows beside the deck grid are the surface that would change that answer.
+* **no in-flight coalescing** — **declined a second time and re-homed on c3-8** (Q5, Brad
+  2026-08-01). Two *simultaneous* requests for the same key each get their own fetch and each
+  write; on Windows the loser's ``os.replace`` may raise ``PermissionError``, which is a log line
+  rather than a failed request. c3-6 declined it for a reason this story resolved — *"whether that
+  result is bytes, a disk path or a ``Future`` depends entirely on what c3-7 builds"* — and the
+  answer is bytes on disk, so the question was genuinely open here for the first time. **It is
+  declined on a different ground than c3-6's**: c3-8 needs the same structure for a different
+  purpose (*"is a fetch for this key already in flight, or already known-failed?"*), so building
+  the in-flight half here would leave c3-8 either inheriting a map shaped only for successes or
+  replacing it. One mechanism, built once, by the story that can see both halves. Measured cost of
+  declining, today: **zero extra fetches** on both 99-distinct-id decks, because duplicate
+  printings collapse in ``deck_cards`` before they reach the route. **c6-4**'s suggestion rows
+  beside the deck grid are the first surface that renders one card id twice on one screen, and
+  that is the trigger that flips the answer.
+* **no eviction, no size accounting, no TTL and no index** — the cache is unbounded in MVP
+  (AD-11); the documented location and the removal command are **c8-2**'s. See :class:`DiskCache`.
 * **no negative cache and no backoff** — story **c3-8**. A failure is answered and forgotten;
   the wire vocabulary it needs (``image_fetch_failed``) is already paid for, so c3-8 is pure
   behaviour with no schema change.
@@ -58,16 +74,20 @@ unused hook is a design decision made by a story that cannot see the requirement
 
 import asyncio
 import logging
+import os
+import tempfile
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
 import httpx
 from fastapi import FastAPI
 
+from src import paths
 from src.companion.app.errors import CompanionError
 from src.data.schemas.card import CardFace
 
@@ -115,10 +135,16 @@ Starlette sets no ``Cache-Control`` at all, which is why this has to be said out
 every tile is re-requested on every render, and NFR-05's one-second warm render pays for a
 hundred round trips it does not need.
 
-``immutable`` is safe here for a reason that was already decided: AD-11 keys the cache on id +
-size + face and **accepts serving a stale image** when a data refresh changes the URL, so a
-browser cache adds no new staleness class — it only removes repeat traffic. (The stored URLs carry
-a ``?<timestamp>`` cache-buster which is deliberately *not* part of that key.)
+``immutable`` is safe here for a reason that is no longer a forward reference: :class:`DiskCache`
+keys on id + size + face and **accepts serving a stale image** when a data refresh changes the URL
+(AD-11), so a browser cache adds no new staleness class — it only removes repeat traffic. The
+stored URLs carry a ``?<timestamp>`` cache-buster which is deliberately *not* part of that key, and
+``test_routes_card_image.py`` now measures that end to end rather than describing it: a stored
+row's ``image_uris`` are moved to a new ``?<timestamp>`` between two requests and the second still
+hits the existing entry with zero fetches (review 2026-08-01 — the earlier unit-level assertion
+was true by ``DiskCache.read``'s own signature, which takes no URL and so could not fail on one).
+The two caches therefore accept **the same** staleness for the same reason, which is what makes
+stacking them free.
 
 Byte-identical to ``spa.py``'s ``_IMMUTABLE_CACHE_CONTROL`` and pinned equal to it by
 ``test_routes_card_image.py``, rather than imported from it: that constant is private to the
@@ -237,6 +263,39 @@ not the same traffic spread over more connections.** The two constants therefore
 different conditions and neither substitutes for the other — collapsing them into one number
 satisfies neither.
 """
+
+CACHE_DIRECTORY_NAME = "image_cache"
+"""The cache's one directory, directly under :func:`src.paths.data_dir` (AD-11, NFR-09).
+
+A **name**, never a resolved path — see :func:`cache_root` for why that distinction is
+load-bearing. The documented location, the removal command and the uninstall notes that quote it
+are **c8-2**'s (epic ``:3185-3212``); what this story owes that one is a measured footprint, which
+is recorded on :class:`DiskCache`.
+"""
+
+CACHE_MEDIA_TYPES: dict[str, str] = {".jpg": "image/jpeg", ".png": "image/png"}
+"""Extension → media type: the closed two-member map a warm hit answers from (Q4).
+
+**Measured, and the measurement is the whole justification.** Across all **245,760** stored image
+URLs in the shipped 38,261-card corpus exactly two extensions occur — ``.jpg`` and ``.png`` — so a
+two-entry map covers the corpus completely. Note the honest limit of that, which c3-2's review
+earned the hard way: it is a true count of *this* corpus, not a promise Scryfall makes. So it
+justifies an explicit map; it does **not** justify code that raises or corrupts on a third
+extension, and it is not published to the wire. A pair this map cannot name is simply **not
+cached** — see :func:`cache_extension`.
+
+**Never** ``mimetypes.guess_type``. ``spa.py``'s docstring documents why in this project's own
+words: on Windows it consults the **registry**, which any installed application can rewrite, and
+``mimetypes.init()`` discards prior ``add_type`` calls. A media type that varies by what the user
+installed is not a media type this app can stand behind.
+
+This map is also the read's candidate list. The cache key is id + size + face and the extension is
+*not* part of it, so a read does not know which spelling its entry landed under and tries each in
+turn — which is the second reason the set has to be small, closed and stated here.
+"""
+
+_EXTENSION_BY_MEDIA_TYPE: dict[str, str] = {media: ext for ext, media in CACHE_MEDIA_TYPES.items()}
+"""The reverse of :data:`CACHE_MEDIA_TYPES`, derived rather than written twice."""
 
 
 def _user_agent() -> str:
@@ -577,6 +636,498 @@ def image_pacer(app: FastAPI) -> Pacer | None:
     # would flag returning it directly.
     pacer: Pacer | None = getattr(app.state, "image_pacer", None)
     return pacer
+
+
+def cache_root() -> Path:
+    """Return the image cache's root directory, resolved **at call time**.
+
+    Resolved at call time and **never at import, never as a default argument** — the same rule,
+    and the same reason, as :func:`src.companion.discovery.discovery_path`:
+    :func:`src.paths.data_dir` ends in ``mkdir(parents=True, exist_ok=True)``, so a module-level
+    ``_CACHE_ROOT = paths.data_dir() / CACHE_DIRECTORY_NAME`` would create the user's data
+    directory merely by **importing** this module — and ``build_app()`` imports it. That would
+    break AD-10's inertness guarantee from a line that looks like a constant.
+    ``test_images.py::TestNoDataPathIsResolvedAtImportTime`` gates both spellings.
+
+    Calling through ``src.paths`` rather than ``platformdirs`` or a hardcoded ``~/…`` is also what
+    makes ``PLANESWALKER_DATA_DIR`` work here, which is what gives every test in this package a
+    private cache for free (``conftest.py``'s autouse ``isolated_data_dir``).
+
+    Returns:
+        ``src.paths.data_dir() / CACHE_DIRECTORY_NAME``. The **data** directory is created as a
+        side effect of resolving it; this directory itself may or may not exist yet.
+    """
+    return paths.data_dir() / CACHE_DIRECTORY_NAME
+
+
+def cache_extension(content_type: str) -> str | None:
+    """Decide which extension a fetched image is stored under — **never from the size key**.
+
+    The size key is not available to this function *by construction*: it takes the response's
+    ``Content-Type`` and nothing else, so the defect this rule exists to prevent cannot be
+    written here. That defect is silent rather than loud: ``png`` resolves to a ``.jpg`` URL on
+    **three real cards** (Sparkspitter, Ondu Champion and Gorehorn Minotaurs, whose ``png`` entry
+    is ``https://errors.scryfall.com/soon.jpg``, served as ``image/jpeg``), so a filename of
+    ``png_0.png`` holding JPEG bytes would be served with the wrong media type forever and would
+    corrupt a cache rather than fail one.
+
+    **The header is the only source, and the URL is deliberately not consulted** (review D1 +
+    Greptile P1, 2026-08-01/02). The header, because the cold path serves it verbatim (c3-5's
+    ruling: *what the upstream said about its own bytes is more accurate than anything derived
+    elsewhere*) — deriving the stored spelling from the same source is what makes a warm hit
+    agree with the cold answer on the media type, always. The URL not even as a fallback, because
+    every response that reaches the cache has already passed ``_is_servable_image_type`` and
+    therefore carries an ``image/*`` header — so a header outside the two-entry map is never
+    ``application/octet-stream`` noise, it is a **different image format** (``image/webp``), and
+    a ``.jpg`` suffix under it would store webp bytes to be re-served as ``image/jpeg`` under
+    ``nosniff`` + ``immutable`` for a year. The first shipped version let the URL win and the
+    review inverted it; the fallback then re-opened the same hole one branch deeper, and Greptile
+    caught it. A header this map cannot name means *served, not cached*.
+
+    Args:
+        content_type: The ``Content-Type`` the upstream sent, parameters and all.
+
+    Returns:
+        A member of :data:`CACHE_MEDIA_TYPES`, or ``None`` when the header names none — in which
+        case the image is **served and not cached**. Not an error and not a guess: a third
+        format is a fact about the corpus changing, not a request failure, and writing it under an
+        invented extension is how a cache starts lying about its own contents.
+
+    Example:
+        >>> cache_extension("image/jpeg")
+        '.jpg'
+    """
+    media_type = content_type.split(";", 1)[0].strip().lower()
+    return _EXTENSION_BY_MEDIA_TYPE.get(media_type)
+
+
+def _cache_path(root: Path, card_id: str, size: str, face: int, extension: str) -> Path:
+    """Build AD-11's cache path: ``<root>/<id[0:2]>/<id>/<size>_<face>.<ext>``.
+
+    **The two-hex shard is measured, not chosen.** Card ids are Scryfall uuid v4s, so their first
+    two hex characters are uniform: all **256** shards are used by the shipped corpus, at
+    **107-218** cards each (mean 149.5), against a flat **38,261** card directories — the
+    "roughly 60,000 entries in one directory" problem AD-11 names.
+
+    The filename is only ever **constructed, never parsed back**, and that is a rule rather than a
+    coincidence: ``art_crop`` and ``border_crop`` contain underscores, so ``<size>_<face>`` yields
+    ``art_crop_0.jpg`` and a naive ``rsplit("_")`` on it is ambiguous. Nothing in this module
+    attempts the reverse, and nothing should.
+
+    Args:
+        root: The cache root.
+        card_id: The Scryfall printing uuid, already validated by the route's path constraint.
+        size: The requested rendition.
+        face: Which of the card's images was asked for.
+        extension: A member of :data:`CACHE_MEDIA_TYPES`, from :func:`cache_extension`.
+
+    Returns:
+        The full path this entry lives at. Nothing is created.
+    """
+    return root / card_id[:2] / card_id / f"{size}_{face}{extension}"
+
+
+# ---------------------------------------------------------------------------------------------
+# The two synchronous file-I/O primitives.
+#
+# Both are deliberately plain `def`, and both are reached from the async path ONLY through
+# `asyncio.to_thread` (Q2, Brad 2026-08-01). AD-11 says the image path is "async throughout — it
+# must never block the event loop", and a synchronous file call satisfies every functional test
+# in this repository while contradicting that sentence, which is exactly why the rule is
+# structural here and gated in `test_images.py::TestFileIoNeverRunsOnTheLoop` rather than trusted.
+#
+# The numbers, measured on this machine (Task 0, 200 iterations, 124 KB): a read is **4.97 ms**
+# and an atomic write **0.46 ms**, against an `asyncio.to_thread` hop of **0.13 ms**. The READ is
+# the expensive half — 11x the write — so a warm 99-tile deck paint would block the loop for
+# ~0.49 s inline, twice NFR-05's whole 250 ms push budget, from the path the cache exists to make
+# fast. The thread hop costs ~38x less than the read it moves.
+# ---------------------------------------------------------------------------------------------
+
+
+def _read_cached(root: Path, card_id: str, size: str, face: int) -> tuple[bytes, str] | None:
+    """Read this key's entry off disk, trying each known extension in turn.
+
+    The key is id + size + face — the extension is *not* part of it — so a reader does not know
+    which spelling the writer chose and asks for each member of :data:`CACHE_MEDIA_TYPES`.
+
+    **Every failure is a miss**, which is the whole failure posture of this cache in one function:
+    a missing file, an unreadable one, a cache root that turns out to be a *file*, an entry of
+    zero bytes and an entry over :data:`_MAX_IMAGE_BYTES` all return ``None`` and cost the caller
+    one ordinary fetch. Zero bytes is not a picture (c3-5's Greptile P1 in the cache's costume) —
+    served, it would be stamped immutable for a year as a permanently broken tile. The ceiling is
+    the same one the fetch path enforces on the wire: nothing this cache's own writer stores can
+    exceed it, so an oversized file is by definition not this app's work and is not trusted with
+    a year-long ``immutable`` stamp either (review 2026-08-01).
+
+    An ordinary miss is silent; anything else logs, because "the cache is quietly doing nothing"
+    is a state a user should be able to find in a log rather than infer from a slow app.
+
+    Args:
+        root: The cache root.
+        card_id: The printing uuid.
+        size: The requested rendition.
+        face: Which of the card's images was asked for.
+
+    Returns:
+        The stored bytes and the media type implied by the extension they were found under, or
+        ``None`` for a miss.
+    """
+    for extension, media_type in CACHE_MEDIA_TYPES.items():
+        candidate = _cache_path(root, card_id, size, face, extension)
+        try:
+            payload = candidate.read_bytes()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            logger.warning(
+                "Could not read the cached image at %s (%s); fetching it instead",
+                candidate,
+                type(exc).__name__,
+            )
+            continue
+        if not payload:
+            logger.warning("Cached image at %s is empty; fetching it instead", candidate)
+            continue
+        if len(payload) > _MAX_IMAGE_BYTES:
+            logger.warning(
+                "Cached image at %s is %d bytes, over the %d-byte ceiling; fetching it instead",
+                candidate,
+                len(payload),
+                _MAX_IMAGE_BYTES,
+            )
+            continue
+        return payload, media_type
+    return None
+
+
+def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ...] = ()) -> None:
+    """Write *payload* to *target* so no reader can ever observe a partial file.
+
+    ``discovery.write_discovery`` is the template and its reasoning is **inherited rather than
+    re-derived** — read that docstring for the full argument. In brief:
+    :func:`tempfile.mkstemp` rather than a fixed ``.tmp`` name, so two writers cannot splice one
+    file; the temp file in **the target's own directory**, because ``os.replace`` is atomic only
+    within one filesystem; ``os.replace`` rather than ``os.rename``, because the latter raises
+    ``FileExistsError`` over an existing file on Windows; :func:`os.fdopen` under a
+    ``BaseException`` guard, because ``fdopen`` takes ownership of the descriptor only on success
+    and a leaked one would also hold the temp file against the unlink on Windows; and cleanup
+    under ``contextlib.suppress(OSError)``, so a cleanup failure never displaces the real error.
+
+    **Two of that function's decisions are deliberately NOT copied, and the difference is the
+    point in both cases:**
+
+    * **No** ``os.fsync``\\ **.** *Atomic* means a reader never sees a partial file, and temp +
+      ``os.replace`` delivers that on its own — the rename is what makes the bytes visible under
+      the real name. *Durable* means the file survives a power cut, which is what ``fsync`` buys,
+      and a cache entry lost to a power cut costs exactly one refetch. The discovery file is
+      different in precisely the way that matters: it is a rendezvous whose loss leaves a running
+      app unreachable, and it is written once per process rather than ~99 times per deck. The
+      cost is measured, not asserted: ``fsync`` is **2.909 ms** against this write's **0.460 ms**
+      (Task 0, 200 iterations, 124 KB) — 6.3x, or 0.288 s of forced flushes on a cold 99-tile
+      deck. The ruling would stand at any price; the number is corroboration, not the reason.
+      **"Atomically written" is routinely read as "fsynced", so it is said here in both
+      directions** rather than left for a reader to assume the stronger one (c3-4's review theme:
+      prose outrunning code, in the direction that flatters).
+    * **No** ``os.chmod``\\ **.** That call protects a *credential* — discovery's file holds the
+      agent token. These are public card images from a public CDN; the per-user
+      ``%LOCALAPPDATA%`` directory they sit in is the whole protection they need, and a
+      POSIX-only permission call on 99 files per deck would be ceremony rather than defence.
+
+    The per-card directory is created here rather than at startup, and that is the *incidental*
+    ``mkdir`` — AD-11's acceptance criterion names the **root**, created once by the lifespan
+    (:func:`build_image_cache`). Conflating the two makes the AC look either unsatisfied or
+    over-satisfied.
+
+    Any *displaced* sibling entries are removed **before the replace, not after** (review
+    2026-08-01, ordering per Greptile P1 2026-08-02): the key excludes the extension, so one key
+    can legitimately hold ``normal_0.jpg`` **and** ``normal_0.png`` across a format change — and
+    :func:`_read_cached` probes extensions in fixed order, so without this step a stale entry
+    under the earlier extension would permanently shadow the fresh one just written. The ordering
+    is what makes two concurrent writers of *different* extensions safe: each writer's unlink
+    precedes its own replace, so for **both** fresh entries to end deleted would need each
+    replace to precede the other — a contradiction. At least one committed entry always
+    survives; unlink-after-replace allowed an interleaving that deleted both. The cost of the
+    ordering is one narrow branch — siblings unlinked, then the write itself fails — which
+    degrades to the standard one-refetch miss. A failed unlink is logged and not raised: the
+    shadowing it leaves behind is the pre-existing degrade, not a new failure.
+
+    Args:
+        target: The final path, from :func:`_cache_path`.
+        payload: The image bytes to store.
+        displaces: Sibling paths this write supersedes — the same key under the other extensions.
+
+    Raises:
+        OSError: The directory could not be created, the temp file could not be written, or the
+            replace failed. The caller — :meth:`DiskCache.write` — swallows and logs it: a cache
+            failure is never a request failure (AC 9).
+    """
+    directory = target.parent
+    directory.mkdir(parents=True, exist_ok=True)
+    descriptor, temp_name = tempfile.mkstemp(dir=directory, prefix=f"{target.name}.", suffix=".tmp")
+    temp_path = Path(temp_name)
+    try:
+        try:
+            handle = os.fdopen(descriptor, "wb")
+        except BaseException:
+            # fdopen only takes ownership of the descriptor on success; without this close the
+            # descriptor leaks, and on Windows it would also hold the temp file against the unlink.
+            os.close(descriptor)
+            raise
+        with handle:
+            handle.write(payload)
+        for stale in displaces:
+            try:
+                stale.unlink(missing_ok=True)
+            except OSError as exc:
+                logger.warning(
+                    "Could not remove the superseded cache entry at %s (%s); the older spelling "
+                    "will shadow the one being written",
+                    stale,
+                    type(exc).__name__,
+                )
+        os.replace(temp_path, target)
+    except BaseException:
+        # The cleanup itself can fail (Windows: an AV/indexer briefly holding the fresh temp file
+        # open) — that must not displace the original exception, which names the real problem.
+        with suppress(OSError):
+            temp_path.unlink(missing_ok=True)
+        raise
+
+
+class DiskCache:
+    """The sharded, atomically written, unbounded disk cache behind the image route (AD-11).
+
+    **This is the first code in** ``src/companion`` **that writes to the user's disk**, and that
+    fact deserves to be stated where a reader will find it rather than inferred. AD-2 makes
+    ``src/mcp_server`` the sole writer and ``tests/unit/companion/test_import_boundary.py``
+    enforces it — but that guard is about the **database**: it bans repository write methods,
+    session mutators, DML constructs and schema creation, and it *explicitly permits* file I/O
+    (its own clean case is named ``file-flush-in-atomic-write``, added for ``discovery.py``'s
+    temp+rename). So the one test whose name promises the companion never writes stays green while
+    this class writes roughly 12 MB per deck viewed. The boundary is real and it is a different
+    boundary; nothing here opens a database write path.
+
+    **What it satisfies.** The epic's **CM-2** — *"an image fetched once is not fetched again
+    within the cache lifetime"* — which c3-6 homed here by name and which is the only one of this
+    epic's acceptance criteria another story had been waiting on.
+
+    **The key is id + size + face, and the URL is deliberately not part of it** (AD-11). Two
+    consequences, both intended:
+
+    * three different cards that happen to share one URL are three entries and three fetches —
+      true today of the ``errors.scryfall.com`` placeholder trio; and
+    * a data refresh that changes a card's stored ``image_uris`` (Scryfall's ``?<timestamp>``
+      cache-buster moves) still **hits the existing entry and serves the older picture**. That
+      staleness is *accepted* by AD-11, not overlooked: keying on the URL would make every data
+      refresh a total cache miss, ~130 MB re-fetched to correct artwork that almost never
+      changes. It is asserted and documented here; it is not solved, and there is no TTL.
+
+    **Scryfall asks consumers to cache what they download for at least 24 hours.** An unbounded,
+    never-evicting local cache satisfies that by a wide margin — so the absence of a TTL is not an
+    oversight of that guidance but a consequence of the key above.
+
+    **No eviction, no size accounting, no TTL, no index** (AD-11, epic ``:1768-1770``). The cache
+    is unbounded in MVP and building any hook, counter, manifest or sweep for a future one is out
+    of scope on c3-4's ruling: *an unused hook is a design decision made by a story that cannot
+    see the requirements.* The documented location and the removal command are **c8-2**'s (epic
+    ``:3185-3212``); what this story owes that one is a **measured footprint** rather than
+    documentation, so: this user's whole 40-deck library is **1,061 distinct card ids**, roughly
+    **130 MB** at one size — where 130 MB is arithmetic over the epic's ~124 KB average, and the
+    real-bytes measurement belongs to **c10-3**.
+
+    **Nothing here needs closing**, exactly like :class:`Pacer` — so
+    :func:`~src.companion.app.main._shutdown` is untouched by it. Unlike the pacer, **creating one
+    can fail**, which is what :func:`build_image_cache` is for.
+
+    Args:
+        root: The directory entries live under, already created. Held rather than resolved
+            per-call so :func:`src.paths.data_dir` is consulted once at startup rather than on
+            the hot path of every image request.
+
+    Example:
+        >>> DiskCache(Path("cache")).path_for("00ab", "normal", 0, ".jpg").as_posix()
+        'cache/00/00ab/normal_0.jpg'
+    """
+
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    @property
+    def root(self) -> Path:
+        """The directory this cache's entries live under."""
+        return self._root
+
+    def path_for(self, card_id: str, size: str, face: int, extension: str) -> Path:
+        """Return where one entry lives — AD-11's path, character for character.
+
+        Args:
+            card_id: The Scryfall printing uuid.
+            size: The requested rendition.
+            face: Which of the card's images was asked for.
+            extension: A member of :data:`CACHE_MEDIA_TYPES`.
+
+        Returns:
+            ``<root>/<id[0:2]>/<id>/<size>_<face>.<ext>``. Nothing is created.
+        """
+        return _cache_path(self._root, card_id, size, face, extension)
+
+    async def read(self, card_id: str, size: str, face: int) -> tuple[bytes, str] | None:
+        """Return this key's cached image, or ``None`` for a miss.
+
+        The read runs in a worker thread (:func:`asyncio.to_thread`, Q2) so a 124 KB file read —
+        measured at **4.97 ms** on this machine, ~11x the cost of the write — never stalls the
+        event loop. Measured, because the alternative was defensible on the *assumption* that a
+        local read is sub-millisecond and it is not: 99 warm tiles inline is ~0.49 s of blocked
+        loop, twice NFR-05's whole push budget.
+
+        Args:
+            card_id: The printing uuid.
+            size: The requested rendition.
+            face: Which of the card's images was asked for.
+
+        Returns:
+            The bytes and the media type implied by the extension the entry was found under, or
+            ``None`` when there is nothing usable — which the caller answers by fetching.
+        """
+        try:
+            return await asyncio.to_thread(_read_cached, self._root, card_id, size, face)
+        except Exception:
+            # `_read_cached` already answers every file-layer failure with a miss; this catches
+            # the layer above it — `asyncio.to_thread` itself refusing to schedule (interpreter
+            # shutdown, a closed default executor). AC 9 does not distinguish: a cache failure of
+            # ANY provenance is a fetch, never a failed request (review 2026-08-01).
+            logger.warning(
+                "Reading the cached image for %s failed outside the file layer; fetching it "
+                "instead",
+                card_id,
+                exc_info=True,
+            )
+            return None
+
+    async def write(
+        self,
+        *,
+        card_id: str,
+        size: str,
+        face: int,
+        content_type: str,
+        body: bytes,
+    ) -> None:
+        """Store one fetched image, atomically — and never fail the request for it (AC 9).
+
+        Keyword-only on purpose: five parameters of which three are strings that would silently
+        transpose, and a cache written under a transposed key is wrong in a way no test of *this*
+        function can see. The URL is deliberately **not** a parameter (Greptile P1, 2026-08-02):
+        it is not part of the key, and after D1 it is not part of the extension derivation
+        either — an argument a function ignores is a lie in its contract.
+
+        **Every failure is swallowed and logged.** An unwritable directory, a ``PermissionError``
+        from ``os.replace`` (the realistic Windows case — another handle open on the target, which
+        Q5's declined coalescing makes reachable rather than theoretical), a cache root that is a
+        *file*: all of them mean the picture was served and simply not kept. None of them adds a
+        reason token — :class:`~src.companion.contracts.ErrorReason` is closed at ten and this
+        story adds none.
+
+        Args:
+            card_id: The printing uuid.
+            size: The requested rendition.
+            face: Which of the card's images was asked for.
+            content_type: The upstream's own ``Content-Type``, the sole extension source
+                (review D1 + Greptile P1): it is what the cold path serves, so deriving the
+                stored spelling from it is what keeps warm and cold agreeing on the media type.
+            body: The image bytes to store.
+        """
+        extension = cache_extension(content_type)
+        if extension is None:
+            # A format outside the measured two. Served, not stored: writing it under a guessed
+            # extension would make the cache lie about its own contents, and refusing to serve it
+            # would turn a fact about the corpus into a broken tile.
+            logger.info(
+                "Not caching the image for %s: %r is outside the two extensions this cache stores",
+                card_id,
+                content_type,
+            )
+            return
+        target = _cache_path(self._root, card_id, size, face, extension)
+        displaced = tuple(
+            _cache_path(self._root, card_id, size, face, other)
+            for other in CACHE_MEDIA_TYPES
+            if other != extension
+        )
+        try:
+            await asyncio.to_thread(_write_atomically, target, body, displaces=displaced)
+        except Exception as exc:
+            # Broader than `OSError` on purpose: `asyncio.to_thread` itself can refuse to
+            # schedule (interpreter shutdown), and AC 9's posture does not depend on which layer
+            # failed — the picture was served either way (review 2026-08-01).
+            logger.warning(
+                "Could not cache the image at %s (%s); it was served but not stored",
+                target,
+                type(exc).__name__,
+            )
+
+
+def build_image_cache() -> DiskCache | None:
+    """Create the cache root and return a cache over it, or ``None`` if that failed (Q6).
+
+    **The lifespan creates the root — never** ``build_app()`` (AD-11, AD-10). This is the
+    ``mkdir`` the acceptance criterion names; the per-card ``<id[0:2]>/<id>`` directories are
+    necessarily created at write time and are *incidental* (see :func:`_write_atomically`).
+
+    **A failure disables the cache for the process; it does not fail the launch.** That is a
+    ruling, and the discriminator is AD-15's own reasoning. Publishing the discovery file stays
+    the **only** startup step that may abort a launch, because a half-launched rendezvous leaves
+    every agent tool reporting ``app_not_running`` while the app visibly runs, with nothing on
+    either surface explaining the contradiction. A missing cache leaves an app that is **fully
+    functional** and slower — every request simply fetches, exactly as it did at c3-6. Failing the
+    launch over that would be disproportionate in a way the discovery file's failure is not, and
+    it would mean editing the ruling ``test_app.py::test_startup_failure_propagates`` exists to
+    protect.
+
+    The failure is not merely theoretical, which is why it is caught rather than argued away:
+    ``data_dir()`` itself already ``mkdir``\\ s, so a data directory this unwritable would fail
+    ``write_discovery`` two lines later anyway — *but* a **file** named ``image_cache`` sitting in
+    the data directory is a ``FileExistsError``/``NotADirectoryError`` that discovery sails past
+    entirely.
+
+    Returns:
+        A cache over a directory that exists, or ``None`` meaning *this process has no cache*.
+    """
+    try:
+        root = cache_root()
+        root.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        logger.warning(
+            "Could not create the image cache directory (%s: %s); images will be fetched from the "
+            "CDN every time this process serves one",
+            type(exc).__name__,
+            exc,
+        )
+        return None
+    return DiskCache(root)
+
+
+def image_cache(app: FastAPI) -> DiskCache | None:
+    """Return the cache the lifespan created for *app*, or ``None`` when there is none.
+
+    **This accessor mirrors** :func:`image_client` **and** :func:`image_pacer` **in shape and
+    diverges from them in meaning, deliberately.** For those two, ``None`` means *the lifespan did
+    not run* — a wiring bug, reported as ``internal_error`` rather than laundered into a fetch
+    failure. Here ``None`` is an ordinary served state: either the lifespan did not run, **or** it
+    ran and could not create the cache root (Q6). The caller must not distinguish them, because
+    the correct response to both is identical and unremarkable — *fetch the image* — and a route
+    that answered ``internal_error`` for a missing cache would turn a degradation into an outage.
+
+    Args:
+        app: The application to read.
+
+    Returns:
+        The shared disk cache, or ``None`` meaning *serve without one*.
+    """
+    # Annotated local rather than `return getattr(...)`: app.state is Any, and warn_return_any
+    # would flag returning it directly.
+    cache: DiskCache | None = getattr(app.state, "image_cache", None)
+    return cache
 
 
 def _refused_host(url: str) -> str:

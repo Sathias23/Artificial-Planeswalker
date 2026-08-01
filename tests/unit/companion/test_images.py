@@ -28,6 +28,7 @@ import pytest
 from src.companion.app import images
 from src.companion.app.errors import CompanionError
 from src.data.schemas.card import CardFace
+from tests.unit.companion.conftest import FakeClock, StallableUpstream
 
 _SIX = {
     "small": "https://cards.scryfall.io/small/x.jpg?1",
@@ -38,59 +39,6 @@ _SIX = {
     "border_crop": "https://cards.scryfall.io/border_crop/x.jpg?1",
 }
 """The one key-set that exists across all 40,960 stored ``image_uris`` objects — all six, always."""
-
-
-class FakeClock:
-    """Virtual time: the clock moves only when the pacer sleeps on it (c3-6 AC 9, Q3).
-
-    **This is the whole answer to "how do you test a rate without spending one".** The pacer takes
-    its clock and its sleep as constructor parameters, so a test can hand it a pair that advances a
-    counter instead of waiting. Start offsets are then asserted **exactly** — ``0.0``, ``0.1``,
-    ``0.2`` — at zero wall-clock cost, where a real-time proof would be both slow and flaky on a
-    loaded box.
-
-    ``await asyncio.sleep(0)`` inside :meth:`sleep` is a bare yield to the event loop, not a wait:
-    it costs no wall clock and it is what keeps the *concurrency* real while the *time* is fake.
-    Other tasks genuinely run at that point, so an ordering bug is still visible.
-
-    **The re-entrancy assertion is load-bearing and is the fake checking its own premise.**
-    ``now += delay`` is only exact while at most one task sleeps at a time, which holds because the
-    pacer sleeps inside its turnstile lock. If a redesign ever sleeps outside that lock, two
-    concurrent sleepers would double-advance the clock and every pacing assertion in this file
-    would quietly start measuring fiction — so the fake refuses instead.
-
-    Attributes:
-        now: The current virtual time, in seconds.
-        slept: Every delay the pacer asked for, in order. A pacer that never sleeps leaves this
-            empty, which several tests below assert directly.
-    """
-
-    def __init__(self) -> None:
-        self.now = 0.0
-        self.slept: list[float] = []
-        self._sleeping = False
-
-    def time(self) -> float:
-        """Return the current virtual time, in the shape ``time.monotonic`` has."""
-        return self.now
-
-    async def sleep(self, delay: float) -> None:
-        """Advance virtual time by *delay* and yield to the loop.
-
-        Args:
-            delay: Seconds to wait for, as the pacer computed them.
-        """
-        assert not self._sleeping, (
-            "two tasks slept on this clock at once — `now += delay` is only exact while the "
-            "pacer sleeps inside its turnstile, so this fake would be lying about the numbers"
-        )
-        self._sleeping = True
-        try:
-            self.slept.append(delay)
-            self.now += delay
-            await asyncio.sleep(0)
-        finally:
-            self._sleeping = False
 
 
 def _pacer(*, spacing: float | None = None, limit: int | None = None) -> images.Pacer:
@@ -585,48 +533,6 @@ def _urls(count: int) -> list[str]:
     ]
 
 
-class Upstream:
-    """A CDN that records when each request STARTED and can be held open indefinitely.
-
-    Three things it exists to measure, none of which a response body can show:
-
-    * **when** each fetch began, read off the pacer's own virtual clock — AC 4 is about start
-      times, and c3-5's review theme was a check that ran after the thing it was meant to prevent;
-    * **how many** requests are open at once, from the transport's own accounting (entered minus
-      completed) rather than inferred from timing — AC 5;
-    * **that a fetch began at all**, so "zero outbound requests" is a positive observation.
-
-    Attributes:
-        started_at: The virtual time each request began, in start order.
-        urls: The URL of each request, in start order.
-        in_flight: How many requests are open right now.
-        peak_in_flight: The high-water mark of :attr:`in_flight` — the number AC 5 asserts on.
-    """
-
-    def __init__(self, clock: FakeClock, *, hold: bool = False) -> None:
-        self._clock = clock
-        self.started_at: list[float] = []
-        self.urls: list[str] = []
-        self.in_flight = 0
-        self.peak_in_flight = 0
-        # An arbitrarily slow CDN, expressed with no time at all: every request parks on this
-        # event until a test sets it. AC 5's "made arbitrarily slow" without a single second.
-        self.release = asyncio.Event()
-        if not hold:
-            self.release.set()
-
-    async def handle(self, request: httpx.Request) -> httpx.Response:
-        self.started_at.append(self._clock.time())
-        self.urls.append(str(request.url))
-        self.in_flight += 1
-        self.peak_in_flight = max(self.peak_in_flight, self.in_flight)
-        try:
-            await self.release.wait()
-        finally:
-            self.in_flight -= 1
-        return httpx.Response(200, content=b"\xff\xd8body", headers={"content-type": "image/jpeg"})
-
-
 class TestTheTwoConstants:
     """AC 3. The numbers that ship, and the arithmetic that chose them."""
 
@@ -714,7 +620,7 @@ class TestSpacingBetweenStarts:
     async def test_consecutive_fetches_start_one_spacing_apart(self) -> None:
         pacer = _pacer()
         clock = pacer.clock  # type: ignore[attr-defined]
-        upstream = Upstream(clock)
+        upstream = StallableUpstream(clock)
 
         async with _client(upstream.handle) as client:
             for url in _urls(4):
@@ -731,7 +637,7 @@ class TestSpacingBetweenStarts:
         starts, not a toll on the first one."""
         pacer = _pacer()
         clock = pacer.clock  # type: ignore[attr-defined]
-        upstream = Upstream(clock)
+        upstream = StallableUpstream(clock)
 
         async with _client(upstream.handle) as client:
             await images.fetch_image(client, _urls(1)[0], pacer)
@@ -747,7 +653,7 @@ class TestSpacingBetweenStarts:
         """
         pacer = _pacer()
         clock = pacer.clock  # type: ignore[attr-defined]
-        upstream = Upstream(clock)
+        upstream = StallableUpstream(clock)
         urls = _urls(5)
 
         async with _client(upstream.handle) as client:
@@ -766,7 +672,7 @@ class TestSpacingBetweenStarts:
         """
         pacer = _pacer()
         clock = pacer.clock  # type: ignore[attr-defined]
-        upstream = Upstream(clock)
+        upstream = StallableUpstream(clock)
         urls = _urls(4)
 
         async with _client(upstream.handle) as client:
@@ -778,7 +684,7 @@ class TestSpacingBetweenStarts:
                 await asyncio.sleep(0)
             await asyncio.gather(*tasks)
 
-        assert upstream.urls == urls
+        assert upstream.requested == urls
 
     async def test_spacing_is_between_starts_even_when_nothing_has_completed(self) -> None:
         """AC 4's actual claim, and the one assertion that separates the two designs.
@@ -798,7 +704,7 @@ class TestSpacingBetweenStarts:
         """
         pacer = _pacer()
         clock = pacer.clock  # type: ignore[attr-defined]
-        upstream = Upstream(clock, hold=True)
+        upstream = StallableUpstream(clock, hold=True)
 
         async with _client(upstream.handle) as client:
             tasks = [asyncio.create_task(images.fetch_image(client, u, pacer)) for u in _urls(4)]
@@ -823,7 +729,7 @@ class TestSpacingBetweenStarts:
         turn — otherwise a page full of refused URLs would throttle the fetches that are real."""
         pacer = _pacer()
         clock = pacer.clock  # type: ignore[attr-defined]
-        upstream = Upstream(clock)
+        upstream = StallableUpstream(clock)
 
         async with _client(upstream.handle) as client:
             with pytest.raises(CompanionError):
@@ -846,7 +752,7 @@ class TestTheConcurrencyCap:
         """
         pacer = _pacer()
         clock = pacer.clock  # type: ignore[attr-defined]
-        upstream = Upstream(clock, hold=True)
+        upstream = StallableUpstream(clock, hold=True)
         urls = _urls(8)
 
         async with _client(upstream.handle) as client:
@@ -870,7 +776,7 @@ class TestTheConcurrencyCap:
     async def test_a_completed_fetch_hands_its_slot_to_the_next(self) -> None:
         pacer = _pacer(limit=2)
         clock = pacer.clock  # type: ignore[attr-defined]
-        upstream = Upstream(clock, hold=True)
+        upstream = StallableUpstream(clock, hold=True)
 
         async with _client(upstream.handle) as client:
             tasks = [asyncio.create_task(images.fetch_image(client, u, pacer)) for u in _urls(4)]
@@ -900,7 +806,7 @@ class TestCancellationReleasesTheSlot:
         """A browser navigating away from a deck view is ~99 of these cancellations."""
         pacer = _pacer(limit=2)
         clock = pacer.clock  # type: ignore[attr-defined]
-        upstream = Upstream(clock, hold=True)
+        upstream = StallableUpstream(clock, hold=True)
         before = pacer.available_permits
 
         async with _client(upstream.handle) as client:
@@ -925,7 +831,7 @@ class TestCancellationReleasesTheSlot:
     async def test_the_next_fetch_proceeds_after_a_cancellation(self) -> None:
         pacer = _pacer(limit=1)
         clock = pacer.clock  # type: ignore[attr-defined]
-        upstream = Upstream(clock, hold=True)
+        upstream = StallableUpstream(clock, hold=True)
 
         async with _client(upstream.handle) as client:
             holder = asyncio.create_task(images.fetch_image(client, _urls(1)[0], pacer))
@@ -966,7 +872,7 @@ class TestCancellationReleasesTheSlot:
             clock.now += delay
 
         pacer = images.Pacer(clock=clock.time, sleep=gated_sleep)
-        upstream = Upstream(clock)
+        upstream = StallableUpstream(clock)
 
         async with _client(upstream.handle) as client:
             await images.fetch_image(client, _urls(1)[0], pacer)
@@ -1009,7 +915,7 @@ class TestTheColdDeckPaint:
         """
         pacer = _pacer()
         clock = pacer.clock  # type: ignore[attr-defined]
-        upstream = Upstream(clock)
+        upstream = StallableUpstream(clock)
         urls = _urls(99)
 
         async with _client(upstream.handle) as client:
@@ -1033,7 +939,7 @@ class TestTheColdDeckPaint:
         """
         pacer = _pacer(spacing=0.0, limit=99)
         clock = pacer.clock  # type: ignore[attr-defined]
-        upstream = Upstream(clock)
+        upstream = StallableUpstream(clock)
 
         async with _client(upstream.handle) as client:
             await asyncio.gather(*(images.fetch_image(client, u, pacer) for u in _urls(99)))
@@ -1171,8 +1077,27 @@ this survives `from threading import Semaphore as S`: the *module* is resolved t
 so no alias helps.
 """
 
-_BLOCKING_CALLS = frozenset({"run_in_executor", "to_thread"})
-"""The two ways an ``async def`` reaches a thread pool anyway. Banned by name, wherever reached."""
+_BLOCKING_CALLS = frozenset({"run_in_executor"})
+"""Reaching a thread pool by hand. Banned by name, wherever reached.
+
+**c3-7 removed** ``to_thread`` **from this set, and the removal is the point of Q2 rather than a
+concession to it** (Brad, 2026-08-01). Both names were banned here by c3-6 under one rule — *an*
+``async def`` *must not reach a thread pool* — which was the right rule while the only thing on
+this path was a rate. c3-7 put **file I/O** on it, and a synchronous 124 KB read measured at
+**4.97 ms** on this machine: 99 warm tiles inline is ~0.49 s of blocked event loop, twice NFR-05's
+whole 250 ms push budget, from the path the cache exists to make fast. So ``asyncio.to_thread`` is
+no longer the evasion — it is the **sanctioned** way to keep AD-11's *"async throughout"*
+literally true, and it is what Starlette's own ``FileResponse`` does.
+
+``run_in_executor`` stays banned, and the difference is not cosmetic: it takes a caller-supplied
+loop and executor, so it can silently reintroduce an unbounded pool or a loop this app does not
+own, where ``to_thread`` uses the running loop's default bounded executor and nothing else.
+
+**The ban is replaced by something stronger, not merely dropped** — the same procedure c3-6 used
+on ``_BANNED_IDENTIFIERS``. ``TestFileIoNeverRunsOnTheLoop`` gates that every file-I/O call site in
+``images.py`` is *lexically inside a non-``async`` helper*, which is a property this ban could not
+express at all: it could say "no thread", never "the thread is where the blocking call is".
+"""
 
 
 def _blocking_waits_in(source: str) -> list[str]:
@@ -1315,3 +1240,1152 @@ class TestFetchImageCannotBeCalledUnpaced:
         async with _client(lambda request: httpx.Response(200)) as client:
             with pytest.raises(TypeError):
                 await images.fetch_image(client, _SIX["small"])  # type: ignore[call-arg]
+
+
+# =============================================================================================
+# Story c3-7: the sharded, atomically written disk cache, as units.
+#
+# The route-level behaviour (CM-2, offline, cold-vs-warm, the two failure postures) is driven in
+# `test_routes_card_image.py`. What belongs HERE is the mechanism: the path, the extension rule,
+# the atomicity of the write, and what each failure degrades to. `images.py` owns the mechanism,
+# so `images.py`'s test module owns its unit tests (AC 21).
+# =============================================================================================
+
+
+_CARD = "0070bbf6-fdee-44ec-bfb8-3e99d6338e6e"
+"""Sparkspitter's real id — one of the three cards whose ``png`` size resolves to a ``.jpg``."""
+
+
+def _cache(tmp_path) -> images.DiskCache:
+    """A cache rooted under *tmp_path*, built the way the lifespan builds one."""
+    root = tmp_path / images.CACHE_DIRECTORY_NAME
+    root.mkdir(parents=True, exist_ok=True)
+    return images.DiskCache(root)
+
+
+class TestTheCachePath:
+    """AC 1: the path is AD-11's, character for character."""
+
+    def test_the_path_is_the_architecture_decision_spelled_out(self, tmp_path) -> None:
+        """A CONSTRUCTED string against a known id, size and face — not a regex, and not the
+        writer's own output round-tripped through the reader (which passes with both halves
+        wrong, in matching ways).
+
+        The two-hex shard is measured, not chosen: all **256** shards are used by the shipped
+        corpus at **107-218** cards each (mean 149.5), against a flat **38,261** directories —
+        AD-11's "roughly 60,000 entries" problem.
+        """
+        cache = _cache(tmp_path)
+
+        path = cache.path_for(_CARD, "normal", 0, ".jpg")
+
+        root = tmp_path / "image_cache"
+        assert path == root / "00" / _CARD / "normal_0.jpg"
+        assert str(path) == str(root / "00" / _CARD / "normal_0.jpg")
+
+    def test_the_shard_is_the_first_two_characters_of_the_id_and_nothing_else(
+        self, tmp_path
+    ) -> None:
+        cache = _cache(tmp_path)
+
+        other = "ff70bbf6-fdee-44ec-bfb8-3e99d6338e6e"
+
+        assert cache.path_for(other, "normal", 0, ".jpg").parent.parent.name == "ff"
+        assert cache.path_for(_CARD, "normal", 0, ".jpg").parent.parent.name == "00"
+
+    def test_the_size_and_face_are_both_in_the_filename(self, tmp_path) -> None:
+        """Every one of the six sizes and a second face must land somewhere different, or the
+        key is not id + size + face at all."""
+        cache = _cache(tmp_path)
+
+        names = {
+            cache.path_for(_CARD, size, face, ".jpg").name
+            for size in ("small", "normal", "large", "png", "art_crop", "border_crop")
+            for face in (0, 1)
+        }
+
+        assert len(names) == 12
+        assert "art_crop_0.jpg" in names, (
+            "`art_crop` and `border_crop` contain underscores, so `<size>_<face>` yields "
+            "`art_crop_0.jpg`. The filename is only ever CONSTRUCTED, never parsed back - the "
+            "split is ambiguous and nothing in this module attempts it."
+        )
+        assert "border_crop_1.jpg" in names
+
+    def test_every_id_the_route_can_accept_produces_a_path_inside_the_root(self, tmp_path) -> None:
+        """AC 5's containment half, over the ids the route actually admits.
+
+        ``_CARD_ID_PATTERN`` constrains the id to lowercase hex and hyphens before this code is
+        ever reached (the cache sits behind ``card_not_found``, ``no_image_data`` and the size
+        lookup), so there is deliberately no runtime containment guard here - an unused guard is
+        a design decision made by a story that cannot see the requirements. What is asserted is
+        the relationship: nothing matching that pattern escapes.
+        """
+        cache = _cache(tmp_path)
+        root = cache.root.resolve()
+        ids = (
+            _CARD,
+            "ffffffff-ffff-4fff-8fff-ffffffffffff",
+            "00000000-0000-0000-0000-000000000000",
+        )
+
+        for card_id in ids:
+            for size in ("small", "png", "border_crop"):
+                for face in (0, 1, 7):
+                    resolved = cache.path_for(card_id, size, face, ".png").resolve()
+                    assert resolved.is_relative_to(root), resolved
+
+    def test_the_containment_check_fires_on_a_path_that_escapes(self, tmp_path) -> None:
+        """NON-VACUITY PAIRING (AC 20). ``is_relative_to`` proves nothing about the ids above
+        unless it is seen to refuse something - a containment assertion that cannot fail is a
+        sentence, not a gate. The escaping value is fed through the REAL ``path_for``.
+        """
+        cache = _cache(tmp_path)
+        root = cache.root.resolve()
+
+        escaped = cache.path_for("../../..", "normal", 0, ".jpg").resolve()
+
+        assert not escaped.is_relative_to(root), (
+            "the containment predicate accepted a path outside the root, so its use above is "
+            "vacuous"
+        )
+
+
+class TestTheExtensionIsNeverTakenFromTheSizeKey:
+    """AC 2, and the defect it exists to prevent is SILENT: `png_0.png` holding JPEG bytes."""
+
+    def test_a_png_size_resolving_to_a_jpg_url_is_stored_as_jpg(self) -> None:
+        """The three real cards - Sparkspitter, Ondu Champion, Gorehorn Minotaurs - whose ``png``
+        size is ``https://errors.scryfall.com/soon.jpg``, served as ``image/jpeg``. Measured:
+        exactly **3** of the 245,760 stored URLs, and the reason `<ext>` may never be derived
+        from the size name.
+        """
+        assert images.cache_extension("image/jpeg") == ".jpg"
+
+    def test_an_ordinary_png_card_is_stored_as_png(self) -> None:
+        """NON-VACUITY PAIRING: a discrimination, not a constant. Without this the assertion
+        above passes against a function that returns ``".jpg"`` unconditionally.
+        """
+        assert images.cache_extension("image/png") == ".png"
+
+    def test_a_content_type_with_parameters_still_resolves(self) -> None:
+        assert images.cache_extension("image/jpeg; charset=binary") == ".jpg"
+
+    def test_an_accepted_but_unmapped_image_type_is_served_and_not_cached(self) -> None:
+        """Greptile P1 (2026-08-02), and the reason the URL is not even a fallback source.
+
+        Everything that reaches the cache has already passed ``_is_servable_image_type``, so its
+        header is always ``image/*`` — a header outside the two-entry map is therefore never
+        octet-stream noise, it is a REAL third image format (``image/webp``). The first D1 patch
+        kept the URL suffix as a fallback for exactly this case, which would have stored webp
+        bytes as ``.jpg`` and re-served them warm as ``image/jpeg`` under ``nosniff`` +
+        ``immutable`` — the identical media-type flip D1 existed to close, one branch deeper.
+        A header the map cannot name means served, not cached; c3-2's finding applied: *this
+        corpus* holds only `.jpg` and `.png`, a true count, not a rule Scryfall promises.
+        """
+        assert images.cache_extension("image/webp") is None
+        assert images.cache_extension("image/avif") is None
+        assert images.cache_extension("") is None
+
+    def test_neither_the_size_key_nor_the_url_appears_in_the_derivation(self) -> None:
+        """The signature itself is the guard: ``cache_extension`` cannot consult the size key OR
+        the URL, because it is given neither (the URL was removed at Greptile P1, 2026-08-02 —
+        an argument the function ignored would have been a lie in its contract)."""
+        import inspect
+
+        assert set(inspect.signature(images.cache_extension).parameters) == {"content_type"}
+
+
+class TestTheCacheReadAndWrite:
+    """AC 3, AC 4: what lands on disk, and what comes back."""
+
+    async def test_a_written_entry_reads_back_byte_identical_with_its_media_type(
+        self, tmp_path
+    ) -> None:
+        cache = _cache(tmp_path)
+        payload = b"\xff\xd8\xff\xe0-a-photograph"
+
+        await cache.write(
+            card_id=_CARD,
+            size="normal",
+            face=0,
+            content_type="image/jpeg",
+            body=payload,
+        )
+
+        assert await cache.read(_CARD, "normal", 0) == (payload, "image/jpeg")
+
+    async def test_the_file_lands_at_exactly_the_constructed_path(self, tmp_path) -> None:
+        """The write and the path rule are asserted against each other, not against themselves."""
+        cache = _cache(tmp_path)
+
+        await cache.write(
+            card_id=_CARD,
+            size="png",
+            face=0,
+            content_type="image/jpeg",
+            body=b"\xff\xd8\xff\xe0-soon",
+        )
+
+        landed = tmp_path / "image_cache" / "00" / _CARD / "png_0.jpg"
+        assert landed.is_file()
+        assert not (tmp_path / "image_cache" / "00" / _CARD / "png_0.png").exists(), (
+            "the extension came from the size key - silent on 245,757 of 245,760 URLs"
+        )
+
+    async def test_an_ordinary_png_card_lands_as_png_on_disk(self, tmp_path) -> None:
+        """NON-VACUITY PAIRING for the assertion above, **at the level of the file** (AC 2).
+
+        The extension rule is already proved as a discrimination on
+        :func:`images.cache_extension`; this pairs it where the damage would actually happen. Both
+        cards ask for ``size="png"``, and they must land under *different* extensions — so a write
+        path that derived the extension from the size key would satisfy exactly one of the two,
+        which is what makes the pair a discrimination rather than two constants.
+        """
+        cache = _cache(tmp_path)
+
+        await cache.write(
+            card_id=_CARD,
+            size="png",
+            face=0,
+            content_type="image/png",
+            body=b"\x89PNG\r\n\x1a\n-real",
+        )
+
+        assert (tmp_path / "image_cache" / "00" / _CARD / "png_0.png").is_file()
+        assert not (tmp_path / "image_cache" / "00" / _CARD / "png_0.jpg").exists()
+        assert await cache.read(_CARD, "png", 0) == (b"\x89PNG\r\n\x1a\n-real", "image/png")
+
+    async def test_the_media_type_read_back_follows_the_bytes_not_the_size_key(
+        self, tmp_path
+    ) -> None:
+        """The **corruption** the extension rule exists to prevent, stated as the round trip.
+
+        This is the assertion that makes the rule matter rather than merely hold: a ``png``-size
+        request whose URL is a ``.jpg`` must read back as ``image/jpeg``. Under a size-derived
+        extension the bytes would be stored at ``png_0.png`` and served as ``image/png`` — JPEG
+        bytes under a PNG media type, stamped ``immutable`` for a year. Silent on 245,757 of
+        245,760 URLs and wrong on the other three.
+        """
+        cache = _cache(tmp_path)
+
+        await cache.write(
+            card_id=_CARD,
+            size="png",
+            face=0,
+            content_type="image/jpeg",
+            body=b"\xff\xd8\xff\xe0-soon",
+        )
+
+        assert await cache.read(_CARD, "png", 0) == (b"\xff\xd8\xff\xe0-soon", "image/jpeg")
+
+    async def test_a_miss_is_none_rather_than_an_error(self, tmp_path) -> None:
+        cache = _cache(tmp_path)
+
+        assert await cache.read(_CARD, "normal", 0) is None
+
+    async def test_the_three_parts_of_the_key_are_each_load_bearing(self, tmp_path) -> None:
+        """A cache keyed on two of the three would serve one of these for another."""
+        cache = _cache(tmp_path)
+        other_id = "ff70bbf6-fdee-44ec-bfb8-3e99d6338e6e"
+
+        await cache.write(
+            card_id=_CARD,
+            size="normal",
+            face=0,
+            content_type="image/jpeg",
+            body=b"a",
+        )
+
+        assert await cache.read(other_id, "normal", 0) is None, "the id is not part of the key"
+        assert await cache.read(_CARD, "large", 0) is None, "the size is not part of the key"
+        assert await cache.read(_CARD, "normal", 1) is None, "the face is not part of the key"
+        assert await cache.read(_CARD, "normal", 0) == (b"a", "image/jpeg")
+
+    async def test_the_cache_buster_query_is_not_part_of_the_key(self, tmp_path) -> None:
+        """AD-11 keys on id + size + face and **accepts** the staleness that follows (epic
+        :1763-1766). A refreshed row carrying a new ``?<timestamp>`` therefore HITS the existing
+        entry. This is documented and asserted, not solved - keying on the URL would make every
+        data refresh a full cache miss.
+        """
+        cache = _cache(tmp_path)
+
+        await cache.write(
+            card_id=_CARD,
+            size="normal",
+            face=0,
+            content_type="image/jpeg",
+            body=b"the-old-bytes",
+        )
+
+        assert await cache.read(_CARD, "normal", 0) == (b"the-old-bytes", "image/jpeg")
+
+    async def test_an_uncacheable_media_type_writes_nothing_at_all(self, tmp_path) -> None:
+        cache = _cache(tmp_path)
+
+        await cache.write(
+            card_id=_CARD,
+            size="normal",
+            face=0,
+            content_type="image/webp",
+            body=b"webp",
+        )
+
+        assert list(cache.root.rglob("*")) == []
+
+    async def test_a_rewrite_under_the_other_extension_displaces_the_stale_sibling(
+        self, tmp_path
+    ) -> None:
+        """A key can change extensions across a data refresh (the placeholder trio's ``png`` size
+        is a ``.jpg`` today and would be a ``.png`` if Scryfall ever supplied the real art), and
+        ``_read_cached`` probes extensions in **fixed order** — so without displacement a stale
+        ``.jpg`` would permanently shadow the fresh ``.png`` just written, and the new bytes
+        would be unreachable forever (review 2026-08-01). The write therefore removes the same
+        key's entry under every other extension after a successful replace.
+        """
+        cache = _cache(tmp_path)
+        await cache.write(
+            card_id=_CARD,
+            size="png",
+            face=0,
+            content_type="image/jpeg",
+            body=b"\xff\xd8\xff\xe0-placeholder",
+        )
+
+        await cache.write(
+            card_id=_CARD,
+            size="png",
+            face=0,
+            content_type="image/png",
+            body=b"\x89PNG\r\n\x1a\n-the-real-art",
+        )
+
+        assert await cache.read(_CARD, "png", 0) == (b"\x89PNG\r\n\x1a\n-the-real-art", "image/png")
+        assert not (tmp_path / "image_cache" / "00" / _CARD / "png_0.jpg").exists(), (
+            "the stale sibling survived and, probed first, would shadow the fresh entry forever"
+        )
+        assert (tmp_path / "image_cache" / "00" / _CARD / "png_0.png").is_file()
+
+
+class TestTheWriteIsAtomic:
+    """AC 4: a crash mid-write can never leave a truncated file a later read would serve."""
+
+    async def test_an_interrupted_write_leaves_no_target_and_no_temp_litter(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """Interrupted **after the temp file exists and before the replace** - the only window
+        in which a partial file could become visible under the real name.
+
+        c3-5's review theme applied: atomicity is a property of the write SEQUENCE, not of a
+        post-hoc check on the target. So the failure is injected at ``os.replace`` itself.
+        """
+        cache = _cache(tmp_path)
+        directory = tmp_path / "image_cache" / "00" / _CARD
+
+        def explode(*args, **kwargs):
+            raise OSError("interrupted between the temp file and the rename")
+
+        monkeypatch.setattr(images.os, "replace", explode)
+
+        await cache.write(
+            card_id=_CARD,
+            size="normal",
+            face=0,
+            content_type="image/jpeg",
+            body=b"half",
+        )
+
+        assert not (directory / "normal_0.jpg").exists(), "a partial file became visible"
+        assert list(directory.glob("*.tmp")) == [], "the interrupted write left .tmp litter"
+        assert await cache.read(_CARD, "normal", 0) is None
+
+    async def test_an_interrupted_rewrite_leaves_the_previous_entry_untouched(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """The other half of "never a truncated file": an existing entry survives a failed
+        rewrite exactly as it was, rather than being clobbered halfway."""
+        cache = _cache(tmp_path)
+        await cache.write(
+            card_id=_CARD,
+            size="normal",
+            face=0,
+            content_type="image/jpeg",
+            body=b"the-good-bytes",
+        )
+
+        def explode(*args, **kwargs):
+            raise OSError("interrupted")
+
+        monkeypatch.setattr(images.os, "replace", explode)
+        await cache.write(
+            card_id=_CARD,
+            size="normal",
+            face=0,
+            content_type="image/jpeg",
+            body=b"x",
+        )
+
+        assert await cache.read(_CARD, "normal", 0) == (b"the-good-bytes", "image/jpeg")
+        assert list((tmp_path / "image_cache" / "00" / _CARD).glob("*.tmp")) == []
+
+    async def test_the_temp_file_is_uniquely_named_and_sits_beside_its_target(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """``mkstemp`` in the TARGET'S OWN directory, not a fixed ``.tmp`` name and not ``%TEMP%``.
+
+        Two writers cannot splice a fixed name, and ``os.replace`` is atomic only within one
+        filesystem - a temp file in the system temp directory can be on another volume.
+        Inherited from ``discovery.write_discovery``'s reasoning rather than re-derived.
+        """
+        cache = _cache(tmp_path)
+        seen: list[tuple[str, str]] = []
+        real_mkstemp = images.tempfile.mkstemp
+
+        def record(**kwargs):
+            descriptor, name = real_mkstemp(**kwargs)
+            seen.append((str(kwargs.get("dir")), name))
+            return descriptor, name
+
+        monkeypatch.setattr(images.tempfile, "mkstemp", record)
+
+        for _ in range(2):
+            await cache.write(
+                card_id=_CARD,
+                size="normal",
+                face=0,
+                content_type="image/jpeg",
+                body=b"a",
+            )
+
+        target_directory = str(tmp_path / "image_cache" / "00" / _CARD)
+        assert [directory for directory, _ in seen] == [target_directory, target_directory]
+        assert seen[0][1] != seen[1][1], "a fixed temp name lets two writers splice one file"
+
+    async def test_nothing_is_fsynced(self, tmp_path, monkeypatch) -> None:
+        """Q3, asserted rather than asserted-about. **Atomic is not durable, deliberately.**
+
+        Temp + ``os.replace`` is what makes a reader never see a partial file; ``fsync`` is what
+        makes the file survive a power cut, and a cache entry lost to a power cut costs exactly
+        one refetch. Measured on this machine at Task 0: ``fsync`` costs **2.909 ms** against the
+        whole write's **0.460 ms** - 6.3x, or 0.288 s of forced flushes on a cold 99-tile deck.
+        The reason is the semantics; the number is the corroboration.
+        """
+        cache = _cache(tmp_path)
+        calls: list[int] = []
+        monkeypatch.setattr(images.os, "fsync", lambda fd: calls.append(fd))
+
+        await cache.write(
+            card_id=_CARD,
+            size="normal",
+            face=0,
+            content_type="image/jpeg",
+            body=b"a",
+        )
+
+        assert calls == [], "the cache bought durability the architecture did not ask for"
+
+
+class TestACacheFailureIsNeverARequestFailure:
+    """AC 9: every failure degrades to *fetch it* and logs. No new reason token, no exception."""
+
+    async def test_an_unwritable_directory_is_swallowed(self, tmp_path, monkeypatch) -> None:
+        cache = _cache(tmp_path)
+
+        def explode(*args, **kwargs):
+            raise PermissionError("the directory is not writable")
+
+        monkeypatch.setattr(images.tempfile, "mkstemp", explode)
+
+        await cache.write(
+            card_id=_CARD,
+            size="normal",
+            face=0,
+            content_type="image/jpeg",
+            body=b"a",
+        )
+
+        assert await cache.read(_CARD, "normal", 0) is None
+
+    async def test_a_permission_error_on_the_replace_is_swallowed(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """The realistic Windows case: another handle holds the target open, so the loser of two
+        concurrent writes for one key gets ``PermissionError`` from ``os.replace``. Q5 declined
+        in-flight coalescing, which makes this reachable rather than theoretical."""
+        cache = _cache(tmp_path)
+
+        def explode(*args, **kwargs):
+            raise PermissionError("another handle holds the target")
+
+        monkeypatch.setattr(images.os, "replace", explode)
+
+        await cache.write(
+            card_id=_CARD,
+            size="normal",
+            face=0,
+            content_type="image/jpeg",
+            body=b"a",
+        )
+
+        assert await cache.read(_CARD, "normal", 0) is None
+
+    async def test_an_unreadable_entry_is_a_miss_not_a_raise(self, tmp_path, monkeypatch) -> None:
+        cache = _cache(tmp_path)
+        await cache.write(
+            card_id=_CARD,
+            size="normal",
+            face=0,
+            content_type="image/jpeg",
+            body=b"a",
+        )
+
+        def explode(self, *args, **kwargs):
+            raise PermissionError("locked by another process")
+
+        monkeypatch.setattr(images.Path, "read_bytes", explode)
+
+        assert await cache.read(_CARD, "normal", 0) is None
+
+    async def test_a_truncated_entry_is_a_miss_rather_than_an_empty_picture(self, tmp_path) -> None:
+        """Zero bytes is not a picture (c3-5's Greptile P1, in the cache's costume). Temp +
+        replace makes this unreachable through this module's own write path - but the file is on
+        the user's disk and this module is not the only thing that can touch it."""
+        cache = _cache(tmp_path)
+        entry = tmp_path / "image_cache" / "00" / _CARD / "normal_0.jpg"
+        entry.parent.mkdir(parents=True, exist_ok=True)
+        entry.write_bytes(b"")
+
+        assert await cache.read(_CARD, "normal", 0) is None
+
+    async def test_an_oversized_entry_is_a_miss_not_a_served_body(self, tmp_path) -> None:
+        """The warm path enforces the same ceiling the fetch path enforces on the wire (review
+        2026-08-01). Nothing this cache's own writer stores can exceed ``_MAX_IMAGE_BYTES`` —
+        the fetch refuses the body first — so an oversized file is by definition not this app's
+        work, and it is not loaded whole into memory and stamped ``immutable`` for a year.
+        """
+        cache = _cache(tmp_path)
+        entry = tmp_path / "image_cache" / "00" / _CARD / "normal_0.jpg"
+        entry.parent.mkdir(parents=True, exist_ok=True)
+        entry.write_bytes(b"\xff" * (images._MAX_IMAGE_BYTES + 1))
+
+        assert await cache.read(_CARD, "normal", 0) is None
+
+    async def test_a_failure_above_the_file_layer_is_still_never_a_raise(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """``_read_cached``/``_write_atomically`` answer every *file*-layer failure, but
+        ``asyncio.to_thread`` itself can refuse to schedule (interpreter shutdown, a closed
+        default executor) — and that arrives as ``RuntimeError``, not ``OSError``. AC 9 does not
+        distinguish by provenance: a cache failure of ANY kind is a fetch, never a failed
+        request (review 2026-08-01 — the catch used to be ``OSError``-narrow while the docstring
+        said "every failure").
+        """
+        cache = _cache(tmp_path)
+
+        async def refuse(*args, **kwargs):
+            raise RuntimeError("cannot schedule new futures after interpreter shutdown")
+
+        monkeypatch.setattr(images.asyncio, "to_thread", refuse)
+
+        assert await cache.read(_CARD, "normal", 0) is None
+        await cache.write(
+            card_id=_CARD,
+            size="normal",
+            face=0,
+            content_type="image/jpeg",
+            body=b"a",
+        )
+
+    async def test_a_cache_root_that_is_a_file_degrades_rather_than_raising(self, tmp_path) -> None:
+        """``mkdir(parents=True, exist_ok=True)`` still raises on this shape - a *file* where a
+        directory belongs is ``FileExistsError``/``NotADirectoryError``, not an idempotent
+        no-op."""
+        root = tmp_path / "image_cache"
+        root.write_text("not a directory", encoding="utf-8")
+        cache = images.DiskCache(root)
+
+        await cache.write(
+            card_id=_CARD,
+            size="normal",
+            face=0,
+            content_type="image/jpeg",
+            body=b"a",
+        )
+
+        assert await cache.read(_CARD, "normal", 0) is None
+        assert root.is_file(), "the cache clobbered something that was not its own"
+
+
+class TestBuildingTheCache:
+    """Q6: the lifespan creates the root; a failure disables the cache, never the launch."""
+
+    def test_the_root_is_resolved_under_the_data_directory(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path))
+
+        assert images.cache_root() == tmp_path / "image_cache"
+
+    def test_building_one_creates_the_root(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path))
+
+        cache = images.build_image_cache()
+
+        assert cache is not None
+        assert cache.root == tmp_path / "image_cache"
+        assert cache.root.is_dir()
+
+    def test_a_root_that_cannot_be_created_disables_the_cache_rather_than_raising(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """Q6, and it is the half that keeps ``test_app.py::test_startup_failure_propagates``
+        literally true: publishing the discovery file is still the ONLY startup step that can
+        fail the launch. An app with no cache works and is slower; a half-launched rendezvous
+        leaves every agent tool reporting ``app_not_running`` while the app visibly runs.
+        """
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path))
+        (tmp_path / "image_cache").write_text("a file where a directory belongs", encoding="utf-8")
+
+        assert images.build_image_cache() is None
+
+
+def _module_level_calls(source: str, name: str) -> list[int]:
+    """Return the lines where *name* is called OUTSIDE any function body.
+
+    Args:
+        source: Python source text.
+        name: The callee to look for, bare or as an attribute.
+
+    Returns:
+        The line numbers of module-level (or default-argument) call sites.
+    """
+    tree = ast.parse(source)
+    inside: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            for statement in node.body:
+                for child in ast.walk(statement):
+                    inside.add(id(child))
+    lines = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        called = (
+            node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+        )
+        if called == name and id(node) not in inside:
+            lines.append(node.lineno)
+    return sorted(lines)
+
+
+class TestNoDataPathIsResolvedAtImportTime:
+    """AD-10's easiest mistake in this story, and the one landmine 4 calls the easiest available.
+
+    ``paths.data_dir()`` ends in ``mkdir(parents=True, exist_ok=True)``, so a module-level
+    ``_CACHE_ROOT = paths.data_dir() / "image_cache"`` — or a ``def f(root=cache_root())``
+    default argument — would create the user's data directory merely by IMPORTING this module,
+    and ``build_app()`` imports it. ``discovery.discovery_path()``'s docstring is the precedent.
+
+    Asserted over the AST rather than by watching for a directory: by the time any test runs the
+    import has already happened, so an observational check here is unfalsifiable.
+    """
+
+    def test_images_resolves_no_data_path_outside_a_function_body(self) -> None:
+        source = _IMAGES_SOURCE.read_text(encoding="utf-8")
+
+        offences = _module_level_calls(source, "data_dir") + _module_level_calls(
+            source, "cache_root"
+        )
+
+        assert offences == [], (
+            f"images.py resolves a data path at line(s) {offences} outside any function body — "
+            "data_dir() mkdirs, so this creates the user's data directory at IMPORT time and "
+            "breaks AD-10's inertness guarantee"
+        )
+
+    def test_the_scan_sees_both_a_module_constant_and_a_default_argument(self) -> None:
+        """NON-VACUITY PAIRING, and the second plant is the spelling a reader would not think of:
+        a default argument is evaluated at import too, and it does not look like a constant."""
+        constant = "from src import paths\n\nROOT = paths.data_dir() / 'image_cache'\n"
+        default = "from src import paths\n\n\ndef go(root=paths.data_dir()):\n    return root\n"
+
+        assert _module_level_calls(constant, "data_dir") == [3]
+        assert _module_level_calls(default, "data_dir") == [4], (
+            "a default argument is evaluated at import; a scan that only walks module-level "
+            "assignments walks straight past it"
+        )
+
+    def test_the_scan_stays_silent_on_a_call_inside_a_function_body(self) -> None:
+        """…and the other direction: resolving at CALL time is the right answer and must not
+        fire, or the guard could be satisfied by deleting the resolution entirely."""
+        correct = "from src import paths\n\n\ndef go():\n    return paths.data_dir() / 'x'\n"
+
+        assert _module_level_calls(correct, "data_dir") == []
+
+
+# =============================================================================================
+# Story c3-7: the two positive gates that replace the eight names removed from
+# `_BANNED_IDENTIFIERS` and the one removed from `_BLOCKING_CALLS`.
+#
+# c3-6 wrote the procedure down by doing it: remove your family, leave the rest, restate the
+# comment, and replace the ban with a positive gate that is STRONGER than the ban was. A ban can
+# only ever say "not here". These say "here, and nowhere else" and "on a thread, never on the
+# loop" — neither of which the ban could express.
+# =============================================================================================
+
+
+_COMPANION_ROOT = Path(__file__).resolve().parents[3] / "src" / "companion"
+
+_RENAME_INTO_PLACE = frozenset({"replace", "rename", "move"})
+"""Every way a file is moved into its final name — the FAMILY, never a member list.
+
+``os.replace`` is what this project uses; ``os.rename`` is the spelling that looks equivalent and
+raises ``FileExistsError`` over an existing file on Windows; ``shutil.move`` is the one a reader
+reaches for when neither seems to work. All three are rename-into-place, so all three are what the
+scan counts — banning only the one the code happens to use is c3-3's finding pre-committed.
+"""
+
+
+def _write_sites_in(source: str) -> list[tuple[str, int]]:
+    """Return every rename-into-place call in *source*, resolved through import aliases.
+
+    The four evasions this must survive, each spelled the way a real second write site would
+    arrive rather than the way this scan's own firing test spells them:
+
+    * ``from os import replace as move`` — the member aliased at the import, so the local name
+      matches nothing;
+    * ``import os as operating_system`` — the module aliased, so the attribute access matches
+      nothing either;
+    * ``handler = os.replace; handler(temp, target)`` — the member rebound to a local, AC 5's own
+      named plant, which this scan's first shipped version treated as *sanctioned* (review
+      2026-08-01: the quiet-direction test planted exactly this and asserted silence);
+    * ``temp_path.replace(target)`` — **pathlib's** rename-into-place, genuine, atomic and
+      stdlib, and the one spelling the retired identifier ban DID catch (review 2026-08-01).
+      The discriminator that keeps ``str.replace`` and ``datetime.replace`` quiet is the
+      signature: rename-into-place takes exactly **one positional argument** (the destination),
+      where ``str.replace`` takes two and ``datetime.replace`` takes keywords.
+
+    Args:
+        source: Python source text.
+
+    Returns:
+        ``(callee, line)`` pairs, with the callee resolved to its real spelling; pathlib-shaped
+        method calls are reported as ``Path.<name>`` since their owner's type is unknowable to a
+        static scan.
+    """
+    tree = ast.parse(source)
+    modules: dict[str, str] = {}
+    members: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                modules[alias.asname or alias.name.split(".")[0]] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module in {"os", "shutil"}:
+            for alias in node.names:
+                if alias.name in _RENAME_INTO_PLACE:
+                    members[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+    for node in ast.walk(tree):
+        # handler = os.replace — the member rebound to a local name. Tracked exactly like a
+        # from-import alias: the binding alone is not a write site, but a call through it is.
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Attribute):
+            value = node.value
+            if (
+                value.attr in _RENAME_INTO_PLACE
+                and isinstance(value.value, ast.Name)
+                and modules.get(value.value.id, value.value.id) in {"os", "shutil"}
+            ):
+                real = f"{modules.get(value.value.id, value.value.id)}.{value.attr}"
+                for bound in node.targets:
+                    if isinstance(bound, ast.Name):
+                        members[bound.id] = real
+    sites: list[tuple[str, int]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        function = node.func
+        if isinstance(function, ast.Attribute) and function.attr in _RENAME_INTO_PLACE:
+            owner = function.value
+            if isinstance(owner, ast.Name) and modules.get(owner.id, owner.id) in {"os", "shutil"}:
+                sites.append((f"{modules.get(owner.id, owner.id)}.{function.attr}", node.lineno))
+            elif len(node.args) == 1 and not node.keywords:
+                # Path.replace(target) / Path.rename(target): one positional argument is the
+                # rename-into-place signature. str.replace takes two, datetime.replace keywords.
+                sites.append((f"Path.{function.attr}", node.lineno))
+        elif isinstance(function, ast.Name) and function.id in members:
+            sites.append((members[function.id], node.lineno))
+    return sorted(sites, key=lambda site: site[1])
+
+
+def _write_sites_in_companion() -> dict[str, list[tuple[str, int]]]:
+    """Scan every module under ``src/companion`` for rename-into-place sites, by module name."""
+    found: dict[str, list[tuple[str, int]]] = {}
+    for path in sorted(_COMPANION_ROOT.rglob("*.py")):
+        sites = _write_sites_in(path.read_text(encoding="utf-8"))
+        if sites:
+            found[path.name] = sites
+    return found
+
+
+class TestExactlyOneImageWriteSite:
+    """AC 5, the positive gate replacing eight of the ten removed bans.
+
+    **The acceptance criterion asks for "a single ``os.replace``/rename-into-place site" and that
+    is not achievable, because one already existed before this story.**
+    ``discovery.write_discovery`` has published the rendezvous atomically since c1-7. So the
+    honest gate is the one asserted here: rename-into-place happens in exactly **two** modules,
+    each **once**, and both are named. That is strictly stronger than a bare count — a third site
+    fires it, and so does a second site inside either of the two named modules — and it is the
+    shape ``TestExactlyOnePacer`` already uses, which asserts the count *and* the module.
+    """
+
+    def test_the_whole_backend_renames_into_place_in_exactly_two_named_places(self) -> None:
+        sites = _write_sites_in_companion()
+
+        assert {module: len(found) for module, found in sites.items()} == {
+            "discovery.py": 1,
+            "images.py": 1,
+        }, (
+            f"src/companion renames files into place at {sites}. Exactly two are sanctioned: "
+            "discovery.py publishes the rendezvous (c1-7) and images.py stores a cached image "
+            "(c3-7). A third is a write path nobody decided on."
+        )
+
+    def test_the_image_write_site_is_the_cache_and_uses_replace_not_rename(self) -> None:
+        [(callee, _line)] = _write_sites_in_companion()["images.py"]
+
+        assert callee == "os.replace", (
+            "os.rename raises FileExistsError over an existing file on Windows, so a cache entry "
+            "would be written exactly once and never refreshed — silently, and only on Brad's "
+            "platform"
+        )
+
+    def test_the_scan_catches_a_second_site_spelled_to_evade(self) -> None:
+        """NON-VACUITY, and both plants are spelled the way c3-3's lesson demands: not the way
+        this scan's own firing tests spell it.
+
+        A guard written by someone who knows exactly how it will be spelled proves only that it
+        catches its own examples — which is precisely what c3-6's review found for the third story
+        running.
+        """
+        planted = (
+            "from os import replace as move\n"
+            "import os as operating_system\n"
+            "import shutil\n"
+            "\n"
+            "\n"
+            "def store(temp, target):\n"
+            "    move(temp, target)\n"
+            "    operating_system.replace(temp, target)\n"
+            "    shutil.move(temp, target)\n"
+            "    temp.replace(target)\n"
+            "    handler = operating_system.replace\n"
+            "    handler(temp, target)\n"
+        )
+
+        assert _write_sites_in(planted) == [
+            ("os.replace", 7),
+            ("os.replace", 8),
+            ("shutil.move", 9),
+            ("Path.replace", 10),
+            ("os.replace", 12),
+        ], (
+            "an aliased member import, an aliased module import, shutil.move, pathlib's "
+            "Path.replace, or a call through a rebound local walked through — the last two are "
+            "the review-found holes (2026-08-01): Path.replace is the spelling the retired "
+            "identifier ban DID catch, and the rebound local is the evasion AC 5 names"
+        )
+
+    def test_the_scan_does_not_fire_on_prose_or_on_an_unrelated_replace(self) -> None:
+        """…and the other direction, from the same function (standing agreement).
+
+        ``str.replace`` is everywhere in ordinary code and is not a write of any kind. A scan
+        that fired on it would be satisfied only by code that never manipulates a string, which
+        is not a property anybody wants — and the temptation would be to delete the guard.
+
+        The discriminators, each planted: ``str.replace`` takes **two** positional arguments and
+        ``datetime.replace`` takes **keywords**, where rename-into-place takes exactly one bare
+        positional (the destination). A rebound ``os.replace`` that is referenced but never
+        **called** is also quiet — the binding is tracked, and the call through it fires (proved
+        in the firing test above); the reference alone writes nothing.
+        """
+        quiet = (
+            '"""The cache calls os.replace to move the temp file into place."""\n'
+            "import os\n"
+            "\n"
+            "\n"
+            "def normalise(text, path, stamp):\n"
+            "    cleaned = text.replace('-', '_')\n"
+            "    naive = stamp.replace(tzinfo=None)\n"
+            "    handler = os.replace\n"
+            "    return cleaned, naive, handler, os.path.join(path, cleaned)\n"
+        )
+
+        assert _write_sites_in(quiet) == [], (
+            "a str.replace, a keyword-only datetime.replace, an uncalled rebound reference or a "
+            "docstring fired the write-site scan"
+        )
+
+
+def _to_thread_callables(source: str) -> set[str]:
+    """Every name passed to ``asyncio.to_thread`` as its callable, anywhere in *source*.
+
+    Matches both spellings (``asyncio.to_thread(f, ...)`` and a from-imported ``to_thread(f,
+    ...)``) so the gate cannot be evaded by changing the import form (review 2026-08-01).
+    """
+    tree = ast.parse(source)
+    callables: set[str] = set()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and node.args):
+            continue
+        function = node.func
+        named = (isinstance(function, ast.Attribute) and function.attr == "to_thread") or (
+            isinstance(function, ast.Name) and function.id == "to_thread"
+        )
+        if named and isinstance(node.args[0], ast.Name):
+            callables.add(node.args[0].id)
+    return callables
+
+
+def _direct_calls_to(source: str, names: set[str]) -> list[tuple[str, int]]:
+    """Every ordinary call to a member of *names* in *source* — the on-the-loop spelling.
+
+    A name appearing as ``asyncio.to_thread``'s first argument is a *reference*, not a call, and
+    does not match here; ``helper(...)`` does. This is what makes Q2's "reached only through
+    ``to_thread``" enforceable rather than trusted (review 2026-08-01).
+    """
+    tree = ast.parse(source)
+    return sorted(
+        (node.func.id, node.lineno)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in names
+    )
+
+
+_FILE_IO_CALLS = frozenset(
+    {
+        "open",
+        "read_bytes",
+        "read_text",
+        "write_bytes",
+        "write_text",
+        "mkstemp",
+        "mkdtemp",
+        "mkdir",
+        "makedirs",
+        "replace",
+        "rename",
+        "unlink",
+        "remove",
+        "fsync",
+        "fdopen",
+        # The probe-shaped members (review 2026-08-01): a "check before read" optimisation is the
+        # single most likely next edit to the async route, and stat/exists are how it would be
+        # spelled. They touch the disk exactly like a read does.
+        "stat",
+        "exists",
+        "is_file",
+        "is_dir",
+        "touch",
+    }
+)
+"""Synchronous filesystem calls — the family c3-6's blocking-wait scan is structurally blind to.
+
+``_BLOCKING_MODULES`` covers ``threading``, ``concurrent.futures``, ``multiprocessing``,
+``subprocess`` and ``time.sleep``. A ``Path.read_bytes()`` is **none of those**, which is the
+landmine this story was contexted around: AD-11 says the image path is *"async throughout — it
+must never block the event loop"*, and a synchronous file read satisfies every test in this
+repository while contradicting that sentence outright.
+
+Listed as calls rather than as modules because there is no module to ban: the offenders live in
+``os``, ``pathlib``, ``tempfile`` and the builtins at once, and ``os`` and ``pathlib`` are both
+needed on the sanctioned path.
+"""
+
+
+def _file_io_on_the_loop(source: str) -> list[tuple[str, int]]:
+    """Return every file-I/O call lexically inside an ``async def`` in *source*.
+
+    **The rule this expresses, which the retired ban could not**: the blocking call must live in a
+    plain ``def`` helper, and the async path may reach it only through ``asyncio.to_thread``. A
+    call sitting directly in an ``async def`` runs on the event loop no matter how the module is
+    otherwise arranged.
+
+    Innermost enclosing function wins, so a plain ``def`` nested inside an ``async def`` is
+    correctly clean — that is a real spelling (a closure handed to ``to_thread``) and flagging it
+    would push the fix toward hiding the call rather than moving it.
+
+    Import aliases are resolved for the ``from``-form (``from os import replace as move``) so a
+    renamed member has no spelling that helps.
+
+    Args:
+        source: Python source text.
+
+    Returns:
+        ``(callee, line)`` pairs for every offending call site.
+    """
+    tree = ast.parse(source)
+    members: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name in _FILE_IO_CALLS:
+                    members[alias.asname or alias.name] = alias.name
+
+    offences: list[tuple[str, int]] = []
+
+    def walk(node: ast.AST, in_async: bool) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.AsyncFunctionDef):
+                walk(child, True)
+                continue
+            if isinstance(child, ast.FunctionDef | ast.Lambda):
+                walk(child, False)
+                continue
+            if in_async and isinstance(child, ast.Call):
+                function = child.func
+                if isinstance(function, ast.Attribute):
+                    called = function.attr
+                elif isinstance(function, ast.Name):
+                    called = members.get(function.id, function.id)
+                else:
+                    called = ""
+                if called in _FILE_IO_CALLS:
+                    offences.append((called, child.lineno))
+            walk(child, in_async)
+
+    walk(tree, False)
+    return sorted(offences, key=lambda offence: offence[1])
+
+
+class TestFileIoNeverRunsOnTheLoop:
+    """Q2's ruling, as a gate that can SEE the shape it rules on.
+
+    The guard removed from ``_BLOCKING_CALLS`` said *no thread*. This one says *the blocking call
+    is on a thread and never on the loop*, which is the property AD-11 actually asks for and the
+    one the old ban was structurally unable to express.
+
+    Measured, so the rule is not merely stylistic (Task 0, 200 iterations, 124 KB, this machine):
+    a read is **4.97 ms**, an atomic write **0.46 ms**, an ``asyncio.to_thread`` hop **0.13 ms**.
+    Inline, a warm 99-tile deck paint blocks the loop for ~0.49 s — twice NFR-05's whole 250 ms
+    push budget. The thread hop costs ~38x less than the read it moves.
+    """
+
+    def test_the_image_module_does_no_file_io_on_the_event_loop(self) -> None:
+        offences = _file_io_on_the_loop(_IMAGES_SOURCE.read_text(encoding="utf-8"))
+
+        assert offences == [], (
+            f"images.py performs file I/O directly inside an async def at {offences}. AD-11: the "
+            "image path is async throughout and must never block the event loop. Move the call "
+            "into a plain `def` helper and reach it with `asyncio.to_thread` — a 124 KB read is "
+            "~5 ms on this machine, and 99 of them is twice NFR-05's whole push budget."
+        )
+
+    def test_the_module_actually_reaches_a_thread_so_the_gate_is_not_vacuous(self) -> None:
+        """The gate above passes trivially against a module that does no file I/O at all — which
+        is exactly what ``images.py`` was one commit ago. This is the half that makes it mean
+        something: the file I/O exists, and it is reached through ``asyncio.to_thread``.
+
+        Asserted on the AST, not as a substring (review 2026-08-01): the first shipped version
+        checked ``"to_thread" in source``, which this module's own comments and docstrings
+        satisfy after every real call is deleted — a vacuity check that was itself vacuous. The
+        shape now pinned is Q2's ruling verbatim: each sync file-I/O helper appears as
+        ``asyncio.to_thread``'s callable, and **nothing in the module calls either helper
+        directly** — so inlining ``_read_cached(...)`` into ``DiskCache.read`` (the one-line
+        mutation that blocks the loop 4.97 ms per warm tile and passes every functional test)
+        goes red here.
+        """
+        source = _IMAGES_SOURCE.read_text(encoding="utf-8")
+
+        assert _to_thread_callables(source) == {"_read_cached", "_write_atomically"}, (
+            "the sync file-I/O helpers are no longer what asyncio.to_thread runs, so either the "
+            "module stopped doing file I/O (the gate above proves nothing) or the I/O moved "
+            "somewhere the gate cannot see"
+        )
+        assert _direct_calls_to(source, {"_read_cached", "_write_atomically"}) == [], (
+            "a sync file-I/O helper is called directly — on the event loop — instead of through "
+            "asyncio.to_thread; Q2's ruling is 'the thread is where the blocking call is'"
+        )
+        assert _file_io_on_the_loop(source) == []
+        assert [call for call, _line in _write_sites_in(source)] == ["os.replace"], (
+            "the module stopped writing at all, so the gate above proves nothing"
+        )
+
+    def test_the_reachability_scan_catches_an_inlined_helper_call(self) -> None:
+        """NON-VACUITY for the reachability half: the exact mutation it exists to catch —
+        ``await asyncio.to_thread(_read_cached, ...)`` rewritten as ``_read_cached(...)`` — must
+        fire, and the sanctioned spelling from the same source must not."""
+        inlined = (
+            "import asyncio\n"
+            "\n"
+            "\n"
+            "def _read_cached(root):\n"
+            "    return root.read_bytes()\n"
+            "\n"
+            "\n"
+            "async def read(root):\n"
+            "    return _read_cached(root)\n"
+        )
+        sanctioned = (
+            "import asyncio\n"
+            "\n"
+            "\n"
+            "def _read_cached(root):\n"
+            "    return root.read_bytes()\n"
+            "\n"
+            "\n"
+            "async def read(root):\n"
+            "    return await asyncio.to_thread(_read_cached, root)\n"
+        )
+
+        assert _direct_calls_to(inlined, {"_read_cached"}) == [("_read_cached", 9)], (
+            "the inline mutation — helper called on the loop — walked through"
+        )
+        assert _direct_calls_to(sanctioned, {"_read_cached"}) == []
+        assert _to_thread_callables(sanctioned) == {"_read_cached"}
+
+    def test_the_scan_catches_a_call_moved_directly_into_an_async_def(self) -> None:
+        """NON-VACUITY, plant 1: the regression this gate exists to catch. It is a ONE-LINE edit
+        from the shipped code — delete the helper, inline the call — and it passes every
+        functional test in this repository."""
+        planted = "import asyncio\n\n\nasync def read(path):\n    return path.read_bytes()\n"
+
+        assert _file_io_on_the_loop(planted) == [("read_bytes", 5)]
+
+    def test_the_scan_catches_an_aliased_member_import_inside_an_async_def(self) -> None:
+        """NON-VACUITY, plant 2, spelled to evade — c3-6's review theme was a guard keyed on the
+        syntax its own firing test used, found by all three layers. So this plant arrives under a
+        name no member of ``_FILE_IO_CALLS`` spells."""
+        planted = (
+            "from os import replace as move\n"
+            "from tempfile import mkstemp as scratch\n"
+            "\n"
+            "\n"
+            "async def store(temp, target):\n"
+            "    handle, name = scratch(dir=target.parent)\n"
+            "    move(temp, target)\n"
+        )
+
+        assert _file_io_on_the_loop(planted) == [("mkstemp", 6), ("replace", 7)], (
+            "an aliased member import walked straight into an async def"
+        )
+
+    def test_the_scan_stays_silent_on_the_sanctioned_arrangement(self) -> None:
+        """…and the other direction, which is what keeps the gate from being satisfiable by
+        deleting the cache. The shipped shape — a plain ``def`` doing the I/O, an ``async def``
+        reaching it through ``asyncio.to_thread`` — must not fire, and neither must a plain
+        ``def`` nested inside an async one."""
+        legitimate = (
+            "import asyncio\n"
+            "\n"
+            "\n"
+            "def _read(path):\n"
+            "    return path.read_bytes()\n"
+            "\n"
+            "\n"
+            "async def read(path):\n"
+            "    def nested():\n"
+            "        return path.read_bytes()\n"
+            "\n"
+            "    first = await asyncio.to_thread(_read, path)\n"
+            "    return first, await asyncio.to_thread(nested)\n"
+        )
+
+        assert _file_io_on_the_loop(legitimate) == []
