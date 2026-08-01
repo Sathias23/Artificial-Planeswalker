@@ -564,7 +564,7 @@ on the second invariant — read `face.get("image_uris")` per face — but know 
   - [x] `deferred-work.md` entries with named homes; any new `ui/README.md` blind-spot row
   - [x] Fill the Dev Agent Record; update `sprint-status.yaml`; set status to `review`
 
-- [ ] **Task 9 — Same-day three-layer review before the PR** *(Brad runs this — `dev-story` stops at
+- [x] **Task 9 — Same-day three-layer review before the PR** *(Brad runs this — `dev-story` stops at
       Task 8 with status `review`)*
   - [x] `bmad-code-review` (Blind Hunter + Edge Case Hunter + Acceptance Auditor) before the PR
   - [x] Apply patches, re-run every gate, paste the output — all 11 patches applied 2026-08-01;
@@ -572,7 +572,7 @@ on the second invariant — read `face.get("image_uris")` per face — but know 
         `ruff format --check` clean; `mypy src/` + `--platform win32` clean; ui `npm test`
         **568 passed (31 files)**, `lint`, `format:check`, `npx tsc -b --force` clean; plugin
         mirror rebuilt (4 companion files re-mirrored)
-  - [ ] Raise the PR into `feat/companion-c3`
+  - [x] Raise the PR into `feat/companion-c3` — **PR #33**, 2026-08-01
 
 ### Review Findings
 
