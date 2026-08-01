@@ -133,14 +133,10 @@ export interface paths {
          *     format legalities, and its images. Views that were given only an id use this to fill
          *     themselves in.
          *
-         *     Images arrive in one of two places, and the discriminator is **the presence of per-face
-         *     ``image_uris``, never whether ``card_faces`` is present**. Most cards carry a top-level
-         *     ``image_uris``; a card whose faces have their own artwork carries a null ``image_uris`` and
-         *     per-face ``image_uris`` inside ``card_faces`` instead. Nothing carries both.
-         *
-         *     Branching on ``card_faces !== null`` is the trap: a split card has faces *and* a top-level
-         *     image, because its halves share one piece of artwork, so those faces carry names and costs but
-         *     no images. Some cards have no image data anywhere, which is ordinary and not an error.
+         *     This operation returns the image **URLs** and nothing else about them; where they live on the
+         *     record is stated on the ``image_uris`` and ``card_faces`` fields themselves, and it is not the
+         *     obvious rule. A view that wants pixels asks ``GET /api/card-image/{scryfall_id}`` instead,
+         *     which applies that rule for you.
          *
          *     ``prices`` is absent from this response, not empty: the local database holds no price data of
          *     any kind.
@@ -153,6 +149,55 @@ export interface paths {
          *         stays malformed whatever the database does.
          */
         get: operations["read_card_api_cards__card_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/card-image/{scryfall_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Card Image
+         * @description Serve one card face's artwork, from this app's own origin.
+         *
+         *     Every image in the app comes through here: the browser never contacts Scryfall directly
+         *     (AD-11, UX-DR36). The URL is read from the card's own row in the local database — **no live
+         *     Scryfall metadata call is ever made** — and the bytes are proxied back with the content type
+         *     the CDN actually sent.
+         *
+         *     ``face`` indexes **the images this card has**, not its ``card_faces`` array, and the two are
+         *     different for real cards. A split, adventure or flip card has two faces and **one** image,
+         *     because its halves share one piece of artwork, so ``face=1`` on one of them is out of range
+         *     rather than "the other half"; a single-faced card serves at ``face=0``. Which images a card
+         *     has is decided by the rule stated on ``GET /api/cards/{card_id}``'s ``image_uris`` and
+         *     ``card_faces`` fields — this operation applies it so a caller does not have to.
+         *
+         *     Two failures are answered here and they are **not** interchangeable, even though both draw the
+         *     same placeholder. ``404 no_image_data`` is permanent: this card has no artwork for what was
+         *     asked, and asking again cannot change it. ``502 image_fetch_failed`` is transient: the URL was
+         *     known and the fetch did not deliver. Neither ever returns a substitute image — no grey
+         *     rectangle, no 1×1 pixel, no generic card back — because the client can draw a better one from
+         *     the name, cost and type line it already has.
+         *
+         *     A successful image is cacheable by the browser for a year; a failure is not cached at all, so
+         *     one bad minute cannot leave a permanently broken tile in an open tab.
+         *
+         *     Warning:
+         *         The ``400`` for a malformed id or an unrecognised ``size`` is not unconditional.
+         *         Dependencies resolve before parameter validation is reported, so ``?size=bogus`` sent
+         *         while the database is unusable answers ``503`` (``database_not_initialized`` or
+         *         ``database_unavailable``), not ``400``. A caller that retries on 503 must not assume the
+         *         request can ever succeed: a bad parameter stays bad whatever the database does.
+         */
+        get: operations["read_card_image_api_card_image__scryfall_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -273,17 +318,9 @@ export interface components {
          *     creature, and ``game_changer`` is a three-state flag whose null means "not yet determined",
          *     not "no".
          *
-         *     Images live in one of two places, and **which one is decided by the presence of per-face
-         *     ``image_uris`` — never by whether ``card_faces`` is present**. Most cards carry a top-level
-         *     ``image_uris``. A card whose faces have their own artwork carries a null ``image_uris`` and
-         *     per-face ``image_uris`` inside its ``card_faces`` entries instead. The two are mutually
-         *     exclusive; nothing carries both.
-         *
-         *     ``card_faces`` is **not** the discriminator, and treating it as one is wrong for real cards:
-         *     a split card has a ``card_faces`` array *and* a top-level image, because its two halves share
-         *     one piece of artwork — so its faces carry names and costs but no images of their own. Reading
-         *     "has faces" as "has per-face images" renders nothing for those cards. Some cards have no image
-         *     data anywhere, which is ordinary and not an error.
+         *     Where a card's artwork lives is stated on the ``image_uris`` and ``card_faces`` fields
+         *     themselves — read those descriptions before rendering anything, because the rule is not the
+         *     obvious one.
          *
          *     There is no price data of any kind in this record.
          */
@@ -330,11 +367,15 @@ export interface components {
             legalities: {
                 [key: string]: string;
             };
-            /** Card Faces */
-            card_faces?: {
-                [key: string]: unknown;
-            }[] | null;
-            /** Image Uris */
+            /**
+             * Card Faces
+             * @description Images live in one of two places, and which one is decided by the presence of per-face image_uris — never by whether card_faces is present. Most cards carry a top-level image_uris; a card whose faces have their own artwork carries a null image_uris and per-face image_uris inside its card_faces entries instead. The two are mutually exclusive; nothing carries both. Reading 'has faces' as 'has per-face images' is the trap: a split card has faces and a top-level image, because its halves share one piece of artwork, so its faces carry names and costs but no images of their own. Some cards have no image data anywhere, which is ordinary and not an error.
+             */
+            card_faces?: components["schemas"]["CardFace"][] | null;
+            /**
+             * Image Uris
+             * @description Images live in one of two places, and which one is decided by the presence of per-face image_uris — never by whether card_faces is present. Most cards carry a top-level image_uris; a card whose faces have their own artwork carries a null image_uris and per-face image_uris inside its card_faces entries instead. The two are mutually exclusive; nothing carries both. Reading 'has faces' as 'has per-face images' is the trap: a split card has faces and a top-level image, because its halves share one piece of artwork, so its faces carry names and costs but no images of their own. Some cards have no image data anywhere, which is ordinary and not an error.
+             */
             image_uris?: {
                 [key: string]: string;
             } | null;
@@ -343,6 +384,38 @@ export interface components {
              * @default []
              */
             games: string[];
+        };
+        /**
+         * CardFace
+         * @description One face of a multi-faced card printing, exactly as Scryfall publishes it.
+         *
+         *     A card's ``card_faces`` entries carry each half of its identity — that face's own name, mana
+         *     cost, type line and oracle text — and, on some cards, its own artwork. Five fields are named
+         *     below; **every other key Scryfall sends is kept and served unchanged**, so a consumer that
+         *     knows about ``power``, ``flavor_text``, ``loyalty``, ``defense``, ``artist``, ``printed_name``
+         *     or ``color_indicator`` still finds them.
+         *
+         *     A card having faces does **not** mean its faces have artwork. The ``image_uris`` field below
+         *     carries the rule that decides it; this summary deliberately does not repeat it.
+         */
+        CardFace: {
+            /** Name */
+            name?: string | null;
+            /** Mana Cost */
+            mana_cost?: string | null;
+            /** Type Line */
+            type_line?: string | null;
+            /** Oracle Text */
+            oracle_text?: string | null;
+            /**
+             * Image Uris
+             * @description Images live in one of two places, and which one is decided by the presence of per-face image_uris — never by whether card_faces is present. Most cards carry a top-level image_uris; a card whose faces have their own artwork carries a null image_uris and per-face image_uris inside its card_faces entries instead. The two are mutually exclusive; nothing carries both. Reading 'has faces' as 'has per-face images' is the trap: a split card has faces and a top-level image, because its halves share one piece of artwork, so its faces carry names and costs but no images of their own. Some cards have no image data anywhere, which is ordinary and not an error.
+             */
+            image_uris?: {
+                [key: string]: string;
+            } | null;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * CardSummary
@@ -526,6 +599,18 @@ export interface components {
          *       and shows an **"Unknown card"** placeholder in that one slot, with no banner and no apology
          *       (FR-13). One unknown card must never fail a whole view or a whole push. The placeholder is
          *       built in c4-3.
+         *     * ``no_image_data`` — the card exists, but there is no artwork to serve for what was asked:
+         *       either the printing carries no image data at all (79 cards in the shipped corpus), or the
+         *       requested face is beyond the images it has. **Permanent** — retrying cannot help — so the
+         *       view renders normally and that one slot draws the **named Card placeholder** (the card's
+         *       name, mana cost and type line, which the client already holds from
+         *       ``GET /api/cards/{card_id}``). Never a grey rectangle, a 1×1 pixel or a generic card back.
+         *     * ``image_fetch_failed`` — the card's image URL is known but could not be retrieved: the CDN
+         *       timed out, answered a non-2xx, returned something that was not an image, or the stored URL
+         *       pointed somewhere the companion refuses to fetch from. **Transient**, which is the whole
+         *       reason it is a separate token from ``no_image_data`` — the pixels are identical (the same
+         *       named Card placeholder) but only this one may ever be retried. c3-8 owns the negative cache
+         *       and the backoff; until then a failure is simply not cached.
          *     * ``database_not_initialized`` — fresh install, no card database yet; the **"Card database not
          *       set up yet."** panel, which tells the user to ask their agent to run ``initialize_database``.
          *     * ``database_unavailable`` — reads are failing transiently (a bulk refresh in flight, or an
@@ -549,7 +634,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "deck_not_found" | "card_not_found" | "database_not_initialized" | "database_unavailable" | "invalid_request" | "forbidden" | "payload_too_large" | "internal_error";
+            reason: "deck_not_found" | "card_not_found" | "database_not_initialized" | "database_unavailable" | "no_image_data" | "image_fetch_failed" | "invalid_request" | "forbidden" | "payload_too_large" | "internal_error";
         };
         /**
          * FormatCheckReport
@@ -929,6 +1014,85 @@ export interface operations {
             };
             /** @description reason: internal_error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: database_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_card_image_api_card_image__scryfall_id__get: {
+        parameters: {
+            query?: {
+                size?: "small" | "normal" | "large" | "png" | "art_crop" | "border_crop";
+                face?: number;
+            };
+            header?: never;
+            path: {
+                scryfall_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The image bytes, in whatever format the CDN served them. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
+                };
+            };
+            /** @description reason: invalid_request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: card_not_found | no_image_data */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: payload_too_large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: internal_error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: image_fetch_failed */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

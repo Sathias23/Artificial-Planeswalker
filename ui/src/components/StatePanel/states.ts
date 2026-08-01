@@ -9,12 +9,14 @@
  *   `database_unavailable`      -> the Card-database-is-updating panel (quiet retry)
  *   `internal_error`            -> the fifth panel, deterministic and NEVER self-retrying
  *   `card_not_found`            -> NO PANEL, but a NAMED NON-PANEL DESTINATION (c3-2; see below)
+ *   `no_image_data`             -> NO PANEL; the NAMED CARD placeholder in one tile (c3-5)
+ *   `image_fetch_failed`        -> NO PANEL; the same placeholder, for a different reason (c3-5)
  *   `invalid_request`           -> NO UI RESPONSE AT ALL, by design
  *   `forbidden`                 -> NO UI RESPONSE AT ALL, by design (c3-4; agent-facing)
  *   `payload_too_large`         -> NO UI RESPONSE AT ALL, by design
  *   (no token at all)           -> Disconnected, and Database-updating-stalled
  *
- * So `Record<ErrorReason, StateKey>` is the wrong shape twice over: four tokens must be allowed
+ * So `Record<ErrorReason, StateKey>` is the wrong shape twice over: six tokens must be allowed
  * to map to *no* panel, and two panels have no token. `Record<ErrorReason, StateKey | null>` is
  * the shape that is total without being one-to-one, and `null` is a NAMED answer here rather
  * than an absence — see the comments below, which are the whole reason those tokens exist.
@@ -100,6 +102,18 @@ export const PANEL_FOR_REASON = {
   // down a deck view or a push. See `PLACEHOLDER_FOR_REASON` below, which is where that
   // destination is recorded in a form the compiler reads.
   card_not_found: null,
+  // NO PANEL, BUT NOT "NOTHING" — the same shape as `card_not_found` above, and the same reason.
+  // The card resolved; only its picture did not, so the view renders normally and that one tile
+  // draws the NAMED CARD placeholder (name + mana pips + type line) instead of art. A panel here
+  // would take a whole deck view down because one image was missing, which is the FR-13 posture
+  // read across to FR-19. See `PLACEHOLDER_FOR_REASON`.
+  no_image_data: null,
+  // …and its twin. THESE TWO RENDER IDENTICALLY AND ARE STILL TWO TOKENS, which is the one thing
+  // to understand about this pair: the difference is not what the reader sees, it is whether a
+  // retry could ever change it. `no_image_data` is permanent (the row has no artwork); this one
+  // is transient (the CDN did not deliver). c3-8 owns the negative cache and the backoff that act
+  // on the difference — and it needs no wire change at all, because the vocabulary is here.
+  image_fetch_failed: null,
   // NO UI RESPONSE AT ALL, BY DESIGN. The SPA never generates a malformed request, so this
   // token means a client bug or a stray caller on the port. There is nothing the user can do
   // about either, and a panel saying so would be the app blaming its own reader; the log is
@@ -127,22 +141,32 @@ export const PANEL_FOR_REASON = {
  * in one slot of an otherwise-normal view, and adding it to `StateKey` would make
  * `EveryPanelHasASource` demand a source for a panel nobody renders.
  */
-export type PlaceholderKey = 'unknown-card'
+export type PlaceholderKey = 'unknown-card' | 'named-card'
 
 /**
  * Tokens whose destination is a named UI element that is **not a panel** (story c3-2, retro R1).
  *
- * `card_not_found` is the only member today. Its destination is `EXPERIENCE.md`'s "Unknown card
- * in a view" row — a placeholder label plus a truncated id, in the one slot that could not be
- * hydrated, with the rest of the view untouched. **c4-3 owns the render**; this entry is the
- * machine-readable half of the token/UI pairing that R1 requires to land in the same commit as
- * the token, and `tests/unknown-card-copy.test.ts` is what holds the label to the artefact.
+ * `card_not_found` is c3-2's. Its destination is `EXPERIENCE.md`'s "Unknown card in a view" row —
+ * a placeholder label plus a truncated id, in the one slot that could not be hydrated, with the
+ * rest of the view untouched. **c4-3 owns the render**; this entry is the machine-readable half of
+ * the token/UI pairing that R1 requires to land in the same commit as the token, and
+ * `tests/unknown-card-copy.test.ts` is what holds the label to the artefact.
+ *
+ * c3-5's two are `named-card`, and the distinction from `unknown-card` is a real one rather than a
+ * second name for the same thing. `unknown-card` means **the app does not know what this card is**
+ * — there is nothing to draw but an id. `named-card` means **the app knows exactly what this card
+ * is and only lacks its picture**, so UX-DR22's named variant draws the real name, the real mana
+ * pips and the real type line, all of which the client already holds from `GET /api/cards/{id}`.
+ * Two tokens map to it because they differ on the wire (retryable or not) and not on the glass —
+ * `EXPERIENCE.md` writes both rows and asks for the same placeholder in each.
  *
  * `Partial<Record<…>>` because most tokens have no such destination — the assert at the bottom
  * of this file is what stops that partiality from becoming a hole.
  */
 export const PLACEHOLDER_FOR_REASON = {
   card_not_found: 'unknown-card',
+  no_image_data: 'named-card',
+  image_fetch_failed: 'named-card',
 } satisfies Partial<Record<ErrorReason, PlaceholderKey>>
 
 /**

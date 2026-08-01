@@ -793,8 +793,10 @@ class TestRepositoryIntegration:
         assert card.name == "Delver of Secrets"
         assert card.card_faces is not None
         assert len(card.card_faces) == 2
-        assert card.card_faces[0]["name"] == "Delver of Secrets"
-        assert card.card_faces[1]["name"] == "Insectile Aberration"
+        # Attribute access since c3-5 typed the faces as `CardFace` (Q4) — the repository still
+        # reads the same JSON column and hands back the same values.
+        assert card.card_faces[0].name == "Delver of Secrets"
+        assert card.card_faces[1].name == "Insectile Aberration"
 
 
 class TestColorModeFiltering:

@@ -175,9 +175,14 @@ def is_land(card: Card) -> bool:
 
 
 def _face_value(card: Card, key: str) -> str:
-    """Read ``key`` from the card's first face (DFC fallback) as a string."""
+    """Read ``key`` from the card's first face (DFC fallback) as a string.
+
+    ``getattr`` rather than ``.get`` since c3-5 typed ``card_faces`` as ``CardFace``. It still
+    reaches every key: the model sets ``extra="allow"``, so unnamed fields — ``power`` and
+    ``toughness``, which this function is called with — are attributes too.
+    """
     if card.card_faces:
-        val = card.card_faces[0].get(key)
+        val = getattr(card.card_faces[0], key, None)
         if isinstance(val, str):
             return val
     return ""
@@ -223,8 +228,10 @@ def pick_art(card: Card, color: str, index: int) -> str:
     """
     uris = card.image_uris
     if not uris and card.card_faces:
-        face_uris = card.card_faces[0].get("image_uris")
-        if isinstance(face_uris, dict):
+        # Front face only, and `art_crop` only — the two limitations `src/companion/app/images.py`
+        # removes for the companion. This surface is the legacy viewer and is frozen until c8-1.
+        face_uris = card.card_faces[0].image_uris
+        if face_uris:
             uris = face_uris
     art_url = uris.get("art_crop") if uris else None
     if art_url and _is_safe_art_url(art_url):

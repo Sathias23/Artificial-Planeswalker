@@ -46,6 +46,8 @@ logger = logging.getLogger(__name__)
 STATUS_BY_REASON: dict[ErrorReason, int] = {
     "deck_not_found": 404,
     "card_not_found": 404,
+    "no_image_data": 404,
+    "image_fetch_failed": 502,
     "database_not_initialized": 503,
     "database_unavailable": 503,
     "invalid_request": 400,
@@ -66,6 +68,16 @@ non-conformant or force :class:`CompanionError` to grow a header channel that ex
 would ever use. ``403`` carries no such requirement and is the honest status for *a credential was
 presented and refused* when there is no challenge-response scheme to advertise — the companion
 mints one token per process and publishes it in the discovery file; there is nothing to negotiate.
+
+**Why c3-5's pair splits across 404 and 502** (Q2). ``no_image_data`` is a statement about the
+*resource*: this card, at this face, has no artwork — a permanent fact of the local row, and 404
+is the status for "the thing you addressed is not there". ``image_fetch_failed`` is a statement
+about an *upstream*: the URL was known and the CDN did not deliver. RFC 9110 §15.6.3 defines 502
+as exactly that — a gateway received an invalid response from the server it was proxying — and it
+is what makes the two distinguishable to a client that reads only the status, on top of the two
+tokens that make them distinguishable to one that reads the body. Deliberately **not** 503: a 503
+in this app means *the local database is unusable*, the UI retries it quietly, and a CDN blip
+must not put up the "Card database is updating" panel.
 """
 
 
@@ -127,15 +139,25 @@ def error_response(
         headers: Headers to carry on the response. Also only for the ``HTTPException`` path:
             Starlette's route-miss 405 arrives with the RFC-mandated ``Allow``, and a later
             story's exception may carry ``WWW-Authenticate`` or ``Retry-After`` — dropping them
-            would make the typed body a downgrade.
+            would make the typed body a downgrade. A caller's own ``Cache-Control`` overrides the
+            ``no-store`` default below; nothing sends one today.
 
     Returns:
-        A ``JSONResponse`` whose body is exactly ``{"reason": "<token>"}``.
+        A ``JSONResponse`` whose body is exactly ``{"reason": "<token>"}``, marked ``no-store``.
     """
+    # `no-store` on EVERY typed error, feature-wide, and it is load-bearing rather than hygiene
+    # (c3-5, AC 15). A route cannot attach headers — the whole point of deriving the status from
+    # the token is that a call site cannot shape the response — so the only place this can be
+    # said is here. It has to be said: RFC 9111 §4.2.2 lists 404 among the statuses a cache may
+    # store *heuristically*, with no explicit freshness at all, and c3-5 answers 404 for a card
+    # whose image is momentarily unavailable. Cached, one bad minute would leave a permanently
+    # broken tile in that tab. No modelled failure in this app is worth re-serving from a cache:
+    # every one of them is either about right now (503, 502) or about a request that will be
+    # answered the same way anyway (400, 403, 404).
     return JSONResponse(
         status_code=STATUS_BY_REASON[reason] if status is None else status,
         content=ErrorResponse(reason=reason).model_dump(),
-        headers=dict(headers) if headers else None,
+        headers={"Cache-Control": "no-store", **dict(headers or {})},
     )
 
 
@@ -151,9 +173,18 @@ def error_responses(*reasons: ErrorReason) -> dict[int | str, dict[str, Any]]:
     sibling ``GET /api/decks`` deliberately declares nothing, having no 404 to give), c3-2's
     ``GET /api/cards/{card_id}`` declares ``card_not_found``, c3-3's
     ``GET /api/deck/{deck_id}/format-check`` declares ``deck_not_found`` again — the same token on
-    a third route, which is the ordinary case and needs nothing new here — and c3-4's
+    a third route, which is the ordinary case and needs nothing new here — c3-4's
     ``PUT /api/active-deck`` declares ``forbidden`` (its sibling ``GET /api/active-deck`` declares
-    nothing, being credential-free and having no failure of its own to model). c5-5 follows.
+    nothing, being credential-free and having no failure of its own to model), and c3-5's
+    ``GET /api/card-image/{scryfall_id}`` declares **three** — ``card_not_found``,
+    ``no_image_data`` and ``image_fetch_failed`` — the most any route has declared, and the first
+    to put two tokens under one status by declaration rather than by inheritance (both 404s land
+    in one entry naming each, which is what the grouping below exists for). c5-5 follows.
+
+    c3-5 is also the first caller on a route whose **success** body is not JSON. That changes
+    nothing here — the declarations this builds are per status and describe the error bodies —
+    but it is worth stating, because the route merges this mapping into a hand-written ``200``
+    entry rather than passing it as ``responses=`` wholesale.
 
     c3-4 is also the first caller whose token comes from a **dependency** rather than the endpoint
     body. That changes nothing here — the declaration is about what the *operation* can answer, not

@@ -283,12 +283,19 @@ DbSession = Annotated[AsyncSession, Depends(get_session)]
 """The annotation every data-backed handler writes, and the only one it should.
 
 Stories c3-1 (``GET /api/decks``, ``GET /api/deck/{deck_id}``), c3-2
-(``GET /api/cards/{card_id}``) and c3-3 (``GET /api/deck/{deck_id}/format-check``) annotate a
-parameter with this and inherit the whole contract: the lazy engine, the readiness probe, the
-``503`` tokens and the shared recipe. None of them re-derives any of it. **All three are shipped
-and did exactly that** — none constructs an engine, calls ``is_database_initialized``, reads
-``request.app.state`` or writes a ``try/except DatabaseError``, and each proves the two ``503``
-answers through its real routes.
+(``GET /api/cards/{card_id}``), c3-3 (``GET /api/deck/{deck_id}/format-check``) and c3-5
+(``GET /api/card-image/{scryfall_id}``) annotate a parameter with this and inherit the whole
+contract: the lazy engine, the readiness probe, the ``503`` tokens and the shared recipe. None of
+them re-derives any of it. **All four are shipped and did exactly that** — none constructs an
+engine, calls ``is_database_initialized``, reads ``request.app.state`` or writes a
+``try/except DatabaseError``, and each proves the two ``503`` answers through its real routes.
+
+c3-5 is the first consumer that goes on to do something **after** the session closes: it reads one
+row, then fetches a URL from that row over the internet. Nothing about this dependency changes for
+it — the session is scoped to the request either way — but it is worth knowing that a ``DbSession``
+consumer is no longer necessarily a pure read. Its outbound client is a *separate* app-state
+resource (``images.image_client``), created and closed by the same lifespan and deliberately not
+routed through here: this module owns the engine, not every effectful thing a route might need.
 
 **c3-4 deliberately does not join that list, and its absence is a ruling rather than an oversight.**
 ``GET``/``PUT /api/active-deck`` take no session at all — they are the first routes since

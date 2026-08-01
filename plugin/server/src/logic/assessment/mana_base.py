@@ -312,7 +312,9 @@ def _pip_cost(card: Card) -> str:
     """
     if card.mana_cost or not card.card_faces:
         return card.mana_cost
-    return card.card_faces[0].get("mana_cost") or ""
+    # Attribute access since c3-5 typed `card_faces` as `CardFace`; `or ""` still carries the 5.3
+    # null-face lesson — a named field Scryfall sent as null reads None just as a missing key did.
+    return card.card_faces[0].mana_cost or ""
 
 
 def _source_text(card: Card) -> str:
@@ -323,7 +325,7 @@ def _source_text(card: Card) -> str:
     """
     text = card.oracle_text
     if not text and card.card_faces:
-        text = "\n".join(face.get("oracle_text") or "" for face in card.card_faces)
+        text = "\n".join(face.oracle_text or "" for face in card.card_faces)
     return text.lower()
 
 

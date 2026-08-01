@@ -62,12 +62,36 @@ describe('the state maps mean what the wire contract says (review 2026-07-29)', 
     expect(PLACEHOLDER_FOR_REASON.card_not_found).toBe('unknown-card')
   })
 
+  it('sends both of c3-5 image failures to the NAMED-CARD placeholder, not the unknown one', () => {
+    // Same treatment as the seventh and eighth tokens, for the same reason: the type-level
+    // asserts prove these two are classified, never WHICH WAY. Swapping either into
+    // `NO_UI_RESPONSE` type-checks perfectly and silently deletes the tile c4-3 renders.
+    expect(PANEL_FOR_REASON.no_image_data).toBeNull()
+    expect(PANEL_FOR_REASON.image_fetch_failed).toBeNull()
+
+    // …and specifically NOT `unknown-card`. That is the assertion with teeth here: the two
+    // placeholders look similar and mean opposite things. `unknown-card` says the app does not
+    // know what this card is; `named-card` says it knows exactly, and only lacks the picture — so
+    // it can draw the real name, cost and type line. Copy-pasting the c3-2 line above would pass
+    // every type-level assert in `states.ts` and put "Unknown card" under a card the app can name.
+    expect(PLACEHOLDER_FOR_REASON.no_image_data).toBe('named-card')
+    expect(PLACEHOLDER_FOR_REASON.image_fetch_failed).toBe('named-card')
+    expect(PLACEHOLDER_FOR_REASON.no_image_data).not.toBe('unknown-card')
+  })
+
   it('does not confuse "no panel" with "no UI response at all"', () => {
     // The distinction retro R1 exists to force, asserted in both directions so neither list can
     // quietly absorb the other's members.
     expect([...NO_UI_RESPONSE]).toEqual(['invalid_request', 'forbidden', 'payload_too_large'])
     expect([...NO_UI_RESPONSE]).not.toContain('card_not_found')
-    expect(Object.keys(PLACEHOLDER_FOR_REASON)).toEqual(['card_not_found'])
+    // c3-5's two are panel-less and are NOT silences — the exact confusion this test names.
+    expect([...NO_UI_RESPONSE]).not.toContain('no_image_data')
+    expect([...NO_UI_RESPONSE]).not.toContain('image_fetch_failed')
+    expect(Object.keys(PLACEHOLDER_FOR_REASON)).toEqual([
+      'card_not_found',
+      'no_image_data',
+      'image_fetch_failed',
+    ])
   })
 
   it('never lets the two deterministic states quietly retry — the load-bearing falses', () => {

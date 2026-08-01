@@ -32,6 +32,11 @@ _REASONS = get_args(ErrorReason)
 _EXPECTED_STATUS = {
     "deck_not_found": 404,
     "card_not_found": 404,
+    # c3-5's pair. 404 for the permanent case — this card has no artwork for what was asked, and
+    # "the thing you addressed is not there" is what 404 means. 502 for the transient one: the URL
+    # was known and an upstream this app does not own failed to deliver it.
+    "no_image_data": 404,
+    "image_fetch_failed": 502,
     "database_not_initialized": 503,
     "database_unavailable": 503,
     "invalid_request": 400,
@@ -225,13 +230,24 @@ class TestReasonTokenContract:
         # discovery and retry EXACTLY ONCE on an auth rejection and to do no such thing on a
         # malformed request; both answering `invalid_request` would make that unimplementable.
         #
-        # THE SET IS NOW CLOSED AT EIGHT WITH NOTHING PLANNED. A ninth is not forbidden, but it
+        # `no_image_data` and `image_fetch_failed` are c3-5's, and they are the first pair added
+        # TOGETHER (Q2, Brad 2026-08-01). AD-11 requires "a card with no image" and "the CDN fetch
+        # failed" to be signalled distinguishably, and since this codebase derives the status from
+        # the token, distinguishable can only mean two tokens. The distinction is real even though
+        # the glass draws the same named-Card placeholder for both: one is permanent (79 cards in
+        # the shipped corpus carry no image data at all) and one is transient — so exactly one of
+        # them may ever be retried, which is what lets c3-8 add negative caching and backoff as
+        # PURE BEHAVIOUR with no wire change at all.
+        #
+        # THE SET IS NOW CLOSED AT TEN WITH NOTHING PLANNED. An eleventh is not forbidden, but it
         # is a decision, not a chore: it reddens this test, `STATUS_BY_REASON`'s pin below,
         # `ui/src/api/schema.test.ts`'s union and `states.ts`'s `satisfies` clause — and the last
         # two fail under `npm run typecheck` only, never under `npm test`.
         assert set(_REASONS) == {
             "deck_not_found",
             "card_not_found",
+            "no_image_data",
+            "image_fetch_failed",
             "database_not_initialized",
             "database_unavailable",
             "invalid_request",
@@ -264,19 +280,30 @@ class TestStatusMapping:
         # the Literal — deliberately, and the reason the two sets are compared rather than counted.
         assert set(STATUS_BY_REASON) == set(_REASONS)
 
-    def test_the_two_404_tokens_are_distinct_and_both_map_to_404(self):
-        # Two tokens now share 404, which is new at c3-2 and is the case a naive "one token per
-        # status" reading would have got wrong. They are NOT interchangeable: `deck_not_found`
-        # clears the SPA to the No-active-deck panel, `card_not_found` leaves the view intact and
-        # replaces one slot with a placeholder (c4-3). Same status, different UI.
+    def test_the_404_tokens_are_distinct_and_all_map_to_404(self):
+        # Tokens share 404, which was new at c3-2 and is the case a naive "one token per status"
+        # reading would have got wrong. They are NOT interchangeable: `deck_not_found` clears the
+        # SPA to the No-active-deck panel, `card_not_found` leaves the view intact and replaces one
+        # slot with the unknown-card placeholder (c4-3), and c3-5's `no_image_data` leaves it
+        # intact and replaces one slot with the NAMED-CARD placeholder — a different variant of a
+        # different component. Same status, three different UI answers.
         assert STATUS_BY_REASON["deck_not_found"] == STATUS_BY_REASON["card_not_found"] == 404
-        # The exactly-these-two claim, made over the real table. (An earlier spelling compared
-        # the two string literals themselves — an assertion that can never fail; review round 2,
+        # The exactly-these claim, made over the real table. (An earlier spelling compared the
+        # string literals themselves — an assertion that can never fail; review round 2,
         # 2026-07-31.)
         assert {r for r in _REASONS if STATUS_BY_REASON[r] == 404} == {
             "deck_not_found",
             "card_not_found",
+            "no_image_data",
         }
+
+    def test_the_upstream_failure_token_is_the_only_502(self):
+        # c3-5's `image_fetch_failed` is the first 5xx in this app that is NOT about this app.
+        # Deliberately not 503: a 503 here means the LOCAL DATABASE is unusable and the UI answers
+        # it with the "Card database is updating" panel that retries quietly — a CDN blip must not
+        # put that panel on the glass. 502 is RFC 9110 §15.6.3's "the gateway got an invalid
+        # response from upstream", which is exactly what happened.
+        assert {r for r in _REASONS if STATUS_BY_REASON[r] == 502} == {"image_fetch_failed"}
 
     @pytest.mark.parametrize("reason", _REASONS)
     def test_the_mapping_is_the_table_in_the_story(self, reason):
@@ -347,6 +374,31 @@ class TestRaisedErrorsReachTheWire:
 
         assert response.status_code == _EXPECTED_STATUS[reason]
         assert response.json() == {"reason": reason}
+
+    @pytest.mark.parametrize("reason", _REASONS)
+    async def test_no_typed_error_is_ever_cacheable(self, reason, lifespan_client):
+        # c3-5, AC 15. A route CANNOT attach a header — that is the point of deriving the status
+        # from the token — so the only place this can be said is `error_response`, and it is said
+        # for every token rather than for the two that motivated it. RFC 9111 §4.2.2 lets a cache
+        # store a 404 heuristically with no explicit freshness at all, and c3-5 answers 404 for a
+        # card whose image is momentarily unavailable: cached, one bad minute would leave a
+        # permanently broken tile in that tab for as long as it stayed open.
+        async with lifespan_client(_app_with_test_routes()) as client:
+            response = await client.get(f"/_raise/{reason}")
+
+        assert response.headers["cache-control"] == "no-store"
+
+    async def test_the_framework_405_keeps_its_allow_header_alongside_no_store(
+        self, lifespan_client
+    ):
+        # Non-vacuity for the merge in `error_response`: the `no-store` default must not displace
+        # the headers the HTTPException path carries, or the typed body becomes a downgrade.
+        async with lifespan_client(_app_with_test_routes()) as client:
+            response = await client.post("/_typed/aa")
+
+        assert response.status_code == 405
+        assert response.headers["cache-control"] == "no-store"
+        assert "GET" in response.headers["allow"]
 
 
 class TestFrameworkFailuresAreTypedToo:

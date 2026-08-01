@@ -290,7 +290,7 @@
     "/api/cards/{card_id}": {
       "get": {
         "summary": "Read Card",
-        "description": "Return everything known about one card printing.\n\nThe canonical record behind a printing id: its name, mana cost, converted mana cost, type\nline, oracle text, power and toughness, rarity, set, collector number, colours, keywords,\nformat legalities, and its images. Views that were given only an id use this to fill\nthemselves in.\n\nImages arrive in one of two places, and the discriminator is **the presence of per-face\n``image_uris``, never whether ``card_faces`` is present**. Most cards carry a top-level\n``image_uris``; a card whose faces have their own artwork carries a null ``image_uris`` and\nper-face ``image_uris`` inside ``card_faces`` instead. Nothing carries both.\n\nBranching on ``card_faces !== null`` is the trap: a split card has faces *and* a top-level\nimage, because its halves share one piece of artwork, so those faces carry names and costs but\nno images. Some cards have no image data anywhere, which is ordinary and not an error.\n\n``prices`` is absent from this response, not empty: the local database holds no price data of\nany kind.\n\nWarning:\n    The ``400`` for a malformed id is not unconditional. Dependencies resolve before\n    parameter validation is reported, so a malformed id sent while the database is unusable\n    answers ``503`` (``database_not_initialized`` or ``database_unavailable``), not ``400``.\n    A caller that retries on 503 must not assume the request can ever succeed: a malformed id\n    stays malformed whatever the database does.",
+        "description": "Return everything known about one card printing.\n\nThe canonical record behind a printing id: its name, mana cost, converted mana cost, type\nline, oracle text, power and toughness, rarity, set, collector number, colours, keywords,\nformat legalities, and its images. Views that were given only an id use this to fill\nthemselves in.\n\nThis operation returns the image **URLs** and nothing else about them; where they live on the\nrecord is stated on the ``image_uris`` and ``card_faces`` fields themselves, and it is not the\nobvious rule. A view that wants pixels asks ``GET /api/card-image/{scryfall_id}`` instead,\nwhich applies that rule for you.\n\n``prices`` is absent from this response, not empty: the local database holds no price data of\nany kind.\n\nWarning:\n    The ``400`` for a malformed id is not unconditional. Dependencies resolve before\n    parameter validation is reported, so a malformed id sent while the database is unusable\n    answers ``503`` (``database_not_initialized`` or ``database_unavailable``), not ``400``.\n    A caller that retries on 503 must not assume the request can ever succeed: a malformed id\n    stays malformed whatever the database does.",
         "operationId": "read_card_api_cards__card_id__get",
         "parameters": [
           {
@@ -357,6 +357,127 @@
           },
           "404": {
             "description": "reason: card_not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/card-image/{scryfall_id}": {
+      "get": {
+        "summary": "Read Card Image",
+        "description": "Serve one card face's artwork, from this app's own origin.\n\nEvery image in the app comes through here: the browser never contacts Scryfall directly\n(AD-11, UX-DR36). The URL is read from the card's own row in the local database — **no live\nScryfall metadata call is ever made** — and the bytes are proxied back with the content type\nthe CDN actually sent.\n\n``face`` indexes **the images this card has**, not its ``card_faces`` array, and the two are\ndifferent for real cards. A split, adventure or flip card has two faces and **one** image,\nbecause its halves share one piece of artwork, so ``face=1`` on one of them is out of range\nrather than \"the other half\"; a single-faced card serves at ``face=0``. Which images a card\nhas is decided by the rule stated on ``GET /api/cards/{card_id}``'s ``image_uris`` and\n``card_faces`` fields — this operation applies it so a caller does not have to.\n\nTwo failures are answered here and they are **not** interchangeable, even though both draw the\nsame placeholder. ``404 no_image_data`` is permanent: this card has no artwork for what was\nasked, and asking again cannot change it. ``502 image_fetch_failed`` is transient: the URL was\nknown and the fetch did not deliver. Neither ever returns a substitute image — no grey\nrectangle, no 1×1 pixel, no generic card back — because the client can draw a better one from\nthe name, cost and type line it already has.\n\nA successful image is cacheable by the browser for a year; a failure is not cached at all, so\none bad minute cannot leave a permanently broken tile in an open tab.\n\nWarning:\n    The ``400`` for a malformed id or an unrecognised ``size`` is not unconditional.\n    Dependencies resolve before parameter validation is reported, so ``?size=bogus`` sent\n    while the database is unusable answers ``503`` (``database_not_initialized`` or\n    ``database_unavailable``), not ``400``. A caller that retries on 503 must not assume the\n    request can ever succeed: a bad parameter stays bad whatever the database does.",
+        "operationId": "read_card_image_api_card_image__scryfall_id__get",
+        "parameters": [
+          {
+            "name": "scryfall_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "title": "Scryfall Id"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "small",
+                "normal",
+                "large",
+                "png",
+                "art_crop",
+                "border_crop"
+              ],
+              "type": "string",
+              "default": "normal",
+              "title": "Size"
+            }
+          },
+          {
+            "name": "face",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Face"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The image bytes, in whatever format the CDN served them.",
+            "content": {
+              "image/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "reason: invalid_request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "reason: payload_too_large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "reason: database_unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "reason: internal_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "reason: card_not_found | no_image_data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "reason: image_fetch_failed",
             "content": {
               "application/json": {
                 "schema": {
@@ -648,8 +769,7 @@
             "anyOf": [
               {
                 "items": {
-                  "additionalProperties": true,
-                  "type": "object"
+                  "$ref": "#/components/schemas/CardFace"
                 },
                 "type": "array"
               },
@@ -657,7 +777,8 @@
                 "type": "null"
               }
             ],
-            "title": "Card Faces"
+            "title": "Card Faces",
+            "description": "Images live in one of two places, and which one is decided by the presence of per-face image_uris — never by whether card_faces is present. Most cards carry a top-level image_uris; a card whose faces have their own artwork carries a null image_uris and per-face image_uris inside its card_faces entries instead. The two are mutually exclusive; nothing carries both. Reading 'has faces' as 'has per-face images' is the trap: a split card has faces and a top-level image, because its halves share one piece of artwork, so its faces carry names and costs but no images of their own. Some cards have no image data anywhere, which is ordinary and not an error."
           },
           "image_uris": {
             "anyOf": [
@@ -671,7 +792,8 @@
                 "type": "null"
               }
             ],
-            "title": "Image Uris"
+            "title": "Image Uris",
+            "description": "Images live in one of two places, and which one is decided by the presence of per-face image_uris — never by whether card_faces is present. Most cards carry a top-level image_uris; a card whose faces have their own artwork carries a null image_uris and per-face image_uris inside its card_faces entries instead. The two are mutually exclusive; nothing carries both. Reading 'has faces' as 'has per-face images' is the trap: a split card has faces and a top-level image, because its halves share one piece of artwork, so its faces carry names and costs but no images of their own. Some cards have no image data anywhere, which is ordinary and not an error."
           },
           "games": {
             "items": {
@@ -700,7 +822,74 @@
           "legalities"
         ],
         "title": "Card",
-        "description": "One Magic: The Gathering card printing, as held in the local card database.\n\nEverything known about a single printing: its name and mana cost, type line and oracle text,\npower and toughness, rarity, set and collector number, colours, keywords, format legalities,\nand its images.\n\nSome fields are always present but may be empty rather than absent — ``mana_cost`` and\n``oracle_text`` are empty strings on a card that has none, ``colors`` and ``games`` empty\nlists, ``legalities`` an empty object. Combat stats are null on anything that is not a\ncreature, and ``game_changer`` is a three-state flag whose null means \"not yet determined\",\nnot \"no\".\n\nImages live in one of two places, and **which one is decided by the presence of per-face\n``image_uris`` — never by whether ``card_faces`` is present**. Most cards carry a top-level\n``image_uris``. A card whose faces have their own artwork carries a null ``image_uris`` and\nper-face ``image_uris`` inside its ``card_faces`` entries instead. The two are mutually\nexclusive; nothing carries both.\n\n``card_faces`` is **not** the discriminator, and treating it as one is wrong for real cards:\na split card has a ``card_faces`` array *and* a top-level image, because its two halves share\none piece of artwork — so its faces carry names and costs but no images of their own. Reading\n\"has faces\" as \"has per-face images\" renders nothing for those cards. Some cards have no image\ndata anywhere, which is ordinary and not an error.\n\nThere is no price data of any kind in this record."
+        "description": "One Magic: The Gathering card printing, as held in the local card database.\n\nEverything known about a single printing: its name and mana cost, type line and oracle text,\npower and toughness, rarity, set and collector number, colours, keywords, format legalities,\nand its images.\n\nSome fields are always present but may be empty rather than absent — ``mana_cost`` and\n``oracle_text`` are empty strings on a card that has none, ``colors`` and ``games`` empty\nlists, ``legalities`` an empty object. Combat stats are null on anything that is not a\ncreature, and ``game_changer`` is a three-state flag whose null means \"not yet determined\",\nnot \"no\".\n\nWhere a card's artwork lives is stated on the ``image_uris`` and ``card_faces`` fields\nthemselves — read those descriptions before rendering anything, because the rule is not the\nobvious one.\n\nThere is no price data of any kind in this record."
+      },
+      "CardFace": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "mana_cost": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mana Cost"
+          },
+          "type_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Line"
+          },
+          "oracle_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oracle Text"
+          },
+          "image_uris": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Uris",
+            "description": "Images live in one of two places, and which one is decided by the presence of per-face image_uris — never by whether card_faces is present. Most cards carry a top-level image_uris; a card whose faces have their own artwork carries a null image_uris and per-face image_uris inside its card_faces entries instead. The two are mutually exclusive; nothing carries both. Reading 'has faces' as 'has per-face images' is the trap: a split card has faces and a top-level image, because its halves share one piece of artwork, so its faces carry names and costs but no images of their own. Some cards have no image data anywhere, which is ordinary and not an error."
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "CardFace",
+        "description": "One face of a multi-faced card printing, exactly as Scryfall publishes it.\n\nA card's ``card_faces`` entries carry each half of its identity — that face's own name, mana\ncost, type line and oracle text — and, on some cards, its own artwork. Five fields are named\nbelow; **every other key Scryfall sends is kept and served unchanged**, so a consumer that\nknows about ``power``, ``flavor_text``, ``loyalty``, ``defense``, ``artist``, ``printed_name``\nor ``color_indicator`` still finds them.\n\nA card having faces does **not** mean its faces have artwork. The ``image_uris`` field below\ncarries the rule that decides it; this summary deliberately does not repeat it."
       },
       "CardSummary": {
         "properties": {
@@ -975,6 +1164,8 @@
               "card_not_found",
               "database_not_initialized",
               "database_unavailable",
+              "no_image_data",
+              "image_fetch_failed",
               "invalid_request",
               "forbidden",
               "payload_too_large",
@@ -988,7 +1179,7 @@
           "reason"
         ],
         "title": "ErrorResponse",
-        "description": "The body of every non-2xx response — the token, and nothing else (AD-16).\n\nThe serialised shape is exactly ``{\"reason\": \"<token>\"}``. There is deliberately **no**\n``message``, ``detail``, ``status`` or ``errors[]`` field:\n\n* **the copy lives in the UI.** ``EXPERIENCE.md`` fixes the verbatim wording of every state\n  panel, and UX-DR33 bans \"something went wrong\"; a server-side prose field would be a second\n  source of user-facing copy that no UX review covers.\n* **prose would leak input back.** FastAPI's validation detail echoes the offending value, and\n  the companion is one ``fetch`` away from any page in the browser. The detail goes to the log.\n* **the token is the contract.** Anything a human needs beyond it belongs in the log. If a\n  later story genuinely needs machine-readable specifics, it adds a *typed* optional field with\n  a named UX consumer — not a free-text bucket.\n\nWhat each token means on the glass, which is why the set is closed:\n\n* ``deck_not_found`` — the deck the caller asked for is gone (deleted between a push and a\n  refetch); the SPA clears to the **No-active-deck** panel.\n* ``card_not_found`` — no card in the local database carries that printing id. The **only**\n  token whose destination is not a panel: the view that referenced the card renders normally\n  and shows an **\"Unknown card\"** placeholder in that one slot, with no banner and no apology\n  (FR-13). One unknown card must never fail a whole view or a whole push. The placeholder is\n  built in c4-3.\n* ``database_not_initialized`` — fresh install, no card database yet; the **\"Card database not\n  set up yet.\"** panel, which tells the user to ask their agent to run ``initialize_database``.\n* ``database_unavailable`` — reads are failing transiently (a bulk refresh in flight, or an\n  unhandled backend fault); the **\"Card database is updating.\"** panel, which retries quietly.\n* ``invalid_request`` — the request itself was malformed, or aimed at a path/method/``Host``\n  the companion does not serve. No panel of its own: the SPA never generates one, so it means\n  a client bug or a stray caller, and the log is where it is diagnosed.\n* ``forbidden`` — an agent-only endpoint was called without a valid credential (c3-4). Like\n  ``payload_too_large``, the audience is the **agent**, not the glass: the browser never holds\n  the credential and never calls a route that wants one, so a panel here would report a\n  failure the reader did not cause and cannot fix. Its consumer is the MCP tool's outcome\n  vocabulary, where AD-8's re-read-discovery-and-retry-once lives.\n* ``payload_too_large`` — an agent push exceeded the ingest cap (c5-5). Surfaced to the *agent*\n  through the MCP tool's outcome vocabulary, not to the glass.\n* ``internal_error`` — the companion itself hit an unhandled bug (500). Deterministic, so the\n  SPA must **not** quietly retry it the way ``database_unavailable`` retries; its state panel\n  is written in Epic 2 (c2-9). The log carries the traceback; the wire carries the token."
+        "description": "The body of every non-2xx response — the token, and nothing else (AD-16).\n\nThe serialised shape is exactly ``{\"reason\": \"<token>\"}``. There is deliberately **no**\n``message``, ``detail``, ``status`` or ``errors[]`` field:\n\n* **the copy lives in the UI.** ``EXPERIENCE.md`` fixes the verbatim wording of every state\n  panel, and UX-DR33 bans \"something went wrong\"; a server-side prose field would be a second\n  source of user-facing copy that no UX review covers.\n* **prose would leak input back.** FastAPI's validation detail echoes the offending value, and\n  the companion is one ``fetch`` away from any page in the browser. The detail goes to the log.\n* **the token is the contract.** Anything a human needs beyond it belongs in the log. If a\n  later story genuinely needs machine-readable specifics, it adds a *typed* optional field with\n  a named UX consumer — not a free-text bucket.\n\nWhat each token means on the glass, which is why the set is closed:\n\n* ``deck_not_found`` — the deck the caller asked for is gone (deleted between a push and a\n  refetch); the SPA clears to the **No-active-deck** panel.\n* ``card_not_found`` — no card in the local database carries that printing id. The **only**\n  token whose destination is not a panel: the view that referenced the card renders normally\n  and shows an **\"Unknown card\"** placeholder in that one slot, with no banner and no apology\n  (FR-13). One unknown card must never fail a whole view or a whole push. The placeholder is\n  built in c4-3.\n* ``no_image_data`` — the card exists, but there is no artwork to serve for what was asked:\n  either the printing carries no image data at all (79 cards in the shipped corpus), or the\n  requested face is beyond the images it has. **Permanent** — retrying cannot help — so the\n  view renders normally and that one slot draws the **named Card placeholder** (the card's\n  name, mana cost and type line, which the client already holds from\n  ``GET /api/cards/{card_id}``). Never a grey rectangle, a 1×1 pixel or a generic card back.\n* ``image_fetch_failed`` — the card's image URL is known but could not be retrieved: the CDN\n  timed out, answered a non-2xx, returned something that was not an image, or the stored URL\n  pointed somewhere the companion refuses to fetch from. **Transient**, which is the whole\n  reason it is a separate token from ``no_image_data`` — the pixels are identical (the same\n  named Card placeholder) but only this one may ever be retried. c3-8 owns the negative cache\n  and the backoff; until then a failure is simply not cached.\n* ``database_not_initialized`` — fresh install, no card database yet; the **\"Card database not\n  set up yet.\"** panel, which tells the user to ask their agent to run ``initialize_database``.\n* ``database_unavailable`` — reads are failing transiently (a bulk refresh in flight, or an\n  unhandled backend fault); the **\"Card database is updating.\"** panel, which retries quietly.\n* ``invalid_request`` — the request itself was malformed, or aimed at a path/method/``Host``\n  the companion does not serve. No panel of its own: the SPA never generates one, so it means\n  a client bug or a stray caller, and the log is where it is diagnosed.\n* ``forbidden`` — an agent-only endpoint was called without a valid credential (c3-4). Like\n  ``payload_too_large``, the audience is the **agent**, not the glass: the browser never holds\n  the credential and never calls a route that wants one, so a panel here would report a\n  failure the reader did not cause and cannot fix. Its consumer is the MCP tool's outcome\n  vocabulary, where AD-8's re-read-discovery-and-retry-once lives.\n* ``payload_too_large`` — an agent push exceeded the ingest cap (c5-5). Surfaced to the *agent*\n  through the MCP tool's outcome vocabulary, not to the glass.\n* ``internal_error`` — the companion itself hit an unhandled bug (500). Deterministic, so the\n  SPA must **not** quietly retry it the way ``database_unavailable`` retries; its state panel\n  is written in Epic 2 (c2-9). The log carries the traceback; the wire carries the token."
       },
       "FormatCheckReport": {
         "properties": {

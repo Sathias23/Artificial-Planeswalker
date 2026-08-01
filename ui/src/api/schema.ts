@@ -45,13 +45,18 @@ export type ErrorResponse = Schemas['ErrorResponse']
  * Derived from `ErrorResponse` rather than re-listed, so a token added or removed on the Python
  * side arrives here through the generator instead of through someone remembering. This union is
  * what **c2-9**'s state panels switch on — a token silently dropped from it would compile fine and
- * lose a panel, which is why `schema.test.ts` pins every member by name. **Eight** as of c3-4
- * (`forbidden`); that file is the one place the count is written, so it is the one place a ninth
- * has to be added.
+ * lose a panel, which is why `schema.test.ts` pins every member by name. **Ten** as of c3-5
+ * (`no_image_data`, `image_fetch_failed`); this sentence and that file are where the count is
+ * written, so they are where an eleventh has to be added.
  *
  * Not every member reaches the glass, and that is by design rather than by omission: `forbidden`
  * and `payload_too_large` are answered to the **agent**, and `components/StatePanel/states.ts` is
  * where each token's destination — panel, placeholder, or deliberately nothing — is recorded in a
  * form the compiler checks.
+ *
+ * c3-5's pair are the first two tokens that share ONE destination while staying distinct on the
+ * wire: both draw the named Card placeholder, and they are separate tokens because only one of
+ * them may ever be retried. Distinguishable-on-the-wire and identical-on-the-glass is a
+ * combination this union had not carried before; `states.ts` records it.
  */
 export type ErrorReason = ErrorResponse['reason']

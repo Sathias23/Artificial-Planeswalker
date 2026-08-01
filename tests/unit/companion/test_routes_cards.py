@@ -7,11 +7,18 @@ dependency, both ``503`` paths, the new ``404`` token, the id-shape constraint r
 app-wide validation handler, and the SPA mount ordering — and consumption can only be proved by
 letting the shipped wiring answer.
 
+**The fixtures moved to ``conftest.py`` at c3-5** and nothing about them changed in the move.
+They were always shared in spirit — c3-5's ``GET /api/card-image/…`` is driven against the same
+six cards, and the alternative was a second hand-seeded set claiming to model the same measured
+corpus. Two such sets drift the moment one is corrected, which this one already has been once, by
+a code review. The names below are imported from there; read the fixture docstrings in
+``conftest.py`` for the census they encode.
+
 **Fixture card ids are canonical uuids, and that is not cosmetic.** ``test_routes_decks.py``'s
 ``_card()`` helper mints ids like ``"card-anchor"``, which this route's shape constraint rejects
 with ``400`` before the handler runs. That helper therefore cannot be reused verbatim for anything
-addressed through this endpoint, and :func:`_uuid` exists to make the distinction visible rather
-than accidental.
+addressed through this endpoint, and ``conftest._uuid`` exists to make the distinction visible
+rather than accidental.
 
 **Every fixture card differs from every other on more than one asserted field** — c3-1's review
 found 28 green tests over identical fixtures, where a mis-paired projection was invisible. The
@@ -24,9 +31,23 @@ from pathlib import Path
 import pytest
 
 from src.companion.app.main import build_app
-from src.data.database import create_engine, create_session_factory, init_database
-from src.data.models.card import CardModel
+from src.data.database import create_engine, init_database
 from src.data.repositories.deck import DeckRepository
+from tests.unit.companion.conftest import (
+    _TOP_LEVEL_IMAGES,
+    ABSENT_ID,
+    ANCHOR_ID,
+    MANY_FACE_ID,
+    MULTI_FACE_ID,
+    NO_IMAGE_ID,
+    SCHEMA_ONLY_ID,
+    SINGLE_FACE_ID,
+    SPLIT_FACE_ID,
+    _card,
+    _point_at,
+    _seed,
+    _uuid,
+)
 
 # --------------------------------------------------------------------------------------------
 # Paths under test. Literals, not built from the router — a test that imported the prefix would
@@ -36,261 +57,6 @@ from src.data.repositories.deck import DeckRepository
 
 _CARD_PATH = "/api/cards/{card_id}"
 _DECK_DETAIL_PATH = "/api/deck/{deck_id}"
-
-
-def _uuid(suffix: str) -> str:
-    """Mint a canonical lowercase hyphenated uuid ending in *suffix*.
-
-    Canonical because the route's shape constraint refuses anything else — see this module's
-    docstring. ``suffix`` must be hex; it is what makes each seeded card individually addressable
-    and each id readable in a failure message.
-
-    Args:
-        suffix: Up to 12 hex characters identifying this card.
-
-    Returns:
-        A uuid of the exact shape ``cards.id`` holds.
-    """
-    tail = suffix.rjust(12, "0")
-    assert len(tail) == 12 and all(c in "0123456789abcdef" for c in tail), suffix
-    return f"00000000-0000-4000-8000-{tail}"
-
-
-# Every card the fixtures seed, by role. Distinguishable on several fields each.
-ANCHOR_ID = _uuid("a0")
-SINGLE_FACE_ID = _uuid("b1")
-MULTI_FACE_ID = _uuid("c2")
-NO_IMAGE_ID = _uuid("d3")
-MANY_FACE_ID = _uuid("e4")
-SPLIT_FACE_ID = _uuid("e5")
-SCHEMA_ONLY_ID = _uuid("e6")
-ABSENT_ID = _uuid("ff")
-
-_TOP_LEVEL_IMAGES = {
-    "small": "https://cards.example/small.jpg",
-    "normal": "https://cards.example/normal.jpg",
-    "large": "https://cards.example/large.jpg",
-    "png": "https://cards.example/card.png",
-    "art_crop": "https://cards.example/art.jpg",
-    "border_crop": "https://cards.example/border.jpg",
-}
-"""The six size keys the real corpus carries, measured 2026-07-31."""
-
-
-def _card(card_id: str, name: str, **overrides: object) -> CardModel:
-    """Build a complete card row: every non-nullable column, so the insert is realistic.
-
-    Args:
-        card_id: The canonical uuid this card is addressed by.
-        name: The card's name; also seeds several other fields so the row is distinguishable.
-        **overrides: Column values replacing the defaults built here.
-
-    Returns:
-        An unsaved ``CardModel``.
-    """
-    fields: dict[str, object] = {
-        "id": card_id,
-        "name": name,
-        "printed_name": None,
-        "oracle_id": f"oracle-{card_id}",
-        "mana_cost": f"{{{card_id[-1].upper()}}}",
-        "cmc": float(len(name)),
-        "type_line": f"Instant — {name}",
-        "oracle_text": f"{name} does something.",
-        "rarity": "common",
-        "set_code": "TST",
-        "set_name": "Test Set",
-        "collector_number": "1",
-        "colors": ["R"],
-        "color_identity": ["R"],
-        "legalities": {"standard": "legal", "commander": "legal"},
-        "games": ["paper", "arena", "mtgo"],
-    }
-    fields.update(overrides)
-    return CardModel(**fields)  # type: ignore[arg-type]
-
-
-def _point_at(monkeypatch, path: Path) -> Path:
-    """Steer ``src.paths.database_url()`` at *path* via ``CARDS_DATABASE_URL``.
-
-    The ``test_routes_decks.py`` pattern: an explicit ``CARDS_DATABASE_URL`` wins over everything,
-    so resolution cannot be hijacked by a developer's own environment.
-    """
-    monkeypatch.setenv("CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{path.as_posix()}")
-    return path
-
-
-async def _seed(path: Path, seeder) -> None:
-    """Open a session against *path*, hand it to *seeder*, then dispose the engine.
-
-    The engine is disposed before the app is built so the fixture never holds a connection the
-    routes then contend with.
-    """
-    engine = create_engine(f"sqlite+aiosqlite:///{path.as_posix()}")
-    try:
-        factory = create_session_factory(engine)
-        async with factory() as session:
-            await seeder(session)
-    finally:
-        await engine.dispose()
-
-
-async def _ready_database(path: Path) -> None:
-    """Create the full schema at *path* and seed the anchor card.
-
-    ``is_database_initialized`` requires a **populated** ``cards`` table, not merely the file, so a
-    schema-only database still reads as ``database_not_initialized``.
-    """
-    engine = create_engine(f"sqlite+aiosqlite:///{path.as_posix()}")
-    try:
-        await init_database(engine)
-        factory = create_session_factory(engine)
-        async with factory() as session:
-            session.add(_card(ANCHOR_ID, "Anchor Card", image_uris=_TOP_LEVEL_IMAGES))
-            await session.commit()
-    finally:
-        await engine.dispose()
-
-
-@pytest.fixture
-async def ready_db(tmp_path, monkeypatch):
-    """A real database file with the full schema and the anchor card, already pointed at.
-
-    The fixture **builds** the database rather than only setting the environment variable: a test
-    that forgot would get ``503 database_not_initialized``, which — for the several tests here
-    asserting on 503 or 404 bodies — is a plausible false green rather than a loud failure
-    (c3-1 review, 2026-07-31).
-    """
-    path = _point_at(monkeypatch, tmp_path / "cards.db")
-    await _ready_database(path)
-    return path
-
-
-@pytest.fixture
-async def image_shapes(ready_db):
-    """Seed every image shape the real corpus actually contains.
-
-    **RE-MEASURED after the code review of 2026-07-31, because the first version of this fixture
-    was built on a true count read as a false rule.** The story measured "cards carrying BOTH
-    top-level and per-face ``image_uris``: 0" — which is true — and this fixture generalised it to
-    "a card with a top-level image has no ``card_faces``", which is false for 368 real printings.
-    Both review layers caught it independently. The corrected census, over 38,261 rows:
-
-        image_uris + card_faces NULL ................................. 35,036   (SINGLE_FACE_ID)
-        image_uris + card_faces present, faces WITHOUT image_uris .....   368   (SPLIT_FACE_ID)
-        image_uris NULL + faces WITH per-face image_uris ..............  2,778   (MULTI_FACE_ID)
-        image_uris NULL + faces present, faces WITHOUT image_uris .....    79   (NO_IMAGE_ID)
-        image_uris NULL + card_faces NULL .............................     0   (does not exist)
-        face-count histogram ....................... 2 -> 3,222 · 3 -> 2 · 5 -> 1
-
-    Two consequences the first version got wrong, and they are the reason the docstrings on
-    ``Card`` and ``read_card`` were rewritten:
-
-    * **``card_faces`` is not the discriminator — per-face ``image_uris`` is.** A split card
-      (``Adventurous Eater // Have a Bite``) has two faces *and* a top-level image, because the
-      halves share one piece of artwork. A consumer branching on ``card_faces !== null`` renders
-      nothing for 368 cards that have a perfectly good image.
-    * **"No image anywhere" does not mean "no faces".** All 79 such cards carry a ``card_faces``
-      array whose entries have no images; the shape the first fixture seeded for that case
-      (``image_uris`` null *and* ``card_faces`` null) matches **zero** rows in the corpus. It is
-      still permitted by the schema, so `SCHEMA_ONLY_ID` keeps it — labelled as what it is.
-    """
-
-    async def seeder(session):
-        # 35,036 rows: the ordinary case.
-        session.add(
-            _card(
-                SINGLE_FACE_ID,
-                "Single Face",
-                type_line="Creature — Human Wizard",
-                rarity="rare",
-                power="2",
-                toughness="3",
-                keywords=["Flying"],
-                image_uris=_TOP_LEVEL_IMAGES,
-                card_faces=None,
-            )
-        )
-        # 368 rows: THE SHAPE THE FIRST VERSION OF THIS FIXTURE DENIED EXISTED. Faces and a
-        # top-level image together; no face carries an image of its own.
-        session.add(
-            _card(
-                SPLIT_FACE_ID,
-                "Split Halves",
-                type_line="Sorcery — Adventure // Sorcery",
-                rarity="uncommon",
-                image_uris=_TOP_LEVEL_IMAGES,
-                card_faces=[
-                    {"name": "Split Halves", "mana_cost": "{R}", "type_line": "Sorcery"},
-                    {"name": "Other Half", "mana_cost": "{2}{G}", "type_line": "Sorcery"},
-                ],
-            )
-        )
-        # 2,778 rows: the DFC case — per-face images, no top-level image.
-        session.add(
-            _card(
-                MULTI_FACE_ID,
-                "Two Faced",
-                type_line="Creature — Werewolf // Creature — Werewolf",
-                rarity="mythic",
-                image_uris=None,
-                card_faces=[
-                    {
-                        "name": "Two Faced",
-                        "mana_cost": "{1}{R}",
-                        "image_uris": {"normal": "https://cards.example/front.jpg"},
-                    },
-                    {
-                        "name": "Two Faced, Unleashed",
-                        "mana_cost": "",
-                        "image_uris": {"normal": "https://cards.example/back.jpg"},
-                    },
-                ],
-            )
-        )
-        # 79 rows: genuinely no image anywhere — but faces ARE present. This is the real shape.
-        session.add(
-            _card(
-                NO_IMAGE_ID,
-                "No Image At All",
-                type_line="Token Creature — Zombie // Token Creature — Zombie",
-                rarity="uncommon",
-                image_uris=None,
-                card_faces=[
-                    {"name": "No Image At All", "mana_cost": ""},
-                    {"name": "No Image Either", "mana_cost": ""},
-                ],
-            )
-        )
-        # 0 rows: permitted by the schema, absent from the corpus. Seeded so the wire behaviour of
-        # a shape the importer has never produced is known rather than assumed.
-        session.add(
-            _card(
-                SCHEMA_ONLY_ID,
-                "Neither Field",
-                type_line="Artifact",
-                rarity="common",
-                image_uris=None,
-                card_faces=None,
-            )
-        )
-        session.add(
-            _card(
-                MANY_FACE_ID,
-                "Five Faced",
-                type_line="Card // Card // Card // Card // Card",
-                rarity="special",
-                image_uris=None,
-                card_faces=[
-                    {"name": f"Face {n}", "image_uris": {"normal": f"https://x.example/{n}.jpg"}}
-                    for n in range(5)
-                ],
-            )
-        )
-        await session.commit()
-
-    await _seed(ready_db, seeder)
-    return ready_db
 
 
 # --------------------------------------------------------------------------------------------
@@ -473,7 +239,15 @@ class TestImageShapes:
         assert len(body["card_faces"]) == 2
         # …and not one face carries an image of its own, which is what makes per-face presence
         # the correct discriminator and `card_faces` presence the wrong one.
-        assert all("image_uris" not in face for face in body["card_faces"])
+        #
+        # ASSERTED ON THE VALUE, NOT ON KEY ABSENCE, and the change is c3-5's (Q4). Typing
+        # `card_faces` as `CardFace` means the named fields are always serialised, so a face that
+        # carries no artwork now says `"image_uris": null` where it used to omit the key. That is
+        # additive on the wire — no key is lost and no value changes — and it makes "presence"
+        # mean exactly one thing everywhere: a NON-EMPTY map, which is what `resolve_face_images`
+        # implements. A key-presence test would now read every face as imaged and pass a split
+        # card straight into the bug this assertion exists to catch.
+        assert all(not face["image_uris"] for face in body["card_faces"])
         assert [face["name"] for face in body["card_faces"]] == ["Split Halves", "Other Half"]
 
     async def test_the_discriminator_is_per_face_images_not_card_faces_presence(
@@ -500,7 +274,11 @@ class TestImageShapes:
             }
 
         def has_per_face(body) -> bool:
-            return any("image_uris" in face for face in body["card_faces"] or [])
+            # Truthiness, not key presence — see the comment in the split-card test above: c3-5's
+            # `CardFace` typing serialises `"image_uris": null` on an unimaged face, so `in` would
+            # answer True for all six shapes and this sweep would assert nothing. This spelling is
+            # what `src/companion/app/images.py:resolve_face_images` actually does.
+            return any(face["image_uris"] for face in body["card_faces"] or [])
 
         for name, body in bodies.items():
             assert not (has_per_face(body) and body["image_uris"] is not None), (
@@ -533,7 +311,9 @@ class TestImageShapes:
         body = response.json()
         assert body["image_uris"] is None
         assert body["card_faces"] is not None
-        assert all("image_uris" not in face for face in body["card_faces"])
+        # Value, not key presence — c3-5's `CardFace` typing serialises the null. See the split
+        # card test above for why that distinction is now load-bearing.
+        assert all(not face["image_uris"] for face in body["card_faces"])
         assert body["name"] == "No Image At All"
 
     async def test_the_schema_permitted_both_null_shape_round_trips(
