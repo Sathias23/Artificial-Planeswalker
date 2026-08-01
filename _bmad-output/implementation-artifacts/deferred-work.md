@@ -1966,9 +1966,17 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   `Cache-Control`, no conditional-request handling — while `spa.py` has a whole
   `_apply_cache_headers` mechanism for static files. A c4-x deck view hydrating 60–100 cards
   re-fetches every full record on every render. Low impact today (localhost, SQLite, one user),
-  and deliberately not fixed in a story whose scope is one lookup. **Home: c3-7** (the sharded
-  disk cache) or **c4-1** (the hydration cache), whichever lands first — and whichever it is
-  should either implement the shared story or correct that docstring. (Severity: Low.)
+  and deliberately not fixed in a story whose scope is one lookup. ~~**Home: c3-7** (the sharded
+  disk cache) or **c4-1** (the hydration cache), whichever lands first~~ — **c3-7 landed first and
+  answered it (Brad, Q1's sub-question, 2026-08-01): it CORRECTED the docstring rather than
+  implementing the shared story.** The reasoning is that "the same cache story" was never one
+  story: a card row's cache story is `ETag`/conditional requests over a database read, which
+  shares nothing with a file on disk but the word, and implementing it inside c3-7 would have been
+  a second mechanism smuggled in under a docstring's phrasing. `cards.py`'s module docstring now
+  says so explicitly, in the past tense, so the sentence cannot be read as a live claim again.
+  **The route still sets no cache headers, and that half stays homed on c4-1** beside the
+  hydration cache it belongs with. (Severity: Low. **Status: half closed** — the false claim is
+  gone; the missing headers remain c4-1's.)
 
 - **`test_openapi_contract._descriptions()` does not mirror the truncator's `_DATA_KEYS` skip.**
   `without_python_docstring_sections` deliberately does not descend into `example`/`examples`/
@@ -2262,8 +2270,15 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   (epic :1728-1730) is the **disk cache**. There is no cache in c3-6, so a repeat request repeats
   the fetch — the pacer changes the *rate* of fetches, never their *number*. Recorded in
   `images.py`'s module docstring and in the story record as well as here, because an unsatisfiable
-  claim gets an owner rather than a rewording. **Home: c3-7.** (Severity: Medium — it is a stated
-  epic AC that no test in the feature currently covers.)
+  claim gets an owner rather than a rewording. ~~**Home: c3-7.**~~ **CLOSED by c3-7, 2026-08-01.**
+  `images.DiskCache` ships and `test_routes_card_image.py::TestARepeatRequestMakesNoCdnRequest`
+  asserts it on `Recorder.requested` — one recorded URL for two requests — rather than on a second
+  `200`, which c3-1's R1 finding showed passes with the mechanism deleted. Two things the entry
+  did not price, both now measured: the warm path also had to skip the **pacer** (a cache checked
+  inside `pacer.slot()` satisfies CM-2 and still takes 9.9 s to paint a warm deck), which is
+  asserted on c3-6's injected clock as **98 spacing intervals cold, zero warm**; and the claim
+  needed a **file on disk** asserted beside the fetch count, because a route that answered twice
+  from one in-memory value would satisfy the fetch count alone. (Severity: Medium → **resolved**.)
 
 - **In-flight coalescing is declined on ownership, not on merit** (Q5, Brad 2026-08-01). Two
   *simultaneous* requests for the same URL each get their own fetch; a semaphore does not prevent
@@ -2274,7 +2289,17 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   **Measured cost today: zero extra fetches** on both 99-distinct-id decks, because duplicate
   printings collapse in `deck_cards` before they reach the route. **The trigger that flips this
   answer is c6-4** — suggestion rows beside the deck grid are the first surface that would render
-  the same card id twice on one screen. **Home: c3-7**, with c6-4 named as the forcing function.
+  the same card id twice on one screen. ~~**Home: c3-7**~~ — **c3-7 DECLINED IT AGAIN and re-homed
+  it on c3-8** (Q5, Brad 2026-08-01), **and the reason changed**, which is the part worth
+  recording. c3-6 declined it for not knowing the result's shape; c3-7 built that shape (bytes on
+  disk) and declined it anyway, because **c3-8 needs the same structure for a different question**
+  — *"is a fetch for this key already in flight, or already known-failed?"* — so an in-flight map
+  built here for successes only would be inherited wrong or replaced. One mechanism, built once,
+  by the story that can see both halves. What declining costs, stated rather than glossed: two
+  simultaneous requests for one key both fetch and both write, and on Windows the loser's
+  `os.replace` raises `PermissionError` — **observed live** during c3-7's implementation, when a
+  99-request burst over one id logged exactly that, and it is a log line rather than a failed
+  request (c3-7 AC 9). **Home: c3-8**, with c6-4 unchanged as the forcing function.
   (Severity: Low today; Medium at c6-4.)
 
 - **The `DbSession` is held across the pacer's queue wait, and it works by arithmetic rather than
@@ -2353,14 +2378,32 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   Minotaurs); every other size is `.jpg`. c3-7's cache filename (`<size>_<face>.<ext>`) must take
   `ext` from the **resolved URL or the response `Content-Type`**, never from the size name. c3-5
   writes no file, and its route already echoes the upstream `Content-Type` for the same reason.
-  **Home: c3-7.** (Severity: Medium for c3-7 — silent, and it corrupts a cache rather than failing.)
+  ~~**Home: c3-7.**~~ **CLOSED by c3-7, 2026-08-01.** `images.cache_extension(url, content_type)`
+  takes the URL suffix first and the header second, and **cannot consult the size key because it is
+  not given one** — the signature is the guard, pinned by a test. Re-measured independently at
+  implementation time: 245,760 URLs, `png` → `.jpg` exactly **3** times, all three cards named.
+  Two things the entry did not price: **a third extension had to be decided**, and the ruling is
+  *serve it, do not cache it* — not a raise and emphatically not a guessed filename (c3-2's "a true
+  count read as a false rule"); and the **read** needs the same map as a candidate list, because
+  the key excludes the extension, so a reader does not know which spelling its own writer chose.
+  (Severity: Medium → **resolved**.)
 
 - **Every stored URL carries a `?<timestamp>` cache-buster, and AD-11's cache key excludes it.**
   245,742 of 245,742 URLs carry one. c3-5 sends the URL verbatim (stripping it 404s upstream) but
   the AD-11 cache key is id + size + face, so a data refresh that changes the URL still hits the
   same cache entry. AD-11 **accepts that staleness explicitly**; recorded so c3-7 does not
   "improve" it by keying on the URL, which would silently make every refresh a full cache miss.
-  **Home: c3-7.** (Severity: Low — a correctness note, not a defect.)
+  ~~**Home: c3-7.**~~ **CLOSED by c3-7, 2026-08-01 — it did not "improve" it.** The key is id +
+  size + face and the accepted staleness is now **asserted** in two directions rather than
+  described: a refreshed row carrying a new `?<timestamp>` hits the existing entry
+  (`test_images.py`), and three different cards sharing one URL produce **three** entries and
+  three fetches (`test_routes_card_image.py`). The second was the entry's real content and it was
+  a *prediction* — the shipped `errors.scryfall.com` test was expected to pass **unchanged** under
+  a correct key, and it did, which is what makes "the key is not the URL" a measurement rather
+  than an intention. What the entry did not price: `IMAGE_CACHE_CONTROL`'s docstring was written
+  in the forward tense about this key and had to become present tense, and it is now worth saying
+  that **both** caches accept the same staleness for the same reason — which is what makes
+  stacking a browser cache on a disk cache free. (Severity: Low → **resolved**.)
 
 - **A fetch failure is answered and forgotten.** No negative cache, no backoff, no retry budget:
   a card whose CDN fetch fails is re-fetched on the next request for it. The wire vocabulary c3-8
@@ -2453,4 +2496,163 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   files; the ledgered two-copies defect class (c3-2 Debug Log 3, c3-3 finding 2), this time in test
   scaffolding. Consolidate into `tests/unit/companion/conftest.py` when a third consumer appears —
   c3-7's disk cache and c3-8's negative cache both stall CDNs and are candidates.
-  **Home: c3-7.** (Severity: Low.)
+  ~~**Home: c3-7.**~~ **CLOSED by c3-7, 2026-08-01 — it was the third consumer, as predicted.**
+  Both classes are gone; `conftest.StallableUpstream` replaces them, with `FakeClock` moved
+  alongside it so a test module can reach either without importing another test module. What the
+  entry did not price: **the two fakes had already drifted**, which is the whole hazard rather
+  than the duplication itself — one recorded start times off a virtual clock and had no
+  `completed` counter, the other counted completions and had no clock. The merged class carries
+  the union with the clock **optional**, so a test that does not care about time does not build
+  one. It also had to change a default: `StallableCdn` held every request unconditionally while
+  `Upstream` took `hold=`, so the consolidated class defaults to *releasing* and its one stalling
+  fixture now asks for `hold=True` explicitly — caught by three reds on the first run, and worth
+  naming because "same class, different default" is how a consolidation reintroduces the drift it
+  removed. (Severity: Low → **resolved**.)
+
+
+## Deferred from: story c3-7 (the sharded, atomically written disk cache, 2026-08-01)
+
+- **The cache is unbounded: no eviction, no size accounting, no TTL, no index** (AD-11, epic
+  :1768-1770 — deliberate in MVP, and no hook was built for a future one on c3-4's ruling). What
+  c8-2 inherits is a **measured footprint rather than a guess**: this user's whole 40-deck library
+  is **1,061 distinct card ids**, and a single deck resolves to **67–99** of them; at one size and
+  the epic's ~124 KB average that is roughly **130 MB** for the entire library, ~12 MB per deck.
+  The 130 MB is *arithmetic over an average*, not a byte measurement — see the next entry. c8-2
+  owns the documented location, the removal command and the uninstall notes; the cache root is
+  `src.paths.data_dir()/image_cache` and it is safe to delete wholesale at any time, because every
+  entry is reconstructible by refetching and nothing indexes it. **Home: c8-2.** (Severity: Low —
+  a disclosure and stewardship gap, not a defect.)
+
+- **The ~124 KB average tile size is arithmetic, never measured.** It is 12 MB ÷ 99 tiles from the
+  epic's own acceptance observation, and every footprint figure in this story (including the
+  130 MB above) inherits it. `png` is roughly 1 MB and `small` a small fraction of `normal`, so a
+  user who browses the detail panel heavily has a materially different footprint from one who only
+  ever sees the grid — and nothing here knows which. **Home: c10-3**, which already owns real-bytes
+  profiling. (Severity: Low.)
+
+- **A cache entry is never revalidated, so a corrected artwork is served indefinitely.** The key is
+  id + size + face and AD-11 **accepts** that; a data refresh that changes a card's `image_uris`
+  hits the existing entry. Today the only remedy is deleting the cache directory, which nothing
+  documents (see the c8-2 entry above) and no tool offers. The shape that would fix it without
+  reopening the key is a **generation stamp** — a cache subdirectory named for the database's own
+  refresh marker — which costs nothing at read time and invalidates wholesale. Not built, because
+  nothing in MVP knows when a refresh happened and inventing a marker for one consumer is the
+  unused-hook mistake. **Home: unowned**; the forcing function is the first user-visible complaint
+  about stale art, or whichever story gives the database a refresh timestamp. (Severity: Low.)
+
+- **`os.fsync` is deliberately not called, so the cache is atomic but not durable** (Q3, Brad
+  2026-08-01). A reader can never observe a partial file — that is temp + `os.replace` — but a
+  power cut can lose a just-written entry, costing one refetch. Measured on this machine at Task 0
+  (200 iterations, 124 KB): `fsync` costs **2.909 ms** against the whole write's **0.460 ms**, a
+  6.3× multiplier, or 0.288 s of forced flushes on a cold 99-tile deck. **The ruling is the
+  semantics and would stand at any price**; the number is corroboration. Recorded so that "the
+  cache is atomically written" is never read as "fsynced" by a later story deciding what it can
+  rely on. **Home: unowned** — nothing is expected to need this. (Severity: Low.)
+
+- **Two simultaneous requests for one key both fetch and both write, and on Windows the loser's
+  `os.replace` raises `PermissionError`.** The direct consequence of declining in-flight
+  coalescing (see the re-homed c3-6 entry above). **Observed live** during implementation: a
+  99-request burst over a single card id logged exactly that, and the request it belonged to was
+  served normally — which is AC 9 working rather than a defect. It costs one duplicate fetch and
+  one wasted write per collision. **Home: c3-8**, which builds the in-flight map for its own
+  reasons. (Severity: Low.)
+
+- **The one-write-site scan covers `src/companion` only, and it counts by module rather than by
+  intent.** `TestExactlyOneImageWriteSite` asserts that rename-into-place happens in exactly two
+  modules — `discovery.py` and `images.py` — once each. It would **not** notice a second write
+  path that used a different mechanism entirely (`Path.write_bytes` straight to the target, a
+  `shutil.copy` over it), because those are not renames; the *atomicity* claim is what the scan
+  protects, not "nothing else writes". The complementary guard is
+  `TestFileIoNeverRunsOnTheLoop`'s family, which does see `write_bytes` — but only inside an
+  `async def`, and only in `images.py`. **A declared blind spot is still a claim**, so it is
+  declared here rather than left to be discovered. **Home: unowned.** (Severity: Low.)
+  **Updated by the 2026-08-01 review:** two rename-shaped spellings that were *inside* the
+  claimed territory and undeclared — `Path.replace`/`Path.rename` (the pathlib rename-into-place
+  the retired identifier ban did catch) and a call through a rebound local (`handler =
+  os.replace`) — are now **caught by the scan**, discriminated from `str.replace`/
+  `datetime.replace` by the one-bare-positional-argument signature. The declared blind spot is
+  now genuinely limited to non-rename mechanisms, as this entry always said.
+
+- **`_FILE_IO_CALLS` is a member list, not a module ban, and that is a knowingly weaker shape.**
+  The C2 retro's standing agreement is *ban the family, never enumerate members* — but there is no
+  module to ban here: the offenders live in `os`, `pathlib`, `tempfile` and the builtins at once,
+  and `os` and `pathlib` are both needed on the sanctioned path. Import aliases are resolved, so
+  the spellings that evade a member list are caught; what is **not** caught is a filesystem call
+  whose name is not in the list (`os.truncate`, `os.link`, an `io.open`). **Home: unowned**;
+  revisit if a later story adds a fourth file-touching mechanism. (Severity: Low.)
+
+- **`images.py` now holds three mechanisms and is ~1,100 lines.** The spine draws the pacer, the
+  disk cache and the negative cache inside `app/images.py` (`# proxy: pacer, disk cache, negative
+  cache`), so c3-8 lands here too and makes it three. Splitting it is deliberately **not** this
+  story's decision — that belongs to whoever finds the module unmanageable with all three shipped,
+  not to the story that adds the second. Recorded so the growth is a noticed fact rather than a
+  drift. **Home: c3-8 or the C3 retro.** (Severity: Low.)
+
+- **This machine's full-suite runtime is too noisy to support the before→after claim AC 24 asks
+  for, and that is worth knowing before the next story tries to make one.** Three consecutive runs
+  of *identical* code measured **118.40 s / 119.12 s / 167.56 s** — a **49 s spread**, ~40% of the
+  median. The single baseline sample was 126.10 s, which sits inside that spread, so "the suite got
+  faster" and "the suite got slower" are both unsupportable from single samples. An intermediate
+  reading of 143.36 s during this story was initially attributed to the cache's disk I/O; that
+  attribution was **wrong and is withdrawn** — it was background load.
+
+  What *is* measurable, and what AC 24 actually wanted, is a **targeted** comparison rather than a
+  whole-suite one: probe (b) removed the cache write entirely and the companion suite ran in
+  **43.38 s** against **43.02 s** with the write in place, so the write costs nothing detectable —
+  which is the specific thing AC 24 predicted would show up here *"and nowhere else"* had an
+  `os.fsync` been added. **The lesson for later stories: compare the narrowest suite that contains
+  the change, take more than one sample, and do not read a whole-suite delta on this box as
+  signal.** **Home: unowned** — a measurement-practice note, not a defect. (Severity: Low.)
+
+## Deferred from: code review of c3-7 (2026-08-01)
+
+- **Q4's declined alternative — a sidecar carrying the upstream's full `Content-Type` — and the
+  parameter divergence it tolerates.** A warm hit derives its media type from the stored
+  extension, so any *parameters* the upstream sent (`image/jpeg; charset=binary`) are dropped on
+  the second render of a tile; the media type itself always matches, by construction, since the
+  review flipped `cache_extension` to derive the spelling from the same header the cold path
+  serves (D1). The sidecar was declined because it doubles the entries on disk and reopens the
+  atomicity question for a *pair* of files, to preserve a parameter no measured Scryfall response
+  actually sends. Pinned by `test_the_one_named_divergence_is_the_content_type_parameter`; the
+  c4-4-facing consequence is a `ui/README.md` blind-spot row. **Home: unowned** — the forcing
+  function is an upstream that starts sending a parameter browsers act on. (Severity: Low.)
+
+- **Orphaned `.tmp` files from a hard kill accumulate with no sweep, ever.** `_write_atomically`
+  cleans its temp file on every in-process failure, but a process kill or power cut between
+  `mkstemp` and `os.replace` strands `<name>.<rand>.tmp` in the card's shard directory
+  permanently: `_read_cached` never matches the suffix (invisible, so it costs nothing but
+  bytes), no startup or periodic sweep exists, and the c8-2 stewardship entry above covers cache
+  *content*, not write debris. A `rglob("*.tmp")` sweep at startup was declined: it walks a
+  potentially 38k-directory tree on every launch to reclaim litter produced only by crashes
+  mid-write. The wholesale remedy is c8-2's documented `image_cache/` deletion, which removes
+  debris and content alike. **Home: c8-2**, as one sentence in its stewardship notes. (Severity:
+  Low.)
+
+- **A transient startup `OSError` disables the cache for the whole process, with one WARNING at
+  boot.** Q6's ruling covers root *creation* failure by disabling the cache and running on —
+  correct for the named case (a *file* called `image_cache`), but a transient failure (AV
+  briefly locking the data directory at boot, the exact Windows class this feature names
+  elsewhere) has the same permanent consequence: every image fetches from the CDN until restart,
+  announced only by a log line hours before anyone notices slowness. No retry, no re-attempt on
+  first write. Declined here because a retry policy is a design decision c3-8's failure
+  signalling is better placed to make consistently. **Home: c3-8.** (Severity: Low.)
+
+- **A root that exists but is unwritable leaves the cache "enabled" and warns on every write,
+  ~99 times per cold deck paint, forever.** `build_image_cache` probes only `mkdir` of the root;
+  a pre-existing read-only directory (or ACLs changed mid-run) passes it, so every subsequent
+  write fails and logs at WARNING with no disable-after-N and no startup writability probe. The
+  requests themselves are unharmed (AC 9). A startup write-probe was declined as an effectful
+  test-file in the user's data directory on every launch; log-rate limiting is c3-8-shaped.
+  **Home: c3-8**, beside the transient-startup entry above — both are "the cache's failure
+  posture over time" questions. (Severity: Low.)
+
+- **`DiskCache` trusts its callers for containment: `card_id`/`size`/`face` are validated by the
+  route's own constraints, not by the class.** `path_for("../../..", ...)` escapes the root —
+  demonstrated by the containment test's own firing half — and nothing in the class refuses it;
+  the route's `_CARD_ID_PATTERN`, the closed `ImageSize` literal and the bounded `face` are the
+  whole guard, and they live in a different module. Deliberate under c3-4's unused-hook ruling
+  (today's only caller is validated), but the module's next callers are already named — c3-8's
+  negative cache in this same file, c6-4's suggestion tiles — and the first one that passes an
+  unvalidated id gets a traversal write. **Home: c3-8**, which touches this class next and
+  should either validate at the class boundary or restate the trust chain in its own record.
+  (Severity: Low.)
