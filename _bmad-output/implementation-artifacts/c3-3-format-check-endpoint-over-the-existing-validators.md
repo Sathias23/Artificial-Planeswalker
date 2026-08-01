@@ -9,7 +9,7 @@ baseline_commit: 2a787ac
 
 # Story C3.3: Format check endpoint over the existing validators
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -547,6 +547,66 @@ Both from `deferred-work.md`, both naming c3-3 explicitly. **Q5.**
   - [x] Apply patches, then re-run every gate and paste the output
   - [x] Raise the PR into `feat/companion-c3` — **PR #31**, three commits
         (`11a0750` feat, `27ef9b4` review patches, `cf47d28` records)
+
+### Review Findings (round 2, 2026-08-01, second-model pass over PR #31)
+
+- [x] [Review][Decision] Limit-literal family: adjacent spellings evade it, exact literals are a
+      standing false-positive tax — `<= 59` / `>= 16` / `>= 5` are the same three rules with the
+      off-by-one integer and match no family; meanwhile any future innocent `timeout=15` in
+      `src/companion` goes red with no waiver mechanism. Extend a Compare-scoped adjacent set, or
+      declare adjacent spellings a documented limit like `1` (round-1 precedent)?
+      [tests/unit/companion/test_routes_format_check.py:645,689]
+      **RULED (Brad, 2026-08-01): declare, don't extend** — the adjacent set is unbounded and its
+      small members as ubiquitous as `1`; documented in the `_LIMIT_LITERALS` docstring, the
+      guard's declared-limits paragraph, and the `ui/README.md` blind-spot row (now four holes).
+- [x] [Review][Decision] `format_check(deck, *, format=None)` override keyword the route never
+      passes — booked in the record as an undeclared decision with a delete-if-unused instruction,
+      pinned only by its own test. Keep the what-if surface or strip to spec minimalism?
+      [src/logic/deck_validator.py:644]
+      **RULED (Brad, 2026-08-01): strip** — signature is now `format_check(deck)`; the override
+      test deleted; `validate_deck(deck, format=...)` remains the what-if surface.
+- [x] [Review][Patch] SKILL.md still teaches the pre-c3-3 `unknown_format` behavior in four places
+      — "silently flags every card" prose, the ⭐ valid-format-key contract's "tell", and a worked
+      transcript all describe a diagnostic that can never fire; they contradict the table row this
+      diff added at :113 [.claude/skills/format-legality/SKILL.md:138,160-190,308,453-460]
+- [x] [Review][Patch] SKILL.md worked transcripts quote the retired `"{format} requires at least
+      60"` wording the diff itself replaced [.claude/skills/format-legality/SKILL.md:440,463]
+- [x] [Review][Patch] Whole-module `import src.logic` (or `import src`) evades the
+      validator-import family — a plain static spelling not among the guard's declared holes
+      [tests/unit/companion/test_routes_format_check.py:781-784]
+- [x] [Review][Patch] Format-name pairs split across nested containers (`[("brawl", 1),
+      ("commander", 1)]`) and dict *values* evade `_format_names_in`
+      [tests/unit/companion/test_routes_format_check.py:702-708,799-805]
+- [x] [Review][Patch] `_is_ref_rooted`'s union arm enumerates refused siblings instead of banning
+      the family — `required`/`enum`/`if`+`then` beside `anyOf` pass; the `$ref` arm it sits
+      beside already takes the allowlist stance [tests/unit/companion/test_errors.py:136-146]
+- [x] [Review][Patch] No totality pin ties `passed`/`unanswerable`/rotation coverage to
+      `CHECK_ORDER` — a seventh check name KeyErrors the pass branch at runtime instead of
+      reddening a named assertion [src/logic/deck_validator.py:689-724]
+- [x] [Review][Patch] The "size, copy limit and sideboard are format-independent" comment is false
+      for the copy limit (singleton formats cap at 1); safe only via the pinned
+      `_SINGLETON_FORMATS ⊆ _KNOWN_FORMATS` invariant the comment never cites
+      [src/logic/deck_validator.py:698-700]
+- [x] [Review][Patch] `TestFormatSetInvariant`'s justification cites a copy-limit pass sentence
+      ("{format} is a singleton format") that does not exist — the protected sentence is
+      `validate_deck`'s singleton *violation* detail [tests/unit/logic/test_format_check.py]
+- [x] [Review][Patch] `TestStructuralRowsNeverNameAFormat` overclaims — a singleton violation
+      lands on the copy_limit row carrying "{format} is a singleton format", and the class never
+      probes the case its name bans [tests/unit/logic/test_format_check.py]
+- [x] [Review][Patch] "Almost all the Vintage list" is contradicted by the branch's own
+      measurement (vintage 51 of 89 — a majority, not almost all)
+      [.claude/skills/format-legality/SKILL.md:143]
+- [x] [Review][Defer] `is_legal: false` above six non-violation rows has no machine-checkable
+      guard against c4-10 binding `is_legal` to the panel headline — named line owed to c4-10 and
+      the epic manual-testing checklist [src/logic/deck_validator.py:727] — deferred, render-side
+      concern belonging to the story that builds the panel
+
+**Greptile round 1 (PR #31, 4/5, two P1s — both dispositioned 2026-08-01, replies posted on the
+threads):** G1 "Commander size falsely passes" — accurate, but it is landmine 13 / D-1.6b, the
+already-ledgered per-format-minimum entry; dismissed with a pointer, no code change. G2 "unknown
+format uses wrong limit" — accurate and previously unledgered; **ruled ledger-not-fix**: entry
+added beside the per-format-minimum one (same future "format-aware structural rules" story), fix
+shape recorded (copy_limit row goes advisory when `format_recognized` is false).
 
 ---
 

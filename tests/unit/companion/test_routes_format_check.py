@@ -649,6 +649,12 @@ _LIMIT_LITERALS = frozenset({60, 15, 4})
 singleton limit is 1, but ``> 1`` / ``== 1`` are ubiquitous in ordinary code (lengths, indices,
 retry counts), so banning it would produce noise instead of a signal. A shell reimplementing the
 singleton rule specifically would slip past this family; nothing else here would.
+
+**Adjacent-literal spellings are declared out for the same reason (round-2 review, ruled
+2026-08-01):** ``<= 59`` / ``>= 16`` / ``>= 5`` are the same three rules with the off-by-one
+integer, but the adjacent set is unbounded (58, 61, arithmetic…) and its small members (3, 5, 16)
+are as ubiquitous as ``1``. The reviewer stance below covers them: a limit spelled to dodge this
+set is obfuscation, and a guard satisfied by obfuscation is treated as a violation on sight.
 """
 
 _FORMAT_NAMES = frozenset(
@@ -699,12 +705,18 @@ def _is_limit(value: object) -> bool:
     )
 
 
-def _format_names_in(elements: list[ast.expr]) -> list[str]:
-    """Return the Scryfall legality keys among *elements*' string constants."""
+def _format_names_in(node: ast.AST) -> list[str]:
+    """Return the Scryfall legality keys among all string constants under *node*.
+
+    The whole subtree, not just direct elements (round-2 review, 2026-08-01): a per-format table
+    split across nested containers — ``[("brawl", 1), ("commander", 1)]``, the natural spelling
+    of a per-format limit map — carries one name per inner tuple and none at the outer level, and
+    dict *values* are as good a home for a rebuilt format set as dict keys.
+    """
     return [
-        e.value
-        for e in elements
-        if isinstance(e, ast.Constant) and isinstance(e.value, str) and e.value in _FORMAT_NAMES
+        n.value
+        for n in ast.walk(node)
+        if isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value in _FORMAT_NAMES
     ]
 
 
@@ -718,11 +730,11 @@ def find_rule_violations(source: str, rel_path: str) -> list[str]:
       attribute, a subscript key, a ``getattr`` argument, or a bare string bound to a variable
       and used as a key later. Keyed on the word rather than on the syntax, because the syntax
       is exactly what an evasion varies.
-    * **the validator reached past its projection** — any import of the validator module, or of
-      a name from it, outside :data:`_PROJECTION_SURFACE`. Covers ``from X import y``,
-      ``import X.y``, ``import X.y as z`` and ``from X import y``-of-the-module, because
-      ``import src.logic.deck_validator as dv`` then ``dv.validate_deck(...)`` reaches
-      everything an allowlist on ``from``-imports alone would refuse.
+    * **the validator reached past its projection** — any import of the validator module, of a
+      name from it outside :data:`_PROJECTION_SURFACE`, or of any ancestor package. Covers
+      ``from X import y``, ``import X.y``, ``import X.y as z``, ``from X import y``-of-the-module,
+      and the whole-package forms ``import src.logic`` / ``import src``, because every one of
+      them binds a name from which ``validate_deck`` is reachable by plain attribute access.
     * **a construction limit used** — an integer from :data:`_LIMIT_LITERALS` appearing anywhere
       as an integer constant. Deliberately *not* restricted to comparisons: ``_MIN = 60`` then
       ``n < _MIN`` is the same rule with one more line, and ``match n: case 60`` is the same rule
@@ -733,12 +745,13 @@ def find_rule_violations(source: str, rel_path: str) -> list[str]:
       beside the limits, and a shell summing quantities is doing the arithmetic the copy limit is
       made of, whether or not it then compares against ``4``.
 
-    **Declared limits, so they are decisions rather than discoveries.** ``1`` is outside the
-    limit family (see :data:`_LIMIT_LITERALS`). A rule written in TypeScript is invisible to
-    every Python guard. And a fully dynamic form — a limit read from a config file, a legality
-    key assembled from fragments — defeats an AST walk by construction; the same stance
-    ``test_import_boundary.py`` takes applies, and its wording is the rule: *a guard satisfied by
-    obfuscation is theatre*, so a reviewer seeing one must treat it as a violation.
+    **Declared limits, so they are decisions rather than discoveries.** ``1`` and the
+    adjacent-literal spellings of the limits (``<= 59``, ``>= 16``, ``>= 5`` — ruled 2026-08-01)
+    are outside the limit family (see :data:`_LIMIT_LITERALS`). A rule written in TypeScript is
+    invisible to every Python guard. And a fully dynamic form — a limit read from a config file,
+    a legality key assembled from fragments — defeats an AST walk by construction; the same
+    stance ``test_import_boundary.py`` takes applies, and its wording is the rule: *a guard
+    satisfied by obfuscation is theatre*, so a reviewer seeing one must treat it as a violation.
 
     Args:
         source: Python source text.
@@ -780,7 +793,13 @@ def find_rule_violations(source: str, rel_path: str) -> list[str]:
                         flag_validator_import(node.lineno, _VALIDATOR_MODULE)
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name == _VALIDATOR_MODULE:
+                # The module itself, or any ancestor package: `import src.logic` (or bare
+                # `import src`) binds a name from which `src.logic.deck_validator.validate_deck`
+                # is a plain attribute chain — a static spelling the three from-import branches
+                # above never see (round-2 review, 2026-08-01).
+                if alias.name == _VALIDATOR_MODULE or _VALIDATOR_MODULE.startswith(
+                    alias.name + "."
+                ):
                     flag_validator_import(node.lineno, alias.name)
 
         # --- a construction limit, in any position ---
@@ -795,13 +814,9 @@ def find_rule_violations(source: str, rel_path: str) -> list[str]:
         elif isinstance(node, ast.Attribute) and node.attr == "quantity":
             flag(node.lineno, ast.unparse(node), "deck-card copies are counted in the shell")
 
-        # --- a format-name set, in any container ---
-        elif isinstance(node, ast.Set | ast.List | ast.Tuple):
-            if len(_format_names_in(node.elts)) >= 2:
-                flag(node.lineno, ast.unparse(node), "a format-name set is rebuilt in the shell")
-        elif isinstance(node, ast.Dict):
-            keys = [k for k in node.keys if k is not None]
-            if len(_format_names_in(keys)) >= 2:
+        # --- a format-name set, in any container, at any nesting depth ---
+        elif isinstance(node, ast.Set | ast.List | ast.Tuple | ast.Dict):
+            if len(_format_names_in(node)) >= 2:
                 flag(node.lineno, ast.unparse(node), "a format-name set is rebuilt in the shell")
 
     return found
@@ -934,6 +949,28 @@ class TestNoRuleInTheShell:
                 "format-name set",
                 id="evasion-format-set-with-a-non-format-member",
             ),
+            # --- The round-2 review's evasions (2026-08-01), pinned the same way. ---
+            pytest.param(
+                "import src.logic\n\n\ndef go(deck):\n"
+                "    return src.logic.deck_validator.validate_deck(deck)\n",
+                "reached past its projection",
+                id="evasion-whole-package-import",
+            ),
+            pytest.param(
+                "import src\n",
+                "reached past its projection",
+                id="evasion-bare-root-package-import",
+            ),
+            pytest.param(
+                "PAIRS = [('brawl', 1), ('commander', 1)]\n",
+                "format-name set",
+                id="evasion-format-names-split-across-nested-tuples",
+            ),
+            pytest.param(
+                "BY_RANK = {1: 'brawl', 2: 'commander'}\n",
+                "format-name set",
+                id="evasion-format-names-as-dict-values",
+            ),
             pytest.param(
                 "def go(deck):\n    return sum(e.quantity for e in deck.cards)\n",
                 "copies are counted",
@@ -983,6 +1020,10 @@ class TestNoRuleInTheShell:
             pytest.param("def go(items):\n    return len(items) > 1\n", id="a-length-check"),
             pytest.param('TAGS = {"fun", "budget"}\n', id="a-non-format-string-set"),
             pytest.param('LABELS = ["standard"]\n', id="a-single-string-list"),
+            pytest.param(
+                "PAIRS = [('standard', 'ok')]\n", id="a-single-format-name-nested-in-a-tuple"
+            ),
+            pytest.param("import json\nimport ast\n", id="ordinary-imports"),
             pytest.param("def go(flag):\n    return flag == True\n", id="a-boolean-comparison"),
             pytest.param("def go(n):\n    return n == 3\n", id="an-unrelated-integer"),
         ],

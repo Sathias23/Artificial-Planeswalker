@@ -131,18 +131,16 @@ def _is_ref_rooted(schema: dict) -> bool:
         return True
 
     # A union is rooted when EVERY branch is — so `X | None` passes and `X | {inline envelope}`
-    # does not. A union carrying an object-shaping key alongside is refused outright: that is a
-    # hand-assembled shape wearing a union's clothes, the same evasion the array arm guards.
+    # does not. Beside the one union key, ONLY annotations are tolerated — the same allowlist
+    # stance as the `$ref` arm above. The first version enumerated the disguises already seen
+    # (object-shape keys, then `type`/`items` array machinery), which is the exact
+    # enumerate-the-members shape the standing agreement bans: `required`, `enum`, `const` or an
+    # `if`/`then` beside a union all constrain the body without being on any refused list, and
+    # each walked through (round-2 review, 2026-08-01). Anything that is not an annotation
+    # shapes, so anything that is not an annotation refuses.
     union = _UNION_KEYS & keys
     if union:
-        if len(union) > 1 or (_OBJECT_SHAPE_KEYS & keys):
-            return False
-        # ...and array machinery alongside is refused for the same reason. This arm runs BEFORE
-        # the array arm, so without this line a `{"type": "array", "items": {inline envelope},
-        # "anyOf": [$ref]}` reaches the branch walk, finds every *union* branch rooted, and is
-        # waved through — re-opening the exact evasion the array arm was hardened against at
-        # c3-1's review. Caught by the edge-case layer, 2026-08-01: it returned True.
-        if schema.get("type") is not None or "items" in keys:
+        if len(union) > 1 or (keys - union - _ANNOTATION_KEYS):
             return False
         branches = schema[next(iter(union))]
         if not isinstance(branches, list) or not branches:
@@ -699,6 +697,53 @@ class TestStructuralPins:
                         {"$ref": "#/components/schemas/DeckDetail"},
                         {"type": ["null"]},
                     ]
+                },
+                True,
+            ),
+            # --- Round 2 (2026-08-01): the union arm had enumerated its refusals (object-shape,
+            # then `type`/`items`), so a CONSTRAINING sibling on no list walked through. Now the
+            # arm mirrors the `$ref` arm's stance — beside the union key, annotations only.
+            (
+                {
+                    "anyOf": [{"$ref": "#/components/schemas/DeckDetail"}],
+                    "required": ["hand_built"],
+                },
+                False,
+            ),
+            (
+                {
+                    "anyOf": [{"$ref": "#/components/schemas/DeckDetail"}],
+                    "if": {"properties": {"status": {}}},
+                    "then": {"properties": {"deck": {}}},
+                },
+                False,
+            ),
+            (
+                {
+                    "anyOf": [{"$ref": "#/components/schemas/DeckDetail"}],
+                    "enum": ["frozen"],
+                },
+                False,
+            ),
+            # Two union keys at once compose shapes, not alternatives — and under the subtraction
+            # stance each would hide the other from the sibling check, so the pair is refused
+            # explicitly before it.
+            (
+                {
+                    "anyOf": [{"$ref": "#/components/schemas/DeckDetail"}],
+                    "oneOf": [{"$ref": "#/components/schemas/DeckSummary"}],
+                },
+                False,
+            ),
+            # The silent half: annotations beside a union stay legal, exactly as beside a `$ref`.
+            (
+                {
+                    "anyOf": [
+                        {"$ref": "#/components/schemas/DeckDetail"},
+                        {"type": "null"},
+                    ],
+                    "title": "Response",
+                    "description": "One deck, or nothing.",
                 },
                 True,
             ),

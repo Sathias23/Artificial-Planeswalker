@@ -174,6 +174,21 @@ class TestRuleCoverage:
         """Q3: rotation has no local data source, so nothing in src/logic can produce it."""
         assert "rotation" not in set(CHECK_FOR_RULE.values())
 
+    @pytest.mark.parametrize("check", CHECK_ORDER)
+    def test_every_check_in_the_order_has_a_sentence(self, check) -> None:
+        """The projection's totality pin (round-2 review, 2026-08-01).
+
+        ``passed`` and ``unanswerable`` are per-report locals interpolating live counts, so no
+        set-equality over them can be asserted from outside. Instead: a fully-passing deck must
+        yield a non-empty sentence for every name in ``CHECK_ORDER``. A check name added to the
+        order without a ``passed``/``unanswerable``/rotation arm currently raises ``KeyError``
+        inside ``format_check`` — this test exists so that failure lands on an assertion named
+        for the gap rather than as a 500 in whichever route calls it first.
+        """
+        report = format_check(_deck([_mountain(60)]))
+
+        assert _detail(report, check)
+
 
 # ------------------------------------------------------------------------------------------
 # The happy path, and its non-vacuity pair (AC 25)
@@ -457,14 +472,8 @@ class TestReportedFormat:
         assert report.format == "standard"
         assert report.format_recognized is True
 
-    def test_the_deck_s_own_format_is_the_default(self) -> None:
+    def test_the_deck_s_own_format_is_checked(self) -> None:
         assert format_check(_deck([_mountain(60)], format="brawl")).format == "brawl"
-
-    def test_an_explicit_format_overrides_the_deck_s(self) -> None:
-        """The parameter exists for a what-if caller; the route never passes it."""
-        deck = _deck([_mountain(60)], format="standard")
-
-        assert format_check(deck, format="modern").format == "modern"
 
     def test_a_null_format_is_reported_as_the_empty_string(self) -> None:
         report = format_check(_deck([_mountain(60)], format=None))
@@ -474,10 +483,15 @@ class TestReportedFormat:
 
 
 class TestStructuralRowsNeverNameAFormat:
-    """The size and copy-limit sentences must not attribute their limits to a format.
+    """The size and copy-limit *pass* sentences must not attribute their limits to a format.
 
-    Three separate review findings, one root cause. ``_MIN_MAINBOARD`` and ``_MAX_COPIES`` are
-    applied **regardless of format** (D-1.6b), so a sentence of the shape "``{format}`` requires
+    Scoped to the pass sentences deliberately (round-2 review): a singleton **violation** lands
+    on the copy_limit row saying "``{format}`` is a singleton format", and there the attribution
+    is true and was consulted — the probe below keeps that exception honest rather than letting
+    this class's name imply a blanket ban.
+
+    Three separate review findings, one root cause. ``_MIN_MAINBOARD`` is applied **regardless of
+    format** (D-1.6b), so a sentence of the shape "``{format}`` requires
     at least 60" asserts something the validator never checked. It was:
 
     * **a gap** when there was no format — ``"Mainboard has 60 cards;  requires at least 60."``;
@@ -541,6 +555,21 @@ class TestStructuralRowsNeverNameAFormat:
             violations = validate_deck(_deck([_mountain(10)], format=format), format=format)
             detail = next(v.detail for v in violations.violations if v.rule == "min_deck_size")
             assert detail == "Mainboard has 10 cards; the minimum is 60.", format
+
+    def test_a_singleton_violation_does_name_the_format_and_that_is_sanctioned(self) -> None:
+        """The exception this class's name must not erase (round-2 review, 2026-08-01).
+
+        A singleton violation lands on the copy_limit row saying "{format} is a singleton
+        format" — a true, consulted attribution, unlike the pass sentences above. Probed so the
+        no-format rule stays scoped to pass sentences instead of quietly becoming a blanket ban
+        someone "fixes" the violation wording to satisfy.
+        """
+        bolt = _card("bolt", "Brawl Bolt", legalities={"brawl": "legal"})
+        report = format_check(_deck([_mountain(58), _entry(bolt, 2)], format="brawl"))
+
+        row = next(r for r in report.rows if r.check == "copy_limit")
+        assert row.status == "violation"
+        assert "brawl is a singleton format" in row.detail
 
 
 class TestIsLegalVersusTheRows:
@@ -625,12 +654,15 @@ class TestSummaryIsDeterministic:
 class TestFormatSetInvariant:
     """Every singleton format must also be a *known* one — pinned, not left to coincidence.
 
-    ``format_check``'s copy-limit pass sentence says "``{format}`` is a singleton format" and is
-    only reachable on the non-advisory path, i.e. when the format is recognised. That is safe
-    today purely because the two frozensets happen to nest, and **nothing asserted it** (edge-case
-    review, 2026-08-01). If a singleton format were ever added without being added to
-    ``_KNOWN_FORMATS``, the row would claim the plain 4-copy rule for a format the validator caps
-    at 1 — a wrong sentence beside a correct verdict.
+    ``validate_deck`` applies the singleton cap on ``format in _SINGLETON_FORMATS`` alone — the
+    branch is **not** gated on ``known_format`` — and its violation detail says "``{format}`` is
+    a singleton format" (the sentence this invariant protects; round-2 review corrected this
+    docstring, which previously attributed that sentence to a copy-limit *pass* row that names no
+    format). If a singleton format were ever added without being added to ``_KNOWN_FORMATS``, a
+    deck in it would carry that violation naming the format on the copy_limit row directly beside
+    a legality row disclaiming the same format as unrecognised — a self-contradicting panel. The
+    nesting also backs ``format_check``'s comment that an unrecognised format always falls back
+    to the 4-copy rule. Safe today purely because the two frozensets nest, so it is asserted.
     """
 
     def test_every_singleton_format_is_a_known_format(self) -> None:

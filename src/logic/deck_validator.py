@@ -641,7 +641,7 @@ def _unanswerable(format: str, subject: str) -> str:
     return f"'{format}' is not a recognized format, so {subject} could not be checked."
 
 
-def format_check(deck: Deck, *, format: str | None = None) -> FormatCheckReport:
+def format_check(deck: Deck) -> FormatCheckReport:
     """Project a deck's validation onto one row per check, passes included.
 
     ``validate_deck`` answers "what is wrong with this deck", which is what an agent asked a
@@ -659,14 +659,14 @@ def format_check(deck: Deck, *, format: str | None = None) -> FormatCheckReport:
         deck: The deck to check. It must have been loaded with its cards eagerly attached
             (``DeckRepository.get_deck_with_cards``) — a deck whose ``deck_cards`` were never
             loaded reads as empty and produces a confident report about a 0-card deck.
-        format: The format to check against. Defaults to the deck's own ``format``, which is the
-            only thing a caller checking "is this deck legal" wants; pass one explicitly to ask
-            a what-if question instead.
 
     Returns:
         A ``FormatCheckReport`` carrying one row per check, in ``CHECK_ORDER``.
     """
-    checked = deck.format if format is None else format
+    # The format is always the deck's own. A what-if `format=` override existed briefly and was
+    # stripped at review (2026-08-01): the route never passed it, and `validate_deck` already
+    # takes an explicit format for any caller asking a what-if question.
+    checked = deck.format
     report = validate_deck(deck, format=checked or "")
     normalised = report.format
     recognized = not any(v.rule == "unknown_format" for v in report.violations)
@@ -677,15 +677,17 @@ def format_check(deck: Deck, *, format: str | None = None) -> FormatCheckReport:
         if row is not None:
             by_check[row].append(violation)
 
-    # THE STRUCTURAL ROWS NEVER NAME A FORMAT, and that is a correctness rule rather than a style
-    # choice (review, 2026-08-01). `_MIN_MAINBOARD` and `_MAX_COPIES` are applied regardless of
-    # format (D-1.6b, restated above), so a sentence of the shape "{format} requires at least 60"
-    # is an affirmative claim about a format the validator never consulted — and for Commander it
-    # is simply false, stated on a panel a person reads. It also read as a bug when there was no
+    # THE STRUCTURAL *PASS* SENTENCES NEVER NAME A FORMAT, and that is a correctness rule rather
+    # than a style choice (review, 2026-08-01). `_MIN_MAINBOARD` is applied regardless of format
+    # (D-1.6b, restated above), so a sentence of the shape "{format} requires at least 60" is an
+    # affirmative claim about a format the validator never consulted — and for Commander it is
+    # simply false, stated on a panel a person reads. It also read as a bug when there was no
     # format at all ("Mainboard has 60 cards;  requires at least 60."), and it contradicted the
     # row above it for an unrecognised one ("'potato' is not a recognized format" / "potato
     # requires at least 60"). Stating the limit without attributing it is true in every format,
-    # in all three cases, and needs no rule this module does not have.
+    # in all three cases, and needs no rule this module does not have. The rule is scoped to the
+    # pass sentences deliberately: a singleton VIOLATION lands on the copy_limit row saying
+    # "{format} is a singleton format", and there the attribution is true and was consulted.
     passed: dict[FormatCheckName, str] = {
         "legality": f"Every card is legal in {normalised}.",
         "size": (f"Mainboard has {report.mainboard_count} cards; the minimum is {_MIN_MAINBOARD}."),
@@ -696,8 +698,10 @@ def format_check(deck: Deck, *, format: str | None = None) -> FormatCheckReport:
         "banned": f"No card is banned in {normalised}.",
     }
     # What each format-dependent row says when there is no format to check it against. Only these
-    # two are affected: size, copy limit and sideboard are format-independent structural rules
-    # and keep answering.
+    # two are affected. Size and sideboard are format-independent and keep answering; the copy
+    # limit is format-AWARE (singleton formats cap at 1) but keeps answering too, because an
+    # unrecognised format is never in `_SINGLETON_FORMATS` (a subset of `_KNOWN_FORMATS`, pinned
+    # by TestFormatSetInvariant) and so falls back to the 4-copy rule.
     unanswerable: dict[FormatCheckName, str] = {
         "legality": _unanswerable(normalised, "legality"),
         "banned": _unanswerable(normalised, "banned cards"),

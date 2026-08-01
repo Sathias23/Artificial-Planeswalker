@@ -2112,3 +2112,29 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   shape**: either normalise at write time in `create_deck` (making the divergence impossible), or
   document the asymmetry where c4-1's store holds both. **Home: c4-10 or c4-1**, whichever first
   holds both values at once. (Severity: Low.)
+
+## Deferred from: code review of c3-3-format-check-endpoint-over-the-existing-validators (round 2, 2026-08-01)
+
+- **`is_legal: false` above six non-violation rows is a live UI trap, mitigated only by prose.**
+  The report deliberately carries no honest headline field (Q4: one shape always, mirrors the
+  validator); a renderer must synthesize the verdict from `format_recognized` plus a row scan,
+  guided only by the `Warning:` docstring block on the wire. Nothing machine-checkable stops
+  c4-10 from binding `is_legal` straight to the panel headline — a formatless deck would then
+  render a red headline over six rows none of which is a violation. **Home: c4-10** (the format
+  check panel), plus a named line on the epic C3 manual-testing checklist. (Severity: Low here,
+  Medium if c4-10 binds it unread.)
+
+- **The copy-limit row answers definitively under the 4-copy fallback for a format it cannot
+  interpret.** Greptile P1 on PR #31, ruled ledger-not-fix (Brad, 2026-08-01). For an
+  unrecognized format (`edh`, `explorer`), `validate_deck` falls back to the ordinary 4-copy
+  rule — an unknown key is never in `_SINGLETON_FORMATS`, pinned by `TestFormatSetInvariant` —
+  and `format_check` renders that as a definitive `copy_limit` pass/violation, though the format
+  the user *meant* may be singleton (edh → commander caps at 1). Mitigations already on the wire:
+  the same report carries an `unknown_format` violation, `format_recognized: false`,
+  `is_legal: false`, and advisory legality/banned rows, so the panel is loudly not-a-verdict.
+  **Fix shape**: when `format_recognized` is false, the copy_limit row goes advisory like
+  legality/banned ("could not be checked against an unrecognized format") — a one-branch change
+  in `format_check` plus its firing/silent pair. **Home: the same unowned `src/logic` rule story
+  as the per-format-minimum entry above** — the two are one "format-aware structural rules"
+  decision. (Severity: Low — reachable only by a deck whose stored format is invalid, and the
+  report already refuses to be a verdict.)
