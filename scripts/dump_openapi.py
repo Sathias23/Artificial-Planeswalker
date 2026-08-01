@@ -26,8 +26,13 @@ took it to nine components and five paths, adding the first wire shapes describe
 rather than ``src/data``; story **c3-4** (``/api/active-deck``) took it to eleven components and
 six paths, adding ``ActiveDeck`` and ``ActiveDeckRequest``; and story **c3-5**
 (``/api/card-image/{scryfall_id}``) took it to **twelve components and seven paths**, adding
-``CardFace``. Story **c3-6**'s pacer is next, and should need nothing here at all — it adds
-behaviour to an existing route rather than a route.
+``CardFace``. Story **c3-6**'s pacer **shipped and needed nothing here**, exactly as this
+paragraph predicted — the prediction was settled by *running* ``npm run gen:api`` and pasting
+``git status --porcelain``, not by argument: seven paths and twelve components, both generated
+files byte-identical. That is what a story adding behaviour to an existing route rather than a
+route looks like on the wire, and it is worth having one measured instance of it on record.
+Story **c3-7**'s disk cache is next and is expected to be the second: a cache changes where bytes
+come from, not what the operation promises.
 
 **The exception, and it is c3-5's.** That endpoint has **no** ``response_model``, because its
 success body is image bytes: a model would emit a JSON ``$ref`` for a body that is binary. A
