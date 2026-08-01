@@ -1,13 +1,22 @@
 """The card-addressed routes: ``GET /api/cards/{card_id}`` and ``GET /api/card-image/…``.
 
 The companion's card-reading routes. Its own module rather than a section of :mod:`.decks`
-because the two operations here are siblings — **same identifier, same corpus, same cache
-story** — while ``decks.py``'s docstring is written entirely about deck reads. c3-2's docstring
-predicted this placement by name, and c3-5 confirmed it (Q1, Brad 2026-08-01): they share the uuid
-constraint, the repository call and the row, so splitting them would publish two names for one
-thing. The measurement that made it free: adding a route to an **existing** router owes nothing to
+because the two operations here are siblings — **same identifier, same corpus** — while
+``decks.py``'s docstring is written entirely about deck reads. c3-2's docstring predicted this
+placement by name, and c3-5 confirmed it (Q1, Brad 2026-08-01): they share the uuid constraint,
+the repository call and the row, so splitting them would publish two names for one thing. The
+measurement that made it free: adding a route to an **existing** router owes nothing to
 ``build_app()``'s ordering block and nothing to ``test_spa.py``'s differential router list — both
 verified unchanged.
+
+**They do not share a cache story, and this sentence used to say they did.** Until c3-7 that
+phrase described nothing on either side; c3-7 then gave the image route a disk cache and the card
+route still has none, which would have made it actively false. It is corrected rather than
+implemented, on a ruling (Q1's sub-question, Brad 2026-08-01): a card row's cache story is
+``ETag``/conditional requests over a database read, which shares nothing with a file on disk but
+the word — implementing it here would be a second mechanism smuggled in under a docstring's
+phrasing. ``GET /api/cards/{card_id}`` therefore still sets no cache headers, and that remains
+ledgered on **c4-1** beside the hydration cache it belongs with.
 
 **This module holds a lookup and a proxy**, which is a change from c3-2, where it held only a
 lookup — the sentence *"there is deliberately nothing here but a lookup"* stopped being true the
@@ -42,6 +51,7 @@ from src.companion.app.images import (
     IMAGE_CACHE_CONTROL,
     ImageSize,
     fetch_image,
+    image_cache,
     image_client,
     image_pacer,
     resolve_face_images,
@@ -169,6 +179,45 @@ three real cards.
 """
 
 
+def _image_response(body: bytes, content_type: str) -> Response:
+    """Build the one success response both the cold and the warm path answer with.
+
+    **One constructor, so cold and warm cannot drift** (c3-7 AC 8). A cache hit is the same
+    success response as a fetch — same status, same ``Cache-Control``, same
+    ``X-Content-Type-Options`` — and the way to make that true is to have one place that says so,
+    rather than two call sites that happen to agree today.
+
+    ``nosniff`` because the body and its declared type are an upstream's word, not ours: without
+    it a browser may sniff a mislabelled body into something executable on this app's own origin.
+    ``fetch_image`` already refuses SVG — the one image type that carries script — and this header
+    is the belt to that brace (review 2026-08-01).
+
+    The **one** field where the two paths can legitimately differ is ``content_type``, and the
+    divergence is bounded to *parameters*: the cold path echoes the upstream's header verbatim
+    (``image/jpeg; charset=binary`` and all), while a warm hit derives it from the stored
+    extension through ``images.CACHE_MEDIA_TYPES`` and therefore carries the bare media type.
+    "Bounded to parameters" is true **by construction**, not by luck: ``cache_extension`` derives
+    the stored spelling from the same ``Content-Type`` the cold path served, with the URL suffix
+    only as a fallback for a header outside the map (review D1, 2026-08-01 — the URL used to win,
+    which left a header/suffix disagreement free to flip the whole media type between cold and
+    warm). Named and tested rather than left for c4-4 to discover (Q4, Brad 2026-08-01); no
+    measured Scryfall response actually sends a parameter, and no browser behaves differently for
+    one.
+
+    Args:
+        body: The image bytes, from the CDN or from disk.
+        content_type: The media type to serve them as.
+
+    Returns:
+        The success response.
+    """
+    return Response(
+        content=body,
+        media_type=content_type,
+        headers={"Cache-Control": IMAGE_CACHE_CONTROL, "X-Content-Type-Options": "nosniff"},
+    )
+
+
 @router.get(
     "/card-image/{scryfall_id}",
     response_class=Response,
@@ -262,6 +311,21 @@ async def read_card_image(
         logger.info("Card %s face %d carries no %s image", scryfall_id, face, size)
         raise CompanionError("no_image_data")
 
+    # The cache is consulted BEFORE the pacer, and the order is the whole point (c3-7 AC 6,
+    # NFR-06). A check inside `pacer.slot()` would cache correctly and pace a warm deck anyway:
+    # 99 tiles that never leave the machine would take 9.9 seconds and would hold the CDN's rate
+    # budget against requests that issue no request at all. `test_routes_card_image.py` measures
+    # that on c3-6's injected clock — a warm burst advances it by ZERO spacing intervals where
+    # the cold burst advances it by 98 — rather than asserting this comment.
+    #
+    # It is also consulted after `card_not_found`, `no_image_data` and the size lookup, so every
+    # key the cache ever sees has already been validated by the route above.
+    cache = image_cache(request.app)
+    if cache is not None:
+        cached = await cache.read(scryfall_id, size, face)
+        if cached is not None:
+            return _image_response(*cached)
+
     client = image_client(request.app)
     pacer = image_pacer(request.app)
     if client is None or pacer is None:
@@ -284,12 +348,21 @@ async def read_card_image(
     # paint), it is deliberately not published to the wire, and it is written down for the tile
     # author in ui/README.md's blind-spot section (Q4, Brad 2026-08-01).
     body, content_type = await fetch_image(client, url, pacer)
-    # `nosniff` because the body and its declared type are an upstream's word, not ours: without
-    # it a browser may sniff a mislabelled body into something executable on this app's own
-    # origin. fetch_image already refuses SVG — the one image type that carries script — and this
-    # header is the belt to that brace (review 2026-08-01).
-    return Response(
-        content=body,
-        media_type=content_type,
-        headers={"Cache-Control": IMAGE_CACHE_CONTROL, "X-Content-Type-Options": "nosniff"},
-    )
+    # Written BEFORE the response is returned, not after (c3-7). A write scheduled to happen
+    # "later" caches correctly under every functional test — a mocked fetch and a mocked disk are
+    # both instantaneous — and in production races the next request for the same tile. That is
+    # c3-6's probe (f) in this story's costume, and the reason the cache is filled on the same
+    # await chain that serves the bytes.
+    #
+    # A cache failure is NOT a request failure and adds no reason token: `write` swallows and
+    # logs, so the picture is served whether or not it was kept.
+    if cache is not None:
+        await cache.write(
+            card_id=scryfall_id,
+            size=size,
+            face=face,
+            url=url,
+            content_type=content_type,
+            body=body,
+        )
+    return _image_response(body, content_type)

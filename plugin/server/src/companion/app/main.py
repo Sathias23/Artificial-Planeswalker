@@ -155,6 +155,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     it paces, mirroring the order they are used in, and AC 2 gates that this is the one and only
     place in ``src/companion`` where one is constructed (Q1, Brad 2026-08-01).
 
+    c3-7's :class:`~src.companion.app.images.DiskCache` follows on the next line, and it is the
+    **first thing created here that can fail** — which is why it is created through
+    :func:`~src.companion.app.images.build_image_cache` rather than by a constructor call. That
+    function resolves the cache root and creates it, and on an ``OSError`` logs at WARNING and
+    returns ``None``, so ``app.state.image_cache`` is always set and the value itself carries
+    "there is no cache this run". **This is what keeps the startup asymmetry above literally
+    true** (Q6, Brad 2026-08-01): the app is *fully functional* without a cache — every request
+    simply fetches, exactly as it did at c3-6 — so failing the launch would be disproportionate in
+    a way a half-launched rendezvous is not, and it would mean editing the ruling
+    ``test_startup_failure_propagates`` exists to protect. It is created **here and not in**
+    ``build_app()`` for the reason that module docstring gives above: ``src.paths.data_dir()``
+    ``mkdir``\\ s, and AD-11 says the lifespan creates the cache root. Like the pacer it needs no
+    teardown, so :func:`_shutdown` is untouched by it.
+
     c3-4's :class:`~src.companion.app.state.ActiveDeckSlot` is created on the same line of reasoning
     and is the first state this process *owns* rather than projects. Creating it here rather than in
     ``build_app()`` is what makes FR-07's restart behaviour structural: the slot is reachable only
@@ -189,6 +203,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.active_deck = state.ActiveDeckSlot()
     app.state.image_client = images.build_image_client()
     app.state.image_pacer = images.Pacer()
+    app.state.image_cache = images.build_image_cache()
     _publish_discovery(app)
     logger.info("Companion instance %s started", app.state.instance_id)
     try:

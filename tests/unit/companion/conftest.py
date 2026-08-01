@@ -22,6 +22,7 @@ valid ``Host`` automatically. The upshot is deliberate: **every** companion test
 the real security envelope rather than around it.
 """
 
+import asyncio
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -462,3 +463,145 @@ async def image_shapes(ready_db):
 
     await _seed(ready_db, seeder)
     return ready_db
+
+
+# =============================================================================================
+# The virtual clock and the stall-able upstream — ONE of each, for the whole package.
+#
+# CONSOLIDATED HERE BY c3-7 (2026-08-01), which `deferred-work.md` named as the trigger: c3-6
+# shipped `Upstream` in `test_images.py` and `StallableCdn` in `test_routes_card_image.py`, two
+# hand-synchronised fakes modelling the same arbitrarily-slow CDN, and the ledger entry said the
+# third consumer should merge them rather than add a third. c3-7 is the third consumer.
+#
+# They were never quite the same, which is exactly how two fakes of one thing drift: one recorded
+# start times off a virtual clock and had no `completed` counter, the other counted completions
+# and had no clock. The merged class carries the union, and the clock is optional so a test that
+# does not care about time does not have to build one.
+# =============================================================================================
+
+
+class FakeClock:
+    """Virtual time: the clock moves only when the pacer sleeps on it (c3-6 AC 9, Q3).
+
+    **This is the whole answer to "how do you test a rate without spending one".** The pacer takes
+    its clock and its sleep as constructor parameters, so a test can hand it a pair that advances a
+    counter instead of waiting. Start offsets are then asserted **exactly** — ``0.0``, ``0.1``,
+    ``0.2`` — at zero wall-clock cost, where a real-time proof would be both slow and flaky on a
+    loaded box.
+
+    ``await asyncio.sleep(0)`` inside :meth:`sleep` is a bare yield to the event loop, not a wait:
+    it costs no wall clock and it is what keeps the *concurrency* real while the *time* is fake.
+    Other tasks genuinely run at that point, so an ordering bug is still visible.
+
+    **The re-entrancy assertion is load-bearing and is the fake checking its own premise.**
+    ``now += delay`` is only exact while at most one task sleeps at a time, which holds because the
+    pacer sleeps inside its turnstile lock. If a redesign ever sleeps outside that lock, two
+    concurrent sleepers would double-advance the clock and every pacing assertion in the package
+    would quietly start measuring fiction — so the fake refuses instead.
+
+    Attributes:
+        now: The current virtual time, in seconds.
+        slept: Every delay the pacer asked for, in order. A pacer that never sleeps leaves this
+            empty, which several tests assert directly — including c3-7's proof that a WARM deck
+            paint never enters the pacer at all.
+    """
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.slept: list[float] = []
+        self._sleeping = False
+
+    def time(self) -> float:
+        """Return the current virtual time, in the shape ``time.monotonic`` has."""
+        return self.now
+
+    async def sleep(self, delay: float) -> None:
+        """Advance virtual time by *delay* and yield to the loop.
+
+        Args:
+            delay: Seconds to wait for, as the pacer computed them.
+        """
+        assert not self._sleeping, (
+            "two tasks slept on this clock at once — `now += delay` is only exact while the "
+            "pacer sleeps inside its turnstile, so this fake would be lying about the numbers"
+        )
+        self._sleeping = True
+        try:
+            self.slept.append(delay)
+            self.now += delay
+            await asyncio.sleep(0)
+        finally:
+            self._sleeping = False
+
+
+class StallableUpstream:
+    """A stand-in CDN that records every request and can be held open indefinitely.
+
+    An arbitrarily slow upstream expressed as an ``asyncio.Event`` rather than a duration: every
+    request parks until a test releases it. That is what lets an interleaving *count* and a permit
+    accounting be exact rather than probabilistic — with no wall-clock time involved at all.
+
+    Four things it exists to measure, none of which a response body can show:
+
+    * **that a fetch began at all**, so "zero outbound requests" is a positive observation and not
+      an absence of evidence — which is what c3-7's CM-2 assertion rests on;
+    * **when** each fetch began, on the pacer's own virtual clock, when one is supplied — c3-6's
+      AC 4 is about start times, and c3-5's review theme was a check that ran after the thing it
+      was meant to prevent;
+    * **how many** requests are open at once, from the transport's own accounting (entered minus
+      completed) rather than inferred from timing;
+    * **how many finished**, so "nothing is actually queued" can be refuted.
+
+    Args:
+        clock: The virtual clock to read start times from. ``None`` — the default — means this
+            test does not care about time, and :attr:`started_at` stays empty rather than filling
+            with meaningless wall-clock values.
+        hold: Start with every request parked. ``False`` — the default — releases immediately, so
+            the same class serves an ordinary fast CDN.
+        body: The response body. Distinct-by-default is *not* assumed here: a test that needs two
+            responses to be distinguishable should say so (c3-1's R3 finding — identical fixtures
+            prove nothing).
+        content_type: The ``Content-Type`` served back.
+
+    Attributes:
+        requested: Every URL asked for, in order.
+        started_at: The virtual time each request began, in start order; empty without a *clock*.
+        in_flight: How many upstream requests are open right now.
+        peak_in_flight: The high-water mark of :attr:`in_flight`.
+        completed: How many have finished.
+        release: Set it to let parked requests through.
+    """
+
+    def __init__(
+        self,
+        clock: FakeClock | None = None,
+        *,
+        hold: bool = False,
+        body: bytes = b"\xff\xd8body",
+        content_type: str = "image/jpeg",
+    ) -> None:
+        self._clock = clock
+        self._body = body
+        self._content_type = content_type
+        self.requested: list[str] = []
+        self.started_at: list[float] = []
+        self.in_flight = 0
+        self.peak_in_flight = 0
+        self.completed = 0
+        self.release = asyncio.Event()
+        if not hold:
+            self.release.set()
+
+    async def handle(self, request: httpx.Request) -> httpx.Response:
+        """Answer one request, parking until :attr:`release` is set."""
+        if self._clock is not None:
+            self.started_at.append(self._clock.time())
+        self.requested.append(str(request.url))
+        self.in_flight += 1
+        self.peak_in_flight = max(self.peak_in_flight, self.in_flight)
+        try:
+            await self.release.wait()
+        finally:
+            self.in_flight -= 1
+        self.completed += 1
+        return httpx.Response(200, content=self._body, headers={"content-type": self._content_type})

@@ -29,10 +29,18 @@ six paths, adding ``ActiveDeck`` and ``ActiveDeckRequest``; and story **c3-5**
 ``CardFace``. Story **c3-6**'s pacer **shipped and needed nothing here**, exactly as this
 paragraph predicted — the prediction was settled by *running* ``npm run gen:api`` and pasting
 ``git status --porcelain``, not by argument: seven paths and twelve components, both generated
-files byte-identical. That is what a story adding behaviour to an existing route rather than a
-route looks like on the wire, and it is worth having one measured instance of it on record.
-Story **c3-7**'s disk cache is next and is expected to be the second: a cache changes where bytes
-come from, not what the operation promises.
+files byte-identical. Story **c3-7**'s disk cache **shipped and needed nothing here either**,
+settled the same way and with the same result: a cache changes where bytes come from, not what the
+operation promises.
+
+So there are now **two measured instances** of what a story that adds behaviour to an existing
+route — rather than a route — looks like on the wire, which is enough to state the rule rather
+than the observation: **the wire describes the promise, and a change to how the promise is kept
+does not touch it.** Story **c3-8**'s failure signalling and negative caching is next, and it is
+expected to be the third for exactly that reason — the vocabulary it needs
+(``image_fetch_failed``) already ships. Confirm it by running the generator, as both of its
+predecessors did; a prediction of "no diff" that is argued rather than measured has told you
+nothing.
 
 **The exception, and it is c3-5's.** That endpoint has **no** ``response_model``, because its
 success body is image bytes: a model would emit a JSON ``$ref`` for a body that is binary. A
