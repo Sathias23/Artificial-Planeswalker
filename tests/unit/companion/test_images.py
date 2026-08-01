@@ -348,6 +348,19 @@ class TestFetchImage:
         assert raised.value.reason == "image_fetch_failed"
         assert attempted == []
 
+    async def test_an_empty_body_is_a_fetch_failure_not_a_success(self) -> None:
+        # A 200 with an image type and ZERO bytes passes the status, type and size checks and
+        # would be served — then cached immutable for a year: a permanently broken tile through
+        # the success door (Greptile P1, PR #33). Zero bytes is not a picture.
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, content=b"", headers={"content-type": "image/jpeg"})
+
+        async with _client(handler) as client:
+            with pytest.raises(CompanionError) as raised:
+                await images.fetch_image(client, _SIX["normal"])
+
+        assert raised.value.reason == "image_fetch_failed"
+
     async def test_a_redirect_is_a_fetch_failure_and_is_never_followed(self) -> None:
         # The allow-list is checked on the STORED url only, so a followed redirect would fetch
         # whatever Location an allowed host answered — the exact SSRF the list exists to stop.

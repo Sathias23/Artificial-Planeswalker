@@ -398,9 +398,11 @@ async def fetch_image(client: httpx.AsyncClient, url: str) -> tuple[bytes, str]:
     caller — *the picture is not available right now, and it might be later*: a refused URL, a
     connect or read failure, a whole-exchange timeout, any non-2xx status (which since the
     review ruling includes a redirect — the client does not follow them), a body that is not a
-    servable image (foreign markup, or SVG — the one image type that can carry script), and a
-    body larger than this backend will hold. **Nothing here ever returns a substitute image**
-    (AD-11): no grey rectangle, no 1×1 pixel, no generic card back. The client draws UX-DR22's
+    servable image (foreign markup, or SVG — the one image type that can carry script), a body
+    larger than this backend will hold, and a body with no bytes at all — zero bytes is not a
+    picture, and served it would be cached immutable as one (Greptile P1, PR #33).
+    **Nothing here ever returns a substitute image** (AD-11): no grey rectangle, no 1×1 pixel,
+    no generic card back. The client draws UX-DR22's
     named placeholder, which it can, because it already holds the card's name, cost and type line
     from ``GET /api/cards/{card_id}``.
 
@@ -474,6 +476,13 @@ async def fetch_image(client: httpx.AsyncClient, url: str) -> tuple[bytes, str]:
                             _MAX_IMAGE_BYTES,
                         )
                         raise CompanionError("image_fetch_failed")
+                if not body:
+                    # A 200 with an image type and NO bytes passes every check above and would
+                    # be served — and then cached IMMUTABLE for a year: a permanently broken
+                    # tile arriving through the success door (Greptile P1, PR #33). Zero bytes
+                    # is not a picture, so it is honestly a fetch failure, not a success.
+                    logger.warning("Card image at %s returned an empty body", url)
+                    raise CompanionError("image_fetch_failed")
                 return bytes(body), content_type
     except (TimeoutError, httpx.HTTPError, httpx.InvalidURL) as exc:
         logger.info("Card image fetch failed for %s (%s)", url, type(exc).__name__)

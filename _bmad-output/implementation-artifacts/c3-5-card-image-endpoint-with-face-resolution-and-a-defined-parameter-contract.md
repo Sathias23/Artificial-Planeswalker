@@ -625,6 +625,13 @@ verified test-side ACs on the branch). 2 decision-needed, 10 patch, 0 defer, 4 d
       `openapi.json` — was measured once by hand but not landed as a gate beside
       `PYTHON_INTERNAL_FAMILIES` [tests/unit/companion/test_openapi_contract.py]
 
+- [x] [Review][Patch] *(Greptile round 1, PR #33 — 4/5, one P1, judged accurate and applied
+      2026-08-01)* A `200` with an `image/*` type and a ZERO-byte body passed the status, type
+      and size checks and was served — then cached `immutable` for a year: a permanently broken
+      tile through the success door. Fixed with an empty-body guard raising
+      `image_fetch_failed` after the stream completes, paired test added
+      [src/companion/app/images.py:477]
+
 Dismissed (4): face-index compaction on a partially-imaged card (ordering pinned as a decision in
 `resolve_face_images`'s own docstring); `errors.scryfall.com/soon.jpg` as a substitute image
 (covered by Q5's ruling admitting the host); `internal_error` undeclared on the operation (false
