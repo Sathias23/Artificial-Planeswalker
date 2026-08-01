@@ -803,3 +803,32 @@ class TestShutdownDisposesTheEngine:
             for record in caplog.records
             if record.levelno >= logging.WARNING and record.name.startswith("src.companion")
         ], "teardown logged a failure on an app that never created an engine"
+
+    async def test_a_failing_image_client_close_does_not_strand_the_engine_dispose(self):
+        """`_shutdown`'s step 1 is certified never to raise; step 2 has no such certificate.
+
+        A raising `aclose()` must not strand the dispose below it (review 2026-08-01) — the
+        exact stranding `_shutdown`'s own docstring credits the discovery step with avoiding.
+        The error still propagates: `lifespan` is what swallows-and-logs it, not `_shutdown`.
+        """
+        from src.companion.app import main
+
+        class _ExplodingClient:
+            async def aclose(self):
+                raise RuntimeError("close failed")
+
+        class _RecordingHolder:
+            disposed = False
+
+            async def dispose(self):
+                self.disposed = True
+
+        app = FastAPI()
+        app.state.image_client = _ExplodingClient()
+        holder = _RecordingHolder()
+        app.state.database = holder
+
+        with pytest.raises(RuntimeError, match="close failed"):
+            await main._shutdown(app)
+
+        assert holder.disposed, "the engine dispose was stranded by the failing client close"

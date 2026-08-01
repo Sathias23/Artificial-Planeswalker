@@ -33,6 +33,8 @@ from pathlib import Path
 
 import pytest
 
+from src.data.schemas.card import IMAGE_DISCRIMINATOR
+
 _COMMITTED_SCHEMA = Path(__file__).resolve().parents[3] / "ui" / "src" / "api" / "openapi.json"
 
 
@@ -62,12 +64,15 @@ class TestThePathSet:
     """Every path the companion serves, and nothing else."""
 
     def test_the_paths_are_exactly_these(self, schema):
-        # SIX as of c3-4 (`/api/active-deck`). A story adding a route edits this line — here, and
-        # nowhere else. Note the two deck spellings are not a typo: the list is plural
-        # `/api/decks`, the detail is singular `/api/deck/{deck_id}`, and c3-3's format check
-        # hangs off the singular one.
+        # SEVEN as of c3-5 (`/api/card-image/{scryfall_id}`). A story adding a route edits this
+        # line — here, and nowhere else. Note the two deck spellings are not a typo: the list is
+        # plural `/api/decks`, the detail is singular `/api/deck/{deck_id}`, and c3-3's format
+        # check hangs off the singular one. c3-5's path parameter is spelled `scryfall_id` where
+        # its sibling spells the same identifier `card_id`, because the epic names the path that
+        # way; both publish the same constraint, which `test_routes_card_image.py` asserts.
         assert set(schema["paths"]) == {
             "/api/active-deck",
+            "/api/card-image/{scryfall_id}",
             "/api/cards/{card_id}",
             "/api/deck/{deck_id}",
             "/api/deck/{deck_id}/format-check",
@@ -80,6 +85,93 @@ class TestThePathSet:
         assert "/" not in schema["paths"]
 
 
+def _descriptions(node: object) -> list[str]:
+    """Every ``description`` string anywhere in the document, at any depth.
+
+    Args:
+        node: Any parsed fragment of the OpenAPI document.
+
+    Returns:
+        The descriptions found beneath it, in traversal order.
+    """
+    found: list[str] = []
+    if isinstance(node, dict):
+        value = node.get("description")
+        if isinstance(value, str):
+            found.append(value)
+        for child in node.values():
+            found.extend(_descriptions(child))
+    elif isinstance(node, list):
+        for child in node:
+            found.extend(_descriptions(child))
+    return found
+
+
+class TestTheImageDiscriminatorIsStatedOnce:
+    """c3-5, Q6: the rule has one source, and a fourth paraphrase cannot appear silently.
+
+    The same three paragraphs used to live in ``Card``'s docstring and in ``read_card``'s, and
+    regenerated into two places here with **no gate between the copies** — ``deferred-work.md``
+    homed the repair on c3-5 by name, because its image route would otherwise have made a third.
+    The fix is a single constant attached to the fields it describes; this is what holds it.
+
+    **A family, not a member** (C2 retro, standing). The check is not "the constant appears
+    somewhere". It is: *any description that talks about this rule must BE the constant* — so a
+    reworded copy fails, which is the failure mode a membership test cannot see.
+    """
+
+    def test_every_description_that_states_the_rule_is_the_one_source(self, schema):
+        restatements = [
+            text
+            for text in _descriptions(schema)
+            if "per-face" in text and "image_uris" in text and IMAGE_DISCRIMINATOR not in text
+        ]
+
+        assert not restatements, (
+            "A description states the image discriminator in its own words:\n"
+            + "\n".join(f"  - {text[:160]}…" for text in restatements)
+            + "\nThe rule has exactly one source — `IMAGE_DISCRIMINATOR` in "
+            "src/data/schemas/card.py. Attach it with `description=`; do not retell it."
+        )
+
+    def test_the_one_source_really_did_reach_the_document(self, schema):
+        # Non-vacuity, and it is not implied by the test above: an absence check passes over a
+        # document that lost the rule entirely, which would be a worse outcome than a paraphrase.
+        carriers = [text for text in _descriptions(schema) if IMAGE_DISCRIMINATOR in text]
+
+        # Three fields carry it: `Card.image_uris`, `Card.card_faces` and `CardFace.image_uris`.
+        assert len(carriers) == 3, f"expected 3 fields to carry the rule, found {len(carriers)}"
+
+    def test_the_family_scan_would_see_a_reworded_copy(self):
+        # The guard's own firing case, proved rather than assumed (standing agreement: probe your
+        # own guard before review does). Deliberately spelled UNLIKE the constant — a scan keyed
+        # on the constant's own phrasing is the c3-3 failure, where a family caught 0 of 12
+        # planted evasions because each was written the way its firing test wrote it.
+        planted = {
+            "components": {
+                "schemas": {
+                    "Something": {
+                        "properties": {
+                            "art": {
+                                "description": (
+                                    "Check for per-face image_uris to decide where the art is."
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        restatements = [
+            text
+            for text in _descriptions(planted)
+            if "per-face" in text and "image_uris" in text and IMAGE_DISCRIMINATOR not in text
+        ]
+
+        assert len(restatements) == 1
+
+
 class TestTheComponentSet:
     """Every named shape the backend describes, and nothing else.
 
@@ -89,13 +181,21 @@ class TestTheComponentSet:
     """
 
     def test_the_component_names_are_exactly_these(self, schema):
-        # ELEVEN as of c3-4. `Card` is c3-2's, the two `FormatCheck*` models are c3-3's, and
+        # TWELVE as of c3-5. `Card` is c3-2's, the two `FormatCheck*` models are c3-3's, and
         # `ActiveDeck` / `ActiveDeckRequest` are c3-4's — the latter being the first REQUEST body
         # in the whole document; every shape before it described a response.
+        #
+        # `CardFace` is c3-5's, and it is the first component that is not a shape this shell
+        # invented: it types a JSON column `Card` already carried as `list[dict[str, Any]]`. It is
+        # ALSO the first component with an open index signature — `extra="allow"`, because the
+        # 6,455 stored face objects carry 24 distinct keys and a strict model would silently
+        # truncate shipped MCP tool output. That is not an AD-1 breach: there is still exactly one
+        # card shape and exactly one face shape, both in `src/data/schemas`.
         assert set(schema["components"]["schemas"]) == {
             "ActiveDeck",
             "ActiveDeckRequest",
             "Card",
+            "CardFace",
             "CardSummary",
             "DeckCardSummary",
             "DeckDetail",

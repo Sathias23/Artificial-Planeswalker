@@ -25,7 +25,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from src.companion import discovery
-from src.companion.app import deps, state
+from src.companion.app import deps, images, state
 from src.companion.app.errors import (
     error_responses,
     install_error_handling,
@@ -81,14 +81,18 @@ def _publish_discovery(app: FastAPI) -> None:
 async def _shutdown(app: FastAPI) -> None:
     """Release everything the lifespan acquired, in reverse order of acquisition.
 
-    Two things, in this order:
+    Three things, in this order:
 
     1. **The discovery file** (c1-7). Retracted first, so the process stops advertising itself as
        early as possible — a tool that reads the file during teardown gets *app not running*
        rather than a port whose socket is about to close.
        :func:`~src.companion.discovery.remove_discovery` is ownership-guarded and never raises, so
        a foreign entry survives and an unlink failure cannot strand the dispose below it.
-    2. **The database engine's connection pool**, if a data-backed request ever caused one to be
+    2. **The outbound image client** (c3-5). Closed before the engine, mirroring the order it was
+       created in, so its connection pool is released rather than left to the garbage collector —
+       which on an unclosed ``httpx.AsyncClient`` produces a ``ResourceWarning`` and, under a
+       hostile upstream, a socket that outlives the request that opened it.
+    3. **The database engine's connection pool**, if a data-backed request ever caused one to be
        created (c1-6). :meth:`~src.companion.app.deps.Database.dispose` is a no-op when it was not,
        which is the ordinary case for a companion that only ever answered ``/health`` — so there is
        one unconditional call rather than a condition per resource.
@@ -102,9 +106,17 @@ async def _shutdown(app: FastAPI) -> None:
     # when a test drives _shutdown directly — and there is then nothing of ours to retract.
     if instance_id is not None:
         discovery.remove_discovery(instance_id)
-    holder = deps.database(app)
-    if holder is not None:
-        await holder.dispose()
+    # try/finally, not sequence: step 1 is certified never to raise, but `aclose` carries no such
+    # guarantee, and a failing close must not strand the engine dispose below it — the exact
+    # stranding this docstring credits step 1 with avoiding (review 2026-08-01).
+    try:
+        client = images.image_client(app)
+        if client is not None:
+            await client.aclose()
+    finally:
+        holder = deps.database(app)
+        if holder is not None:
+            await holder.dispose()
 
 
 @asynccontextmanager
@@ -124,6 +136,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     reason it is safe to do so: like the identity mint it is an inert in-process object that cannot
     fail. The **engine** inside it is not created here — a fresh install has no card database yet,
     and AD-10 makes that a served UI state rather than a startup crash (FR-22).
+
+    c3-5's outbound image client is created here for a *different* reason, and the difference is
+    worth stating: constructing an ``httpx.AsyncClient`` opens no socket, so ``build_app()`` could
+    hold one without breaking AD-10's no-side-effects rule. What it could not do is **close** it.
+    A client per process is what gives ~100 tiles of a deck view one TLS handshake instead of a
+    hundred, and only the lifespan has a teardown to release the pool in — so the thing that needs
+    closing is created where the closing happens (Q5, Brad 2026-08-01).
 
     c3-4's :class:`~src.companion.app.state.ActiveDeckSlot` is created on the same line of reasoning
     and is the first state this process *owns* rather than projects. Creating it here rather than in
@@ -157,6 +176,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.agent_token = discovery.mint_token()
     app.state.database = deps.Database()
     app.state.active_deck = state.ActiveDeckSlot()
+    app.state.image_client = images.build_image_client()
     _publish_discovery(app)
     logger.info("Companion instance %s started", app.state.instance_id)
     try:
@@ -432,7 +452,11 @@ def build_app() -> FastAPI:
     # this line; c5-2 and c5-5 add theirs there too. (c3-3 added a route and edited nothing here,
     # by design: its format-check endpoint is a deck sub-resource that joined the decks router,
     # which is already above this line. A story adding a route to an EXISTING router inherits the
-    # ordering; only a story adding a router has to touch this block.)
+    # ordering; only a story adding a router has to touch this block. c3-5 is the second instance
+    # of that: its /api/card-image/{scryfall_id} joined the cards router — same identifier, same
+    # corpus, same repository call — so this block and test_spa.py's differential list were both
+    # verified unchanged rather than edited. Note what it therefore also inherits: the `shared`
+    # includes' 413, which no body-less GET can answer. That wart is ledgered and homed on c3-9.)
     #
     # c3-4 is the second instance of the OTHER kind, and it paid the full tax deliberately: a new
     # router here AND the differential list in test_spa.py::test_the_schema_is_unchanged_by_

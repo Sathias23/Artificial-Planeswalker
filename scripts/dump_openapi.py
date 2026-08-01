@@ -16,15 +16,28 @@ project's Python dependencies and no Node, while the ``frontend`` job has Node a
 never runs ``uv sync``. Splitting on that boundary adds no toolchain to either job and lets each
 half fail in the gate that owns it (story c2-3, Decide-once #1).
 
-**Adding an endpoint or a model needs no work here.** Declare the route with a ``response_model``
-and ``error_responses(...)``, run ``npm run gen:api``, and commit both generated files — new paths
-and components appear in them automatically. Story **c3-1** (``/api/decks`` and
-``/api/deck/{deck_id}``) was the first to do it, taking the schema from two components to six;
-story **c3-2** (``/api/cards/{card_id}``) followed, taking it to seven and the paths to four;
-story **c3-3** (``/api/deck/{deck_id}/format-check``) took it to nine components and five paths,
-adding the first wire shapes described by ``src/logic`` rather than ``src/data``; and story
-**c3-4** (``/api/active-deck``) took it to **eleven components and six paths**, adding
-``ActiveDeck`` and ``ActiveDeckRequest``. Story **c3-5**'s card-image endpoint is next.
+**Adding an endpoint or a model needs no work here** — with one exception, added by c3-5 and
+stated below. Declare the route with a ``response_model`` and ``error_responses(...)``, run
+``npm run gen:api``, and commit both generated files — new paths and components appear in them
+automatically. Story **c3-1** (``/api/decks`` and ``/api/deck/{deck_id}``) was the first to do it,
+taking the schema from two components to six; story **c3-2** (``/api/cards/{card_id}``) followed,
+taking it to seven and the paths to four; story **c3-3** (``/api/deck/{deck_id}/format-check``)
+took it to nine components and five paths, adding the first wire shapes described by ``src/logic``
+rather than ``src/data``; story **c3-4** (``/api/active-deck``) took it to eleven components and
+six paths, adding ``ActiveDeck`` and ``ActiveDeckRequest``; and story **c3-5**
+(``/api/card-image/{scryfall_id}``) took it to **twelve components and seven paths**, adding
+``CardFace``. Story **c3-6**'s pacer is next, and should need nothing here at all — it adds
+behaviour to an existing route rather than a route.
+
+**The exception, and it is c3-5's.** That endpoint has **no** ``response_model``, because its
+success body is image bytes: a model would emit a JSON ``$ref`` for a body that is binary. A
+non-JSON success case needs four things declared at the route instead — no ``response_model``, an
+explicit ``response_class=Response``, a hand-written ``responses={200: {"content": …}}`` block, and
+a ``-> Response`` return annotation — and it still needs nothing here, because this script only
+serialises whatever ``app.openapi()`` produces. Recorded so the paragraph above is not read as
+"every route has a ``response_model``", which it no longer means. Measured for the record:
+``openapi-typescript`` renders that 200 as ``content: { "image/*": string }`` — the body is typed
+``string``, not ``Blob``, so **c4-4 must not derive its fetch handling from the generated type**.
 
 c3-4 was also the first story to add anything but a ``GET``, and therefore the first to put a
 ``requestBody`` in the document at all — which likewise needed no change here. Its ``PUT`` is

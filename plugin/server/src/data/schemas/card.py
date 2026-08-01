@@ -30,7 +30,83 @@ This module is otherwise ordinary ``src/data``: it neither imports nor knows abo
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+IMAGE_DISCRIMINATOR = (
+    "Images live in one of two places, and which one is decided by the presence of per-face "
+    "image_uris — never by whether card_faces is present. Most cards carry a top-level "
+    "image_uris; a card whose faces have their own artwork carries a null image_uris and "
+    "per-face image_uris inside its card_faces entries instead. The two are mutually exclusive; "
+    "nothing carries both. Reading 'has faces' as 'has per-face images' is the trap: a split "
+    "card has faces and a top-level image, because its halves share one piece of artwork, so "
+    "its faces carry names and costs but no images of their own. Some cards have no image data "
+    "anywhere, which is ordinary and not an error."
+)
+"""The image discriminator, stated **once**, where the data lives (Q6, Brad 2026-08-01).
+
+Until this story the same three paragraphs lived in :class:`Card`'s docstring and in
+``routes/cards.py``'s ``read_card`` docstring, regenerated into two places in ``openapi.json``
+with no drift gate between them; ``deferred-work.md`` homed the repair here by name, because
+c3-5's image route would otherwise have made it a third copy.
+
+It is attached as the ``description`` of every ``image_uris`` field rather than written into a
+class docstring, for two reasons. A docstring is a literal and cannot interpolate a constant, so
+"stated once" is only achievable at field level. And the field is where the rule is *about*
+something: a reader of ``types.d.ts`` meets the sentence on the exact property it constrains
+rather than three screens up.
+
+``tests/unit/companion/test_committed_schema.py`` gates it as a **family**: any wire description
+mentioning both "per-face" and "image_uris" must contain this string verbatim, so a fourth
+paraphrase cannot appear silently. Route docstrings therefore state only what their own operation
+does with the rule, and point here.
+"""
+
+
+class CardFace(BaseModel):
+    """One face of a multi-faced card printing, exactly as Scryfall publishes it.
+
+    A card's ``card_faces`` entries carry each half of its identity — that face's own name, mana
+    cost, type line and oracle text — and, on some cards, its own artwork. Five fields are named
+    below; **every other key Scryfall sends is kept and served unchanged**, so a consumer that
+    knows about ``power``, ``flavor_text``, ``loyalty``, ``defense``, ``artist``, ``printed_name``
+    or ``color_indicator`` still finds them.
+
+    A card having faces does **not** mean its faces have artwork. The ``image_uris`` field below
+    carries the rule that decides it; this summary deliberately does not repeat it.
+
+    Attributes:
+        The header above is the truncation marker; see this module's docstring. Below it, the
+        Python detail.
+
+        **Why** ``extra="allow"``, **and it is load-bearing rather than lenient** (Q4, Brad
+        2026-08-01). A census over the 6,455 face objects in the shipped 38,261-card database
+        found **24 distinct keys**: ``object``, ``name``, ``mana_cost`` and ``oracle_text`` on all
+        of them, ``type_line`` on 6,445, ``image_uris`` on 5,556, then ``artist``, ``artist_id``,
+        ``illustration_id``, ``colors``, ``power``/``toughness`` (935), ``flavor_text``,
+        ``color_indicator``, ``loyalty``, ``defense``, ``printed_name``, ``watermark``,
+        ``layout`` (66) and the rest. ``Card`` is ``src/data`` and is returned by shipped MCP
+        tools, so Pydantic's default — silently dropping unknown keys — would truncate
+        ``lookup_card_by_name``'s output for every one of those cards.
+        ``test_card_face_schema.py`` proves a real 24-key face round-trips with no key lost and
+        no value changed. c3-4 chose ``extra="forbid"`` for a *request* model with no clients;
+        this is a *response* model with live consumers, and the two situations are opposites.
+
+        **Why every named field is optional.** Only ``name``/``mana_cost``/``oracle_text`` are
+        present on 100% of the corpus today, and a required field would turn a future import that
+        omitted one into a ``ValidationError`` raised in the middle of a full-corpus read — the
+        failure mode the Epic 1 retro NULL-coercion gate exists to prevent. The cost is that
+        ``model_dump()`` emits an explicit ``null`` for a key the source object omitted (the 10
+        faces with no ``type_line``, say); that is additive to an MCP payload, never a
+        truncation, and it is asserted rather than assumed.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    name: str | None = None
+    mana_cost: str | None = None
+    type_line: str | None = None
+    oracle_text: str | None = None
+    image_uris: dict[str, str] | None = Field(default=None, description=IMAGE_DISCRIMINATOR)
 
 
 class Card(BaseModel):
@@ -46,17 +122,9 @@ class Card(BaseModel):
     creature, and ``game_changer`` is a three-state flag whose null means "not yet determined",
     not "no".
 
-    Images live in one of two places, and **which one is decided by the presence of per-face
-    ``image_uris`` — never by whether ``card_faces`` is present**. Most cards carry a top-level
-    ``image_uris``. A card whose faces have their own artwork carries a null ``image_uris`` and
-    per-face ``image_uris`` inside its ``card_faces`` entries instead. The two are mutually
-    exclusive; nothing carries both.
-
-    ``card_faces`` is **not** the discriminator, and treating it as one is wrong for real cards:
-    a split card has a ``card_faces`` array *and* a top-level image, because its two halves share
-    one piece of artwork — so its faces carry names and costs but no images of their own. Reading
-    "has faces" as "has per-face images" renders nothing for those cards. Some cards have no image
-    data anywhere, which is ordinary and not an error.
+    Where a card's artwork lives is stated on the ``image_uris`` and ``card_faces`` fields
+    themselves — read those descriptions before rendering anything, because the rule is not the
+    obvious one.
 
     There is no price data of any kind in this record.
 
@@ -69,6 +137,11 @@ class Card(BaseModel):
         stores for text/list/dict fields into empty values (Epic 1 retro gate) so a read over the
         full corpus never raises ``ValidationError``; ``game_changer`` is deliberately excluded
         from them (AD-4).
+
+        The three image paragraphs that used to sit above this header are now
+        :data:`IMAGE_DISCRIMINATOR`, attached to the fields they describe (Q6, c3-5). They were
+        duplicated verbatim in ``read_card``'s docstring with no gate between the copies, and
+        c3-5's image route would have made a third.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -116,10 +189,10 @@ class Card(BaseModel):
     legalities: dict[str, str]
 
     # Multi-face cards
-    card_faces: list[dict[str, Any]] | None = None
+    card_faces: list[CardFace] | None = Field(default=None, description=IMAGE_DISCRIMINATOR)
 
     # Image URIs (Scryfall CDN URLs for different image sizes)
-    image_uris: dict[str, str] | None = None
+    image_uris: dict[str, str] | None = Field(default=None, description=IMAGE_DISCRIMINATOR)
 
     # Game availability ("paper", "arena", "mtgo")
     games: list[str] = []

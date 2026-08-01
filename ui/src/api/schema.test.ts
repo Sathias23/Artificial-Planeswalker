@@ -34,20 +34,24 @@ describe('generated wire types (AD-12)', () => {
     expectTypeOf<ErrorResponse>().toEqualTypeOf<{ reason: ErrorReason }>()
   })
 
-  // All eight named explicitly. This is the one assertion that cannot be derived from the
+  // All ten named explicitly. This is the one assertion that cannot be derived from the
   // generated file, and that is the point: it is a second, independent statement of AD-16's closed
   // set, so a token dropped on the Python side reddens here instead of quietly deleting a c2-9
   // state panel.
   //
-  // c3-2 edited this line to add `card_not_found` and c3-4 to add `forbidden`, which is what the
-  // previous two versions of this comment each predicted. The rule stands unchanged for a ninth:
-  // adding a token is a deliberate act that edits this line — and `npm test` will NOT tell you
-  // that you forgot, because this file's assertions erase to nothing at runtime (see the header).
-  // The failure arrives from `npm run typecheck`, here and in `components/StatePanel/states.ts`.
-  it('pins the closed eight-token reason set', () => {
+  // c3-2 edited this line to add `card_not_found`, c3-4 to add `forbidden`, and c3-5 to add BOTH
+  // of `no_image_data` and `image_fetch_failed` — the first story to add a pair, because AD-11
+  // requires a card with no artwork and a failed CDN fetch to be distinguishable and this codebase
+  // derives the status from the token. The rule stands unchanged for an eleventh: adding a token
+  // is a deliberate act that edits this line — and `npm test` will NOT tell you that you forgot,
+  // because this file's assertions erase to nothing at runtime (see the header). The failure
+  // arrives from `npm run typecheck`, here and in `components/StatePanel/states.ts`.
+  it('pins the closed ten-token reason set', () => {
     expectTypeOf<ErrorReason>().toEqualTypeOf<
       | 'deck_not_found'
       | 'card_not_found'
+      | 'no_image_data'
+      | 'image_fetch_failed'
       | 'database_not_initialized'
       | 'database_unavailable'
       | 'invalid_request'

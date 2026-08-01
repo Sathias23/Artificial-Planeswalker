@@ -67,6 +67,8 @@ ErrorReason = Literal[
     "card_not_found",
     "database_not_initialized",
     "database_unavailable",
+    "no_image_data",
+    "image_fetch_failed",
     "invalid_request",
     "forbidden",
     "payload_too_large",
@@ -74,7 +76,7 @@ ErrorReason = Literal[
 ]
 """The closed set of reasons any non-2xx response may give (AD-16).
 
-Closed at **eight**, with nothing planned. Adding another is a deliberate act with a failing test
+Closed at **ten**, with nothing planned. Adding another is a deliberate act with a failing test
 attached (``tests/unit/companion/test_errors.py``), because AD-16's extension rule is that a new
 token and the UI state it drives are added together — never a token alone. ``internal_error`` was
 added under exactly that rule by the c1-4 review (Brad, 2026-07-25): an unhandled bug must be
@@ -93,7 +95,19 @@ such thing on a malformed request. Both answering ``400 invalid_request`` would 
 unimplementable — c6-1 would retry the wrong failure or fail to retry the right one — and this epic
 is where the wire is settled, before Epic 5 freezes the union.
 
-Adding one is genuinely eight edits, and the list is worth reading before starting a ninth:
+``no_image_data`` and ``image_fetch_failed`` are c3-5's pair (Q2, Brad 2026-08-01), and they are
+the first tokens added **two at a time** — because AD-11 requires *"a card with no image and a
+fetch failure are signalled distinguishably"*, and a status this codebase derives from the token
+means distinguishable can only mean *different tokens*. The distinction is not cosmetic even
+though the pixels are identical: one is permanent (79 cards in the shipped corpus carry no image
+data at all, measured) and the other is transient (one flight-mode away), so a client may retry
+exactly one of them, and **c3-8 adds negative caching and backoff as pure behaviour with no wire
+change at all** because the vocabulary was paid for here. Their UI half was unusually cheap:
+``EXPERIENCE.md`` already carried both rows — *"Card with no image data → Named Card placeholder"*
+and *"CDN fetch failure → … UI renders the named Card placeholder"* — so AD-16's pairing rule was
+satisfied by an artefact written before the tokens existed.
+
+Adding one is genuinely eight edits, and the list is worth reading before starting an eleventh:
 this ``Literal``, ``errors.STATUS_BY_REASON``, ``test_errors.py``'s two pins, ``ui/src/api/
 schema.ts``'s count sentence, ``ui/src/api/schema.test.ts``'s explicit union, ``states.ts``'s
 ``satisfies Record<ErrorReason, …>`` (a **typecheck** failure, not a test failure) and its
@@ -135,6 +149,18 @@ class ErrorResponse(BaseModel):
       and shows an **"Unknown card"** placeholder in that one slot, with no banner and no apology
       (FR-13). One unknown card must never fail a whole view or a whole push. The placeholder is
       built in c4-3.
+    * ``no_image_data`` — the card exists, but there is no artwork to serve for what was asked:
+      either the printing carries no image data at all (79 cards in the shipped corpus), or the
+      requested face is beyond the images it has. **Permanent** — retrying cannot help — so the
+      view renders normally and that one slot draws the **named Card placeholder** (the card's
+      name, mana cost and type line, which the client already holds from
+      ``GET /api/cards/{card_id}``). Never a grey rectangle, a 1×1 pixel or a generic card back.
+    * ``image_fetch_failed`` — the card's image URL is known but could not be retrieved: the CDN
+      timed out, answered a non-2xx, returned something that was not an image, or the stored URL
+      pointed somewhere the companion refuses to fetch from. **Transient**, which is the whole
+      reason it is a separate token from ``no_image_data`` — the pixels are identical (the same
+      named Card placeholder) but only this one may ever be retried. c3-8 owns the negative cache
+      and the backoff; until then a failure is simply not cached.
     * ``database_not_initialized`` — fresh install, no card database yet; the **"Card database not
       set up yet."** panel, which tells the user to ask their agent to run ``initialize_database``.
     * ``database_unavailable`` — reads are failing transiently (a bulk refresh in flight, or an
