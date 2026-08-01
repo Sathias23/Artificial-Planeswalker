@@ -2345,3 +2345,13 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   app is worth re-serving from a cache. Recorded as a **behaviour change to a shared helper** so a
   later story that wants a cacheable error knows it must argue for it. **Home: unowned,
   informational.** (Severity: Low.)
+
+## Deferred from: code review of c3-5-card-image-endpoint (2026-08-01)
+
+- **A refused or unparseable *stored* image URL answers `image_fetch_failed` — the transient,
+  retryable token — though the refusal is a permanent fact of the row.** `contracts.py` defines
+  the token as "transient … only this one may ever be retried", and c3-8's backoff will act on
+  that; a disallowed origin or an unparseable URL cannot succeed on any retry. Brad ruled (2a,
+  2026-08-01): keep the token, no wire change — c3-8, which owns the negative cache and backoff,
+  decides retry semantics for permanently-failing URLs (e.g. an unbounded/permanent negative-cache
+  entry for `is_fetchable` refusals). **Home: c3-8.** (Severity: Low.)

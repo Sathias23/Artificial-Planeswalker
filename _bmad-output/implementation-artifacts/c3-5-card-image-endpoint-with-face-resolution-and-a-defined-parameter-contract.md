@@ -9,7 +9,7 @@ baseline_commit: 3bfe95f
 
 # Story C3.5: Card image endpoint with face resolution and a defined parameter contract
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -566,9 +566,70 @@ on the second invariant — read `face.get("image_uris")` per face — but know 
 
 - [ ] **Task 9 — Same-day three-layer review before the PR** *(Brad runs this — `dev-story` stops at
       Task 8 with status `review`)*
-  - [ ] `bmad-code-review` (Blind Hunter + Edge Case Hunter + Acceptance Auditor) before the PR
-  - [ ] Apply patches, re-run every gate, paste the output
+  - [x] `bmad-code-review` (Blind Hunter + Edge Case Hunter + Acceptance Auditor) before the PR
+  - [x] Apply patches, re-run every gate, paste the output — all 11 patches applied 2026-08-01;
+        gates: `uv run pytest -m "not integration"` **2240 passed, 1 skipped**; `ruff check` +
+        `ruff format --check` clean; `mypy src/` + `--platform win32` clean; ui `npm test`
+        **568 passed (31 files)**, `lint`, `format:check`, `npx tsc -b --force` clean; plugin
+        mirror rebuilt (4 companion files re-mirrored)
   - [ ] Raise the PR into `feat/companion-c3`
+
+### Review Findings
+
+Three-layer review run 2026-08-01 (Blind Hunter, Edge Case Hunter, Acceptance Auditor), scoped to
+production code (tests and the generated `ui/src/api` mirror excluded from the diff; the auditor
+verified test-side ACs on the branch). 2 decision-needed, 10 patch, 0 defer, 4 dismissed.
+
+- [x] [Review][Patch] *(was Decision 1; Brad ruled 1a, 2026-08-01)* Redirects bypass the host
+      allow-list (AC 12) — `follow_redirects=True` while `is_fetchable` is checked once, on the
+      stored URL only; a 3xx from an allowed host is followed to *any* host. **Ruling:**
+      `follow_redirects=False` — a redirect answers `image_fetch_failed`, failing closed like the
+      allow-list itself; stored CDN URLs are terminal against the measured corpus. All three
+      layers found this. [src/companion/app/images.py:416]
+- [x] [Review][Defer] *(was Decision 2; Brad ruled 2a, 2026-08-01)* A refused or unparseable
+      *stored* URL wears the transient token (`image_fetch_failed`, "may be retried") though the
+      refusal is a permanent fact of the row — deferred, homed on **c3-8**: the negative-cache/
+      backoff story decides retry semantics for permanently-failing URLs; the wire needs no
+      change now.
+- [x] [Review][Patch] `_MAX_IMAGE_BYTES` is checked after `client.get()` has already buffered the
+      whole body — the docstring's "can make the companion buffer until the machine swaps"
+      protection is not delivered; stream with an incremental cap and reject on status/type/
+      `Content-Length` before reading [src/companion/app/images.py:487-507]
+- [x] [Review][Patch] `image/svg+xml` passes the `image/*` check and is served from the app's own
+      origin with a one-year `immutable` cache and no `X-Content-Type-Options: nosniff` — a
+      scripted SVG from a misbehaving CDN executes same-origin as the SPA; deny SVG and stamp
+      `nosniff` [src/companion/app/images.py:493, src/companion/app/routes/cards.py:317]
+- [x] [Review][Patch] The refusal log line calls `urlsplit(url)` again *outside* the try — a URL
+      that made `is_fetchable` return False by raising `ValueError` re-raises from the logging
+      call: 500 `internal_error` instead of the modelled answer [src/companion/app/images.py:481]
+- [x] [Review][Patch] `httpx.InvalidURL` is not an `httpx.HTTPError` (verified: inherits
+      `Exception` directly) and escapes the narrow except as a 500
+      [src/companion/app/images.py:501]
+- [x] [Review][Patch] `_shutdown` has no try/finally — a raising `client.aclose()` strands the
+      engine dispose below it, the exact stranding the docstring certifies step 1 against
+      [src/companion/app/main.py:550-555]
+- [x] [Review][Patch] The documented `Cache-Control` override merges by exact dict key — a caller
+      passing `cache-control` yields two conflicting headers on the wire
+      [src/companion/app/errors.py:86]
+- [x] [Review][Patch] `https://cards.scryfall.io:443/…` is refused while the docstring's
+      rationale ("a different port is a different endpoint") is false for the default port —
+      fix the docstring (behaviour is fail-closed and fine) [src/companion/app/images.py:379]
+- [x] [Review][Patch] "That window closes … before any client exists" overclaims — the unpaced
+      route is live to an agent, `curl` or `/docs` today; soften the sentence
+      [src/companion/app/images.py:146-148]
+- [x] [Review][Patch] AC 27/29 not delivered as a committed gate — no test scans `ui/src` for a
+      Scryfall host, and no planted-occurrence pairing exists; note the literal wording is
+      already falsified by `ui/src/components/Footer/copy.ts:66`'s attribution href, so the scan
+      must scope to CDN/image hosts [tests — auditor verified absent on the branch]
+- [x] [Review][Patch] AC 19's new scan — no Scryfall host string reaching `types.d.ts` or
+      `openapi.json` — was measured once by hand but not landed as a gate beside
+      `PYTHON_INTERNAL_FAMILIES` [tests/unit/companion/test_openapi_contract.py]
+
+Dismissed (4): face-index compaction on a partially-imaged card (ordering pinned as a decision in
+`resolve_face_images`'s own docstring); `errors.scryfall.com/soon.jpg` as a substitute image
+(covered by Q5's ruling admitting the host); `internal_error` undeclared on the operation (false
+positive — declared at include level, `main.py:424`); `CardFace` hard-failing wrong-typed values
+(consistent with `Card`'s existing posture; the Epic-1 gate is null-coercion, not shape).
 
 ---
 
