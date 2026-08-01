@@ -290,6 +290,14 @@ and did exactly that** — none constructs an engine, calls ``is_database_initia
 ``request.app.state`` or writes a ``try/except DatabaseError``, and each proves the two ``503``
 answers through its real routes.
 
+**c3-4 deliberately does not join that list, and its absence is a ruling rather than an oversight.**
+``GET``/``PUT /api/active-deck`` take no session at all — they are the first routes since
+``/health`` with no database dependency — because AD-16 rules that deck-existence validation for
+``companion_set_active_deck`` belongs to the **MCP tool**: it has database access and it is the one
+that must report ``deck_not_found`` to the agent, so the backend stores what it is given. The
+consequence to expect when reading that module: neither operation can answer ``503``, and an active
+deck id that resolves to nothing is a legitimate state.
+
 Mind the two spellings, which are not a typo: the deck detail route is **singular**
 ``/api/deck/{deck_id}`` and the card route is **plural** ``/api/cards/{card_id}``. Each matches
 the PRD, the spine, the epic split — and c3-3's format check hangs off the singular one as

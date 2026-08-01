@@ -957,35 +957,25 @@ class TestCommittedSchema:
         assert "/api/card/{card_id}" not in schema["paths"]
         assert "/api/cards/{id}" not in schema["paths"]
 
-    def test_the_component_names_gained_exactly_the_card_schema(self, schema):
-        """AC 2: a companion-local mirror of any card shape would appear here and fail."""
+    def test_this_routes_own_shape_is_described(self, schema):
+        """AC 2: the ``Card`` shape this route answers with reaches the document.
+
+        **The whole-artifact component pin moved out at c3-4** (Q5, Brad 2026-08-01), to
+        ``test_committed_schema.py``. This was the *second* of the two hand-synchronised copies —
+        the tax that c3-2 and c3-3 each paid by discovering it in a suite run rather than reading
+        it in a story, and that ``deferred-work.md`` homed on c3-4 by name for exactly that reason.
+        The consolidation is why c3-5 edits one pin instead of two.
+
+        What stays here is this module's own fact: the card shape is present. The
+        "and nothing else" half — where a companion-local mirror of a card would surface as an
+        unexpected name — lives with the exact set, in one place.
+        """
         names = set(schema["components"]["schemas"])
 
-        # Non-vacuity first (c3-1 review): these establish the fixture parsed a real document,
-        # and can genuinely fail — an empty parse gives an empty set.
+        # Non-vacuity first (c3-1 review): an empty parse gives an empty set.
         assert names, "no component schemas parsed — the fixture is not reading a real document"
-        assert "HealthResponse" in names, "the pre-c3-1 shapes are gone; this is not the schema"
 
-        # The same nine-name pin lives in test_routes_decks.py (c3-1's, which c3-2 and then c3-3
-        # updated): two hand-synchronised copies of one fact, so a story adding a component edits
-        # both or gets two reds naming the addition. A set-minus "delta" spelling used to follow
-        # this equality; it was fully implied by it and could never fail independently, so it was
-        # removed (review round 2, 2026-07-31).
-        #
-        # c3-3 found this copy the way c3-2 found the *decks* one — by running the suite, not by
-        # reading the story, which had named only the other. Two copies is now a standing tax on
-        # every schema-adding story; ledgered in deferred-work.md rather than left as folklore.
-        assert names == {
-            "Card",
-            "CardSummary",
-            "DeckCardSummary",
-            "DeckDetail",
-            "DeckSummary",
-            "ErrorResponse",
-            "FormatCheckReport",
-            "FormatCheckRow",
-            "HealthResponse",
-        }
+        assert "Card" in names
 
     def test_the_route_declares_its_own_token_and_no_422(self, schema):
         """AC 6: the 404 is declared; the auto-422 stays stripped on the first validated route."""

@@ -17,7 +17,7 @@ from starlette.routing import Mount
 
 from src.companion.app import spa
 from src.companion.app.main import build_app
-from src.companion.app.routes import cards, decks, health
+from src.companion.app.routes import active_deck, cards, decks, health
 
 _TYPED_ERROR_MEDIA_TYPE = "application/json"
 
@@ -308,10 +308,15 @@ class TestTheTypedErrorContractSurvivesTheFallback:
         # new path on an already-listed router appears on both. deferred-work.md lists c3-3 among
         # the stories owing this line; it did not. Check which kind of story you are before
         # assuming you owe an edit.
+        #
+        # c3-4 IS the other kind and owed the line: active_deck.router is a new router, so this
+        # test went red naming /api/active-deck as an extra item on the left. That red is the
+        # mechanism working — it is what a story adding a router is supposed to see.
         without_spa = FastAPI()
         without_spa.include_router(health.router)
         without_spa.include_router(decks.router)
         without_spa.include_router(cards.router)
+        without_spa.include_router(active_deck.router)
 
         assert set(build_app().openapi()["paths"]) == set(without_spa.openapi()["paths"])
 

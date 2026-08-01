@@ -10,21 +10,27 @@
  *   `internal_error`            -> the fifth panel, deterministic and NEVER self-retrying
  *   `card_not_found`            -> NO PANEL, but a NAMED NON-PANEL DESTINATION (c3-2; see below)
  *   `invalid_request`           -> NO UI RESPONSE AT ALL, by design
+ *   `forbidden`                 -> NO UI RESPONSE AT ALL, by design (c3-4; agent-facing)
  *   `payload_too_large`         -> NO UI RESPONSE AT ALL, by design
  *   (no token at all)           -> Disconnected, and Database-updating-stalled
  *
- * So `Record<ErrorReason, StateKey>` is the wrong shape twice over: three tokens must be allowed
+ * So `Record<ErrorReason, StateKey>` is the wrong shape twice over: four tokens must be allowed
  * to map to *no* panel, and two panels have no token. `Record<ErrorReason, StateKey | null>` is
  * the shape that is total without being one-to-one, and `null` is a NAMED answer here rather
  * than an absence — see the comments below, which are the whole reason those tokens exist.
  *
  * ================= `null` MEANS TWO DIFFERENT THINGS, SO IT IS CLASSIFIED ===============
  *
- * c3-2 added a third `null`, and it does NOT mean what the other two mean. `invalid_request` and
- * `payload_too_large` are `null` because there is nothing to put on the glass at all — for one
- * the user cannot act, for the other the audience is the *agent*. `card_not_found` is `null`
- * because its destination is **not a panel**: the view renders normally and one slot becomes the
- * unknown-card placeholder (`EXPERIENCE.md`'s "Unknown card in a view" row, built by **c4-3**).
+ * c3-2 added a third `null`, and it does NOT mean what the other two mean. `invalid_request`,
+ * `forbidden` and `payload_too_large` are `null` because there is nothing to put on the glass at
+ * all — for one the user cannot act, for the other two the audience is the *agent*.
+ * `card_not_found` is `null` because its destination is **not a panel**: the view renders normally
+ * and one slot becomes the unknown-card placeholder (`EXPERIENCE.md`'s "Unknown card in a view"
+ * row, built by **c4-3**).
+ *
+ * c3-4's `forbidden` joined the first group with no new machinery, which is the mechanism working:
+ * the `satisfies` clause forced the decision, `NO_UI_RESPONSE` recorded it, and the three asserts
+ * at the bottom of this file proved it was recorded exactly once.
  *
  * Writing all three as a bare `null` beside each other would discard exactly the token/UI pairing
  * that C2 retro ruling R1 exists to force — "a token ships alone and a comment promises the
@@ -50,8 +56,15 @@
  *
  * `satisfies Record<ErrorReason, …>` is what made c3-2's seventh token (`card_not_found`) fail
  * `npm run typecheck` rather than silently losing a state — measured, and it did:
- * `error TS2345: … Property 'card_not_found' is missing`. The mechanism is unchanged for an
- * eighth. A runtime test that enumerated today's seven would prove nothing —
+ * `error TS2345: … Property 'card_not_found' is missing`.
+ *
+ * **The mechanism held for the eighth, and c3-4 measured it the same way** (2026-08-01) by
+ * deleting `forbidden` from the map and running both gates. `npx tsc -b --force` reported FIVE
+ * errors — `TS1360` here naming the missing property, plus `TS2344: Type 'false' does not satisfy
+ * the constraint 'true'` twice, from the classification asserts at the bottom of this file. In the
+ * same state `vitest run` reported only ONE failure, and only because c3-4 added a runtime
+ * assertion for the value. That ratio is the whole argument of the paragraph below: a runtime test
+ * that enumerated today's tokens would prove nothing —
  * `src/api/schema.test.ts:4` says so in bold, with a measured example: `expectTypeOf` assertions
  * erase to an empty test body, so `vitest run` reports green over a wire type that has been
  * mutated out from under it. **`npm run typecheck` is the gate for this file.**
@@ -92,6 +105,13 @@ export const PANEL_FOR_REASON = {
   // about either, and a panel saying so would be the app blaming its own reader; the log is
   // where it is diagnosed (types.d.ts:63-65).
   invalid_request: null,
+  // NO UI RESPONSE AT ALL, BY DESIGN. An agent-only endpoint was called without a valid
+  // credential (c3-4's PUT /api/active-deck). The browser NEVER holds the agent token and never
+  // calls a route that wants one (AD-5), so this token reaching the glass would mean reporting a
+  // failure the reader did not cause and cannot fix. Its real audience is the agent, where AD-8's
+  // "re-read the discovery file and retry exactly once" lives — which is the whole reason it is a
+  // token of its own instead of another `invalid_request`.
+  forbidden: null,
   // NO UI RESPONSE AT ALL, BY DESIGN. An agent push over the ingest cap (c5-5) is surfaced to
   // the AGENT, through the MCP tool's outcome vocabulary — the party that can actually send a
   // smaller one. The glass never sees it.
@@ -137,6 +157,7 @@ export const PLACEHOLDER_FOR_REASON = {
  */
 export const NO_UI_RESPONSE = [
   'invalid_request',
+  'forbidden',
   'payload_too_large',
 ] as const satisfies readonly ErrorReason[]
 

@@ -112,6 +112,13 @@ describe('wire shapes are declared once, by the backend (NFR-03, AD-12)', () => 
     // `type FormatCheckReport = { x: 1 }` in `src/`, which this suite caught by name.
     expect(wireShapes).toContain('FormatCheckReport')
     expect(wireShapes).toContain('FormatCheckRow')
+    // c3-4's active-deck pair. `ActiveDeckRequest` is the first REQUEST body in the whole
+    // document — every shape before it was a response — and it joins the ban identically, because
+    // the ban is about who DESCRIBED a shape, not about which direction it travels. Probed
+    // 2026-08-01 the same way `Card` and the FormatCheck models were, by staging a
+    // `type ActiveDeckRequest = { x: 1 }` in `src/`, which this suite caught by name.
+    expect(wireShapes).toContain('ActiveDeck')
+    expect(wireShapes).toContain('ActiveDeckRequest')
     expect(aliasShapes).toContain('ErrorReason')
     expect(trackedFiles).toContain('src/api/schema.ts')
     expect(outsideApi.length).toBeGreaterThan(0)

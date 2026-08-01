@@ -20,16 +20,26 @@ half fail in the gate that owns it (story c2-3, Decide-once #1).
 and ``error_responses(...)``, run ``npm run gen:api``, and commit both generated files — new paths
 and components appear in them automatically. Story **c3-1** (``/api/decks`` and
 ``/api/deck/{deck_id}``) was the first to do it, taking the schema from two components to six;
-story **c3-2** (``/api/cards/{card_id}``) followed, taking it to seven and the paths to four; and
-story **c3-3** (``/api/deck/{deck_id}/format-check``) took it to **nine components and five
-paths**, adding ``FormatCheckReport`` and ``FormatCheckRow`` — the first wire shapes described by
-``src/logic`` rather than ``src/data``, which needed no change here either. Story **c3-4**'s
-active-deck endpoint is next.
+story **c3-2** (``/api/cards/{card_id}``) followed, taking it to seven and the paths to four;
+story **c3-3** (``/api/deck/{deck_id}/format-check``) took it to nine components and five paths,
+adding the first wire shapes described by ``src/logic`` rather than ``src/data``; and story
+**c3-4** (``/api/active-deck``) took it to **eleven components and six paths**, adding
+``ActiveDeck`` and ``ActiveDeckRequest``. Story **c3-5**'s card-image endpoint is next.
 
-Two hand-synchronised pins do have to be edited by a story that adds a component, and they are
-not here: the component-name sets in ``tests/unit/companion/test_routes_decks.py`` and
-``test_routes_cards.py``. Both go red naming the addition, which is the pin working — but the
-count above is *not* what enforces it, so do not read this paragraph as the gate.
+c3-4 was also the first story to add anything but a ``GET``, and therefore the first to put a
+``requestBody`` in the document at all — which likewise needed no change here. Its ``PUT`` is
+credential-gated, and that too is invisible to this script **by design**: the credential is read
+from ``request.headers`` inside a dependency rather than declared through a FastAPI security class,
+so no ``securitySchemes`` component and no per-operation ``security`` block reach the artifact
+(c3-4, Q4). A later story that reaches for ``HTTPBearer`` will change that, and should expect to
+justify it.
+
+One hand-synchronised pin has to be edited by a story that adds a component, and it is not here:
+the component-name set in ``tests/unit/companion/test_committed_schema.py``. It goes red naming the
+addition, which is the pin working — but the count above is *not* what enforces it, so do not read
+this paragraph as the gate. (Until c3-4 there were **two** such pins, in the decks and cards route
+tests; Q5 consolidated them into that one file, so c3-5 edits one place rather than discovering the
+second by running the suite as c3-2 and c3-3 each did.)
 
 **There is no dummy endpoint, and none is needed.** Story **c5-1**'s ``POST /agent/events`` declares
 the WebSocket event-envelope union as its *request body*, so every per-kind payload lands in

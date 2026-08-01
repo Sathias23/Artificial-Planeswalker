@@ -200,6 +200,15 @@ class _SpaMount(Mount):
     once c5-5 adds a POST-only ``/agent/events`` a plain ``GET`` of it would answer ``404``
     instead of ``405 Allow: POST``.
 
+    **c3-4 got there before c5-5 and measured it.** ``PUT /api/active-deck`` made that path the
+    first served by more than one method, and a ``POST`` of it answers ``405`` carrying an
+    ``Allow`` — so the decline above does what this docstring has claimed since c2-2. The
+    measurement also found the claim's *limit*, which is worth knowing before trusting the header:
+    Starlette builds ``Allow`` from the **first** partially-matching route alone, so the raw answer
+    was ``Allow: GET``, silently omitting the ``PUT``. Returning ``Match.NONE`` is necessary for a
+    correct 405 and not sufficient for a correct ``Allow``; the union is recomputed in
+    :func:`~src.companion.app.errors.supported_methods`.
+
     Returning ``Match.NONE`` for reserved prefixes hands those paths back to the router, which
     knows each route's real method set. Everything else still falls through to the SPA.
 
