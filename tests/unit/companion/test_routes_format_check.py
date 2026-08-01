@@ -642,7 +642,7 @@ An allowlist rather than a ban list, on purpose: ``validate_deck``, ``DeckViolat
 does not need to be updated when the validator grows a new internal.
 """
 
-_LIMIT_LITERALS = frozenset({60, 15, 4})
+_LIMIT_LITERALS = frozenset({60, 15})
 """Construction limits that have no business being compared in a shell.
 
 **``1`` is deliberately excluded, and that is a declared limit rather than an oversight.** The
@@ -655,6 +655,25 @@ singleton rule specifically would slip past this family; nothing else here would
 integer, but the adjacent set is unbounded (58, 61, arithmetic…) and its small members (3, 5, 16)
 are as ubiquitous as ``1``. The reviewer stance below covers them: a limit spelled to dodge this
 set is obfuscation, and a guard satisfied by obfuscation is treated as a violation on sight.
+
+**``4`` joined that declared set at c3-6, and the reason is the one already written above rather
+than a new one.** The copy limit is 4, but so is every other four in the shell: c3-6's
+``images.FETCH_CONCURRENCY = 4`` is a CDN concurrency cap with no deck vocabulary anywhere near
+it, and this family flagged it — the first measured collision, though ``3``, ``5`` and ``16`` were
+already conceded to be exactly as ambiguous. Keeping ``4`` in while declaring its neighbours out
+was not a stance, it was the order things were discovered in.
+
+What that costs, stated rather than glossed: a shell reimplementing the **copy limit specifically**
+is no longer caught by this family. It is still caught by the ``.quantity`` family, and that is
+not a coincidence — enforcing a copy limit means counting copies, and the count has to come from
+somewhere (``entry.quantity > 4`` trips it; so does ``sum(e.quantity ...)``). The residual hole is
+a shell that counts copies **without** reading ``quantity`` — ``len(matching_rows) > 4`` — which is
+the same obfuscation stance as the adjacent literals. Ruled at c3-6 and ledgered; the alternative
+was renaming a production constant to appease a guard, which is the definition of the thing this
+guard's own docstring warns about.
+
+The two survivors are the distinctive ones: nothing in this shell has an innocent reason to write
+``60`` or ``15``.
 """
 
 _FORMAT_NAMES = frozenset(
@@ -885,9 +904,12 @@ class TestNoRuleInTheShell:
                 "limit",
                 id="max-sideboard",
             ),
+            # The copy limit, still caught — by the `.quantity` family rather than by the limit
+            # family, since `4` was declared out at c3-6. Enforcing a copy limit means counting
+            # copies, so this is the family that has teeth on it.
             pytest.param(
                 "def go(entry):\n    return entry.quantity > 4\n",
-                "limit",
+                "copies are counted",
                 id="copy-limit",
             ),
             pytest.param(
@@ -984,6 +1006,38 @@ class TestNoRuleInTheShell:
 
         assert offenders, f"the {family} family caught nothing"
         assert any(family in message for message in offenders), offenders
+
+    def test_a_four_with_no_deck_vocabulary_is_not_a_construction_rule(self):
+        """The silent half of c3-6's ruling, so the declaration is a decision on the record.
+
+        ``FETCH_CONCURRENCY = 4`` is a CDN concurrency cap. Flagging it would have forced a
+        production constant to be renamed to appease a guard — which is precisely the obfuscation
+        this guard's own docstring says to treat as a violation, applied in reverse.
+        """
+        source = "FETCH_CONCURRENCY = 4\n"
+
+        assert find_rule_violations(source, "src/companion/app/images.py") == []
+
+    def test_the_copy_limit_is_still_caught_after_four_was_declared_out(self):
+        """…and the firing half of the same ruling, from the same input shape.
+
+        The declaration removes a family, not the coverage: a shell enforcing the copy limit must
+        count copies, and counting is what the surviving family sees.
+        """
+        source = "def check(entry):\n    return entry.quantity > 4\n"
+
+        offenders = find_rule_violations(source, "src/companion/app/routes/decks.py")
+
+        assert offenders, "declaring 4 out silently removed the copy limit's only coverage"
+        assert any("copies are counted" in message for message in offenders), offenders
+
+    def test_the_two_surviving_limits_still_fire(self):
+        """Non-vacuity for the narrowed set itself: 60 and 15 were not dropped by accident."""
+        source = "MIN = 60\nMAX_SIDE = 15\n"
+
+        offenders = find_rule_violations(source, "src/companion/app/routes/decks.py")
+
+        assert len([m for m in offenders if "limit appears" in m]) == 2, offenders
 
     def test_the_whole_reimplementation_is_caught(self):
         """The composite the adversarial layer built: four rules in seven lines, and the first

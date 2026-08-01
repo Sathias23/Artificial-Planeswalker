@@ -144,6 +144,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     hundred, and only the lifespan has a teardown to release the pool in — so the thing that needs
     closing is created where the closing happens (Q5, Brad 2026-08-01).
 
+    c3-6's :class:`~src.companion.app.images.Pacer` is created on the line after it, and for a
+    *third* reason worth distinguishing from both: it needs no teardown at all, so nothing about
+    :func:`_shutdown` changes for it. What puts it here rather than in ``build_app()`` is that
+    ~100 tiles must be **one** queue, and the lifespan is where this process's shared things are
+    made — the same reasoning as the client, minus the closing. Constructing one is free and
+    cannot fail (``asyncio`` primitives no longer bind a loop at construction), so the startup
+    asymmetry ``test_app.py::test_startup_failure_propagates`` pins is untouched: publishing the
+    discovery file is still the only step that can fail. The pacer is created **after** the client
+    it paces, mirroring the order they are used in, and AC 2 gates that this is the one and only
+    place in ``src/companion`` where one is constructed (Q1, Brad 2026-08-01).
+
     c3-4's :class:`~src.companion.app.state.ActiveDeckSlot` is created on the same line of reasoning
     and is the first state this process *owns* rather than projects. Creating it here rather than in
     ``build_app()`` is what makes FR-07's restart behaviour structural: the slot is reachable only
@@ -177,6 +188,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.database = deps.Database()
     app.state.active_deck = state.ActiveDeckSlot()
     app.state.image_client = images.build_image_client()
+    app.state.image_pacer = images.Pacer()
     _publish_discovery(app)
     logger.info("Companion instance %s started", app.state.instance_id)
     try:

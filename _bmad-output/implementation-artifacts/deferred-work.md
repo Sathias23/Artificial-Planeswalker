@@ -2255,18 +2255,97 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   merge as a second header. Unreachable today: no code raises 405 manually. **Home: unowned,
   ledgered** — the first story that hand-raises a 405 owns it. (Severity: Low — latent.)
 
+## Deferred from: story c3-6 (the image pacer, 2026-08-01)
+
+- **The epic's CM-2 acceptance criterion is not satisfied by c3-6 and is not paraphrased into
+  something adjacent.** *"An image fetched once is not fetched again within the cache lifetime"*
+  (epic :1728-1730) is the **disk cache**. There is no cache in c3-6, so a repeat request repeats
+  the fetch — the pacer changes the *rate* of fetches, never their *number*. Recorded in
+  `images.py`'s module docstring and in the story record as well as here, because an unsatisfiable
+  claim gets an owner rather than a rewording. **Home: c3-7.** (Severity: Medium — it is a stated
+  epic AC that no test in the feature currently covers.)
+
+- **In-flight coalescing is declined on ownership, not on merit** (Q5, Brad 2026-08-01). Two
+  *simultaneous* requests for the same URL each get their own fetch; a semaphore does not prevent
+  that shape and ~15 lines would. Declined because the thing being shared is a **result**, and
+  whether that result is bytes, a disk path or a `Future` depends entirely on what c3-7 builds —
+  building an in-flight map here means c3-7 inherits a second cache or deletes one (c3-4's ruling:
+  *an unused hook is a design decision made by a story that cannot see the requirements*).
+  **Measured cost today: zero extra fetches** on both 99-distinct-id decks, because duplicate
+  printings collapse in `deck_cards` before they reach the route. **The trigger that flips this
+  answer is c6-4** — suggestion rows beside the deck grid are the first surface that would render
+  the same card id twice on one screen. **Home: c3-7**, with c6-4 named as the forcing function.
+  (Severity: Low today; Medium at c6-4.)
+
+- **The `DbSession` is held across the pacer's queue wait, and it works by arithmetic rather than
+  by design** (Q6, Brad 2026-08-01 — accept, pin, ledger). **Measured, not assumed** (Task 0):
+  FastAPI runs a `yield`-dependency's teardown *after* the endpoint returns, so the pool reports
+  `checkedout() == 1` while `fetch_image` is awaited and `0` after the response. The pool is
+  SQLAlchemy's default `AsyncAdaptedQueuePool`, **size 5 + overflow 10 = 15 connections,
+  `pool_timeout` 30 s** — all four values read off the live pool object. At the shipped constants a
+  99-tile burst drains in ~9.9 s, so at most 15 requests sit inside the route and the rest wait
+  outside it: a second queue in front of the first, inefficient and harmless. **A pacer slower than
+  roughly 0.3 s per tile would push the burst past the 30 s pool timeout**, raising
+  `sqlalchemy.exc.TimeoutError` — which is **not** a `DatabaseError` and would therefore surface as
+  `500 internal_error`, **not** `503`. Pinned by
+  `test_routes_card_image.py::TestTheBurstDoesNotOutlastTheConnectionPool` so a later story that
+  slows the pacer sees the cliff. The clean fix is to read the row, release the session, *then*
+  queue — rejected here because it takes this one route off `DbSession`, the annotation c3-1…c3-5
+  standardised on, for a problem that does not bite at these constants. **Home: c4-1**, beside the
+  hydration cache, which already carries this route's whole-row-read entry. (Severity: Low at the
+  shipped constants; High for whichever story changes them without reading this.)
+
+- **`4` was declared out of c3-3's deck-construction-limit family, and that is a ruling made by
+  c3-6 rather than a discovery.** `TestNoRuleInTheShell` bans the literals `60`/`15`/`4` anywhere
+  in `src/companion`; `images.FETCH_CONCURRENCY = 4` is a CDN concurrency cap with no deck
+  vocabulary near it, and the guard flagged it — **a structural pin this story did not name, the
+  third consecutive story to hit one** (c3-2 Debug Log 3, c3-3 finding 2). The alternative was
+  renaming a ruled production constant to appease a guard, which is precisely the obfuscation that
+  guard's own docstring says to treat as a violation. `4` therefore joins `1` and the adjacent
+  spellings (`3`, `5`, `16`) that were **already** declared out on exactly the ubiquity argument
+  that applies to it; keeping it in was the order of discovery, not a stance. The copy limit stays
+  covered by the `.quantity` family (enforcing it means counting copies). **Residual hole, stated:**
+  a shell that counts copies without reading `quantity` — `len(rows) > 4`. **Home: unowned,
+  ledgered**; declared in `ui/README.md`'s blind-spot table and probed in both directions.
+  (Severity: Low — same class as the four holes the guard already declares.)
+
+- **Both halves of the "never blocks the loop" AC that c3-6 could not satisfy have owners.** The
+  epic's AC (`:1723-1726`) names a concurrent push through **`POST /agent/events`** meeting its
+  250 ms budget while images are queued; **that endpoint does not exist until c5-1/c5-5**. c3-6
+  proves the property against `/health` — five interleaved probes completing while every image
+  fetch is parked upstream, with the *count* asserted so a serialised loop fails it — and records
+  the substitution rather than passing it off as the same test. The literal AC is **c10-3's**,
+  whose own AC (`:3580-3582`) already says exactly that. Likewise the **real-bytes and
+  real-latency** half of the cold-deck observation: c3-6 asserts ~9.8 s of modelled start offsets
+  on an injected clock and states the 12 MB as arithmetic on a measured 124 KB average; measuring
+  actual bytes over an actual network is **c10-3's** (`:3588-3590`). **Home: c10-3** (both).
+  (Severity: Low — deliberate scope, both named in the epic already.)
+
+- **No ceiling on how long a request may queue, and no wire vocabulary for one** (Q4, Brad
+  2026-08-01). The natural bound is the caller: a client that disconnects cancels the request and
+  releases its slot immediately (pinned two ways). A ceiling would need either a **new reason
+  token** — eight ripple sites, for a state no consumer can act on differently from
+  `image_fetch_failed` — or a false reuse of the transient one. The fallback if a real queue ever
+  misbehaves is to answer `image_fetch_failed` after N seconds queued, which only becomes
+  meaningful once **c3-8** owns the retry semantics that would make a caller do something different
+  with it. **Home: c3-8**, if ever. (Severity: Low — no measured symptom, and MVP has one caller.)
+
 ## Deferred from: story c3-5 (card image endpoint, 2026-08-01)
 
-- **Between this story and c3-6 the image route fetches unpaced.** No semaphore, no spacing, no
-  concurrency cap: a hundred-tile deck view would open a hundred concurrent connections to
-  `cards.scryfall.io`. Stated as a decision rather than discovered — building a no-op pacer here
-  would be "a design decision made by a story that cannot see the requirements" (c3-4's ruling).
-  The window is closed **before any client exists**: no file under `ui/src` fetches an image until
-  **c4-4**, so today's only caller is a test. Recorded for c3-6 so its spacing constant is chosen
-  knowingly: Scryfall's published 10 req/s + 50-100 ms guidance covers `api.scryfall.com`, and the
-  `*.scryfall.io` **file origins are explicitly exempt from it** — so AD-11's pacer is a
-  good-citizen and NFR-05 budget decision, not a compliance one. **Home: c3-6.** (Severity: Low
-  until a client exists; Medium the moment one does.)
+- ~~**Between this story and c3-6 the image route fetches unpaced.**~~ **RESOLVED 2026-08-01 by
+  c3-6.** `images.Pacer` ships: one semaphore (`FETCH_CONCURRENCY = 4`) plus request spacing
+  (`FETCH_SPACING_SECONDS = 0.1`), constructed in the lifespan beside the client and passed to
+  `fetch_image` as a **required** parameter, so no signature exists that fetches unpaced. The
+  window was never reached by a browser — nothing under `ui/src` fetches an image until c4-4.
+  The exemption this entry banked was carried through as instructed and is now written into the
+  spacing constant's own docstring, gated by a test: the numbers are a good-citizen and NFR-05
+  choice, **not** compliance with guidance that exempts `*.scryfall.io`.
+  **What the entry did not price**, and c3-6 found by measuring: (a) a "hundred-tile deck view" is
+  **67–99 distinct fetches, not 100** — basic lands collapse, median ~78 across the 18 saved decks
+  with ≥90 cards; (b) the epic's "~12 MB over ~10 s" is not an independent observation but the
+  **same arithmetic** that names the spacing constant (99 × 0.1 s = 9.9 s; 12 MB / 99 ≈ 124 KB, a
+  `normal` JPEG); and (c) the database connection pool is a **second, invisible choke point** in
+  front of the first — see the new c3-6 entries below.
 
 - **The file extension is not derivable from the size key.** Measured over 40,960 stored image
   maps: `png` resolves to a `.png` URL 40,957 times and to a **`.jpg`** three times (the
@@ -2355,3 +2434,23 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   2026-08-01): keep the token, no wire change — c3-8, which owns the negative cache and backoff,
   decides retry semantics for permanently-failing URLs (e.g. an unbounded/permanent negative-cache
   entry for `is_fetchable` refusals). **Home: c3-8.** (Severity: Low.)
+
+## Deferred from: code review of c3-6-paced-concurrency-capped-cdn-fetching-at-one-global-choke-point (2026-08-01)
+
+- **httpx's closed-client `RuntimeError` escapes `_fetch_checked`'s `except` tuple as a raw 500**
+  (`src/companion/app/images.py:751`). A request still queued in the pacer when lifespan teardown
+  closes `image_client` gets `RuntimeError("client has been closed")` from `client.stream`, which
+  is not in `(TimeoutError, httpx.HTTPError, httpx.InvalidURL)` and so surfaces as an unhandled
+  500 traceback rather than `image_fetch_failed`. The window pre-exists from c3-5 (any fetch in
+  flight at teardown); c3-6's queue widens it by the queue wait (~10 s on a cold deck). Uvicorn's
+  graceful drain covers the normal shutdown path, and catching `RuntimeError` wholesale would
+  reclassify programming errors as fetch failures — so the fix wants a narrower discriminator
+  (message match or a shutdown flag), decided by whichever story next touches teardown.
+  **Home: unowned.** (Severity: Low.)
+- **Two hand-synchronised stall-able CDN fakes** (`tests/unit/companion/test_images.py:588`
+  `Upstream`; `tests/unit/companion/test_routes_card_image.py:889` `StallableCdn`) — near-identical
+  recorders (requested / in_flight / peak_in_flight / release `asyncio.Event`) maintained in two
+  files; the ledgered two-copies defect class (c3-2 Debug Log 3, c3-3 finding 2), this time in test
+  scaffolding. Consolidate into `tests/unit/companion/conftest.py` when a third consumer appears —
+  c3-7's disk cache and c3-8's negative cache both stall CDNs and are candidates.
+  **Home: c3-7.** (Severity: Low.)

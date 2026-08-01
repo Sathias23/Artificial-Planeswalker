@@ -17,6 +17,7 @@ passed with the router deleted, because ``/api`` is reserved and answers JSON ei
 wrong-but-JSON answer is precisely the shape that slips through on a binary endpoint.
 """
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -26,6 +27,8 @@ import pytest
 from src.companion.app import images
 from src.companion.app.main import build_app
 from src.companion.app.spa import _IMMUTABLE_CACHE_CONTROL
+from src.data.models.deck import DeckModel
+from src.data.models.deck_card import DeckCardModel
 from tests.unit.companion.conftest import (
     _TOP_LEVEL_IMAGES,
     ABSENT_ID,
@@ -36,6 +39,7 @@ from tests.unit.companion.conftest import (
     SINGLE_FACE_ID,
     SPLIT_FACE_ID,
     _point_at,
+    _seed,
     _uuid,
 )
 
@@ -656,11 +660,6 @@ _IMAGES_MODULE = Path(__file__).resolve().parents[3] / "src" / "companion" / "ap
 
 _BANNED_IDENTIFIERS = frozenset(
     {
-        # c3-6's pacer.
-        "Semaphore",
-        "BoundedSemaphore",
-        "sleep",
-        "Lock",
         # c3-7's disk cache.
         "mkdir",
         "makedirs",
@@ -678,11 +677,25 @@ _BANNED_IDENTIFIERS = frozenset(
 """What ``images.py`` must not reach for, keyed on the NAME rather than on the spelling.
 
 An identifier set over the parsed AST, not a substring scan over the source text, and the
-difference is the whole design of this guard: this module's docstring *names* the pacer, the disk
-cache and ``data_dir()`` in prose — deliberately, because the absences are decisions — so a text
-scan fires on the documentation of the rule instead of on a breach of it. (Measured: the first
-version of this test did exactly that, on its own module docstring.) The frontend hit the same
-wall at c3-2 and answered it the same way, by stripping comments before matching.
+difference is the whole design of this guard: this module's docstring *names* the disk cache and
+``data_dir()`` in prose — deliberately, because the absences are decisions — so a text scan fires
+on the documentation of the rule instead of on a breach of it. (Measured: the first version of
+this test did exactly that, on its own module docstring.) The frontend hit the same wall at c3-2
+and answered it the same way, by stripping comments before matching.
+
+**c3-6 removed a third family from this set, and removed exactly that one** (2026-08-01).
+``Semaphore``, ``BoundedSemaphore``, ``sleep`` and ``Lock`` were banned here under the comment
+*"c3-6's pacer"*; that story then shipped the pacer, so the ban became a fence around the thing it
+was built to schedule. The ten names above are **c3-7's and c3-8's**, they are untouched, and
+deleting this frozenset wholesale would have taken two unwritten stories' fences with it silently.
+
+The removal is not a loss of coverage, because the pacer's gate is stronger than a ban was: it is
+no longer *"images.py has no semaphore"* but *"``src/companion`` constructs exactly **one**
+pacer"*, asserted over the AST with a planted second construction site, in
+``test_images.py::TestExactlyOnePacer``. The blocking-wait half moved there too, as
+``TestTheLoopIsNeverBlocked`` — a ban on ``sleep`` by name could not survive this module gaining
+an injected ``asyncio.sleep``, so it was re-keyed onto the family that actually matters:
+*synchronous* waits, resolved through import aliases.
 """
 
 
@@ -730,16 +743,16 @@ def _identifiers_and_strings(path: Path) -> tuple[set[str], list[str]]:
 
 
 class TestNothingThisStoryDoesNotOwn:
-    """The absences are decisions, and c3-6/c3-7/c3-8 own them by name."""
+    """The absences are decisions, and c3-7/c3-8 own them by name (c3-6 shipped and left)."""
 
-    def test_no_pacer_no_disk_cache_and_no_negative_cache_are_built(self):
+    def test_no_disk_cache_and_no_negative_cache_are_built(self):
         names, _ = _identifiers_and_strings(_IMAGES_MODULE)
 
         breaches = sorted(names & _BANNED_IDENTIFIERS)
         assert not breaches, (
-            f"images.py reaches for {breaches} — the pacer is c3-6's, the disk cache c3-7's and "
-            "the negative cache c3-8's. An unused hook is a design decision made by a story that "
-            "cannot see the requirements."
+            f"images.py reaches for {breaches} — the disk cache is c3-7's and the negative cache "
+            "c3-8's. An unused hook is a design decision made by a story that cannot see the "
+            "requirements."
         )
 
     def test_the_module_imports_nothing_from_the_banned_write_path(self):
@@ -760,12 +773,20 @@ class TestNothingThisStoryDoesNotOwn:
 
         c3-3's headline finding: a guard caught 0 of 12 planted evasions because every family was
         keyed on the syntax its own firing tests used. So the plant below is deliberately *not*
-        spelled the way a naive scan would look for it — the semaphore arrives under an alias, the
-        host arrives in an f-string, and the write arrives as a method call on a local.
+        spelled the way a naive scan would look for it — the write arrives as a method call on a
+        local, the cache as an aliased decorator, and the host inside a split f-string.
+
+        **The aliased ``asyncio as aio`` semaphore stays in the plant, and that is deliberate**
+        (c3-6). Seeing one is no longer a *breach* — this module owns a pacer now — but the claim
+        this assertion makes is about the **scanner**, not about the ban: an alias-blind scanner
+        would let c3-7's ``mkdir`` through under the identical spelling. So the name is asserted
+        against ``names`` and is no longer asserted against ``_BANNED_IDENTIFIERS``, which is
+        exactly the distinction the removal turned on.
         """
         planted = tmp_path / "planted.py"
         planted.write_text(
             "import asyncio as aio\n"
+            "from functools import lru_cache as memoize\n"
             "from src.data.importers.scryfall_api import fetch\n"
             "\n"
             "GATE = aio.Semaphore(4)\n"
@@ -773,6 +794,7 @@ class TestNothingThisStoryDoesNotOwn:
             "URL = f'https://{BASE}/cards/named'\n"
             "\n"
             "\n"
+            "@memoize\n"
             "def go(path):\n"
             "    path.mkdir(parents=True, exist_ok=True)\n",
             encoding="utf-8",
@@ -780,22 +802,57 @@ class TestNothingThisStoryDoesNotOwn:
 
         names, strings = _identifiers_and_strings(planted)
 
-        assert "Semaphore" in names, "the pacer family missed an aliased import"
+        assert "Semaphore" in names, (
+            "the scanner missed an aliased import — the property c3-7's and c3-8's families still "
+            "depend on, even though a semaphore is no longer a breach"
+        )
+        assert "Semaphore" not in _BANNED_IDENTIFIERS, (
+            "c3-6 shipped the pacer; banning it here would fence the thing that was built"
+        )
         assert "mkdir" in names, "the disk-cache family missed a method call on a local"
+        assert "functools.lru_cache" in names or "lru_cache" in names, (
+            "the negative-cache family missed a renamed decorator import"
+        )
         assert any(name.startswith("src.data.importers") for name in names)
         assert [s for s in strings if "api.scryfall.com" in s], (
             "the host scan missed a split f-string — the exact evasion c3-3 found 12 of"
         )
+
+    def test_a_planted_breach_of_a_surviving_family_actually_fires_the_ban(self, tmp_path):
+        """The firing half, over the set itself — the two surviving families still have teeth.
+
+        Separate from the scanner test above because c3-6 split the two claims apart: *"the
+        scanner sees it"* and *"the ban refuses it"* used to be one assertion, and conflating them
+        is what would have made removing the pacer family look like removing coverage.
+        """
+        planted = tmp_path / "writes.py"
+        planted.write_text(
+            "from tempfile import NamedTemporaryFile\n"
+            "\n"
+            "\n"
+            "def store(payload):\n"
+            "    with NamedTemporaryFile(delete=False) as handle:\n"
+            "        handle.write(payload)\n",
+            encoding="utf-8",
+        )
+
+        names, _ = _identifiers_and_strings(planted)
+
+        assert names & _BANNED_IDENTIFIERS == {"NamedTemporaryFile"}
 
     def test_the_scan_ignores_prose_that_merely_names_the_banned_things(self, tmp_path):
         """…and the other direction, which is what the first version of this guard got wrong.
 
         A module that *documents* the absence must stay green. Without this pairing, the guard
         above could be satisfied by deleting the docstrings that explain the design.
+
+        The planted sentence changed at c3-6: it used to read *"No Semaphore here — the pacer is
+        c3-6's"*, which stopped being true the day that story shipped. A plant nobody rewrites is
+        how a test file starts asserting yesterday's design.
         """
         planted = tmp_path / "documented.py"
         planted.write_text(
-            '"""No Semaphore here — the pacer is c3-6\'s, and nothing calls mkdir or data_dir."""\n'
+            '"""Nothing here calls mkdir or data_dir, and there is no lru_cache."""\n'
             "\n"
             "VALUE = 1\n"
             '"""Not a call to api.scryfall.com either; this is an attribute docstring."""\n',
@@ -806,6 +863,407 @@ class TestNothingThisStoryDoesNotOwn:
 
         assert not (names & _BANNED_IDENTIFIERS)
         assert not [s for s in strings if "api.scryfall.com" in s]
+
+
+# =============================================================================================
+# Story c3-6: the pacer, at the level of the running app. AC 6, 7, 13; Q6.
+#
+# The pacer's own mechanics are proved as units in `test_images.py` on a fake clock. What can
+# ONLY be proved here is what a real request does: that a queued burst does not stall the rest
+# of the app, that a disconnecting browser gives its slot back, and that reading a deck fetches
+# nothing at all.
+# =============================================================================================
+
+
+class StallableCdn:
+    """A recorder whose responses can be held open indefinitely, with no time involved.
+
+    An arbitrarily slow CDN expressed as an ``asyncio.Event`` rather than a duration: every
+    request parks until a test releases it. That is what lets AC 6's interleaving *count* and
+    AC 7's permit accounting be exact rather than probabilistic.
+
+    Attributes:
+        requested: Every URL asked for, in order.
+        in_flight: How many upstream requests are open right now.
+        completed: How many have finished.
+    """
+
+    def __init__(self) -> None:
+        self.requested: list[str] = []
+        self.in_flight = 0
+        self.peak_in_flight = 0
+        self.completed = 0
+        self.release = asyncio.Event()
+
+    async def handle(self, request: httpx.Request) -> httpx.Response:
+        self.requested.append(str(request.url))
+        self.in_flight += 1
+        self.peak_in_flight = max(self.peak_in_flight, self.in_flight)
+        try:
+            await self.release.wait()
+        finally:
+            self.in_flight -= 1
+        self.completed += 1
+        return httpx.Response(200, content=_JPEG, headers={"content-type": "image/jpeg"})
+
+
+async def _until(predicate, *, what: str) -> None:
+    """Spin the event loop until *predicate* holds, then return immediately.
+
+    **This is not a rate measurement and does not violate AC 9.** The distinction is what is
+    being waited for: these tests wait for the app to *reach a state* — N requests admitted, the
+    permits exhausted — and then assert **exact counts** on it. Nothing here measures elapsed
+    seconds; machine speed moves only how quickly the settle returns, up to the 0.5 s ceiling
+    below — a bound on patience that fails loudly, not a rate assertion (review 2026-08-01: an
+    earlier version of this sentence claimed no assertion would change on a slower machine, which
+    the ceiling itself contradicts in the limit).
+
+    A fixed number of ``asyncio.sleep(0)`` turns was tried first and is wrong: every request
+    really does read SQLite through ``aiosqlite``'s worker thread before it reaches the pacer, so
+    a bare yield count is a race against a thread rather than a deterministic settle (measured —
+    the burst reached 2 of 4 permits, not 4). This returns on the first turn the condition holds,
+    which in practice is a few milliseconds, and fails loudly rather than silently proceeding to
+    assert on a half-arrived state.
+
+    Args:
+        predicate: Called on each turn; waiting stops when it returns true.
+        what: Named in the failure, so a timeout says which state never arrived.
+
+    Raises:
+        AssertionError: The condition never became true.
+    """
+    for _ in range(500):
+        if predicate():
+            return
+        await asyncio.sleep(0.001)
+    raise AssertionError(f"timed out waiting for: {what}")
+
+
+@pytest.fixture
+def stalled_cdn(monkeypatch):
+    """A CDN that answers nothing until released, plus a pacer with its spacing zeroed.
+
+    Zeroed spacing, not a virtual clock (review 2026-08-01 — an earlier version of this line said
+    "on virtual time", which is `test_images.py`'s regime, not this one): with spacing 0.0 the
+    turnstile never waits at all, so these app-level tests exercise the **cap** alone, on the real
+    clock. The spacing behaviour is proved in `test_images.py`, where the clock and sleep are
+    injected.
+
+    Both halves are patched at the **factory**, for the reason the ``cdn`` fixture documents: the
+    lifespan builds them on startup and would overwrite anything a test put on ``app.state``
+    beforehand. Patching ``images.Pacer`` is what keeps this file's runtime honest — the shipped
+    0.1 s spacing would otherwise add real seconds to a burst test, which is precisely the
+    slow-when-it-passes pattern AC 9 forbids.
+
+    The **cap is left at the shipped value**: it is the thing under test here, and a test that
+    quietly relaxed it would prove nothing.
+    """
+    stalled = StallableCdn()
+    real_client = images.build_image_client
+    monkeypatch.setattr(
+        images,
+        "build_image_client",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(stalled.handle)),
+    )
+    real_pacer = images.Pacer
+    monkeypatch.setattr(
+        images,
+        "Pacer",
+        lambda **kwargs: real_pacer(spacing=0.0, **kwargs),
+    )
+    return stalled
+
+
+class TestAQueuedBurstDoesNotStallTheApp:
+    """AC 6, behavioural half. `async` throughout, proved by an unrelated route answering."""
+
+    async def test_health_answers_repeatedly_while_a_burst_of_images_is_queued(
+        self, image_shapes, lifespan_client, stalled_cdn
+    ):
+        """The epic's AC names `POST /agent/events`, which does not exist until c5-1/c5-5.
+
+        `/health` is the honest stand-in available today, and the substitution is recorded rather
+        than passed off as the same test — the literal AC (a concurrent push meeting its 250 ms
+        budget while images are queued) is homed on **c10-3**, whose own AC already says exactly
+        that.
+
+        **The interleaving COUNT is what has teeth.** A test that merely asserted "/health
+        answered" would pass on a serialised loop that ran it after every image completed. Five
+        health probes must all complete while every image is still parked upstream — under a
+        blocking pacer that number is zero, and under a serialised loop the first probe never
+        returns at all.
+        """
+        app = build_app()
+        async with lifespan_client(app) as client:
+            burst = [
+                asyncio.create_task(
+                    client.get(
+                        _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID), params={"size": size}
+                    )
+                )
+                for size in ("small", "normal", "large", "png", "art_crop", "border_crop")
+            ]
+            # Wait on `requested`, which only ever GROWS, rather than on `in_flight`, which does
+            # not. Probe (a) of this story's mutation set — the semaphore deleted — passed this
+            # test in its first form: `in_flight == 4` is true for an instant on the way up from
+            # 1 to 6, and by the final assertion the first four had completed and decremented it
+            # back under the cap. A monotonic quantity cannot be caught mid-ramp.
+            await _until(
+                lambda: len(stalled_cdn.requested) >= images.FETCH_CONCURRENCY,
+                what="the burst to fill the concurrency cap",
+            )
+            # …and then give the two that must NOT be admitted every chance to be admitted.
+            # Real 1 ms turns, not bare yields, for `_until`'s own documented reason: requests
+            # 5 and 6 cross aiosqlite's worker thread on their way to the semaphore, and a
+            # zero-time turn gives a thread no time — 200 of them can pass before the excess
+            # requests even reach the thing that must refuse them (review 2026-08-01).
+            for _ in range(20):
+                await asyncio.sleep(0.001)
+
+            assert len(stalled_cdn.requested) == images.FETCH_CONCURRENCY, (
+                f"{len(stalled_cdn.requested)} of 6 requests reached the CDN while none had "
+                f"completed; the cap is {images.FETCH_CONCURRENCY}"
+            )
+            assert stalled_cdn.in_flight == images.FETCH_CONCURRENCY
+            assert stalled_cdn.completed == 0, "an image finished; nothing is actually queued"
+
+            interleaved = 0
+            for _ in range(5):
+                health = await client.get("/health")
+                assert health.status_code == 200
+                interleaved += 1
+
+            assert interleaved == 5, (
+                "the event loop was blocked: /health could not be served while image fetches "
+                "were queued and in flight"
+            )
+            assert stalled_cdn.completed == 0, (
+                "the images completed while /health ran, so they were never really queued"
+            )
+
+            stalled_cdn.release.set()
+            responses = await asyncio.gather(*burst)
+
+        assert [r.status_code for r in responses] == [200] * 6
+        assert stalled_cdn.peak_in_flight <= images.FETCH_CONCURRENCY, (
+            f"{stalled_cdn.peak_in_flight} simultaneous upstream requests against a cap of "
+            f"{images.FETCH_CONCURRENCY}"
+        )
+
+    async def test_the_cap_bounds_what_the_route_opens_upstream(
+        self, image_shapes, lifespan_client, stalled_cdn
+    ):
+        """AC 5 through the real route, from the transport's own accounting."""
+        app = build_app()
+        async with lifespan_client(app) as client:
+            burst = [
+                asyncio.create_task(
+                    client.get(
+                        _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID), params={"size": size}
+                    )
+                )
+                for size in ("small", "normal", "large", "png", "art_crop", "border_crop")
+            ]
+            # `requested` rather than `in_flight`, for the reason the sibling test above records:
+            # only a monotonic quantity is safe to wait on.
+            await _until(
+                lambda: len(stalled_cdn.requested) >= images.FETCH_CONCURRENCY,
+                what="the burst to fill the concurrency cap",
+            )
+            # Give the two that should NOT be admitted every chance to be admitted anyway —
+            # real 1 ms turns, for the reason the sibling test above records.
+            for _ in range(20):
+                await asyncio.sleep(0.001)
+            admitted = len(stalled_cdn.requested)
+            stalled_cdn.release.set()
+            await asyncio.gather(*burst)
+
+        assert admitted == images.FETCH_CONCURRENCY, (
+            f"{admitted} requests were open against a stalled CDN; the cap is "
+            f"{images.FETCH_CONCURRENCY}"
+        )
+        assert len(stalled_cdn.requested) == 6, "every request eventually reached the CDN"
+
+
+class TestADisconnectingClientReleasesItsSlot:
+    """AC 7 through the real route: a browser navigating away from a deck view, ~99 times."""
+
+    async def test_a_cancelled_request_does_not_narrow_the_pacer(
+        self, image_shapes, lifespan_client, stalled_cdn
+    ):
+        app = build_app()
+        async with lifespan_client(app) as client:
+            pacer = images.image_pacer(app)
+            assert pacer is not None
+            before = pacer.available_permits
+
+            burst = [
+                asyncio.create_task(
+                    client.get(
+                        _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID), params={"size": size}
+                    )
+                )
+                for size in ("small", "normal", "large", "png", "art_crop", "border_crop")
+            ]
+            await _until(lambda: pacer.available_permits == 0, what="every permit to be taken")
+            assert pacer.available_permits == 0
+
+            # Two callers give up — a navigation away, twice.
+            for task in burst[:2]:
+                task.cancel()
+            for task in burst[:2]:
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+
+            stalled_cdn.release.set()
+            await asyncio.gather(*burst[2:])
+
+            after = pacer.available_permits
+
+        assert after == before, (
+            f"{before - after} permits leaked across two cancelled requests — a pacer that "
+            "narrows over a session of scrolling eventually serves nothing"
+        )
+
+    async def test_a_fetch_still_succeeds_after_a_cancellation(
+        self, image_shapes, lifespan_client, cdn
+    ):
+        """The proof that matters: the NEXT request gets through."""
+        app = build_app()
+        async with lifespan_client(app) as client:
+            doomed = asyncio.create_task(client.get(_IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)))
+            await asyncio.sleep(0)
+            doomed.cancel()
+            with pytest.raises((asyncio.CancelledError, httpx.HTTPError)):
+                await doomed
+
+            response = await client.get(
+                _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID), params={"size": "large"}
+            )
+
+        assert response.status_code == 200
+        assert _TOP_LEVEL_IMAGES["large"] in cdn.requested
+
+
+class TestNothingIsEverPreFetched:
+    """AC 13. Fetching is lazy; the backend never pre-fetches a deck (AD-11, epic :1732-1734)."""
+
+    @pytest.fixture
+    async def deck_of_imaged_cards(self, image_shapes):
+        """A real deck whose every entry is a card that HAS an image.
+
+        The point of seeding imaged cards specifically: a zero-fetch assertion over a deck of
+        image-less cards would be vacuous — nothing could have been fetched anyway.
+        """
+        deck_id = "deck-with-pictures"
+
+        async def seeder(session):
+            deck = DeckModel(name="Cold Deck", format="commander", strategy=None, tags=None)
+            # `id` is init=False with a uuid default_factory; assigned here so the test can
+            # address the deck by a readable name rather than reading one back.
+            deck.id = deck_id
+            session.add(deck)
+            await session.flush()
+            for card_id in (SINGLE_FACE_ID, MULTI_FACE_ID, SPLIT_FACE_ID):
+                session.add(DeckCardModel(deck_id=deck_id, card_id=card_id, quantity=1))
+            await session.commit()
+
+        await _seed(image_shapes, seeder)
+        return deck_id
+
+    async def test_reading_a_deck_triggers_no_outbound_request_at_all(
+        self, deck_of_imaged_cards, lifespan_client, cdn
+    ):
+        async with lifespan_client(build_app()) as client:
+            response = await client.get(f"/api/deck/{deck_of_imaged_cards}")
+
+        assert response.status_code == 200
+        assert len(response.json()["cards"]) == 3, "the deck read must actually have returned cards"
+        assert cdn.requested == [], (
+            "reading a deck fetched images. Fetching is lazy (AD-11): the browser asks for a tile "
+            "when it decides to draw one, and a backend that pre-fetches turns one deck view into "
+            "~99 unrequested CDN requests"
+        )
+
+    async def test_but_asking_for_a_tile_does_fetch_exactly_one(
+        self, deck_of_imaged_cards, lifespan_client, cdn
+    ):
+        """NON-VACUITY for the zero above (AC 23): the recorder CAN see a fetch on this fixture.
+
+        Without this pairing, `cdn.requested == []` would also pass with the transport unwired,
+        the route deleted, or the recorder never attached.
+        """
+        async with lifespan_client(build_app()) as client:
+            response = await client.get(_IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID))
+
+        assert response.status_code == 200
+        assert cdn.requested == [_TOP_LEVEL_IMAGES["normal"]]
+
+
+class TestTheBurstDoesNotOutlastTheConnectionPool:
+    """Q6, pinned rather than fixed: the session is held ACROSS the queue wait.
+
+    Measured at Task 0 and not inherited: FastAPI runs a ``yield``-dependency's teardown *after*
+    the endpoint returns, so the route's ``DbSession`` — and its checked-out connection — is held
+    for the whole endpoint body, including the pacer wait. The pool is SQLAlchemy's default
+    ``AsyncAdaptedQueuePool``, **size 5 + overflow 10 = 15 connections, ``pool_timeout`` 30 s**
+    (all four values read off the live pool object, not off a document).
+
+    The consequence is that at most 15 requests sit *inside* the route at once and the rest wait
+    outside it — a second queue in front of the first, which is inefficient and harmless at the
+    shipped constants: a 99-tile burst drains in ~9.9 s, comfortably inside 30 s. **It works by
+    arithmetic, not by design**, so this test exists to make the interaction visible to whichever
+    later story slows the pacer down. Above roughly 0.3 s per tile the burst would outlast the
+    pool timeout and raise ``sqlalchemy.exc.TimeoutError`` — which is **not** a ``DatabaseError``
+    and would therefore surface as ``500 internal_error``, not ``503``. Ledgered on **c4-1**.
+    """
+
+    async def test_a_full_deck_sized_burst_completes_without_a_pool_timeout(
+        self, image_shapes, lifespan_client, monkeypatch
+    ):
+        """99 concurrent requests — the measured distinct-id count of a real 100-card deck."""
+        recorder = Recorder()
+        real_client = images.build_image_client
+        monkeypatch.setattr(
+            images,
+            "build_image_client",
+            lambda **kwargs: real_client(transport=httpx.MockTransport(recorder.handle)),
+        )
+        real_pacer = images.Pacer
+        monkeypatch.setattr(images, "Pacer", lambda **kwargs: real_pacer(spacing=0.0, **kwargs))
+
+        app = build_app()
+        async with lifespan_client(app) as client:
+            responses = await asyncio.gather(
+                *(
+                    client.get(_IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID), params={"face": 0})
+                    for _ in range(99)
+                )
+            )
+            pool = app.state.database.engine.sync_engine.pool
+
+            # The measurement this test is really about, asserted rather than described.
+            assert pool.size() == 5
+            assert pool._max_overflow == 10
+            assert pool._timeout == 30.0
+            # The tripwire that makes "pinned" true (review 2026-08-01): the burst above runs at
+            # spacing=0.0, so the SHIPPED constant never participates in it — a later story could
+            # slow the pacer tenfold and the gather would still drain instantly. THIS line is
+            # where that goes red, in the same register the hazard exists in: arithmetic. Margin
+            # of 2 because the drain time assumes an instant CDN and production does not have one.
+            assert 99 * images.FETCH_SPACING_SECONDS < pool._timeout / 2, (
+                f"a deck-sized burst no longer fits the pool: 99 tiles at "
+                f"{images.FETCH_SPACING_SECONDS} s spacing approaches the {pool._timeout} s pool "
+                "timeout, and sqlalchemy.exc.TimeoutError surfaces as 500 internal_error, NOT "
+                "503. Release the session before fetching (ledgered on c4-1) before slowing the "
+                "pacer."
+            )
+
+        assert [r.status_code for r in responses] == [200] * 99, (
+            "a request failed under a deck-sized burst; a pool timeout surfaces as 500 "
+            "internal_error, NOT 503, because sqlalchemy.exc.TimeoutError is not a DatabaseError"
+        )
+        assert len(recorder.requested) == 99
 
 
 class TestTheCommittedSchema:

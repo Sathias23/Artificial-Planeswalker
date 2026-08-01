@@ -43,6 +43,7 @@ from src.companion.app.images import (
     ImageSize,
     fetch_image,
     image_client,
+    image_pacer,
     resolve_face_images,
 )
 from src.data.repositories.card import CardRepository
@@ -262,16 +263,27 @@ async def read_card_image(
         raise CompanionError("no_image_data")
 
     client = image_client(request.app)
-    if client is None:
+    pacer = image_pacer(request.app)
+    if client is None or pacer is None:
         # Unreachable on every supported path — the lifespan always runs before a request is
-        # served — but a missing client is a wiring bug, not a CDN failure, and must not be
-        # laundered into image_fetch_failed. Same reasoning as deps.get_session's missing holder.
+        # served — but a missing client or pacer is a wiring bug, not a CDN failure, and must not
+        # be laundered into image_fetch_failed. Same reasoning as deps.get_session's missing
+        # holder. One guard for both because they are created on consecutive lifespan lines and
+        # either being absent means the same thing: startup did not happen.
         logger.error(
-            "No image client on the app serving %s; the lifespan did not run", request.url.path
+            "No image client or pacer on the app serving %s; the lifespan did not run",
+            request.url.path,
         )
         raise CompanionError("internal_error")
 
-    body, content_type = await fetch_image(client, url)
+    # Every outbound byte in this application goes through this one call, and since c3-6 through
+    # the pacer it is handed — which is what makes AD-11's "exactly one choke point" mechanically
+    # true rather than aspirational: there is one call site and it cannot fetch without pacing.
+    # The request may queue here; a cold 100-card deck is ~99 tiles at 100 ms apart, so the last
+    # one starts ~9.8 s in. That is an EXPECTED observation (NFR-05 excludes first-fetch image
+    # paint), it is deliberately not published to the wire, and it is written down for the tile
+    # author in ui/README.md's blind-spot section (Q4, Brad 2026-08-01).
+    body, content_type = await fetch_image(client, url, pacer)
     # `nosniff` because the body and its declared type are an upstream's word, not ours: without
     # it a browser may sniff a mislabelled body into something executable on this app's own
     # origin. fetch_image already refuses SVG — the one image type that carries script — and this

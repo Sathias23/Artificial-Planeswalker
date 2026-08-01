@@ -6,7 +6,7 @@ the internet, and everything awkward about it follows from that: a response that
 answer for "the card is fine but the picture isn't", and a dependency that can be slow, absent or
 hostile.
 
-Two halves, deliberately separable:
+Three halves, deliberately separable:
 
 * :func:`resolve_face_images` is **pure** — no session, no client, no I/O. It answers *which of
   this card's image maps does face N mean?*, and it is the single piece of code in the app that
@@ -15,6 +15,9 @@ Two halves, deliberately separable:
   place that actually implements it.
 * :func:`fetch_image` is the outbound call: allow-list, request, and the mapping of every
   upstream outcome onto one of this story's two answers.
+* :class:`Pacer` (c3-6) is the queue in front of it — one semaphore plus request spacing, held
+  by the app and passed to every fetch. It is a *rate*, which is the one thing in this module
+  whose correctness is timing, and it is why the clock and the sleep are constructor parameters.
 
 **Why this is a second Scryfall client and not a reuse of the existing one.**
 ``src/data/importers/scryfall_api.py`` already talks to Scryfall, and
@@ -24,27 +27,40 @@ guard is what forces the duplication to be a decision rather than an oversight. 
 client is prior art to read; the answer to the guard firing is different code, never a wider
 allow-list.
 
+**The unpaced window is closed** (c3-6, 2026-08-01). Between c3-5 and c3-6 this route fetched with
+no queue in front of it; that window is shut, it was never reached by a browser, and the paragraph
+that used to describe it as *"small and UI-less, not closed"* has been replaced by this one rather
+than left to read as a live caveat. No code under ``ui/`` fetches an image until **c4-4**, so the
+first client this module ever serves will find the pacer already there.
+
 **What is deliberately NOT here**, so the absence reads as a decision rather than an omission:
 
-* **no pacer, no concurrency cap** — story **c3-6**. Between this story and that one the route
-  fetches unpaced. That window closes inside the same epic, **before any UI client exists**: no
-  code under ``ui/`` fetches an image until **c4-4**. The route itself is live from today — an
-  agent, ``curl`` or ``/docs`` can drive it — so the window is small and UI-less, not closed
-  (review 2026-08-01: the earlier "before any client exists" overclaimed).
 * **no disk cache** — story **c3-7**, which also owns the cache directory under ``data_dir()``.
-  Nothing here writes a file, and ``build_app()`` creates no directory (AD-10).
+  Nothing here writes a file, and ``build_app()`` creates no directory (AD-10). This is also where
+  the epic's CM-2 acceptance criterion lives — *"an image fetched once is not fetched again within
+  the cache lifetime"*. **c3-6 does not satisfy it and does not pretend to**: there is no cache in
+  this module, so a repeat request repeats the fetch. Named here rather than paraphrased into
+  something adjacent, because an unsatisfiable claim gets an owner, not a rewording.
+* **no in-flight coalescing** — also **c3-7** (Q5, Brad 2026-08-01). Two *simultaneous* requests
+  for the same URL each get their own fetch. It is the one storm shape a semaphore does not
+  prevent, and it was declined here on ownership rather than merit: the thing being shared is a
+  *result*, and whether that result is bytes, a disk path or a ``Future`` depends entirely on what
+  c3-7 builds. Measured cost today is **zero extra fetches** on both 99-distinct-id decks, because
+  duplicate printings collapse in ``deck_cards`` before they reach the route; **c6-4**'s suggestion
+  rows beside the deck grid are the surface that would change that answer.
 * **no negative cache and no backoff** — story **c3-8**. A failure is answered and forgotten;
   the wire vocabulary it needs (``image_fetch_failed``) is already paid for, so c3-8 is pure
   behaviour with no schema change.
 
-Building **any** hook, registry, no-op semaphore or placeholder for those three is out of scope on
-c3-4's precedent: *an unused hook is a design decision made by a story that cannot see the
-requirements.*
+Building **any** hook, registry or placeholder for those is out of scope on c3-4's precedent: *an
+unused hook is a design decision made by a story that cannot see the requirements.*
 """
 
 import asyncio
 import logging
-from collections.abc import Mapping, Sequence
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from contextlib import asynccontextmanager
 from importlib.metadata import PackageNotFoundError, version
 from typing import Literal
 from urllib.parse import urlsplit
@@ -149,8 +165,17 @@ _FETCH_TOTAL_SECONDS = 20.0
 ``httpx``'s ``read`` deadline caps the gap **between chunks**, not the duration of the exchange —
 a server dripping one byte every second beats it forever. Comfortably above ``connect + read`` so
 it never fires on an ordinary slow response, and small enough that a pathological upstream costs
-one tile twenty seconds rather than holding a connection (and, from c3-6, a pacer slot) open
-indefinitely.
+one tile twenty seconds rather than holding a connection — **and, since c3-6, a pacer slot** —
+open indefinitely. That is now the sharper of the two reasons: a stuck fetch holds one of only
+:data:`FETCH_CONCURRENCY` permits, so without this bound a handful of pathological responses could
+close the whole choke point rather than merely leak sockets.
+
+**The queue wait is deliberately OUTSIDE this deadline** (Q4, Brad 2026-08-01). It bounds *a
+conversation with an upstream*, and a request still waiting its turn has no conversation to bound.
+Inside it, the last tile of a cold 99-tile deck would queue for ~9.8 s and then be given ~10 s to
+complete a fetch it had not started — failing its own budget for a reason that has nothing to do
+with the upstream. :func:`fetch_image` enters the pacer first and this deadline second, and the
+nesting is visible in the code rather than resting on a reader counting indentation.
 """
 
 _MAX_IMAGE_BYTES = 16 * 1024 * 1024
@@ -166,6 +191,51 @@ and the fetch is abandoned the moment the running total crosses the ceiling — 
 ``Content-Length`` over it is refused before a byte is read. The first cut of this check ran
 ``len()`` on a body ``client.get()`` had already buffered whole, which made the constant
 documentation rather than a defence.
+"""
+
+FETCH_SPACING_SECONDS = 0.1
+"""The minimum gap between two outbound fetch **starts**, process-wide (AD-11, c3-6).
+
+**This number is a good-citizen and NFR-05 budget choice, not compliance, and the distinction is
+the point.** Scryfall asks consumers for sustained traffic under 10 requests/second with 50-100 ms
+between calls — but that guidance covers ``api.scryfall.com``, and the ``*.scryfall.io`` file
+origins this route actually fetches from are **explicitly exempt from it**. Presenting 0.1 s as
+adherence to a rule that does not apply here would be documentation asserting a protection the
+situation never required.
+
+So the justification is arithmetic, twice over:
+
+* it is the **conservative end** of the band Scryfall publishes for the endpoints it does govern —
+  a deliberate posture toward a host this project does not own and does not pay for; and
+* it **is** the epic's own acceptance observation. A real 100-card deck resolves to 67-99 distinct
+  card ids (measured over the 18 saved decks with >=90 cards; basic lands collapse), the grid asks
+  for face 0 only, and 99 tiles x 0.1 s = **9.9 s** against the epic's *"roughly 12 MB over roughly
+  10 seconds"*. The 12 MB half is the same arithmetic from the other side: 12 MB / 99 tiles is
+  ~124 KB, a Scryfall ``normal`` JPEG.
+
+Spacing is measured between **starts**, never between completions. Completion-based spacing
+degrades into serialisation the instant the CDN slows down, which is the opposite of what
+:data:`FETCH_CONCURRENCY` is for.
+
+Not configurable by environment: nothing needs it in MVP, and a knob is a supported interface.
+"""
+
+FETCH_CONCURRENCY = 4
+"""How many image fetches may be open against the CDN at once, process-wide (AD-11, c3-6).
+
+**This is the half the spacing structurally cannot do**, and at ordinary latency it never binds at
+all. Steady-state throughput for spacing ``S``, cap ``N`` and per-fetch latency ``L`` is
+``min(1/S, N/L)``:
+
+* at a normal ``L`` of ~0.2 s, ``min(1/0.1, 4/0.2)`` is ``min(10, 20)`` — the **spacing** wins and
+  this constant is inert;
+* at a degraded ``L`` of 2 s, ``min(10, 2)`` — the **cap** wins, the rate falls to 2/s, and at most
+  four sockets are held. Uncapped, the same 99-tile burst would hold roughly twenty.
+
+That asymmetry is the entire justification: **a struggling upstream should receive less traffic,
+not the same traffic spread over more connections.** The two constants therefore bind under
+different conditions and neither substitutes for the other — collapsing them into one number
+satisfies neither.
 """
 
 
@@ -299,8 +369,13 @@ def build_image_client(*, transport: httpx.AsyncBaseTransport | None = None) -> 
     lifespan the right home is that **something must close it**, and only the lifespan has a
     teardown.
 
-    This is **not** the pacer and must not grow into one: c3-6 adds its semaphore *around* this
-    client, not inside it.
+    This is **not** the pacer and it did not grow into one. c3-6 shipped :class:`Pacer` as a
+    separate object that wraps *calls to* this client — :func:`fetch_image` enters a pacer slot and
+    then issues the request — so nothing about the client's construction, transport or timeouts
+    knows the rate exists. That separation is what keeps the ``transport=`` seam below meaning
+    exactly one thing, and it is why a test can substitute a fictional socket layer without
+    substituting the pacing, or vice versa. Keep it: a transport-level pacer would silently pace
+    anything else this client is ever used for.
 
     ``follow_redirects`` is **False** (Brad, review ruling 2026-08-01). The allow-list is checked
     on the *stored* URL; a client that follows redirects would fetch whatever ``Location`` an
@@ -352,6 +427,158 @@ def image_client(app: FastAPI) -> httpx.AsyncClient | None:
     return client
 
 
+class Pacer:
+    """The one choke point every outbound image fetch passes through (AD-11, c3-6).
+
+    **Two mechanisms, not one, because they bind under different conditions** — see
+    :data:`FETCH_SPACING_SECONDS` and :data:`FETCH_CONCURRENCY` for the arithmetic. A semaphore
+    caps how many fetches are *open*; a turnstile spaces how often one may *start*. A design that
+    collapses them into a single number satisfies neither requirement.
+
+    **Order matters and is the easy thing to get backwards.** The permit is taken **first** and the
+    spacing turn **second**, so the turn is claimed immediately before the request goes out. The
+    other order looks identical and paces nothing under load: turns would be consumed by tasks
+    still queuing for a permit, and by the time one started, its spacing had long expired. (c3-5's
+    review theme in this story's costume — a check that runs after the thing it was meant to
+    prevent reads exactly like one that works.)
+
+    **What is defence and what is necessity**, in the manner of
+    :class:`~src.companion.app.deps.Database`'s lock docstring, because the two mechanisms are not
+    equally load-bearing today:
+
+    * The **turnstile lock is necessity.** It is what makes the spacing *global*: without it, two
+      concurrent callers would read the same cursor, both conclude they may start now, and both
+      start now.
+    * The **semaphore is defence, and is measurably inert under the shipped constants.** At the
+      normal latency this route sees it never blocks — the spacing admits work more slowly than
+      four concurrent fetches can retire it. It exists for the degraded case the spacing cannot
+      see, and it is kept because that case is exactly when restraint matters and exactly when
+      nobody is watching. ``test_images.py`` pins both the inertness (as arithmetic) and the
+      binding (against a stalled CDN).
+
+    **Constructing one is free and cannot fail**: ``asyncio.Semaphore`` and ``asyncio.Lock`` no
+    longer bind an event loop at construction on Python 3.10+, which this repo already relies on —
+    ``deps.Database`` creates its lock outside any running loop for the same reason. So a pacer can
+    be created in the lifespan beside the client without widening the startup surface that
+    ``test_app.py::test_startup_failure_propagates`` pins.
+
+    **One per app, which is not literally one per process, and that is deliberate.** AD-11 says
+    *one backend-global semaphore*; a module-level singleton would be the literal reading and is
+    rejected on ``Database``'s own shipped ruling against globals that *"would serialise unrelated
+    apps in a test run and hide a real double-creation bug behind a global"*. A test suite that
+    builds forty apps gets forty pacers and no cross-test timing debt. What AC 2 actually gates is
+    that ``src/companion`` contains exactly **one construction site**, which is the property that
+    makes "no caller can route around it" true.
+
+    Nothing here needs closing, so :func:`~src.companion.app.main._shutdown` is untouched by it.
+
+    Args:
+        spacing: Seconds between fetch starts. Defaults to :data:`FETCH_SPACING_SECONDS`.
+        limit: Simultaneous fetches allowed. Defaults to :data:`FETCH_CONCURRENCY`.
+        clock: The monotonic time source, in seconds. Injected so a test can assert **exact**
+            start offsets at zero wall-clock cost (c3-6 AC 9) — a rate proved by measuring elapsed
+            real time is slow when it passes and mysterious when it fails on a loaded box. The
+            route never passes this; only tests do.
+        sleep: The awaitable delay. Injected alongside *clock* and for the same reason. It must be
+            asynchronous: a synchronous sleep here would pace correctly and stall every other
+            request in the process while it did.
+
+    Example:
+        >>> Pacer().available_permits == FETCH_CONCURRENCY
+        True
+    """
+
+    def __init__(
+        self,
+        *,
+        spacing: float = FETCH_SPACING_SECONDS,
+        limit: int = FETCH_CONCURRENCY,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    ) -> None:
+        self._spacing = spacing
+        self._clock = clock
+        self._sleep = sleep
+        self._capacity = asyncio.Semaphore(limit)
+        self._turnstile = asyncio.Lock()
+        # None rather than a number: a cold process must paint its first tile immediately, and
+        # any sentinel drawn from the clock's own scale would be a guess about its epoch.
+        self._next_start: float | None = None
+
+    @property
+    def available_permits(self) -> int:
+        """How many fetches could start right now without waiting for one to finish.
+
+        Exposed for the cancellation tests, which assert the count returns to where it started —
+        a permit leaked per cancelled request is a pacer that narrows over a session of scrolling
+        until it serves nothing.
+        """
+        # `_value` is asyncio.Semaphore's own counter. Read-only, and read here rather than
+        # tracked separately so the assertion cannot drift from the thing it claims to measure.
+        return self._capacity._value
+
+    @asynccontextmanager
+    async def slot(self) -> AsyncIterator[None]:
+        """Hold one fetch's place: a permit for its duration, and a spaced start.
+
+        The permit is held for the **whole exchange**, which is what makes
+        :data:`FETCH_CONCURRENCY` a bound on simultaneously open requests rather than on how fast
+        they are issued.
+
+        ``async with`` on both primitives is what makes cancellation safe (AC 7): a manual
+        ``acquire()``/``release()`` pair around an ``await`` leaks a permit on ``CancelledError``,
+        and a browser navigating away from a deck view is exactly that cancellation, ~99 times.
+
+        Yields:
+            None — the caller may issue its request for the duration of the block.
+        """
+        async with self._capacity:
+            await self._wait_for_turn()
+            yield
+
+    async def _wait_for_turn(self) -> None:
+        """Block until this caller may start, then claim the next slot in the queue.
+
+        The lock is held **across** the wait on purpose, and that is what makes the queue
+        first-come-first-served: ``asyncio.Lock`` wakes waiters in arrival order, so callers take
+        their turns in the order they asked for them rather than racing on a shared cursor.
+
+        The cursor is advanced **after** the wait, never before. A caller cancelled mid-wait
+        therefore surrenders the turnstile without having moved the cursor: the next caller still
+        spaces itself from the last start that actually happened, but no slot is claimed for the
+        start that never did — cancellations cannot accumulate dead air. (Not "starts
+        immediately", as an earlier version of this sentence said: the mid-cancellation test
+        asserts exactly one spacing from the last real start; review 2026-08-01.)
+        """
+        async with self._turnstile:
+            now = self._clock()
+            if self._next_start is not None and self._next_start > now:
+                await self._sleep(self._next_start - now)
+                # Re-read rather than assume: a real sleep may overshoot, and pacing from the
+                # actual start keeps the gaps honest instead of accumulating drift.
+                now = self._clock()
+            self._next_start = now + self._spacing
+
+
+def image_pacer(app: FastAPI) -> Pacer | None:
+    """Return the pacer the lifespan created for *app*, or ``None`` if it never ran.
+
+    Mirrors :func:`image_client` exactly, including what absence means: *the lifespan did not run*,
+    which is a wiring bug rather than a served state, and the caller reports it as
+    ``internal_error`` rather than fetching unpaced.
+
+    Args:
+        app: The application to read.
+
+    Returns:
+        The shared pacer, or ``None``.
+    """
+    # Annotated local rather than `return getattr(...)`: app.state is Any, and warn_return_any
+    # would flag returning it directly.
+    pacer: Pacer | None = getattr(app.state, "image_pacer", None)
+    return pacer
+
+
 def _refused_host(url: str) -> str:
     """Name the host of a refused URL for the log, without trusting the URL to parse.
 
@@ -387,12 +614,17 @@ def _is_servable_image_type(content_type: str) -> bool:
     return media_type.startswith(_IMAGE_CONTENT_TYPE_PREFIX) and media_type != _SVG_MEDIA_TYPE
 
 
-async def fetch_image(client: httpx.AsyncClient, url: str) -> tuple[bytes, str]:
-    """Fetch one image, or raise the token that says why not (AC 11-14).
+async def fetch_image(client: httpx.AsyncClient, url: str, pacer: Pacer) -> tuple[bytes, str]:
+    """Fetch one image through the pacer, or raise the token that says why not (AC 11-14).
 
     **Async throughout and never blocking the event loop** (AD-11): no ``requests``, no
     ``httpx.Client``, no ``run_in_executor``, no synchronous socket or file call anywhere on this
     path.
+
+    **Every outbound image byte in this application passes through this function, and since c3-6
+    through the :class:`Pacer` it is handed.** The pacer is a required parameter rather than a
+    default precisely so that is structural: there is no signature here that fetches unpaced, so a
+    future caller cannot forget one (Q1, Brad 2026-08-01).
 
     Every upstream outcome collapses to the same answer, because they mean the same thing to a
     caller — *the picture is not available right now, and it might be later*: a refused URL, a
@@ -421,9 +653,22 @@ async def fetch_image(client: httpx.AsyncClient, url: str) -> tuple[bytes, str]:
     what ``asyncio.timeout`` raises and belongs to neither. ``except Exception`` would swallow a
     ``MemoryError`` or a programming error and report it as a CDN blip.
 
+    **The queue wait sits OUTSIDE the whole-exchange deadline** (Q4, Brad 2026-08-01).
+    :data:`_FETCH_TOTAL_SECONDS` bounds a *conversation with an upstream*, and a request that has
+    not started has no conversation to bound. Inside it, the 99th tile of a cold deck would burn
+    its entire 20 s budget queueing and then time out on a fetch that never sent a byte. There is
+    deliberately **no ceiling on queueing** in MVP: the natural bound is the caller, since a client
+    that disconnects cancels the request and releases the slot, and a ceiling would need either a
+    new reason token for a state no consumer can act on differently or a false reuse of the
+    transient one.
+
+    The allow-list is checked **before** the pacer is entered, so a refused URL costs neither a
+    permit nor a spacing turn: it issues no request, so it owes the rate nothing.
+
     Args:
         client: The shared outbound client from :func:`build_image_client`.
         url: The absolute URL taken from the card row — never one this app assembled.
+        pacer: The application's one :class:`Pacer`. Required, never defaulted — see above.
 
     Returns:
         The image bytes, and the ``Content-Type`` the upstream actually sent (which is what the
@@ -443,6 +688,28 @@ async def fetch_image(client: httpx.AsyncClient, url: str) -> tuple[bytes, str]:
         )
         raise CompanionError("image_fetch_failed")
 
+    async with pacer.slot():
+        return await _fetch_within_deadline(client, url)
+
+
+async def _fetch_within_deadline(client: httpx.AsyncClient, url: str) -> tuple[bytes, str]:
+    """Run one already-paced exchange under the whole-exchange deadline.
+
+    Split out of :func:`fetch_image` so the pacer's ``async with`` wraps the deadline rather than
+    the other way round (Q4) — and so the nesting is visible in the shape of the code instead of
+    resting on a reader counting indentation levels.
+
+    Args:
+        client: The shared outbound client.
+        url: An allow-listed URL, already checked by the caller.
+
+    Returns:
+        The image bytes and the upstream's own ``Content-Type``.
+
+    Raises:
+        CompanionError: ``image_fetch_failed``, for every outcome documented on
+            :func:`fetch_image`.
+    """
     try:
         async with asyncio.timeout(_FETCH_TOTAL_SECONDS):
             async with client.stream("GET", url) as response:
