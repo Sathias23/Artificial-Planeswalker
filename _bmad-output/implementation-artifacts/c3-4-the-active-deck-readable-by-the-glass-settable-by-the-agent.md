@@ -465,7 +465,7 @@ and the new check must match it.
 - [ ] **Task 9 — Same-day three-layer review before the PR** (C2 retro action item 6, standing)
   - [x] `bmad-code-review` (Blind Hunter + Edge Case Hunter + Acceptance Auditor) before raising the PR
   - [x] Apply patches, then re-run every gate and paste the output
-  - [ ] Raise the PR into `feat/companion-c3`
+  - [x] Raise the PR into `feat/companion-c3` — PR #32 (2026-08-01)
 
 ### Review Findings
 
