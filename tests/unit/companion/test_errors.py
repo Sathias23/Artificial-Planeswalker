@@ -19,6 +19,7 @@ from src.companion.app.errors import (
     STATUS_BY_REASON,
     CompanionError,
     UnhandledErrorMiddleware,
+    error_response,
     error_responses,
 )
 from src.companion.app.main import build_app
@@ -399,6 +400,16 @@ class TestRaisedErrorsReachTheWire:
         assert response.status_code == 405
         assert response.headers["cache-control"] == "no-store"
         assert "GET" in response.headers["allow"]
+
+    def test_a_callers_cache_control_overrides_no_store_whatever_its_casing(self):
+        # The docstring promises the override; HTTP names are case-insensitive and dict keys are
+        # not, so a plain `**` merge over `cache-control` shipped TWO conflicting Cache-Control
+        # headers on the wire (review 2026-08-01). Nothing sends one today — this is the pin
+        # that keeps the promise true for the later story that does.
+        for spelling in ("Cache-Control", "cache-control", "CACHE-CONTROL"):
+            response = error_response("invalid_request", headers={spelling: "max-age=5"})
+            values = response.headers.getlist("cache-control")
+            assert values == ["max-age=5"], f"{spelling!r} produced {values}"
 
 
 class TestFrameworkFailuresAreTypedToo:

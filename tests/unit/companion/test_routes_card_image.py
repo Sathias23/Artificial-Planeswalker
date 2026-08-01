@@ -603,6 +603,17 @@ class TestCacheHeaders:
 
         assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
 
+    async def test_a_served_image_carries_nosniff(self, image_shapes, lifespan_client, cdn):
+        """The body and its type are an upstream's word, not ours (review 2026-08-01).
+
+        Without it a browser may sniff a mislabelled body into something executable on this
+        app's own origin — `fetch_image` refuses SVG by name, and this is the belt to that brace.
+        """
+        async with lifespan_client(build_app()) as client:
+            response = await client.get(_IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID))
+
+        assert response.headers["x-content-type-options"] == "nosniff"
+
     @pytest.mark.parametrize(
         ("card_id", "status"),
         [(NO_IMAGE_ID, 404), (ABSENT_ID, 404)],

@@ -106,12 +106,17 @@ async def _shutdown(app: FastAPI) -> None:
     # when a test drives _shutdown directly — and there is then nothing of ours to retract.
     if instance_id is not None:
         discovery.remove_discovery(instance_id)
-    client = images.image_client(app)
-    if client is not None:
-        await client.aclose()
-    holder = deps.database(app)
-    if holder is not None:
-        await holder.dispose()
+    # try/finally, not sequence: step 1 is certified never to raise, but `aclose` carries no such
+    # guarantee, and a failing close must not strand the engine dispose below it — the exact
+    # stranding this docstring credits step 1 with avoiding (review 2026-08-01).
+    try:
+        client = images.image_client(app)
+        if client is not None:
+            await client.aclose()
+    finally:
+        holder = deps.database(app)
+        if holder is not None:
+            await holder.dispose()
 
 
 @asynccontextmanager

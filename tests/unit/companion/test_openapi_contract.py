@@ -93,6 +93,19 @@ reviewer, with a blind-spot row in ``ui/README.md`` saying so.
 """
 
 
+SCRYFALL_HOST = re.compile(r"(?:[A-Za-z0-9-]+\.)*scryfall\.(?:io|com)", re.IGNORECASE)
+"""Any Scryfall host, apex or subdomained — the family, not a member list (c3-5 AC 19).
+
+The published contract must never name where the images actually come from: a generated client
+that reads a CDN host out of ``types.d.ts`` and fetches it directly is exactly the hotlink AD-11
+exists to prevent, and every hit is fixed **at the Python docstring**, never in the generated
+file. Deliberately wider than the frontend's twin (``ui/tests/no-scryfall-hosts.test.ts``): that
+scan must spare the Footer's apex-host attribution link, but nothing on the wire has any business
+naming even ``scryfall.com`` bare. ``scryfall_id`` — the path parameter — has no dot and stays
+outside the family, which the non-vacuity test pins.
+"""
+
+
 def _descriptions(node: Any) -> list[str]:
     """Collect every ``description`` string in a decoded schema, at any depth.
 
@@ -310,6 +323,37 @@ class TestDescriptionsAreSummaries:
         # The per-token enumeration is the half c2-9's state panels are written against.
         assert "``database_not_initialized``" in error_description
         assert "``internal_error``" in error_description
+
+    def test_no_scryfall_host_reaches_the_wire(self) -> None:
+        """Nothing in the rendered schema names a Scryfall host, apex or subdomained (AC 19).
+
+        Scanned over the WHOLE rendered document, not just descriptions: a host could reach the
+        wire as an example value, a default, or a server entry, and every one of those spellings
+        is the same leak. ``openapi.json`` is what ``types.d.ts`` is generated from, so this is
+        the wire half of the rule; the frontend half (the generated files as committed, plus all
+        of ``ui/src``) is ``ui/tests/no-scryfall-hosts.test.ts``.
+        """
+        rendered = render_schema()
+
+        match = SCRYFALL_HOST.search(rendered)
+        assert match is None, (
+            f"a Scryfall host reached the published contract: {match.group(0)!r}. Fix at the "
+            "Python docstring or contract that leaked it — never by editing the generated file."
+        )
+
+    def test_the_scryfall_host_family_catches_something_it_should(self) -> None:
+        """Non-vacuity for the host scan: fires on every class, spares the path parameter."""
+        for planted in (
+            "https://cards.scryfall.io/normal/front/a/b/c.jpg?123",
+            "https://errors.scryfall.com/soon.jpg",
+            "https://api.scryfall.com/cards/named?exact=x",
+            "scryfall.com",  # apex: bare too is banned on the wire, unlike in ui/src
+            "HTTPS://CARDS.SCRYFALL.IO/x.jpg",  # case cannot smuggle one past
+        ):
+            assert SCRYFALL_HOST.search(planted), f"the family missed {planted!r}"
+        # ...and the two spellings the schema legitimately carries stay outside the family.
+        assert not SCRYFALL_HOST.search("/api/card-image/{scryfall_id}")
+        assert not SCRYFALL_HOST.search("The Scryfall printing uuid for this card.")
 
     def test_the_quoted_placeholder_label_is_the_artefacts(self) -> None:
         """The ``ErrorResponse`` docstring quotes the "Unknown card" label onto the wire.

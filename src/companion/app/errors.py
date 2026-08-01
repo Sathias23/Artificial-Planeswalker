@@ -154,10 +154,17 @@ def error_response(
     # broken tile in that tab. No modelled failure in this app is worth re-serving from a cache:
     # every one of them is either about right now (503, 502) or about a request that will be
     # answered the same way anyway (400, 403, 404).
+    #
+    # The override is honoured by HEADER semantics, not dict semantics (review 2026-08-01): HTTP
+    # names are case-insensitive and dict keys are not, so a plain `**` merge over a caller's
+    # `cache-control` would put TWO conflicting Cache-Control headers on the wire.
+    merged: dict[str, str] = {"Cache-Control": "no-store"}
+    for name, value in dict(headers or {}).items():
+        merged["Cache-Control" if name.lower() == "cache-control" else name] = value
     return JSONResponse(
         status_code=STATUS_BY_REASON[reason] if status is None else status,
         content=ErrorResponse(reason=reason).model_dump(),
-        headers={"Cache-Control": "no-store", **dict(headers or {})},
+        headers=merged,
     )
 
 

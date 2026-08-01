@@ -27,8 +27,10 @@ allow-list.
 **What is deliberately NOT here**, so the absence reads as a decision rather than an omission:
 
 * **no pacer, no concurrency cap** — story **c3-6**. Between this story and that one the route
-  fetches unpaced. That window closes inside the same epic, **before any client exists**: no code
-  under ``ui/`` fetches an image until **c4-4**, so the only caller today is a test.
+  fetches unpaced. That window closes inside the same epic, **before any UI client exists**: no
+  code under ``ui/`` fetches an image until **c4-4**. The route itself is live from today — an
+  agent, ``curl`` or ``/docs`` can drive it — so the window is small and UI-less, not closed
+  (review 2026-08-01: the earlier "before any client exists" overclaimed).
 * **no disk cache** — story **c3-7**, which also owns the cache directory under ``data_dir()``.
   Nothing here writes a file, and ``build_app()`` creates no directory (AD-10).
 * **no negative cache and no backoff** — story **c3-8**. A failure is answered and forgotten;
@@ -120,6 +122,18 @@ _ACCEPT = "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8"
 
 _IMAGE_CONTENT_TYPE_PREFIX = "image/"
 
+_SVG_MEDIA_TYPE = "image/svg+xml"
+"""The one ``image/*`` type that is refused (review 2026-08-01).
+
+SVG is the single member of the image family that can carry script, and this route serves
+upstream bytes from the companion's **own origin** — the SPA's origin. A scripted SVG from a
+misbehaving or compromised CDN, navigated to directly, would execute there and then be held for a
+year by :data:`IMAGE_CACHE_CONTROL`. The corpus makes the refusal free: all 245,760 stored URLs
+end in ``.jpg`` or ``.png``, so no real card loses its picture. The success response also carries
+``X-Content-Type-Options: nosniff`` (see ``routes/cards.py``) so a browser cannot second-guess a
+raster type into something executable.
+"""
+
 _FETCH_TIMEOUT = httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0)
 """Per-axis deadlines for one image fetch.
 
@@ -146,6 +160,12 @@ The largest stored size is ``png`` at roughly 1 MB, so 16 MB is well over an ord
 headroom. It exists because the *response* is not ours: without a ceiling, one hostile or broken
 upstream can make the companion buffer until the machine swaps, and AD-11's "no substitute image"
 rule means the honest answer to an oversized body is a fetch failure, not a truncated picture.
+
+Enforced **while streaming**, not after the fact (review 2026-08-01): the body is read in chunks
+and the fetch is abandoned the moment the running total crosses the ceiling — a declared
+``Content-Length`` over it is refused before a byte is read. The first cut of this check ran
+``len()`` on a body ``client.get()`` had already buffered whole, which made the constant
+documentation rather than a defence.
 """
 
 
@@ -245,8 +265,10 @@ def is_fetchable(url: str) -> bool:
     ``https://evilcards.scryfall.io/x`` for a suffix test, and
     ``https://cards.scryfall.io@evil.example/x`` contains the allowed host verbatim while
     addressing another machine entirely. ``urlsplit().hostname`` lower-cases the host and drops
-    userinfo and the port, so a non-default port is correctly *not* a member — a different port is
-    a different endpoint.
+    userinfo and the port, so **any** explicit port is refused — including a spelled-out ``:443``,
+    which does address the same endpoint. That is fail-closed on an unmeasured spelling rather
+    than a claim about ports: zero of the 245,760 stored URLs carry one (review 2026-08-01 —
+    the earlier "a different port is a different endpoint" was false for the default port).
 
     Args:
         url: The URL stored on the card row.
@@ -280,6 +302,14 @@ def build_image_client(*, transport: httpx.AsyncBaseTransport | None = None) -> 
     This is **not** the pacer and must not grow into one: c3-6 adds its semaphore *around* this
     client, not inside it.
 
+    ``follow_redirects`` is **False** (Brad, review ruling 2026-08-01). The allow-list is checked
+    on the *stored* URL; a client that follows redirects would fetch whatever ``Location`` an
+    allowed host answered — including ``http://`` or the loopback and link-local addresses
+    :data:`ALLOWED_IMAGE_HOSTS` exists to keep this backend away from — with no check at all on
+    the hop. Refusing to follow fails closed, exactly as the allow-list itself does, and costs
+    nothing against the measured corpus: stored CDN URLs are terminal, and a 3xx therefore
+    answers as an ordinary non-200 fetch failure in :func:`fetch_image`.
+
     ``trust_env`` is left at httpx's default of ``True``, which is a deliberate divergence from
     ``src/companion/client.py``'s ``trust_env=False`` rather than an inconsistency. That module
     probes *loopback*, where honouring ``HTTP_PROXY`` would send a health check to a proxy and
@@ -297,7 +327,7 @@ def build_image_client(*, transport: httpx.AsyncBaseTransport | None = None) -> 
     """
     return httpx.AsyncClient(
         timeout=_FETCH_TIMEOUT,
-        follow_redirects=True,
+        follow_redirects=False,
         transport=transport,
         headers={"User-Agent": _user_agent(), "Accept": _ACCEPT},
     )
@@ -322,6 +352,41 @@ def image_client(app: FastAPI) -> httpx.AsyncClient | None:
     return client
 
 
+def _refused_host(url: str) -> str:
+    """Name the host of a refused URL for the log, without trusting the URL to parse.
+
+    ``is_fetchable`` returns False for a URL ``urlsplit`` raises on, so this path must survive
+    the same ``ValueError`` — the first cut called ``urlsplit`` bare inside the log line and
+    turned an unparseable stored value into a 500 (review 2026-08-01).
+
+    Args:
+        url: The URL that was refused.
+
+    Returns:
+        The lower-cased hostname, or ``"<unparseable>"``.
+    """
+    try:
+        return urlsplit(url).hostname or "<unparseable>"
+    except ValueError:
+        return "<unparseable>"
+
+
+def _is_servable_image_type(content_type: str) -> bool:
+    """Return whether an upstream ``Content-Type`` is one this route will echo.
+
+    The media type (parameters stripped) must be ``image/*`` and must not be
+    :data:`_SVG_MEDIA_TYPE` — the one image type that can carry script.
+
+    Args:
+        content_type: The header value as the upstream sent it, possibly with parameters.
+
+    Returns:
+        True for a servable raster type; False for anything else.
+    """
+    media_type = content_type.split(";", 1)[0].strip().lower()
+    return media_type.startswith(_IMAGE_CONTENT_TYPE_PREFIX) and media_type != _SVG_MEDIA_TYPE
+
+
 async def fetch_image(client: httpx.AsyncClient, url: str) -> tuple[bytes, str]:
     """Fetch one image, or raise the token that says why not (AC 11-14).
 
@@ -331,20 +396,28 @@ async def fetch_image(client: httpx.AsyncClient, url: str) -> tuple[bytes, str]:
 
     Every upstream outcome collapses to the same answer, because they mean the same thing to a
     caller — *the picture is not available right now, and it might be later*: a refused URL, a
-    connect or read failure, a whole-exchange timeout, any non-2xx status, a body that is not an
-    image, and a body larger than this backend will hold. **Nothing here ever returns a substitute
-    image** (AD-11): no grey rectangle, no 1×1 pixel, no generic card back. The client draws
-    UX-DR22's named placeholder, which it can, because it already holds the card's name, cost and
-    type line from ``GET /api/cards/{card_id}``.
+    connect or read failure, a whole-exchange timeout, any non-2xx status (which since the
+    review ruling includes a redirect — the client does not follow them), a body that is not a
+    servable image (foreign markup, or SVG — the one image type that can carry script), and a
+    body larger than this backend will hold. **Nothing here ever returns a substitute image**
+    (AD-11): no grey rectangle, no 1×1 pixel, no generic card back. The client draws UX-DR22's
+    named placeholder, which it can, because it already holds the card's name, cost and type line
+    from ``GET /api/cards/{card_id}``.
+
+    The body is **streamed against the ceiling**: status, ``Content-Type`` and any declared
+    ``Content-Length`` are judged before a byte of body is read, and the running total abandons
+    the exchange the moment it crosses :data:`_MAX_IMAGE_BYTES` — an oversized body costs this
+    process 16 MB, never the upstream's patience.
 
     The URL is used **verbatim**, query string and all. Scryfall's ``?<timestamp>`` is a
     cache-buster the URL 404s without, and the ``/front/``–``/back/`` path segment — perfectly
     consistent across all 5,556 imaged faces, measured — is read, never constructed.
 
-    The ``except`` is narrow on purpose. ``httpx.HTTPError`` is the transport family's root and is
-    not a ``ValueError``; ``TimeoutError`` is what ``asyncio.timeout`` raises and belongs to
-    neither. ``except Exception`` would swallow a ``MemoryError`` or a programming error and
-    report it as a CDN blip.
+    The ``except`` is narrow on purpose. ``httpx.HTTPError`` is the transport family's root;
+    ``httpx.InvalidURL`` is **not** under it (it inherits ``Exception`` directly) and is listed
+    for the URL that satisfies ``urlsplit`` but not httpx's stricter parser; ``TimeoutError`` is
+    what ``asyncio.timeout`` raises and belongs to neither. ``except Exception`` would swallow a
+    ``MemoryError`` or a programming error and report it as a CDN blip.
 
     Args:
         client: The shared outbound client from :func:`build_image_client`.
@@ -353,7 +426,9 @@ async def fetch_image(client: httpx.AsyncClient, url: str) -> tuple[bytes, str]:
     Returns:
         The image bytes, and the ``Content-Type`` the upstream actually sent (which is what the
         route echoes: the stored size key does not imply the extension — ``png`` resolves to a
-        ``.jpg`` URL on three real cards).
+        ``.jpg`` URL on three real cards). It may carry parameters (``image/jpeg;
+        charset=binary``); echoed unchanged, since what the upstream said about its own bytes is
+        more accurate than anything derived from the size key.
 
     Raises:
         CompanionError: ``image_fetch_failed``, for every reason above.
@@ -362,34 +437,44 @@ async def fetch_image(client: httpx.AsyncClient, url: str) -> tuple[bytes, str]:
         # Logged with the host so an operator can see WHICH origin was refused; the host is the
         # actionable part and the rest of the URL is noise.
         logger.warning(
-            "Refusing to fetch a card image from a disallowed origin: %s",
-            urlsplit(url).hostname or "<unparseable>",
+            "Refusing to fetch a card image from a disallowed origin: %s", _refused_host(url)
         )
         raise CompanionError("image_fetch_failed")
 
     try:
         async with asyncio.timeout(_FETCH_TOTAL_SECONDS):
-            response = await client.get(url)
-            if response.status_code != httpx.codes.OK:
-                logger.info("Card image fetch answered %d for %s", response.status_code, url)
-                raise CompanionError("image_fetch_failed")
-            content_type = response.headers.get("content-type", "")
-            if not content_type.lower().startswith(_IMAGE_CONTENT_TYPE_PREFIX):
-                # A captive portal, an upstream error page, or an HTML placeholder. Passing it
-                # through would serve foreign markup from the companion's own origin.
-                logger.warning(
-                    "Card image fetch returned %r, not an image, for %s", content_type, url
-                )
-                raise CompanionError("image_fetch_failed")
-            body = response.content
-    except (TimeoutError, httpx.HTTPError) as exc:
+            async with client.stream("GET", url) as response:
+                if response.status_code != httpx.codes.OK:
+                    logger.info("Card image fetch answered %d for %s", response.status_code, url)
+                    raise CompanionError("image_fetch_failed")
+                content_type = response.headers.get("content-type", "")
+                if not _is_servable_image_type(content_type):
+                    # A captive portal, an upstream error page, an HTML placeholder — or an SVG,
+                    # refused by name. Passing any of them through would serve foreign, possibly
+                    # scriptable content from the companion's own origin.
+                    logger.warning(
+                        "Card image fetch returned %r, not a servable image, for %s",
+                        content_type,
+                        url,
+                    )
+                    raise CompanionError("image_fetch_failed")
+                declared = response.headers.get("content-length", "")
+                if declared.isdigit() and int(declared) > _MAX_IMAGE_BYTES:
+                    logger.warning(
+                        "Card image at %s declares %s bytes; refusing to read it", url, declared
+                    )
+                    raise CompanionError("image_fetch_failed")
+                body = bytearray()
+                async for chunk in response.aiter_bytes():
+                    body.extend(chunk)
+                    if len(body) > _MAX_IMAGE_BYTES:
+                        logger.warning(
+                            "Card image at %s exceeded %d bytes mid-stream; abandoning it",
+                            url,
+                            _MAX_IMAGE_BYTES,
+                        )
+                        raise CompanionError("image_fetch_failed")
+                return bytes(body), content_type
+    except (TimeoutError, httpx.HTTPError, httpx.InvalidURL) as exc:
         logger.info("Card image fetch failed for %s (%s)", url, type(exc).__name__)
         raise CompanionError("image_fetch_failed") from exc
-
-    if len(body) > _MAX_IMAGE_BYTES:
-        logger.warning("Card image at %s is %d bytes; refusing to serve it", url, len(body))
-        raise CompanionError("image_fetch_failed")
-    # `content_type` may carry parameters (`image/jpeg; charset=binary`); echoed unchanged, since
-    # what the upstream said about its own bytes is more accurate than anything derived from the
-    # size key — `png` resolves to a `.jpg` URL on three real cards.
-    return body, content_type

@@ -272,6 +272,12 @@ async def read_card_image(
         raise CompanionError("internal_error")
 
     body, content_type = await fetch_image(client, url)
+    # `nosniff` because the body and its declared type are an upstream's word, not ours: without
+    # it a browser may sniff a mislabelled body into something executable on this app's own
+    # origin. fetch_image already refuses SVG — the one image type that carries script — and this
+    # header is the belt to that brace (review 2026-08-01).
     return Response(
-        content=body, media_type=content_type, headers={"Cache-Control": IMAGE_CACHE_CONTROL}
+        content=body,
+        media_type=content_type,
+        headers={"Cache-Control": IMAGE_CACHE_CONTROL, "X-Content-Type-Options": "nosniff"},
     )

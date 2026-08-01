@@ -331,6 +331,106 @@ class TestFetchImage:
 
         assert attempted == [_SIX["normal"]]
 
+    async def test_an_unparseable_url_is_refused_not_crashed(self) -> None:
+        # The refusal log names the host, and the first cut re-parsed the URL bare inside the
+        # log line — an unparseable stored value crashed the refusal path itself with the
+        # ValueError the guard had just survived (review 2026-08-01).
+        attempted: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            attempted.append(str(request.url))
+            return httpx.Response(200, content=b"x", headers={"content-type": "image/jpeg"})
+
+        async with _client(handler) as client:
+            with pytest.raises(CompanionError) as raised:
+                await images.fetch_image(client, "https://[half-an-ipv6/x.jpg")
+
+        assert raised.value.reason == "image_fetch_failed"
+        assert attempted == []
+
+    async def test_a_redirect_is_a_fetch_failure_and_is_never_followed(self) -> None:
+        # The allow-list is checked on the STORED url only, so a followed redirect would fetch
+        # whatever Location an allowed host answered — the exact SSRF the list exists to stop.
+        # Ruled 2026-08-01 (review, Brad): the client does not follow; a 3xx is a fetch failure.
+        attempted: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            attempted.append(str(request.url))
+            return httpx.Response(301, headers={"location": "https://evil.example/steal.jpg"})
+
+        async with _client(handler) as client:
+            with pytest.raises(CompanionError) as raised:
+                await images.fetch_image(client, _SIX["normal"])
+
+        assert raised.value.reason == "image_fetch_failed"
+        # One request — the stored URL. The Location target was never contacted.
+        assert attempted == [_SIX["normal"]]
+
+    async def test_an_svg_content_type_is_a_fetch_failure(self) -> None:
+        # SVG is the one image/* type that can carry script, and this route serves upstream
+        # bytes from the SPA's own origin (review 2026-08-01). Parameters must not disguise it.
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                content=b"<svg onload=alert(1)/>",
+                headers={"content-type": "image/svg+xml; charset=utf-8"},
+            )
+
+        async with _client(handler) as client:
+            with pytest.raises(CompanionError) as raised:
+                await images.fetch_image(client, _SIX["normal"])
+
+        assert raised.value.reason == "image_fetch_failed"
+
+    async def test_an_oversized_declared_body_is_refused_before_it_is_read(self) -> None:
+        read: list[bool] = []
+
+        async def never_read():
+            read.append(True)
+            yield b"x"
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                content=never_read(),
+                headers={
+                    "content-type": "image/png",
+                    "content-length": str(images._MAX_IMAGE_BYTES + 1),
+                },
+            )
+
+        async with _client(handler) as client:
+            with pytest.raises(CompanionError) as raised:
+                await images.fetch_image(client, _SIX["png"])
+
+        assert raised.value.reason == "image_fetch_failed"
+        assert read == []
+
+    async def test_an_oversized_streamed_body_is_abandoned_mid_stream(self, monkeypatch) -> None:
+        # The ceiling is enforced WHILE streaming (review 2026-08-01): the first cut ran len()
+        # on a body client.get() had already buffered whole, which protected nothing. An
+        # upstream that lies about (or omits) Content-Length must still be cut off.
+        monkeypatch.setattr(images, "_MAX_IMAGE_BYTES", 64)
+        chunks_served: list[int] = []
+
+        async def unbounded_body():
+            for i in range(1000):
+                chunks_served.append(i)
+                yield b"x" * 32
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200, content=unbounded_body(), headers={"content-type": "image/jpeg"}
+            )
+
+        async with _client(handler) as client:
+            with pytest.raises(CompanionError) as raised:
+                await images.fetch_image(client, _SIX["normal"])
+
+        assert raised.value.reason == "image_fetch_failed"
+        # Abandoned at the ceiling, not at the upstream's pleasure: 3 chunks crossed 64 bytes.
+        assert len(chunks_served) < 1000
+
 
 class TestImageClient:
     """AD-10: the client is inert to construct, and its deadlines are bounded on both axes."""
