@@ -2066,6 +2066,11 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   leaves the per-route files asserting only their own paths. **Home: c3-4**, the next
   schema-adding story, which will otherwise inherit the same surprise a third time.
   (Severity: Low — it fails loudly and names the fix.)
+  → **CLOSED by c3-4 (Q5, Brad 2026-08-01).** It did inherit the surprise a third time — both pins
+  went red together on regeneration — and then took the fix as written: the second fix shape.
+  `tests/unit/companion/test_committed_schema.py` now owns the whole-artifact path set, component
+  set, auto-422 absence and `securitySchemes` absence; `test_routes_decks.py` and
+  `test_routes_cards.py` assert only that their **own** shapes are present. c3-5 edits one pin.
 
 - **`ui/README.md`'s blind-spot map is still keyed on line numbers.** Homed on c3-3 by name and
   **declined by Brad at Q5 (2026-07-31)**, who took the `_is_ref_rooted` repair from the same
@@ -2138,3 +2143,93 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   as the per-format-minimum entry above** — the two are one "format-aware structural rules"
   decision. (Severity: Low — reachable only by a deck whose stored format is invalid, and the
   report already refuses to be a verdict.)
+
+## From story c3-4 (the active deck), 2026-08-01
+
+- **No pre-parse request-body cap anywhere in the app.** Measured at c3-4 Task 0 against the
+  installed FastAPI **0.140.0**: `get_request_handler`'s inner `app(request)` reads and parses the
+  body at `fastapi/routing.py:423-448` and calls `solve_dependencies` at `:473` — **body first,
+  dependencies second**. So c3-4's agent-token dependency does *not* stop an unauthenticated caller
+  from making the process buffer an arbitrarily large body on `PUT /api/active-deck`. What c3-4
+  shipped instead is a **field** constraint (`ActiveDeckRequest.deck_id`, `max_length=256`), which
+  is honest about being applied *after* parsing and bounds only what is stored. Q4 weighed building
+  the real cap here and declined: it is a middleware-shaped mechanism, it would be designed against
+  one story's requirements in a story whose body is ~40 bytes, and it should be **one** mechanism
+  covering both endpoints. Mitigations that genuinely exist today and are worth not re-deriving:
+  the `Host` envelope refuses anything that did not address the app as loopback on the bound port,
+  and the app installs **no CORS middleware at all** (C1's no-CORS ruling), so a cross-origin `PUT`
+  with a JSON content type is preflighted, the `OPTIONS` gets a `405`, and the browser never sends
+  the body. **Home: c5-5**, which owns `payload_too_large` — a token declared since c1-4 that still
+  has **no producer** — and AD-7's 64 KB envelope limit. (Severity: Low — a loopback port behind
+  `Host` validation, reachable only by local software that could do worse directly. But "the first
+  endpoint with a body shipped with no thought about body size" is a sentence worth never writing.)
+
+- **There is no way to clear the active deck over the wire.** `ActiveDeckRequest.deck_id` is
+  required and does not accept `null`, so the only transitions are *set* and *process restart*
+  (Q3 part 3, Brad 2026-08-01). Nothing in the epic asks for a clear verb: FR-11's "deck deleted →
+  no-active-deck" is a **client-side** transition (`EXPERIENCE.md:120` — the refetch 404s and the
+  SPA clears to the panel), and a restart clears the slot anyway. Building an unused verb now would
+  freeze a wire shape with no consumer. **Home: unowned** — whichever story first has a *caller*
+  that needs it, most plausibly c6-2 if the tool ever grows a "stop displaying" mode. **The shape
+  it should take if wanted**: a `DELETE /api/active-deck`, not a nullable request field — the
+  request model staying non-null is what keeps `PUT` unambiguous. (Severity: Low.)
+
+- **Nothing broadcasts the change.** `PUT /api/active-deck` stores and returns; no hook, callback
+  registry or placeholder was built for the notification, deliberately (an unused hook is a design
+  decision made by a story that cannot see the requirements). **Home: c5-4**, which adds one call
+  after the store, to a handler that will exist — the insertion point is marked by a comment in
+  `set_active_deck`. The value it broadcasts is the same `ActiveDeck` shape the two operations
+  already answer with, which is why Q3 chose `200`-with-body over `204`. (Severity: none — this is
+  a named seam, not a gap.)
+
+- **`errors.supported_methods` walks framework internals to repair the `Allow` header.** c3-4
+  found that Starlette 0.48.0 builds a 405's `Allow` from the **first** partially-matching route
+  alone (`routing.py:738` keeps `partial` only if it is `None`; `Route.handle` at `:283` joins
+  *that* route's methods), so `/api/active-deck` — the first path in this app served by more than
+  one method — answered `Allow: GET`, omitting the `PUT`. RFC 9110 §15.5.6 requires the field to
+  list the *resource's* methods, so this was wrong and not merely terse. The repair recomputes the
+  union, which needs a flattened route list, and FastAPI 0.140 does **not** flatten included routers
+  into `app.routes` — it stores lazy `_IncludedRouter` wrappers. `_leaf_routes` therefore walks
+  `original_router`/`routes` **by attribute**, so an upstream structural change degrades to "found
+  nothing" and the caller keeps Starlette's own header rather than raising inside an error handler.
+  That is a deliberate soft failure, and it means **a FastAPI upgrade could silently restore the
+  incomplete header**. `test_routes_active_deck.py::TestTheMethodSemantics` is what would catch it.
+  **Home: unowned** — revisit if FastAPI ever exposes a public flattened route list, or if a third
+  multi-method path appears. (Severity: Low — the failure mode is a less-informative header, never
+  a wrong status or a leaked body.)
+  **Second hole, found at review (2026-08-01):** the flattened children are matched against the
+  **un-stripped** scope, and Starlette strips a mount's prefix into `child_scope` before children
+  match — so the walk is correct only while every mount sits at `/`, which is true today and
+  asserted by nothing. A future non-root `Mount` (c5-x static assets, an `/agent` sub-app) makes
+  children silently never match (or a child at `/` match paths it does not serve). Different hole
+  from the soft failure above: that one finds no leaves; this one finds them and asks the wrong
+  question. Documented in `supported_methods`'s docstring. **Home: the story that adds a non-root
+  mount.** (Severity: Low — latent until such a mount exists.)
+
+- **A third pin on `NO_UI_RESPONSE` was not in c3-4's ripple table.** The story's landmine-12 table
+  named seven ripple sites for an eighth reason token and listed two frontend pins on the
+  panel-less classification (`states.ts`'s `satisfies` clause and `states.test.ts:60`'s exact
+  array). There is a **third**: `ui/tests/unknown-card-copy.test.ts` parses `states.ts`'s source and
+  asserts `noUiResponseMembers()` equals the exact list, as a non-vacuity anchor for its own
+  card_not_found pin. It went red on `forbidden` and was edited by name. Not a defect — the pin is
+  correct and caught a real omission — but the **count** is folklore that a story text got wrong,
+  which is exactly the shape c3-2's "a true count read as a false rule" lesson warns about.
+  **Fix shape**: nothing to build; the next story adding a reason token should grep for
+  `NO_UI_RESPONSE` rather than trusting any enumerated list, and the comment added at that line now
+  says so. **Home: unowned, informational.** (Severity: Low — it fails loudly and names itself.)
+
+## Deferred from: code review of c3-4 (2026-08-01)
+
+- **The pre-auth body-buffering deferral now has a test pinning the ordering.** The c5-5 body-cap
+  entry above stands, with one addendum the review surfaced: `test_routes_active_deck.py::
+  test_a_malformed_body_without_a_credential_is_still_forbidden` pins that FastAPI parses the body
+  *before* solving the credential dependency (400-vs-403 is observable unauthenticated). c5-5's cap
+  must consciously decide whether that pin is a contract or a snapshot — a middleware-level cap
+  changes the observable order and would red the pin. **Home: c5-5.** (Severity: Low on loopback;
+  it is also a free validation oracle for unauthenticated callers until the cap lands.)
+- **A future hand-raised 405's deliberate headers are overridden or case-split by the `Allow`
+  recompute.** `errors.py`'s 405 branch replaces any author-supplied `Allow` with the
+  partial-match union — which, for a request that *fully* matched the raising route, excludes that
+  route's own method — and a case-mismatched `"allow"` key survives the `{**headers, "Allow": …}`
+  merge as a second header. Unreachable today: no code raises 405 manually. **Home: unowned,
+  ledgered** — the first story that hand-raises a 405 owns it. (Severity: Low — latent.)
