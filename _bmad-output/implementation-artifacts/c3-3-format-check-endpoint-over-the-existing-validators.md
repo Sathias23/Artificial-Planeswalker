@@ -545,7 +545,8 @@ Both from `deferred-work.md`, both naming c3-3 explicitly. **Q5.**
 - [x] **Task 7 — Same-day three-layer review before the PR** (C2 retro action item 6, standing)
   - [x] `bmad-code-review` (Blind Hunter + Edge Case Hunter + Acceptance Auditor) before raising the PR
   - [x] Apply patches, then re-run every gate and paste the output
-  - [ ] Raise the PR into `feat/companion-c3`
+  - [x] Raise the PR into `feat/companion-c3` — **PR #31**, three commits
+        (`11a0750` feat, `27ef9b4` review patches, `cf47d28` records)
 
 ---
 
