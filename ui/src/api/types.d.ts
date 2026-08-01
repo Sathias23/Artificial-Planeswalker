@@ -161,10 +161,104 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/active-deck": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Active Deck
+         * @description Report which deck the companion is currently displaying.
+         *
+         *     Answers ``200`` in both states — a deck, or ``deck_id: null`` for none. There is no ``404`` and
+         *     no second shape: the active deck is a resource that always exists and whose value may be "no
+         *     deck", so a cold open reads the same field it will read once something is set.
+         *
+         *     Requires **no credential**: this is what the browser calls on first paint and after every
+         *     reconnect, and the browser never holds one (AD-5).
+         *
+         *     After a restart this reports none, whatever was displayed before — the value lives in the
+         *     backend's memory and dies with the process (FR-07).
+         */
+        get: operations["read_active_deck_api_active_deck_get"];
+        /**
+         * Set Active Deck
+         * @description Set which deck the companion displays, and echo back what was stored.
+         *
+         *     **This endpoint is for the agent, not the browser.** It requires a credential the browser does
+         *     not have and must never be given, so a page has nothing to call here; a request that presents
+         *     no valid credential is refused and the active deck is left untouched.
+         *
+         *     Idempotent, which is why the verb is ``PUT``: setting the same deck twice is the same state.
+         *     Answers ``200`` with the stored value rather than ``204``, so one shape serves the read, the
+         *     write and the change notification a later story broadcasts.
+         *
+         *     **The deck is not checked for existence.** Any non-blank id is accepted and stored verbatim,
+         *     including one that names no deck. Validating it belongs to the caller that has database access
+         *     and can report the failure meaningfully; a client that then fetches the deck gets the ordinary
+         *     not-found answer.
+         */
+        put: operations["set_active_deck_api_active_deck_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActiveDeck
+         * @description Which deck the companion is currently displaying, or ``null`` for none (FR-07).
+         *
+         *     ``null`` is the answer, not the absence of one. The active deck is a resource that always
+         *     exists and whose value may be "no deck", so asking on a cold open answers ``200`` with
+         *     ``deck_id: null`` — never ``404``, and never a different shape. **The same model answers both
+         *     operations**, so a reader has one shape to render and a writer has one shape to assert on.
+         *
+         *     The value lives in the companion's memory and **dies with the process**: after a restart this
+         *     reports ``null`` again, whatever was displayed before. That is specified behaviour rather than a
+         *     limitation — the agent sets the deck, so a fresh backend genuinely has no deck to show until it
+         *     is told (FR-07, CM-3).
+         *
+         *     A non-null ``deck_id`` is **not a promise that the deck still exists.** Nothing validates it on
+         *     the way in — that is the MCP tool's job, since it is the party with database access and the one
+         *     that must tell the agent (AD-16) — and a deck can be deleted after being set. A reader that
+         *     fetches the deck and gets ``deck_not_found`` is seeing the ordinary case, not a broken
+         *     invariant.
+         */
+        ActiveDeck: {
+            /** Deck Id */
+            deck_id: string | null;
+        };
+        /**
+         * ActiveDeckRequest
+         * @description The body of ``PUT /api/active-deck`` — the deck to display (FR-07).
+         *
+         *     Carries the deck id and nothing else — **enforced**, not aspirational: an unknown field is
+         *     refused (``extra="forbid"``), because silently dropping it would answer ``200`` to an agent
+         *     whose mental model of this body is wrong and leave nothing to correct it (c3-4 review, Brad
+         *     2026-08-01). The id must be a non-empty string, and *non-empty means non-blank*: a
+         *     whitespace-only id is refused with the same reasoning as ``""`` — the alternative is storing a
+         *     value that would be reported as the active deck forever while resolving to no deck at all, just
+         *     spelled with characters ``min_length`` cannot see (same review). Beyond non-blankness and an
+         *     upper length bound nothing about the id is constrained — a deck id has **no declared shape** in
+         *     this system (Q4), so an id that names no deck is accepted here and simply not found later.
+         *
+         *     There is deliberately **no way to clear the active deck** over the wire: the field is required
+         *     and does not accept ``null``. Nothing in the feature asks for one — a deleted deck is a
+         *     *client-side* transition (the refetch 404s), and a restart clears the slot anyway — so the verb
+         *     is not built until something needs it.
+         */
+        ActiveDeckRequest: {
+            /** Deck Id */
+            deck_id: string;
+        };
         /**
          * Card
          * @description One Magic: The Gathering card printing, as held in the local card database.
@@ -439,6 +533,11 @@ export interface components {
          *     * ``invalid_request`` — the request itself was malformed, or aimed at a path/method/``Host``
          *       the companion does not serve. No panel of its own: the SPA never generates one, so it means
          *       a client bug or a stray caller, and the log is where it is diagnosed.
+         *     * ``forbidden`` — an agent-only endpoint was called without a valid credential (c3-4). Like
+         *       ``payload_too_large``, the audience is the **agent**, not the glass: the browser never holds
+         *       the credential and never calls a route that wants one, so a panel here would report a
+         *       failure the reader did not cause and cannot fix. Its consumer is the MCP tool's outcome
+         *       vocabulary, where AD-8's re-read-discovery-and-retry-once lives.
          *     * ``payload_too_large`` — an agent push exceeded the ingest cap (c5-5). Surfaced to the *agent*
          *       through the MCP tool's outcome vocabulary, not to the glass.
          *     * ``internal_error`` — the companion itself hit an unhandled bug (500). Deterministic, so the
@@ -450,7 +549,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "deck_not_found" | "card_not_found" | "database_not_initialized" | "database_unavailable" | "invalid_request" | "payload_too_large" | "internal_error";
+            reason: "deck_not_found" | "card_not_found" | "database_not_initialized" | "database_unavailable" | "invalid_request" | "forbidden" | "payload_too_large" | "internal_error";
         };
         /**
          * FormatCheckReport
@@ -839,6 +938,95 @@ export interface operations {
             };
             /** @description reason: database_unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_active_deck_api_active_deck_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveDeck"];
+                };
+            };
+            /** @description reason: invalid_request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: internal_error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    set_active_deck_api_active_deck_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActiveDeckRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveDeck"];
+                };
+            };
+            /** @description reason: invalid_request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: internal_error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

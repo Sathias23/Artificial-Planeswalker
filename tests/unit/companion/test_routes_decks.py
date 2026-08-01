@@ -692,37 +692,26 @@ class TestCommittedSchema:
         assert "/api/decks/{deck_id}" not in schema["paths"]
         assert "/api/decks/{id}" not in schema["paths"]
 
-    def test_the_component_names_are_exactly_these(self, schema):
-        """AC 8: a companion-local mirror of any deck shape would appear here and fail.
+    def test_this_routes_own_shapes_are_described(self, schema):
+        """AC 8: the deck shapes this module's routes answer with reach the document.
 
-        The non-vacuity anchors are asserted **before** the equality, not after. Asserted after,
-        ``"HealthResponse" in names`` and ``len(names) == 6`` are both logically implied by the
-        equality and can never fail independently — decoration, as the review of 2026-07-31
-        pointed out. Read first, they establish that the fixture parsed a real document.
+        **The whole-artifact component pin moved out at c3-4** (Q5, Brad 2026-08-01), to
+        ``test_committed_schema.py``. It used to live here *and* in ``test_routes_cards.py`` — one
+        fact, two hand-synchronised copies, so every schema-adding story had to edit both. c3-2 and
+        then c3-3 each found the second copy by running the suite rather than by reading their
+        story, and ``deferred-work.md`` homed the consolidation on c3-4 by name.
+
+        What stays here is what this module is actually about: **the deck shapes**. A
+        companion-local mirror of one of them still fails, over there, as an unexpected name in the
+        exact set — this asserts the complementary half, that the real ones are present.
         """
         names = set(schema["components"]["schemas"])
 
-        # Non-vacuity (AC 24), and it can genuinely fail: an empty or wrong-shaped parse gives an
-        # empty set, and a schema regenerated from an app missing the health router loses this.
+        # Non-vacuity first (c3-1 review), and it can genuinely fail: an empty or wrong-shaped
+        # parse gives an empty set, which would satisfy any "in" check by accident of ordering.
         assert names, "no component schemas parsed — the fixture is not reading a real document"
-        assert "HealthResponse" in names, "the pre-c3-1 shapes are gone; this is not the schema"
 
-        # `Card` is c3-2's and the two `FormatCheck*` models are c3-3's, each added deliberately
-        # here rather than silenced: this set is a hand-synchronised pin like test_spa.py's router
-        # list, so a story that adds a component schema edits it or gets a red naming the
-        # addition. That is the pin working — the alternative (deriving the set from the schema)
-        # would assert nothing at all.
-        assert names == {
-            "Card",
-            "CardSummary",
-            "DeckCardSummary",
-            "DeckDetail",
-            "DeckSummary",
-            "ErrorResponse",
-            "FormatCheckReport",
-            "FormatCheckRow",
-            "HealthResponse",
-        }
+        assert {"DeckSummary", "DeckDetail", "DeckCardSummary", "CardSummary"} <= names
 
     def test_the_detail_route_declares_its_token_and_the_list_route_does_not(self, schema):
         """AC 6: ``deck_not_found`` is declared where it can happen, and only there."""

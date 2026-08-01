@@ -203,7 +203,11 @@ describe('the unknown-card placeholder copy exists in EXPERIENCE.md (retro R1)',
     // member reader is discriminating rather than returning nothing. `invalid_request` IS in
     // NO_UI_RESPONSE, so the reader provably finds a token that belongs there.
     expect(STATES_CODE.length).toBeGreaterThan(1000)
-    expect(noUiResponseMembers()).toEqual(['invalid_request', 'payload_too_large'])
+    // c3-4's `forbidden` joined this list — the same agent-facing reasoning as
+    // `payload_too_large`. Worth knowing: this is a THIRD pin on NO_UI_RESPONSE (with
+    // `states.ts`'s `satisfies` and `states.test.ts:60`), and c3-4's story ripple table named
+    // only the other two. A story adding a reason token edits all three.
+    expect(noUiResponseMembers()).toEqual(['invalid_request', 'forbidden', 'payload_too_large'])
     // The stripper above is NOT string-aware: a future `//` or `/*` inside a string literal in
     // states.ts would truncate live code from that point (declared in ui/README.md's blind-spot
     // table). This anchor is the file's LAST live statement, so a mid-file truncation cannot

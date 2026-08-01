@@ -35,6 +35,10 @@ _EXPECTED_STATUS = {
     "database_not_initialized": 503,
     "database_unavailable": 503,
     "invalid_request": 400,
+    # 403 and not 401: RFC 9110 requires a 401 to carry WWW-Authenticate, and the CompanionError
+    # path structurally cannot attach headers (companion_error_handler calls error_response with
+    # no headers=). c3-4 Q2 ruled 403, which carries no such requirement.
+    "forbidden": 403,
     "payload_too_large": 413,
     "internal_error": 500,
 }
@@ -205,16 +209,23 @@ def _app_with_test_routes():
 
 
 class TestReasonTokenContract:
-    """AC 1 + AC 2: the token set is closed at seven and the body carries nothing else."""
+    """AC 1 + AC 2: the token set is closed at eight and the body carries nothing else."""
 
-    def test_the_token_set_is_exactly_these_seven(self):
+    def test_the_token_set_is_exactly_these_eight(self):
         # Adding a token is a deliberate act with a failing test attached (AD-16's own extension
         # rule). `internal_error` was added under that rule by the c1-4 review (Brad, 2026-07-25),
         # and `card_not_found` by c3-2 under the C2 retro's R1 — which tightened the rule: the
         # token and the UI state it drives land in the SAME COMMIT, because `internal_error`
         # shipping alone had already cost c2-9 a repair AC.
         #
-        # THE SET IS NOW CLOSED AT SEVEN WITH NOTHING PLANNED. An eighth is not forbidden, but it
+        # `forbidden` is c3-4's eighth (Q2, Brad 2026-08-01), and it is the first whose paired UI
+        # state is a DECISION THAT THE GLASS SHOWS NOTHING rather than a panel — joining
+        # `payload_too_large` in `NO_UI_RESPONSE`, which is where that decision is recorded in a
+        # form the compiler reads. It was worth the ripple because AD-8 requires c6-1 to re-read
+        # discovery and retry EXACTLY ONCE on an auth rejection and to do no such thing on a
+        # malformed request; both answering `invalid_request` would make that unimplementable.
+        #
+        # THE SET IS NOW CLOSED AT EIGHT WITH NOTHING PLANNED. A ninth is not forbidden, but it
         # is a decision, not a chore: it reddens this test, `STATUS_BY_REASON`'s pin below,
         # `ui/src/api/schema.test.ts`'s union and `states.ts`'s `satisfies` clause — and the last
         # two fail under `npm run typecheck` only, never under `npm test`.
@@ -224,6 +235,7 @@ class TestReasonTokenContract:
             "database_not_initialized",
             "database_unavailable",
             "invalid_request",
+            "forbidden",
             "payload_too_large",
             "internal_error",
         }

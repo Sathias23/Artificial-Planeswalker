@@ -30,11 +30,19 @@ describe('the state maps mean what the wire contract says (review 2026-07-29)', 
     expect(PANEL_FOR_REASON.internal_error).toBe('internal-error')
   })
 
-  it('keeps the two designed silences silent', () => {
+  it('keeps the three designed silences silent', () => {
     // `null` is a NAMED answer (AC 12): the SPA never generates an invalid_request, and an
     // over-cap push is surfaced to the agent, never the glass.
     expect(PANEL_FOR_REASON.invalid_request).toBeNull()
     expect(PANEL_FOR_REASON.payload_too_large).toBeNull()
+    // c3-4's `forbidden`, and the value matters rather than merely the totality: the browser never
+    // holds the agent credential (AD-5), so a panel here would report a failure the reader neither
+    // caused nor can fix. Pinned by value because the `satisfies` clause would accept a panel key
+    // here just as happily as `null`.
+    expect(PANEL_FOR_REASON.forbidden).toBeNull()
+    // …and not the OTHER kind of null: `forbidden` has no placeholder destination either. Without
+    // this, moving it into PLACEHOLDER_FOR_REASON would keep every type-level assert green.
+    expect(PLACEHOLDER_FOR_REASON).not.toHaveProperty('forbidden')
   })
 
   // ------------------------------------------------------------------------------------------
@@ -57,7 +65,7 @@ describe('the state maps mean what the wire contract says (review 2026-07-29)', 
   it('does not confuse "no panel" with "no UI response at all"', () => {
     // The distinction retro R1 exists to force, asserted in both directions so neither list can
     // quietly absorb the other's members.
-    expect([...NO_UI_RESPONSE]).toEqual(['invalid_request', 'payload_too_large'])
+    expect([...NO_UI_RESPONSE]).toEqual(['invalid_request', 'forbidden', 'payload_too_large'])
     expect([...NO_UI_RESPONSE]).not.toContain('card_not_found')
     expect(Object.keys(PLACEHOLDER_FOR_REASON)).toEqual(['card_not_found'])
   })
