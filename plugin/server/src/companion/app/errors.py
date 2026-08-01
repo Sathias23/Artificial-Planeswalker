@@ -63,8 +63,9 @@ class CompanionError(Exception):
 
     Endpoints raise this instead of building a response, so the status, the body shape and the
     serialisation all stay in one place. The callers so far are c1-6 (``get_session``, for a missing
-    or unpopulated database), c3-1 (``read_deck``, for a missing deck) and c3-2 (``read_card``, for
-    a missing card); c5-5's oversized push is still to come.
+    or unpopulated database), c3-1 (``read_deck``, for a missing deck), c3-2 (``read_card``, for
+    a missing card) and c3-3 (``read_deck_format_check``, for a missing deck again); c5-5's
+    oversized push is still to come.
 
     **Middleware does not raise this.** A user middleware sits *outside* Starlette's
     ``ExceptionMiddleware``, so a handler registered with ``add_exception_handler`` can never see
@@ -128,8 +129,10 @@ def error_responses(*reasons: ErrorReason) -> dict[int | str, dict[str, Any]]:
     generator would emit nothing for it. This is the one construction site for that declaration:
     ``build_app()`` uses it app-wide, and the per-route callers declare only the tokens their own
     endpoints can produce: c3-1's ``GET /api/deck/{deck_id}`` declares ``deck_not_found`` (and its
-    sibling ``GET /api/decks`` deliberately declares nothing, having no 404 to give), and c3-2's
-    ``GET /api/cards/{card_id}`` declares ``card_not_found``. c5-5 follows.
+    sibling ``GET /api/decks`` deliberately declares nothing, having no 404 to give), c3-2's
+    ``GET /api/cards/{card_id}`` declares ``card_not_found``, and c3-3's
+    ``GET /api/deck/{deck_id}/format-check`` declares ``deck_not_found`` again — the same token on
+    a third route, which is the ordinary case and needs nothing new here. c5-5 follows.
 
     Note that ``deck_not_found`` and ``card_not_found`` share a status without being
     interchangeable — the grouping below is by status, so a route declaring both would document

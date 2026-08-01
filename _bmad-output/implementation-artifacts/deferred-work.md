@@ -1753,13 +1753,22 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   list.** The two schema pins that hardcoded `{"/health"}` were repaired (see the c3-1 story record,
   finding 4), and the differential test `test_the_schema_is_unchanged_by_installing_the_mount` now
   builds a mount-free app that must mirror `build_app()`'s routers by hand. Every future
-  route-adding story (c3-2, c3-3, c3-4, c3-5, c5-2, c5-5) must add one line there or get a red.
+  router-adding story (c5-2, c5-5 — **not** c3-2/c3-3/c3-4/c3-5 if their routes join an existing
+  router; see the correction below, which supersedes the original list) must add one line there or get a red.
   That is deliberate and the code says so — a forgotten line is a cheap named failure, versus a
   mount silently swallowing a route — but it *is* a standing tax, and it is the opposite of the
   repair's stated motive ("a hardcoded set makes every story that adds a route edit a SPA test for
   no reason"). **Recorded so it is a decision, not a drift.** If it becomes annoying, the fix is to
   derive the router list from `build_app()` itself rather than restating it. **Home: unowned.**
   (Severity: Low.)
+  **Correction (c3-3, 2026-08-01): the story list above is wrong, and the tax is narrower than
+  stated.** The tax falls on adding a **router**, not on adding a **route**. Both sides of the
+  differential build their path sets from the same router objects, so a new path on an
+  already-listed router appears on both and needs no line. Measured, not reasoned: c3-3 added
+  `/api/deck/{deck_id}/format-check` to the existing decks router and `test_spa.py` passed
+  unedited — **56 passed**. So c3-3 never owed a line, and neither will c3-4/c3-5 if their routes
+  join an existing router. The comment in `test_spa.py` now says this, so the next author does not
+  go looking for an edit they do not owe.
 
 ## Deferred from: code review of c3-1-deck-list-and-deck-detail-endpoints (2026-07-31, post-commit pass)
 
@@ -1780,6 +1789,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   c4-1/c4-2**, the first real consumers of these types. (Severity: Low.)
 
 - **`_is_ref_rooted` will misfire on the first legitimate union response model.**
+  **✅ RESOLVED at c3-3 (2026-08-01, Q5 — Brad took this half of the question).**
   `tests/unit/companion/test_errors.py` puts `anyOf`/`oneOf`/`allOf` in `_OBJECT_SHAPE_KEYS`, so a
   future `response_model=X | None` — plausibly c3-3's "no format to check against" answer —
   generates a top-level `anyOf` and is refused as a "hand-built envelope", which it is not: the
@@ -1790,6 +1800,16 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   and add `prefixItems` to the object-shape keys — extending the family, not enumerating members.
   **Home: c3-3**, the first story likely to hit it; until then the failure is a red test with a
   misleading message, not a shipped defect. (Severity: Low.)
+  **Resolution**: all three edges fixed exactly as the fix shape describes. `anyOf`/`oneOf` moved
+  out of `_OBJECT_SHAPE_KEYS` into a new `_UNION_KEYS`, with a union admitted only when **every**
+  branch is itself ref-rooted or the bare null type; `prefixItems` added to the object-shape keys;
+  and a `$ref` now tolerates annotation-only siblings via a named `_ANNOTATION_KEYS` set. Ten new
+  rows in the helper's own accept/reject table, including the three ways the union arm could have
+  become a hole — one inline branch among refs, an all-scalar union, and an **empty** `anyOf`
+  (`all([])` is `True`, which is how a vacuous guard is born). Note the fix shipped *before*
+  anything needed it: c3-3's own response is one shape in every case by ruling (Q4), so no union
+  crosses the wire yet. Taken anyway, because the alternative was leaving the next story a red
+  test whose message named the wrong problem.
 
 - **`format: string | null` on the wire is unreachable at the data layer — `decks.format` is a
   `NOT NULL` column.** Measured while writing the review's null-metadata test:
@@ -1802,6 +1822,16 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   unrecognised format string (then the wire type is merely wider than the data and can stay).
   (Severity: Low-Medium — a UI `format === null` branch written against the generated type is
   dead code today.)
+  **✅ RESOLVED at c3-3 (2026-08-01, Q4 — Brad ruled "as proposed").** The wire type is merely
+  wider than the data, and it stays. "No format to check against" is keyed on the validator's
+  existing `unknown_format` outcome, which already covers an unrecognised **or empty** format
+  string and already refuses to flag every card illegal — so no schema change, no migration and no
+  new mechanism. `format_check` coalesces a null format to `""`, which lands in the same branch;
+  the report carries `format: ""` and `format_recognized: false`, and its legality and banned rows
+  go `advisory`. Re-verified at c3-3 before ruling: the column is still `NOT NULL` and **0 of 40**
+  rows are null or blank. **Re-homed residue: c4-10** writes the UI's "no format" branch, and if it
+  writes `format === null` against the generated type that branch is dead code — it should key on
+  `format_recognized` instead, which c3-3 added for exactly this.
 
 ## Deferred from: story c3-2 (2026-07-31)
 
@@ -1872,6 +1902,13 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   schema to `components.schemas` and therefore the next to owe this review pass; it is also the
   natural point to anchor the README's citations on marker strings rather than line numbers, as
   the c3-1 entry proposes. (Severity: Low.)
+  **⛔ DECLINED at c3-3 (2026-08-01, Q5 — Brad took the `_is_ref_rooted` half of the question and
+  left this one).** c3-3 *did* pay the review-pass half: it added its blind-spot row and, after
+  the adversarial review found that row under-declared its own guard's holes, rewrote it to
+  enumerate five families and three declared limits. The **re-anchoring** was not done.
+  Re-ledgered in the c3-3 section below as "Home: unowned" — see *"`ui/README.md`'s blind-spot
+  map is still keyed on line numbers"*. Do not read this entry's `Home: c3-3` as outstanding
+  work against a completed story.
 
 - **A `ui/tests/` file may import an app module only if that module has no relative imports of its
   own — and the failure is reported at the wrong place.** Measured at c3-2. `tsconfig.node.json`
@@ -1971,6 +2008,133 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   `image_uris`". Every face access in the UI will be a hand-cast `tsc` cannot check. Ruled at the
   c3-2 round-2 review (Brad, 2026-07-31): the wire schema stays frozen as reviewed with PR #30
   open. **Fix shape**: a typed `CardFace` Pydantic model (`name`, `mana_cost`, `type_line`,
-  `oracle_text`, `image_uris`), regenerated into the component set (pins move 7→8). **Home: c3-5
-  or c4-3, whichever consumes a face first** — and it must land with the regenerated types in the
-  same commit. (Severity: Medium for c4-3's type safety, zero runtime impact today.)
+  `oracle_text`, `image_uris`), regenerated into the component set (pins move 7→8, now **9→10**
+  after c3-3). **Home: c3-5 or c4-3, whichever consumes a face first** — and it must land with the
+  regenerated types in the same commit. (Severity: Medium for c4-3's type safety, zero runtime
+  impact today.)
+
+## Deferred from: story c3-3 (format check endpoint, 2026-08-01)
+
+- **Rotation exposure cannot be computed from local data at all, and the panel now says so
+  permanently.** Q3 (Brad, 2026-07-31) ruled that the row ships with status `advisory` rather than
+  being omitted, so the gap is visible instead of silent — but it is a row a user can never
+  resolve. Measured read-only against the shipped 38,261-card database, not assumed:
+  `PRAGMA table_info(cards)` returns **23 columns** and none is a release date (`released_at`
+  absent, `set_type` absent); `sqlite_master` contains **no sets table** of any kind; and
+  `src/data/importers/aggregate.py:113-134` **does** read `released_at` — to pick the canonical
+  printing by greatest date, ties by min id — and then discards it without ever writing a column.
+  **Fix shape, priced honestly**: a `released_at` (or `set_type`) column on `cards` *or* a new
+  sets table; an importer change to persist it; a hand-written `scripts/migrate_*.py` (this
+  project has no Alembic); a full re-import of ~38k cards; **and** a rotation-schedule source —
+  Scryfall's bulk data does not say "this set rotates in 2027-09", so the schedule has to come
+  from somewhere else or be hard-coded and maintained. That is comfortably its own story.
+  **Home: unowned** — a dedicated data story, not a companion one. Until it exists, the advisory
+  row is the honest answer and must not be quietly promoted to `pass`. (Severity: Low — a
+  permanent shrug in a P0 panel, but an accurate one.)
+
+- **A `restricted` card is reported as "not legal", which is wrong.** `deck_validator.py`'s
+  legality branch splits `banned` off (c3-3, Q2) but leaves `restricted` falling through to
+  `format_legality`, so a Vintage deck running one Black Lotus is told the card is not legal in
+  vintage when it is legal with a **1-copy limit**. Deliberately unchanged by the split and
+  pinned by `test_deck_validator.py::test_restricted_is_unchanged_by_the_banned_split` so a later
+  change is a decision rather than a side effect. Latent today: measured 89 `restricted` legality
+  entries corpus-wide (vintage 51 · duel 24 · tlr 10 · timeless 4) and **zero** restricted cards
+  across all 40 real saved decks, with no vintage deck among them. **Fix shape**: a per-card copy
+  limit that varies by legality value — which is a change to the copy-limit rule, not to the
+  legality branch, and needs its own row vocabulary decision (does a restricted card over its
+  limit report `copy_limit`, or a new `restricted` rule?). **Home: unowned** — its own story.
+  (Severity: Low while no vintage deck exists; Medium the day one does.)
+
+- **`_MIN_MAINBOARD = 60` applies regardless of format, and c3-3 published that to a human for the
+  first time.** A deliberately documented Phase-1 limitation (D-1.6b) that until now was reported
+  only to an agent, which could caveat it. The format-check panel renders the size row directly,
+  so a Commander deck is now told on the glass that 60 cards satisfies a format that wants 100.
+  Measured: brawl and standardbrawl are genuinely 60-card formats, so the **20** brawl-family
+  decks in the real deck table are correct and only Commander is affected — and there are
+  currently **0** commander decks saved, which is why nothing looks wrong today. **Fix shape**: a
+  per-format minimum (a dict beside `_SINGLETON_FORMATS`, keyed the same way), plus the
+  "any number of copies" exemption cards the same scope note defers. **Home: unowned** — a
+  `src/logic` rule story. (Severity: Low today, Medium the first time a Commander deck is saved.)
+
+- **The component-name set is pinned in TWO hand-synchronised places, and the story text named
+  one.** `tests/unit/companion/test_routes_decks.py` and `test_routes_cards.py` each assert the
+  exact `components.schemas` key set, so every schema-adding story edits both. c3-2's Debug Log
+  recorded finding the second one by running the suite rather than by reading the story; **c3-3
+  hit exactly the same thing again** — its own "must not break" list named the decks pin and not
+  the cards pin. Twice is a pattern, not bad luck. **Fix shape**: one pin, in one place, imported
+  by both — or a single `test_committed_schema.py` that owns every whole-artifact assertion and
+  leaves the per-route files asserting only their own paths. **Home: c3-4**, the next
+  schema-adding story, which will otherwise inherit the same surprise a third time.
+  (Severity: Low — it fails loudly and names the fix.)
+
+- **`ui/README.md`'s blind-spot map is still keyed on line numbers.** Homed on c3-3 by name and
+  **declined by Brad at Q5 (2026-07-31)**, who took the `_is_ref_rooted` repair from the same
+  question and left this one. Unchanged in substance from the c3-1 entry that raised it: the
+  section is written as a durable index a reviewer consults instead of reading fourteen test
+  files, and the first comment inserted near the top of a cited file invalidates every reference
+  below it. c3-3 added its row keyed the existing way, so the map is one entry larger and no more
+  durable. **Fix shape** (unchanged): anchor on a searchable marker string — the guard function
+  name, or the declared-limit sentence itself — rather than a line number, and add a test that
+  every cited anchor still resolves. **Home: unowned, re-ledgered.** Twice deferred now; a third
+  story owing this README a review pass is the natural moment. (Severity: Low-Medium — a stale
+  index is worse than no index, because it is trusted.)
+
+- **`format_recognized` and the six-row shape are declared but unread until c4-10.** c3-3 ships a
+  boolean the UI can branch on for "no format to check against" rather than making c4-10 parse
+  the advisory row's prose, and a `CHECK_ORDER` a panel can rely on. No runtime code consumes
+  either yet — the same declared-but-unread state c3-2's `states.ts` classification is in.
+  **Home: c4-10** (the format check panel). If c4-10 renders the panel without ever reading
+  `format_recognized`, that is a signal the field was over-built and it should be deleted rather
+  than maintained. (Severity: Low.)
+
+- **`format_recognized: true` does not mean the format key is present in the card data.**
+  `_KNOWN_FORMATS` is a hand-maintained frozenset in source; `legalities` comes from a separately
+  imported database. If the two skew — `_KNOWN_FORMATS` updated for a new Scryfall format ahead of
+  a user's re-import, which the upgrade notes acknowledge users defer — every card misses the key,
+  `.get()` returns `None`, and every card is reported not legal. That is the exact "legality
+  storm" `_KNOWN_FORMATS` was introduced to prevent, now rendered as a confident panel with
+  `format_recognized: true` and no advisory. **Not reachable against a synchronised snapshot**:
+  measured 2026-08-01, all 38,261 cards carry all 23 keys, and `set(keys) == _KNOWN_FORMATS`
+  exactly. A second edge in the same area: a *present-but-null* legality value
+  (`{"standard": null}`) fails `Card` validation — `legalities: dict[str, str]` coerces only a
+  wholly-null dict — so the route answers `500 internal_error` rather than a report. **Fix shape**:
+  derive the known-format set from the data (a `SELECT DISTINCT` over the keys) instead of
+  hard-coding it, or gate `format_recognized` on the key being present in at least one card.
+  **Home: unowned** — it belongs with whatever story next touches `_KNOWN_FORMATS`.
+  (Severity: Low today, Medium on version skew.)
+
+- **The format-check report's `format` is the normalised value; the deck detail route's is the
+  stored one.** `GET /api/deck/{id}` serves `deck.format` verbatim while
+  `GET /api/deck/{id}/format-check` serves `format.strip().lower()`, because the report should
+  name what was actually checked. Latent: measured **0 of 40** real decks store a format that
+  differs from its own normalisation, so the two endpoints agree on every deck that exists today.
+  A UI comparing the two strings would nonetheless be comparing two different things. **Fix
+  shape**: either normalise at write time in `create_deck` (making the divergence impossible), or
+  document the asymmetry where c4-1's store holds both. **Home: c4-10 or c4-1**, whichever first
+  holds both values at once. (Severity: Low.)
+
+## Deferred from: code review of c3-3-format-check-endpoint-over-the-existing-validators (round 2, 2026-08-01)
+
+- **`is_legal: false` above six non-violation rows is a live UI trap, mitigated only by prose.**
+  The report deliberately carries no honest headline field (Q4: one shape always, mirrors the
+  validator); a renderer must synthesize the verdict from `format_recognized` plus a row scan,
+  guided only by the `Warning:` docstring block on the wire. Nothing machine-checkable stops
+  c4-10 from binding `is_legal` straight to the panel headline — a formatless deck would then
+  render a red headline over six rows none of which is a violation. **Home: c4-10** (the format
+  check panel), plus a named line on the epic C3 manual-testing checklist. (Severity: Low here,
+  Medium if c4-10 binds it unread.)
+
+- **The copy-limit row answers definitively under the 4-copy fallback for a format it cannot
+  interpret.** Greptile P1 on PR #31, ruled ledger-not-fix (Brad, 2026-08-01). For an
+  unrecognized format (`edh`, `explorer`), `validate_deck` falls back to the ordinary 4-copy
+  rule — an unknown key is never in `_SINGLETON_FORMATS`, pinned by `TestFormatSetInvariant` —
+  and `format_check` renders that as a definitive `copy_limit` pass/violation, though the format
+  the user *meant* may be singleton (edh → commander caps at 1). Mitigations already on the wire:
+  the same report carries an `unknown_format` violation, `format_recognized: false`,
+  `is_legal: false`, and advisory legality/banned rows, so the panel is loudly not-a-verdict.
+  **Fix shape**: when `format_recognized` is false, the copy_limit row goes advisory like
+  legality/banned ("could not be checked against an unrecognized format") — a one-branch change
+  in `format_check` plus its firing/silent pair. **Home: the same unowned `src/logic` rule story
+  as the per-format-minimum entry above** — the two are one "format-aware structural rules"
+  decision. (Severity: Low — reachable only by a deck whose stored format is invalid, and the
+  report already refuses to be a verdict.)

@@ -107,8 +107,10 @@ exempt either way. The per-card legality lookup is format-aware too.
 | `max_sideboard_size` | sideboard (by quantity) `> 15` — **hard-coded 15** | `None` (whole-deck) |
 | `copy_limit` | `> 4` copies of a non-basic, **combined across mainboard + sideboard**; basics exempt (`"basic land" in type_line.lower()`) — non-singleton formats only | card name |
 | `singleton` | `> 1` copy of a non-basic, **combined across both boards**, in a singleton format (brawl / standardbrawl / commander / gladiator / competitivebrawl / duel / oathbreaker / paupercommander / predh); basics exempt | card name |
-| `format_legality` | `card.legalities.get(format) != "legal"` per **distinct** card | card name |
+| `banned_card` | `card.legalities.get(format) == "banned"` per **distinct** card | card name |
+| `format_legality` | `card.legalities.get(format)` is anything else that is not `"legal"` per **distinct** card — i.e. `not_legal`, a missing key, **and `restricted`** | card name |
 | `game_availability` | when `games` given, card not on any requested platform (`set(card.games) & set(games)` empty) — `card.games` is the **union across all printings** | card name |
+| `unknown_format` | `format` is not one of the 23 recognised Scryfall keys; the per-card legality check is **skipped** entirely | `None` (whole-deck) |
 
 `report.is_legal` is `True` **iff** `violations` is empty — which means **`is_legal` is still
 blind to the size rules of non-60 formats.** A legal **40-card Limited** deck or a **100-card Commander**
@@ -133,13 +135,19 @@ violation. **For any non-60 format, lead with your own reinterpreted verdict —
     60), and Limited has **no 4-copy limit** (play what you opened), so a 5×-common deck is **falsely**
     flagged `copy_limit`. Recognize these as **constructed-60 artifacts** and suppress them for Limited.
 - **Per-card legality is a raw `legalities.get(format) != "legal"`** — the tool lowercases `format` for
-  you, but an unknown/misspelled key still silently flags every card. See the dedicated section below.
-- **It collapses `banned` / `restricted` / `not_legal` into one message.** Scryfall values are `legal`,
-  `not_legal`, `banned`, `restricted` — **all four occur in this DB** (`data/cards.db` value counts:
-  `not_legal` ≈ 516k, `legal` ≈ 362k, `banned` ≈ 1,265, **`restricted` ≈ 90** — the restricted entries are
-  the Vintage list). The tool treats **all** non-`legal` as the same `format_legality`
-  violation ("not legal in {format}"). It gives **no** banlist nuance and **over-flags `restricted`** cards
-  (actually legal at 1 copy in Vintage). Your value-add: read the card's `legalities` via
+  you, and (since c3-3) an unknown/misspelled key no longer floods the deck: it produces a single
+  whole-deck `unknown_format` violation and the per-card check is **skipped**. See the dedicated
+  section below.
+- **It separates `banned`, but still collapses `restricted` into `not_legal`.** Scryfall values are
+  `legal`, `not_legal`, `banned`, `restricted` — **all four occur in this DB** (measured 2026-08-01 over
+  38,261 cards / 880,003 legality entries: `not_legal` 516,401, `legal` 362,238, `banned` **1,275**,
+  `restricted` **89** — of the restricted entries a slim majority are Vintage: 51 of 89, the rest
+  split across `duel` 24, `tlr` 10, `timeless` 4). Since story c3-3 a
+  **banned** card gets its own `banned_card` violation ("'{card}' is banned in {format}"), so the banlist
+  nuance you used to have to supply is now in the tool's own output. What is still collapsed:
+  **`restricted` is reported as `format_legality`** ("not legal in {format}"), which **over-flags** it —
+  a restricted card is legal in Vintage at 1 copy, and the validator models no per-card copy limit. That
+  one is still yours to correct. Your value-add: read the card's `legalities` via
   `lookup_card_by_name` and explain the *real* reason. *(Proven live: Lightning Bolt is `standard: not_legal`
   but `modern`/`legacy`/`pauper`/`vintage`/`commander: legal` and **`historic: banned`** — three different
   statuses the tool would flatten to one.)*
@@ -152,19 +160,20 @@ violation. **For any non-60 format, lead with your own reinterpreted verdict —
 So: `validate_deck` is a **floor, not a verdict**. Never relay its `violations` verbatim as the final word —
 reinterpret them for *this* format and explain how to comply.
 
-## ⭐ The valid-format-key contract (the silent trap that remains)
+## ⭐ The valid-format-key contract (now loud, still yours to map)
 
 `validate_deck` now does `format.strip().lower()`, so **case no longer matters** — `"Standard"`,
 `" BRAWL "`, and `"commander"` all resolve correctly (and `report.format` echoes the normalized
-lowercase key). What still bites: Scryfall legality keys are a **fixed vocabulary**, and an
-unknown/misspelled key (`"EDH"`, `"explorer"`, `"pio"`) makes `legalities.get(...)` return `None` →
-**every distinct card** is flagged `format_legality`.
+lowercase key). And since c3-3 the old silent trap is gone: Scryfall legality keys are a **fixed
+vocabulary**, and an unknown/misspelled key (`"EDH"`, `"explorer"`, `"pio"`) now produces a single
+whole-deck **`unknown_format`** violation ("'edh' is not a recognized format; per-card legality was
+not checked") and the per-card legality check is **skipped entirely** — no card is flagged.
 
-> **The tell:** if `report.is_legal` is `false` and **every** distinct card has a `format_legality`
-> violation — *especially if basic lands (Plains, Mountain, Forest…) are among them* — suspect an
-> **invalid/unmapped `format` string** first (an alias like `"EDH"` or an unsupported format like
-> `"explorer"`), not a genuinely all-illegal deck. Re-map to a valid key and re-run before telling the
-> user their deck is illegal.
+> **The tell:** an `unknown_format` violation names the problem directly — the deck was **not
+> actually checked** for legality or bans (structural checks still ran). Never read the remaining
+> report as a legality verdict; re-map to a valid key and re-run before telling the user anything
+> about card legality. (The old tell — every card flagged `format_legality`, basics included —
+> can no longer occur; if you see it, suspect a stale pre-c3-3 server instead.)
 
 **Always pass a valid Scryfall format key** (case-insensitive, but aliases are NOT resolved). The exact
 valid set in this DB's `legalities`:
@@ -178,9 +187,10 @@ standard, standardbrawl, timeless, tlr, vintage
 This list is the **current `cards.db` snapshot** (verified to match the DB's keys exactly today) — it can
 drift if the DB is rebuilt from newer Scryfall data, so treat it as "keys known to exist," not an immutable
 allow-list: the real test is whether `legalities.get(key)` resolves, so don't hard-reject an otherwise
-sensible key purely because it isn't printed here. The tool does **not** validate the key against
-this set — an unknown/misspelled key (`"explorer"`, `"edh"`, `"pio"`, `"frontier"`) silently `.get()`s `None`
-and flags the whole deck (no error raised). **Map the user's words to a key in this set before every call:**
+sensible key purely because it isn't printed here. The tool **does** check the key against its own
+known-format set — an unknown/misspelled key (`"explorer"`, `"edh"`, `"pio"`, `"frontier"`) gets one
+`unknown_format` violation and the per-card legality check is skipped (no error raised, no per-card
+flags). **Map the user's words to a key in this set before every call:**
 
 - EDH / Commander / cEDH → `commander`
 - "Arena Standard" → `standard` + `games=["arena"]`
@@ -188,8 +198,9 @@ and flags the whole deck (no error raised). **Map the user's words to a key in t
 - Pioneer / Modern / Legacy / Vintage / Pauper / Standard → the same lowercase word
 
 **`explorer` is *not* a key here** — you can't validate Explorer against this data. Say so honestly rather
-than passing a key that flags everything (Explorer ≈ Pioneer-without-Alchemy; offer `pioneer` as the closest
-checkable approximation, with the caveat).
+than passing a key that can't be checked at all (you'd get `unknown_format` and no per-card legality;
+Explorer ≈ Pioneer-without-Alchemy; offer `pioneer` as the closest checkable approximation, with the
+caveat).
 
 ## The workflow — resolve → validate → reinterpret → guide
 
@@ -228,9 +239,15 @@ each `violation.rule` to a concrete fix:
 - **`singleton`** → "you have {total} copies of {card}; {format} is singleton — cut to exactly 1." *Unless*
   the card carries its own copy-count exception ("a deck can have any number of…" like Persistent
   Petitioners, or Seven Dwarves' "up to seven") — then it's a false positive to suppress and explain.
+- **`banned_card`** → the tool has already told you *why*: the card is on the format's banlist. Say so
+  plainly and offer a **legal replacement** (search with `format`/`games`). Do **not** re-derive the
+  reason with `lookup_card_by_name` — that is the `format_legality` playbook, and using it here reads as
+  uncertainty about a fact the tool stated.
 - **`format_legality`** → `lookup_card_by_name` (no `format` filter!) to explain the *real* reason (rotated /
-  banned / restricted / never-in-format) and either offer a **legal replacement** (search with
-  `format`/`games`) or "did you mean {a format it IS legal in}?".
+  **restricted** / never-in-format — no longer *banned*, which now arrives as `banned_card`) and either
+  offer a **legal replacement** (search with `format`/`games`) or "did you mean {a format it IS legal
+  in}?". **A `restricted` card landing here is a false positive**: it is legal at 1 copy in Vintage, and
+  correcting that is the single most valuable thing you add on this rule.
 - **`game_availability`** → "{card} isn't on {platform}; drop it or play on a platform where it exists
   ({the platforms in `card.games`})." `card.games` is the **union across all printings**, so this is a
   real gap, not a printing artifact — *unless* the DB predates the union-of-printings import (see the
@@ -294,12 +311,12 @@ against `src/mcp_server/` ground truth and a live dry-run.)
 **`validate_deck` report specifics (carry these exactly):**
 
 - **`format` must be a valid Scryfall key** (see the list above). The tool lowercases and trims it (case
-  is safe), but it does **not** validate it against the key set; an unknown/misspelled key silently flags
-  every card `format_legality`.
+  is safe) and checks it against its known-format set; an unknown/misspelled key produces one whole-deck
+  `unknown_format` violation and the per-card legality check is skipped (no per-card flags).
 - **`violation.rule` is one of:** `min_deck_size`, `max_sideboard_size`, `copy_limit`, `singleton`,
-  `format_legality`, `game_availability`. **`card_name` is `None`** for the two whole-deck rules
-  (`min_deck_size`, `max_sideboard_size`) and the offending card's name for the other four. Don't expect
-  a `card_name` on a size violation.
+  `format_legality`, `banned_card`, `game_availability`, `unknown_format`. **`card_name` is `None`** for
+  the three whole-deck rules (`min_deck_size`, `max_sideboard_size`, `unknown_format`) and the offending
+  card's name for the other five. Don't expect a `card_name` on a size violation.
 - **Size is mainboard-only, by quantity** (a 4-of counts 4×); **sideboard is separate** (`sideboard_count`).
   The **copy limit is counted across mainboard + sideboard combined** (3 main + 2 side of one non-basic =
   5 → `copy_limit`; 1 main + 1 side in brawl → `singleton`). Basics are exempt (`"basic land" in
@@ -367,7 +384,8 @@ key you pass, so the **skill** owns format awareness:
   `"standard"` only as a last resort when the user declines to specify.
 - **Map the user's term to a valid key** *before* calling (EDH→`commander`, "Standard
   Brawl"→`standardbrawl`, etc. — case doesn't matter, aliases do). If their format has no key in the set
-  (e.g. Explorer), say so honestly rather than passing a key that flags everything.
+  (e.g. Explorer), say so honestly rather than passing a key the tool answers with `unknown_format`
+  (no per-card legality gets checked at all).
 - Once known, use the format to (a) pass the right `format`/`games`, and (b) reinterpret the tool's
   constructed-60 size flags through that format's real rules (Limited 40-card, Commander 100-card, etc.).
 
@@ -380,11 +398,12 @@ The tools return structured statuses, not raw exceptions — handle each:
 - **`validate_deck` `invalid`** — a bad `games` value (outside `paper`/`arena`/`mtgo`). Read the message,
   fix the games list, retry.
 - **`validate_deck` `error`** — a DB failure. Report honestly; don't fabricate a verdict.
-- **All-cards-`format_legality` result (the silent trap, unique to this skill):** if `report.is_legal` is
-  `false` and **every** distinct card has a `format_legality` violation (especially with basic lands among
-  them), **suspect an invalid/unmapped `format` string** (an alias like `"EDH"`, or an unsupported key like
-  `"explorer"`) before telling the user their whole deck is illegal. (Case alone is no longer a cause — the
-  tool lowercases the key.) Re-map to a key in the valid set and re-run.
+- **An `unknown_format` violation (unique to this skill's territory):** the `format` string was
+  invalid/unmapped (an alias like `"EDH"`, or an unsupported key like `"explorer"`) and **per-card
+  legality was never checked** — only the structural rules ran. Re-map to a key in the valid set and
+  re-run before saying anything about card legality. (Case alone is never the cause — the tool
+  lowercases the key. The old symptom, every card flagged `format_legality` with basics among them,
+  no longer occurs on a current server.)
 - **A `game_availability` flag on a card you know is on that platform:** the DB likely predates the
   union-of-printings import — suggest one refresh (`initialize_database` with `update=true`, or
   `scripts/import_scryfall_data.py`), after which `games` reflects all printings.
@@ -426,7 +445,8 @@ Lead with the **verdict**, reinterpret the tool's flags through the format, then
 how-to-comply list — bounded, each tied to evidence. For the real saved deck **"Prismatic Dragon"** (a
 59-card five-color Dragons deck), `validate_deck(deck_id, format="standard")` returns `is_legal: false`,
 `mainboard_count: 59`, and a single `min_deck_size` violation (`card_name: null`, *"Mainboard has 59 cards;
-standard requires at least 60"*):
+the minimum is 60."* — since c3-3 the sentence attributes the floor to no format, because the 60 is
+applied regardless of format):
 
 > **Verdict (Standard):** Almost legal — **one** real problem: your deck is **59 cards** and Standard
 > requires a 60-card minimum. Every individual card checks out as Standard-legal; nothing is banned or
@@ -439,17 +459,18 @@ standard requires at least 60"*):
 >
 > Want me to suggest a specific 60th card, or check this against a different format?
 
-**The invalid-key trap, in practice** — `format="Standard"` or `" BRAWL "` is fine now (the tool
-lowercases and trims), but an unmapped alias like `format="EDH"` returns a `format_legality` on **every**
-distinct card, including **Plains, Mountain, Forest, Island, Swamp**. Basics flagged as "not legal in EDH"
-is the dead giveaway:
+**The invalid-key case, in practice** — `format="Standard"` or `" BRAWL "` is fine now (the tool
+lowercases and trims), but an unmapped alias like `format="EDH"` returns a single whole-deck
+`unknown_format` violation (*"'edh' is not a recognized format; per-card legality was not checked."*)
+and **no per-card flags at all** — the structural checks still ran, the legality ones did not:
 
-> ⚠️ I passed the format as `"EDH"` and the tool flagged **every card** as illegal — *including your
-> basic lands*. That's not a real result; `EDH` isn't a Scryfall legality key, so **everything** reads as
-> illegal. Re-running with `"commander"` → only the real violations remain.
+> ⚠️ I passed the format as `"EDH"` and the tool answered `unknown_format` — `EDH` isn't a Scryfall
+> legality key, so **card legality was never checked** (only deck size and copy counts were).
+> Re-running with `"commander"` → the real per-card verdicts appear.
 
 **Commander reinterpretation** — `format="commander"` on the same 59-card deck returns `min_deck_size`
-("commander requires at least **60**") plus a `singleton` violation for each duplicated non-basic. Relay
+("Mainboard has 59 cards; the minimum is **60**." — no format named) plus a `singleton` violation for
+each duplicated non-basic. Relay
 the singleton flags (they're real now), but not the size check as-is:
 
 > Heads up: the validator now enforces Commander's **singleton** rule (each duplicated non-basic is

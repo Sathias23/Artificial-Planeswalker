@@ -41,9 +41,61 @@ _EXPECTED_STATUS = {
 
 
 _OBJECT_SHAPE_KEYS = frozenset(
-    {"properties", "additionalProperties", "patternProperties", "allOf", "anyOf", "oneOf", "not"}
+    {"properties", "additionalProperties", "patternProperties", "allOf", "not", "prefixItems"}
 )
-"""Keys that give a schema a shape of its own, rather than annotating one it already has."""
+"""Keys that give a schema a shape of its own, rather than annotating one it already has.
+
+``prefixItems`` joined at c3-3: a tuple-shaped array (``{"type": "array", "prefixItems": [...],
+"items": {"$ref": ...}}``) is a hand-assembled positional shape, and without it here the ``items``
+recursion waved one through — a false *green*, which is the worse direction for a guard to fail.
+
+``anyOf`` / ``oneOf`` deliberately **left**: they form a union rather than shaping an object, and
+conflating the two is what made this helper refuse the first legitimate ``response_model=X | None``.
+They are handled by :data:`_UNION_KEYS` instead.
+"""
+
+_UNION_KEYS = frozenset({"anyOf", "oneOf"})
+"""Keys that compose alternatives. A union is rooted when every one of its branches is."""
+
+_ANNOTATION_KEYS = frozenset(
+    {
+        "title",
+        "description",
+        "default",
+        "examples",
+        "example",
+        "deprecated",
+        "readOnly",
+        "writeOnly",
+        "$comment",
+    }
+)
+"""Keys that describe a schema without changing what it is.
+
+OpenAPI 3.1 (JSON Schema 2020-12) permits these **beside** a ``$ref``, where draft-4 did not — so
+``set(schema) == {"$ref"}`` was an exact-match test against a spec that no longer holds, and a
+``$ref`` carrying a ``description`` was refused as an envelope. A false *red*, but one whose
+message would have sent the next author looking for a hand-built body that was not there.
+"""
+
+
+def _is_null_branch(schema: dict) -> bool:
+    """Is *schema* the bare null type — the other half of an ``X | None`` union?
+
+    Both spellings are accepted: ``{"type": "null"}`` is what Pydantic emits today, and
+    ``{"type": ["null"]}`` is the equally legal JSON Schema 2020-12 form. Refusing the second
+    would be a false red on a shape the spec permits (review, 2026-08-01).
+
+    Args:
+        schema: One branch of a union.
+
+    Returns:
+        ``True`` for the bare null type, with annotation keys tolerated and anything shaping
+        refused.
+    """
+    if schema.get("type") not in ("null", ["null"]):
+        return False
+    return not (set(schema) - {"type"} - _ANNOTATION_KEYS)
 
 
 def _is_ref_rooted(schema: dict) -> bool:
@@ -51,22 +103,59 @@ def _is_ref_rooted(schema: dict) -> bool:
 
     AD-16's ban is on the **envelope** — a ``{"status": "ok", "deck": {...}}`` assembled in a
     handler, which appears in the OpenAPI document as an inline object with ``properties``. What it
-    permits is any body generated from a ``response_model``, and there are two rooted shapes that
-    can be: a component reference, and an **array of** one (c3-1's ``GET /api/decks`` returns
-    ``list[DeckSummary]``, an unwrapped bare array — AD-16's own example of an unwrapped body).
+    permits is any body generated from a ``response_model``, and there are three rooted shapes that
+    can be: a component reference; an **array of** one (c3-1's ``GET /api/decks`` returns
+    ``list[DeckSummary]``, an unwrapped bare array — AD-16's own example); and a **union of** them
+    (a ``response_model=X | None``, which generates a top-level ``anyOf``).
 
-    Keyed on the family — "the schema bottoms out in a ``$ref``" — rather than on a list of the
-    two spellings seen so far, so a future ``list[list[X]]`` is admitted and an array *of* an
-    inline envelope is still refused.
+    Keyed on the family — "the schema bottoms out in ``$ref``s" — rather than on a list of the
+    spellings seen so far, so a future ``list[list[X]]`` is admitted and an array *of* an inline
+    envelope is still refused.
+
+    The union arm is c3-3's (Q5), taking the repair ``deferred-work.md`` homed here. It ships
+    **before** anything needs it: c3-3's own format check answers one shape in every case, by
+    ruling (Q4), precisely so the UI has one shape to render. Fixed anyway, because the alternative
+    was leaving the next story a red test whose message named the wrong problem.
 
     Args:
         schema: The ``content["application/json"]["schema"]`` subtree of one response.
 
     Returns:
-        ``True`` if the shape is rooted in a component reference.
+        ``True`` if the shape is rooted in one or more component references.
     """
-    if set(schema) == {"$ref"}:
+    keys = set(schema)
+
+    # A $ref, tolerating annotation-only siblings (OpenAPI 3.1 permits them; the old exact-match
+    # `set(schema) == {"$ref"}` refused a $ref carrying a `description`).
+    if "$ref" in keys and not (keys - {"$ref"} - _ANNOTATION_KEYS):
         return True
+
+    # A union is rooted when EVERY branch is — so `X | None` passes and `X | {inline envelope}`
+    # does not. Beside the one union key, ONLY annotations are tolerated — the same allowlist
+    # stance as the `$ref` arm above. The first version enumerated the disguises already seen
+    # (object-shape keys, then `type`/`items` array machinery), which is the exact
+    # enumerate-the-members shape the standing agreement bans: `required`, `enum`, `const` or an
+    # `if`/`then` beside a union all constrain the body without being on any refused list, and
+    # each walked through (round-2 review, 2026-08-01). Anything that is not an annotation
+    # shapes, so anything that is not an annotation refuses.
+    union = _UNION_KEYS & keys
+    if union:
+        if len(union) > 1 or (keys - union - _ANNOTATION_KEYS):
+            return False
+        branches = schema[next(iter(union))]
+        if not isinstance(branches, list) or not branches:
+            return False
+        if not all(
+            isinstance(branch, dict) and (_is_null_branch(branch) or _is_ref_rooted(branch))
+            for branch in branches
+        ):
+            return False
+        # At least one branch must actually BE a reference. `{"anyOf": [{"type": "null"}]}` is
+        # rooted in nothing at all, and the `all()` above says True for it — a union of nulls is
+        # vacuously "every branch rooted". A body that can only ever be `null` is not a declared
+        # response model (review, 2026-08-01: it returned True).
+        return any(not _is_null_branch(branch) for branch in branches)
+
     if schema.get("type") == "array" and isinstance(schema.get("items"), dict):
         # An array that ALSO carries an object-shaping key is a hand-assembled shape wearing an
         # array's clothes, and a plain "is it an array? recurse into items" check waves it through
@@ -74,7 +163,7 @@ def _is_ref_rooted(schema: dict) -> bool:
         # permitted siblings, because FastAPI legitimately adds annotation keys of its own —
         # `title` on every generated array response, and `description` wherever a docstring
         # reaches it. Those describe the shape; the keys below CHANGE it.
-        if _OBJECT_SHAPE_KEYS & set(schema):
+        if _OBJECT_SHAPE_KEYS & keys:
             return False
         return _is_ref_rooted(schema["items"])
     return False
@@ -515,6 +604,148 @@ class TestStructuralPins:
                     "properties": {"total": {}},
                 },
                 False,
+            ),
+            # --- c3-3 (Q5): the three edges deferred-work.md homed here. ---
+            # 1. A union. `response_model=X | None` generates exactly this, and the old key set
+            #    put `anyOf` among the OBJECT-shaping keys, so a legitimate optional model was
+            #    refused as a hand-built envelope. Both spellings, since FastAPI has emitted each.
+            (
+                {
+                    "anyOf": [
+                        {"$ref": "#/components/schemas/DeckDetail"},
+                        {"type": "null"},
+                    ]
+                },
+                True,
+            ),
+            (
+                {
+                    "oneOf": [
+                        {"$ref": "#/components/schemas/DeckDetail"},
+                        {"$ref": "#/components/schemas/DeckSummary"},
+                    ],
+                    "title": "Response",
+                },
+                True,
+            ),
+            # ...and the union arm must not become a hole: ONE inline branch spoils it.
+            (
+                {
+                    "anyOf": [
+                        {"$ref": "#/components/schemas/DeckDetail"},
+                        {"type": "object", "properties": {"status": {}}},
+                    ]
+                },
+                False,
+            ),
+            # A union of nothing but scalars is not a declared model either.
+            ({"anyOf": [{"type": "string"}, {"type": "null"}]}, False),
+            # An empty or malformed union must not pass by having no branch to disprove it —
+            # `all([])` is True, which is exactly how a vacuous guard is born.
+            ({"anyOf": []}, False),
+            ({"anyOf": {"$ref": "#/components/schemas/DeckDetail"}}, False),
+            # A union carrying an object-shaping key alongside: the array arm's evasion, ported.
+            (
+                {
+                    "anyOf": [{"$ref": "#/components/schemas/DeckDetail"}],
+                    "properties": {"total": {}},
+                },
+                False,
+            ),
+            # 2. A `$ref` with legal sibling ANNOTATION keys. OpenAPI 3.1 permits these; the old
+            #    exact-match `set(schema) == {"$ref"}` refused them — a false red.
+            (
+                {"$ref": "#/components/schemas/DeckDetail", "description": "One deck."},
+                True,
+            ),
+            # ...but a `$ref` with a sibling that CHANGES it is still refused.
+            (
+                {"$ref": "#/components/schemas/DeckDetail", "properties": {"extra": {}}},
+                False,
+            ),
+            # 3. `prefixItems`: a tuple-shaped array is hand-assembled positional structure, and
+            #    without it in the shaping set the `items` recursion waved this through — a false
+            #    GREEN, the worse direction.
+            (
+                {
+                    "type": "array",
+                    "prefixItems": [{"type": "string"}],
+                    "items": {"$ref": "#/components/schemas/DeckSummary"},
+                },
+                False,
+            ),
+            # --- The three the union arm itself got wrong (edge-case review, 2026-08-01). ---
+            # An envelope smuggled past the ARRAY arm by wearing a union key: the union arm runs
+            # first, finds its own branches rooted, and never looks at `items`. Returned True.
+            (
+                {
+                    "type": "array",
+                    "items": {"type": "object", "properties": {"status": {}}},
+                    "anyOf": [{"$ref": "#/components/schemas/DeckDetail"}],
+                },
+                False,
+            ),
+            # A union rooted in NOTHING. `all()` over a null-only branch list is vacuously True,
+            # which is precisely how a guard acquires a hole. Returned True.
+            ({"anyOf": [{"type": "null"}]}, False),
+            ({"anyOf": [{"type": "null"}, {"type": "null"}]}, False),
+            # ...and the false RED in the same arm: `{"type": ["null"]}` is the equally legal
+            # JSON Schema 2020-12 spelling of the null branch. Returned False.
+            (
+                {
+                    "anyOf": [
+                        {"$ref": "#/components/schemas/DeckDetail"},
+                        {"type": ["null"]},
+                    ]
+                },
+                True,
+            ),
+            # --- Round 2 (2026-08-01): the union arm had enumerated its refusals (object-shape,
+            # then `type`/`items`), so a CONSTRAINING sibling on no list walked through. Now the
+            # arm mirrors the `$ref` arm's stance — beside the union key, annotations only.
+            (
+                {
+                    "anyOf": [{"$ref": "#/components/schemas/DeckDetail"}],
+                    "required": ["hand_built"],
+                },
+                False,
+            ),
+            (
+                {
+                    "anyOf": [{"$ref": "#/components/schemas/DeckDetail"}],
+                    "if": {"properties": {"status": {}}},
+                    "then": {"properties": {"deck": {}}},
+                },
+                False,
+            ),
+            (
+                {
+                    "anyOf": [{"$ref": "#/components/schemas/DeckDetail"}],
+                    "enum": ["frozen"],
+                },
+                False,
+            ),
+            # Two union keys at once compose shapes, not alternatives — and under the subtraction
+            # stance each would hide the other from the sibling check, so the pair is refused
+            # explicitly before it.
+            (
+                {
+                    "anyOf": [{"$ref": "#/components/schemas/DeckDetail"}],
+                    "oneOf": [{"$ref": "#/components/schemas/DeckSummary"}],
+                },
+                False,
+            ),
+            # The silent half: annotations beside a union stay legal, exactly as beside a `$ref`.
+            (
+                {
+                    "anyOf": [
+                        {"$ref": "#/components/schemas/DeckDetail"},
+                        {"type": "null"},
+                    ],
+                    "title": "Response",
+                    "description": "One deck, or nothing.",
+                },
+                True,
             ),
         ]
 

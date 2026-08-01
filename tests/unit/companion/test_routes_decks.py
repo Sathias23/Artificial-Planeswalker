@@ -707,10 +707,11 @@ class TestCommittedSchema:
         assert names, "no component schemas parsed — the fixture is not reading a real document"
         assert "HealthResponse" in names, "the pre-c3-1 shapes are gone; this is not the schema"
 
-        # `Card` is c3-2's, added deliberately here rather than silenced: this set is a
-        # hand-synchronised pin like test_spa.py's router list, so a story that adds a component
-        # schema edits it or gets a red naming the addition. That is the pin working — the
-        # alternative (deriving the set from the schema) would assert nothing at all.
+        # `Card` is c3-2's and the two `FormatCheck*` models are c3-3's, each added deliberately
+        # here rather than silenced: this set is a hand-synchronised pin like test_spa.py's router
+        # list, so a story that adds a component schema edits it or gets a red naming the
+        # addition. That is the pin working — the alternative (deriving the set from the schema)
+        # would assert nothing at all.
         assert names == {
             "Card",
             "CardSummary",
@@ -718,6 +719,8 @@ class TestCommittedSchema:
             "DeckDetail",
             "DeckSummary",
             "ErrorResponse",
+            "FormatCheckReport",
+            "FormatCheckRow",
             "HealthResponse",
         }
 

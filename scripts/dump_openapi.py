@@ -20,8 +20,16 @@ half fail in the gate that owns it (story c2-3, Decide-once #1).
 and ``error_responses(...)``, run ``npm run gen:api``, and commit both generated files — new paths
 and components appear in them automatically. Story **c3-1** (``/api/decks`` and
 ``/api/deck/{deck_id}``) was the first to do it, taking the schema from two components to six;
-story **c3-2** (``/api/cards/{card_id}``) followed, taking it to **seven** and the paths to four.
-Story **c3-3**'s format check is next.
+story **c3-2** (``/api/cards/{card_id}``) followed, taking it to seven and the paths to four; and
+story **c3-3** (``/api/deck/{deck_id}/format-check``) took it to **nine components and five
+paths**, adding ``FormatCheckReport`` and ``FormatCheckRow`` — the first wire shapes described by
+``src/logic`` rather than ``src/data``, which needed no change here either. Story **c3-4**'s
+active-deck endpoint is next.
+
+Two hand-synchronised pins do have to be edited by a story that adds a component, and they are
+not here: the component-name sets in ``tests/unit/companion/test_routes_decks.py`` and
+``test_routes_cards.py``. Both go red naming the addition, which is the pin working — but the
+count above is *not* what enforces it, so do not read this paragraph as the gate.
 
 **There is no dummy endpoint, and none is needed.** Story **c5-1**'s ``POST /agent/events`` declares
 the WebSocket event-envelope union as its *request body*, so every per-kind payload lands in
