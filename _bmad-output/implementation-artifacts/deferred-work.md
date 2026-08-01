@@ -2001,6 +2001,14 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   source (one docstring states the rule, the other points at it), or a gate asserting the two
   descriptions agree on the discriminator sentence. **Home: c3-5**, which re-tells this rule for
   the image route and will make it three copies if unaddressed. (Severity: Low.)
+  **RESOLVED by c3-5 (Q6, Brad 2026-08-01) — both halves of the fix shape, not one.** The rule is
+  now the single constant `IMAGE_DISCRIMINATOR` in `src/data/schemas/card.py`, attached as the
+  `description=` of `Card.image_uris`, `Card.card_faces` and `CardFace.image_uris`; both route
+  docstrings state only what their own operation does and point at the fields. The gate is
+  `test_committed_schema.py::TestTheImageDiscriminatorIsStatedOnce`, keyed on the **family** — any
+  wire description mentioning both "per-face" and "image_uris" must *be* the constant, so a
+  reworded fourth copy fails rather than a missing one. It caught the author's own `CardFace` class
+  docstring on its first run, which is the guard working before review saw it.
 
 - **`card_faces` is untyped on the wire — the discriminator rule has no `tsc` support.**
   `Card.card_faces` is `list[dict[str, Any]] | None`, generating `{ [key: string]: unknown }[] |
@@ -2012,6 +2020,19 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   after c3-3). **Home: c3-5 or c4-3, whichever consumes a face first** — and it must land with the
   regenerated types in the same commit. (Severity: Medium for c4-3's type safety, zero runtime
   impact today.)
+  **RESOLVED by c3-5 (Q4, Brad 2026-08-01), with two consequences the entry did not price.**
+  `CardFace` ships with `model_config = ConfigDict(extra="allow")` — a strict model would have
+  truncated `lookup_card_by_name`'s output for 6,455 face objects carrying 24 distinct keys, and
+  `tests/unit/data/test_card_face_schema.py` proves the round-trip loses no key and changes no
+  value (plus a counterfactual showing a strict model *does* truncate). Components 11 → 12; the
+  generated type is an intersection with an open index signature, so c4-3 gets both the named
+  fields and the unnamed ones. The two unpriced consequences: (1) five call sites outside the
+  companion read faces with `.get(...)` and `mypy --strict` forced them to attribute access —
+  `classifiers.py`, `mana_base.py` ×2 and `view_model.py` ×2, the last inside `src/viewer`, which
+  c3-5's story text listed as not-touched; (2) named fields are now always serialised, so a face
+  that omitted one carries an explicit `null` where it previously omitted the key. Additive, never
+  a truncation — and it made "presence of per-face `image_uris`" mean *truthiness* everywhere,
+  which three assertions in `test_routes_cards.py` were updated to say.
 
 ## Deferred from: story c3-3 (format check endpoint, 2026-08-01)
 
@@ -2233,3 +2254,94 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   route's own method — and a case-mismatched `"allow"` key survives the `{**headers, "Allow": …}`
   merge as a second header. Unreachable today: no code raises 405 manually. **Home: unowned,
   ledgered** — the first story that hand-raises a 405 owns it. (Severity: Low — latent.)
+
+## Deferred from: story c3-5 (card image endpoint, 2026-08-01)
+
+- **Between this story and c3-6 the image route fetches unpaced.** No semaphore, no spacing, no
+  concurrency cap: a hundred-tile deck view would open a hundred concurrent connections to
+  `cards.scryfall.io`. Stated as a decision rather than discovered — building a no-op pacer here
+  would be "a design decision made by a story that cannot see the requirements" (c3-4's ruling).
+  The window is closed **before any client exists**: no file under `ui/src` fetches an image until
+  **c4-4**, so today's only caller is a test. Recorded for c3-6 so its spacing constant is chosen
+  knowingly: Scryfall's published 10 req/s + 50-100 ms guidance covers `api.scryfall.com`, and the
+  `*.scryfall.io` **file origins are explicitly exempt from it** — so AD-11's pacer is a
+  good-citizen and NFR-05 budget decision, not a compliance one. **Home: c3-6.** (Severity: Low
+  until a client exists; Medium the moment one does.)
+
+- **The file extension is not derivable from the size key.** Measured over 40,960 stored image
+  maps: `png` resolves to a `.png` URL 40,957 times and to a **`.jpg`** three times (the
+  `errors.scryfall.com/soon.jpg` placeholders on Sparkspitter, Ondu Champion and Gorehorn
+  Minotaurs); every other size is `.jpg`. c3-7's cache filename (`<size>_<face>.<ext>`) must take
+  `ext` from the **resolved URL or the response `Content-Type`**, never from the size name. c3-5
+  writes no file, and its route already echoes the upstream `Content-Type` for the same reason.
+  **Home: c3-7.** (Severity: Medium for c3-7 — silent, and it corrupts a cache rather than failing.)
+
+- **Every stored URL carries a `?<timestamp>` cache-buster, and AD-11's cache key excludes it.**
+  245,742 of 245,742 URLs carry one. c3-5 sends the URL verbatim (stripping it 404s upstream) but
+  the AD-11 cache key is id + size + face, so a data refresh that changes the URL still hits the
+  same cache entry. AD-11 **accepts that staleness explicitly**; recorded so c3-7 does not
+  "improve" it by keying on the URL, which would silently make every refresh a full cache miss.
+  **Home: c3-7.** (Severity: Low — a correctness note, not a defect.)
+
+- **A fetch failure is answered and forgotten.** No negative cache, no backoff, no retry budget:
+  a card whose CDN fetch fails is re-fetched on the next request for it. The wire vocabulary c3-8
+  needs is already shipped (`image_fetch_failed`, distinguishable from the permanent
+  `no_image_data`), so **c3-8 is pure behaviour with no schema change and no regeneration**. The
+  UI half is likewise already written and gated — `EXPERIENCE.md`'s "CDN fetch failure" row
+  promises "negative-cached with backoff — no request storms, no per-image retry UI", and
+  `ui/tests/named-card-copy.test.ts` holds it. **Home: c3-8.** (Severity: Low today.)
+
+- **An image request reads the whole card row.** AD-1 is satisfied by writing no query at all —
+  `CardRepository.get_by_id` returns the `Card` the sibling route already answers with — so an
+  image request pays for oracle text, legalities and every other column to read one URL. Ledgered
+  rather than optimised: a narrow projection would be the second card shape AD-1 exists to
+  prevent. **Home: c4-1**, beside the hydration cache, which is the layer that could make this
+  free. (Severity: Low — local SQLite, one row.)
+
+- **`HEAD` and `Range` are not supported on the image route.** `GET` only. A browser will not ask
+  for either on an `<img>`, and nothing in the feature needs them; `HEAD` would additionally
+  require deciding whether to fetch upstream to answer it (which would defeat the point of a cheap
+  probe). Declined deliberately. **Home: unowned, informational** — the story that gives an image
+  a download or share affordance owns it. (Severity: Low — latent.)
+
+- **A distinct "no such face" token was declined.** An out-of-range `face` answers
+  `404 no_image_data`, the same token as a card with no artwork at all. AD-11 asks for *permanent*
+  and *transient* to be distinguishable, not for two flavours of permanent to be, and
+  `EXPERIENCE.md` draws the same named-Card placeholder for both — so a third token would cost
+  eight ripple sites to express a distinction no consumer acts on. The **precedence** AC 9 asks for
+  is structural rather than ordered: a card with no images resolves to an empty list, so every face
+  is out of range and one comparison answers both. **Home: unowned, ledgered** — revisit only if a
+  client is ever built that would act differently on the two. (Severity: Low.)
+
+- **A partially imaged card would shift face indices.** `resolve_face_images` returns only the
+  faces that carry images, in face order, so a card with an unimaged face 0 and an imaged face 1
+  would serve that image at `face=0`. **Zero such rows exist** (a card's faces either all carry
+  images or none do, measured across 38,261 rows) and the return type cannot represent a hole. The
+  behaviour is pinned by a test so it is a decision on the record. **Home: unowned, latent** — the
+  story that meets a real partially-imaged card owns it. (Severity: Low — unreachable today.)
+
+- **A missing size key answers `no_image_data`.** Unreachable against the shipped corpus: exactly
+  one key-set exists across all 40,960 image maps (`small`, `normal`, `large`, `png`, `art_crop`,
+  `border_crop` — all six, always, never a subset), so a present map always resolves the requested
+  size. That is a **true count of this corpus, not a Scryfall guarantee** (c3-2's lesson), so it
+  justifies the absence of a size-negotiation branch and is deliberately **not** published to the
+  wire as a promise. **Home: unowned, informational.** (Severity: Low.)
+
+- **The MCP tool status vocabulary and the companion `ErrorReason` vocabulary share spellings and
+  are different contracts.** The c3-3 skills-tree grep was run for this story and found no stale
+  prose: `.claude/skills/**` and `plugin/skills/**` mention `card_not_found` and `deck_not_found`
+  only as **MCP tool `status` values**, which predate the wire contract and are unrelated to it;
+  neither of c3-5's new tokens appears anywhere, and no skill documents the companion's HTTP error
+  contract at all. Recorded because the collision is a trap for **c6-1**, which introduces MCP
+  tools that *do* consume the HTTP tokens: the same two words will then mean two things in one
+  skill file unless the tool's outcome vocabulary is named deliberately. **Home: c6-1.**
+  (Severity: Low now, Medium at c6-1.)
+
+- **`error_response` now stamps `Cache-Control: no-store` on every typed error, feature-wide.**
+  Added by c3-5 because a route structurally cannot attach a header — the point of deriving the
+  status from the token — and RFC 9111 §4.2.2 lets a cache store a 404 heuristically with no
+  explicit freshness, which would turn one transient image failure into a permanently broken tile.
+  Applied to every token rather than the two that motivated it, since no modelled failure in this
+  app is worth re-serving from a cache. Recorded as a **behaviour change to a shared helper** so a
+  later story that wants a cacheable error knows it must argue for it. **Home: unowned,
+  informational.** (Severity: Low.)
