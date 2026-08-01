@@ -1356,68 +1356,44 @@ class TestTheExtensionIsNeverTakenFromTheSizeKey:
 
     def test_a_png_size_resolving_to_a_jpg_url_is_stored_as_jpg(self) -> None:
         """The three real cards - Sparkspitter, Ondu Champion, Gorehorn Minotaurs - whose ``png``
-        size is ``https://errors.scryfall.com/soon.jpg``. Measured: exactly **3** of the 245,760
-        stored URLs, and the reason `<ext>` may never be derived from the size name.
+        size is ``https://errors.scryfall.com/soon.jpg``, served as ``image/jpeg``. Measured:
+        exactly **3** of the 245,760 stored URLs, and the reason `<ext>` may never be derived
+        from the size name.
         """
-        extension = images.cache_extension("https://errors.scryfall.com/soon.jpg", "image/jpeg")
-
-        assert extension == ".jpg"
+        assert images.cache_extension("image/jpeg") == ".jpg"
 
     def test_an_ordinary_png_card_is_stored_as_png(self) -> None:
         """NON-VACUITY PAIRING: a discrimination, not a constant. Without this the assertion
         above passes against a function that returns ``".jpg"`` unconditionally.
         """
-        extension = images.cache_extension(
-            "https://cards.scryfall.io/png/front/a.png?1", "image/png"
-        )
-
-        assert extension == ".png"
-
-    def test_the_content_type_wins_over_the_url_when_they_disagree(self) -> None:
-        """The header wins (review D1, 2026-08-01 — this assertion used to be inverted). The cold
-        path serves the upstream's ``Content-Type`` verbatim, so the stored spelling must follow
-        the same source: were the URL to win, ``image/png`` bytes behind a ``.jpg``-suffixed URL
-        would be cached as ``.jpg`` and every warm hit would flip the whole media type to
-        ``image/jpeg`` — under ``nosniff`` + ``immutable``, for a year — while the cold answer
-        said ``image/png``. AC 8's "divergence bounded to parameters" is true by construction
-        only with this priority.
-        """
-        assert images.cache_extension("https://cards.scryfall.io/x/a.jpg?1", "image/png") == ".png"
-
-    def test_the_url_suffix_answers_when_the_header_is_outside_the_map(self) -> None:
-        """The fallback direction, so the pair above is a discrimination: a header the map does
-        not know (measured never on this corpus) costs a correctly-spelled entry, not a
-        permanent miss."""
-        assert (
-            images.cache_extension("https://cards.scryfall.io/x/a.jpg?1", "application/json")
-            == ".jpg"
-        )
-
-    def test_the_content_type_answers_when_the_url_carries_no_usable_suffix(self) -> None:
-        assert images.cache_extension("https://cards.scryfall.io/x/a", "image/jpeg") == ".jpg"
-        assert images.cache_extension("https://cards.scryfall.io/x/a", "image/png") == ".png"
-        assert images.cache_extension("https://cards.scryfall.io/x/a.jpeg", "image/jpeg") == ".jpg"
+        assert images.cache_extension("image/png") == ".png"
 
     def test_a_content_type_with_parameters_still_resolves(self) -> None:
-        assert (
-            images.cache_extension("https://cards.scryfall.io/x/a", "image/jpeg; charset=binary")
-            == ".jpg"
-        )
+        assert images.cache_extension("image/jpeg; charset=binary") == ".jpg"
 
-    def test_an_unrecognised_pair_is_not_cacheable_rather_than_an_error(self) -> None:
-        """c3-2's finding applied: *this corpus* holds only `.jpg` and `.png` - a true count, not
-        a rule Scryfall promises. So a third type is **not cached** (and is still served); it is
-        not a raise, and emphatically not a file written under a guessed extension.
+    def test_an_accepted_but_unmapped_image_type_is_served_and_not_cached(self) -> None:
+        """Greptile P1 (2026-08-02), and the reason the URL is not even a fallback source.
+
+        Everything that reaches the cache has already passed ``_is_servable_image_type``, so its
+        header is always ``image/*`` — a header outside the two-entry map is therefore never
+        octet-stream noise, it is a REAL third image format (``image/webp``). The first D1 patch
+        kept the URL suffix as a fallback for exactly this case, which would have stored webp
+        bytes as ``.jpg`` and re-served them warm as ``image/jpeg`` under ``nosniff`` +
+        ``immutable`` — the identical media-type flip D1 existed to close, one branch deeper.
+        A header the map cannot name means served, not cached; c3-2's finding applied: *this
+        corpus* holds only `.jpg` and `.png`, a true count, not a rule Scryfall promises.
         """
-        assert images.cache_extension("https://cards.scryfall.io/x/a.webp", "image/webp") is None
-        assert images.cache_extension("https://cards.scryfall.io/x/a", "") is None
+        assert images.cache_extension("image/webp") is None
+        assert images.cache_extension("image/avif") is None
+        assert images.cache_extension("") is None
 
-    def test_the_size_key_appears_nowhere_in_the_derivation(self) -> None:
-        """The signature itself is the guard: ``cache_extension`` cannot consult the size key,
-        because it is not given one."""
+    def test_neither_the_size_key_nor_the_url_appears_in_the_derivation(self) -> None:
+        """The signature itself is the guard: ``cache_extension`` cannot consult the size key OR
+        the URL, because it is given neither (the URL was removed at Greptile P1, 2026-08-02 —
+        an argument the function ignored would have been a lie in its contract)."""
         import inspect
 
-        assert set(inspect.signature(images.cache_extension).parameters) == {"url", "content_type"}
+        assert set(inspect.signature(images.cache_extension).parameters) == {"content_type"}
 
 
 class TestTheCacheReadAndWrite:
@@ -1433,7 +1409,6 @@ class TestTheCacheReadAndWrite:
             card_id=_CARD,
             size="normal",
             face=0,
-            url="https://cards.scryfall.io/normal/front/a.jpg?1",
             content_type="image/jpeg",
             body=payload,
         )
@@ -1448,7 +1423,6 @@ class TestTheCacheReadAndWrite:
             card_id=_CARD,
             size="png",
             face=0,
-            url="https://errors.scryfall.com/soon.jpg",
             content_type="image/jpeg",
             body=b"\xff\xd8\xff\xe0-soon",
         )
@@ -1474,7 +1448,6 @@ class TestTheCacheReadAndWrite:
             card_id=_CARD,
             size="png",
             face=0,
-            url="https://cards.scryfall.io/png/front/a.png?1",
             content_type="image/png",
             body=b"\x89PNG\r\n\x1a\n-real",
         )
@@ -1500,7 +1473,6 @@ class TestTheCacheReadAndWrite:
             card_id=_CARD,
             size="png",
             face=0,
-            url="https://errors.scryfall.com/soon.jpg",
             content_type="image/jpeg",
             body=b"\xff\xd8\xff\xe0-soon",
         )
@@ -1521,7 +1493,6 @@ class TestTheCacheReadAndWrite:
             card_id=_CARD,
             size="normal",
             face=0,
-            url="https://cards.scryfall.io/a.jpg",
             content_type="image/jpeg",
             body=b"a",
         )
@@ -1543,7 +1514,6 @@ class TestTheCacheReadAndWrite:
             card_id=_CARD,
             size="normal",
             face=0,
-            url="https://cards.scryfall.io/normal/front/a.jpg?1700000001",
             content_type="image/jpeg",
             body=b"the-old-bytes",
         )
@@ -1557,7 +1527,6 @@ class TestTheCacheReadAndWrite:
             card_id=_CARD,
             size="normal",
             face=0,
-            url="https://cards.scryfall.io/x/a.webp",
             content_type="image/webp",
             body=b"webp",
         )
@@ -1579,7 +1548,6 @@ class TestTheCacheReadAndWrite:
             card_id=_CARD,
             size="png",
             face=0,
-            url="https://errors.scryfall.com/soon.jpg",
             content_type="image/jpeg",
             body=b"\xff\xd8\xff\xe0-placeholder",
         )
@@ -1588,7 +1556,6 @@ class TestTheCacheReadAndWrite:
             card_id=_CARD,
             size="png",
             face=0,
-            url="https://cards.scryfall.io/png/front/a.png?2",
             content_type="image/png",
             body=b"\x89PNG\r\n\x1a\n-the-real-art",
         )
@@ -1624,7 +1591,6 @@ class TestTheWriteIsAtomic:
             card_id=_CARD,
             size="normal",
             face=0,
-            url="https://cards.scryfall.io/a.jpg",
             content_type="image/jpeg",
             body=b"half",
         )
@@ -1643,7 +1609,6 @@ class TestTheWriteIsAtomic:
             card_id=_CARD,
             size="normal",
             face=0,
-            url="https://cards.scryfall.io/a.jpg",
             content_type="image/jpeg",
             body=b"the-good-bytes",
         )
@@ -1656,7 +1621,6 @@ class TestTheWriteIsAtomic:
             card_id=_CARD,
             size="normal",
             face=0,
-            url="https://cards.scryfall.io/a.jpg",
             content_type="image/jpeg",
             body=b"x",
         )
@@ -1689,7 +1653,6 @@ class TestTheWriteIsAtomic:
                 card_id=_CARD,
                 size="normal",
                 face=0,
-                url="https://cards.scryfall.io/a.jpg",
                 content_type="image/jpeg",
                 body=b"a",
             )
@@ -1715,7 +1678,6 @@ class TestTheWriteIsAtomic:
             card_id=_CARD,
             size="normal",
             face=0,
-            url="https://cards.scryfall.io/a.jpg",
             content_type="image/jpeg",
             body=b"a",
         )
@@ -1738,7 +1700,6 @@ class TestACacheFailureIsNeverARequestFailure:
             card_id=_CARD,
             size="normal",
             face=0,
-            url="https://cards.scryfall.io/a.jpg",
             content_type="image/jpeg",
             body=b"a",
         )
@@ -1762,7 +1723,6 @@ class TestACacheFailureIsNeverARequestFailure:
             card_id=_CARD,
             size="normal",
             face=0,
-            url="https://cards.scryfall.io/a.jpg",
             content_type="image/jpeg",
             body=b"a",
         )
@@ -1775,7 +1735,6 @@ class TestACacheFailureIsNeverARequestFailure:
             card_id=_CARD,
             size="normal",
             face=0,
-            url="https://cards.scryfall.io/a.jpg",
             content_type="image/jpeg",
             body=b"a",
         )
@@ -1833,7 +1792,6 @@ class TestACacheFailureIsNeverARequestFailure:
             card_id=_CARD,
             size="normal",
             face=0,
-            url="https://cards.scryfall.io/a.jpg",
             content_type="image/jpeg",
             body=b"a",
         )
@@ -1850,7 +1808,6 @@ class TestACacheFailureIsNeverARequestFailure:
             card_id=_CARD,
             size="normal",
             face=0,
-            url="https://cards.scryfall.io/a.jpg",
             content_type="image/jpeg",
             body=b"a",
         )

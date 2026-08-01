@@ -551,6 +551,19 @@ through Starlette and httpx. `asyncio.to_thread` is stdlib and needs nothing (Q2
         plugin mirror rebuilt, byte-identical on all three changed files
   - [x] Raise the PR into `feat/companion-c3` — **PR #35**, 2026-08-01, two commits (`2f048c0`
         feat incl. the 14 folded-in review patches, `7d29438` records)
+  - [x] **Greptile round (2026-08-02): 4/5, two P1s, both CONFIRMED and both in review-added
+        code — both patched.** (1) *Sibling cleanup races successful writes* — the displacement
+        unlink ran **after** `os.replace`, so two concurrent writers of different extensions
+        could each delete the other's freshly committed entry, leaving the key empty. Fixed by
+        unlinking **before** the replace: each writer's unlink precedes its own replace, so
+        "both deleted" would need each replace to precede the other — a contradiction; at least
+        one committed entry always survives. (2) *Suffix fallback mislabels cached formats* —
+        D1's URL-suffix fallback was only ever reachable with an accepted-but-unmapped `image/*`
+        type (everything at the cache has passed `_is_servable_image_type`), i.e. exactly the
+        webp-as-`.jpg` mislabel D1 closed, one branch deeper. Fixed by making the header the
+        **sole** source — unmapped means served-not-cached — and removing the now-unused `url`
+        parameter from `cache_extension` and `DiskCache.write` (an ignored argument is a lie in
+        the contract); the signature test now pins `{"content_type"}`.
 
 ### Review Findings (2026-08-01, three layers: Blind Hunter + Edge Case Hunter + Acceptance Auditor)
 

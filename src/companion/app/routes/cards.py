@@ -197,12 +197,13 @@ def _image_response(body: bytes, content_type: str) -> Response:
     (``image/jpeg; charset=binary`` and all), while a warm hit derives it from the stored
     extension through ``images.CACHE_MEDIA_TYPES`` and therefore carries the bare media type.
     "Bounded to parameters" is true **by construction**, not by luck: ``cache_extension`` derives
-    the stored spelling from the same ``Content-Type`` the cold path served, with the URL suffix
-    only as a fallback for a header outside the map (review D1, 2026-08-01 — the URL used to win,
-    which left a header/suffix disagreement free to flip the whole media type between cold and
-    warm). Named and tested rather than left for c4-4 to discover (Q4, Brad 2026-08-01); no
-    measured Scryfall response actually sends a parameter, and no browser behaves differently for
-    one.
+    the stored spelling from the same ``Content-Type`` the cold path served, and from nothing
+    else (review D1, 2026-08-01 — the URL suffix used to win, which left a header/suffix
+    disagreement free to flip the whole media type between cold and warm; Greptile P1,
+    2026-08-02 — the suffix then survived as a fallback, which re-opened the identical flip for
+    an accepted-but-unmapped type like ``image/webp``, so the URL is now not consulted at all).
+    Named and tested rather than left for c4-4 to discover (Q4, Brad 2026-08-01); no measured
+    Scryfall response actually sends a parameter, and no browser behaves differently for one.
 
     Args:
         body: The image bytes, from the CDN or from disk.
@@ -361,7 +362,6 @@ async def read_card_image(
             card_id=scryfall_id,
             size=size,
             face=face,
-            url=url,
             content_type=content_type,
             body=body,
         )

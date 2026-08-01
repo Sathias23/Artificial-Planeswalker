@@ -80,7 +80,7 @@ import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager, suppress
 from importlib.metadata import PackageNotFoundError, version
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -660,56 +660,45 @@ def cache_root() -> Path:
     return paths.data_dir() / CACHE_DIRECTORY_NAME
 
 
-def cache_extension(url: str, content_type: str) -> str | None:
+def cache_extension(content_type: str) -> str | None:
     """Decide which extension a fetched image is stored under — **never from the size key**.
 
-    The size key is not available to this function *by construction*: it takes a URL and a header
-    and nothing else, so the defect this rule exists to prevent cannot be written here. That
-    defect is silent rather than loud: ``png`` resolves to a ``.jpg`` URL on **three real cards**
-    (Sparkspitter, Ondu Champion and Gorehorn Minotaurs, whose ``png`` entry is
-    ``https://errors.scryfall.com/soon.jpg``), so a filename of ``png_0.png`` holding JPEG bytes
-    would be served with the wrong media type forever and would corrupt a cache rather than fail
-    one.
+    The size key is not available to this function *by construction*: it takes the response's
+    ``Content-Type`` and nothing else, so the defect this rule exists to prevent cannot be
+    written here. That defect is silent rather than loud: ``png`` resolves to a ``.jpg`` URL on
+    **three real cards** (Sparkspitter, Ondu Champion and Gorehorn Minotaurs, whose ``png`` entry
+    is ``https://errors.scryfall.com/soon.jpg``, served as ``image/jpeg``), so a filename of
+    ``png_0.png`` holding JPEG bytes would be served with the wrong media type forever and would
+    corrupt a cache rather than fail one.
 
-    Two sources, and the header wins (review D1, 2026-08-01):
-
-    1. **The response's** ``Content-Type``, parameters stripped. The cold path serves this header
-       verbatim (c3-5's ruling: *what the upstream said about its own bytes is more accurate than
-       anything derived elsewhere*), so deriving the stored spelling from the same source is what
-       makes a warm hit agree with the cold answer on the media type — always, not just when the
-       URL happens to agree. Were the URL to win instead, a CDN serving ``image/png`` from a
-       ``.jpg``-suffixed URL would be cached as ``.jpg`` and re-served as ``image/jpeg`` under
-       ``nosniff`` + ``immutable`` for a year: a full media-type flip between the first render of
-       a tile and every one after it.
-    2. **The resolved URL's own suffix**, the fallback for a header outside the map — measured
-       never on this corpus, but a header of ``application/octet-stream`` over a ``.jpg`` URL
-       should cost a correctly-spelled entry, not a cache miss forever.
+    **The header is the only source, and the URL is deliberately not consulted** (review D1 +
+    Greptile P1, 2026-08-01/02). The header, because the cold path serves it verbatim (c3-5's
+    ruling: *what the upstream said about its own bytes is more accurate than anything derived
+    elsewhere*) — deriving the stored spelling from the same source is what makes a warm hit
+    agree with the cold answer on the media type, always. The URL not even as a fallback, because
+    every response that reaches the cache has already passed ``_is_servable_image_type`` and
+    therefore carries an ``image/*`` header — so a header outside the two-entry map is never
+    ``application/octet-stream`` noise, it is a **different image format** (``image/webp``), and
+    a ``.jpg`` suffix under it would store webp bytes to be re-served as ``image/jpeg`` under
+    ``nosniff`` + ``immutable`` for a year. The first shipped version let the URL win and the
+    review inverted it; the fallback then re-opened the same hole one branch deeper, and Greptile
+    caught it. A header this map cannot name means *served, not cached*.
 
     Args:
-        url: The URL the bytes were actually fetched from.
         content_type: The ``Content-Type`` the upstream sent, parameters and all.
 
     Returns:
-        A member of :data:`CACHE_MEDIA_TYPES`, or ``None`` when neither source names one — in
-        which case the image is **served and not cached**. Not an error and not a guess: a third
+        A member of :data:`CACHE_MEDIA_TYPES`, or ``None`` when the header names none — in which
+        case the image is **served and not cached**. Not an error and not a guess: a third
         format is a fact about the corpus changing, not a request failure, and writing it under an
         invented extension is how a cache starts lying about its own contents.
 
     Example:
-        >>> cache_extension("https://errors.scryfall.com/soon.jpg", "image/jpeg")
+        >>> cache_extension("image/jpeg")
         '.jpg'
     """
     media_type = content_type.split(";", 1)[0].strip().lower()
-    extension = _EXTENSION_BY_MEDIA_TYPE.get(media_type)
-    if extension is not None:
-        return extension
-    try:
-        suffix = PurePosixPath(urlsplit(url).path).suffix.lower()
-    except ValueError:
-        # `is_fetchable` has already refused a URL `urlsplit` raises on, so this is unreachable
-        # from the route — but this function is public and must not turn a bad URL into a 500.
-        suffix = ""
-    return suffix if suffix in CACHE_MEDIA_TYPES else None
+    return _EXTENSION_BY_MEDIA_TYPE.get(media_type)
 
 
 def _cache_path(root: Path, card_id: str, size: str, face: int, extension: str) -> Path:
@@ -849,12 +838,18 @@ def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ..
     (:func:`build_image_cache`). Conflating the two makes the AC look either unsatisfied or
     over-satisfied.
 
-    After a successful replace, any *displaced* sibling entries are removed (review 2026-08-01):
-    the key excludes the extension, so one key can legitimately hold ``normal_0.jpg`` **and**
-    ``normal_0.png`` across a format change — and :func:`_read_cached` probes extensions in fixed
-    order, so without this step a stale entry under the earlier extension would permanently
-    shadow the fresh one just written. A failed unlink is logged and not raised: the write itself
-    succeeded, and the shadowing it leaves behind is the pre-existing degrade, not a new failure.
+    Any *displaced* sibling entries are removed **before the replace, not after** (review
+    2026-08-01, ordering per Greptile P1 2026-08-02): the key excludes the extension, so one key
+    can legitimately hold ``normal_0.jpg`` **and** ``normal_0.png`` across a format change — and
+    :func:`_read_cached` probes extensions in fixed order, so without this step a stale entry
+    under the earlier extension would permanently shadow the fresh one just written. The ordering
+    is what makes two concurrent writers of *different* extensions safe: each writer's unlink
+    precedes its own replace, so for **both** fresh entries to end deleted would need each
+    replace to precede the other — a contradiction. At least one committed entry always
+    survives; unlink-after-replace allowed an interleaving that deleted both. The cost of the
+    ordering is one narrow branch — siblings unlinked, then the write itself fails — which
+    degrades to the standard one-refetch miss. A failed unlink is logged and not raised: the
+    shadowing it leaves behind is the pre-existing degrade, not a new failure.
 
     Args:
         target: The final path, from :func:`_cache_path`.
@@ -880,6 +875,16 @@ def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ..
             raise
         with handle:
             handle.write(payload)
+        for stale in displaces:
+            try:
+                stale.unlink(missing_ok=True)
+            except OSError as exc:
+                logger.warning(
+                    "Could not remove the superseded cache entry at %s (%s); the older spelling "
+                    "will shadow the one being written",
+                    stale,
+                    type(exc).__name__,
+                )
         os.replace(temp_path, target)
     except BaseException:
         # The cleanup itself can fail (Windows: an AV/indexer briefly holding the fresh temp file
@@ -887,16 +892,6 @@ def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ..
         with suppress(OSError):
             temp_path.unlink(missing_ok=True)
         raise
-    for stale in displaces:
-        try:
-            stale.unlink(missing_ok=True)
-        except OSError as exc:
-            logger.warning(
-                "Could not remove the superseded cache entry at %s (%s); the older spelling will "
-                "shadow the one just written",
-                stale,
-                type(exc).__name__,
-            )
 
 
 class DiskCache:
@@ -1015,15 +1010,16 @@ class DiskCache:
         card_id: str,
         size: str,
         face: int,
-        url: str,
         content_type: str,
         body: bytes,
     ) -> None:
         """Store one fetched image, atomically — and never fail the request for it (AC 9).
 
-        Keyword-only on purpose: six parameters of which three are strings that would silently
+        Keyword-only on purpose: five parameters of which three are strings that would silently
         transpose, and a cache written under a transposed key is wrong in a way no test of *this*
-        function can see.
+        function can see. The URL is deliberately **not** a parameter (Greptile P1, 2026-08-02):
+        it is not part of the key, and after D1 it is not part of the extension derivation
+        either — an argument a function ignores is a lie in its contract.
 
         **Every failure is swallowed and logged.** An unwritable directory, a ``PermissionError``
         from ``os.replace`` (the realistic Windows case — another handle open on the target, which
@@ -1036,13 +1032,12 @@ class DiskCache:
             card_id: The printing uuid.
             size: The requested rendition.
             face: Which of the card's images was asked for.
-            url: The URL the bytes came from — the fallback extension source, never the key.
-            content_type: The upstream's own ``Content-Type``, the primary extension source
-                (review D1, 2026-08-01): it is what the cold path serves, so deriving the stored
-                spelling from it is what keeps warm and cold agreeing on the media type.
+            content_type: The upstream's own ``Content-Type``, the sole extension source
+                (review D1 + Greptile P1): it is what the cold path serves, so deriving the
+                stored spelling from it is what keeps warm and cold agreeing on the media type.
             body: The image bytes to store.
         """
-        extension = cache_extension(url, content_type)
+        extension = cache_extension(content_type)
         if extension is None:
             # A format outside the measured two. Served, not stored: writing it under a guessed
             # extension would make the cache lie about its own contents, and refusing to serve it
