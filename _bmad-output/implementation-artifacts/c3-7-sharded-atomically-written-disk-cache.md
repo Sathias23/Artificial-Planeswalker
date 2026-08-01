@@ -549,7 +549,8 @@ through Starlette and httpx. `asyncio.to_thread` is stdlib and needs nothing (Q2
         `mypy src/ --platform win32` no issues in 89 files · `ui` lint / format:check /
         `tsc -b --force` / test (568) / build all clean · `gen:api` + `gen:types` **no diff** ·
         plugin mirror rebuilt, byte-identical on all three changed files
-  - [ ] Raise the PR into `feat/companion-c3`
+  - [x] Raise the PR into `feat/companion-c3` — **PR #35**, 2026-08-01, two commits (`2f048c0`
+        feat incl. the 14 folded-in review patches, `7d29438` records)
 
 ### Review Findings (2026-08-01, three layers: Blind Hunter + Edge Case Hunter + Acceptance Auditor)
 
