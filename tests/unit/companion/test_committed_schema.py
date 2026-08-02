@@ -222,3 +222,67 @@ class TestTheComponentSet:
         # worse, raised its own HTTPException, answering `invalid_request` at its own status and
         # bypassing the `forbidden` token entirely. This asserts the choice held.
         assert "securitySchemes" not in schema.get("components", {})
+
+
+class TestTheDatabaseTokensAreDeclared:
+    """Which operations promise which ``503``, pinned as a whole-artifact fact (c3-9, Q4).
+
+    ``database_not_initialized`` was reachable on six routes and declared on none of them, while
+    ``TestDatabaseStates`` asserted it by name in three test modules. The gap was a property of
+    :func:`~src.companion.app.deps.get_session`, not of any route, so every data route inherited
+    it by construction and the count only ever rose — c3-1 raised it, c3-2 re-confirmed it on a
+    third route, and c3-9 ruled it because it is the story that renders the state.
+
+    A whole-artifact pin rather than five per-route ones, deliberately: the declaration is made
+    **per include** in :func:`~src.companion.app.main.build_app`, so "which routers carry it" is
+    one decision with five consequences, and splitting it across five modules would be the
+    hand-synchronised duplication this file exists to have stopped.
+    """
+
+    #: Every operation whose session comes from ``get_session`` and can therefore answer both.
+    DATABASE_BACKED = (
+        ("/api/decks", "get"),
+        ("/api/deck/{deck_id}", "get"),
+        ("/api/deck/{deck_id}/format-check", "get"),
+        ("/api/cards/{card_id}", "get"),
+        ("/api/card-image/{scryfall_id}", "get"),
+    )
+
+    @staticmethod
+    def _reasons(schema, path: str, method: str, status: str) -> set[str]:
+        """The tokens a declared response names, read out of its description."""
+        description = schema["paths"][path][method]["responses"][status]["description"]
+        assert description.startswith("reason: "), description
+        return {token.strip() for token in description.removeprefix("reason: ").split("|")}
+
+    @pytest.mark.parametrize(("path", "method"), DATABASE_BACKED)
+    def test_every_database_backed_operation_declares_both_503_tokens(self, schema, path, method):
+        # ONE entry naming each, not two entries — `error_responses` collapses tokens that share a
+        # status, a documented behaviour that had never fired before this story because
+        # `database_not_initialized` had never been declared anywhere.
+        assert self._reasons(schema, path, method, "503") == {
+            "database_not_initialized",
+            "database_unavailable",
+        }
+
+    def test_health_keeps_the_narrower_inherited_declaration(self, schema):
+        # `/health` takes no session and can answer NEITHER 503 token; its 503 is inherited from
+        # c1-2 and deliberately not narrowed since (`main.py`). Widening an over-declaration it
+        # structurally cannot honour would turn an inherited wart into a fresh lie, so c3-9 left
+        # it alone — pinned here so that "left alone" is a decision rather than an oversight.
+        assert self._reasons(schema, "/health", "get", "503") == {"database_unavailable"}
+
+    def test_the_active_deck_routes_declare_no_503_at_all(self, schema):
+        # c3-4's ruling, unchanged: no database dependency, so no 503 to promise. The narrowing
+        # that made `responses` per-include rather than app-wide is what this asserts still holds.
+        for method in ("get", "put"):
+            assert "503" not in schema["paths"]["/api/active-deck"][method]["responses"]
+
+    def test_the_scan_can_tell_the_two_apart(self, schema):
+        # Non-vacuity, and it is a real one: `_reasons` returns a SET parsed out of prose, so a
+        # parser that silently returned everything or nothing would satisfy the equalities above
+        # only by accident. This proves the two shapes it reads are genuinely different.
+        assert self._reasons(schema, "/api/decks", "get", "503") != self._reasons(
+            schema, "/health", "get", "503"
+        )
+        assert self._reasons(schema, "/api/deck/{deck_id}", "get", "404") == {"deck_not_found"}

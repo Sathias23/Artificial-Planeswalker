@@ -62,6 +62,12 @@ endpoints rather than two; ``deferred-work.md`` homes it there by name.
 """
 
 
+# NOT PUBLISHED. The attribute docstring below is a `__doc__` on a module-level assignment, which
+# `app.openapi()` never reads — so editing it is free of wire consequences. MEASURED at c3-8
+# (2026-08-02): a commit that edited BOTH this docstring and `ErrorResponse`'s class docstring
+# produced a diff in the generated files from the second edit only. The distinction is twelve
+# lines wide and was a 50/50 guess for every author until c3-9 wrote it down (Q9). See
+# `scripts/dump_openapi.py` for the mechanism.
 ErrorReason = Literal[
     "deck_not_found",
     "card_not_found",
@@ -127,6 +133,12 @@ because a leaf module has no business knowing HTTP.
 """
 
 
+# WIRE-VISIBLE, IN FULL. This class docstring crosses the wire as the schema's `description`,
+# uncut — `_CompanionFastAPI.openapi()` truncates at the first Google-style header and this
+# docstring has none, so every paragraph below reaches `openapi.json`, `types.d.ts` and `/docs`.
+# Editing it IS a wire change: regenerate with `npm run gen:api` and commit both generated files
+# in the same commit, or `test_openapi_contract.py` turns CI red. (Q9, c3-9; measured at c3-8,
+# which predicted "no wire diff" here and was wrong.)
 class ErrorResponse(BaseModel):
     """The body of every non-2xx response — the token, and nothing else (AD-16).
 

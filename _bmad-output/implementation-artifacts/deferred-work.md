@@ -722,9 +722,16 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   agent session — if no import is running, ask it to rebuild the database (`initialize_database`).")
   and its panel shipped in `src/components/StatePanel/`. It is declared `RETRIES_QUIETLY: false`
   in `states.ts` — the escalation of a quiet retry that has not worked.
-  **What remains, homed at c3-9** (which owns the polling): the "for a while" threshold and the
-  switch from `database-updating` to `database-updating-stalled`. Nothing selects the state at
-  runtime until then. The reason the ruling was not "leave it transient": for a durably corrupt
+  ~~**What remains, homed at c3-9** (which owns the polling): the "for a while" threshold and the
+  switch from `database-updating` to `database-updating-stalled`.~~ **CLOSED, c3-9 (Q3,
+  2026-08-02).** `STALLED_AFTER_MS = 60_000` in `ui/src/state/poller.ts` — 60 s of *continuous*
+  `database_unavailable`, which at the 2 s / x2 / 30 s schedule is at least six consecutive
+  refusals with the last two a full ceiling apart, so a single slow write burst cannot escalate.
+  Armed by that token and by nothing else, and reset by every other outcome including a `200`;
+  `database_not_initialized` NEVER escalates at any elapsed time, because a multi-minute first
+  build is its normal case and its own copy promises the wait. Both directions are asserted from
+  one fake clock, and mutation probe (e) — arming the clock on any error — turns the
+  never-escalates assertion red. Historical note: The reason the ruling was not "leave it transient": for a durably corrupt
   file, "Reads will resume automatically — nothing to do here" is simply **false**, and c2-9 is
   the one story in the feature whose whole subject is whether the words are true.
   (Source: Blind Hunter; Severity: Low → **ruled**, implementation residue at c3-9.)
@@ -1042,7 +1049,17 @@ the gate-output rule rather than left as "we meant to".
   is genuinely less to see today than there will be. **Natural home: c3-9** ("fresh install guides
   instead of erroring and comes alive on its own"), which owns that loop in the UI and cannot be
   accepted without a real empty-data-dir run. Recorded so c3-9 inherits it as a known-unverified
-  precondition rather than assuming Epic C1 closed it. (Severity: Low.)
+  precondition rather than assuming Epic C1 closed it. **CLOSED (backend half), c3-9 hand-run
+  2026-08-02.** `PLANESWALKER_DATA_DIR` pointed at a genuinely empty directory: the companion
+  STARTED, printed `http://127.0.0.1:8765`, published its discovery file, and planted **no**
+  `cards.db` — c1-6's no-plant guarantee, confirmed live for the first time (the directory held
+  only `companion.json`, `companion.lock` and `image_cache/`). `GET /health` answered `200`;
+  `GET /api/decks` answered `503 {"reason":"database_not_initialized"}` with
+  `cache-control: no-store`; `GET /` served the SPA. A populated `cards.db` was then copied in
+  **with the server still running**, and the very next `GET /api/decks` answered `200` with real
+  deck names — no restart, no cache-busting. FR-22's backend half is now confirmed rather than
+  inferred. **What is still not confirmed is the PAGE doing it in a browser** — see c3-9's own
+  residue below. (Severity: Low.)
 
 ## Deferred from: story c2-1 (2026-07-26)
 
@@ -1449,10 +1466,27 @@ the gate-output rule rather than left as "we meant to".
   suite and have never been looked at in a browser — in particular the **command chip**, which
   only appears in three of them, and the **two-paragraph** guidance/action stack, which
   `no-active-deck` does not exercise (it has no guidance). Homed at **c3-9**, which wires the
-  states and is the first story able to show them. Cheapest interim check: temporarily change
-  the `state` prop in `App.tsx` and look. (Severity: Low.)
+  states and is the first story able to show them. **PARTLY CLOSED, c3-9 (2026-08-02).** Four of
+  the five are now REACHABLE in the running app — `database-not-initialized`, `database-updating`,
+  `database-updating-stalled` and `internal-error` are each selected by the poll from a wire
+  token, and the first is what a genuine fresh install shows (confirmed live at the HTTP layer).
+  `disconnected` stays **c5-6's** and is selected by nothing, per Q10. **The browser look-at was
+  NOT performed**: this environment has no browser automation installed and adding one would be a
+  new dependency, so the VISUAL half is unchanged and moves to the epic manual-testing checklist
+  with a recipe — run `PLANESWALKER_DATA_DIR=<empty dir> uv run artificial-planeswalker
+  companion` and open the printed URL for `database-not-initialized`, then hand-edit `App.tsx`'s
+  `left` prop to a literal `<StatePanel state="..." />` for each of the other four. What to look
+  at is unchanged: the **command chip** (three states have one) and the **two-paragraph
+  guidance/action stack**. (Severity: Low.)
 
-- **`states.ts` has no runtime consumer.** `PANEL_FOR_REASON`, `CLIENT_ONLY_STATES` and
+- ~~**`states.ts` has no runtime consumer.**~~ **CLOSED, c3-9 (2026-08-02).**
+  `PANEL_FOR_REASON` is consumed by `ui/src/state/panel.ts` — which also uses its KEY SET as the
+  runtime membership test for `ErrorReason`, so there is still no second list anywhere — and
+  `RETRIES_QUIETLY` by `ui/src/state/poller.ts`, indexed at runtime rather than paraphrased
+  (probe (b) replaces the consult with "always retry" and five assertions go red).
+  `CLIENT_ONLY_STATES` stays a declaration and that is correct: `disconnected` is **c5-6's**, and
+  `database-updating-stalled` is produced by elapsed time on the client rather than selected from
+  a list. The original entry, for the record: `PANEL_FOR_REASON`, `CLIENT_ONLY_STATES` and
   `RETRIES_QUIETLY` are total maps written for **c3-9** to read; nothing imports them today, so
   they are tree-shaken out of the bundle. This is deliberate — the alternative was leaving the
   wire-token→panel mapping and the retry contract as prose in a story record, which is where
@@ -1481,17 +1515,43 @@ the gate-output rule rather than left as "we meant to".
   `StatePanel.tsx:92` has no fallback branch: a value arriving through untyped wiring (a stale
   enum, a JS caller, a mis-parsed wire token) yields `undefined` and `copy.headline` throws — an
   unhandled render exception, which is the error screen the story exists to ban. TypeScript
-  guards it today and no runtime caller exists (`App.tsx` passes a literal). **c3-9 owns runtime
-  validation of wire values before they reach this prop** — the same place the polling and the
-  stalled-state threshold live. (Severity: Low today; Medium once wiring exists.)
+  guards it today and no runtime caller exists (`App.tsx` passes a literal). ~~**c3-9 owns
+  runtime validation of wire values before they reach this prop.**~~ **CLOSED, c3-9 (Q5,
+  2026-08-02).** `ui/src/state/panel.ts`'s `panelFor` is the one place a wire value becomes a
+  `StateKey`: total by construction over every string and over `null`, clamping to
+  `internal-error`. `StatePanel` gained **no** fallback branch and stays presentation-only. Three
+  inputs reach the clamp — a token this build does not know, a token `states.ts` maps to `null`
+  (`invalid_request` and `payload_too_large` are both DECLARED on `GET /api/decks`, so this is
+  reachable rather than theoretical), and no token at all. Also closed here, and not in the
+  original entry: indexing a plain object with `__proto__` or `constructor` returns an INHERITED
+  value rather than `undefined`, which a bare `?? 'internal-error'` would have passed through to
+  the prop as an object; `Object.hasOwn` is what stops it and it is asserted.
+  **Two corrections to this entry's own text, both measured at c3-9.** The line is
+  `StatePanel.tsx:104`, not `:92`. And the throw is one line EARLIER than described: probe (d)
+  removes the clamp and the crash is `TypeError: Cannot read properties of undefined (reading
+  'body')` from `guidanceOf(copy)`, not from `copy.headline`.
+  (Severity: Low today; Medium once wiring exists.)
 
 - **The un-quoted tails of EXPERIENCE.md's copy rows are contract nobody gates.** The verbatim
   gate captures `Headline:` and `Body:` only; the no-active-deck row's deck-list clause and both
   retry clauses ("Deterministic: this state never retries itself", the stalled row's threshold
   note) live outside the captures and can be edited or deleted with every gate green while their
-  TypeScript mirrors (`RETRIES_QUIETLY`, the `decks` prop) drift undetected. Extending the gate
-  is new scope; candidate home is **c3-9**, beside the wiring those clauses constrain.
-  (Severity: Low.)
+  TypeScript mirrors (`RETRIES_QUIETLY`, the `decks` prop) drift undetected. ~~Extending the gate
+  is new scope; candidate home is **c3-9**, beside the wiring those clauses constrain.~~
+  **CLOSED, c3-9 (Q6, 2026-08-02).** `ui/tests/copy-tails.test.ts` gates the three tails that
+  constrain c3-9, each against its TypeScript mirror in BOTH directions: the no-active-deck
+  deck-list clause against `DECKS_PATH`, the stalled row's *"the client decides when 'a while' has
+  passed (c3-9 owns the threshold)"* against `STALLED_AFTER_MS` and
+  `RETRIES_QUIETLY['database-updating-stalled']`, and the internal-error row's *"Deterministic:
+  this state never retries itself"* against `RETRIES_QUIETLY['internal-error']`. Deleting a clause
+  fails the gate; flipping a mirror fails the gate. A NEW FILE rather than an edit to
+  `copy.test.ts`, so that suite's "passes unchanged" prediction stays literally checkable, and the
+  mirrors are read out of SOURCE rather than imported — see the file header for the twelve `tsc`
+  errors the import version produced, which is `ui/README.md`'s cross-project-import blind-spot
+  row earning its place. **The fourth tail — the disconnected row's connection-pill note — is
+  DECLINED and re-homed on c5-6 by name**, which owns the pill, its backoff and the state; there
+  is nothing in this repository for it to be checked against today, so a gate on it would assert
+  prose against prose. (Severity: Low.)
 
 ## Deferred from: story c2-10 (footer attribution, 2026-07-30)
 
@@ -1677,7 +1737,22 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   c3-2's AC 6 repeats c3-1's constraint ("`build_app()`'s app-level `responses` is **unchanged**"),
   so it was again not fixed unilaterally. Every data route added from here inherits the gap by
   construction — it is a property of `get_session`, not of any route — so the count will keep
-  rising until c3-9 rules on it. Severity stands at Medium.
+  rising until c3-9 rules on it. ~~Severity stands at Medium.~~
+  **RULED AND CLOSED, c3-9 (Q4, 2026-08-02): DECLARE IT.** `build_app()` now passes
+  `database_not_initialized` to the database-backed includes (`decks`, `cards`) and to those only.
+  Five operations changed in the committed schema — `/api/decks`, `/api/deck/{deck_id}`,
+  `/api/deck/{deck_id}/format-check`, `/api/cards/{card_id}`, `/api/card-image/{scryfall_id}` —
+  each `503` description going from `"reason: database_unavailable"` to
+  `"reason: database_not_initialized | database_unavailable"`. **`error_responses`' documented
+  collapse fired for the first time**: both tokens share status 503 and land in ONE entry naming
+  each, a behaviour advertised in that helper's docstring since c1-4 and never before exercised.
+  `/health` and both active-deck operations are byte-identical and deliberately so — neither can
+  answer the token, and widening a declaration a route cannot honour turns an inherited wart into
+  a fresh lie. Both artifacts were regenerated together via `npm run gen:api` and never
+  hand-edited; the whole-artifact pins live in
+  `tests/unit/companion/test_committed_schema.py::TestTheDatabaseTokensAreDeclared`, which also
+  pins `/health`'s narrower set and the active-deck routes' absence of any 503 so that "left
+  alone" is a decision rather than an oversight.
 
 - **`DeckSummary.from_deck` / `DeckDetail.from_deck` return zero counts, silently, for any `Deck`
   that was not eager-loaded.** `DeckModel.deck_cards` is `lazy="noload"`, so a `Deck` from
@@ -1711,9 +1786,39 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   engine. Combined with the `list_decks` over-fetch above, a `GET /api/decks` over a large
   collection blocks a concurrent `initialize_database` writer — which is exactly the concurrency
   FR-22 presumes ("a database created while the backend runs is picked up with no restart").
-  **Home: c3-9** (which owns the fresh-install/coming-alive transition) or **c10-3** (latency
-  hardening), whichever reaches it first. (Severity: Low-Medium — needs a concurrent import to
-  fire; NFR-02 already calls for WAL reads.)
+  ~~**Home: c3-9** (which owns the fresh-install/coming-alive transition) or **c10-3** (latency
+  hardening), whichever reaches it first.~~ **MEASURED AND RE-HOMED ON c10-3, c3-9 (Q7,
+  2026-08-02)** — a re-home with a number attached, which is worth more than a fix without one.
+  Measured against a real running companion serving `GET /api/decks` (~0.16-0.31 s per request,
+  the over-fetch above), with a writer taking `BEGIN IMMEDIATE` five times, quiet and then under
+  four saturating reader threads:
+
+  | Journal mode | writer QUIET (median / max) | writer CONTENDED (median / max) |
+  | --- | --- | --- |
+  | `wal` | 0.0097 s / 0.0125 s | **0.0080 s / 0.0092 s** (no effect at all) |
+  | `delete` | 0.0079 s / 0.0093 s | 0.0079 s / **0.2131 s** (one read's worth of wait) |
+
+  Three findings, and the second is the one nobody had written down:
+
+  1. **The companion's engine genuinely has no WAL pragma** — `src/data/database.py`'s
+     `create_engine` sets only `connect_args={"timeout": 5}`. Confirmed.
+  2. **WAL is a PERSISTENT file property, and something else sets it.**
+     `src/search/connection.py:136` (the sync `ConnectionFactory`, for sqlite-vec) runs
+     `PRAGMA journal_mode=WAL`, so any database this project has built an embedding index over is
+     WAL forever and the companion inherits it without asking. The shipped 250 MB `cards.db` on
+     this machine reads `wal`.
+  3. **But a freshly created one does not.** Measured directly: a database created by
+     `src/data/database.init_database` reads `journal_mode: delete`. So the FRESH-INSTALL case —
+     exactly the one FR-22 is about — is the non-WAL row of that table.
+
+  **It still does not bite, and the reason is arithmetic rather than luck.** The worst measured
+  effect is a single 0.21 s wait on one write, under four threads saturating the endpoint, absorbed
+  by a 5 s busy timeout that is 20x larger. This story's poll issues ONE request every 2-30 s, not
+  four continuously — so a writer meets an in-flight read for a small fraction of wall-clock, and
+  the wait it inherits is one read. Adding a WAL pragma to the companion's engine is still the
+  right eventual fix (NFR-02 calls for WAL reads and it would make the fresh-install case match the
+  post-index case), but it is latency hardening rather than an FR-22 failure. **Home: c10-3**, with
+  the numbers above. (Severity: Low-Medium -> **Low**, measured.)
 
 - **The `Attributes:` sections in the four wire-facing schemas hold prose, not attributes, and
   nothing says why.** `src/data/schemas/deck.py` (`DeckCardSummary`, `DeckSummary`, `DeckDetail`)
@@ -1866,7 +1971,16 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   but **invisible from the route source**, and it matters to two named stories: **c3-9** polls the
   503 states and **c4-1** owns the fetch layer, and a UI that treats `database_unavailable` /
   `database_not_initialized` as "retry quietly" will retry a request whose id can never succeed.
-  **Home: c3-9**, which owns the polling and the transition. (Severity: Low-Medium.)
+  ~~**Home: c3-9**, which owns the polling and the transition.~~ **CLOSED, c3-9 (2026-08-02),
+  and closed structurally rather than carefully.** The one route c3-9 polls, `GET /api/decks`, has
+  **no path parameter**, so there is no id to be malformed and no `503` it sees can be masking a
+  `400`. That is asserted rather than merely written down — `decks.test.ts` pins
+  `DECKS_PATH` free of `{`, `}` and `:`, because the safety argument evaporates the moment somebody
+  parameterises the constant, which is exactly what **c4-1** will be tempted to do when it copies
+  this module for `GET /api/cards/{card_id}`. The warning for c4-1 is written in three places it
+  will actually read: `ui/src/api/decks.ts`'s header, that assertion's comment, and `ui/README.md`'s
+  *"Not here yet"* section. **c4-1's per-card fetches are NOT immune and need a bound on attempts
+  per id.** (Severity: Low-Medium.)
 
 - **`card_faces` crosses the wire completely untyped.** `Card.card_faces` is
   `list[dict[str, Any]] | None`, generating `{ [key: string]: unknown }[] | null` — no per-face
@@ -1893,7 +2007,17 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   and that nothing with a panel is classified — but **no runtime code consumes any of it yet**, the
   same declared state `PANEL_FOR_REASON` itself has been in since c2-9. **Home: c4-3** (the
   placeholder render) and **c3-9** (the panel wiring). If neither consumes it, that is a signal the
-  structure was over-built and it should be deleted rather than maintained. (Severity: Low.)
+  structure was over-built and it should be deleted rather than maintained.
+  **HALF CLOSED, c3-9 (2026-08-02).** The PANEL half is consumed: `panelFor` reads
+  `PANEL_FOR_REASON` and, notably, uses its key set as the runtime membership test for
+  `ErrorReason` — so the map is load-bearing twice over and cannot be deleted without inventing a
+  second list. The CLASSIFICATION half — `PLACEHOLDER_FOR_REASON`, `NO_UI_RESPONSE` and the three
+  type-level asserts — is still consumed by nothing, and **stays c4-3's**, stated explicitly here
+  because this entry's own text makes non-consumption a delete signal and c3-9 was one of its two
+  named consumers. c3-9 does read the `null`s, but only to clamp them: a panel-less token on a
+  whole-screen poll means a client bug, so it renders `internal-error` rather than consulting which
+  KIND of `null` it was. **If c4-3 does not consume the classification, delete it.**
+  (Severity: Low.)
 
 - **`ui/README.md`'s blind-spot map now carries the "does this prose address a TypeScript reader"
   residue, which is a REVIEW obligation with no gate.** Added at c3-2 alongside the family-keyed
@@ -1997,8 +2121,17 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   response the same document describes as "surfaced to the *agent*… The glass never sees it."
   Pre-existing, inherited, and doubled by every new GET route. **Fix shape**: either curate the
   app-wide set per-method (drop 413 from body-less GETs at declaration time) or record it as a
-  known wart in the contract docs. **Home: the next story that touches `error_responses`'s
-  declaration helper**, else c3-9. (Severity: Low.)
+  known wart in the contract docs. ~~**Home: the next story that touches `error_responses`'s
+  declaration helper**, else c3-9.~~ **RULED, c3-9 (Q8, 2026-08-02): RECORDED AND RE-HOMED ON
+  c5-5.** c3-9 declined to curate per method. The reason is scope with blast radius, stated so it
+  can be argued with: Q4 touched the *caller* (`build_app`'s per-include sets), not the helper, so
+  the trigger condition in this entry was never actually met; and changing `error_responses`'
+  per-status grouping into per-method curation is a real change to a shared declaration site with
+  six routes downstream, made in a story whose frontend half is already the largest in the epic.
+  It is now written down as a known wart in `scripts/dump_openapi.py` — the contract-docs home —
+  with the consequence spelled out for a client author (*a 413 on a body-less GET is unreachable;
+  ignore it*). **Home: c5-5**, which adds the ingest cap, makes the 413 real, and cannot avoid
+  deciding which operations answer it. (Severity: Low.)
 
 - **The image-discriminator prose is maintained by hand in two Python docstrings with no drift
   gate between them.** The same three paragraphs (split-card trap, per-face `image_uris`
@@ -2812,7 +2945,15 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   but `contracts.py` itself carries no marker at either site, so the next author has the same 50/50
   guess. A one-line comment above each would fix it; it is not done here because `contracts.py` is a
   wire module and even a comment edit is a wire decision that would want its own regeneration.
-  **Home: c3-9**, which already inherits wire-value work. (Severity: Low.)
+  ~~**Home: c3-9**, which already inherits wire-value work.~~ **CLOSED, c3-9 (Q9, 2026-08-02).**
+  One `#` comment above `ErrorReason`'s assignment (*NOT PUBLISHED*) and one above
+  `ErrorResponse`'s `class` statement (*WIRE-VISIBLE, IN FULL*), each naming the mechanism and the
+  c3-8 measurement it came from. **c3-7's objection is dissolved by measurement, not by the
+  regeneration this story owed anyway**: `npm run gen:api` was run after the comment edits and
+  produced **no diff at all** from them — a `#` comment is not a docstring, so it never reaches
+  `app.openapi()`. That is now the recorded safe way to annotate a wire module, in
+  `scripts/dump_openapi.py`. (A docstring edit still is a wire change, and still needs its own
+  regeneration.) (Severity: Low.)
 
 ## Deferred from: code review of c3-8-distinguishable-failure-signalling-and-negative-caching (2026-08-02)
 
@@ -2843,3 +2984,114 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   the tile author exactly one correct action without a new token — but it is a wire-visible change
   c3-8's rulings excluded. Declined at review (Brad, 2026-08-02) so the tile author decides with
   the UI in view. **Home: c4-4**, beside the blind-spot row it would resolve. (Severity: Low.)
+## Deferred from: story c3-9 (fresh install guides instead of erroring, 2026-08-02)
+
+Every entry here has a **named home**, per AC 23. Nothing in this section is prose-only: each one
+either has an owner story or is declared inside the file it constrains.
+
+- **The four newly-reachable panels have still not been looked at by a human, and neither has the
+  transition.** This is the honest split of AC 11 and AC 25. What WAS done live: an empty
+  `PLANESWALKER_DATA_DIR`, a companion that started with no `cards.db`, `GET /api/decks` answering
+  `503 database_not_initialized`, a `cards.db` planted while the server ran, and the very next
+  request answering `200` with real deck names — no restart. What was NOT done: opening the URL in
+  a browser and watching the PAGE change, and looking at `database-not-initialized`,
+  `database-updating`, `database-updating-stalled` and `internal-error` rendered by a real engine.
+  This environment has no browser automation installed and adding one would be a new dependency
+  the story does not call for. The DOM-level claim is gated (`App.test.tsx`'s FR-22 block asserts
+  the transition from ONE mount, and probe (f) confirms a remount-driven implementation fails it);
+  the VISUAL claim is not made anywhere. **Home: the epic manual-testing checklist**, with the
+  recipe in the c2-9 entry above and in `ui/README.md`'s new blind-spot row. (Severity: Low — the
+  behaviour is gated; the appearance is a first-look.)
+
+- **A backend that cannot be reached at all leaves whatever panel is on screen, including on the
+  very first load.** `fetch` rejecting produces no response and therefore no token, so the poller
+  changes nothing and retries on the backoff. On the first load that means "No deck on the glass."
+  stays up while the app quietly retries a backend that is not there — a calm panel that is not
+  true. The panel that IS true for it is `disconnected` (*"Lost the companion backend. Check your
+  terminal…"*), and `CLIENT_ONLY_STATES` assigns it to **c5-6**, whose condition is the WebSocket
+  backoff exhausting its retries; Q10 ruled c3-9 must not claim it. Ruled rather than overlooked:
+  clamping a transport failure to `internal-error` instead would have been worse, because
+  `RETRIES_QUIETLY['internal-error']` is `false` and one transient blip would have stopped the poll
+  permanently. **Home: c5-6.** (Severity: Low-Medium — the wrong panel, in a case a fresh install
+  reaches only by starting the browser before the backend.)
+
+- **Once a `200` arrives the poll stops, and nothing notices if the database goes away again.**
+  `RETRIES_QUIETLY['no-active-deck']` is `false` — correct, because the agent sets the deck and a
+  `deck_changed` event delivers it — so a tab left open through a later `initialize_database`, a
+  deleted `cards.db` or a corrupted one shows a stale `no-active-deck` panel until it is reloaded.
+  The signal that should replace polling here is **c5-6's** WebSocket (and its reconnect refetch,
+  NFR-04). Stated because the poll deliberately does NOT become a heartbeat: making it one would
+  contradict a contract written down in `states.ts` and would put two mechanisms on the same job.
+  **Home: c5-6.** (Severity: Low.)
+
+- **The stalled panel is terminal, and a database that recovers after it does not un-stall.**
+  `RETRIES_QUIETLY['database-updating-stalled']` is `false`, by design — *"the quiet retry has
+  already been running and has not worked, so continuing to retry silently is the behaviour this
+  state exists to replace"* — and the copy's next action is a manual one. But if the user does what
+  it says and the import succeeds, the page still needs a reload, which is one refresh more than
+  FR-22's promise. Same resolution as the entry above: **c5-6's** reconnect is the event that
+  should re-drive it. **Home: c5-6.** (Severity: Low.)
+
+- **A first import that starves reads for 60 s continuously would escalate to stalled — unmeasured
+  edge.** During a bulk import `is_database_initialized` returns `False` (the `import_state` probe),
+  so the dominant answer is `database_not_initialized`, which never escalates. But if the
+  importer's write batches ever hold the write lock past the engine's 5 s busy timeout, the read
+  raises and the route answers `database_unavailable` instead — and 60 s of *continuous* such
+  answers would show "Card database still updating. Check your agent session — if no import is
+  running…" during an import that is running. The importer's batch size was not measured here, and
+  the Q7 measurement above says lock waits are ~0.2 s worst case under four saturating readers, so
+  this is a narrow window rather than a likely one. **Home: c10-3**, beside the lock work.
+  (Severity: Low, unmeasured.)
+
+- **`ui/tests/posture.test.ts`'s identifier layer is defeated by a computed global assembled from
+  fragments, and its import layer is what actually carries the guard.** Declared in that file's own
+  header. `globalThis['fetch']` is caught (the identifier is present); `globalThis['fet' + 'ch']` is
+  not, and neither is an aliased hook CALL (`sync(subscribe, snapshot)`) — the alias is caught at
+  the IMPORT door instead, which is why the door is the primary layer. Probe (g) planted both
+  spellings in a real component file and confirmed exactly this split. The answer to the remainder
+  is review, not a longer regex — the same declaration `test_import_boundary.py` makes on the
+  Python side. **Home: review, permanent.** (Severity: Low, permanent.)
+
+- **`CLIENT_ONLY_STATES` still has no runtime consumer**, and unlike its two siblings it is not
+  expected to gain one from a wiring story: `database-updating-stalled` is produced by elapsed time
+  rather than looked up, and `disconnected` is selected by nobody until **c5-6**. It is still worth
+  keeping — `EveryPanelHasASource` and `PanelSourcesAreDisjoint` both read it at typecheck time, so
+  it is load-bearing without being executed. **Home: c5-6**, which either consumes it or is the
+  story that says it should stay type-level. (Severity: Low.)
+
+- **The `no-store` request header is asserted, its EFFECT is not.** `decks.test.ts` pins
+  `cache: 'no-store'` on the request options, which is a source-level claim; whether a real browser
+  honours it for a same-origin `200` with no `Cache-Control` was not measured, because jsdom has no
+  HTTP cache. The consequence if it were wrong is precisely FR-22 failing — a cached `503` would
+  make the page never come alive — so it is worth one look during the browser pass rather than a
+  test. **Home: the epic manual-testing checklist**, beside the transition look-at. (Severity:
+  Low.)
+
+## Deferred from: code review of c3-9 (2026-08-02)
+
+- **Alternating `database_unavailable`/`database_not_initialized` pins the backoff near base.**
+  `poller.ts` resets `delay` to `POLL_BASE_MS` on every outcome-identity change (Q2's own ruling:
+  *"resets to base on any change of outcome"*). During an interleaved import — the exact
+  interleaving this ledger already documents — each flip resets the schedule, so sustained
+  alternation approaches one request per 2 s against a backend that is deliberately busy, which is
+  what `POLL_CEILING_MS`'s docstring says the ceiling exists to prevent. By-design per Q2; the cost
+  was not weighed there. **Home: c4-1**, which copies this seam for its per-card fetches and should
+  decide whether token-change resets need damping (e.g. no reset between the two database tokens).
+- **`database-updating-stalled` permanently forfeits FR-22's self-transition.**
+  `RETRIES_QUIETLY['database-updating-stalled']` is `false` (ruled in `states.ts:233` — *"continuing
+  to retry silently is the behaviour this state exists to replace"*), so once escalated the poll
+  stops for the life of the page: when the user does exactly what the panel's copy tells them to and
+  the rebuild succeeds, the `503→200` transition this story exists to render is invisible, and only
+  a manual refresh recovers. The contract is honoured; its terminal consequence was never written
+  down. A slow continued probe would need a `states.ts`/`EXPERIENCE.md` amendment, which this story
+  may not make. **Home: C3 retro**, as an EXPERIENCE.md amendment question.
+- **The c4-1/c4-2 seam Q1 drew, restated where AC 23 asked for it (review patch).** Q1 ruled that
+  `src/api/decks.ts` (the one network door, a total outcome union that never rejects) and the
+  `src/state/` slice are the seam **c4-1 EXTENDS** — card cache, in-flight deduping, per-card
+  routes, which are NOT retry-safe (they carry path parameters; `decks.ts`'s header holds the
+  c3-2 measurement of why) — and that **c4-2** inherits a poll already calling `GET /api/decks`,
+  its job being to read the DECK rather than the deck names. What the poller does NOT cover:
+  per-card fetches and the WebSocket. The threshold is `STALLED_AFTER_MS = 60_000` with a
+  `STALLED_MIN_REFUSALS = 4` observation floor. The prose homes are `ui/README.md`'s "Not here
+  yet" + blind-spot row and the module headers; this entry exists so the ledger names the seam
+  too. **Home: c4-1 and c4-2 read this before extending.**

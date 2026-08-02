@@ -777,18 +777,31 @@ class TestCommittedSchema:
             == "#/components/schemas/ErrorResponse"
         )
 
-    def test_the_app_level_responses_are_unchanged(self, schema):
+    def test_the_app_level_responses_are_not_redeclared_per_route(self, schema):
         """AC 6: the route declares only what it uniquely produces.
 
         ``deck_not_found`` must NOT appear on the card path, and the app-wide tokens must not have
         been re-declared per route.
+
+        **Renamed and re-pointed at c3-9** (was ``…_are_unchanged``). c3-2 wrote it under an AC
+        that froze ``build_app()``'s include-level set, so "unchanged" was the right word *then*
+        and this assertion is what turned red when c3-9 finally moved it (Q4) — the pin working,
+        not the pin being wrong. What it asserts is unaltered in substance: the declarations
+        reaching this path are the INCLUDE's, arriving by inheritance rather than by a per-route
+        ``responses=`` that would duplicate them. The 503 now names both database tokens in one
+        entry, because ``error_responses`` collapses tokens sharing a status — see
+        ``test_committed_schema.py::TestTheDatabaseTokensAreDeclared``, which owns that fact for
+        every operation at once so this file does not become the second copy of it.
         """
         responses = schema["paths"][_CARD_PATH]["get"]["responses"]
 
         assert "deck_not_found" not in json.dumps(responses)
-        # The app-level declarations are still the app's, and still reach this path.
+        # The include-level declarations are still the include's, and still reach this path.
         assert responses["400"]["description"] == "reason: invalid_request"
-        assert responses["503"]["description"] == "reason: database_unavailable"
+        assert (
+            responses["503"]["description"]
+            == "reason: database_not_initialized | database_unavailable"
+        )
 
     def test_the_id_constraint_is_published_for_the_ui_to_read(self, schema):
         """Q2: the pattern lands in the document, so a client can validate before calling."""
