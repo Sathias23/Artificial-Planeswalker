@@ -2700,12 +2700,27 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   entry is reconstructible by refetching and nothing indexes it. **Home: c8-2.** (Severity: Low —
   a disclosure and stewardship gap, not a defect.)
 
-- **The ~124 KB average tile size is arithmetic, never measured.** It is 12 MB ÷ 99 tiles from the
-  epic's own acceptance observation, and every footprint figure in this story (including the
-  130 MB above) inherits it. `png` is roughly 1 MB and `small` a small fraction of `normal`, so a
-  user who browses the detail panel heavily has a materially different footprint from one who only
-  ever sees the grid — and nothing here knows which. **Home: c10-3**, which already owns real-bytes
-  profiling. (Severity: Low.)
+- ~~**The ~124 KB average tile size is arithmetic, never measured.**~~ **MEASURED AT THE C3
+  RETROSPECTIVE, 2026-08-02 — and the epic's figure is a 38 % overestimate.** It was 12 MB ÷ 99
+  tiles from the epic's own acceptance observation, and every footprint figure in this story
+  (including the 130 MB above) inherited it. Measured by fetching all 99 distinct ids of
+  `813d0434-…` (*Atraxa Counter Cabinet v2*) through the real route against the real CDN:
+
+  | | Epic's arithmetic | **Measured** |
+  |---|---|---|
+  | per tile, `normal` | ~124 KB | **~90 KB** |
+  | a 99-tile deck | ~12 MB | **8.5 MB** |
+  | whole 1,061-id library | ~130 MB | **~95 MB** |
+
+  Also measured for the first time, and the numbers c4-4 actually needs: **real Scryfall CDN
+  latency ≈ 99 ms per image**, and a **warm read from the disk cache ≈ 10.3 ms per tile**
+  (1.02 s for 99 sequential requests). The consequence for c3-6's constants is that they are now
+  *vindicated by measurement rather than modelled*: throughput is
+  `min(1/spacing, concurrency/latency)` = `min(1/0.1, 4/0.099)` = `min(10, 40.6)`, so **the spacing
+  turnstile binds with 4× headroom on the semaphore** — exactly the regime the constants were
+  chosen for. The `png`-vs-`small` variance this entry raises is untouched and remains real.
+  **Home: c10-3** for the per-size profile; the grid-size figures above are now facts, not
+  estimates. (Severity: Low → **resolved for `normal`**.)
 
 - **A cache entry is never revalidated, so a corrected artwork is served indefinitely.** The key is
   id + size + face and AD-11 **accepts** that; a data refresh that changes a card's `image_uris`
@@ -2770,12 +2785,43 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   not to the story that adds the second. Recorded so the growth is a noticed fact rather than a
   drift. ~~**Home: c3-8 or the C3 retro.**~~ **c3-8 DECLINED THE SPLIT and re-homed it on the C3
   retro, 2026-08-02 (Q8, Brad) — with the final number measured so the retro inherits a fact rather
-  than an impression: `images.py` is now 1,475 lines** (1,307 at `3aef5d1`; the third mechanism and
-  its docstrings added 168). All three mechanisms the spine's Structural Seed names are now in it
-  (`app/images.py  # proxy: pacer, disk cache, negative cache`), so **splitting is now a decision to
-  diverge from the spine** rather than a tidy-up — and that belongs to a retro with all three
+  than an impression: `images.py` is now ~~1,475~~ lines** (1,307 at `3aef5d1`; the third mechanism
+  and its docstrings added 168). All three mechanisms the spine's Structural Seed names are now in
+  it (`app/images.py  # proxy: pacer, disk cache, negative cache`), so **splitting is now a decision
+  to diverge from the spine** rather than a tidy-up — and that belongs to a retro with all three
   shipped and c4-1's hydration cache in view, not to the story that adds the third while writing it.
-  **Home: the C3 retrospective.** (Severity: Low.)
+
+  **CORRECTED AND PARKED AT THE C3 RETROSPECTIVE, 2026-08-02.** The 1,307-at-`3aef5d1` figure is
+  right; **the "now" figure was never re-measured and is wrong.** At `16976c5` — c3-8's own merge
+  commit — and at HEAD the file is **1,837 lines**, a 362-line (25 %) undershoot. The entry existed
+  specifically to stop the retro arguing from an impression and handed it one. Measured two
+  independent ways (tokenizer and AST, agreeing to within 6 lines):
+
+  ```
+  src/companion/app/images.py            1,837 lines
+    ├─ docstrings + comments             1,370   (74.6%)   1,279 docstring + 91 comment
+    ├─ lines containing code               377   (20.5%)
+    └─ blank                               289   (15.7%)
+  ```
+
+  Largest docstrings: module header **108**, `NegativeCache` 75, `DiskCache` 69,
+  `_write_atomically` 67, `fetch_image` 65, `Pacer` 59, `resolve_face_images` 54.
+
+  **This changes the shape of the decision.** 377 lines of code across three mechanisms and 39
+  callables is ~125 lines each — not an unmanageable module. A split would divide *documentation*,
+  and the 108-line module header is what explains the interaction a split would destroy (the cache
+  is checked **before** the pacer; the negative cache sits **outside** `pacer.slot()`). The
+  counter-argument from finding density — 5 of the epic's 10 Greptile findings, and every P1 from
+  c3-5 onward, are in this file — is answered by noting that c3-5/c3-7/c3-8 are the three hardest
+  stories in the epic: **density tracks difficulty, not line count**.
+
+  Two adjacent actions were identified instead of a split: a **prose-freshness pass** over the nine
+  large docstrings (this entry's own wrong number is an instance of c3-4's "prose outrunning code"),
+  and the **review-added-mechanisms-re-enter-review** rule (C3 retro action item 12), which is what
+  would actually have caught c3-7's sibling race and c3-8's carve-out.
+
+  **DECISION PARKED by Brad, 2026-08-02**, pending the rest of the manual-testing checklist.
+  **Home: re-decide with c4-1's hydration cache in view.** (Severity: Low.)
 
 - **This machine's full-suite runtime is too noisy to support the before→after claim AC 24 asks
   for, and that is worth knowing before the next story tries to make one.** Three consecutive runs
@@ -2935,8 +2981,16 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   degradation c3-7 caught by noticing is now caught by a test. What is still only prose is the
   **procedure**: c3-6 wrote it down, c3-7 followed it, c3-8 declined to apply it with a reason —
   but it lives in a frozenset's docstring rather than anywhere a story author would look before
-  starting. **Home: the C3 retrospective**, which is where three worked examples of the same
-  procedure should become a standing agreement. (Severity: Low.)
+  starting. ~~**Home: the C3 retrospective**, which is where three worked examples of the same
+  procedure should become a standing agreement.~~ **CLOSED at the C3 retrospective, 2026-08-02
+  (R2, Brad) — promoted to a standing team agreement, "banned-family lifecycle":** *a story that
+  owns a banned identifier family must explicitly **retire it, re-key it, or keep it with a written
+  reason** — and a replacement must be probed against **the spellings the retired ban caught**, not
+  only against new ones. Removing a family without a replacement covering its members is a coverage
+  loss disguised as a cleanup.* The two worked failures are named in the agreement (c3-6's
+  `from time import sleep` and c3-7's `Path.replace` — in both cases the retired ban DID catch the
+  spelling its replacement missed); c3-8 is the worked *keep*. Recorded in
+  `epic-c3-retro-2026-08-02.md` § *Team agreements*. (Severity: Low → **closed**.)
 
 - **`ErrorResponse`'s class docstring is published in full and nothing says so at the edit site.**
   c3-8 predicted "no wire diff", edited that docstring, and measured a real diff in both generated
@@ -3084,7 +3138,20 @@ either has an owner story or is declared inside the file it constrains.
   the rebuild succeeds, the `503→200` transition this story exists to render is invisible, and only
   a manual refresh recovers. The contract is honoured; its terminal consequence was never written
   down. A slow continued probe would need a `states.ts`/`EXPERIENCE.md` amendment, which this story
-  may not make. **Home: C3 retro**, as an EXPERIENCE.md amendment question.
+  may not make. ~~**Home: C3 retro**, as an EXPERIENCE.md amendment question.~~
+
+  **RULED AT THE C3 RETROSPECTIVE, 2026-08-02 (R3, Brad): ACCEPTED, and re-homed on c5-6.**
+  `RETRIES_QUIETLY['database-updating-stalled']` **stays `false`** — the contract in `states.ts:233`
+  is right, and a slow continued probe would put two mechanisms on one job. **No `EXPERIENCE.md`
+  amendment.** What the ruling adds is that the terminal consequence is now recorded rather than
+  implied: *a user who does exactly what the panel's copy tells them, and whose rebuild succeeds,
+  still needs a manual refresh — one refresh more than FR-22 promises.*
+
+  The ruling is a re-home, not a dismissal: the two sibling entries above (*"Once a `200` arrives
+  the poll stops"* and *"a backend that cannot be reached at all leaves whatever panel is on
+  screen"*) are already homed on **c5-6**, whose WebSocket reconnect and NFR-04 refetch is the event
+  that should re-drive all three. **c5-6 resolves the family; it should not solve one third of it
+  and leave the rest.** **Home: c5-6.** (Severity: Low.)
 - **The c4-1/c4-2 seam Q1 drew, restated where AC 23 asked for it (review patch).** Q1 ruled that
   `src/api/decks.ts` (the one network door, a total outcome union that never rejects) and the
   `src/state/` slice are the seam **c4-1 EXTENDS** — card cache, in-flight deduping, per-card
