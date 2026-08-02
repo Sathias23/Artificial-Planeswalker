@@ -101,8 +101,10 @@ fetch failure are signalled distinguishably"*, and a status this codebase derive
 means distinguishable can only mean *different tokens*. The distinction is not cosmetic even
 though the pixels are identical: one is permanent (79 cards in the shipped corpus carry no image
 data at all, measured) and the other is transient (one flight-mode away), so a client may retry
-exactly one of them, and **c3-8 adds negative caching and backoff as pure behaviour with no wire
-change at all** because the vocabulary was paid for here. Their UI half was unusually cheap:
+exactly one of them, and **c3-8 added negative caching and backoff as pure behaviour with no wire
+change at all** — the vocabulary was paid for here, and the prediction that it would suffice was
+confirmed by running the generator rather than by argument (2026-08-02). Their UI half was
+unusually cheap:
 ``EXPERIENCE.md`` already carried both rows — *"Card with no image data → Named Card placeholder"*
 and *"CDN fetch failure → … UI renders the named Card placeholder"* — so AD-16's pairing rule was
 satisfied by an artefact written before the tokens existed.
@@ -159,8 +161,13 @@ class ErrorResponse(BaseModel):
       timed out, answered a non-2xx, returned something that was not an image, or the stored URL
       pointed somewhere the companion refuses to fetch from. **Transient**, which is the whole
       reason it is a separate token from ``no_image_data`` — the pixels are identical (the same
-      named Card placeholder) but only this one may ever be retried. c3-8 owns the negative cache
-      and the backoff; until then a failure is simply not cached.
+      named Card placeholder) but only this one may ever be retried. Since c3-8 a failure is
+      **negative-cached with an exponential backoff**, so a repeat request inside the window is
+      answered from memory with this same token and no CDN request at all; the window starts at 30
+      seconds, doubles per consecutive failure and is capped at 300. Indistinguishable from a fresh
+      failure on the wire, deliberately: a client has no different action to take, and the
+      consequence a reader of this file should know is that a tile can stay a placeholder for up to
+      the ceiling **after** the CDN has recovered.
     * ``database_not_initialized`` — fresh install, no card database yet; the **"Card database not
       set up yet."** panel, which tells the user to ask their agent to run ``initialize_database``.
     * ``database_unavailable`` — reads are failing transiently (a bulk refresh in flight, or an

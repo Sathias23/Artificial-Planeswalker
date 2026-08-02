@@ -54,6 +54,7 @@ from src.companion.app.images import (
     image_cache,
     image_client,
     image_pacer,
+    negative_cache,
     resolve_face_images,
 )
 from src.data.repositories.card import CardRepository
@@ -289,7 +290,10 @@ async def read_card_image(
     Raises:
         CompanionError: ``card_not_found`` when no card carries the id; ``no_image_data`` when the
             card has no image for the requested face and size; ``image_fetch_failed`` when the CDN
-            did not deliver one; ``internal_error`` if the lifespan never ran.
+            did not deliver one **or when this key is inside the backoff window a recent failure
+            opened** (c3-8 — the same token and the same response, deliberately, so a client cannot
+            tell a remembered failure from a fresh one and has no reason to);
+            ``internal_error`` if the lifespan never ran.
     """
     card = await CardRepository(session).get_by_id(scryfall_id)
     if card is None:
@@ -327,6 +331,46 @@ async def read_card_image(
         if cached is not None:
             return _image_response(*cached)
 
+    # The negative cache is consulted AFTER the disk read and BEFORE the wiring guard, and each
+    # half of that placement is a decision (c3-8):
+    #
+    # * after the disk read, because a key with a warm entry is served whatever its failure
+    #   history — the picture is on this machine and no memory of a past outage should hide it;
+    # * before the wiring guard, because a remembered failure needs neither a client nor a pacer,
+    #   and asking for them first would report `internal_error` for a request that needs nothing;
+    # * OUTSIDE `pacer.slot()`, for the same reason the disk read is (c3-7 AC 6): a request that
+    #   issues no request owes the rate nothing. A check placed inside the slot would remember
+    #   correctly and still make a remembered failure wait its turn against a CDN it never
+    #   contacts — and every functional test in this file would pass. `test_routes_card_image.py`
+    #   measures the injected clock rather than the bytes for exactly that reason.
+    #
+    # What this does NOT fix, stated where a reader will look: the FIRST paint against a dead CDN
+    # still issues all ~99 requests and still takes ~124 s at min(1/0.1, 4/5.0) = 0.8 fetches/s,
+    # because 99 distinct keys have nothing remembered yet. The pacer bounds that paint; this
+    # bounds every one after it, which is what EXPERIENCE.md's "no request storms" means here.
+    #
+    # What a remembered answer still costs, also stated: everything ABOVE this line — a database
+    # session, the card read and the face resolution — runs on every request, remembered or not,
+    # because the token fidelity of `card_not_found` and `no_image_data` requires the row before
+    # the failure history may speak. "Answered from memory" is true of the CDN, not of the DB
+    # (review 2026-08-02).
+    remembered = negative_cache(request.app)
+    if remembered is not None and remembered.is_backing_off(scryfall_id, size, face):
+        # DEBUG, not INFO, and the asymmetry with the record site below is the point (review
+        # 2026-08-02): a hit costs nothing and is client-driven, so at INFO a polling SPA
+        # repainting a 99-tile deck during an outage would write ~99 lines per paint, every
+        # paint, unbounded — the same log-storm class Q4's write counter just closed. The
+        # bounded, WORTH-a-line event is the window opening or escalating, logged once at the
+        # record site, which a real (paced) fetch failure gates.
+        logger.debug(
+            "Card %s face %d (%s) is inside its fetch-failure backoff window; answering from "
+            "memory without contacting the CDN",
+            scryfall_id,
+            face,
+            size,
+        )
+        raise CompanionError("image_fetch_failed")
+
     client = image_client(request.app)
     pacer = image_pacer(request.app)
     if client is None or pacer is None:
@@ -348,7 +392,50 @@ async def read_card_image(
     # one starts ~9.8 s in. That is an EXPECTED observation (NFR-05 excludes first-fetch image
     # paint), it is deliberately not published to the wire, and it is written down for the tile
     # author in ui/README.md's blind-spot section (Q4, Brad 2026-08-01).
-    body, content_type = await fetch_image(client, url, pacer)
+    #
+    # **The first and only `try`/`except` in this module**, and c3-1's record names its absence as
+    # a property — so it is deliberate rather than a quiet growth, and a SECOND one here would be a
+    # smell. It is unavoidable under any design: the negative cache is keyed on id + size + face,
+    # which `fetch_image` is not given and must not be (widening the one function whose narrow
+    # signature is why no caller can fetch unpaced).
+    #
+    # `except CompanionError`, never `except Exception` (AC 10). Three reasons, in order of weight:
+    #
+    # * a browser navigating away from a deck view cancels ~99 requests, and recording those would
+    #   poison the whole deck for a backoff window over a user action that failed at nothing.
+    #   `CancelledError` inherits `BaseException`, so a bare `except Exception` would already miss
+    #   it — and this narrower catch cannot see it at all;
+    # * a broad catch would record `internal_error` (a wiring bug) as a CDN failure, and back off a
+    #   key whose real problem is that the lifespan did not run;
+    # * `fetch_image`'s `Raises:` names exactly one token, `image_fetch_failed`, and collapses all
+    #   eight upstream causes into it deliberately. That one-token contract is what makes this
+    #   catch precise without discriminating on the reason — widening it there means revisiting
+    #   this.
+    try:
+        body, content_type = await fetch_image(client, url, pacer)
+    except CompanionError:
+        if remembered is not None:
+            # One INFO line per RECORD, never per remembered hit (review 2026-08-02): a record
+            # is gated by an actual paced fetch failing, so its rate is bounded by the fetch
+            # rate — and once the window is open, repeat requests are answered at DEBUG above.
+            # The delay is in the line because it is the one number an operator diagnosing a
+            # "stuck placeholder" needs and cannot otherwise see.
+            delay = remembered.record_failure(scryfall_id, size, face)
+            logger.info(
+                "Card %s face %d (%s) failed to fetch; backing off for %.0f s",
+                scryfall_id,
+                face,
+                size,
+                delay,
+            )
+        raise
+
+    # Cleared on success, which is the half of recovery a functional test misses (AC 7): ending the
+    # WINDOW is not the same as forgetting the HISTORY, and a key that failed four times and then
+    # succeeded must start its next failure at the base delay rather than at the escalated one.
+    if remembered is not None:
+        remembered.clear(scryfall_id, size, face)
+
     # Written BEFORE the response is returned, not after (c3-7). A write scheduled to happen
     # "later" caches correctly under every functional test — a mocked fetch and a mocked disk are
     # both instantaneous — and in production races the next request for the same tile. That is

@@ -204,6 +204,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.image_client = images.build_image_client()
     app.state.image_pacer = images.Pacer()
     app.state.image_cache = images.build_image_cache()
+    # No `build_*` factory and nothing in `_shutdown`, unlike the disk cache on the line above:
+    # constructing a negative cache is a dict and a clock, so it cannot fail. That is what keeps
+    # AD-15's ruling literally true — publishing the discovery file below stays the ONLY startup
+    # step that may fail a launch — and it is why `test_app.py::test_startup_failure_propagates`
+    # needed no edit for this story. Predicted at context time and confirmed by measurement (c3-8).
+    app.state.negative_cache = images.NegativeCache()
     _publish_discovery(app)
     logger.info("Companion instance %s started", app.state.instance_id)
     try:

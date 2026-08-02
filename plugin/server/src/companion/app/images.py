@@ -22,6 +22,10 @@ Four parts, deliberately separable:
   warm tile costs neither a permit nor a spacing turn. It is the **first code in**
   ``src/companion`` **that writes to the user's disk**, and everything that follows from that is
   on the class itself.
+* :class:`NegativeCache` (c3-8) sits between the disk cache and the pacer — the **third and last**
+  mechanism the spine's Structural Seed draws inside this file (``app/images.py  # proxy: pacer,
+  disk cache, negative cache``). It is the one whose correctness is *forgetting*: an expiring,
+  bounded map of recently-failed keys, so a CDN outage costs one storm rather than one per paint.
 
 **Why this is a second Scryfall client and not a reuse of the existing one.**
 ``src/data/importers/scryfall_api.py`` already talks to Scryfall, and
@@ -46,27 +50,58 @@ recorded plainly that it did not satisfy it; :class:`DiskCache` now does, and
 ``build_app()``, which still creates no directory and resolves no data path (AD-10) — see
 :func:`cache_root` for why that distinction survives being obvious.
 
+**The negative cache is here, and a failure is no longer answered and forgotten** (c3-8,
+2026-08-02). The paragraph that used to stand here said *"no negative cache and no backoff — story
+c3-8"*; it has been replaced rather than left to read as a live absence. What it promised is what
+shipped: pure behaviour, **no new reason token** and no schema change, because c3-5 paid for the
+vocabulary in advance. Read :class:`NegativeCache` for the design, and read this next sentence
+before reading the pacer as broken: **the first paint against a dead CDN is still ~99 requests and
+roughly 124 seconds.** 99 tiles are 99 distinct keys and nothing is remembered yet. What this
+removes is every paint *after* it — a reload, a second tab, a scroll back — which is what
+``EXPERIENCE.md``'s *"no request storms"* actually means here.
+
 **What is deliberately NOT here**, so the absence reads as a decision rather than an omission:
 
-* **no in-flight coalescing** — **declined a second time and re-homed on c3-8** (Q5, Brad
-  2026-08-01). Two *simultaneous* requests for the same key each get their own fetch and each
+* **no in-flight coalescing** — **declined a THIRD time and re-homed on c6-4** (Q6, Brad
+  2026-08-02). Two *simultaneous* requests for the same key each get their own fetch and each
   write; on Windows the loser's ``os.replace`` may raise ``PermissionError``, which is a log line
-  rather than a failed request. c3-6 declined it for a reason this story resolved — *"whether that
-  result is bytes, a disk path or a ``Future`` depends entirely on what c3-7 builds"* — and the
-  answer is bytes on disk, so the question was genuinely open here for the first time. **It is
-  declined on a different ground than c3-6's**: c3-8 needs the same structure for a different
-  purpose (*"is a fetch for this key already in flight, or already known-failed?"*), so building
-  the in-flight half here would leave c3-8 either inheriting a map shaped only for successes or
-  replacing it. One mechanism, built once, by the story that can see both halves. Measured cost of
-  declining, today: **zero extra fetches** on both 99-distinct-id decks, because duplicate
-  printings collapse in ``deck_cards`` before they reach the route. **c6-4**'s suggestion rows
-  beside the deck grid are the first surface that renders one card id twice on one screen, and
-  that is the trigger that flips the answer.
-* **no eviction, no size accounting, no TTL and no index** — the cache is unbounded in MVP
-  (AD-11); the documented location and the removal command are **c8-2**'s. See :class:`DiskCache`.
-* **no negative cache and no backoff** — story **c3-8**. A failure is answered and forgotten;
-  the wire vocabulary it needs (``image_fetch_failed``) is already paid for, so c3-8 is pure
-  behaviour with no schema change.
+  rather than a failed request. **The reason has now changed three times, and c3-7's turned out not
+  to survive contact.** c3-6 declined it for not knowing the result's shape; c3-7 built that shape
+  (bytes on disk) and declined it again, re-homing it here on the expectation that *"c3-8 needs the
+  same structure for a different question — is a fetch for this key already in flight, or already
+  known-failed?"*. It does not. A negative cache needs no in-flight state to be correct: a request
+  whose fetch is in flight simply also fetches, and the failure is recorded when it fails. Nothing
+  in c3-8's acceptance criteria asks otherwise. What coalescing actually shares is a **124 KB
+  payload across two awaiting requests** — a ``Future`` holding bytes, with a cancelled leader and
+  an exception fanned out to followers, each needing its own tests — which is a different mechanism
+  from a small expiring failure record, not the same one. Measured cost of declining, today:
+  **zero extra fetches** on both 99-distinct-id decks, because duplicate printings collapse in
+  ``deck_cards`` before they reach the route. **c6-4**'s suggestion rows beside the deck grid are
+  the first surface that renders one card id twice on one screen, and that is the trigger that
+  flips the answer.
+* **no eviction, no size accounting, no TTL and no index on the DISK cache** — it is unbounded in
+  MVP (AD-11); the documented location and the removal command are **c8-2**'s. See
+  :class:`DiskCache`. The negative cache's expiry and cap are **not** a precedent for adding any of
+  them here: the two caches have opposite policies on purpose, because a success is durable and a
+  failure is not.
+* **no ceiling on how long a request may queue** — **declined and re-homed with a new argument**
+  (Q7, Brad 2026-08-02). c3-6 ledgered it *"c3-8, if ever"*, reasoning that a queue ceiling only
+  becomes meaningful once something owns retry semantics. Now that something does, the answer is
+  clearer rather than closer: a ceiling would answer ``image_fetch_failed`` for a request that never
+  reached the CDN, which the negative cache would then remember for 30 seconds — so a queue that is
+  merely *long* would start manufacturing failures that never happened, which is strictly worse than
+  the queue. The natural bound remains the caller, whose disconnect cancels the request and releases
+  the slot.
+* **no per-cause backoff policy** — one uniform schedule for every failure (Q3, Brad 2026-08-02).
+  c3-5's review asked whether a permanently bad URL (an ``is_fetchable`` refusal) deserves a
+  permanent entry. It does not get one, for three reasons in order of weight: the class is
+  **unreachable against this corpus** — all 245,760 stored URLs are on the two allow-listed hosts,
+  so zero would be refused, and a permanent-entry branch would be c3-4's unused hook exactly;
+  :func:`fetch_image` deliberately collapses every cause into one token, so distinguishing here
+  would mean either widening that contract or re-implementing :func:`is_fetchable` at the call site
+  (a second truth about which URLs are fetchable, which AD-1 exists to prevent); and the error is
+  asymmetric — a permanent entry for a URL that was not permanently bad is a tile broken until
+  restart, while a 300 s ceiling on one that is costs one request per five minutes.
 
 Building **any** hook, registry or placeholder for those is out of scope on c3-4's precedent: *an
 unused hook is a design decision made by a story that cannot see the requirements.*
@@ -79,6 +114,7 @@ import tempfile
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager, suppress
+from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Literal
@@ -264,6 +300,72 @@ different conditions and neither substitutes for the other — collapsing them i
 satisfies neither.
 """
 
+NEGATIVE_CACHE_BASE_SECONDS = 30.0
+"""How long the **first** failure for one key is remembered (AD-11, c3-8, Q2).
+
+**It must exceed one full cold deck paint, and that inequality is the whole justification** — the
+number is a consequence of it. A cold 99-tile grid pays 98 spacing intervals at
+:data:`FETCH_SPACING_SECONDS`, so it takes **9.8 s** to issue; a base shorter than that would let a
+second paint begin after the first ended and find every window already expired, re-admitting exactly
+the storm this mechanism exists to prevent. 30 s is a little over three times that, and comfortably
+longer than a human reload cycle. ``test_images.py`` asserts the inequality rather than the number,
+so the reasoning survives a change to the spacing.
+
+Note the asymmetry with :class:`DiskCache`, deliberate and running the other way: a **success** is
+durable and never evicted, a **failure** expires. The two caches have opposite policies on purpose
+(AD-11), so do not port a TTL from here to there.
+"""
+
+NEGATIVE_CACHE_MULTIPLIER = 2.0
+"""What each consecutive failure multiplies the previous delay by (c3-8, Q2).
+
+Doubling gives **five steps** from :data:`NEGATIVE_CACHE_BASE_SECONDS` to
+:data:`NEGATIVE_CACHE_CEILING_SECONDS` — 30 → 60 → 120 → 240 → 300 — which is enough to tell a blip
+from an outage without a schedule nobody can hold in their head. The flat-cooldown alternative was
+rejected because AD-11's word is *"backoff"* and because a flat number treats a one-second blip and
+a week-long outage identically.
+
+**The schedule is computed as** ``previous x multiplier``, **never written out as a literal
+sequence**, and that is load-bearing twice over. It keeps ``60`` out of the source — the literal
+``test_routes_format_check.py``'s ``_LIMIT_LITERALS`` bans anywhere under ``src/companion`` — and it
+makes the escalation structurally incapable of overflowing: multiplying a delay that is already
+clamped to the ceiling can never leave it, where ``base * multiplier ** failures`` raises
+``OverflowError`` on a key that has been failing for long enough.
+"""
+
+NEGATIVE_CACHE_CEILING_SECONDS = 300.0
+"""The longest a failure is ever remembered, however many times it has failed (c3-8, Q2).
+
+A genuinely dead CDN settles at **one attempt per tile per five minutes**, which is the point of a
+ceiling at all: without one, ``min()`` never binds and a tile that failed a dozen times is broken
+for the rest of the session — the permanently-broken-tile defect AD-11's *"with backoff"* exists to
+prevent, and the defect that makes ``functools.lru_cache`` the wrong tool for this job permanently.
+
+It is also **the number the glass owes its reader**, which is why it is published in
+``ui/README.md``'s blind-spot table rather than only here: after the CDN recovers a tile can stay a
+placeholder for up to 300 s, because the backend answers from memory and the SPA has no per-image
+retry UI. c4-4 is the story that reads it.
+
+It doubles as the retention horizon — see :meth:`NegativeCache._forget_stale`, which keeps an entry
+for one full ceiling past its own window so *consecutive* keeps meaning consecutive.
+"""
+
+NEGATIVE_CACHE_MAX_ENTRIES = 2048
+"""The hard bound on how many failures are remembered at once (c3-8, Q2).
+
+**An unbounded map here is a 245,760-entry map, and that is arithmetic rather than a worry**: the
+key is id + size + face, so the number of entries that can ever exist is exactly the number of
+resolvable image URLs in the shipped corpus — **245,760**, measured. It is not reachable in one
+session, and "not reachable in one session" is not a bound.
+
+2,048 is sized against the real working set from both directions. This user's whole 40-deck library
+is **1,061 distinct card ids**; at the grid's single size that is 1,061 keys, so the cap is roughly
+**twice** the worst realistic session and about **0.8 %** of the reachable key space. Eviction is
+therefore only reachable by a failure pattern no real session produces — and when it does happen it
+costs **exactly one extra fetch** for the evicted key, which is the honest statement and is what
+``test_images.py`` asserts rather than describes.
+"""
+
 CACHE_DIRECTORY_NAME = "image_cache"
 """The cache's one directory, directly under :func:`src.paths.data_dir` (AD-11, NFR-09).
 
@@ -271,6 +373,45 @@ A **name**, never a resolved path — see :func:`cache_root` for why that distin
 load-bearing. The documented location, the removal command and the uninstall notes that quote it
 are **c8-2**'s (epic ``:3185-3212``); what this story owes that one is a measured footprint, which
 is recorded on :class:`DiskCache`.
+"""
+
+DISK_CACHE_WRITE_FAILURE_LIMIT = 5
+"""How many **consecutive** failed writes disable :class:`DiskCache`'s writes for the process (Q4).
+
+**This closes a ledgered c3-7 review entry rather than answering a new requirement**: a cache root
+that exists but is *unwritable* left the cache nominally enabled and logged a WARNING on every
+write — roughly **99 times per cold deck paint, forever**. That is not a defect (the picture is
+served either way, c3-7 AC 9), but it is what reads as broken to the first person who opens a log,
+and it belongs to the story already reasoning about *how many times do we try before we stop*.
+
+Five, because the number only has to be small enough that a genuinely broken root stops shouting
+within the first paint and large enough that a transient *between paints* cannot trip it.
+**Consecutive** protects exactly the failures that are separated by successes — and the honest
+limit of that must be stated (review 2026-08-02, Brad): during a cold paint, writes arrive
+back-to-back at ~0.8/s with nothing between them, so a single transient spanning ~6 s — an AV
+scanner holding the directory, a disk-full blip — is five consecutive failures and latches writes
+off for the rest of the process. Accepted deliberately rather than missed: the consequence is only
+lost caching (every picture is still served, everything already cached is still read), and any
+re-enable path means deciding *when* to retry, which is the same lifecycle question that re-homed
+the startup-`OSError` entry. Both now live on **c8-2**, the cache-stewardship story. One carve-out
+keeps the counter honest on Windows: a ``PermissionError`` whose target already holds a
+**servable** entry — readable and non-empty, proved by reading a byte the way ``_read_cached``
+will — is a lost same-key write race, and is **neither counted nor treated as a success**: only
+a replace that actually lands resets the counter, so a run of lost races can never mask a root
+that other keys are proving broken (Greptile P1 + round-2 residual, 2026-08-02; see
+:func:`_write_atomically`). Servable matters because ``_read_cached`` treats a zero-byte *or
+unreadable* file as a miss — a locked target swallowed as a race on presence or size alone
+would refetch forever with the latch never announcing it.
+
+Only **writes** stop. Reads keep working, because they fail for unrelated reasons and a root that
+just became unwritable may still hold everything a previous session cached — NFR-06's *"fully
+functional with no network after warm-up"* depends on exactly those reads, so disabling the whole
+cache would trade a noisy log for an offline app.
+
+The *other* entry homed here — a **transient startup** ``OSError`` disabling the cache for the whole
+process — is **declined and re-homed on c8-2** (Q4, Brad 2026-08-02). Retrying the root means
+deciding *when* to retry (at the first write? on a timer?), which is a lifecycle question nothing
+measures today, and it would make :class:`DiskCache` mutable in a way it is not.
 """
 
 CACHE_MEDIA_TYPES: dict[str, str] = {".jpg": "image/jpeg", ".png": "image/png"}
@@ -800,7 +941,7 @@ def _read_cached(root: Path, card_id: str, size: str, face: int) -> tuple[bytes,
     return None
 
 
-def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ...] = ()) -> None:
+def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ...] = ()) -> bool:
     """Write *payload* to *target* so no reader can ever observe a partial file.
 
     ``discovery.write_discovery`` is the template and its reasoning is **inherited rather than
@@ -856,6 +997,13 @@ def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ..
         payload: The image bytes to store.
         displaces: Sibling paths this write supersedes — the same key under the other extensions.
 
+    Returns:
+        True when this call's own replace landed. False when the write was swallowed as a lost
+        same-key race — the target already holds the winner's entry, verified SERVABLE by
+        reading a byte the way ``_read_cached`` will — which the caller must treat as *neither*
+        a failure to count *nor* a success that resets the failure counter (Greptile P1 and its
+        round-2 residual, 2026-08-02): a lost race proves nothing about the root either way.
+
     Raises:
         OSError: The directory could not be created, the temp file could not be written, or the
             replace failed. The caller — :meth:`DiskCache.write` — swallows and logs it: a cache
@@ -885,13 +1033,41 @@ def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ..
                     stale,
                     type(exc).__name__,
                 )
-        os.replace(temp_path, target)
+        try:
+            os.replace(temp_path, target)
+        except PermissionError:
+            # The ledgered Windows same-key race (c3-7): two requests fetch one key, both write,
+            # and `os.replace` over the file the winner is still holding raises PermissionError
+            # for the loser. If the target holds a NON-EMPTY entry, the entry is stored — by the
+            # winner — so the loser must not feed `DiskCache`'s consecutive-failure counter: a
+            # lost race is not a broken root (review 2026-08-02).
+            #
+            # SERVABLE, not merely present, and the distinction closes a Greptile P1 and its
+            # round-2 residual (2026-08-02): `_read_cached` treats a zero-byte OR unreadable
+            # file as a MISS, so a locked empty target — or a non-empty one whose reads are
+            # denied while `stat` still reports a size — would otherwise loop forever: every
+            # read misses, every write is swallowed as a lost race, and the latch never
+            # announces a root that is genuinely stuck. So the branch proves the one fact it
+            # actually needs — the cache can SERVE this entry — by reading a byte, exactly as
+            # `_read_cached` will: a race winner's entry is always readable and never empty
+            # (`fetch_image` refuses empty bodies). Any doubt counts as not-stored.
+            try:
+                with target.open("rb") as existing:
+                    stored_by_winner = existing.read(1) != b""
+            except OSError:
+                stored_by_winner = False
+            if not stored_by_winner:
+                raise
+            with suppress(OSError):
+                temp_path.unlink(missing_ok=True)
+            return False
     except BaseException:
         # The cleanup itself can fail (Windows: an AV/indexer briefly holding the fresh temp file
         # open) — that must not displace the original exception, which names the real problem.
         with suppress(OSError):
             temp_path.unlink(missing_ok=True)
         raise
+    return True
 
 
 class DiskCache:
@@ -922,6 +1098,22 @@ class DiskCache:
       refresh a total cache miss, ~130 MB re-fetched to correct artwork that almost never
       changes. It is asserted and documented here; it is not solved, and there is no TTL.
 
+    **Containment is the CALLER's, and that is restated here rather than validated** (Q9, Brad
+    2026-08-02). :meth:`path_for` builds a path from an id it does not check, so
+    ``path_for("../../..", …)`` escapes this root. The guard is entirely upstream, in
+    ``routes/cards.py``: ``_CARD_ID_PATTERN`` admits only a canonical lowercase uuid (a ``400``
+    from the app-wide validation handler otherwise), :data:`ImageSize` is a closed ``Literal``
+    generated as an ``enum``, and ``face`` is a bounded integer. Three constraints, all before the
+    key reaches this class.
+
+    c3-7's review flagged that the module's *next* callers were already named and that the first one
+    to pass an unvalidated id would get a traversal write. **c3-8 was that next caller and it is
+    structurally incapable of being it**: :class:`NegativeCache` builds no path at all — it is a
+    dict keyed on a tuple — so adding validation here on its account would have been protecting
+    against this story rather than because of it. That leaves **c6-4**'s suggestion tiles as the
+    sole remaining named caller, and the entry is re-homed there. If c6-4 reaches this class with an
+    id from anywhere but a validated route parameter, validate at this boundary first.
+
     **Scryfall asks consumers to cache what they download for at least 24 hours.** An unbounded,
     never-evicting local cache satisfies that by a wide margin — so the absence of a TTL is not an
     oversight of that guidance but a consequence of the key above.
@@ -951,6 +1143,11 @@ class DiskCache:
 
     def __init__(self, root: Path) -> None:
         self._root = root
+        # Q4 (c3-8): consecutive write failures, and whether they have stopped this cache writing.
+        # Per-instance, never a module global — `deps.Database`'s shipped ruling, and here it also
+        # keeps one app's unwritable root from disabling an unrelated app's working cache.
+        self._consecutive_write_failures = 0
+        self._writes_disabled = False
 
     @property
     def root(self) -> Path:
@@ -1037,6 +1234,11 @@ class DiskCache:
                 stored spelling from it is what keeps warm and cold agreeing on the media type.
             body: The image bytes to store.
         """
+        if self._writes_disabled:
+            # Already announced once, at the moment it gave up (Q4). Silent from here on: the
+            # entire point of the counter is that a broken root stops shouting, and the picture is
+            # served exactly as it was before.
+            return
         extension = cache_extension(content_type)
         if extension is None:
             # A format outside the measured two. Served, not stored: writing it under a guessed
@@ -1055,16 +1257,52 @@ class DiskCache:
             if other != extension
         )
         try:
-            await asyncio.to_thread(_write_atomically, target, body, displaces=displaced)
+            stored = await asyncio.to_thread(_write_atomically, target, body, displaces=displaced)
         except Exception as exc:
             # Broader than `OSError` on purpose: `asyncio.to_thread` itself can refuse to
             # schedule (interpreter shutdown), and AC 9's posture does not depend on which layer
             # failed — the picture was served either way (review 2026-08-01).
+            self._note_write_failure(target, exc)
+        else:
+            # CONSECUTIVE is the whole claim (Q4): one success resets the count, so failures
+            # spread across a long session can never accumulate into a disabled cache. Only a
+            # replace that actually LANDED is a success, though (Greptile P1, 2026-08-02): a
+            # write swallowed as a lost same-key race proves nothing about the root and must
+            # not reset a count that other keys are legitimately accumulating.
+            if stored:
+                self._consecutive_write_failures = 0
+
+    def _note_write_failure(self, target: Path, exc: Exception) -> None:
+        """Log one failed write, and give up entirely once they stop being occasional (Q4).
+
+        AC 9 is untouched by this: the caller is told nothing either way and the picture has
+        already been served. What changes is only how loud a permanently broken root is — see
+        :data:`DISK_CACHE_WRITE_FAILURE_LIMIT` for the entry this closes and the arithmetic.
+
+        Args:
+            target: Where the entry would have been written.
+            exc: The failure, used for its type name only — the path is the actionable part.
+        """
+        self._consecutive_write_failures += 1
+        if self._consecutive_write_failures < DISK_CACHE_WRITE_FAILURE_LIMIT:
             logger.warning(
                 "Could not cache the image at %s (%s); it was served but not stored",
                 target,
                 type(exc).__name__,
             )
+            return
+        self._writes_disabled = True
+        # Announced once, and it must SAY it is giving up: falling silent without saying so makes
+        # a cache that quietly stopped storing anything indistinguishable from one that works.
+        logger.warning(
+            "Could not cache the image at %s (%s), and that is %d consecutive write failures — "
+            "disabling this cache's writes for the rest of this process. Images will still be "
+            "served, and anything already cached will still be read; check that %s is writable",
+            target,
+            type(exc).__name__,
+            self._consecutive_write_failures,
+            self._root,
+        )
 
 
 def build_image_cache() -> DiskCache | None:
@@ -1127,6 +1365,298 @@ def image_cache(app: FastAPI) -> DiskCache | None:
     # Annotated local rather than `return getattr(...)`: app.state is Any, and warn_return_any
     # would flag returning it directly.
     cache: DiskCache | None = getattr(app.state, "image_cache", None)
+    return cache
+
+
+@dataclass(frozen=True, slots=True)
+class _RememberedFailure:
+    """One key's failure state: how long it is currently backing off, and until when.
+
+    **The delay is stored rather than a failure count**, and the difference is not stylistic. A
+    count means the delay is recomputed as ``base * multiplier ** (count - 1)``, which raises
+    ``OverflowError`` once a key has failed a few thousand times — reachable on a tile left open
+    against a dead CDN for a long enough session. Carrying the delay forward and clamping it at the
+    ceiling on each step is O(1), cannot overflow, and produces the identical schedule.
+
+    Attributes:
+        delay: The backoff this key is currently serving, already clamped to
+            :data:`NEGATIVE_CACHE_CEILING_SECONDS`. The next failure multiplies it.
+        retry_after: The clock reading at which this key becomes fetchable again.
+    """
+
+    delay: float
+    retry_after: float
+
+
+class NegativeCache:
+    """The map of recently-failed image keys, and the backoff they are serving (AD-11, c3-8).
+
+    **This is the first mechanism in this feature whose correctness is *forgetting*.** The disk
+    cache never forgets and that is its whole design; a negative cache that never forgets is two
+    defects at once — a permanently broken tile that no recovery can clear, and an unbounded map
+    with **245,760** reachable keys. Everything hard about this class is expiry and bounds, and
+    neither is visible in a functional test that makes two requests, which is why ``test_images.py``
+    proves both on an injected clock.
+
+    **What it fixes, and what it explicitly does not.** It removes **every paint after the first**
+    against a failing CDN — a reload, a second tab, a scroll back. It does **not** protect the first
+    paint, and saying so is the point: a 99-tile deck resolves to 99 **distinct** keys, so nothing
+    is remembered yet. Steady-state throughput is ``min(1/spacing, concurrency/latency)`` =
+    ``min(1/0.1, 4/5.0)`` = **0.8 fetches/second** at the shipped ``_FETCH_TIMEOUT.connect``, so a
+    cold paint against an unreachable CDN still takes roughly **124 s** and still issues all 99
+    requests. The pacer bounds that paint; this bounds every one after it. A reader who expects the
+    first paint to be protected will read the pacer as broken, and ``EXPERIENCE.md``'s *"no request
+    storms"* means the storm across paints, not within one.
+
+    **It is** :class:`Pacer`**-shaped, not** :class:`DiskCache`**-shaped**, in the one way that
+    matters: **constructing it cannot fail** — it is a dict and a clock. So there is no ``build_*``
+    factory, nothing lands in :func:`~src.companion.app.main._shutdown`, and AD-15's ruling that
+    publishing the discovery file is the *only* startup step which may fail a launch stays literally
+    true (``test_app.py::test_startup_failure_propagates`` is untouched by this story).
+
+    **Nothing is persisted, and that is a ruling with a reason rather than an omission.**
+    ``image_fetch_failed`` is the token this codebase *defines* as transient
+    (:class:`~src.companion.contracts.ErrorResponse`), restarting the companion is the user's one
+    obvious remedy, and a failure state that outlived the restart would make that remedy not work.
+    Persisting it would also re-open the atomic-write question for a *negative* fact — a truncated
+    failure record read back as a failure is a permanently broken tile — and turn a bounded map into
+    an unbounded file with no eviction policy AD-11 declines to design.
+
+    **Why not** ``functools.lru_cache``, permanently (Q5, Brad 2026-08-02). It cannot express a TTL,
+    so a remembered failure would never expire; and ``cache_clear()`` is all-or-nothing, so AC 7's
+    *clear this one key on recovery* is unimplementable on top of it. Both remain true the day this
+    class ships, which is why ``test_routes_card_image.py``'s ban survives this story rather than
+    retiring with it — the first family in this epic that the story owning it did not remove.
+
+    **In-flight coalescing is deliberately not here** — declined a third time and re-homed on
+    **c6-4** (Q6, Brad 2026-08-02). c3-7 re-homed it here expecting this class to need the same
+    structure for *"is a fetch for this key already in flight?"*; it does not. A request whose fetch
+    is in flight simply also fetches, and the failure is recorded when it fails. What coalescing
+    actually shares is a 124 KB payload across two awaiting requests — a ``Future`` holding bytes,
+    with a cancelled leader and an exception fanned out to followers, all needing their own tests —
+    which is a different mechanism from a small expiring failure record, not the same one.
+
+    Args:
+        base: The first failure's window, in seconds. Defaults to
+            :data:`NEGATIVE_CACHE_BASE_SECONDS`.
+        multiplier: What each consecutive failure multiplies the previous delay by. Defaults to
+            :data:`NEGATIVE_CACHE_MULTIPLIER`.
+        ceiling: The longest window ever applied. Defaults to
+            :data:`NEGATIVE_CACHE_CEILING_SECONDS`.
+        max_entries: The hard bound on resident entries. Defaults to
+            :data:`NEGATIVE_CACHE_MAX_ENTRIES`.
+        clock: The monotonic time source, in seconds. Injected for exactly the reason
+            :class:`Pacer`'s is — a window proved by measuring elapsed real time is slow when it
+            passes and mysterious when it fails on a loaded box. **Monotonic, never**
+            ``time.time``: a wall clock steps backwards on an NTP correction and across a DST
+            boundary, which would either free every entry at once or freeze one for an hour. The
+            route never passes this; only tests do.
+
+    Raises:
+        ValueError: ``max_entries`` is below one (the eviction would ``min()`` over an empty map
+            on the first failure) or ``multiplier`` is below one (the "backoff" would silently
+            shrink). A guard against a mis-injected test parameter, not a startup risk: the
+            lifespan constructs with the module constants and no arguments, so the accessor's
+            "construction cannot fail" claim stays true on every production path (review
+            2026-08-02).
+
+    Example:
+        >>> NegativeCache().is_backing_off("00ab", "normal", 0)
+        False
+    """
+
+    def __init__(
+        self,
+        *,
+        base: float = NEGATIVE_CACHE_BASE_SECONDS,
+        multiplier: float = NEGATIVE_CACHE_MULTIPLIER,
+        ceiling: float = NEGATIVE_CACHE_CEILING_SECONDS,
+        max_entries: int = NEGATIVE_CACHE_MAX_ENTRIES,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        if max_entries < 1:
+            raise ValueError(f"max_entries must be at least 1, got {max_entries}")
+        if multiplier < 1:
+            raise ValueError(f"multiplier below 1 decays instead of backing off: {multiplier}")
+        self._base = base
+        self._multiplier = multiplier
+        self._ceiling = ceiling
+        self._max_entries = max_entries
+        self._clock = clock
+        # The key is id + size + face — the SAME key AD-11 gives the disk cache, for the same
+        # reason, and never the URL. A dict rather than an OrderedDict: eviction is by earliest
+        # expiry, not by insertion order, so recency buys nothing here.
+        self._entries: dict[tuple[str, str, int], _RememberedFailure] = {}
+
+    @property
+    def entry_count(self) -> int:
+        """How many failures are resident right now — the bound AC 8 asserts against.
+
+        Exposed because it is the **only** thing that can distinguish pruning expired entries from
+        merely ignoring them: every behavioural assertion in the suite is identical under both, and
+        a map that only ignores expiry reaches its cap on garbage and then evicts live entries to
+        make room for it.
+        """
+        return len(self._entries)
+
+    def is_backing_off(self, card_id: str, size: str, face: int) -> bool:
+        """Return whether this key is inside a backoff window and must not be fetched.
+
+        **The hot path, and deliberately free of side effects**: a plain dict lookup and one
+        comparison, O(1), no pruning and no eviction. It is consulted on every image request that
+        misses the disk cache, so it must not be the thing that walks the map. Expired entries are
+        therefore left resident until the next :meth:`record_failure` prunes them — which is
+        harmless because the map is bounded either way, and is what keeps this call cheap enough to
+        sit on NFR-05's path.
+
+        The window is **half-open**: a request exactly at ``retry_after`` fetches. Which way that
+        boundary rounds is a decision rather than an accident, and both sides of it are asserted.
+
+        Args:
+            card_id: The printing uuid.
+            size: The requested rendition.
+            face: Which of the card's images was asked for.
+
+        Returns:
+            True when the caller should answer from memory instead of fetching.
+        """
+        remembered = self._entries.get((card_id, size, face))
+        return remembered is not None and self._clock() < remembered.retry_after
+
+    def record_failure(self, card_id: str, size: str, face: int) -> float:
+        """Remember that this key just failed, and return the backoff now applied to it.
+
+        The first failure serves :data:`NEGATIVE_CACHE_BASE_SECONDS`; each consecutive one
+        multiplies the previous delay, clamped at :data:`NEGATIVE_CACHE_CEILING_SECONDS`. A failure
+        recorded while a window is still open still escalates — reachable with two tabs open, and
+        correct, because the count is measuring *how bad this outage is*.
+
+        **Called only on a failure, never on a request**, which is what makes the O(n) prune below
+        affordable: a cold paint against a wholly dead CDN runs it 99 times over a map of at most 99
+        entries, and an ordinary session never runs it at all.
+
+        Args:
+            card_id: The printing uuid.
+            size: The requested rendition.
+            face: Which of the card's images was asked for.
+
+        Returns:
+            The delay applied, in seconds — returned so a caller (and a test) can assert the
+            schedule without reading private state.
+        """
+        now = self._clock()
+        key = (card_id, size, face)
+        # Pruned on EVERY insert rather than only at the cap: otherwise the map fills with stale
+        # garbage, hits the bound, and starts evicting live entries to make room for dead ones.
+        self._forget_stale(now)
+        previous = self._entries.get(key)
+        # BOTH branches clamp, which is what makes `_RememberedFailure`'s "already clamped to the
+        # ceiling" attribute claim true from the first failure onward: with the shipped constants
+        # `min(base, ceiling)` is just `base`, but an injected `base > ceiling` would otherwise
+        # serve its whole first window above the documented maximum (review 2026-08-02).
+        delay = (
+            min(self._base, self._ceiling)
+            if previous is None
+            else min(previous.delay * self._multiplier, self._ceiling)
+        )
+        if previous is None and len(self._entries) >= self._max_entries:
+            self._evict_earliest_expiry()
+        self._entries[key] = _RememberedFailure(delay=delay, retry_after=now + delay)
+        return delay
+
+    def clear(self, card_id: str, size: str, face: int) -> None:
+        """Forget this key's failure history entirely — recovery, completed (AC 7).
+
+        **The clause a functional test misses.** Ending the *window* is only half of recovery: a key
+        that failed four times and then succeeded must start its **next** failure at the base delay,
+        not at the escalated one, or a single blip weeks later leaves the tile blank for five
+        minutes. Dropping the entry is what makes that true, and it is why this mechanism cannot be
+        built on ``functools.lru_cache``, whose ``cache_clear()`` cannot address one key.
+
+        Silent when there is nothing to forget, because the route calls it on **every** success and
+        that is overwhelmingly the common case.
+
+        Args:
+            card_id: The printing uuid.
+            size: The requested rendition.
+            face: Which of the card's images was asked for.
+        """
+        self._entries.pop((card_id, size, face), None)
+
+    def _forget_stale(self, now: float) -> None:
+        """Drop every entry that has gone a full ceiling past its window without failing again.
+
+        **The horizon is** ``retry_after + ceiling``, **not** ``retry_after``, **and getting that
+        wrong breaks the backoff in precisely the case it exists for.** A window closing means *this
+        key may be fetched again*; it does not mean *this key never failed*. Discarding the entry at
+        ``retry_after`` resets the escalation on every attempt, so a key against a permanently dead
+        CDN cycles at the base delay forever and the schedule above is unreachable in production —
+        while every "consecutive failures escalate" unit test still passes, because those step the
+        clock only as far as they have to. (Measured: three of them went red the moment this was
+        implemented the obvious way, which is how the distinction was found.)
+
+        So an entry outlives its own window by one full :data:`NEGATIVE_CACHE_CEILING_SECONDS`,
+        and only then is the key genuinely forgotten. That is the honest reading of *consecutive*:
+        a key that has gone the longest backoff this cache can apply without failing again is not
+        having a run of failures, it is having a new one.
+
+        **This boundary is a decision Q2 did not cover** — it fixed the base, growth, ceiling and
+        cap, and the retention horizon is a fifth number. It is derived from the ceiling rather than
+        declared as a constant precisely so it cannot drift away from the reasoning above.
+
+        Memory stays bounded either way: a key nobody retries is gone within ``ceiling`` of its
+        window closing, and :data:`NEGATIVE_CACHE_MAX_ENTRIES` is the hard backstop regardless.
+
+        Args:
+            now: The current clock reading, passed in so one :meth:`record_failure` takes exactly
+                one reading and cannot straddle two.
+        """
+        stale = [
+            key for key, entry in self._entries.items() if now >= entry.retry_after + self._ceiling
+        ]
+        for key in stale:
+            del self._entries[key]
+
+    def _evict_earliest_expiry(self) -> None:
+        """Make room for one new entry by dropping the one closest to being useless.
+
+        Earliest ``retry_after`` wins the tiebreak: that entry was going to expire first anyway, so
+        evicting it discards the least remaining information. The cost is exactly one extra fetch
+        for the evicted key — asserted in ``test_images.py`` rather than described here.
+
+        One honest asterisk on "exactly one" (review 2026-08-02): when the evicted entry is one
+        :meth:`_forget_stale` was still *retaining* — expired as a window, alive as history — the
+        real cost is that key's escalation resetting to the base on its next failure, which is a
+        small dose of the very defect the retention horizon exists to prevent. Bounded (it takes a
+        full map of 2,048 to reach eviction at all) and accepted: a hard cap that occasionally
+        forgets history early beats an honest history with no cap.
+        """
+        earliest = min(self._entries, key=lambda key: self._entries[key].retry_after)
+        del self._entries[earliest]
+
+
+def negative_cache(app: FastAPI) -> NegativeCache | None:
+    """Return the negative cache the lifespan created for *app*, or ``None`` if it never ran.
+
+    **Mirrors** :func:`image_pacer` **rather than** :func:`image_cache`, and the difference is the
+    same one that accessor's docstring draws. ``None`` here means exactly one thing — *the lifespan
+    did not run* — because constructing a negative cache cannot fail, so there is no second, served
+    meaning to confuse it with.
+
+    What the caller does with it is nonetheless the *disk* cache's posture, not the pacer's: a
+    missing negative cache is answered by fetching, never by ``internal_error``. A route that
+    refused to serve an image because it could not remember a *failure* would turn a degradation
+    into an outage, and the wiring bug is already caught one line later by the client/pacer guard.
+
+    Args:
+        app: The application to read.
+
+    Returns:
+        The shared negative cache, or ``None``.
+    """
+    # Annotated local rather than `return getattr(...)`: app.state is Any, and warn_return_any
+    # would flag returning it directly.
+    cache: NegativeCache | None = getattr(app.state, "negative_cache", None)
     return cache
 
 

@@ -25,6 +25,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from src.companion import contracts
 from src.companion.app import images
 from src.companion.app.errors import CompanionError
 from src.data.schemas.card import CardFace
@@ -1069,6 +1070,152 @@ class TestExactlyOnePacer:
         assert _pacer_calls_in(quiet) == []
 
 
+def _construction_sites(class_name: str, source: str) -> list[int]:
+    """Return the line numbers at which *source* constructs *class_name*.
+
+    The family-keyed scanner behind both :class:`TestExactlyOnePacer`'s claim and c3-8's, factored
+    out rather than copied — two hand-synchronised copies of one scanner in one file is the defect
+    class c3-7 paid to remove from the CDN fakes, and it would drift here for the same reason.
+
+    **Keyed on the class, resolved through import aliases — never on the spelling** (c3-3's headline
+    finding: a guard caught 0 of 12 planted evasions because every family was keyed on the syntax
+    its own firing tests used). Three spellings all count as one family: ``Name()``,
+    ``module.Name()``, and ``from ...images import Name as Anything`` followed by ``Anything()``.
+
+    The declared residual hole, stated because every AST guard in this suite names what it cannot
+    see (house rule): a construction reached through a bound callable — ``cls = NegativeCache;
+    cls()``, or ``getattr(images, "NegativeCache")()`` — is invisible here. Writing one of those in
+    ``src/companion`` is obfuscation of the choke point, not a pass.
+
+    Args:
+        class_name: The class whose construction sites are wanted.
+        source: Python source text.
+
+    Returns:
+        One line number per construction site.
+    """
+    tree = ast.parse(source)
+    bound = {class_name}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            bound.update(
+                alias.asname or alias.name for alias in node.names if alias.name == class_name
+            )
+    lines: list[int] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id in bound:
+            lines.append(node.lineno)
+        elif isinstance(func, ast.Attribute) and func.attr == class_name:
+            lines.append(node.lineno)
+    return lines
+
+
+def _negative_cache_construction_sites() -> list[tuple[str, int]]:
+    """Every place in ``src/companion`` that constructs a :class:`~images.NegativeCache`.
+
+    Returns:
+        ``(relative path, line number)`` for each construction site found.
+    """
+    sites: list[tuple[str, int]] = []
+    for path in _COMPANION_SOURCES:
+        sites.extend(
+            (path.name, line)
+            for line in _construction_sites("NegativeCache", path.read_text(encoding="utf-8"))
+        )
+    return sites
+
+
+class TestExactlyOneNegativeCache:
+    """AC 19, and c3-8's positive gate — the one this story owes **whatever Q5 ruled**.
+
+    Q5 kept ``test_routes_card_image.py``'s ``functools`` ban rather than retiring it, and this scan
+    is added **on top of** that ban rather than instead of it, because the two claims are orthogonal
+    and neither implies the other. *"There is exactly one negative cache and it is bounded"* does
+    not say *"and it is not a ``functools`` memoisation"*: a bounded single instance built on
+    ``lru_cache`` would satisfy this class completely while reintroducing the broken-tile defect
+    the ban prevents. Retiring the ban and calling this its replacement would have been the first
+    removal in this epic that **lost** coverage rather than replacing it.
+    """
+
+    def test_the_whole_backend_constructs_exactly_one_negative_cache(self) -> None:
+        sites = _negative_cache_construction_sites()
+
+        assert len(sites) == 1, (
+            f"src/companion constructs {len(sites)} negative caches ({sites}). One per app is the "
+            "design (Q1); a second one splits the failure memory in half, so a key backing off in "
+            "one would be fetched by the other and neither would ever reach its ceiling."
+        )
+
+    def test_the_one_construction_site_is_the_lifespan(self) -> None:
+        [(module, _line)] = _negative_cache_construction_sites()
+
+        assert module == "main.py", (
+            "the negative cache is created beside the pacer and the disk cache in the lifespan "
+            "(Q1, Brad 2026-08-02); AD-10 keeps build_app() free of side effects, and only the "
+            "lifespan owns startup state"
+        )
+
+    def test_the_scan_catches_a_second_cache_spelled_to_evade(self) -> None:
+        """NON-VACUITY, spelled the way a real second one would arrive (AC 19, AC 23).
+
+        Deliberately **not** ``NegativeCache()`` — that is the spelling the firing test above
+        already looks for, and c3-3's lesson is that a guard keyed on its own examples proves only
+        that it catches them. So the plant arrives under an aliased import bound to a
+        differently-named local, and under a module-attribute call, neither of which a bare-token
+        scan would see.
+        """
+        planted = (
+            "from src.companion.app.images import NegativeCache as FailureMemory\n"
+            "from src.companion.app import images as _img\n"
+            "\n"
+            "RECENT = FailureMemory(base=5.0)\n"
+            "OTHER = _img.NegativeCache()\n"
+        )
+
+        assert _construction_sites("NegativeCache", planted) == [4, 5], (
+            "the single-negative-cache scan missed an aliased import and/or a module-attribute "
+            "call — the two spellings a second one would most plausibly arrive under"
+        )
+
+    def test_the_scan_does_not_fire_on_prose_or_on_a_mere_reference(self) -> None:
+        """…and the other direction, from the same function (standing agreement).
+
+        Type annotations, imports and docstrings NAME the class constantly — ``negative_cache``'s
+        own signature does. Only a CALL is a construction site, and a scan that could not tell the
+        two apart would report the accessor as a second cache and be silenced by someone.
+        """
+        quiet = (
+            '"""The NegativeCache is constructed once, in the lifespan — see NegativeCache()."""\n'
+            "from src.companion.app.images import NegativeCache\n"
+            "\n"
+            "\n"
+            "def remembered(app) -> NegativeCache | None:\n"
+            "    reference = NegativeCache\n"
+            "    return getattr(app.state, 'negative_cache', reference and None)\n"
+        )
+
+        assert _construction_sites("NegativeCache", quiet) == []
+
+    def test_the_shared_scanner_still_agrees_with_the_pacers_own(self) -> None:
+        """The factoring above must not have weakened c3-6's guard on the way past.
+
+        ``_pacer_calls_in`` and ``_construction_sites`` are now two functions making one claim, so
+        this pins that they agree on the real tree. Without it, a subtly weaker shared scanner would
+        silently relax the pacer gate as well as this one.
+        """
+        pacer_sites = _pacer_construction_sites()
+        via_shared = [
+            (path.name, line)
+            for path in _COMPANION_SOURCES
+            for line in _construction_sites("Pacer", path.read_text(encoding="utf-8"))
+        ]
+
+        assert via_shared == pacer_sites
+
+
 _BLOCKING_MODULES = frozenset({"threading", "concurrent.futures", "multiprocessing", "subprocess"})
 """Module families whose whole surface is a synchronous wait (AD-11, AC 6).
 
@@ -1683,6 +1830,354 @@ class TestTheWriteIsAtomic:
         )
 
         assert calls == [], "the cache bought durability the architecture did not ask for"
+
+
+class TestAnUnwritableRootStopsWarningEventually:
+    """**AC 12, Q4 (Brad 2026-08-02): the disk cache learns from its own failures.**
+
+    The louder of the two ``deferred-work.md`` entries c3-7's review homed on this story: *a root
+    that exists but is unwritable leaves the cache "enabled" and logs a WARNING on every write —
+    ~99 times per cold deck paint, forever.* It is not a defect (requests are unharmed, c3-7 AC 9)
+    but *"logs 99 warnings per deck paint forever"* is what reads as broken to the first person who
+    opens a log, and this is the story already reasoning about *how many times do we try before we
+    stop*: a count, a threshold, a state change — the same shape as the backoff beside it.
+
+    **The other entry — a transient startup ``OSError`` disabling the cache for the whole process —
+    was NOT taken**, and is re-homed on **c8-2** with an honest reason: retrying the root means
+    deciding *when* (at first write? on a timer?), which is a lifecycle question nothing here
+    measures and this story has no requirement to answer.
+    """
+
+    @staticmethod
+    def _always_fails(monkeypatch) -> None:
+        """Make every write fail at the file layer, the way an unwritable root does."""
+
+        def explode(*args, **kwargs):
+            raise PermissionError("the root exists but is not writable")
+
+        monkeypatch.setattr(images.tempfile, "mkstemp", explode)
+
+    async def _paint(self, cache: images.DiskCache, tiles: int) -> None:
+        for index in range(tiles):
+            await cache.write(
+                card_id=_CARD,
+                size="normal",
+                face=index,
+                content_type="image/jpeg",
+                body=b"a",
+            )
+
+    async def test_a_cold_paint_logs_a_bounded_number_of_warnings_not_one_per_tile(
+        self, tmp_path, monkeypatch, caplog
+    ) -> None:
+        """The entry's own words, turned into a number: **~99 per paint** becomes at most the limit.
+
+        Asserted on the count of WARNING records rather than on the disabled flag, because the log
+        noise IS the reported problem — a fix that flipped an internal boolean and kept warning
+        would satisfy every other assertion in this class.
+        """
+        cache = _cache(tmp_path)
+        self._always_fails(monkeypatch)
+
+        with caplog.at_level("WARNING", logger=images.logger.name):
+            await self._paint(cache, 99)
+
+        warnings = [record for record in caplog.records if record.levelname == "WARNING"]
+
+        assert len(warnings) <= images.DISK_CACHE_WRITE_FAILURE_LIMIT, (
+            f"a 99-tile paint against an unwritable root logged {len(warnings)} warnings. The "
+            "whole point of the counter is that it stops."
+        )
+        assert warnings, "it logged NOTHING, which hides a real misconfiguration entirely"
+
+    async def test_the_last_warning_says_the_cache_is_being_disabled(
+        self, tmp_path, monkeypatch, caplog
+    ) -> None:
+        """Falling silent without saying so is worse than the noise it replaces.
+
+        Someone reading the log has to be able to tell *"the cache gave up"* from *"the cache is
+        working"* — otherwise the fix for a noisy log is indistinguishable from a cache that
+        silently stopped storing anything.
+        """
+        cache = _cache(tmp_path)
+        self._always_fails(monkeypatch)
+
+        with caplog.at_level("WARNING", logger=images.logger.name):
+            await self._paint(cache, 20)
+
+        # Filtered to THIS module's logger (review 2026-08-02): `caplog.records` collects every
+        # captured logger, so an unfiltered `[-1]` can be flipped by an unrelated library's
+        # record for reasons that have nothing to do with this claim.
+        ours = [record for record in caplog.records if record.name == images.logger.name]
+        final = ours[-1].getMessage().lower()
+
+        assert "disab" in final, f"the last word on the subject was {final!r}"
+
+    async def test_requests_are_still_served_after_the_cache_disables_itself(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """AC 9 is untouched by this: a cache failure is still never a request failure.
+
+        The counter changes how LOUD the failure is, never what the caller gets. ``write`` returns
+        normally whether it stored anything or not, which is what the route depends on.
+        """
+        cache = _cache(tmp_path)
+        self._always_fails(monkeypatch)
+
+        await self._paint(cache, 20)
+
+        assert await cache.read(_CARD, "normal", 0) is None
+
+    async def test_reads_keep_working_after_writes_are_disabled(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """Disabling WRITES must not disable READS — they fail for unrelated reasons.
+
+        A root that became unwritable may still hold everything a previous session cached, and
+        NFR-06's *"fully functional with no network after warm-up"* depends on those reads. A fix
+        that disabled the whole cache would trade a noisy log for an offline app.
+        """
+        cache = _cache(tmp_path)
+        await cache.write(
+            card_id=_CARD, size="normal", face=0, content_type="image/jpeg", body=b"warm"
+        )
+        assert await cache.read(_CARD, "normal", 0) is not None
+
+        self._always_fails(monkeypatch)
+        await self._paint(cache, 20)
+
+        assert await cache.read(_CARD, "normal", 0) == (b"warm", "image/jpeg")
+
+    async def test_one_success_resets_the_counter(self, tmp_path, monkeypatch) -> None:
+        """NON-VACUITY, and the property that makes this safe (AC 23).
+
+        **Consecutive** is the whole claim. Without the reset, an app that failed a handful of
+        writes spread across an entire session — a transient lock, a virus scanner holding a
+        handle — would eventually disable a cache that works perfectly well. Asserted by driving
+        the counter to one below the limit, succeeding once, and then showing the cache still
+        stores.
+        """
+        cache = _cache(tmp_path)
+
+        for _ in range(images.DISK_CACHE_WRITE_FAILURE_LIMIT - 1):
+            with monkeypatch.context() as failing:
+                self._always_fails(failing)
+                await cache.write(
+                    card_id=_CARD, size="normal", face=0, content_type="image/jpeg", body=b"a"
+                )
+
+        await cache.write(
+            card_id=_CARD, size="large", face=0, content_type="image/jpeg", body=b"good"
+        )
+
+        with monkeypatch.context() as failing:
+            self._always_fails(failing)
+            for _ in range(images.DISK_CACHE_WRITE_FAILURE_LIMIT - 1):
+                await cache.write(
+                    card_id=_CARD, size="normal", face=0, content_type="image/jpeg", body=b"a"
+                )
+
+        await cache.write(
+            card_id=_CARD, size="png", face=0, content_type="image/jpeg", body=b"still working"
+        )
+
+        assert await cache.read(_CARD, "png", 0) == (b"still working", "image/jpeg"), (
+            "the cache disabled itself over failures that were never consecutive"
+        )
+
+    async def test_a_lost_same_key_race_does_not_count_toward_disabling(
+        self, tmp_path, monkeypatch, caplog
+    ) -> None:
+        """The Windows ``os.replace`` race carve-out (review 2026-08-02), both halves (AC 23).
+
+        Two requests fetch one key, both write, and the loser's ``os.replace`` raises
+        ``PermissionError`` over the file the winner still holds. The entry IS stored — by the
+        winner — so the loser must neither warn nor feed the consecutive-failure counter: a lost
+        race is not a broken root, and a handful of lost races during one paint must not latch
+        writes off. The same exception with NO stored entry is the genuine unwritable root, still
+        counts, and still disables — asserted from the same invocation.
+        """
+        cache = _cache(tmp_path)
+        await cache.write(
+            card_id=_CARD, size="normal", face=0, content_type="image/jpeg", body=b"winner"
+        )
+
+        def locked(source, destination):
+            raise PermissionError("the winner still holds the freshly replaced file")
+
+        with caplog.at_level("WARNING", logger=images.logger.name):
+            with monkeypatch.context() as racing:
+                racing.setattr(images.os, "replace", locked)
+                for _ in range(images.DISK_CACHE_WRITE_FAILURE_LIMIT * 2):
+                    await cache.write(
+                        card_id=_CARD,
+                        size="normal",
+                        face=0,
+                        content_type="image/jpeg",
+                        body=b"loser",
+                    )
+
+        assert not caplog.records, (
+            "a lost same-key race was counted or warned about; ten of them during one paint "
+            "would have latched writes off over a root that works perfectly well"
+        )
+        assert await cache.read(_CARD, "normal", 0) == (b"winner", "image/jpeg")
+
+        with caplog.at_level("WARNING", logger=images.logger.name):
+            with monkeypatch.context() as broken:
+                broken.setattr(images.os, "replace", locked)
+                await self._paint(cache, images.DISK_CACHE_WRITE_FAILURE_LIMIT * 2)
+
+        ours = [record for record in caplog.records if record.name == images.logger.name]
+        assert ours, "a genuinely unwritable root fell silent without ever being counted"
+        assert any("disab" in record.getMessage().lower() for record in ours), (
+            "the carve-out swallowed the genuine unwritable-root case too"
+        )
+
+    async def test_a_locked_empty_target_is_counted_not_swallowed(
+        self, tmp_path, monkeypatch, caplog
+    ) -> None:
+        """Greptile P1 (2026-08-02): presence is not the winner's signature — CONTENT is.
+
+        ``_read_cached`` treats a zero-byte file as a miss, so a locked or read-only EMPTY target
+        swallowed as a lost race would loop forever: every read misses, every write "wins", the
+        counter resets, and the latch never announces a root that is genuinely stuck. A race
+        winner's entry is never empty (``fetch_image`` refuses empty bodies), so the carve-out
+        keys on ``st_size > 0`` and this case stays a counted failure.
+        """
+        cache = _cache(tmp_path)
+        target = tmp_path / "image_cache" / _CARD[:2] / _CARD / "normal_0.jpg"
+        target.parent.mkdir(parents=True)
+        target.touch()
+
+        def locked(source, destination):
+            raise PermissionError("an indexer holds the zero-byte entry open")
+
+        with caplog.at_level("WARNING", logger=images.logger.name):
+            with monkeypatch.context() as broken:
+                broken.setattr(images.os, "replace", locked)
+                await self._paint(cache, images.DISK_CACHE_WRITE_FAILURE_LIMIT * 2)
+
+        ours = [record for record in caplog.records if record.name == images.logger.name]
+        assert ours, (
+            "a locked zero-byte entry was swallowed as a lost race; that key would refetch "
+            "forever and the latch would never announce the stuck root"
+        )
+        assert any("disab" in record.getMessage().lower() for record in ours)
+
+    async def test_an_unreadable_non_empty_target_is_counted_not_swallowed(
+        self, tmp_path, monkeypatch, caplog
+    ) -> None:
+        """Greptile round 2's residual (2026-08-02): size is not the winner's signature either.
+
+        A non-empty target whose READS are denied while ``stat`` still reports a positive size —
+        an exclusive external lock, a broken ACL — is a miss to ``_read_cached``, so swallowing
+        its write as a lost race on size alone would refetch forever with the latch never
+        announcing it. The carve-out therefore proves servability by reading a byte, exactly as
+        the cache's own reader will, and this case stays a counted failure.
+        """
+        cache = _cache(tmp_path)
+        target = tmp_path / "image_cache" / _CARD[:2] / _CARD / "normal_0.jpg"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b"present but exclusively locked")
+
+        def locked(source, destination):
+            raise PermissionError("an external process holds the entry exclusively")
+
+        real_open = Path.open
+
+        def deny_reads(self, *args, **kwargs):
+            if self == target:
+                raise PermissionError("reads denied too")
+            return real_open(self, *args, **kwargs)
+
+        with caplog.at_level("WARNING", logger=images.logger.name):
+            with monkeypatch.context() as broken:
+                broken.setattr(images.os, "replace", locked)
+                broken.setattr(Path, "open", deny_reads)
+                await self._paint(cache, images.DISK_CACHE_WRITE_FAILURE_LIMIT * 2)
+
+        ours = [record for record in caplog.records if record.name == images.logger.name]
+        assert ours, (
+            "an unreadable non-empty entry was swallowed as a lost race; that key would "
+            "refetch forever and the latch would never announce the stuck root"
+        )
+        assert any("disab" in record.getMessage().lower() for record in ours)
+
+    async def test_a_lost_race_does_not_reset_the_counter_either(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """The other half of the Greptile P1: a lost race is not a SUCCESS any more than a failure.
+
+        A run of genuine failures on other keys, one lost race in the middle, and the run must
+        still latch: only a replace that actually lands proves the root works. Before the patch
+        the benign path took the success branch and reset the count, so alternating races and
+        failures could keep a broken root below the limit forever.
+        """
+        cache = _cache(tmp_path)
+        await cache.write(
+            card_id=_CARD, size="normal", face=0, content_type="image/jpeg", body=b"winner"
+        )
+
+        def locked(source, destination):
+            raise PermissionError("locked")
+
+        with monkeypatch.context() as failing:
+            self._always_fails(failing)
+            await self._paint(cache, images.DISK_CACHE_WRITE_FAILURE_LIMIT - 1)
+
+        with monkeypatch.context() as racing:
+            racing.setattr(images.os, "replace", locked)
+            await cache.write(
+                card_id=_CARD, size="normal", face=0, content_type="image/jpeg", body=b"loser"
+            )
+
+        with monkeypatch.context() as failing:
+            self._always_fails(failing)
+            await cache.write(
+                card_id=_CARD, size="large", face=0, content_type="image/jpeg", body=b"a"
+            )
+
+        with monkeypatch.context() as failing:
+            self._always_fails(failing)
+            await self._paint(cache, 3)
+
+        await cache.write(
+            card_id=_CARD, size="png", face=0, content_type="image/jpeg", body=b"late"
+        )
+        assert await cache.read(_CARD, "png", 0) is None, (
+            "the lost race reset the consecutive-failure count, so the run of genuine failures "
+            "around it never latched — a broken root alternating with races stays unannounced"
+        )
+
+    async def test_two_caches_disable_independently(self, tmp_path, monkeypatch) -> None:
+        """Per-instance state, like everything else in this module — never a module global.
+
+        ``deps.Database``'s shipped ruling against globals, applied once more: a module-level flag
+        would let one app's unwritable root disable an unrelated app's perfectly good cache, and in
+        a test run it would make the order of tests decide the result.
+        """
+        first = _cache(tmp_path / "one")
+        second = _cache(tmp_path / "two")
+
+        with monkeypatch.context() as failing:
+            self._always_fails(failing)
+            await self._paint(first, images.DISK_CACHE_WRITE_FAILURE_LIMIT * 2)
+
+        await second.write(
+            card_id=_CARD, size="normal", face=0, content_type="image/jpeg", body=b"b"
+        )
+
+        assert await second.read(_CARD, "normal", 0) == (b"b", "image/jpeg"), (
+            "one cache instance's failures disabled another instance's writes — the counter is a "
+            "module global rather than per-instance state"
+        )
+
+    def test_the_limit_carries_its_reasoning(self) -> None:
+        limit_doc = _attribute_docstring("DISK_CACHE_WRITE_FAILURE_LIMIT")
+
+        assert "99" in limit_doc, "the limit is justified against the ~99 warnings per cold paint"
+        assert limit_doc.strip()
 
 
 class TestACacheFailureIsNeverARequestFailure:
@@ -2389,3 +2884,511 @@ class TestFileIoNeverRunsOnTheLoop:
         )
 
         assert _file_io_on_the_loop(legitimate) == []
+
+
+# ---------------------------------------------------------------------------------------------
+# Story c3-8: the negative cache, as a unit. AC 6, 8, 9.
+#
+# **Everything hard about this mechanism is expiry and bounds, and neither is visible in a
+# functional test that makes two requests.** So the units below are where the schedule, the
+# ceiling, the prune and the cap are actually proved; `test_routes_card_image.py` proves what a
+# real request does with them. Every assertion here runs on `FakeClock` — a backoff test that
+# sleeps for real time is the one thing this story could plausibly get wrong and still pass.
+# ---------------------------------------------------------------------------------------------
+
+_KEY = (_CARD, "normal", 0)
+"""One key, in the id + size + face shape AD-11 gives the disk cache — the same key, on purpose."""
+
+
+def _negative(clock: FakeClock, **overrides) -> images.NegativeCache:
+    """A negative cache on virtual time, at the shipped numbers unless a test says otherwise.
+
+    The clock is injected for the same reason ``Pacer``'s is (``images.py``): a window proved by
+    measuring elapsed real time is slow when it passes and mysterious when it fails.
+    """
+    return images.NegativeCache(clock=clock.time, **overrides)
+
+
+def _distinct_id(index: int) -> str:
+    """A distinct, well-formed printing id per *index* — distinct KEYS are the point here."""
+    return f"{index:08x}-fdee-44ec-bfb8-3e99d6338e6e"
+
+
+class TestTheBackoffConstants:
+    """AC 6, AC 8: the four numbers Q2 fixed, and the arithmetic that chose each one."""
+
+    def test_the_shipped_numbers_are_the_ones_q2_ruled(self) -> None:
+        assert images.NEGATIVE_CACHE_BASE_SECONDS == 30.0
+        assert images.NEGATIVE_CACHE_MULTIPLIER == 2.0
+        assert images.NEGATIVE_CACHE_CEILING_SECONDS == 300.0
+        assert images.NEGATIVE_CACHE_MAX_ENTRIES == 2048
+
+    def test_the_base_exceeds_one_full_cold_deck_paint(self) -> None:
+        """The arithmetic that chose 30 s, asserted rather than described (AC 6).
+
+        A base **shorter than one cold paint** re-admits the storm it exists to prevent: a second
+        paint beginning after the first ended would find every window already expired. A cold
+        99-tile paint is 98 spacings = 9.8 s at the shipped constants, so this inequality is what
+        has to survive — not the number.
+        """
+        cold_paint = 98 * images.FETCH_SPACING_SECONDS
+
+        assert images.NEGATIVE_CACHE_BASE_SECONDS > cold_paint, (
+            f"a {images.NEGATIVE_CACHE_BASE_SECONDS} s base does not outlast a {cold_paint} s cold "
+            "deck paint, so a reload would re-issue every request the backoff exists to suppress"
+        )
+        # ~3x rather than merely ">", which is the margin the ruling actually claims.
+        assert images.NEGATIVE_CACHE_BASE_SECONDS > 3 * cold_paint
+
+    def test_the_schedule_is_five_steps_and_the_last_one_lands_on_the_ceiling(self) -> None:
+        """ "Five steps from base to ceiling" is a claim about the numbers, so it is asserted."""
+        base = images.NEGATIVE_CACHE_BASE_SECONDS
+        multiplier = images.NEGATIVE_CACHE_MULTIPLIER
+        ceiling = images.NEGATIVE_CACHE_CEILING_SECONDS
+
+        schedule = [min(base * multiplier**step, ceiling) for step in range(5)]
+
+        assert schedule == [30.0, 60.0, 120.0, 240.0, 300.0]
+        assert schedule[-1] == ceiling, "the fifth consecutive failure must land ON the ceiling"
+
+    def test_the_cap_is_twice_this_users_library_and_a_fraction_of_the_key_space(self) -> None:
+        """AC 8's arithmetic: 2,048 against a 1,061-id library and 245,760 reachable keys.
+
+        Both bounds matter and they pull in opposite directions — too small and an ordinary
+        session evicts, too large and "bounded" is a word rather than a bound.
+        """
+        whole_library = 1061
+        reachable_keys = 245_760
+
+        assert images.NEGATIVE_CACHE_MAX_ENTRIES > 1.5 * whole_library
+        assert images.NEGATIVE_CACHE_MAX_ENTRIES < 0.01 * reachable_keys
+
+    def test_every_constant_carries_its_arithmetic_in_its_own_docstring(self) -> None:
+        """``FETCH_SPACING_SECONDS``' precedent, applied to four more numbers (AC 6).
+
+        A number without its reasoning is the thing the next story changes for the wrong reason, so
+        each of these is keyed on the **justification**, never on the value — the values are already
+        asserted above, and a docstring that merely recites them proves nothing.
+        """
+        base_doc = _attribute_docstring("NEGATIVE_CACHE_BASE_SECONDS")
+        multiplier_doc = _attribute_docstring("NEGATIVE_CACHE_MULTIPLIER")
+        ceiling_doc = _attribute_docstring("NEGATIVE_CACHE_CEILING_SECONDS")
+        entries_doc = _attribute_docstring("NEGATIVE_CACHE_MAX_ENTRIES")
+
+        assert "9.8" in base_doc, "the base is justified by the cold-paint duration it must exceed"
+        assert "245,760" in entries_doc, "the cap is justified against the reachable key space"
+        assert "1,061" in entries_doc, "…and against this user's real measured working set"
+        assert "min(" in ceiling_doc or "ceiling" in ceiling_doc.lower()
+        assert ceiling_doc.strip(), "the ceiling ships with no reasoning at all"
+        assert multiplier_doc.strip(), "the multiplier ships with no reasoning at all"
+
+    def test_the_wire_prose_in_contracts_matches_the_shipped_schedule(self) -> None:
+        """The drift gate the wire crossing bought (review 2026-08-02).
+
+        Debug Log 3 measured that ``ErrorResponse``'s class docstring is published to the wire in
+        full, and that docstring now recites the schedule — "starts at 30 seconds, doubles per
+        consecutive failure and is capped at 300". Nothing else ties that prose to the constants,
+        so a future Q2-style renumbering would run the whole suite green while shipping a wire
+        contract that describes the old schedule. Keyed on the constants, never on literals, so
+        the pin moves with any renumbering that also updates the prose — which is the point.
+        """
+        # Whitespace-normalised: the docstring hard-wraps at 100 columns, so "30\n    seconds"
+        # is one phrase to a reader and two tokens to a substring check.
+        published = " ".join((contracts.ErrorResponse.__doc__ or "").split())
+
+        assert f"starts at {images.NEGATIVE_CACHE_BASE_SECONDS:g} seconds" in published, (
+            "the wire prose no longer states the shipped base delay; edit the docstring and "
+            "regenerate, never let the two drift"
+        )
+        assert f"capped at {images.NEGATIVE_CACHE_CEILING_SECONDS:g}" in published, (
+            "the wire prose no longer states the shipped ceiling"
+        )
+        assert ("doubles" in published) == (images.NEGATIVE_CACHE_MULTIPLIER == 2.0), (
+            'the wire prose says "doubles" but the shipped multiplier is not 2'
+        )
+
+
+class TestConstructionRefusesTheParametersThatBreakIt:
+    """Review 2026-08-02: the injected-kwarg surface is real — this file injects it — so guard it.
+
+    Not a startup risk, and the distinction is the accessor's whole "construction cannot fail"
+    claim: the lifespan constructs with no arguments, which cannot raise. What these guard is a
+    mis-injected TEST parameter, which previously produced a ``ValueError`` from ``min()`` on an
+    empty dict deep inside the failure path (``max_entries=0``) or a backoff that silently shrank
+    (``multiplier=0.5``) — both worse than refusing at the door.
+    """
+
+    def test_a_zero_entry_map_is_refused_at_construction(self) -> None:
+        with pytest.raises(ValueError, match="max_entries"):
+            images.NegativeCache(max_entries=0, clock=FakeClock().time)
+
+    def test_a_shrinking_multiplier_is_refused_at_construction(self) -> None:
+        with pytest.raises(ValueError, match="multiplier"):
+            images.NegativeCache(multiplier=0.5, clock=FakeClock().time)
+
+    def test_the_default_construction_cannot_fail(self) -> None:
+        """The non-vacuity pair, and the lifespan's own path: no arguments, no raise (AC 23)."""
+        assert images.NegativeCache().entry_count == 0
+
+    def test_a_base_above_the_ceiling_is_clamped_from_the_first_failure(self) -> None:
+        """`_RememberedFailure.delay` documents itself as "already clamped to the ceiling".
+
+        Before the review patch only the ESCALATION branch clamped, so an injected
+        ``base > ceiling`` served its entire first window above the documented maximum.
+        """
+        clock = FakeClock()
+        cache = images.NegativeCache(base=500.0, ceiling=300.0, clock=clock.time)
+
+        assert cache.record_failure(*_KEY) == 300.0
+
+
+class TestTheBackoffWindow:
+    """AC 6: the exact expiry boundaries, on virtual time and never on wall time."""
+
+    def test_a_cold_key_is_not_backing_off(self) -> None:
+        clock = FakeClock()
+        cache = _negative(clock)
+
+        assert cache.is_backing_off(*_KEY) is False
+        assert cache.entry_count == 0
+
+    def test_one_failure_opens_the_base_window(self) -> None:
+        clock = FakeClock()
+        cache = _negative(clock)
+
+        delay = cache.record_failure(*_KEY)
+
+        assert delay == images.NEGATIVE_CACHE_BASE_SECONDS
+        assert cache.is_backing_off(*_KEY) is True
+        assert cache.entry_count == 1
+
+    def test_a_request_just_before_the_expiry_still_backs_off(self) -> None:
+        """``expiry - eps``. A boundary is asserted from BOTH sides or it is not asserted."""
+        clock = FakeClock()
+        cache = _negative(clock)
+        cache.record_failure(*_KEY)
+
+        clock.now = images.NEGATIVE_CACHE_BASE_SECONDS - 0.001
+
+        assert cache.is_backing_off(*_KEY) is True
+
+    def test_a_request_exactly_at_the_expiry_fetches(self) -> None:
+        """``expiry`` itself is a FETCH — the window is half-open, and which way it rounds is a
+        decision rather than an accident."""
+        clock = FakeClock()
+        cache = _negative(clock)
+        cache.record_failure(*_KEY)
+
+        clock.now = images.NEGATIVE_CACHE_BASE_SECONDS
+
+        assert cache.is_backing_off(*_KEY) is False
+
+    def test_consecutive_failures_escalate_through_the_whole_schedule(self) -> None:
+        """AC 6's escalation, measured as the delays actually applied."""
+        clock = FakeClock()
+        cache = _negative(clock)
+
+        applied = []
+        for _ in range(5):
+            applied.append(cache.record_failure(*_KEY))
+            # Step past each window, so every failure is genuinely the NEXT consecutive one
+            # rather than a repeat inside one that is still open.
+            clock.now += applied[-1]
+
+        assert applied == [30.0, 60.0, 120.0, 240.0, 300.0]
+
+    def test_the_delay_stops_at_the_ceiling_rather_than_growing_forever(self) -> None:
+        """The half a "consecutive failures escalate" test misses (AC 6).
+
+        Without it, ``base * 2 ** n`` passes every escalation assertion above and reaches a
+        four-hour window by the twelfth failure — a tile broken for the rest of the session, which
+        is the permanently-broken-tile defect AD-11's *"with backoff"* exists to prevent.
+        """
+        clock = FakeClock()
+        cache = _negative(clock)
+
+        applied = []
+        for _ in range(12):
+            applied.append(cache.record_failure(*_KEY))
+            clock.now += applied[-1]
+
+        assert applied[4:] == [300.0] * 8, "the delay grew past the ceiling"
+        assert max(applied) == images.NEGATIVE_CACHE_CEILING_SECONDS
+
+    def test_a_repeat_failure_inside_an_open_window_still_escalates(self) -> None:
+        """A failure recorded while a window is open is still a failure.
+
+        Reachable in production: two tabs, or a request already in flight when the first one
+        failed. It escalates rather than resetting, because *"how bad is this outage"* is what the
+        count measures.
+        """
+        clock = FakeClock()
+        cache = _negative(clock)
+
+        first = cache.record_failure(*_KEY)
+        second = cache.record_failure(*_KEY)
+
+        assert (first, second) == (30.0, 60.0)
+
+    def test_keys_back_off_independently(self) -> None:
+        """id, size and face are all part of the key, so a failure on one must not silence a
+        sibling. Three separate assertions, because a key that dropped ANY of the three would pass
+        a test that varied only the id."""
+        clock = FakeClock()
+        cache = _negative(clock)
+
+        cache.record_failure(_CARD, "normal", 0)
+
+        assert cache.is_backing_off(_CARD, "normal", 0) is True
+        assert cache.is_backing_off("ff70bbf6-fdee-44ec-bfb8-3e99d6338e6e", "normal", 0) is False
+        assert cache.is_backing_off(_CARD, "large", 0) is False
+        assert cache.is_backing_off(_CARD, "normal", 1) is False
+
+
+class TestRecoveryClearsTheHistory:
+    """AC 7's last clause — the one a functional test misses entirely."""
+
+    def test_clearing_a_key_ends_its_backoff(self) -> None:
+        clock = FakeClock()
+        cache = _negative(clock)
+        cache.record_failure(*_KEY)
+
+        cache.clear(*_KEY)
+
+        assert cache.is_backing_off(*_KEY) is False
+        assert cache.entry_count == 0
+
+    def test_a_recovered_key_starts_its_next_failure_at_the_base_delay(self) -> None:
+        """Fail x4, succeed, fail once — measuring the window against the base, not against step 5.
+
+        This is the assertion the story names as the one no functional test can make: every *"the
+        retry happened"* test passes with the history left intact, and the defect surfaces only as a
+        tile broken for five minutes after a single blip, weeks later.
+        """
+        clock = FakeClock()
+        cache = _negative(clock)
+
+        for _ in range(4):
+            clock.now += cache.record_failure(*_KEY)
+        assert cache.record_failure(*_KEY) == 300.0, "four failures must have escalated at all"
+
+        cache.clear(*_KEY)
+        after_recovery = cache.record_failure(*_KEY)
+
+        assert after_recovery == images.NEGATIVE_CACHE_BASE_SECONDS, (
+            f"a key that recovered and then failed once backed off for {after_recovery} s instead "
+            "of the base 30 s — its failure history survived the success"
+        )
+
+    def test_clearing_a_key_that_never_failed_is_silent(self) -> None:
+        """The route clears on EVERY success, so the overwhelmingly common call is this one."""
+        clock = FakeClock()
+        cache = _negative(clock)
+
+        cache.clear(*_KEY)
+
+        assert cache.entry_count == 0
+
+    def test_clearing_one_key_leaves_its_siblings_alone(self) -> None:
+        """Q5's reason for keeping the ban, restated as a property that is actually asserted:
+        ``functools.cache``'s ``cache_clear()`` is all-or-nothing, and this is not."""
+        clock = FakeClock()
+        cache = _negative(clock)
+        cache.record_failure(_CARD, "normal", 0)
+        cache.record_failure(_CARD, "large", 0)
+
+        cache.clear(_CARD, "normal", 0)
+
+        assert cache.is_backing_off(_CARD, "normal", 0) is False
+        assert cache.is_backing_off(_CARD, "large", 0) is True
+
+
+class TestTheMapIsBounded:
+    """AC 8: 245,760 keys are reachable, so an unbounded map is the absence of a design."""
+
+    def test_a_closed_window_does_not_erase_the_failure_history(self) -> None:
+        """The distinction the first implementation of this class got wrong, pinned first.
+
+        A window closing means *this key may be fetched again*. It does **not** mean *this key never
+        failed* — and an implementation that drops the entry at ``retry_after`` resets the
+        escalation on every attempt, so a key against a permanently dead CDN cycles at 30 s forever
+        and the schedule is unreachable in production. This is the assertion that separates the two
+        designs; the escalation tests above do not, because they step the clock only as far as they
+        must and pass under both.
+        """
+        clock = FakeClock()
+        cache = _negative(clock)
+
+        first = cache.record_failure(*_KEY)
+        clock.now = images.NEGATIVE_CACHE_BASE_SECONDS
+        assert cache.is_backing_off(*_KEY) is False, "the window must genuinely have closed"
+
+        second = cache.record_failure(*_KEY)
+
+        assert (first, second) == (30.0, 60.0), (
+            "a failure after the window closed restarted at the base delay — the backoff never "
+            "escalates against the one upstream it exists for, a permanently dead one"
+        )
+
+    def test_a_key_is_forgotten_a_full_ceiling_after_its_window_closes(self) -> None:
+        """The retention horizon, asserted from BOTH sides (AC 8).
+
+        ``retry_after + ceiling``: a key that has gone the longest backoff this cache can apply
+        without failing again is not having a run of failures, it is having a new one. This is the
+        fifth number in the mechanism and Q2 did not fix it, so it is asserted rather than assumed.
+        """
+        clock = FakeClock()
+        cache = _negative(clock)
+        cache.record_failure(*_KEY)
+        horizon = images.NEGATIVE_CACHE_BASE_SECONDS + images.NEGATIVE_CACHE_CEILING_SECONDS
+
+        clock.now = horizon - 0.001
+        assert cache.record_failure(*_KEY) == 60.0, "forgotten one tick too early"
+
+        # A fresh cache, so the second half measures the horizon rather than the escalation above.
+        cache = _negative(clock)
+        clock.now = 0.0
+        cache.record_failure(*_KEY)
+        clock.now = horizon
+
+        assert cache.record_failure(*_KEY) == images.NEGATIVE_CACHE_BASE_SECONDS, (
+            "the key was still remembered a full ceiling past its window; a map that never forgets "
+            "reaches its cap on garbage and then evicts LIVE entries to make room for it"
+        )
+
+    def test_stale_entries_are_pruned_rather_than_merely_ignored(self) -> None:
+        """*"Ignored"* reaches the cap on garbage; *"pruned"* does not.
+
+        Asserted on ``entry_count``, which is the only thing that can tell the two designs apart —
+        every behavioural assertion in this file is identical under both.
+        """
+        clock = FakeClock()
+        cache = _negative(clock)
+        for face in range(4):
+            cache.record_failure(_CARD, "normal", face)
+        assert cache.entry_count == 4
+
+        clock.now = images.NEGATIVE_CACHE_BASE_SECONDS + images.NEGATIVE_CACHE_CEILING_SECONDS
+        cache.record_failure("ff70bbf6-fdee-44ec-bfb8-3e99d6338e6e", "normal", 0)
+
+        assert cache.entry_count == 1, (
+            "the four stale entries were still resident. A map that only IGNORES expiry reaches "
+            "its cap on garbage and then evicts LIVE entries to make room for it."
+        )
+
+    def test_the_map_never_exceeds_its_cap(self) -> None:
+        """A plant of cap + N distinct failing keys leaves the map at exactly the cap."""
+        clock = FakeClock()
+        cache = _negative(clock, max_entries=4)
+
+        for index in range(4 + 3):
+            cache.record_failure(_distinct_id(index), "normal", 0)
+
+        assert cache.entry_count == 4
+
+    def test_eviction_drops_the_entry_closest_to_being_useless(self) -> None:
+        """The tiebreak, asserted by WHICH key survived rather than by the count.
+
+        Earliest ``retry_after`` first: that entry is nearest to expiring anyway, so dropping it
+        costs the least. A cap enforced by evicting an arbitrary key passes the count assertion
+        above while throwing away the entry with the most time left on it.
+
+        **The clock advances by 10 s and not by 30 s, and that is the whole test.** At 30 s every
+        entry has expired, so the prune alone produces the same three assertions and the eviction
+        path is never reached — the test would pass with the tiebreak deleted. Caught while
+        implementing it; the story's own warning about assertions that pass for the wrong reason.
+        """
+        clock = FakeClock()
+        cache = _negative(clock, max_entries=2)
+
+        cache.record_failure("aaa", "normal", 0)
+        # Escalate this one, so its window reaches further out than a first failure's.
+        cache.record_failure("bbb", "normal", 0)
+        clock.now += 10.0
+        cache.record_failure("bbb", "normal", 0)
+
+        cache.record_failure("ccc", "normal", 0)
+
+        assert cache.entry_count == 2
+        assert cache.is_backing_off("aaa", "normal", 0) is False, "the earliest expiry survived"
+        assert cache.is_backing_off("bbb", "normal", 0) is True
+        assert cache.is_backing_off("ccc", "normal", 0) is True
+
+    def test_an_evicted_key_simply_fetches_again(self) -> None:
+        """NON-VACUITY for the bound (AC 8, AC 23): the honest cost, asserted rather than described.
+
+        An eviction is not a failure — it costs **exactly one extra fetch**, which is what makes a
+        cap acceptable at all. Stated as behaviour: the evicted key reports *not backing off*.
+        """
+        clock = FakeClock()
+        cache = _negative(clock, max_entries=1)
+        cache.record_failure("aaa", "normal", 0)
+        assert cache.is_backing_off("aaa", "normal", 0) is True
+
+        cache.record_failure("bbb", "normal", 0)
+
+        assert cache.is_backing_off("aaa", "normal", 0) is False
+        assert cache.is_backing_off("bbb", "normal", 0) is True
+
+    def test_re_recording_a_resident_key_does_not_grow_the_map(self) -> None:
+        """The realistic shape of a real outage: the same 99 keys failing over and over.
+
+        Without this, *"bounded"* could be true only because eviction ran constantly — which would
+        make every escalation asserted above unreachable in production.
+        """
+        clock = FakeClock()
+        cache = _negative(clock, max_entries=4)
+
+        for _ in range(50):
+            cache.record_failure(*_KEY)
+
+        assert cache.entry_count == 1
+
+
+class TestTheNegativeCacheHoldsNothingButMemory:
+    """AC 9: nothing is persisted, and nothing survives the process."""
+
+    def test_constructing_one_cannot_fail_and_touches_no_disk(self, tmp_path, monkeypatch) -> None:
+        """The prediction Q1 rests on, confirmed by measurement rather than by argument.
+
+        ``Pacer``-shaped, not ``DiskCache``-shaped: no ``build_*`` factory, no ``_shutdown`` change,
+        and ``test_app.py::test_startup_failure_propagates`` stays literally true. Proved by
+        pointing the data directory somewhere that does not exist — a ``DiskCache`` needs
+        ``build_image_cache`` here, and this needs nothing at all.
+        """
+        unwritable = tmp_path / "definitely" / "not" / "there"
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(unwritable / "nope"))
+
+        cache = images.NegativeCache()
+
+        assert cache.entry_count == 0
+        assert not unwritable.exists(), "constructing a negative cache created a directory"
+
+    def test_two_caches_do_not_share_state(self) -> None:
+        """Q1's rejection of a module-level dict, as a property rather than a paragraph.
+
+        A global would serialise unrelated apps in a test run and hide a real double-creation bug —
+        ``deps.Database``'s shipped ruling. Per-app instances are also what make AC 9's *"a fresh
+        app remembers nothing"* testable at all.
+        """
+        clock = FakeClock()
+        first = _negative(clock)
+        second = _negative(clock)
+
+        first.record_failure(*_KEY)
+
+        assert first.is_backing_off(*_KEY) is True
+        assert second.is_backing_off(*_KEY) is False
+
+    def test_the_default_clock_is_monotonic_and_never_the_wall_clock(self) -> None:
+        """A wall clock moves backwards on an NTP step and across a DST boundary, which would
+        either free every entry at once or freeze one for an hour. ``Pacer`` made this choice first
+        and this inherits it — asserted, because the two spellings differ by four characters.
+        """
+        import inspect
+        import time as time_module
+
+        default = inspect.signature(images.NegativeCache.__init__).parameters["clock"].default
+
+        assert default is time_module.monotonic
+        assert default is not time_module.time
