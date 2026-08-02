@@ -546,7 +546,7 @@ samples. AC 26 asks for the narrowest suite containing the change and more than 
         `--platform win32` clean (89 files each). Frontend **730 passed, 36 files** (4.60 s);
         `lint`, `format:check`, `npx tsc -b --force`, `build` all clean. Bundle rebuilt →
         `index-DVyKlzKd.js ED89F6474885A685`; plugin mirror `diff -r` identical.
-  - [ ] Raise the PR into `feat/companion-c3`
+  - [x] Raise the PR into `feat/companion-c3` — **PR #37**, 2026-08-02
 
 ### Review Findings (bmad-code-review, 2026-08-02)
 
