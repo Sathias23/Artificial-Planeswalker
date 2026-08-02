@@ -438,8 +438,14 @@ const entryFor = (cardId: string, outcome: CardOutcome, summary: CardSummary | n
  *     joins the FIRST caller's request whatever reader it passed — one request is the contract.
  *
  * Returns:
- *   The entry the id ends up in. Never rejects: every outcome of `readCard` is a value, and an
- *   injected reader that throws is caught and read as unreachable.
+ *   The entry the READ produced. Never rejects: every outcome of `readCard` is a value, and an
+ *   injected reader that throws is caught and read as unreachable. One declared residue
+ *   (Greptile PR #40, P2): a read that {@link resetCardCache} orphans still resolves with the
+ *   entry it computed, even though the store discarded that world — the honest alternative,
+ *   widening the return to `CardEntry | undefined`, would tax every consumer with an
+ *   undefined-check for a case only resets produce, and resets are test-only today. The store is
+ *   the authority: a consumer that cares about CURRENT truth reads {@link useCardEntry}, and the
+ *   c4-2 `deck_changed` reset design inherits this question (see deferred-work.md).
  */
 export const hydrateCard = async (
   cardId: string,

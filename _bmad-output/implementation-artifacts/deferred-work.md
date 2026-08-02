@@ -3284,6 +3284,13 @@ either has an owner story or is declared inside the file it constrains.
   indefinitely and the panel "comes alive on its own". The story record declares this residue and
   names the fix: `resetCardCache()` on the `deck_changed` (or recovery) transition, which **c4-2**
   owns. Home: c4-2, with c4-5 (detail panel) as the story that would make it visible.
+  **Companion question, same home (Greptile PR #40, P2, ruled option-1 "declare" by Brad
+  2026-08-02):** a `hydrateCard` promise that a reset orphans still resolves with the entry it
+  computed for the discarded world — the store write is generation-guarded, the return value is
+  not. Harmless while resets are test-only and consumers render from `useCardEntry`; the moment
+  c4-2 wires a production reset, decide whether awaiting callers need the fresh answer (widen the
+  return to `CardEntry | undefined`) or the docstring's "the store is the authority" ruling
+  stands. Declared in `hydrateCard`'s Returns docstring.
 - **`useCardEntry` is untested.** A React render harness would be needed and no testing library is
   in the dependency set (adding one casually is banned by AC 21 / package-contract). Home: c4-3
   (first consumer) — its component tests exercise the hook for real; if c4-3 introduces a testing
