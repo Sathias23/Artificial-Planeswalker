@@ -427,6 +427,43 @@ filesystem under contention, and the two shells answering the same question.
 | B5 | CM-2 on a real 99-card deck | ✅ PASS + first-ever latency/footprint measurements |
 | B6 | Negative cache on a real clock (30 s window) | ⬜ not run — needs a network outage + 35 s |
 
+> ### Checklist CLOSED by Sathias, 2026-08-02 — the remainder is CARRIED, with homes
+>
+> Manual testing ended after A1, A2, A7 and Block B. The reasoning follows the C2 R3 amendment
+> precedent, and the carried items are homed rather than dropped:
+>
+> - **The two items the checklist existed for are closed.** FR-22 comes alive in a real browser
+>   (A2) and CM-2 is a measured zero-request warm run (B5). Neither had ever been observed.
+> - **Merge ≠ release.** No tag and no CHANGELOG until c8-4, so nothing carried reaches a user.
+> - **Every remaining item has an owner story below.** The cost of carrying is that a finding
+>   becomes a fix on a later branch instead of on this umbrella — not that it goes unlooked-at.
+>
+> **The one cost worth stating plainly, so it is a known trade rather than a discovery later:**
+> A3–A6 are the three panels a real engine has never rendered, and **c4-2 is the story that makes
+> them routinely reachable.** Run against C3's poller alone, a failure means *the panel is wrong*.
+> Run after c4-2, a failure means *the panel or the new wiring* is wrong. Carrying them does not
+> add risk — merge ≠ release — it adds diagnostic cost to whoever hits one. Recorded, ruled,
+> proceeding.
+>
+> | Carried | Home |
+> |---|---|
+> | **A3** `database-updating` never rendered | **c4-2** — renders four of the five panels for real |
+> | **A4** `database-updating-stalled` never rendered; R3's terminal behaviour never felt | **c4-2** (appearance) + **c5-6** (the recovery R3 ruled it owns) |
+> | **A5** backend stopped — panel must stay and not claim `disconnected` | **c5-6**, which owns `disconnected` |
+> | **A6** browser started before backend — known wrong panel | **c5-6** (already ledgered) |
+> | **B6** negative cache on a real clock | **c4-4** — the first story where a person watches images fail |
+> | **C1/C2** no companion route fetched by a real browser | **c4-1 / c4-2** — they make it automatic |
+> | **C3/C4** `is_legal` vs its six rows | **c4-10** (already ledgered — nothing machine-checkable stops the binding) |
+> | **C5** 503-outranks-400 retry trap | **c4-1** (already ledgered; the `Warning:` is in the JSDoc) |
+> | **C6** `active-deck` auth surface | **c5-5**, which inherits the `AgentToken` seam |
+> | **D1** agent `validate_deck` vs REST `format-check` — **AD-1's promise, owned by nobody** | **c8-6** (SC-5 acceptance) — newly homed here, it had no owner |
+> | **D2** MCP server + companion running together | **c8-4 / c8-5** (install + release readiness) |
+> | **E1/E2** carried from C2 | **c4-11** / **c2-6 if it fails** |
+>
+> **D1 is the one that changed owner at this retro.** Nothing in 2,472 tests compares the two
+> shells' output for the same deck, and no story owned checking it. It is AD-1's central claim —
+> one implementation, two surfaces — and it is now on c8-6 rather than nowhere.
+
 ### Block C — endpoints a browser has never called
 
 | # | Do | Status |
@@ -460,7 +497,7 @@ filesystem under contention, and the two shells answering the same question.
 |---|---|---|---|
 | 1 | ~~**R1 — Scryfall JSONL hotfix on master**~~ — ✅ **DONE 2026-08-02, PR #38 merged at `7631147`** (Greptile 5/5 at round 1, zero inline findings). Both halves of the criterion met: the importer completes against the live API (**38,485 cards, 0 errors** from `scryfall_oracle_cards.jsonl.gz`) and `tests/integration/data/test_scryfall_live_contract.py` calls the real endpoint **through the production resolver**, run weekly by a new scheduled workflow. `stream_cards` decides the payload shape by **reading the bytes**; `_resolve_download_uri` names the keys that actually arrived. Probed: the pre-break key list reds the canary 5 ways against the live API. | Sathias | ✅ met |
 | 2 | ~~**Confirm A2**~~ — ✅ **DONE 2026-08-02.** The page came alive with no refresh, observed. FR-22 is no longer a DOM-only claim, and A7's cached-`503` risk is closed by implication. | Sathias | ✅ met |
-| 3 | **Complete the checklist before the integration PR** — A3–A7, B6, Blocks C/D/E. Findings are fixes on the C3 umbrella. | Sathias | Every item run or explicitly carried with a named home (the C2 R3 precedent) |
+| 3 | ~~Complete the checklist before the integration PR~~ — ✅ **CLOSED 2026-08-02 in its amended form**, exactly as C2's R3 was: A1/A2/A7 + Block B run, **the remainder carried with a named home each** (table in *Manual-Testing Outcomes*). The item's purpose — the two make-or-break claims — is met, and **D1 gained an owner it never had** (c8-6). | Sathias | ✅ met — every remaining item carried with a named home |
 | 4 | **F1 — a gate banning story-key-shaped strings from rendered text.** Ban the family: `/\bc\d+-\d+\b/` in any string reaching the DOM. Catches all three of today's placeholders and every future one. | Sathias (c8-5, or earlier if a C4 story is nearer) | One test refuses a planted `c9-9` in a component's rendered text |
 | 5 | **Adopt a live-contract canary** — any contract owned by a third party gets at least one test that reads the third party. Proposed as a standing agreement; needs ratification. | Sathias | Ruled at the C4 retro at the latest; the R1 test is its first instance |
 | 6 | **F4 — the failed-import/companion file-lock interaction** needs a home. Recovery path, not import path. | Sathias | A `deferred-work.md` entry with a named owner story |
@@ -554,10 +591,11 @@ land.
 - **Deployment:** ⏳ all nine story PRs merged; `feat/companion-c3` complete at `9077753` and
   unreleased. Next is **R1's hotfix to master**, then the `feat/companion-c3` → `master` integration
   PR (no Greptile). Not a release — no tag, no CHANGELOG until c8-4.
-- **Stakeholder acceptance:** ⏳ **in progress, and past its riskiest point.** A1, **A2**, A7 and
-  Block B closed — **FR-22 is observed in a real browser**, which was the epic's one make-or-break
-  claim. Remaining: A3–A6 (the three panels still never rendered by a real engine), B6, and Blocks
-  C, D, E.
+- **Stakeholder acceptance:** ✅ **accepted 2026-08-02.** A1, **A2**, A7 and Block B run — **FR-22
+  observed in a real browser** and **CM-2 measured**, the epic's two make-or-break claims. Sathias
+  closed the checklist there; the remainder is **carried with a named home each**, per the C2 R3
+  precedent. Known trade, stated rather than discovered: A3–A6's three panels are still unrendered
+  by a real engine and c4-2 will make a failure ambiguous between panel and wiring.
 - **Technical health:** ✅ strong. No guard suite needed a rewrite; three new mechanisms shipped with
   determinism (injected clock/sleep) rather than sleeps in tests; the suite got *faster* while
   gaining 719 tests. Honest caveats: `images.py` holds three mechanisms under a parked split
