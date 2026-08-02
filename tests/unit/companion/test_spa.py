@@ -17,7 +17,7 @@ from starlette.routing import Mount
 
 from src.companion.app import spa
 from src.companion.app.main import build_app
-from src.companion.app.routes import health
+from src.companion.app.routes import active_deck, cards, decks, health
 
 _TYPED_ERROR_MEDIA_TYPE = "application/json"
 
@@ -282,16 +282,41 @@ class TestTheTypedErrorContractSurvivesTheFallback:
         # c2-3 generates the UI's types from this schema and drift-checks them in CI. A mount that
         # leaked a path into `paths` would surface two stories later as unexplained generated-file
         # churn.
-        with_spa = build_app().openapi()
+        #
+        # Asserts the mount's own path shape is absent rather than pinning the full path set: this
+        # test is about the *mount*, and a hardcoded set makes every story that adds a route edit a
+        # SPA test for no reason. The completeness half is the differential below, which is the
+        # test that genuinely knows what the schema should contain.
+        paths = build_app().openapi()["paths"]
 
-        assert "/" not in with_spa["paths"]
-        assert set(with_spa["paths"]) == {"/health"}
+        assert "/" not in paths
+        # Non-vacuity: there are paths for the mount to have leaked into, so an empty or failed
+        # schema walk cannot satisfy the assertion above by finding nothing.
+        assert paths
 
     def test_the_schema_is_unchanged_by_installing_the_mount(self):
         # The non-vacuity pair: prove the assertion above is comparing against a schema that the
         # mount genuinely could have changed, by building one without it.
+        #
+        # The routers here must mirror build_app()'s. That coupling is deliberate and self-
+        # announcing: a story that adds a router and forgets this line gets a red test naming the
+        # missing path, which is a cheaper failure than a mount silently swallowing a route.
+        #
+        # The tax is on adding a ROUTER, not on adding a route. Measured at c3-3, which added
+        # /api/deck/{deck_id}/format-check to the existing decks router and needed no line here:
+        # both sides of the comparison build their path sets from these same router objects, so a
+        # new path on an already-listed router appears on both. deferred-work.md lists c3-3 among
+        # the stories owing this line; it did not. Check which kind of story you are before
+        # assuming you owe an edit.
+        #
+        # c3-4 IS the other kind and owed the line: active_deck.router is a new router, so this
+        # test went red naming /api/active-deck as an extra item on the left. That red is the
+        # mechanism working — it is what a story adding a router is supposed to see.
         without_spa = FastAPI()
         without_spa.include_router(health.router)
+        without_spa.include_router(decks.router)
+        without_spa.include_router(cards.router)
+        without_spa.include_router(active_deck.router)
 
         assert set(build_app().openapi()["paths"]) == set(without_spa.openapi()["paths"])
 

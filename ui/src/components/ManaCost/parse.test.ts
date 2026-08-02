@@ -113,8 +113,12 @@ describe('the scanner is total (AC 8)', () => {
 
   it('treats undefined, null and the empty string identically (AC 4)', () => {
     // The absent cost arrives as `''` from this repo's own data — 5,943 lands carry the empty
-    // string and `mana_cost` is never NULL — but the wire type c3-2 generates may still be
-    // nullable. Handling all three the same way is cheaper than picking one and being right.
+    // string and `mana_cost` is never NULL. The wire type is NOT nullable either: c3-2 measured
+    // it, and it was already non-null at c3-1 (`mana_cost: string` on both `Card` and
+    // `CardSummary`, from the schemas' NULL-coercing validators). All three spellings are still
+    // handled because `parseManaCost` is exported with a `string | null | undefined` parameter
+    // for callers the wire does not constrain. (Third copy of that prediction; the AC 22 row 8
+    // inventory named only `ManaCost.tsx` and `parse.ts`, and the review caught this one.)
     expect(parseManaCost(undefined)).toEqual([])
     expect(parseManaCost(null)).toEqual([])
     expect(parseManaCost('')).toEqual([])

@@ -9,7 +9,8 @@ import './StatePanel.css'
  * `useEffect`, not anything — fetches nothing, imports no store, polls nothing and retries
  * nothing. `ui/tests/shell.test.ts` asserts that with an exhaustive import list, so the posture
  * is a gate rather than a convention. Which state to show is decided by **c3-9** (the wiring and
- * FR-22's self-transition), fed by **c3-1**'s fetch layer and **c4-1**'s store; the map from
+ * FR-22's self-transition), fed by **c4-1**'s fetch layer and store over **c3-1**'s endpoints;
+ * the map from
  * wire token to panel is `states.ts`, and the retry contract each state is owed is
  * `RETRIES_QUIETLY` in that same file, written where c3-9 will read it.
  *
@@ -58,7 +59,7 @@ export type StatePanelProps =
       state: 'no-active-deck'
       /**
        * Available deck names — the one state that carries them (AC 5). A PROP: `GET /api/decks`
-       * is **c3-1**'s, and there is no fetch layer yet.
+       * ships as of **c3-1**, but **c4-2** owns calling it and there is no fetch layer yet.
        *
        * EMPTY IS THE COMMON CASE, NOT AN EDGE. A fresh install has no decks at all, so an empty
        * array renders NOTHING EXTRA — no empty `<ul>`, no rule under blank space. That decision
@@ -78,9 +79,10 @@ export type StatePanelProps =
  * One copy string, with its backticked runs rendered as command chips (AC 11).
  *
  * The chip is DERIVED from the copy's own markup rather than authored per state, which is what
- * let the two states this story added need no bespoke renderer — and what will keep c3-2's and
- * c4-3's copy from needing one. A string with no backticks yields one plain segment and no
- * chip, without error.
+ * let the two states c2-9 added need no bespoke renderer — and what will keep **c4-3's** copy
+ * from needing one. A string with no backticks yields one plain segment and no chip, without
+ * error. (Re-homed from c3-2 to c4-3, 2026-07-31: c3-2 ships no copy string and no renderer —
+ * see `copy.ts` for the same correction.)
  *
  * Plain segments are returned as bare STRINGS, not wrapped in a `<span>` or a `Fragment`. React
  * requires no key for a string child, so this needs no `Fragment` value import — which keeps

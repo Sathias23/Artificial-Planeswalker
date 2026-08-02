@@ -22,10 +22,13 @@ commit.
 
 import inspect
 import json
+import re
+from pathlib import Path
 from typing import Any
 
 from scripts.dump_openapi import OUTPUT_PATH, render_schema
 from src.companion import contracts
+from src.companion.app import main as main_module
 from src.companion.app.main import build_app, without_python_docstring_sections
 from src.companion.app.routes import health
 
@@ -33,6 +36,74 @@ REGENERATE = "uv run python -m scripts.dump_openapi"
 
 #: Markers that must never cross the wire: two Google-style section headers and a doctest prompt.
 PYTHON_INTERNALS = ("Args:", "Attributes:", ">>> ")
+
+WIRE_VISIBLE_SECTIONS = frozenset({"Note:", "Warning:"})
+"""The two section headers a wire description may legitimately keep (c2-3, Q1).
+
+``main._DOCSTRING_SECTIONS`` deliberately does not truncate at these — they are ordinary prose a
+reader of the generated types or ``/docs`` wants. Every other header of that shape is
+Python-internal, which is what :data:`PYTHON_INTERNAL_FAMILIES` keys on. Stated as an allowlist
+of two rather than a ban list of twelve, so an unlisted header (``Parameters:``,
+``Keyword Args:`` misspelled, a numpy-style section) is caught rather than waved through.
+"""
+
+PYTHON_INTERNAL_FAMILIES: dict[str, re.Pattern[str]] = {
+    # The role-name class is wide (`:py:class:`, `:external+python:ref:`) because Sphinx role
+    # names carry dots, plus-signs and digits; the original `[a-z]+` missed every one of those
+    # spellings (review round 2, 2026-07-31).
+    "Sphinx role markup": re.compile(r":[A-Za-z0-9_.+-]+:`"),
+    # Deliberately loose about the whitespace and punctuation INSIDE a header, because the
+    # evasions are all cosmetic: `Keyword  Args:` (two spaces), `Args :` (space before the
+    # colon), `Non-standard:` (hyphen), `OAuth2 Notes:` (digits), `Keyword_Args:` (underscore).
+    # The shape being keyed on is "a line that is nothing but a capitalised phrase and a colon"
+    # — anything of that shape is a section header, whatever it is called (review, 2026-07-31).
+    # A LOWERCASE-initial header (`args:`) stays outside the family on purpose: no doc tool
+    # emits one, and widening would ban ordinary lead-in lines ("for example:") — the
+    # false-positive cost B-round-2 weighed and declined.
+    "a Google-style section header": re.compile(
+        r"(?m)^[ \t]*([A-Z][A-Za-z0-9_-]*(?:[ \t]+[A-Za-z0-9_-]+)*[ \t]*:)[ \t]*$"
+    ),
+    "a doctest prompt": re.compile(r"(?m)^[ \t]*>>> "),
+}
+"""Shapes of Python-internal prose, keyed by FAMILY (story c3-2, Q5; standing agreement).
+
+The predecessor :data:`PYTHON_INTERNALS` names three literal markers, which is the shape this
+project has repeatedly measured to be evadable: it names ``Args:`` and ``Attributes:`` and is
+blind to every role marker (``:class:`X```, ``:mod:`Y```, ``:data:`Z```) — which c3-1 found in
+its own new docstring, having shipped past a seven-member scan.
+
+**Be precise about the added coverage, because an overstated gate is worse than a modest one**
+(review, 2026-07-31). This scan runs on ``build_app().openapi()``, i.e. **after**
+``_CompanionFastAPI`` truncation, and ``main._DOCSTRING_SECTIONS`` already terminates a
+description at all twelve headers it knows — including ``Returns:`` and ``Raises:``. So those two
+can never reach a wire description, and this gate is not what stops them. What it genuinely adds
+over the three-marker list:
+
+* **Sphinx role markup**, which nothing else catches and which has shipped here before.
+* **Section headers the truncator does not know** — ``Parameters:``, numpy-style sections, a
+  hyphenated or double-spaced spelling — which survive truncation *and* the literal list.
+* A **failure that names the family**, so the fix is "rewrite the summary", not "add a marker".
+
+**What this does NOT decide, declared** (``deferred-work.md``, homed on review): whether a
+sentence that is structurally clean actually *addresses a TypeScript reader*. "Supports
+conversion from SQLAlchemy CardModel instances" trips no pattern here and is exactly the prose
+c3-2 had to rewrite. That half is not statically decidable — the same limit
+``copy-rules.test.ts`` declares for UX-DR33's second-person rule — and belongs to a human
+reviewer, with a blind-spot row in ``ui/README.md`` saying so.
+"""
+
+
+SCRYFALL_HOST = re.compile(r"(?:[A-Za-z0-9-]+\.)*scryfall\.(?:io|com)", re.IGNORECASE)
+"""Any Scryfall host, apex or subdomained — the family, not a member list (c3-5 AC 19).
+
+The published contract must never name where the images actually come from: a generated client
+that reads a CDN host out of ``types.d.ts`` and fetches it directly is exactly the hotlink AD-11
+exists to prevent, and every hit is fixed **at the Python docstring**, never in the generated
+file. Deliberately wider than the frontend's twin (``ui/tests/no-scryfall-hosts.test.ts``): that
+scan must spare the Footer's apex-host attribution link, but nothing on the wire has any business
+naming even ``scryfall.com`` bare. ``scryfall_id`` — the path parameter — has no dot and stays
+outside the family, which the non-vacuity test pins.
+"""
 
 
 def _descriptions(node: Any) -> list[str]:
@@ -148,6 +219,93 @@ class TestDescriptionsAreSummaries:
                 "nothing — add the marker back, or retire both tests together"
             )
 
+    def test_no_description_matches_a_python_internal_family(self) -> None:
+        """The same rule, keyed on shape rather than on three remembered spellings (c3-2, Q5).
+
+        This is the assertion that would have caught c3-1's ``:class:`X``` and would catch a
+        ``Returns:`` or a ``Parameters:`` — none of which :data:`PYTHON_INTERNALS` names.
+        """
+        descriptions = _descriptions(build_app().openapi())
+
+        # CORPUS NON-VACUITY, inside the scanning test rather than beside it (review,
+        # 2026-07-31). The paired test below proves each pattern fires against a planted string;
+        # neither proves this loop had anything to iterate. A `_descriptions()` that regressed to
+        # `[]` — a renamed key, a schema shape change — passed both halves green.
+        assert len(descriptions) > 10, (
+            f"only {len(descriptions)} descriptions parsed from the live schema; this scan is "
+            "asserting over an empty or near-empty corpus and proves nothing"
+        )
+
+        offenders = [
+            (family, match.group(0), description[:60])
+            for description in descriptions
+            for family, pattern in PYTHON_INTERNAL_FAMILIES.items()
+            for match in pattern.finditer(description)
+            if match.group(0).strip() not in WIRE_VISIBLE_SECTIONS
+        ]
+
+        assert not offenders, (
+            f"{len(offenders)} wire description(s) carry Python-internal prose: {offenders}. "
+            "Fix at the PYTHON DOCSTRING — rewrite the leading summary for a TypeScript reader "
+            "and push the detail below a truncating section header — never by editing the "
+            "generated file. If the header is genuinely wire-appropriate prose, it belongs in "
+            "WIRE_VISIBLE_SECTIONS, which is a two-member ruling, not a convenience."
+        )
+
+    def test_each_family_catches_something_it_should(self) -> None:
+        """Non-vacuity for the family scan: each pattern fires on a planted example.
+
+        A regex that matches nothing passes the scan above for free. This proves all three
+        genuinely discriminate — and that the two wire-visible headers are the *only* ones the
+        section family lets through, so the allowlist is not silently absorbing the ban.
+        """
+        fires = {
+            "Sphinx role markup": "See :class:`Card` for detail.",
+            "a Google-style section header": "A summary.\n\nRaises:\n    ValueError: sometimes.",
+            "a doctest prompt": "A summary.\n\n>>> Card(id='x')\n",
+        }
+        for family, sample in fires.items():
+            assert PYTHON_INTERNAL_FAMILIES[family].search(sample), f"{family} matched nothing"
+
+        section = PYTHON_INTERNAL_FAMILIES["a Google-style section header"]
+        # Fires on headers the truncator has never heard of — the real added coverage.
+        assert section.search("A summary.\n\nParameters:\n    x: numpy style.")
+        assert section.search("A summary.\n\nKeyword  Args:\n    x: two spaces.")
+        assert section.search("A summary.\n\nArgs :\n    x: space before the colon.")
+        assert section.search("A summary.\n\nNon-standard:\n    x: hyphenated.")
+        # The round-2 widenings, each probed rather than assumed (review round 2, 2026-07-31).
+        assert section.search("A summary.\n\nOAuth2 Notes:\n    x: a digit in the header.")
+        assert section.search("A summary.\n\nKeyword_Args:\n    x: underscored.")
+        role = PYTHON_INTERNAL_FAMILIES["Sphinx role markup"]
+        assert role.search("See :py:class:`Card` for detail.")
+        assert role.search("See :external+python:ref:`datamodel` for detail.")
+        # ...and the allowlist is what spares the two ruled-permitted ones, not the pattern.
+        assert section.search("A summary.\n\nNote:\n    still prose.")
+        matched = {m.group(0).strip() for m in section.finditer("Note:\nWarning:")}
+        # Asserted as EQUALITY, not `<=`: an empty set is a subset of anything, so the subset
+        # form passed silently if the pattern ever stopped matching (review, 2026-07-31).
+        assert matched == {"Note:", "Warning:"}
+        assert matched == set(WIRE_VISIBLE_SECTIONS)
+        # Ordinary prose containing a colon is NOT a section header — the shape is a whole line.
+        assert not section.search("Two fields answer this: images and faces.")
+
+    def test_the_wire_visible_allowlist_is_exactly_two_members(self) -> None:
+        """The allowlist must not absorb the ban it guards (review, 2026-07-31).
+
+        Every other assertion about :data:`WIRE_VISIBLE_SECTIONS` is a subset check, so adding
+        ``"Returns:"`` or ``"Parameters:"`` to silence a red build passed the whole file —
+        ``PYTHON_INTERNALS`` names none of them and the family scan skips anything allowlisted.
+        That is the "widen the exception until the rule is empty" shape this project bans.
+
+        Two members, and they are a c2-3 Q1 ruling: ``Note:`` and ``Warning:`` are the only
+        headers ``main._DOCSTRING_SECTIONS`` deliberately does not truncate, because they are
+        prose a TypeScript reader wants. A third is a decision, made here, against this test.
+        """
+        assert WIRE_VISIBLE_SECTIONS == frozenset({"Note:", "Warning:"})
+        # …and the reason they are allowlisted: the truncator lets them through, so they WILL
+        # reach a description. Every other header it knows is cut before the scan ever sees it.
+        assert not (WIRE_VISIBLE_SECTIONS & main_module._DOCSTRING_SECTIONS)
+
     def test_the_summary_itself_survives(self) -> None:
         """Truncation keeps the useful half — the prose c2-9 needs on hover.
 
@@ -165,6 +323,76 @@ class TestDescriptionsAreSummaries:
         # The per-token enumeration is the half c2-9's state panels are written against.
         assert "``database_not_initialized``" in error_description
         assert "``internal_error``" in error_description
+
+    def test_no_scryfall_host_reaches_the_wire(self) -> None:
+        """Nothing in the rendered schema names a Scryfall host, apex or subdomained (AC 19).
+
+        Scanned over the WHOLE rendered document, not just descriptions: a host could reach the
+        wire as an example value, a default, or a server entry, and every one of those spellings
+        is the same leak. ``openapi.json`` is what ``types.d.ts`` is generated from, so this is
+        the wire half of the rule; the frontend half (the generated files as committed, plus all
+        of ``ui/src``) is ``ui/tests/no-scryfall-hosts.test.ts``.
+        """
+        rendered = render_schema()
+
+        match = SCRYFALL_HOST.search(rendered)
+        assert match is None, (
+            f"a Scryfall host reached the published contract: {match.group(0)!r}. Fix at the "
+            "Python docstring or contract that leaked it — never by editing the generated file."
+        )
+
+    def test_the_scryfall_host_family_catches_something_it_should(self) -> None:
+        """Non-vacuity for the host scan: fires on every class, spares the path parameter."""
+        for planted in (
+            "https://cards.scryfall.io/normal/front/a/b/c.jpg?123",
+            "https://errors.scryfall.com/soon.jpg",
+            "https://api.scryfall.com/cards/named?exact=x",
+            "scryfall.com",  # apex: bare too is banned on the wire, unlike in ui/src
+            "HTTPS://CARDS.SCRYFALL.IO/x.jpg",  # case cannot smuggle one past
+        ):
+            assert SCRYFALL_HOST.search(planted), f"the family missed {planted!r}"
+        # ...and the two spellings the schema legitimately carries stay outside the family.
+        assert not SCRYFALL_HOST.search("/api/card-image/{scryfall_id}")
+        assert not SCRYFALL_HOST.search("The Scryfall printing uuid for this card.")
+
+    def test_the_quoted_placeholder_label_is_the_artefacts(self) -> None:
+        """The ``ErrorResponse`` docstring quotes the "Unknown card" label onto the wire.
+
+        ``ui/tests/unknown-card-copy.test.ts`` gates that label between ``EXPERIENCE.md`` and
+        ``states.ts`` — but the wire description's quotation of it was a third, ungated copy
+        (review round 2, 2026-07-31): if the artefact reworded the placeholder, the published
+        contract prose would drift stale with no red. This is the Python half of the same
+        pairing: whatever label the artefact's "Unknown card in a view" row declares must be the
+        label the wire description quotes.
+        """
+        artefact_path = (
+            Path(__file__).resolve().parents[3]
+            / "_bmad-output"
+            / "planning-artifacts"
+            / "ux-designs"
+            / "ux-Artificial-Planeswalker-2026-07-22"
+            / "EXPERIENCE.md"
+        )
+        rows = [
+            line
+            for line in artefact_path.read_text(encoding="utf-8").splitlines()
+            if "Unknown card in a view" in line
+        ]
+        assert len(rows) == 1, (
+            f"{len(rows)} artefact lines mention 'Unknown card in a view'; this gate needs "
+            "exactly one to know which label is the contract"
+        )
+        label_match = re.search(r'Placeholder label:\s*"([^"]+)"', rows[0])
+        assert label_match, "the artefact row no longer declares a quoted 'Placeholder label:'"
+        label = label_match.group(1)
+
+        description = build_app().openapi()["components"]["schemas"]["ErrorResponse"]["description"]
+        # Non-vacuity first: the description genuinely carries the card_not_found bullet at all.
+        assert "``card_not_found``" in description
+        assert f'**"{label}"**' in description, (
+            f"the wire description does not quote the artefact's placeholder label {label!r} — "
+            "EXPERIENCE.md and src/companion/contracts.py have drifted; fix at the docstring"
+        )
 
     def test_a_description_that_is_only_a_section_loses_the_key(self) -> None:
         """An all-sections description drops out rather than becoming an empty string.

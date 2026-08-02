@@ -110,7 +110,10 @@ def _match_text(card: Card) -> str:
     """
     text = card.oracle_text
     if not text and card.card_faces:
-        text = "\n".join(face.get("oracle_text") or "" for face in card.card_faces)
+        # Attribute access since c3-5 typed `card_faces` as `CardFace`; the `or ""` still carries
+        # the 5.3 null-face lesson, because a named field that Scryfall sent as null reads as None
+        # exactly as a missing key did.
+        text = "\n".join(face.oracle_text or "" for face in card.card_faces)
     return _strip_reminder_text(text).lower()
 
 

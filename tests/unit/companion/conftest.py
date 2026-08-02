@@ -22,8 +22,10 @@ valid ``Host`` automatically. The upshot is deliberate: **every** companion test
 the real security envelope rather than around it.
 """
 
+import asyncio
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 import pytest
@@ -33,6 +35,8 @@ from starlette.routing import Mount
 from src.companion.app import main
 from src.companion.app.main import lifespan
 from src.companion.app.spa import install_spa
+from src.data.database import create_engine, create_session_factory, init_database
+from src.data.models.card import CardModel
 
 BASE_URL = "http://testserver"
 """Fallback base URL for an app with no bound port. Not a valid ``Host`` for the companion — which
@@ -166,3 +170,438 @@ def lifespan_client():
         The async context-manager factory, called as ``async with lifespan_client(app) as client``.
     """
     return _lifespan_client
+
+
+# =============================================================================================
+# The card corpus every card-addressed route is driven against.
+#
+# Written by c3-2 for ``test_routes_cards.py`` and MOVED here by c3-5, which needs the same six
+# cards for ``GET /api/card-image/…``. That is the whole reason for the move: the alternative was
+# a second hand-seeded set, and two fixtures claiming to model the same measured corpus drift the
+# moment one of them is corrected — which this one already has been, once, by a code review.
+# Nothing about the seeded data changed in the move.
+# =============================================================================================
+
+
+def _uuid(suffix: str) -> str:
+    """Mint a canonical lowercase hyphenated uuid ending in *suffix*.
+
+    Canonical because the card routes' shape constraint refuses anything else — ``_card()``-style
+    ids like ``"card-anchor"`` (which ``test_routes_decks.py`` mints) are rejected with ``400``
+    before the handler runs. ``suffix`` must be hex; it is what makes each seeded card
+    individually addressable and each id readable in a failure message.
+
+    Args:
+        suffix: Up to 12 hex characters identifying this card.
+
+    Returns:
+        A uuid of the exact shape ``cards.id`` holds.
+    """
+    tail = suffix.rjust(12, "0")
+    assert len(tail) == 12 and all(c in "0123456789abcdef" for c in tail), suffix
+    return f"00000000-0000-4000-8000-{tail}"
+
+
+# Every card the fixtures seed, by role. Distinguishable on several fields each — c3-1's review
+# found 28 green tests over identical fixtures, where a mis-paired projection was invisible.
+ANCHOR_ID = _uuid("a0")
+SINGLE_FACE_ID = _uuid("b1")
+MULTI_FACE_ID = _uuid("c2")
+NO_IMAGE_ID = _uuid("d3")
+MANY_FACE_ID = _uuid("e4")
+SPLIT_FACE_ID = _uuid("e5")
+SCHEMA_ONLY_ID = _uuid("e6")
+ABSENT_ID = _uuid("ff")
+
+_TOP_LEVEL_IMAGES = {
+    "small": "https://cards.scryfall.io/small/split.jpg?1700000001",
+    "normal": "https://cards.scryfall.io/normal/split.jpg?1700000002",
+    "large": "https://cards.scryfall.io/large/split.jpg?1700000003",
+    "png": "https://cards.scryfall.io/png/split.png?1700000004",
+    "art_crop": "https://cards.scryfall.io/art_crop/split.jpg?1700000005",
+    "border_crop": "https://cards.scryfall.io/border_crop/split.jpg?1700000006",
+}
+"""The six size keys the real corpus carries, measured 2026-07-31 and re-verified at c3-5.
+
+**Every value is distinct**, which c3-5 made load-bearing: its image route selects one of these
+six by name, so identical URLs would let a route that ignored ``size`` entirely pass every test.
+The host is a real allowed origin (``cards.scryfall.io``) because that route refuses to fetch from
+anywhere else — a fixture on ``cards.example`` would answer ``image_fetch_failed`` for the wrong
+reason and hide whatever the test was actually about. The ``?<timestamp>`` suffix is Scryfall's
+cache-buster, carried by 245,742 of 245,742 stored URLs.
+"""
+
+
+def _card(card_id: str, name: str, **overrides: object) -> CardModel:
+    """Build a complete card row: every non-nullable column, so the insert is realistic.
+
+    Args:
+        card_id: The canonical uuid this card is addressed by.
+        name: The card's name; also seeds several other fields so the row is distinguishable.
+        **overrides: Column values replacing the defaults built here.
+
+    Returns:
+        An unsaved ``CardModel``.
+    """
+    fields: dict[str, object] = {
+        "id": card_id,
+        "name": name,
+        "printed_name": None,
+        "oracle_id": f"oracle-{card_id}",
+        "mana_cost": f"{{{card_id[-1].upper()}}}",
+        "cmc": float(len(name)),
+        "type_line": f"Instant — {name}",
+        "oracle_text": f"{name} does something.",
+        "rarity": "common",
+        "set_code": "TST",
+        "set_name": "Test Set",
+        "collector_number": "1",
+        "colors": ["R"],
+        "color_identity": ["R"],
+        "legalities": {"standard": "legal", "commander": "legal"},
+        "games": ["paper", "arena", "mtgo"],
+    }
+    fields.update(overrides)
+    return CardModel(**fields)  # type: ignore[arg-type]
+
+
+def _point_at(monkeypatch, path: Path) -> Path:
+    """Steer ``src.paths.database_url()`` at *path* via ``CARDS_DATABASE_URL``.
+
+    The ``test_routes_decks.py`` pattern: an explicit ``CARDS_DATABASE_URL`` wins over everything,
+    so resolution cannot be hijacked by a developer's own environment.
+    """
+    monkeypatch.setenv("CARDS_DATABASE_URL", f"sqlite+aiosqlite:///{path.as_posix()}")
+    return path
+
+
+async def _seed(path: Path, seeder) -> None:
+    """Open a session against *path*, hand it to *seeder*, then dispose the engine.
+
+    The engine is disposed before the app is built so the fixture never holds a connection the
+    routes then contend with.
+    """
+    engine = create_engine(f"sqlite+aiosqlite:///{path.as_posix()}")
+    try:
+        factory = create_session_factory(engine)
+        async with factory() as session:
+            await seeder(session)
+    finally:
+        await engine.dispose()
+
+
+async def _ready_database(path: Path) -> None:
+    """Create the full schema at *path* and seed the anchor card.
+
+    ``is_database_initialized`` requires a **populated** ``cards`` table, not merely the file, so a
+    schema-only database still reads as ``database_not_initialized``.
+    """
+    engine = create_engine(f"sqlite+aiosqlite:///{path.as_posix()}")
+    try:
+        await init_database(engine)
+        factory = create_session_factory(engine)
+        async with factory() as session:
+            session.add(_card(ANCHOR_ID, "Anchor Card", image_uris=_TOP_LEVEL_IMAGES))
+            await session.commit()
+    finally:
+        await engine.dispose()
+
+
+@pytest.fixture
+async def ready_db(tmp_path, monkeypatch):
+    """A real database file with the full schema and the anchor card, already pointed at.
+
+    The fixture **builds** the database rather than only setting the environment variable: a test
+    that forgot would get ``503 database_not_initialized``, which — for the several tests asserting
+    on 503 or 404 bodies — is a plausible false green rather than a loud failure (c3-1 review,
+    2026-07-31).
+    """
+    path = _point_at(monkeypatch, tmp_path / "cards.db")
+    await _ready_database(path)
+    return path
+
+
+@pytest.fixture
+async def image_shapes(ready_db):
+    """Seed every image shape the real corpus actually contains.
+
+    **RE-MEASURED after the code review of 2026-07-31, because the first version of this fixture
+    was built on a true count read as a false rule.** c3-2 measured "cards carrying BOTH top-level
+    and per-face ``image_uris``: 0" — which is true — and generalised it to "a card with a
+    top-level image has no ``card_faces``", which is false for 368 real printings. Both review
+    layers caught it independently. The corrected census, over 38,261 rows (re-verified
+    independently at c3-5, read-only, same numbers):
+
+        image_uris + card_faces NULL ................................. 35,036   (SINGLE_FACE_ID)
+        image_uris + card_faces present, faces WITHOUT image_uris .....   368   (SPLIT_FACE_ID)
+        image_uris NULL + faces WITH per-face image_uris ..............  2,778   (MULTI_FACE_ID)
+        image_uris NULL + faces present, faces WITHOUT image_uris .....    79   (NO_IMAGE_ID)
+        image_uris NULL + card_faces NULL .............................     0   (SCHEMA_ONLY_ID)
+        face-count histogram ....................... 2 -> 3,222 · 3 -> 2 · 5 -> 1
+
+    Two consequences the first version got wrong, and they are the reason the docstrings on
+    ``Card`` and ``read_card`` were rewritten:
+
+    * **``card_faces`` is not the discriminator — per-face ``image_uris`` is.** A split card
+      (``Adventurous Eater // Have a Bite``) has two faces *and* a top-level image, because the
+      halves share one piece of artwork. A consumer branching on ``card_faces !== null`` renders
+      nothing for 368 cards that have a perfectly good image.
+    * **"No image anywhere" does not mean "no faces".** All 79 such cards carry a ``card_faces``
+      array whose entries have no images; the shape the first fixture seeded for that case
+      (``image_uris`` null *and* ``card_faces`` null) matches **zero** rows in the corpus. It is
+      still permitted by the schema, so ``SCHEMA_ONLY_ID`` keeps it — labelled as what it is.
+
+    Every URL is on an origin ``src/companion/app/images.py`` will actually fetch from, and every
+    one is distinct, so c3-5's route cannot pass a size or face assertion by accident.
+    """
+
+    async def seeder(session):
+        # 35,036 rows: the ordinary case.
+        session.add(
+            _card(
+                SINGLE_FACE_ID,
+                "Single Face",
+                type_line="Creature — Human Wizard",
+                rarity="rare",
+                power="2",
+                toughness="3",
+                keywords=["Flying"],
+                image_uris=_TOP_LEVEL_IMAGES,
+                card_faces=None,
+            )
+        )
+        # 368 rows: THE SHAPE THE FIRST VERSION OF THIS FIXTURE DENIED EXISTED. Faces and a
+        # top-level image together; no face carries an image of its own.
+        session.add(
+            _card(
+                SPLIT_FACE_ID,
+                "Split Halves",
+                type_line="Sorcery — Adventure // Sorcery",
+                rarity="uncommon",
+                image_uris=_TOP_LEVEL_IMAGES,
+                card_faces=[
+                    {"name": "Split Halves", "mana_cost": "{R}", "type_line": "Sorcery"},
+                    {"name": "Other Half", "mana_cost": "{2}{G}", "type_line": "Sorcery"},
+                ],
+            )
+        )
+        # 2,778 rows: the DFC case — per-face images, no top-level image. The two faces carry
+        # DIFFERENT hosts-paths AND different size key-sets, so c3-5's face selection cannot pass
+        # by returning whichever map came first (c3-1's R3 finding).
+        session.add(
+            _card(
+                MULTI_FACE_ID,
+                "Two Faced",
+                type_line="Creature — Werewolf // Creature — Werewolf",
+                rarity="mythic",
+                image_uris=None,
+                card_faces=[
+                    {
+                        "name": "Two Faced",
+                        "mana_cost": "{1}{R}",
+                        "image_uris": {
+                            "normal": "https://cards.scryfall.io/normal/front/f.jpg?1700000101",
+                            "large": "https://cards.scryfall.io/large/front/f.jpg?1700000102",
+                        },
+                    },
+                    {
+                        "name": "Two Faced, Unleashed",
+                        "mana_cost": "",
+                        "image_uris": {
+                            "normal": "https://cards.scryfall.io/normal/back/b.jpg?1700000201",
+                            "large": "https://cards.scryfall.io/large/back/b.jpg?1700000202",
+                        },
+                    },
+                ],
+            )
+        )
+        # 79 rows: genuinely no image anywhere — but faces ARE present. This is the real shape.
+        session.add(
+            _card(
+                NO_IMAGE_ID,
+                "No Image At All",
+                type_line="Token Creature — Zombie // Token Creature — Zombie",
+                rarity="uncommon",
+                image_uris=None,
+                card_faces=[
+                    {"name": "No Image At All", "mana_cost": ""},
+                    {"name": "No Image Either", "mana_cost": ""},
+                ],
+            )
+        )
+        # 0 rows: permitted by the schema, absent from the corpus. Seeded so the wire behaviour of
+        # a shape the importer has never produced is known rather than assumed.
+        session.add(
+            _card(
+                SCHEMA_ONLY_ID,
+                "Neither Field",
+                type_line="Artifact",
+                rarity="common",
+                image_uris=None,
+                card_faces=None,
+            )
+        )
+        session.add(
+            _card(
+                MANY_FACE_ID,
+                "Five Faced",
+                type_line="Card // Card // Card // Card // Card",
+                rarity="special",
+                image_uris=None,
+                card_faces=[
+                    {
+                        "name": f"Face {n}",
+                        "image_uris": {
+                            "normal": f"https://cards.scryfall.io/normal/{n}/f.jpg?17000003{n:02d}"
+                        },
+                    }
+                    for n in range(5)
+                ],
+            )
+        )
+        await session.commit()
+
+    await _seed(ready_db, seeder)
+    return ready_db
+
+
+# =============================================================================================
+# The virtual clock and the stall-able upstream — ONE of each, for the whole package.
+#
+# CONSOLIDATED HERE BY c3-7 (2026-08-01), which `deferred-work.md` named as the trigger: c3-6
+# shipped `Upstream` in `test_images.py` and `StallableCdn` in `test_routes_card_image.py`, two
+# hand-synchronised fakes modelling the same arbitrarily-slow CDN, and the ledger entry said the
+# third consumer should merge them rather than add a third. c3-7 is the third consumer.
+#
+# They were never quite the same, which is exactly how two fakes of one thing drift: one recorded
+# start times off a virtual clock and had no `completed` counter, the other counted completions
+# and had no clock. The merged class carries the union, and the clock is optional so a test that
+# does not care about time does not have to build one.
+# =============================================================================================
+
+
+class FakeClock:
+    """Virtual time: the clock moves only when the pacer sleeps on it (c3-6 AC 9, Q3).
+
+    **This is the whole answer to "how do you test a rate without spending one".** The pacer takes
+    its clock and its sleep as constructor parameters, so a test can hand it a pair that advances a
+    counter instead of waiting. Start offsets are then asserted **exactly** — ``0.0``, ``0.1``,
+    ``0.2`` — at zero wall-clock cost, where a real-time proof would be both slow and flaky on a
+    loaded box.
+
+    ``await asyncio.sleep(0)`` inside :meth:`sleep` is a bare yield to the event loop, not a wait:
+    it costs no wall clock and it is what keeps the *concurrency* real while the *time* is fake.
+    Other tasks genuinely run at that point, so an ordering bug is still visible.
+
+    **The re-entrancy assertion is load-bearing and is the fake checking its own premise.**
+    ``now += delay`` is only exact while at most one task sleeps at a time, which holds because the
+    pacer sleeps inside its turnstile lock. If a redesign ever sleeps outside that lock, two
+    concurrent sleepers would double-advance the clock and every pacing assertion in the package
+    would quietly start measuring fiction — so the fake refuses instead.
+
+    Attributes:
+        now: The current virtual time, in seconds.
+        slept: Every delay the pacer asked for, in order. A pacer that never sleeps leaves this
+            empty, which several tests assert directly — including c3-7's proof that a WARM deck
+            paint never enters the pacer at all.
+    """
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.slept: list[float] = []
+        self._sleeping = False
+
+    def time(self) -> float:
+        """Return the current virtual time, in the shape ``time.monotonic`` has."""
+        return self.now
+
+    async def sleep(self, delay: float) -> None:
+        """Advance virtual time by *delay* and yield to the loop.
+
+        Args:
+            delay: Seconds to wait for, as the pacer computed them.
+        """
+        assert not self._sleeping, (
+            "two tasks slept on this clock at once — `now += delay` is only exact while the "
+            "pacer sleeps inside its turnstile, so this fake would be lying about the numbers"
+        )
+        self._sleeping = True
+        try:
+            self.slept.append(delay)
+            self.now += delay
+            await asyncio.sleep(0)
+        finally:
+            self._sleeping = False
+
+
+class StallableUpstream:
+    """A stand-in CDN that records every request and can be held open indefinitely.
+
+    An arbitrarily slow upstream expressed as an ``asyncio.Event`` rather than a duration: every
+    request parks until a test releases it. That is what lets an interleaving *count* and a permit
+    accounting be exact rather than probabilistic — with no wall-clock time involved at all.
+
+    Four things it exists to measure, none of which a response body can show:
+
+    * **that a fetch began at all**, so "zero outbound requests" is a positive observation and not
+      an absence of evidence — which is what c3-7's CM-2 assertion rests on;
+    * **when** each fetch began, on the pacer's own virtual clock, when one is supplied — c3-6's
+      AC 4 is about start times, and c3-5's review theme was a check that ran after the thing it
+      was meant to prevent;
+    * **how many** requests are open at once, from the transport's own accounting (entered minus
+      completed) rather than inferred from timing;
+    * **how many finished**, so "nothing is actually queued" can be refuted.
+
+    Args:
+        clock: The virtual clock to read start times from. ``None`` — the default — means this
+            test does not care about time, and :attr:`started_at` stays empty rather than filling
+            with meaningless wall-clock values.
+        hold: Start with every request parked. ``False`` — the default — releases immediately, so
+            the same class serves an ordinary fast CDN.
+        body: The response body. Distinct-by-default is *not* assumed here: a test that needs two
+            responses to be distinguishable should say so (c3-1's R3 finding — identical fixtures
+            prove nothing).
+        content_type: The ``Content-Type`` served back.
+
+    Attributes:
+        requested: Every URL asked for, in order.
+        started_at: The virtual time each request began, in start order; empty without a *clock*.
+        in_flight: How many upstream requests are open right now.
+        peak_in_flight: The high-water mark of :attr:`in_flight`.
+        completed: How many have finished.
+        release: Set it to let parked requests through.
+    """
+
+    def __init__(
+        self,
+        clock: FakeClock | None = None,
+        *,
+        hold: bool = False,
+        body: bytes = b"\xff\xd8body",
+        content_type: str = "image/jpeg",
+    ) -> None:
+        self._clock = clock
+        self._body = body
+        self._content_type = content_type
+        self.requested: list[str] = []
+        self.started_at: list[float] = []
+        self.in_flight = 0
+        self.peak_in_flight = 0
+        self.completed = 0
+        self.release = asyncio.Event()
+        if not hold:
+            self.release.set()
+
+    async def handle(self, request: httpx.Request) -> httpx.Response:
+        """Answer one request, parking until :attr:`release` is set."""
+        if self._clock is not None:
+            self.started_at.append(self._clock.time())
+        self.requested.append(str(request.url))
+        self.in_flight += 1
+        self.peak_in_flight = max(self.peak_in_flight, self.in_flight)
+        try:
+            await self.release.wait()
+        finally:
+            self.in_flight -= 1
+        self.completed += 1
+        return httpx.Response(200, content=self._body, headers={"content-type": self._content_type})

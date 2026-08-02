@@ -31,10 +31,549 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/decks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Decks
+         * @description List every saved deck, newest first, with counts but without the cards.
+         *
+         *     Each deck carries its metadata and three counts summarising its contents — enough
+         *     to render a deck list without transferring any decklist. Decks created at the same
+         *     moment tie-break in arbitrary order, so within a tie newest-first is not a strict
+         *     guarantee. Having no saved decks is an ordinary answer, not an error: the array is
+         *     simply empty.
+         */
+        get: operations["read_decks_api_decks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/deck/{deck_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Deck
+         * @description Return one saved deck in full: its metadata, its counts and every card in it.
+         *
+         *     The whole decklist, with each entry naming its quantity, which board it belongs
+         *     to, whether it is the commander, and a summary of the card itself. The order of
+         *     ``cards`` is not meaningful — see ``DeckDetail``.
+         */
+        get: operations["read_deck_api_deck__deck_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/deck/{deck_id}/format-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Deck Format Check
+         * @description Check one saved deck against its own format, as a row per check rather than a fault list.
+         *
+         *     Six checks — legality, deck size, copy limit, sideboard, banned cards and rotation exposure
+         *     — each answered with ``pass``, ``advisory`` or ``violation`` and a sentence explaining the
+         *     outcome. A row is present whether or not anything is wrong, so the whole check list can be
+         *     rendered rather than only the bad news.
+         *
+         *     ``advisory`` means a check could **not** be answered, not that the deck failed it. Two
+         *     things produce it: rotation, which no local data can determine, and a deck whose format is
+         *     missing or unrecognised, which leaves legality and banned cards with nothing to check
+         *     against. A deck in that state is still answered with an ordinary report — the same shape as
+         *     every other answer, never an error.
+         *
+         *     The verdicts come from the same rules the agent-side deck validator applies — the *rules* are
+         *     shared, though the inputs need not be: this route always checks a deck against its own saved
+         *     format and never against a platform, so an agent asking about a different format will
+         *     reasonably get a different answer.
+         */
+        get: operations["read_deck_format_check_api_deck__deck_id__format_check_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cards/{card_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Card
+         * @description Return everything known about one card printing.
+         *
+         *     The canonical record behind a printing id: its name, mana cost, converted mana cost, type
+         *     line, oracle text, power and toughness, rarity, set, collector number, colours, keywords,
+         *     format legalities, and its images. Views that were given only an id use this to fill
+         *     themselves in.
+         *
+         *     This operation returns the image **URLs** and nothing else about them; where they live on the
+         *     record is stated on the ``image_uris`` and ``card_faces`` fields themselves, and it is not the
+         *     obvious rule. A view that wants pixels asks ``GET /api/card-image/{scryfall_id}`` instead,
+         *     which applies that rule for you.
+         *
+         *     ``prices`` is absent from this response, not empty: the local database holds no price data of
+         *     any kind.
+         *
+         *     Warning:
+         *         The ``400`` for a malformed id is not unconditional. Dependencies resolve before
+         *         parameter validation is reported, so a malformed id sent while the database is unusable
+         *         answers ``503`` (``database_not_initialized`` or ``database_unavailable``), not ``400``.
+         *         A caller that retries on 503 must not assume the request can ever succeed: a malformed id
+         *         stays malformed whatever the database does.
+         */
+        get: operations["read_card_api_cards__card_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/card-image/{scryfall_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Card Image
+         * @description Serve one card face's artwork, from this app's own origin.
+         *
+         *     Every image in the app comes through here: the browser never contacts Scryfall directly
+         *     (AD-11, UX-DR36). The URL is read from the card's own row in the local database — **no live
+         *     Scryfall metadata call is ever made** — and the bytes are proxied back with the content type
+         *     the CDN actually sent.
+         *
+         *     ``face`` indexes **the images this card has**, not its ``card_faces`` array, and the two are
+         *     different for real cards. A split, adventure or flip card has two faces and **one** image,
+         *     because its halves share one piece of artwork, so ``face=1`` on one of them is out of range
+         *     rather than "the other half"; a single-faced card serves at ``face=0``. Which images a card
+         *     has is decided by the rule stated on ``GET /api/cards/{card_id}``'s ``image_uris`` and
+         *     ``card_faces`` fields — this operation applies it so a caller does not have to.
+         *
+         *     Two failures are answered here and they are **not** interchangeable, even though both draw the
+         *     same placeholder. ``404 no_image_data`` is permanent: this card has no artwork for what was
+         *     asked, and asking again cannot change it. ``502 image_fetch_failed`` is transient: the URL was
+         *     known and the fetch did not deliver. Neither ever returns a substitute image — no grey
+         *     rectangle, no 1×1 pixel, no generic card back — because the client can draw a better one from
+         *     the name, cost and type line it already has.
+         *
+         *     A successful image is cacheable by the browser for a year; a failure is not cached at all, so
+         *     one bad minute cannot leave a permanently broken tile in an open tab.
+         *
+         *     Warning:
+         *         The ``400`` for a malformed id or an unrecognised ``size`` is not unconditional.
+         *         Dependencies resolve before parameter validation is reported, so ``?size=bogus`` sent
+         *         while the database is unusable answers ``503`` (``database_not_initialized`` or
+         *         ``database_unavailable``), not ``400``. A caller that retries on 503 must not assume the
+         *         request can ever succeed: a bad parameter stays bad whatever the database does.
+         */
+        get: operations["read_card_image_api_card_image__scryfall_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/active-deck": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Active Deck
+         * @description Report which deck the companion is currently displaying.
+         *
+         *     Answers ``200`` in both states — a deck, or ``deck_id: null`` for none. There is no ``404`` and
+         *     no second shape: the active deck is a resource that always exists and whose value may be "no
+         *     deck", so a cold open reads the same field it will read once something is set.
+         *
+         *     Requires **no credential**: this is what the browser calls on first paint and after every
+         *     reconnect, and the browser never holds one (AD-5).
+         *
+         *     After a restart this reports none, whatever was displayed before — the value lives in the
+         *     backend's memory and dies with the process (FR-07).
+         */
+        get: operations["read_active_deck_api_active_deck_get"];
+        /**
+         * Set Active Deck
+         * @description Set which deck the companion displays, and echo back what was stored.
+         *
+         *     **This endpoint is for the agent, not the browser.** It requires a credential the browser does
+         *     not have and must never be given, so a page has nothing to call here; a request that presents
+         *     no valid credential is refused and the active deck is left untouched.
+         *
+         *     Idempotent, which is why the verb is ``PUT``: setting the same deck twice is the same state.
+         *     Answers ``200`` with the stored value rather than ``204``, so one shape serves the read, the
+         *     write and the change notification a later story broadcasts.
+         *
+         *     **The deck is not checked for existence.** Any non-blank id is accepted and stored verbatim,
+         *     including one that names no deck. Validating it belongs to the caller that has database access
+         *     and can report the failure meaningfully; a client that then fetches the deck gets the ordinary
+         *     not-found answer.
+         */
+        put: operations["set_active_deck_api_active_deck_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActiveDeck
+         * @description Which deck the companion is currently displaying, or ``null`` for none (FR-07).
+         *
+         *     ``null`` is the answer, not the absence of one. The active deck is a resource that always
+         *     exists and whose value may be "no deck", so asking on a cold open answers ``200`` with
+         *     ``deck_id: null`` — never ``404``, and never a different shape. **The same model answers both
+         *     operations**, so a reader has one shape to render and a writer has one shape to assert on.
+         *
+         *     The value lives in the companion's memory and **dies with the process**: after a restart this
+         *     reports ``null`` again, whatever was displayed before. That is specified behaviour rather than a
+         *     limitation — the agent sets the deck, so a fresh backend genuinely has no deck to show until it
+         *     is told (FR-07, CM-3).
+         *
+         *     A non-null ``deck_id`` is **not a promise that the deck still exists.** Nothing validates it on
+         *     the way in — that is the MCP tool's job, since it is the party with database access and the one
+         *     that must tell the agent (AD-16) — and a deck can be deleted after being set. A reader that
+         *     fetches the deck and gets ``deck_not_found`` is seeing the ordinary case, not a broken
+         *     invariant.
+         */
+        ActiveDeck: {
+            /** Deck Id */
+            deck_id: string | null;
+        };
+        /**
+         * ActiveDeckRequest
+         * @description The body of ``PUT /api/active-deck`` — the deck to display (FR-07).
+         *
+         *     Carries the deck id and nothing else — **enforced**, not aspirational: an unknown field is
+         *     refused (``extra="forbid"``), because silently dropping it would answer ``200`` to an agent
+         *     whose mental model of this body is wrong and leave nothing to correct it (c3-4 review, Brad
+         *     2026-08-01). The id must be a non-empty string, and *non-empty means non-blank*: a
+         *     whitespace-only id is refused with the same reasoning as ``""`` — the alternative is storing a
+         *     value that would be reported as the active deck forever while resolving to no deck at all, just
+         *     spelled with characters ``min_length`` cannot see (same review). Beyond non-blankness and an
+         *     upper length bound nothing about the id is constrained — a deck id has **no declared shape** in
+         *     this system (Q4), so an id that names no deck is accepted here and simply not found later.
+         *
+         *     There is deliberately **no way to clear the active deck** over the wire: the field is required
+         *     and does not accept ``null``. Nothing in the feature asks for one — a deleted deck is a
+         *     *client-side* transition (the refetch 404s), and a restart clears the slot anyway — so the verb
+         *     is not built until something needs it.
+         */
+        ActiveDeckRequest: {
+            /** Deck Id */
+            deck_id: string;
+        };
+        /**
+         * Card
+         * @description One Magic: The Gathering card printing, as held in the local card database.
+         *
+         *     Everything known about a single printing: its name and mana cost, type line and oracle text,
+         *     power and toughness, rarity, set and collector number, colours, keywords, format legalities,
+         *     and its images.
+         *
+         *     Some fields are always present but may be empty rather than absent — ``mana_cost`` and
+         *     ``oracle_text`` are empty strings on a card that has none, ``colors`` and ``games`` empty
+         *     lists, ``legalities`` an empty object. Combat stats are null on anything that is not a
+         *     creature, and ``game_changer`` is a three-state flag whose null means "not yet determined",
+         *     not "no".
+         *
+         *     Where a card's artwork lives is stated on the ``image_uris`` and ``card_faces`` fields
+         *     themselves — read those descriptions before rendering anything, because the rule is not the
+         *     obvious one.
+         *
+         *     There is no price data of any kind in this record.
+         */
+        Card: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Printed Name */
+            printed_name?: string | null;
+            /** Oracle Id */
+            oracle_id: string;
+            /** Mana Cost */
+            mana_cost: string;
+            /** Cmc */
+            cmc: number;
+            /** Type Line */
+            type_line: string;
+            /** Oracle Text */
+            oracle_text: string;
+            /** Power */
+            power?: string | null;
+            /** Toughness */
+            toughness?: string | null;
+            /** Game Changer */
+            game_changer?: boolean | null;
+            /** Rarity */
+            rarity: string;
+            /** Set Code */
+            set_code: string;
+            /** Set Name */
+            set_name: string;
+            /** Collector Number */
+            collector_number: string;
+            /** Colors */
+            colors: string[];
+            /** Color Identity */
+            color_identity: string[];
+            /** Color Indicator */
+            color_indicator?: string[] | null;
+            /** Keywords */
+            keywords?: string[] | null;
+            /** Legalities */
+            legalities: {
+                [key: string]: string;
+            };
+            /**
+             * Card Faces
+             * @description Images live in one of two places, and which one is decided by the presence of per-face image_uris — never by whether card_faces is present. Most cards carry a top-level image_uris; a card whose faces have their own artwork carries a null image_uris and per-face image_uris inside its card_faces entries instead. The two are mutually exclusive; nothing carries both. Reading 'has faces' as 'has per-face images' is the trap: a split card has faces and a top-level image, because its halves share one piece of artwork, so its faces carry names and costs but no images of their own. Some cards have no image data anywhere, which is ordinary and not an error.
+             */
+            card_faces?: components["schemas"]["CardFace"][] | null;
+            /**
+             * Image Uris
+             * @description Images live in one of two places, and which one is decided by the presence of per-face image_uris — never by whether card_faces is present. Most cards carry a top-level image_uris; a card whose faces have their own artwork carries a null image_uris and per-face image_uris inside its card_faces entries instead. The two are mutually exclusive; nothing carries both. Reading 'has faces' as 'has per-face images' is the trap: a split card has faces and a top-level image, because its halves share one piece of artwork, so its faces carry names and costs but no images of their own. Some cards have no image data anywhere, which is ordinary and not an error.
+             */
+            image_uris?: {
+                [key: string]: string;
+            } | null;
+            /**
+             * Games
+             * @default []
+             */
+            games: string[];
+        };
+        /**
+         * CardFace
+         * @description One face of a multi-faced card printing, exactly as Scryfall publishes it.
+         *
+         *     A card's ``card_faces`` entries carry each half of its identity — that face's own name, mana
+         *     cost, type line and oracle text — and, on some cards, its own artwork. Five fields are named
+         *     below; **every other key Scryfall sends is kept and served unchanged**, so a consumer that
+         *     knows about ``power``, ``flavor_text``, ``loyalty``, ``defense``, ``artist``, ``printed_name``
+         *     or ``color_indicator`` still finds them.
+         *
+         *     A card having faces does **not** mean its faces have artwork. The ``image_uris`` field below
+         *     carries the rule that decides it; this summary deliberately does not repeat it.
+         */
+        CardFace: {
+            /** Name */
+            name?: string | null;
+            /** Mana Cost */
+            mana_cost?: string | null;
+            /** Type Line */
+            type_line?: string | null;
+            /** Oracle Text */
+            oracle_text?: string | null;
+            /**
+             * Image Uris
+             * @description Images live in one of two places, and which one is decided by the presence of per-face image_uris — never by whether card_faces is present. Most cards carry a top-level image_uris; a card whose faces have their own artwork carries a null image_uris and per-face image_uris inside its card_faces entries instead. The two are mutually exclusive; nothing carries both. Reading 'has faces' as 'has per-face images' is the trap: a split card has faces and a top-level image, because its halves share one piece of artwork, so its faces carry names and costs but no images of their own. Some cards have no image data anywhere, which is ordinary and not an error.
+             */
+            image_uris?: {
+                [key: string]: string;
+            } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * CardSummary
+         * @description The card fields needed to identify and display a card in a list.
+         *
+         *     A bounded subset of the full card record: name, mana cost, converted mana
+         *     cost, type line, oracle text, colours, rarity and set code. It omits the
+         *     heavy detail fields — legalities, image URIs and card faces — so a response
+         *     carrying many cards stays small. Fetch the full card separately when that
+         *     detail is needed.
+         */
+        CardSummary: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Mana Cost */
+            mana_cost: string;
+            /** Cmc */
+            cmc: number;
+            /** Type Line */
+            type_line: string;
+            /** Oracle Text */
+            oracle_text: string;
+            /** Colors */
+            colors: string[];
+            /** Rarity */
+            rarity: string;
+            /** Set Code */
+            set_code: string;
+        };
+        /**
+         * DeckCardSummary
+         * @description One card entry in a deck: how many, which board, and the card itself.
+         *
+         *     Carries the quantity, whether the entry is sideboard, whether it is the
+         *     commander, and a summary of the card. The card is a bounded summary rather
+         *     than the full card record, so a decklist stays small; fetch the full card
+         *     separately when detail (legalities, images, faces) is needed.
+         */
+        DeckCardSummary: {
+            /** Card Id */
+            card_id: string;
+            /** Quantity */
+            quantity: number;
+            /** Sideboard */
+            sideboard: boolean;
+            /**
+             * Commander
+             * @default false
+             */
+            commander: boolean;
+            card: components["schemas"]["CardSummary"];
+        };
+        /**
+         * DeckDetail
+         * @description A saved deck's metadata, card counts and full card list.
+         *
+         *     Everything ``DeckSummary`` carries, plus ``cards``: one ``DeckCardSummary``
+         *     per entry. This is the whole decklist — the shape a deck view renders from.
+         *
+         *     The order of ``cards`` is **not** meaningful and is not the order the cards
+         *     were added. A consumer that wants a stable presentation order (by type, by
+         *     mana value, by name) must sort them itself.
+         */
+        DeckDetail: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Format */
+            format: string | null;
+            /** Strategy */
+            strategy?: string | null;
+            /**
+             * Color Identity
+             * @default []
+             */
+            color_identity: string[];
+            /**
+             * Tags
+             * @default []
+             */
+            tags: string[];
+            /**
+             * Mainboard Count
+             * @default 0
+             */
+            mainboard_count: number;
+            /**
+             * Sideboard Count
+             * @default 0
+             */
+            sideboard_count: number;
+            /**
+             * Distinct Cards
+             * @default 0
+             */
+            distinct_cards: number;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+            /**
+             * Cards
+             * @default []
+             */
+            cards: components["schemas"]["DeckCardSummary"][];
+        };
+        /**
+         * DeckSummary
+         * @description A saved deck's metadata and card counts, without the card list itself.
+         *
+         *     What a deck listing returns for each deck: identity, format, strategy, colour
+         *     identity, tags, timestamps, and three counts summarising the contents —
+         *     ``mainboard_count`` and ``sideboard_count`` (sums of quantities) and
+         *     ``distinct_cards`` (how many different cards, counting a card in both boards
+         *     once). Enough to render a deck in a list without transferring the deck.
+         */
+        DeckSummary: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Format */
+            format: string | null;
+            /** Strategy */
+            strategy?: string | null;
+            /**
+             * Color Identity
+             * @default []
+             */
+            color_identity: string[];
+            /**
+             * Tags
+             * @default []
+             */
+            tags: string[];
+            /**
+             * Mainboard Count
+             * @default 0
+             */
+            mainboard_count: number;
+            /**
+             * Sideboard Count
+             * @default 0
+             */
+            sideboard_count: number;
+            /**
+             * Distinct Cards
+             * @default 0
+             */
+            distinct_cards: number;
+            /** Created At */
+            created_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
         /**
          * ErrorResponse
          * @description The body of every non-2xx response — the token, and nothing else (AD-16).
@@ -55,6 +594,28 @@ export interface components {
          *
          *     * ``deck_not_found`` — the deck the caller asked for is gone (deleted between a push and a
          *       refetch); the SPA clears to the **No-active-deck** panel.
+         *     * ``card_not_found`` — no card in the local database carries that printing id. The **only**
+         *       token whose destination is not a panel: the view that referenced the card renders normally
+         *       and shows an **"Unknown card"** placeholder in that one slot, with no banner and no apology
+         *       (FR-13). One unknown card must never fail a whole view or a whole push. The placeholder is
+         *       built in c4-3.
+         *     * ``no_image_data`` — the card exists, but there is no artwork to serve for what was asked:
+         *       either the printing carries no image data at all (79 cards in the shipped corpus), or the
+         *       requested face is beyond the images it has. **Permanent** — retrying cannot help — so the
+         *       view renders normally and that one slot draws the **named Card placeholder** (the card's
+         *       name, mana cost and type line, which the client already holds from
+         *       ``GET /api/cards/{card_id}``). Never a grey rectangle, a 1×1 pixel or a generic card back.
+         *     * ``image_fetch_failed`` — the card's image URL is known but could not be retrieved: the CDN
+         *       timed out, answered a non-2xx, returned something that was not an image, or the stored URL
+         *       pointed somewhere the companion refuses to fetch from. **Transient**, which is the whole
+         *       reason it is a separate token from ``no_image_data`` — the pixels are identical (the same
+         *       named Card placeholder) but only this one may ever be retried. Since c3-8 a failure is
+         *       **negative-cached with an exponential backoff**, so a repeat request inside the window is
+         *       answered from memory with this same token and no CDN request at all; the window starts at 30
+         *       seconds, doubles per consecutive failure and is capped at 300. Indistinguishable from a fresh
+         *       failure on the wire, deliberately: a client has no different action to take, and the
+         *       consequence a reader of this file should know is that a tile can stay a placeholder for up to
+         *       the ceiling **after** the CDN has recovered.
          *     * ``database_not_initialized`` — fresh install, no card database yet; the **"Card database not
          *       set up yet."** panel, which tells the user to ask their agent to run ``initialize_database``.
          *     * ``database_unavailable`` — reads are failing transiently (a bulk refresh in flight, or an
@@ -62,6 +623,11 @@ export interface components {
          *     * ``invalid_request`` — the request itself was malformed, or aimed at a path/method/``Host``
          *       the companion does not serve. No panel of its own: the SPA never generates one, so it means
          *       a client bug or a stray caller, and the log is where it is diagnosed.
+         *     * ``forbidden`` — an agent-only endpoint was called without a valid credential (c3-4). Like
+         *       ``payload_too_large``, the audience is the **agent**, not the glass: the browser never holds
+         *       the credential and never calls a route that wants one, so a panel here would report a
+         *       failure the reader did not cause and cannot fix. Its consumer is the MCP tool's outcome
+         *       vocabulary, where AD-8's re-read-discovery-and-retry-once lives.
          *     * ``payload_too_large`` — an agent push exceeded the ingest cap (c5-5). Surfaced to the *agent*
          *       through the MCP tool's outcome vocabulary, not to the glass.
          *     * ``internal_error`` — the companion itself hit an unhandled bug (500). Deterministic, so the
@@ -73,7 +639,63 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "deck_not_found" | "database_not_initialized" | "database_unavailable" | "invalid_request" | "payload_too_large" | "internal_error";
+            reason: "deck_not_found" | "card_not_found" | "database_not_initialized" | "database_unavailable" | "no_image_data" | "image_fetch_failed" | "invalid_request" | "forbidden" | "payload_too_large" | "internal_error";
+        };
+        /**
+         * FormatCheckReport
+         * @description A deck's construction legality, as one row per check rather than a list of faults.
+         *
+         *     The same shape whatever the answer: a deck whose format cannot be checked gets this report
+         *     with its unanswerable rows marked advisory, never a different body and never an error. Rows
+         *     arrive in a fixed order, so a rendered panel does not reshuffle between refetches.
+         *
+         *     Warning:
+         *         ``is_legal`` is **not** a summary of the rows, and rendering it as the panel's headline
+         *         will contradict them. When ``format_recognized`` is ``false`` there is nothing to check
+         *         legality against, which the underlying validator counts as a broken rule — so
+         *         ``is_legal`` is ``false`` while **every row is a pass or an advisory and not one is a
+         *         violation**. Read ``is_legal`` as *"certified legal"*, not as *"something is wrong"*:
+         *         it answers false both for a deck that breaks a rule and for a deck that could not be
+         *         checked. To show a fault, look for a row whose ``status`` is ``violation``; to show
+         *         "cannot be checked", branch on ``format_recognized``.
+         */
+        FormatCheckReport: {
+            /** Is Legal */
+            is_legal: boolean;
+            /** Format */
+            format: string;
+            /** Format Recognized */
+            format_recognized: boolean;
+            /** Mainboard Count */
+            mainboard_count: number;
+            /** Sideboard Count */
+            sideboard_count: number;
+            /** Rows */
+            rows: components["schemas"]["FormatCheckRow"][];
+        };
+        /**
+         * FormatCheckRow
+         * @description One check in a deck's format report: what was checked, how it came out, and why.
+         *
+         *     ``status`` is one of ``pass``, ``advisory`` or ``violation``. ``advisory`` means the check
+         *     could not be answered rather than that the deck failed it — an unrecognised format, or a
+         *     check with no local data behind it — so it should never be presented as a fault in the deck.
+         *     A row is present for every check whether or not anything is wrong, so a panel can render a
+         *     complete list rather than only bad news.
+         */
+        FormatCheckRow: {
+            /**
+             * Check
+             * @enum {string}
+             */
+            check: "legality" | "size" | "copy_limit" | "sideboard" | "banned" | "rotation";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pass" | "advisory" | "violation";
+            /** Detail */
+            detail: string;
         };
         /**
          * HealthResponse
@@ -149,6 +771,431 @@ export interface operations {
             };
             /** @description reason: database_unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_decks_api_decks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeckSummary"][];
+                };
+            };
+            /** @description reason: invalid_request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: payload_too_large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: internal_error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: database_not_initialized | database_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_deck_api_deck__deck_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deck_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeckDetail"];
+                };
+            };
+            /** @description reason: invalid_request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: deck_not_found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: payload_too_large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: internal_error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: database_not_initialized | database_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_deck_format_check_api_deck__deck_id__format_check_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deck_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FormatCheckReport"];
+                };
+            };
+            /** @description reason: invalid_request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: deck_not_found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: payload_too_large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: internal_error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: database_not_initialized | database_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_card_api_cards__card_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                card_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Card"];
+                };
+            };
+            /** @description reason: invalid_request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: card_not_found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: payload_too_large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: internal_error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: database_not_initialized | database_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_card_image_api_card_image__scryfall_id__get: {
+        parameters: {
+            query?: {
+                size?: "small" | "normal" | "large" | "png" | "art_crop" | "border_crop";
+                face?: number;
+            };
+            header?: never;
+            path: {
+                scryfall_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The image bytes, in whatever format the CDN served them. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
+                };
+            };
+            /** @description reason: invalid_request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: card_not_found | no_image_data */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: payload_too_large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: internal_error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: image_fetch_failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: database_not_initialized | database_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_active_deck_api_active_deck_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveDeck"];
+                };
+            };
+            /** @description reason: invalid_request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: internal_error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    set_active_deck_api_active_deck_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActiveDeckRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveDeck"];
+                };
+            };
+            /** @description reason: invalid_request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: internal_error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

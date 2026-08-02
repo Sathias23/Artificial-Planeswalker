@@ -282,9 +282,51 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
 DbSession = Annotated[AsyncSession, Depends(get_session)]
 """The annotation every data-backed handler writes, and the only one it should.
 
-Stories c3-1 (``GET /api/decks``, ``GET /api/decks/{id}``), c3-2 (``GET /api/cards/{id}``) and c3-3
-(the format check) annotate a parameter with this and inherit the whole contract: the lazy engine,
-the readiness probe, the ``503`` tokens and the shared recipe. None of them re-derives any of it.
+Stories c3-1 (``GET /api/decks``, ``GET /api/deck/{deck_id}``), c3-2
+(``GET /api/cards/{card_id}``), c3-3 (``GET /api/deck/{deck_id}/format-check``) and c3-5
+(``GET /api/card-image/{scryfall_id}``) annotate a parameter with this and inherit the whole
+contract: the lazy engine, the readiness probe, the ``503`` tokens and the shared recipe. None of
+them re-derives any of it. **All four are shipped and did exactly that** — none constructs an
+engine, calls ``is_database_initialized``, reads ``request.app.state`` or writes a
+``try/except DatabaseError``, and each proves the two ``503`` answers through its real routes.
+
+c3-5 is the first consumer that goes on to do something the database knows nothing about: it reads
+one row, then fetches a URL from that row over the internet. **The previous version of this
+paragraph said it did so "after the session closes", and that is measurably wrong** (c3-6 Task 0,
+2026-08-01). FastAPI runs a ``yield``-dependency's teardown *after* the endpoint returns, so the
+session — and its checked-out connection — is held for the **whole** handler body, the outbound
+fetch included. Measured directly: the pool reports ``checkedout() == 1`` while ``fetch_image`` is
+awaited, and ``0`` once the response is out.
+
+That is load-bearing rather than trivia, because c3-6 put a **queue** in front of that fetch, so a
+request can now hold a connection while waiting its turn. The pool is SQLAlchemy's default —
+``AsyncAdaptedQueuePool``, size 5 + overflow 10 = **15 connections**, ``pool_timeout`` **30 s**
+(all four read off the live pool object). Under the shipped pacing a 99-tile burst drains in
+~9.9 s, so at most 15 requests sit inside the route at once and the rest wait outside it: a second
+queue in front of the first, inefficient and harmless. **It works by arithmetic, not by design.**
+A pacer slower than roughly 0.3 s per tile would push a deck-sized burst past the pool timeout and
+raise ``sqlalchemy.exc.TimeoutError``, which is **not** a ``DatabaseError`` and would therefore
+surface as ``500 internal_error`` rather than ``503``. Pinned by
+``test_routes_card_image.py::TestTheBurstDoesNotOutlastTheConnectionPool`` and ledgered on **c4-1**,
+which already carries this route's whole-row-read entry; releasing the session before fetching is
+the clean answer and belongs beside that story's hydration cache, not here (Q6, Brad 2026-08-01).
+
+The outbound client and the pacer are *separate* app-state resources (``images.image_client``,
+``images.image_pacer``), created by the same lifespan and deliberately not routed through here:
+this module owns the engine, not every effectful thing a route might need.
+
+**c3-4 deliberately does not join that list, and its absence is a ruling rather than an oversight.**
+``GET``/``PUT /api/active-deck`` take no session at all — they are the first routes since
+``/health`` with no database dependency — because AD-16 rules that deck-existence validation for
+``companion_set_active_deck`` belongs to the **MCP tool**: it has database access and it is the one
+that must report ``deck_not_found`` to the agent, so the backend stores what it is given. The
+consequence to expect when reading that module: neither operation can answer ``503``, and an active
+deck id that resolves to nothing is a legitimate state.
+
+Mind the two spellings, which are not a typo: the deck detail route is **singular**
+``/api/deck/{deck_id}`` and the card route is **plural** ``/api/cards/{card_id}``. Each matches
+the PRD, the spine, the epic split — and c3-3's format check hangs off the singular one as
+``/api/deck/{deck_id}/format-check``, so the deck spelling now has two routes behind it.
 
 Example:
     >>> from typing import get_args

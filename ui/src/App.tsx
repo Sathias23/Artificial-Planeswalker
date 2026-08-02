@@ -1,6 +1,7 @@
 import { AppShell } from './components/AppShell/AppShell'
 import { Footer } from './components/Footer/Footer'
 import { StatePanel } from './components/StatePanel/StatePanel'
+import { useSystemState } from './state/systemState'
 
 /**
  * The application root.
@@ -11,35 +12,34 @@ import { StatePanel } from './components/StatePanel/StatePanel'
  * arrives as a prop from a later story, so this file's job is to stay as close to one line as it
  * honestly can.
  *
- * c4-1 owns the store that will feed those props and c3-1 owns the fetch layer beneath it.
- * Until then the shell renders its own placeholders, each naming the story that replaces it.
+ * c4-1 owns the card cache and the in-flight deduping that will feed those props, extending the
+ * store and the fetch layer **c3-9** opened; until then the shell renders its own placeholders,
+ * each naming the story that replaces it.
  *
- * ================= WHY THE LEFT COLUMN IS NO LONGER A PLACEHOLDER (c2-9, Q1) ============
+ * ================= THE LEFT COLUMN IS NOW WIRE-DRIVEN (c3-9, FR-22) ====================
  *
- * The no-active-deck panel is rendered into the shell's `left` slot, and this is HONEST rather
- * than a demo: there genuinely is no active deck. There is no fetch layer until c3-1 and no
- * store until c4-1, so "No deck on the glass" with an empty deck list is the application's true
- * state, not a mock of one.
+ * `useSystemState` polls `GET /api/decks` and reports which system panel is true right now. The
+ * panel is chosen from the response's `reason` TOKEN through `states.ts`'s `PANEL_FOR_REASON` —
+ * never from a bare status code, which is AD-16's rule and the reason two different `503`s put
+ * two different panels on the glass. Nothing here decides anything: this file renders whichever
+ * panel the boundary picked, and the deck names that one of them carries.
  *
- * It is also what makes the story's visual half checkable. c2-7 and c2-8 both shipped
- * components with no consumer and had to downgrade their appearance ACs to "not dev-verified";
- * a third in a row would have left the shell, `Panel` and the whole token layer unlooked-at
- * into Epic 4.
+ * WHY THE TERNARY, RATHER THAN `state={panel}`: `StatePanelProps` is a DISCRIMINATED UNION, and
+ * only the `no-active-deck` arm accepts `decks` — `EXPERIENCE.md` attaches a deck list to that
+ * row and to no other. Spreading one `decks` prop across every state would compile only if that
+ * constraint were removed. The two branches are the constraint being honoured, not a special
+ * case: it is exactly one `<StatePanel>` on screen either way.
  *
- * THE CONSEQUENCE, ACCEPTED DELIBERATELY AND NOT PAPERED OVER: `AppShell`'s left-column
- * placeholder — the line naming c4-4 and c4-8 — is DISPLACED by this prop. It is not deleted:
- * it still fires whenever `left` is empty, `AppShell.test.tsx` still asserts it against the
- * component's own props, and the two stories it names are unaffected. What changes is which of
- * the two the running app shows, and the ownership is stated here so nobody has to reconstruct
- * it:
+ * THE DISPLACEMENT c2-9 ACCEPTED IS UNCHANGED, AND STILL NOT PAPERED OVER: `AppShell`'s
+ * left-column placeholder — the line naming c4-4 and c4-8 — is DISPLACED by this prop, never
+ * deleted. It still fires whenever `left` is empty and `AppShell.test.tsx` still asserts it
+ * against the component's own props. What c3-9 changed is only that the choice is no longer a
+ * constant; **c4-2 / c4-4** replace it again with a deck when there is a deck.
  *
- *   **c4-2 / c4-4** replace this static choice with the real one — a deck when there is a deck,
- *   this panel when there is not — and **c3-9** owns the transition between them (FR-22).
- *   Until then the choice is a constant, and the constant is the truth.
- *
- * NO `decks` PROP IS PASSED, for the same reason: `GET /api/decks` is c3-1's, so this app does
- * not know any deck names yet. An empty list renders nothing extra, which is the correct
- * day-one render rather than an omission (StatePanel AC 5).
+ * THE `decks` PROP IS NOW PASSED, and that is this story's other half. `GET /api/decks` shipped
+ * in **c3-1** and nothing called it until now; an empty list is still the ordinary fresh-install
+ * answer and still renders nothing extra (StatePanel AC 5). **c4-2** owns reading the deck
+ * itself — this story reads the names, which is all the panel's copy promises.
  *
  * ================= WHY THE FOOTER IS NO LONGER A PLACEHOLDER (c2-10) ====================
  *
@@ -68,5 +68,18 @@ import { StatePanel } from './components/StatePanel/StatePanel'
  * it by construction rather than by anyone remembering.
  */
 export default function App() {
-  return <AppShell left={<StatePanel state="no-active-deck" />} footer={<Footer />} />
+  const { panel, decks } = useSystemState()
+
+  return (
+    <AppShell
+      left={
+        panel === 'no-active-deck' ? (
+          <StatePanel state="no-active-deck" decks={decks} />
+        ) : (
+          <StatePanel state={panel} />
+        )
+      }
+      footer={<Footer />}
+    />
+  )
 }

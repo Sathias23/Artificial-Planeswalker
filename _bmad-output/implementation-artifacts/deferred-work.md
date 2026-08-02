@@ -722,9 +722,16 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   agent session — if no import is running, ask it to rebuild the database (`initialize_database`).")
   and its panel shipped in `src/components/StatePanel/`. It is declared `RETRIES_QUIETLY: false`
   in `states.ts` — the escalation of a quiet retry that has not worked.
-  **What remains, homed at c3-9** (which owns the polling): the "for a while" threshold and the
-  switch from `database-updating` to `database-updating-stalled`. Nothing selects the state at
-  runtime until then. The reason the ruling was not "leave it transient": for a durably corrupt
+  ~~**What remains, homed at c3-9** (which owns the polling): the "for a while" threshold and the
+  switch from `database-updating` to `database-updating-stalled`.~~ **CLOSED, c3-9 (Q3,
+  2026-08-02).** `STALLED_AFTER_MS = 60_000` in `ui/src/state/poller.ts` — 60 s of *continuous*
+  `database_unavailable`, which at the 2 s / x2 / 30 s schedule is at least six consecutive
+  refusals with the last two a full ceiling apart, so a single slow write burst cannot escalate.
+  Armed by that token and by nothing else, and reset by every other outcome including a `200`;
+  `database_not_initialized` NEVER escalates at any elapsed time, because a multi-minute first
+  build is its normal case and its own copy promises the wait. Both directions are asserted from
+  one fake clock, and mutation probe (e) — arming the clock on any error — turns the
+  never-escalates assertion red. Historical note: The reason the ruling was not "leave it transient": for a durably corrupt
   file, "Reads will resume automatically — nothing to do here" is simply **false**, and c2-9 is
   the one story in the feature whose whole subject is whether the words are true.
   (Source: Blind Hunter; Severity: Low → **ruled**, implementation residue at c3-9.)
@@ -1042,7 +1049,17 @@ the gate-output rule rather than left as "we meant to".
   is genuinely less to see today than there will be. **Natural home: c3-9** ("fresh install guides
   instead of erroring and comes alive on its own"), which owns that loop in the UI and cannot be
   accepted without a real empty-data-dir run. Recorded so c3-9 inherits it as a known-unverified
-  precondition rather than assuming Epic C1 closed it. (Severity: Low.)
+  precondition rather than assuming Epic C1 closed it. **CLOSED (backend half), c3-9 hand-run
+  2026-08-02.** `PLANESWALKER_DATA_DIR` pointed at a genuinely empty directory: the companion
+  STARTED, printed `http://127.0.0.1:8765`, published its discovery file, and planted **no**
+  `cards.db` — c1-6's no-plant guarantee, confirmed live for the first time (the directory held
+  only `companion.json`, `companion.lock` and `image_cache/`). `GET /health` answered `200`;
+  `GET /api/decks` answered `503 {"reason":"database_not_initialized"}` with
+  `cache-control: no-store`; `GET /` served the SPA. A populated `cards.db` was then copied in
+  **with the server still running**, and the very next `GET /api/decks` answered `200` with real
+  deck names — no restart, no cache-busting. FR-22's backend half is now confirmed rather than
+  inferred. **What is still not confirmed is the PAGE doing it in a browser** — see c3-9's own
+  residue below. (Severity: Low.)
 
 ## Deferred from: story c2-1 (2026-07-26)
 
@@ -1449,10 +1466,27 @@ the gate-output rule rather than left as "we meant to".
   suite and have never been looked at in a browser — in particular the **command chip**, which
   only appears in three of them, and the **two-paragraph** guidance/action stack, which
   `no-active-deck` does not exercise (it has no guidance). Homed at **c3-9**, which wires the
-  states and is the first story able to show them. Cheapest interim check: temporarily change
-  the `state` prop in `App.tsx` and look. (Severity: Low.)
+  states and is the first story able to show them. **PARTLY CLOSED, c3-9 (2026-08-02).** Four of
+  the five are now REACHABLE in the running app — `database-not-initialized`, `database-updating`,
+  `database-updating-stalled` and `internal-error` are each selected by the poll from a wire
+  token, and the first is what a genuine fresh install shows (confirmed live at the HTTP layer).
+  `disconnected` stays **c5-6's** and is selected by nothing, per Q10. **The browser look-at was
+  NOT performed**: this environment has no browser automation installed and adding one would be a
+  new dependency, so the VISUAL half is unchanged and moves to the epic manual-testing checklist
+  with a recipe — run `PLANESWALKER_DATA_DIR=<empty dir> uv run artificial-planeswalker
+  companion` and open the printed URL for `database-not-initialized`, then hand-edit `App.tsx`'s
+  `left` prop to a literal `<StatePanel state="..." />` for each of the other four. What to look
+  at is unchanged: the **command chip** (three states have one) and the **two-paragraph
+  guidance/action stack**. (Severity: Low.)
 
-- **`states.ts` has no runtime consumer.** `PANEL_FOR_REASON`, `CLIENT_ONLY_STATES` and
+- ~~**`states.ts` has no runtime consumer.**~~ **CLOSED, c3-9 (2026-08-02).**
+  `PANEL_FOR_REASON` is consumed by `ui/src/state/panel.ts` — which also uses its KEY SET as the
+  runtime membership test for `ErrorReason`, so there is still no second list anywhere — and
+  `RETRIES_QUIETLY` by `ui/src/state/poller.ts`, indexed at runtime rather than paraphrased
+  (probe (b) replaces the consult with "always retry" and five assertions go red).
+  `CLIENT_ONLY_STATES` stays a declaration and that is correct: `disconnected` is **c5-6's**, and
+  `database-updating-stalled` is produced by elapsed time on the client rather than selected from
+  a list. The original entry, for the record: `PANEL_FOR_REASON`, `CLIENT_ONLY_STATES` and
   `RETRIES_QUIETLY` are total maps written for **c3-9** to read; nothing imports them today, so
   they are tree-shaken out of the bundle. This is deliberate — the alternative was leaving the
   wire-token→panel mapping and the retry contract as prose in a story record, which is where
@@ -1481,17 +1515,43 @@ the gate-output rule rather than left as "we meant to".
   `StatePanel.tsx:92` has no fallback branch: a value arriving through untyped wiring (a stale
   enum, a JS caller, a mis-parsed wire token) yields `undefined` and `copy.headline` throws — an
   unhandled render exception, which is the error screen the story exists to ban. TypeScript
-  guards it today and no runtime caller exists (`App.tsx` passes a literal). **c3-9 owns runtime
-  validation of wire values before they reach this prop** — the same place the polling and the
-  stalled-state threshold live. (Severity: Low today; Medium once wiring exists.)
+  guards it today and no runtime caller exists (`App.tsx` passes a literal). ~~**c3-9 owns
+  runtime validation of wire values before they reach this prop.**~~ **CLOSED, c3-9 (Q5,
+  2026-08-02).** `ui/src/state/panel.ts`'s `panelFor` is the one place a wire value becomes a
+  `StateKey`: total by construction over every string and over `null`, clamping to
+  `internal-error`. `StatePanel` gained **no** fallback branch and stays presentation-only. Three
+  inputs reach the clamp — a token this build does not know, a token `states.ts` maps to `null`
+  (`invalid_request` and `payload_too_large` are both DECLARED on `GET /api/decks`, so this is
+  reachable rather than theoretical), and no token at all. Also closed here, and not in the
+  original entry: indexing a plain object with `__proto__` or `constructor` returns an INHERITED
+  value rather than `undefined`, which a bare `?? 'internal-error'` would have passed through to
+  the prop as an object; `Object.hasOwn` is what stops it and it is asserted.
+  **Two corrections to this entry's own text, both measured at c3-9.** The line is
+  `StatePanel.tsx:104`, not `:92`. And the throw is one line EARLIER than described: probe (d)
+  removes the clamp and the crash is `TypeError: Cannot read properties of undefined (reading
+  'body')` from `guidanceOf(copy)`, not from `copy.headline`.
+  (Severity: Low today; Medium once wiring exists.)
 
 - **The un-quoted tails of EXPERIENCE.md's copy rows are contract nobody gates.** The verbatim
   gate captures `Headline:` and `Body:` only; the no-active-deck row's deck-list clause and both
   retry clauses ("Deterministic: this state never retries itself", the stalled row's threshold
   note) live outside the captures and can be edited or deleted with every gate green while their
-  TypeScript mirrors (`RETRIES_QUIETLY`, the `decks` prop) drift undetected. Extending the gate
-  is new scope; candidate home is **c3-9**, beside the wiring those clauses constrain.
-  (Severity: Low.)
+  TypeScript mirrors (`RETRIES_QUIETLY`, the `decks` prop) drift undetected. ~~Extending the gate
+  is new scope; candidate home is **c3-9**, beside the wiring those clauses constrain.~~
+  **CLOSED, c3-9 (Q6, 2026-08-02).** `ui/tests/copy-tails.test.ts` gates the three tails that
+  constrain c3-9, each against its TypeScript mirror in BOTH directions: the no-active-deck
+  deck-list clause against `DECKS_PATH`, the stalled row's *"the client decides when 'a while' has
+  passed (c3-9 owns the threshold)"* against `STALLED_AFTER_MS` and
+  `RETRIES_QUIETLY['database-updating-stalled']`, and the internal-error row's *"Deterministic:
+  this state never retries itself"* against `RETRIES_QUIETLY['internal-error']`. Deleting a clause
+  fails the gate; flipping a mirror fails the gate. A NEW FILE rather than an edit to
+  `copy.test.ts`, so that suite's "passes unchanged" prediction stays literally checkable, and the
+  mirrors are read out of SOURCE rather than imported — see the file header for the twelve `tsc`
+  errors the import version produced, which is `ui/README.md`'s cross-project-import blind-spot
+  row earning its place. **The fourth tail — the disconnected row's connection-pill note — is
+  DECLINED and re-homed on c5-6 by name**, which owns the pill, its backoff and the state; there
+  is nothing in this repository for it to be checked against today, so a gate on it would assert
+  prose against prose. (Severity: Low.)
 
 ## Deferred from: story c2-10 (footer attribution, 2026-07-30)
 
@@ -1554,3 +1614,1551 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   **RATIFIED (Brad, 2026-07-30, c2-10 code review): the content-width reading stands** — the
   hairline aligns with the header and columns inside the gutter frame. No longer a unilateral
   call; a full-bleed rule would now be a new decision, not a correction.
+
+## Deferred from: story c3-1 (deck list and deck detail endpoints, 2026-07-31)
+
+- **`list_decks` materialises every deck's full card list just to count it.**
+  `src/data/repositories/deck.py:263` eager-loads
+  `selectinload(DeckModel.deck_cards).selectinload(DeckCardModel.card)`, so `GET /api/decks`
+  loads the whole corpus of every saved deck and then discards it down to three integers per
+  deck. **Accepted here, not fixed**: it is existing `src/data` behaviour that the `list_decks`
+  MCP tool already pays, the deck count is single digits on a real machine, and NFR-05's budget
+  is the deck *view*, not the deck list. Adding a count-only query in c3-1 would have been a
+  second read path over one shape, which is exactly what AD-1 exists to prevent.
+  **Home: c10-3** (latency hardening). If it is fixed there, the fix belongs in the repository —
+  an aggregate query behind the same method — so both shells inherit it. (Severity: Low now;
+  scales with deck count and deck size.)
+
+- **`DeckRepository.list_decks` ties on `created_at` and falls back to UUID order.**
+  Re-confirmed still open at c3-1. `deck.py:262` orders by `created_at DESC, id`; `id` is a UUID,
+  so decks created within the same clock tick come back in effectively random order.
+  `tests/integration/data/test_deck_repository.py::test_list_decks_with_strategy_field` is
+  order-flaky for exactly this reason and is ledgered twice already (c1-5 and c2-1 entries) —
+  this is the third confirmation, not a new finding. c3-1 did **not** fix it: it is a `src/data`
+  change with MCP blast radius. What c3-1 did instead is make the endpoint's own contract honest
+  — `read_decks`' docstring says a tie is arbitrary, and `test_routes_decks.py` asserts ordering
+  only against seeds whose `created_at` is genuinely distinct. **Home: unowned, ledgered.** Any
+  UI that promises "newest first" to a user (c4-7's deck-list panel) is the first story that
+  actually needs this fixed. (Severity: Low.)
+
+  **FOURTH confirmation, c3-2 (2026-07-31), and it FIRED.** `test_list_decks_with_strategy_field`
+  failed once in a full-suite run (`assert 'Control' is None` — the three same-tick decks came back
+  in UUID order) and passed 56/56 in isolation immediately after, and green on the re-run. Nothing
+  in c3-2 touches `DeckRepository`, deck seeding or that test; what c3-2 changed is that the suite
+  is ~50 tests longer, which shifts the timing that decides whether the three `create_deck` calls
+  land in one clock tick. **This is now the only test in the repo that fails for reasons unrelated
+  to the code under change, and it has cost four stories a diagnosis each.** The fix is two lines
+  (distinct `created_at` values in the test, or a deterministic tie-breaker in the repository) and
+  is being deferred purely on `src/data`-blast-radius grounds — but the cost of the deferral is now
+  larger than the fix. Recommend closing it in the next story that touches `src/data`, or as a
+  standalone chore. (Severity: raised to **Medium** — a flaky gate teaches people to re-run.)
+
+  **It fired a SECOND time during the same story**, in the post-review full-suite run (a different
+  deck id, same `assert 'Control' is None`). Two failures in one afternoon, both on a branch that
+  touches no deck code. That is no longer "intermittent under full-suite timing" — at ~1,890 tests
+  the three `create_deck` calls land in one clock tick often enough to be a routine occurrence, and
+  every future story now inherits a suite that goes red for reasons unrelated to its diff. **Raised
+  to Medium-High, and recommended as the next standalone chore rather than waiting for a story that
+  happens to touch `src/data`.** Fix: `.order_by(DeckModel.created_at.desc(), DeckModel.id)` is
+  already the repository's order — the test is what needs distinct `created_at` values, exactly as
+  `test_routes_decks.py::test_orders_newest_first_when_the_timestamps_differ` does it.
+
+- **`GET /api/decks` and `GET /api/deck/{id}` have never been called by a browser.**
+  c3-1 ships no frontend (AC 18), so both endpoints are proven only through `httpx.ASGITransport`
+  in-process. Not yet exercised: a real `fetch` from the served SPA origin through the security
+  envelope, the Vite dev proxy path (`changeOrigin`, c2-1), and CORS behaviour under a real
+  browser preflight. Nothing suggests a problem — the envelope is gated and `/health` already
+  crosses it — but "a real browser has fetched this" is not yet true of any companion route.
+  **Home: c4-2** (the deck bootstrap, the first real consumer). Worth Brad's eye on the C3
+  manual-testing checklist: open the companion and hit `/api/decks` in the browser address bar.
+  (Severity: Low.)
+
+- **The `openapi.json` byte-comparison gate cannot see *meaning*.**
+  `tests/unit/companion/test_openapi_contract.py` asserts that Python internals (`Args:`,
+  `Attributes:`, `>>> `) never cross the wire, and c3-1 confirmed that is where it stops: the four
+  schemas it exposed carried MCP-internal prose ("keeping `load_deck` payloads small for LLM
+  clients", "Build via the helper's explicit constructor, not `model_validate`", "the Story 1.6
+  deck-analysis tools") straight into `types.d.ts` and `/docs`, and **Sphinx role markup**
+  (`` :class:`DeckSummary` ``) did too — a family the gate's list does not name and which appears
+  in neither already-shipped description. c3-1 fixed its own four by rewriting the leading summary
+  and pushing the Python detail below `Attributes:`, and recorded the scan it used. It did **not**
+  add a gate. Whether one is worth building (ban the role-markup family; the prose half is not
+  statically decidable, like UX-DR33's second-person half) is open. **Home: c3-2**, the next story
+  to add a schema to `components.schemas` — it will face the same question with `Card`.
+  (Severity: Low — cosmetic on the wire, but it is documentation the UI author reads.)
+
+  **RESOLVED (partly) at c3-2, 2026-07-31 — Q5's split ruling.** The statically decidable half
+  shipped: `test_openapi_contract.py` gained `PYTHON_INTERNAL_FAMILIES`, keyed on three shapes
+  (Sphinx role markup `:[a-z]+:` before a backtick; any line-anchored Google-style section header,
+  with `Note:`/`Warning:` as a declared two-member allowlist rather than the old twelve-member ban
+  list; a doctest prompt) plus a non-vacuity test proving each family fires. It catches what
+  c3-1 found by hand and what the three-member `PYTHON_INTERNALS` never could. **The prose half is
+  re-homed to REVIEW, not dropped**: whether a structurally clean sentence actually addresses a
+  TypeScript reader ("Supports conversion from SQLAlchemy CardModel instances" trips nothing) is
+  not statically decidable, and now carries a `ui/README.md` blind-spot row saying so.
+
+## Deferred from: code review of c3-1 (2026-07-31)
+
+- **A `pydantic.ValidationError` escaping `DeckRepository` has no handler anywhere in the companion
+  stack, and `GET /api/decks` gives it a whole-list blast radius.** `install_error_handling` types
+  `CompanionError`, `RequestValidationError`, `DatabaseError` and `HTTPException`; a
+  `ValidationError` raised inside `Deck.model_validate` matches none of them and lands in
+  `UnhandledErrorMiddleware` as `500 internal_error`. Measured triggers, all live: an orphaned
+  `deck_cards` row (FK enforcement is OFF, so `dc.card` is `None`), a stored `quantity` of `0` or
+  negative (`DeckCard.validate_quantity` rejects `<1` on **read**, and only the repository *write*
+  path enforces it), and `tags`/`color_identity` holding well-formed JSON whose elements are not
+  strings (`[1,2]`, `["W",null]`). On the detail route the deck is permanently unopenable; on the
+  **list** route one bad row in one deck makes *every* deck unreachable.
+  **Pre-existing, not introduced here** — this is the same crash already ledgered as the
+  `data-layer-orphan-handling` backlog item (epic-7 retro action item 3), which names
+  `get_deck_with_cards` and the four MCP tools that share it. c3-1 adds a web surface to it and one
+  new fact: the list-route blast radius. **Not fixed here** because AC 12 forbids error-handling
+  ceremony in a route body and the fix belongs at the data layer for both shells at once.
+  **Home: `data-layer-orphan-handling`** (already in `sprint-status.yaml`, status `backlog`) — this
+  entry adds the blast-radius finding and the two non-orphan triggers to its scope.
+  (Severity: Medium — needs a corrupted row to fire, but degrades ungracefully when it does.)
+
+- **Both new routes can answer `503 database_not_initialized`, and the OpenAPI document says only
+  `database_unavailable`.** `build_app()`'s app-level `error_responses("invalid_request",
+  "payload_too_large", "database_unavailable", "internal_error")` never passes
+  `database_not_initialized`, so the committed schema's `503` on `/api/decks` and
+  `/api/deck/{deck_id}` reads `"description": "reason: database_unavailable"` — while
+  `TestDatabaseStates` asserts the *undocumented* token six times. On a fresh install this is the
+  **most common** 503 the UI will ever see. `error_responses`' own docstring advertises the
+  collapse behaviour ("tokens sharing a status ... a single entry whose description names each of
+  them") and it has never fired. **Not fixed unilaterally**: AC 5 explicitly says "do not add
+  `database_not_initialized` app-wide as a side effect of this story", and declaring it per-route
+  deviates from AC 6's text. **Flagged to Brad as a decision** — see the story's Review section.
+  **Home: c3-9** (the fresh-install story, which owns this state end to end) unless ruled sooner.
+  (Severity: Medium — the wire contract under-documents the state the UI most needs to switch on.)
+
+  **RE-CONFIRMED at c3-2 (2026-07-31), now on a THIRD route.** `GET /api/cards/{card_id}` answers
+  the undocumented token too, asserted twice in `test_routes_cards.py::TestDatabaseStates`, and
+  c3-2's AC 6 repeats c3-1's constraint ("`build_app()`'s app-level `responses` is **unchanged**"),
+  so it was again not fixed unilaterally. Every data route added from here inherits the gap by
+  construction — it is a property of `get_session`, not of any route — so the count will keep
+  rising until c3-9 rules on it. ~~Severity stands at Medium.~~
+  **RULED AND CLOSED, c3-9 (Q4, 2026-08-02): DECLARE IT.** `build_app()` now passes
+  `database_not_initialized` to the database-backed includes (`decks`, `cards`) and to those only.
+  Five operations changed in the committed schema — `/api/decks`, `/api/deck/{deck_id}`,
+  `/api/deck/{deck_id}/format-check`, `/api/cards/{card_id}`, `/api/card-image/{scryfall_id}` —
+  each `503` description going from `"reason: database_unavailable"` to
+  `"reason: database_not_initialized | database_unavailable"`. **`error_responses`' documented
+  collapse fired for the first time**: both tokens share status 503 and land in ONE entry naming
+  each, a behaviour advertised in that helper's docstring since c1-4 and never before exercised.
+  `/health` and both active-deck operations are byte-identical and deliberately so — neither can
+  answer the token, and widening a declaration a route cannot honour turns an inherited wart into
+  a fresh lie. Both artifacts were regenerated together via `npm run gen:api` and never
+  hand-edited; the whole-artifact pins live in
+  `tests/unit/companion/test_committed_schema.py::TestTheDatabaseTokensAreDeclared`, which also
+  pins `/health`'s narrower set and the active-deck routes' absence of any 503 so that "left
+  alone" is a decision rather than an oversight.
+
+- **`DeckSummary.from_deck` / `DeckDetail.from_deck` return zero counts, silently, for any `Deck`
+  that was not eager-loaded.** `DeckModel.deck_cards` is `lazy="noload"`, so a `Deck` from
+  `get_deck`, `find_deck_by_name` or `update_deck` arrives with `deck_cards == []` and the
+  projection reports `0 / 0 / 0` with an empty `cards` list — measured: a 4-card deck reads
+  `main=4 side=0 distinct=1` via `get_deck_with_cards` and `0 0 0` via `get_deck`. As module-private
+  helpers in `deck_management.py` this trap had three known callers; as **public classmethods on a
+  shared `src/data` schema** it is now reachable by every future story, and pairing it with the
+  cheaper `get_deck()` yields an HTTP 200 describing a 60-card deck as empty. Mitigated here by
+  documenting it in both constructors' `Args:` (naming which repository methods are safe), which is
+  the honest floor; **the structural fix** is a `Deck`-side marker distinguishing "loaded and empty"
+  from "never loaded" — e.g. `deck_cards: list[DeckCard] | None` — so `from_deck` can raise instead
+  of guessing. That is a `src/data` schema change with MCP blast radius and needs its own story.
+  **Home: unowned, ledgered.** The first consumer to pair a non-eager-loading repository method with
+  `from_deck` is the one that needs it. (Severity: Medium — silent wrongness, no type error.)
+
+- **`HEAD` on either new route answers `405 Allow: GET`.** Measured. FastAPI's `@router.get`
+  registers `methods=["GET"]` only, and unlike Starlette's static-file handling it does not
+  auto-add `HEAD`. RFC 9110 says a server SHOULD support `HEAD` wherever it supports `GET`, and
+  `spa.py` already declares `GET, HEAD` for the static surface — so the API routes are the
+  inconsistent ones. **Pre-existing convention, not a c3-1 regression**: `/health` uses the same
+  decorator and behaves identically, so fixing it here would either leave the two inconsistent or
+  silently change a c1-2 route. **Home: unowned, ledgered** — worth one decision covering every
+  companion route at once (add `methods=["GET", "HEAD"]` to the routers, or record that the
+  companion deliberately serves GET only). (Severity: Low — no known consumer sends HEAD.)
+
+- **`get_session` holds a SQLite SHARED lock for the whole request, and this is the first route
+  long enough for it to matter.** `is_database_initialized(session)` autobegins a transaction and
+  `get_session` yields without commit or rollback, so the read lock is held from the readiness probe
+  through every route query until the `async with` closes. There is no WAL pragma on the companion's
+  engine. Combined with the `list_decks` over-fetch above, a `GET /api/decks` over a large
+  collection blocks a concurrent `initialize_database` writer — which is exactly the concurrency
+  FR-22 presumes ("a database created while the backend runs is picked up with no restart").
+  ~~**Home: c3-9** (which owns the fresh-install/coming-alive transition) or **c10-3** (latency
+  hardening), whichever reaches it first.~~ **MEASURED AND RE-HOMED ON c10-3, c3-9 (Q7,
+  2026-08-02)** — a re-home with a number attached, which is worth more than a fix without one.
+  Measured against a real running companion serving `GET /api/decks` (~0.16-0.31 s per request,
+  the over-fetch above), with a writer taking `BEGIN IMMEDIATE` five times, quiet and then under
+  four saturating reader threads:
+
+  | Journal mode | writer QUIET (median / max) | writer CONTENDED (median / max) |
+  | --- | --- | --- |
+  | `wal` | 0.0097 s / 0.0125 s | **0.0080 s / 0.0092 s** (no effect at all) |
+  | `delete` | 0.0079 s / 0.0093 s | 0.0079 s / **0.2131 s** (one read's worth of wait) |
+
+  Three findings, and the second is the one nobody had written down:
+
+  1. **The companion's engine genuinely has no WAL pragma** — `src/data/database.py`'s
+     `create_engine` sets only `connect_args={"timeout": 5}`. Confirmed.
+  2. **WAL is a PERSISTENT file property, and something else sets it.**
+     `src/search/connection.py:136` (the sync `ConnectionFactory`, for sqlite-vec) runs
+     `PRAGMA journal_mode=WAL`, so any database this project has built an embedding index over is
+     WAL forever and the companion inherits it without asking. The shipped 250 MB `cards.db` on
+     this machine reads `wal`.
+  3. **But a freshly created one does not.** Measured directly: a database created by
+     `src/data/database.init_database` reads `journal_mode: delete`. So the FRESH-INSTALL case —
+     exactly the one FR-22 is about — is the non-WAL row of that table.
+
+  **It still does not bite, and the reason is arithmetic rather than luck.** The worst measured
+  effect is a single 0.21 s wait on one write, under four threads saturating the endpoint, absorbed
+  by a 5 s busy timeout that is 20x larger. This story's poll issues ONE request every 2-30 s, not
+  four continuously — so a writer meets an in-flight read for a small fraction of wall-clock, and
+  the wait it inherits is one read. Adding a WAL pragma to the companion's engine is still the
+  right eventual fix (NFR-02 calls for WAL reads and it would make the fresh-install case match the
+  post-index case), but it is latency hardening rather than an FR-22 failure. **Home: c10-3**, with
+  the numbers above. (Severity: Low-Medium -> **Low**, measured.)
+
+- **The `Attributes:` sections in the four wire-facing schemas hold prose, not attributes, and
+  nothing says why.** `src/data/schemas/deck.py` (`DeckCardSummary`, `DeckSummary`, `DeckDetail`)
+  and `src/data/schemas/card.py` (`CardSummary`) use `Attributes:` purely as a truncation marker,
+  because `_CompanionFastAPI.openapi()` cuts every description at the first Google-style header
+  (AC 17's suggested mechanism). Two consequences worth knowing: a napoleon/Sphinx render of these
+  four classes now emits a malformed attribute list; and — the one that bites — **the shared core's
+  docstring *structure* is load-bearing for a companion-only rule that `src/data` never mentions**.
+  `test_openapi_contract.py` bans the literal markers from crossing the wire, i.e. it gates the
+  *marker*, not the prose, so an editor who removes a header that plainly documents no attributes
+  silently republishes "keeping `load_deck` payloads small for LLM clients" into `/docs` and
+  `types.d.ts` with no gate going red. **Home: c3-2**, which will do the same thing to `Card` and
+  should decide the convention for all of them (a `Note:`-style marker that reads honestly, an
+  explicit comment in `src/data`, or a gate keyed on the prose). (Severity: Low.)
+
+  **RESOLVED at c3-2, 2026-07-31 — Q5: keep the convention, state why it is load-bearing.** The
+  `Attributes:` header stays (it works, and c3-1 used it four times), was applied to `Card`, and
+  the sharpest edge is now closed by the middle option: **`src/data/schemas/card.py`'s MODULE
+  docstring** carries an explicit statement that the first paragraph of every class docstring is
+  published to the outside world, that the header position is the truncation marker, that a header
+  documenting no attributes is still load-bearing, and that **no gate goes red** if it is deleted.
+  Chosen over a gate on the prose (not decidable — see the entry above) and over renaming the
+  marker (would churn four already-shipped schemas and both generated files for a cosmetic gain).
+
+- **`ui/README.md`'s "What the gates cannot see" index is keyed on line numbers with nothing keeping
+  it accurate.** Twenty-one `file:line` references across nine test files; all verified correct at
+  the time of writing (17 spot-checked by the Acceptance Auditor, 8 by the Blind Hunter, all
+  resolving). But the section is written as a durable index a reviewer consults instead of reading
+  fourteen test files, and the first comment inserted near the top of `token-usage.test.ts`
+  invalidates every reference below it. Every other load-bearing claim in that README is gated; this
+  one is not. **Fix shape**: anchor on a searchable marker string (the guard function name, or the
+  declared-limit sentence itself) rather than a line number, and add a test that every cited anchor
+  still resolves. **Home: unowned, ledgered** — cheap to do, and the next story to add a row is the
+  natural one. (Severity: Low-Medium — a stale index is worse than no index, because it is trusted.)
+
+- **`tests/unit/companion/test_spa.py`'s completeness now rests on a hand-synchronised router
+  list.** The two schema pins that hardcoded `{"/health"}` were repaired (see the c3-1 story record,
+  finding 4), and the differential test `test_the_schema_is_unchanged_by_installing_the_mount` now
+  builds a mount-free app that must mirror `build_app()`'s routers by hand. Every future
+  router-adding story (c5-2, c5-5 — **not** c3-2/c3-3/c3-4/c3-5 if their routes join an existing
+  router; see the correction below, which supersedes the original list) must add one line there or get a red.
+  That is deliberate and the code says so — a forgotten line is a cheap named failure, versus a
+  mount silently swallowing a route — but it *is* a standing tax, and it is the opposite of the
+  repair's stated motive ("a hardcoded set makes every story that adds a route edit a SPA test for
+  no reason"). **Recorded so it is a decision, not a drift.** If it becomes annoying, the fix is to
+  derive the router list from `build_app()` itself rather than restating it. **Home: unowned.**
+  (Severity: Low.)
+  **Correction (c3-3, 2026-08-01): the story list above is wrong, and the tax is narrower than
+  stated.** The tax falls on adding a **router**, not on adding a **route**. Both sides of the
+  differential build their path sets from the same router objects, so a new path on an
+  already-listed router appears on both and needs no line. Measured, not reasoned: c3-3 added
+  `/api/deck/{deck_id}/format-check` to the existing decks router and `test_spa.py` passed
+  unedited — **56 passed**. So c3-3 never owed a line, and neither will c3-4/c3-5 if their routes
+  join an existing router. The comment in `test_spa.py` now says this, so the next author does not
+  go looking for an edit they do not owe.
+
+## Deferred from: code review of c3-1-deck-list-and-deck-detail-endpoints (2026-07-31, post-commit pass)
+
+- **`from_deck` on a non-eager-loaded `Deck` silently yields 0/0/0 counts and an empty `cards`** —
+  re-confirmed by the post-commit review as the sharpest edge the projection move created:
+  `DeckModel.deck_cards` is `lazy="noload"`, so a `Deck` from `get_deck` / `find_deck_by_name` /
+  `update_deck` feeds the public constructors an HTTP-200-shaped lie, guarded only by a docstring
+  caveat. Already ledgered "unowned" by the story; this pass names a home candidate: the keyed
+  `data-layer-orphan-handling` story (sprint-status.yaml), which already owns the sibling
+  get_deck_with_cards ValidationError crash. (Severity: Medium if a future caller mis-sources;
+  no current caller does.)
+
+- **Generated-type optionality asymmetry: `strategy?: string | null` vs `format: string | null`,
+  plus `@default 0` advertised on the count fields** — the server always serializes every field, so
+  the `?` (a Python-default artifact) forces the UI into a spurious `undefined` branch, and the
+  documented `0` default is exactly the silently-wrong value AC 3 exists to catch, now presented on
+  the wire as normal. Pre-existing schema shape; this story merely put it on the wire. **Home:
+  c4-1/c4-2**, the first real consumers of these types. (Severity: Low.)
+
+- **`_is_ref_rooted` will misfire on the first legitimate union response model.**
+  **✅ RESOLVED at c3-3 (2026-08-01, Q5 — Brad took this half of the question).**
+  `tests/unit/companion/test_errors.py` puts `anyOf`/`oneOf`/`allOf` in `_OBJECT_SHAPE_KEYS`, so a
+  future `response_model=X | None` — plausibly c3-3's "no format to check against" answer —
+  generates a top-level `anyOf` and is refused as a "hand-built envelope", which it is not: the
+  guard's family conflates *object-shaping* with *union-forming*. Two smaller 3.1 edges in the same
+  helper: a `$ref` carrying legal sibling annotation keys fails `set(schema) == {"$ref"}` (false
+  red), and `prefixItems` is absent from the key set (false green for a tuple-shaped array). Fix
+  shape when it fires: admit a union whose every branch is itself ref-rooted or `{"type": "null"}`,
+  and add `prefixItems` to the object-shape keys — extending the family, not enumerating members.
+  **Home: c3-3**, the first story likely to hit it; until then the failure is a red test with a
+  misleading message, not a shipped defect. (Severity: Low.)
+  **Resolution**: all three edges fixed exactly as the fix shape describes. `anyOf`/`oneOf` moved
+  out of `_OBJECT_SHAPE_KEYS` into a new `_UNION_KEYS`, with a union admitted only when **every**
+  branch is itself ref-rooted or the bare null type; `prefixItems` added to the object-shape keys;
+  and a `$ref` now tolerates annotation-only siblings via a named `_ANNOTATION_KEYS` set. Ten new
+  rows in the helper's own accept/reject table, including the three ways the union arm could have
+  become a hole — one inline branch among refs, an all-scalar union, and an **empty** `anyOf`
+  (`all([])` is `True`, which is how a vacuous guard is born). Note the fix shipped *before*
+  anything needed it: c3-3's own response is one shape in every case by ruling (Q4), so no union
+  crosses the wire yet. Taken anyway, because the alternative was leaving the next story a red
+  test whose message named the wrong problem.
+
+- **`format: string | null` on the wire is unreachable at the data layer — `decks.format` is a
+  `NOT NULL` column.** Measured while writing the review's null-metadata test:
+  `create_deck(format=None)` raises `IntegrityError` (`NOT NULL constraint failed: decks.format`),
+  so the `null` half of the generated type can never be served from a repository-written deck. The
+  c3-1 story's own gotcha ("a deck can genuinely have no format, and c3-3's 'no format to check
+  against' response depends on it") is therefore half-false as stated: the *schema* allows null,
+  the *database* forbids it. **Home: c3-3**, which must decide whether "no format to check
+  against" is keyed on a null format (then the column constraint is the bug) or on an
+  unrecognised format string (then the wire type is merely wider than the data and can stay).
+  (Severity: Low-Medium — a UI `format === null` branch written against the generated type is
+  dead code today.)
+  **✅ RESOLVED at c3-3 (2026-08-01, Q4 — Brad ruled "as proposed").** The wire type is merely
+  wider than the data, and it stays. "No format to check against" is keyed on the validator's
+  existing `unknown_format` outcome, which already covers an unrecognised **or empty** format
+  string and already refuses to flag every card illegal — so no schema change, no migration and no
+  new mechanism. `format_check` coalesces a null format to `""`, which lands in the same branch;
+  the report carries `format: ""` and `format_recognized: false`, and its legality and banned rows
+  go `advisory`. Re-verified at c3-3 before ruling: the column is still `NOT NULL` and **0 of 40**
+  rows are null or blank. **Re-homed residue: c4-10** writes the UI's "no format" branch, and if it
+  writes `format === null` against the generated type that branch is dead code — it should key on
+  `format_recognized` instead, which c3-3 added for exactly this.
+
+## Deferred from: story c3-2 (2026-07-31)
+
+- **There is no price data anywhere in this project, and FR-17's "prices if present in local data"
+  is therefore never satisfied.** Measured at c3-2: `PRAGMA table_info(cards)` lists 23 columns and
+  none of them is a price; `Card` and `CardSummary` declare no price field; a case-insensitive grep
+  for `price` across `src/`, `tests/`, `ui/src` and `scripts/` returns **one** hit, a forward-looking
+  comment in `StatChip.css` about a future micro-role — no column, no field, no importer path, no UI
+  consumer. (The c3-2 story text claimed *zero* hits over those roots; the one CSS-comment hit is
+  the correction, and it changes nothing about the conclusion.) The 2026-07-11 PRD recon recorded
+  the same absence ("ABSENT: game_changer, edhrec_rank, saltiness, prices"). The epic's price AC is
+  therefore satisfied **by absence**, ruled by Brad at Q4, and `GET /api/cards/{card_id}` ships **no
+  price field** rather than a `prices: null` that would be null on 100% of responses — a permanently
+  dead branch c4-5 would have to handle for nothing. **What adding prices would actually cost**: a
+  new `cards` column (or a side table, since Scryfall prices are per-printing and volatile), an
+  `import_scryfall_data.py` change to populate it, a hand-written migration script (this project has
+  no Alembic), a full re-import of 38,261 rows, plus a staleness story — Scryfall prices change
+  daily and a locally cached price with no fetched-at timestamp is a number that lies. **Home:
+  c4-5**, the card detail panel — it is the only surface `EXPERIENCE.md` promises prices on
+  (`:86`, "Prices render only when present in local data"), so it is the story that must either
+  render nothing there deliberately or raise the import work as its own brief. (AC 15 asks for a
+  *named* home; "unowned" was the first draft and the review was right to call it.) The artefact
+  already reads correctly against absence, so nothing is broken today. (Severity: Low.)
+
+- **`503` outranks `400`: a malformed card id sent to a backend with no database answers
+  `database_not_initialized`, not `invalid_request`.** Measured at c3-2 (the test asserting the
+  opposite failed, and the assertion — not the code — was wrong). FastAPI's `solve_dependencies`
+  solves sub-dependencies *and* collects parameter-validation errors in one pass, raising
+  `RequestValidationError` only after the dependencies have run; `get_session`'s `CompanionError`
+  therefore propagates first. Both outcomes are now pinned in `test_routes_cards.py`. Defensible —
+  the backend genuinely cannot serve the request for a reason that outranks the client's spelling —
+  but **invisible from the route source**, and it matters to two named stories: **c3-9** polls the
+  503 states and **c4-1** owns the fetch layer, and a UI that treats `database_unavailable` /
+  `database_not_initialized` as "retry quietly" will retry a request whose id can never succeed.
+  ~~**Home: c3-9**, which owns the polling and the transition.~~ **CLOSED, c3-9 (2026-08-02),
+  and closed structurally rather than carefully.** The one route c3-9 polls, `GET /api/decks`, has
+  **no path parameter**, so there is no id to be malformed and no `503` it sees can be masking a
+  `400`. That is asserted rather than merely written down — `decks.test.ts` pins
+  `DECKS_PATH` free of `{`, `}` and `:`, because the safety argument evaporates the moment somebody
+  parameterises the constant, which is exactly what **c4-1** will be tempted to do when it copies
+  this module for `GET /api/cards/{card_id}`. The warning for c4-1 is written in three places it
+  will actually read: `ui/src/api/decks.ts`'s header, that assertion's comment, and `ui/README.md`'s
+  *"Not here yet"* section. **c4-1's per-card fetches are NOT immune and need a bound on attempts
+  per id.** (Severity: Low-Medium.)
+
+- **`card_faces` crosses the wire completely untyped.** `Card.card_faces` is
+  `list[dict[str, Any]] | None`, generating `{ [key: string]: unknown }[] | null` — no per-face
+  contract at all, so a consumer reading `face.image_uris.normal` gets no help from the compiler.
+  Deliberately not fixed here: typing untyped Scryfall JSON would be a second shape over data this
+  project does not control, and it would land on the MCP tools too. Measured face-count histogram
+  (real corpus): **2 → 3,222 cards · 3 → 2 · 5 → 1** — so a `[front, back]` destructuring is wrong
+  for three real cards. **Home: c4-6**, the DFC flip control, which is the story that actually needs
+  a face contract. (Severity: Low.)
+
+- **79 cards carry no image data anywhere — the first concrete population for the Card placeholder.**
+  Measured: of 38,261 rows, 2,857 have a JSON-null `image_uris`; 2,778 of those carry per-face
+  `image_uris` inside `card_faces` instead; **zero** carry both; **79 carry neither**. `c3-2` proves
+  all three shapes round-trip with the nulls surviving as `null`. `EXPERIENCE.md`'s "Card with no
+  image data | Any surface | Named Card placeholder (FR-19)" row has, until now, had no measured
+  population. **Home: c4-3**, which owns the placeholder — and which now knows the unknown-card
+  variant and the no-image variant are different populations reached by different routes (a 404
+  token versus a 200 with null images). (Severity: Low.)
+
+- **The `states.ts` classification of panel-less tokens is gated by the compiler but read by
+  nothing.** c3-2 added `PLACEHOLDER_FOR_REASON`, `NO_UI_RESPONSE` and three type-level asserts so
+  the third meaning of `null` is machine-readable rather than a comment (Q3, satisfying retro R1).
+  Three asserts prove every panel-less token is classified as exactly one of {placeholder, nothing}
+  and that nothing with a panel is classified — but **no runtime code consumes any of it yet**, the
+  same declared state `PANEL_FOR_REASON` itself has been in since c2-9. **Home: c4-3** (the
+  placeholder render) and **c3-9** (the panel wiring). If neither consumes it, that is a signal the
+  structure was over-built and it should be deleted rather than maintained.
+  **HALF CLOSED, c3-9 (2026-08-02).** The PANEL half is consumed: `panelFor` reads
+  `PANEL_FOR_REASON` and, notably, uses its key set as the runtime membership test for
+  `ErrorReason` — so the map is load-bearing twice over and cannot be deleted without inventing a
+  second list. The CLASSIFICATION half — `PLACEHOLDER_FOR_REASON`, `NO_UI_RESPONSE` and the three
+  type-level asserts — is still consumed by nothing, and **stays c4-3's**, stated explicitly here
+  because this entry's own text makes non-consumption a delete signal and c3-9 was one of its two
+  named consumers. c3-9 does read the `null`s, but only to clamp them: a panel-less token on a
+  whole-screen poll means a client bug, so it renders `internal-error` rather than consulting which
+  KIND of `null` it was. **If c4-3 does not consume the classification, delete it.**
+  (Severity: Low.)
+
+- **`ui/README.md`'s blind-spot map now carries the "does this prose address a TypeScript reader"
+  residue, which is a REVIEW obligation with no gate.** Added at c3-2 alongside the family-keyed
+  wire-prose gate. It inherits the pre-existing weakness recorded above at c3-1 — the index is keyed
+  on line numbers with nothing keeping them accurate. **Home: c3-3**, the next story to add a
+  schema to `components.schemas` and therefore the next to owe this review pass; it is also the
+  natural point to anchor the README's citations on marker strings rather than line numbers, as
+  the c3-1 entry proposes. (Severity: Low.)
+  **⛔ DECLINED at c3-3 (2026-08-01, Q5 — Brad took the `_is_ref_rooted` half of the question and
+  left this one).** c3-3 *did* pay the review-pass half: it added its blind-spot row and, after
+  the adversarial review found that row under-declared its own guard's holes, rewrote it to
+  enumerate five families and three declared limits. The **re-anchoring** was not done.
+  Re-ledgered in the c3-3 section below as "Home: unowned" — see *"`ui/README.md`'s blind-spot
+  map is still keyed on line numbers"*. Do not read this entry's `Home: c3-3` as outstanding
+  work against a completed story.
+
+- **A `ui/tests/` file may import an app module only if that module has no relative imports of its
+  own — and the failure is reported at the wrong place.** Measured at c3-2. `tsconfig.node.json`
+  owns `tests/**/*.ts` with `module: nodenext` (extension required on relative imports);
+  `tsconfig.app.json` owns `src` with `moduleResolution: bundler` (extension forbidden). Importing
+  `states.ts` from `ui/tests/unknown-card-copy.test.ts` pulled it into the node project, where its
+  own extensionless `../../api/schema` and `./copy` imports became `TS2835` — and then **cascaded**:
+  `ErrorReason` failed to resolve, and all three of `states.ts`'s type-level asserts collapsed to
+  `Type 'false' does not satisfy the constraint 'true'`, pointing at the asserts rather than at the
+  import. `copy.test.ts` gets away with importing `copy.ts` only because that module happens to have
+  no relative imports; that is a property of the module, not a general permission. **Two aggravating
+  factors**: `npm test` stays fully green throughout (vitest resolves fine — this is a `tsc`-only
+  failure), and `tsc -b` is incremental, so the error can hide behind a cached build until an
+  unrelated later run surfaces it. `npx tsc -b --force` is what makes it deterministic.
+  **Fix shapes**, none taken here: add explicit extensions in `states.ts` (breaks the app project's
+  convention), exclude `src` from the node project's graph, or keep the current workaround — a
+  source read, with the runtime value pinned in the app-project test beside the module.
+  **Home: c4-1**, the first story that will want to import real app modules into `ui/tests` at any
+  scale (a fetch layer is exactly the thing whose tests reach across). Until then the workaround
+  is documented in `unknown-card-copy.test.ts` and in `ui/README.md`'s blind-spot map.
+  (Severity: Medium — the symptom points at the wrong file, and CI runs `tsc -b` without
+  `--force`, so a cached-clean result can ship.)
+
+## Deferred from: code review of c3-2 (2026-07-31)
+
+- **A malformed card id reaching the UI from DATA renders nothing at all — no placeholder, no
+  state.** `card_not_found` is the token wired to the unknown-card placeholder; a card id that
+  fails the route's shape gate produces `invalid_request`, which `states.ts` classifies as
+  `NO_UI_RESPONSE` — "nothing on the glass, anywhere". Those two answers are one character of
+  input apart. `deck_cards.card_id` carries no shape constraint, FK enforcement is off on the async
+  engine (`CardRepository.get_by_id`'s own docstring says so), and the planned Arena
+  `arena_card_map` work will introduce ids from a second source. Measured today: **0 of 2,027
+  `deck_cards` rows are non-canonical**, so this is latent, not live — but it is not structurally
+  prevented, and the failure mode is the exact one FR-13 exists to stop ("one unknown card must
+  never fail a whole view") wearing a different token. **Fix shape**: either the hydration layer
+  treats a 400 on a card fetch as a placeholder case, or the id shape is validated where deck rows
+  are read. **Home: c4-1** (the hydration cache) with **c4-3** (the placeholder) as its consumer.
+  (Severity: Medium if it ever fires, Low probability today.)
+
+- **`Card` is now a banned type name across all of `ui/`, and there is no sanctioned alias to
+  import instead.** `wire-contract.test.ts` derives its ban from `components.schemas`, so `Card`
+  joined it automatically at c3-2 — correct, and the mechanism working as designed. But
+  `ui/src/api/schema.ts` re-exports only `HealthResponse`, `ErrorResponse` and `ErrorReason`; it
+  exports no `Card` and no deck aliases either. So the first component that needs the card type
+  (c4-3, c4-5) hits a ban with no signposted alternative, and the obvious local workaround —
+  declaring a local `interface Card` — is precisely what the gate rejects. **Fix shape**: add the
+  aliases to `schema.ts` in the story that first needs them (one line each; the barrel is the
+  sanctioned single reader). Not done here because c3-2 ships no component and an unused export
+  would be dead code. **Home: c4-1**, the first frontend story to consume a wire shape.
+  (Severity: Low — a five-minute detour, but an unsignposted one.)
+
+- **`GET /api/cards/{card_id}` sets no cache headers on a resource that is immutable between
+  database refreshes.** `cards.py`'s module docstring claims c3-5's image route shares "the same
+  cache story"; today there is no cache story on this side to share. No `ETag`, no
+  `Cache-Control`, no conditional-request handling — while `spa.py` has a whole
+  `_apply_cache_headers` mechanism for static files. A c4-x deck view hydrating 60–100 cards
+  re-fetches every full record on every render. Low impact today (localhost, SQLite, one user),
+  and deliberately not fixed in a story whose scope is one lookup. ~~**Home: c3-7** (the sharded
+  disk cache) or **c4-1** (the hydration cache), whichever lands first~~ — **c3-7 landed first and
+  answered it (Brad, Q1's sub-question, 2026-08-01): it CORRECTED the docstring rather than
+  implementing the shared story.** The reasoning is that "the same cache story" was never one
+  story: a card row's cache story is `ETag`/conditional requests over a database read, which
+  shares nothing with a file on disk but the word, and implementing it inside c3-7 would have been
+  a second mechanism smuggled in under a docstring's phrasing. `cards.py`'s module docstring now
+  says so explicitly, in the past tense, so the sentence cannot be read as a live claim again.
+  **The route still sets no cache headers, and that half stays homed on c4-1** beside the
+  hydration cache it belongs with. (Severity: Low. **Status: half closed** — the false claim is
+  gone; the missing headers remain c4-1's.)
+
+- **`test_openapi_contract._descriptions()` does not mirror the truncator's `_DATA_KEYS` skip.**
+  `without_python_docstring_sections` deliberately does not descend into `example`/`examples`/
+  `default`/`const`/`enum` subtrees, because a `description` key there is payload data reproduced
+  byte-for-byte. `_descriptions` descends everywhere. Measured: **zero** descriptions under a data
+  key in the committed schema today, so nothing fires. The first example payload carrying a
+  `description` whose value contains a colon-terminated line makes the family scan an
+  **unsatisfiable red** — its message says "fix at the Python docstring" and there is no docstring
+  to fix. **Fix shape**: give `_descriptions` the same `_DATA_KEYS` skip, ideally by importing the
+  constant rather than re-declaring it. **Home: c5-1**, the first story expected to add example
+  payloads (the event-envelope union). (Severity: Low, latent.)
+
+## Deferred from: code review of c3-2-card-detail-endpoint, round 2 (2026-07-31)
+
+- **A body-less GET publishes `413 payload_too_large` in its client contract.** The app-wide
+  `error_responses` wiring from `build_app()` lands the 413 row on `GET /api/cards/{card_id}`
+  (and the deck GETs before it), so the generated contract tells c4-1's fetch layer to handle a
+  response the same document describes as "surfaced to the *agent*… The glass never sees it."
+  Pre-existing, inherited, and doubled by every new GET route. **Fix shape**: either curate the
+  app-wide set per-method (drop 413 from body-less GETs at declaration time) or record it as a
+  known wart in the contract docs. ~~**Home: the next story that touches `error_responses`'s
+  declaration helper**, else c3-9.~~ **RULED, c3-9 (Q8, 2026-08-02): RECORDED AND RE-HOMED ON
+  c5-5.** c3-9 declined to curate per method. The reason is scope with blast radius, stated so it
+  can be argued with: Q4 touched the *caller* (`build_app`'s per-include sets), not the helper, so
+  the trigger condition in this entry was never actually met; and changing `error_responses`'
+  per-status grouping into per-method curation is a real change to a shared declaration site with
+  six routes downstream, made in a story whose frontend half is already the largest in the epic.
+  It is now written down as a known wart in `scripts/dump_openapi.py` — the contract-docs home —
+  with the consequence spelled out for a client author (*a 413 on a body-less GET is unreachable;
+  ignore it*). **Home: c5-5**, which adds the ingest cap, makes the 413 real, and cannot avoid
+  deciding which operations answer it. (Severity: Low.)
+
+- **The image-discriminator prose is maintained by hand in two Python docstrings with no drift
+  gate between them.** The same three paragraphs (split-card trap, per-face `image_uris`
+  mutual-exclusivity, no-image-is-ordinary) live in `routes/cards.py`'s route docstring and
+  `src/data/schemas/card.py`'s `Card` docstring, and regenerate into two places in the wire
+  document. The byte-drift gates check Python↔generated only — a future correction applied to one
+  docstring leaves the other confidently wrong on the same `openapi.json`. **Fix shape**: single
+  source (one docstring states the rule, the other points at it), or a gate asserting the two
+  descriptions agree on the discriminator sentence. **Home: c3-5**, which re-tells this rule for
+  the image route and will make it three copies if unaddressed. (Severity: Low.)
+  **RESOLVED by c3-5 (Q6, Brad 2026-08-01) — both halves of the fix shape, not one.** The rule is
+  now the single constant `IMAGE_DISCRIMINATOR` in `src/data/schemas/card.py`, attached as the
+  `description=` of `Card.image_uris`, `Card.card_faces` and `CardFace.image_uris`; both route
+  docstrings state only what their own operation does and point at the fields. The gate is
+  `test_committed_schema.py::TestTheImageDiscriminatorIsStatedOnce`, keyed on the **family** — any
+  wire description mentioning both "per-face" and "image_uris" must *be* the constant, so a
+  reworded fourth copy fails rather than a missing one. It caught the author's own `CardFace` class
+  docstring on its first run, which is the guard working before review saw it.
+
+- **`card_faces` is untyped on the wire — the discriminator rule has no `tsc` support.**
+  `Card.card_faces` is `list[dict[str, Any]] | None`, generating `{ [key: string]: unknown }[] |
+  null` in `types.d.ts`, while four docstrings teach "decide by the presence of per-face
+  `image_uris`". Every face access in the UI will be a hand-cast `tsc` cannot check. Ruled at the
+  c3-2 round-2 review (Brad, 2026-07-31): the wire schema stays frozen as reviewed with PR #30
+  open. **Fix shape**: a typed `CardFace` Pydantic model (`name`, `mana_cost`, `type_line`,
+  `oracle_text`, `image_uris`), regenerated into the component set (pins move 7→8, now **9→10**
+  after c3-3). **Home: c3-5 or c4-3, whichever consumes a face first** — and it must land with the
+  regenerated types in the same commit. (Severity: Medium for c4-3's type safety, zero runtime
+  impact today.)
+  **RESOLVED by c3-5 (Q4, Brad 2026-08-01), with two consequences the entry did not price.**
+  `CardFace` ships with `model_config = ConfigDict(extra="allow")` — a strict model would have
+  truncated `lookup_card_by_name`'s output for 6,455 face objects carrying 24 distinct keys, and
+  `tests/unit/data/test_card_face_schema.py` proves the round-trip loses no key and changes no
+  value (plus a counterfactual showing a strict model *does* truncate). Components 11 → 12; the
+  generated type is an intersection with an open index signature, so c4-3 gets both the named
+  fields and the unnamed ones. The two unpriced consequences: (1) five call sites outside the
+  companion read faces with `.get(...)` and `mypy --strict` forced them to attribute access —
+  `classifiers.py`, `mana_base.py` ×2 and `view_model.py` ×2, the last inside `src/viewer`, which
+  c3-5's story text listed as not-touched; (2) named fields are now always serialised, so a face
+  that omitted one carries an explicit `null` where it previously omitted the key. Additive, never
+  a truncation — and it made "presence of per-face `image_uris`" mean *truthiness* everywhere,
+  which three assertions in `test_routes_cards.py` were updated to say.
+
+## Deferred from: story c3-3 (format check endpoint, 2026-08-01)
+
+- **Rotation exposure cannot be computed from local data at all, and the panel now says so
+  permanently.** Q3 (Brad, 2026-07-31) ruled that the row ships with status `advisory` rather than
+  being omitted, so the gap is visible instead of silent — but it is a row a user can never
+  resolve. Measured read-only against the shipped 38,261-card database, not assumed:
+  `PRAGMA table_info(cards)` returns **23 columns** and none is a release date (`released_at`
+  absent, `set_type` absent); `sqlite_master` contains **no sets table** of any kind; and
+  `src/data/importers/aggregate.py:113-134` **does** read `released_at` — to pick the canonical
+  printing by greatest date, ties by min id — and then discards it without ever writing a column.
+  **Fix shape, priced honestly**: a `released_at` (or `set_type`) column on `cards` *or* a new
+  sets table; an importer change to persist it; a hand-written `scripts/migrate_*.py` (this
+  project has no Alembic); a full re-import of ~38k cards; **and** a rotation-schedule source —
+  Scryfall's bulk data does not say "this set rotates in 2027-09", so the schedule has to come
+  from somewhere else or be hard-coded and maintained. That is comfortably its own story.
+  **Home: unowned** — a dedicated data story, not a companion one. Until it exists, the advisory
+  row is the honest answer and must not be quietly promoted to `pass`. (Severity: Low — a
+  permanent shrug in a P0 panel, but an accurate one.)
+
+- **A `restricted` card is reported as "not legal", which is wrong.** `deck_validator.py`'s
+  legality branch splits `banned` off (c3-3, Q2) but leaves `restricted` falling through to
+  `format_legality`, so a Vintage deck running one Black Lotus is told the card is not legal in
+  vintage when it is legal with a **1-copy limit**. Deliberately unchanged by the split and
+  pinned by `test_deck_validator.py::test_restricted_is_unchanged_by_the_banned_split` so a later
+  change is a decision rather than a side effect. Latent today: measured 89 `restricted` legality
+  entries corpus-wide (vintage 51 · duel 24 · tlr 10 · timeless 4) and **zero** restricted cards
+  across all 40 real saved decks, with no vintage deck among them. **Fix shape**: a per-card copy
+  limit that varies by legality value — which is a change to the copy-limit rule, not to the
+  legality branch, and needs its own row vocabulary decision (does a restricted card over its
+  limit report `copy_limit`, or a new `restricted` rule?). **Home: unowned** — its own story.
+  (Severity: Low while no vintage deck exists; Medium the day one does.)
+
+- **`_MIN_MAINBOARD = 60` applies regardless of format, and c3-3 published that to a human for the
+  first time.** A deliberately documented Phase-1 limitation (D-1.6b) that until now was reported
+  only to an agent, which could caveat it. The format-check panel renders the size row directly,
+  so a Commander deck is now told on the glass that 60 cards satisfies a format that wants 100.
+  Measured: brawl and standardbrawl are genuinely 60-card formats, so the **20** brawl-family
+  decks in the real deck table are correct and only Commander is affected — and there are
+  currently **0** commander decks saved, which is why nothing looks wrong today. **Fix shape**: a
+  per-format minimum (a dict beside `_SINGLETON_FORMATS`, keyed the same way), plus the
+  "any number of copies" exemption cards the same scope note defers. **Home: unowned** — a
+  `src/logic` rule story. (Severity: Low today, Medium the first time a Commander deck is saved.)
+
+- **The component-name set is pinned in TWO hand-synchronised places, and the story text named
+  one.** `tests/unit/companion/test_routes_decks.py` and `test_routes_cards.py` each assert the
+  exact `components.schemas` key set, so every schema-adding story edits both. c3-2's Debug Log
+  recorded finding the second one by running the suite rather than by reading the story; **c3-3
+  hit exactly the same thing again** — its own "must not break" list named the decks pin and not
+  the cards pin. Twice is a pattern, not bad luck. **Fix shape**: one pin, in one place, imported
+  by both — or a single `test_committed_schema.py` that owns every whole-artifact assertion and
+  leaves the per-route files asserting only their own paths. **Home: c3-4**, the next
+  schema-adding story, which will otherwise inherit the same surprise a third time.
+  (Severity: Low — it fails loudly and names the fix.)
+  → **CLOSED by c3-4 (Q5, Brad 2026-08-01).** It did inherit the surprise a third time — both pins
+  went red together on regeneration — and then took the fix as written: the second fix shape.
+  `tests/unit/companion/test_committed_schema.py` now owns the whole-artifact path set, component
+  set, auto-422 absence and `securitySchemes` absence; `test_routes_decks.py` and
+  `test_routes_cards.py` assert only that their **own** shapes are present. c3-5 edits one pin.
+
+- **`ui/README.md`'s blind-spot map is still keyed on line numbers.** Homed on c3-3 by name and
+  **declined by Brad at Q5 (2026-07-31)**, who took the `_is_ref_rooted` repair from the same
+  question and left this one. Unchanged in substance from the c3-1 entry that raised it: the
+  section is written as a durable index a reviewer consults instead of reading fourteen test
+  files, and the first comment inserted near the top of a cited file invalidates every reference
+  below it. c3-3 added its row keyed the existing way, so the map is one entry larger and no more
+  durable. **Fix shape** (unchanged): anchor on a searchable marker string — the guard function
+  name, or the declared-limit sentence itself — rather than a line number, and add a test that
+  every cited anchor still resolves. **Home: unowned, re-ledgered.** Twice deferred now; a third
+  story owing this README a review pass is the natural moment. (Severity: Low-Medium — a stale
+  index is worse than no index, because it is trusted.)
+
+- **`format_recognized` and the six-row shape are declared but unread until c4-10.** c3-3 ships a
+  boolean the UI can branch on for "no format to check against" rather than making c4-10 parse
+  the advisory row's prose, and a `CHECK_ORDER` a panel can rely on. No runtime code consumes
+  either yet — the same declared-but-unread state c3-2's `states.ts` classification is in.
+  **Home: c4-10** (the format check panel). If c4-10 renders the panel without ever reading
+  `format_recognized`, that is a signal the field was over-built and it should be deleted rather
+  than maintained. (Severity: Low.)
+
+- **`format_recognized: true` does not mean the format key is present in the card data.**
+  `_KNOWN_FORMATS` is a hand-maintained frozenset in source; `legalities` comes from a separately
+  imported database. If the two skew — `_KNOWN_FORMATS` updated for a new Scryfall format ahead of
+  a user's re-import, which the upgrade notes acknowledge users defer — every card misses the key,
+  `.get()` returns `None`, and every card is reported not legal. That is the exact "legality
+  storm" `_KNOWN_FORMATS` was introduced to prevent, now rendered as a confident panel with
+  `format_recognized: true` and no advisory. **Not reachable against a synchronised snapshot**:
+  measured 2026-08-01, all 38,261 cards carry all 23 keys, and `set(keys) == _KNOWN_FORMATS`
+  exactly. A second edge in the same area: a *present-but-null* legality value
+  (`{"standard": null}`) fails `Card` validation — `legalities: dict[str, str]` coerces only a
+  wholly-null dict — so the route answers `500 internal_error` rather than a report. **Fix shape**:
+  derive the known-format set from the data (a `SELECT DISTINCT` over the keys) instead of
+  hard-coding it, or gate `format_recognized` on the key being present in at least one card.
+  **Home: unowned** — it belongs with whatever story next touches `_KNOWN_FORMATS`.
+  (Severity: Low today, Medium on version skew.)
+
+- **The format-check report's `format` is the normalised value; the deck detail route's is the
+  stored one.** `GET /api/deck/{id}` serves `deck.format` verbatim while
+  `GET /api/deck/{id}/format-check` serves `format.strip().lower()`, because the report should
+  name what was actually checked. Latent: measured **0 of 40** real decks store a format that
+  differs from its own normalisation, so the two endpoints agree on every deck that exists today.
+  A UI comparing the two strings would nonetheless be comparing two different things. **Fix
+  shape**: either normalise at write time in `create_deck` (making the divergence impossible), or
+  document the asymmetry where c4-1's store holds both. **Home: c4-10 or c4-1**, whichever first
+  holds both values at once. (Severity: Low.)
+
+## Deferred from: code review of c3-3-format-check-endpoint-over-the-existing-validators (round 2, 2026-08-01)
+
+- **`is_legal: false` above six non-violation rows is a live UI trap, mitigated only by prose.**
+  The report deliberately carries no honest headline field (Q4: one shape always, mirrors the
+  validator); a renderer must synthesize the verdict from `format_recognized` plus a row scan,
+  guided only by the `Warning:` docstring block on the wire. Nothing machine-checkable stops
+  c4-10 from binding `is_legal` straight to the panel headline — a formatless deck would then
+  render a red headline over six rows none of which is a violation. **Home: c4-10** (the format
+  check panel), plus a named line on the epic C3 manual-testing checklist. (Severity: Low here,
+  Medium if c4-10 binds it unread.)
+
+- **The copy-limit row answers definitively under the 4-copy fallback for a format it cannot
+  interpret.** Greptile P1 on PR #31, ruled ledger-not-fix (Brad, 2026-08-01). For an
+  unrecognized format (`edh`, `explorer`), `validate_deck` falls back to the ordinary 4-copy
+  rule — an unknown key is never in `_SINGLETON_FORMATS`, pinned by `TestFormatSetInvariant` —
+  and `format_check` renders that as a definitive `copy_limit` pass/violation, though the format
+  the user *meant* may be singleton (edh → commander caps at 1). Mitigations already on the wire:
+  the same report carries an `unknown_format` violation, `format_recognized: false`,
+  `is_legal: false`, and advisory legality/banned rows, so the panel is loudly not-a-verdict.
+  **Fix shape**: when `format_recognized` is false, the copy_limit row goes advisory like
+  legality/banned ("could not be checked against an unrecognized format") — a one-branch change
+  in `format_check` plus its firing/silent pair. **Home: the same unowned `src/logic` rule story
+  as the per-format-minimum entry above** — the two are one "format-aware structural rules"
+  decision. (Severity: Low — reachable only by a deck whose stored format is invalid, and the
+  report already refuses to be a verdict.)
+
+## From story c3-4 (the active deck), 2026-08-01
+
+- **No pre-parse request-body cap anywhere in the app.** Measured at c3-4 Task 0 against the
+  installed FastAPI **0.140.0**: `get_request_handler`'s inner `app(request)` reads and parses the
+  body at `fastapi/routing.py:423-448` and calls `solve_dependencies` at `:473` — **body first,
+  dependencies second**. So c3-4's agent-token dependency does *not* stop an unauthenticated caller
+  from making the process buffer an arbitrarily large body on `PUT /api/active-deck`. What c3-4
+  shipped instead is a **field** constraint (`ActiveDeckRequest.deck_id`, `max_length=256`), which
+  is honest about being applied *after* parsing and bounds only what is stored. Q4 weighed building
+  the real cap here and declined: it is a middleware-shaped mechanism, it would be designed against
+  one story's requirements in a story whose body is ~40 bytes, and it should be **one** mechanism
+  covering both endpoints. Mitigations that genuinely exist today and are worth not re-deriving:
+  the `Host` envelope refuses anything that did not address the app as loopback on the bound port,
+  and the app installs **no CORS middleware at all** (C1's no-CORS ruling), so a cross-origin `PUT`
+  with a JSON content type is preflighted, the `OPTIONS` gets a `405`, and the browser never sends
+  the body. **Home: c5-5**, which owns `payload_too_large` — a token declared since c1-4 that still
+  has **no producer** — and AD-7's 64 KB envelope limit. (Severity: Low — a loopback port behind
+  `Host` validation, reachable only by local software that could do worse directly. But "the first
+  endpoint with a body shipped with no thought about body size" is a sentence worth never writing.)
+
+- **There is no way to clear the active deck over the wire.** `ActiveDeckRequest.deck_id` is
+  required and does not accept `null`, so the only transitions are *set* and *process restart*
+  (Q3 part 3, Brad 2026-08-01). Nothing in the epic asks for a clear verb: FR-11's "deck deleted →
+  no-active-deck" is a **client-side** transition (`EXPERIENCE.md:120` — the refetch 404s and the
+  SPA clears to the panel), and a restart clears the slot anyway. Building an unused verb now would
+  freeze a wire shape with no consumer. **Home: unowned** — whichever story first has a *caller*
+  that needs it, most plausibly c6-2 if the tool ever grows a "stop displaying" mode. **The shape
+  it should take if wanted**: a `DELETE /api/active-deck`, not a nullable request field — the
+  request model staying non-null is what keeps `PUT` unambiguous. (Severity: Low.)
+
+- **Nothing broadcasts the change.** `PUT /api/active-deck` stores and returns; no hook, callback
+  registry or placeholder was built for the notification, deliberately (an unused hook is a design
+  decision made by a story that cannot see the requirements). **Home: c5-4**, which adds one call
+  after the store, to a handler that will exist — the insertion point is marked by a comment in
+  `set_active_deck`. The value it broadcasts is the same `ActiveDeck` shape the two operations
+  already answer with, which is why Q3 chose `200`-with-body over `204`. (Severity: none — this is
+  a named seam, not a gap.)
+
+- **`errors.supported_methods` walks framework internals to repair the `Allow` header.** c3-4
+  found that Starlette 0.48.0 builds a 405's `Allow` from the **first** partially-matching route
+  alone (`routing.py:738` keeps `partial` only if it is `None`; `Route.handle` at `:283` joins
+  *that* route's methods), so `/api/active-deck` — the first path in this app served by more than
+  one method — answered `Allow: GET`, omitting the `PUT`. RFC 9110 §15.5.6 requires the field to
+  list the *resource's* methods, so this was wrong and not merely terse. The repair recomputes the
+  union, which needs a flattened route list, and FastAPI 0.140 does **not** flatten included routers
+  into `app.routes` — it stores lazy `_IncludedRouter` wrappers. `_leaf_routes` therefore walks
+  `original_router`/`routes` **by attribute**, so an upstream structural change degrades to "found
+  nothing" and the caller keeps Starlette's own header rather than raising inside an error handler.
+  That is a deliberate soft failure, and it means **a FastAPI upgrade could silently restore the
+  incomplete header**. `test_routes_active_deck.py::TestTheMethodSemantics` is what would catch it.
+  **Home: unowned** — revisit if FastAPI ever exposes a public flattened route list, or if a third
+  multi-method path appears. (Severity: Low — the failure mode is a less-informative header, never
+  a wrong status or a leaked body.)
+  **Second hole, found at review (2026-08-01):** the flattened children are matched against the
+  **un-stripped** scope, and Starlette strips a mount's prefix into `child_scope` before children
+  match — so the walk is correct only while every mount sits at `/`, which is true today and
+  asserted by nothing. A future non-root `Mount` (c5-x static assets, an `/agent` sub-app) makes
+  children silently never match (or a child at `/` match paths it does not serve). Different hole
+  from the soft failure above: that one finds no leaves; this one finds them and asks the wrong
+  question. Documented in `supported_methods`'s docstring. **Home: the story that adds a non-root
+  mount.** (Severity: Low — latent until such a mount exists.)
+
+- **A third pin on `NO_UI_RESPONSE` was not in c3-4's ripple table.** The story's landmine-12 table
+  named seven ripple sites for an eighth reason token and listed two frontend pins on the
+  panel-less classification (`states.ts`'s `satisfies` clause and `states.test.ts:60`'s exact
+  array). There is a **third**: `ui/tests/unknown-card-copy.test.ts` parses `states.ts`'s source and
+  asserts `noUiResponseMembers()` equals the exact list, as a non-vacuity anchor for its own
+  card_not_found pin. It went red on `forbidden` and was edited by name. Not a defect — the pin is
+  correct and caught a real omission — but the **count** is folklore that a story text got wrong,
+  which is exactly the shape c3-2's "a true count read as a false rule" lesson warns about.
+  **Fix shape**: nothing to build; the next story adding a reason token should grep for
+  `NO_UI_RESPONSE` rather than trusting any enumerated list, and the comment added at that line now
+  says so. **Home: unowned, informational.** (Severity: Low — it fails loudly and names itself.)
+
+## Deferred from: code review of c3-4 (2026-08-01)
+
+- **The pre-auth body-buffering deferral now has a test pinning the ordering.** The c5-5 body-cap
+  entry above stands, with one addendum the review surfaced: `test_routes_active_deck.py::
+  test_a_malformed_body_without_a_credential_is_still_forbidden` pins that FastAPI parses the body
+  *before* solving the credential dependency (400-vs-403 is observable unauthenticated). c5-5's cap
+  must consciously decide whether that pin is a contract or a snapshot — a middleware-level cap
+  changes the observable order and would red the pin. **Home: c5-5.** (Severity: Low on loopback;
+  it is also a free validation oracle for unauthenticated callers until the cap lands.)
+- **A future hand-raised 405's deliberate headers are overridden or case-split by the `Allow`
+  recompute.** `errors.py`'s 405 branch replaces any author-supplied `Allow` with the
+  partial-match union — which, for a request that *fully* matched the raising route, excludes that
+  route's own method — and a case-mismatched `"allow"` key survives the `{**headers, "Allow": …}`
+  merge as a second header. Unreachable today: no code raises 405 manually. **Home: unowned,
+  ledgered** — the first story that hand-raises a 405 owns it. (Severity: Low — latent.)
+
+## Deferred from: story c3-6 (the image pacer, 2026-08-01)
+
+- **The epic's CM-2 acceptance criterion is not satisfied by c3-6 and is not paraphrased into
+  something adjacent.** *"An image fetched once is not fetched again within the cache lifetime"*
+  (epic :1728-1730) is the **disk cache**. There is no cache in c3-6, so a repeat request repeats
+  the fetch — the pacer changes the *rate* of fetches, never their *number*. Recorded in
+  `images.py`'s module docstring and in the story record as well as here, because an unsatisfiable
+  claim gets an owner rather than a rewording. ~~**Home: c3-7.**~~ **CLOSED by c3-7, 2026-08-01.**
+  `images.DiskCache` ships and `test_routes_card_image.py::TestARepeatRequestMakesNoCdnRequest`
+  asserts it on `Recorder.requested` — one recorded URL for two requests — rather than on a second
+  `200`, which c3-1's R1 finding showed passes with the mechanism deleted. Two things the entry
+  did not price, both now measured: the warm path also had to skip the **pacer** (a cache checked
+  inside `pacer.slot()` satisfies CM-2 and still takes 9.9 s to paint a warm deck), which is
+  asserted on c3-6's injected clock as **98 spacing intervals cold, zero warm**; and the claim
+  needed a **file on disk** asserted beside the fetch count, because a route that answered twice
+  from one in-memory value would satisfy the fetch count alone. (Severity: Medium → **resolved**.)
+
+- **In-flight coalescing is declined on ownership, not on merit** (Q5, Brad 2026-08-01). Two
+  *simultaneous* requests for the same URL each get their own fetch; a semaphore does not prevent
+  that shape and ~15 lines would. Declined because the thing being shared is a **result**, and
+  whether that result is bytes, a disk path or a `Future` depends entirely on what c3-7 builds —
+  building an in-flight map here means c3-7 inherits a second cache or deletes one (c3-4's ruling:
+  *an unused hook is a design decision made by a story that cannot see the requirements*).
+  **Measured cost today: zero extra fetches** on both 99-distinct-id decks, because duplicate
+  printings collapse in `deck_cards` before they reach the route. **The trigger that flips this
+  answer is c6-4** — suggestion rows beside the deck grid are the first surface that would render
+  the same card id twice on one screen. ~~**Home: c3-7**~~ — **c3-7 DECLINED IT AGAIN and re-homed
+  it on c3-8** (Q5, Brad 2026-08-01), **and the reason changed**, which is the part worth
+  recording. c3-6 declined it for not knowing the result's shape; c3-7 built that shape (bytes on
+  disk) and declined it anyway, because **c3-8 needs the same structure for a different question**
+  — *"is a fetch for this key already in flight, or already known-failed?"* — so an in-flight map
+  built here for successes only would be inherited wrong or replaced. One mechanism, built once,
+  by the story that can see both halves. What declining costs, stated rather than glossed: two
+  simultaneous requests for one key both fetch and both write, and on Windows the loser's
+  `os.replace` raises `PermissionError` — **observed live** during c3-7's implementation, when a
+  99-request burst over one id logged exactly that, and it is a log line rather than a failed
+  request (c3-7 AC 9). ~~**Home: c3-8**~~ — **c3-8 DECLINED IT A THIRD TIME and re-homed it on
+  c6-4** (Q6, Brad 2026-08-02), **and the reason changed AGAIN — this time because its predecessor's
+  reason did not survive contact.** c3-7 re-homed it here on the expectation that *"c3-8 needs the
+  same structure for a different question — is a fetch for this key already in flight, or already
+  known-failed?"*. **It does not.** A negative cache needs no in-flight state to be correct: a
+  request whose fetch is in flight simply also fetches, and the failure is recorded when it fails.
+  Nothing in c3-8's AC 4-11 asks otherwise, and the shipped mechanism has no in-flight concept at
+  all. *"Is a fetch already in flight"* was c3-7's phrasing of a hypothetical, not a requirement of
+  anything. What coalescing actually shares is a **124 KB payload across two awaiting requests** —
+  a `Future` holding bytes, with a cancelled leader and an exception fanned out to followers, each
+  needing its own tests — which is a **different mechanism** from a small expiring failure record,
+  not the same one. So the "one mechanism, built once, by the story that can see both halves"
+  argument dissolves: there were never two halves. **Home: c6-4**, unchanged as the forcing
+  function and now the sole owner. Recorded plainly because three consecutive declines is a pattern
+  worth a human's eye: c3-6 declined for not knowing the result's shape, c3-7 because the shape was
+  shared with c3-8's, and c3-8 because that sharing turned out not to be real. If c6-4 also
+  declines it, the entry should be closed as "not wanted" rather than moved a fourth time.
+  (Severity: Low today; Medium at c6-4.)
+
+- **The `DbSession` is held across the pacer's queue wait, and it works by arithmetic rather than
+  by design** (Q6, Brad 2026-08-01 — accept, pin, ledger). **Measured, not assumed** (Task 0):
+  FastAPI runs a `yield`-dependency's teardown *after* the endpoint returns, so the pool reports
+  `checkedout() == 1` while `fetch_image` is awaited and `0` after the response. The pool is
+  SQLAlchemy's default `AsyncAdaptedQueuePool`, **size 5 + overflow 10 = 15 connections,
+  `pool_timeout` 30 s** — all four values read off the live pool object. At the shipped constants a
+  99-tile burst drains in ~9.9 s, so at most 15 requests sit inside the route and the rest wait
+  outside it: a second queue in front of the first, inefficient and harmless. **A pacer slower than
+  roughly 0.3 s per tile would push the burst past the 30 s pool timeout**, raising
+  `sqlalchemy.exc.TimeoutError` — which is **not** a `DatabaseError` and would therefore surface as
+  `500 internal_error`, **not** `503`. Pinned by
+  `test_routes_card_image.py::TestTheBurstDoesNotOutlastTheConnectionPool` so a later story that
+  slows the pacer sees the cliff. The clean fix is to read the row, release the session, *then*
+  queue — rejected here because it takes this one route off `DbSession`, the annotation c3-1…c3-5
+  standardised on, for a problem that does not bite at these constants. **Home: c4-1**, beside the
+  hydration cache, which already carries this route's whole-row-read entry. (Severity: Low at the
+  shipped constants; High for whichever story changes them without reading this.)
+
+- **`4` was declared out of c3-3's deck-construction-limit family, and that is a ruling made by
+  c3-6 rather than a discovery.** `TestNoRuleInTheShell` bans the literals `60`/`15`/`4` anywhere
+  in `src/companion`; `images.FETCH_CONCURRENCY = 4` is a CDN concurrency cap with no deck
+  vocabulary near it, and the guard flagged it — **a structural pin this story did not name, the
+  third consecutive story to hit one** (c3-2 Debug Log 3, c3-3 finding 2). The alternative was
+  renaming a ruled production constant to appease a guard, which is precisely the obfuscation that
+  guard's own docstring says to treat as a violation. `4` therefore joins `1` and the adjacent
+  spellings (`3`, `5`, `16`) that were **already** declared out on exactly the ubiquity argument
+  that applies to it; keeping it in was the order of discovery, not a stance. The copy limit stays
+  covered by the `.quantity` family (enforcing it means counting copies). **Residual hole, stated:**
+  a shell that counts copies without reading `quantity` — `len(rows) > 4`. **Home: unowned,
+  ledgered**; declared in `ui/README.md`'s blind-spot table and probed in both directions.
+  (Severity: Low — same class as the four holes the guard already declares.)
+
+- **Both halves of the "never blocks the loop" AC that c3-6 could not satisfy have owners.** The
+  epic's AC (`:1723-1726`) names a concurrent push through **`POST /agent/events`** meeting its
+  250 ms budget while images are queued; **that endpoint does not exist until c5-1/c5-5**. c3-6
+  proves the property against `/health` — five interleaved probes completing while every image
+  fetch is parked upstream, with the *count* asserted so a serialised loop fails it — and records
+  the substitution rather than passing it off as the same test. The literal AC is **c10-3's**,
+  whose own AC (`:3580-3582`) already says exactly that. Likewise the **real-bytes and
+  real-latency** half of the cold-deck observation: c3-6 asserts ~9.8 s of modelled start offsets
+  on an injected clock and states the 12 MB as arithmetic on a measured 124 KB average; measuring
+  actual bytes over an actual network is **c10-3's** (`:3588-3590`). **Home: c10-3** (both).
+  (Severity: Low — deliberate scope, both named in the epic already.)
+
+- **No ceiling on how long a request may queue, and no wire vocabulary for one** (Q4, Brad
+  2026-08-01). The natural bound is the caller: a client that disconnects cancels the request and
+  releases its slot immediately (pinned two ways). A ceiling would need either a **new reason
+  token** — eight ripple sites, for a state no consumer can act on differently from
+  `image_fetch_failed` — or a false reuse of the transient one. The fallback if a real queue ever
+  misbehaves is to answer `image_fetch_failed` after N seconds queued, which only becomes
+  meaningful once **c3-8** owns the retry semantics that would make a caller do something different
+  with it. ~~**Home: c3-8**, if ever.~~ **DECLINED by c3-8, 2026-08-02 (Q7, Brad) — and the "if
+  ever" now has a real argument against it rather than an absence of one.** The entry's own
+  condition was met: c3-8 owns the retry semantics. The answer got *clearer* rather than closer.
+  A queue ceiling would answer `image_fetch_failed` for a request that **never reached the CDN** —
+  and the negative cache would then remember that non-event for 30 seconds, escalating on repeats.
+  So a queue that is merely *long* would start **manufacturing remembered failures**, blanking
+  tiles over congestion the CDN had no part in, which is strictly worse than the queue it was
+  meant to bound. That is a new argument the entry did not have, and it is why this is recorded as
+  a reason rather than as another "no measured symptom". The natural bound remains the caller: a
+  client that disconnects cancels the request and releases its slot, pinned two ways. Written into
+  `images.py`'s module docstring. **Home: none — closed on the merits.** Reopen only if a real
+  queue misbehaves, and note that any reopening must also decide how the ceiling avoids poisoning
+  the negative cache. (Severity: closed.)
+
+## Deferred from: story c3-5 (card image endpoint, 2026-08-01)
+
+- ~~**Between this story and c3-6 the image route fetches unpaced.**~~ **RESOLVED 2026-08-01 by
+  c3-6.** `images.Pacer` ships: one semaphore (`FETCH_CONCURRENCY = 4`) plus request spacing
+  (`FETCH_SPACING_SECONDS = 0.1`), constructed in the lifespan beside the client and passed to
+  `fetch_image` as a **required** parameter, so no signature exists that fetches unpaced. The
+  window was never reached by a browser — nothing under `ui/src` fetches an image until c4-4.
+  The exemption this entry banked was carried through as instructed and is now written into the
+  spacing constant's own docstring, gated by a test: the numbers are a good-citizen and NFR-05
+  choice, **not** compliance with guidance that exempts `*.scryfall.io`.
+  **What the entry did not price**, and c3-6 found by measuring: (a) a "hundred-tile deck view" is
+  **67–99 distinct fetches, not 100** — basic lands collapse, median ~78 across the 18 saved decks
+  with ≥90 cards; (b) the epic's "~12 MB over ~10 s" is not an independent observation but the
+  **same arithmetic** that names the spacing constant (99 × 0.1 s = 9.9 s; 12 MB / 99 ≈ 124 KB, a
+  `normal` JPEG); and (c) the database connection pool is a **second, invisible choke point** in
+  front of the first — see the new c3-6 entries below.
+
+- **The file extension is not derivable from the size key.** Measured over 40,960 stored image
+  maps: `png` resolves to a `.png` URL 40,957 times and to a **`.jpg`** three times (the
+  `errors.scryfall.com/soon.jpg` placeholders on Sparkspitter, Ondu Champion and Gorehorn
+  Minotaurs); every other size is `.jpg`. c3-7's cache filename (`<size>_<face>.<ext>`) must take
+  `ext` from the **resolved URL or the response `Content-Type`**, never from the size name. c3-5
+  writes no file, and its route already echoes the upstream `Content-Type` for the same reason.
+  ~~**Home: c3-7.**~~ **CLOSED by c3-7, 2026-08-01.** `images.cache_extension(url, content_type)`
+  takes the URL suffix first and the header second, and **cannot consult the size key because it is
+  not given one** — the signature is the guard, pinned by a test. Re-measured independently at
+  implementation time: 245,760 URLs, `png` → `.jpg` exactly **3** times, all three cards named.
+  Two things the entry did not price: **a third extension had to be decided**, and the ruling is
+  *serve it, do not cache it* — not a raise and emphatically not a guessed filename (c3-2's "a true
+  count read as a false rule"); and the **read** needs the same map as a candidate list, because
+  the key excludes the extension, so a reader does not know which spelling its own writer chose.
+  (Severity: Medium → **resolved**.)
+
+- **Every stored URL carries a `?<timestamp>` cache-buster, and AD-11's cache key excludes it.**
+  245,742 of 245,742 URLs carry one. c3-5 sends the URL verbatim (stripping it 404s upstream) but
+  the AD-11 cache key is id + size + face, so a data refresh that changes the URL still hits the
+  same cache entry. AD-11 **accepts that staleness explicitly**; recorded so c3-7 does not
+  "improve" it by keying on the URL, which would silently make every refresh a full cache miss.
+  ~~**Home: c3-7.**~~ **CLOSED by c3-7, 2026-08-01 — it did not "improve" it.** The key is id +
+  size + face and the accepted staleness is now **asserted** in two directions rather than
+  described: a refreshed row carrying a new `?<timestamp>` hits the existing entry
+  (`test_images.py`), and three different cards sharing one URL produce **three** entries and
+  three fetches (`test_routes_card_image.py`). The second was the entry's real content and it was
+  a *prediction* — the shipped `errors.scryfall.com` test was expected to pass **unchanged** under
+  a correct key, and it did, which is what makes "the key is not the URL" a measurement rather
+  than an intention. What the entry did not price: `IMAGE_CACHE_CONTROL`'s docstring was written
+  in the forward tense about this key and had to become present tense, and it is now worth saying
+  that **both** caches accept the same staleness for the same reason — which is what makes
+  stacking a browser cache on a disk cache free. (Severity: Low → **resolved**.)
+
+- ~~**A fetch failure is answered and forgotten.**~~ **CLOSED by c3-8, 2026-08-02 — this story's
+  headline.** `images.NegativeCache` remembers a failed key for 30 s, doubling per consecutive
+  failure to a 300 s ceiling, bounded at 2,048 entries, cleared entirely on recovery. The
+  prediction that it needed **no schema change** was half right and was **measured rather than
+  assumed**: no path, no component and no reason token changed (7 and 12, before and after), but
+  regenerating did produce a diff, because the story edited `ErrorResponse`'s class docstring to
+  describe the new behaviour and a Pydantic model's docstring is published in full. Both generated
+  files were regenerated and committed. The UI half needed nothing — `named-card-copy.test.ts`
+  passed **unchanged**, so `EXPERIENCE.md`'s forward-dated promise became true without either side
+  being edited.
+
+- **An image request reads the whole card row.** AD-1 is satisfied by writing no query at all —
+  `CardRepository.get_by_id` returns the `Card` the sibling route already answers with — so an
+  image request pays for oracle text, legalities and every other column to read one URL. Ledgered
+  rather than optimised: a narrow projection would be the second card shape AD-1 exists to
+  prevent. **Home: c4-1**, beside the hydration cache, which is the layer that could make this
+  free. (Severity: Low — local SQLite, one row.)
+
+- **`HEAD` and `Range` are not supported on the image route.** `GET` only. A browser will not ask
+  for either on an `<img>`, and nothing in the feature needs them; `HEAD` would additionally
+  require deciding whether to fetch upstream to answer it (which would defeat the point of a cheap
+  probe). Declined deliberately. **Home: unowned, informational** — the story that gives an image
+  a download or share affordance owns it. (Severity: Low — latent.)
+
+- **A distinct "no such face" token was declined.** An out-of-range `face` answers
+  `404 no_image_data`, the same token as a card with no artwork at all. AD-11 asks for *permanent*
+  and *transient* to be distinguishable, not for two flavours of permanent to be, and
+  `EXPERIENCE.md` draws the same named-Card placeholder for both — so a third token would cost
+  eight ripple sites to express a distinction no consumer acts on. The **precedence** AC 9 asks for
+  is structural rather than ordered: a card with no images resolves to an empty list, so every face
+  is out of range and one comparison answers both. **Home: unowned, ledgered** — revisit only if a
+  client is ever built that would act differently on the two. (Severity: Low.)
+
+- **A partially imaged card would shift face indices.** `resolve_face_images` returns only the
+  faces that carry images, in face order, so a card with an unimaged face 0 and an imaged face 1
+  would serve that image at `face=0`. **Zero such rows exist** (a card's faces either all carry
+  images or none do, measured across 38,261 rows) and the return type cannot represent a hole. The
+  behaviour is pinned by a test so it is a decision on the record. **Home: unowned, latent** — the
+  story that meets a real partially-imaged card owns it. (Severity: Low — unreachable today.)
+
+- **A missing size key answers `no_image_data`.** Unreachable against the shipped corpus: exactly
+  one key-set exists across all 40,960 image maps (`small`, `normal`, `large`, `png`, `art_crop`,
+  `border_crop` — all six, always, never a subset), so a present map always resolves the requested
+  size. That is a **true count of this corpus, not a Scryfall guarantee** (c3-2's lesson), so it
+  justifies the absence of a size-negotiation branch and is deliberately **not** published to the
+  wire as a promise. **Home: unowned, informational.** (Severity: Low.)
+
+- **The MCP tool status vocabulary and the companion `ErrorReason` vocabulary share spellings and
+  are different contracts.** The c3-3 skills-tree grep was run for this story and found no stale
+  prose: `.claude/skills/**` and `plugin/skills/**` mention `card_not_found` and `deck_not_found`
+  only as **MCP tool `status` values**, which predate the wire contract and are unrelated to it;
+  neither of c3-5's new tokens appears anywhere, and no skill documents the companion's HTTP error
+  contract at all. Recorded because the collision is a trap for **c6-1**, which introduces MCP
+  tools that *do* consume the HTTP tokens: the same two words will then mean two things in one
+  skill file unless the tool's outcome vocabulary is named deliberately. **Home: c6-1.**
+  (Severity: Low now, Medium at c6-1.)
+
+- **`error_response` now stamps `Cache-Control: no-store` on every typed error, feature-wide.**
+  Added by c3-5 because a route structurally cannot attach a header — the point of deriving the
+  status from the token — and RFC 9111 §4.2.2 lets a cache store a 404 heuristically with no
+  explicit freshness, which would turn one transient image failure into a permanently broken tile.
+  Applied to every token rather than the two that motivated it, since no modelled failure in this
+  app is worth re-serving from a cache. Recorded as a **behaviour change to a shared helper** so a
+  later story that wants a cacheable error knows it must argue for it. **Home: unowned,
+  informational.** (Severity: Low.)
+
+## Deferred from: code review of c3-5-card-image-endpoint (2026-08-01)
+
+- **A refused or unparseable *stored* image URL answers `image_fetch_failed` — the transient,
+  retryable token — though the refusal is a permanent fact of the row.** `contracts.py` defines
+  the token as "transient … only this one may ever be retried", and c3-8's backoff will act on
+  that; a disallowed origin or an unparseable URL cannot succeed on any retry. Brad ruled (2a,
+  2026-08-01): keep the token, no wire change — c3-8, which owns the negative cache and backoff,
+  decides retry semantics for permanently-failing URLs (e.g. an unbounded/permanent negative-cache
+  entry for `is_fetchable` refusals). ~~**Home: c3-8.**~~ **DECIDED by c3-8, 2026-08-02 (Q3,
+  Brad): ONE UNIFORM POLICY — no permanent entries, and the decision is closed rather than
+  deferred again.** Three reasons, in order of weight. (1) **The class is unreachable against this
+  corpus, re-measured read-only at Task 0**: all **245,760** stored image URLs are on the two
+  allow-listed hosts and every one is `https`, so **zero** would be refused — a permanent-entry
+  branch would be c3-4's unused hook exactly. (2) `fetch_image` deliberately collapses all eight
+  failure causes into one token; distinguishing here means either widening that closed contract or
+  re-implementing `is_fetchable` at the call site, which is a second truth about which URLs are
+  fetchable and the thing AD-1 exists to prevent. (3) The error is asymmetric — a permanent entry
+  for a URL that was *not* permanently bad is a tile broken until restart, while a 300 s ceiling on
+  one that *is* costs one request per five minutes against a host that answers instantly. The
+  corpus measurement is the evidence and is recorded as a fact about *this* corpus today (c3-2's
+  "a true count read as a false rule"); it justifies the absence of a branch and is **not**
+  published as a wire promise. Written into `images.py`'s module docstring. (Severity: closed.)
+
+## Deferred from: code review of c3-6-paced-concurrency-capped-cdn-fetching-at-one-global-choke-point (2026-08-01)
+
+- **httpx's closed-client `RuntimeError` escapes `_fetch_checked`'s `except` tuple as a raw 500**
+  (`src/companion/app/images.py:751`). A request still queued in the pacer when lifespan teardown
+  closes `image_client` gets `RuntimeError("client has been closed")` from `client.stream`, which
+  is not in `(TimeoutError, httpx.HTTPError, httpx.InvalidURL)` and so surfaces as an unhandled
+  500 traceback rather than `image_fetch_failed`. The window pre-exists from c3-5 (any fetch in
+  flight at teardown); c3-6's queue widens it by the queue wait (~10 s on a cold deck). Uvicorn's
+  graceful drain covers the normal shutdown path, and catching `RuntimeError` wholesale would
+  reclassify programming errors as fetch failures — so the fix wants a narrower discriminator
+  (message match or a shutdown flag), decided by whichever story next touches teardown.
+  **Home: unowned.** (Severity: Low.)
+- **Two hand-synchronised stall-able CDN fakes** (`tests/unit/companion/test_images.py:588`
+  `Upstream`; `tests/unit/companion/test_routes_card_image.py:889` `StallableCdn`) — near-identical
+  recorders (requested / in_flight / peak_in_flight / release `asyncio.Event`) maintained in two
+  files; the ledgered two-copies defect class (c3-2 Debug Log 3, c3-3 finding 2), this time in test
+  scaffolding. Consolidate into `tests/unit/companion/conftest.py` when a third consumer appears —
+  c3-7's disk cache and c3-8's negative cache both stall CDNs and are candidates.
+  ~~**Home: c3-7.**~~ **CLOSED by c3-7, 2026-08-01 — it was the third consumer, as predicted.**
+  Both classes are gone; `conftest.StallableUpstream` replaces them, with `FakeClock` moved
+  alongside it so a test module can reach either without importing another test module. What the
+  entry did not price: **the two fakes had already drifted**, which is the whole hazard rather
+  than the duplication itself — one recorded start times off a virtual clock and had no
+  `completed` counter, the other counted completions and had no clock. The merged class carries
+  the union with the clock **optional**, so a test that does not care about time does not build
+  one. It also had to change a default: `StallableCdn` held every request unconditionally while
+  `Upstream` took `hold=`, so the consolidated class defaults to *releasing* and its one stalling
+  fixture now asks for `hold=True` explicitly — caught by three reds on the first run, and worth
+  naming because "same class, different default" is how a consolidation reintroduces the drift it
+  removed. (Severity: Low → **resolved**.)
+
+
+## Deferred from: story c3-7 (the sharded, atomically written disk cache, 2026-08-01)
+
+- **The cache is unbounded: no eviction, no size accounting, no TTL, no index** (AD-11, epic
+  :1768-1770 — deliberate in MVP, and no hook was built for a future one on c3-4's ruling). What
+  c8-2 inherits is a **measured footprint rather than a guess**: this user's whole 40-deck library
+  is **1,061 distinct card ids**, and a single deck resolves to **67–99** of them; at one size and
+  the epic's ~124 KB average that is roughly **130 MB** for the entire library, ~12 MB per deck.
+  The 130 MB is *arithmetic over an average*, not a byte measurement — see the next entry. c8-2
+  owns the documented location, the removal command and the uninstall notes; the cache root is
+  `src.paths.data_dir()/image_cache` and it is safe to delete wholesale at any time, because every
+  entry is reconstructible by refetching and nothing indexes it. **Home: c8-2.** (Severity: Low —
+  a disclosure and stewardship gap, not a defect.)
+
+- ~~**The ~124 KB average tile size is arithmetic, never measured.**~~ **MEASURED AT THE C3
+  RETROSPECTIVE, 2026-08-02 — and the epic's figure is a 38 % overestimate.** It was 12 MB ÷ 99
+  tiles from the epic's own acceptance observation, and every footprint figure in this story
+  (including the 130 MB above) inherited it. Measured by fetching all 99 distinct ids of
+  `813d0434-…` (*Atraxa Counter Cabinet v2*) through the real route against the real CDN:
+
+  | | Epic's arithmetic | **Measured** |
+  |---|---|---|
+  | per tile, `normal` | ~124 KB | **~90 KB** |
+  | a 99-tile deck | ~12 MB | **8.5 MB** |
+  | whole 1,061-id library | ~130 MB | **~95 MB** |
+
+  Also measured for the first time, and the numbers c4-4 actually needs: **real Scryfall CDN
+  latency ≈ 99 ms per image**, and a **warm read from the disk cache ≈ 10.3 ms per tile**
+  (1.02 s for 99 sequential requests). The consequence for c3-6's constants is that they are now
+  *vindicated by measurement rather than modelled*: throughput is
+  `min(1/spacing, concurrency/latency)` = `min(1/0.1, 4/0.099)` = `min(10, 40.6)`, so **the spacing
+  turnstile binds with 4× headroom on the semaphore** — exactly the regime the constants were
+  chosen for. The `png`-vs-`small` variance this entry raises is untouched and remains real.
+  **Home: c10-3** for the per-size profile; the grid-size figures above are now facts, not
+  estimates. (Severity: Low → **resolved for `normal`**.)
+
+- **A cache entry is never revalidated, so a corrected artwork is served indefinitely.** The key is
+  id + size + face and AD-11 **accepts** that; a data refresh that changes a card's `image_uris`
+  hits the existing entry. Today the only remedy is deleting the cache directory, which nothing
+  documents (see the c8-2 entry above) and no tool offers. The shape that would fix it without
+  reopening the key is a **generation stamp** — a cache subdirectory named for the database's own
+  refresh marker — which costs nothing at read time and invalidates wholesale. Not built, because
+  nothing in MVP knows when a refresh happened and inventing a marker for one consumer is the
+  unused-hook mistake. **Home: unowned**; the forcing function is the first user-visible complaint
+  about stale art, or whichever story gives the database a refresh timestamp. (Severity: Low.)
+
+- **`os.fsync` is deliberately not called, so the cache is atomic but not durable** (Q3, Brad
+  2026-08-01). A reader can never observe a partial file — that is temp + `os.replace` — but a
+  power cut can lose a just-written entry, costing one refetch. Measured on this machine at Task 0
+  (200 iterations, 124 KB): `fsync` costs **2.909 ms** against the whole write's **0.460 ms**, a
+  6.3× multiplier, or 0.288 s of forced flushes on a cold 99-tile deck. **The ruling is the
+  semantics and would stand at any price**; the number is corroboration. Recorded so that "the
+  cache is atomically written" is never read as "fsynced" by a later story deciding what it can
+  rely on. **Home: unowned** — nothing is expected to need this. (Severity: Low.)
+
+- **Two simultaneous requests for one key both fetch and both write, and on Windows the loser's
+  `os.replace` raises `PermissionError`.** The direct consequence of declining in-flight
+  coalescing (see the re-homed c3-6 entry above). **Observed live** during implementation: a
+  99-request burst over a single card id logged exactly that, and the request it belonged to was
+  served normally — which is AC 9 working rather than a defect. It costs one duplicate fetch and
+  one wasted write per collision. ~~**Home: c3-8**, which builds the in-flight map for its own
+  reasons.~~ **RE-HOMED on c6-4 by c3-8, 2026-08-02, because the premise was wrong: c3-8 did NOT
+  build an in-flight map, and needed none** (Q6 — see the coalescing entry above for why the
+  shared-structure argument dissolved). This entry has always been a *consequence* of declining
+  coalescing rather than an independent item, so it travels with it. **Home: c6-4**, which is the
+  first surface that renders one card id twice on one screen and therefore the first that makes
+  the collision ordinary rather than incidental. (Severity: Low.)
+
+- **The one-write-site scan covers `src/companion` only, and it counts by module rather than by
+  intent.** `TestExactlyOneImageWriteSite` asserts that rename-into-place happens in exactly two
+  modules — `discovery.py` and `images.py` — once each. It would **not** notice a second write
+  path that used a different mechanism entirely (`Path.write_bytes` straight to the target, a
+  `shutil.copy` over it), because those are not renames; the *atomicity* claim is what the scan
+  protects, not "nothing else writes". The complementary guard is
+  `TestFileIoNeverRunsOnTheLoop`'s family, which does see `write_bytes` — but only inside an
+  `async def`, and only in `images.py`. **A declared blind spot is still a claim**, so it is
+  declared here rather than left to be discovered. **Home: unowned.** (Severity: Low.)
+  **Updated by the 2026-08-01 review:** two rename-shaped spellings that were *inside* the
+  claimed territory and undeclared — `Path.replace`/`Path.rename` (the pathlib rename-into-place
+  the retired identifier ban did catch) and a call through a rebound local (`handler =
+  os.replace`) — are now **caught by the scan**, discriminated from `str.replace`/
+  `datetime.replace` by the one-bare-positional-argument signature. The declared blind spot is
+  now genuinely limited to non-rename mechanisms, as this entry always said.
+
+- **`_FILE_IO_CALLS` is a member list, not a module ban, and that is a knowingly weaker shape.**
+  The C2 retro's standing agreement is *ban the family, never enumerate members* — but there is no
+  module to ban here: the offenders live in `os`, `pathlib`, `tempfile` and the builtins at once,
+  and `os` and `pathlib` are both needed on the sanctioned path. Import aliases are resolved, so
+  the spellings that evade a member list are caught; what is **not** caught is a filesystem call
+  whose name is not in the list (`os.truncate`, `os.link`, an `io.open`). **Home: unowned**;
+  revisit if a later story adds a fourth file-touching mechanism. (Severity: Low.)
+
+- **`images.py` now holds three mechanisms and is ~1,100 lines.** The spine draws the pacer, the
+  disk cache and the negative cache inside `app/images.py` (`# proxy: pacer, disk cache, negative
+  cache`), so c3-8 lands here too and makes it three. Splitting it is deliberately **not** this
+  story's decision — that belongs to whoever finds the module unmanageable with all three shipped,
+  not to the story that adds the second. Recorded so the growth is a noticed fact rather than a
+  drift. ~~**Home: c3-8 or the C3 retro.**~~ **c3-8 DECLINED THE SPLIT and re-homed it on the C3
+  retro, 2026-08-02 (Q8, Brad) — with the final number measured so the retro inherits a fact rather
+  than an impression: `images.py` is now ~~1,475~~ lines** (1,307 at `3aef5d1`; the third mechanism
+  and its docstrings added 168). All three mechanisms the spine's Structural Seed names are now in
+  it (`app/images.py  # proxy: pacer, disk cache, negative cache`), so **splitting is now a decision
+  to diverge from the spine** rather than a tidy-up — and that belongs to a retro with all three
+  shipped and c4-1's hydration cache in view, not to the story that adds the third while writing it.
+
+  **CORRECTED AND PARKED AT THE C3 RETROSPECTIVE, 2026-08-02.** The 1,307-at-`3aef5d1` figure is
+  right; **the "now" figure was never re-measured and is wrong.** At `16976c5` — c3-8's own merge
+  commit — and at HEAD the file is **1,837 lines**, a 362-line (25 %) undershoot. The entry existed
+  specifically to stop the retro arguing from an impression and handed it one. Measured two
+  independent ways (tokenizer and AST, agreeing to within 6 lines):
+
+  ```
+  src/companion/app/images.py            1,837 lines
+    ├─ docstrings + comments             1,370   (74.6%)   1,279 docstring + 91 comment
+    ├─ lines containing code               377   (20.5%)
+    └─ blank                               289   (15.7%)
+  ```
+
+  Largest docstrings: module header **108**, `NegativeCache` 75, `DiskCache` 69,
+  `_write_atomically` 67, `fetch_image` 65, `Pacer` 59, `resolve_face_images` 54.
+
+  **This changes the shape of the decision.** 377 lines of code across three mechanisms and 39
+  callables is ~125 lines each — not an unmanageable module. A split would divide *documentation*,
+  and the 108-line module header is what explains the interaction a split would destroy (the cache
+  is checked **before** the pacer; the negative cache sits **outside** `pacer.slot()`). The
+  counter-argument from finding density — 5 of the epic's 10 Greptile findings, and every P1 from
+  c3-5 onward, are in this file — is answered by noting that c3-5/c3-7/c3-8 are the three hardest
+  stories in the epic: **density tracks difficulty, not line count**.
+
+  Two adjacent actions were identified instead of a split: a **prose-freshness pass** over the nine
+  large docstrings (this entry's own wrong number is an instance of c3-4's "prose outrunning code"),
+  and the **review-added-mechanisms-re-enter-review** rule (C3 retro action item 12), which is what
+  would actually have caught c3-7's sibling race and c3-8's carve-out.
+
+  **DECISION PARKED by Brad, 2026-08-02**, pending the rest of the manual-testing checklist.
+  **Home: re-decide with c4-1's hydration cache in view.** (Severity: Low.)
+
+- **This machine's full-suite runtime is too noisy to support the before→after claim AC 24 asks
+  for, and that is worth knowing before the next story tries to make one.** Three consecutive runs
+  of *identical* code measured **118.40 s / 119.12 s / 167.56 s** — a **49 s spread**, ~40% of the
+  median. The single baseline sample was 126.10 s, which sits inside that spread, so "the suite got
+  faster" and "the suite got slower" are both unsupportable from single samples. An intermediate
+  reading of 143.36 s during this story was initially attributed to the cache's disk I/O; that
+  attribution was **wrong and is withdrawn** — it was background load.
+
+  What *is* measurable, and what AC 24 actually wanted, is a **targeted** comparison rather than a
+  whole-suite one: probe (b) removed the cache write entirely and the companion suite ran in
+  **43.38 s** against **43.02 s** with the write in place, so the write costs nothing detectable —
+  which is the specific thing AC 24 predicted would show up here *"and nowhere else"* had an
+  `os.fsync` been added. **The lesson for later stories: compare the narrowest suite that contains
+  the change, take more than one sample, and do not read a whole-suite delta on this box as
+  signal.** **Home: unowned** — a measurement-practice note, not a defect. (Severity: Low.)
+
+## Deferred from: code review of c3-7 (2026-08-01)
+
+- **Q4's declined alternative — a sidecar carrying the upstream's full `Content-Type` — and the
+  parameter divergence it tolerates.** A warm hit derives its media type from the stored
+  extension, so any *parameters* the upstream sent (`image/jpeg; charset=binary`) are dropped on
+  the second render of a tile; the media type itself always matches, by construction, since the
+  review flipped `cache_extension` to derive the spelling from the same header the cold path
+  serves (D1). The sidecar was declined because it doubles the entries on disk and reopens the
+  atomicity question for a *pair* of files, to preserve a parameter no measured Scryfall response
+  actually sends. Pinned by `test_the_one_named_divergence_is_the_content_type_parameter`; the
+  c4-4-facing consequence is a `ui/README.md` blind-spot row. **Home: unowned** — the forcing
+  function is an upstream that starts sending a parameter browsers act on. (Severity: Low.)
+
+- **Orphaned `.tmp` files from a hard kill accumulate with no sweep, ever.** `_write_atomically`
+  cleans its temp file on every in-process failure, but a process kill or power cut between
+  `mkstemp` and `os.replace` strands `<name>.<rand>.tmp` in the card's shard directory
+  permanently: `_read_cached` never matches the suffix (invisible, so it costs nothing but
+  bytes), no startup or periodic sweep exists, and the c8-2 stewardship entry above covers cache
+  *content*, not write debris. A `rglob("*.tmp")` sweep at startup was declined: it walks a
+  potentially 38k-directory tree on every launch to reclaim litter produced only by crashes
+  mid-write. The wholesale remedy is c8-2's documented `image_cache/` deletion, which removes
+  debris and content alike. **Home: c8-2**, as one sentence in its stewardship notes. (Severity:
+  Low.)
+
+- **A transient startup `OSError` disables the cache for the whole process, with one WARNING at
+  boot.** Q6's ruling covers root *creation* failure by disabling the cache and running on —
+  correct for the named case (a *file* called `image_cache`), but a transient failure (AV
+  briefly locking the data directory at boot, the exact Windows class this feature names
+  elsewhere) has the same permanent consequence: every image fetches from the CDN until restart,
+  announced only by a log line hours before anyone notices slowness. No retry, no re-attempt on
+  first write. Declined here because a retry policy is a design decision c3-8's failure
+  signalling is better placed to make consistently. ~~**Home: c3-8.**~~ **c3-8 TOOK THE OTHER
+  ENTRY AND RE-HOMED THIS ONE ON c8-2, 2026-08-02 (Q4, Brad), and the reason is honest rather than
+  tidy.** Of the two "failure posture over time" entries homed here, c3-8 took the unwritable-root
+  one (below — it closed) and declined this one, because **retrying the root means deciding
+  *when*** — at the first write? on a timer? after N requests? — which is a lifecycle question
+  nothing in this feature measures and which c3-8 had no requirement to answer. Taking it would
+  also have made `DiskCache` mutable in a way it is not, on top of the write-disable state that
+  entry did add. **Home: c8-2**, which owns cache stewardship (epic `:3185-3212`) and is where a
+  lifecycle policy belongs beside the documented location and the removal command. (Severity: Low —
+  unchanged; requests are unharmed either way.)
+
+- **A root that exists but is unwritable leaves the cache "enabled" and warns on every write,
+  ~99 times per cold deck paint, forever.** `build_image_cache` probes only `mkdir` of the root;
+  a pre-existing read-only directory (or ACLs changed mid-run) passes it, so every subsequent
+  write fails and logs at WARNING with no disable-after-N and no startup writability probe. The
+  requests themselves are unharmed (AC 9). A startup write-probe was declined as an effectful
+  test-file in the user's data directory on every launch; log-rate limiting is c3-8-shaped.
+  ~~**Home: c3-8**, beside the transient-startup entry above.~~ **CLOSED by c3-8, 2026-08-02
+  (Q4, Brad — the half that was taken).** `DiskCache` now counts **consecutive** write failures and
+  disables its own writes after `DISK_CACHE_WRITE_FAILURE_LIMIT = 5`, announcing it **once** with a
+  message that says it is giving up and names the unwritable root. So a 99-tile cold paint logs at
+  most five warnings instead of ninety-nine, and every paint after it logs none. Three properties
+  gated rather than described: **reads keep working** (a root that just became unwritable may still
+  hold everything a previous session cached, and NFR-06's offline claim depends on those reads);
+  **one success resets the count**, so failures spread across a session cannot accumulate into a
+  disabled cache; and the state is **per-instance**, never a module global. AC 9 is untouched — the
+  picture is served either way and no reason token was added. The `deferred-work` pairing this
+  belonged to is now split: this one closed, the transient-startup one re-homed on c8-2 above.
+
+- **A third image format in the corpus would be served and never cached, silently degrading CM-2
+  feature-wide — and the trigger that changes this is a measurement, not an argument.**
+  `CACHE_MEDIA_TYPES` is a closed two-entry map (`.jpg`/`.png`), justified by the corpus: exactly
+  two formats across all 245,760 stored URLs, `image/webp`/`image/avif` measured at **zero**.
+  `DiskCache.write` therefore treats an accepted-but-unmapped `image/*` header as *served, not
+  stored* — the ruled posture (Q4 + c3-2's "a true count read as a false rule": the count
+  justifies the map; it does not justify caching under a guessed extension, which Greptile's
+  round-1 P1 confirmed mislabels the bytes). Greptile's round-2 P1 flagged the flip side —
+  *"accepted formats bypass the cache, violating CM-2"* — **declined by Brad (2026-08-02)**:
+  CM-2 is satisfied for every image this corpus can produce, and caching formats measured at
+  zero is the unused-hook mistake. The real exposure is a Scryfall format migration behind
+  existing URLs, which would flip every write to the serve-not-store branch and announce itself
+  only as a per-request `INFO` line while the cache quietly stops growing. **The trigger is
+  written down so nobody re-litigates it**: the first *measured* third format in the corpus
+  widens `CACHE_MEDIA_TYPES` by exactly one entry (extension + media type, warm/cold agreement
+  preserved by construction) — a two-line change plus one discrimination test. **Home: whichever
+  story first measures a third format** (the c8-x data-refresh surfaces are the likeliest
+  observers); until then, unowned by design. (Severity: Low.)
+
+- **`DiskCache` trusts its callers for containment: `card_id`/`size`/`face` are validated by the
+  route's own constraints, not by the class.** `path_for("../../..", ...)` escapes the root —
+  demonstrated by the containment test's own firing half — and nothing in the class refuses it;
+  the route's `_CARD_ID_PATTERN`, the closed `ImageSize` literal and the bounded `face` are the
+  whole guard, and they live in a different module. Deliberate under c3-4's unused-hook ruling
+  (today's only caller is validated), but the module's next callers are already named — c3-8's
+  negative cache in this same file, c6-4's suggestion tiles — and the first one that passes an
+  unvalidated id gets a traversal write. ~~**Home: c3-8**, which touches this class next and
+  should either validate at the class boundary or restate the trust chain in its own record.~~
+  **c3-8 RESTATED rather than validated, 2026-08-02 (Q9, Brad), and the reason it is safe is
+  STRUCTURAL rather than a promise.** Of the two options the entry offered, the second was taken
+  because the first would have been protecting against this story rather than because of it:
+  **`NegativeCache` builds no path at all** — it is a dict keyed on a tuple — so it is
+  *structurally incapable* of being the caller that turns an unvalidated id into a traversal write.
+  Adding validation on its account would have been an unused hook (c3-4's ruling) justified by a
+  caller that cannot trip it. The trust chain is now written into `DiskCache`'s own docstring by
+  name: `routes/cards.py`'s `_CARD_ID_PATTERN` (canonical lowercase uuid or `400`), the closed
+  `ImageSize` `Literal`, and the bounded `face` — three constraints, all upstream of the key.
+  **Home: c6-4**, now the *sole* remaining named caller, with the instruction carried forward: if
+  c6-4 reaches `DiskCache` with an id from anywhere but a validated route parameter, validate at
+  the class boundary first. (Severity: Low.)
+
+## Deferred from: story c3-8 (distinguishable failure signalling and negative caching, 2026-08-02)
+
+- **A cold paint against a dead CDN still costs ~124 seconds and all ~99 requests, once per
+  process.** This is the exposure the negative cache does **not** close, stated as a ledger entry
+  rather than only as prose because it is the thing a reader will most plausibly assume was fixed.
+  99 tiles resolve to 99 **distinct** keys, so on the first paint nothing is remembered and every
+  request is issued. Steady-state throughput is `min(1/spacing, concurrency/latency)` =
+  `min(1/0.1, 4/5.0)` = **0.8 fetches/second** at the shipped `_FETCH_TIMEOUT.connect = 5.0`, so
+  the paint takes roughly **124 s** — and the user watches 99 placeholders for two minutes. The
+  backoff bounds every paint *after* that one, which is what `EXPERIENCE.md`'s "no request storms"
+  means here. Closing it would need something that fails a *whole host* fast rather than a key at
+  a time — a circuit breaker over `ALLOWED_IMAGE_HOSTS`, which is a fourth mechanism and a
+  different shape from anything AD-11 asks for. **Home: c10-3**, which owns real-latency profiling
+  and is the first story positioned to say whether 124 s is a real user experience or an artefact
+  of an unrealistic failure mode. (Severity: Low today — it needs a CDN that is *unreachable*
+  rather than merely slow; Medium if c4-4's manual testing finds it.)
+
+- **The retention horizon is a fifth number Q2 did not fix.** Q2 ruled the base, the multiplier,
+  the ceiling and the cap. Implementing it surfaced a fifth decision neither the story nor the
+  question had named: **how long a key's failure history outlives its own backoff window.** It has
+  to be longer than the window, or escalation is unreachable in production — an entry dropped at
+  `retry_after` resets the count on every attempt, so a key against a permanently dead CDN cycles
+  at the base delay forever while every "consecutive failures escalate" unit test still passes.
+  c3-8 derived it as `retry_after + ceiling` rather than declaring a constant, so it cannot drift
+  from the reasoning, and asserted it from both sides. Recorded because it is a **decision made
+  during implementation rather than at context time**, which is exactly the kind that later reads
+  as arbitrary. **Home: unowned** — revisit only if a real backoff misbehaves. (Severity: Low.)
+
+- **`is_backing_off` never prunes, so up to 2,048 stale entries can sit in a quiet process.**
+  The hot path is deliberately side-effect free: a dict lookup and one comparison, no walk. Pruning
+  happens only on `record_failure`, so a process that fails a burst of keys and then goes quiet
+  keeps those entries until something else fails. Bounded by `NEGATIVE_CACHE_MAX_ENTRIES` and
+  therefore harmless — at most ~2,048 small tuples — and the alternative (pruning on read) would
+  put an O(n) walk on NFR-05's path to reclaim memory nobody is short of. Recorded as a declared
+  limit rather than a defect. **Home: unowned.** (Severity: Low.)
+
+- **A story that empties `_BANNED_IDENTIFIERS` now gets a red, but nothing tells it what to do.**
+  c3-8 added an explicit non-emptiness assertion to the two firing halves, so the `set() == set()`
+  degradation c3-7 caught by noticing is now caught by a test. What is still only prose is the
+  **procedure**: c3-6 wrote it down, c3-7 followed it, c3-8 declined to apply it with a reason —
+  but it lives in a frozenset's docstring rather than anywhere a story author would look before
+  starting. ~~**Home: the C3 retrospective**, which is where three worked examples of the same
+  procedure should become a standing agreement.~~ **CLOSED at the C3 retrospective, 2026-08-02
+  (R2, Brad) — promoted to a standing team agreement, "banned-family lifecycle":** *a story that
+  owns a banned identifier family must explicitly **retire it, re-key it, or keep it with a written
+  reason** — and a replacement must be probed against **the spellings the retired ban caught**, not
+  only against new ones. Removing a family without a replacement covering its members is a coverage
+  loss disguised as a cleanup.* The two worked failures are named in the agreement (c3-6's
+  `from time import sleep` and c3-7's `Path.replace` — in both cases the retired ban DID catch the
+  spelling its replacement missed); c3-8 is the worked *keep*. Recorded in
+  `epic-c3-retro-2026-08-02.md` § *Team agreements*. (Severity: Low → **closed**.)
+
+- **`ErrorResponse`'s class docstring is published in full and nothing says so at the edit site.**
+  c3-8 predicted "no wire diff", edited that docstring, and measured a real diff in both generated
+  files — while the same commit's edit to `ErrorReason`'s attribute docstring twelve lines away did
+  **not** cross the wire. The distinction is correct and now documented in `scripts/dump_openapi.py`,
+  but `contracts.py` itself carries no marker at either site, so the next author has the same 50/50
+  guess. A one-line comment above each would fix it; it is not done here because `contracts.py` is a
+  wire module and even a comment edit is a wire decision that would want its own regeneration.
+  ~~**Home: c3-9**, which already inherits wire-value work.~~ **CLOSED, c3-9 (Q9, 2026-08-02).**
+  One `#` comment above `ErrorReason`'s assignment (*NOT PUBLISHED*) and one above
+  `ErrorResponse`'s `class` statement (*WIRE-VISIBLE, IN FULL*), each naming the mechanism and the
+  c3-8 measurement it came from. **c3-7's objection is dissolved by measurement, not by the
+  regeneration this story owed anyway**: `npm run gen:api` was run after the comment edits and
+  produced **no diff at all** from them — a `#` comment is not a docstring, so it never reaches
+  `app.openapi()`. That is now the recorded safe way to annotate a wire module, in
+  `scripts/dump_openapi.py`. (A docstring edit still is a wire change, and still needs its own
+  regeneration.) (Severity: Low.)
+
+## Deferred from: code review of c3-8-distinguishable-failure-signalling-and-negative-caching (2026-08-02)
+
+- **Concurrent duplicate requests for one key escalate the backoff per-record, not per-outage, and
+  each record slides the window forward.** Two simultaneous requests both pass `is_backing_off`
+  (no entry yet), both fetch, both fail, and one outage instant lands the key at 60 s; N duplicates
+  escalate N steps at once, and each `record_failure` inside an open window rewrites
+  `retry_after = now + delay`. Documented as deliberate in `record_failure`'s docstring ("two
+  tabs... the count measures how bad this outage is") — but N concurrent duplicates measure
+  *fan-out*, not outage severity. Harmless today because duplicate printings collapse in
+  `deck_cards` before reaching the route; c6-4's duplicate-tile surface (the acknowledged
+  coalescing trigger) makes it the normal case. **Home: c6-4**, beside the in-flight-coalescing
+  entry it shares a fix with. (Severity: Low.)
+
+- **A short burst transient can permanently latch the disk cache's writes off.** Writes during a
+  cold paint arrive back-to-back at ~0.8/s, so a ~6 s transient (an AV scanner holding a handle, a
+  disk-full blip) spans `DISK_CACHE_WRITE_FAILURE_LIMIT = 5` *consecutive* writes and disables the
+  cache's writes for the process — the "consecutive" reset only protects failures separated by
+  successes, and Q4 declined any re-enable path. Accepted at review (Brad, 2026-08-02): the
+  consequence is only lost caching, images are still served, and the docstring now states the
+  exposure honestly. Any re-enable/recovery mechanism is cache stewardship. **Home: c8-2.**
+  (Severity: Low.)
+
+- **The backoff 502 answers without a `Retry-After` header the server could supply.** The route
+  holds `retry_after` at the moment it answers a negative hit and discards it; the SPA therefore
+  has no signal for when a stuck tile (up to 300 s after CDN recovery — see `ui/README.md`'s
+  blind-spot row) becomes worth one scheduled retry. A standard `Retry-After` header would give
+  the tile author exactly one correct action without a new token — but it is a wire-visible change
+  c3-8's rulings excluded. Declined at review (Brad, 2026-08-02) so the tile author decides with
+  the UI in view. **Home: c4-4**, beside the blind-spot row it would resolve. (Severity: Low.)
+## Deferred from: story c3-9 (fresh install guides instead of erroring, 2026-08-02)
+
+Every entry here has a **named home**, per AC 23. Nothing in this section is prose-only: each one
+either has an owner story or is declared inside the file it constrains.
+
+- **The four newly-reachable panels have still not been looked at by a human, and neither has the
+  transition.** This is the honest split of AC 11 and AC 25. What WAS done live: an empty
+  `PLANESWALKER_DATA_DIR`, a companion that started with no `cards.db`, `GET /api/decks` answering
+  `503 database_not_initialized`, a `cards.db` planted while the server ran, and the very next
+  request answering `200` with real deck names — no restart. What was NOT done: opening the URL in
+  a browser and watching the PAGE change, and looking at `database-not-initialized`,
+  `database-updating`, `database-updating-stalled` and `internal-error` rendered by a real engine.
+  This environment has no browser automation installed and adding one would be a new dependency
+  the story does not call for. The DOM-level claim is gated (`App.test.tsx`'s FR-22 block asserts
+  the transition from ONE mount, and probe (f) confirms a remount-driven implementation fails it);
+  the VISUAL claim is not made anywhere. **Home: the epic manual-testing checklist**, with the
+  recipe in the c2-9 entry above and in `ui/README.md`'s new blind-spot row. (Severity: Low — the
+  behaviour is gated; the appearance is a first-look.)
+
+- **A backend that cannot be reached at all leaves whatever panel is on screen, including on the
+  very first load.** `fetch` rejecting produces no response and therefore no token, so the poller
+  changes nothing and retries on the backoff. On the first load that means "No deck on the glass."
+  stays up while the app quietly retries a backend that is not there — a calm panel that is not
+  true. The panel that IS true for it is `disconnected` (*"Lost the companion backend. Check your
+  terminal…"*), and `CLIENT_ONLY_STATES` assigns it to **c5-6**, whose condition is the WebSocket
+  backoff exhausting its retries; Q10 ruled c3-9 must not claim it. Ruled rather than overlooked:
+  clamping a transport failure to `internal-error` instead would have been worse, because
+  `RETRIES_QUIETLY['internal-error']` is `false` and one transient blip would have stopped the poll
+  permanently. **Home: c5-6.** (Severity: Low-Medium — the wrong panel, in a case a fresh install
+  reaches only by starting the browser before the backend.)
+
+- **Once a `200` arrives the poll stops, and nothing notices if the database goes away again.**
+  `RETRIES_QUIETLY['no-active-deck']` is `false` — correct, because the agent sets the deck and a
+  `deck_changed` event delivers it — so a tab left open through a later `initialize_database`, a
+  deleted `cards.db` or a corrupted one shows a stale `no-active-deck` panel until it is reloaded.
+  The signal that should replace polling here is **c5-6's** WebSocket (and its reconnect refetch,
+  NFR-04). Stated because the poll deliberately does NOT become a heartbeat: making it one would
+  contradict a contract written down in `states.ts` and would put two mechanisms on the same job.
+  **Home: c5-6.** (Severity: Low.)
+
+- **The stalled panel is terminal, and a database that recovers after it does not un-stall.**
+  `RETRIES_QUIETLY['database-updating-stalled']` is `false`, by design — *"the quiet retry has
+  already been running and has not worked, so continuing to retry silently is the behaviour this
+  state exists to replace"* — and the copy's next action is a manual one. But if the user does what
+  it says and the import succeeds, the page still needs a reload, which is one refresh more than
+  FR-22's promise. Same resolution as the entry above: **c5-6's** reconnect is the event that
+  should re-drive it. **Home: c5-6.** (Severity: Low.)
+
+- **A first import that starves reads for 60 s continuously would escalate to stalled — unmeasured
+  edge.** During a bulk import `is_database_initialized` returns `False` (the `import_state` probe),
+  so the dominant answer is `database_not_initialized`, which never escalates. But if the
+  importer's write batches ever hold the write lock past the engine's 5 s busy timeout, the read
+  raises and the route answers `database_unavailable` instead — and 60 s of *continuous* such
+  answers would show "Card database still updating. Check your agent session — if no import is
+  running…" during an import that is running. The importer's batch size was not measured here, and
+  the Q7 measurement above says lock waits are ~0.2 s worst case under four saturating readers, so
+  this is a narrow window rather than a likely one. **Home: c10-3**, beside the lock work.
+  (Severity: Low, unmeasured.)
+
+- **`ui/tests/posture.test.ts`'s identifier layer is defeated by a computed global assembled from
+  fragments, and its import layer is what actually carries the guard.** Declared in that file's own
+  header. `globalThis['fetch']` is caught (the identifier is present); `globalThis['fet' + 'ch']` is
+  not, and neither is an aliased hook CALL (`sync(subscribe, snapshot)`) — the alias is caught at
+  the IMPORT door instead, which is why the door is the primary layer. Probe (g) planted both
+  spellings in a real component file and confirmed exactly this split. The answer to the remainder
+  is review, not a longer regex — the same declaration `test_import_boundary.py` makes on the
+  Python side. **Home: review, permanent.** (Severity: Low, permanent.)
+
+- **`CLIENT_ONLY_STATES` still has no runtime consumer**, and unlike its two siblings it is not
+  expected to gain one from a wiring story: `database-updating-stalled` is produced by elapsed time
+  rather than looked up, and `disconnected` is selected by nobody until **c5-6**. It is still worth
+  keeping — `EveryPanelHasASource` and `PanelSourcesAreDisjoint` both read it at typecheck time, so
+  it is load-bearing without being executed. **Home: c5-6**, which either consumes it or is the
+  story that says it should stay type-level. (Severity: Low.)
+
+- **The `no-store` request header is asserted, its EFFECT is not.** `decks.test.ts` pins
+  `cache: 'no-store'` on the request options, which is a source-level claim; whether a real browser
+  honours it for a same-origin `200` with no `Cache-Control` was not measured, because jsdom has no
+  HTTP cache. The consequence if it were wrong is precisely FR-22 failing — a cached `503` would
+  make the page never come alive — so it is worth one look during the browser pass rather than a
+  test. **Home: the epic manual-testing checklist**, beside the transition look-at. (Severity:
+  Low.)
+
+## Deferred from: code review of c3-9 (2026-08-02)
+
+- **Alternating `database_unavailable`/`database_not_initialized` pins the backoff near base.**
+  `poller.ts` resets `delay` to `POLL_BASE_MS` on every outcome-identity change (Q2's own ruling:
+  *"resets to base on any change of outcome"*). During an interleaved import — the exact
+  interleaving this ledger already documents — each flip resets the schedule, so sustained
+  alternation approaches one request per 2 s against a backend that is deliberately busy, which is
+  what `POLL_CEILING_MS`'s docstring says the ceiling exists to prevent. By-design per Q2; the cost
+  was not weighed there. **Home: c4-1**, which copies this seam for its per-card fetches and should
+  decide whether token-change resets need damping (e.g. no reset between the two database tokens).
+- **`database-updating-stalled` permanently forfeits FR-22's self-transition.**
+  `RETRIES_QUIETLY['database-updating-stalled']` is `false` (ruled in `states.ts:233` — *"continuing
+  to retry silently is the behaviour this state exists to replace"*), so once escalated the poll
+  stops for the life of the page: when the user does exactly what the panel's copy tells them to and
+  the rebuild succeeds, the `503→200` transition this story exists to render is invisible, and only
+  a manual refresh recovers. The contract is honoured; its terminal consequence was never written
+  down. A slow continued probe would need a `states.ts`/`EXPERIENCE.md` amendment, which this story
+  may not make. ~~**Home: C3 retro**, as an EXPERIENCE.md amendment question.~~
+
+  **RULED AT THE C3 RETROSPECTIVE, 2026-08-02 (R3, Brad): ACCEPTED, and re-homed on c5-6.**
+  `RETRIES_QUIETLY['database-updating-stalled']` **stays `false`** — the contract in `states.ts:233`
+  is right, and a slow continued probe would put two mechanisms on one job. **No `EXPERIENCE.md`
+  amendment.** What the ruling adds is that the terminal consequence is now recorded rather than
+  implied: *a user who does exactly what the panel's copy tells them, and whose rebuild succeeds,
+  still needs a manual refresh — one refresh more than FR-22 promises.*
+
+  The ruling is a re-home, not a dismissal: the two sibling entries above (*"Once a `200` arrives
+  the poll stops"* and *"a backend that cannot be reached at all leaves whatever panel is on
+  screen"*) are already homed on **c5-6**, whose WebSocket reconnect and NFR-04 refetch is the event
+  that should re-drive all three. **c5-6 resolves the family; it should not solve one third of it
+  and leave the rest.** **Home: c5-6.** (Severity: Low.)
+- **The c4-1/c4-2 seam Q1 drew, restated where AC 23 asked for it (review patch).** Q1 ruled that
+  `src/api/decks.ts` (the one network door, a total outcome union that never rejects) and the
+  `src/state/` slice are the seam **c4-1 EXTENDS** — card cache, in-flight deduping, per-card
+  routes, which are NOT retry-safe (they carry path parameters; `decks.ts`'s header holds the
+  c3-2 measurement of why) — and that **c4-2** inherits a poll already calling `GET /api/decks`,
+  its job being to read the DECK rather than the deck names. What the poller does NOT cover:
+  per-card fetches and the WebSocket. The threshold is `STALLED_AFTER_MS = 60_000` with a
+  `STALLED_MIN_REFUSALS = 4` observation floor. The prose homes are `ui/README.md`'s "Not here
+  yet" + blind-spot row and the module headers; this entry exists so the ledger names the seam
+  too. **Home: c4-1 and c4-2 read this before extending.**

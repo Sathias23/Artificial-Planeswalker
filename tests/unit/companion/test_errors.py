@@ -19,6 +19,7 @@ from src.companion.app.errors import (
     STATUS_BY_REASON,
     CompanionError,
     UnhandledErrorMiddleware,
+    error_response,
     error_responses,
 )
 from src.companion.app.main import build_app
@@ -31,12 +32,151 @@ _REASONS = get_args(ErrorReason)
 
 _EXPECTED_STATUS = {
     "deck_not_found": 404,
+    "card_not_found": 404,
+    # c3-5's pair. 404 for the permanent case — this card has no artwork for what was asked, and
+    # "the thing you addressed is not there" is what 404 means. 502 for the transient one: the URL
+    # was known and an upstream this app does not own failed to deliver it.
+    "no_image_data": 404,
+    "image_fetch_failed": 502,
     "database_not_initialized": 503,
     "database_unavailable": 503,
     "invalid_request": 400,
+    # 403 and not 401: RFC 9110 requires a 401 to carry WWW-Authenticate, and the CompanionError
+    # path structurally cannot attach headers (companion_error_handler calls error_response with
+    # no headers=). c3-4 Q2 ruled 403, which carries no such requirement.
+    "forbidden": 403,
     "payload_too_large": 413,
     "internal_error": 500,
 }
+
+
+_OBJECT_SHAPE_KEYS = frozenset(
+    {"properties", "additionalProperties", "patternProperties", "allOf", "not", "prefixItems"}
+)
+"""Keys that give a schema a shape of its own, rather than annotating one it already has.
+
+``prefixItems`` joined at c3-3: a tuple-shaped array (``{"type": "array", "prefixItems": [...],
+"items": {"$ref": ...}}``) is a hand-assembled positional shape, and without it here the ``items``
+recursion waved one through — a false *green*, which is the worse direction for a guard to fail.
+
+``anyOf`` / ``oneOf`` deliberately **left**: they form a union rather than shaping an object, and
+conflating the two is what made this helper refuse the first legitimate ``response_model=X | None``.
+They are handled by :data:`_UNION_KEYS` instead.
+"""
+
+_UNION_KEYS = frozenset({"anyOf", "oneOf"})
+"""Keys that compose alternatives. A union is rooted when every one of its branches is."""
+
+_ANNOTATION_KEYS = frozenset(
+    {
+        "title",
+        "description",
+        "default",
+        "examples",
+        "example",
+        "deprecated",
+        "readOnly",
+        "writeOnly",
+        "$comment",
+    }
+)
+"""Keys that describe a schema without changing what it is.
+
+OpenAPI 3.1 (JSON Schema 2020-12) permits these **beside** a ``$ref``, where draft-4 did not — so
+``set(schema) == {"$ref"}`` was an exact-match test against a spec that no longer holds, and a
+``$ref`` carrying a ``description`` was refused as an envelope. A false *red*, but one whose
+message would have sent the next author looking for a hand-built body that was not there.
+"""
+
+
+def _is_null_branch(schema: dict) -> bool:
+    """Is *schema* the bare null type — the other half of an ``X | None`` union?
+
+    Both spellings are accepted: ``{"type": "null"}`` is what Pydantic emits today, and
+    ``{"type": ["null"]}`` is the equally legal JSON Schema 2020-12 form. Refusing the second
+    would be a false red on a shape the spec permits (review, 2026-08-01).
+
+    Args:
+        schema: One branch of a union.
+
+    Returns:
+        ``True`` for the bare null type, with annotation keys tolerated and anything shaping
+        refused.
+    """
+    if schema.get("type") not in ("null", ["null"]):
+        return False
+    return not (set(schema) - {"type"} - _ANNOTATION_KEYS)
+
+
+def _is_ref_rooted(schema: dict) -> bool:
+    """Is *schema* a declared response model, rather than a hand-built inline shape?
+
+    AD-16's ban is on the **envelope** — a ``{"status": "ok", "deck": {...}}`` assembled in a
+    handler, which appears in the OpenAPI document as an inline object with ``properties``. What it
+    permits is any body generated from a ``response_model``, and there are three rooted shapes that
+    can be: a component reference; an **array of** one (c3-1's ``GET /api/decks`` returns
+    ``list[DeckSummary]``, an unwrapped bare array — AD-16's own example); and a **union of** them
+    (a ``response_model=X | None``, which generates a top-level ``anyOf``).
+
+    Keyed on the family — "the schema bottoms out in ``$ref``s" — rather than on a list of the
+    spellings seen so far, so a future ``list[list[X]]`` is admitted and an array *of* an inline
+    envelope is still refused.
+
+    The union arm is c3-3's (Q5), taking the repair ``deferred-work.md`` homed here. It ships
+    **before** anything needs it: c3-3's own format check answers one shape in every case, by
+    ruling (Q4), precisely so the UI has one shape to render. Fixed anyway, because the alternative
+    was leaving the next story a red test whose message named the wrong problem.
+
+    Args:
+        schema: The ``content["application/json"]["schema"]`` subtree of one response.
+
+    Returns:
+        ``True`` if the shape is rooted in one or more component references.
+    """
+    keys = set(schema)
+
+    # A $ref, tolerating annotation-only siblings (OpenAPI 3.1 permits them; the old exact-match
+    # `set(schema) == {"$ref"}` refused a $ref carrying a `description`).
+    if "$ref" in keys and not (keys - {"$ref"} - _ANNOTATION_KEYS):
+        return True
+
+    # A union is rooted when EVERY branch is — so `X | None` passes and `X | {inline envelope}`
+    # does not. Beside the one union key, ONLY annotations are tolerated — the same allowlist
+    # stance as the `$ref` arm above. The first version enumerated the disguises already seen
+    # (object-shape keys, then `type`/`items` array machinery), which is the exact
+    # enumerate-the-members shape the standing agreement bans: `required`, `enum`, `const` or an
+    # `if`/`then` beside a union all constrain the body without being on any refused list, and
+    # each walked through (round-2 review, 2026-08-01). Anything that is not an annotation
+    # shapes, so anything that is not an annotation refuses.
+    union = _UNION_KEYS & keys
+    if union:
+        if len(union) > 1 or (keys - union - _ANNOTATION_KEYS):
+            return False
+        branches = schema[next(iter(union))]
+        if not isinstance(branches, list) or not branches:
+            return False
+        if not all(
+            isinstance(branch, dict) and (_is_null_branch(branch) or _is_ref_rooted(branch))
+            for branch in branches
+        ):
+            return False
+        # At least one branch must actually BE a reference. `{"anyOf": [{"type": "null"}]}` is
+        # rooted in nothing at all, and the `all()` above says True for it — a union of nulls is
+        # vacuously "every branch rooted". A body that can only ever be `null` is not a declared
+        # response model (review, 2026-08-01: it returned True).
+        return any(not _is_null_branch(branch) for branch in branches)
+
+    if schema.get("type") == "array" and isinstance(schema.get("items"), dict):
+        # An array that ALSO carries an object-shaping key is a hand-assembled shape wearing an
+        # array's clothes, and a plain "is it an array? recurse into items" check waves it through
+        # (review, 2026-07-31). Keyed on the shaping FAMILY rather than on an allowlist of
+        # permitted siblings, because FastAPI legitimately adds annotation keys of its own —
+        # `title` on every generated array response, and `description` wherever a docstring
+        # reaches it. Those describe the shape; the keys below CHANGE it.
+        if _OBJECT_SHAPE_KEYS & keys:
+            return False
+        return _is_ref_rooted(schema["items"])
+    return False
 
 
 def _app_with_test_routes():
@@ -75,17 +215,44 @@ def _app_with_test_routes():
 
 
 class TestReasonTokenContract:
-    """AC 1 + AC 2: the token set is closed at six and the body carries nothing else."""
+    """AC 1 + AC 2: the token set is closed at eight and the body carries nothing else."""
 
-    def test_the_token_set_is_exactly_these_six(self):
+    def test_the_token_set_is_exactly_these_eight(self):
         # Adding a token is a deliberate act with a failing test attached (AD-16's own extension
-        # rule). `internal_error` was added under that rule by the c1-4 review (Brad, 2026-07-25);
-        # c3-2's `card_not_found` is the only remaining planned addition.
+        # rule). `internal_error` was added under that rule by the c1-4 review (Brad, 2026-07-25),
+        # and `card_not_found` by c3-2 under the C2 retro's R1 — which tightened the rule: the
+        # token and the UI state it drives land in the SAME COMMIT, because `internal_error`
+        # shipping alone had already cost c2-9 a repair AC.
+        #
+        # `forbidden` is c3-4's eighth (Q2, Brad 2026-08-01), and it is the first whose paired UI
+        # state is a DECISION THAT THE GLASS SHOWS NOTHING rather than a panel — joining
+        # `payload_too_large` in `NO_UI_RESPONSE`, which is where that decision is recorded in a
+        # form the compiler reads. It was worth the ripple because AD-8 requires c6-1 to re-read
+        # discovery and retry EXACTLY ONCE on an auth rejection and to do no such thing on a
+        # malformed request; both answering `invalid_request` would make that unimplementable.
+        #
+        # `no_image_data` and `image_fetch_failed` are c3-5's, and they are the first pair added
+        # TOGETHER (Q2, Brad 2026-08-01). AD-11 requires "a card with no image" and "the CDN fetch
+        # failed" to be signalled distinguishably, and since this codebase derives the status from
+        # the token, distinguishable can only mean two tokens. The distinction is real even though
+        # the glass draws the same named-Card placeholder for both: one is permanent (79 cards in
+        # the shipped corpus carry no image data at all) and one is transient — so exactly one of
+        # them may ever be retried, which is what lets c3-8 add negative caching and backoff as
+        # PURE BEHAVIOUR with no wire change at all.
+        #
+        # THE SET IS NOW CLOSED AT TEN WITH NOTHING PLANNED. An eleventh is not forbidden, but it
+        # is a decision, not a chore: it reddens this test, `STATUS_BY_REASON`'s pin below,
+        # `ui/src/api/schema.test.ts`'s union and `states.ts`'s `satisfies` clause — and the last
+        # two fail under `npm run typecheck` only, never under `npm test`.
         assert set(_REASONS) == {
             "deck_not_found",
+            "card_not_found",
+            "no_image_data",
+            "image_fetch_failed",
             "database_not_initialized",
             "database_unavailable",
             "invalid_request",
+            "forbidden",
             "payload_too_large",
             "internal_error",
         }
@@ -109,9 +276,35 @@ class TestStatusMapping:
     """AC 3: the status is derived from the token, in exactly one place."""
 
     def test_every_token_has_a_status_and_no_token_is_invented(self):
-        # The enumeration pin: a sixth token with no status fails here rather than defaulting to
-        # some catch-all at the call site.
+        # The enumeration pin: a token with no status fails here rather than defaulting to some
+        # catch-all at the call site. This is the row c3-2 reddened by adding `card_not_found` to
+        # the Literal — deliberately, and the reason the two sets are compared rather than counted.
         assert set(STATUS_BY_REASON) == set(_REASONS)
+
+    def test_the_404_tokens_are_distinct_and_all_map_to_404(self):
+        # Tokens share 404, which was new at c3-2 and is the case a naive "one token per status"
+        # reading would have got wrong. They are NOT interchangeable: `deck_not_found` clears the
+        # SPA to the No-active-deck panel, `card_not_found` leaves the view intact and replaces one
+        # slot with the unknown-card placeholder (c4-3), and c3-5's `no_image_data` leaves it
+        # intact and replaces one slot with the NAMED-CARD placeholder — a different variant of a
+        # different component. Same status, three different UI answers.
+        assert STATUS_BY_REASON["deck_not_found"] == STATUS_BY_REASON["card_not_found"] == 404
+        # The exactly-these claim, made over the real table. (An earlier spelling compared the
+        # string literals themselves — an assertion that can never fail; review round 2,
+        # 2026-07-31.)
+        assert {r for r in _REASONS if STATUS_BY_REASON[r] == 404} == {
+            "deck_not_found",
+            "card_not_found",
+            "no_image_data",
+        }
+
+    def test_the_upstream_failure_token_is_the_only_502(self):
+        # c3-5's `image_fetch_failed` is the first 5xx in this app that is NOT about this app.
+        # Deliberately not 503: a 503 here means the LOCAL DATABASE is unusable and the UI answers
+        # it with the "Card database is updating" panel that retries quietly — a CDN blip must not
+        # put that panel on the glass. 502 is RFC 9110 §15.6.3's "the gateway got an invalid
+        # response from upstream", which is exactly what happened.
+        assert {r for r in _REASONS if STATUS_BY_REASON[r] == 502} == {"image_fetch_failed"}
 
     @pytest.mark.parametrize("reason", _REASONS)
     def test_the_mapping_is_the_table_in_the_story(self, reason):
@@ -135,7 +328,7 @@ class TestCompanionError:
 
 
 class TestErrorResponsesHelper:
-    """AC 8: one construction site for the OpenAPI declaration; c3-1/c3-2/c5-5 reuse it."""
+    """AC 8: one construction site for the OpenAPI declaration; c3-1 and c3-2 use it, c5-5 next."""
 
     def test_it_keys_by_the_mapped_status_and_declares_the_model(self):
         declared = error_responses("deck_not_found", "invalid_request")
@@ -154,11 +347,22 @@ class TestErrorResponsesHelper:
         assert "database_unavailable" in declared[503]["description"]
 
     def test_a_repeated_token_is_documented_once(self):
-        # c3-1/c3-2/c5-5 reuse this helper; a careless double declaration must not ship
-        # "reason: x | x" into the generated docs.
+        # c3-1 and c3-2 reuse this helper and c5-5 will; a careless double declaration must not
+        # ship "reason: x | x" into the generated docs.
         declared = error_responses("invalid_request", "invalid_request")
 
         assert declared[400]["description"] == "reason: invalid_request"
+
+    def test_the_two_404_tokens_collapse_into_one_documented_entry_naming_both(self):
+        # The 503 pair above proved the collapse for tokens that always travel together. c3-2
+        # created a SECOND shared status (404), and no route declares both — so this is the case
+        # where a silent overwrite would be invisible in the shipped schema. Pinned anyway,
+        # because the helper is the thing under test, not any one route's use of it.
+        declared = error_responses("deck_not_found", "card_not_found")
+
+        assert set(declared) == {404}
+        assert "deck_not_found" in declared[404]["description"]
+        assert "card_not_found" in declared[404]["description"]
 
 
 class TestRaisedErrorsReachTheWire:
@@ -171,6 +375,41 @@ class TestRaisedErrorsReachTheWire:
 
         assert response.status_code == _EXPECTED_STATUS[reason]
         assert response.json() == {"reason": reason}
+
+    @pytest.mark.parametrize("reason", _REASONS)
+    async def test_no_typed_error_is_ever_cacheable(self, reason, lifespan_client):
+        # c3-5, AC 15. A route CANNOT attach a header — that is the point of deriving the status
+        # from the token — so the only place this can be said is `error_response`, and it is said
+        # for every token rather than for the two that motivated it. RFC 9111 §4.2.2 lets a cache
+        # store a 404 heuristically with no explicit freshness at all, and c3-5 answers 404 for a
+        # card whose image is momentarily unavailable: cached, one bad minute would leave a
+        # permanently broken tile in that tab for as long as it stayed open.
+        async with lifespan_client(_app_with_test_routes()) as client:
+            response = await client.get(f"/_raise/{reason}")
+
+        assert response.headers["cache-control"] == "no-store"
+
+    async def test_the_framework_405_keeps_its_allow_header_alongside_no_store(
+        self, lifespan_client
+    ):
+        # Non-vacuity for the merge in `error_response`: the `no-store` default must not displace
+        # the headers the HTTPException path carries, or the typed body becomes a downgrade.
+        async with lifespan_client(_app_with_test_routes()) as client:
+            response = await client.post("/_typed/aa")
+
+        assert response.status_code == 405
+        assert response.headers["cache-control"] == "no-store"
+        assert "GET" in response.headers["allow"]
+
+    def test_a_callers_cache_control_overrides_no_store_whatever_its_casing(self):
+        # The docstring promises the override; HTTP names are case-insensitive and dict keys are
+        # not, so a plain `**` merge over `cache-control` shipped TWO conflicting Cache-Control
+        # headers on the wire (review 2026-08-01). Nothing sends one today — this is the pin
+        # that keeps the promise true for the later story that does.
+        for spelling in ("Cache-Control", "cache-control", "CACHE-CONTROL"):
+            response = error_response("invalid_request", headers={spelling: "max-age=5"})
+            values = response.headers.getlist("cache-control")
+            assert values == ["max-age=5"], f"{spelling!r} produced {values}"
 
 
 class TestFrameworkFailuresAreTypedToo:
@@ -405,6 +644,191 @@ class TestStructuralPins:
             schema = responses[status]["content"]["application/json"]["schema"]
             assert schema == {"$ref": "#/components/schemas/ErrorResponse"}
 
+    @staticmethod
+    def _ref_rooted_cases():
+        """The shapes :func:`_is_ref_rooted` must accept and reject. The table is the proof."""
+        return [
+            ({"$ref": "#/components/schemas/DeckDetail"}, True),
+            (
+                {"type": "array", "items": {"$ref": "#/components/schemas/DeckSummary"}},
+                True,
+            ),
+            # The real generated shape: FastAPI titles every array response. An annotation key
+            # must not be mistaken for a shaping key.
+            (
+                {
+                    "type": "array",
+                    "items": {"$ref": "#/components/schemas/DeckSummary"},
+                    "title": "Response Read Decks Api Decks Get",
+                },
+                True,
+            ),
+            # An envelope: the exact hand-built {"status": ..., "deck": ...} this bans.
+            ({"type": "object", "properties": {"status": {}, "deck": {}}}, False),
+            # An array *of* an envelope — the evasion a shallow "type == array" check would miss.
+            ({"type": "array", "items": {"type": "object", "properties": {}}}, False),
+            # An untyped bag, and a bare scalar: neither is a declared model.
+            ({"type": "object"}, False),
+            ({"type": "string"}, False),
+            # An array carrying a sibling `properties` alongside `items` — the shape a shallow
+            # "type == array, recurse into items" check waves through (review, 2026-07-31).
+            (
+                {
+                    "type": "array",
+                    "items": {"$ref": "#/components/schemas/DeckSummary"},
+                    "properties": {"total": {}},
+                },
+                False,
+            ),
+            # --- c3-3 (Q5): the three edges deferred-work.md homed here. ---
+            # 1. A union. `response_model=X | None` generates exactly this, and the old key set
+            #    put `anyOf` among the OBJECT-shaping keys, so a legitimate optional model was
+            #    refused as a hand-built envelope. Both spellings, since FastAPI has emitted each.
+            (
+                {
+                    "anyOf": [
+                        {"$ref": "#/components/schemas/DeckDetail"},
+                        {"type": "null"},
+                    ]
+                },
+                True,
+            ),
+            (
+                {
+                    "oneOf": [
+                        {"$ref": "#/components/schemas/DeckDetail"},
+                        {"$ref": "#/components/schemas/DeckSummary"},
+                    ],
+                    "title": "Response",
+                },
+                True,
+            ),
+            # ...and the union arm must not become a hole: ONE inline branch spoils it.
+            (
+                {
+                    "anyOf": [
+                        {"$ref": "#/components/schemas/DeckDetail"},
+                        {"type": "object", "properties": {"status": {}}},
+                    ]
+                },
+                False,
+            ),
+            # A union of nothing but scalars is not a declared model either.
+            ({"anyOf": [{"type": "string"}, {"type": "null"}]}, False),
+            # An empty or malformed union must not pass by having no branch to disprove it —
+            # `all([])` is True, which is exactly how a vacuous guard is born.
+            ({"anyOf": []}, False),
+            ({"anyOf": {"$ref": "#/components/schemas/DeckDetail"}}, False),
+            # A union carrying an object-shaping key alongside: the array arm's evasion, ported.
+            (
+                {
+                    "anyOf": [{"$ref": "#/components/schemas/DeckDetail"}],
+                    "properties": {"total": {}},
+                },
+                False,
+            ),
+            # 2. A `$ref` with legal sibling ANNOTATION keys. OpenAPI 3.1 permits these; the old
+            #    exact-match `set(schema) == {"$ref"}` refused them — a false red.
+            (
+                {"$ref": "#/components/schemas/DeckDetail", "description": "One deck."},
+                True,
+            ),
+            # ...but a `$ref` with a sibling that CHANGES it is still refused.
+            (
+                {"$ref": "#/components/schemas/DeckDetail", "properties": {"extra": {}}},
+                False,
+            ),
+            # 3. `prefixItems`: a tuple-shaped array is hand-assembled positional structure, and
+            #    without it in the shaping set the `items` recursion waved this through — a false
+            #    GREEN, the worse direction.
+            (
+                {
+                    "type": "array",
+                    "prefixItems": [{"type": "string"}],
+                    "items": {"$ref": "#/components/schemas/DeckSummary"},
+                },
+                False,
+            ),
+            # --- The three the union arm itself got wrong (edge-case review, 2026-08-01). ---
+            # An envelope smuggled past the ARRAY arm by wearing a union key: the union arm runs
+            # first, finds its own branches rooted, and never looks at `items`. Returned True.
+            (
+                {
+                    "type": "array",
+                    "items": {"type": "object", "properties": {"status": {}}},
+                    "anyOf": [{"$ref": "#/components/schemas/DeckDetail"}],
+                },
+                False,
+            ),
+            # A union rooted in NOTHING. `all()` over a null-only branch list is vacuously True,
+            # which is precisely how a guard acquires a hole. Returned True.
+            ({"anyOf": [{"type": "null"}]}, False),
+            ({"anyOf": [{"type": "null"}, {"type": "null"}]}, False),
+            # ...and the false RED in the same arm: `{"type": ["null"]}` is the equally legal
+            # JSON Schema 2020-12 spelling of the null branch. Returned False.
+            (
+                {
+                    "anyOf": [
+                        {"$ref": "#/components/schemas/DeckDetail"},
+                        {"type": ["null"]},
+                    ]
+                },
+                True,
+            ),
+            # --- Round 2 (2026-08-01): the union arm had enumerated its refusals (object-shape,
+            # then `type`/`items`), so a CONSTRAINING sibling on no list walked through. Now the
+            # arm mirrors the `$ref` arm's stance — beside the union key, annotations only.
+            (
+                {
+                    "anyOf": [{"$ref": "#/components/schemas/DeckDetail"}],
+                    "required": ["hand_built"],
+                },
+                False,
+            ),
+            (
+                {
+                    "anyOf": [{"$ref": "#/components/schemas/DeckDetail"}],
+                    "if": {"properties": {"status": {}}},
+                    "then": {"properties": {"deck": {}}},
+                },
+                False,
+            ),
+            (
+                {
+                    "anyOf": [{"$ref": "#/components/schemas/DeckDetail"}],
+                    "enum": ["frozen"],
+                },
+                False,
+            ),
+            # Two union keys at once compose shapes, not alternatives — and under the subtraction
+            # stance each would hide the other from the sibling check, so the pair is refused
+            # explicitly before it.
+            (
+                {
+                    "anyOf": [{"$ref": "#/components/schemas/DeckDetail"}],
+                    "oneOf": [{"$ref": "#/components/schemas/DeckSummary"}],
+                },
+                False,
+            ),
+            # The silent half: annotations beside a union stay legal, exactly as beside a `$ref`.
+            (
+                {
+                    "anyOf": [
+                        {"$ref": "#/components/schemas/DeckDetail"},
+                        {"type": "null"},
+                    ],
+                    "title": "Response",
+                    "description": "One deck, or nothing.",
+                },
+                True,
+            ),
+        ]
+
+    def test_the_ref_rooted_helper_accepts_and_rejects(self):
+        """Non-vacuity for the walk below: the predicate itself has both halves proven."""
+        for shape, expected in self._ref_rooted_cases():
+            assert _is_ref_rooted(shape) is expected, shape
+
     def test_every_success_body_is_a_component_ref_never_an_envelope(self):
         # AD-16 structurally: an inline object is what a hand-built {"status": "ok", "deck": {...}}
         # return looks like in the schema. A $ref means a declared response_model.
@@ -425,13 +849,16 @@ class TestStructuralPins:
                     assert "schema" in body, (
                         f"{method.upper()} {path} {status} declares JSON content with no schema"
                     )
-                    assert set(body["schema"]) == {"$ref"}, (
+                    assert _is_ref_rooted(body["schema"]), (
                         f"{method.upper()} {path} {status} returns an inline JSON object — declare "
                         "a response_model so the shape is generated, not hand-built (AD-12/AD-16)"
                     )
 
         # Non-vacuity (c1-1's dead-guard lesson): a walk that visited nothing passes silently.
+        # Both rooted shapes are named, so a walk that found only one kind cannot pass either.
         assert "GET /health 200" in checked
+        assert "GET /api/decks 200" in checked
+        assert "GET /api/deck/{deck_id} 200" in checked
 
 
 class TestConstructionStaysInert:

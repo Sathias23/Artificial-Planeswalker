@@ -1,8 +1,21 @@
-"""The localhost-only security envelope: what is allowed to address this process (AD-5, NFR-01).
+"""The localhost-only security envelope: what may address this process, and who may write (AD-5).
 
-This module is the ``Host`` third of the envelope. Stories c5-2 and c5-5 add the WebSocket ticket
-and the agent token here beside it, and :func:`install_security` is the one wiring call all three
-share, so ``build_app()`` never grows a second security line.
+Two independent checks live here, and they are independent on purpose.
+
+* **The ``Host`` check** (:class:`HostValidationMiddleware`) — envelope-wide, applied to every
+  request and every WebSocket handshake, and about *which authority the caller believed it was
+  addressing*. It is installed as middleware by :func:`install_security`.
+* **The agent credential** (:data:`AgentToken`) — per-route, applied only to the endpoints that
+  *write*, and about *who the caller is*. It is a dependency rather than middleware, because a
+  route-by-route decision is what the routes themselves should declare: c3-4's ``GET
+  /api/active-deck`` is credential-free and its ``PUT`` is not, in the same module, and a
+  middleware would have to re-derive that from a path list.
+
+Both fail **closed** on a missing input, and that shared rule is the point rather than a
+coincidence — see :func:`host_is_allowed` and :func:`agent_token_is_valid`, whose ``None`` handling
+is deliberately identical. c5-2's WebSocket ticket is the third member and joins here; AD-5 requires
+it to share **no storage and no code path** with the agent token, which is why the credential check
+below stores nothing and reads exactly one accessor.
 
 **What the check defends against.** Binding the socket to ``127.0.0.1`` stops a request from
 *another machine* and nothing else. The attack this module exists to close comes from the machine
@@ -30,12 +43,15 @@ site.
 """
 
 import logging
+import secrets
 from collections.abc import Iterable
+from typing import Annotated
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
+from starlette.requests import Request
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from src.companion.app.errors import error_response
+from src.companion.app.errors import CompanionError, error_response
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +210,194 @@ class HostValidationMiddleware:
         await error_response("invalid_request")(scope, receive, send)
 
 
+_AUTHORIZATION_HEADER = "authorization"
+"""The header the agent presents its credential in.
+
+Read from ``request.headers`` inside the dependency rather than declared as an
+``Annotated[str, Header()]`` parameter or via a FastAPI security class, and both halves of that are
+deliberate (Q4, Brad 2026-08-01):
+
+* **Not a declared parameter**, because a declared header lands in ``app.openapi()`` and therefore
+  in ``ui/src/api/types.d.ts`` and ``/docs`` — teaching a browser-facing document the name of a
+  credential the browser must never hold (AD-5). It would also route a *missing* header through
+  parameter validation, answering ``invalid_request`` where the honest answer is ``forbidden``.
+* **Not** ``HTTPBearer``/``APIKeyHeader``, because those raise their own ``HTTPException``, which
+  lands in :func:`~src.companion.app.errors.http_exception_handler` and becomes ``invalid_request``
+  at *their* chosen status — silently bypassing the one rejection vocabulary AD-16 exists to keep.
+  They also add a ``securitySchemes`` component and a per-operation ``security`` block to the
+  artifact.
+"""
+
+_BEARER_SCHEME = "bearer"
+"""The auth-scheme half of ``Authorization: Bearer <token>``, matched case-insensitively per
+RFC 9110 §11.1. Standard spelling, so c6-1 sends what every HTTP client already knows how to
+send."""
+
+
+def presented_credential(header_value: str | None) -> str | None:
+    """Extract the bearer credential from an ``Authorization`` header value.
+
+    Pure and total, so the parsing matrix is testable without an ASGI stack — and separate from
+    :func:`agent_token_is_valid` so that "what did they send" and "is it right" cannot be confused
+    for one another.
+
+    Args:
+        header_value: The raw header, or ``None`` when it was absent.
+
+    Returns:
+        The credential, or ``None`` when there was nothing usable to compare: no header, a
+        non-bearer scheme, or a bearer scheme with an empty credential. Every one of those is
+        equivalent as far as the *comparison* is concerned, and collapsing them here is what keeps
+        the comparison site down to one branch. (The rejection *log* distinguishes a header that
+        failed to parse from no header at all — it reads the raw header separately, because that
+        distinction is diagnostic even though the verdict is the same.)
+
+    Example:
+        >>> presented_credential("Bearer abc123")
+        'abc123'
+        >>> presented_credential("Basic abc123") is None
+        True
+    """
+    if header_value is None:
+        return None
+    scheme, separator, credential = header_value.partition(" ")
+    if not separator or scheme.lower() != _BEARER_SCHEME:
+        return None
+    # Strip before testing for emptiness: "Bearer   " is a present header carrying no credential,
+    # and must reduce to the same None as no header at all rather than to a whitespace "token".
+    return credential.strip() or None
+
+
+def agent_token_is_valid(presented: str | None, expected: str | None) -> bool:
+    """Report whether *presented* is the credential this process minted.
+
+    The whole accept/reject decision as a pure function, mirroring :func:`host_is_allowed` — which
+    is not a stylistic echo but the same safety property stated twice.
+
+    **Fails closed on either side being absent**, and that is the load-bearing line in this module.
+    :func:`~src.companion.app.main.agent_token` returns ``None`` before the lifespan has run, and a
+    caller can present no header — which is also naturally ``None``. Any implementation that
+    compared the two directly would evaluate ``None == None`` as ``True`` and **authenticate every
+    request against an unstarted app**. The guard below is what stops that, and
+    ``test_routes_active_deck.py`` drives a real ``build_app()`` whose lifespan never ran to prove
+    it rather than unit-testing this function alone.
+
+    **Empty counts as absent**, for the same reason and not merely for tidiness. ``""`` and
+    ``""`` are equal, so a length-only guard would let two empty credentials authenticate each
+    other — the same fail-open shape as ``None``/``None`` wearing a different spelling. It is
+    unreachable through the shipped route (:func:`presented_credential` collapses an empty
+    credential to ``None``, and a minted token is never empty), which is exactly why it is worth
+    closing here: an unreachable hole is one refactor away from being reachable, and the next
+    caller is c5-5.
+
+    **Compared as bytes, deliberately.** ``secrets.compare_digest`` accepts ``str`` only when *both*
+    arguments are ASCII-only and raises ``TypeError`` otherwise. Header values decode as latin-1, so
+    a credential containing ``ü`` is trivially reachable — and under a ``str`` comparison it would
+    raise, be caught by :class:`~src.companion.app.errors.UnhandledErrorMiddleware`, and report a
+    caller-controlled input as ``500 internal_error``: a false backend-bug report anyone could
+    trigger. Encoding both sides first makes a non-ASCII credential an ordinary non-match. (The
+    encoding cannot cause a false *accept*: the minted token is
+    ``secrets.token_urlsafe``, always ASCII, where UTF-8 and latin-1 agree byte-for-byte.)
+
+    ``compare_digest`` rather than ``==`` for the constant-time comparison. The exposure is small —
+    a loopback port behind the ``Host`` envelope — but it costs nothing and the alternative is
+    justifying ``==`` in a review.
+
+    Args:
+        presented: The credential the caller sent, from :func:`presented_credential`.
+        expected: The credential this process minted, from
+            :func:`~src.companion.app.main.agent_token`.
+
+    Returns:
+        ``True`` only when both are present and equal.
+
+    Example:
+        >>> agent_token_is_valid(None, None)
+        False
+        >>> agent_token_is_valid("", "")
+        False
+        >>> agent_token_is_valid("abc", "abc")
+        True
+    """
+    if not presented or not expected:
+        return False
+    return secrets.compare_digest(presented.encode("utf-8"), expected.encode("utf-8"))
+
+
+async def require_agent_token(request: Request) -> None:
+    """Refuse the request unless it presents this process's agent credential (NFR-01, AD-5).
+
+    Raising is correct here and does not contradict c1-5's send-don't-raise ruling: a dependency is
+    solved inside the router, which is *inside* Starlette's ``ExceptionMiddleware``, so a
+    :class:`~src.companion.app.errors.CompanionError` raised from here reaches its handler and
+    answers with its own token. The middleware above sits on the other side of that boundary — the
+    difference is position in the stack, not the exception (the same reasoning
+    :func:`~src.companion.app.deps.get_session` records).
+
+    **What the rejection log may say.** The path and the fact, and nothing else. Neither the
+    presented value nor the expected one is logged, at any level: the expected value is the
+    credential itself (AD-5 bans it from logs outright) and the presented value is attacker
+    controlled — logging it would write an arbitrary string into an operator's console and, if the
+    caller guessed nearly right, park a near-miss credential in a file. *How* the credential failed
+    — never sent, sent but unparseable, or parsed and wrong — is safe and genuinely diagnostic: it
+    separates "the tool never sent one" from "the tool's header is malformed" from "the tool sent a
+    stale one", which are three different c6-1 debugging sessions — so that one word is logged and
+    no more.
+
+    Args:
+        request: The request being served; the header and the app are both read from it.
+
+    Returns:
+        ``None``. The dependency is used for its effect — no value is injected, because a route
+        that has been authorised has nothing further to learn from the credential.
+
+    Raises:
+        CompanionError: ``forbidden`` when the credential is missing, malformed or wrong, and
+            equally when this app has minted no token at all.
+    """
+    # Function-local, matching the bound_port import above and for the same reason: main.py imports
+    # this module at its top level, so a module-level import here is a genuine circular-import
+    # failure in both directions.
+    from src.companion.app.main import agent_token
+
+    header = request.headers.get(_AUTHORIZATION_HEADER)
+    presented = presented_credential(header)
+    if agent_token_is_valid(presented, agent_token(request.app)):
+        return
+    # Three words, still no values: "invalid" (a bearer credential that failed the comparison),
+    # "malformed" (a header that did not parse to one — wrong scheme, empty credential), "no"
+    # (no header at all). Collapsing "malformed" into "no" mislabels exactly the c6-1 case the
+    # docstring promises to serve: a client with a header-construction bug *is* presenting
+    # something (c3-4 review).
+    logger.warning(
+        "Refusing %s %s: %s agent credential",
+        request.method,
+        request.url.path,
+        "invalid" if presented is not None else ("malformed" if header is not None else "no"),
+    )
+    raise CompanionError("forbidden")
+
+
+AgentToken = Annotated[None, Depends(require_agent_token)]
+"""The annotation every agent-authenticated handler writes, and the only one it should.
+
+Story c3-4 (``PUT /api/active-deck``) is the first caller; c5-5's ``POST /agent/events`` is the
+second and inherits the whole contract — the header spelling, the fail-closed comparison and the
+``forbidden`` token — rather than writing a second check. A route annotates a parameter with this
+and reads nothing about credentials itself.
+
+Injects ``None`` on purpose: the dependency exists for its **effect**, and a route that has been
+authorised has nothing further to learn from the credential. Handing the token to the endpoint
+would put the credential in a local variable one careless f-string away from a log line or a
+response body — the exact leak AD-5 exists to prevent.
+
+Example:
+    >>> from typing import get_args
+    >>> get_args(AgentToken)[0] is type(None)
+    True
+"""
+
+
 def install_security(app: FastAPI) -> None:
     """Install the security envelope on *app*, in one call.
 
@@ -206,8 +410,16 @@ def install_security(app: FastAPI) -> None:
     while validating a handshake escapes raw — acceptable while nothing on the ws path can raise,
     and c5-3 owns the question when it adds the upgrade.
 
-    Stories c5-2 (ticket mint) and c5-5 (agent token) add their pieces here, so the wiring in
-    ``build_app()`` never grows a second security line.
+    **Installs the middleware half only.** The agent credential (:data:`AgentToken`) is a
+    per-route dependency and is wired by the routes that want it, not from here — c3-4's ``GET
+    /api/active-deck`` and its ``PUT`` sit in one module with different answers, which is a
+    decision a route declares rather than one a middleware re-derives from a path list. The
+    previous version of this paragraph promised the token would land "here beside it"; c3-4 built
+    it and ruled otherwise, two stories ahead of the c5-5 that was scheduled to.
+
+    Story c5-2's WebSocket ticket is still to come and is genuinely middleware-shaped (it gates a
+    handshake, not an endpoint), so this remains the one wiring call and ``build_app()`` never
+    grows a second security line.
 
     Args:
         app: The application to install onto.

@@ -15,8 +15,9 @@
  * 2. **Nothing outside `src/api/` re-declares a shape the backend already describes** — no
  *    hand-written `interface HealthResponse`. `ui/tests/wire-contract.test.ts` reads the
  *    `components.schemas` keys out of the committed `openapi.json` and fails on any such
- *    declaration, so the rule grows on its own as **c3-1** adds deck models and **c5-1** adds the
- *    event envelope.
+ *    declaration, so the rule grows on its own — it did exactly that when **c3-1** added the four
+ *    deck models, with no edit to the test, and it will again when **c5-1** adds the event
+ *    envelope.
  *
  * `import type` / `export type` only: `verbatimModuleSyntax` is on, and nothing about a `.d.ts`
  * may reach the runtime bundle.
@@ -39,11 +40,34 @@ export type HealthResponse = Schemas['HealthResponse']
 export type ErrorResponse = Schemas['ErrorResponse']
 
 /**
+ * One entry of `GET /api/decks`' bare array: a saved deck's metadata and its three counts.
+ *
+ * The first alias with a RUNTIME consumer (**c3-9**), and it is deliberately narrow in how it is
+ * used: this story's poll reads `name` and nothing else, because the only thing it renders is the
+ * `no-active-deck` panel's deck list (`EXPERIENCE.md`: *"names only, non-clickable — the agent
+ * drives"*). **c4-2** owns the deck bootstrap and is the story that reads the counts; it extends
+ * this alias's consumer rather than adding a second one.
+ */
+export type DeckSummary = Schemas['DeckSummary']
+
+/**
  * The closed set of reason tokens (AD-16), as a TypeScript string union.
  *
  * Derived from `ErrorResponse` rather than re-listed, so a token added or removed on the Python
  * side arrives here through the generator instead of through someone remembering. This union is
  * what **c2-9**'s state panels switch on — a token silently dropped from it would compile fine and
- * lose a panel, which is why `schema.test.ts` pins all six by name.
+ * lose a panel, which is why `schema.test.ts` pins every member by name. **Ten** as of c3-5
+ * (`no_image_data`, `image_fetch_failed`); this sentence and that file are where the count is
+ * written, so they are where an eleventh has to be added.
+ *
+ * Not every member reaches the glass, and that is by design rather than by omission: `forbidden`
+ * and `payload_too_large` are answered to the **agent**, and `components/StatePanel/states.ts` is
+ * where each token's destination — panel, placeholder, or deliberately nothing — is recorded in a
+ * form the compiler checks.
+ *
+ * c3-5's pair are the first two tokens that share ONE destination while staying distinct on the
+ * wire: both draw the named Card placeholder, and they are separate tokens because only one of
+ * them may ever be retried. Distinguishable-on-the-wire and identical-on-the-glass is a
+ * combination this union had not carried before; `states.ts` records it.
  */
 export type ErrorReason = ErrorResponse['reason']

@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -619,3 +620,61 @@ async def test_the_token_leaks_into_no_log_response_or_schema(lifespan_client, c
     # Non-vacuity: the token really is discoverable somewhere — just not on those four surfaces.
     assert published is not None
     assert published.token == token
+
+
+async def test_the_token_leaks_into_no_surface_of_the_route_that_reads_it(lifespan_client, caplog):
+    """The same four surfaces, over the first route that actually **compares** the token (c3-4).
+
+    A case on the existing pin rather than a second copy of it: until c3-4 nothing in the codebase
+    read :func:`main.agent_token` on a request path, so "the token never leaks" was a claim about
+    routes that never touched it. ``PUT /api/active-deck`` touches it on every call, and the
+    interesting half is the **rejection** — the branch that has both values in scope at once and is
+    therefore the one tempted to log "expected X, got Y".
+
+    Both outcomes are exercised in one test on purpose (AC 25): a version that only checked the
+    accepted path would pass while the rejection logged the credential, and vice versa.
+    """
+    app = build_app()
+
+    with caplog.at_level(logging.DEBUG):
+        async with lifespan_client(app) as client:
+            token = main.agent_token(app)
+            assert token is not None
+            accepted = await client.put(
+                "/api/active-deck",
+                json={"deck_id": "leak-probe-deck"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            # The rejection carries a near-miss: a prefix of the real credential, which is the
+            # value a "helpfully" verbose log would be most tempted to echo back.
+            rejected = await client.put(
+                "/api/active-deck",
+                json={"deck_id": "leak-probe-deck"},
+                headers={"Authorization": f"Bearer {token[:12]}"},
+            )
+            schema = json.dumps(app.openapi())
+
+    # Non-vacuity: both branches genuinely ran, so neither absence below is "nothing happened".
+    assert accepted.status_code == 200
+    assert rejected.status_code == 403
+    assert caplog.records, "nothing was captured — the leak check would be vacuous"
+
+    for entry in caplog.records:
+        assert token not in entry.getMessage(), f"token leaked into a log message: {entry.name}"
+        assert token not in repr(entry.args), f"token leaked into log args: {entry.name}"
+        # The PRESENTED value must not leak either: it is attacker-controlled, and a near-miss
+        # parked in an operator's log file is a credential hint written to disk.
+        assert token[:12] not in entry.getMessage(), f"presented credential logged: {entry.name}"
+        assert token[:12] not in repr(entry.args), f"presented credential logged: {entry.name}"
+
+    for response in (accepted, rejected):
+        assert token not in response.text
+        assert token not in repr(dict(response.headers))
+    assert token not in schema
+    # …and the generated TypeScript the browser compiles against never names the credential either.
+    types = (Path(__file__).resolve().parents[3] / "ui" / "src" / "api" / "types.d.ts").read_text(
+        encoding="utf-8"
+    )
+    assert token not in types
+    for marker in ("agent_token", "mint_token", "companion.json", "Bearer"):
+        assert marker not in types, f"credential vocabulary {marker!r} reached the generated types"

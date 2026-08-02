@@ -1,4 +1,4 @@
-"""Story c1-5: the localhost-only security envelope — Host validation, and the CORS non-decision.
+"""The localhost-only security envelope: Host validation (c1-5) and the agent credential (c3-4).
 
 The accept/reject matrix is driven twice on purpose: once against the pure predicate (fast,
 exhaustive, no ASGI stack) and once end-to-end through a real ``build_app()``, so the guard is
@@ -23,8 +23,10 @@ from src.companion.app.main import build_app
 from src.companion.app.security import (
     ALLOWED_HOSTNAMES,
     HostValidationMiddleware,
+    agent_token_is_valid,
     allowed_authorities,
     host_is_allowed,
+    presented_credential,
 )
 from tests.unit.companion.conftest import keep_spa_mount_last
 
@@ -424,3 +426,119 @@ class TestRejectionLogging:
         # The cap is 100 characters of the value; asserting on the run of 'e's pins the truncation
         # itself rather than the total length, which the surrounding prose would dominate.
         assert "e" * 101 not in message
+
+
+# --------------------------------------------------------------------------------------------
+# Story c3-4: the agent credential — the SECOND check in this envelope, and the first per-route
+# one. Its matrix is driven here as a pure function, exactly as `host_is_allowed`'s is above;
+# `test_routes_active_deck.py` drives it end-to-end through a real app, because a correct
+# comparison wired to nothing would pass every assertion in this section.
+# --------------------------------------------------------------------------------------------
+
+
+class TestPresentedCredential:
+    """Parsing the ``Authorization`` header, before any comparison happens.
+
+    Kept separate from the comparison on purpose: "what did they send" and "is it right" are
+    different questions, and collapsing them is how a lax parser hides behind a strict compare.
+    """
+
+    @pytest.mark.parametrize(
+        ("header", "credential"),
+        [
+            ("Bearer abc", "abc"),
+            # RFC 9110 §11.1: the auth-scheme is case-insensitive.
+            ("bearer abc", "abc"),
+            ("BEARER abc", "abc"),
+            ("BeArEr abc", "abc"),
+            # Surrounding whitespace on the credential is not part of it.
+            ("Bearer   abc  ", "abc"),
+        ],
+    )
+    def test_a_well_formed_header_yields_its_credential(self, header, credential):
+        assert presented_credential(header) == credential
+
+    @pytest.mark.parametrize(
+        ("case", "header"),
+        [
+            ("absent entirely", None),
+            ("empty", ""),
+            ("a bare token with no scheme", "abc"),
+            ("a different scheme", "Basic abc"),
+            ("a scheme that merely starts with bearer", "BearerToken abc"),
+            ("the scheme alone", "Bearer"),
+            ("the scheme and a space", "Bearer "),
+            ("the scheme and only whitespace", "Bearer     "),
+        ],
+    )
+    def test_anything_else_reduces_to_no_credential(self, case, header):
+        # All of these collapse to None so the comparison site has ONE branch to get right.
+        # `BearerToken` is the one worth staring at: a `startswith("Bearer")` parser accepts it.
+        assert presented_credential(header) is None, case
+
+
+class TestAgentTokenIsValid:
+    """The credential comparison — the one place in this codebase where a bug is a security hole.
+
+    Mirrors :class:`TestHostIsAllowed` above, and the mirroring is the point rather than a stylistic
+    echo: both refuse when *either* side is missing, and c3-4 matched this function to that shipped
+    precedent deliberately.
+    """
+
+    def test_the_matching_case(self):
+        # The paired positive, first: without it every assertion below is satisfied by a function
+        # that returns False unconditionally.
+        assert agent_token_is_valid("a-minted-token", "a-minted-token") is True
+
+    @pytest.mark.parametrize(
+        ("case", "presented", "expected"),
+        [
+            # THE FAIL-OPEN TRAP, in every spelling. `agent_token(app)` is None before the
+            # lifespan runs and an absent header is naturally None, so `presented == expected`
+            # would authenticate every request against an unstarted app.
+            ("both absent", None, None),
+            ("no credential presented", None, "minted"),
+            ("nothing minted", "presented", None),
+            # Empty is absent: "" == "" is True, so a None-only guard leaves the same hole
+            # wearing a different spelling.
+            ("both empty", "", ""),
+            ("empty presented", "", "minted"),
+            ("empty expected", "presented", ""),
+        ],
+    )
+    def test_it_fails_closed_when_either_side_is_missing(self, case, presented, expected):
+        assert agent_token_is_valid(presented, expected) is False, case
+
+    @pytest.mark.parametrize(
+        ("case", "presented", "expected"),
+        [
+            # Not a prefix, suffix or substring match. A comparison doing anything other than full
+            # equality fails here rather than in production.
+            ("a prefix of the real token", "mint", "minted"),
+            ("a superstring of the real token", "minted-and-more", "minted"),
+            ("the real token is a superstring", "minted", "minted-and-more"),
+            ("an interior substring", "inte", "minted"),
+            ("differing in one character", "minteD", "minted"),
+            ("differing only in trailing whitespace", "minted ", "minted"),
+        ],
+    )
+    def test_it_is_full_equality_and_nothing_looser(self, case, presented, expected):
+        assert agent_token_is_valid(presented, expected) is False, case
+
+    @pytest.mark.parametrize(
+        ("case", "presented", "expected", "verdict"),
+        [
+            # `secrets.compare_digest` accepts `str` only when BOTH sides are ASCII-only and
+            # raises TypeError otherwise. Header values decode as latin-1, so this input is
+            # trivially reachable — and under a str comparison it becomes a caller-controlled
+            # `500 internal_error`. Comparing bytes makes it an ordinary verdict.
+            ("a non-ASCII credential against a real token", "schlüssel", "minted", False),
+            ("a non-ASCII credential against itself", "schlüssel", "schlüssel", True),
+            ("an emoji", "🔑", "minted", False),
+            ("a non-ASCII token", "minted", "schlüssel", False),
+        ],
+    )
+    def test_non_ascii_is_a_verdict_and_never_an_exception(
+        self, case, presented, expected, verdict
+    ):
+        assert agent_token_is_valid(presented, expected) is verdict, case

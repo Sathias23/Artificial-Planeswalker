@@ -25,13 +25,13 @@ from typing import Any
 from fastapi import FastAPI
 
 from src.companion import discovery
-from src.companion.app import deps
+from src.companion.app import deps, images, state
 from src.companion.app.errors import (
     error_responses,
     install_error_handling,
     without_auto_validation_schema,
 )
-from src.companion.app.routes import health
+from src.companion.app.routes import active_deck, cards, decks, health
 from src.companion.app.security import install_security
 from src.companion.app.spa import install_spa
 
@@ -81,14 +81,18 @@ def _publish_discovery(app: FastAPI) -> None:
 async def _shutdown(app: FastAPI) -> None:
     """Release everything the lifespan acquired, in reverse order of acquisition.
 
-    Two things, in this order:
+    Three things, in this order:
 
     1. **The discovery file** (c1-7). Retracted first, so the process stops advertising itself as
        early as possible — a tool that reads the file during teardown gets *app not running*
        rather than a port whose socket is about to close.
        :func:`~src.companion.discovery.remove_discovery` is ownership-guarded and never raises, so
        a foreign entry survives and an unlink failure cannot strand the dispose below it.
-    2. **The database engine's connection pool**, if a data-backed request ever caused one to be
+    2. **The outbound image client** (c3-5). Closed before the engine, mirroring the order it was
+       created in, so its connection pool is released rather than left to the garbage collector —
+       which on an unclosed ``httpx.AsyncClient`` produces a ``ResourceWarning`` and, under a
+       hostile upstream, a socket that outlives the request that opened it.
+    3. **The database engine's connection pool**, if a data-backed request ever caused one to be
        created (c1-6). :meth:`~src.companion.app.deps.Database.dispose` is a no-op when it was not,
        which is the ordinary case for a companion that only ever answered ``/health`` — so there is
        one unconditional call rather than a condition per resource.
@@ -102,9 +106,17 @@ async def _shutdown(app: FastAPI) -> None:
     # when a test drives _shutdown directly — and there is then nothing of ours to retract.
     if instance_id is not None:
         discovery.remove_discovery(instance_id)
-    holder = deps.database(app)
-    if holder is not None:
-        await holder.dispose()
+    # try/finally, not sequence: step 1 is certified never to raise, but `aclose` carries no such
+    # guarantee, and a failing close must not strand the engine dispose below it — the exact
+    # stranding this docstring credits step 1 with avoiding (review 2026-08-01).
+    try:
+        client = images.image_client(app)
+        if client is not None:
+            await client.aclose()
+    finally:
+        holder = deps.database(app)
+        if holder is not None:
+            await holder.dispose()
 
 
 @asynccontextmanager
@@ -124,6 +136,44 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     reason it is safe to do so: like the identity mint it is an inert in-process object that cannot
     fail. The **engine** inside it is not created here — a fresh install has no card database yet,
     and AD-10 makes that a served UI state rather than a startup crash (FR-22).
+
+    c3-5's outbound image client is created here for a *different* reason, and the difference is
+    worth stating: constructing an ``httpx.AsyncClient`` opens no socket, so ``build_app()`` could
+    hold one without breaking AD-10's no-side-effects rule. What it could not do is **close** it.
+    A client per process is what gives ~100 tiles of a deck view one TLS handshake instead of a
+    hundred, and only the lifespan has a teardown to release the pool in — so the thing that needs
+    closing is created where the closing happens (Q5, Brad 2026-08-01).
+
+    c3-6's :class:`~src.companion.app.images.Pacer` is created on the line after it, and for a
+    *third* reason worth distinguishing from both: it needs no teardown at all, so nothing about
+    :func:`_shutdown` changes for it. What puts it here rather than in ``build_app()`` is that
+    ~100 tiles must be **one** queue, and the lifespan is where this process's shared things are
+    made — the same reasoning as the client, minus the closing. Constructing one is free and
+    cannot fail (``asyncio`` primitives no longer bind a loop at construction), so the startup
+    asymmetry ``test_app.py::test_startup_failure_propagates`` pins is untouched: publishing the
+    discovery file is still the only step that can fail. The pacer is created **after** the client
+    it paces, mirroring the order they are used in, and AC 2 gates that this is the one and only
+    place in ``src/companion`` where one is constructed (Q1, Brad 2026-08-01).
+
+    c3-7's :class:`~src.companion.app.images.DiskCache` follows on the next line, and it is the
+    **first thing created here that can fail** — which is why it is created through
+    :func:`~src.companion.app.images.build_image_cache` rather than by a constructor call. That
+    function resolves the cache root and creates it, and on an ``OSError`` logs at WARNING and
+    returns ``None``, so ``app.state.image_cache`` is always set and the value itself carries
+    "there is no cache this run". **This is what keeps the startup asymmetry above literally
+    true** (Q6, Brad 2026-08-01): the app is *fully functional* without a cache — every request
+    simply fetches, exactly as it did at c3-6 — so failing the launch would be disproportionate in
+    a way a half-launched rendezvous is not, and it would mean editing the ruling
+    ``test_startup_failure_propagates`` exists to protect. It is created **here and not in**
+    ``build_app()`` for the reason that module docstring gives above: ``src.paths.data_dir()``
+    ``mkdir``\\ s, and AD-11 says the lifespan creates the cache root. Like the pacer it needs no
+    teardown, so :func:`_shutdown` is untouched by it.
+
+    c3-4's :class:`~src.companion.app.state.ActiveDeckSlot` is created on the same line of reasoning
+    and is the first state this process *owns* rather than projects. Creating it here rather than in
+    ``build_app()`` is what makes FR-07's restart behaviour structural: the slot is reachable only
+    through ``app.state``, a fresh process gets a fresh app, and the previous process's active deck
+    has nowhere to have survived. Nothing persists it, and nothing should.
 
     Publishing the discovery file is the **one** startup step that can fail, and it sits
     deliberately **before** the ``try`` so an ``OSError`` propagates and uvicorn exits loudly with
@@ -150,6 +200,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.instance_id = str(uuid.uuid4())
     app.state.agent_token = discovery.mint_token()
     app.state.database = deps.Database()
+    app.state.active_deck = state.ActiveDeckSlot()
+    app.state.image_client = images.build_image_client()
+    app.state.image_pacer = images.Pacer()
+    app.state.image_cache = images.build_image_cache()
+    # No `build_*` factory and nothing in `_shutdown`, unlike the disk cache on the line above:
+    # constructing a negative cache is a dict and a clock, so it cannot fail. That is what keeps
+    # AD-15's ruling literally true — publishing the discovery file below stays the ONLY startup
+    # step that may fail a launch — and it is why `test_app.py::test_startup_failure_propagates`
+    # needed no edit for this story. Predicted at context time and confirmed by measurement (c3-8).
+    app.state.negative_cache = images.NegativeCache()
     _publish_discovery(app)
     logger.info("Companion instance %s started", app.state.instance_id)
     try:
@@ -193,15 +253,31 @@ def agent_token(app: FastAPI) -> str | None:
     """Return the agent credential minted for *app*, or ``None`` if the lifespan never ran.
 
     The token is minted once per process by :func:`lifespan` and published in the discovery file so
-    an agent-side caller can present it. Story c5-5 is the production consumer: ``POST
-    /agent/events`` compares the presented credential against this value, and nothing else may.
+    an agent-side caller can present it.
+
+    **The one comparison site is** :func:`~src.companion.app.security.agent_token_is_valid`, reached
+    through the :data:`~src.companion.app.security.AgentToken` dependency — nothing else may read
+    this accessor to authenticate. c3-4 is the first consumer (``PUT /api/active-deck``), two
+    stories ahead of the c5-5 that was scheduled to build the seam; c5-5's ``POST /agent/events``
+    inherits the same dependency rather than writing a second check. (The previous version of this
+    paragraph named c5-5 as the *only* consumer, which c3-4 made false — see AC 20 row 1 of its
+    story record.)
 
     **Never serialize it.** It must not enter a response body, a header, a log line, a pydantic
-    model that reaches ``app.openapi()``, or a WebSocket frame (AD-5). It lives behind this
-    accessor — on ``app.state`` rather than in any declared shape — precisely so there is no schema
-    for it to leak through; ``test_discovery.py`` pins the four surfaces that exist today (body,
-    headers, logs, schema). The WebSocket frame is c5-3's to pin when the socket exists — nothing
-    guards it yet.
+    model that reaches ``app.openapi()``, or a WebSocket frame (AD-5). That rule is unchanged by
+    gaining a consumer: the credential check reads the value and answers a *boolean*, so the token
+    itself never reaches a response or a log — the rejection log names the path and the fact, never
+    the presented value or the expected one. It lives behind this accessor — on ``app.state`` rather
+    than in any declared shape — precisely so there is no schema for it to leak through;
+    ``test_discovery.py`` pins the four surfaces that exist today (body, headers, logs, schema),
+    and c3-4 extended each of them to cover the first route that reads it. The WebSocket frame is
+    c5-3's to pin when the socket exists — nothing guards it yet.
+
+    **``None`` is a rejection, never a wildcard.** Returning ``None`` before startup is why the
+    comparison must fail closed: an implementation that compared a missing header against a missing
+    token would authenticate every request on an app whose lifespan never ran.
+    :func:`~src.companion.app.security.agent_token_is_valid` refuses when *either* side is missing,
+    matching :func:`~src.companion.app.security.host_is_allowed`.
 
     Args:
         app: The application to read.
@@ -364,9 +440,17 @@ class _CompanionFastAPI(FastAPI):
 def build_app() -> FastAPI:
     """Construct the companion ASGI application without touching anything outside the process.
 
-    The app-level ``responses`` is what puts the typed error body into ``app.openapi()`` (AD-12,
+    The per-include ``responses`` are what put the typed error body into ``app.openapi()`` (AD-12,
     NFR-03): a Pydantic model no route references never reaches ``components.schemas``, so c2-3's
-    generator would have nothing to emit and the UI's state panels nothing to switch on. The
+    generator would have nothing to emit and the UI's state panels nothing to switch on. They are
+    declared **per include rather than app-wide** (c3-4 review, Brad 2026-08-01): the active-deck
+    routes are the first with no database dependency and no request-body ceiling, and an app-wide
+    declaration would tell every ``types.d.ts`` consumer they can answer ``503`` and ``413`` when
+    they structurally cannot — the declaration is about what the *operation* can answer. The
+    database-backed routers carry a fifth token as of c3-9 — ``database_not_initialized``, which
+    they have answered since c1-6 and never declared; ``/health`` keeps the historical four
+    unchanged, because narrowing a c1-2 route's committed schema is not this story's call and
+    widening one it structurally cannot answer would be worse. The
     :class:`_CompanionFastAPI` schema hook keeps FastAPI's auto-generated ``HTTPValidationError``
     — a shape the ``invalid_request`` handler makes permanently unreachable — out of it.
 
@@ -375,14 +459,42 @@ def build_app() -> FastAPI:
         lifespan (serving it, or ``async with lifespan(app)`` in tests) before expecting
         ``app.state`` to hold anything.
     """
-    app = _CompanionFastAPI(
-        title=_TITLE,
-        lifespan=lifespan,
-        responses=error_responses(
-            "invalid_request", "payload_too_large", "database_unavailable", "internal_error"
-        ),
+    app = _CompanionFastAPI(title=_TITLE, lifespan=lifespan)
+    # `/health` keeps the historical four EXACTLY as c1-2 declared them. It takes no session, so
+    # it can answer neither 503 token; narrowing a c1-2 route's committed schema is not this
+    # story's call, and WIDENING it would be worse — an inherited over-declaration is a wart, a
+    # freshly-added one is a lie.
+    health_responses = error_responses(
+        "invalid_request", "payload_too_large", "database_unavailable", "internal_error"
     )
-    app.include_router(health.router)
+    # …and the database-backed routers declare the token they have been answering since c1-6
+    # (c3-9, Q4). `database_not_initialized` was undocumented on three routes and rising —
+    # `TestDatabaseStates` asserts it by name in three test modules while the committed schema
+    # said only `database_unavailable` — and on a fresh install it is the MOST COMMON 503 the UI
+    # will ever see, the one whole state c3-9 exists to render. It is a property of
+    # `deps.get_session`, not of any route, so every data route inherits it by construction and
+    # the gap could only ever widen.
+    #
+    # This is also the first call that exercises `error_responses`' documented collapse: both
+    # tokens share status 503, so they land in ONE entry whose description names each of them
+    # ("reason: database_not_initialized | database_unavailable"). That behaviour has been
+    # advertised in the helper's docstring since c1-4 and had never fired.
+    database_responses = error_responses(
+        "invalid_request",
+        "payload_too_large",
+        "database_not_initialized",
+        "database_unavailable",
+        "internal_error",
+    )
+    app.include_router(health.router, responses=health_responses)
+    app.include_router(decks.router, responses=database_responses)
+    app.include_router(cards.router, responses=database_responses)
+    # No 503 (no database dependency) and no 413 (nothing enforces a body ceiling until c5-5's
+    # cap) — declaring either here would promise a types.d.ts consumer a branch that can never
+    # answer. The PUT's `forbidden` is declared at the route.
+    app.include_router(
+        active_deck.router, responses=error_responses("invalid_request", "internal_error")
+    )
     # Ordering, and it is the whole point: user_middleware[0] is the most recently added
     # middleware, so the error middleware must be installed *last* to end up outermost — where it
     # can type the failures of every middleware added before it. The Host check goes above this
@@ -393,9 +505,31 @@ def build_app() -> FastAPI:
     install_error_handling(app)
     # MUST STAY LAST. install_spa mounts the SPA bundle at "/", and Starlette matches routes in
     # list order, so a mount at "/" matches every path and shadows everything registered after it
-    # — silently: GET /api/decks would answer 200 with index.html instead of running the endpoint.
-    # c3-1 (and c5-2, c5-5) add their routers ABOVE this line. The mount also reads the route table
-    # to decide which prefixes never fall back to the index, so it needs that table complete.
+    # — silently: a route would answer 200 with index.html instead of running the endpoint.
+    # c3-1's decks router, c3-2's cards router and c3-4's active-deck router are registered above
+    # this line; c5-2 and c5-5 add theirs there too. (c3-3 added a route and edited nothing here,
+    # by design: its format-check endpoint is a deck sub-resource that joined the decks router,
+    # which is already above this line. A story adding a route to an EXISTING router inherits the
+    # ordering; only a story adding a router has to touch this block. c3-5 is the second instance
+    # of that: its /api/card-image/{scryfall_id} joined the cards router — same identifier, same
+    # corpus, same repository call — so this block and test_spa.py's differential list were both
+    # verified unchanged rather than edited. Note what it therefore also inherits: the `shared`
+    # includes' 413, which no body-less GET can answer. That wart is ledgered and homed on c3-9.)
+    #
+    # c3-4 is the second instance of the OTHER kind, and it paid the full tax deliberately: a new
+    # router here AND the differential list in test_spa.py::test_the_schema_is_unchanged_by_
+    # installing_the_mount. It could have joined decks.router for free, but every route there takes
+    # a DbSession and that module's docstring is written about deck reads — an authenticated
+    # in-memory write with no database at all would have made it false (Q1, Brad 2026-08-01).
+    #
+    # Note that /api specifically is ALSO protected by spa.py's _RESERVED_SEED, so c3-1's two
+    # routes survive being registered late (measured: they still answer). That belt-and-braces
+    # does NOT generalise — a router on a NOVEL prefix (c5-5's /agent) has only this ordering
+    # between it and the catch-all, which is why the rule is stated for every router rather than
+    # for the ones that happen to be covered twice.
+    #
+    # The mount also reads the route table to decide which prefixes never fall back to the index,
+    # so it needs that table complete regardless.
     # test_spa.py::TestMountOrdering fails with these instructions if the line ever moves.
     install_spa(app)
     return app

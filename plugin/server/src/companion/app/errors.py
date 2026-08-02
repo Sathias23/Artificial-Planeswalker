@@ -27,7 +27,7 @@ annotation is an ``arg-type`` failure under ``mypy --strict``.
 """
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from typing import Any, get_args
 
 from fastapi import FastAPI
@@ -36,6 +36,7 @@ from sqlalchemy.exc import DatabaseError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import ClientDisconnect, Request
 from starlette.responses import JSONResponse, Response
+from starlette.routing import Match
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from src.companion.contracts import ErrorReason, ErrorResponse
@@ -44,9 +45,13 @@ logger = logging.getLogger(__name__)
 
 STATUS_BY_REASON: dict[ErrorReason, int] = {
     "deck_not_found": 404,
+    "card_not_found": 404,
+    "no_image_data": 404,
+    "image_fetch_failed": 502,
     "database_not_initialized": 503,
     "database_unavailable": 503,
     "invalid_request": 400,
+    "forbidden": 403,
     "payload_too_large": 413,
     "internal_error": 500,
 }
@@ -54,6 +59,25 @@ STATUS_BY_REASON: dict[ErrorReason, int] = {
 
 Every token in :data:`~src.companion.contracts.ErrorReason` appears exactly once; a test pins the
 two sets equal, so a future token without a status fails loudly instead of defaulting.
+
+**Why ``forbidden`` is 403 and not 401** (c3-4, Q2). RFC 9110 §15.5.2 requires a ``401`` to carry a
+``WWW-Authenticate`` challenge, and this app's raise path structurally **cannot**:
+:func:`companion_error_handler` calls :func:`error_response` with no ``headers=``, and the parameter
+exists for the ``HTTPException`` path alone. A ``401`` here would therefore either ship
+non-conformant or force :class:`CompanionError` to grow a header channel that exactly one token
+would ever use. ``403`` carries no such requirement and is the honest status for *a credential was
+presented and refused* when there is no challenge-response scheme to advertise — the companion
+mints one token per process and publishes it in the discovery file; there is nothing to negotiate.
+
+**Why c3-5's pair splits across 404 and 502** (Q2). ``no_image_data`` is a statement about the
+*resource*: this card, at this face, has no artwork — a permanent fact of the local row, and 404
+is the status for "the thing you addressed is not there". ``image_fetch_failed`` is a statement
+about an *upstream*: the URL was known and the CDN did not deliver. RFC 9110 §15.6.3 defines 502
+as exactly that — a gateway received an invalid response from the server it was proxying — and it
+is what makes the two distinguishable to a client that reads only the status, on top of the two
+tokens that make them distinguishable to one that reads the body. Deliberately **not** 503: a 503
+in this app means *the local database is unusable*, the UI retries it quietly, and a CDN blip
+must not put up the "Card database is updating" panel.
 """
 
 
@@ -61,8 +85,16 @@ class CompanionError(Exception):
     """A modelled failure: one of the closed reason tokens, on its way to a typed response.
 
     Endpoints raise this instead of building a response, so the status, the body shape and the
-    serialisation all stay in one place. Nothing in ``src/`` raises it yet — stories c1-6 (missing
-    database), c3-1 (missing deck) and c5-5 (oversized push) are the first callers.
+    serialisation all stay in one place. The callers so far are c1-6 (``get_session``, for a missing
+    or unpopulated database), c3-1 (``read_deck``, for a missing deck), c3-2 (``read_card``, for
+    a missing card), c3-3 (``read_deck_format_check``, for a missing deck again) and c3-4
+    (:func:`~src.companion.app.security.require_agent_token`, for a refused credential); c5-5's
+    oversized push is still to come.
+
+    c3-4's is the first caller that is **not an endpoint body and not a** ``GET``: it is a
+    dependency guarding a ``PUT``, which works for the same reason c1-6's session dependency does —
+    dependencies are solved inside Starlette's ``ExceptionMiddleware``, so what they raise reaches
+    a handler. Position in the stack is the rule, not "only route bodies may raise".
 
     **Middleware does not raise this.** A user middleware sits *outside* Starlette's
     ``ExceptionMiddleware``, so a handler registered with ``add_exception_handler`` can never see
@@ -107,15 +139,32 @@ def error_response(
         headers: Headers to carry on the response. Also only for the ``HTTPException`` path:
             Starlette's route-miss 405 arrives with the RFC-mandated ``Allow``, and a later
             story's exception may carry ``WWW-Authenticate`` or ``Retry-After`` — dropping them
-            would make the typed body a downgrade.
+            would make the typed body a downgrade. A caller's own ``Cache-Control`` overrides the
+            ``no-store`` default below; nothing sends one today.
 
     Returns:
-        A ``JSONResponse`` whose body is exactly ``{"reason": "<token>"}``.
+        A ``JSONResponse`` whose body is exactly ``{"reason": "<token>"}``, marked ``no-store``.
     """
+    # `no-store` on EVERY typed error, feature-wide, and it is load-bearing rather than hygiene
+    # (c3-5, AC 15). A route cannot attach headers — the whole point of deriving the status from
+    # the token is that a call site cannot shape the response — so the only place this can be
+    # said is here. It has to be said: RFC 9111 §4.2.2 lists 404 among the statuses a cache may
+    # store *heuristically*, with no explicit freshness at all, and c3-5 answers 404 for a card
+    # whose image is momentarily unavailable. Cached, one bad minute would leave a permanently
+    # broken tile in that tab. No modelled failure in this app is worth re-serving from a cache:
+    # every one of them is either about right now (503, 502) or about a request that will be
+    # answered the same way anyway (400, 403, 404).
+    #
+    # The override is honoured by HEADER semantics, not dict semantics (review 2026-08-01): HTTP
+    # names are case-insensitive and dict keys are not, so a plain `**` merge over a caller's
+    # `cache-control` would put TWO conflicting Cache-Control headers on the wire.
+    merged: dict[str, str] = {"Cache-Control": "no-store"}
+    for name, value in dict(headers or {}).items():
+        merged["Cache-Control" if name.lower() == "cache-control" else name] = value
     return JSONResponse(
         status_code=STATUS_BY_REASON[reason] if status is None else status,
         content=ErrorResponse(reason=reason).model_dump(),
-        headers=dict(headers) if headers else None,
+        headers=merged,
     )
 
 
@@ -124,8 +173,34 @@ def error_responses(*reasons: ErrorReason) -> dict[int | str, dict[str, Any]]:
 
     A Pydantic model that no route references never enters ``components.schemas``, and ``c2-3``'s
     generator would emit nothing for it. This is the one construction site for that declaration:
-    ``build_app()`` uses it app-wide, and c3-1 / c3-2 / c5-5 use it per-route for the tokens only
-    their own endpoints can produce.
+    ``build_app()`` uses it per **include** — app-wide until c3-4, whose DB-free, cap-free
+    active-deck routes were the first that an app-wide ``503``/``413`` declaration would lie
+    about — and the per-route callers declare only the tokens their own
+    endpoints can produce: c3-1's ``GET /api/deck/{deck_id}`` declares ``deck_not_found`` (and its
+    sibling ``GET /api/decks`` deliberately declares nothing, having no 404 to give), c3-2's
+    ``GET /api/cards/{card_id}`` declares ``card_not_found``, c3-3's
+    ``GET /api/deck/{deck_id}/format-check`` declares ``deck_not_found`` again — the same token on
+    a third route, which is the ordinary case and needs nothing new here — c3-4's
+    ``PUT /api/active-deck`` declares ``forbidden`` (its sibling ``GET /api/active-deck`` declares
+    nothing, being credential-free and having no failure of its own to model), and c3-5's
+    ``GET /api/card-image/{scryfall_id}`` declares **three** — ``card_not_found``,
+    ``no_image_data`` and ``image_fetch_failed`` — the most any route has declared, and the first
+    to put two tokens under one status by declaration rather than by inheritance (both 404s land
+    in one entry naming each, which is what the grouping below exists for). c5-5 follows.
+
+    c3-5 is also the first caller on a route whose **success** body is not JSON. That changes
+    nothing here — the declarations this builds are per status and describe the error bodies —
+    but it is worth stating, because the route merges this mapping into a hand-written ``200``
+    entry rather than passing it as ``responses=`` wholesale.
+
+    c3-4 is also the first caller whose token comes from a **dependency** rather than the endpoint
+    body. That changes nothing here — the declaration is about what the *operation* can answer, not
+    about which frame raised it — but it is worth stating, because a reader looking for the
+    ``forbidden`` raise will not find it in the route function.
+
+    Note that ``deck_not_found`` and ``card_not_found`` share a status without being
+    interchangeable — the grouping below is by status, so a route declaring both would document
+    one 404 naming both tokens.
 
     Tokens sharing a status (both database tokens are 503) collapse into a single entry whose
     description names each of them, rather than one silently overwriting the other.
@@ -242,6 +317,88 @@ async def validation_error_handler(request: Request, exc: Exception) -> JSONResp
     return error_response("invalid_request")
 
 
+_METHOD_NOT_ALLOWED = 405
+
+
+def _leaf_routes(routes: Iterable[Any]) -> Iterator[Any]:
+    """Yield the individual routes reachable from *routes*, flattening nested routers.
+
+    FastAPI 0.140 does **not** flatten an included router into ``app.routes``: it stores a lazy
+    ``_IncludedRouter`` wrapper whose ``matches()`` answers for the whole branch and which carries
+    no ``methods`` of its own (measured — a naive one-level walk over this app finds four such
+    wrappers and zero real routes). Starlette ``Mount``s nest the same way through ``.routes``.
+
+    Written against attributes rather than against either framework's private classes, so a
+    structural change upstream degrades this to "found nothing" — which the one caller treats as
+    *keep the framework's own header* — instead of raising inside an error handler, which is the
+    worst possible place to introduce a new failure.
+
+    Args:
+        routes: A route list, from ``app.routes`` or a nested router.
+
+    Yields:
+        Every leaf route, depth-first.
+    """
+    for route in routes:
+        included = getattr(route, "original_router", None)
+        nested = getattr(included, "routes", None) if included is not None else None
+        if nested is None:
+            nested = getattr(route, "routes", None)
+        if nested:
+            yield from _leaf_routes(nested)
+            continue
+        yield route
+
+
+def supported_methods(request: Request) -> frozenset[str]:
+    """Return every HTTP method the routes matching *request*'s path collectively support.
+
+    **Why this has to exist, measured against Starlette 0.48.0.** ``Router.app`` keeps only the
+    **first** partially-matching route (``routing.py:738``: ``elif match == Match.PARTIAL and
+    partial is None``) and then lets it answer, and ``Route.handle`` builds the header from *that
+    one route's* method set (``routing.py:283``: ``headers = {"Allow": ", ".join(self.methods)}``).
+    One path served by two single-method routes therefore advertises only the first of them.
+
+    That was unreachable until c3-4: every path in this app had exactly one method, so the first
+    partial match was also the only one. ``/api/active-deck`` is the first path with two, and a
+    ``POST`` to it measured ``Allow: GET`` — omitting the ``PUT`` that is the whole point of the
+    resource. RFC 9110 §15.5.6 requires the field to list *the target resource's* supported methods,
+    so that answer is not merely unhelpful, it is wrong: a client reading it concludes the resource
+    cannot be written.
+
+    Recomputed here rather than worked around by merging the two operations into one route, because
+    they are genuinely two operations — different bodies, different credentials, different declared
+    errors — and collapsing them would trade a correct schema for a correct header.
+
+    Args:
+        request: The request that missed. Its scope is re-matched against the app's route table.
+
+    Returns:
+        The union of the methods of every route whose path matches but whose method did not.
+        Empty when nothing matched partially — including if the route-table walk ever stops finding
+        leaves, which the caller treats as "leave the framework's header alone".
+
+    .. warning::
+        The flattened children are matched against the **un-stripped** request scope. Starlette
+        strips a mount's prefix into ``child_scope`` before children match, so this is correct
+        only while every mount sits at ``/`` — true of this app today (the SPA mount) and asserted
+        by nothing. A future non-root ``Mount`` would have children that silently never match here
+        (degrading to Starlette's incomplete header) or, for a child at ``/``, match paths it does
+        not serve. This is a *different* hole from the attribute-walk soft failure above: that one
+        finds no leaves; this one finds them and asks them the wrong question. The story that adds
+        a non-root mount owns the prefix-stripping walk (c3-4 review; ledgered).
+    """
+    methods: set[str] = set()
+    for route in _leaf_routes(request.app.routes):
+        match, _ = route.matches(request.scope)
+        if match is not Match.PARTIAL:
+            continue
+        # Mounts and routers have no `methods` at all, so they contribute nothing rather than
+        # raising.
+        methods |= set(getattr(route, "methods", None) or ())
+    return frozenset(methods)
+
+
 async def http_exception_handler(request: Request, exc: Exception) -> Response:
     """Answer an ``HTTPException`` with the typed body, keeping the framework's status and headers.
 
@@ -257,6 +414,13 @@ async def http_exception_handler(request: Request, exc: Exception) -> Response:
     a ``WWW-Authenticate`` or ``Retry-After`` would make the typed body a downgrade. A sub-400 or
     bodiless (204/304) status is not an error at all, so it passes through with no body rather
     than being stamped with a token it cannot honestly carry.
+
+    The ``Allow`` on a 405 is **recomputed rather than forwarded**, and that is a repair rather than
+    a refinement: Starlette derives it from the first partially-matching route alone, which
+    under-reports the moment a path is served by more than one (see :func:`supported_methods` for
+    the measurement). Forwarded unchanged, ``POST /api/active-deck`` would answer ``Allow: GET`` and
+    tell c6-1 that the endpoint it exists to call does not accept writes. Every other header on the
+    exception is passed through untouched.
 
     Registered against **Starlette's** ``HTTPException``, which ``fastapi.HTTPException``
     subclasses, so one registration covers both and overrides FastAPI's own default handler.
@@ -276,8 +440,16 @@ async def http_exception_handler(request: Request, exc: Exception) -> Response:
         raise exc
     if exc.status_code < 400 or exc.status_code in {204, 304}:
         return Response(status_code=exc.status_code, headers=exc.headers)
+    headers = exc.headers
+    if exc.status_code == _METHOD_NOT_ALLOWED:
+        allowed = supported_methods(request)
+        # Guarded on truthiness: an empty union means nothing matched partially, which should not
+        # happen on a 405 — and replacing a real header with an empty one would be strictly worse
+        # than leaving Starlette's incomplete one in place.
+        if allowed:
+            headers = {**(headers or {}), "Allow": ", ".join(sorted(allowed))}
     reason: ErrorReason = "invalid_request" if exc.status_code < 500 else "internal_error"
-    return error_response(reason, status=exc.status_code, headers=exc.headers)
+    return error_response(reason, status=exc.status_code, headers=headers)
 
 
 async def database_error_handler(request: Request, exc: Exception) -> JSONResponse:

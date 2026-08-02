@@ -204,7 +204,9 @@ def test_card_schema_multiface_card() -> None:
 
     assert card.card_faces is not None
     assert len(card.card_faces) == 2
-    assert card.card_faces[0]["name"] == "Delver of Secrets"
+    # Attribute access since c3-5 typed the faces as `CardFace` (Q4). The dicts still go in
+    # unchanged — only the way they are read out has a type now.
+    assert card.card_faces[0].name == "Delver of Secrets"
 
 
 def test_card_summary_from_full_card() -> None:

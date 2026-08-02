@@ -276,7 +276,7 @@ async def validate_deck(
     format: str = "standard",
     games: list[str] | None = None,
 ) -> ValidateDeckResult:
-    """Validate a deck's construction legality for a format (size, copies, legality).
+    """Validate a deck's construction legality for a format (size, copies, legality, bans).
 
     Loads the deck by ``deck_id`` and checks the constructed rules: mainboard
     size, sideboard size, the copy limit (counted across both boards, basics
@@ -285,10 +285,13 @@ async def validate_deck(
     paupercommander, predh — reported as
     ``singleton``), per-card legality in ``format``, and — when ``games`` is
     given — card availability on those platforms (based on the union of games
-    across all printings). ``format`` is case-insensitive (lowercased here) and,
-    like ``games``, a per-call parameter (no server-side state). Returns a
-    structured report listing every violation; ``report.is_legal`` is the
-    overall verdict.
+    across all printings). A **banned** card is reported separately as
+    ``banned_card``; a card that is merely not in the format (and also a
+    ``restricted`` one, which this validator does not model a per-card copy
+    limit for) is reported as ``format_legality``. ``format`` is case-insensitive
+    (lowercased here) and, like ``games``, a per-call parameter (no server-side
+    state). Returns a structured report listing every violation;
+    ``report.is_legal`` is the overall verdict.
 
     Args:
         session: Async database session to load the deck from.
