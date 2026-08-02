@@ -156,3 +156,38 @@ describe('wire shapes are declared once, by the backend (NFR-03, AD-12)', () => 
     expect(offenders).toEqual([])
   })
 })
+
+/**
+ * The card route publishes no image token — asserted against the committed contract (c4-1 AC 14).
+ *
+ * `src/state/cards.ts`'s `CARD_READ_IS_RETRYABLE` classifies `no_image_data` and
+ * `image_fetch_failed` as unreachable-on-this-path because `GET /api/cards/{card_id}` does not
+ * publish them; that claim is about `openapi.json`, so it is checked HERE, against the document,
+ * rather than trusted as a comment. `cards.test.ts` separately pins the cache's behaviour in
+ * case one arrives anyway; this is the other half — the contract saying it will not.
+ */
+describe('GET /api/cards/{card_id} publishes no image token', () => {
+  it('offers card_not_found plus the app-wide set, and neither image reason', () => {
+    interface Operation {
+      responses?: Record<string, { description?: string }>
+    }
+    const cardGet = (schema as { paths?: Record<string, { get?: Operation }> }).paths?.[
+      '/api/cards/{card_id}'
+    ]?.get
+    expect(cardGet).toBeDefined()
+
+    // The generator writes each error response's tokens into its description
+    // (`"reason: database_not_initialized | database_unavailable"`), so the concatenated
+    // descriptions carry the route's whole published refusal vocabulary.
+    const published = Object.values(cardGet?.responses ?? {})
+      .map((response) => response.description ?? '')
+      .join(' ')
+
+    // Non-vacuity first: the parse genuinely found tokens.
+    expect(published).toContain('card_not_found')
+    expect(published).toContain('invalid_request')
+
+    expect(published).not.toContain('no_image_data')
+    expect(published).not.toContain('image_fetch_failed')
+  })
+})

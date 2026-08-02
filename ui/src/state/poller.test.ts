@@ -8,7 +8,7 @@
  * elapsed clock, and vitest's fake timers mock that too.
  *
  * The reader is INJECTED rather than stubbed onto `globalThis.fetch`, so these tests are about
- * scheduling and nothing else: what a malformed body does is `api/decks.test.ts`'s subject, and
+ * scheduling and nothing else: what a malformed body does is `api/client.test.ts`'s subject, and
  * what a token means is `panel.test.ts`'s.
  */
 
@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RETRIES_QUIETLY } from '../components/StatePanel/states'
 import type { StateKey } from '../components/StatePanel/copy'
-import type { DecksOutcome } from '../api/decks'
+import type { DecksOutcome } from '../api/client'
 import {
   createPoller,
   POLL_BASE_MS,

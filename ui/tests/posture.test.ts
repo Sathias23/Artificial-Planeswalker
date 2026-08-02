@@ -228,9 +228,10 @@ describe('a component may take a TYPE from anywhere and a VALUE from its own tre
   it.each([
     ['a store import', "import { useSystemStore } from '../../state/systemState'"],
     ['a dynamic import of one', "const s = await import('../../state/systemState')"],
-    ['a value re-export', "export { readDecks } from '../../api/decks'"],
+    ['a value re-export', "export { readDecks } from '../../api/client'"],
     ['zustand itself', "import { create } from 'zustand'"],
-    ['a fetch helper', "import { readDecks } from '../../api/decks'"],
+    ['a fetch helper', "import { readDecks } from '../../api/client'"],
+    ['the card cache', "import { hydrateCard } from '../../state/cards'"],
   ])('would catch %s planted in the tree', (_label, line) => {
     // The FIRING half, fed inline the way every guard suite in this repo feeds its reader —
     // planting the breach in a real file and reverting it is what Task 9's probes do, and what
@@ -308,14 +309,23 @@ describe('the component tree holds no behaviour, keyed on the family (AC 18)', (
 describe('there is exactly ONE door to the network in ui/src (AC 10, AC 18)', () => {
   const [, networkFamily] = BEHAVIOUR_FAMILIES[0]
 
-  it('names it, and it is the module c4-1 extends', () => {
+  it('names it, and its name does not promise one route', () => {
     const doors = trackedSources.filter((file) => networkFamily.test(codeOf(file)))
 
     // Not "components do not fetch" — the whole SPA has one place a request is made, so the
     // retry rule, the `no-store` decision and the AC 10 no-path-parameter argument all have one
-    // address. **c4-1 adds routes to this module**; a second `fetch` anywhere else is a second
-    // spelling of the same thing and fails here rather than in review.
-    expect(doors).toEqual(['src/api/decks.ts'])
+    // address. A second `fetch` anywhere else is a second spelling of the same thing and fails
+    // here rather than in review.
+    //
+    // **This list read `['src/api/decks.ts']` until c4-1 (Q1), and the rename is the point.** The
+    // property being asserted is "one door, named exhaustively", NOT "the door is called
+    // `decks.ts`" — so when c4-1 added `GET /api/cards/{card_id}`, the choice was between a
+    // second module (which fails this assertion by design, and would have meant weakening a
+    // one-door rule into a per-directory one to buy a filename) and a module whose name stops
+    // promising a single route. The second, and this line moved with it in the same commit as
+    // the first card fetch. **The next route — c4-2's deck detail, c4-10's format check — goes
+    // into the same file.**
+    expect(doors).toEqual(['src/api/client.ts'])
   })
 
   it('does not let App itself become the second one', () => {

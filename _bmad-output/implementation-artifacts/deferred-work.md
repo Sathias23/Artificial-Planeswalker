@@ -1893,6 +1893,12 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   the wire as normal. Pre-existing schema shape; this story merely put it on the wire. **Home:
   c4-1/c4-2**, the first real consumers of these types. (Severity: Low.)
 
+  **Not triggered at c4-1 (2026-08-02); the whole entry is c4-2's.** c4-1 consumed `Card`,
+  `CardSummary` and `DeckCardSummary` and hit neither half: no `strategy`, no `format` and none of
+  the three count fields appears on any of them — they live on `DeckSummary` / `DeckDetail`, and
+  c4-1 deliberately did not alias `DeckDetail`, having no consumer for it. **Home: c4-2**,
+  unshared, which reads exactly those fields when it renders the deck header.
+
 - **`_is_ref_rooted` will misfire on the first legitimate union response model.**
   **✅ RESOLVED at c3-3 (2026-08-01, Q5 — Brad took this half of the question).**
   `tests/unit/companion/test_errors.py` puts `anyOf`/`oneOf`/`allOf` in `_OBJECT_SHAPE_KEYS`, so a
@@ -2050,11 +2056,23 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   **Fix shapes**, none taken here: add explicit extensions in `states.ts` (breaks the app project's
   convention), exclude `src` from the node project's graph, or keep the current workaround — a
   source read, with the runtime value pinned in the app-project test beside the module.
-  **Home: c4-1**, the first story that will want to import real app modules into `ui/tests` at any
-  scale (a fetch layer is exactly the thing whose tests reach across). Until then the workaround
+  ~~**Home: c4-1**, the first story that will want to import real app modules into `ui/tests` at any
+  scale (a fetch layer is exactly the thing whose tests reach across).~~ Until then the workaround
   is documented in `unknown-card-copy.test.ts` and in `ui/README.md`'s blind-spot map.
   (Severity: Medium — the symptom points at the wrong file, and CI runs `tsc -b` without
   `--force`, so a cached-clean result can ship.)
+
+  **NOT TRIGGERED at c4-1 (2026-08-02) — re-homed by name, with the reason.** The prediction was
+  reasonable and it did not hold: c4-1's fetch layer and cache are tested **inside the app
+  project** (`src/api/client.test.ts`, `src/state/cards.test.ts`), which is where AC 24 puts them —
+  jsdom, no configuration, no cross-project import. What c4-1 added under `ui/tests/` is a change
+  to `posture.test.ts`'s door list, and that guard reads source as **text** via
+  `readFileSync` + `git ls-files`; it imports no app module and therefore cannot trip the cascade.
+  `npx tsc -b --force` was run and is green, so this is a measured "did not fire", not an
+  assumption. **Home: the first story that actually imports a real `src/` module into `ui/tests/`.**
+  Nothing in C4 obviously does — the epic's remaining guards are file-reading guards of the same
+  shape — so the realistic candidate is **c5-1**'s event envelope or whichever story first wants a
+  runtime value from `src/` inside a node-project test. (Severity: unchanged, Medium.)
 
 ## Deferred from: code review of c3-2 (2026-07-31)
 
@@ -2069,8 +2087,23 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   prevented, and the failure mode is the exact one FR-13 exists to stop ("one unknown card must
   never fail a whole view") wearing a different token. **Fix shape**: either the hydration layer
   treats a 400 on a card fetch as a placeholder case, or the id shape is validated where deck rows
-  are read. **Home: c4-1** (the hydration cache) with **c4-3** (the placeholder) as its consumer.
+  are read. ~~**Home: c4-1** (the hydration cache) with **c4-3** (the placeholder) as its consumer.~~
   (Severity: Medium if it ever fires, Low probability today.)
+
+  **✅ RESOLVED at c4-1 (2026-08-02, Q5) — and closed on BOTH fix shapes, not one.** The ruling:
+  **a `400 invalid_request` on a per-card read IS the unknown-card case.**
+  `PLACEHOLDER_FOR_CARD_REFUSAL` in `src/state/cards.ts` maps it to `states.ts`'s own
+  `'unknown-card'` `PlaceholderKey`, beside `card_not_found`, whose value is read OUT of
+  `PLACEHOLDER_FOR_REASON` rather than re-typed. The argument, written in the code: `states.ts`
+  classifies that token `NO_UI_RESPONSE` on the premise *"the SPA never generates a malformed
+  request"*, and that premise is **exactly what fails here** — an id the app cannot render is an id
+  the app cannot render, whichever token says so. `states.ts` is untouched, because the
+  destination is context-dependent rather than a property of the token, and adding
+  `invalid_request` to `PLACEHOLDER_FOR_REASON` would break `ReasonClassificationsAreDisjoint`.
+  The second fix shape landed too: `cardPath()` runs the id through `encodeURIComponent`, so an id
+  carrying `/`, `?` or `#` can no longer change WHICH route is addressed — it stays one path
+  segment and the route's uuid pattern refuses it. Both halves are test-pinned. **c4-3 renders the
+  placeholder**; the token and the destination are waiting for it.
 
 - **`Card` is now a banned type name across all of `ui/`, and there is no sanctioned alias to
   import instead.** `wire-contract.test.ts` derives its ban from `components.schemas`, so `Card`
@@ -2081,8 +2114,18 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   declaring a local `interface Card` — is precisely what the gate rejects. **Fix shape**: add the
   aliases to `schema.ts` in the story that first needs them (one line each; the barrel is the
   sanctioned single reader). Not done here because c3-2 ships no component and an unused export
-  would be dead code. **Home: c4-1**, the first frontend story to consume a wire shape.
+  would be dead code. ~~**Home: c4-1**, the first frontend story to consume a wire shape.~~
   (Severity: Low — a five-minute detour, but an unsignposted one.)
+
+  **✅ RESOLVED at c4-1 (2026-08-02).** `src/api/schema.ts` now exports **seven** aliases:
+  `HealthResponse`, `ErrorResponse`, `DeckSummary`, `ErrorReason` and — new here — `Card`,
+  `CardSummary` and `DeckCardSummary`, each with a docstring naming its consumer (`readCard`, the
+  cache's `hydrated` tier; the cache's `summary` tier; `seedCardSummaries`, which **c4-2** calls).
+  **`CardFace` and `DeckDetail` were deliberately NOT added**: nothing in this commit consumes
+  them, and c3-2's own reason for declining — an unused export is dead code — applies to c4-1
+  exactly as it applied to c3-2. c4-2 adds `DeckDetail` when its fetch needs it; whichever story
+  renders a flip control (**c4-6**) adds `CardFace`. `ui/README.md:154` claimed three aliases when
+  four already shipped; corrected in the same commit.
 
 - **`GET /api/cards/{card_id}` sets no cache headers on a resource that is immutable between
   database refreshes.** `cards.py`'s module docstring claims c3-5's image route shares "the same
@@ -2098,9 +2141,25 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   shares nothing with a file on disk but the word, and implementing it inside c3-7 would have been
   a second mechanism smuggled in under a docstring's phrasing. `cards.py`'s module docstring now
   says so explicitly, in the past tense, so the sentence cannot be read as a live claim again.
-  **The route still sets no cache headers, and that half stays homed on c4-1** beside the
-  hydration cache it belongs with. (Severity: Low. **Status: half closed** — the false claim is
-  gone; the missing headers remain c4-1's.)
+  ~~**The route still sets no cache headers, and that half stays homed on c4-1** beside the
+  hydration cache it belongs with.~~ (Severity: Low. **Status: half closed** — the false claim is
+  gone.)
+
+  **RE-HOMED at c4-1 (2026-08-02, Q7) — declined here, with the measurement that makes it a
+  decision rather than a dodge.** The theory this was homed on was that the hydration cache is the
+  layer that makes the missing headers moot, and **measured, that theory holds**: the cache issues
+  **one request per id per tab** and never re-requests a hydrated id, so the population an `ETag`
+  would serve is *page reloads*, not renders. The entry's own worst case — *"a c4-x deck view
+  hydrating 60–100 cards re-fetches every full record on every render"* — is now structurally
+  impossible, and the sentence is superseded rather than merely unfixed. Two further facts: the
+  client sends `cache: 'no-store'` on card reads (deliberately, so that a header-less response
+  cannot be heuristically cached into staleness across a database refresh), which would make an
+  `ETag` inert until that decision were revisited; and implementing it would be a **backend** change
+  in a story whose whole product is a store slice, making AC 27's "the Python side is unchanged"
+  false for no measured gain. **Home: the C4 retrospective**, which is where "close this as
+  superseded, or do it with the cache in view" should actually be decided — the epic's twelve
+  stories are the ones that will have exercised the cache on real decks by then.
+  (Severity: Low, and lower than when it was written.)
 
 - **`test_openapi_contract._descriptions()` does not mirror the truncator's `_DATA_KEYS` skip.**
   `without_python_docstring_sections` deliberately does not descend into `example`/`examples`/
@@ -2465,9 +2524,19 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   `test_routes_card_image.py::TestTheBurstDoesNotOutlastTheConnectionPool` so a later story that
   slows the pacer sees the cliff. The clean fix is to read the row, release the session, *then*
   queue — rejected here because it takes this one route off `DbSession`, the annotation c3-1…c3-5
-  standardised on, for a problem that does not bite at these constants. **Home: c4-1**, beside the
-  hydration cache, which already carries this route's whole-row-read entry. (Severity: Low at the
+  standardised on, for a problem that does not bite at these constants. ~~**Home: c4-1**, beside the
+  hydration cache, which already carries this route's whole-row-read entry.~~ (Severity: Low at the
   shipped constants; High for whichever story changes them without reading this.)
+
+  **RE-HOMED at c4-1 (2026-08-02, Q7) → c4-4.** This is a property of the **image** route's pacer
+  and connection pool, and c4-1 touches neither: it ships a store slice and a JSON reader, adds no
+  Python, and issues **no image request at all** (art reaches the screen through `<img>` and the
+  browser's HTTP cache — there is no `fetch` for image bytes in `ui/src`). Homing it here on
+  "beside the hydration cache" was a filing convenience, not a technical relationship. The story
+  that will actually produce the burst this entry describes is **c4-4, the card-art grid** — the
+  first surface that mounts ~99 `<img src="/api/card-image/…">` at once and therefore the first
+  thing that can push the pacer queue past the pool timeout. **Home: c4-4**, and it should be read
+  before that story changes any pacer constant.
 
 - **`4` was declared out of c3-3's deck-construction-limit family, and that is a ruling made by
   c3-6 rather than a discovery.** `TestNoRuleInTheShell` bans the literals `60`/`15`/`4` anywhere
@@ -2581,8 +2650,16 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   `CardRepository.get_by_id` returns the `Card` the sibling route already answers with — so an
   image request pays for oracle text, legalities and every other column to read one URL. Ledgered
   rather than optimised: a narrow projection would be the second card shape AD-1 exists to
-  prevent. **Home: c4-1**, beside the hydration cache, which is the layer that could make this
-  free. (Severity: Low — local SQLite, one row.)
+  prevent. ~~**Home: c4-1**, beside the hydration cache, which is the layer that could make this
+  free.~~ (Severity: Low — local SQLite, one row.)
+
+  **RE-HOMED at c4-1 (2026-08-02, Q7) → c4-4.** The theory — that the hydration cache is the layer
+  that could make this free — does **not** hold, and saying so is the honest move. The cache holds
+  the JSON record from `GET /api/cards/{card_id}`; the wasted read is on `GET
+  /api/card-image/{scryfall_id}`, a route c4-1 never calls and whose consumer is an `<img>` tag the
+  browser drives. No amount of caching card ROWS in the SPA changes how the image route reads one.
+  **Home: c4-4** (the card-art grid), the first story that issues these requests in bulk and
+  therefore the first that could measure whether the whole-row read is worth a projection.
 
 - **`HEAD` and `Range` are not supported on the image route.** `GET` only. A browser will not ask
   for either on an `<img>`, and nothing in the feature needs them; `HEAD` would additionally
@@ -2821,7 +2898,17 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   would actually have caught c3-7's sibling race and c3-8's carve-out.
 
   **DECISION PARKED by Brad, 2026-08-02**, pending the rest of the manual-testing checklist.
-  **Home: re-decide with c4-1's hydration cache in view.** (Severity: Low.)
+  ~~**Home: re-decide with c4-1's hydration cache in view.**~~ (Severity: Low.)
+
+  **RE-HOMED at c4-1 (2026-08-02) → the C4 retrospective.** c4-1's hydration cache is now shipped
+  and it is *in view*, so the disposition this entry asked for can be given: **the cache changes
+  nothing about `images.py`.** c4-1 adds no Python at all, calls no image route, and its cache holds
+  card ROWS — the three mechanisms in `images.py` (pacer, disk cache, negative cache) are untouched
+  and un-approached by it. So the split question is exactly as open as it was, with one fewer
+  unknown. Re-deciding it inside a frontend story would be deciding it on no new evidence.
+  **Home: the C4 retrospective** — by then c4-4 (the art grid) and c4-6 (the flip control) will have
+  exercised all three mechanisms against real decks, which is the evidence the decision actually
+  wants. (Severity: Low.)
 
 - **This machine's full-suite runtime is too noisy to support the before→after claim AC 24 asks
   for, and that is worth knowing before the next story tries to make one.** Three consecutive runs
@@ -3129,8 +3216,18 @@ either has an owner story or is declared inside the file it constrains.
   interleaving this ledger already documents — each flip resets the schedule, so sustained
   alternation approaches one request per 2 s against a backend that is deliberately busy, which is
   what `POLL_CEILING_MS`'s docstring says the ceiling exists to prevent. By-design per Q2; the cost
-  was not weighed there. **Home: c4-1**, which copies this seam for its per-card fetches and should
-  decide whether token-change resets need damping (e.g. no reset between the two database tokens).
+  was not weighed there. ~~**Home: c4-1**, which copies this seam for its per-card fetches and should
+  decide whether token-change resets need damping (e.g. no reset between the two database tokens).~~
+
+  **RE-HOMED at c4-1 (2026-08-02, Q6) → c5-6, and the premise it was homed on turned out to be
+  false.** c4-1 does **not** copy this seam: `readCard` has no backoff, no schedule and no timer at
+  all, and AC 12's bound is a cumulative **attempt count per id**
+  (`MAX_ATTEMPTS_PER_CARD = 3`) rather than a token-driven retry loop — so there is no `delay` for
+  a token change to reset and nothing here to damp. Beyond that, the damping question is about
+  `poller.ts`'s whole-screen poll, and **c5-6 already owns the family of sibling entries about that
+  poller's re-drive behaviour** (C3 retro ruling R3: *"c5-6 resolves the family; it should not solve
+  one third of it"*). **Home: c5-6.** If a later per-card path ever grows a schedule, this decision
+  comes with it.
 - **`database-updating-stalled` permanently forfeits FR-22's self-transition.**
   `RETRIES_QUIETLY['database-updating-stalled']` is `false` (ruled in `states.ts:233` — *"continuing
   to retry silently is the behaviour this state exists to replace"*), so once escalated the poll
@@ -3161,4 +3258,40 @@ either has an owner story or is declared inside the file it constrains.
   per-card fetches and the WebSocket. The threshold is `STALLED_AFTER_MS = 60_000` with a
   `STALLED_MIN_REFUSALS = 4` observation floor. The prose homes are `ui/README.md`'s "Not here
   yet" + blind-spot row and the module headers; this entry exists so the ledger names the seam
-  too. **Home: c4-1 and c4-2 read this before extending.**
+  too. ~~**Home: c4-1 and c4-2 read this before extending.**~~
+
+  **✅ READ AND ACTED ON at c4-1 (2026-08-02); half closed, c4-2's half stands.** Every clause was
+  honoured and one was amended by ruling. The seam was **extended, not replaced**: the module is
+  still the one network door and still a total outcome union that never rejects, and `readCard`
+  was written to that shape. The deduping went **around** it, in `src/state/cards.ts`, exactly as
+  the ruling said. The not-retry-safe warning was the operative one and it produced
+  `MAX_ATTEMPTS_PER_CARD`, whose docstring carries the c3-2 measurement so the reason travels with
+  the constant. **The amendment: the door is now `src/api/client.ts`, not `src/api/decks.ts`**
+  (c4-1 Q1) — the guard's property was always "one door, named exhaustively", and a module named
+  for decks that exports `readCard` is the "prose outrunning code" finding this epic has now made
+  four times. `posture.test.ts:328`, its comment and `ui/README.md` moved in the same commit.
+  **The c4-2 half is untouched and still owed**: it inherits a poll already calling
+  `GET /api/decks`, its job is to read the DECK rather than the deck names, and it now also
+  inherits `seedCardSummaries` — the entry point that turns the `DeckCardSummary[]` its own fetch
+  already returns into the cache's summary tier for zero extra requests. **Home: c4-2.**
+
+## Deferred from: code review of c4-1-a-single-card-hydration-cache-with-in-flight-deduping (2026-08-02)
+
+- **Three transient failures make an id terminal for the tab's life while the whole-screen poller
+  self-heals (FR-22 asymmetry).** `retryable` counts `unreachable` outcomes against
+  `MAX_ATTEMPTS_PER_CARD = 3` (`ui/src/state/cards.ts:389`), so a backend restart or network blip
+  during one hover sweep spends an id's three attempts forever — while `poller.ts` retries
+  indefinitely and the panel "comes alive on its own". The story record declares this residue and
+  names the fix: `resetCardCache()` on the `deck_changed` (or recovery) transition, which **c4-2**
+  owns. Home: c4-2, with c4-5 (detail panel) as the story that would make it visible.
+  **Companion question, same home (Greptile PR #40, P2, ruled option-1 "declare" by Brad
+  2026-08-02):** a `hydrateCard` promise that a reset orphans still resolves with the entry it
+  computed for the discarded world — the store write is generation-guarded, the return value is
+  not. Harmless while resets are test-only and consumers render from `useCardEntry`; the moment
+  c4-2 wires a production reset, decide whether awaiting callers need the fresh answer (widen the
+  return to `CardEntry | undefined`) or the docstring's "the store is the authority" ruling
+  stands. Declared in `hydrateCard`'s Returns docstring.
+- **`useCardEntry` is untested.** A React render harness would be needed and no testing library is
+  in the dependency set (adding one casually is banned by AC 21 / package-contract). Home: c4-3
+  (first consumer) — its component tests exercise the hook for real; if c4-3 introduces a testing
+  library for its own needs, add a direct `useCardEntry` subscription test then.

@@ -151,7 +151,11 @@ reasons unrelated to whatever is being bisected.
 **Import wire types from `src/api/schema.ts`, never from `./types` directly.** The generated
 file is shaped for a generator, not a reader — reaching a response body means indexing
 `components['schemas'][…]`. `schema.ts` does that once and re-exports narrow aliases
-(`HealthResponse`, `ErrorResponse`, `ErrorReason`). Both rules are enforced by
+(`HealthResponse`, `ErrorResponse`, `DeckSummary`, `ErrorReason`, and — from **c4-1** — `Card`,
+`CardSummary` and `DeckCardSummary`: **seven**). This sentence said "three" until c4-1 noticed it;
+`DeckSummary` had landed in c3-9. **An alias is added only in the commit that gives it a consumer**
+— an unused export is dead code, which is why c3-2 declined to add `Card` and left it ledgered for
+the first story that consumed one. Both rules are enforced by
 `tests/wire-contract.test.ts`, which bans re-declaring any shape the backend describes — or any
 alias `schema.ts` exports, `ErrorReason` included — anywhere in tracked TypeScript (`src/`,
 `tests/`, `config/`) outside `src/api/`, and scans everything but `schema.ts` itself (files
@@ -960,34 +964,56 @@ directory needs adding to one of those two `include` lists.
 
 The `/ws` proxy entry is **c5-6**.
 
-**The fetch layer and the store now exist, and this paragraph used to say they did not.** Until
-c3-9 it assigned the runtime `fetch` layer to **c4-1** and the `GET /api/decks` call to **c4-2** —
-and c3-9's own epic AC requires it to transition _"to the no-active-deck state, listing available
-decks"_, which is that call. The ruling (Q1) was to build the seam rather than a throwaway, and
-the boundary it draws is:
+**The fetch layer, the store and the card cache all exist now, and this paragraph has been wrong
+twice.** Until c3-9 it assigned the runtime `fetch` layer to **c4-1** and the `GET /api/decks` call
+to **c4-2**; c3-9 corrected that and assigned the card routes and the cache to **c4-1**, which has
+now landed. The boundary as it actually stands:
 
-- **`src/api/decks.ts`** is the ONE door to the network in `ui/src`, asserted exhaustively in
-  `tests/posture.test.ts`. It exports `readDecks()`, which returns a total outcome union and never
-  rejects. **c4-1 extends this module** with the card routes, the cache and the in-flight
-  deduping — the deduping goes _around_ this shape, not through it.
-- **`src/state/`** holds the store's first (and today only) slice: `systemState.ts` (the zustand
-  store plus the `useSystemState` hook), `poller.ts` (the backoff and the stalled clock) and
-  `panel.ts` (the one place a wire token becomes a `StateKey`). **c4-1 adds slices beside these**;
-  AD-12's one-store rule is what makes that the cheap path.
-- **What c3-9 does NOT cover, and c4-1 must not assume it does:** per-card fetches
-  (`GET /api/cards/{card_id}`, `GET /api/card-image/{scryfall_id}`), the WebSocket, any cache, and
-  any request with a path parameter. The last one is load-bearing — see the retry note below.
-- **c4-2** still owns the deck bootstrap in the sense that matters: c3-9 reads deck NAMES for the
-  `no-active-deck` panel's list and nothing else. There is no deck view, no active deck and no
-  deck detail call.
+- **`src/api/client.ts`** is the ONE door to the network in `ui/src`, asserted exhaustively in
+  `tests/posture.test.ts`. **It was `src/api/decks.ts` until c4-1 (Q1)**, and the rename is the
+  point: the property that guard protects is _"one door, named exhaustively"_, not _"the door is
+  called `decks.ts`"_, so when the card route arrived the choice was between a second module (which
+  fails that green assertion by design, and would have meant weakening a one-door rule into a
+  per-directory one to buy a filename) and a name that stops promising a single route. **The next
+  route goes into the same file** — c4-2's `GET /api/deck/{deck_id}` and `GET /api/active-deck`,
+  c4-10's format check. It exports `readDecks()` and `readCard(cardId)`, each returning a total
+  outcome union and neither ever rejecting.
+- **`src/state/`** holds the store: `systemState.ts` (the zustand store plus the `useSystemState`
+  hook), `poller.ts` (the backoff and the stalled clock), `panel.ts` (the one place a wire token
+  becomes a `StateKey`) and — from c4-1 — **`cards.ts`, the one card hydration cache**. That last
+  one is a second `create()` call and still one cache: `useSystemState` subscribes with no
+  selector, so folding the cache into that store would re-render the whole app on every tile's
+  hydration. AD-12 bans a second state LIBRARY, not a second store instance.
+- **The cache is TWO-TIER, and the bulk tier is free.** `GET /api/deck/{deck_id}` already embeds a
+  full `CardSummary` per card, so `seedCardSummaries(deckCards)` populates name/cost/type-line for
+  a whole deck with **zero** requests. Measured on the largest real deck (99 tiles): 38,182 bytes
+  in one request against 212,436 bytes in 99 for the full rows. `hydrateCard(cardId)` fetches the
+  rest per id, on demand, deduping concurrent callers onto one shared promise. **c4-2 calls the
+  seeder** with the payload its own fetch already returns.
+- **What still does NOT exist:** the WebSocket (**c5-6**), and any `fetch` for image BYTES — art
+  reaches the screen through `<img src="/api/card-image/…">` and the browser's own HTTP cache,
+  backed by `IMAGE_CACHE_CONTROL` and c3-7's disk cache. There is no image cache in `ui/src` and
+  there should not be one.
 
-**The retry rule, stated where c4-1 will read it.** The poll retries `503`s quietly, and it is
-safe to because `/api/decks` **has no path parameter**. Measured at c3-2 and pinned in
+**The retry rule, and how c4-1 answered it.** The deck poll retries `503`s quietly, and it is safe
+to because `/api/decks` **has no path parameter**. Measured at c3-2 and pinned in
 `test_routes_cards.py`: a malformed id sent to a backend with no database answers
 `database_not_initialized`, not `invalid_request`, because FastAPI solves dependencies before it
-collects validation errors. So a per-card fetch that copies this retry loop will retry a request
-whose id can never succeed, forever. Bound the attempts per id, or key the retry on something
-other than the token alone.
+collects validation errors. So a per-card fetch that copied this retry loop would retry a request
+whose id can never succeed, forever. **`readCard` therefore has no retry at all** — one request,
+no timer, no loop — and the bound lives with the thing that decides to ask again:
+`MAX_ATTEMPTS_PER_CARD = 3` in `src/state/cards.ts`, counted per id and cumulatively across calls.
+A `card_not_found` is terminal on the first answer and remembered for the life of the tab.
+
+**A card refusal never puts a panel on the glass** (FR-13). `panelFor()` is not called on the card
+path, and that is a rule: `card_not_found` maps to `null` in `PANEL_FOR_REASON` and `panelFor`
+clamps `null` to `'internal-error'`, so routing a card token through it would replace a working
+deck view with _"The companion hit a bug"_ because one card was missing. `src/state/cards.ts`
+records the token and a `PlaceholderKey` from `states.ts`'s own vocabulary; **c4-3** renders it.
+One ruling to know: a `400 invalid_request` on a CARD read draws the unknown-card placeholder
+(c4-1 Q5), even though `states.ts` classifies that token "no UI response at all" — because the
+premise behind that classification (_"the SPA never generates a malformed request"_) is exactly
+what fails when the id came out of `deck_cards`, a column with no shape constraint.
 
 **The threshold this story owns:** `STALLED_AFTER_MS = 60_000` in `src/state/poller.ts` — 60
 seconds of _continuous_ `database_unavailable`, and that token only. `database_not_initialized`

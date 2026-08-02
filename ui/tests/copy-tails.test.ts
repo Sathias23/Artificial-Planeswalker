@@ -73,7 +73,7 @@ const uiRoot = fileURLToPath(new URL('..', import.meta.url))
 const sourceOf = (file: string): string => readFileSync(path.join(uiRoot, file), 'utf8')
 
 /** `export const DECKS_PATH = '/api/decks'` — the route the poll actually calls. */
-const DECKS_PATH = /export const DECKS_PATH = '([^']+)'/.exec(sourceOf('src/api/decks.ts'))?.[1]
+const DECKS_PATH = /export const DECKS_PATH = '([^']+)'/.exec(sourceOf('src/api/client.ts'))?.[1]
 
 /** `export const STALLED_AFTER_MS = 60_000` — the threshold `EXPERIENCE.md` held open for c3-9. */
 const STALLED_AFTER_MS = Number(

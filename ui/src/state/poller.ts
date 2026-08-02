@@ -43,7 +43,7 @@
 
 import { RETRIES_QUIETLY } from '../components/StatePanel/states'
 import type { StateKey } from '../components/StatePanel/copy'
-import { readDecks, type DecksOutcome } from '../api/decks'
+import { readDecks, type DecksOutcome } from '../api/client'
 import { panelFor } from './panel'
 
 /**
