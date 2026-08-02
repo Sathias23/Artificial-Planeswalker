@@ -2299,7 +2299,23 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   simultaneous requests for one key both fetch and both write, and on Windows the loser's
   `os.replace` raises `PermissionError` — **observed live** during c3-7's implementation, when a
   99-request burst over one id logged exactly that, and it is a log line rather than a failed
-  request (c3-7 AC 9). **Home: c3-8**, with c6-4 unchanged as the forcing function.
+  request (c3-7 AC 9). ~~**Home: c3-8**~~ — **c3-8 DECLINED IT A THIRD TIME and re-homed it on
+  c6-4** (Q6, Brad 2026-08-02), **and the reason changed AGAIN — this time because its predecessor's
+  reason did not survive contact.** c3-7 re-homed it here on the expectation that *"c3-8 needs the
+  same structure for a different question — is a fetch for this key already in flight, or already
+  known-failed?"*. **It does not.** A negative cache needs no in-flight state to be correct: a
+  request whose fetch is in flight simply also fetches, and the failure is recorded when it fails.
+  Nothing in c3-8's AC 4-11 asks otherwise, and the shipped mechanism has no in-flight concept at
+  all. *"Is a fetch already in flight"* was c3-7's phrasing of a hypothetical, not a requirement of
+  anything. What coalescing actually shares is a **124 KB payload across two awaiting requests** —
+  a `Future` holding bytes, with a cancelled leader and an exception fanned out to followers, each
+  needing its own tests — which is a **different mechanism** from a small expiring failure record,
+  not the same one. So the "one mechanism, built once, by the story that can see both halves"
+  argument dissolves: there were never two halves. **Home: c6-4**, unchanged as the forcing
+  function and now the sole owner. Recorded plainly because three consecutive declines is a pattern
+  worth a human's eye: c3-6 declined for not knowing the result's shape, c3-7 because the shape was
+  shared with c3-8's, and c3-8 because that sharing turned out not to be real. If c6-4 also
+  declines it, the entry should be closed as "not wanted" rather than moved a fourth time.
   (Severity: Low today; Medium at c6-4.)
 
 - **The `DbSession` is held across the pacer's queue wait, and it works by arithmetic rather than
@@ -2353,7 +2369,19 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   `image_fetch_failed` — or a false reuse of the transient one. The fallback if a real queue ever
   misbehaves is to answer `image_fetch_failed` after N seconds queued, which only becomes
   meaningful once **c3-8** owns the retry semantics that would make a caller do something different
-  with it. **Home: c3-8**, if ever. (Severity: Low — no measured symptom, and MVP has one caller.)
+  with it. ~~**Home: c3-8**, if ever.~~ **DECLINED by c3-8, 2026-08-02 (Q7, Brad) — and the "if
+  ever" now has a real argument against it rather than an absence of one.** The entry's own
+  condition was met: c3-8 owns the retry semantics. The answer got *clearer* rather than closer.
+  A queue ceiling would answer `image_fetch_failed` for a request that **never reached the CDN** —
+  and the negative cache would then remember that non-event for 30 seconds, escalating on repeats.
+  So a queue that is merely *long* would start **manufacturing remembered failures**, blanking
+  tiles over congestion the CDN had no part in, which is strictly worse than the queue it was
+  meant to bound. That is a new argument the entry did not have, and it is why this is recorded as
+  a reason rather than as another "no measured symptom". The natural bound remains the caller: a
+  client that disconnects cancels the request and releases its slot, pinned two ways. Written into
+  `images.py`'s module docstring. **Home: none — closed on the merits.** Reopen only if a real
+  queue misbehaves, and note that any reopening must also decide how the ceiling avoids poisoning
+  the negative cache. (Severity: closed.)
 
 ## Deferred from: story c3-5 (card image endpoint, 2026-08-01)
 
@@ -2405,13 +2433,16 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   that **both** caches accept the same staleness for the same reason — which is what makes
   stacking a browser cache on a disk cache free. (Severity: Low → **resolved**.)
 
-- **A fetch failure is answered and forgotten.** No negative cache, no backoff, no retry budget:
-  a card whose CDN fetch fails is re-fetched on the next request for it. The wire vocabulary c3-8
-  needs is already shipped (`image_fetch_failed`, distinguishable from the permanent
-  `no_image_data`), so **c3-8 is pure behaviour with no schema change and no regeneration**. The
-  UI half is likewise already written and gated — `EXPERIENCE.md`'s "CDN fetch failure" row
-  promises "negative-cached with backoff — no request storms, no per-image retry UI", and
-  `ui/tests/named-card-copy.test.ts` holds it. **Home: c3-8.** (Severity: Low today.)
+- ~~**A fetch failure is answered and forgotten.**~~ **CLOSED by c3-8, 2026-08-02 — this story's
+  headline.** `images.NegativeCache` remembers a failed key for 30 s, doubling per consecutive
+  failure to a 300 s ceiling, bounded at 2,048 entries, cleared entirely on recovery. The
+  prediction that it needed **no schema change** was half right and was **measured rather than
+  assumed**: no path, no component and no reason token changed (7 and 12, before and after), but
+  regenerating did produce a diff, because the story edited `ErrorResponse`'s class docstring to
+  describe the new behaviour and a Pydantic model's docstring is published in full. Both generated
+  files were regenerated and committed. The UI half needed nothing — `named-card-copy.test.ts`
+  passed **unchanged**, so `EXPERIENCE.md`'s forward-dated promise became true without either side
+  being edited.
 
 - **An image request reads the whole card row.** AD-1 is satisfied by writing no query at all —
   `CardRepository.get_by_id` returns the `Card` the sibling route already answers with — so an
@@ -2476,7 +2507,20 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   that; a disallowed origin or an unparseable URL cannot succeed on any retry. Brad ruled (2a,
   2026-08-01): keep the token, no wire change — c3-8, which owns the negative cache and backoff,
   decides retry semantics for permanently-failing URLs (e.g. an unbounded/permanent negative-cache
-  entry for `is_fetchable` refusals). **Home: c3-8.** (Severity: Low.)
+  entry for `is_fetchable` refusals). ~~**Home: c3-8.**~~ **DECIDED by c3-8, 2026-08-02 (Q3,
+  Brad): ONE UNIFORM POLICY — no permanent entries, and the decision is closed rather than
+  deferred again.** Three reasons, in order of weight. (1) **The class is unreachable against this
+  corpus, re-measured read-only at Task 0**: all **245,760** stored image URLs are on the two
+  allow-listed hosts and every one is `https`, so **zero** would be refused — a permanent-entry
+  branch would be c3-4's unused hook exactly. (2) `fetch_image` deliberately collapses all eight
+  failure causes into one token; distinguishing here means either widening that closed contract or
+  re-implementing `is_fetchable` at the call site, which is a second truth about which URLs are
+  fetchable and the thing AD-1 exists to prevent. (3) The error is asymmetric — a permanent entry
+  for a URL that was *not* permanently bad is a tile broken until restart, while a 300 s ceiling on
+  one that *is* costs one request per five minutes against a host that answers instantly. The
+  corpus measurement is the evidence and is recorded as a fact about *this* corpus today (c3-2's
+  "a true count read as a false rule"); it justifies the absence of a branch and is **not**
+  published as a wire promise. Written into `images.py`'s module docstring. (Severity: closed.)
 
 ## Deferred from: code review of c3-6-paced-concurrency-capped-cdn-fetching-at-one-global-choke-point (2026-08-01)
 
@@ -2554,8 +2598,13 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   coalescing (see the re-homed c3-6 entry above). **Observed live** during implementation: a
   99-request burst over a single card id logged exactly that, and the request it belonged to was
   served normally — which is AC 9 working rather than a defect. It costs one duplicate fetch and
-  one wasted write per collision. **Home: c3-8**, which builds the in-flight map for its own
-  reasons. (Severity: Low.)
+  one wasted write per collision. ~~**Home: c3-8**, which builds the in-flight map for its own
+  reasons.~~ **RE-HOMED on c6-4 by c3-8, 2026-08-02, because the premise was wrong: c3-8 did NOT
+  build an in-flight map, and needed none** (Q6 — see the coalescing entry above for why the
+  shared-structure argument dissolved). This entry has always been a *consequence* of declining
+  coalescing rather than an independent item, so it travels with it. **Home: c6-4**, which is the
+  first surface that renders one card id twice on one screen and therefore the first that makes
+  the collision ordinary rather than incidental. (Severity: Low.)
 
 - **The one-write-site scan covers `src/companion` only, and it counts by module rather than by
   intent.** `TestExactlyOneImageWriteSite` asserts that rename-into-place happens in exactly two
@@ -2586,7 +2635,14 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   cache`), so c3-8 lands here too and makes it three. Splitting it is deliberately **not** this
   story's decision — that belongs to whoever finds the module unmanageable with all three shipped,
   not to the story that adds the second. Recorded so the growth is a noticed fact rather than a
-  drift. **Home: c3-8 or the C3 retro.** (Severity: Low.)
+  drift. ~~**Home: c3-8 or the C3 retro.**~~ **c3-8 DECLINED THE SPLIT and re-homed it on the C3
+  retro, 2026-08-02 (Q8, Brad) — with the final number measured so the retro inherits a fact rather
+  than an impression: `images.py` is now 1,475 lines** (1,307 at `3aef5d1`; the third mechanism and
+  its docstrings added 168). All three mechanisms the spine's Structural Seed names are now in it
+  (`app/images.py  # proxy: pacer, disk cache, negative cache`), so **splitting is now a decision to
+  diverge from the spine** rather than a tidy-up — and that belongs to a retro with all three
+  shipped and c4-1's hydration cache in view, not to the story that adds the third while writing it.
+  **Home: the C3 retrospective.** (Severity: Low.)
 
 - **This machine's full-suite runtime is too noisy to support the before→after claim AC 24 asks
   for, and that is worth knowing before the next story tries to make one.** Three consecutive runs
@@ -2635,7 +2691,16 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   elsewhere) has the same permanent consequence: every image fetches from the CDN until restart,
   announced only by a log line hours before anyone notices slowness. No retry, no re-attempt on
   first write. Declined here because a retry policy is a design decision c3-8's failure
-  signalling is better placed to make consistently. **Home: c3-8.** (Severity: Low.)
+  signalling is better placed to make consistently. ~~**Home: c3-8.**~~ **c3-8 TOOK THE OTHER
+  ENTRY AND RE-HOMED THIS ONE ON c8-2, 2026-08-02 (Q4, Brad), and the reason is honest rather than
+  tidy.** Of the two "failure posture over time" entries homed here, c3-8 took the unwritable-root
+  one (below — it closed) and declined this one, because **retrying the root means deciding
+  *when*** — at the first write? on a timer? after N requests? — which is a lifecycle question
+  nothing in this feature measures and which c3-8 had no requirement to answer. Taking it would
+  also have made `DiskCache` mutable in a way it is not, on top of the write-disable state that
+  entry did add. **Home: c8-2**, which owns cache stewardship (epic `:3185-3212`) and is where a
+  lifecycle policy belongs beside the documented location and the removal command. (Severity: Low —
+  unchanged; requests are unharmed either way.)
 
 - **A root that exists but is unwritable leaves the cache "enabled" and warns on every write,
   ~99 times per cold deck paint, forever.** `build_image_cache` probes only `mkdir` of the root;
@@ -2643,8 +2708,17 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   write fails and logs at WARNING with no disable-after-N and no startup writability probe. The
   requests themselves are unharmed (AC 9). A startup write-probe was declined as an effectful
   test-file in the user's data directory on every launch; log-rate limiting is c3-8-shaped.
-  **Home: c3-8**, beside the transient-startup entry above — both are "the cache's failure
-  posture over time" questions. (Severity: Low.)
+  ~~**Home: c3-8**, beside the transient-startup entry above.~~ **CLOSED by c3-8, 2026-08-02
+  (Q4, Brad — the half that was taken).** `DiskCache` now counts **consecutive** write failures and
+  disables its own writes after `DISK_CACHE_WRITE_FAILURE_LIMIT = 5`, announcing it **once** with a
+  message that says it is giving up and names the unwritable root. So a 99-tile cold paint logs at
+  most five warnings instead of ninety-nine, and every paint after it logs none. Three properties
+  gated rather than described: **reads keep working** (a root that just became unwritable may still
+  hold everything a previous session cached, and NFR-06's offline claim depends on those reads);
+  **one success resets the count**, so failures spread across a session cannot accumulate into a
+  disabled cache; and the state is **per-instance**, never a module global. AC 9 is untouched — the
+  picture is served either way and no reason token was added. The `deferred-work` pairing this
+  belonged to is now split: this one closed, the transient-startup one re-homed on c8-2 above.
 
 - **A third image format in the corpus would be served and never cached, silently degrading CM-2
   feature-wide — and the trigger that changes this is a measurement, not an argument.**
@@ -2672,6 +2746,100 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   whole guard, and they live in a different module. Deliberate under c3-4's unused-hook ruling
   (today's only caller is validated), but the module's next callers are already named — c3-8's
   negative cache in this same file, c6-4's suggestion tiles — and the first one that passes an
-  unvalidated id gets a traversal write. **Home: c3-8**, which touches this class next and
-  should either validate at the class boundary or restate the trust chain in its own record.
+  unvalidated id gets a traversal write. ~~**Home: c3-8**, which touches this class next and
+  should either validate at the class boundary or restate the trust chain in its own record.~~
+  **c3-8 RESTATED rather than validated, 2026-08-02 (Q9, Brad), and the reason it is safe is
+  STRUCTURAL rather than a promise.** Of the two options the entry offered, the second was taken
+  because the first would have been protecting against this story rather than because of it:
+  **`NegativeCache` builds no path at all** — it is a dict keyed on a tuple — so it is
+  *structurally incapable* of being the caller that turns an unvalidated id into a traversal write.
+  Adding validation on its account would have been an unused hook (c3-4's ruling) justified by a
+  caller that cannot trip it. The trust chain is now written into `DiskCache`'s own docstring by
+  name: `routes/cards.py`'s `_CARD_ID_PATTERN` (canonical lowercase uuid or `400`), the closed
+  `ImageSize` `Literal`, and the bounded `face` — three constraints, all upstream of the key.
+  **Home: c6-4**, now the *sole* remaining named caller, with the instruction carried forward: if
+  c6-4 reaches `DiskCache` with an id from anywhere but a validated route parameter, validate at
+  the class boundary first. (Severity: Low.)
+
+## Deferred from: story c3-8 (distinguishable failure signalling and negative caching, 2026-08-02)
+
+- **A cold paint against a dead CDN still costs ~124 seconds and all ~99 requests, once per
+  process.** This is the exposure the negative cache does **not** close, stated as a ledger entry
+  rather than only as prose because it is the thing a reader will most plausibly assume was fixed.
+  99 tiles resolve to 99 **distinct** keys, so on the first paint nothing is remembered and every
+  request is issued. Steady-state throughput is `min(1/spacing, concurrency/latency)` =
+  `min(1/0.1, 4/5.0)` = **0.8 fetches/second** at the shipped `_FETCH_TIMEOUT.connect = 5.0`, so
+  the paint takes roughly **124 s** — and the user watches 99 placeholders for two minutes. The
+  backoff bounds every paint *after* that one, which is what `EXPERIENCE.md`'s "no request storms"
+  means here. Closing it would need something that fails a *whole host* fast rather than a key at
+  a time — a circuit breaker over `ALLOWED_IMAGE_HOSTS`, which is a fourth mechanism and a
+  different shape from anything AD-11 asks for. **Home: c10-3**, which owns real-latency profiling
+  and is the first story positioned to say whether 124 s is a real user experience or an artefact
+  of an unrealistic failure mode. (Severity: Low today — it needs a CDN that is *unreachable*
+  rather than merely slow; Medium if c4-4's manual testing finds it.)
+
+- **The retention horizon is a fifth number Q2 did not fix.** Q2 ruled the base, the multiplier,
+  the ceiling and the cap. Implementing it surfaced a fifth decision neither the story nor the
+  question had named: **how long a key's failure history outlives its own backoff window.** It has
+  to be longer than the window, or escalation is unreachable in production — an entry dropped at
+  `retry_after` resets the count on every attempt, so a key against a permanently dead CDN cycles
+  at the base delay forever while every "consecutive failures escalate" unit test still passes.
+  c3-8 derived it as `retry_after + ceiling` rather than declaring a constant, so it cannot drift
+  from the reasoning, and asserted it from both sides. Recorded because it is a **decision made
+  during implementation rather than at context time**, which is exactly the kind that later reads
+  as arbitrary. **Home: unowned** — revisit only if a real backoff misbehaves. (Severity: Low.)
+
+- **`is_backing_off` never prunes, so up to 2,048 stale entries can sit in a quiet process.**
+  The hot path is deliberately side-effect free: a dict lookup and one comparison, no walk. Pruning
+  happens only on `record_failure`, so a process that fails a burst of keys and then goes quiet
+  keeps those entries until something else fails. Bounded by `NEGATIVE_CACHE_MAX_ENTRIES` and
+  therefore harmless — at most ~2,048 small tuples — and the alternative (pruning on read) would
+  put an O(n) walk on NFR-05's path to reclaim memory nobody is short of. Recorded as a declared
+  limit rather than a defect. **Home: unowned.** (Severity: Low.)
+
+- **A story that empties `_BANNED_IDENTIFIERS` now gets a red, but nothing tells it what to do.**
+  c3-8 added an explicit non-emptiness assertion to the two firing halves, so the `set() == set()`
+  degradation c3-7 caught by noticing is now caught by a test. What is still only prose is the
+  **procedure**: c3-6 wrote it down, c3-7 followed it, c3-8 declined to apply it with a reason —
+  but it lives in a frozenset's docstring rather than anywhere a story author would look before
+  starting. **Home: the C3 retrospective**, which is where three worked examples of the same
+  procedure should become a standing agreement. (Severity: Low.)
+
+- **`ErrorResponse`'s class docstring is published in full and nothing says so at the edit site.**
+  c3-8 predicted "no wire diff", edited that docstring, and measured a real diff in both generated
+  files — while the same commit's edit to `ErrorReason`'s attribute docstring twelve lines away did
+  **not** cross the wire. The distinction is correct and now documented in `scripts/dump_openapi.py`,
+  but `contracts.py` itself carries no marker at either site, so the next author has the same 50/50
+  guess. A one-line comment above each would fix it; it is not done here because `contracts.py` is a
+  wire module and even a comment edit is a wire decision that would want its own regeneration.
+  **Home: c3-9**, which already inherits wire-value work. (Severity: Low.)
+
+## Deferred from: code review of c3-8-distinguishable-failure-signalling-and-negative-caching (2026-08-02)
+
+- **Concurrent duplicate requests for one key escalate the backoff per-record, not per-outage, and
+  each record slides the window forward.** Two simultaneous requests both pass `is_backing_off`
+  (no entry yet), both fetch, both fail, and one outage instant lands the key at 60 s; N duplicates
+  escalate N steps at once, and each `record_failure` inside an open window rewrites
+  `retry_after = now + delay`. Documented as deliberate in `record_failure`'s docstring ("two
+  tabs... the count measures how bad this outage is") — but N concurrent duplicates measure
+  *fan-out*, not outage severity. Harmless today because duplicate printings collapse in
+  `deck_cards` before reaching the route; c6-4's duplicate-tile surface (the acknowledged
+  coalescing trigger) makes it the normal case. **Home: c6-4**, beside the in-flight-coalescing
+  entry it shares a fix with. (Severity: Low.)
+
+- **A short burst transient can permanently latch the disk cache's writes off.** Writes during a
+  cold paint arrive back-to-back at ~0.8/s, so a ~6 s transient (an AV scanner holding a handle, a
+  disk-full blip) spans `DISK_CACHE_WRITE_FAILURE_LIMIT = 5` *consecutive* writes and disables the
+  cache's writes for the process — the "consecutive" reset only protects failures separated by
+  successes, and Q4 declined any re-enable path. Accepted at review (Brad, 2026-08-02): the
+  consequence is only lost caching, images are still served, and the docstring now states the
+  exposure honestly. Any re-enable/recovery mechanism is cache stewardship. **Home: c8-2.**
   (Severity: Low.)
+
+- **The backoff 502 answers without a `Retry-After` header the server could supply.** The route
+  holds `retry_after` at the moment it answers a negative hit and discards it; the SPA therefore
+  has no signal for when a stuck tile (up to 300 s after CDN recovery — see `ui/README.md`'s
+  blind-spot row) becomes worth one scheduled retry. A standard `Retry-After` header would give
+  the tile author exactly one correct action without a new token — but it is a wire-visible change
+  c3-8's rulings excluded. Declined at review (Brad, 2026-08-02) so the tile author decides with
+  the UI in view. **Home: c4-4**, beside the blind-spot row it would resolve. (Severity: Low.)
