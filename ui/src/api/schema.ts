@@ -40,6 +40,17 @@ export type HealthResponse = Schemas['HealthResponse']
 export type ErrorResponse = Schemas['ErrorResponse']
 
 /**
+ * One entry of `GET /api/decks`' bare array: a saved deck's metadata and its three counts.
+ *
+ * The first alias with a RUNTIME consumer (**c3-9**), and it is deliberately narrow in how it is
+ * used: this story's poll reads `name` and nothing else, because the only thing it renders is the
+ * `no-active-deck` panel's deck list (`EXPERIENCE.md`: *"names only, non-clickable — the agent
+ * drives"*). **c4-2** owns the deck bootstrap and is the story that reads the counts; it extends
+ * this alias's consumer rather than adding a second one.
+ */
+export type DeckSummary = Schemas['DeckSummary']
+
+/**
  * The closed set of reason tokens (AD-16), as a TypeScript string union.
  *
  * Derived from `ErrorResponse` rather than re-listed, so a token added or removed on the Python

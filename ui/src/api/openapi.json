@@ -105,7 +105,7 @@
             }
           },
           "503": {
-            "description": "reason: database_unavailable",
+            "description": "reason: database_not_initialized | database_unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -175,7 +175,7 @@
             }
           },
           "503": {
-            "description": "reason: database_unavailable",
+            "description": "reason: database_not_initialized | database_unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -255,7 +255,7 @@
             }
           },
           "503": {
-            "description": "reason: database_unavailable",
+            "description": "reason: database_not_initialized | database_unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -336,7 +336,7 @@
             }
           },
           "503": {
-            "description": "reason: database_unavailable",
+            "description": "reason: database_not_initialized | database_unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -447,7 +447,7 @@
             }
           },
           "503": {
-            "description": "reason: database_unavailable",
+            "description": "reason: database_not_initialized | database_unavailable",
             "content": {
               "application/json": {
                 "schema": {

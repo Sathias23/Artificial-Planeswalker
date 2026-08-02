@@ -447,8 +447,10 @@ def build_app() -> FastAPI:
     routes are the first with no database dependency and no request-body ceiling, and an app-wide
     declaration would tell every ``types.d.ts`` consumer they can answer ``503`` and ``413`` when
     they structurally cannot — the declaration is about what the *operation* can answer. The
-    database-backed routers keep the historical four; ``/health`` keeps them too, unchanged, because
-    narrowing a c1-2 route's committed schema is not this story's call. The
+    database-backed routers carry a fifth token as of c3-9 — ``database_not_initialized``, which
+    they have answered since c1-6 and never declared; ``/health`` keeps the historical four
+    unchanged, because narrowing a c1-2 route's committed schema is not this story's call and
+    widening one it structurally cannot answer would be worse. The
     :class:`_CompanionFastAPI` schema hook keeps FastAPI's auto-generated ``HTTPValidationError``
     — a shape the ``invalid_request`` handler makes permanently unreachable — out of it.
 
@@ -458,12 +460,35 @@ def build_app() -> FastAPI:
         ``app.state`` to hold anything.
     """
     app = _CompanionFastAPI(title=_TITLE, lifespan=lifespan)
-    shared = error_responses(
+    # `/health` keeps the historical four EXACTLY as c1-2 declared them. It takes no session, so
+    # it can answer neither 503 token; narrowing a c1-2 route's committed schema is not this
+    # story's call, and WIDENING it would be worse — an inherited over-declaration is a wart, a
+    # freshly-added one is a lie.
+    health_responses = error_responses(
         "invalid_request", "payload_too_large", "database_unavailable", "internal_error"
     )
-    app.include_router(health.router, responses=shared)
-    app.include_router(decks.router, responses=shared)
-    app.include_router(cards.router, responses=shared)
+    # …and the database-backed routers declare the token they have been answering since c1-6
+    # (c3-9, Q4). `database_not_initialized` was undocumented on three routes and rising —
+    # `TestDatabaseStates` asserts it by name in three test modules while the committed schema
+    # said only `database_unavailable` — and on a fresh install it is the MOST COMMON 503 the UI
+    # will ever see, the one whole state c3-9 exists to render. It is a property of
+    # `deps.get_session`, not of any route, so every data route inherits it by construction and
+    # the gap could only ever widen.
+    #
+    # This is also the first call that exercises `error_responses`' documented collapse: both
+    # tokens share status 503, so they land in ONE entry whose description names each of them
+    # ("reason: database_not_initialized | database_unavailable"). That behaviour has been
+    # advertised in the helper's docstring since c1-4 and had never fired.
+    database_responses = error_responses(
+        "invalid_request",
+        "payload_too_large",
+        "database_not_initialized",
+        "database_unavailable",
+        "internal_error",
+    )
+    app.include_router(health.router, responses=health_responses)
+    app.include_router(decks.router, responses=database_responses)
+    app.include_router(cards.router, responses=database_responses)
     # No 503 (no database dependency) and no 413 (nothing enforces a body ceiling until c5-5's
     # cap) — declaring either here would promise a types.d.ts consumer a branch that can never
     # answer. The PUT's `forbidden` is declared at the route.

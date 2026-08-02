@@ -62,9 +62,48 @@ wire model is part of the contract.* That was a deliberate choice here rather th
 c4-4's tile author reads the 300-second recovery window in the generated JSDoc, which is the
 same reasoning c3-2 used to promote its 503-retry trap and c3-3 its ``is_legal`` caveat.
 
-Story **c3-9** (fresh-install guidance) is next. It is **not** expected to be behaviour-only —
-it inherits five deferrals including runtime validation of wire values — so the thing to confirm
-by running the generator is which of its changes are structural and which are prose.
+**Story c3-9 was the first DELIBERATE wire change since c3-5, and it is neither of the two shapes
+above** (2026-08-02). It was predicted not to be behaviour-only, and the generator confirmed which
+half moved:
+
+* **Structural: unchanged.** Seven paths, twelve components, ten reason tokens — before and after.
+  c3-9 added no route and no token; it is a UI story that happened to owe the wire a correction.
+* **Declarative: five operations changed.** ``build_app()`` now declares
+  ``database_not_initialized`` on the database-backed includes (Q4), a token every one of those
+  routes has answered since c1-6 and none had ever documented — on a fresh install it is the most
+  common ``503`` the SPA sees, and it is the state c3-9 exists to render. The five diffs are the
+  ``503`` descriptions on ``/api/decks``, ``/api/deck/{deck_id}``,
+  ``/api/deck/{deck_id}/format-check``, ``/api/cards/{card_id}`` and
+  ``/api/card-image/{scryfall_id}``:
+  ``"reason: database_unavailable"`` becomes
+  ``"reason: database_not_initialized | database_unavailable"``.
+  ``/health`` and both active-deck operations are byte-identical, deliberately — neither can answer
+  the token, and widening a declaration a route cannot honour turns an inherited wart into a fresh
+  lie.
+* **THE COLLAPSE FIRED FOR THE FIRST TIME.** :func:`~src.companion.app.errors.error_responses` has
+  advertised since c1-4 that *"tokens sharing a status collapse into a single entry whose
+  description names each of them"*, and until now no caller had ever declared two tokens under one
+  status by inheritance. The one ``503`` entry naming both is that behaviour, in production, seven
+  stories after it was written.
+* **A third shape, and it is the useful one: a comment above a wire model costs NOTHING.** c3-9
+  added the wire-visibility markers c3-8 declined (Q9) as ``#`` comments immediately above
+  ``ErrorReason``'s assignment and ``ErrorResponse``'s ``class`` statement. Neither is a docstring,
+  so neither crossed the wire — confirmed by running the generator, not by argument. **That is the
+  safe way to annotate a wire module**: c3-8's objection was that *"even a comment edit is a wire
+  decision that would want its own regeneration"*, and the measurement says a ``#`` comment is not
+  one. A docstring still is.
+
+**A KNOWN WART IN THIS DOCUMENT, recorded rather than fixed (c3-9, Q8).** Six body-less ``GET``
+operations publish ``413 payload_too_large`` in their client contract, because the declaration is
+made per *include* rather than per *method* and the shared set carries the 413 for the ``POST``
+c5-5 will add. So the generated types tell a fetch author to handle a response the same document
+elsewhere describes as *"surfaced to the agent… The glass never sees it"*. It is pre-existing,
+inherited, and doubled by every new ``GET``. c3-9 declined to fix it: curating ``error_responses``
+per method is a real change to a shared declaration site with six routes of blast radius, made in
+a story whose frontend half is already the largest in the epic, and Q4 touched the *caller* rather
+than the helper. **Re-homed on c5-5 by name** — the story that adds the cap, makes the 413 real,
+and must decide which operations can actually answer it. Until then: a ``413`` on a body-less
+``GET`` is unreachable, and a client may ignore it.
 
 **The exception, and it is c3-5's.** That endpoint has **no** ``response_model``, because its
 success body is image bytes: a model would emit a JSON ``$ref`` for a body that is binary. A

@@ -825,7 +825,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description reason: database_unavailable */
+            /** @description reason: database_not_initialized | database_unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -892,7 +892,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description reason: database_unavailable */
+            /** @description reason: database_not_initialized | database_unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -959,7 +959,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description reason: database_unavailable */
+            /** @description reason: database_not_initialized | database_unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -1026,7 +1026,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description reason: database_unavailable */
+            /** @description reason: database_not_initialized | database_unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -1105,7 +1105,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description reason: database_unavailable */
+            /** @description reason: database_not_initialized | database_unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
