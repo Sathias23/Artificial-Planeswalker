@@ -560,11 +560,13 @@ companion/`), more than one sample, and no whole-suite delta read as signal.
   - [x] Six mutation probes, each verified and reverted **from a file backup**; paste and **read**
         each result
 
-- [ ] **Task 9 — Same-day three-layer review before the PR** *(Brad runs this — `dev-story` stops
+- [x] **Task 9 — Same-day three-layer review before the PR** *(Brad runs this — `dev-story` stops
       at Task 8 with status `review`)*
-  - [ ] `bmad-code-review` (Blind Hunter + Edge Case Hunter + Acceptance Auditor) before the PR
-  - [ ] Apply patches, re-run every gate, paste the output
-  - [ ] Raise the PR into `feat/companion-c3`
+  - [x] `bmad-code-review` (Blind Hunter + Edge Case Hunter + Acceptance Auditor) before the PR —
+        run 2026-08-02; 3 decisions, 13 patches, 1 deferral, 3 dismissed (findings below)
+  - [x] Apply patches, re-run every gate, paste the output — 2461 passed, 1 skipped; all gates
+        green (Change Log + Review record additions)
+  - [x] Raise the PR into `feat/companion-c3` — **PR #36**, 2026-08-02
 
 ### Review Findings
 
