@@ -297,7 +297,7 @@ development_status:
   # every one monkeypatches fetch_bulk_data_list; nothing has ever called api.scryfall.com/bulk-data.
   # Fix is a FORMAT change, not a key rename — parser.py:45 uses ijson.items(f, "item"), which requires an
   # array. Done when the importer completes against the live API AND a committed test reads the real endpoint.
-  scryfall-jsonl-migration: backlog
+  scryfall-jsonl-migration: done  # PR #38 MERGED to master 2026-08-02 at 7631147 — Greptile 5/5 at ROUND 1 with ZERO inline findings. stream_cards now decides the payload shape by READING THE BYTES (gzip magic number, then `[` vs JSONL) rather than trusting a suffix — c3-7's D1 ruling applied to the importer, which is why every existing array fixture kept working unedited; _resolve_download_uri accepts either key spelling and names the keys that ACTUALLY ARRIVED when neither is present (the bare KeyError is what made the live break undiagnosable). Probed: reverting to the pre-break ("download_uri",) reds the canary 5 ways against the live API. Verified end to end: 38,485 cards / 0 errors from scryfall_oracle_cards.jsonl.gz, 53 game_changer, 0 dup oracle_ids. Suite 1,753 -> 1,773. The canary reads the real endpoint THROUGH the production resolver and runs from a new WEEKLY scheduled workflow, because CI is -m "not integration" and a vendor's contract changes on the vendor's schedule, not on ours
 
   # Epic C4: The Deck on the Glass
   # FR-05, FR-17, FR-19 · NFR-05 (1 s deck render, warm cache) · AD-11, AD-12, AD-16 · depends on c2, c3
@@ -519,7 +519,7 @@ action_items:
   - epic: c3
     action: "R1 — the Scryfall JSONL migration is a HOTFIX ON MASTER, now, ahead of the C3 integration PR. Scryfall replaced download_uri -> jsonl_download_uri and size -> compressed_size and moved from a top-level JSON array to gzip'd JSONL; every data path is dead on a public released product. Format change, not a key rename: parser.py:45 uses ijson.items(f, 'item')."
     owner: "Brad"
-    status: open  # success criteria: `uv run scripts/import_scryfall_data.py` completes against the live API AND a committed test calls api.scryfall.com/bulk-data and asserts the required keys exist. Sprint key: scryfall-jsonl-migration
+    status: done  # closed 2026-08-02, PR #38 merged at 7631147 — BOTH halves of the success criterion met: the importer completes against the live API (38,485 cards, 0 errors) AND tests/integration/data/test_scryfall_live_contract.py calls api.scryfall.com/bulk-data through the production resolver. Greptile 5/5 round 1, zero inline findings — NOTE for the record: this PR did NOT run the same-day three-layer review (it was pushed on request), so it is one data point either way, not evidence about that agreement
   - epic: c3
     action: "confirm A2 — watch the live 503 -> 200 transition in a real browser. FR-22 is the reason c3-9 exists and it is the epic's single highest-value unverified claim; the DOM half is gated, the visual half has never been seen."
     owner: "Brad"

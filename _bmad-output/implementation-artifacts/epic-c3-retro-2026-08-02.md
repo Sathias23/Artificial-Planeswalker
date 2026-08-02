@@ -458,7 +458,7 @@ filesystem under contention, and the two shells answering the same question.
 
 | # | Action | Owner | Success criteria |
 |---|---|---|---|
-| 1 | **R1 — Scryfall JSONL hotfix on master**, ahead of the C3 integration PR. Format change, not a key rename; see the fix shape above. | Sathias | `uv run scripts/import_scryfall_data.py` completes against the live API, **and** a committed test calls `api.scryfall.com/bulk-data` and asserts the required keys exist |
+| 1 | ~~**R1 — Scryfall JSONL hotfix on master**~~ — ✅ **DONE 2026-08-02, PR #38 merged at `7631147`** (Greptile 5/5 at round 1, zero inline findings). Both halves of the criterion met: the importer completes against the live API (**38,485 cards, 0 errors** from `scryfall_oracle_cards.jsonl.gz`) and `tests/integration/data/test_scryfall_live_contract.py` calls the real endpoint **through the production resolver**, run weekly by a new scheduled workflow. `stream_cards` decides the payload shape by **reading the bytes**; `_resolve_download_uri` names the keys that actually arrived. Probed: the pre-break key list reds the canary 5 ways against the live API. | Sathias | ✅ met |
 | 2 | ~~**Confirm A2**~~ — ✅ **DONE 2026-08-02.** The page came alive with no refresh, observed. FR-22 is no longer a DOM-only claim, and A7's cached-`503` risk is closed by implication. | Sathias | ✅ met |
 | 3 | **Complete the checklist before the integration PR** — A3–A7, B6, Blocks C/D/E. Findings are fixes on the C3 umbrella. | Sathias | Every item run or explicitly carried with a named home (the C2 R3 precedent) |
 | 4 | **F1 — a gate banning story-key-shaped strings from rendered text.** Ban the family: `/\bc\d+-\d+\b/` in any string reaching the DOM. Catches all three of today's placeholders and every future one. | Sathias (c8-5, or earlier if a C4 story is nearer) | One test refuses a planted `c9-9` in a component's rendered text |
@@ -563,13 +563,17 @@ land.
   gaining 719 tests. Honest caveats: `images.py` holds three mechanisms under a parked split
   decision, and the review surface is now ~14 gate suites with a declared blind-spot map that only
   exists because C2 demanded it.
-- **Unresolved blockers for C4:** **one** — R1's Scryfall hotfix. Nothing else in C3 blocks C4.
+- **Unresolved blockers for C4:** ✅ **none.** R1's Scryfall hotfix merged to master at `7631147`
+  on 2026-08-02, so the integration PR now lands on a product that can obtain data — which was the
+  entire reason R1 was sequenced first. A dry-run merge of `master` into `feat/companion-c3` is
+  **clean, no conflicts**.
 
 ---
 
 ## Commitments
 
-- **12 action items**, **5 closed** in or during this retrospective.
+- **12 action items**, **6 closed** in or during this retrospective — including R1, whose fix
+  shipped to master the same day the retrospective found the break.
 - **3 rulings** (R1 hotfix, R2 agreement, R3 accept-and-ledger); **1 decision parked** (`images.py`
   split).
 - **1 significant discovery** requiring work outside the epic — the Scryfall bulk-data API break.
@@ -582,8 +586,9 @@ Neither had ever been observed before today.
 
 **Next steps, in order:**
 
-1. **R1 — the Scryfall hotfix on master.** The only thing blocking the integration PR.
+1. ~~R1 — the Scryfall hotfix~~ ✅ **merged at `7631147`.**
 2. Finish the checklist — A3–A6 are the three panels a real engine has still never rendered, and
-   c4-2 is about to make them routinely reachable. Findings become fixes on the C3 umbrella.
-3. Integration PR `feat/companion-c3` → `master`, no Greptile.
+   c4-2 is about to make them routinely reachable, at which point a failure is ambiguous between
+   the panels and the new wiring. Findings become fixes on the C3 umbrella.
+3. Integration PR `feat/companion-c3` → `master`, no Greptile. Merge is clean.
 4. Cut `feat/companion-c4` off master and begin c4-1.
