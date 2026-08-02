@@ -547,6 +547,20 @@ samples. AC 26 asks for the narrowest suite containing the change and more than 
         `lint`, `format:check`, `npx tsc -b --force`, `build` all clean. Bundle rebuilt →
         `index-DVyKlzKd.js ED89F6474885A685`; plugin mirror `diff -r` identical.
   - [x] Raise the PR into `feat/companion-c3` — **PR #37**, 2026-08-02
+  - [x] **Greptile round 1: 4/5, one P2 — CONFIRMED, in review-added code (third story running:
+        c3-7, c3-8, now c3-9).** The review-added `AbortSignal.timeout` had an undeclared browser
+        floor, and the failure without it is the worst this module can produce: in a runtime
+        without the API the constructor throws INSIDE the `try`, so every poll reads as
+        `unreachable` before `fetch` ever runs — a calm panel retrying forever against a healthy
+        backend it never contacts. Reachability is marginal (`vite.config.ts` sets no
+        `build.target`, so the bundle's own `baseline-widely-available` floor — Chrome/Edge 107+,
+        Firefox 104+, Safari 16+ — postdates the API everywhere: Chrome 103, Firefox 100,
+        Safari 15.4), but the shape masquerades as a lost backend. Patched per Brad's ruling
+        (option 1): a `typeof` guard degrades an out-of-floor browser to NO timeout — never to
+        permanently unreachable — with the floor subsumption declared at the guard, plus a test
+        stubbing the API away and asserting the request still goes out and the answer is still
+        read. Frontend 730 → **731 passed**; all gates green; bundle → `index-CfiLRdVp.js
+        0E1DE820FD0B2B88`, mirror `diff -r` identical.
 
 ### Review Findings (bmad-code-review, 2026-08-02)
 

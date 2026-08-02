@@ -131,6 +131,22 @@ describe('a request cannot hang forever', () => {
     // shorter than that would abort true answers and report a healthy backend unreachable.
     expect(READ_TIMEOUT_MS).toBeGreaterThan(5_000)
   })
+
+  it('degrades to NO timeout where the API is absent — never to permanently unreachable', async () => {
+    // Greptile PR #37 P2, confirmed: without the guard, `AbortSignal.timeout` throwing INSIDE
+    // the try would classify every poll as `unreachable` before `fetch` ever ran — the app
+    // would retry forever without contacting a healthy backend. In a runtime without the API
+    // the request must still go out (with no signal), and the answer must still be read.
+    const fetchMock = responding('{"reason": "database_not_initialized"}', 503)
+    vi.stubGlobal('AbortSignal', {})
+
+    await expect(readDecks()).resolves.toEqual({
+      kind: 'error',
+      reason: 'database_not_initialized',
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][1]?.signal).toBeUndefined()
+  })
 })
 
 describe('a refusal carries its token through unvalidated (AC 2)', () => {

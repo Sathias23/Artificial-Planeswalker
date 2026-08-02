@@ -136,6 +136,19 @@ const namesOf = (body: unknown): readonly string[] | null => {
  *   A `DecksOutcome`. Never rejects — a rejection is `{ kind: 'unreachable' }`.
  */
 export const readDecks = async (): Promise<DecksOutcome> => {
+  // The clock, where the runtime can build one. `AbortSignal.timeout` is inside the bundle's
+  // own browser floor (no `build.target` in vite.config.ts, so Vite's default
+  // `baseline-widely-available` — Chrome/Edge 107+, Firefox 104+, Safari 16+ — every one of
+  // which postdates the API: Chrome 103, Firefox 100, Safari 15.4), so the `undefined` arm is
+  // unreachable in a browser this bundle targets. The guard exists because the failure without
+  // it is the worst this module can produce: the constructor throwing INSIDE the `try` below
+  // would classify every poll as `unreachable` before `fetch` ever ran — a calm panel retrying
+  // forever against a healthy backend it never contacts. An out-of-floor browser degrades to
+  // NO timeout instead (the wedge risk returns, on a browser the bundle does not target); it
+  // never masquerades as a lost backend.
+  const signal =
+    typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(READ_TIMEOUT_MS) : undefined
+
   let response: Response
   try {
     response = await fetch(DECKS_PATH, {
@@ -143,7 +156,7 @@ export const readDecks = async (): Promise<DecksOutcome> => {
       headers: { Accept: 'application/json' },
       // A timeout abort is a rejection, so it lands in the same `unreachable` as a lost
       // backend — which is what it is. See `READ_TIMEOUT_MS` for the arithmetic.
-      signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+      signal,
     })
   } catch {
     return { kind: 'unreachable' }
