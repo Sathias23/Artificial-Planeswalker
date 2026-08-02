@@ -394,9 +394,13 @@ off for the rest of the process. Accepted deliberately rather than missed: the c
 lost caching (every picture is still served, everything already cached is still read), and any
 re-enable path means deciding *when* to retry, which is the same lifecycle question that re-homed
 the startup-`OSError` entry. Both now live on **c8-2**, the cache-stewardship story. One carve-out
-keeps the counter honest on Windows: a ``PermissionError`` whose target already exists is a lost
-same-key write race — the entry is stored, by the winner — and is not counted (see
-:func:`_write_atomically`).
+keeps the counter honest on Windows: a ``PermissionError`` whose target already holds a
+**non-empty** entry is a lost same-key write race — the entry is stored, by the winner — and is
+**neither counted nor treated as a success**: only a replace that actually lands resets the
+counter, so a run of lost races can never mask a root that other keys are proving broken
+(Greptile P1, 2026-08-02; see :func:`_write_atomically`). Non-empty matters because
+``_read_cached`` treats a zero-byte file as a miss — a locked *empty* target swallowed as a race
+would refetch forever with the latch never announcing it.
 
 Only **writes** stop. Reads keep working, because they fail for unrelated reasons and a root that
 just became unwritable may still hold everything a previous session cached — NFR-06's *"fully
@@ -936,7 +940,7 @@ def _read_cached(root: Path, card_id: str, size: str, face: int) -> tuple[bytes,
     return None
 
 
-def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ...] = ()) -> None:
+def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ...] = ()) -> bool:
     """Write *payload* to *target* so no reader can ever observe a partial file.
 
     ``discovery.write_discovery`` is the template and its reasoning is **inherited rather than
@@ -992,6 +996,12 @@ def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ..
         payload: The image bytes to store.
         displaces: Sibling paths this write supersedes — the same key under the other extensions.
 
+    Returns:
+        True when this call's own replace landed. False when the write was swallowed as a lost
+        same-key race — the target already holds the winner's non-empty entry — which the caller
+        must treat as *neither* a failure to count *nor* a success that resets the failure
+        counter (Greptile P1, 2026-08-02): a lost race proves nothing about the root either way.
+
     Raises:
         OSError: The directory could not be created, the temp file could not be written, or the
             replace failed. The caller — :meth:`DiskCache.write` — swallows and logs it: a cache
@@ -1026,23 +1036,33 @@ def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ..
         except PermissionError:
             # The ledgered Windows same-key race (c3-7): two requests fetch one key, both write,
             # and `os.replace` over the file the winner is still holding raises PermissionError
-            # for the loser. If the target EXISTS, the entry is stored — by the winner — so this
-            # is a success in every sense the cache cares about, and it must not feed
-            # `DiskCache`'s consecutive-failure counter: a lost race is not a broken root, and
-            # counting it would turn a tolerated log line into progress toward disabling writes
-            # (review 2026-08-02). A PermissionError with NO target is the genuine article — an
-            # unwritable directory — and propagates to be counted.
-            if not target.exists():
+            # for the loser. If the target holds a NON-EMPTY entry, the entry is stored — by the
+            # winner — so the loser must not feed `DiskCache`'s consecutive-failure counter: a
+            # lost race is not a broken root (review 2026-08-02).
+            #
+            # Non-empty, not merely present, and the distinction closes a Greptile P1
+            # (2026-08-02): `_read_cached` treats a zero-byte file as a MISS, so a locked or
+            # read-only EMPTY target would otherwise loop forever — every read misses, every
+            # write is swallowed as a lost race, and the latch never announces a root that is
+            # genuinely stuck. A race winner's entry is never empty (`fetch_image` refuses empty
+            # bodies), so size > 0 is exactly the "the winner stored it" fact this branch needs.
+            # The stat itself failing is treated as not-stored: when in doubt, count it.
+            try:
+                stored_by_winner = target.stat().st_size > 0
+            except OSError:
+                stored_by_winner = False
+            if not stored_by_winner:
                 raise
             with suppress(OSError):
                 temp_path.unlink(missing_ok=True)
-            return
+            return False
     except BaseException:
         # The cleanup itself can fail (Windows: an AV/indexer briefly holding the fresh temp file
         # open) — that must not displace the original exception, which names the real problem.
         with suppress(OSError):
             temp_path.unlink(missing_ok=True)
         raise
+    return True
 
 
 class DiskCache:
@@ -1232,7 +1252,7 @@ class DiskCache:
             if other != extension
         )
         try:
-            await asyncio.to_thread(_write_atomically, target, body, displaces=displaced)
+            stored = await asyncio.to_thread(_write_atomically, target, body, displaces=displaced)
         except Exception as exc:
             # Broader than `OSError` on purpose: `asyncio.to_thread` itself can refuse to
             # schedule (interpreter shutdown), and AC 9's posture does not depend on which layer
@@ -1240,8 +1260,12 @@ class DiskCache:
             self._note_write_failure(target, exc)
         else:
             # CONSECUTIVE is the whole claim (Q4): one success resets the count, so failures
-            # spread across a long session can never accumulate into a disabled cache.
-            self._consecutive_write_failures = 0
+            # spread across a long session can never accumulate into a disabled cache. Only a
+            # replace that actually LANDED is a success, though (Greptile P1, 2026-08-02): a
+            # write swallowed as a lost same-key race proves nothing about the root and must
+            # not reset a count that other keys are legitimately accumulating.
+            if stored:
+                self._consecutive_write_failures = 0
 
     def _note_write_failure(self, target: Path, exc: Exception) -> None:
         """Log one failed write, and give up entirely once they stop being occasional (Q4).

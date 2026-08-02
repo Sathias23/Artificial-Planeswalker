@@ -2034,6 +2034,83 @@ class TestAnUnwritableRootStopsWarningEventually:
             "the carve-out swallowed the genuine unwritable-root case too"
         )
 
+    async def test_a_locked_empty_target_is_counted_not_swallowed(
+        self, tmp_path, monkeypatch, caplog
+    ) -> None:
+        """Greptile P1 (2026-08-02): presence is not the winner's signature — CONTENT is.
+
+        ``_read_cached`` treats a zero-byte file as a miss, so a locked or read-only EMPTY target
+        swallowed as a lost race would loop forever: every read misses, every write "wins", the
+        counter resets, and the latch never announces a root that is genuinely stuck. A race
+        winner's entry is never empty (``fetch_image`` refuses empty bodies), so the carve-out
+        keys on ``st_size > 0`` and this case stays a counted failure.
+        """
+        cache = _cache(tmp_path)
+        target = tmp_path / "image_cache" / _CARD[:2] / _CARD / "normal_0.jpg"
+        target.parent.mkdir(parents=True)
+        target.touch()
+
+        def locked(source, destination):
+            raise PermissionError("an indexer holds the zero-byte entry open")
+
+        with caplog.at_level("WARNING", logger=images.logger.name):
+            with monkeypatch.context() as broken:
+                broken.setattr(images.os, "replace", locked)
+                await self._paint(cache, images.DISK_CACHE_WRITE_FAILURE_LIMIT * 2)
+
+        ours = [record for record in caplog.records if record.name == images.logger.name]
+        assert ours, (
+            "a locked zero-byte entry was swallowed as a lost race; that key would refetch "
+            "forever and the latch would never announce the stuck root"
+        )
+        assert any("disab" in record.getMessage().lower() for record in ours)
+
+    async def test_a_lost_race_does_not_reset_the_counter_either(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        """The other half of the Greptile P1: a lost race is not a SUCCESS any more than a failure.
+
+        A run of genuine failures on other keys, one lost race in the middle, and the run must
+        still latch: only a replace that actually lands proves the root works. Before the patch
+        the benign path took the success branch and reset the count, so alternating races and
+        failures could keep a broken root below the limit forever.
+        """
+        cache = _cache(tmp_path)
+        await cache.write(
+            card_id=_CARD, size="normal", face=0, content_type="image/jpeg", body=b"winner"
+        )
+
+        def locked(source, destination):
+            raise PermissionError("locked")
+
+        with monkeypatch.context() as failing:
+            self._always_fails(failing)
+            await self._paint(cache, images.DISK_CACHE_WRITE_FAILURE_LIMIT - 1)
+
+        with monkeypatch.context() as racing:
+            racing.setattr(images.os, "replace", locked)
+            await cache.write(
+                card_id=_CARD, size="normal", face=0, content_type="image/jpeg", body=b"loser"
+            )
+
+        with monkeypatch.context() as failing:
+            self._always_fails(failing)
+            await cache.write(
+                card_id=_CARD, size="large", face=0, content_type="image/jpeg", body=b"a"
+            )
+
+        with monkeypatch.context() as failing:
+            self._always_fails(failing)
+            await self._paint(cache, 3)
+
+        await cache.write(
+            card_id=_CARD, size="png", face=0, content_type="image/jpeg", body=b"late"
+        )
+        assert await cache.read(_CARD, "png", 0) is None, (
+            "the lost race reset the consecutive-failure count, so the run of genuine failures "
+            "around it never latched — a broken root alternating with races stays unannounced"
+        )
+
     async def test_two_caches_disable_independently(self, tmp_path, monkeypatch) -> None:
         """Per-instance state, like everything else in this module — never a module global.
 
