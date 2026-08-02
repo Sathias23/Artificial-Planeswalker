@@ -36,11 +36,35 @@ operation promises.
 So there are now **two measured instances** of what a story that adds behaviour to an existing
 route — rather than a route — looks like on the wire, which is enough to state the rule rather
 than the observation: **the wire describes the promise, and a change to how the promise is kept
-does not touch it.** Story **c3-8**'s failure signalling and negative caching is next, and it is
-expected to be the third for exactly that reason — the vocabulary it needs
-(``image_fetch_failed``) already ships. Confirm it by running the generator, as both of its
-predecessors did; a prediction of "no diff" that is argued rather than measured has told you
-nothing.
+does not touch it.**
+
+**Story c3-8 was predicted to be the third, and the measurement says it is not — which is exactly
+why the prediction was written to be run rather than argued** (2026-08-02). Its negative cache
+added **no path, no component and no reason token**: seven paths and twelve components before and
+after, so the *structural* half of the rule held perfectly. But ``npm run gen:api`` produced a real
+diff in both generated files, because the story edited
+:class:`~src.companion.contracts.ErrorResponse`'s class docstring to say what
+``image_fetch_failed`` now means — and **that docstring is published in full**.
+
+Two things were learned by measuring rather than reasoning, and both are worth keeping:
+
+* **A class docstring on a wire model is wire-visible in its entirety**, bullet list and all — not
+  merely its leading paragraph. The truncation rule that trims Google sections applies to *route*
+  docstrings; a Pydantic model's ``description`` is the whole docstring.
+* **An attribute docstring on a** ``Literal`` **type alias is NOT.** The same commit edited
+  ``ErrorReason``'s docstring and that edit did not cross the wire at all. Two docstrings, twelve
+  lines apart in one file, on opposite sides of the boundary — which is the kind of thing nobody
+  gets right from first principles.
+
+So the rule survives with its scope corrected: *a change to how a promise is kept does not touch
+the wire's **shape** — but a change to how the promise is **described** does, and prose on a
+wire model is part of the contract.* That was a deliberate choice here rather than an accident:
+c4-4's tile author reads the 300-second recovery window in the generated JSDoc, which is the
+same reasoning c3-2 used to promote its 503-retry trap and c3-3 its ``is_legal`` caveat.
+
+Story **c3-9** (fresh-install guidance) is next. It is **not** expected to be behaviour-only —
+it inherits five deferrals including runtime validation of wire values — so the thing to confirm
+by running the generator is which of its changes are structural and which are prose.
 
 **The exception, and it is c3-5's.** That endpoint has **no** ``response_model``, because its
 success body is image bytes: a model would emit a JSON ``$ref`` for a body that is binary. A

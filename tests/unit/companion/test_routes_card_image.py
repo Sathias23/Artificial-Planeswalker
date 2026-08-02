@@ -662,7 +662,7 @@ _IMAGES_MODULE = Path(__file__).resolve().parents[3] / "src" / "companion" / "ap
 
 _BANNED_IDENTIFIERS = frozenset(
     {
-        # c3-8's negative cache. The LAST family in this set.
+        # NOT c3-8's reservation any more — c3-8 SHIPPED, and these stay banned. See below.
         "functools.cache",
         "functools.lru_cache",
     }
@@ -681,9 +681,39 @@ the procedure c3-6 wrote down by doing it. ``mkdir``, ``makedirs``, ``open``, ``
 ``write_text``, ``data_dir``, ``NamedTemporaryFile`` and ``replace`` were banned here under the
 comment *"c3-7's disk cache"*; that story then shipped the disk cache, so every one of them became
 a fence around the thing it was built to hold back. c3-6 had already removed a third family
-(``Semaphore``, ``BoundedSemaphore``, ``sleep``, ``Lock``) for the same reason. **What is left is
-c3-8's and only c3-8's**, and deleting this frozenset wholesale would take an unwritten story's
-fence with it silently — c3-8 does not exist yet to notice.
+(``Semaphore``, ``BoundedSemaphore``, ``sleep``, ``Lock``) for the same reason.
+
+**c3-8 SHIPPED THE NEGATIVE CACHE AND THESE TWO NAMES STAY BANNED — the first family in this epic
+that the story owning it did not remove** (Q5, Brad 2026-08-02). That is deliberately against the
+pattern its two predecessors set, and the reason is that this family was never the same kind of
+ban as theirs.
+
+``Semaphore`` and ``mkdir`` were banned **because c3-6 and c3-7 had not happened yet**. The day
+each shipped, its ban fenced the very thing that had just been built, so removal was not merely
+allowed — it was required, or the guard would have been refusing the design. **These two were
+banned for that reason *and* for a second one that outlives the story:**
+
+* ``functools.cache`` and ``functools.lru_cache`` **cannot express a TTL**, so a remembered failure
+  would never expire — the permanently-broken-tile defect AD-11's *"with backoff"* exists to
+  prevent, and a tile no recovery could ever clear; and
+* ``cache_clear()`` **is all-or-nothing**, so AC 7's *clear this one key on recovery* — the clause
+  that makes a recovered key start its next failure at the base delay rather than the escalated one
+  — is unimplementable on top of either.
+
+Both are still true the day :class:`~src.companion.app.images.NegativeCache` ships. **The fence is
+therefore not around the thing that was built**, which is the whole test c3-6's procedure applies,
+and this stops being a *reservation for an unwritten story* and becomes a *permanent ruling with a
+stated reason*. A ruling is stronger than a reservation, and restating it cost one paragraph where
+retiring it would have cost four reworked pairings.
+
+**Retiring it and pointing at the new positive gate would have LOST coverage rather than replacing
+it** — the first time that would have been true in this epic. ``test_images.py``'s
+``TestExactlyOneNegativeCache`` says *"there is exactly one negative cache, in the lifespan"* and
+``TestTheMapIsBounded`` says *"and it is bounded"*. Neither says *"and it is not a ``functools``
+memoisation"*: a bounded single instance built on ``lru_cache`` satisfies both completely while
+reintroducing exactly the defect this ban prevents. The claims are orthogonal, so c3-8 adds the
+positive gate **on top of** this ban rather than instead of it — which is what AC 18 and AC 19
+together actually ask for.
 
 **The two survivors are re-keyed onto** ``functools`` **rather than left as bare tokens, and that
 is a strengthening rather than a courtesy to this story.** A bare ``cache`` cannot tell
@@ -800,14 +830,58 @@ def _identifiers_and_strings(path: Path) -> tuple[set[str], list[str]]:
 
 
 class TestNothingThisStoryDoesNotOwn:
-    """The one absence left is c3-8's, and it owns it by name (c3-6 and c3-7 shipped and left)."""
+    """What remains banned, and why it stayed banned through the story that owned it.
 
-    def test_no_negative_cache_is_built(self):
+    **Renamed in spirit rather than in fact.** Two of the three claims below are c3-5's originals;
+    the first one changed its meaning entirely at c3-8 and its docstring says so.
+    """
+
+    def test_the_negative_cache_is_not_built_on_a_functools_memoisation(self):
+        """**Re-aimed at c3-8, and the old name would have been a lie the day this shipped.**
+
+        This assertion used to be ``test_no_negative_cache_is_built`` — a reservation, holding the
+        mechanism for the story that owned it. c3-8 shipped that mechanism, so the old claim became
+        false by construction and something had to change here. What it did **not** become is
+        *retired*: the two names are still the wrong tool (see :data:`_BANNED_IDENTIFIERS`), so the
+        claim narrowed from *"there is no negative cache"* to *"the negative cache is not built on
+        one of these"*, which is the half that survives and always was the load-bearing half.
+
+        The scan is unchanged and needed no edit — it always resolved ``functools`` through the
+        import, never the mechanism's name — so the module can now hold ``NegativeCache``,
+        ``negative_cache`` and cache vocabulary throughout while this stays exact.
+        """
         breaches = sorted(_negative_cache_reaches(_IMAGES_MODULE) & _BANNED_IDENTIFIERS)
 
         assert not breaches, (
-            f"images.py reaches for {breaches} — the negative cache is c3-8's. An unused hook is "
-            "a design decision made by a story that cannot see the requirements."
+            f"images.py reaches for {breaches}. Neither can express a TTL, so a remembered failure "
+            "would never expire; and cache_clear() is all-or-nothing, so clearing ONE key on "
+            "recovery is unimplementable on it. Both are still true now that c3-8 has shipped, "
+            "which is why this family was not retired with its story (Q5, Brad 2026-08-02)."
+        )
+
+    def test_the_shipped_negative_cache_really_is_the_thing_this_ban_is_about(self):
+        """NON-VACUITY for the ban's *relevance*, which the silence above cannot establish.
+
+        A ban on a mechanism nobody builds is satisfied trivially — and until this story that was
+        precisely the situation, so the assertion above passed for a reason that had nothing to do
+        with its stated one. Now that ``images.py`` genuinely holds a memoisation-shaped thing, this
+        pins that the banned names are being avoided **by a real alternative** rather than by the
+        absence of any implementation at all.
+
+        Keyed on the two capabilities the ban is justified by, not on the class's shape: a TTL that
+        expires, and a clear that addresses one key.
+        """
+        assert hasattr(images, "NegativeCache"), "the ban outlived the mechanism it was about"
+
+        cache = images.NegativeCache(clock=lambda: 0.0)
+        cache.record_failure("aaa", "normal", 0)
+        cache.record_failure("bbb", "normal", 0)
+        cache.clear("aaa", "normal", 0)
+
+        assert cache.is_backing_off("aaa", "normal", 0) is False
+        assert cache.is_backing_off("bbb", "normal", 0) is True, (
+            "clearing one key cleared its sibling too — which is exactly what cache_clear() does, "
+            "and exactly why functools is banned here"
         )
 
     def test_the_module_imports_nothing_from_the_banned_write_path(self):
@@ -839,6 +913,14 @@ class TestNothingThisStoryDoesNotOwn:
         identical spelling, and c3-8's family is the one still depending on that property. So both
         names are asserted against ``names`` and neither is asserted against
         ``_BANNED_IDENTIFIERS``, which is exactly the distinction each removal turned on.
+
+        **Unchanged at c3-8, and that is the finding rather than the omission** (2026-08-02). This
+        is the one pairing of the four that Q5's ruling left genuinely untouched: its ``functools``
+        arm is the only one still tied to a live ban, and it stayed live. The two retired arms
+        continue to prove the *scanner's* properties, which is what they were re-scoped to at c3-6
+        and c3-7 — and those properties are now load-bearing for a **shipped** mechanism rather
+        than a hypothetical one, since ``images.py`` today genuinely holds cache vocabulary that a
+        bare-token scan would trip over.
         """
         planted = tmp_path / "planted.py"
         planted.write_text(
@@ -894,7 +976,21 @@ class TestNothingThisStoryDoesNotOwn:
         passes *because* it now proves nothing. That is the failure mode a firing test degrades
         into silently, so it is re-planted on the family that survives, in the aliased spelling the
         bare-token version of this ban could never have caught.
+
+        **c3-8 left the plant alone and added the guard below instead** (2026-08-02). Q5 kept the
+        family, so for the first time in this epic a story's arrival did not retire the name this
+        test plants — there was nothing to re-aim. What that exposed is that "nothing to re-aim"
+        and "silently degraded to ``set() == set()``" look **identical from inside this test**, and
+        c3-7 only caught its own degradation by noticing. So the non-emptiness of the set is now
+        asserted explicitly rather than relied on: whichever story finally empties this frozenset
+        gets a red here instead of a green that proves nothing.
         """
+        assert _BANNED_IDENTIFIERS, (
+            "the ban list is empty, so the assertion below is `set() == set()` — a test that "
+            "passes BECAUSE it proves nothing. Whichever story emptied it owes this file a "
+            "positive gate that is stronger than the ban, per c3-6's written procedure."
+        )
+
         planted = tmp_path / "memoises.py"
         planted.write_text(
             "from functools import lru_cache as memoize\n"
@@ -915,7 +1011,17 @@ class TestNothingThisStoryDoesNotOwn:
         member list contains. c3-3's lesson is that a family keyed on the syntax its own firing
         test uses catches nothing else — so the firing test above uses the ``from`` form and this
         one uses the attribute form, deliberately.
+
+        **Still both members, still both live, after c3-8** (2026-08-02). The two spellings are
+        asserted by two separate tests rather than one parametrised pair precisely so that retiring
+        *one* member could never silently weaken the other's proof.
         """
+        assert _BANNED_IDENTIFIERS >= {"functools.cache"}, (
+            "`functools.cache` left the ban list; this assertion is now vacuous. Q5 ruled it a "
+            "PERMANENT ruling rather than a reservation — removing it needs a stated reason that "
+            "survives the TTL and single-key-clear arguments, not merely a story's turn."
+        )
+
         planted = tmp_path / "aliased.py"
         planted.write_text(
             "import functools as ft\n\n\n@ft.cache\ndef known_bad(url):\n    return None\n",
@@ -947,10 +1053,21 @@ class TestNothingThisStoryDoesNotOwn:
         demonstrably capable of firing. The host-string half keeps its claim, which was always
         the real prose-immunity property: ``_identifiers_and_strings`` excludes documentation by
         *position*, and a scan that included docstrings would fire on the plant below.
+
+        **Rewritten a THIRD time at c3-8** (2026-08-02), and for the third distinct reason. The
+        previous plant read *"No negative cache here — functools.cache and lru_cache are both
+        c3-8's."* Both **names** are still banned, so unlike its two predecessors this plant did not
+        go stale at the ban — but the **sentence** did: ``images.py`` now holds a negative cache, so
+        a plant asserting there is none documents a design that no longer exists. That is the same
+        rot in a different place, and the reason this docstring's own warning is quoted rather than
+        paraphrased: *a plant nobody rewrites is how a test file starts asserting yesterday's
+        design.* The replacement says the thing that is now true and will stay true — the mechanism
+        exists and is deliberately **not** built on these two.
         """
         documented = tmp_path / "documented.py"
         documented.write_text(
-            '"""No negative cache here — functools.cache and lru_cache are both c3-8\'s."""\n'
+            '"""The negative cache here is a dict and a clock — deliberately NOT '
+            'functools.cache or lru_cache, neither of which can expire an entry."""\n'
             "\n"
             "VALUE = 1\n"
             '"""Not a call to api.scryfall.com either; this is an attribute docstring."""\n',
@@ -2085,3 +2202,724 @@ class TestACacheFailureNeverReachesTheClient:
         assert first.status_code == second.status_code == 200
         assert first.content == cdn.body_for(_TOP_LEVEL_IMAGES["normal"])
         assert cdn.requested == [_TOP_LEVEL_IMAGES["normal"]] * 2
+
+
+# =============================================================================================
+# Story c3-8: distinguishable failure signalling, and the negative cache at the level of the
+# running app.
+#
+# The mechanism's units are in `test_images.py` — the schedule, the ceiling, the retention
+# horizon, the cap, the eviction tiebreak. What can ONLY be proved HERE is what a real request
+# does: that a remembered failure issues no request AND pays no spacing turn, that it is byte
+# for byte the answer a fresh failure gives, that recovery is complete, that a cancelled request
+# is not a failure, and that nothing is written to disk by any of it.
+#
+# THE THREE VERIFICATION ACs COME FIRST (AC 1-3), because the story's single most dangerous fact
+# is that three of its five epic acceptance criteria shipped at c3-5 — so an implementer either
+# rebuilds them or, much likelier, never verifies them and ships a story whose headline claim is
+# inherited rather than proved.
+# =============================================================================================
+
+
+@pytest.fixture
+def remembered(monkeypatch):
+    """A real pacer AND a real negative cache, both on ONE virtual clock, plus a recording CDN.
+
+    The shipped constants throughout: only the clock is fictional. That matters twice over — a
+    test that quietly paced at zero would prove nothing about the number that ships, and a backoff
+    proved by sleeping 30 real seconds is the one thing this story could plausibly get wrong and
+    still pass.
+
+    Both mechanisms share **one** clock deliberately. They are the two things on this path whose
+    correctness is time, and giving them separate clocks would let a test assert a backoff window
+    against a pacer that had drifted away from it.
+
+    Returns:
+        The clock, and the recorder every outbound URL lands in.
+    """
+    clock = FakeClock()
+    recorder = Recorder()
+    real_client = images.build_image_client
+    monkeypatch.setattr(
+        images,
+        "build_image_client",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(recorder.handle)),
+    )
+    real_pacer = images.Pacer
+    monkeypatch.setattr(
+        images,
+        "Pacer",
+        lambda **kwargs: real_pacer(clock=clock.time, sleep=clock.sleep, **kwargs),
+    )
+    real_negative = images.NegativeCache
+    monkeypatch.setattr(
+        images,
+        "NegativeCache",
+        lambda **kwargs: real_negative(clock=clock.time, **kwargs),
+    )
+    return clock, recorder
+
+
+class TestTheTwoFailuresAreDistinguishable:
+    """**AC 1 — verified, not rebuilt.** The epic's ``:1784-1787`` criterion, and AD-11's rule.
+
+    This shipped at c3-5 and ``contracts.py:98-108`` says so by name. What was NOT asserted
+    anywhere until this story is the **discrimination itself**: the two answers were proved in
+    separate classes on separate fixtures, so nothing in the suite pinned that they differ. A
+    single test that makes both requests is the only shape that can go red if a later story
+    collapses them into one token.
+    """
+
+    async def test_one_request_each_and_the_answers_differ_in_status_and_token(
+        self, image_shapes, lifespan_client, cdn
+    ):
+        """The discrimination, from ONE test — which is the assertion that is new here."""
+        cdn.raises = httpx.ConnectError("the CDN is unreachable")
+
+        async with lifespan_client(build_app()) as client:
+            no_artwork = await client.get(_IMAGE_PATH.format(scryfall_id=NO_IMAGE_ID))
+            fetch_failed = await client.get(_IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID))
+
+        assert (no_artwork.status_code, fetch_failed.status_code) == (404, 502)
+        assert no_artwork.json() == {"reason": "no_image_data"}
+        assert fetch_failed.json() == {"reason": "image_fetch_failed"}
+        # The claim stated as a claim: a client CAN tell these apart, on both axes.
+        assert no_artwork.status_code != fetch_failed.status_code
+        assert no_artwork.json()["reason"] != fetch_failed.json()["reason"]
+
+    async def test_neither_answer_carries_a_substitute_image(
+        self, image_shapes, lifespan_client, cdn
+    ):
+        """AD-11's non-negotiable half, asserted on the **BYTES** for both tokens.
+
+        ``test_a_failure_never_returns_a_substitute_image`` already did this for the 502. The 404
+        half had only ever been asserted on the status and the parsed JSON — and a status-only
+        assertion passes with a grey rectangle in the body, which is the exact thing AD-11 forbids.
+        """
+        cdn.raises = httpx.ConnectError("the CDN is unreachable")
+
+        async with lifespan_client(build_app()) as client:
+            no_artwork = await client.get(_IMAGE_PATH.format(scryfall_id=NO_IMAGE_ID))
+            fetch_failed = await client.get(_IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID))
+
+        for response in (no_artwork, fetch_failed):
+            assert response.headers["content-type"].startswith("application/json")
+            assert len(response.content) < 100, "an error body is a token, not a picture"
+            assert not response.content.startswith(b"\xff\xd8"), "a JPEG was served as a failure"
+            assert not response.content.startswith(b"\x89PNG"), "a PNG was served as a failure"
+
+    async def test_the_pixels_are_identical_but_the_retry_semantics_are_not(
+        self, image_shapes, lifespan_client, cdn
+    ):
+        """Why two tokens rather than one, stated as behaviour (``contracts.py:158-163``).
+
+        The client draws the same named placeholder for both — so the distinction is worth its
+        eight-site ripple only because exactly one of them may ever be retried. The observable
+        difference is that ``no_image_data`` never reaches the CDN at all, whatever the network is
+        doing, and ``image_fetch_failed`` did.
+        """
+        cdn.raises = httpx.ConnectError("the CDN is unreachable")
+
+        async with lifespan_client(build_app()) as client:
+            await client.get(_IMAGE_PATH.format(scryfall_id=NO_IMAGE_ID))
+            assert cdn.requested == [], "a permanent failure attempted a fetch"
+
+            await client.get(_IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID))
+
+        assert cdn.requested == [_TOP_LEVEL_IMAGES["normal"]], (
+            "the transient failure did NOT attempt a fetch — so the zero above proves nothing"
+        )
+
+
+class TestACardWithNoImageDataNeverReachesTheNegativeCache:
+    """**AC 2 — verified, and the negative cache is explicitly NOT what makes it true.**
+
+    The epic's ``:1793-1795``. The ``no_image_data`` answer precedes the cache by several lines,
+    so the **79** image-less cards in the corpus never produce a cache key at all — the criterion
+    is satisfied *structurally*, and saying so is the point. A story that let this AC read as
+    "the negative cache handles it" would be claiming credit for the wrong mechanism.
+    """
+
+    async def test_no_fetch_and_no_negative_entry_are_different_claims(
+        self, image_shapes, lifespan_client, cdn
+    ):
+        """The pairing that distinguishes *never fetched* from *fetched and remembered as failed*.
+
+        ``cdn.requested == []`` alone cannot tell those apart: a route that fetched, failed and
+        recorded would also show an empty list on the SECOND request. Reading the map is what
+        separates them, and this is the assertion the mechanism made newly possible.
+        """
+        app = build_app()
+
+        async with lifespan_client(app) as client:
+            response = await client.get(_IMAGE_PATH.format(scryfall_id=NO_IMAGE_ID))
+            entries = images.negative_cache(app).entry_count
+
+        assert response.status_code == 404
+        assert response.json() == {"reason": "no_image_data"}
+        assert cdn.requested == []
+        assert entries == 0, (
+            "a card with no image data left an entry in the negative cache. It has no URL to "
+            "fail, so there is nothing to remember — and remembering it would put 79 permanently "
+            "image-less cards on a 30-second retry cycle for no reason."
+        )
+
+    async def test_but_a_real_fetch_failure_does_leave_one(
+        self, image_shapes, lifespan_client, cdn
+    ):
+        """NON-VACUITY for the zero above (AC 23), from the same accessor.
+
+        Without it, ``entry_count == 0`` passes with the negative cache never wired in at all,
+        with the accessor returning a fresh instance each call, or with recording deleted.
+        """
+        cdn.raises = httpx.ConnectError("the CDN is unreachable")
+        app = build_app()
+
+        async with lifespan_client(app) as client:
+            response = await client.get(_IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID))
+            entries = images.negative_cache(app).entry_count
+
+        assert response.status_code == 502
+        assert entries == 1
+
+    async def test_an_out_of_range_face_is_also_answered_before_the_cache(
+        self, image_shapes, lifespan_client, cdn
+    ):
+        """The second ``no_image_data`` path — a real face index beyond what the card has.
+
+        Same structural guarantee, different branch, and it is asserted separately because the two
+        raise sites are four lines apart and only one of them was covered by the test above.
+        """
+        app = build_app()
+
+        async with lifespan_client(app) as client:
+            response = await client.get(
+                _IMAGE_PATH.format(scryfall_id=SPLIT_FACE_ID), params={"face": 1}
+            )
+            entries = images.negative_cache(app).entry_count
+
+        assert response.status_code == 404
+        assert cdn.requested == []
+        assert entries == 0
+
+
+class TestTheClientCanDrawTheNamedPlaceholder:
+    """**AC 3 — verified as a CONTRACT claim, not re-implemented.** Epic ``:1801-1803``, UX-DR22.
+
+    The SPA half already ships and is already gated: ``states.test.ts`` pins that both image
+    tokens map to the ``named-card`` placeholder and specifically **not** to ``unknown-card``.
+    What is verified here is the backend half of the same claim — that the data the placeholder
+    needs is genuinely reachable, from a route this story does not touch.
+    """
+
+    async def test_the_card_route_carries_the_three_fields_the_placeholder_draws(
+        self, image_shapes, lifespan_client, cdn
+    ):
+        """Name, mana cost and type line — over the wire, from the shipped route.
+
+        Asserted on the VALUES rather than on key presence: a placeholder rendered from three
+        empty strings is the failure this is really about, and ``model_validate``'s silent
+        defaulting is c3-1's landmine 10 in this story's costume.
+        """
+        async with lifespan_client(build_app()) as client:
+            image = await client.get(_IMAGE_PATH.format(scryfall_id=NO_IMAGE_ID))
+            card = await client.get(f"/api/cards/{NO_IMAGE_ID}")
+
+        assert image.status_code == 404
+        assert card.status_code == 200
+        body = card.json()
+        assert body["name"], "the placeholder has no name to draw"
+        assert "mana_cost" in body
+        assert body["type_line"], "the placeholder has no type line to draw"
+
+    def test_both_image_tokens_stay_inside_the_closed_set(self):
+        """AC 5's half of the contract: ``ErrorReason`` is closed at ten and this story adds none.
+
+        Pinned here as well as in ``test_errors.py`` because this is the file that would notice a
+        story reaching for an eleventh token to mean *"remembered failure"* — which is precisely
+        the temptation the negative cache creates and ``contracts.py:104`` predicted in writing.
+        """
+        from src.companion.contracts import ErrorReason
+
+        tokens = set(ErrorReason.__args__)
+
+        assert len(tokens) == 10
+        assert {"no_image_data", "image_fetch_failed"} <= tokens
+        assert not [token for token in tokens if "backoff" in token or "cached" in token]
+
+
+class TestARememberedFailureIssuesNoRequestAndPaysNoRate:
+    """**AC 4.** The headline, and it is measured on the CLOCK as well as on the fetch count.
+
+    Two independent claims, and the second is the one with teeth. A negative check placed **inside**
+    ``pacer.slot()`` remembers perfectly — the fetch count assertion passes — and still makes every
+    remembered failure wait its turn against a CDN it never contacts. That is c3-5/c3-6/c3-7's
+    shared review theme in this story's costume (c3-7's probe (f) was caught by exactly one test of
+    911, the injected-clock one), so the clock is asserted here for the same reason.
+    """
+
+    async def test_a_second_request_adds_no_fetch_and_no_spacing_while_a_third_key_pays_both(
+        self, image_shapes, lifespan_client, remembered
+    ):
+        """The whole of AC 4 and its non-vacuity pairing, from ONE invocation.
+
+        Three requests, deliberately in this order:
+
+        1. key A fails — this is what opens the window, and it also sets the pacer's cursor, so the
+           spacing measurements below are against a warm pacer rather than a cold one (a cold
+           process paints its first tile immediately, which would make a zero meaningless);
+        2. key A again — must add **zero** fetches and **zero** spacing intervals;
+        3. key B, distinct, through the same transport — must add **one** of each, which is what
+           proves the two zeros above are real rather than an artefact of a broken seam.
+        """
+        clock, recorder = remembered
+        recorder.raises = httpx.ConnectError("the CDN is unreachable")
+        key_a = _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)
+        key_b = _IMAGE_PATH.format(scryfall_id=MULTI_FACE_ID)
+
+        async with lifespan_client(build_app()) as client:
+            first = await client.get(key_a)
+            fetches_after_first = len(recorder.requested)
+            sleeps_after_first = len(clock.slept)
+            time_after_first = clock.now
+
+            second = await client.get(key_a)
+            fetches_after_second = len(recorder.requested)
+            sleeps_after_second = len(clock.slept)
+            time_after_second = clock.now
+
+            third = await client.get(key_b)
+
+        assert first.status_code == second.status_code == third.status_code == 502
+        assert fetches_after_first == 1, "the first request did not actually reach the transport"
+
+        assert fetches_after_second == fetches_after_first, (
+            "the remembered failure issued a CDN request. Every paint after the first against a "
+            "failing CDN would re-issue all 99 of them."
+        )
+        assert sleeps_after_second == sleeps_after_first, (
+            "the remembered failure paid a spacing turn. The negative check must sit OUTSIDE "
+            "pacer.slot(): a request that issues no request owes the rate nothing, and a check "
+            "inside the slot remembers correctly while holding the CDN's budget against traffic "
+            "it never sends. Every functional assertion in this file passes anyway."
+        )
+        assert time_after_second == time_after_first, "virtual time moved on a remembered failure"
+
+        # NON-VACUITY (AC 23), from the same clock and the same recorder: a DISTINCT key through
+        # the identical transport pays exactly one fetch and exactly one spacing turn.
+        assert len(recorder.requested) == fetches_after_second + 1, (
+            "a distinct key did not fetch — so the zeros above prove nothing about the mechanism"
+        )
+        assert len(clock.slept) == sleeps_after_second + 1
+        assert clock.now == pytest.approx(time_after_second + images.FETCH_SPACING_SECONDS)
+
+    async def test_the_size_and_the_face_are_part_of_the_key_over_the_wire(
+        self, image_shapes, lifespan_client, remembered
+    ):
+        """A failure on one rendition must not blank the others (AD-11's key, end to end).
+
+        The unit test proves the map keys on all three; this proves the ROUTE passes all three.
+        A route that recorded on the id alone would silently blank every size and face of a card
+        whose ``normal`` tile blipped once — and the unit test could not see it.
+        """
+        _clock, recorder = remembered
+        recorder.raises = httpx.ConnectError("the CDN is unreachable")
+        path = _IMAGE_PATH.format(scryfall_id=MULTI_FACE_ID)
+
+        async with lifespan_client(build_app()) as client:
+            await client.get(path, params={"face": 0})
+            after_first = len(recorder.requested)
+            await client.get(path, params={"face": 0})
+            after_repeat = len(recorder.requested)
+            await client.get(path, params={"face": 1})
+            after_other_face = len(recorder.requested)
+            await client.get(path, params={"face": 0, "size": "large"})
+            after_other_size = len(recorder.requested)
+
+        assert after_repeat == after_first, "the same key refetched"
+        assert after_other_face == after_first + 1, "a sibling FACE was silenced by the backoff"
+        assert after_other_size == after_first + 2, "a sibling SIZE was silenced by the backoff"
+
+
+class TestTheDeckScaleClaim:
+    """**AC 4b.** The user-visible version, and the honest statement of what it does not fix."""
+
+    async def test_a_first_paint_issues_99_and_the_second_issues_none(
+        self, image_shapes, lifespan_client, remembered
+    ):
+        """99 distinct ids against a dead CDN: 99 fetches and 99 502s, then **zero** and 99 502s.
+
+        ``_seed_burst`` gives genuinely distinct ids — repaired by c3-7 after its own docstring had
+        claimed distinctness for a fixture driving one id 99 times.
+
+        **What this test deliberately does NOT claim.** The first paint still costs all 99 requests,
+        because 99 distinct keys have nothing remembered yet; at the shipped constants against an
+        unreachable CDN that is roughly 124 s. The pacer bounds that paint and this bounds every one
+        after it. A test named "the storm is solved" would be this story's own version of prose
+        outrunning code (c3-4's review theme).
+        """
+        clock, recorder = remembered
+        recorder.raises = httpx.ConnectError("the CDN is unreachable")
+        ids, seeder = _seed_burst(99)
+        await _seed(image_shapes, seeder)
+
+        async with lifespan_client(build_app()) as client:
+            cold = [await client.get(_IMAGE_PATH.format(scryfall_id=card_id)) for card_id in ids]
+            cold_fetches = len(recorder.requested)
+            cold_sleeps = len(clock.slept)
+
+            warm = [await client.get(_IMAGE_PATH.format(scryfall_id=card_id)) for card_id in ids]
+
+        assert [r.status_code for r in cold] == [502] * 99
+        assert cold_fetches == 99, "the first paint did not actually issue 99 requests"
+
+        assert [r.status_code for r in warm] == [502] * 99, (
+            "the second paint answered something other than the failure it remembered"
+        )
+        assert len(recorder.requested) == 99, (
+            f"the second paint issued {len(recorder.requested) - 99} CDN requests. Every reload, "
+            "second tab and scroll-back against a failing CDN is a fresh 99-request storm without "
+            "this — which is what EXPERIENCE.md's 'no request storms' promises."
+        )
+        assert len(clock.slept) == cold_sleeps, (
+            "the second paint paid spacing turns for requests it never issued"
+        )
+
+
+class TestARememberedFailureIsByteIdenticalToAFreshOne:
+    """**AC 5.** Asserted as an EQUALITY between the two responses, not as two status assertions.
+
+    A negative hit raises the same typed error through the same handler, so it inherits
+    ``errors.error_response``'s ``Cache-Control: no-store`` and its status-from-token derivation
+    with no code at all. That is what makes this claim cheap to assert — and a divergence a defect
+    rather than a subtlety.
+    """
+
+    async def test_every_field_of_the_two_failure_responses_agrees(
+        self, image_shapes, lifespan_client, cdn
+    ):
+        cdn.raises = httpx.ConnectError("the CDN is unreachable")
+        path = _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)
+
+        async with lifespan_client(build_app()) as client:
+            cold = await client.get(path)
+            fetches_after_cold = len(cdn.requested)
+            remembered_answer = await client.get(path)
+
+        assert fetches_after_cold == 1
+        assert len(cdn.requested) == 1, "this test is vacuous if the second call refetched"
+
+        assert cold.status_code == remembered_answer.status_code == 502
+        assert cold.content == remembered_answer.content
+        assert cold.json() == remembered_answer.json() == {"reason": "image_fetch_failed"}
+        assert cold.headers["content-type"] == remembered_answer.headers["content-type"]
+        assert cold.headers["cache-control"] == remembered_answer.headers["cache-control"]
+        assert remembered_answer.headers["cache-control"] == "no-store"
+
+    async def test_neither_carries_any_of_the_success_headers(
+        self, image_shapes, lifespan_client, cdn
+    ):
+        """The absence half, which an equality between two identical mistakes cannot catch.
+
+        Both responses agreeing proves nothing if both wrongly carry the image route's
+        year-long ``Cache-Control`` or its ``nosniff``. These are the headers a SUCCESS sets.
+        """
+        cdn.raises = httpx.ConnectError("the CDN is unreachable")
+        path = _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)
+
+        async with lifespan_client(build_app()) as client:
+            cold = await client.get(path)
+            remembered_answer = await client.get(path)
+
+        for response in (cold, remembered_answer):
+            assert response.headers["cache-control"] != images.IMAGE_CACHE_CONTROL
+            assert "x-content-type-options" not in response.headers
+            assert not response.headers["content-type"].startswith("image/")
+
+
+class TestRecoveryIsComplete:
+    """**AC 7.** The retry after the window, the disk write, and the cleared history."""
+
+    async def test_after_the_window_the_fetch_is_retried_and_cached_on_disk(
+        self, image_shapes, lifespan_client, remembered
+    ):
+        """The epic's ``:1797-1799``, end to end and on the injected clock."""
+        clock, recorder = remembered
+        recorder.raises = httpx.ConnectError("the CDN is unreachable")
+        path = _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)
+
+        async with lifespan_client(build_app()) as client:
+            failed = await client.get(path)
+            inside_window = await client.get(path)
+            fetches_inside = len(recorder.requested)
+
+            # The CDN comes back, and so does the clock — one tick past the base window.
+            recorder.raises = None
+            clock.now += images.NEGATIVE_CACHE_BASE_SECONDS
+            recovered = await client.get(path)
+
+        assert failed.status_code == inside_window.status_code == 502
+        assert fetches_inside == 1, "the request inside the window reached the CDN"
+
+        assert recovered.status_code == 200
+        assert len(recorder.requested) == 2, "the retry after the window never happened"
+        assert recovered.content == recorder.body_for(_TOP_LEVEL_IMAGES["normal"])
+        assert [entry.name for entry in _cache_files()] == ["normal_0.jpg"], (
+            "the recovered image was served but not cached — recovery must put the key back on "
+            "the ordinary warm path, or the next paint fetches it again"
+        )
+
+    async def test_a_recovered_key_starts_its_next_failure_at_the_base_window(
+        self, image_shapes, lifespan_client, remembered, monkeypatch
+    ):
+        """The clause a functional test misses, proved through the ROUTE (AC 7).
+
+        Fail the **same key** twice so its window escalates to 60 s, recover it, then fail it once
+        more — and show the new window is the **base** 30 s rather than the escalated 120 s.
+
+        **The disk cache is disabled for this test, and that is the whole reason it works.** An
+        earlier version of this test dodged the warm path by switching to ``size=large`` after the
+        recovery — which changes the KEY, so the second failure was on a key that had never failed
+        and the assertion held whether or not the route cleared anything. **Probe (e) caught that:
+        deleting the route's ``clear`` call left all 980 tests green.** With the cache off, the same
+        key can succeed and then fail again, which is the only shape that can see the defect.
+
+        The arithmetic the timings encode: two failures put ``retry_after`` at 90 with a 60 s delay
+        stored. Cleared, the next failure is 30 s and expires at 120. Uncleared, it is 60x2 = 120 s
+        and expires at 210 — so a request at 120 fetches under the correct behaviour and is still
+        backing off under the defect.
+        """
+        monkeypatch.setattr(images, "build_image_cache", lambda: None)
+        clock, recorder = remembered
+        recorder.raises = httpx.ConnectError("the CDN is unreachable")
+        path = _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)
+        base = images.NEGATIVE_CACHE_BASE_SECONDS
+
+        async with lifespan_client(build_app()) as client:
+            await client.get(path)
+            clock.now += base
+            await client.get(path)  # second consecutive failure -> escalates to 60 s
+
+            recorder.raises = None
+            clock.now += 2 * base
+            success = await client.get(path)
+            assert success.status_code == 200, "the escalated window never expired"
+
+            # The SAME key fails again, immediately after recovering.
+            recorder.raises = httpx.ConnectError("the CDN is unreachable again")
+            failed_again = await client.get(path)
+            assert failed_again.status_code == 502
+
+            recorder.raises = None
+            clock.now += base
+            after_base = await client.get(path)
+
+        assert after_base.status_code == 200, (
+            "one base window after a single failure the key was STILL backing off, so its "
+            "escalated history survived the success — a later blip leaves the tile blank for two "
+            "minutes instead of thirty seconds, and every 'the retry happened' test passes anyway"
+        )
+
+
+class TestACancelledRequestIsNotAFailure:
+    """**AC 10.** A browser navigating away from a deck view cancels ~99 requests.
+
+    Recording those would poison the whole deck for one backoff window over a user action that
+    failed at nothing. The mechanism is the narrow ``except CompanionError``:
+    ``asyncio.CancelledError`` inherits ``BaseException``, so a bare ``except Exception`` would
+    already miss it and this catch cannot see it at all.
+
+    **The cancellation is parked MID-FETCH, and that placement is the test** (review 2026-08-02).
+    The first draft cancelled after one bare yield, which lands the ``CancelledError`` at the
+    route's *first* await — the database read — before the ``try`` block is ever entered, with the
+    CDN in success mode: a zero that would survive a record-on-``BaseException`` mutation, proving
+    nothing about the catch. ``stalled_cdn`` holds the fetch open so the cancel arrives inside
+    ``fetch_image``, and the recorded upstream request is the positive observation that there was
+    genuinely something in flight to mis-record.
+    """
+
+    async def test_a_cancelled_request_leaves_no_entry_behind(
+        self, image_shapes, lifespan_client, stalled_cdn
+    ):
+        app = build_app()
+
+        async with lifespan_client(app) as client:
+            doomed = asyncio.create_task(client.get(_IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)))
+            await _until(
+                lambda: stalled_cdn.in_flight >= 1,
+                what="the doomed request to reach the upstream",
+            )
+            doomed.cancel()
+            with pytest.raises((asyncio.CancelledError, httpx.HTTPError)):
+                await doomed
+
+            entries = images.negative_cache(app).entry_count
+
+        assert stalled_cdn.requested, (
+            "the fetch never started, so the cancellation exercised nothing cancellable"
+        )
+        assert entries == 0, (
+            "a cancelled request was recorded as a CDN failure. One navigation away from a deck "
+            "view would blank ~99 tiles for a full backoff window."
+        )
+
+    async def test_the_next_request_for_the_same_key_still_reaches_the_cdn(
+        self, image_shapes, lifespan_client, stalled_cdn
+    ):
+        """The observable consequence, and it is the SAME key or it is nothing (review 2026-08-02).
+
+        The zero above is an implementation detail; THIS is what the user experiences. The first
+        draft's follow-up asked for ``size=large`` — a *different* key, which would have fetched
+        happily even if the cancellation had been recorded against ``normal``: the change-the-key
+        dodge probe (e) caught in the AC 7 test, reshipped. Asserted now on the two recorded URLs
+        being identical, which a key change cannot fake.
+        """
+        async with lifespan_client(build_app()) as client:
+            doomed = asyncio.create_task(client.get(_IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)))
+            await _until(
+                lambda: stalled_cdn.in_flight >= 1,
+                what="the doomed request to reach the upstream",
+            )
+            doomed.cancel()
+            with pytest.raises((asyncio.CancelledError, httpx.HTTPError)):
+                await doomed
+
+            # The CDN is healthy — only the user went away — so release it for the retry.
+            stalled_cdn.release.set()
+            response = await client.get(_IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID))
+
+        assert response.status_code == 200
+        assert len(stalled_cdn.requested) == 2, (
+            "the retry never reached the CDN: the cancellation was remembered as a failure"
+        )
+        assert stalled_cdn.requested[0] == stalled_cdn.requested[1], (
+            "the follow-up requested a different key, which proves nothing about the first"
+        )
+
+    async def test_a_wiring_bug_is_not_recorded_as_a_cdn_failure(
+        self, image_shapes, lifespan_client, cdn, monkeypatch
+    ):
+        """The other half of the narrow catch: ``internal_error`` must not open a backoff window.
+
+        A missing client or pacer means the lifespan did not run. Backing the key off for 30
+        seconds would remember a CDN outage that never happened, and would do it for a fault the
+        CDN had no part in. The guard runs AFTER the negative check by design, so this also pins
+        that ordering from the outside.
+        """
+        app = build_app()
+
+        async with lifespan_client(app) as client:
+            app.state.image_pacer = None
+            response = await client.get(_IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID))
+            entries = images.negative_cache(app).entry_count
+
+        assert response.status_code == 500
+        assert response.json() == {"reason": "internal_error"}
+        assert entries == 0, "a wiring bug was remembered as a CDN failure"
+
+
+class TestTheNegativeCacheTouchesNoDiskAndNoOtherApp:
+    """**AC 9 and AC 11.** Nothing persisted, nothing shared, and the two caches independent."""
+
+    async def test_a_failing_burst_writes_nothing_to_the_cache_root(
+        self, image_shapes, lifespan_client, cdn
+    ):
+        """Listed through ``images.cache_root()`` (AC 22), so a cache writing somewhere unexpected
+        reads as a failure rather than as an empty directory."""
+        cdn.raises = httpx.ConnectError("the CDN is unreachable")
+        ids, seeder = _seed_burst(20)
+        await _seed(image_shapes, seeder)
+
+        async with lifespan_client(build_app()) as client:
+            for card_id in ids:
+                assert (
+                    await client.get(_IMAGE_PATH.format(scryfall_id=card_id))
+                ).status_code == 502
+
+        assert _cache_files() == [], (
+            "the negative path wrote to disk; it is memory and nothing else"
+        )
+
+    async def test_but_a_served_image_still_lands_on_disk(self, image_shapes, lifespan_client, cdn):
+        """NON-VACUITY for the empty listing above (AC 23): a write that DOES happen.
+
+        Without it, ``_cache_files() == []`` also passes with the disk cache disabled, the write
+        silently failing, or the listing pointed at a directory nothing writes to.
+        """
+        async with lifespan_client(build_app()) as client:
+            assert (
+                await client.get(_IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID))
+            ).status_code == 200
+
+        assert [entry.name for entry in _cache_files()] == ["normal_0.jpg"]
+
+    async def test_a_fresh_app_remembers_nothing(self, image_shapes, lifespan_client, cdn):
+        """AC 9's ruling, as behaviour: restarting the companion is the user's one obvious remedy
+        for a transient failure, and a state that outlived the restart would make it not work."""
+        cdn.raises = httpx.ConnectError("the CDN is unreachable")
+        path = _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)
+
+        async with lifespan_client(build_app()) as client:
+            assert (await client.get(path)).status_code == 502
+        fetches_after_first_process = len(cdn.requested)
+
+        # A brand-new app — the "restart" this ruling is about.
+        async with lifespan_client(build_app()) as client:
+            assert (await client.get(path)).status_code == 502
+
+        assert len(cdn.requested) == fetches_after_first_process + 1, (
+            "the second process answered from a failure the FIRST one recorded. Nothing is "
+            "persisted, so a restart must genuinely retry."
+        )
+
+    async def test_an_app_with_no_disk_cache_still_negative_caches(
+        self, image_shapes, lifespan_client, cdn, monkeypatch
+    ):
+        """**AC 11**, first half: the two caches are independent.
+
+        Q6's disable-don't-fail path leaves ``image_cache`` at ``None``; the negative cache cannot
+        fail to construct, so it is unaffected. A route that read one guard for both would lose the
+        backoff on exactly the installs that need it most.
+        """
+        monkeypatch.setattr(images, "build_image_cache", lambda: None)
+        cdn.raises = httpx.ConnectError("the CDN is unreachable")
+        path = _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)
+
+        async with lifespan_client(build_app()) as client:
+            first = await client.get(path)
+            second = await client.get(path)
+
+        assert first.status_code == second.status_code == 502
+        assert len(cdn.requested) == 1, (
+            "with no disk cache the negative cache stopped working too — they are independent"
+        )
+
+    async def test_a_warm_disk_entry_is_served_whatever_the_failure_history(
+        self, image_shapes, lifespan_client, remembered
+    ):
+        """**AC 11**, second half — seam 2's ordering claim stated as behaviour.
+
+        The disk read comes FIRST. A key with a warm entry is served whatever it remembers, because
+        the picture is already on this machine and no memory of a past outage should hide it. A
+        negative check placed before the disk read would blank a tile the app could serve offline.
+        """
+        clock, recorder = remembered
+        path = _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)
+
+        async with lifespan_client(build_app()) as client:
+            # Warm the disk on `normal`, then fail `large` so the app has a failure history.
+            assert (await client.get(path)).status_code == 200
+            recorder.raises = httpx.ConnectError("the CDN is unreachable")
+            assert (await client.get(path, params={"size": "large"})).status_code == 502
+            fetches_before = len(recorder.requested)
+            time_before = clock.now
+
+            warm = await client.get(path)
+
+        assert warm.status_code == 200, "a warm tile was hidden by a sibling key's failure history"
+        assert warm.content == recorder.body_for(_TOP_LEVEL_IMAGES["normal"])
+        assert len(recorder.requested) == fetches_before, "the warm hit reached the transport"
+        assert clock.now == time_before, (
+            "the warm hit advanced the pacer's clock — it is served before the pacer is entered "
+            "and before the negative check, so it owes neither a permit nor a spacing turn"
+        )
