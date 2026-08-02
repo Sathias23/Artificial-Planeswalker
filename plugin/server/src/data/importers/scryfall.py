@@ -43,6 +43,55 @@ class ScryfallImportError(Exception):
     pass
 
 
+#: Metadata keys carrying the bulk file's URL, newest spelling first.
+#:
+#: Scryfall replaced ``download_uri`` (a JSON array, ``.json``) with ``jsonl_download_uri``
+#: (gzip'd JSONL, ``.jsonl.gz``) — measured 2026-08-02, when the old key vanished from **every**
+#: entry on both the list and per-entry endpoints and every import path in this product broke at
+#: once. Both spellings are accepted so a fixture written against either shape still runs and so a
+#: restored ``download_uri`` would not break us a second time; :func:`stream_cards` decides the
+#: payload format by reading the bytes, so the key that supplied the URL does not constrain it.
+#:
+#: This is an **allowlist of known-good spellings, deliberately enumerated** — the inverse of the
+#: "ban the family" rule, and for its stated reason: a missing entry here is a loud failure with a
+#: named diagnosis, while a too-broad match would silently download the wrong artefact.
+_DOWNLOAD_URI_KEYS = ("jsonl_download_uri", "download_uri")
+
+#: Metadata keys carrying the bulk file's size in bytes, newest spelling first.
+#:
+#: ``compressed_size`` replaced ``size`` in the same change. The semantics differ — the new value is
+#: the **compressed** wire size — which is the correct input to the download ceiling either way,
+#: because :func:`~src.data.importers.scryfall_api.download_bulk_data` counts bytes off the wire.
+_SIZE_KEYS = ("compressed_size", "size")
+
+
+def _first_present(entry: dict[str, Any], keys: tuple[str, ...]) -> Any | None:
+    """Return the first truthy value among *keys* in *entry*, else ``None``."""
+    for key in keys:
+        value = entry.get(key)
+        if value:
+            return value
+    return None
+
+
+def _resolve_download_uri(entry: dict[str, Any], bulk_type: str) -> str:
+    """Return the bulk file's URL, or raise naming exactly what went wrong.
+
+    The pre-2026-08-02 code indexed ``entry["download_uri"]`` directly, so an upstream key rename
+    surfaced as a bare ``KeyError: 'download_uri'`` wrapped in a generic import failure — an error
+    that names the key we wanted and nothing about what arrived. Listing the keys the entry
+    *actually* carries turns the next such change from a debugging session into a diagnosis.
+    """
+    uri = _first_present(entry, _DOWNLOAD_URI_KEYS)
+    if not isinstance(uri, str) or not uri:
+        raise ScryfallImportError(
+            f"Scryfall's '{bulk_type}' bulk-data entry carries none of "
+            f"{list(_DOWNLOAD_URI_KEYS)}. This usually means the upstream API changed its "
+            f"schema. Keys present: {sorted(entry)}"
+        )
+    return uri
+
+
 def _validate_download_uri(uri: str) -> None:
     """Refuse a metadata-supplied download_uri that isn't https on a Scryfall host."""
     parsed = urlparse(uri)
@@ -347,11 +396,11 @@ async def import_scryfall_bulk_data(
                 f"Bulk data type '{bulk_type}' not found. Available types: {available_types}"
             )
 
-        download_uri = bulk_data["download_uri"]
+        download_uri = _resolve_download_uri(bulk_data, bulk_type)
         _validate_download_uri(download_uri)
-        advertised_size = int(bulk_data.get("size") or 0)
+        advertised_size = int(_first_present(bulk_data, _SIZE_KEYS) or 0)
         file_size_mb = advertised_size / (1024 * 1024)
-        logger.info(f"Found bulk data: {bulk_type} ({file_size_mb:.1f} MB)")
+        logger.info(f"Found bulk data: {bulk_type} ({file_size_mb:.1f} MB to download)")
 
         # Stage 2: Download bulk data file. Without a caller-supplied temp_dir, use a
         # fresh private (0700) per-run directory — never a fixed path in the shared temp
@@ -363,7 +412,13 @@ async def import_scryfall_bulk_data(
             temp_dir = created_dir
 
         try:
-            output_file = temp_dir / f"scryfall_{bulk_type}.json"
+            # The temp filename mirrors what the URL says it is serving, so a `.jsonl.gz`
+            # download is not sitting on disk under a `.json` name claiming to be an array.
+            # Two fixed outcomes, never the remote path's own basename — the URI is metadata
+            # supplied and must not reach the filesystem. `stream_cards` decides the real
+            # format by reading the bytes regardless, so this name is honesty, not control flow.
+            suffix = ".jsonl.gz" if urlparse(download_uri).path.endswith(".gz") else ".json"
+            output_file = temp_dir / f"scryfall_{bulk_type}{suffix}"
             downloaded_file = await download_bulk_data(
                 download_uri, output_file, max_bytes=_max_download_bytes(advertised_size)
             )

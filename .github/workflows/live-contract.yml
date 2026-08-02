@@ -1,0 +1,64 @@
+name: Live contract
+
+# The canary for third-party contracts this product depends on but does not control.
+#
+# WHY THIS IS NOT PART OF ci.yml. On 2026-08-02 Scryfall replaced `download_uri` with
+# `jsonl_download_uri` and `size` with `compressed_size`, and moved the bulk payload from a JSON
+# array to gzip'd JSONL. Every data path in the product died at once, on a released version, while
+# the whole test suite stayed green — because every test that touches the importer monkeypatches
+# `fetch_bulk_data_list`, and nothing had ever called `api.scryfall.com/bulk-data`.
+#
+# A third-party contract changes on the VENDOR's release schedule, not on ours, so a push trigger
+# is the wrong axis: the break landed on a day nobody pushed to this repo, and a push-triggered
+# check would have reported it whenever we next happened to commit. This runs on a clock instead,
+# so the detection window is bounded by the schedule rather than by our activity. Keeping it out of
+# `ci.yml` also keeps the required checks network-independent — a flaky CDN must never be able to
+# red a pull request.
+#
+# It reads ONE small metadata document. It does not download a bulk file.
+
+on:
+  schedule:
+    # 07:00 UTC every Monday. Weekly is deliberate: the exposure of a stale contract is "a refresh
+    # fails with a named error", not data loss, and a tighter cadence buys little for the noise.
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-contract
+  cancel-in-progress: false
+
+jobs:
+  scryfall:
+    name: Scryfall bulk-data contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Sync dependencies (locked)
+        run: uv sync --locked
+
+      - name: Assert Scryfall still serves what the importer reads
+        run: uv run pytest tests/integration/data/test_scryfall_live_contract.py -m integration
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::error title=Scryfall bulk-data contract broke::The importer reads fields that \
+          api.scryfall.com/bulk-data no longer serves in the expected shape. Every DB refresh and \
+          the initialize_database MCP tool are affected. See the failing assertion for the keys \
+          that actually arrived, then update _DOWNLOAD_URI_KEYS / _SIZE_KEYS in \
+          src/data/importers/scryfall.py (and stream_cards in parser.py if the payload format \
+          changed)."
