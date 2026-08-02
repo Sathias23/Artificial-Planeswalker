@@ -2065,6 +2065,45 @@ class TestAnUnwritableRootStopsWarningEventually:
         )
         assert any("disab" in record.getMessage().lower() for record in ours)
 
+    async def test_an_unreadable_non_empty_target_is_counted_not_swallowed(
+        self, tmp_path, monkeypatch, caplog
+    ) -> None:
+        """Greptile round 2's residual (2026-08-02): size is not the winner's signature either.
+
+        A non-empty target whose READS are denied while ``stat`` still reports a positive size —
+        an exclusive external lock, a broken ACL — is a miss to ``_read_cached``, so swallowing
+        its write as a lost race on size alone would refetch forever with the latch never
+        announcing it. The carve-out therefore proves servability by reading a byte, exactly as
+        the cache's own reader will, and this case stays a counted failure.
+        """
+        cache = _cache(tmp_path)
+        target = tmp_path / "image_cache" / _CARD[:2] / _CARD / "normal_0.jpg"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b"present but exclusively locked")
+
+        def locked(source, destination):
+            raise PermissionError("an external process holds the entry exclusively")
+
+        real_open = Path.open
+
+        def deny_reads(self, *args, **kwargs):
+            if self == target:
+                raise PermissionError("reads denied too")
+            return real_open(self, *args, **kwargs)
+
+        with caplog.at_level("WARNING", logger=images.logger.name):
+            with monkeypatch.context() as broken:
+                broken.setattr(images.os, "replace", locked)
+                broken.setattr(Path, "open", deny_reads)
+                await self._paint(cache, images.DISK_CACHE_WRITE_FAILURE_LIMIT * 2)
+
+        ours = [record for record in caplog.records if record.name == images.logger.name]
+        assert ours, (
+            "an unreadable non-empty entry was swallowed as a lost race; that key would "
+            "refetch forever and the latch would never announce the stuck root"
+        )
+        assert any("disab" in record.getMessage().lower() for record in ours)
+
     async def test_a_lost_race_does_not_reset_the_counter_either(
         self, tmp_path, monkeypatch
     ) -> None:

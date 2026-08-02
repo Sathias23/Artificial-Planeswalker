@@ -395,11 +395,12 @@ lost caching (every picture is still served, everything already cached is still 
 re-enable path means deciding *when* to retry, which is the same lifecycle question that re-homed
 the startup-`OSError` entry. Both now live on **c8-2**, the cache-stewardship story. One carve-out
 keeps the counter honest on Windows: a ``PermissionError`` whose target already holds a
-**non-empty** entry is a lost same-key write race — the entry is stored, by the winner — and is
-**neither counted nor treated as a success**: only a replace that actually lands resets the
-counter, so a run of lost races can never mask a root that other keys are proving broken
-(Greptile P1, 2026-08-02; see :func:`_write_atomically`). Non-empty matters because
-``_read_cached`` treats a zero-byte file as a miss — a locked *empty* target swallowed as a race
+**servable** entry — readable and non-empty, proved by reading a byte the way ``_read_cached``
+will — is a lost same-key write race, and is **neither counted nor treated as a success**: only
+a replace that actually lands resets the counter, so a run of lost races can never mask a root
+that other keys are proving broken (Greptile P1 + round-2 residual, 2026-08-02; see
+:func:`_write_atomically`). Servable matters because ``_read_cached`` treats a zero-byte *or
+unreadable* file as a miss — a locked target swallowed as a race on presence or size alone
 would refetch forever with the latch never announcing it.
 
 Only **writes** stop. Reads keep working, because they fail for unrelated reasons and a root that
@@ -998,9 +999,10 @@ def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ..
 
     Returns:
         True when this call's own replace landed. False when the write was swallowed as a lost
-        same-key race — the target already holds the winner's non-empty entry — which the caller
-        must treat as *neither* a failure to count *nor* a success that resets the failure
-        counter (Greptile P1, 2026-08-02): a lost race proves nothing about the root either way.
+        same-key race — the target already holds the winner's entry, verified SERVABLE by
+        reading a byte the way ``_read_cached`` will — which the caller must treat as *neither*
+        a failure to count *nor* a success that resets the failure counter (Greptile P1 and its
+        round-2 residual, 2026-08-02): a lost race proves nothing about the root either way.
 
     Raises:
         OSError: The directory could not be created, the temp file could not be written, or the
@@ -1040,15 +1042,18 @@ def _write_atomically(target: Path, payload: bytes, *, displaces: tuple[Path, ..
             # winner — so the loser must not feed `DiskCache`'s consecutive-failure counter: a
             # lost race is not a broken root (review 2026-08-02).
             #
-            # Non-empty, not merely present, and the distinction closes a Greptile P1
-            # (2026-08-02): `_read_cached` treats a zero-byte file as a MISS, so a locked or
-            # read-only EMPTY target would otherwise loop forever — every read misses, every
-            # write is swallowed as a lost race, and the latch never announces a root that is
-            # genuinely stuck. A race winner's entry is never empty (`fetch_image` refuses empty
-            # bodies), so size > 0 is exactly the "the winner stored it" fact this branch needs.
-            # The stat itself failing is treated as not-stored: when in doubt, count it.
+            # SERVABLE, not merely present, and the distinction closes a Greptile P1 and its
+            # round-2 residual (2026-08-02): `_read_cached` treats a zero-byte OR unreadable
+            # file as a MISS, so a locked empty target — or a non-empty one whose reads are
+            # denied while `stat` still reports a size — would otherwise loop forever: every
+            # read misses, every write is swallowed as a lost race, and the latch never
+            # announces a root that is genuinely stuck. So the branch proves the one fact it
+            # actually needs — the cache can SERVE this entry — by reading a byte, exactly as
+            # `_read_cached` will: a race winner's entry is always readable and never empty
+            # (`fetch_image` refuses empty bodies). Any doubt counts as not-stored.
             try:
-                stored_by_winner = target.stat().st_size > 0
+                with target.open("rb") as existing:
+                    stored_by_winner = existing.read(1) != b""
             except OSError:
                 stored_by_winner = False
             if not stored_by_winner:
