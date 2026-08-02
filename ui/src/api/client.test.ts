@@ -1,11 +1,16 @@
 /**
- * The wire boundary's malformed-input half (story c3-9, AC 9, AC 10).
+ * The wire boundary's malformed-input half (story c3-9, AC 9, AC 10; extended by c4-1).
  *
- * Every assertion here feeds `readDecks` something the contract does not promise and asserts it
+ * Every assertion here feeds a reader something the contract does not promise and asserts it
  * came back as a VALUE rather than as a thrown exception. That matters because of where the
  * result goes: `panelFor` turns it into a `StateKey` and `StatePanel` indexes `STATE_COPY` with
  * no fallback branch, so a rejection escaping this module lands as an unhandled render exception
  * — the error screen this whole story exists to ban.
+ *
+ * **c4-1 renamed the module under this file (`decks.ts` → `client.ts`, Q1) and added `readCard`.**
+ * The deck half below is UNCHANGED and that is deliberate: c4-1 refactored both readers onto one
+ * shared `request()` helper, and a green run of assertions written before that helper existed is
+ * the regression proof that the refactor changed no behaviour.
  *
  * The four AC 9 inputs are four separate `it`s on purpose: they fail in three different layers
  * (`fetch` itself, `.json()`, and the body's shape), and collapsing them would let a fix for one
@@ -17,7 +22,14 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { DECKS_PATH, READ_TIMEOUT_MS, readDecks } from './decks'
+import {
+  CARD_PATH_PREFIX,
+  DECKS_PATH,
+  READ_TIMEOUT_MS,
+  cardPath,
+  readCard,
+  readDecks,
+} from './client'
 
 // Typed as `fetch` itself, not as the zero-argument stub it happens to be: the assertions below
 // read `mock.calls[0][1]`, and a mock typed from the implementation would make that index a
@@ -58,10 +70,19 @@ describe('readDecks reads the route the artefact names', () => {
     //
     // This poll cannot hit that, and the reason is structural rather than careful: there is no
     // id in the path to be malformed. Asserted rather than merely written down, because the
-    // safety argument evaporates the moment somebody parameterises this constant — which is
-    // exactly what **c4-1** will be tempted to do when it copies this module for
-    // `GET /api/cards/{card_id}`, a route where the argument does NOT hold.
+    // safety argument evaporates the moment somebody parameterises this constant.
+    //
+    // **c4-1 arrived and did NOT parameterise it** — `CARD_PATH_PREFIX` is a separate constant,
+    // and the assertion below is its opposite number.
     expect(DECKS_PATH).not.toMatch(/[{}:]/)
+  })
+
+  it('keeps the card route a SEPARATE constant, so the two are not confusable (c4-1 Q1)', () => {
+    // The card route takes an id and is therefore NOT retry-safe on the token alone. Two
+    // constants rather than one templated helper means the difference is visible at every call
+    // site instead of buried in an argument.
+    expect(CARD_PATH_PREFIX).not.toBe(DECKS_PATH)
+    expect(CARD_PATH_PREFIX.startsWith(DECKS_PATH)).toBe(false)
   })
 })
 
@@ -220,5 +241,158 @@ describe('the four malformed inputs of AC 9, none of which may reject', () => {
       kind: 'error',
       reason: 'database_unavailable',
     })
+  })
+})
+
+// ===================== c4-1: the card read ==============================================
+
+/** A real id from the shipped corpus, in the canonical spelling the route's pattern demands. */
+const SOL_RING = '0d7ac8e1-2ea4-4b6c-9b6a-06bd4bd90ba1'
+
+/** The two fields `cardOf` reads, plus enough to be recognisably a card. */
+const solRingBody = JSON.stringify({
+  id: SOL_RING,
+  name: 'Sol Ring',
+  mana_cost: '{1}',
+  cmc: 1,
+  type_line: 'Artifact',
+  oracle_text: '{T}: Add {C}{C}.',
+})
+
+describe('readCard addresses one card, safely (c4-1 AC 2, AC 15)', () => {
+  it('asks for /api/cards/<id>, uncached', async () => {
+    const fetchMock = responding(solRingBody, 200)
+
+    await readCard(SOL_RING)
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toBe(`${CARD_PATH_PREFIX}${SOL_RING}`)
+    // Not tidiness: the route sets NO cache headers (ledgered, c4-1 Q7), so a browser is free to
+    // apply heuristic freshness and serve a row from before a database refresh. The app's own
+    // cache is the caching layer; `no-store` removes the only staleness that is not ours.
+    expect(fetchMock.mock.calls[0][1]?.cache).toBe('no-store')
+  })
+
+  it('carries the same abort signal the deck poll does', async () => {
+    const fetchMock = responding(solRingBody, 200)
+
+    await readCard(SOL_RING)
+
+    expect(fetchMock.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it.each([
+    ['a path separator', 'a/b'],
+    ['a query opener', 'a?b=c'],
+    ['a fragment', 'a#b'],
+    ['a parent traversal', '../health'],
+    ['a whole absolute URL', 'https://evil.example/x'],
+  ])('encodes %s so an id cannot change WHICH route is called', (_label, hostile) => {
+    // `deck_cards.card_id` carries no shape constraint and FK enforcement is off on the async
+    // engine (measured: 0 of 2,027 rows are non-canonical today, so this is latent, not live).
+    // Unencoded, an id like these would address a different endpoint entirely; encoded, it stays
+    // one path segment, the route's uuid pattern refuses it, and the answer is `400
+    // invalid_request` — which `src/state/cards.ts` turns into the unknown-card placeholder (Q5).
+    const path = cardPath(hostile)
+
+    expect(path.startsWith(CARD_PATH_PREFIX)).toBe(true)
+    expect(path.slice(CARD_PATH_PREFIX.length)).not.toMatch(/[/?#]/)
+  })
+
+  it('leaves a CANONICAL id byte-identical — the silent half', () => {
+    // The encoder must not be doing anything to the 38,261 ids that are already canonical: a
+    // percent-escaped hyphen would miss every card in the corpus.
+    expect(cardPath(SOL_RING)).toBe(`${CARD_PATH_PREFIX}${SOL_RING}`)
+  })
+})
+
+describe('a card read is a total outcome union, exactly like the deck poll (c4-1 AC 2)', () => {
+  it('reads a 200 as the card', async () => {
+    responding(solRingBody, 200)
+
+    const outcome = await readCard(SOL_RING)
+
+    expect(outcome.kind).toBe('card')
+    expect(outcome).toMatchObject({ card: { id: SOL_RING, name: 'Sol Ring' } })
+  })
+
+  it.each([
+    ['card_not_found', 404],
+    ['invalid_request', 400],
+    ['database_not_initialized', 503],
+    ['database_unavailable', 503],
+    ['payload_too_large', 413],
+    ['internal_error', 500],
+  ])('passes %s (%d) through as it crossed the wire', async (reason, status) => {
+    responding(JSON.stringify({ reason }), status)
+
+    // Unvalidated and unclamped, the same as the deck poll: deciding what a token MEANS is the
+    // cache's job, and doing it in two places would mean two places to get it wrong.
+    expect(await readCard(SOL_RING)).toEqual({ kind: 'error', reason })
+  })
+
+  it('reads a network rejection as unreachable, not as a refusal', async () => {
+    stubFetch(() => Promise.reject(new TypeError('Failed to fetch')))
+
+    await expect(readCard(SOL_RING)).resolves.toEqual({ kind: 'unreachable' })
+  })
+
+  it.each([
+    ['no body at all', null, 503],
+    ['a body that is not JSON', '<!doctype html><title>proxy error</title>', 503],
+    ['a JSON body with no reason key', '{"detail": "something"}', 404],
+  ])('reads %s as a refusal with no readable token', async (_label, body, status) => {
+    responding(body, status)
+
+    await expect(readCard(SOL_RING)).resolves.toEqual({ kind: 'error', reason: null })
+  })
+
+  it.each([
+    ['not an object', '"Sol Ring"'],
+    ['an array', '[{"id": "x", "name": "y"}]'],
+    ['missing id', '{"name": "Sol Ring"}'],
+    ['missing name', `{"id": "${SOL_RING}"}`],
+    ['an id that is not a string', '{"id": 7, "name": "Sol Ring"}'],
+    // Blank counts as absent, the same ruling `namesOf` applies to the deck list (FR-13): a
+    // blank name cannot label a tile and a blank id cannot key the cache, so neither is this
+    // contract whatever its field TYPES say.
+    ['a name that is blank', `{"id": "${SOL_RING}", "name": "   "}`],
+    ['an id that is blank', '{"id": "", "name": "Sol Ring"}'],
+    ['HTML behind a 200', '<!doctype html><title>captive portal</title>'],
+  ])('reports a 200 that is %s as a contract violation, not as a card', async (_label, body) => {
+    responding(body, 200)
+
+    // The alternative is worse than an error: caching a hollow object would put `undefined`
+    // where a card name goes, in every consumer, silently.
+    expect(await readCard(SOL_RING)).toEqual({ kind: 'error', reason: null })
+  })
+
+  it('still accepts a well-formed record — the non-vacuity half of the block above', async () => {
+    responding(solRingBody, 200)
+
+    expect((await readCard(SOL_RING)).kind).toBe('card')
+  })
+})
+
+describe('readCard issues ONE request and never retries (c4-1 AC 12, AC 25)', () => {
+  it('makes exactly one request for a 503 — the bound lives in the cache, not here', async () => {
+    // The trap c3-9 wrote down for this story: a malformed id sent to a backend with no database
+    // answers `database_not_initialized`, a token `RETRIES_QUIETLY` says to retry quietly, and
+    // the request can never succeed. A retry loop HERE would be invisible to the cache that
+    // counts requests, so there is none: `MAX_ATTEMPTS_PER_CARD` is the bound and it is one
+    // layer up, where the decision to ask again is actually made.
+    const fetchMock = responding('{"reason": "database_not_initialized"}', 503)
+
+    await readCard(SOL_RING)
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('makes exactly one request for a network rejection too', async () => {
+    const fetchMock = stubFetch(() => Promise.reject(new TypeError('Failed to fetch')))
+
+    await readCard(SOL_RING)
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
