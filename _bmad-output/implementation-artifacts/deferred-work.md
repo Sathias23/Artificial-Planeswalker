@@ -3295,3 +3295,151 @@ either has an owner story or is declared inside the file it constrains.
   in the dependency set (adding one casually is banned by AC 21 / package-contract). Home: c4-3
   (first consumer) — its component tests exercise the hook for real; if c4-3 introduces a testing
   library for its own needs, add a direct `useCardEntry` subscription test then.
+
+## Deferred from: c4-2-deck-state-bootstrap-and-the-type-grouped-decklist (2026-08-02)
+
+### The ten inherited deferrals, each with a disposition (AC 28, C2 retro ruling R2)
+
+1. **`GET /api/decks` and `GET /api/deck/{id}` have never been called by a browser** (`:1666`,
+   Low, "Home: c4-2"). **✅ RESOLVED, and by a real browser rather than by argument.** The
+   companion was launched (`src.companion.app.server.run`), a deck was set active over the real
+   `PUT /api/active-deck`, and the built SPA was rendered in **Microsoft Edge (headless=new)**
+   against `http://127.0.0.1:8765/`. Both boot routes were exercised through the security
+   envelope by a browser, and the deck rendered. Screenshots captured for three states: a loaded
+   deck, a `404` clearing to no-active-deck, and a hostile id. **The Vite dev-proxy path
+   (`changeOrigin`, c2-1) is still unexercised** — the render was against the served bundle, not
+   `npm run dev`. **Home for that remainder: the next story that runs `npm run dev` in anger.**
+2. **Generated-type optionality asymmetry** (`:1889`, Low, "Home: c4-2, unshared"). **DECLINED,
+   with the measurement that makes it a decline rather than a deferral.** The half that would have
+   bitten does not exist: `openapi-typescript` renders a schema `default` as a **required**
+   property, so `mainboard_count`, `sideboard_count` and `distinct_cards` are `number` in
+   `types.d.ts` — **not** `number | undefined` — and there is no spurious `undefined` branch to
+   absorb. Verified by reading the generated file, not assumed. What remains is genuinely
+   asymmetric (`strategy?: string | null` versus `format: string | null`, a Python-default
+   artifact) and is a field **this story does not read**; fixing the wire means changing a Pydantic
+   default that `create_deck` and the MCP server both call. Real blast radius, no consumer.
+   **Re-homed by name to the first story that reads `strategy` — c4-7 (the deck list) is the
+   nearest candidate.** The `@default 0` half is CLOSED, not carried.
+3. **No sanctioned `DeckDetail` alias** (`:2108`). **✅ RESOLVED.** `src/api/schema.ts` now exports
+   **nine** aliases: c4-2 adds `DeckDetail` (consumer: `readDeck`, and the `deck` arm of the deck
+   slice) and `ActiveDeck` (consumer: `readActiveDeck`), each with a docstring naming it.
+   **`CardFace` is still declined** on c3-2's own reason — an unused export is dead code — and
+   remains **c4-6's**, the story that renders a flip control.
+4. **The c4-1/c4-2 seam restatement** (`:3252`, "The c4-2 half is untouched and still owed").
+   **✅ READ AND ACTED ON; the entry is now fully closed.** The seam was extended, not replaced:
+   `src/api/client.ts` is still the one door (`posture.test.ts:328` green with no edit), both new
+   readers are total unions that never reject and never return `null`, and both go through the
+   existing private `request()` rather than calling `fetch` a third and fourth time. The poll was
+   inherited unchanged — its job is still the deck NAMES — and `seedCardSummaries` is called with
+   the payload this story's own fetch returns, for zero extra requests.
+5. **Three transient failures make an id terminal for the tab's life while the poller self-heals
+   (FR-22 asymmetry)** (`:3280`, "the named fix is `resetCardCache()` on the `deck_changed` (or
+   recovery) transition, which c4-2 owns"). **RE-HOMED BY NAME to c5-4 / c5-6.** The entry homed
+   it here on the theory that c4-2 owns a `deck_changed` transition; **measured, it does not** —
+   `deck_changed` is an Epic 5 WebSocket message, and this story boots once and never switches
+   decks. A blanket reset on a deck switch is probably the wrong fix anyway: the cache is keyed by
+   printing uuid and shared with Epic 6's agent views (AD-12's second sentence), so resetting on a
+   deck change throws away hydration for every card the two decks share. **c5-4 (the event
+   handlers) owns the transition; c5-6 (reconnect/refetch) owns the recovery half.**
+6. **The orphaned-hydration return residue** (`:3287`, Greptile PR #40 P2, ruled *declare*).
+   **RE-HOMED WITH ENTRY 5, to c5-4 / c5-6**, because it was explicitly conditional on this story
+   wiring a production reset — *"the moment c4-2 wires a production reset, decide…"* — and c4-2
+   wires none. `resetCardCache()` remains test-only. The docstring's "the store is the authority"
+   ruling stands untouched.
+7. **The primitives' APPEARANCE is not dev-verified** (`:1331`, **Medium**) **and the tone-over-
+   wash CONTRAST is unmeasured** (`:1357`). **✅ RESOLVED FOR `Badge`; the rest re-homed.** See
+   the measurements in §"What c4-2 measured" below. `Panel` (**c4-5** / **c4-7**), `StatChip`
+   (first surface that carries one) and `GroupHeader` (**c4-7**) still have no on-screen consumer
+   and remain unverified — **home unchanged**.
+8. **C3 retro F2 — the kicker and the `h1` say the same words** (retro `:225`). **✅ RESOLVED**,
+   and confirmed on a real screen: the kicker reads `ARTIFICIAL PLANESWALKER` and the `h1` reads
+   `Atraxa Counter Cabinet v2 (owned)`. `AppShell.tsx` was not edited; the swap is a prop.
+9. **C3 retro action item 4 — a gate banning story-key-shaped strings from rendered text**
+   (`/\bc\d+-\d+\b/`), owner *"Sathias (c8-5, or earlier if a C4 story is nearer)"*. **DECLINED;
+   stays c8-5 (Q8), and the reason is now measured rather than predicted.** c4-2 REMOVES two of
+   the offending strings from the deck view (the `h1`'s product name and the badge placeholder
+   naming `c2-7 / c4-2 / c4-10`) and **leaves six on screen**, counted off the real render:
+   `c4-4`, `c4-8`, `c4-9` in the left column and `c4-5`, `c4-7`, `c4-10` in the right, plus
+   `c6-8` in the nav. Every one of them is CORRECT today, so a gate built here ships either
+   disabled or with an allowlist — and an allowlisted ban is the "enumerate members" anti-pattern
+   this epic has now violated three times. **Home: c8-5, unchanged.**
+10. **C3 retro carried manual-testing items A3/A4** (*"c4-2 renders four of the five panels for
+    real; A3–A6 are its acceptance surface"*). **PARTIALLY PERFORMED, remainder fed forward.**
+    Two of the five were rendered by a real engine here: `no-active-deck` (with the real deck list
+    of 15 names) and the deck view that displaces it. **A3–A6's database panels
+    (`database-updating`, `database-updating-stalled`, `internal-error`, `database-not-initialized`)
+    still need a backend in those states**, which this story could not manufacture without
+    corrupting the live database. **Home: the C4 manual-testing checklist**, with the trade the
+    retro already ruled — after c4-2 a failure is ambiguous between the panel and the new wiring.
+
+### The two corrections this ledger pass owed (AC 28)
+
+- **`@testing-library/react` IS in the dependency set** — `^16.3.2`, with `@testing-library/dom`
+  and `@testing-library/jest-dom@~6.9.1`, and `App.test.tsx` has used it since c3-9. The
+  `useCardEntry` deferral's stated reason (*"no testing library is in the dependency set"*) is
+  **false**; the deferral's HOME (c4-3) is still right, but for the honest reason that c4-3 is the
+  first consumer rather than for a dependency that already ships. c4-2 used the library freely.
+- **c4-1's "0 dangling references across 2,027 `deck_cards` rows"** is right about **card**
+  references and wrong about the row count's meaning: **28 of those 2,027 rows are orphaned by
+  DECK id** (2 deleted decks, no FK enforcement on the async engine), so the live population is
+  **1,999**. Neither changes a decision; both are numbers later stories will quote.
+
+### What c4-2 measured, so nobody measures it twice
+
+- **`Badge`'s appearance, on a real screen.** Rendered in Edge against the running backend. The
+  `::before` wash sits BEHIND the text — `z-index: -1` plus `isolation: isolate` behave as
+  `Badge.css` argues they would — so the ledgered failure mode (*a solid blank pill with invisible
+  text*) **does not occur**. This was the Medium-severity half of entry 7.
+- **Contrast, all five tones, text over their own wash**: `neutral` **7.60:1**, `accent`
+  **8.33:1**, `positive` **7.97:1**, `negative` **6.17:1**, `caution` **8.99:1**. Every one clear
+  of 4.5:1. Washes computed as the tone at `opacity: 0.12` composited over `--surface-base`
+  (`neutral`'s is opaque `--surface-overlay`).
+- **One number that does NOT clear a floor, and what it constrains.** `neutral`'s
+  `--border-strong` hairline is **1.89:1** on the page and **1.54:1** on its own wash, against
+  WCAG 1.4.11's 3:1 non-text floor. **Accepted for `neutral`**: a badge is a static label rather
+  than a UI component, and its boundary carries no information its wash does not. **A live
+  constraint for c4-10**, whose format-check badge carries STATE — the four semantic borders are
+  6.73:1 / 9.96:1 / 7.32:1 / 11.49:1 and fine, so a state distinguished by TONE is safe and a
+  state distinguished by the neutral border would not be.
+- **The URL-encoding argument, confirmed against a live backend rather than reasoned.** Raw
+  `GET /api/deck/../decks` answers **`200` carrying the DECK LIST** — it does not fail, it
+  succeeds against a different route, and a client interpolating raw would render `/api/decks`'s
+  array as a deck. Encoded, `..%2Fdecks` answers `404 invalid_request`. Note the status/token
+  split in that second answer: AD-16's "nothing keys off a bare status code" made vivid.
+- **The type-group corpus facts.** 38,261 cards; 3,183 type lines containing `//`; **2,274**
+  literally `'Card // Card'` (real front-face type only in `card_faces`, **0 in any live deck**);
+  400 literally `'Card'` (**2 live rows**, "Pym Particles"); 88 live rows carrying more than one
+  primary type on the front face; 4 corpus `Land Creature` (**0 live**).
+
+### New residues c4-2 declares
+
+- **The `'Card // Card'` printing cannot be grouped correctly from the deck payload.** Its real
+  front-face type lives only in `card_faces[0].type_line`, which `DeckCardSummary`'s embedded
+  `CardSummary` does not carry. 2,274 in the corpus, **0 in any live deck** — latent, not live.
+  Fixing it means 99 extra card fetches for a case no deck contains. **Home: c4-6**, which adds
+  `CardFace` and renders faces anyway; if it lands, the grouping can read the front face properly
+  for the ids already hydrated. (Severity: Low.)
+- **29 distinct corpus type lines discriminate the front-face rule; 0 are in any deck.** A type
+  line only discriminates when its front face carries NO em-dash (so the subtype strip cannot
+  remove the back face) AND the back face's group precedes the front's — e.g.
+  `'Land // Legendary Creature — Demon'` (Westvale Abbey). `deckGroups.test.ts` pins six by name.
+  Recorded because **the obvious fixtures do not discriminate**: a probe deleting `frontFace()`
+  from `groupOf` left 27 assertions green, including all four "land policy" cards. (Severity:
+  Low — the rule is right; the note is about where it can be tested.)
+- **There is no re-drive after the boot.** A deck the agent sets while the tab is open does not
+  appear until Epic 5's `deck_changed`. Specified, not a bug — `poller.ts` still stops after one
+  `200` and `App.test.tsx` still asserts that — but it is the difference a user would notice
+  between this story and a finished product. **Home: c5-4.** (Severity: Low.)
+- **A `404` clears the client while the backend still reports that deck id as active.** So the
+  next cold open asks for the deleted deck again and clears again: one wasted request per boot,
+  self-correcting the moment the agent sets another deck. The alternative — the client telling the
+  backend to forget an id — is a `PUT` this story has no mandate to make. **Home: c5-4**, with the
+  `deck_changed` design. (Severity: Low.)
+- **`src/logic/mana_curve.py` and `src/logic/assessment/mana_base.py` still use the WHOLE-STRING
+  land policy**, which disagrees with FR-05/UX-DR17 and with this story's front-face grouping on
+  **84 corpus cards, 4 of them in real decks** (Agadeem's Awakening, Kazandu Mammoth, Dowsing
+  Dagger, Journey to Eternity). The frontend is now correct and the Python is not, so the two will
+  report different land counts for the same deck. **Home: c4-8** (the mana-curve panel), where it
+  is a `src/logic` change with MCP blast radius and deserves its own decision. (Severity:
+  **Medium** — two surfaces of one app disagreeing about a number is the exact failure the epic's
+  "the grid and the list panel cannot disagree" clause is about, one layer out.)

@@ -47,6 +47,26 @@ export const INITIAL_SYSTEM_STATE: SystemState = { panel: 'no-active-deck', deck
 export const useSystemStore = create<SystemState>(() => INITIAL_SYSTEM_STATE)
 
 /**
+ * Watch the system state change, without naming the store (c4-2 review, the recovery re-drive).
+ *
+ * `deck.ts` needs to see the poll transition back into a healthy `no-active-deck` so a deck
+ * refusal does not outlive the condition it reported — but it may not import `useSystemStore`
+ * by name: `tests/store-writes.test.ts`'s writer scan treats any module containing both
+ * `setState` and a store's name as a writer of that store, and `deck.ts` owns a `setState` of
+ * its own. This wrapper is the seam that keeps the subscription and the gate both honest:
+ * subscribers get the values, never the store.
+ *
+ * Args:
+ *   listener: Called with the new and previous state on every store write.
+ *
+ * Returns:
+ *   An unsubscribe function.
+ */
+export const subscribeSystemState = (
+  listener: (state: SystemState, previous: SystemState) => void,
+): (() => void) => useSystemStore.subscribe(listener)
+
+/**
  * Subscribe to the system state, and keep the poll running for as long as the caller is mounted.
  *
  * **`App` is the ONE consumer, and that is a rule, not an observation.** Every mounted caller

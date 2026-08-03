@@ -23,11 +23,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  ACTIVE_DECK_PATH,
   CARD_PATH_PREFIX,
   DECKS_PATH,
+  DECK_PATH_PREFIX,
   READ_TIMEOUT_MS,
   cardPath,
+  deckPath,
+  readActiveDeck,
   readCard,
+  readDeck,
   readDecks,
 } from './client'
 
@@ -392,6 +397,250 @@ describe('readCard issues ONE request and never retries (c4-1 AC 12, AC 25)', ()
     const fetchMock = stubFetch(() => Promise.reject(new TypeError('Failed to fetch')))
 
     await readCard(SOL_RING)
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ===================== c4-2: the two boot reads =========================================
+
+/**
+ * The deck the epic describes and this machine actually holds: "Atraxa Counter Cabinet v2
+ * (owned)", 99 distinct cards, 100 total, measured at `2095050`.
+ */
+const ATRAXA_DECK_ID = '813d0434-1bed-4419-bf9d-d9e4070704c4'
+
+/** The three fields `deckOf` reads, plus enough to be recognisably a deck. */
+const deckBody = (overrides: Record<string, unknown> = {}) =>
+  JSON.stringify({
+    id: ATRAXA_DECK_ID,
+    name: 'Atraxa Counter Cabinet v2 (owned)',
+    format: 'brawl',
+    strategy: null,
+    color_identity: ['W', 'U', 'B', 'G'],
+    tags: [],
+    mainboard_count: 100,
+    sideboard_count: 0,
+    distinct_cards: 99,
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-08-01T00:00:00Z',
+    cards: [],
+    ...overrides,
+  })
+
+describe('the two boot routes are addressed correctly (AC 2, AC 3)', () => {
+  it('asks for /api/active-deck, uncached, with no path parameter to be malformed', async () => {
+    const fetchMock = responding('{"deck_id": null}', 200)
+
+    await readActiveDeck()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toBe(ACTIVE_DECK_PATH)
+    expect(fetchMock.mock.calls[0][1]?.cache).toBe('no-store')
+    expect(ACTIVE_DECK_PATH).not.toMatch(/[{}:]/)
+  })
+
+  it('asks for /api/deck/<id>, uncached', async () => {
+    const fetchMock = responding(deckBody(), 200)
+
+    await readDeck(ATRAXA_DECK_ID)
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toBe(`${DECK_PATH_PREFIX}${ATRAXA_DECK_ID}`)
+    expect(fetchMock.mock.calls[0][1]?.cache).toBe('no-store')
+  })
+
+  it('keeps the deck route a SEPARATE constant that visibly DOES take an id', () => {
+    // The opposite number of the `DECKS_PATH` assertion above, and the reason the retry argument
+    // does not transfer between them: this one carries a path parameter, so a `503` it sees may
+    // be masking a `400` about an id that can never succeed (the c3-2 measurement).
+    expect(DECK_PATH_PREFIX).not.toBe(DECKS_PATH)
+    expect(DECK_PATH_PREFIX).not.toBe(CARD_PATH_PREFIX)
+    // …and `/api/decks` is not a prefix of `/api/deck/`, so the two cannot be confused by a
+    // startsWith check anywhere downstream.
+    expect(DECK_PATH_PREFIX.startsWith(DECKS_PATH)).toBe(false)
+  })
+
+  it.each([
+    ['a slash', 'a/b'],
+    ['a query marker', 'a?b'],
+    ['a fragment marker', 'a#b'],
+    ['a traversal', '../decks'],
+    ['a space', 'my deck'],
+    ['a percent', '100%'],
+  ])('encodes %s so the id stays ONE path segment (AC 3)', (_label, deckId) => {
+    const path = deckPath(deckId)
+
+    expect(path.startsWith(DECK_PATH_PREFIX)).toBe(true)
+    // The id contributes no separator of its own: everything after the prefix is one segment.
+    expect(path.slice(DECK_PATH_PREFIX.length)).not.toMatch(/[/?#]/)
+    expect(path).toBe(`${DECK_PATH_PREFIX}${encodeURIComponent(deckId)}`)
+  })
+
+  it('is the encoding of a REAL threat, not a defensive habit', () => {
+    // `ActiveDeckRequest` stores any non-blank string up to 256 chars VERBATIM and deliberately
+    // does not check that the deck exists — so a traversal id is one agent typo away, and raw
+    // interpolation would address `/api/decks` and render its answer as this deck.
+    expect(deckPath('../decks')).not.toContain('/api/decks')
+  })
+})
+
+describe('a 200 from /api/active-deck: null is an ANSWER, not an absence (AC 1)', () => {
+  it('reads a real id', async () => {
+    responding(`{"deck_id": "${ATRAXA_DECK_ID}"}`, 200)
+
+    expect(await readActiveDeck()).toEqual({ kind: 'active-deck', deckId: ATRAXA_DECK_ID })
+  })
+
+  it('reads null as no active deck — the ordinary post-restart cold open (FR-07)', async () => {
+    responding('{"deck_id": null}', 200)
+
+    // NOT `{kind:'error'}`. The slot lives in the backend's memory and dies with the process, so
+    // this is the most common answer there is on a fresh backend.
+    expect(await readActiveDeck()).toEqual({ kind: 'active-deck', deckId: null })
+  })
+
+  it.each([
+    ['blank', '{"deck_id": "   "}'],
+    ['empty', '{"deck_id": ""}'],
+  ])(
+    'folds a %s id to no active deck rather than to a request for /api/deck/',
+    async (_l, body) => {
+      // `deckPath('')` is the bare collection path — a DIFFERENT route, not a malformed parameter.
+      // `ActiveDeckRequest` refuses blanks on the way in, so this can only be a non-contract body.
+      responding(body, 200)
+
+      expect(await readActiveDeck()).toEqual({ kind: 'active-deck', deckId: null })
+    },
+  )
+
+  it.each([
+    ['no deck_id key', '{"deck": "x"}'],
+    ['a number', '{"deck_id": 42}'],
+    ['an array body', '[]'],
+    ['a scalar body', '"nope"'],
+    ['not JSON at all', '<!doctype html><title>captive portal</title>'],
+  ])('reports %s as a contract violation, distinct from null', async (_label, body) => {
+    responding(body, 200)
+
+    expect(await readActiveDeck()).toEqual({ kind: 'error', reason: null })
+  })
+})
+
+describe('a 200 from /api/deck/<id>: three fields, and cards is one of them', () => {
+  it('returns the promised record', async () => {
+    responding(deckBody(), 200)
+
+    const outcome = await readDeck(ATRAXA_DECK_ID)
+
+    expect(outcome.kind).toBe('deck')
+    expect(outcome.kind === 'deck' && outcome.deck.name).toBe('Atraxa Counter Cabinet v2 (owned)')
+  })
+
+  it.each([
+    ['a blank name', deckBody({ name: '   ' })],
+    ['a missing id', deckBody({ id: undefined })],
+    ['a numeric name', deckBody({ name: 7 })],
+    ['a scalar body', '"deck"'],
+    ['a body that is not JSON', '<!doctype html><title>proxy</title>'],
+  ])('reports %s as a contract violation', async (_label, body) => {
+    responding(body, 200)
+
+    expect(await readDeck(ATRAXA_DECK_ID)).toEqual({ kind: 'error', reason: null })
+  })
+
+  it('reports a MISSING cards array as a violation, not as an empty deck', async () => {
+    // The third field, and the reason it is checked where `cardOf` checks only two: `cards` is
+    // the whole product of this read. Answering "a deck with no cards" would put a calm,
+    // confidently-empty decklist on the glass — the failure `namesOf` refuses for the poll.
+    responding(deckBody({ cards: undefined }), 200)
+
+    expect(await readDeck(ATRAXA_DECK_ID)).toEqual({ kind: 'error', reason: null })
+  })
+
+  it('still accepts a GENUINELY empty deck — the non-vacuity half (c4-12)', async () => {
+    responding(deckBody({ cards: [], mainboard_count: 0 }), 200)
+
+    const outcome = await readDeck(ATRAXA_DECK_ID)
+
+    expect(outcome.kind).toBe('deck')
+    expect(outcome.kind === 'deck' && outcome.deck.cards).toEqual([])
+  })
+})
+
+describe('the two routes refuse in DIFFERENT vocabularies, and both stay values', () => {
+  it.each([
+    ['invalid_request', 400],
+    ['internal_error', 500],
+  ])('passes %s (%d) from the active-deck route through unvalidated', async (reason, status) => {
+    responding(JSON.stringify({ reason }), status)
+
+    expect(await readActiveDeck()).toEqual({ kind: 'error', reason })
+  })
+
+  it.each([
+    ['deck_not_found', 404],
+    ['database_not_initialized', 503],
+    ['database_unavailable', 503],
+    // `404`, not `400`, and it is MEASURED against the running backend rather than assumed: an
+    // id that fails the route's uuid pattern answers `404 invalid_request`. The status and the
+    // token disagree about what happened, which is precisely why AD-16 says nothing may key off
+    // the status — a client reading `404` here would call a malformed id "deck not found".
+    ['invalid_request', 404],
+    ['payload_too_large', 413],
+    ['internal_error', 500],
+  ])('passes %s (%d) from the deck route through unvalidated', async (reason, status) => {
+    responding(JSON.stringify({ reason }), status)
+
+    expect(await readDeck(ATRAXA_DECK_ID)).toEqual({ kind: 'error', reason })
+  })
+
+  it('never rejects, on any of the four malformed inputs, for either reader', async () => {
+    for (const body of [null, '<!doctype html>', '{"detail": "x"}', '{"reason": 42}']) {
+      responding(body, 503)
+      await expect(readActiveDeck()).resolves.toEqual({ kind: 'error', reason: null })
+      responding(body, 503)
+      await expect(readDeck(ATRAXA_DECK_ID)).resolves.toEqual({ kind: 'error', reason: null })
+    }
+
+    stubFetch(() => Promise.reject(new TypeError('Failed to fetch')))
+    await expect(readActiveDeck()).resolves.toEqual({ kind: 'unreachable' })
+    await expect(readDeck(ATRAXA_DECK_ID)).resolves.toEqual({ kind: 'unreachable' })
+  })
+
+  it('carries the shared abort signal on both, rather than a second copy of the clock', async () => {
+    // The point of both readers going through the private `request()` helper: one timeout guard,
+    // one `no-store`, one place to get either wrong.
+    const fetchMock = responding('{"deck_id": null}', 200)
+    await readActiveDeck()
+    expect(fetchMock.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal)
+
+    const deckMock = responding(deckBody(), 200)
+    await readDeck(ATRAXA_DECK_ID)
+    expect(deckMock.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal)
+  })
+})
+
+describe('neither boot reader retries (AC 12, Q6)', () => {
+  it.each([
+    ['a 503 on the deck read', () => responding('{"reason": "database_not_initialized"}', 503)],
+    ['a network rejection', () => stubFetch(() => Promise.reject(new TypeError('nope')))],
+  ])('makes exactly ONE request for %s', async (_label, arrange) => {
+    // The c3-2 trap applies to `/api/deck/{deck_id}` exactly as it did to `/api/cards/{card_id}`:
+    // a backend with no database answers `database_not_initialized` to an id that could never
+    // succeed. `readCard` needed `MAX_ATTEMPTS_PER_CARD` because RENDERS call it in a loop.
+    // Nothing loops here — so the bound is replaced by there being no "again" at all.
+    const fetchMock = arrange()
+
+    await readDeck(ATRAXA_DECK_ID)
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('makes exactly ONE request from the active-deck reader too', async () => {
+    const fetchMock = responding('{"reason": "internal_error"}', 500)
+
+    await readActiveDeck()
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })

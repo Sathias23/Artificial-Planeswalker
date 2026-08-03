@@ -1198,19 +1198,32 @@ describe('the component primitives are presentation-only, and that is asserted',
     // nothing in its own file looks like a component. `imports: []` is the strongest form of
     // that claim — no react, no DOM, no store, nothing.
     { file: 'src/components/ManaCost/parse.ts', imports: [] },
+    // Story c4-2's one, and the first component in this list that COMPOSES another: it renders
+    // `Badge`, which until now had no on-screen consumer at all. No react import — its three
+    // props are a string and two numbers, so nothing in them is a `ReactNode`, which is the
+    // stronger claim. It is also a declared COPY module (`tests/copy-rules.test.ts`), because
+    // the two size labels are the only words this story puts on screen; being both is the shape
+    // `AppShell.tsx` already has, and the two lists ask different questions of the same file.
+    {
+      file: 'src/components/DeckBadges/DeckBadges.tsx',
+      imports: ['../Badge/Badge', './DeckBadges.css'],
+    },
   ]
 
   const withoutComments = (source: string) =>
     source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
 
-  it('is reading all eight primitives and all six helpers (non-vacuity)', () => {
+  it('is reading all nine primitives and all six helpers (non-vacuity)', () => {
     // Every assertion below loops over PRIMITIVES. A list that had quietly lost a member — a
     // renamed directory, a component moved — would let that member pass by never being read,
     // which is the vacuity failure this file's own doctrine calls the worse outcome. Proving
     // each file EXISTS and is non-trivial is what stops "nothing is wrong" reading the same
     // as "nothing was read".
-    // 12 until story c2-10's `Footer.tsx` and `Footer/copy.ts`.
-    expect(PRIMITIVES).toHaveLength(14)
+    // 12 until story c2-10's `Footer.tsx` and `Footer/copy.ts`; 14 until c4-2's `DeckBadges.tsx`
+    // — which is the coverage guard below working as designed rather than a number being bumped:
+    // the component was written, `git ls-files` saw it, and this list had to name it before the
+    // suite went green again.
+    expect(PRIMITIVES).toHaveLength(15)
     for (const { file } of PRIMITIVES) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }

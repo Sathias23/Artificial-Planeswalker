@@ -125,6 +125,15 @@ const COPY_MODULES: Map<string, string> = new Map([
       '(story c2-8, UX-DR18). Prose assembled from single words, which is why it is listed ' +
       'DELIBERATELY rather than caught: see residue 2 in this file header.',
   ],
+  [
+    'src/components/DeckBadges/DeckBadges.tsx',
+    'the two size-badge labels — the only words story c4-2 puts on screen. The deck NAME and ' +
+      'the FORMAT beside them are data, not copy, and arrive as props; these two are authored, ' +
+      'so they are declared here rather than smuggled past the prose detector as single words ' +
+      '(which is residue 5 of this file header, and using it deliberately would be an evasion ' +
+      'of the guard rather than a use of it). The legality claim the mock shows beside them is ' +
+      "c4-10's, over an endpoint c4-2 never calls.",
+  ],
 ])
 
 /**

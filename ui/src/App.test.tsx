@@ -23,6 +23,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
 import { sentenceOf } from './components/Footer/copy'
+import { resetCardCache, useCardStore } from './state/cards'
+import { resetDeckState, useDeckStore } from './state/deck'
 import { INITIAL_SYSTEM_STATE, useSystemStore } from './state/systemState'
 
 /** One canned answer, built the way the backend builds it: a token, and nothing else. */
@@ -32,8 +34,78 @@ const refusal = (reason: string, status: number) =>
 const decks = (...names: string[]) =>
   new Response(JSON.stringify(names.map((name) => ({ id: name, name }))), { status: 200 })
 
+/** `GET /api/active-deck`'s body. `null` is the answer a fresh backend gives (FR-07). */
+const activeDeck = (deckId: string | null) =>
+  new Response(JSON.stringify({ deck_id: deckId }), { status: 200 })
+
+const ATRAXA_DECK_ID = '813d0434-1bed-4419-bf9d-d9e4070704c4'
+
+const deckCard = (name: string, typeLine: string, quantity = 1) => ({
+  card_id: `id-${name}`,
+  quantity,
+  sideboard: false,
+  commander: false,
+  card: {
+    id: `id-${name}`,
+    name,
+    mana_cost: '',
+    cmc: 0,
+    type_line: typeLine,
+    oracle_text: '',
+    colors: [],
+    rarity: 'rare',
+    set_code: 'tst',
+  },
+})
+
+/** `GET /api/deck/{id}`'s body, with the fields the header and the derivation actually read. */
+const deckDetail = (overrides: Record<string, unknown> = {}) =>
+  new Response(
+    JSON.stringify({
+      id: ATRAXA_DECK_ID,
+      name: 'Atraxa Counter Cabinet v2 (owned)',
+      format: 'brawl',
+      strategy: null,
+      color_identity: [],
+      tags: [],
+      mainboard_count: 100,
+      sideboard_count: 0,
+      distinct_cards: 2,
+      created_at: '2026-07-01T00:00:00Z',
+      updated_at: '2026-08-01T00:00:00Z',
+      cards: [
+        deckCard('Llanowar Elves', 'Creature — Elf Druid'),
+        deckCard('Forest', 'Basic Land — Forest', 10),
+      ],
+      ...overrides,
+    }),
+    { status: 200 },
+  )
+
 /**
- * Answer the poll with each response in turn, repeating the last one forever.
+ * What the two BOOT routes answer. Set per test by {@link booting}; reset every test to the
+ * fresh-install truth — no active deck, and therefore no deck to fetch.
+ *
+ * **Why the harness became route-aware at c4-2, and why that is not a weakening.** Until this
+ * story there was exactly ONE caller, so "the nth response" and "the nth poll" were the same
+ * thing and `answering()` could serve a flat sequence. c4-2 adds a second, independent caller —
+ * the deck boot — and a flat sequence would hand the poll's second answer to the boot's first
+ * request, which is not a scenario any backend can produce. Routing by path restores what the
+ * fixture always MEANT. **Every `expect` in this file's pre-existing blocks is unchanged**
+ * (AC 7); what changed is which canned answer each route receives, which is the fixture becoming
+ * more like the backend rather than less.
+ */
+let bootActive: Response = activeDeck(null)
+let bootDeck: Response = refusal('deck_not_found', 404)
+
+const booting = (active: Response, deck?: Response) => {
+  bootActive = active
+  if (deck !== undefined) bootDeck = deck
+}
+
+/**
+ * Answer the POLL with each response in turn, repeating the last one forever — and answer the two
+ * boot routes from {@link booting}.
  *
  * `globalThis.fetch` rather than an injected reader, deliberately: this file is the only place
  * the whole path — request, body parsing, token validation, panel choice, render — is exercised
@@ -41,7 +113,10 @@ const decks = (...names: string[]) =>
  */
 const answering = (...responses: Response[]) => {
   let index = 0
-  const fetchMock = vi.fn(() => {
+  const fetchMock = vi.fn((input?: unknown) => {
+    const path = String(input)
+    if (path.startsWith('/api/deck/')) return Promise.resolve(bootDeck.clone())
+    if (path === '/api/active-deck') return Promise.resolve(bootActive.clone())
     const response = responses[Math.min(index, responses.length - 1)]
     index += 1
     return Promise.resolve(response.clone())
@@ -50,6 +125,10 @@ const answering = (...responses: Response[]) => {
   return fetchMock
 }
 
+/** How many times one route was actually asked. The honest count once there are two callers. */
+const callsTo = (fetchMock: ReturnType<typeof answering>, path: string) =>
+  fetchMock.mock.calls.filter(([input]) => String(input).startsWith(path)).length
+
 /** Let the in-flight poll settle without waiting for real time. */
 const settle = () => act(async () => void (await vi.advanceTimersByTimeAsync(0)))
 
@@ -57,9 +136,13 @@ const advance = (ms: number) => act(async () => void (await vi.advanceTimersByTi
 
 beforeEach(() => {
   vi.useFakeTimers()
-  // The store is module-level, as a store is; without this the panel a previous test left behind
-  // would be the panel the next one starts from.
+  // The stores are module-level, as stores are; without this the panel — or the deck — a previous
+  // test left behind would be what the next one starts from.
   useSystemStore.setState(INITIAL_SYSTEM_STATE)
+  resetDeckState()
+  resetCardCache()
+  bootActive = activeDeck(null)
+  bootDeck = refusal('deck_not_found', 404)
   answering(refusal('database_not_initialized', 503))
 })
 
@@ -207,7 +290,11 @@ describe('the app comes alive on its own (AC 4, FR-22)', () => {
     expect(screen.getByRole('contentinfo')).toBe(contentinfo)
 
     // Two polls from one mount — the transition is a second ANSWER, not a second render pass.
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    //
+    // Route-scoped at c4-2 for the reason the "stops polling" test below spells out: the raw
+    // total now includes the deck boot's own request, so only a count of `/api/decks` still says
+    // anything about the POLL. The claim is unchanged and the number is unchanged.
+    expect(callsTo(fetchMock, '/api/decks')).toBe(2)
   })
 
   it('lists the deck names beneath the panel, non-clickable, once they arrive', async () => {
@@ -250,7 +337,310 @@ describe('the app comes alive on its own (AC 4, FR-22)', () => {
     // `RETRIES_QUIETLY['no-active-deck']` is false: the agent sets the deck and a `deck_changed`
     // event delivers it (c5-x). Ten minutes of a mounted, idle tab must not be ten minutes of
     // requests.
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    //
+    // **ONE OF THE TWO PRE-EXISTING ASSERTIONS c4-2 CHANGED (the other is the FR-22 transition
+    // test's count above), and it is strengthened rather than
+    // relaxed.** It read `expect(fetchMock).toHaveBeenCalledTimes(1)`, which counted the poll
+    // only because the poll was the only caller in the app. c4-2 adds a second, non-polling
+    // caller, so a raw total can no longer say anything about the POLL — the property this test
+    // is named for. Counting the route makes the claim directly, and the total below pins the
+    // other half: the boot's one active-deck request, and nothing else, for ten minutes.
+    expect(callsTo(fetchMock, '/api/decks')).toBe(1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+})
+
+/**
+ * The deck bootstrap, at the root, from one mount (story c4-2, AC 1, 6, 7, 9, 12, 17, 19, 20).
+ *
+ * FR-07's claim — *"a fresh tab shows my deck rather than assuming there isn't one"* — is about
+ * what a human sees on a page they did not touch, so it can only be made HERE, the way the FR-22
+ * block above is written: ONE mount, real `fetch`, no remount between the two answers. A test
+ * that rendered the store's output directly would prove the store, not the boot.
+ */
+describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', () => {
+  it('asks both routes, in order, and renders the deck name in the h1 (AC 19)', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    expect(callsTo(fetchMock, '/api/active-deck')).toBe(1)
+    expect(callsTo(fetchMock, `/api/deck/${ATRAXA_DECK_ID}`)).toBe(1)
+    // C3 retro F2: the kicker and the `h1` stop saying the same words. `AppShell` is not edited —
+    // the element, its level and its position are exactly where c2-6 put them.
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
+    expect(screen.queryByRole('heading', { level: 1, name: 'Artificial Planeswalker' })).toBeNull()
+  })
+
+  it('fills the header badges with the format and the size (AC 20)', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail({ sideboard_count: 15 }))
+    answering(decks())
+
+    render(<App />)
+    await settle()
+
+    const banner = screen.getByRole('banner')
+    expect(within(banner).getByText('brawl')).toBeVisible()
+    expect(within(banner).getByText('100')).toBeVisible()
+    expect(within(banner).getByText('maindeck')).toBeVisible()
+    expect(within(banner).getByText('15')).toBeVisible()
+    // …and the placeholder they displace is gone, which is what makes this a FILLED slot rather
+    // than a fillable one — the c2-10 assertion shape, applied to the badges.
+    expect(banner.textContent).not.toContain('Format and size badges land here')
+  })
+
+  it('displaces the system panel, and says so honestly in the left column (AC 6)', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    // A deck, or a panel, never both.
+    expect(screen.queryByRole('region', { name: 'No deck on the glass.' })).toBeNull()
+    // The declared consequence, asserted rather than discovered: with no grid until c4-4, the
+    // shell's own placeholder is what fills the vacated column — the same displacement c2-9 and
+    // c2-10 accepted, and the thing that makes c4-4's slot findable by its own id.
+    expect(screen.getByText(/The card-art grid lands here — c4-4/)).toBeVisible()
+  })
+
+  it('seeds the card cache from the payload, at no extra request (AC 17)', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks())
+
+    render(<App />)
+    await settle()
+
+    expect(useCardStore.getState().cards['id-Llanowar Elves']?.status).toBe('summary')
+    expect(useCardStore.getState().cards['id-Forest']?.status).toBe('summary')
+    // Two cards in the cache, and NOT ONE request to `/api/cards/`. Measured on the real 99-tile
+    // deck: 38,182 bytes already in hand against 212,436 bytes over 99 requests.
+    expect(callsTo(fetchMock, '/api/cards/')).toBe(0)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('shows the no-active-deck panel when there is genuinely no deck (AC 7)', async () => {
+    booting(activeDeck(null))
+    answering(decks('Boros Aggro'))
+
+    render(<App />)
+    await settle()
+
+    // FR-07's ordinary case: the slot dies with the backend process. The panel and its names are
+    // the poll's, unchanged, and the `h1` falls back to `filled()`'s value (c2-6 Q3).
+    const panel = screen.getByRole('region', { name: 'No deck on the glass.' })
+    expect(within(panel).getByText('Boros Aggro')).toBeVisible()
+    expect(screen.getByRole('heading', { level: 1, name: 'Artificial Planeswalker' })).toBeVisible()
+  })
+})
+
+describe('a deck refusal reaches the glass as a PANEL, never as a status code (AC 8, 9, 11)', () => {
+  it('clears a 404 to the no-active-deck state, with the poll’s names (FR-11, AC 8)', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), refusal('deck_not_found', 404))
+    answering(decks('Boros Aggro', 'Dimir Mill'))
+
+    render(<App />)
+    await settle()
+
+    const panel = screen.getByRole('region', { name: 'No deck on the glass.' })
+    expect(within(panel).getByText('Boros Aggro')).toBeVisible()
+    // Nothing of the deck survives the clearing — probe (d) at the root.
+    expect(screen.queryByRole('heading', { level: 1, name: /Atraxa/ })).toBeNull()
+  })
+
+  it.each([
+    ['database_not_initialized', 'Card database not set up yet.'],
+    ['database_unavailable', 'Card database is updating.'],
+  ])('turns a 503 %s on the DECK read into its own panel (AD-16, AC 9)', async (reason, name) => {
+    // Two 503s, two panels, chosen from the TOKEN — and the poll is deliberately answering `200`
+    // underneath, so this can only be the deck path's decision. That is what makes the assertion
+    // non-vacuous: with the poll agreeing, it would pass no matter which route decided.
+    booting(activeDeck(ATRAXA_DECK_ID), refusal(reason, 503))
+    answering(decks('Boros Aggro'))
+
+    render(<App />)
+    await settle()
+
+    expect(screen.getByRole('region', { name })).toBeVisible()
+  })
+
+  it('answers a 400 on the deck read with no-active-deck, not the bug panel (Q5, AC 11)', async () => {
+    booting(activeDeck('an id the agent typed'), refusal('invalid_request', 400))
+    answering(decks('Boros Aggro'))
+
+    render(<App />)
+    await settle()
+
+    expect(screen.getByRole('region', { name: 'No deck on the glass.' })).toBeVisible()
+    expect(screen.queryByRole('region', { name: 'The companion hit a bug.' })).toBeNull()
+  })
+
+  it('leaves no ghost deck in the store after clearing — probe (d), at the root', async () => {
+    // **The only honest home for this claim**, and a probe is why it moved here. The same
+    // assertion in `deck.test.ts` supplied its OWN `onUpdate` and therefore never touched the
+    // writer `useDeckState` actually uses — two successive probes that broke production's writer
+    // both stayed green there. Rendering `App` is what puts the production hook, the production
+    // effect and the production writer in the path.
+    useDeckStore.setState({
+      deck: {
+        status: 'deck',
+        detail: {
+          id: ATRAXA_DECK_ID,
+          name: 'Ghost Deck',
+          format: 'brawl',
+          strategy: null,
+          color_identity: [],
+          tags: [],
+          mainboard_count: 1,
+          sideboard_count: 0,
+          distinct_cards: 1,
+          created_at: '2026-07-01T00:00:00Z',
+          updated_at: '2026-08-01T00:00:00Z',
+          cards: [],
+        },
+        boards: {
+          commander: [],
+          mainboard: [],
+          sideboard: [],
+          commanderQuantity: 0,
+          mainboardQuantity: 0,
+          sideboardQuantity: 0,
+        },
+      },
+    })
+    booting(activeDeck(ATRAXA_DECK_ID), refusal('deck_not_found', 404))
+    answering(decks('Boros Aggro'))
+
+    render(<App />)
+    await settle()
+
+    const deck = useDeckStore.getState().deck
+    expect(deck).toEqual({ status: 'none' })
+    // A merge would leave `detail` beside `status: 'none'` — satisfying every consumer that
+    // narrows on `status`, while the ghost's name is one property access away from the screen.
+    expect('detail' in deck).toBe(false)
+    expect(screen.queryByRole('heading', { level: 1, name: 'Ghost Deck' })).toBeNull()
+  })
+
+  it('never renders a bare status code anywhere — probe (f)', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), refusal('database_unavailable', 503))
+    answering(decks())
+
+    render(<App />)
+    await settle()
+
+    expect(document.body.textContent).not.toMatch(/\b(503|404|400|500)\b/)
+  })
+})
+
+/**
+ * The recovery re-drive (review finding on AC 9/FR-22): a deck refusal must not outlive the
+ * condition it reported. Before this fix, a cold open during a DB build settled
+ * `{status:'refused'}` and NOTHING ever left that state — when the build finished, the poll
+ * recovered to `200` while the glass stayed on the stale 503 panel until a manual reload, and
+ * the stalled escalation was invisible behind it. The fix is edge-triggered: the poll's panel
+ * transitioning INTO `no-active-deck` re-drives the boot once, and only while no deck is loaded.
+ */
+describe('a deck refusal does not outlive the condition it reported (FR-22)', () => {
+  it('re-drives the boot when the poll recovers, and the deck comes alive with no refresh', async () => {
+    // The backend timeline, modelled honestly: while the DB is building, BOTH the poll and the
+    // deck read answer `database_not_initialized`; when the build finishes, both routes heal.
+    booting(activeDeck(ATRAXA_DECK_ID), refusal('database_not_initialized', 503))
+    const fetchMock = answering(
+      refusal('database_not_initialized', 503),
+      decks('Atraxa Counter Cabinet v2 (owned)'),
+    )
+
+    render(<App />)
+    await settle()
+    // The deck refusal's own panel is on the glass — the AC 9 state, one mount, no remount.
+    expect(screen.getByRole('region', { name: 'Card database not set up yet.' })).toBeVisible()
+
+    // The DB build finishes: from here every answer is healthy.
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    await advance(2_000)
+
+    // The poll's recovery EDGE re-drove the boot: the deck is on the glass, from the same mount.
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
+    expect(screen.queryByRole('region', { name: 'Card database not set up yet.' })).toBeNull()
+    // Exactly TWO boots — the mount's and the edge's — not a poll of its own. Ten further
+    // minutes of a healthy, idle tab add nothing: the edge fired once and cannot re-fire
+    // without the panel leaving `no-active-deck` first.
+    await advance(10 * 60_000)
+    expect(callsTo(fetchMock, '/api/active-deck')).toBe(2)
+    expect(callsTo(fetchMock, '/api/deck/')).toBe(2)
+  })
+
+  it('heals a transient boot blip the same way, when a poll transition follows', async () => {
+    // The unreachable→'none' half of the finding: the glass said "No deck on the glass." about
+    // a deck whose read was merely unlucky. Covered by the same edge — with the declared
+    // residue: a blip with the poll ALREADY settled healthy has no later edge, and waits for
+    // reload or c5-6's reconnect. A hand-rolled stub rather than `answering`, because the shape
+    // under test is a route that REJECTS once and then heals, which the fixture cannot say.
+    let deckRead: () => Promise<Response> = () => Promise.reject(new TypeError('Failed to fetch'))
+    let pollAnswer = refusal('database_not_initialized', 503)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input?: unknown) => {
+        const path = String(input)
+        if (path === '/api/active-deck') return Promise.resolve(activeDeck(ATRAXA_DECK_ID))
+        if (path.startsWith('/api/deck/')) return deckRead()
+        return Promise.resolve(pollAnswer.clone())
+      }),
+    )
+
+    render(<App />)
+    await settle()
+    expect(screen.queryByRole('heading', { level: 1, name: /Atraxa/ })).toBeNull()
+
+    // The network heals and the poll recovers in the same window: 503 → 200 is the edge.
+    deckRead = () => Promise.resolve(deckDetail())
+    pollAnswer = decks('Atraxa Counter Cabinet v2 (owned)')
+    await advance(2_000)
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
+  })
+})
+
+describe('the boot does not poll, whatever the backend says (AC 12, Q6)', () => {
+  it('issues ONE deck request in ten minutes against a forever-503 id', async () => {
+    // The 503-outranks-400 trap, at the root: a backend with no database answers
+    // `database_not_initialized` to an id that could NEVER succeed, and that token is one
+    // `RETRIES_QUIETLY` says to retry. The boot is immune because it has no "again" at all —
+    // and this is the assertion that says so rather than the docstring.
+    booting(activeDeck('an-id-that-can-never-resolve'), refusal('database_not_initialized', 503))
+    const fetchMock = answering(refusal('database_not_initialized', 503))
+
+    render(<App />)
+    await settle()
+    await advance(10 * 60_000)
+
+    expect(callsTo(fetchMock, '/api/active-deck')).toBe(1)
+    expect(callsTo(fetchMock, '/api/deck/')).toBe(1)
+    // …while the POLL, which is the thing that IS meant to retry, has been busy the whole time.
+    // Asserting both in one test is what stops "nothing retries" reading as "the boot is right".
+    expect(callsTo(fetchMock, '/api/decks')).toBeGreaterThan(4)
+  })
+
+  it('boots exactly once from one mount, whatever re-renders happen', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(refusal('database_not_initialized', 503), decks('A'))
+
+    render(<App />)
+    await settle()
+    // A poll transition re-renders the whole tree; the boot must not re-run on a render.
+    await advance(2_000)
+
+    expect(callsTo(fetchMock, '/api/active-deck')).toBe(1)
+    expect(callsTo(fetchMock, '/api/deck/')).toBe(1)
   })
 })
 
