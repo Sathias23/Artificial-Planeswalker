@@ -87,6 +87,41 @@ export type CardSummary = Schemas['CardSummary']
 export type DeckCardSummary = Schemas['DeckCardSummary']
 
 /**
+ * The body of `GET /api/deck/{deck_id}`: a saved deck's metadata, its three counts and its
+ * whole card list.
+ *
+ * **Consumer: `readDeck` in `src/api/client.ts`, and the `deck` arm of the deck slice**
+ * (`src/state/deck.ts`, story c4-2). This is the payload the app's whole deck view is derived
+ * from — the type grouping, the header's name and badges, and (via {@link DeckCardSummary})
+ * the card cache's summary tier, all out of ONE request. Measured on the largest real deck on
+ * this machine (99 distinct cards, 100 total): **47,458 bytes, one request**.
+ *
+ * Ledgered since c3-2 and declined twice on the same reason — an export with no consumer is
+ * dead code (c3-2 declined it; c4-1 declined it again, having no fetch for it). This commit is
+ * the one that gives it one. `CardFace` stays declined: **c4-6** renders the flip control.
+ *
+ * The wire's own docstring records the fact the derivation rests on: *"The order of `cards` is
+ * not meaningful… A consumer that wants a stable presentation order (by type, by mana value, by
+ * name) must sort them itself."* `src/state/deckGroups.ts` is that consumer.
+ */
+export type DeckDetail = Schemas['DeckDetail']
+
+/**
+ * The body of `GET /api/active-deck`: which deck the companion is displaying, or `null`.
+ *
+ * **Consumer: `readActiveDeck` in `src/api/client.ts`**, the first of the two requests story
+ * c4-2's boot makes. `deck_id: null` is **the answer, not the absence of one** — the slot lives
+ * in the backend's memory and dies with the process (FR-07), so a cold open after any restart
+ * reports `null` and that is the ordinary case rather than an error path.
+ *
+ * Two things the model's own docstring instructs a reader of it to do, both honoured in
+ * `client.ts`: interpolate the id into `GET /api/deck/{deck_id}` **URL-encoded, like any path
+ * segment**, and treat `deck_not_found` from that second request as *"the ordinary case, not a
+ * broken invariant"* — nothing validates the id on the way in.
+ */
+export type ActiveDeck = Schemas['ActiveDeck']
+
+/**
  * The closed set of reason tokens (AD-16), as a TypeScript string union.
  *
  * Derived from `ErrorResponse` rather than re-listed, so a token added or removed on the Python

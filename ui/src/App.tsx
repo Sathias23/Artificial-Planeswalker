@@ -1,6 +1,8 @@
 import { AppShell } from './components/AppShell/AppShell'
+import { DeckBadges } from './components/DeckBadges/DeckBadges'
 import { Footer } from './components/Footer/Footer'
 import { StatePanel } from './components/StatePanel/StatePanel'
+import { surfaceOf, useDeckState } from './state/deck'
 import { useSystemState } from './state/systemState'
 
 /**
@@ -41,6 +43,36 @@ import { useSystemState } from './state/systemState'
  * answer and still renders nothing extra (StatePanel AC 5). **c4-2** owns reading the deck
  * itself — this story reads the names, which is all the panel's copy promises.
  *
+ * ================= AND NOW THERE IS A DECK (c4-2, FR-07, FR-05) ========================
+ *
+ * `useDeckState` boots once per mount: `GET /api/active-deck`, then — on a non-null id —
+ * `GET /api/deck/{deck_id}`. **The precedence between a deck and a system panel is NOT decided
+ * here.** `surfaceOf` is the one place it lives (c4-2 Q1), exported from `src/state/deck.ts` so
+ * that c4-4's grid, c4-7's deck list and c4-12's empty state read the same answer rather than
+ * each re-deriving it from `deck !== null` — which is the epic's *"the grid and the list panel
+ * cannot disagree"* clause applied one level up. This file renders the answer and computes none
+ * of it; `deck` below is a NARROWING of that answer, not a second rule.
+ *
+ * BOTH HOOKS ARE CALLED HERE BECAUSE BOTH OWNERSHIPS LIVE HERE. `useSystemState` owns the poll
+ * and `useDeckState` owns the boot, and each one's docstring says `App` is its ONE consumer for
+ * the same measured reason: a second mounted caller creates a second poller / a second boot and
+ * silently doubles the request rate.
+ *
+ * WHAT A LOADED DECK COSTS, DECLARED RATHER THAN DISCOVERED: with the panel displaced and no
+ * grid until **c4-4**, the `left` slot falls back to `AppShell`'s own placeholder — *"The
+ * card-art grid lands here — c4-4 …"*. That is the honest displacement, the third application of
+ * the pattern c2-9 and c2-10 both accepted, and it is what makes the next story's slot findable
+ * by searching for its own id.
+ *
+ * ================= THE `h1` STOPS SAYING WHAT THE KICKER SAYS (C3 retro F2) ============
+ *
+ * `deckName` is filled with the deck's own name, so the header stops rendering the product name
+ * twice — recorded at the C3 retro *"so c4-2 does not treat the swap as cosmetic"*. `AppShell`
+ * is NOT edited: the element, its level and its position do not move, which is the whole point
+ * of it being a prop, and its `filled()` fallback still fires when there is no deck — which is
+ * what keeps a fresh install from being heading-less (c2-6 Q3). `undefined` rather than `''` is
+ * deliberate on both header props, though `filled()` makes either safe.
+ *
  * ================= WHY THE FOOTER IS NO LONGER A PLACEHOLDER (c2-10) ====================
  *
  * The attribution is a CONDITION OF PUBLIC RELEASE (`DESIGN.md:375`, NFR-08, UX-DR32), not a
@@ -68,15 +100,30 @@ import { useSystemState } from './state/systemState'
  * it by construction rather than by anyone remembering.
  */
 export default function App() {
-  const { panel, decks } = useSystemState()
+  const system = useSystemState()
+  const surface = surfaceOf(useDeckState(), system)
+  // The one narrowing of the one rule. Not a second precedence decision: `surfaceOf` has already
+  // said which of the two is true, and this line only gives the deck arm a name so that the
+  // three slots below can read its fields without repeating the discriminant check.
+  const deck = surface.kind === 'deck' ? surface : null
 
   return (
     <AppShell
+      deckName={deck?.detail.name}
+      badges={
+        deck === null ? undefined : (
+          <DeckBadges
+            format={deck.detail.format}
+            mainboardCount={deck.detail.mainboard_count}
+            sideboardCount={deck.detail.sideboard_count}
+          />
+        )
+      }
       left={
-        panel === 'no-active-deck' ? (
-          <StatePanel state="no-active-deck" decks={decks} />
+        surface.kind === 'deck' ? undefined : surface.panel === 'no-active-deck' ? (
+          <StatePanel state="no-active-deck" decks={system.decks} />
         ) : (
-          <StatePanel state={panel} />
+          <StatePanel state={surface.panel} />
         )
       }
       footer={<Footer />}

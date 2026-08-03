@@ -151,11 +151,13 @@ reasons unrelated to whatever is being bisected.
 **Import wire types from `src/api/schema.ts`, never from `./types` directly.** The generated
 file is shaped for a generator, not a reader — reaching a response body means indexing
 `components['schemas'][…]`. `schema.ts` does that once and re-exports narrow aliases
-(`HealthResponse`, `ErrorResponse`, `DeckSummary`, `ErrorReason`, and — from **c4-1** — `Card`,
-`CardSummary` and `DeckCardSummary`: **seven**). This sentence said "three" until c4-1 noticed it;
-`DeckSummary` had landed in c3-9. **An alias is added only in the commit that gives it a consumer**
-— an unused export is dead code, which is why c3-2 declined to add `Card` and left it ledgered for
-the first story that consumed one. Both rules are enforced by
+(`HealthResponse`, `ErrorResponse`, `DeckSummary`, `ErrorReason`, from **c4-1** `Card`,
+`CardSummary` and `DeckCardSummary`, and from **c4-2** `DeckDetail` and `ActiveDeck`: **nine**).
+This sentence said "three" until c4-1 noticed it; `DeckSummary` had landed in c3-9. **An alias is
+added only in the commit that gives it a consumer** — an unused export is dead code, which is why
+c3-2 declined to add `Card` and left it ledgered for the first story that consumed one, and why
+c4-1 declined `DeckDetail` for the same reason before c4-2's fetch needed it. `CardFace` is still
+declined and still ledgered; **c4-6** renders the flip control. Both rules are enforced by
 `tests/wire-contract.test.ts`, which bans re-declaring any shape the backend describes — or any
 alias `schema.ts` exports, `ErrorReason` included — anywhere in tracked TypeScript (`src/`,
 `tests/`, `config/`) outside `src/api/`, and scans everything but `schema.ts` itself (files
@@ -974,16 +976,26 @@ now landed. The boundary as it actually stands:
   point: the property that guard protects is _"one door, named exhaustively"_, not _"the door is
   called `decks.ts`"_, so when the card route arrived the choice was between a second module (which
   fails that green assertion by design, and would have meant weakening a one-door rule into a
-  per-directory one to buy a filename) and a name that stops promising a single route. **The next
-  route goes into the same file** — c4-2's `GET /api/deck/{deck_id}` and `GET /api/active-deck`,
-  c4-10's format check. It exports `readDecks()` and `readCard(cardId)`, each returning a total
-  outcome union and neither ever rejecting.
+  per-directory one to buy a filename) and a name that stops promising a single route. **c4-2's
+  two boot routes went into it, as promised** — it now exports `readDecks()`, `readCard(cardId)`,
+  `readActiveDeck()` and `readDeck(deckId)`, each returning a total outcome union and none of them
+  ever rejecting, all four sharing one private `request()` helper so there is one timeout guard
+  and one `no-store` decision. The next route is c4-10's format check, and it goes here too.
+- **The two boot routes fail in DIFFERENT vocabularies, and that is a design statement.** Measured
+  against the committed `openapi.json`: `GET /api/active-deck` publishes `200/400/500` and
+  **structurally cannot answer `503`** — `routes/active_deck.py` holds no `DbSession` at all —
+  while `GET /api/deck/{deck_id}` publishes `200/400/404/413/500/503`. So the epic's
+  database-refusal criteria are about the second request alone, and the two readers have separate
+  outcome unions rather than one that models failures the first route cannot produce.
 - **`src/state/`** holds the store: `systemState.ts` (the zustand store plus the `useSystemState`
   hook), `poller.ts` (the backoff and the stalled clock), `panel.ts` (the one place a wire token
-  becomes a `StateKey`) and — from c4-1 — **`cards.ts`, the one card hydration cache**. That last
-  one is a second `create()` call and still one cache: `useSystemState` subscribes with no
-  selector, so folding the cache into that store would re-render the whole app on every tile's
-  hydration. AD-12 bans a second state LIBRARY, not a second store instance.
+  becomes a `StateKey`), from c4-1 **`cards.ts`, the one card hydration cache**, and from c4-2
+  **`deck.ts` (the boot, the refusal vocabulary and `surfaceOf`) and `deckGroups.ts` (the type
+  grouping)**. `cards.ts` and `deck.ts` are second and third `create()` calls and still one cache
+  and one deck: `useSystemState` subscribes with no selector, so folding them into that store
+  would re-render the whole app on every tile's hydration. AD-12 bans a second state LIBRARY, not
+  a second store instance. **Nothing outside each slice's own module writes it**, which is
+  `tests/store-writes.test.ts` rather than a convention.
 - **The cache is TWO-TIER, and the bulk tier is free.** `GET /api/deck/{deck_id}` already embeds a
   full `CardSummary` per card, so `seedCardSummaries(deckCards)` populates name/cost/type-line for
   a whole deck with **zero** requests. Measured on the largest real deck (99 tiles): 38,182 bytes
@@ -1015,6 +1027,35 @@ One ruling to know: a `400 invalid_request` on a CARD read draws the unknown-car
 premise behind that classification (_"the SPA never generates a malformed request"_) is exactly
 what fails when the id came out of `deck_cards`, a column with no shape constraint.
 
+**A DECK refusal ALWAYS does, and that is the same rule rather than its opposite** (c4-2). The
+deck IS the surface, so there is no view left standing to protect: `src/state/deck.ts` routes deck
+refusals through `panelFor()`, and `PANEL_FOR_REASON.deck_not_found → 'no-active-deck'` — written
+at c2-9 and **unreachable dead code until c4-2**, because `panelFor` was only ever called by the
+poll and `/api/decks` does not publish that token — finally has a live producer. The same Q5 shape
+recurs: a `400 invalid_request` on a DECK read draws the no-active-deck panel, recorded in a
+per-context map beside the consumer with `states.ts` untouched, because the id came from
+`PUT /api/active-deck`, which stores **any non-blank string up to 256 characters verbatim** and
+never checks the deck exists. Letting it reach `panelFor` unmodified answers an agent typo with
+_"The companion hit a bug."_
+
+**Which surface is on the glass is decided in ONE expression**, `surfaceOf(deck, system)` in
+`src/state/deck.ts` (c4-2 Q1): a loaded deck first, then a deck refusal that decided a panel of
+its own, then the system panel. The middle arm is why the order is not simply "deck, else system"
+— the deck read's two `503`s must put THEIR panels up, and a rule that let the poll win would make
+that criterion pass only by coincidence. `App.tsx` renders the answer and computes none of it.
+
+**The deck boot has no timer and no poll of its own** (c4-2 Q6), and that is the same argument
+`readCard` makes one layer down: `MAX_ATTEMPTS_PER_CARD` exists because RENDERS call the card
+path in a loop, and nothing loops here. One `GET /api/active-deck` and at most one
+`GET /api/deck/{id}` per mount, asserted as a request count over ten minutes of fake time — plus
+**one edge-triggered re-drive per poll recovery** (the c4-2 review): when the poll's panel
+transitions INTO `no-active-deck` while the deck state is `refused` or `none`, the boot re-runs
+once, so a deck refusal settled during a DB build does not outlive the build (FR-22). The bound
+is structural — edges are backend-state transitions, not a loop the client can wind, and a
+loaded deck is never re-driven. The re-drive after a deck CHANGES is still Epic 5's
+`deck_changed`, not a second poller; a transient blip after the poll has already settled healthy
+has no later edge and waits for reload or c5-6's reconnect.
+
 **The threshold this story owns:** `STALLED_AFTER_MS = 60_000` in `src/state/poller.ts` — 60
 seconds of _continuous_ `database_unavailable`, and that token only. `database_not_initialized`
 never escalates, because a multi-minute first build is its normal case. The poll schedule is 2 s,
@@ -1025,40 +1066,63 @@ The application shell landed in **c2-6**, so the token layer now has a real cons
 build is every region it holds open, each of which renders a placeholder line naming its owner
 until that story lands: card detail is **c4-5**, the deck list is **c4-7**, the format check is
 **c4-10**, the agent-view nav pills are **c6-8**, and the agent view that drops into the overlay
-slot is **c6-5**. The `h1` carries the product name provisionally; **c4-2** replaces its content
-with the deck name and nothing about the element moves.
+slot is **c6-5**. **The `h1` carries the deck name as of c4-2** — it carried the product name
+provisionally until then, which meant the kicker and the heading said the same words (C3 retro
+F2); nothing about the element, its level or its position moved, and `filled()`'s fallback still
+fires when there is no deck, which is what keeps a fresh install from being heading-less.
 
-**Two regions are already filled, and both by displacement rather than deletion.** The pattern
-is c2-9's decide-once ruling, applied twice now: the shell's placeholder still fires whenever
+**Four regions are now filled, and all four by displacement rather than deletion.** The pattern
+is c2-9's decide-once ruling, applied four times: the shell's placeholder still fires whenever
 its slot is empty, `AppShell.test.tsx` still asserts it against the component's own props, and
 what changed is only which of the two the running app shows. Each displacement is recorded in
 `App.tsx` beside the prop that causes it.
 
-- **The left column, as of c2-9, and WIRE-DRIVEN as of c3-9.** `App.tsx` passes a `StatePanel`
-  into the `left` slot, displacing the placeholder that names c4-4 and c4-8. c2-9 passed a
-  constant, which was honest at the time — there was no fetch layer and no store, so there
-  genuinely was no active deck. **c3-9 replaced the constant with the poll**: which panel shows is
-  chosen from the response's `reason` token through `states.ts`'s `PANEL_FOR_REASON`, and the app
-  transitions from the database panel to the deck list on its own with no refresh (FR-22).
-  **c4-2 / c4-4** replace it once more, with a deck when there is a deck.
+- **The left column, as of c2-9, WIRE-DRIVEN as of c3-9, and DECK-DRIVEN as of c4-2.** `App.tsx`
+  passes a `StatePanel` into the `left` slot, displacing the placeholder that names c4-4 and c4-8.
+  c2-9 passed a constant, which was honest at the time — there was no fetch layer and no store, so
+  there genuinely was no active deck. **c3-9 replaced the constant with the poll**: which panel
+  shows is chosen from the response's `reason` token through `states.ts`'s `PANEL_FOR_REASON`, and
+  the app transitions from the database panel to the deck list on its own with no refresh (FR-22).
+  **c4-2 made it conditional on a deck**: when one is loaded there is no panel at all, and — until
+  **c4-4** ships the grid — the slot falls back to the shell's own placeholder. That is the honest
+  displacement rather than a regression, and it is what makes c4-4's slot findable by its own id.
+- **The `h1` and the header badges, as of c4-2.** `deckName` takes the deck's name; `badges` takes
+  `<DeckBadges />`, which is `Badge`'s first on-screen consumer anywhere in the app. The badges say
+  the format (`brawl`, `standard`, …) and the size (`100 maindeck`, plus `15 sideboard` only when
+  there is one), all in the `neutral` tone. **They make no legality claim** — the mock's
+  `standard legal` pill is **c4-10's**, over a `format-check` endpoint c4-2 never calls, and a
+  `positive` tone here would assert something the app never asked the backend.
 - **The footer, as of c2-10.** `App.tsx` passes `<Footer />` into the `footer` slot. Unlike
   every other region this one is **not waiting for data** — the attribution is a condition of
   public release (NFR-08), correct from day one, and no later story replaces it. See _The
   footer attribution_ above for the three rulings it carries.
 
-Eight presentation primitives have landed — `Panel`, `Badge`, `StatChip` and `GroupHeader` in
-**c2-7**, `ManaPip` and `ManaCost` in **c2-8**, `StatePanel` in **c2-9**, `Footer` in **c2-10** —
-and all eight are documented under _Components_ above. **`StatePanel` and `Footer` are the two
-with an on-screen consumer**; the other six still have none, so `npm run build` leaves them out
-of the module graph entirely and their **appearance is not dev-verified** (jsdom applies no
-stylesheet). Each is checked by
+Nine presentation primitives have landed — `Panel`, `Badge`, `StatChip` and `GroupHeader` in
+**c2-7**, `ManaPip` and `ManaCost` in **c2-8**, `StatePanel` in **c2-9**, `Footer` in **c2-10**,
+`DeckBadges` in **c4-2** — and all nine are documented under _Components_ above. **`StatePanel`,
+`Footer`, `DeckBadges` and (through it) `Badge` are the four with an on-screen consumer**; the
+other five still have none, so `npm run build` leaves them out of the module graph entirely and
+their **appearance is not dev-verified** (jsdom applies no stylesheet). Each is checked by
 eye at its first consuming story: `Panel` at **c4-5** (card detail, the first real
 `level="overlay"` panel) and **c4-7** (the deck list) — **re-homed from c2-9**, which turned out
-not to render a `Panel` at all (Q6) — the group header and deck-row context at **c4-7**, the
-badge at **c4-2** and **c4-10**, and the pip and cost at **c4-3** (card placeholders), **c4-7**
-(deck rows) and **c4-9** (the colour-distribution legend). The header badge slot in `AppShell.tsx` is **still
-empty on purpose** — c2-7 shipped `Badge` without filling it, and **c4-2** and **c4-10** are its
-fillers. The one remaining primitive is the nav pill (**c6-8**).
+not to render a `Panel` at all (Q6) — the group header and deck-row context at **c4-7**, and the
+pip and cost at **c4-3** (card placeholders), **c4-7** (deck rows) and **c4-9** (the
+colour-distribution legend).
+
+**`Badge`'s eye-check is DONE, at c4-2, and so are its contrast numbers.** Both were ledgered as
+Medium since c2-7 and neither had been performed. Rendered in Edge against the running backend
+with a real deck active: the pseudo-element wash sits **behind** the text as `z-index: -1` +
+`isolation: isolate` intend, so the feared failure — _a solid blank pill with invisible text_ —
+does not occur. Measured contrast, all five tones, text over their own wash: `neutral` **7.60:1**,
+`accent` **8.33:1**, `positive` **7.97:1**, `negative` **6.17:1**, `caution` **8.99:1** — every
+one clear of the 4.5:1 floor. **One number does not clear a floor**: `neutral`'s
+`--border-strong` hairline is **1.89:1** against the page and **1.54:1** against its own wash,
+under WCAG 1.4.11's 3:1. That is accepted for `neutral` — a badge is a static label, not a UI
+component, and its boundary carries no information the wash does not — but it is a live
+constraint for **c4-10**, whose format-check badge carries STATE: the four semantic tones' borders
+are 6.73–11.49:1 and fine, so a state distinguished by tone is safe and a state distinguished by
+the neutral border would not be. The header badge slot is **filled** as of c4-2; **c4-10** adds
+the legality pill beside it. The one remaining primitive is the nav pill (**c6-8**).
 
 The skip link and Tab-order work are **c4-11** — the shell builds no focus management. The
 numeric role now has real consumers: the panel count, the group-header count and the StatChip
