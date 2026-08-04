@@ -1,0 +1,33 @@
+/* FIXTURE — the FIRING half of UX-DR4's first clause (story c4-3, probe (a)).
+
+   "Nothing else in the UI borrows the card radius." This file is what borrowing it looks like,
+   and it is written to be PLAUSIBLE rather than obviously wrong: every value is a real token,
+   nothing is a literal, stylelint's radius allowed-list is satisfied (it admits any
+   `var(--radius-*)`), and the result is a panel with card corners — the "card-shaped chrome"
+   half of DESIGN.md's own anti-pattern table.
+
+   Three spellings, because a guard keyed on the obvious one is not a guard:
+
+     1. the plain reference,
+     2. a FALLBACK spelling, which is the evasion that has bitten this repo three times
+        (`var(--motion-glide, 300ms)` in c2-4's motion ban, `var(--negative, transparent)` in
+        c2-9's calm-surface allowlist),
+     3. a radius LONGHAND, which is how a partial borrow arrives — two corners, not four.
+
+   None of these appears in a shipped stylesheet; this file exists so the guard is proven to
+   catch them rather than assumed to. */
+
+.suggestion-panel {
+  background: var(--surface-panel);
+  border-radius: var(--radius-card);
+}
+
+.nav-pill-with-a-fallback {
+  background: var(--surface-overlay);
+  border-radius: var(--radius-card, 10px);
+}
+
+.stat-chip-top-corners {
+  background: var(--surface-well);
+  border-top-left-radius: var(--radius-card);
+}

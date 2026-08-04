@@ -13,14 +13,23 @@
    the template's demo stylesheet it replaces is gone with the demo. Per-element type comes
    from the seven role tokens (--type-body and friends), not from this file. */
 
-/* TWO imports, BOTH above every rule below. A CSS @import that follows any rule is dropped by
-   the browser and by the build, so this pair has to stay at the top of the file. Their order
-   relative to EACH OTHER is immaterial — @font-face registration is not order-sensitive, so
-   fonts-then-tokens is nothing but reading order. `url(…)` notation, not a bare string:
-   stylelint-config-standard's `import-notation` rule requires it. Vite inlines both into the
-   single emitted stylesheet either way. */
+/* THREE imports, ALL above every rule below. A CSS @import that follows any rule is dropped by
+   the browser and by the build, so this group has to stay at the top of the file. Their order
+   relative to EACH OTHER is immaterial — @font-face registration is not order-sensitive, and a
+   `var()` resolves where it is USED rather than where it is declared, so card-geometry.css may
+   reference `--radius-card` from above tokens.css. `url(…)` notation, not a bare string:
+   stylelint-config-standard's `import-notation` rule requires it. Vite inlines all three into
+   the single emitted stylesheet either way.
+
+   The third joined in story c4-3 and it is the same category as the box-sizing reset below: a
+   rule several components inherit, so it is declared once globally rather than owned by the
+   first component that happened to need it. `.card-shape` is the 63:88 + `--radius-card` pair
+   that c4-3's placeholder, c4-4's tile, c4-5's detail art and c4-6's flipped face all consume
+   BY CLASS NAME — none of them imports a stylesheet, and none of them writes the geometry
+   again. See src/styles/card-geometry.css for the argument and the gate that holds it. */
 @import url('./styles/fonts.css');
 @import url('./styles/tokens.css');
+@import url('./styles/card-geometry.css');
 
 :root {
   /* The body role, not a hand-written family plus line-height. The `font` shorthand carries

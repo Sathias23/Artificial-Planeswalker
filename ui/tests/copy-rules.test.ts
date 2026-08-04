@@ -134,6 +134,17 @@ const COPY_MODULES: Map<string, string> = new Map([
       'of the guard rather than a use of it). The legality claim the mock shows beside them is ' +
       "c4-10's, over an endpoint c4-2 never calls.",
   ],
+  [
+    'src/components/CardPlaceholder/copy.ts',
+    'the unknown-card placeholder label — the ONE authored string story c4-3 puts on screen, and ' +
+      'a contract with an artefact rather than a structural fragment: EXPERIENCE.md spells it, ' +
+      '`states.ts` routes `card_not_found` to it, and tests/unknown-card-copy.test.ts asserts the ' +
+      'shipped constant against the artefact byte-for-byte — which is the assertion that file has ' +
+      'promised since c3-2 would move here "the day c4-3 lands". The card NAME, TYPE LINE, mana ' +
+      'COST and truncated ID the same component renders are DATA, arrive as props, and are ' +
+      'deliberately not in this module: a copy owner that also held card names would make the ' +
+      'claim this Map exists to state meaningless.',
+  ],
 ])
 
 /**
@@ -389,8 +400,28 @@ describe('user-facing copy lives in one place (AC 13, the file half)', () => {
       expect(
         allStringsIn(file, sourceOf(file)).length,
         `${file} is declared a copy module but the extractor found no strings in it`,
-      ).toBeGreaterThan(3)
+      ).toBeGreaterThan(0)
     }
+
+    // THE SCALE ANCHOR, WHICH IS WHAT THE PER-MODULE THRESHOLD USED TO CARRY. It read
+    // `toBeGreaterThan(3)` per module until story c4-3, and that number was tuned to modules
+    // holding a table of words — it made a copy module with exactly ONE authored string fail for
+    // being correct. `CardPlaceholder/copy.ts` is that module: its whole content is the label
+    // `"Unknown card"` gated byte-for-byte against EXPERIENCE.md, and the card name, type line
+    // and id the same component renders are DATA that must NOT be moved here. Padding the module
+    // to satisfy a threshold would have been the exact failure its own header warns about.
+    //
+    // So the per-module check became "the extractor sees something", and the strength moved to
+    // where it belongs: a TOTAL across the declared modules, which still fails loudly if the AST
+    // walk silently stops returning strings — the failure this whole file is shaped around.
+    const total = [...COPY_MODULES.keys()].reduce(
+      (sum, file) => sum + allStringsIn(file, sourceOf(file)).length,
+      0,
+    )
+    expect(
+      total,
+      'the string extractor is returning almost nothing across every copy module',
+    ).toBeGreaterThan(20)
 
     // And the extractor really sees the artefact copy, not merely "some strings".
     expect(

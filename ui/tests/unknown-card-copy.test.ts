@@ -22,22 +22,41 @@
  * `EveryPanelHasASource` demand a source for a panel nobody renders. This file gates the same
  * artefact with the same "read it from disk" principle, at the shape this row actually has.
  *
+ * ================= THE DAY C4-3 LANDED (2026-08-04) ===================================
+ *
+ * This header used to end: *"c3-2 ships no component, so what is gated here is that the artefact
+ * says what `states.ts` claims it says — not that anything renders it. **The day c4-3 lands, its
+ * copy module joins `COPY_MODULES` and the byte-for-byte assertion moves there.**"* That day is
+ * this commit, and both halves happened: `src/components/CardPlaceholder/copy.ts` is a declared
+ * copy module in `copy-rules.test.ts`, and the byte-for-byte assertion is the last `it()` below —
+ * the SHIPPED constant against the artefact's own quoted label, in the file that already parses
+ * that artefact.
+ *
+ * **It is an IMPORT, and that is the one non-obvious thing about it.** Every other cross-project
+ * read in this file is a source-TEXT read, for the measured `tsc -b` reason spelled out at
+ * `STATES_TS` below: `tests/**` is the `nodenext` project, `src/**` the `bundler` one, so an app
+ * module with extensionless relative imports is a `TS2835` cascade here. `copy.ts` has **no
+ * imports at all** — deliberately, and its own header says so — which is exactly the property
+ * that makes it importable, the same property `copy.test.ts` relies on for `StatePanel/copy.ts`.
+ * That resolves the ledgered question of what the `ui/tests` import rule really constrains: not
+ * "app modules", but "app modules with relative imports".
+ *
  * ================= WHAT THIS FILE DOES **NOT** GATE, DECLARED =========================
  *
- * The rendered placeholder. **c4-3 owns it**, along with the `"Unknown card"` string as a copy
- * module. Be precise about what that means: `copy-rules.test.ts:99` names "c4-3's 'Unknown card'"
- * in a PROSE COMMENT above `COPY_MODULES`, not as an entry in it — the Map is git-checked, so it
- * cannot name a module that does not exist yet. That half is therefore a comment, not a gate, and
- * an earlier draft of this header wrongly called it machine-checked. c3-2 ships no component, so
- * what is gated here is that the artefact says what `states.ts` claims it says — not that anything
- * renders it. The day c4-3 lands, its copy module joins `COPY_MODULES` and the byte-for-byte
- * assertion moves there.
+ * The rendered placeholder — the component, its three variants and its geometry. **c4-3 owns
+ * those**, and they are gated by `src/components/CardPlaceholder/CardPlaceholder.test.tsx` (the
+ * jsdom project, where a render can be inspected) and by the CARD_SHAPED allowlist in
+ * `token-usage.test.ts` (the source read, where a stylesheet can be). What is gated HERE is
+ * narrower and older: the artefact says what `states.ts` claims it says, and the string the
+ * component ships is the string the artefact wrote.
  */
 
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
+
+import { UNKNOWN_CARD_LABEL } from '../src/components/CardPlaceholder/copy.ts'
 
 /**
  * The ONE place this path is written in this file — `copy.test.ts` says the same about its own
@@ -213,6 +232,26 @@ describe('the unknown-card placeholder copy exists in EXPERIENCE.md (retro R1)',
     // table). This anchor is the file's LAST live statement, so a mid-file truncation cannot
     // pass silently (review round 2, 2026-07-31).
     expect(STATES_CODE).toMatch(/EveryPlaceholderIsAReal/)
+  })
+
+  it('ships the artefact’s label BYTE-FOR-BYTE — the assertion c3-2 deferred to c4-3', () => {
+    // THE HALF THAT WAS A COMMENT UNTIL THIS COMMIT. Until c4-3 there was no module to compare
+    // against, so this file could only prove the artefact was self-consistent with `states.ts`'s
+    // slug — a pairing between two things NEITHER of which is what the reader sees.
+    //
+    // Byte-for-byte against the quoted label, not `toContain` and not a case-insensitive match:
+    // "Unknown Card" and "Unknown card." are both plausible edits that read fine in a diff and
+    // both break UX-DR33's sentence-case voice. The artefact is the authority; the constant is
+    // the shipped value; this line is the only place they meet.
+    const label = /Placeholder label:\s*"([^"]*)"/.exec(oneRow(ROW_LABEL))
+    expect(label).not.toBeNull()
+    expect(UNKNOWN_CARD_LABEL).toBe(label?.[1])
+
+    // NON-VACUITY: the import is a real binding rather than an `undefined` that would make the
+    // comparison above pass against an equally-undefined capture group if the regex ever stopped
+    // matching. Both sides are proved non-empty independently.
+    expect(typeof UNKNOWN_CARD_LABEL).toBe('string')
+    expect(UNKNOWN_CARD_LABEL.length).toBeGreaterThan(0)
   })
 
   it('is invisible to copy.test.ts by structure, which is why this file exists', () => {

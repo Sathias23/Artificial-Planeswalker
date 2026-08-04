@@ -1,0 +1,26 @@
+/* FIXTURE — the FIRING half of UX-DR4's SECOND clause (story c4-3, probe (b)).
+
+   "…and cards never borrow a chrome radius." This is the failure an allowlist keyed only on
+   "which files may spend --radius-card" would never look for, because this file spends the card
+   radius NOWHERE. It is a card-shaped component rounding its own corners at a chrome radius —
+   DESIGN.md's "chrome-shaped cards", and the more likely of the two mistakes in practice: it is
+   what a developer writes when they forget the `card-shape` class exists and reach for the
+   radius they use everywhere else.
+
+   The last block is the one that matters most: `--radius-md` was the MOCK's value for card tiles
+   (DESIGN.md:362 — "the mock uses radius-md on tiles and two different aspect ratios; both are
+   corrected here"), so this is not a hypothetical drift. It is the drift the composition
+   reference ships, which makes it the single most likely way the rule is broken. */
+
+.card-placeholder-rounded-like-a-panel {
+  background: var(--surface-overlay);
+  border-radius: var(--radius-lg);
+}
+
+.card-shape-with-a-pill-corner {
+  border-bottom-right-radius: var(--radius-pill);
+}
+
+.card-tile-as-the-mock-drew-it {
+  border-radius: var(--radius-md);
+}

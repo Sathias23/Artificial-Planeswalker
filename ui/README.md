@@ -737,6 +737,59 @@ the cross-block case that guard declares it cannot see. So the rule is not "chec
 it is **do not write the token here**. The composition reference uses it for the accent badge's
 border; that is the drift this rule exists to stop.
 
+### The card shape — read this before writing a card-shaped component
+
+Set by story **c4-3**, and it is the seam **c4-4** (tile), **c4-5** (detail art) and **c4-6**
+(flipped face) inherit rather than re-derive.
+
+**There is exactly ONE declaration of the card geometry in this codebase**, and it is
+`.card-shape` in `src/styles/card-geometry.css`:
+
+```css
+.card-shape {
+  aspect-ratio: 63 / 88;
+  border-radius: var(--radius-card);
+}
+```
+
+**Consume it by class name. Do not import it, and do not write either declaration again.** The
+file is `@import`ed by `src/index.css` beside `fonts.css` and `tokens.css`, so the class is
+globally available and a card-shaped component's own stylesheet contains only its surface, its
+type and its layout. Importing it from a component would ALSO fail `tests/posture.test.ts` — a
+component may take a value from nowhere but its own tree, and `../../styles/…` is not that.
+
+**Why a class and not a token.** `tests/tokens.test.ts:265` is a **set equality** over an
+inventory derived from `DESIGN.md`'s `colors` / `typography` / `rounded` / `spacing` / `motion` /
+`focus` / `elevation` frontmatter blocks, pinned at 65. `components.card-tile.aspect` is in none
+of those blocks, so **`--card-aspect` cannot be added without failing that gate**. Adding it is a
+DESIGN.md amendment plus a moved pin, argued in the open — not a token added quietly.
+
+**Why global rather than owned by c4-3.** The same argument `src/index.css` already makes for the
+box-sizing reset, in its own words: _"every component from c2-7 onwards inherits the same hazard
+the moment it sizes and pads itself, which is why the reset is global"_. Four stories draw this
+rectangle; a class owned by the first of them would make the other three import across component
+directories.
+
+**UX-DR4's exclusivity is a GATE as of c4-3, in both directions** — `CARD_SHAPED` in
+`tests/token-usage.test.ts`, the same allowlist idiom as `MANA_DATA_INK`:
+
+- nothing outside the listed files may spend `--radius-card` (_"nothing else in the UI borrows
+  the card radius"_), and
+- **no listed file may spend a chrome radius** (_"cards never borrow a chrome radius"_) — written
+  as `--radius-` minus `--radius-card`, so a `--radius-xl` invented later is covered. This half is
+  not redundant: `border-radius: var(--radius-md)` on a card is what the composition reference
+  actually ships, and DESIGN.md:362 corrects it by name.
+- a third half scans non-CSS sources, because a `var(--radius-card)` in markup would meet neither.
+
+**A later card-shaped story adds its stylesheet to `CARD_SHAPED` with its reason**, and gets the
+second half applied to it in the same move. What the gate cannot see is declared beside it:
+whether an element carrying `card-shape` is genuinely a card (that is markup, and review's),
+inline geometry (banned by eslint), and cross-file composition.
+
+**Clipping is NOT in the shared class, deliberately.** Whether content clips is a statement about
+content, not about shape — `CardPlaceholder.css` sets its own `overflow: hidden` for the
+141-character name the corpus really contains, and c4-4's `<img>` decides its own.
+
 ### The state panel, and where user-facing copy lives
 
 Set by story **c2-9**. Every later story with a sentence in it — c2-10's attribution, c4-3's
@@ -780,6 +833,17 @@ halves, because either alone is worthless:
   `src/`. Keyed by **character family**: emoji by `\p{Extended_Pictographic}`, and exclamation
   marks by NFKC-normalising first, so Unicode's own compatibility decompositions enumerate
   `！`, `︕`, `﹗`, `‼` and `⁉` instead of a hand-written list.
+
+**Six copy modules as of c4-3**, and the newest one is the smallest possible: `CardPlaceholder/
+copy.ts` holds exactly ONE string, `"Unknown card"`, gated byte-for-byte against `EXPERIENCE.md`
+by `tests/unknown-card-copy.test.ts` — the assertion that file had promised since c3-2 would move
+there _"the day c4-3 lands"_. Two things about it are worth carrying forward. **A copy module may
+legitimately hold one string**: the per-module non-vacuity threshold read `> 3` until c4-3, which
+would have forced words into a module whose own header forbids them, so the strength moved to a
+TOTAL across all declared modules. And **the card name, type line, mana cost and truncated ID the
+same component renders are DATA, not copy** — they arrive as props and are deliberately absent
+from the module, because a copy owner that also held card names would make the claim `COPY_MODULES`
+exists to state meaningless.
 
 Both halves read the **TypeScript AST**, not the file text, and that is load-bearing: the
 generated `types.d.ts` quotes the banned phrase in a JSDoc comment, and `!` is an operator in
@@ -942,6 +1006,10 @@ your story, verify it rather than inherit it.
 | **That a tile can stay a placeholder for up to five minutes _after_ the CDN has recovered.** c3-8 negative-caches image fetch failures with an exponential backoff, keyed on id + size + face: **30 s** after the first failure, doubling per consecutive failure, **capped at 300 s**. A request inside that window is answered from memory as `502 image_fetch_failed` — byte-identical to a fresh failure, deliberately, because the client has no different action to take. **The consequence for c4-4 is the whole of this row: the backend will keep saying "no picture" for up to 300 seconds after the CDN starts working again, and the SPA has no per-image retry UI** (`EXPERIENCE.md`'s own words: _"negative-cached with backoff — no request storms, no per-image retry UI"_). A tile that waits for the backend to change its mind will look stuck; a tile that retries in a loop will be answered from memory and change nothing. Recovery is automatic on the next request after the window, and a success clears the key's history entirely. **What this does NOT fix, and c4-4 should not design around it as though it did:** the _first_ paint against a dead CDN still issues all ~99 requests and takes roughly **124 s** at `min(1/0.1, 4/5.0)` = 0.8 fetches/s — 99 distinct keys have nothing remembered yet. The pacer bounds that paint; the backoff bounds every one after it. Unlike the two rows above, this story's behaviour **is** partly on the wire: the 300 s ceiling and the backoff are described in `ErrorResponse`'s generated JSDoc, deliberately, so the fetch author reads it where they work. The numbers themselves live in code, not in the schema.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `src/companion/app/images.py`, the four `NEGATIVE_CACHE_*` docstrings and `NegativeCache`; `tests/unit/companion/test_routes_card_image.py::TestTheDeckScaleClaim` and `TestRecoveryIsComplete`   | c4-4, which owns the tile; c10-3 owns real-latency profiling                    |
 | **Whether a credential's _vocabulary_ reached the generated types.** c3-4's leak scan checks `types.d.ts` for the token value itself (which is exact and total) **and** for four literal markers — `agent_token`, `mint_token`, `companion.json`, `Bearer`. The value check is a real gate; the marker list is an **enumeration, not a family**, and the project's own standing agreement says to ban the family instead. It is kept as an enumeration deliberately, because the family here is _"prose that teaches a browser where a credential lives"_ and that is no more statically decidable than UX-DR33's blameless-copy rule. A docstring explaining the credential in words the list does not contain would pass. What genuinely holds the line is structural and lives elsewhere: the credential is read from `request.headers` inside a dependency, so no `securitySchemes` component and no per-operation `security` block can be generated at all (asserted in `test_committed_schema.py`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `tests/unit/companion/test_discovery.py::test_the_token_leaks_into_no_surface_of_the_route_that_reads_it`, and `test_committed_schema.py::test_no_security_scheme_is_documented`                  | Review, on any story that adds an agent-only endpoint                           |
 | **Whether the fresh-install transition happens on a real screen.** c3-9's poll, its backoff, its stalled clock and the wire→panel mapping are all asserted in jsdom from ONE mount, which is what makes FR-22's "no manual refresh" a gate rather than a description — but jsdom paints nothing. The live half was confirmed at the HTTP layer instead (empty data dir → `503 database_not_initialized` → plant `cards.db` → `200`, same process, no restart); what no gate here has seen is the PAGE doing it, or the four newly-reachable panels rendered by a browser — in particular the command chip and the two-paragraph guidance/action stack, which `no-active-deck` does not exercise.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `src/App.test.tsx`'s FR-22 block; the story record's Task 8                                                                                                                                       | The epic manual-testing checklist                                               |
+| **Whether an element carrying `card-shape` is actually a CARD (UX-DR4).** c4-3's `CARD_SHAPED` allowlist gates both halves of the card-radius rule over STYLESHEETS — nothing outside the listed files may spend `--radius-card`, and no listed file may spend a chrome radius — but the class list that puts the shape on an element lives in TSX and is chosen at runtime. `.card-shape` on a `<nav>` reads as a perfectly clean stylesheet. The converse is also invisible: a card-shaped element given a chrome radius by a rule in a NON-card-shaped file (`.deck-row .card-shape { … }`) is in neither half.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `tests/token-usage.test.ts`, the `CARD_SHAPED` header                                                                                                                                             | Review, and c4-4 is the first story where the cross-file case becomes plausible |
+| **Whether the RIGHT type role was chosen for the content.** MEASURED at c4-3 by a probe that PASSED: putting the truncated card ID back in the uppercase `--type-micro` role — correctly paired with both its companions, so `findRoleWithoutCompanions` was satisfied — left the whole suite green at 1,021 passed. Every typography guard asks whether a role travels with its companions; none asks whether the role suits the value. c4-3 closed the one instance (the ID's block is now checked against `cards.py`'s lowercase-only `_CARD_ID_PATTERN`, read from the file), but the GENERAL rule — do not uppercase data the reader may type back — is not statically decidable, because whether a string is retypeable lives in the product.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `tests/token-usage.test.ts`, the c4-3 Q4 test                                                                                                                                                     | Review, at every story that renders an identifier                               |
+| **Whether a fixed-aspect box is actually laid out that way.** c4-3's geometry claim is split across two instruments and NEITHER is a pixel: a source read proves `.card-shape` declares `aspect-ratio: 63 / 88` and `border-radius: var(--radius-card)` exactly once in the tree, and a jsdom test proves the rendered element carries the class. `getComputedStyle(el).aspectRatio` in jsdom returns the empty string and would pass for the wrong reason — the sixth recorded instance of that trap in this epic. That the box IS 63:88 on screen was confirmed by eye at c4-3 against a 176 × 245.9 rule; that it matches a real card FACE beside it is c4-4's.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `src/components/CardPlaceholder/CardPlaceholder.test.tsx` header                                                                                                                                  | c4-4, in composition                                                            |
+| **Running `tests/token-usage.test.ts` ALONE crashes the runner.** Measured at c4-3: `npx vitest run tests/token-usage.test.ts` fails with `TypeError: Cannot read properties of undefined (reading 'config')` — the file imports two `src/` modules across the project boundary, so resolving it standalone picks the wrong project. `npm test` runs it correctly. This matters for PROBES: a single-file invocation exits non-zero for the wrong reason, and a probe harness matching on exit code alone will report a guard as firing when the runner merely crashed. Run the whole suite when proving a guard fires.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | measured at c4-3, probe harness round 1                                                                                                                                                           | Anyone writing a probe against that file                                        |
 
 Backend guards carry the same discipline. The two that matter most here:
 `tests/unit/companion/test_import_boundary.py` is **AST-only**, so it sees modules no test imports
@@ -1021,7 +1089,11 @@ A `card_not_found` is terminal on the first answer and remembered for the life o
 path, and that is a rule: `card_not_found` maps to `null` in `PANEL_FOR_REASON` and `panelFor`
 clamps `null` to `'internal-error'`, so routing a card token through it would replace a working
 deck view with _"The companion hit a bug"_ because one card was missing. `src/state/cards.ts`
-records the token and a `PlaceholderKey` from `states.ts`'s own vocabulary; **c4-3** renders it.
+records the token and a `PlaceholderKey` from `states.ts`'s own vocabulary; **c4-3 renders it** —
+`CardPlaceholder`, whose variant type is BUILT from `PlaceholderKey`, so a third placeholder key
+added to `states.ts` is a `tsc` failure in the component. A consumer maps `entry.placeholder` to a
+variant and passes plain props; **nothing re-derives a placeholder from a wire token**, and a
+`switch (entry.reason)` in a component is the drift that field exists to prevent.
 One ruling to know: a `400 invalid_request` on a CARD read draws the unknown-card placeholder
 (c4-1 Q5), even though `states.ts` classifies that token "no UI response at all" — because the
 premise behind that classification (_"the SPA never generates a malformed request"_) is exactly
@@ -1097,17 +1169,27 @@ what changed is only which of the two the running app shows. Each displacement i
   public release (NFR-08), correct from day one, and no later story replaces it. See _The
   footer attribution_ above for the three rulings it carries.
 
-Nine presentation primitives have landed — `Panel`, `Badge`, `StatChip` and `GroupHeader` in
+Ten presentation primitives have landed — `Panel`, `Badge`, `StatChip` and `GroupHeader` in
 **c2-7**, `ManaPip` and `ManaCost` in **c2-8**, `StatePanel` in **c2-9**, `Footer` in **c2-10**,
-`DeckBadges` in **c4-2** — and all nine are documented under _Components_ above. **`StatePanel`,
-`Footer`, `DeckBadges` and (through it) `Badge` are the four with an on-screen consumer**; the
-other five still have none, so `npm run build` leaves them out of the module graph entirely and
-their **appearance is not dev-verified** (jsdom applies no stylesheet). Each is checked by
-eye at its first consuming story: `Panel` at **c4-5** (card detail, the first real
-`level="overlay"` panel) and **c4-7** (the deck list) — **re-homed from c2-9**, which turned out
-not to render a `Panel` at all (Q6) — the group header and deck-row context at **c4-7**, and the
-pip and cost at **c4-3** (card placeholders), **c4-7** (deck rows) and **c4-9** (the
-colour-distribution legend).
+`DeckBadges` in **c4-2**, `CardPlaceholder` in **c4-3** — and all ten are documented under
+_Components_ above. **`StatePanel`, `Footer`, `DeckBadges` and (through it) `Badge` are the four
+with an on-screen consumer**; the other six still have none, so `npm run build` leaves them out of
+the module graph entirely and their **appearance is not dev-verified** (jsdom applies no
+stylesheet). Each is checked by eye at its first consuming story: `Panel` at **c4-5** (card
+detail, the first real `level="overlay"` panel) and **c4-7** (the deck list) — **re-homed from
+c2-9**, which turned out not to render a `Panel` at all (Q6) — and the group header and deck-row
+context at **c4-7**.
+
+**`ManaPip`'s and `ManaCost`'s appearance is DEV-VERIFIED as of c4-3**, on a throwaway harness
+that served the BUILT stylesheet to Edge against hand-written markup — the same instrument c4-2
+used for `Badge`, and the answer to c4-3's Q1. All five ledgered claims, open since c2-8, hold:
+the pip is a **circle**; the hybrid gradient's **hard stop reads as a clean 45° split with no
+blur**; the 13px glyph sits centred and legible in the 16.25px circle (`0 2 X T P S` all
+checked); the wide case **GROWS into a pill rather than clipping** (`{1000000}`, `{HW}`, `{100}`);
+and a 15-pip cost **wraps to a second row inside a 176px card** rather than overflowing it, as
+does the 46-character five-face cost. **The CVD question is measured rather than assumed** — see
+_Colour is never the sole carrier_ below. What the harness could NOT answer is composition: a
+placeholder beside a real card face in a real grid is **c4-4's**, by name.
 
 **`Badge`'s eye-check is DONE, at c4-2, and so are its contrast numbers.** Both were ledgered as
 Medium since c2-7 and neither had been performed. Rendered in Edge against the running backend
@@ -1123,6 +1205,33 @@ constraint for **c4-10**, whose format-check badge carries STATE: the four seman
 are 6.73–11.49:1 and fine, so a state distinguished by tone is safe and a state distinguished by
 the neutral border would not be. The header badge slot is **filled** as of c4-2; **c4-10** adds
 the legality pill beside it. The one remaining primitive is the nav pill (**c6-8**).
+
+#### Colour is never the sole carrier — the CVD question, measured at c4-3
+
+Ledgered **Medium** since c2-8 and homed on the c4-3 eye-check: _for a sighted
+colour-vision-deficient user, a pip's colour IS its sole carrier_ — `ManaPip` draws no glyph for
+the five WUBRG colours, deliberately (UX-DR7 bans mana-symbol icon fonts, and the glyph slot is
+reserved for counts, `{X}` and Phyrexian `P`).
+
+**Measured** rather than eyeballed, at c4-3: the six shipped `--mana-*` colours were pushed
+through the Machado severity-1.0 dichromacy matrices in linear RGB and compared pairwise as CIE
+Lab ΔE. The **worst pair under each vision type**:
+
+| vision       | worst pair | ΔE       |
+| ------------ | ---------- | -------- |
+| normal       | B / C      | **24.5** |
+| protanopia   | U / B      | **10.0** |
+| deuteranopia | R / G      | **14.1** |
+| tritanopia   | B / C      | **10.9** |
+
+Every pair stays above ΔE 10 under every simulated deficiency — roughly **4× the just-noticeable
+difference** for large flat colour patches — so the five colours remain mutually distinguishable
+and the levers the ledger held in reserve (a glyph-slot letter, a DESIGN.md amendment) are **not
+needed**. Two honest limits: a simulation is not a person, and this measures _distinguishability_
+(can you tell two pips apart) rather than _identifiability_ (can you tell which colour a pip is)
+— the latter is what `describeManaCost`'s `role="img"` name carries for screen readers, and for a
+sighted CVD reader it remains a real gap that only a glyph would close. **Brad's acceptance
+against a real screen is the closing step**; the numbers are what he is deciding against.
 
 The skip link and Tab-order work are **c4-11** — the shell builds no focus management. The
 numeric role now has real consumers: the panel count, the group-header count and the StatChip

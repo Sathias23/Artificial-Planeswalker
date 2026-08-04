@@ -1208,22 +1208,47 @@ describe('the component primitives are presentation-only, and that is asserted',
       file: 'src/components/DeckBadges/DeckBadges.tsx',
       imports: ['../Badge/Badge', './DeckBadges.css'],
     },
+    // Story c4-3's two, and the first component in this list whose PROPS are a discriminated
+    // union rather than a flat bag: the loading well's member has one property, so there is
+    // nothing to say in a well that must stay silent, and the unknown variant has no `name` for
+    // a copy-paste to fill with a real card's.
+    //
+    // `../StatePanel/states` is the second cross-tree entry in this list after `states.ts`'s own
+    // `../../api/schema`, and it is TYPE-ONLY: the variant union is built FROM `PlaceholderKey`
+    // so a third placeholder key in that file fails `tsc` here. No react import — none of its
+    // props is a `ReactNode`, which is what also makes the well unable to hide a caller's
+    // content when it declares `aria-hidden`.
+    //
+    // NOTE WHAT IS ABSENT: `src/styles/card-geometry.css`. The shared card shape is @imported by
+    // `src/index.css` rather than by the components that consume it, which is what keeps this
+    // list free of a cross-tree stylesheet — `posture.test.ts`'s value-import rule would fail a
+    // component importing `../../styles/…`, and four later stories would each have had to.
+    {
+      file: 'src/components/CardPlaceholder/CardPlaceholder.tsx',
+      imports: ['../ManaCost/ManaCost', '../StatePanel/states', './CardPlaceholder.css', './copy'],
+    },
+    // The one authored string this story puts on screen. `imports: []` is not tidiness here: a
+    // `ui/tests/` file may import an app module only if that module has no relative imports (the
+    // measured `tsc -b` project-boundary rule), and `tests/unknown-card-copy.test.ts` imports
+    // this one to assert the shipped label against EXPERIENCE.md byte-for-byte. An import added
+    // here would silently un-gate the copy.
+    { file: 'src/components/CardPlaceholder/copy.ts', imports: [] },
   ]
 
   const withoutComments = (source: string) =>
     source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
 
-  it('is reading all nine primitives and all six helpers (non-vacuity)', () => {
+  it('is reading all ten primitives and all seven helpers (non-vacuity)', () => {
     // Every assertion below loops over PRIMITIVES. A list that had quietly lost a member — a
     // renamed directory, a component moved — would let that member pass by never being read,
     // which is the vacuity failure this file's own doctrine calls the worse outcome. Proving
     // each file EXISTS and is non-trivial is what stops "nothing is wrong" reading the same
     // as "nothing was read".
-    // 12 until story c2-10's `Footer.tsx` and `Footer/copy.ts`; 14 until c4-2's `DeckBadges.tsx`
-    // — which is the coverage guard below working as designed rather than a number being bumped:
-    // the component was written, `git ls-files` saw it, and this list had to name it before the
-    // suite went green again.
-    expect(PRIMITIVES).toHaveLength(15)
+    // 12 until story c2-10's `Footer.tsx` and `Footer/copy.ts`; 14 until c4-2's `DeckBadges.tsx`;
+    // 15 until c4-3's `CardPlaceholder.tsx` and its `copy.ts` — which is the coverage guard below
+    // working as designed rather than a number being bumped: the component was written,
+    // `git ls-files` saw it, and this list had to name it before the suite went green again.
+    expect(PRIMITIVES).toHaveLength(17)
     for (const { file } of PRIMITIVES) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }
