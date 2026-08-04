@@ -309,7 +309,23 @@ function walk(
               : undefined
 
         if (attribute !== undefined && USER_FACING_ATTRIBUTE.has(attribute)) {
-          found.push({ file, line: at(node), text: node.text, source: 'attribute' })
+          // AN EMPTY `alt` IS THE ABSENCE OF COPY, NOT COPY — AND `alt` ALONE (story c4-4;
+          // narrowed to its motivating case by review ruling 2026-08-04). The first component
+          // in this codebase to write an `alt` attribute wrote `alt=""` — the WCAG-required
+          // spelling for a decorative image, the whole point of UX-DR48's row-thumbnail clause
+          // — and this branch collected the empty string, so the file half demanded that a
+          // component owning NO WORDS AT ALL join COPY_MODULES.
+          //
+          // The exemption is `alt`-scoped ON PURPOSE: `alt=""` is the one empty spelling with a
+          // defined, correct meaning ("decorative"). An empty `aria-label` is not its analogue —
+          // it participates in the accname algorithm and can strip a control's name to the empty
+          // string, which is a defect this gate should surface (as "copy that needs an owner",
+          // the only voice it has) rather than bless. Whitespace-only counts as empty here, so a
+          // stray space inside `alt=" "` cannot re-open the false failure the narrowing fixed.
+          // Both directions are proven in the pairs below.
+          if (!(attribute === 'alt' && node.text.trim() === '')) {
+            found.push({ file, line: at(node), text: node.text, source: 'attribute' })
+          }
         } else if (PROSE.test(node.text)) {
           found.push({ file, line: at(node), text: node.text, source: 'prose' })
         } else if (includeEverything && node.text !== '') {
@@ -440,6 +456,37 @@ describe('user-facing copy lives in one place (AC 13, the file half)', () => {
 
   it('finds no user-facing copy outside a declared copy module', () => {
     expect(findCopyOutsideACopyModule(shippedModules)).toEqual([])
+  })
+
+  it.each([
+    ['an empty alt', '<img alt="" />'],
+    ['a whitespace-only alt', '<img alt=" " />'],
+  ])('does not read %s as copy — the silent half (c4-4)', (_label, markup) => {
+    // MEASURED BY c4-4, WHICH WROTE THE FIRST `alt` IN THIS CODEBASE. `alt=""` is the
+    // WCAG-required spelling for a decorative image — the card tile's picture is decorative
+    // because its caption names it, which is UX-DR48's own row-thumbnail logic — and the first
+    // draft of this walker collected the empty string, so the file half demanded that a
+    // component containing NO WORDS join COPY_MODULES. A copy owner that owns no copy makes
+    // this Map's claim meaningless, which is the failure the c4-3 threshold change was already
+    // about. The whitespace spelling is exempt too, so one stray keystroke inside the quotes
+    // cannot re-open the same false failure.
+    expect(
+      findCopyOutsideACopyModule(['src/probe.tsx'], () => `export const P = () => ${markup}`),
+    ).toEqual([])
+  })
+
+  it.each([
+    ['alt', '<img alt="Black Lotus, a jewelled flower" />'],
+    ['aria-label', '<span aria-label="four copies in the deck" />'],
+    // The exemption is `alt`-scoped (review ruling 2026-08-04): an empty `aria-label` strips a
+    // control's accessible name — a defect, not a decorative declaration — so it is COLLECTED,
+    // and the demand to join COPY_MODULES is the flag that makes someone look at it.
+    ['an EMPTY aria-label', '<span aria-label="" />'],
+    ['an EMPTY title', '<a title="" />'],
+  ])('still reads %s as copy — the firing half (c4-4)', (_label, markup) => {
+    expect(
+      findCopyOutsideACopyModule(['src/probe.tsx'], () => `export const P = () => ${markup}`),
+    ).toHaveLength(1)
   })
 })
 

@@ -823,6 +823,18 @@ const CARD_SHAPED: Map<string, string> = new Map([
       '(DESIGN.md:389), and therefore held to the OTHER half of UX-DR4: it may not round its own ' +
       'corners with a chrome radius (story c4-3).',
   ],
+  [
+    'src/containers/CardTile/CardTile.css',
+    'the card tile — the grid unit whose whole content IS a card face (DESIGN.md:379, ' +
+      '"the card face IS the tile"), so it is card-shaped by definition rather than by ' +
+      'resemblance (story c4-4). Joining is the reviewable act blind spot #4 above describes: ' +
+      'this file spends no --radius-card at all — the shape arrives through the `card-shape` ' +
+      'class — so half one would never have looked at it, and it is half TWO that has to hold. ' +
+      'The mock ships --radius-md for tiles and DESIGN.md:362 corrects it by name. Its quantity ' +
+      'badge is CHROME on a card rather than a card, DESIGN.md gives it {rounded.pill}, and ' +
+      'that is why the badge is a separate stylesheet (QuantityBadge.css, deliberately NOT in ' +
+      'this list) instead of an exception carved into this guard.',
+  ],
 ])
 
 // CASE-SENSITIVE, deliberately (review finding): CSS custom properties are case-sensitive, so
@@ -1053,9 +1065,11 @@ describe('token usage across the shipped stylesheets', () => {
       shippedStylesheets.filter((f) => f.startsWith('src/components/')).length,
     ).toBeGreaterThan(0)
     expect(shippedBlocks.length).toBeGreaterThan(3)
-    // 64 until story c2-9's `--font-mono` (Q2). Sibling pin: `expectedNames` in
-    // tests/tokens.test.ts, which is the one that checks the VALUE against DESIGN.md.
-    expect(declaredTokens.size).toBe(65)
+    // 64 until story c2-9's `--font-mono` (Q2); 65 until story c4-4's
+    // `--shadow-focus-ring-over-art` (Q2). Sibling pin: `expectedNames` in tests/tokens.test.ts,
+    // which is the one that checks the VALUE against DESIGN.md. Both move together or the pair
+    // is wrong — and c4-4's probe (j) is the proof that moving only one goes red.
+    expect(declaredTokens.size).toBe(66)
   })
 
   it('never puts --accent-dim on --surface-overlay (AC 10, UX-DR6)', () => {
@@ -2167,6 +2181,163 @@ describe('the reduced-motion mechanism (AC 11, AC 13)', () => {
   it('applies to the themed selector, not only :root', () => {
     // Otherwise the fallback silently stops working the moment an alternate theme ships.
     expect(reduced!).toContain("[data-theme='voltglass']")
+  })
+
+  /**
+   * A TRANSFORM IS NOT NEUTRALISED BY A ZEROED DURATION, AND UNTIL c4-4 NOTHING CHECKED THAT.
+   *
+   * Found by c4-4's probe (e), which deleted the scale fallback from the registration block and
+   * left the WHOLE SUITE GREEN. The four duration assertions above prove the MECHANISM works;
+   * they say nothing about the motions the mechanism cannot reach — and the block's own
+   * instruction is exactly about those: *"any motion that cannot be switched off by a duration
+   * alone — a transform, a 3D rotation, a crossfade — adds its own declaration HERE, in this
+   * block, in the story that builds it. A motion with no registered fallback is an incomplete
+   * story."* That was prose with no gate behind it, in a codebase whose standing review finding
+   * is that a rule with no consumer is indistinguishable from a rule nobody obeys.
+   *
+   * Zeroing `--motion-glide` makes `transform: scale(1.06)` INSTANT, not ABSENT: the tile still
+   * jumps 6% larger the moment a pointer crosses it, which is precisely the vestibular motion
+   * UX-DR42 asks to remove, arriving faster. So the rule is DERIVED rather than listed: any
+   * shipped block that declares a transform must have its selector neutralised in the block
+   * above. Nobody writes "the card tile" here — c4-6's 3D flip and c6-5's bloom are covered the
+   * day they are written.
+   *
+   * ==== THE LIMIT, STATED (and it is the safe direction) ================================
+   * Selectors are compared as NORMALISED TEXT, not resolved against the DOM. A transform on
+   * `.card-tile:hover .card-tile-art` neutralised by a rule on `.card-tile:hover` would be
+   * reported as unregistered even though the cascade would in fact switch it off. That is a
+   * FALSE FAILURE, not a false pass — the author reads this comment and writes the matching
+   * selector, which is the outcome the rule wants anyway. Resolving it properly needs
+   * specificity and the runtime class list, which is `ui/README.md`'s cascade blind spot.
+   *
+   * ==== TWO HOLES CLOSED BY REVIEW (2026-08-04), both false-PASS directions ============
+   * One: the first spelling read values through `declarationsIn`, which strips `!important` —
+   * so a registration of `transform: none` WITHOUT it was accepted, and tokens.css's own
+   * comment measures exactly that spelling as a cascade no-op (identical specificity, imported
+   * first: it would parse cleanly and do nothing). A neutralisation only counts here if the
+   * RAW declaration carries `!important`. Two: the first spelling matched only the `transform`
+   * property, and `scale: 1.06` — the idiomatic modern form of this very story's hover pop —
+   * is the same vestibular motion in another spelling, as are `rotate:` and `translate:`. All
+   * four are covered, PER PROPERTY: `transform: none` does not reset an individual `scale:`,
+   * so a motion is only registered when the SAME property is `none !important` on the SAME
+   * selector.
+   */
+  const normaliseSelector = (selector: string) => selector.replace(/\s+/g, ' ').trim()
+
+  const MOTION_PROPERTIES: readonly string[] = ['transform', 'scale', 'rotate', 'translate']
+
+  /** Every motion declaration in `blocks`, as `'selector :: property'` pairs. */
+  const motionDeclarationsIn = (blocks: Block[]): string[] =>
+    blocks.flatMap((block) =>
+      declarationsIn(block.body)
+        .filter(
+          ([property, value]) =>
+            MOTION_PROPERTIES.includes(property) && normaliseSelector(value) !== 'none',
+        )
+        .flatMap(([property]) =>
+          block.selector.split(',').map((s) => `${normaliseSelector(s)} :: ${property}`),
+        ),
+    )
+
+  /**
+   * Every `<motion-property>: none !important` in `blocks`, as `'selector :: property'` pairs —
+   * read RAW, not through `declarationsIn`, because `!important` is load-bearing here and that
+   * helper strips it.
+   */
+  const importantNoneNeutralisationsIn = (blocks: Block[]): string[] =>
+    blocks.flatMap((block) =>
+      block.body
+        .split(';')
+        .map((decl) => {
+          const colon = decl.indexOf(':')
+          if (colon === -1) return null
+          return [
+            decl.slice(0, colon).trim().toLowerCase(),
+            decl
+              .slice(colon + 1)
+              .trim()
+              .replace(/\s+/g, ' '),
+          ] as [string, string]
+        })
+        .filter((decl): decl is [string, string] => decl !== null)
+        .filter(
+          ([property, value]) =>
+            MOTION_PROPERTIES.includes(property) && /^none !important$/i.test(value),
+        )
+        .flatMap(([property]) =>
+          block.selector.split(',').map((s) => `${normaliseSelector(s)} :: ${property}`),
+        ),
+    )
+
+  it('neutralises every TRANSFORM in the tree, not merely every duration (c4-4, AC 18)', () => {
+    const neutralised = new Set(importantNoneNeutralisationsIn(blocksIn(TOKEN_FILE, reduced!)))
+    const moving = [...new Set(motionDeclarationsIn(shippedBlocks))]
+
+    // NON-VACUITY, and it is load-bearing here more than anywhere: this guard asserts that a
+    // list is empty, so a tree with no transforms in it at all — which is what every commit
+    // before c4-4 looked like — passes it while checking nothing. The day the last transform is
+    // deleted, this line is what says the guard has stopped having a subject.
+    expect(
+      moving.length,
+      'no stylesheet declares a transform — this guard has no subject',
+    ).toBeGreaterThan(0)
+    // Comma-split, so a selector LIST is checked part by part: a rule that neutralised the hover
+    // and forgot the focus would be caught, which is the half a whole-selector comparison would
+    // have waved through. THIS PIN IS ENUMERATED: the derived rule below needs no edit for a new
+    // motion, but this list does — a story that adds or removes a transform moves it, on
+    // purpose, the way the token pins move.
+    expect(
+      moving,
+      'the shipped-motion list moved — the story that added or removed a motion updates this pin',
+    ).toEqual(['.card-tile:hover :: transform', '.card-tile:focus-visible :: transform'])
+
+    expect(moving.filter((entry) => !neutralised.has(entry))).toEqual([])
+  })
+
+  it('would catch a transform with no registered fallback — probe (e), the firing half', () => {
+    // Fed inline rather than by deleting the real rule, so the proof survives the repair. This
+    // is the exact shape the probe planted: a scale that the duration zeroing makes instant
+    // rather than absent, with nothing in the registration block naming it.
+    const planted = blocksIn('src/probe.css', '.probe:hover { transform: scale(1.06); }')
+    const neutralised = new Set(importantNoneNeutralisationsIn(blocksIn(TOKEN_FILE, reduced!)))
+
+    expect(motionDeclarationsIn(planted)).toEqual(['.probe:hover :: transform'])
+    expect(motionDeclarationsIn(planted).filter((e) => !neutralised.has(e))).toHaveLength(1)
+
+    // A registration WITHOUT `!important` is refused (review 2026-08-04 — the hole the first
+    // spelling shipped). tokens.css's own comment measures that spelling as a cascade no-op, so
+    // accepting it here would be an accessibility gate passing on broken code.
+    expect(
+      importantNoneNeutralisationsIn(blocksIn(TOKEN_FILE, '.probe:hover { transform: none; }')),
+    ).toEqual([])
+
+    // The INDIVIDUAL properties are the same motion in another spelling (review 2026-08-04):
+    // `scale: 1.06` is the idiomatic modern form of this story's own hover pop — and a
+    // `transform: none` registration does NOT reset it, so per-property matching is what keeps
+    // the registered set honest.
+    const scaled = blocksIn('src/probe.css', '.probe:hover { scale: 1.06; }')
+    expect(motionDeclarationsIn(scaled)).toEqual(['.probe:hover :: scale'])
+    const transformOnly = new Set(
+      importantNoneNeutralisationsIn(
+        blocksIn(TOKEN_FILE, '.probe:hover { transform: none !important; }'),
+      ),
+    )
+    expect(motionDeclarationsIn(scaled).filter((e) => !transformOnly.has(e))).toHaveLength(1)
+
+    // …and the silent halves: each rule WITH its matching fallback registered is accepted.
+    const registered = new Set([
+      ...neutralised,
+      ...importantNoneNeutralisationsIn(
+        blocksIn(TOKEN_FILE, '.probe:hover { transform: none !important; }'),
+      ),
+    ])
+    expect(motionDeclarationsIn(planted).filter((e) => !registered.has(e))).toEqual([])
+    const scaleRegistered = new Set(
+      importantNoneNeutralisationsIn(
+        blocksIn(TOKEN_FILE, '.probe:hover { scale: none !important; }'),
+      ),
+    )
+    expect(motionDeclarationsIn(scaled).filter((e) => !scaleRegistered.has(e))).toEqual([])
   })
 
   it('names itself as the registration point later stories extend', () => {

@@ -402,10 +402,48 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
 
     // A deck, or a panel, never both.
     expect(screen.queryByRole('region', { name: 'No deck on the glass.' })).toBeNull()
-    // The declared consequence, asserted rather than discovered: with no grid until c4-4, the
-    // shell's own placeholder is what fills the vacated column — the same displacement c2-9 and
-    // c2-10 accepted, and the thing that makes c4-4's slot findable by its own id.
-    expect(screen.getByText(/The card-art grid lands here — c4-4/)).toBeVisible()
+
+    // THIS ASSERTION CHANGED IN c4-4, AND CHANGING IT IS THE POINT. It read
+    // `getByText(/The card-art grid lands here — c4-4/)` for two stories: with no grid to put
+    // in the vacated column, the shell's own placeholder was what honestly filled it. The grid
+    // now displaces that line — the FOURTH application of c2-9's ruling, and the same one.
+    // `AppShell.tsx` is untouched and `AppShell.test.tsx` still asserts the placeholder against
+    // the component's own props; what changed is which of the two the running app shows.
+    expect(screen.queryByText(/The card-art grid lands here/)).toBeNull()
+
+    // …and the C3 retro F1 count moves with it. That action item wants a gate banning
+    // story-key-shaped strings from rendered UI text; c4-2 declined it and counted SIX such
+    // strings on a real render. This story removes one of the six — the left column's — and the
+    // gate itself stays c8-5's. Asserted so the count is a fact rather than a claim.
+    expect(document.body.textContent).not.toContain('c4-4')
+    expect(document.body.textContent).not.toContain('c4-8')
+  })
+
+  it('puts the deck on the glass as card faces (c4-4, AC 16, FR-19)', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    // The other half of the displacement: the slot is FILLED, not merely emptied. Two cards in
+    // the fixture, so two tiles — each a real button, each pointing at our own origin.
+    const tiles = screen.getAllByRole('listitem')
+    expect(tiles).toHaveLength(2)
+    expect(screen.getByRole('button', { name: /Llanowar Elves/ })).toBeVisible()
+    expect(screen.getByText('×10')).toBeVisible()
+
+    // AND STILL NO REQUEST FOR AN IMAGE, from this app. The pictures arrive through
+    // `<img src>` and the browser's own HTTP cache, which is why `posture.test.ts`'s one-door
+    // list needed no edit in the first story that puts remote images on the screen. The count
+    // comes first (review 2026-08-04): a loop over an empty NodeList passes vacuously, so a
+    // regression that dropped the `<img>` entirely would have satisfied the origin rule by
+    // removing its subject.
+    const images = document.querySelectorAll('img')
+    expect(images).toHaveLength(tiles.length)
+    for (const img of images) {
+      expect(img.getAttribute('src')).toMatch(/^\/api\/card-image\//)
+    }
   })
 
   it('seeds the card cache from the payload, at no extra request (AC 17)', async () => {

@@ -94,6 +94,40 @@ describe('eslint accessibility gate (UX-DR47, AC 8)', () => {
     )
     expect(a11yMessages).toEqual([])
   })
+
+  it('narrows the handler list to INTERACTIONS, and the narrowing is exactly two names (c4-4)', async () => {
+    // c4-4 removed `onError` and `onLoad` from both rules' handler lists, in the open, because
+    // neither is an interaction: they are resource-lifecycle events with no user in the causal
+    // chain, no keyboard equivalent to add and no role to promote. `clean.tsx` now carries an
+    // `<img onLoad onError>` — the shape c4-4's card tile needs to know whether a picture
+    // arrived — and the silence assertion above is what proves the narrowing works.
+    //
+    // THIS test is the drift half: it reads the RESOLVED config rather than the file, so a
+    // future story that restores the defaults, drops the option, or quietly shortens the list
+    // past the six interaction handlers goes red HERE, naming the rule.
+    const eslint = new ESLint({ cwd: uiRoot, ignore: false })
+    const config = (await eslint.calculateConfigForFile(fixture('a11y/clean.tsx'))) as {
+      rules: Record<string, unknown[]>
+    }
+
+    for (const rule of [A11Y_STATIC, A11Y_NONINTERACTIVE]) {
+      const entry = config.rules[rule]
+      expect(entry, `${rule} is not configured at all`).toBeDefined()
+      const options = entry[1] as { handlers?: string[] } | undefined
+      expect(options?.handlers, `${rule} lost its explicit handler list`).toEqual([
+        'onClick',
+        'onMouseDown',
+        'onMouseUp',
+        'onKeyPress',
+        'onKeyDown',
+        'onKeyUp',
+      ])
+      // The two that were removed, named — so the diff that puts either back is visible here
+      // rather than only in a component that stops linting.
+      expect(options?.handlers).not.toContain('onLoad')
+      expect(options?.handlers).not.toContain('onError')
+    }
+  })
 })
 
 describe('eslint inline-style ban (story c2-4 review ruling)', () => {

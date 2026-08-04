@@ -79,6 +79,15 @@ interface DesignFrontmatter {
     motion: Record<string, string>
     'focus-ring': Record<string, string>
     elevation: Record<string, string>
+    /**
+     * Added by story c4-4 (Q2). The token layer carries ONE composite that is not an
+     * elevation — `focus-ring-over-art`, which DESIGN.md files here rather than under
+     * `components.elevation` because it is a per-component treatment rather than a step on
+     * the depth ramp. Typed so the assertion below reads the artefact rather than an `any`:
+     * a `components.card-tile` block that vanished from DESIGN.md would fail loudly at the
+     * `toBeDefined()` anchor instead of comparing `undefined` to `undefined`.
+     */
+    'card-tile': Record<string, string>
   }
 }
 
@@ -237,6 +246,13 @@ const expectedNames = [
   '--shadow-raise',
   '--shadow-rest',
   '--glow',
+  // Story c4-4 (Q2). The ONE composite this layer carries that is not an elevation: DESIGN.md
+  // files it under `components.card-tile`, not `components.elevation`, so it cannot be derived
+  // from the block the three above come from — it is hand-listed for the same reason they are,
+  // and its value is asserted against the artefact just as theirs is. `components.card-tile`'s
+  // sibling `live-ring` is deliberately NOT here: nothing sets `live` on a tile until c4-5, and
+  // an inventory pinned by set equality exists so that an unused token is a visible decision.
+  '--shadow-focus-ring-over-art',
 ]
 
 // ---------------------------------------------------------------------------------------
@@ -266,11 +282,13 @@ describe('the token layer is DESIGN.md (AC 1)', () => {
     // Set equality both ways: a missing token fails, and so does a smuggled-in extra one
     // that no story wrote down.
     expect(new Set(Object.keys(tokens))).toEqual(new Set(expectedNames))
-    // 64 until story c2-9, which added `--font-mono` (Q2). The count is pinned rather than
-    // derived so that adding a token is a DECISION with a diff, not a side effect — and this
-    // line moving is the open cost the ruling accepted. Its sibling is `declaredTokens.size`
-    // in tests/token-usage.test.ts; both move together or the pair is wrong.
-    expect(expectedNames).toHaveLength(65)
+    // 64 until story c2-9, which added `--font-mono` (Q2); 65 until story c4-4, which added
+    // `--shadow-focus-ring-over-art` (Q2 again, and for the same kind of reason — a composite
+    // stylelint forbids inline). The count is pinned rather than derived so that adding a token
+    // is a DECISION with a diff, not a side effect — and this line moving is the open cost the
+    // ruling accepted. Its sibling is `declaredTokens.size` in tests/token-usage.test.ts; both
+    // move together or the pair is wrong.
+    expect(expectedNames).toHaveLength(66)
   })
 
   it('ships all 26 colours at exactly the DESIGN.md value', () => {
@@ -390,6 +408,35 @@ describe('the token layer is DESIGN.md (AC 1)', () => {
     // checked rather than waved through.
     expect(normalise(tokens['--glow'])).toBe(normalise(elevation.glow))
     expect(tokens['--glow']).toContain('var(--accent-glow)')
+  })
+
+  it("ships the card tile's focus-ring composite at DESIGN.md's value (c4-4, Q2)", () => {
+    // Held to exactly the standard the three elevation tokens above are held to, and for the
+    // same reason: the whole argument for a composite being a TOKEN rather than an inline
+    // box-shadow is that the layer is the single source — which is worth nothing if the value
+    // is not the artefact's. Both sides resolve their references before comparing, so
+    // `{colors.focus-ring}` / `var(--focus-ring)` is checked rather than waved through.
+    const tile = design.components['card-tile']
+    expect(
+      tile['focus-ring-over-art'],
+      "DESIGN.md's components.card-tile has no focus-ring-over-art — did the artefact change shape?",
+    ).toBeDefined()
+    expect(normalise(tokens['--shadow-focus-ring-over-art'])).toBe(
+      normalise(tile['focus-ring-over-art']),
+    )
+    // The two references are the POINT of the composite (it must survive a theme swap), so a
+    // value that resolved correctly today by being written out in hex would still be wrong.
+    expect(tokens['--shadow-focus-ring-over-art']).toContain('var(--focus-ring)')
+    expect(tokens['--shadow-focus-ring-over-art']).toContain('var(--surface-base)')
+  })
+
+  it('does NOT ship the live ring, because nothing sets `live` until c4-5', () => {
+    // The other half of the c4-4 Q2 ruling, asserted rather than merely stated: `card-tile`
+    // declares TWO composites and this story ships one. If c4-5 adds the second, this test is
+    // the one that tells its author the pin moves with it — which is the whole mechanism the
+    // set-equality inventory exists to provide.
+    expect(design.components['card-tile']['live-ring']).toBeDefined()
+    expect(tokens['--shadow-live-ring']).toBeUndefined()
   })
 
   it('declares every token in one themeable block (AC 2)', () => {

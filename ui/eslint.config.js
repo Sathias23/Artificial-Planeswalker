@@ -5,6 +5,24 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
+/**
+ * The handlers that are actually INTERACTIONS, for the two UX-DR47 rules below.
+ *
+ * jsx-a11y's default list for both is these six plus `onError` and `onLoad`. See the comment
+ * at the rules themselves for why those two are not interactions and why removing them is the
+ * whole of the change. Exported shape pinned by `tests/lint-gates.test.ts`, which reads this
+ * config through the ESLint Node API — so shortening this list by accident is a red test, not
+ * a quiet weakening.
+ */
+const A11Y_INTERACTION_HANDLERS = [
+  'onClick',
+  'onMouseDown',
+  'onMouseUp',
+  'onKeyPress',
+  'onKeyDown',
+  'onKeyUp',
+]
+
 export default tseslint.config(
   {
     // `dist` is the build output (c2-2 redirects it into src/companion/app/static/).
@@ -65,8 +83,31 @@ export default tseslint.config(
       // these two are the ones the design requirement actually names, and an explicit
       // pair is what tests/lint-gates.test.ts asserts on. Both are `error` — the gate has
       // no warning tier.
-      'jsx-a11y/no-static-element-interactions': 'error',
-      'jsx-a11y/no-noninteractive-element-interactions': 'error',
+      //
+      // THE HANDLER LIST IS NARROWED, IN THE OPEN, AND THIS IS A RULE CHANGE RATHER THAN A
+      // LOCAL EXCEPTION (story c4-4). Both rules default to
+      // `['onClick', 'onError', 'onLoad', 'onMouseDown', 'onMouseUp', 'onKeyPress',
+      // 'onKeyDown', 'onKeyUp']`, and `onLoad` / `onError` are not interactions at all: they
+      // are RESOURCE-LIFECYCLE events, fired by the browser when a subresource finishes or
+      // fails, with no user anywhere in the causal chain. There is no keyboard equivalent to
+      // add and no role to promote — the whole premise of both rules ("this element looks
+      // clickable to a mouse and is invisible to a keyboard") does not apply.
+      //
+      // MEASURED, not anticipated: c4-4's card tile is the first component in the codebase to
+      // render an `<img>`, and `<img onLoad onError>` is the ONLY way a component can know
+      // whether the pixels arrived — which is the whole of that story's placeholder-then-fill
+      // contract (UX-DR36). The alternatives were an inline `eslint-disable` on the one line
+      // that matters, or dropping the rule; narrowing the list keeps the rules total over every
+      // interaction spelling while removing two names that were never interactions.
+      //
+      // The six that remain are the interaction handlers, and `tests/lint-gates.test.ts` both
+      // pins this list against drift and proves the pair still fires on `onClick` while staying
+      // silent on `<img onLoad>`.
+      'jsx-a11y/no-static-element-interactions': ['error', { handlers: A11Y_INTERACTION_HANDLERS }],
+      'jsx-a11y/no-noninteractive-element-interactions': [
+        'error',
+        { handlers: A11Y_INTERACTION_HANDLERS },
+      ],
 
       // THE TOKEN LAYER'S BLIND SPOT, CLOSED BEFORE THE FIRST COMPONENT EXISTS.
       //

@@ -3654,3 +3654,121 @@ else to that list.
   asserted anything. Pre-existing project-resolution behaviour, not introduced by c4-3; the
   standing mitigation is the rule already ledgered above — a guard's firing is proven with the
   full `npm test`, never a standalone file run.
+
+## Dispositions from: dev of c4-4-card-tile-and-the-card-art-grid (2026-08-04)
+
+Every entry homed on `c4-4` gets a disposition here (C2 retro ruling **R2** — inherited deferrals
+are acceptance criteria at context time). Twelve were listed in the story record; the line each
+lives on is given so this section is checkable rather than merely reassuring.
+
+1. **The pacer queue can outlive the connection-pool timeout (`:2617`)** — **NOT TRIGGERED, and
+   the lever was exercised.** Q7 ruled that all ~99 `<img>` mount at once (`decoding="async"`, no
+   `loading="lazy"`), which is the maximum burst this entry describes, and **no pacer constant was
+   changed**. Measured live against the running backend with the 99-card deck: a fully warm paint
+   is 99 requests in **0.55 s** (5.6 ms/tile) and never enters the pacer at all. The cold burst
+   was not reproduced from a browser because the disk cache was already warm on this machine —
+   **so the entry stands, unresolved, and `loading="lazy"` remains its one client-side lever.**
+   Re-home: **c10-3**, which owns real-latency profiling, or the C4 retrospective.
+
+2. **The image route reads the whole card row to get one URL (`:2742`)** — **NOT MEASURED, and
+   declined here with a reason.** This story issues the requests in bulk but has no instrument for
+   the backend's per-request cost, and the measurement that would settle it (a projection versus a
+   whole-row read, under load) is a backend change with its own gates. What c4-4 CAN contribute is
+   the volume it actually produces: 99 distinct ids, once per deck open. **Home: unchanged, C4
+   retrospective**, with that number in hand.
+
+3. **The backoff `502` answers with no `Retry-After` header (`:3213`)** — **DECLINED, and the UI
+   is now in view, which is what this entry was waiting for.** The tile cannot use a `Retry-After`
+   even if it were sent: a DOM `error` event carries no headers at all, and the SPA has no
+   per-image retry UI by design. A header nobody can read is not worth a wire change. **Closed.**
+
+4. **The named placeholder's `overflow-wrap: anywhere`, and the undeclared vertical edge
+   (`:3623-3636`)** — **REVISITED with a real column width, and left as it is.** Seen at the
+   eye-check at the 176px floor: the named placeholder renders name + type line centred with room
+   to spare, and no mid-word break occurred on any real card in the deck. The vertical half is
+   unchanged and still undeclared — a very tall stack would clip at both edges with no clamp.
+   **Re-home: c4-5**, which renders the same component at detail size where a clamp would be
+   visible, or review.
+
+5. **A whole view of loading wells is total silence to assistive technology (`:3638-3646`)** —
+   **RESOLVED IN STRUCTURE, with two declared corners (wording tightened by review 2026-08-04;
+   the first record claimed it flat).** Each well is still `aria-hidden`, but a grid of them is
+   no longer silent: every tile is a `<button>` named by its caption, so a first paint announces
+   "list, 99 items" and each card by name whether or not its picture has arrived. A polite load
+   note is not needed and is not added. The two corners the flat claim glossed: (a) a NAMELESS
+   card yields an unnamed focusable button — zero population measured (0 of 1,061), the FR-13
+   totality branch, and pinned as such by test; and (b) the announcement itself is
+   jsdom-unverifiable — the NAME's exact spelling is now asserted (`Black Lotus ×4`, measured),
+   but how a real screen reader phrases it is the epic checklist's, per the blind-spot row.
+
+6. **Whether an element carrying `card-shape` is actually a CARD (`:3587-3596`)** — **REVIEW'S,
+   and the cross-file case is now live.** c4-4 is the first story where a rule in one stylesheet
+   reaches a card-shaped element in another: `CardTile.css` gives `> .card-shape` position and
+   nothing else — no radius, no border, no background — and says so at the rule. Both directions
+   are a reviewer's to check, unchanged.
+
+7. **Nothing checks that the RIGHT type role was chosen for the content (`:3598`+)** — **SECOND
+   INSTANCE, ruled in the open (Q3).** Every card name in the grid renders in CAPITALS because
+   `findRoleWithoutCompanions` derives that requirement from DESIGN.md's own `label.textTransform`.
+   Ruled correct on its merits — a card name here is a chrome label under a picture, not
+   retypeable data like c4-3's truncated uuid, and browsers copy the untransformed text anyway —
+   and confirmed by eye on a real screen. Still not statically decidable; **review's, unchanged.**
+
+8. **The first paint against a fully dead CDN takes ~124 s (`:3131`)** — **NOT REPRODUCED.** The
+   manual testing this entry names as its escalation condition was performed against a live,
+   warm backend, so the dead-CDN path was never entered. Severity stays **Low**; **home: the epic
+   manual-testing checklist**, where killing the CDN is a deliberate step rather than an accident.
+
+9. **The `images.py` split decision (`:2989-2997`)** — **EVIDENCE FED FORWARD, not decided.** c4-4
+   exercised the route, the pacer, the disk cache and the negative cache from a real browser for
+   the first time and needed no change to any of them. **Home: unchanged, C4 retrospective**, with
+   c4-6 still to add the flip control.
+
+10. **c4-3's composition eye-check, re-homed here BY NAME (`ui/README.md`)** — **DONE.** A
+    placeholder beside a real card face in a real grid, at the same footprint: confirmed in Edge
+    against the running backend with the 99-card deck. Recorded in `ui/README.md` under _The card
+    shape_.
+
+11. **A `ui/tests/` file may import an app module only if that module has no relative imports** —
+    **NOT TRIGGERED.** c4-4's new guards read source as TEXT, the idiom every other guard uses, so
+    no new cross-project import was added. Confirmed with `npx tsc -b --force`, green.
+
+12. **C3 retro action F1 — a gate banning story-key-shaped strings from rendered UI text** —
+    **ONE OF THE SIX REMOVED.** The left column's placeholder (naming `c4-4` and `c4-8`) is
+    displaced by the grid, and `App.test.tsx` now asserts neither string is on a rendered deck
+    view. Five remain. **The gate itself stays c8-5's**, unchanged.
+
+### New residues declared by c4-4
+
+- **`CardPlaceholder` renders a `<div>`, and `<button>` takes phrasing content only.** Mounting
+  the placeholder inside the tile is invalid HTML by the letter of the spec. Measured: every
+  engine renders it, React does not warn, and the accessible name computes normally. Every
+  alternative was worse (moving the placeholder out breaks UX-DR36's same-box claim; changing the
+  primitive's root is an edit c4-4 was told not to make). **Home: c4-5**, which mounts the same
+  component as detail art and can re-decide with two consumers in view. (Severity: Low.)
+
+- **The reduced-motion transform guard compares SELECTOR TEXT.** A fallback whose selector differs
+  from the motion's — even one the cascade would resolve correctly — reads as unregistered. False
+  failure, not false pass; the repair is to write the matching selector. (Severity: Low.)
+
+- **jsdom cannot report an accessible name's spelling.** It applies no CSS, so naming elements
+  concatenate with no separator (`×4Black Lotus`). Component tests assert membership instead. The
+  real announcement is **the epic manual-testing checklist's**, with a screen reader.
+
+- **The warm-cache `onLoad` race is UNPROVEN in both directions.** `settleIfCached` reads
+  `complete && naturalWidth > 0` on mount, and jsdom reports `complete: false` / `naturalWidth: 0`
+  always — so the suite can only prove the guard does not fire wrongly. That it fires RIGHTLY
+  needs a browser with a warm HTTP cache. **Home: the epic manual-testing checklist.**
+
+- **A cold paint against a cold backend — OBSERVED at review, 2026-08-04 (this residue is
+  closed).** Disk cache moved aside, 99-card deck active, real browser, real CDN. Two numbers,
+  and they are DIFFERENT numbers: the backend's fetch window was **9.3 s for all 99 images**
+  (measured from cache-file mtimes — the pacer's 0.1 s spacing turnstile binding exactly as
+  modelled), while the PERCEIVED paint was **2–3 s** — the browser prioritises in-viewport
+  images, so the visible screenful fills while the remaining tiles complete off-screen; on a
+  fast connection each tile appears the instant the pacer releases it. No spinner, no
+  broken-image glyph, no stuck tile. Net: the ~10 s figure is real but largely invisible; the
+  epic's "expected observation, not a defect" framing holds, and the experienced cold paint is
+  BETTER than the epic's expectation reads. What remains c10-3's is profiling (real bytes,
+  real latency percentiles), and the ~124 s dead-CDN first paint remains unobserved — the CDN
+  was alive. **Home: c10-3, narrowed to profiling and the dead-CDN case.**

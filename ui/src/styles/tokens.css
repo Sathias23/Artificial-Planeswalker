@@ -189,11 +189,34 @@
   --ease-snap: cubic-bezier(0.2, 0, 0, 1);
 
   /* ---- Elevation ----------------------------------------------------------------------
-     Three tokens, and the ONLY legal source of a box-shadow. Composing is expected and
+     Four tokens, and the ONLY legal source of a box-shadow. Composing is expected and
      supported: `box-shadow: var(--shadow-rest), var(--glow)` passes the gate. */
   --shadow-raise: 0 0 0 1px rgb(139 147 255 / 14%), 0 12px 32px rgb(0 0 0 / 50%);
   --shadow-rest: 0 12px 32px rgb(0 0 0 / 50%);
   --glow: 0 0 16px var(--accent-glow);
+
+  /* THE FOCUS RING THAT HAS TO BE LEGIBLE OVER ARTWORK (story c4-4, Q2, UX-DR40, UX-DR41).
+     DESIGN.md's `components.card-tile.focus-ring-over-art`, byte-for-byte — a 2px ring in
+     `--focus-ring` hugging the card edge, then 2px more of `--surface-base` separating that
+     ring from whatever sits behind it. The inner band is what keeps it visible against a
+     bright card face; the outer band is what keeps it visible against the panel.
+
+     IT IS A TOKEN BECAUSE IT CANNOT BE ANYTHING ELSE, and that is measured rather than
+     preferred: `.stylelintrc.json`'s `box-shadow` allowed-list admits `none` or a comma-list
+     of `var(--shadow-…)` / `var(--glow)` AND NOTHING ELSE, so this composite cannot be
+     written in a component stylesheet at all. `ui/README.md` already ruled the answer and
+     named this exact case — "if you need a new composite (a live ring, a pinned ring), ADD A
+     TOKEN TO THE LAYER; do not inline it, and do not declare it in your own file."
+
+     THE PIN MOVES IN TWO FILES, AND THEY MOVE TOGETHER: `expectedNames` +
+     `toHaveLength(66)` in tests/tokens.test.ts, and `declaredTokens.size` in
+     tests/token-usage.test.ts. 65 until this story.
+
+     `components.card-tile.live-ring` is DELIBERATELY ABSENT. Nothing sets `live` on a tile
+     until c4-5's inspection contract, and this layer's standing rule is that an entry is
+     added in the commit that gives it a consumer — an unused token in an inventory pinned by
+     set equality is exactly the thing the pin exists to make visible. **c4-5 adds it.** */
+  --shadow-focus-ring-over-art: 0 0 0 2px var(--focus-ring), 0 0 0 4px var(--surface-base);
 }
 
 /* ==== THE REDUCED-MOTION REGISTRATION POINT ============================================
@@ -238,5 +261,44 @@
     --motion-glide: 0ms;
     --motion-bloom: 0ms;
     --motion-aurora: 0ms;
+  }
+
+  /* ---- c4-4, THE FIRST REGISTRATION THIS BLOCK HAS EVER TAKEN ------------------------
+     Two motions ship in c4-4 and they need DIFFERENT amounts of help, which is the whole
+     reason this block distinguishes a mechanism from a registration:
+
+       IMAGE FADE-IN -> instant appearance. `transition: opacity var(--motion-pulse)` is
+       expressed ENTIRELY through a duration token, so zeroing `--motion-pulse` above already
+       makes it instant. It is MECHANICAL, it needs nothing here, and writing a second
+       declaration for it would suggest the mechanism does not work.
+
+       CARD-TILE HOVER POP -> no scale, shadow only. This one is NOT mechanical, and that is
+       the trap this block's instruction exists for: a zeroed duration makes
+       `transform: scale(1.06)` INSTANT, not ABSENT. The tile would still jump 6% larger the
+       moment a pointer crossed it — which is precisely the vestibular motion UX-DR42 asks to
+       remove, arriving faster. So the scale is switched off HERE, explicitly, and the
+       elevation change is left alone: `--shadow-raise` is UX-DR42's named fallback ("no
+       scale, shadow only") and a shadow swap is not motion.
+
+     The z-index raise stays, and so does the shadow: UX-DR42's fallback is "no scale, SHADOW
+     ONLY", so the hover must still say something. A shadow swap is not motion, and the raised
+     z-index is paint order rather than movement — without it a tile with a raised shadow would
+     have its neighbours drawn over that shadow.
+
+     ==== WHY `!important`, WHICH IS OTHERWISE ABSENT FROM THIS CODEBASE ==================
+     MEASURED, not defensive. `.card-tile:hover` here and `.card-tile:hover` in CardTile.css
+     have IDENTICAL specificity (0,2,0), so the winner is decided by source order — and this
+     file loses it: tokens.css is `@import`ed at the top of src/index.css, and component
+     stylesheets are emitted after it in the bundle. Without `!important` this whole block
+     would parse cleanly, read correctly, and do nothing at all.
+
+     The alternatives were worse. Raising specificity with `button.card-tile` couples the token
+     layer to one component's element name; lowering the component's with `:where()` leaves the
+     accessibility override at the mercy of the next rule anybody writes. An override that must
+     win regardless of what a component declares is the textbook case for `!important`, and
+     stating it here is what keeps the next registration from copying the pattern blindly. */
+  .card-tile:hover,
+  .card-tile:focus-visible {
+    transform: none !important;
   }
 }
