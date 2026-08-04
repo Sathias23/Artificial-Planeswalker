@@ -735,6 +735,156 @@ const findUndeclaredPipColourClasses = (blocks: Block[]): string[] =>
     return []
   })
 
+// ---------------------------------------------------------------------------------------
+// AC 12 (story c4-3) — UX-DR4's EXCLUSIVITY half becomes a gate
+// ---------------------------------------------------------------------------------------
+
+/**
+ * WHY THIS GUARD EXISTS AT ALL, and why the answer is "because of this commit".
+ *
+ * DESIGN.md:362 states the rule in one sentence with two halves: *"Tiles, thumbnails, placeholders
+ * and the detail art all use `{rounded.card}` … at a `{components.card-tile.aspect}` of 63:88 …
+ * **Nothing else in the UI borrows the card radius, and cards never borrow a chrome radius** —
+ * cards must be the ONLY card-shaped things on screen, and they must ACTUALLY be card-shaped."*
+ *
+ * The first half of that sentence has had a token since c2-4. The second half has had NOTHING
+ * checking it, and until story c4-3 it was **vacuously true**: measured across `ui/`, the only
+ * occurrences of `--radius-card` were its own declaration in `tokens.css`, one line in a fixture,
+ * and two assertions in `tokens.test.ts` that it is a percentage. **Zero consumers.** A rule with
+ * no consumer is indistinguishable from a rule nobody obeys, which is exactly the state the
+ * `--mana-*` tokens were in for four stories before the guard below this one was written.
+ *
+ * c4-3 is the first consumer, so it is the commit where the rule stops being free — and building
+ * it now means building it against ONE card-shaped file instead of the four that c4-4, c4-5 and
+ * c4-6 are about to add.
+ *
+ * ==== HALF ONE: WHICH FILES MAY SPEND `--radius-card` AT ALL ============================
+ * An allowlist, each entry carrying the reason that file is card-shaped — the same protocol as
+ * `MANA_DATA_INK` above and `PRIMITIVES` in tests/shell.test.ts, and the non-vacuity test below
+ * proves every entry is a file git actually tracks. c4-4, c4-5 and c4-6 join it IN THE OPEN.
+ *
+ * ==== HALF TWO: A CARD-SHAPED FILE MAY NOT SPEND A CHROME RADIUS =======================
+ * The converse, and it is NOT redundant: an allowlist keyed on "spends the card radius" would say
+ * nothing at all about `border-radius: var(--radius-md)` written on `.card-placeholder`, which is
+ * the *"chrome-shaped cards"* half of DESIGN.md's own anti-pattern table. So membership of this
+ * list is a declaration that the FILE draws cards, and it cuts both ways: in, and out.
+ *
+ * Written as a NEGATED PATTERN (`--radius-` that is not `--radius-card`) rather than as a list of
+ * `sm | md | lg | pill`, because "ban the family, never enumerate members" is this epic's standing
+ * review finding: a `--radius-xl` added to tokens.css next year is covered without anyone
+ * remembering to come back here.
+ *
+ * ==== THE MARKUP HALF ==================================================================
+ * Both halves above read STYLESHEETS. The `--mana-*` guard learned this the hard way, so it is
+ * built in from the start here: a `var(--radius-card)` reached from markup — an SVG presentation
+ * attribute, a value in index.html — would meet neither half. There is no markup allowlist to
+ * join, because the way in is always the `card-shape` class. (ESLint already bans inline `style`
+ * attributes outright, so this half is a second lock on a closed door rather than the only one.)
+ *
+ * ==== WHAT THIS GUARD CANNOT SEE, DECLARED RATHER THAN DISCOVERED ======================
+ * The same division of labour `findAccentDimOnOverlay` and `surfaces.ts` declare for their halves:
+ *
+ *   1. **WHETHER AN ELEMENT IS ACTUALLY A CARD.** `.card-shape` on a `<nav>` is a stylesheet this
+ *      guard finds perfectly clean — the class list lives in TSX and is chosen at runtime. That is
+ *      the *"cards must be the ONLY card-shaped things on screen"* half, and it is REVIEW'S.
+ *   2. **GEOMETRY APPLIED FROM MARKUP.** An inline `style={{ borderRadius: … }}` is banned by
+ *      eslint's inline-style rule, not by this one.
+ *   3. **CROSS-FILE COMPOSITION.** A card-shaped element given a chrome radius by a rule in a
+ *      NON-card-shaped stylesheet (`.deck-row .card-shape { border-radius: … }`) is invisible
+ *      here, because the file it lives in is not in the list and the property is not `--radius-
+ *      card`. Deciding it needs specificity and the real class list. Review's, and c4-4's tile is
+ *      the first story where it becomes plausible.
+ *   4. **A CARD-SHAPED FILE THAT NEVER DECLARES ITSELF** (review finding). A later stylesheet
+ *      that draws a card but never joins CARD_SHAPED, and rounds itself with `--radius-md`,
+ *      meets NEITHER half — half one fires only on `--radius-card` spends, half two reads only
+ *      listed files. This is the likeliest real drift for c4-4/c4-5/c4-6, and it is review's:
+ *      joining the list is the reviewable act, and a new card-drawing stylesheet that does not
+ *      is the thing to catch at the PR.
+ *   5. **PROSE IN A LINE COMMENT** (review finding). `stripComments` strips BLOCK comments only
+ *      — CSS has no line comments, so that is all a STYLESHEET needs — but the markup half reads
+ *      `.tsx` too, where a `// use var(--radius-card) via card-shape` line comment IS stripped by
+ *      no one and fires the guard on prose. The failure is loud and names the file, so it cannot
+ *      pass wrongly — but the repair is to move the prose into a block comment, never to delete
+ *      the explanation.
+ */
+const CARD_GEOMETRY_CSS = 'src/styles/card-geometry.css'
+
+/** File -> why that file draws cards. Later stories ADD an entry with their own reason. */
+const CARD_SHAPED: Map<string, string> = new Map([
+  [
+    CARD_GEOMETRY_CSS,
+    'the ONE declaration of the card shape — `aspect-ratio: 63 / 88` and `border-radius: ' +
+      'var(--radius-card)` on `.card-shape`, consumed by class name so that c4-3, c4-4, c4-5 and ' +
+      'c4-6 cannot drift from each other (story c4-3, UX-DR4, UX-DR36).',
+  ],
+  [
+    'src/components/CardPlaceholder/CardPlaceholder.css',
+    'the named and unknown placeholders and the loading well — card-shaped by specification ' +
+      '(DESIGN.md:389), and therefore held to the OTHER half of UX-DR4: it may not round its own ' +
+      'corners with a chrome radius (story c4-3).',
+  ],
+])
+
+// CASE-SENSITIVE, deliberately (review finding): CSS custom properties are case-sensitive, so
+// `var(--RADIUS-CARD)` is a DIFFERENT, undefined property — a `/i` here would classify that typo
+// as the card radius and mis-police it in both directions instead of leaving it to fail visibly.
+const isCardRadius = (name: string) => /^--radius-card$/.test(name)
+const isChromeRadius = (name: string) => /^--radius-/.test(name) && !isCardRadius(name)
+
+const findCardRadiusOutsideCardShape = (
+  files: string[],
+  read: (file: string) => string = sourceOf,
+  cardShaped: Map<string, string> = CARD_SHAPED,
+): string[] =>
+  files
+    .filter((file) => file !== TOKEN_FILE && !cardShaped.has(file))
+    .flatMap((file) => {
+      const spent = [...new Set(referencedTokensIn(read(file)))].filter(isCardRadius)
+      if (spent.length === 0) return []
+      return [
+        `${file} references --radius-card. The card radius is EXCLUSIVE to card faces, ` +
+          `thumbnails, placeholders and detail art (UX-DR4) — "nothing else in the UI borrows ` +
+          `the card radius". A card-shaped element inherits the shape from the \`card-shape\` ` +
+          `class in ${CARD_GEOMETRY_CSS}; it does not re-declare it. If this file genuinely ` +
+          `draws a card, add it to CARD_SHAPED in tests/token-usage.test.ts with the reason, the ` +
+          `way c4-4, c4-5 and c4-6 will; otherwise use --radius-sm, --radius-md, --radius-lg or ` +
+          `--radius-pill.`,
+      ]
+    })
+
+const findChromeRadiusInCardShapedFile = (
+  files: string[],
+  read: (file: string) => string = sourceOf,
+  cardShaped: Map<string, string> = CARD_SHAPED,
+): string[] =>
+  files
+    .filter((file) => cardShaped.has(file))
+    .flatMap((file) => {
+      const spent = [...new Set(referencedTokensIn(read(file)))].filter(isChromeRadius)
+      if (spent.length === 0) return []
+      return [
+        `${file} references ${spent.join(', ')}. ${cardShaped.get(file)} UX-DR4's other half is ` +
+          `"cards never borrow a chrome radius" — a card rounded at --radius-md is the ` +
+          `"chrome-shaped cards" anti-pattern DESIGN.md names, and it is the failure an allowlist ` +
+          `keyed only on --radius-card would never look for. Use var(--radius-card) through the ` +
+          `\`card-shape\` class, or take this file out of CARD_SHAPED.`,
+      ]
+    })
+
+const findCardRadiusInMarkup = (
+  files: string[],
+  read: (file: string) => string = sourceOf,
+): string[] =>
+  files.flatMap((file) => {
+    const spent = [...new Set(referencedTokensIn(read(file)))].filter(isCardRadius)
+    if (spent.length === 0) return []
+    return [
+      `${file} references --radius-card outside a stylesheet. The two halves of the UX-DR4 gate ` +
+        `read CSS only, so a var(--radius-card) in markup would be policed by NOTHING. There is ` +
+        `no markup allowlist to join: give the element the \`card-shape\` class instead.`,
+    ]
+  })
+
 /**
  * NO ERROR STYLING, WHERE THAT IS A CONSTRUCTIVE RULE RATHER THAN A REVIEW NOTE (story c2-9,
  * AC 2, AC 14, UX-DR30).
@@ -1047,6 +1197,136 @@ describe('token usage across the shipped stylesheets', () => {
   it('declares every colour class ManaPip.tsx can name — all 21 of them (AC 12)', () => {
     expect(pipColourSuffixes()).toHaveLength(21)
     expect(findUndeclaredPipColourClasses(shippedBlocks)).toEqual([])
+  })
+
+  it('writes the card geometry EXACTLY ONCE, where four later stories inherit it (c4-3 AC 2)', () => {
+    // AC 4's INSTRUMENT (a), and it is the honest one. jsdom has no layout engine, so
+    // `getComputedStyle(el).aspectRatio` in a component test returns the empty string and PASSES
+    // FOR THE WRONG REASON — the sixth time this epic has recorded that trap (c2-2 AC 17, c2-5
+    // AC 4, c2-6 AC 4/5, c2-7 AC 21, c2-8 AC 21). A source read is what can actually see the
+    // declarations; the component test's half is that the rendered element carries the CLASS.
+    // Neither instrument proves a pixel, and that limit is stated in the story record.
+    const shape = shippedBlocks.find(
+      (block) => block.file === CARD_GEOMETRY_CSS && block.selector === '.card-shape',
+    )
+    expect(shape, `${CARD_GEOMETRY_CSS} declares no \`.card-shape\` block`).toBeTruthy()
+
+    const declarations = new Map(
+      declarationsIn(shape!.body).map(([property, value]) => [property.toLowerCase(), value]),
+    )
+    // `63 / 88` with the spaces the file actually writes — the printed card, not "about 0.716".
+    expect(declarations.get('aspect-ratio')?.replace(/\s+/g, ' ')).toBe('63 / 88')
+    expect(declarations.get('border-radius')).toBe('var(--radius-card)')
+
+    // …AND NOWHERE ELSE. This is the "exactly once" half, and it is what makes UX-DR36's claim
+    // — the placeholder occupies the same footprint as a real card face, so layout never reflows
+    // when art arrives — structurally true rather than asserted separately by four stories. A
+    // second `aspect-ratio` anywhere in the shipped tree is a second value free to drift.
+    const elsewhere = shippedBlocks
+      .filter((block) => block.file !== CARD_GEOMETRY_CSS)
+      .filter((block) =>
+        declarationsIn(block.body).some(([property]) => property.toLowerCase() === 'aspect-ratio'),
+      )
+      .map((block) => `${block.file} — \`${block.selector}\` declares its own aspect-ratio`)
+    expect(elsewhere).toEqual([])
+
+    // …AND THE RADIUS TOO (review finding). The scan above covers `aspect-ratio` only, and the
+    // two halves of the UX-DR4 gate cannot close this one: half one EXEMPTS every CARD_SHAPED
+    // file, and half two only bans CHROME radii there — so a card-shaped file re-declaring
+    // `border-radius: var(--radius-card)` of its own passed everything, and that is the drift
+    // channel for the radius half of the footprint claim. Exactly once means BOTH declarations.
+    const radiusElsewhere = shippedBlocks
+      .filter((block) => block.file !== CARD_GEOMETRY_CSS && block.file !== TOKEN_FILE)
+      .filter((block) =>
+        declarationsIn(block.body).some(([, value]) =>
+          referencedTokensIn(value).some(isCardRadius),
+        ),
+      )
+      .map((block) => `${block.file} — \`${block.selector}\` re-declares the card radius`)
+    expect(radiusElsewhere).toEqual([])
+  })
+
+  it('never uppercases the truncated card ID, because the route would refuse it (c4-3 Q4)', () => {
+    // FOUND BY A PROBE THAT PASSED, which is the c2-6 lesson applied rather than quoted. Probe
+    // (j) of this story put the id back in `--type-micro` — correctly paired with BOTH its
+    // companions, so `findRoleWithoutCompanions` was satisfied — and the whole suite stayed
+    // GREEN at 1,021 passed. Every typography guard in this file asks whether a role travels
+    // with its companions; NONE of them asks whether the right role was chosen for the content,
+    // and here that difference is not cosmetic.
+    //
+    // THE PREMISE IS READ FROM THE BACKEND, not restated. `cards.py`'s `_CARD_ID_PATTERN` is
+    // lowercase-only by an explicit ruling ("Nothing is reachable by normalising an uppercase
+    // id"), so a `text-transform: uppercase` on the id puts a value on screen that the route
+    // would refuse if a reader typed it back — and the id is the ONLY identifying thing the
+    // unknown variant has. Reading the pattern rather than asserting the rule means that if the
+    // backend ever accepts uppercase, this guard's own premise fails loudly instead of enforcing
+    // a rule that has quietly stopped being true.
+    const cardsPy = readFileSync(
+      fileURLToPath(new URL('../../src/companion/app/routes/cards.py', import.meta.url)),
+      'utf8',
+    )
+    const pattern = /_CARD_ID_PATTERN\s*=\s*r?"([^"]+)"/.exec(cardsPy)
+    expect(pattern, 'no _CARD_ID_PATTERN in cards.py — has the route moved?').not.toBeNull()
+    expect(
+      pattern![1],
+      'the card-id route is no longer lowercase-only; re-decide c4-3 Q4',
+    ).toContain('0-9a-f')
+    expect(pattern![1]).not.toContain('A-F')
+
+    const idBlock = shippedBlocks.find(
+      (block) =>
+        block.file === 'src/components/CardPlaceholder/CardPlaceholder.css' &&
+        block.selector === '.card-placeholder-id',
+    )
+    expect(idBlock, 'CardPlaceholder.css declares no `.card-placeholder-id` block').toBeTruthy()
+    for (const [property, value] of declarationsIn(idBlock!.body)) {
+      expect(
+        property.toLowerCase() === 'text-transform' && /uppercase|capitalize/i.test(value),
+        `the truncated card ID is rendered \`${value}\`, but ${pattern![1]} is lowercase-only — ` +
+          `the reader would be shown an id the route refuses. Use a role with no textTransform ` +
+          `(--type-numeric is the ruled one, and it must carry font-variant-numeric with it).`,
+      ).toBe(false)
+    }
+
+    // DECLARED LIMIT: this names ONE selector. A later story that renders an id, a set code or
+    // any other retypeable value elsewhere is not covered — the general rule ("do not uppercase
+    // data the user may type back") is not statically decidable, because whether a string is
+    // retypeable lives in the product, not the stylesheet. Review's, and it is in ui/README.md.
+    //
+    // AND ONE MORE (review finding): the loop reads the declarations IN this block. A
+    // `text-transform: uppercase` arriving by INHERITANCE from an ancestor rule in the same
+    // file (`.card-placeholder { text-transform: uppercase }`) uppercases the id while this
+    // guard stays green — same shape as blind spot 3 of the radius gate above (cross-rule
+    // composition needs specificity and the cascade, which a source read does not have).
+    // Review's, at any edit that touches an ancestor selector of `.card-placeholder-id`.
+  })
+
+  it('spends --radius-card in the card-shaped files only (c4-3 AC 12, UX-DR4)', () => {
+    expect(findCardRadiusOutsideCardShape(shippedStylesheets)).toEqual([])
+  })
+
+  it('never gives a card-shaped file a CHROME radius (c4-3 AC 12, UX-DR4)', () => {
+    expect(findChromeRadiusInCardShapedFile(shippedStylesheets)).toEqual([])
+  })
+
+  it('spends no --radius-card from markup at all (c4-3 AC 12, the markup half)', () => {
+    expect(findCardRadiusInMarkup(shippedMarkupFiles)).toEqual([])
+  })
+
+  it('is enforcing a card-shape rule that has a real consumer (non-vacuity, c4-3 AC 12)', () => {
+    // THE ANCHOR THIS GUARD NEEDS MOST, for the reason the --mana-* one gives: both halves are
+    // FILTERS, so with no consumer anywhere they pass by finding nothing — which is precisely the
+    // state `--radius-card` was in for the four stories before c4-3 (zero consumers, measured),
+    // and which is indistinguishable from compliance.
+    for (const [file, reason] of CARD_SHAPED) {
+      expect(shippedStylesheets, `CARD_SHAPED names ${file}, which git does not track`).toContain(
+        file,
+      )
+      expect(reason.length, `${file}'s allowlist entry carries no reason`).toBeGreaterThan(40)
+    }
+    // And the token is genuinely SPENT — this is the assertion that would have failed on every
+    // commit before this one.
+    expect(referencedTokensIn(sourceOf(CARD_GEOMETRY_CSS)).filter(isCardRadius)).toHaveLength(1)
   })
 
   it('uses no CSS nesting, so the block reader above has no blind spot', () => {
@@ -1718,6 +1998,120 @@ describe('the guards themselves fire (the other half of the pair)', () => {
       '.skip-link { background: var(--surface-panel); border-color: var(--accent-dim); }',
     )
     expect(findAccentDimOnOverlay(legal)).toEqual([])
+  })
+
+  // ---- c4-3 AC 12: UX-DR4's two clauses ------------------------------------------------
+  //
+  // The fixtures are real files rather than inline strings, deliberately: both of these are
+  // failures a person will one day WRITE, and a fixture that reads like the stylesheet they
+  // would have written documents the mistake in a way a one-line string cannot.
+
+  const CHROME_FIXTURE = 'tests/fixtures/css/card-radius-on-chrome.css'
+  const CARD_FIXTURE = 'tests/fixtures/css/chrome-radius-on-card.css'
+  const readFixture = (file: string) =>
+    readFileSync(fixture(`css/${file.replace('tests/fixtures/css/', '')}`), 'utf8')
+
+  it('catches the card radius borrowed by chrome, in all three spellings (probe (a))', () => {
+    const findings = findCardRadiusOutsideCardShape([CHROME_FIXTURE], readFixture, new Map())
+
+    // ONE finding per FILE, not per spelling — the guard is file-scoped like its `--mana-*`
+    // sibling — so the assertion is that the message names the token and the file, and the
+    // non-vacuity below is what proves all three spellings were actually seen.
+    expect(findings).toHaveLength(1)
+    expect(findings[0]).toContain(CHROME_FIXTURE)
+    expect(findings[0]).toContain('--radius-card')
+    // The house rule: the message names the fix, including the way a legitimate card joins.
+    expect(findings[0]).toContain('UX-DR4')
+    expect(findings[0]).toContain('CARD_SHAPED')
+
+    // THE THREE SPELLINGS, PROVEN INDIVIDUALLY. The fallback form is the one that has escaped
+    // three previous guards in this repo, and a longhand is how a PARTIAL borrow arrives.
+    for (const spelling of [
+      '.panel { border-radius: var(--radius-card); }',
+      '.panel { border-radius: var(--radius-card, 10px); }',
+      '.panel { border-top-left-radius: var(--radius-card); }',
+    ]) {
+      expect(
+        findCardRadiusOutsideCardShape(['src/probe.css'], () => spelling, new Map()),
+      ).toHaveLength(1)
+    }
+  })
+
+  it('catches a CARD-shaped file rounding itself with chrome (probe (b))', () => {
+    const cardShaped = new Map([[CARD_FIXTURE, 'a card-shaped fixture, for the firing half.']])
+    const findings = findChromeRadiusInCardShapedFile([CARD_FIXTURE], readFixture, cardShaped)
+
+    expect(findings).toHaveLength(1)
+    // All three chrome radii named, which is what proves the NEGATED pattern reads the family
+    // rather than a list somebody typed: `--radius-md` is the value the composition reference
+    // actually ships for card tiles, and DESIGN.md corrects it by name.
+    for (const token of ['--radius-lg', '--radius-pill', '--radius-md']) {
+      expect(findings[0]).toContain(token)
+    }
+    expect(findings[0]).toContain('UX-DR4')
+
+    // AND A RADIUS THAT DOES NOT EXIST YET — the case no ban list can ever cover, and the whole
+    // reason the pattern is `--radius-` minus `--radius-card` rather than four names.
+    expect(
+      findChromeRadiusInCardShapedFile(
+        ['src/probe.css'],
+        () => '.card-shape { border-radius: var(--radius-xl); }',
+        new Map([['src/probe.css', 'a card-shaped probe.']]),
+      ),
+    ).toHaveLength(1)
+  })
+
+  it('leaves the real card-shaped files alone — the SILENT half of both clauses', () => {
+    // A guard proven only against violations is half a guard. Half one EXCLUDES allowlisted
+    // files by construction, so feeding them back in with the default reader would assert
+    // nothing at all — the first draft of this test did exactly that, and the expect was
+    // decoration (review finding). Assert the exclusion ITSELF instead: a reader that throws
+    // proves half one never even opens an allowlisted file, which is the real claim.
+    expect(
+      findCardRadiusOutsideCardShape([...CARD_SHAPED.keys()], () => {
+        throw new Error('half one read an allowlisted file — its exclusion filter has changed')
+      }),
+    ).toEqual([])
+    // Half two genuinely scans the listed files: the geometry file spends --radius-card and no
+    // chrome radius, and the placeholder spends neither because it inherits the shape.
+    expect(findChromeRadiusInCardShapedFile([...CARD_SHAPED.keys()])).toEqual([])
+
+    // …and the converse silence, which is the one a too-blunt rule would break: every OTHER
+    // stylesheet in the tree spends chrome radii freely, and must go on doing so.
+    const chromeSpenders = shippedStylesheets
+      .filter((file) => file !== TOKEN_FILE && !CARD_SHAPED.has(file))
+      .filter((file) => referencedTokensIn(sourceOf(file)).some(isChromeRadius))
+    expect(chromeSpenders.length).toBeGreaterThan(0)
+    expect(findCardRadiusOutsideCardShape(chromeSpenders)).toEqual([])
+  })
+
+  it('reads code, not the prose about the code (both clauses)', () => {
+    // CardPlaceholder.css's header DISCUSSES `border-radius` and names the rule; the geometry
+    // file's header discusses the chrome radii by name. A guard that read documentation as code
+    // would fire on precisely the files that got it right — and the repair someone would reach
+    // for is deleting the explanation. `referencedTokensIn` strips comments first; this is the
+    // proof, against the real files.
+    const placeholder = sourceOf('src/components/CardPlaceholder/CardPlaceholder.css')
+    expect(placeholder).toContain('--radius-md')
+    expect(referencedTokensIn(placeholder).filter(isChromeRadius)).toEqual([])
+    expect(referencedTokensIn(placeholder).filter(isCardRadius)).toEqual([])
+  })
+
+  it('catches --radius-card reached from MARKUP, where no stylesheet guard looks', () => {
+    // The half the `--mana-*` rule had to learn in review. The guard takes an injectable reader
+    // like its two stylesheet siblings (review finding — the first draft had no seam, so its
+    // file-scan wiring was never proven firing), and the firing probe drives the WHOLE function:
+    expect(shippedMarkupFiles.length).toBeGreaterThan(10)
+    expect(
+      findCardRadiusInMarkup(['src/probe.tsx'], () => '<rect rx="var(--radius-card)" />'),
+    ).toHaveLength(1)
+    expect(referencedTokensIn('<rect rx="var(--radius-card)" />').filter(isCardRadius)).toEqual([
+      '--radius-card',
+    ])
+    // …and the silent half: prose about the token in a .tsx header is not a spend.
+    expect(
+      referencedTokensIn('/* the shape is var(--radius-card) elsewhere */').filter(isCardRadius),
+    ).toEqual([])
   })
 })
 

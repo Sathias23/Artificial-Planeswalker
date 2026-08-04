@@ -1,0 +1,133 @@
+/* CardPlaceholder — the named and unknown stand-ins, and the silent loading well
+   (story c4-3, FR-19, UX-DR4, UX-DR22, UX-DR36, UX-DR41).
+
+   WHAT THIS FILE DOES NOT OWN: the card shape. `aspect-ratio` and `border-radius` are written
+   exactly once, in src/styles/card-geometry.css, and every element below carries `card-shape`
+   alongside its own class. A `border-radius` in this file would be the UX-DR4 violation that
+   tests/token-usage.test.ts's CARD_SHAPED allowlist exists to catch — this stylesheet is IN that
+   list, so `border-radius: var(--radius-md)` here (the value the composition reference actually
+   ships for card tiles, and which DESIGN.md corrects by name) is a red test rather than a review
+   note. The same goes for --radius-sm, --radius-lg and --radius-pill: the guard reads the FAMILY
+   minus --radius-card, so a --radius-xl invented next year is covered without an edit.
+
+   IT ALSO DOES NOT OWN: the grid, the tile, any `<img>`, the quantity badge, the flip control,
+   hover, focus or MOTION. UX-DR36's "images fade in over the pulse duration" is about an `<img>`
+   this story does not draw, so a `transition` here would be pre-empting c4-4.
+
+   ==== THE BORDER IS INSIDE THE FOOTPRINT, WHICH IS WHY UX-DR36 HOLDS ===================
+   `src/index.css` sets `box-sizing: border-box` universally, so the 1px hairline below is drawn
+   INSIDE the 63:88 box rather than added to it. A placeholder and a bordered-less tile of the
+   same width therefore occupy the same rectangle to the pixel, which is what "layout never
+   reflows when art arrives" means mechanically. Under the CSS default (`content-box`) it would
+   not, and the reflow would be 2px — small enough to look like a rendering artefact and to
+   survive review. */
+
+.card-placeholder {
+  /* DESIGN.md's `components.card-placeholder` block, verbatim: overlay background, the card
+     radius (which arrives from `card-shape`, not from here), and a border DESIGN.md writes as
+     `1px solid {colors.border-strong}`. The 1px is a GEOMETRY LITERAL with no token family to
+     point at — there is no `--border-width-*` — so it is cited here rather than tokenised, which
+     is the decide-once ruling c2-7 set and `shell.test.ts` enforces on every component
+     stylesheet. It is `border-strong`, not `border-hairline`: a placeholder has no art to hold
+     its own edge, so the box IS the card. */
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+
+  /* Pips above, name centred, type line below — DOM order IS visual order, so a screen reader
+     and a sighted reader get the same sequence with no `order` shuffling to keep in step. */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  text-align: center;
+
+  /* THE SAFETY NET FOR REAL DATA, not a tidiness default. The corpus holds a 141-character name
+     (`Our Market Research Shows…Elemental`) and a 31-character single WORD
+     (`Asmoranomardicadaistinaculdacar`, which is half of the longest name that permanently needs
+     this variant). At the grid's 176px floor a long word has nowhere to break, so without
+     `overflow-wrap` it would paint straight through the card edge; `hidden` is what stops a name
+     longer than the box from spilling over the tile beneath it. Clipping deliberately lives HERE
+     rather than in `card-shape`: whether content clips is a statement about content, and a
+     shared class that silently clipped would surprise c4-4's `<img>`. */
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* THE NAME SLOT, shared by both text variants — the card's real name, or the two authored words
+   when there is no card to name. `--type-body-strong` has NO tracking sibling and NO uppercase in
+   DESIGN.md, so it travels alone, correctly: `findRoleWithoutCompanions` derives its requirements
+   from the token names and the artefact's own `textTransform:` keys, and this role has neither. */
+.card-placeholder-name {
+  font: var(--type-body-strong);
+}
+
+/* THE TYPE LINE. `--type-micro` at `--text-secondary`, per DESIGN.md:389.
+
+   BOTH COMPANIONS, IN THIS BLOCK. The `font` shorthand cannot carry letter-spacing and cannot
+   carry text-transform, so `font: var(--type-micro)` written alone renders 10px lowercase text at
+   the browser's default tracking — legible, plausible, and wrong. `findRoleWithoutCompanions`
+   fails a split pair by name, and it derives the requirement rather than listing it: the tracking
+   half from the existence of `--tracking-micro`, the uppercase half from DESIGN.md's own
+   `micro.textTransform: uppercase`.
+
+   UPPERCASE IS CORRECT HERE and is a real decision, not an inherited default: a type line is a
+   short chrome label ("Card // Card", "Legendary Creature — Human Noble Warrior"), which is what
+   the micro role is for. Contrast the ID below, where the same uppercasing would be a defect. */
+.card-placeholder-type {
+  font: var(--type-micro);
+  letter-spacing: var(--tracking-micro);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* THE TRUNCATED ID — and the type role is RULED, not defaulted (c4-3 Q4, AC 20).
+
+   NOT `--type-micro`, and the reason is in the backend. `cards.py:67` is
+   `_CARD_ID_PATTERN = r"^[0-9a-f]{8}-…$"` — LOWERCASE-ONLY BY AN EXPLICIT RULING ("Nothing is
+   reachable by normalising an uppercase id"). The micro role is uppercase by contract, so a
+   truncated uuid rendered in it would put on screen an id THE ROUTE WOULD REFUSE IF IT WERE TYPED
+   BACK — and this is the one identifying thing the unknown variant has. DESIGN.md says the same
+   in its own words: "the ID is the only identifying information — load-bearing". That is the c2-10
+   "the legal sentence renders all-caps" finding with a sharper edge, because the value is
+   actionable data rather than prose.
+
+   `--type-numeric` is the honest role: 13px, NO tracking sibling, NO uppercase, and tabular
+   figures — which is right for a hex string a reader compares against a log line character by
+   character. It is also the only non-uppercase role that is SMALLER than the 14px name it sits
+   under, so the id stays subordinate to the label. (It never shares a card with the 10px type
+   line: the type line belongs to the named variant, the id to the unknown one.)
+
+   BOTH DECLARATIONS, TOGETHER (UX-DR3, AC 21). The `font` shorthand resets font-variant-numeric
+   to `normal`, so `font: var(--type-numeric)` alone renders exactly the proportional digits it
+   was written to fix. `findUnpairedNumericRole` fails that split, in this block, by name.
+
+   `--text-secondary`, NOT `--text-tertiary` (UX-DR41): the ramp is closed at four because
+   tertiary on overlay is 4.8:1 with zero headroom, and DESIGN.md rules this value load-bearing —
+   "never a de-emphasized tier". */
+.card-placeholder-id {
+  font: var(--type-numeric);
+  font-variant-numeric: var(--type-numeric-features);
+  color: var(--text-secondary);
+}
+
+/* THE LOADING WELL — the same shape, the bottom of the ramp, and nothing else.
+
+   NO TEXT, NO SPINNER, NO BORDER (DESIGN.md:389 — "Image-loading wells use the same shape on
+   {colors.surface-well} with no text"; EXPERIENCE.md:72 — "No copy. Wells stay silent"). The
+   component gives this variant no prop to say anything with, so the silence is structural.
+
+   ==== A DELIBERATE HOLE IN THE SURFACE RAMP, DECLARED SO IT IS NOT "FIXED" ============
+   `surfaces.ts::stepsExactlyOne` is DIRECTIONAL: nesting moves UP the ramp, and a nested pane
+   that gets darker than its parent "reads as a hole rather than a pane". A well IS a hole — that
+   is the whole metaphor, and it is what DESIGN.md asks for (`--surface-well` is also the curve
+   track, the colour-bar track and the stat-chip inset). So `stepsExactlyOne('surface-panel',
+   'surface-well')` is `false` and WILL STAY false; it is not a UX-DR1 violation to be repaired
+   by promoting this to `--surface-overlay`, which would make an empty slot the brightest thing
+   on the panel. The adjacency rule is review's half by that module's own declaration, so this
+   paragraph is here for the reviewer who correctly notices the descent. */
+.card-placeholder-well {
+  background: var(--surface-well);
+}

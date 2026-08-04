@@ -1406,6 +1406,18 @@ the gate-output rule rather than left as "we meant to".
   static proof available, and both fail *legibly-but-wrongly* rather than loudly. Check the
   `{1000000}` and `{W/U}` cases first.)
 
+  > **RESOLVED at c4-3 (2026-08-04). All five claims hold; nothing needed a nudge.** Paid on a
+  > throwaway harness — the BUILT stylesheet served to Edge against hand-written markup, the same
+  > instrument c4-2 used for `Badge` — and screenshotted at 6x. **The pip is a circle.** **The
+  > hybrid gradient's hard stop reads as a clean 45 degree split with no blur.** **The 13px glyph
+  > sits centred and legible in the 16.25px circle** at the 0.8 ratio this entry flagged as most
+  > likely to want a nudge — `0 2 X T P S` all checked, none crowded. **The wide case GROWS into a
+  > pill rather than clipping** (`{1000000}`, `{HW}`, `{100}`). **Row wrapping works**: fifteen
+  > B.F.M. pips wrap to a second row inside a **176px** card — narrower than the 452px column this
+  > entry worried about, so the harder case was the one measured. The two named-first cases
+  > (`{1000000}`, `{W/U}`) were checked first, as instructed. **c4-7 and c4-9 inherit nothing from
+  > this entry**; what remains for them is composition, which a harness cannot show.
+
 - **The `--mana-*` data-ink rule's "unstacked curve bar" half is REVIEW'S, not the gate's.**
   UX-DR7 bans a WUBRG token on "an unstacked curve bar", and whether a given bar is genuinely
   stacked is a property of the data bound to it and the elements composed at runtime — both in
@@ -1422,6 +1434,16 @@ the gate-output rule rather than left as "we meant to".
   decided against something real. (Severity: Low — 338 of 32,318 costs, and the literal reading
   is honest rather than wrong.)
 
+  > **c4-3 disposition (2026-08-04): CONFIRMED LIVE, RE-HOMED to c4-7 unchanged.** A split card
+  > does now render here — `Heaven // Earth` is a fixture in `CardPlaceholder.test.tsx`, and its
+  > cost `{X}{G} // {X}{R}{R}` renders five pips and the literal ` // ` text run. So the entry's
+  > condition ("where a split card first renders") is met and the reading was heard against
+  > something real. **The phrasing is unchanged, deliberately**: the placeholder is a fallback
+  > slot, not a reading surface, and c4-3 also sharpened the population — **all 79** cards that
+  > permanently need the named placeholder are split-named, but **all 79 have a BLANK mana cost**,
+  > so `describeManaCost` is never called for them and the separator is never spoken on this
+  > surface at all. The decision belongs where a cost is read aloud in prose: **c4-7's deck rows**.
+
 - **For sighted colour-vision-deficient users, a pip's colour IS its sole carrier** (added at
   c2-8's code review). A `{W}` pip and a `{G}` pip differ in nothing but fill — no letter, no
   pattern — so the `role="img"` accessible name serves AT users while a sighted CVD user cannot
@@ -1433,6 +1455,20 @@ the gate-output rule rather than left as "we meant to".
   and plain text is not a lookalike) or a DESIGN.md amendment — Brad's call, made against a real
   screen. (Severity: **Medium** — an accessibility gap for a real user class, but one the design
   contract currently mandates.)
+
+  > **c4-3 disposition (2026-08-04): MEASURED, and the levers are NOT needed — pending Brad's
+  > acceptance against a real screen, which this entry reserves to him.** The six shipped
+  > `--mana-*` colours were pushed through the Machado severity-1.0 dichromacy matrices in linear
+  > RGB and compared pairwise as CIE Lab dE. Worst pair per vision type: **normal B/C 24.5**,
+  > **protanopia U/B 10.0**, **deuteranopia R/G 14.1**, **tritanopia B/C 10.9**. Every pair stays
+  > above dE 10 under every simulated deficiency — roughly 4x the just-noticeable difference for
+  > large flat patches — so the plain circles do NOT read as indistinguishable and neither lever
+  > (a glyph-slot letter, a DESIGN.md amendment) is called for. **Two limits, stated rather than
+  > glossed:** a simulation is not a person, and this measures *distinguishability* (telling two
+  > pips apart) rather than *identifiability* (knowing WHICH colour a pip is) — the latter stays a
+  > real gap for a sighted CVD reader that only a glyph would close, and it is the gap the
+  > `role="img"` name closes for AT users. **Stays OPEN at Medium until Brad accepts the numbers;
+  > it is no longer waiting on an eye-check that has not happened.**
 
 - **`{Y}`, `{Z}`, `{S}`, `{L}`, `{D}` and `{HW}` are deliberately NOT in the parser's symbol
   table.** Each is real in the shipped database and each renders correctly today — as a
@@ -2006,6 +2042,18 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   variant and the no-image variant are different populations reached by different routes (a 404
   token versus a 200 with null images). (Severity: Low.)
 
+  > **RESOLVED at c4-3 (2026-08-04) — the 79 re-verified, and their SHAPE measured for the first
+  > time.** Re-counted read-only against the live DB: 38,261 rows, **79** with no image data
+  > anywhere. What this entry did not know is what those 79 LOOK like, and it changes the layout
+  > the placeholder had to survive: **all 79 have `type_line` exactly `'Card // Card'`**, **all 79
+  > have a BLANK `mana_cost`**, and **all 79 have a doubled `X // X` name** (longest 66 chars,
+  > `Asmoranomardicadaistinaculdacar // Asmoranomardicadaistinaculdacar`). So UX-DR22's three-part
+  > composition degrades, MEASURED, to a name and nothing else for every card that permanently
+  > needs this variant — which is not a reason to change the design but is why AC 7 is about being
+  > correct when two of three parts are empty. Two of the 79 are now fixtures in
+  > `CardPlaceholder.test.tsx`. **And 0 of 2,027 live deck rows are such a printing**, so in a deck
+  > view the named placeholder is only ever reached transiently, through `image_fetch_failed`.
+
 - **The `states.ts` classification of panel-less tokens is gated by the compiler but read by
   nothing.** c3-2 added `PLACEHOLDER_FOR_REASON`, `NO_UI_RESPONSE` and three type-level asserts so
   the third meaning of `null` is machine-readable rather than a comment (Q3, satisfying retro R1).
@@ -2024,6 +2072,21 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   whole-screen poll means a client bug, so it renders `internal-error` rather than consulting which
   KIND of `null` it was. **If c4-3 does not consume the classification, delete it.**
   (Severity: Low.)
+
+  > **✅ CLOSED at c4-3 (2026-08-04): the classification is CONSUMED, not deleted.** This entry
+  > made the delete conditional and c4-3 is the condition, so the answer is stated plainly.
+  > `src/components/CardPlaceholder/CardPlaceholder.tsx` imports `PlaceholderKey` (type-only) and
+  > builds its variant union FROM it — `PlaceholderKey | 'loading'` — and the coupling is enforced
+  > in BOTH directions by two type-level asserts in the component: `EveryPlaceholderKeyHasProps`
+  > fails if a third key is added to `states.ts` with no props member, and `NoVariantIsUnknownToStates`
+  > fails if the union is widened to a bare `string` (the evasion the first assert alone would pass,
+  > because every key still has a member). Both were PROBED: probes (d) and (g) of c4-3 are `tsc`
+  > failures with `npm test` staying green — the c4-1 asymmetry again, and why `npx tsc -b --force`
+  > is a gate of its own. `PLACEHOLDER_FOR_REASON` also gets a RUNTIME consumer, in
+  > `CardPlaceholder.test.tsx`, which renders every variant its values name rather than trusting
+  > the type. **Nothing in `states.ts` was edited to make consumption work**, which was the design
+  > smell this entry was watching for. `NO_UI_RESPONSE` remains consumed by nothing at runtime and
+  > stays where c3-9 left it.
 
 - **`ui/README.md`'s blind-spot map now carries the "does this prose address a TypeScript reader"
   residue, which is a REVIEW obligation with no gate.** Added at c3-2 alongside the family-keyed
@@ -2074,6 +2137,23 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   shape — so the realistic candidate is **c5-1**'s event envelope or whichever story first wants a
   runtime value from `src/` inside a node-project test. (Severity: unchanged, Medium.)
 
+  > **✅ TRIGGERED AND CLOSED at c4-3 (2026-08-04) — by the story c4-1 said probably would not.**
+  > `tests/unknown-card-copy.test.ts` now imports a real `src/` module: `UNKNOWN_CARD_LABEL` from
+  > `src/components/CardPlaceholder/copy.ts`, so the shipped label can be asserted BYTE-FOR-BYTE
+  > against `EXPERIENCE.md` — the assertion that file has promised since c3-2 would land "the day
+  > c4-3 lands". **It does not fire, and the rule is now stated precisely rather than
+  > approximately.** The constraint was never "a `ui/tests` file may not import an app module"; it
+  > is **"may not import an app module that has RELATIVE imports of its own"**, because those are
+  > what `nodenext` demands extensions for. `copy.ts` has `imports: []` — pinned exhaustively by
+  > `shell.test.ts`'s `PRIMITIVES`, so an import added there is a red test before it is a `tsc`
+  > cascade — which is the same property `copy.test.ts` relies on for `StatePanel/copy.ts`, and it
+  > is now a property two guards protect rather than a coincidence. **`npx tsc -b --force` was run
+  > and is green**, so this is a measured "did not fire". The MEDIUM half of the entry stands
+  > unchanged and un-fixed: the symptom still points at the wrong file, and CI still runs `tsc -b`
+  > without `--force`. **Home for the fix shapes: unchanged.**
+
+
+
 ## Deferred from: code review of c3-2 (2026-07-31)
 
 - **A malformed card id reaching the UI from DATA renders nothing at all — no placeholder, no
@@ -2102,8 +2182,14 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   `invalid_request` to `PLACEHOLDER_FOR_REASON` would break `ReasonClassificationsAreDisjoint`.
   The second fix shape landed too: `cardPath()` runs the id through `encodeURIComponent`, so an id
   carrying `/`, `?` or `#` can no longer change WHICH route is addressed — it stays one path
-  segment and the route's uuid pattern refuses it. Both halves are test-pinned. **c4-3 renders the
-  placeholder**; the token and the destination are waiting for it.
+  segment and the route's uuid pattern refuses it. Both halves are test-pinned. ~~**c4-3 renders the
+  placeholder**; the token and the destination are waiting for it.~~
+  **✅ THE RENDER ARRIVED at c4-3 (2026-08-04).** `CardPlaceholder variant="unknown-card"` draws the
+  label and the truncated id, and `CardPlaceholder.test.tsx` drives the whole path for real —
+  `hydrateCard` with an injected reader returning `card_not_found`, then the rendered placeholder
+  read out of the DOM. The consumer branches on `entry.placeholder`, never on `entry.reason`, so
+  the c4-1 ruling is what selects the variant rather than a second map in a component. **This
+  entry is fully closed: token, destination and render.**
 
 - **`Card` is now a banned type name across all of `ui/`, and there is no sanctioned alias to
   import instead.** `wire-contract.test.ts` derives its ban from `components.schemas`, so `Card`
@@ -3296,6 +3382,19 @@ either has an owner story or is declared inside the file it constrains.
   (first consumer) — its component tests exercise the hook for real; if c4-3 introduces a testing
   library for its own needs, add a direct `useCardEntry` subscription test then.
 
+  > **✅ RESOLVED at c4-3 (2026-08-04) — and the stated reason was FALSE, as c4-2 already recorded.**
+  > `@testing-library/react@^16.3.2` has shipped all along; no dependency was added and
+  > `package-contract.test.ts` is untouched. The hook is now exercised through its real contract in
+  > `CardPlaceholder.test.tsx`: a test component subscribes with `useCardEntry`, and four
+  > assertions drive it — an id never seen renders the WELL rather than an unknown card (`undefined`
+  > means "never seen" and only that); `seedCardSummaries` makes it **re-render** with the card's
+  > name, which is the whole contract of a selector that starts nothing; a `card_not_found` refusal
+  > through `hydrateCard` with an injected reader turns it into the unknown placeholder; and a
+  > `database_unavailable` refusal LEAVES THE SUMMARY STANDING, because `placeholder` is `null`
+  > there. **The component itself does not subscribe (c4-3 Q7)** — a listed primitive may hold no
+  > hook of any family, so the subscription lives at the call site and the test component is the
+  > shape c4-4's tile will take.
+
 ## Deferred from: c4-2-deck-state-bootstrap-and-the-type-grouped-decklist (2026-08-02)
 
 ### The ten inherited deferrals, each with a disposition (AC 28, C2 retro ruling R2)
@@ -3443,3 +3542,115 @@ either has an owner story or is declared inside the file it constrains.
   is a `src/logic` change with MCP blast radius and deserves its own decision. (Severity:
   **Medium** — two surfaces of one app disagreeing about a number is the exact failure the epic's
   "the grid and the list panel cannot disagree" clause is about, one layer out.)
+
+## Deferred from: c4-3-card-placeholders-named-unknown-and-loading-wells (2026-08-04)
+
+**Inherited deferrals, dispositions in one place** (C2 retro ruling R2). Twelve entries were
+homed on or shared with this story; most have a disposition written beside their own entry above
+— (4), (8) and (9) live only in this index, which is their disposition of record (corrected at
+code review; the sentence previously claimed all twelve were annotated in place) — and this is
+the index: (1) `ManaPip`/`ManaCost` appearance — **RESOLVED**, all five claims hold;
+(2) the CVD question — **MEASURED**, levers not needed, open at Medium pending Brad's acceptance;
+(3) the ` // ` separator spoken literally — **CONFIRMED LIVE, RE-HOMED to c4-7** with a sharpened
+population; (4) whether copy is second-person and blameless — **HONOURED, does not close** (see
+below); (5) the 79 no-image cards — **RESOLVED**, and their shape measured for the first time;
+(6) the `states.ts` classification — **CONSUMED, not deleted**, which is the answer that entry
+made conditional on this story; (7) a malformed card id renders nothing — **the render arrived**,
+entry fully closed; (8) `Card` banned with no alias — **not needed** (see below); (9) `card_faces`
+untyped — **no face consumed** (see below); (10) `useCardEntry` untested — **RESOLVED**;
+(11) the `ui/tests` import rule — **TRIGGERED AND CLOSED**, and the rule is now stated precisely;
+(12) the C3 retro's manual-testing items — this story adds its eye-check outcomes and nothing
+else to that list.
+
+- **Disposition (8), `Card` is banned with no sanctioned alias: NOT NEEDED, and the reason is
+  structural rather than lucky.** `CardPlaceholder` takes four plain string props and imports no
+  wire type at all — not even from `src/api/schema.ts`'s nine aliases. That is the posture
+  `DeckBadges` set at c4-2 and it is the right one for a presentation primitive: a `CardSummary`
+  prop would drag the wire alias into the component tree, which `posture.test.ts`'s cross-tree
+  value-import ban and `wire-contract.test.ts`'s name ban both exist to prevent. **The caller does
+  the reading and the component does the drawing.** No alias was added; the count stays at nine.
+
+- **Disposition (9), `card_faces` is untyped on the wire: THIS STORY CONSUMES NO FACE, deliberately.**
+  It renders `CardSummary`'s single `name` and single `type_line`, unsplit (Q5), and never touches
+  `card_faces`. Face-specific rendering is **c4-6's**, where `CardFace` already ships with
+  `extra="allow"`. The entry's home is unchanged.
+
+- **Disposition (4), whether copy is second-person and blameless: HONOURED, and it does not close.**
+  This story ships exactly one authored string, `"Unknown card"`, and it was read: sentence case,
+  no exclamation mark, no blame, no apology, and it names a state rather than accusing the reader
+  or the app. It is byte-for-byte the artefact's own label, so the judgement that matters was made
+  in `EXPERIENCE.md`. The entry stays open permanently, as it says it does — c4-12 and c6-6 owe
+  the same reading.
+
+**New residues declared by this story.**
+
+- **Whether an element carrying `card-shape` is actually a CARD is not decidable from a stylesheet
+  (UX-DR4).** c4-3 made both halves of the card-radius rule a gate — nothing outside `CARD_SHAPED`
+  may spend `--radius-card`, and no `CARD_SHAPED` file may spend a chrome radius — and both read
+  CSS. The class list that puts the shape on an element lives in TSX and is chosen at runtime, so
+  `.card-shape` on a `<nav>` reads as a perfectly clean stylesheet, and a card-shaped element given
+  a chrome radius by a rule in a NON-card-shaped file (`.deck-row .card-shape { … }`) is in neither
+  half. The guard says so in its own header and `ui/README.md` says so where c4-4's author will be
+  reading. **Home: review, at every card-shaped story; c4-4 is the first where the cross-file case
+  becomes plausible.** (Severity: Low — the gate covers the two realistic mistakes; this is the
+  third.)
+
+- **Nothing checks that the RIGHT type role was chosen for the content — MEASURED by a probe that
+  PASSED.** Probe (j) of this story put the truncated card ID back into the uppercase
+  `--type-micro` role, correctly paired with BOTH its companions so `findRoleWithoutCompanions` was
+  satisfied, and **the whole suite stayed green at 1,021 passed**. Every typography guard in this
+  repo asks whether a role travels with its companions; none asks whether the role suits the value.
+  c4-3 closed the one instance — `.card-placeholder-id` is now checked against `cards.py`'s
+  `_CARD_ID_PATTERN`, **read from the file**, so if the route ever accepts uppercase the guard's
+  own premise fails loudly — but the general rule (*do not uppercase data the reader may type
+  back*) is not statically decidable, because whether a string is retypeable lives in the product.
+  **Home: review, at every story that renders an identifier, a set code or a command.**
+  (Severity: Low individually, and the class is worth knowing about: it fails *legibly but
+  wrongly*, which is the failure nobody looks at.)
+
+- **Running `tests/token-usage.test.ts` ALONE crashes the runner, which can make a probe lie.**
+  Measured at c4-3: `npx vitest run tests/token-usage.test.ts` fails with `TypeError: Cannot read
+  properties of undefined (reading 'config')` — the file imports two `src/` modules across the
+  project boundary, so resolving it standalone picks the wrong project. `npm test` runs it
+  correctly and the tree is fine. **The reason this is ledgered rather than shrugged at**: the
+  first run of this story's probe harness matched on exit code and reported **six guards as firing
+  when the runner had merely crashed**, which is precisely the "a guard that fails for the wrong
+  reason" defect this epic's reviews keep finding — in the instrument this time rather than in the
+  code. All six were re-run against the full suite. **Home: anyone writing a probe against that
+  file; the rule is "prove a guard fires with `npm test`, never a single-file run".**
+  (Severity: Low, but it silently inverts a probe's result.)
+
+- **The named placeholder's `overflow-wrap: anywhere` breaks long names mid-word, and it is a
+  trade rather than a defect.** Measured on screen at the 176px grid floor: the 66-character
+  doubled name of the largest permanent-population card renders as
+  `Asmoranomardicadais / tinaculdacar // Asmoranomardicadais / tinaculdacar` across four lines. The
+  alternative is a name that paints straight through the card edge, because a 31-character single
+  word has nowhere legal to break at 176px. Accepted here; **c4-4 owns the grid and could revisit
+  it** with a real column width in hand (a wider minimum column, or a line clamp with the full name
+  still exposed to assistive tech). (Severity: Low — it is ugly for one card in 38,261, and it is
+  correct for the 141-character name that motivated the rule.) **And the VERTICAL edge of the same
+  trade, added at code review:** `.card-placeholder` pairs `overflow: hidden` with the fixed 63:88
+  box and `justify-content: center`, so a name+pips+type stack TALLER than the box clips at both
+  edges with no clamp and no ellipsis. Not reached by anything measured (the 141-char corpus name
+  wraps inside the box at 176px, eye-checked), but nothing declares the limit either — same home,
+  **c4-4**, same lever (a real column width, or a line clamp).
+
+- **A whole view of loading wells is total silence to assistive technology — and nobody owns that
+  question yet.** Added at c4-3's code review. Each well is `aria-hidden="true"` and
+  EXPERIENCE.md:72 mandates exactly that PER TILE ("No copy. Wells stay silent") — but during
+  first paint a grid is *nothing but* wells, so an AT user gets zero indication that anything is
+  loading anywhere. Whether the VIEW (not the tile) should carry a single polite live-region note
+  during load is a composition question this story structurally cannot answer — it mounts nothing.
+  **Home: c4-4**, which owns the grid and the first composition an AT user will actually meet.
+  (Severity: Low today — nothing mounts a well until c4-4 — but it should be decided there rather
+  than inherited by accident.)
+
+## Deferred from: code review of c4-3-card-placeholders-named-unknown-and-loading-wells (2026-08-04)
+
+- **Running `ui/tests/token-usage.test.ts` standalone crashes the vitest runner** — the file
+  imports two `src/` modules across the project boundary, and resolving it alone picks the wrong
+  vitest project (`TypeError: Cannot read properties of undefined (reading 'config')`). The crash
+  exits non-zero, which once made a probe harness report six guards as firing when nothing had
+  asserted anything. Pre-existing project-resolution behaviour, not introduced by c4-3; the
+  standing mitigation is the rule already ledgered above — a guard's firing is proven with the
+  full `npm test`, never a standalone file run.
