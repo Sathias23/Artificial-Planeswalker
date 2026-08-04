@@ -232,6 +232,17 @@ describe('a component may take a TYPE from anywhere and a VALUE from its own tre
     ['zustand itself', "import { create } from 'zustand'"],
     ['a fetch helper', "import { readDecks } from '../../api/client'"],
     ['the card cache', "import { hydrateCard } from '../../state/cards'"],
+    // c4-4's Q1 ruling, and the reason the containers live OUTSIDE this tree rather than in a
+    // second list inside it. This rule's filter is `!target.startsWith('src/components/')`, so
+    // a stateful container that lived under `src/components/` would have had to be EXEMPTED —
+    // and the exemption would have made this exact line invisible: a presentation-only
+    // primitive rendering a component that holds state, takes handlers and holds a ref, with
+    // every guard in the repo still green. Because `src/containers/` is a different root, the
+    // rule that was already here catches it, with no new guard and no edit.
+    [
+      'a container, which is the c4-4 case',
+      "import { CardTile } from '../../containers/CardTile/CardTile'",
+    ],
   ])('would catch %s planted in the tree', (_label, line) => {
     // The FIRING half, fed inline the way every guard suite in this repo feeds its reader —
     // planting the breach in a real file and reverting it is what Task 9's probes do, and what

@@ -2,15 +2,16 @@ import { AppShell } from './components/AppShell/AppShell'
 import { DeckBadges } from './components/DeckBadges/DeckBadges'
 import { Footer } from './components/Footer/Footer'
 import { StatePanel } from './components/StatePanel/StatePanel'
+import { CardGrid } from './containers/CardGrid/CardGrid'
 import { surfaceOf, useDeckState } from './state/deck'
 import { useSystemState } from './state/systemState'
 
 /**
  * The application root.
  *
- * It composes the shell, one state panel and the attribution, and nothing else. Every other
- * region the shell holds open — the card grid, the two analysis panels, the card detail, the
- * deck list, the format check, the badges, the agent-view nav and the agent view itself —
+ * It composes the shell, the card grid, one state panel, the header badges and the attribution,
+ * and nothing else. Every other region the shell holds open — the two analysis panels, the card
+ * detail, the deck list, the format check, the agent-view nav and the agent view itself —
  * arrives as a prop from a later story, so this file's job is to stay as close to one line as it
  * honestly can.
  *
@@ -58,11 +59,28 @@ import { useSystemState } from './state/systemState'
  * the same measured reason: a second mounted caller creates a second poller / a second boot and
  * silently doubles the request rate.
  *
- * WHAT A LOADED DECK COSTS, DECLARED RATHER THAN DISCOVERED: with the panel displaced and no
- * grid until **c4-4**, the `left` slot falls back to `AppShell`'s own placeholder — *"The
- * card-art grid lands here — c4-4 …"*. That is the honest displacement, the third application of
- * the pattern c2-9 and c2-10 both accepted, and it is what makes the next story's slot findable
- * by searching for its own id.
+ * ================= AND NOW THE DECK IS ON THE GLASS (c4-4, FR-19) ======================
+ *
+ * The `left` slot finally holds a `CardGrid`. Until this story a loaded deck displaced the system
+ * panel and put nothing in its place, so the slot fell back to `AppShell`'s own placeholder —
+ * *"The card-art grid lands here — c4-4 …"* — which was the honest displacement rather than a
+ * regression, and what made this story's slot findable by searching for its own id. That line is
+ * now displaced in turn: **the fourth application of the c2-9 ruling, and the same one.**
+ * `AppShell.tsx` is NOT edited, its placeholder still fires whenever `left` is empty, and
+ * `AppShell.test.tsx` still asserts it against the component's own props. What changed is only
+ * which of the two the running app shows — and `App.test.tsx`'s displacement assertion changed
+ * with it, which is the point of that assertion existing.
+ *
+ * `CardGrid` is the first component in this codebase that is NOT a presentation-only primitive.
+ * It lives in `src/containers/`, the category c4-4 ruled into existence (Q1), because a tile that
+ * takes `<img onLoad>` and holds a `ref` is banned outright from `src/components/` by four
+ * separate guards. `ui/README.md` carries the argument; ~15 later component stories inherit it.
+ *
+ * Nothing about the precedence moved. `surfaceOf` still decides, this file still renders the
+ * answer and computes none of it, and the grid is handed `surface.boards` — the derivation
+ * `deckGroups.ts` performed once at write time *"so the grid and the list panel cannot
+ * disagree"*. **c4-7**'s deck list reads the same value, including the sideboard this grid
+ * deliberately does not draw.
  *
  * ================= THE `h1` STOPS SAYING WHAT THE KICKER SAYS (C3 retro F2) ============
  *
@@ -120,7 +138,9 @@ export default function App() {
         )
       }
       left={
-        surface.kind === 'deck' ? undefined : surface.panel === 'no-active-deck' ? (
+        surface.kind === 'deck' ? (
+          <CardGrid boards={surface.boards} />
+        ) : surface.panel === 'no-active-deck' ? (
           <StatePanel state="no-active-deck" decks={system.decks} />
         ) : (
           <StatePanel state={surface.panel} />

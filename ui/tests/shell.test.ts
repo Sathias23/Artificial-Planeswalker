@@ -65,7 +65,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, posix } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -991,7 +991,18 @@ describe('geometry literals are documented, not merely tolerated (AC 18)', () =>
   // documented in prose beside its rule, but a bare unitless number cannot be told apart
   // from the ones in `minmax(0, 1fr)`, `flex: 1` and `min-width: 0`, so it is review's
   // rather than this guard's.
-  const componentStylesheets = shippedStylesheets.filter((f) => f.startsWith('src/components/'))
+  // WIDENED BY c4-4, NOT WEAKENED (AC 2). This was `startsWith('src/components/')`, and it is
+  // the ONE path-scoped guard a new component tree would have silently exited — which matters
+  // more here than anywhere, because c4-4's `176px` grid minimum is exactly the literal this
+  // rule exists to police. Of the three guards scoped to `src/components/`, the other two are
+  // the primitives' coverage guard and `posture.test.ts`'s component rules, and a container is
+  // rightly outside BOTH of those; this one has nothing to do with statefulness, so it follows
+  // the component-shaped files wherever they live. A later tree of the same kind adds its root
+  // HERE, in the open, and the anchor below is what makes forgetting to visible.
+  const COMPONENT_ROOTS = ['src/components/', 'src/containers/']
+  const componentStylesheets = shippedStylesheets.filter((f) =>
+    COMPONENT_ROOTS.some((root) => f.startsWith(root)),
+  )
 
   it('is reading the component stylesheets at all (non-vacuity), and the shell pins its two', () => {
     // The anchor: the shell is a component stylesheet, and its literals are exactly the two
@@ -999,6 +1010,12 @@ describe('geometry literals are documented, not merely tolerated (AC 18)', () =>
     // a change to the pinned composition, and updating this list is the open way to make it.
     expect(componentStylesheets).toContain(SHELL_CSS)
     expect(pxLiteralsIn(shellSource).sort()).toEqual(['1100px', '452px'])
+    // …and the widened root is REACHING the new tree rather than merely being listed. Without
+    // this line the widening could be wrong (a typo in the prefix, a directory renamed) and
+    // every literal in it would pass by never being read — the vacuity failure this file's own
+    // doctrine calls the worse outcome. `176px` is the value at stake.
+    expect(componentStylesheets).toContain('src/containers/CardGrid/CardGrid.css')
+    expect(pxLiteralsIn(sourceOf('src/containers/CardGrid/CardGrid.css'))).toEqual(['176px'])
   })
 
   it('sources every px literal in every component stylesheet to DESIGN.md, beside the value', () => {
@@ -1359,6 +1376,18 @@ describe('the component primitives are presentation-only, and that is asserted',
     expect(withoutComments(panel)).not.toMatch(/useId/)
   })
 
+  it('is the WHOLE of src/components/, with no container smuggled in beside it (c4-4, AC 1)', () => {
+    // The other direction of c4-4's Q1 ruling, and the reason `src/components/` can still be
+    // described in one sentence. Every assertion in this describe block loops over PRIMITIVES,
+    // and PRIMITIVES is proven to equal the directory by the coverage guard above — so
+    // "everything under src/components/ is presentation-only" is TOTAL, with no exempted member
+    // and no filtered-out list. That totality is what makes `posture.test.ts`'s three
+    // `it.each(componentSources)` blocks safe to leave keyed on the raw directory, and it is
+    // what makes a primitive importing a container a red test for free (see CONTAINERS below).
+    expect(PRIMITIVES.map((p) => p.file).every((f) => f.startsWith('src/components/'))).toBe(true)
+    expect(PRIMITIVES.some((p) => p.file.startsWith('src/containers/'))).toBe(false)
+  })
+
   it("keeps the mock's min-width out of StatChip.css (AC 11), where the source is actually read", () => {
     // Moved here from StatChip.test.tsx by review (2026-07-29): the DOM version asserted the
     // inline `style` attribute, which a `min-width` in the STYLESHEET would never touch —
@@ -1366,6 +1395,284 @@ describe('the component primitives are presentation-only, and that is asserted',
     // DESIGN.md's `components.stat-chip` declares no min-width, so there is no truthful
     // citation for one; the chip sizes to its content.
     expect(sourceOf('src/components/StatChip/StatChip.css')).not.toMatch(/\bmin-width\s*:/)
+  })
+})
+
+// ---------------------------------------------------------------------------------------
+// The containers (story c4-4, AC 1, AC 2) — the category for a component that BEHAVES
+// ---------------------------------------------------------------------------------------
+
+describe('the containers are a declared category with a posture of its own', () => {
+  /**
+   * WHY THIS LIST EXISTS AT ALL, and why the answer is "because of c4-4".
+   *
+   * The block above is a SET EQUALITY over `src/components/`, and every member of it is banned
+   * from holding a hook of any family, from declaring or attaching an `on*` handler, from
+   * holding a `ref` in either position, from spreading, and from importing React as a value.
+   * `posture.test.ts` bans three of those a second time over the same directory. A card tile
+   * needs `<img onLoad>` to know when the pixels exist and a `ref` to survive the warm-cache
+   * race — so a module for it under `src/components/` is a RED TEST BOTH WAYS: listed, the
+   * posture bans fire; unlisted, the coverage guard fires.
+   *
+   * That is not a gate to route around. It is the category-change signal this file says out
+   * loud in its own prose — *"the day a primitive needs a hook it has stopped being
+   * presentation-only — that is a SIGNAL — the component belongs in a different category and
+   * its story should say so"*. c4-4 is the story that says so.
+   *
+   * ==== WHY A NEW TREE RATHER THAN A SECOND LIST IN THE SAME DIRECTORY ==================
+   * The cheaper-looking answer was to keep the files under `src/components/` and widen the
+   * covered set with a second list here. MEASURED, that costs more than it saves, and the
+   * decisive number is not the count of guards — it is what one of them would stop seeing:
+   *
+   *   `posture.test.ts:197` bans a value import from outside the tree, and its filter is
+   *   `!target.startsWith('src/components/')`. A container living INSIDE that directory would
+   *   have to be exempted from the rule — and the exemption would make a PRESENTATION-ONLY
+   *   PRIMITIVE IMPORTING A STATEFUL CONTAINER invisible to every guard in the repo, because
+   *   the import target would still start with `src/components/`. A primitive that renders a
+   *   container has silently acquired everything the primitive posture exists to deny.
+   *
+   *   With the containers OUTSIDE that tree, the same existing rule catches it with no new
+   *   guard, no edit and no exemption — the firing proof is in `posture.test.ts`. The layering
+   *   (primitives know nothing of containers; containers compose primitives) is enforced by a
+   *   rule that was already green.
+   *
+   * The real cost of the new tree is ONE guard that had to be widened rather than weakened:
+   * the `px`-literal DESIGN.md citation check below is scoped by directory, and it is the gate
+   * that polices this story's own `176px` grid minimum. Its scope is now a list of roots. The
+   * other two path-scoped guards — this file's coverage guard and posture's component rules —
+   * are exactly the ones a container must not be held to, so there is nothing to replace.
+   *
+   * ==== THE POSTURE, WRITTEN DOWN =======================================================
+   * A container MAY hold state, call hooks of any family, declare and attach handlers, hold a
+   * `ref`, read the store through `src/state/`, and compose primitives.
+   *
+   * It may NOT reach the network (the door is `src/api/client.ts` and stays exhaustively
+   * named), import a state library directly, write a store slice from outside its own module,
+   * or declare a design token. The first three are asserted below; the fourth is a stylesheet
+   * property and `token-usage.test.ts` already scans every tracked `.css` in the repo.
+   *
+   * The import lists are EXHAUSTIVE for the reason the primitives' are: a module nobody
+   * thought to ban is precisely the one that would get through.
+   */
+  const CONTAINERS: { file: string; imports: string[] }[] = [
+    // c4-4's grid. It holds NO state — a container may, it need not — and it is here because it
+    // composes a container and reads the derivation in `src/state/`, either of which
+    // `posture.test.ts` would fail under `src/components/`. `../../state/deckGroups` is a
+    // TYPE-only import; the rule below reads the specifier, so the entry is listed either way.
+    {
+      file: 'src/containers/CardGrid/CardGrid.tsx',
+      imports: [
+        '../../components/Panel/Panel',
+        '../../state/deckGroups',
+        '../CardTile/CardTile',
+        './CardGrid.css',
+      ],
+    },
+    // c4-4's tile, and the module that made this category necessary: `useState`, `useCallback`,
+    // a `ref` and two `on*` handlers, every one of them banned in the directory next door. TWO
+    // stylesheets, deliberately — see QuantityBadge.css's header for the CARD_SHAPED collision
+    // that separates them.
+    {
+      file: 'src/containers/CardTile/CardTile.tsx',
+      imports: [
+        '../../components/CardPlaceholder/CardPlaceholder',
+        './CardTile.css',
+        './QuantityBadge.css',
+        './imageUrl',
+        'react',
+      ],
+    },
+    // The image-route path builder. `imports: []` is the strongest form of "this is a string,
+    // from a string" — no react, no DOM, no store and, above all, no fetch. It is a module of
+    // its own because `react-refresh/only-export-components` is an ESLint error and a component
+    // file that also exports a helper breaks fast refresh; the split is what lets c4-5 and c4-6
+    // extend ONE builder rather than each writing a second template string. Held to the same
+    // posture as the components beside it, for the reason `tones.ts` and `parse.ts` are: a pure
+    // module next to a component is exactly where behaviour arrives first, because nothing in
+    // its own file looks like a component.
+    { file: 'src/containers/CardTile/imageUrl.ts', imports: [] },
+  ]
+
+  // A WALK rather than a regex (review 2026-08-04): the first spelling was a `//`-to-newline
+  // regex, and the double-faced-name idiom this very component family traffics in — a string
+  // holding `'X // Y'` — would have deleted the rest of the line, code included, before any ban
+  // below ran. String and template contents are KEPT (the import rules read specifiers out of
+  // them); only comments are dropped. Same walker, same declared residue, as posture.test.ts's.
+  const withoutComments = (source: string): string => {
+    let out = ''
+    let index = 0
+    while (index < source.length) {
+      const pair = source.slice(index, index + 2)
+      if (pair === '//') {
+        while (index < source.length && source[index] !== '\n') index += 1
+        continue
+      }
+      if (pair === '/*') {
+        const close = source.indexOf('*/', index + 2)
+        index = close === -1 ? source.length : close + 2
+        continue
+      }
+      const char = source[index]
+      if (char === '"' || char === "'" || char === '`') {
+        out += char
+        index += 1
+        while (index < source.length && source[index] !== char) {
+          if (source[index] === '\\') {
+            out += source[index]
+            index += 1
+          }
+          if (index < source.length) {
+            out += source[index]
+            index += 1
+          }
+        }
+        if (index < source.length) {
+          out += char
+          index += 1
+        }
+        continue
+      }
+      out += char
+      index += 1
+    }
+    return out
+  }
+
+  const containerFilesOnDisk = (): string[] =>
+    execFileSync('git', ['ls-files', 'src/containers/*.ts', 'src/containers/*.tsx'], {
+      cwd: uiRoot,
+      encoding: 'utf8',
+    })
+      .split('\n')
+      .filter(Boolean)
+
+  // The comparison the coverage guard AND its firing half both run (review 2026-08-04 — the
+  // firing half's first spelling asserted that appending to an array changes it, which exercised
+  // nothing). One function, two feeds: the real `git ls-files` in the guard, the same list plus
+  // a planted module in the probe.
+  const coversExactly = (onDisk: string[]): boolean => {
+    const shipped = onDisk.filter((f) => !/\.test\.tsx?$/.test(f)).sort()
+    const listed = CONTAINERS.map((c) => c.file).sort()
+    return shipped.length === listed.length && shipped.every((f, i) => f === listed[i])
+  }
+
+  it('is reading all three container modules (non-vacuity)', () => {
+    expect(CONTAINERS).toHaveLength(3)
+    for (const { file } of CONTAINERS) {
+      expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
+    }
+  })
+
+  it('covers every container module on disk — the list cannot silently fall behind', () => {
+    // THE COVERAGE GUARD THIS CATEGORY SHIPS WITH, IN THE SAME COMMIT THAT CREATES IT (AC 1).
+    // An uncovered directory is how the next fifteen component stories would escape every gate
+    // in this repo at once — c4-5, c4-6, c4-7, c4-10, c4-11, c5-7, c6-5…c6-8 and c9-1…c9-3 all
+    // land here. Same authority as every other file walk in this suite: git, not readdir, so an
+    // untracked module cannot pass vacuously either.
+    const onDisk = containerFilesOnDisk()
+    expect(coversExactly(onDisk)).toBe(true)
+
+    // The `.test.` exemption is for TEST files, and that is checked rather than assumed (review
+    // 2026-08-04): a runtime module named `hooks.test.ts` would otherwise ship from this tree
+    // covered by no list and held to no posture — a module invisible through its filename.
+    for (const file of onDisk.filter((f) => /\.test\.tsx?$/.test(f))) {
+      expect(
+        sourceOf(file),
+        `${file} is exempt from CONTAINERS as a test file, but imports nothing from vitest`,
+      ).toMatch(/from ['"]vitest['"]/)
+    }
+  })
+
+  it.each(CONTAINERS)('$file imports exactly what it declares', ({ file, imports }) => {
+    const source = withoutComments(sourceOf(file))
+    const modules = [
+      ...source.matchAll(/(?:import|export)\s+(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/g),
+    ].map((m) => m[1])
+    expect(modules.sort()).toEqual(imports)
+
+    // The two runtime routes around a static import are closed by name, exactly as they are for
+    // the primitives: a dynamic `import()` of a store slice is still a door.
+    expect(source).not.toMatch(/\b(?:require|import)\s*\(/)
+  })
+
+  it.each(CONTAINERS)('$file reaches no module outside the permitted roots', ({ imports }) => {
+    // The POSITIVE half of the exhaustive list: even a correctly-declared import must resolve
+    // into react, the primitives, the containers themselves, or the state layer. `src/api/`,
+    // `zustand` and anything else is a category decision, not an import.
+    //
+    // NORMALISED FIRST (review 2026-08-04): the regexes read the specifier's SPELLING, and
+    // `'../../state/../api/client'` spells a permitted root while resolving outside every one of
+    // them. `posix.normalize` collapses the traversal before the roots are read, so what is
+    // tested is where the import GOES, not how it is written.
+    const normalised = imports.map((specifier) => {
+      if (!specifier.startsWith('.')) return specifier
+      const collapsed = posix.normalize(specifier)
+      // `normalize` strips a leading `./`; put it back so the roots below read unchanged.
+      return collapsed.startsWith('.') ? collapsed : `./${collapsed}`
+    })
+    const outside = normalised.filter(
+      (specifier) =>
+        specifier !== 'react' &&
+        !specifier.endsWith('.css') &&
+        !/^\.\.\/\.\.\/(?:components|state)\//.test(specifier) &&
+        !/^\.\.?\/[A-Za-z]/.test(specifier),
+    )
+    expect(outside).toEqual([])
+  })
+
+  it.each(CONTAINERS)('$file makes no request and imports no state library', ({ file }) => {
+    const source = withoutComments(sourceOf(file))
+
+    // THE ONE-DOOR RULE, SCOPED. `posture.test.ts` already asserts the door list exhaustively
+    // over all of `src/`, and this story leaves that list reading `['src/api/client.ts']` with
+    // NO EDIT — an `<img src>` is a request the BROWSER makes, not one the app makes, and no
+    // code in `ui/src` ever holds the bytes. Asserted here as well because the containers are
+    // the category most likely to reach for one, and a rule stated only in prose is not one.
+    expect(source).not.toMatch(/\b(?:fetch|XMLHttpRequest|EventSource|WebSocket)\s*\(/)
+    expect(source).not.toMatch(/navigator\.sendBeacon/)
+    // AD-12: no second state library, and no reaching past `src/state/` to the one we have.
+    expect(source).not.toMatch(/from\s+['"]zustand['"]/)
+    // AD-12's other half, and `store-writes.test.ts`'s: nothing outside a slice's own module
+    // writes it. A container subscribes; it does not set.
+    expect(source).not.toMatch(/\.setState\b/)
+  })
+
+  it('ships the blessed track and the token gap — the POSITIVE half of AC 12', () => {
+    // Added by review 2026-08-04: everything else in this suite only BANS bad grid forms (the
+    // bare `1fr`, the content-floored minmax), so a drift from the blessed track — or a gap
+    // quietly moved off `--space-panel-gap` — passed every gate while the component test's
+    // header claimed otherwise. These are source claims on the shipped stylesheet; that the
+    // grid REFLOWS at real widths stays Task 7's, and jsdom cannot carry it.
+    const grid = sourceOf('src/containers/CardGrid/CardGrid.css')
+    expect(grid).toMatch(/grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(176px,\s*1fr\)\)/)
+    expect(grid).toMatch(/gap:\s*var\(--space-panel-gap\)/)
+  })
+
+  it('is a category that is actually USED — otherwise it is theatre', () => {
+    // The non-vacuity half of the ruling itself. If no container ever held a hook, a ref or a
+    // handler, this whole directory would be an unjustified second home for presentation-only
+    // components and the primitives' posture should simply have been obeyed. `CardTile` is the
+    // proof that the category was forced rather than chosen.
+    const tile = withoutComments(sourceOf('src/containers/CardTile/CardTile.tsx'))
+    expect(tile).toMatch(/\buse[A-Z]\w*\s*\(/)
+    expect(tile).toMatch(/\bref\s*=/)
+    expect(tile).toMatch(/\bon[A-Z]\w*\s*=/)
+  })
+
+  it('would catch a container that never joined the list (probe a)', () => {
+    // The firing half of the coverage guard, fed through the SAME comparison the guard runs
+    // (review 2026-08-04 — the first spelling asserted that appending to an array changes it,
+    // which exercised neither `git ls-files` nor the comparison). Same real `ls-files` output,
+    // one planted module: the guard's own function must refuse it — and refuse a `.test.ts`
+    // spelling being used to smuggle a runtime module past the exemption is checked in the
+    // guard itself.
+    const real = containerFilesOnDisk()
+    expect(coversExactly(real)).toBe(true)
+    expect(coversExactly([...real, 'src/containers/Sneaky/Sneaky.tsx'])).toBe(false)
+    // …and the exemption is not a hole in THIS comparison for a listed module gone missing:
+    expect(coversExactly(real.filter((f) => f !== 'src/containers/CardTile/CardTile.tsx'))).toBe(
+      false,
+    )
   })
 })
 

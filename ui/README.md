@@ -542,6 +542,45 @@ the same defect one call site up, and no lint rule or guard reaches it. Stated h
 ruling in c2-7 got a derived gate, and this one is prose plus review because the failure lives
 in files that do not exist yet.
 
+### The containers — where a component that BEHAVES lives
+
+Set by story **c4-4**, and it is a decide-once ruling roughly fifteen later component stories
+inherit: **c4-5**, **c4-6**, **c4-7**, **c4-10**, **c4-11**, **c5-7**, **c6-5**…**c6-8** and
+**c9-1**…**c9-3** all land here rather than in `src/components/`.
+
+**`src/components/` is CLOSED, and a component that holds state cannot join it.** That is
+structural, not stylistic: `tests/shell.test.ts:1257` asserts SET EQUALITY between
+`git ls-files 'src/components/*.ts(x)'` and `PRIMITIVES + AppShell.tsx`, and every listed member
+is then held to bans on hooks of any family, `on*` in both positions, `ref` in both positions,
+spread, and a value `react` import — with `tests/posture.test.ts` banning three of those a second
+time over the same directory. A card tile needs `<img onLoad>` to know whether the pixels arrived
+and a `ref` to survive the warm-cache race, so a module for it under `src/components/` is a **red
+test both ways**: listed, the posture bans fire; unlisted, the coverage guard fires. That is the
+category-change signal `shell.test.ts` names in its own prose, arriving for the first time.
+
+**So containers live in `src/containers/`, with their own git-derived coverage guard** (added in
+the same commit, `tests/shell.test.ts`'s `CONTAINERS` block — an uncovered directory is how the
+next fifteen stories would escape every gate in the repo at once).
+
+**The posture, in full.** A container MAY hold state, call hooks of any family, declare and
+attach handlers, hold a `ref`, read the store through `src/state/`, and compose primitives. It
+may NOT reach the network (the door is still `src/api/client.ts`, named exhaustively), import a
+state library directly, write a store slice from outside its own module, or declare a design
+token. Its import list is exhaustive and its permitted roots are checked, same as a primitive's.
+
+**Why a new tree rather than a second list inside `src/components/`, measured.** The
+cheaper-looking option was to widen the covered set and leave the files where they were. Three
+guards are path-scoped to that directory — `shell.test.ts`'s coverage guard and posture bans,
+`posture.test.ts`'s three `it.each(componentSources)` blocks, and `shell.test.ts`'s **`px`-literal
+DESIGN.md citation check** — and the decisive one is not the count but what an exemption would
+have blinded: `posture.test.ts`'s cross-tree import rule filters on
+`!target.startsWith('src/components/')`, so a container exempted from it would have made **a
+presentation-only primitive importing a stateful container invisible to every guard in the repo**.
+With the containers outside that tree, the rule that was already green catches it, for free. The
+one real cost is that the `px`-literal citation check had to be **widened** (its scope is now a
+list of roots) rather than weakened — and a later tree of the same kind adds its root there, in
+the open.
+
 #### Tinting a surface from a semantic token
 
 The mechanism c6-7's suggestion rows, c9-1's swap rows and c9-2's tier rows reuse rather than
@@ -786,9 +825,89 @@ second half applied to it in the same move. What the gate cannot see is declared
 whether an element carrying `card-shape` is genuinely a card (that is markup, and review's),
 inline geometry (banned by eslint), and cross-file composition.
 
+**c4-4 is the first story to join, and it found the collision the list makes visible.** The card
+tile spends no `--radius-card` at all — the shape arrives through the class — so half ONE would
+never have looked at it, and joining is what turns half TWO on. That immediately collided with the
+quantity badge, which DESIGN.md gives `{rounded.pill}`: the badge is chrome sitting ON a card
+rather than a card. **The resolution is two files, not an exception in the guard** —
+`CardTile.css` is card-shaped and listed, `QuantityBadge.css` is chrome and deliberately is not.
+Reach for that shape rather than weakening a rule that is currently total.
+
 **Clipping is NOT in the shared class, deliberately.** Whether content clips is a statement about
 content, not about shape — `CardPlaceholder.css` sets its own `overflow: hidden` for the
-141-character name the corpus really contains, and c4-4's `<img>` decides its own.
+141-character name the corpus really contains, and c4-4's tile sets its own to clip art to the
+card corners.
+
+**The footprint claim is now confirmed by eye (c4-4, Task 7).** c4-3 could only prove that the
+placeholder declares the shape and that the element carries the class; whether a placeholder and a
+real card face occupy the same rectangle in a real grid was re-homed here by name. Rendered in
+Edge against the running backend with the 99-card deck active: **they do** — loading wells, named
+placeholders and loaded faces sit in identical rows with no seam, so UX-DR36's _"layout never
+reflows when art arrives"_ is now an observation rather than a derivation.
+
+### Motion — the first of it, and how a later story registers its own
+
+Set by story **c4-4**, which shipped the first `transition`, the first `transform`, the first
+`:hover` state on anything but a footer link and the first z-index raise in the codebase. Six
+stylesheets still carry a _"NO MOTION, DELIBERATELY"_ header and that is still correct for them.
+
+**Durations come from `--motion-*` and easings from `--ease-*`.** A literal duration anywhere in a
+`transition` or `animation` is a lint error, and nothing pulses, loops or alternates at any
+setting.
+
+**`tokens.css`'s `prefers-reduced-motion` block is the ONE registration point**, and c4-4 is the
+first story to extend it. The distinction that matters, because it is easy to get wrong:
+
+- **A motion expressed entirely through a duration token is MECHANICAL.** Zeroing the four
+  durations already switches it off. The tile's image fade is this, and it registers nothing —
+  writing a second declaration for it would suggest the mechanism does not work.
+- **A motion a duration cannot reach registers EXPLICITLY, in that block, in the story that builds
+  it.** Zeroing a duration makes `transform: scale(1.06)` INSTANT, not ABSENT — the tile would
+  still jump 6% the moment a pointer crossed it, which is the vestibular motion UX-DR42 asks to
+  remove, arriving faster.
+
+**That rule is now a GATE rather than prose** (`tests/token-usage.test.ts`): every shipped block
+declaring a motion property — `transform`, and the individual `scale`/`rotate`/`translate`, per
+property — must have that property `none !important` on the same selector in the reduced-motion
+block (review 2026-08-04 hardened both: a no-`!important` registration is the cascade no-op the
+paragraph below measures, and `scale: 1.06` is the same pop in another spelling). The RULE is
+derived, so c4-6's 3D flip and c6-5's bloom are caught the day they are written — but the guard
+also carries an ENUMERATED pin of the shipped-motion list, so the story that adds a motion moves
+that pin in the same commit, the way the token pins move. It was found by c4-4's own probe (e),
+which deleted the fallback and left the whole suite green.
+
+**The override carries `!important`, and that is measured.** `.card-tile:hover` in `tokens.css`
+and in `CardTile.css` have identical specificity, and `tokens.css` is `@import`ed first — so
+without it the block would parse cleanly, read correctly and do nothing at all.
+
+### The focus ring over art, and why `outline` is still authored
+
+Set by story **c4-4** (Q2). DESIGN.md files `focus-ring-over-art` under `components.card-tile`,
+and `.stylelintrc.json`'s `box-shadow` allowed-list admits `none` or a comma-list of
+`var(--shadow-…)` / `var(--glow)` **and nothing else** — so the composite cannot be written in a
+component stylesheet at all. It ships as **`--shadow-focus-ring-over-art`**, the 66th token, with
+both pins moved together (`expectedNames` + `toHaveLength` in `tests/tokens.test.ts`,
+`declaredTokens.size` in `tests/token-usage.test.ts`) and its value asserted against the artefact
+the way the three elevation tokens are. `components.card-tile.live-ring` is deliberately NOT
+shipped: nothing sets `live` until **c4-5**, and an inventory pinned by set equality exists so
+that an unused token is a visible decision.
+
+**The `outline` is authored, not removed, and the eye-check is why.** `outline: none` is banned in
+every spelling (UX-DR46) and there is no legal way around it — but a browser draws its OWN ring on
+`:focus-visible` unless the author sets `outline`, and the first draft of the tile therefore
+rendered **two indicators at once**: the composite hugging the card's rounded corners and the UA
+ring as a sharp-cornered rectangle around card-plus-caption. Two repairs, together:
+
+- **the focusable element IS the card** (the `<button>` carries `card-shape`, and the caption is a
+  sibling that names it through `aria-labelledby`), so an authored outline hugs the same rounded
+  rectangle; and
+- **the outline is given the composite's own inner band** — `var(--focus-ring-width)` solid
+  `var(--focus-ring)` at offset 0 — so the two mechanisms occupy the same pixels instead of
+  stacking, and the composite's `--surface-base` outer band still separates the indicator from the
+  panel. `--focus-ring-offset` is deliberately unused here: the offset that suits a text link is
+  what would split this ring in two.
+
+Confirmed in Edge with a real keyboard focus, over a light card face and a dark one.
 
 ### The state panel, and where user-facing copy lives
 
@@ -1010,6 +1129,29 @@ your story, verify it rather than inherit it.
 | **Whether the RIGHT type role was chosen for the content.** MEASURED at c4-3 by a probe that PASSED: putting the truncated card ID back in the uppercase `--type-micro` role — correctly paired with both its companions, so `findRoleWithoutCompanions` was satisfied — left the whole suite green at 1,021 passed. Every typography guard asks whether a role travels with its companions; none asks whether the role suits the value. c4-3 closed the one instance (the ID's block is now checked against `cards.py`'s lowercase-only `_CARD_ID_PATTERN`, read from the file), but the GENERAL rule — do not uppercase data the reader may type back — is not statically decidable, because whether a string is retypeable lives in the product.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `tests/token-usage.test.ts`, the c4-3 Q4 test                                                                                                                                                     | Review, at every story that renders an identifier                               |
 | **Whether a fixed-aspect box is actually laid out that way.** c4-3's geometry claim is split across two instruments and NEITHER is a pixel: a source read proves `.card-shape` declares `aspect-ratio: 63 / 88` and `border-radius: var(--radius-card)` exactly once in the tree, and a jsdom test proves the rendered element carries the class. `getComputedStyle(el).aspectRatio` in jsdom returns the empty string and would pass for the wrong reason — the sixth recorded instance of that trap in this epic. That the box IS 63:88 on screen was confirmed by eye at c4-3 against a 176 × 245.9 rule; that it matches a real card FACE beside it is c4-4's.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `src/components/CardPlaceholder/CardPlaceholder.test.tsx` header                                                                                                                                  | c4-4, in composition                                                            |
 | **Running `tests/token-usage.test.ts` ALONE crashes the runner.** Measured at c4-3: `npx vitest run tests/token-usage.test.ts` fails with `TypeError: Cannot read properties of undefined (reading 'config')` — the file imports two `src/` modules across the project boundary, so resolving it standalone picks the wrong project. `npm test` runs it correctly. This matters for PROBES: a single-file invocation exits non-zero for the wrong reason, and a probe harness matching on exit code alone will report a guard as firing when the runner merely crashed. Run the whole suite when proving a guard fires.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | measured at c4-3, probe harness round 1                                                                                                                                                           | Anyone writing a probe against that file                                        |
+| **How a screen READER phrases the tile's accessible name.** The NAME itself is pinned exactly: measured at review 2026-08-04 with `computeAccessibleName`, jsdom reports `Black Lotus ×4` — `aria-labelledby` ID order (caption first, badge second, the order the component chose), with a space between the references. (The story's first record claimed jsdom ran the parts together as `×4Black Lotus`; measured, that was false in both halves, and the Q6 test now asserts the exact spelling.) What no jsdom assertion carries is how a real screen reader ANNOUNCES that name — pauses, the `×` read as "times" or "multiplication sign", the button role placement.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `src/containers/CardTile/CardTile.test.tsx`, the Q6 test                                                                                                                                          | The epic manual-testing checklist, with a real screen reader                    |
+| **Whether `<div>`-inside-`<button>` matters.** `CardPlaceholder`'s root is a `<div>` and `<button>`'s content model is phrasing content, so c4-4 mounting the placeholder inside the tile is invalid HTML by the letter of the spec. Measured: every engine renders it, React's `validateDOMNesting` does not warn, and the accessible name computes normally. The alternatives were worse — moving the placeholder outside the button breaks UX-DR36's same-box claim, and changing the primitive's root element is an edit to a component c4-4 was told not to touch. **Accepted with the argument; c4-5 mounts the same placeholder as detail art and can re-decide with two consumers in view.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | this row, and the `CardTile.tsx` header                                                                                                                                                           | Review, or c4-5                                                                 |
+| **Whether a reduced-motion fallback actually reaches its motion.** c4-4's transform guard compares SELECTOR TEXT, not resolved specificity: a transform on `.card-tile:hover .thing` neutralised by a rule on `.card-tile:hover` reads as unregistered even though the cascade would switch it off. That is a false FAILURE, whose repair is to write the matching selector — the outcome the rule wants anyway. Resolving it properly needs the cascade, which is the first row of this table.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `tests/token-usage.test.ts`, the transform-neutralisation guard                                                                                                                                   | The author, loudly; then review                                                 |
+
+**The four rows above that were written FOR c4-4 have their dispositions here**, so nothing is
+left merely ticked:
+
+- **The binary-response type lie** (_"c4-4 must read the response as a blob and must not derive
+  its handling from the type"_) — **MOOT, by construction.** Nothing in `ui/src` reads the image
+  response at all: art reaches the screen through `<img src>` and the browser's HTTP cache, so
+  there is no body to mishandle and `posture.test.ts`'s one-door list needed no edit. The row
+  stays for whoever eventually fetches image bytes; nobody should.
+- **The pacer's cold-paint arithmetic** — **HONOURED, and it is Q7's whole subject.** All ~99
+  `<img>` mount at once with `decoding="async"` and deliberately no `loading="lazy"`; the record
+  carries the arithmetic both ways. Re-measured on this machine at c4-4: a 99-tile deck is
+  **8.47 MB** (the row's 8.5 MB, confirmed) and a fully warm backend serves it at **5.6 ms/tile**
+  sequentially — faster than the ~10.3 ms the row records, and the same order.
+- **The warm-vs-cold `Content-Type` divergence** — **MOOT.** No code keys on the header, or reads
+  it; the tile branches on `load` and `error` events only.
+- **The 300-second negative-cache window** — **HONOURED.** The tile shows no spinner, sets no
+  timeout and never retries: `onError` fires once per `src` and the failure lives in state, so a
+  re-render cannot re-arm it. That is exactly _"a tile that retries in a loop will be answered
+  from memory and change nothing"_ implemented rather than merely read.
 
 Backend guards carry the same discipline. The two that matter most here:
 `tests/unit/companion/test_import_boundary.py` is **AST-only**, so it sees modules no test imports
@@ -1073,7 +1215,13 @@ now landed. The boundary as it actually stands:
 - **What still does NOT exist:** the WebSocket (**c5-6**), and any `fetch` for image BYTES — art
   reaches the screen through `<img src="/api/card-image/…">` and the browser's own HTTP cache,
   backed by `IMAGE_CACHE_CONTROL` and c3-7's disk cache. There is no image cache in `ui/src` and
-  there should not be one.
+  there should not be one. **c4-4 is the first story to put remote images on the screen and it
+  left the door list untouched**, which is the point: an `<img src>` is a request the browser
+  makes, not one the app makes. The URL is built by `cardImageUrl` in
+  `src/containers/CardTile/imageUrl.ts` — deliberately NOT in `client.ts`, whose whole meaning is
+  "requests are made here" — and it spells no `size`, because `normal` is the route's default and
+  **the URL is the browser's cache key**. **c4-5** (a larger detail render) and **c4-6** (`face=1`)
+  extend that one function rather than each writing a second template string.
 
 **The retry rule, and how c4-1 answered it.** The deck poll retries `503`s quietly, and it is safe
 to because `/api/decks` **has no path parameter**. Measured at c3-2 and pinned in
@@ -1149,15 +1297,20 @@ its slot is empty, `AppShell.test.tsx` still asserts it against the component's 
 what changed is only which of the two the running app shows. Each displacement is recorded in
 `App.tsx` beside the prop that causes it.
 
-- **The left column, as of c2-9, WIRE-DRIVEN as of c3-9, and DECK-DRIVEN as of c4-2.** `App.tsx`
-  passes a `StatePanel` into the `left` slot, displacing the placeholder that names c4-4 and c4-8.
-  c2-9 passed a constant, which was honest at the time — there was no fetch layer and no store, so
-  there genuinely was no active deck. **c3-9 replaced the constant with the poll**: which panel
-  shows is chosen from the response's `reason` token through `states.ts`'s `PANEL_FOR_REASON`, and
-  the app transitions from the database panel to the deck list on its own with no refresh (FR-22).
-  **c4-2 made it conditional on a deck**: when one is loaded there is no panel at all, and — until
-  **c4-4** ships the grid — the slot falls back to the shell's own placeholder. That is the honest
-  displacement rather than a regression, and it is what makes c4-4's slot findable by its own id.
+- **The left column, as of c2-9, WIRE-DRIVEN as of c3-9, DECK-DRIVEN as of c4-2, and now THE DECK
+  ITSELF as of c4-4.** `App.tsx` passes a `StatePanel` into the `left` slot, displacing the
+  placeholder that named c4-4 and c4-8. c2-9 passed a constant, which was honest at the time —
+  there was no fetch layer and no store, so there genuinely was no active deck. **c3-9 replaced
+  the constant with the poll**: which panel shows is chosen from the response's `reason` token
+  through `states.ts`'s `PANEL_FOR_REASON`, and the app transitions from the database panel to the
+  deck list on its own with no refresh (FR-22). **c4-2 made it conditional on a deck**: when one
+  was loaded there was no panel at all, and the slot fell back to the shell's own placeholder —
+  the honest displacement rather than a regression, and what made c4-4's slot findable by its own
+  id. **c4-4 fills it with a `CardGrid`**, the fourth application of the same c2-9 ruling: the
+  shell is still untouched, its placeholder still fires when `left` is empty, and only
+  `App.test.tsx`'s displacement assertion changed. That also removes one of the six
+  story-key-shaped strings the C3 retro's action **F1** counted on a real render; the gate itself
+  is still **c8-5's**.
 - **The `h1` and the header badges, as of c4-2.** `deckName` takes the deck's name; `badges` takes
   `<DeckBadges />`, which is `Badge`'s first on-screen consumer anywhere in the app. The badges say
   the format (`brawl`, `standard`, …) and the size (`100 maindeck`, plus `15 sideboard` only when
@@ -1179,6 +1332,16 @@ stylesheet). Each is checked by eye at its first consuming story: `Panel` at **c
 detail, the first real `level="overlay"` panel) and **c4-7** (the deck list) — **re-homed from
 c2-9**, which turned out not to render a `Panel` at all (Q6) — and the group header and deck-row
 context at **c4-7**.
+
+**`Panel`'s first on-screen consumer is `CardGrid` (c4-4), and it is UNTITLED.** The counts a
+reader needs are already in the `h1` and `DeckBadges`, so a panel title carrying "60 cards · 16
+distinct" — the mock's shape — would be the third statement of the same number on one screen; and
+an untitled `Panel` invents no name, so it adds no duplicate landmark. The titled `level="overlay"`
+panel is still unverified and still **c4-5's**. **One live constraint c4-4 hands forward:**
+`Panel.css` is `overflow: hidden` with 12px body padding, so a tile's `--shadow-rest` is clipped
+at the panel's edge. Measured at the eye-check, the 1.06 hover pop itself fits (5.3px per side
+against 12px of padding) and the clipping is not visible on this theme — but a lighter theme or a
+larger pop would make it so, and `Panel` is a primitive a consumer may not restyle.
 
 **`ManaPip`'s and `ManaCost`'s appearance is DEV-VERIFIED as of c4-3**, on a throwaway harness
 that served the BUILT stylesheet to Edge against hand-written markup — the same instrument c4-2
