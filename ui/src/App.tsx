@@ -2,6 +2,7 @@ import { AppShell } from './components/AppShell/AppShell'
 import { DeckBadges } from './components/DeckBadges/DeckBadges'
 import { Footer } from './components/Footer/Footer'
 import { StatePanel } from './components/StatePanel/StatePanel'
+import { CardDetail } from './containers/CardDetail/CardDetail'
 import { CardGrid } from './containers/CardGrid/CardGrid'
 import { surfaceOf, useDeckState } from './state/deck'
 import { useSystemState } from './state/systemState'
@@ -82,6 +83,37 @@ import { useSystemState } from './state/systemState'
  * disagree"*. **c4-7**'s deck list reads the same value, including the sideboard this grid
  * deliberately does not draw.
  *
+ * ================= AND NOW THE DECK RESPONDS (c4-5, FR-17) =============================
+ *
+ * The `right` slot holds the card detail panel — the fifth application of the c2-9 displacement
+ * ruling, unchanged: `AppShell.tsx` is NOT edited, its placeholder (*"Card detail — c4-5 — the
+ * deck list — c4-7 — and the format check — c4-10 — stack here"*) still fires whenever `right`
+ * is empty, and `AppShell.test.tsx` still asserts it against the component's own props. What
+ * changed is which of the two the running app shows — and only for a deck.
+ *
+ * ================= WHAT THE RIGHT COLUMN DOES BEHIND A STATE PANEL (c4-5 Q14) ==========
+ *
+ * **This is a ruling, and it closes a gap in the UX contract rather than one in this story.**
+ * `validation-report-2026-07-25.md:78` records it as **L8** — *"Right-column panel visibility is
+ * specified for cold-open-no-deck but not for the database-not-initialized or disconnected
+ * states, which also put a State panel in the left column"* — and `:146` records the lows as
+ * unactioned. The two halves of the contract genuinely disagree: `EXPERIENCE.md:112` says *"Right
+ * column panels hidden"* for the one case it covers, while UX-DR30 says *"the right column, nav
+ * and footer remain functional around it"*.
+ *
+ * `surfaceOf` returns `{ kind: 'panel' }` for all six state keys, so this file is where the
+ * contradiction becomes code. **Ruled: the detail panel renders only for `kind === 'deck'`.**
+ * The reason is not symmetry, it is that UX-DR20's *"never empty while a deck is loaded"* has
+ * nothing to be true of otherwise — a persistent card panel with no deck behind it would either
+ * be an empty box or would keep showing a card from a deck that is no longer on the glass. The
+ * one case the contract DOES specify is honoured exactly, the other five are made to match it,
+ * and UX-DR30 stays satisfied because the column is still there with the shell's own line in it.
+ * **c4-7 and c4-10 inherit this rather than re-deciding it**, which is what makes it worth
+ * writing here instead of in the panel.
+ *
+ * The `undefined` (rather than `null`) is the same spelling the header props use, and `filled()`
+ * makes either safe — see the `deckName` note below.
+ *
  * ================= THE `h1` STOPS SAYING WHAT THE KICKER SAYS (C3 retro F2) ============
  *
  * `deckName` is filled with the deck's own name, so the header stops rendering the product name
@@ -146,6 +178,7 @@ export default function App() {
           <StatePanel state={surface.panel} />
         )
       }
+      right={surface.kind === 'deck' ? <CardDetail boards={surface.boards} /> : undefined}
       footer={<Footer />}
     />
   )

@@ -145,6 +145,18 @@ const COPY_MODULES: Map<string, string> = new Map([
       'deliberately not in this module: a copy owner that also held card names would make the ' +
       'claim this Map exists to state meaningless.',
   ],
+  [
+    'src/containers/CardDetail/copy.ts',
+    'the card detail panel’s three authored strings (story c4-5): the panel TITLE — which is ' +
+      'also its `role="region"` name and the `<h2>` c4-11’s skip link targets — the unpin ' +
+      'control’s label, and the pin announcement UX-DR45 fires once per pin. The first copy ' +
+      'module under `src/containers/`, and the reason the list is keyed on the FILE rather than ' +
+      'on a directory. The announcement is gated byte-for-byte against the epic’s own template ' +
+      'by tests/pin-announcement-copy.test.ts, the way the state-panel copy is gated against ' +
+      'EXPERIENCE.md and the attribution against DESIGN.md: copy is gated against whatever ' +
+      'wrote it. The card NAME, TYPE LINE, oracle TEXT and mana COST the same component renders ' +
+      'are DATA, arrive from the wire, and are deliberately not in this module.',
+  ],
 ])
 
 /**

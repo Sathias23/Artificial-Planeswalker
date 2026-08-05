@@ -1,0 +1,199 @@
+/* CardDetail — THE CHROME: the pinned ring, the unpin control, the text, and the live region
+   (story c4-5, UX-DR6, UX-DR20, UX-DR33, UX-DR45, UX-DR46, UX-DR47, DESIGN.md:387).
+
+   ==== WHY THIS IS A SECOND STYLESHEET =================================================
+   ./CardDetail.css is in `tests/token-usage.test.ts`'s CARD_SHAPED allowlist, which declares
+   that it draws cards and therefore BANS a chrome radius inside it. The panel frame's ring needs
+   `--radius-lg` to be the right shape and the unpin control is a plain chrome button, so both
+   would fail that half. The precedent is CardTile.css / QuantityBadge.css: two files, not an
+   exception carved into the guard — and this file is deliberately NOT in the allowlist, which is
+   the statement that nothing in it is a card.
+
+   ==== ONE px LITERAL, AND IT IS THE LIVE REGION'S ======================================
+   `1px` — DESIGN.md specifies no visually-hidden treatment anywhere, for any component, so there
+   is no artefact value to cite and this is the standard WCAG clip-rect idiom instead. It is
+   declared here because a geometry literal must name its source (the c2-6 AC 18 ruling), and its
+   source is "the platform, not the design system". Not `0`: a zero-sized element is dropped from
+   the accessibility tree by some engines, and a live region that is not in the tree announces
+   nothing at all — which would fail AC 23 silently, in the one direction no jsdom test can see.
+
+   ==== NO MOTION, DELIBERATELY (UX-DR42) ===============================================
+   Nothing in this file transitions or animates. The pinned ring appears and disappears with the
+   pin, and the content it frames swaps on every hover — `tokens.css`'s reduced-motion inventory
+   gives this panel "instant, no crossfade", and shipping no motion at any setting is the
+   strongest form of that. Consequently this story adds NO row to that block's registrations, and
+   the enumerated shipped-motion pin in `token-usage.test.ts` needs no edit. */
+
+/* THE FRAME, WHICH EXISTS ONLY TO CARRY THE RING. `Panel` is a primitive a consumer may not
+   restyle and it takes no `className`, so the ring goes on a wrapper — and a wrapper with no
+   radius would draw a SQUARE outline around a `--radius-lg` panel. This element has no padding
+   and no border, so its border box coincides exactly with the panel's; matching the radius is
+   what makes the shadow hug the panel's real edge. */
+.card-detail {
+  border-radius: var(--radius-lg);
+}
+
+/* THE PINNED RING (AC 19, AC 31, Q2). DESIGN.md `components.card-detail.pinned-ring`, via
+   `--shadow-pinned-ring` — a 1px `--accent` edge.
+
+   `--accent` AND NOT `--accent-dim`, and this is the M4/C3 correction finally carried across:
+   this panel's own background is `--surface-overlay` (Panel at `level="overlay"`), where
+   `--accent-dim` is 2.70:1 and fails the 3:1 non-text floor. DESIGN.md declared the ring
+   `accent-dim` three sections after banning that exact pairing by name; the artefact was amended
+   in the same commit that added the token, with the reason inline so it is not "corrected" back.
+
+   NOTE WHAT NO GUARD COULD HAVE CAUGHT: `findAccentDimOnOverlay` is same-block only and
+   `findAccentDimInOverlayFile` is same-file only, and here the background is painted by
+   `Panel.css` on a DIFFERENT element in a DIFFERENT file. The pairing was reachable past both.
+   The repair is that the token spends `--accent`, so this file names no accent tone at all and
+   cannot get it wrong. */
+.card-detail.is-pinned {
+  box-shadow: var(--shadow-pinned-ring);
+}
+
+/* THE PANEL BODY'S OWN COLUMN. `Panel` supplies `padding: var(--space-3)`; this is the rhythm
+   between the art and the three text rows beneath it. */
+.card-detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* NAME LEFT, MANA COST RIGHT-ALIGNED (DESIGN.md:387). `margin: 0` because this is a `<p>` and
+   the UA stylesheet's block margin would break the column's `gap` rhythm — the same repair
+   `.panel-title` makes for its `<h2>`. */
+.card-detail-headline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+/* "name in {typography.heading}". The heading ROLE, on a `<span>` — the panel's one real heading
+   element is its `<h2>` title, and promoting a card name to a heading would rename the region's
+   landmark on every hover. `min-width: 0` so a long name wraps inside the flex row rather than
+   pushing the cost off the edge; it WRAPS rather than clipping, because unlike the tile's 176px
+   caption there is room here and the name is the panel's subject.
+
+   The heading role earns no companion tokens (`findRoleWithoutCompanions` derives its
+   requirements from DESIGN.md's own `letterSpacing` / `textTransform` keys, and `heading`
+   declares neither) — so this name renders in its real case, which is right for a 42-character
+   card name read as prose rather than as a chrome label. */
+.card-detail-name {
+  min-width: 0;
+  color: var(--text-primary);
+  font: var(--type-heading);
+}
+
+/* "type line in {typography.body} {colors.text-secondary}". */
+.card-detail-type {
+  margin: 0;
+  color: var(--text-secondary);
+  font: var(--type-body);
+}
+
+/* "note/oracle text in {typography.body} {colors.text-secondary}".
+
+   ==== THE ONE CLAMP, AND WHY IT IS 21em (Q10, and the disposition for a ledgered deferral) ====
+   MEASURED on the shipped corpus: the longest `oracle_text` is 1,489 characters (`Baldur's Gate
+   Wilderness`), only 5 cards exceed 700 and only 63 exceed 500 — while in the largest real deck
+   the median is ~150 and the maximum is 530. So the tail is real but rare, and without a bound a
+   single card would push c4-7's deck list and c4-10's format check off the screen on a hover
+   that the reader did not commit to.
+
+   `21em`, expressed from the role rather than as a magic number: `{typography.body}` is
+   `14px/1.5`, so one line is `1.5em` and this is FOURTEEN LINES. `em` and not `px` because there
+   is nothing in DESIGN.md to cite for a value the artefact never specifies, and not `lh` because
+   an unsupported unit would drop the declaration and remove the clamp silently — a cap that
+   fails open is worse than no cap.
+
+   `overflow-y: auto` rather than a fade or an ellipsis: rules text is the card, and truncating
+   it invisibly is the failure `deferred-work.md:3685` records against the named placeholder's
+   undeclared vertical edge. This is that entry's disposition, at the size where a clamp is
+   actually visible. `.app-shell-columns` remains the app's single WINDOW-level scroller; this is
+   a nested box scrolling its own content, which `shell.test.ts`'s clip ban explicitly leaves
+   alone. */
+.card-detail-oracle {
+  max-height: 21em;
+  margin: 0;
+  overflow-y: auto;
+  color: var(--text-secondary);
+  font: var(--type-body);
+
+  /* Oracle text separates abilities with `\n`, and the wire value is rendered VERBATIM into one
+     element — so without this, every multi-ability card in the corpus reads as one run-together
+     sentence (found at review, 2026-08-05; the eye-check's clamp measurement never looked at a
+     paragraph break). `pre-line` keeps the breaks and still wraps; `pre-wrap` would also keep
+     leading spaces the wire never carries meaning in. */
+  white-space: pre-line;
+
+  /* The corpus contains hyphen-free ability words and long reminder text; wrapping on the
+     nearest opportunity keeps a narrow column from overflowing horizontally, which the single
+     window scroller must never be asked to absorb. */
+  overflow-wrap: break-word;
+}
+
+/* THE UNPIN CONTROL (AC 21, Q3, UX-DR46, UX-DR47).
+
+   ==== THE HIT BOX IS ≥ 24 × 24 BY ARITHMETIC, NOT BY A LITERAL =========================
+   UX-DR47 requires a ≥ 24 × 24px hit box and says padding counts. `--type-label` is
+   `500 11px/1.3` = 14.3px of line box, and `var(--space-2)` is 8px on each of top and bottom:
+   14.3 + 16 = 30.3px tall, comfortably over the floor, with `var(--space-3)` (12px) each side
+   putting the width past it on the word alone. No `min-height` literal is needed, so none is
+   written — the same reason this file has only one px literal at all.
+
+   ==== THE LABEL ROLE OBLIGES ITS TWO COMPANIONS, AND THAT IS A GATE ====================
+   DESIGN.md puts panel chrome in `{typography.label}`, that role declares `letterSpacing: 0.1em`
+   and `textTransform: uppercase`, and `findRoleWithoutCompanions` DERIVES from exactly those two
+   facts a hard requirement that any block applying `font: var(--type-label)` declare both in the
+   same rule. So this control renders in CAPITALS, matching the panel title beside it — and the
+   uppercase is CSS, so the accessible name and the clipboard keep the plain word.
+
+   The UA button chrome is reset here rather than inherited: a button's default background,
+   border and font are not this design system's. No colour literal is involved. */
+.card-detail-unpin {
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-secondary);
+  font: var(--type-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.card-detail-unpin:hover {
+  color: var(--text-primary);
+}
+
+/* `:focus-visible`, never `:focus` — the shipped idiom (Footer.css:107), and a mouse click must
+   not leave a ring behind it. The UA ring is REPLACED rather than removed: `outline: none` is
+   banned in all four spellings (UX-DR46, and stylelint enforces it), so what makes this
+   compliant is that an authored outline exists at all. Unlike the card tile's, this one sits on
+   a known surface, so it takes the ordinary `--focus-ring-offset` rather than the over-art
+   composite. */
+.card-detail-unpin:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* THE PIN ANNOUNCEMENT REGION (AC 23, AC 24, UX-DR45).
+
+   Visually hidden and NOT `display: none` / `visibility: hidden` — both of those remove an
+   element from the accessibility tree, so the region would exist and never speak. The clip-rect
+   idiom keeps it in the tree at a size no reader sees. `pointer-events: none` because an
+   absolutely-positioned 1px box that swallowed a click would be indistinguishable from a bug.
+
+   See this file's header for why `1px` and not `0`. */
+.card-detail-announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  pointer-events: none;
+}

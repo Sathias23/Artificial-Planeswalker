@@ -3772,3 +3772,23 @@ lives on is given so this section is checkable rather than merely reassuring.
   BETTER than the epic's expectation reads. What remains c10-3's is profiling (real bytes,
   real latency percentiles), and the ~124 s dead-CDN first paint remains unobserved — the CDN
   was alive. **Home: c10-3, narrowed to profiling and the dead-CDN case.**
+
+## Deferred from: code review of c4-5-persistent-card-detail-panel-with-transient-and-pinned-inspection (2026-08-05)
+
+- **The 21em oracle-text scroller is keyboard-unreachable.** `.card-detail-oracle` clamps at
+  14 lines with `overflow-y: auto` and contains no focusable element, so a keyboard-only user
+  cannot scroll the 63 corpus cards whose rules text exceeds 500 characters (WCAG 2.1.1). The
+  standard fix — `tabindex="0"` plus a labelled `role="group"` on the scroller — fails the AC 25
+  "not a modal" test (which asserts `[tabindex]` is absent from the panel) and adds a Tab stop
+  UX-DR40's enumerated order does not contain. Both of those contracts are c4-11's to
+  renegotiate: it owns the keyboard/focus story and the Tab-order additions. Ruled at review
+  (Brad, 2026-08-05): defer, not fix-now. **Home: c4-11 — scope the AC 25 assertion, enumerate
+  the new Tab stop, and make the scroller focusable in the same change.**
+
+- **The MDFC pin announcement speaks the combined name; the panel renders the face name.** A
+  faced card pinned before hydration announces the summary tier's `"Clearwater Pathway //
+  Murkwater Pathway"` while the panel, once the record lands, renders the front face's
+  `"Clearwater Pathway"` — the reader hears one name and reads another, for the ~6%-of-a-deck
+  faced population. Deliberate (re-announcing on hydration is the H4/C1 flood), declared in
+  `CardDetail.tsx`'s announcement comment at review 2026-08-05. **Home: the epic manual-testing
+  checklist — hear it with a real screen reader beside the em-dash entry already there.**

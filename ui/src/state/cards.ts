@@ -536,3 +536,28 @@ export const hydrateCard = async (
  */
 export const useCardEntry = (cardId: string): CardEntry | undefined =>
   useCardStore((state) => state.cards[cardId])
+
+/**
+ * The same read, imperatively — for a caller that is not a component (story c4-5).
+ *
+ * {@link useCardEntry} is a hook and can only be called during a render; the inspection slice
+ * has to answer *"is this card inspectable"* inside an event handler, which is neither. This is
+ * that read and nothing else: no request, no write, no subscription.
+ *
+ * **It exists as an EXPORT rather than as `useCardStore.getState()` at the call site, and the
+ * reason is a guard rather than a taste.** `tests/store-writes.test.ts` decides who writes a
+ * store by NAME PRESENCE — `/\bsetState\b/` anywhere in a module plus the store's name anywhere
+ * in the same module — because a call-shaped regex was defeated by `setState.call(...)` on its
+ * first run. So a module that writes its OWN store and merely *mentions* `useCardStore` would be
+ * reported as a second writer of this one. The two repairs available were to weaken that
+ * heuristic or to hand out a reader; the heuristic is the stronger of the two and stays.
+ *
+ * Args:
+ *   cardId: The Scryfall printing uuid.
+ *
+ * Returns:
+ *   The entry, or `undefined` if this id has never been seen — with `undefined` carrying exactly
+ *   the meaning it carries in {@link useCardEntry} and nowhere widened.
+ */
+export const readCardEntry = (cardId: string): CardEntry | undefined =>
+  useCardStore.getState().cards[cardId]

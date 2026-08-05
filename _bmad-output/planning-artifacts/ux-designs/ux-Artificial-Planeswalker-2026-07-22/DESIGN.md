@@ -196,7 +196,13 @@ components:
     background: '{colors.surface-overlay}'
     radius: '{rounded.lg}'
     art-radius: '{rounded.card}'
-    pinned-ring: '0 0 0 1px {colors.accent-dim}'
+    # AMENDED 2026-08-05 (story c4-5, Q2). This read `{colors.accent-dim}`, on a component whose
+    # own `background` two lines up is `{colors.surface-overlay}` — the exact pairing the Colors
+    # table below measures at 2.70:1 and bans by name. It is the identical defect the 07-25 gate
+    # closed as M4/C3 for `card-tile.live-ring`, and the fix was never carried across to this
+    # ring. `{colors.accent}` is 5.5:1 on this surface and is that table's own named substitute.
+    # Stated inline so it is not "corrected" back, exactly as C3 asked.
+    pinned-ring: '0 0 0 1px {colors.accent}'
   legality-row:
     rule: '1px solid {colors.border-hairline}'
     padding: '9px 2px'
@@ -384,7 +390,7 @@ Tonal layering (the surface ramp) does the everyday hierarchy work. Borders are 
 - **ManaPip / ManaCost** — a plain circle filled with the `mana-*` token, `{colors.text-inverse}` numeral inside for generic costs. Deliberately not a mana-symbol shape. `ManaCost` parses full Scryfall cost strings: braces, hybrid (`{2/R}`, `{W/U}`) as a split or dual-tinted pip, Phyrexian, and `{X}` — never silently dropping a symbol it doesn't recognize.
 - **Deck row** — the text-list unit. `{components.deck-row.columns}`: quantity in `{typography.numeric}` `{colors.text-tertiary}`, name in `{typography.body}` (`body-strong` `{colors.text-primary}` when live), mana cost as pips, price right-aligned in `{typography.numeric}`. `live` tints the row `{components.deck-row.live-background}` with `{components.deck-row.live-rule}`.
 - **Group header** — type-group dividers ("CREATURES") in `{typography.label}` `{components.group-header.foreground}` with the count right-aligned in `{typography.numeric}` `{colors.text-tertiary}`, over `{components.group-header.rule}`.
-- **Card detail panel** — the persistent right-column panel at `level="overlay"`. Full card face at `{components.card-detail.art-radius}` on `{components.card-detail.background}`, then name in `{typography.heading}` with mana cost right-aligned, type line in `{typography.body}` `{colors.text-secondary}` with price right-aligned in `{typography.numeric}`, and note/oracle text in `{typography.body}` `{colors.text-secondary}`. When pinned (see EXPERIENCE.md) it carries `{components.card-detail.pinned-ring}`.
+- **Card detail panel** — the persistent right-column panel at `level="overlay"`. Full card face at `{components.card-detail.art-radius}` on `{components.card-detail.background}`, then name in `{typography.heading}` with mana cost right-aligned, type line in `{typography.body}` `{colors.text-secondary}` with price right-aligned in `{typography.numeric}`, and note/oracle text in `{typography.body}` `{colors.text-secondary}`. When pinned (see EXPERIENCE.md) it carries `{components.card-detail.pinned-ring}`. That ring uses `{colors.accent}`, **not `accent-dim`** — this panel's own background is `surface-overlay`, where `accent-dim` is 2.70:1 and fails the 3:1 non-text floor; the same correction the gate made for `{components.card-tile.live-ring}`.
 - **Format check** (the legality row) — label in `{typography.body}` `{colors.text-secondary}`, `Badge` right-aligned, over `{components.legality-row.rule}`.
 - **Card placeholder** (named + unknown-card variants) — a deliberately designed stand-in, never a broken-image glyph: card-shaped at `{components.card-placeholder.radius}` on `{components.card-placeholder.background}` with `{components.card-placeholder.border}`, rendering in chrome type — name centered in `{typography.body-strong}`, mana cost as pips above, type line in `{typography.micro}` `{colors.text-secondary}`. Unknown-card variant: name slot reads "Unknown card" with the truncated ID in `{colors.text-secondary}` (the ID is the only identifying information — load-bearing, so never a de-emphasized tier). Image-loading wells use the same shape on `{colors.surface-well}` with no text.
 

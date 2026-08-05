@@ -835,6 +835,18 @@ const CARD_SHAPED: Map<string, string> = new Map([
       'that is why the badge is a separate stylesheet (QuantityBadge.css, deliberately NOT in ' +
       'this list) instead of an exception carved into this guard.',
   ],
+  [
+    'src/containers/CardDetail/CardDetail.css',
+    'the detail panel’s ART — DESIGN.md gives `components.card-detail` an `art-radius` of ' +
+      '`{rounded.card}`, so the full card face in the right column is card-shaped by ' +
+      'specification, at the same 63:88 and the same PERCENTAGE corner as a 176px grid ' +
+      'thumbnail (story c4-5). Joining is the reviewable act blind spot #4 describes: this file ' +
+      'spends no --radius-card at all — the shape arrives through the `card-shape` class — so ' +
+      'half one would never have looked at it, and it is half TWO that has to hold. Its ' +
+      'chrome — the panel frame’s --radius-lg pinned ring, the unpin control’s --radius-sm — ' +
+      'is deliberately in a SECOND stylesheet (CardDetailChrome.css, not in this list), which ' +
+      'is the CardTile.css / QuantityBadge.css precedent rather than a new exception.',
+  ],
 ])
 
 // CASE-SENSITIVE, deliberately (review finding): CSS custom properties are case-sensitive, so
@@ -1066,10 +1078,12 @@ describe('token usage across the shipped stylesheets', () => {
     ).toBeGreaterThan(0)
     expect(shippedBlocks.length).toBeGreaterThan(3)
     // 64 until story c2-9's `--font-mono` (Q2); 65 until story c4-4's
-    // `--shadow-focus-ring-over-art` (Q2). Sibling pin: `expectedNames` in tests/tokens.test.ts,
-    // which is the one that checks the VALUE against DESIGN.md. Both move together or the pair
-    // is wrong — and c4-4's probe (j) is the proof that moving only one goes red.
-    expect(declaredTokens.size).toBe(66)
+    // `--shadow-focus-ring-over-art` (Q2); 66 until story c4-5's two inspection rings,
+    // `--shadow-live-ring` and `--shadow-pinned-ring` (Q4), which move together because one
+    // story gives both a consumer. Sibling pin: `expectedNames` in tests/tokens.test.ts, which
+    // is the one that checks the VALUE against DESIGN.md. Both move together or the pair is
+    // wrong — and c4-4's probe (j) is the proof that moving only one goes red.
+    expect(declaredTokens.size).toBe(68)
   })
 
   it('never puts --accent-dim on --surface-overlay (AC 10, UX-DR6)', () => {
