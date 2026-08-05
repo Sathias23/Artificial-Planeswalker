@@ -834,6 +834,21 @@ were explicitly non-findings; auditor confirmed 38/41 ACs satisfied).
       face name — record the divergence in the declared-divergences note / epic manual-testing
       checklist [ui/src/containers/CardDetail/CardDetail.tsx:250]
 
+**PR #44 review (Greptile, 2026-08-05) — one P1, and it OVERTURNED a triage dismissal.**
+"Mixed input state clears inspection" (`CardTile.tsx:261-263`) is the same finding the Edge Case
+Hunter raised and triage dismissed as "deliberate Q8 single-slot design, niche sequence" — two
+independent reviewers flagging the identical seam retired that rationale. Fixed as TWO SLOTS
+plus recency: `hoveredId` (pointer) and `focusedId` (keyboard) with a `lastTransient` tag,
+resolution `pin ?? last-used-transient ?? other-transient ?? default`; clears stay keyed by id
+per modality and do not rewrite recency. New verbs `setFocused`/`clearFocused` +
+`clearTransientTargets` (the deck-transition clear); `setHovered`'s `null` arm removed (its
+dismissal fell with the same ruling). A fixed precedence in either direction would have
+regressed a real case — pointer-over-focus masks active Tab-navigation behind a resting mouse;
+focus-over-pointer masks the core hover sweep behind a forgotten focus ring — recency is the
+only resolution matching what the eye is doing in both. 1,174 → 1,181 tests (7 new: both
+stranded-modality directions at slice and tile, recency both orders, clear-preserves-recency,
+focus refusal, deck-transition clear); bundle JS 213,797 B, CSS unchanged, mirror byte-identical.
+
 **Review outcome (2026-08-05).** All 13 patches applied, all gates green: **1,174 frontend tests
 (was 1,165 — five new: deck-replacement clears the inspection, same-deck remount does not, unpin
 hands focus to the `<h2>`, the late announcement, and the pre-line source pin), tsc, eslint,

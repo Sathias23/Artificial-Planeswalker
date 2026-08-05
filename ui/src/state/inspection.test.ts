@@ -5,11 +5,14 @@ import type { DeckCardSummary } from '../api/schema'
 import { resetCardCache, useCardStore } from './cards'
 import { boardsOf } from './deckGroups'
 import {
+  clearFocused,
   clearHovered,
   clearPin,
+  clearTransientTargets,
   coldOpenTargetOf,
   resetInspection,
   setDefaultTarget,
+  setFocused,
   setHovered,
   targetIdOf,
   togglePin,
@@ -121,10 +124,10 @@ describe('the three inputs, and the order they win in (AC 8, AC 19, AC 20)', () 
   })
 
   it('clears the hover only for the card that still holds it', () => {
-    // THE RACE THIS EXISTS FOR (Q8's one addition). `blur` on the tile being left and `focus` on
-    // the tile being reached both fire, and a bare `setHovered(null)` on the losing tile lands
-    // AFTER the winner in the ordering keyboard traversal actually produces. The visible result
-    // is the panel snapping back to the cold-open card in the middle of a sweep.
+    // THE RACE THIS EXISTS FOR (Q8's one addition), per modality: `mouseleave` on the tile
+    // being left and `mouseenter` on the tile being reached both fire, and the losing tile's
+    // is free to land second. An unkeyed clear would then erase the winner's target and the
+    // panel would snap back to the cold-open card in the middle of a sweep.
     setHovered('id-A')
     setHovered('id-B')
     clearHovered('id-A')
@@ -134,10 +137,70 @@ describe('the three inputs, and the order they win in (AC 8, AC 19, AC 20)', () 
     expect(useInspectionStore.getState().hoveredId).toBeNull()
   })
 
-  it('takes an explicit null on setHovered, because a pointer really can leave the grid', () => {
+  it('clears the focus only for the card that still holds it — the blur-after-focus race', () => {
+    setFocused('id-A')
+    setFocused('id-B')
+    clearFocused('id-A')
+    expect(useInspectionStore.getState().focusedId).toBe('id-B')
+  })
+
+  it('clears BOTH transients at once on a deck transition', () => {
+    // `clearTransientTargets` is the boards effect's verb (review 2026-08-05): a hover or a
+    // focus pointing into a deck that left the glass is stale whichever modality set it.
     setHovered('id-A')
-    setHovered(null)
+    setFocused('id-B')
+    clearTransientTargets()
     expect(useInspectionStore.getState().hoveredId).toBeNull()
+    expect(useInspectionStore.getState().focusedId).toBeNull()
+    expect(targetIdOf(useInspectionStore.getState())).toBeNull()
+  })
+})
+
+describe('hover and focus are TWO slots, resolved by recency (PR #44 P1, UX-DR14)', () => {
+  it('a mouse-leave cannot strand a still-focused tile', () => {
+    // THE REPORTED DEFECT, found independently by the review's edge-case layer and by Greptile:
+    // Tab-focus tile A, sweep the mouse over B and away. With one shared slot the leave erased
+    // A's target and the panel snapped to the cold-open card while A still drew its focus ring
+    // — the one case where "hover OR keyboard focus" parity has both at once.
+    setDefaultTarget('id-Atraxa')
+    setFocused('id-A')
+    setHovered('id-B')
+    expect(targetIdOf(useInspectionStore.getState())).toBe('id-B')
+
+    clearHovered('id-B')
+    expect(targetIdOf(useInspectionStore.getState())).toBe('id-A')
+  })
+
+  it('a blur cannot strand a still-hovered tile — the same hole, mirrored', () => {
+    setDefaultTarget('id-Atraxa')
+    setHovered('id-B')
+    setFocused('id-A')
+    expect(targetIdOf(useInspectionStore.getState())).toBe('id-A')
+
+    clearFocused('id-A')
+    expect(targetIdOf(useInspectionStore.getState())).toBe('id-B')
+  })
+
+  it('while both hold a card, the modality used LAST wins — in both orders', () => {
+    // "Whichever the person used last" is the only resolution that matches what the eye is
+    // doing: Tab past a resting pointer and the panel follows the keyboard; sweep the mouse
+    // past a forgotten focus ring and it follows the pointer.
+    setFocused('id-A')
+    setHovered('id-B')
+    expect(targetIdOf(useInspectionStore.getState())).toBe('id-B')
+
+    setFocused('id-C')
+    expect(targetIdOf(useInspectionStore.getState())).toBe('id-C')
+  })
+
+  it('a clear does not rewrite recency — letting go says nothing about intent', () => {
+    // Hover B (last=hover), focus A, hover C, leave C: the pointer let go, so the panel falls
+    // to the focused tile even though the POINTER was the last modality used. A clear that
+    // flipped recency would instead have to invent an answer for a modality holding nothing.
+    setFocused('id-A')
+    setHovered('id-C')
+    clearHovered('id-C')
+    expect(targetIdOf(useInspectionStore.getState())).toBe('id-A')
   })
 })
 
@@ -166,6 +229,15 @@ describe('an unknown card cannot become the inspection target (AC 17, UX-DR22)',
     setHovered('id-ghost')
 
     expect(useInspectionStore.getState().hoveredId).toBeNull()
+    expect(targetIdOf(useInspectionStore.getState())).toBe('id-Atraxa')
+  })
+
+  it('refuses it on keyboard focus — the same door, the other modality', () => {
+    setDefaultTarget('id-Atraxa')
+    unknown('id-ghost')
+    setFocused('id-ghost')
+
+    expect(useInspectionStore.getState().focusedId).toBeNull()
     expect(targetIdOf(useInspectionStore.getState())).toBe('id-Atraxa')
   })
 

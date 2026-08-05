@@ -8,6 +8,7 @@ import { boardsOf } from '../../state/deckGroups'
 import {
   clearPin,
   resetInspection,
+  setFocused,
   setHovered,
   togglePin,
   useInspectionStore,
@@ -624,12 +625,14 @@ describe('the deck transition is where an inspection dies (review 2026-08-05)', 
     const view = render(<CardDetail boards={oneCardDeck} />)
     act(() => togglePin(ATRAXA))
     act(() => setHovered(ATRAXA))
+    act(() => setFocused(ATRAXA))
 
     const deckB = boardsOf([row('id-Elves', { name: 'Llanowar Elves' })])
     view.rerender(<CardDetail boards={deckB} />)
 
     expect(useInspectionStore.getState().pinnedId).toBeNull()
     expect(useInspectionStore.getState().hoveredId).toBeNull()
+    expect(useInspectionStore.getState().focusedId).toBeNull()
     // …and the panel falls to the NEW deck's cold-open target, not to a ghost of the old one.
     expect(screen.getByText('Llanowar Elves')).toBeVisible()
     expect(screen.queryByText('Atraxa, Praetors’ Voice')).toBeNull()
@@ -669,10 +672,11 @@ describe('the panel updates in place on hover AND on focus (AC 10, UX-DR14)', ()
     expect(screen.getByRole('region', { name: PANEL_TITLE })).toBe(region)
     expect(container.querySelector('[aria-live]')).toBe(live)
 
-    // The slice is location-agnostic (AC 4), so hover, keyboard focus, a deck row and an
-    // agent-view thumbnail all arrive here as the same call. `CardTile.test.tsx` proves the
-    // tile's four handlers reach it; this proves the panel answers.
-    act(() => setHovered(ATRAXA))
+    // The slice is location-agnostic (AC 4): a deck row and an agent-view thumbnail arrive
+    // through the same verbs. Keyboard focus arrives through ITS OWN verb and slot
+    // (PR #44 P1), and the panel answers it identically — `CardTile.test.tsx` proves the
+    // tile's handlers reach both; this proves the panel follows both.
+    act(() => setFocused(ATRAXA))
     expect(within(region).getByText('Atraxa, Praetors’ Voice')).toBeVisible()
   })
 })

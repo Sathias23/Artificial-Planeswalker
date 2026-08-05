@@ -18,7 +18,7 @@
  * alone"* — which is why `store-writes.test.ts` bans `localStorage`, the URL, a cookie and a
  * timer from the DECK slice by name. None of those is what this slice holds. What it holds is
  * **where the user is pointing**, which no request can answer and no response can contradict:
- * three card ids, all of them chosen by a person, none of them ever sent anywhere. It carries
+ * four card ids, all of them chosen by a person, none of them ever sent anywhere. It carries
  * no deck, no card record, no wire token and no error, and it is registered in `STORES` with
  * that reason so the narrowing has one address rather than being re-derived per story.
  *
@@ -45,9 +45,10 @@
  * are all consumers, and a `setHoveredTile` would have made two of the three read as a misuse of
  * something else's API. The verbs are what happens, not where.
  *
- * A consumer attaches {@link setHovered} / {@link clearHovered} / {@link togglePin} to its own
+ * A consumer attaches {@link setHovered}/{@link clearHovered} (pointer),
+ * {@link setFocused}/{@link clearFocused} (keyboard) and {@link togglePin} to its own
  * interactive element. **c4-6's flip control sits INSIDE the tile's `<button>` and suppresses
- * all three with `stopPropagation`** — which works because the tile's handlers are on the button
+ * them with `stopPropagation`** — which works because the tile's handlers are on the button
  * itself and `click` bubbles to it. That contract is stated in `CardTile.tsx` too, so neither
  * story has to edit the other's handler.
  *
@@ -84,9 +85,20 @@ import { readCardEntry } from './cards'
 import type { DeckBoards } from './deckGroups'
 
 /**
- * Three ids, in the order they win. All three are nullable and all three are ordinary states.
+ * Four ids and a recency tag, in the order they win. All four ids are nullable and all four are
+ * ordinary states.
  *
- * **Why THREE and not the two the story proposed.** `defaultId` is the cold-open resolution, and
+ * **Why the two transients are TWO SLOTS and not one** (PR #44 review, 2026-08-05 — found
+ * independently by the edge-case layer and by Greptile as a P1). Hover and keyboard focus are
+ * concurrent input modalities: a tile can hold visible keyboard focus while the pointer sweeps
+ * other tiles. With one shared slot, a `mouseleave` erased a still-focused tile's target — the
+ * panel and the live ring snapped to the cold-open card while a focus ring was still drawn on a
+ * tile, which is UX-DR14's *"hover OR keyboard focus"* parity broken in the one case where both
+ * are present at once. Two slots let each modality's clear take only its own target;
+ * {@link lastTransient} is what resolves them when both hold one, because "whichever the person
+ * used last" is the only answer that matches what the eye is doing in either direction.
+ *
+ * **Why THERE IS a `defaultId` and it lives here.** `defaultId` is the cold-open resolution, and
  * it has to live here rather than be threaded through the panel because the two consumers ask
  * different questions about the same answer: the panel asks {@link useInspectionTargetId} (no
  * argument, Q8) and a tile asks {@link useIsLiveTarget} without knowing what a deck is. With the
@@ -95,9 +107,17 @@ import type { DeckBoards } from './deckGroups'
  * resolutions, which is exactly the drift `deckGroups.ts` exists to prevent, one layer up.
  */
 export interface InspectionState {
-  /** Where the pointer or the keyboard focus is. Cleared when it leaves (UX-DR14). */
+  /** Where the POINTER is. Cleared when it leaves the card (UX-DR14). */
   readonly hoveredId: string | null
-  /** A card fixed by a click or Enter. Outranks hover until released (UX-DR20). */
+  /** Where KEYBOARD FOCUS is — the other half of UX-DR14's parity. Cleared on blur. */
+  readonly focusedId: string | null
+  /**
+   * Which transient wrote last — the recency that resolves mixed input. Written by the two
+   * setters, deliberately untouched by the two clears: a clear is a modality LETTING GO, and
+   * letting go says nothing about which modality the person is using.
+   */
+  readonly lastTransient: 'hover' | 'focus' | null
+  /** A card fixed by a click or Enter. Outranks both transients until released (UX-DR20). */
   readonly pinnedId: string | null
   /**
    * The cold-open target: what the panel shows when nothing has been touched, so that it is
@@ -110,6 +130,8 @@ export interface InspectionState {
 /** The state before a deck exists. Exported so tests can restore it between renders. */
 export const INITIAL_INSPECTION: InspectionState = {
   hoveredId: null,
+  focusedId: null,
+  lastTransient: null,
   pinnedId: null,
   defaultId: null,
 }
@@ -120,9 +142,9 @@ export const INITIAL_INSPECTION: InspectionState = {
  * names all four with their owners.
  *
  * A flat shape rather than `deck.ts`'s wrapped-union trick, because the failure that trick
- * closes cannot occur here: this store's shape is three independent nullable primitives, so
- * zustand's shallow merge is exactly the semantics wanted — writing one leaves the other two
- * alone, which is the whole of {@link togglePin} not disturbing a hover.
+ * closes cannot occur here: this store's shape is independent nullable primitives, so zustand's
+ * shallow merge is exactly the semantics wanted — writing one leaves the others alone, which is
+ * the whole of {@link togglePin} not disturbing a hover or a focus.
  */
 export const useInspectionStore = create<InspectionState>(() => INITIAL_INSPECTION)
 
@@ -163,8 +185,20 @@ const inspectable = (cardId: string): boolean => {
 }
 
 /**
- * Which card the panel is showing: **pin, else hover, else the cold-open target** (AC 8, AC 19,
- * AC 20).
+ * The transient the person used LAST, falling to the other while the last-used one holds
+ * nothing. This is what makes mixed input resolve to what the eye is doing: a pointer that
+ * leaves a card mid-Tab-sweep exposes the focused tile, and a focus that blurs mid-mouse-sweep
+ * exposes the hovered one — in neither direction does one modality's letting-go erase the
+ * other's target (PR #44 P1).
+ */
+const transientIdOf = (state: InspectionState): string | null =>
+  state.lastTransient === 'focus'
+    ? (state.focusedId ?? state.hoveredId)
+    : (state.hoveredId ?? state.focusedId)
+
+/**
+ * Which card the panel is showing: **pin, else the last-used transient (hover/focus), else the
+ * cold-open target** (AC 8, AC 19, AC 20).
  *
  * ONE expression, exported, in the manner `surfaceOf` established for the deck/panel precedence
  * — so a tile's *"am I live"* and the panel's *"what am I drawing"* can never disagree, which is
@@ -174,32 +208,60 @@ const inspectable = (cardId: string): boolean => {
  * rather than a falsy blank (`hydrateCard` terminally refuses it with zero requests).
  */
 export const targetIdOf = (state: InspectionState): string | null =>
-  state.pinnedId ?? state.hoveredId ?? state.defaultId
+  state.pinnedId ?? transientIdOf(state) ?? state.defaultId
 
 /**
- * A card is being pointed at, or has taken keyboard focus (UX-DR14 — *"hover OR keyboard
- * focus"*, full parity).
+ * A card is being POINTED at (UX-DR14). The pointer half only — keyboard focus is
+ * {@link setFocused}, its own slot, so that neither modality's letting-go can erase the other's
+ * target (PR #44 P1; the first spelling shared one slot and a `mouseleave` could strand a
+ * still-focused tile).
  *
  * Args:
- *   cardId: The printing uuid, or `null` when the pointer has left every card entirely.
+ *   cardId: The printing uuid. There is no `null` arm — leaving a card is {@link clearHovered},
+ *     keyed by id for the race below, and leaving the DECK is {@link clearTransientTargets}.
  */
-export const setHovered = (cardId: string | null): void => {
-  if (cardId !== null && !inspectable(cardId)) return
-  useInspectionStore.setState({ hoveredId: cardId })
+export const setHovered = (cardId: string): void => {
+  if (!inspectable(cardId)) return
+  useInspectionStore.setState({ hoveredId: cardId, lastTransient: 'hover' })
 }
 
 /**
- * The pointer or focus has LEFT a specific card — clearing only if that card is still the one
- * holding the hover (Q8's one addition to the proposed API).
+ * The pointer has LEFT a specific card — clearing only if that card is still the one holding
+ * the hover (Q8's one addition to the proposed API).
  *
- * **Not a convenience over `setHovered(null)`, a fix for a real ordering.** Leaving one card and
- * reaching the next produces two events, and the losing tile's is free to land second: a bare
- * `setHovered(null)` on `blur`/`mouseleave` then erases the hover the tile being MOVED TO has
- * already set, and the panel snaps back to the cold-open card in the middle of a sweep — the one
- * motion `EXPERIENCE.md` describes this whole panel as existing to make continuous.
+ * **Keyed by id because of a real ordering.** Leaving one card and reaching the next produces
+ * two events, and the losing tile's is free to land second: an unkeyed clear on `mouseleave`
+ * would erase the hover the tile being MOVED TO has already set, and the panel snaps back to
+ * the cold-open card in the middle of a sweep — the one motion `EXPERIENCE.md` describes this
+ * whole panel as existing to make continuous. `lastTransient` is deliberately NOT touched: a
+ * clear is a letting-go, and it says nothing about which modality the person is using.
  */
 export const clearHovered = (cardId: string): void => {
   useInspectionStore.setState((state) => (state.hoveredId === cardId ? { hoveredId: null } : state))
+}
+
+/**
+ * A card has taken KEYBOARD FOCUS (UX-DR14 — *"hover OR keyboard focus"*, full parity). The
+ * same contract as {@link setHovered} in the other modality's slot: same refusal, same recency
+ * write, same keyed clear in {@link clearFocused} for the same blur-after-focus race.
+ */
+export const setFocused = (cardId: string): void => {
+  if (!inspectable(cardId)) return
+  useInspectionStore.setState({ focusedId: cardId, lastTransient: 'focus' })
+}
+
+/** Keyboard focus has LEFT a specific card — `clearHovered`'s twin, for `blur`. */
+export const clearFocused = (cardId: string): void => {
+  useInspectionStore.setState((state) => (state.focusedId === cardId ? { focusedId: null } : state))
+}
+
+/**
+ * Both transients die at once — the deck-transition clear (`CardDetail`'s boards effect, review
+ * 2026-08-05): a hover or a focus pointing into a deck that just left the glass is stale by
+ * construction, whichever modality set it.
+ */
+export const clearTransientTargets = (): void => {
+  useInspectionStore.setState({ hoveredId: null, focusedId: null, lastTransient: null })
 }
 
 /**

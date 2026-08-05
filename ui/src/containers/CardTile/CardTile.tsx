@@ -1,7 +1,14 @@
 import { useId } from 'react'
 
 import { CardPlaceholder } from '../../components/CardPlaceholder/CardPlaceholder'
-import { clearHovered, setHovered, togglePin, useIsLiveTarget } from '../../state/inspection'
+import {
+  clearFocused,
+  clearHovered,
+  setFocused,
+  setHovered,
+  togglePin,
+  useIsLiveTarget,
+} from '../../state/inspection'
 import { useCardArt } from '../useCardArt'
 import './CardTile.css'
 import { cardImageUrl } from './imageUrl'
@@ -66,9 +73,11 @@ import './QuantityBadge.css'
  *
  * **Focus parity is not an extra, it is the rule** (UX-DR14 — *"hover OR keyboard focus"*;
  * `EXPERIENCE.md`'s interaction primitives — *"hover is never the only way to reach
- * information"*). `onFocus`/`onBlur` do the same job as `onMouseEnter`/`onMouseLeave`, and the
- * blur half calls `clearHovered(cardId)` rather than `setHovered(null)` so that leaving THIS
- * tile cannot erase a target the tile being reached has already set.
+ * information"*). `onFocus`/`onBlur` do the same job as `onMouseEnter`/`onMouseLeave` **in a
+ * slot of their own** (`setFocused`/`clearFocused` — PR #44's P1: with one shared slot, a
+ * `mouseleave` erased a still-focused tile's target), and every clear names the card it is
+ * leaving so that leaving THIS tile cannot erase a target the tile being reached has already
+ * set.
  *
  * **Enter and Space need no handler.** This is a real `<button>`, so the browser turns both into
  * a `click` — which is also why `EXPERIENCE.md`'s ban on double-click semantics costs nothing:
@@ -241,12 +250,13 @@ export function CardTile({ cardId, name, cost, typeLine, quantity }: CardTilePro
            c4-7's deck rows and Epic 6's thumbnails get the identical behaviour from the
            identical verbs rather than from four copies of a rule.
 
-           HOVER AND FOCUS ARE THE SAME EVENT AS FAR AS THIS TILE IS CONCERNED, which is
-           UX-DR14 read literally ("hover OR keyboard focus") and `EXPERIENCE.md`'s "hover is
-           never the only way to reach information". The two leave-handlers differ from the
-           two enter-handlers by ONE thing: they name the card they are leaving, so that a
-           `blur` landing after the next tile's `focus` cannot erase a target that tile has
-           already set (see `clearHovered`).
+           HOVER AND FOCUS ARE THE SAME CONTRACT IN TWO SLOTS, which is UX-DR14 read literally
+           ("hover OR keyboard focus") and `EXPERIENCE.md`'s "hover is never the only way to
+           reach information". Each modality writes its OWN slot (PR #44 P1: one shared slot
+           let a `mouseleave` erase a still-focused tile's target), and each leave-handler
+           names the card it is leaving, so that a `blur` landing after the next tile's
+           `focus` cannot erase a target that tile has already set (see `clearHovered` /
+           `clearFocused`).
 
            NO `onKeyDown`. This is a real `<button>`, so the browser already turns Enter and
            Space into a `click` — which is also what makes "release is a second SINGLE click"
@@ -259,8 +269,8 @@ export function CardTile({ cardId, name, cost, typeLine, quantity }: CardTilePro
            control never reads as leaving the tile. */
         onMouseEnter={() => setHovered(cardId)}
         onMouseLeave={() => clearHovered(cardId)}
-        onFocus={() => setHovered(cardId)}
-        onBlur={() => clearHovered(cardId)}
+        onFocus={() => setFocused(cardId)}
+        onBlur={() => clearFocused(cardId)}
         onClick={() => togglePin(cardId)}
       >
         {art === 'failed' ? (

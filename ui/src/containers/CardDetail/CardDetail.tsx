@@ -8,9 +8,9 @@ import { hydrateCard, readCardEntry, useCardEntry, type CardEntry } from '../../
 import type { DeckBoards } from '../../state/deckGroups'
 import {
   clearPin,
+  clearTransientTargets,
   coldOpenTargetOf,
   setDefaultTarget,
-  setHovered,
   useInspectionTargetId,
   usePinnedId,
 } from '../../state/inspection'
@@ -304,7 +304,7 @@ export function CardDetail({ boards }: CardDetailProps) {
   useEffect(() => {
     if (replacesRememberedDeck(boards)) {
       clearPin()
-      setHovered(null)
+      clearTransientTargets()
     }
     setDefaultTarget(coldOpenTargetOf(boards))
   }, [boards])

@@ -93,7 +93,7 @@ const STORES: { store: string; owner: string; why: string }[] = [
   {
     store: 'useInspectionStore',
     owner: 'src/state/inspection.ts',
-    why: 'the FIRST slice whose input is a person rather than the wire (story c4-5, Q5). The spine sentence this file exists to enforce is narrowed IN THAT MODULE\'S HEADER to "nothing outside the store writes SERVER-DERIVED state", and the narrowing is safe for exactly the reason the bans below are keyed the way they are: the slice holds three card ids chosen by a hover, a focus or a click — no deck, no card record, no wire token, and nothing that any request could answer or any response contradict. The verbs (`setHovered`, `clearHovered`, `togglePin`, `clearPin`, `setDefaultTarget`) are the writers; the components that call them still touch no `setState`, which is what the scan below actually asserts.',
+    why: 'the FIRST slice whose input is a person rather than the wire (story c4-5, Q5). The spine sentence this file exists to enforce is narrowed IN THAT MODULE\'S HEADER to "nothing outside the store writes SERVER-DERIVED state", and the narrowing is safe for exactly the reason the bans below are keyed the way they are: the slice holds four card ids chosen by a hover, a focus or a click — no deck, no card record, no wire token, and nothing that any request could answer or any response contradict. The verbs (`setHovered`/`clearHovered`, `setFocused`/`clearFocused`, `togglePin`/`clearPin`, `clearTransientTargets`, `setDefaultTarget`) are the writers; the components that call them still touch no `setState`, which is what the scan below actually asserts.',
   },
 ]
 

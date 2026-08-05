@@ -6,6 +6,7 @@ import { resetCardCache, useCardStore } from '../../state/cards'
 import {
   resetInspection,
   setDefaultTarget,
+  targetIdOf,
   togglePin,
   useInspectionStore,
 } from '../../state/inspection'
@@ -341,25 +342,28 @@ describe('the tile sets the inspection target (c4-5 AC 10, AC 19, UX-DR14, UX-DR
     expect(useInspectionStore.getState().hoveredId).toBeNull()
   })
 
-  it('does the same on keyboard FOCUS — full parity, never hover-only (UX-DR14)', () => {
+  it('does the same on keyboard FOCUS — full parity, in a slot of its own (UX-DR14)', () => {
     render(<CardTile {...BLACK_LOTUS} />)
     const tile = screen.getByRole('button')
 
     // `EXPERIENCE.md`'s interaction primitives: "hover is never the only way to reach
     // information — every hover behavior has focus parity". A tile that only answered a pointer
-    // would leave the whole detail panel unreachable from a keyboard.
+    // would leave the whole detail panel unreachable from a keyboard. ITS OWN SLOT, not the
+    // hover's (PR #44 P1): with one shared slot, a `mouseleave` erased a still-focused tile's
+    // target — so focus writes `focusedId` and never `hoveredId`.
     fireEvent.focus(tile)
-    expect(useInspectionStore.getState().hoveredId).toBe(BLACK_LOTUS.cardId)
+    expect(useInspectionStore.getState().focusedId).toBe(BLACK_LOTUS.cardId)
+    expect(useInspectionStore.getState().hoveredId).toBeNull()
 
     fireEvent.blur(tile)
-    expect(useInspectionStore.getState().hoveredId).toBeNull()
+    expect(useInspectionStore.getState().focusedId).toBeNull()
   })
 
-  it('clears only its OWN hover, so a blur cannot erase the next tile’s focus', () => {
-    // THE RACE `clearHovered` EXISTS FOR (c4-5 Q8). Leaving one card and reaching the next
-    // produces two events and the losing tile's is free to land second; a bare
-    // `setHovered(null)` on blur would then erase a target the tile being MOVED TO has already
-    // set, and the panel would snap back to the cold-open card in the middle of a sweep.
+  it('clears only its OWN focus, so a blur cannot erase the next tile’s focus', () => {
+    // THE RACE the keyed clears EXIST FOR (c4-5 Q8). Leaving one card and reaching the next
+    // produces two events and the losing tile's is free to land second; an unkeyed clear on
+    // blur would then erase a target the tile being MOVED TO has already set, and the panel
+    // would snap back to the cold-open card in the middle of a sweep.
     const first = render(<CardTile {...BLACK_LOTUS} />)
     const second = render(<CardTile cardId="second-card" name="Mox Pearl" />)
     const tileOf = (r: ReturnType<typeof render>) => r.container.querySelector('button')!
@@ -368,7 +372,23 @@ describe('the tile sets the inspection target (c4-5 AC 10, AC 19, UX-DR14, UX-DR
     fireEvent.focus(tileOf(second))
     fireEvent.blur(tileOf(first))
 
-    expect(useInspectionStore.getState().hoveredId).toBe('second-card')
+    expect(useInspectionStore.getState().focusedId).toBe('second-card')
+  })
+
+  it('a mouse-leave does not strand a still-focused tile (PR #44 P1)', () => {
+    // THE REPORTED DEFECT, at the tile's own wiring: Tab-focus one tile, sweep the mouse over
+    // another and away. The leave clears only the POINTER slot, so the focused tile takes the
+    // target back — the panel and the live ring stay consistent with the focus ring on screen.
+    const focused = render(<CardTile {...BLACK_LOTUS} />)
+    const swept = render(<CardTile cardId="second-card" name="Mox Pearl" />)
+    const tileOf = (r: ReturnType<typeof render>) => r.container.querySelector('button')!
+
+    fireEvent.focus(tileOf(focused))
+    fireEvent.mouseEnter(tileOf(swept))
+    fireEvent.mouseLeave(tileOf(swept))
+
+    expect(useInspectionStore.getState().focusedId).toBe(BLACK_LOTUS.cardId)
+    expect(targetIdOf(useInspectionStore.getState())).toBe(BLACK_LOTUS.cardId)
   })
 
   it('pins on click, and releases on a SECOND single click (AC 19, AC 20)', () => {
