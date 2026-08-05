@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { UNKNOWN_CARD_LABEL } from '../../components/CardPlaceholder/copy'
 import { resetCardCache, useCardStore } from '../../state/cards'
+import { resetFaces } from '../../state/faces'
 import {
   resetInspection,
   setDefaultTarget,
@@ -10,6 +11,8 @@ import {
   togglePin,
   useInspectionStore,
 } from '../../state/inspection'
+import { boardsOf } from '../../state/deckGroups'
+import { CardGrid } from '../CardGrid/CardGrid'
 import { CardTile, type CardTileProps } from './CardTile'
 import { cardImageUrl } from './imageUrl'
 
@@ -62,10 +65,14 @@ const imageOf = (container: HTMLElement) => container.querySelector('img')
 
 // The inspection slice is module-scope, as stores are; without this the target a previous test
 // left behind is what the next one starts from — and every `is-live` assertion below would be
-// reading the wrong tile's liveness.
+// reading the wrong tile's liveness. `resetFaces` joined at c4-6 AND WAS FOUND BY ITS ABSENCE:
+// without it the face a previous test flipped is the face the next one starts from, so the second
+// test to click the same printing flipped it BACK and read `data-flipped="false"` — a real
+// cross-test leak, caught here rather than in review.
 afterEach(() => {
   resetInspection()
   resetCardCache()
+  resetFaces()
 })
 
 describe('the tile points at our own origin and nowhere else (AC 3)', () => {
@@ -102,6 +109,32 @@ describe('the tile points at our own origin and nowhere else (AC 3)', () => {
     // the docstring rests on: `?size=normal` is a second cache entry for one picture. Nothing in
     // the app spells it; asserted so the asymmetry is a recorded property rather than a habit.
     expect(cardImageUrl('x', 'normal')).not.toBe(cardImageUrl('x'))
+  })
+
+  it('takes a FACE when a caller genuinely needs one — c4-6s flip (AC 13, AC 24)', () => {
+    // STILL ONE BUILDER. `imageUrl.ts`'s header instructed this story by name — "c4-6 adds `face`
+    // here, beside `size`, and inherits the encoding below for free" — and this is that carried
+    // out, in the same function, with no second template string anywhere in `src/`.
+    expect(cardImageUrl('x', undefined, 1)).toBe('/api/card-image/x?face=1')
+    expect(cardImageUrl('x', 'large', 1)).toBe('/api/card-image/x?size=large&face=1')
+    // The id is still encoded with both parameters attached.
+    expect(cardImageUrl('a?b=1', 'large', 1)).toBe('/api/card-image/a%3Fb%3D1?size=large&face=1')
+  })
+
+  it('NEVER spells `face=0`, which is the warm grid cache not being split (AC 13, AC 27)', () => {
+    // The sharpest of this story's don't-breaks, and the one an evasion probe targets by name.
+    // Every tile passes its face index unconditionally, and 2,027 of 2,027 deck rows start at 0 —
+    // so a builder that spelled the default would rewrite EVERY grid URL in the app and throw the
+    // whole warm browser cache away on the commit that shipped a flip control.
+    expect(cardImageUrl('x', undefined, 0)).toBe('/api/card-image/x')
+    expect(cardImageUrl('x', undefined, 0)).toBe(cardImageUrl('x'))
+    expect(cardImageUrl('x', 'large', 0)).toBe(cardImageUrl('x', 'large'))
+    // …and neither does a value that is not a face at all. `face` reaches this function from a
+    // store, and `?face=NaN` / `?face=-1` / `?face=1.5` are three ways to ask the route for a
+    // `404` — none of which the grid should be able to produce by arithmetic going wrong upstream.
+    for (const bad of [Number.NaN, -1, 1.5, Number.POSITIVE_INFINITY]) {
+      expect(cardImageUrl('x', undefined, bad)).toBe('/api/card-image/x')
+    }
   })
 
   it('encodes an id that would otherwise address a different route (c4-1 Q5)', () => {
@@ -427,12 +460,15 @@ describe('the tile sets the inspection target (c4-5 AC 10, AC 19, UX-DR14, UX-DR
     expect(useInspectionStore.getState().pinnedId).toBeNull()
   })
 
-  it('lets a CHILD control opt out with stopPropagation — c4-6’s flip, proven early', () => {
-    // The contract c4-6 relies on, asserted now rather than discovered then: its flip control
-    // sits INSIDE this button and must "only flip, and never set, pin or clear the inspection".
-    // Because the handlers are on the button and `click` bubbles, a `stopPropagation()` in the
-    // child suppresses the pin with no edit to this component — and this is the proof, planted
-    // as a real listener on a real descendant.
+  it('lets a CHILD control opt out with stopPropagation — RE-PROVEN under c4-6’s shape', () => {
+    // THE PREMISE OF THIS TEST CHANGED AND ITS CLAIM DID NOT (c4-6 Q2). It was written at c4-4 for
+    // a flip control that would sit INSIDE this button; c4-6 measured that an interactive
+    // descendant of a `<button>` is invalid HTML React 19.2 warns about in development and that
+    // assistive technology does not reliably expose, and made the control a SIBLING instead. So
+    // the contract is RE-PROVEN rather than re-worded: `onClick` is still on the button, `click`
+    // still bubbles to it, and a descendant that stops propagation still suppresses the pin —
+    // which is what keeps the quantity badge, and anything a later story puts inside this button,
+    // able to opt out. The real control's own opt-out is proven on the real control below.
     const { container } = render(<CardTile {...BLACK_LOTUS} quantity={2} />)
     const child = container.querySelector('.card-tile-quantity')!
     child.addEventListener('click', (event) => event.stopPropagation())
@@ -464,6 +500,283 @@ describe('the tile sets the inspection target (c4-5 AC 10, AC 19, UX-DR14, UX-DR
 
     act(() => togglePin('some-other-card'))
     expect(tile.classList.contains('is-live')).toBe(false)
+  })
+})
+
+/**
+ * The tile carries a flip control, and the DOM shape that had to change for it (story c4-6, Q2,
+ * AC 1, AC 6, AC 8, AC 18, AC 19).
+ *
+ * ================= WHAT THESE CANNOT CARRY ============================================
+ *
+ * The 3D rotation, the control's 0.65 → 1.0 opacity, its 28px disc and 32px hit box and the
+ * reduced-motion fallback are all unevaluated in jsdom — they are source claims in
+ * `FlipControl.css` / `tokens.css` plus Task 8's eye-check. What IS provable here is the
+ * STRUCTURE: which element is a descendant of which, what order they appear in, which handlers
+ * fire, and what the accessible name comes out as.
+ */
+describe('the tile flips (c4-6, Q2, AC 1, AC 8, AC 18, AC 19)', () => {
+  /** Shape C — the only shape that gets a control. See `FlipControl.test.tsx` for all four. */
+  const hydrateFlippable = (cardId: string, name: string) => {
+    useCardStore.setState((state) => ({
+      cards: {
+        ...state.cards,
+        [cardId]: {
+          status: 'hydrated',
+          card: {
+            id: cardId,
+            name,
+            mana_cost: '',
+            cmc: 0,
+            type_line: 'Land // Land',
+            oracle_text: '',
+            colors: [],
+            rarity: 'rare',
+            set_code: 'znr',
+            oracle_id: `oracle-${cardId}`,
+            set_name: 'Zendikar Rising',
+            collector_number: '260',
+            color_identity: ['U', 'B'],
+            legalities: {},
+            games: ['paper'],
+            image_uris: null,
+            card_faces: [
+              { name: 'Clearwater Pathway', image_uris: { normal: 'n' } },
+              { name: 'Murkwater Pathway', image_uris: { normal: 'n' } },
+            ],
+          },
+        },
+      },
+    }))
+  }
+
+  const PATHWAY = {
+    cardId: 'clearwater-pathway',
+    name: 'Clearwater Pathway // Murkwater Pathway',
+  }
+  const flipOf = (container: HTMLElement) => container.querySelector('.flip-control')
+
+  it('renders NO control for an ordinary card, so 35,483 tiles are unchanged (AC 2)', () => {
+    const { container } = render(<CardTile {...BLACK_LOTUS} />)
+    expect(flipOf(container)).toBeNull()
+    // …and exactly ONE image, which is the whole of Q10's scoping: the second stacked face is
+    // rendered only where there IS one, so a non-flippable deck costs no extra request.
+    expect(container.querySelectorAll('img')).toHaveLength(1)
+  })
+
+  it('renders a control and a SECOND stacked face for a flippable card (AC 1, Q10)', () => {
+    hydrateFlippable(PATHWAY.cardId, PATHWAY.name)
+    const { container } = render(<CardTile {...PATHWAY} />)
+
+    expect(flipOf(container)).not.toBeNull()
+    const images = [...container.querySelectorAll('img')]
+    expect(images).toHaveLength(2)
+    // The front face spells no `face=` at all — AC 13, and the whole of the warm grid cache not
+    // being split. The back face spells `face=1`, and neither spells a `size=`.
+    expect(images[0].getAttribute('src')).toBe(`/api/card-image/${PATHWAY.cardId}`)
+    expect(images[1].getAttribute('src')).toBe(`/api/card-image/${PATHWAY.cardId}?face=1`)
+    for (const img of images) expect(img.getAttribute('src')).not.toContain('size=')
+  })
+
+  it('IS VALID HTML: no interactive element inside the tile’s button (AC 19)', () => {
+    // THE RULING Q2 TURNED ON, ASSERTED STRUCTURALLY. React builds the DOM imperatively, so an
+    // invalid nesting really does survive into the tree — there is no parser to unnest it — and a
+    // `<button>` inside a `<button>` is not reliably exposed as a separate control by assistive
+    // technology. Measured at Task 0: React 19.2 warns about it in its DEVELOPMENT build only, so
+    // the console is not the thing protecting anyone here. This assertion is.
+    hydrateFlippable(PATHWAY.cardId, PATHWAY.name)
+    const { container } = render(<CardTile {...PATHWAY} />)
+    const tile = container.querySelector('button.card-tile')!
+
+    expect(tile.querySelectorAll('button, a, input, select, textarea')).toHaveLength(0)
+    // The control is a SIBLING inside the frame, not a descendant of the card's button.
+    const frame = container.querySelector('.card-tile-frame')!
+    expect(frame.contains(tile)).toBe(true)
+    expect(frame.contains(flipOf(container))).toBe(true)
+    expect(tile.contains(flipOf(container))).toBe(false)
+  })
+
+  it('puts the control IMMEDIATELY AFTER its own tile in document order (AC 8, UX-DR40)', () => {
+    // ASSERTED AS DOCUMENT ORDER OVER A RENDERED GRID, not as a `tabindex` value — the story asks
+    // for exactly that, because `tabindex` on a real `<button>` is absent by design and a test
+    // reading one would assert nothing. Two tiles, one flippable, so "immediately after its OWN
+    // tile" is distinguishable from "somewhere in the list" and from a trailing group.
+    hydrateFlippable(PATHWAY.cardId, PATHWAY.name)
+    const { container } = render(
+      <ul>
+        <li>
+          <CardTile {...BLACK_LOTUS} />
+        </li>
+        <li>
+          <CardTile {...PATHWAY} />
+        </li>
+      </ul>,
+    )
+
+    const focusable = [...container.querySelectorAll('button')]
+    // Black Lotus's tile, then the Pathway's tile, then the Pathway's control. The ordinary card
+    // contributes ONE stop and the flippable one contributes two, back to back.
+    expect(focusable).toHaveLength(3)
+    expect(focusable[0].classList.contains('card-tile')).toBe(true)
+    expect(focusable[1].classList.contains('card-tile')).toBe(true)
+    expect(focusable[2].classList.contains('flip-control')).toBe(true)
+    // …and the control belongs to the tile immediately before it, rather than being a group at
+    // the end of the grid: it shares that tile's frame.
+    expect(focusable[1].parentElement).toBe(focusable[2].parentElement)
+    expect(focusable[0].parentElement).not.toBe(focusable[2].parentElement)
+  })
+
+  it('does not let the control join the tile’s accessible name (AC 18)', () => {
+    // The pinned spelling, re-proven on a tile that HAS a control (review 2026-08-04 measured
+    // `Black Lotus ×4` with `computeAccessibleName`, including the space `dom-accessibility-api`
+    // puts between two `aria-labelledby` references). The control is outside the button, so it
+    // cannot contribute — but "cannot" is exactly the kind of claim the DOM change could have
+    // falsified, which is why AC 18 asks for it to be re-proven rather than assumed.
+    hydrateFlippable(PATHWAY.cardId, PATHWAY.name)
+    render(<CardTile {...PATHWAY} quantity={4} />)
+
+    expect(screen.getByRole('button', { name: `${PATHWAY.name} ×4` })).toBeVisible()
+    // …and the control is its own control, named its own way, exactly once on the tile.
+    expect(screen.getByRole('button', { name: 'Flip card' })).toBeVisible()
+    expect(screen.getAllByRole('button')).toHaveLength(2)
+  })
+
+  it('flips WITHOUT pinning, setting or clearing the inspection (AC 6)', () => {
+    hydrateFlippable(PATHWAY.cardId, PATHWAY.name)
+    const { container } = render(<CardTile {...PATHWAY} />)
+
+    fireEvent.click(flipOf(container)!)
+
+    // Against the SLICE, not a spy. The flip happened; nothing about where the reader is pointing
+    // moved. Decide-once rule 15: "a flip is not an inspection".
+    expect(useInspectionStore.getState().pinnedId).toBeNull()
+    expect(useInspectionStore.getState().hoveredId).toBeNull()
+    expect(useInspectionStore.getState().focusedId).toBeNull()
+    // …and the tile now draws the back face as the one that governs, which is the visible half.
+    expect(container.querySelector('.card-faces')!.getAttribute('data-flipped')).toBe('true')
+  })
+
+  it('keeps the tile’s hover target while the pointer is ON the control (Q2)', () => {
+    // THE DEFECT THE FRAME EXISTS TO PREVENT. `mouseenter`/`mouseleave` do not fire between an
+    // element and its descendants — which is why four shipped comments wanted the control INSIDE
+    // the button. With the control moved out for validity, the containment had to be restored one
+    // element further out, and this is the assertion that it was: reaching the control from the
+    // card does not leave the frame, so the tile keeps the target it set.
+    hydrateFlippable(PATHWAY.cardId, PATHWAY.name)
+    const { container } = render(<CardTile {...PATHWAY} />)
+    const frame = container.querySelector('.card-tile-frame')!
+
+    fireEvent.mouseEnter(frame)
+    expect(useInspectionStore.getState().hoveredId).toBe(PATHWAY.cardId)
+
+    // A click on the control, with the pointer still inside the frame.
+    fireEvent.click(flipOf(container)!)
+    expect(useInspectionStore.getState().hoveredId).toBe(PATHWAY.cardId)
+  })
+
+  it('keeps the tile’s FOCUS target when focus moves to its own control (Q2, UX-DR14)', () => {
+    // The keyboard half of the same repair, and the reason `onFocus`/`onBlur` moved to the frame
+    // rather than staying on the button: `focusin`/`focusout` BUBBLE, so a frame-level handler
+    // sees the control's focus as the tile's. Without that, Tabbing from a tile to its own flip
+    // control would drop the detail panel back to the cold-open card mid-traverse — PR #44's P1
+    // defect, one element out.
+    hydrateFlippable(PATHWAY.cardId, PATHWAY.name)
+    const { container } = render(<CardTile {...PATHWAY} />)
+    const tile = container.querySelector('button.card-tile')!
+
+    fireEvent.focus(tile)
+    expect(useInspectionStore.getState().focusedId).toBe(PATHWAY.cardId)
+
+    // focusout then focusin, which is the order the browser dispatches them in.
+    fireEvent.blur(tile)
+    fireEvent.focus(flipOf(container)!)
+    expect(useInspectionStore.getState().focusedId).toBe(PATHWAY.cardId)
+  })
+
+  it('re-arms the art state when the face changes (Q7)', () => {
+    // `?face=1` is a different browser-cache key, so a flip is always a cold fetch the first time
+    // — and a hook keyed on `cardId` alone would leave the tile at `'shown'` over bytes that had
+    // not arrived. Each face carries its own `data-loaded`, which is the observable half.
+    hydrateFlippable(PATHWAY.cardId, PATHWAY.name)
+    const { container } = render(<CardTile {...PATHWAY} />)
+    const faces = () => [...container.querySelectorAll('img')]
+
+    fireEvent.load(faces()[0])
+    expect(faces()[0].getAttribute('data-loaded')).toBe('true')
+    expect(faces()[1].getAttribute('data-loaded')).toBe('false')
+
+    fireEvent.load(faces()[1])
+    expect(faces()[1].getAttribute('data-loaded')).toBe('true')
+  })
+
+  it('draws the placeholder for whichever face FAILED, and keeps the control (Q8)', () => {
+    // THE RULING, ASSERTED BOTH WAYS. A card whose BACK picture failed shows its front normally
+    // and the named placeholder once flipped — `?face=1` is a different negative-cache key, so
+    // the two faces genuinely fail independently. And the control survives the failed branch,
+    // because it is outside the button the placeholder replaces the contents of: a face that
+    // failed can always be flipped out of.
+    hydrateFlippable(PATHWAY.cardId, PATHWAY.name)
+    const { container } = render(<CardTile {...PATHWAY} />)
+
+    fireEvent.error([...container.querySelectorAll('img')][1])
+    expect(container.querySelector('.card-placeholder')).toBeNull()
+    expect(container.querySelectorAll('img')).toHaveLength(2)
+
+    fireEvent.click(flipOf(container)!)
+    expect(container.querySelector('.card-placeholder')).not.toBeNull()
+    expect(container.querySelectorAll('img')).toHaveLength(0)
+    expect(flipOf(container)).not.toBeNull()
+  })
+
+  it('survives a re-render over NEW BOARDS, and even an unmount — no snap-back (AC 9)', () => {
+    // UX-DR15 asks for flip state to persist across a `deck_changed` re-render, and the story
+    // asks for that to be proven by RE-RENDERING OVER NEW BOARDS rather than by asserting the
+    // store in isolation. This test's first spelling re-rendered ONE tile with a changed
+    // `quantity` — which a `useState` inside the component would have passed identically, so it
+    // could not tell the module-scope store from local state (review 2026-08-06). Now the boards
+    // really are new objects through the real `boardsOf` derivation, and the harder half is
+    // asserted too: the tile is UNMOUNTED entirely (a board without the card) and remounted, and
+    // the face survives — the one behaviour no component-local state could fake. The face slice
+    // is deliberately NOT cleared on a deck transition, which is the opposite of what
+    // `deckMemory` does to the inspection slice — see `src/state/faces.ts`'s header for why both
+    // are right.
+    hydrateFlippable(PATHWAY.cardId, PATHWAY.name)
+    const row = (cardId: string, name: string) => ({
+      card_id: cardId,
+      quantity: 1,
+      sideboard: false,
+      commander: false,
+      card: {
+        id: cardId,
+        name,
+        mana_cost: '',
+        cmc: 0,
+        type_line: 'Land // Land',
+        oracle_text: '',
+        colors: [] as string[],
+        rarity: 'rare',
+        set_code: 'znr',
+      },
+    })
+    const pathway = () => row(PATHWAY.cardId, PATHWAY.name)
+    const flipped = () => container.querySelector('.card-faces[data-flipped]')
+
+    const { container, rerender } = render(
+      <CardGrid boards={boardsOf([pathway(), row('swamp-id', 'Swamp')])} />,
+    )
+    fireEvent.click(flipOf(container)!)
+    expect(flipped()!.getAttribute('data-flipped')).toBe('true')
+
+    // `deck_changed`: a NEW boards object with a different composition, same printing.
+    rerender(<CardGrid boards={boardsOf([pathway(), row('island-id', 'Island')])} />)
+    expect(flipped()!.getAttribute('data-flipped')).toBe('true')
+
+    // The unmount: a board without the card at all, then the card again. Local state dies here;
+    // the store, keyed by printing uuid for the life of the tab, does not.
+    rerender(<CardGrid boards={boardsOf([row('island-id', 'Island')])} />)
+    expect(flipOf(container)).toBeNull()
+    rerender(<CardGrid boards={boardsOf([pathway()])} />)
+    expect(flipped()!.getAttribute('data-flipped')).toBe('true')
   })
 })
 

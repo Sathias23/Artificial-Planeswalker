@@ -521,6 +521,47 @@ export const hydrateCard = async (
 }
 
 /**
+ * Hydrate every distinct card in a deck, once (story c4-6, Q1, AC 23).
+ *
+ * ================= WHY A WHOLE-DECK SWEEP EXISTS AT ALL ================================
+ *
+ * c4-6's flip control has to render *"when its tile renders"* (`epics-companion-app.md:2043`), and
+ * whether a card HAS a back face is a fact only the hydrated record carries: `CardSummary` has
+ * neither `card_faces` nor `image_uris`, and until this story the only thing in the app that
+ * hydrated was the detail panel, on the one card being looked at. The alternatives were priced in
+ * that story's Q1 and both are worse: adding a derived field to `CardSummary` is an MCP-visible
+ * schema change (three consumers, an `openapi.json` regeneration, the committed-schema pins, the
+ * generated `types.d.ts` and both plugin mirrors), and rendering the control lazily makes the Tab
+ * stop UX-DR40 places *"immediately after its own tile"* materialise mid-traverse.
+ *
+ * ================= WHAT IT COSTS, AS A NUMBER (AC 23) =================================
+ *
+ * **At most one request per distinct card id, per deck, per tab.** Measured read-only against the
+ * shipped database: the largest of the 40 real decks holds **99 distinct ids** (both Atraxa
+ * decks), so the ceiling is 99 — and c4-1's measurement of what those requests carry still holds
+ * at 212,436 bytes for that deck. Every one of the three refusals {@link hydrateCard} already
+ * makes applies here unchanged: a hydrated id asks nothing, a read in flight is JOINED rather than
+ * duplicated, and a terminal refusal is never re-asked. Sweeping twice therefore costs nothing.
+ *
+ * **It is deliberately NOT the cache's decision when to run.** This function issues requests the
+ * moment it is called, so WHERE it is called from is the whole of its cost profile — see
+ * `App.tsx`, which calls it from an effect, i.e. **after the DOM commit that sets every
+ * `<img src>`**. That ordering is what keeps ~99 JSON reads from queueing ahead of ~99 pictures on
+ * a six-connection-per-origin browser, and it is React's own sequencing rather than a timer.
+ *
+ * Args:
+ *   cardIds: Every `card_id` in the deck payload, verbatim and in payload order — including the
+ *     sideboard, which c4-7 will draw. Duplicates are free (`hydrateCard` dedupes in flight) and
+ *     are collapsed here anyway, so a card in two boards costs one request.
+ */
+export const hydrateDeckCards = (cardIds: readonly string[]): void => {
+  // `void` on each: the store is the authority and every consumer is already watching it, so there
+  // is nothing to do with the answers and nothing to await. `hydrateCard` never rejects, so there
+  // is no unhandled rejection to swallow either.
+  for (const cardId of new Set(cardIds)) void hydrateCard(cardId)
+}
+
+/**
  * Subscribe to one id's entry. **Starts nothing** (Q3).
  *
  * A pure selector: no effect, no request, no cleanup. A tile may call this on every render of

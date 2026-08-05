@@ -515,32 +515,44 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     expect(images.filter((img) => img.getAttribute('src')?.includes('size=large'))).toHaveLength(1)
   })
 
-  it('seeds the card cache from the payload, and hydrates ONLY the inspected card (AC 17)', async () => {
+  it('seeds the card cache free, and hydrates each DISTINCT card exactly once (AC 17, c4-6 AC 23)', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     const fetchMock = answering(decks())
 
     render(<App />)
     await settle()
 
-    // THE PRE-EXISTING ASSERTION c4-5 CHANGED, AND IT IS STRENGTHENED RATHER THAN RELAXED.
-    // c4-2 wrote `expect(callsTo(fetchMock, '/api/cards/')).toBe(0)`, and that was the honest
-    // claim while nothing consumed the hydration tier: seeding is free, so nothing had to ask.
-    // c4-5 gives that route its first production caller — the detail panel hydrates its
-    // inspection target — so ZERO is no longer the property worth asserting. **ONE** is, and it
-    // is a much sharper statement of the same design:
+    // THIS ASSERTION HAS MOVED TWICE, AND BOTH MOVES SHARPENED IT RATHER THAN RELAXING IT.
     //
-    //   the SUMMARY tier still costs nothing for every card in the deck (both entries below),
-    //   and hydration costs exactly one request for the ONE card being looked at — not 99, and
-    //   not one per render. Measured on the real 99-tile deck: 38,182 bytes already in hand
-    //   against 212,436 bytes over 99 requests, which is the cost this asymmetry avoids.
+    // c4-2 wrote `toBe(0)`: seeding is free, so while nothing consumed the hydration tier nothing
+    // had to ask. c4-5 gave the route its first caller — the detail panel hydrates its inspection
+    // target — and the number became ONE. **c4-6 makes it ONE PER DISTINCT CARD**, and the reason
+    // is a fact about the wire rather than a change of appetite: the flip control must render
+    // "when its tile renders", and whether a card HAS a back face lives only in the hydrated
+    // record. `CardSummary` carries neither `card_faces` nor `image_uris`, so a deck-wide sweep is
+    // what makes AC 1 true (that story's Q1 prices the two alternatives it declined).
+    //
+    // WHAT IS STILL ASSERTED, AND IT IS THE PART THAT MATTERS:
+    //
+    //   the SUMMARY tier is still FREE for every card in the deck — it arrives inside the one
+    //   `GET /api/deck/{id}` c4-2 already makes, 38,182 bytes in hand for the real 99-tile deck;
+    //
+    //   and the sweep costs exactly ONE request per DISTINCT id — not one per tile, not one per
+    //   render, and not one per hover. Two cards in this fixture, two requests. On the largest
+    //   real deck that ceiling is 99, measured read-only at c4-6's Task 0, and `hydrateCard`'s
+    //   in-flight dedupe plus its terminal-refusal gate are what hold it there.
     //
     // The cold-open target is `Llanowar Elves`: no commander in this fixture, so the grid's
     // visual order starts at the first populated type group, and `Creature` precedes `Land`.
     expect(useCardStore.getState().cards['id-Llanowar Elves']?.status).toBe('hydrated')
-    expect(useCardStore.getState().cards['id-Forest']?.status).toBe('summary')
-    expect(callsTo(fetchMock, '/api/cards/')).toBe(1)
+    expect(useCardStore.getState().cards['id-Forest']?.status).toBe('hydrated')
+    expect(callsTo(fetchMock, '/api/cards/')).toBe(2)
     expect(callsTo(fetchMock, '/api/cards/id-Llanowar%20Elves')).toBe(1)
-    expect(fetchMock).toHaveBeenCalledTimes(4)
+    // THE ONE THAT WOULD CATCH A DOUBLE SWEEP. The panel hydrates its target and the sweep
+    // hydrates the whole deck, so the cold-open card is asked for by BOTH — and it must still cost
+    // one request, because `hydrateCard` shares the promise rather than issuing a second read.
+    expect(callsTo(fetchMock, '/api/cards/id-Forest')).toBe(1)
+    expect(fetchMock).toHaveBeenCalledTimes(5)
   })
 
   it('shows the no-active-deck panel when there is genuinely no deck (AC 7)', async () => {

@@ -157,6 +157,18 @@ const COPY_MODULES: Map<string, string> = new Map([
       'wrote it. The card NAME, TYPE LINE, oracle TEXT and mana COST the same component renders ' +
       'are DATA, arrive from the wire, and are deliberately not in this module.',
   ],
+  [
+    'src/containers/FlipControl/copy.ts',
+    'the DFC flip control’s accessible name — the ONE authored string story c4-6 puts anywhere ' +
+      'near a screen, and it is never SEEN: it reaches a reader only through `aria-label`, which ' +
+      'is why it is owned here rather than left as a literal in the component. DESIGN.md ' +
+      'describes the control’s material, size, position and glyph and gives it no label at all, ' +
+      'so the string is a decision (Q6) and the module states it. It is deliberately STATIC ' +
+      '(Q11): a name that named the target face — "Show Murkwater Pathway" — would be card DATA ' +
+      'in a read-aloud attribute, which is exactly what this file’s attribute half collects and ' +
+      'what decide-once rule 16 forbids; the STATE travels on `aria-pressed` instead. The card ' +
+      'NAME, its FACES and their TYPE LINES are data, arrive from the wire, and are not here.',
+  ],
 ])
 
 /**

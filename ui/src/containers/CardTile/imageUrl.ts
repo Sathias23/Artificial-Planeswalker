@@ -59,8 +59,31 @@ export type CardImageSize = 'small' | 'normal' | 'large' | 'png' | 'art_crop' | 
  * **ONE FUNCTION, NOT A SECOND TEMPLATE STRING.** This is the split `react-refresh` forced and
  * this module's header predicted: *"the split it forces is the one that lets c4-5 (a larger
  * detail render) and c4-6 (`face=1`) extend ONE builder rather than each writing a second
- * template string."* **c4-6 adds `face` here**, beside `size`, and inherits the encoding below
+ * template string."* **c4-6 added `face` here**, beside `size`, and inherited the encoding below
  * for free.
+ *
+ * **`face` IS THE SAME RULE AS `size`, ONE NOTCH SHARPER (story c4-6, AC 13).** `0` is the
+ * route's own default (`images.py`'s `face: integer, minimum 0, default 0`) and it is what every
+ * unflipped tile carries — so where an unspelled `size` protects one cache entry, an unspelled
+ * `face` protects the WHOLE GRID: every tile passes its index unconditionally, and 2,027 of 2,027
+ * deck rows start at zero, so a builder that spelled the default would rewrite every image URL in
+ * the app and throw away the warm browser cache on the commit that shipped a flip control. Hence
+ * the guard below is `> 0` rather than `!== undefined`, and `CardTile.test.tsx` asserts
+ * `cardImageUrl('x', undefined, 0) === cardImageUrl('x')` byte-for-byte.
+ *
+ * **It is validated rather than trusted, and that is not defensiveness.** Unlike `size`, whose
+ * closed union of `[a-z_]` literals is guaranteed by the TYPE, `face` is a `number` that arrives
+ * from a STORE — so `NaN`, `-1` and `1.5` are all expressible by arithmetic going wrong upstream,
+ * and each of them would ask the route for a `404 no_image_data` in a query string that then
+ * poisons a cache entry. `Number.isInteger` plus `> 0` is the whole of it, and it collapses the
+ * invalid cases onto the front face, which is the only render that is always available.
+ *
+ * **`face` indexes the images a card HAS, not its `card_faces` array** (`resolve_face_images`,
+ * AD-11). A split or adventure card has two faces and ONE image, so `face=1` on it is
+ * `404 no_image_data` — *out of range*, not "the other half". Nothing in the SPA ever asks:
+ * `FlipControl` renders only where every face carries its own `image_uris`, which is the same
+ * predicate the resolver applies, and it is the reason this parameter can be indexed safely at
+ * all.
  *
  * **`encodeURIComponent`, for c4-1's Q5 reason.** The id comes out of `deck_cards`, a column
  * with no shape constraint, so a stray `/` or `?` in one would silently address a DIFFERENT
@@ -73,12 +96,22 @@ export type CardImageSize = 'small' | 'normal' | 'large' | 'png' | 'art_crop' | 
  *   cardId: The Scryfall printing uuid, verbatim, as `DeckCardSummary.card_id` carries it.
  *   size: Which render to ask for. Omitted means the route's default, `normal`, with no query
  *     string at all — see above for why that is not the same as passing `'normal'`.
+ *   face: Which of the card's IMAGES to ask for, zero-based. Omitted, `0`, or anything that is not
+ *     a positive integer all mean the front face and spell nothing — see above.
  *
  * Returns:
  *   A same-origin, absolute path. Never a CDN host — `tests/no-scryfall-hosts.test.ts` bans the
  *   host family across all of `src/`, and AD-11 is the rule it enforces.
  */
-export const cardImageUrl = (cardId: string, size?: CardImageSize): string => {
+export const cardImageUrl = (cardId: string, size?: CardImageSize, face?: number): string => {
   const path = `/api/card-image/${encodeURIComponent(cardId)}`
-  return size === undefined ? path : `${path}?size=${size}`
+  // Built as a list so the two parameters compose without a nested ternary and so their ORDER is
+  // stable: `?size=large&face=1` is one cache key and `?face=1&size=large` would be a second for
+  // the same picture, which is the failure the unspelled defaults above exist to avoid.
+  const query = [
+    size === undefined ? null : `size=${size}`,
+    face !== undefined && Number.isInteger(face) && face > 0 ? `face=${face}` : null,
+  ].filter((parameter) => parameter !== null)
+
+  return query.length === 0 ? path : `${path}?${query.join('&')}`
 }

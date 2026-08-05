@@ -2303,7 +2303,29 @@ describe('the reduced-motion mechanism (AC 11, AC 13)', () => {
     expect(
       moving,
       'the shipped-motion list moved — the story that added or removed a motion updates this pin',
-    ).toEqual(['.card-tile:hover :: transform', '.card-tile:focus-visible :: transform'])
+      //
+      // MOVED BY c4-6, AND ALL FOUR ENTRIES ARE THAT STORY'S (2026-08-05). Two are the hover pop
+      // RE-HOMED rather than added: the flip control had to become a sibling of the tile's
+      // `<button>` instead of a descendant, so the pop moved from `.card-tile:hover` onto the
+      // `.card-tile-frame` that now holds both — same box, different element, and this pin is what
+      // made forgetting to move the registration impossible. The other two are the flip itself: the
+      // stacked-faces box turns 180°, and the back face carries a STATIC 180° so it reads the right
+      // way round once it has. That static one is the entry a property-keyed guard catches and an
+      // animation-keyed one would not — and it genuinely needs the fallback, because with both
+      // rotations gone `backface-visibility` has nothing to decide from and the back face would
+      // cover the front at every setting. See tokens.css for the two `visibility` rules that
+      // replace it.
+    ).toEqual([
+      '.card-tile-frame:hover :: transform',
+      // `:has(:focus-visible)`, frame-wide, since review 2026-08-06: the first spelling read
+      // `:has(.card-tile:focus-visible)`, which dropped the pop the moment a keyboard reader
+      // Tabbed from the tile onto its OWN flip control — the mirror image of the pointer defect
+      // the frame was built to repair. The registration moved with the selector, as this pin
+      // exists to force.
+      '.card-tile-frame:has(:focus-visible) :: transform',
+      ".card-faces[data-flipped='true'] :: transform",
+      '.card-face.is-back :: transform',
+    ])
 
     expect(moving.filter((entry) => !neutralised.has(entry))).toEqual([])
   })

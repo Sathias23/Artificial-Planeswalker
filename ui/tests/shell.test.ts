@@ -1474,11 +1474,18 @@ describe('the containers are a declared category with a posture of its own', () 
     // that separates them. c4-5 added the inspection verbs and moved the art state machine into
     // the shared hook, which is why `../useCardArt` and `../../state/inspection` are here and
     // `useState`/`useCallback` no longer are.
+    // c4-6 added three: the flip control it mounts as a SIBLING of its own button, the face store
+    // that decides which side is showing, and the one mirror of `resolve_face_images` — which the
+    // tile needs for itself, to decide whether to render a second stacked `<img>` at all. It is
+    // still the module that made this category necessary.
     {
       file: 'src/containers/CardTile/CardTile.tsx',
       imports: [
         '../../components/CardPlaceholder/CardPlaceholder',
+        '../../state/faces',
         '../../state/inspection',
+        '../FlipControl/FlipControl',
+        '../imagedFaces',
         '../useCardArt',
         './CardTile.css',
         './QuantityBadge.css',
@@ -1491,6 +1498,9 @@ describe('the containers are a declared category with a posture of its own', () 
     // (never writes — the verbs live in the slice), one sibling container's path builder, its
     // own two stylesheets and its own copy module. No `zustand`, no `src/api/client`, no
     // `fetch` — the panel decides that a record is needed and `hydrateCard` owns the request.
+    // c4-6 added three: the face store, the flip control it mounts as its own copy at the art
+    // box's top-left (UX-DR15), and the shared `resolve_face_images` mirror it needs to know
+    // whether to draw a second stacked face at `size=large`.
     {
       file: 'src/containers/CardDetail/CardDetail.tsx',
       imports: [
@@ -1500,8 +1510,11 @@ describe('the containers are a declared category with a posture of its own', () 
         '../../components/Panel/Panel',
         '../../state/cards',
         '../../state/deckGroups',
+        '../../state/faces',
         '../../state/inspection',
         '../CardTile/imageUrl',
+        '../FlipControl/FlipControl',
+        '../imagedFaces',
         '../useCardArt',
         './CardDetail.css',
         './CardDetailChrome.css',
@@ -1531,6 +1544,29 @@ describe('the containers are a declared category with a posture of its own', () 
     // consumer, which is `src/components/filled.ts`'s precedent stated in its own header: "a
     // helper shared by two components does not live inside one of them".
     { file: 'src/containers/useCardArt.ts', imports: ['react'] },
+    // c4-6's flip control — the DFC face toggle, mounted TWICE (the tile's frame and the detail
+    // panel's art box) from ONE module, because UX-DR15 asks the panel for "its own copy at the
+    // same spec" and two components would be two chances to drift. It reads two stores and
+    // attaches a handler, every one of which is banned next door. It imports the inspection slice
+    // NOT AT ALL, and that absence is load-bearing: decide-once rule 15 is "a flip is not an
+    // inspection", and an exhaustive import list is the strongest available form of it — there is
+    // no verb in scope to call by accident.
+    {
+      file: 'src/containers/FlipControl/FlipControl.tsx',
+      imports: ['../../state/faces', '../imagedFaces', './FlipControl.css', './copy'],
+    },
+    // c4-6's copy module — the SECOND in this tree, and the fourth in the app. One string, the
+    // control's accessible name. `imports: []` for `CardDetail/copy.ts`'s reason: `tests/` is the
+    // `nodenext` project and `src/` the `bundler` one, so a `ui/tests` file may import an app
+    // module only if that module has no relative imports of its own.
+    { file: 'src/containers/FlipControl/copy.ts', imports: [] },
+    // The one mirror of `resolve_face_images` (c4-6). It sits at the ROOT of this tree rather than
+    // inside `FlipControl/` because TWO components need the answer — the control, to decide
+    // whether to exist, and `CardTile`, to decide whether to render a second stacked `<img>` for
+    // the back face — and `src/components/filled.ts`'s header states the rule for exactly that
+    // case: "a helper shared by two components does not live inside one of them". `useCardArt.ts`
+    // and `imageUrl.ts` are the two shipped precedents.
+    { file: 'src/containers/imagedFaces.ts', imports: ['../state/cards'] },
     // The image-route path builder. `imports: []` is the strongest form of "this is a string,
     // from a string" — no react, no DOM, no store and, above all, no fetch. It is a module of
     // its own because `react-refresh/only-export-components` is an ESLint error and a component
@@ -1608,10 +1644,12 @@ describe('the containers are a declared category with a posture of its own', () 
   it('is reading every container module (non-vacuity)', () => {
     // 3 at c4-4, which created the category; 6 at c4-5, which added the detail panel, its copy
     // module and the shared art hook; 7 since that story's review added the deck-transition
-    // memory (2026-08-05). The number is pinned rather than derived so that a new container is
-    // a DECISION with a diff — the same reason the token inventory is pinned — and the coverage
-    // guard below is what makes forgetting to move it impossible rather than merely discouraged.
-    expect(CONTAINERS).toHaveLength(7)
+    // memory (2026-08-05); 10 at c4-6, which adds the flip control, its copy module and the one
+    // mirror of `resolve_face_images`. The number is pinned rather than derived so that a new
+    // container is a DECISION with a diff — the same reason the token inventory is pinned — and
+    // the coverage guard below is what makes forgetting to move it impossible rather than merely
+    // discouraged.
+    expect(CONTAINERS).toHaveLength(10)
     for (const { file } of CONTAINERS) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }

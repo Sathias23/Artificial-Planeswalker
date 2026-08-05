@@ -1,9 +1,12 @@
+import { useEffect } from 'react'
+
 import { AppShell } from './components/AppShell/AppShell'
 import { DeckBadges } from './components/DeckBadges/DeckBadges'
 import { Footer } from './components/Footer/Footer'
 import { StatePanel } from './components/StatePanel/StatePanel'
 import { CardDetail } from './containers/CardDetail/CardDetail'
 import { CardGrid } from './containers/CardGrid/CardGrid'
+import { hydrateDeckCards } from './state/cards'
 import { surfaceOf, useDeckState } from './state/deck'
 import { useSystemState } from './state/systemState'
 
@@ -156,6 +159,61 @@ export default function App() {
   // said which of the two is true, and this line only gives the deck arm a name so that the
   // three slots below can read its fields without repeating the discriminant check.
   const deck = surface.kind === 'deck' ? surface : null
+  const detail = deck?.detail ?? null
+
+  // THE DECK-WIDE HYDRATION SWEEP (c4-6, Q1, AC 23), AND ITS PLACEMENT IS THE DECISION.
+  //
+  // c4-6's flip control must render "when its tile renders", and whether a card HAS a back face
+  // lives only in the hydrated record — `CardSummary` carries neither `card_faces` nor
+  // `image_uris`. So something has to hydrate the deck rather than one card at a time. The two
+  // alternatives were priced and declined in that story's Q1: a derived field on `CardSummary` is
+  // an MCP-visible schema change, and a control that appears only once a card happens to be
+  // inspected would materialise a Tab stop mid-traverse (UX-DR40 puts it "immediately after its
+  // own tile").
+  //
+  // ==== WHY HERE, AND NOT IN `createDeckBoot` BESIDE `seedCardSummaries` ================
+  // React runs effects AFTER the DOM commit, so the sweep is off the render's critical path: the
+  // grid draws from the summary tier and never waits for a card record. Called from the boot
+  // instead, the same 99 reads would be issued before React had rendered a single tile.
+  //
+  // **AND THE STRONGER CLAIM THIS COMMENT USED TO MAKE IS FALSE — MEASURED, AND CORRECTED
+  // RATHER THAN SMOOTHED OVER.** It read "by the time this line runs the browser has already
+  // queued all ~99 image requests, so the sweep takes the connection pool BEHIND the pictures".
+  // Measured over four cold-cache Chrome runs against the real 99-card Atraxa deck, the first
+  // card-record request starts **6–10 ms BEFORE** the first image request every time
+  // (108/114, 757/765, 583/593, 105/113 ms). The commit sets the `src` attributes; the browser
+  // dispatches those loads asynchronously, and this effect gets there first. React's ordering
+  // buys "not on the render path", not "behind the pictures".
+  //
+  // ==== WHAT IT COSTS, AS A NUMBER (AC 23) ==============================================
+  // At most one request per DISTINCT card id, once per deck per tab: **99** for the largest of the
+  // 40 real decks, fewer for all the others. `hydrateCard` dedupes in flight, refuses a hydrated
+  // id and never re-asks a terminal refusal, so a re-render costs nothing and the ceiling holds.
+  // `App.test.tsx` pins the count for its own fixture rather than trusting this comment.
+  //
+  // The wall-clock price, measured the only way that means anything — the same deck, the same
+  // machine, a fresh browser profile each time, with this line and without it. Time from
+  // navigation to the LAST of the deck's images:
+  //
+  //   with the sweep    1,594 · 1,793 · 1,795 · 847 ms      (99 card reads, all settled by ~1.0 s)
+  //   without it          343 ·   753 ·   538 · 352 ms      (1 card read)
+  //
+  // So the tail of the cold open roughly TRIPLES — about **+1.2 s** on the largest real deck —
+  // while first paint is untouched (32–128 ms either way, because the grid never waits for this).
+  // That is the price of AC 1 being true at all: `CardSummary` carries neither `card_faces` nor
+  // `image_uris`, so without these reads no tile can know it has a back face and no flip control
+  // exists. It is a COLD-OPEN cost, once per deck per tab, and it is stated here rather than
+  // discovered later.
+  //
+  // `detail` is the dependency because it is the DECK's identity as far as this file is
+  // concerned: `deck.ts` writes it once per boot, so it changes exactly when the deck does. This
+  // reads the payload's own `cards` array verbatim — not `boards` — so it is not a second
+  // flattening of the derivation `deckGroups.ts` owns (AD-12), and it therefore also covers the
+  // sideboard rows c4-7 will draw.
+  useEffect(() => {
+    if (detail === null) return
+    hydrateDeckCards(detail.cards.map((row) => row.card_id))
+  }, [detail])
 
   return (
     <AppShell

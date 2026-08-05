@@ -35,6 +35,66 @@
    Durations come from `--motion-*` and easings from `--ease-*`; a literal duration anywhere in a
    transition is a lint error, and nothing here pulses, loops or alternates. */
 
+/* THE FRAME, AND WHY THE POP MOVED ONTO IT (story c4-6, Q2).
+
+   c4-6's flip control is a `<button>`, and an interactive descendant of a `<button>` is invalid
+   HTML that React 19.2 warns about in development and that assistive technology does not reliably
+   expose as a separate control (both measured at that story's Task 0). So the control is a
+   SIBLING of the tile's button, and this element is what holds the two.
+
+   ==== THE CONSEQUENCE THAT HAD TO BE REPAIRED ========================================
+   With the control outside the button, `.card-tile:hover` is FALSE while the pointer sits on the
+   control — so the hover pop and the raised shadow would drop out on exactly the gesture the
+   control exists for, and a reduced-motion reader (whose ONLY hover signal is that shadow) would
+   lose their whole feedback. The trigger therefore widens from the button to this frame, whose
+   box is exactly the card box: the button below is `display: block` at `width: 100%` carrying
+   `card-shape`'s aspect ratio, so THE HOVER REGION IS UNCHANGED from c4-4's — only the element
+   listening moved.
+
+   ==== `:where()` IS WHAT KEEPS EVERY SPECIFICITY BELOW BYTE-IDENTICAL =================
+   `:where()` contributes ZERO specificity, so `:where(.card-tile-frame):hover .card-tile` is
+   (0,2,0) — the `:hover` counts, the frame does not — which is EXACTLY what `.card-tile:hover`
+   was. c4-4's whole cascade argument (three `box-shadow` rules, the focus composite winning over
+   the hover, the `no-descending-specificity` ordering) therefore survives verbatim rather than
+   being re-derived. The plain descendant form `.card-tile-frame:hover .card-tile` would be
+   (0,3,0) and would outrank every `.card-tile:focus-visible` rule after it — the identical trap
+   c4-4 recorded when it tried to hover the grid item.
+
+   ==== THE TRANSFORM IS HERE AND THE SHADOW IS NOT ====================================
+   The scale lives on the frame so the control scales WITH the card and stays pinned inside
+   `--space-2` of its corner; the shadow stays on the button because a shadow drawn on this
+   element would be a square outline around a `--radius-card` rectangle. `:has(:focus-visible)`
+   gives the frame the focus half — ANY focus inside the frame, so Tabbing from the tile to its
+   OWN control keeps the card popped (review 2026-08-06: the first spelling was
+   `:has(.card-tile:focus-visible)`, which un-popped the card on exactly the keyboard gesture the
+   pointer half was repaired for — the mirror image of the defect this frame exists to prevent,
+   and the reduced-motion reader's only signal with it). `:focus-visible` rather than
+   `:focus-within`, so a mouse click still leaves no pop behind it. Both selectors sit at
+   (0,2,0) — equal, which `no-descending-specificity` accepts.
+
+   Its `transform` is registered `none !important` in tokens.css's reduced-motion block, on these
+   exact selector texts, and the enumerated shipped-motion pin moved in the same commit. */
+.card-tile-frame {
+  position: relative;
+  display: block;
+
+  /* AC 17 — "in place". A `transform` affects neither layout nor hit testing, which is what lets
+     the pop be presentation-only: growing the element with `width`/`padding` instead would look
+     identical, move every neighbour, and change the hit targets UX-DR14 says it must not. Only
+     `transform` is transitioned; the shadow swap below is deliberately instant, so that the
+     reduced-motion fallback ("shadow only") is not itself an animation. */
+  transition: transform var(--motion-glide) var(--ease-glide);
+}
+
+.card-tile-frame:hover,
+.card-tile-frame:has(:focus-visible) {
+  /* BELOW THE OVERLAY LAYER'S 20 (AppShell.css:237, UX-DR38). A raised tile must slide over its
+     neighbours and under the agent view; `2` is the smallest value that does the first, and
+     UX-DR38 fixes the stack at exactly one full-window level so there is nothing between. */
+  z-index: 2;
+  transform: scale(1.06);
+}
+
 /* THE TILE IS A REAL BUTTON (AC 20, UX-DR47) — not a `tabIndex` on a div, which
    `jsx-a11y/no-static-element-interactions` makes an ESLint error and UX-DR47 forbids
    unconditionally. It ships with NO handler in this story; c4-5 adds one.
@@ -76,13 +136,6 @@
   /* DESIGN.md: "shadow-rest on card tiles and panels at rest". Never a literal — `graphite` and
      `ink` declare both elevation tokens as `none`, so a hard-coded shadow breaks them. */
   box-shadow: var(--shadow-rest);
-
-  /* AC 17 — "in place". A `transform` affects neither layout nor hit testing, which is what
-     lets the pop be presentation-only: growing the element with `width`/`padding` instead would
-     look identical, move every neighbour, and change the hit targets UX-DR14 says it must not.
-     Only `transform` is transitioned; the shadow swap below is deliberately instant, so that
-     the reduced-motion fallback ("shadow only") is not itself an animation. */
-  transition: transform var(--motion-glide) var(--ease-glide);
 }
 
 /* HOVER AND KEYBOARD FOCUS ARE THE SAME STATE (UX-DR14 — "hover OR keyboard focus"), so they
@@ -98,18 +151,23 @@
    the inspection target on the tile, which is this element.
 
    `:focus-visible`, never `:focus` — the shipped idiom is Footer.css:107, and a mouse click
-   should not leave a ring behind it. */
-.card-tile:hover,
-.card-tile:focus-visible {
-  /* BELOW THE OVERLAY LAYER'S 20 (AppShell.css:237, UX-DR38). A raised tile must slide over its
-     neighbours and under the agent view; `2` is the smallest value that does the first, and
-     UX-DR38 fixes the stack at exactly one full-window level so there is nothing between. */
-  z-index: 2;
-  transform: scale(1.06);
+   should not leave a ring behind it.
 
+   THE HOVER HALF READS THE FRAME AT c4-6 (see the frame's own comment): the pointer being on the
+   flip control is still the pointer being on the tile, and `:where()` keeps this selector at the
+   (0,2,0) it has always been. So does the FOCUS half (review 2026-08-06): focus on the flip
+   control is still attention on the tile, so the frame-scoped `:has(:focus-visible)` form keeps
+   the raise while a keyboard reader sits on the control — without it the shadow (the
+   reduced-motion reader's ONLY signal) dropped on exactly that gesture. The RING below stays on
+   the button alone, because focus really is on one element and the ring is drawn on that one. */
+:where(.card-tile-frame):hover .card-tile,
+:where(.card-tile-frame):has(:focus-visible) .card-tile,
+.card-tile:focus-visible {
   /* UX-DR42's "shadow only" fallback needs a shadow CHANGE to fall back TO, and this is it. The
      tile's LIVE state is a different signal entirely (`live-ring`, accent + glow) and it is
-     c4-5's, so raising the elevation on hover does not collide with it on this component. */
+     c4-5's, so raising the elevation on hover does not collide with it on this component. The
+     scale and the z-index moved to `.card-tile-frame` at c4-6; a shadow cannot follow them,
+     because a shadow drawn on the frame would be a square outline around a rounded card. */
   box-shadow: var(--shadow-raise);
 }
 
@@ -173,7 +231,8 @@
   box-shadow: var(--shadow-live-ring), var(--shadow-rest);
 }
 
-.card-tile.is-live:hover {
+:where(.card-tile-frame):hover .card-tile.is-live,
+:where(.card-tile-frame):has(:focus-visible) .card-tile.is-live {
   box-shadow: var(--shadow-live-ring), var(--shadow-raise);
 }
 

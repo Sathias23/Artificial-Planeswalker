@@ -3792,3 +3792,37 @@ lives on is given so this section is checkable rather than merely reassuring.
   faced population. Deliberate (re-announcing on hydration is the H4/C1 flood), declared in
   `CardDetail.tsx`'s announcement comment at review 2026-08-05. **Home: the epic manual-testing
   checklist — hear it with a real screen reader beside the em-dash entry already there.**
+
+## Deferred from: code review of c4-6-double-faced-card-flip-control (2026-08-06)
+
+- **An in-flight hydration sweep is not cancelled on deck replacement.** `hydrateDeckCards` fires
+  per `detail` identity with no abort path (`ui/src/App.tsx:213-216`), so switching decks mid-cold-
+  open lets up to ~99 stale card reads compete with the new deck's ~99 images on the six-connection
+  pool — the measured "+1.2 s tail" prices one sweep, not two overlapping ones. Not reachable
+  today: `deck_changed` handling is Epic 5's. **Home: Epic 5 (deck switching).**
+- **A failed FRONT face unmounts both stacked `<img>`s.** `CardTile`'s `art === 'failed'` arm
+  replaces the whole `.card-faces` block, so a back face mid-load when the front errors never
+  fires its `onLoad` and sticks at `'loading'`; flipping out of the failed face remounts both,
+  re-requesting the known-failed front (answered from the backend's negative cache). Self-heals on
+  remount; window is the flip-after-front-failure path only. **Home: unowned/latent — revisit if a
+  partial-failure population ever appears (see the partially-imaged-card entry above).**
+- **Three hand-rolled copies of the flippable wire fixture.** `CardTile.test.tsx`,
+  `FlipControl.test.tsx` and `CardDetail.test.tsx` each restate the shape-C hydrated `Card`; when
+  `CardFace` gains a field there are three places to drift. Test-only refactor: share one fixture
+  helper. **Home: any later c4 story that touches these suites.**
+- **A mid-sweep backend blip leaves cards unhydrated with no automatic re-sweep — accepted as
+  designed (review ruling 2026-08-06).** c4-2's recovery re-drive fires only from `refused`/`none`,
+  never while deck state is `deck` (`deck.ts:56-66`), so card reads refused during the sweep's
+  ~1 s cold-open window stay unhydrated (no flip control, no hydrated panel text) until the card
+  is individually inspected — which re-asks within the 3-attempt budget; one blip burns 1 of 3 —
+  or the page reloads (`cards.ts:100-108` documents reload as the recovery deliberately). If this
+  is ever met live, the written fix is: re-fire `hydrateDeckCards` over still-unhydrated retryable
+  ids on the poll's recovery edge (the c4-2 pattern), plus a negative-space test — today no test
+  exercises a failing sweep. **Home: unowned/latent, by ruling.**
+- **AC 1's residue has a keyboard half the story record did not state (review 2026-08-06).** The
+  flip control materialises when the sweep's record lands (~1 s window on the 99-card deck), so a
+  keyboard user Tabbing during a cold open meets Tab stops appearing mid-traverse — the UX-DR40
+  concern Q1 priced against the lazy alternative, present in miniature during the sweep window.
+  Declared residue, not a defect: the window is one cold open per deck per tab and closes itself.
+  Added to the epic manual-testing checklist (entry 5 in the c4-6 record). **Home: the epic
+  manual-testing checklist.**
