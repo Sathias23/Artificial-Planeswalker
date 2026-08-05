@@ -1733,8 +1733,7 @@ describe('the containers are a declared category with a posture of its own', () 
     // spellings: the plain value import, the inline-type form that still runs the module, and
     // the one that is legitimately fine. AGAINST THE GUARD'S OWN REGEX (`TYPE_ONLY_IMPORT`,
     // shared above) — a probe matching a private copy proves nothing about the guard.
-    const typeOnlyOf = (line: string) =>
-      [...line.matchAll(TYPE_ONLY_IMPORT)].map((m) => m[1])
+    const typeOnlyOf = (line: string) => [...line.matchAll(TYPE_ONLY_IMPORT)].map((m) => m[1])
 
     //
     // The inline-type probe names `Widget`, not a real schema key, and that is not cosmetic:
