@@ -208,15 +208,45 @@
      named this exact case — "if you need a new composite (a live ring, a pinned ring), ADD A
      TOKEN TO THE LAYER; do not inline it, and do not declare it in your own file."
 
-     THE PIN MOVES IN TWO FILES, AND THEY MOVE TOGETHER: `expectedNames` +
-     `toHaveLength(66)` in tests/tokens.test.ts, and `declaredTokens.size` in
-     tests/token-usage.test.ts. 65 until this story.
+     THE PIN MOVES IN TWO FILES, AND THEY MOVE TOGETHER: `expectedNames` + `toHaveLength` in
+     tests/tokens.test.ts, and `declaredTokens.size` in tests/token-usage.test.ts. 65 until
+     c4-4, 66 from this token, 68 since c4-5's two rings below — the count lives in those two
+     pins, not here (a literal in this comment went stale once already; review 2026-08-05).
 
-     `components.card-tile.live-ring` is DELIBERATELY ABSENT. Nothing sets `live` on a tile
-     until c4-5's inspection contract, and this layer's standing rule is that an entry is
-     added in the commit that gives it a consumer — an unused token in an inventory pinned by
-     set equality is exactly the thing the pin exists to make visible. **c4-5 adds it.** */
+     `components.card-tile.live-ring` was DELIBERATELY ABSENT until c4-5, because nothing set
+     `live` on a tile until its inspection contract, and this layer's standing rule is that an
+     entry is added in the commit that gives it a consumer. **c4-5 adds it, below.** */
   --shadow-focus-ring-over-art: 0 0 0 2px var(--focus-ring), 0 0 0 4px var(--surface-base);
+
+  /* THE TWO INSPECTION RINGS (story c4-5, Q2, Q4, UX-DR6, UX-DR20).
+     66 -> 68, and the pins moved in the same commit: `expectedNames` + `toHaveLength` in
+     tests/tokens.test.ts, and `declaredTokens.size` in tests/token-usage.test.ts.
+
+     THE LIVE RING is `components.card-tile.live-ring`, byte-for-byte — a 1px accent edge plus a
+     20px accent glow, marking the card currently under inspection. The absence of this token
+     was ITSELF asserted, by a test whose name said why ("does NOT ship the live ring, because
+     nothing sets `live` until c4-5"); that test is REPAIRED rather than deleted, because it is
+     the mechanism that told this story's author the pin moves with the value.
+
+     THE PINNED RING is `components.card-detail.pinned-ring`, and it carries a correction to the
+     artefact rather than a copy of it. DESIGN.md declared it `{colors.accent-dim}` on a
+     component whose own background it declares as `{colors.surface-overlay}` — 2.70:1, the
+     pairing DESIGN.md's Colors table bans BY NAME three sections later, and the identical defect
+     the UX validation gate closed as M4/C3 for the live ring above. The fix was never carried
+     across. `--accent` is 5.5:1 on that surface and is the table's own named substitute, so
+     DESIGN.md's frontmatter was AMENDED in the same commit with the reason inline; tokens.test.ts
+     compares these values against that frontmatter, so shipping the correction without amending
+     the artefact would have been a red test, and shipping the artefact's value without the
+     correction would have been an accessibility defect that every gate waved through (the
+     `findAccentDimOnOverlay` guard is same-block only and cannot see a parent's background).
+
+     BOTH ARE TOKENS BECAUSE THEY CANNOT BE ANYTHING ELSE: .stylelintrc.json's `box-shadow`
+     allowed-list admits `none` or a comma-list of var(--shadow-…) / var(--glow) AND NOTHING
+     ELSE, so neither composite can be written in a component stylesheet at all. ui/README.md
+     ruled this by name — "if you need a new composite (a live ring, a pinned ring), ADD A TOKEN
+     TO THE LAYER" — and these are the two components it was talking about. */
+  --shadow-live-ring: 0 0 0 1px var(--accent), 0 0 20px var(--accent-glow);
+  --shadow-pinned-ring: 0 0 0 1px var(--accent);
 }
 
 /* ==== THE REDUCED-MOTION REGISTRATION POINT ============================================

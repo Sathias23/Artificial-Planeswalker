@@ -1,7 +1,15 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { UNKNOWN_CARD_LABEL } from '../../components/CardPlaceholder/copy'
+import { resetCardCache, useCardStore } from '../../state/cards'
+import {
+  resetInspection,
+  setDefaultTarget,
+  targetIdOf,
+  togglePin,
+  useInspectionStore,
+} from '../../state/inspection'
 import { CardTile, type CardTileProps } from './CardTile'
 import { cardImageUrl } from './imageUrl'
 
@@ -52,6 +60,14 @@ const BLACK_LOTUS = {
 
 const imageOf = (container: HTMLElement) => container.querySelector('img')
 
+// The inspection slice is module-scope, as stores are; without this the target a previous test
+// left behind is what the next one starts from — and every `is-live` assertion below would be
+// reading the wrong tile's liveness.
+afterEach(() => {
+  resetInspection()
+  resetCardCache()
+})
+
 describe('the tile points at our own origin and nowhere else (AC 3)', () => {
   it('asks the app for the picture, not the CDN', () => {
     const { container } = render(<CardTile {...BLACK_LOTUS} />)
@@ -67,9 +83,25 @@ describe('the tile points at our own origin and nowhere else (AC 3)', () => {
   it('spells no size, because `normal` is the route default AND the cache key', () => {
     // Two spellings of one request are two entries in a cache whose whole value here is that it
     // is warm. c4-5 and c4-6 add their parameters to `cardImageUrl`, not to a second template.
+    //
+    // UNCHANGED BY c4-5, WHICH IS THE POINT OF ITS PARAMETER BEING OPTIONAL. That story extended
+    // this builder rather than writing a second one, and the grid's URL is byte-identical.
     expect(cardImageUrl('x')).toBe('/api/card-image/x')
     expect(cardImageUrl('x')).not.toContain('size=')
     expect(cardImageUrl('x')).not.toContain('face=')
+  })
+
+  it('takes a size when a caller genuinely needs one — c4-5s detail render', () => {
+    // ONE BUILDER (imageUrl.ts's own instruction, and this is the story that carries it out).
+    expect(cardImageUrl('x', 'large')).toBe('/api/card-image/x?size=large')
+    // The id is still encoded with the size attached — a `?` in the id must not become a second
+    // query parameter, which is exactly what a template-string second implementation would have
+    // got wrong somewhere else in the tree.
+    expect(cardImageUrl('a?b=1', 'large')).toBe('/api/card-image/a%3Fb%3D1?size=large')
+    // …and passing the DEFAULT explicitly is a different URL, which is the browser-cache fact
+    // the docstring rests on: `?size=normal` is a second cache entry for one picture. Nothing in
+    // the app spells it; asserted so the asymmetry is a recorded property rather than a habit.
+    expect(cardImageUrl('x', 'normal')).not.toBe(cardImageUrl('x'))
   })
 
   it('encodes an id that would otherwise address a different route (c4-1 Q5)', () => {
@@ -283,14 +315,170 @@ describe('the quantity badge (AC 9, AC 10)', () => {
   })
 })
 
+/**
+ * The tile finally responds (story c4-5, AC 10, AC 19, AC 34).
+ *
+ * ================= WHAT THESE CANNOT CARRY (c4-5 Q9, AC 37) ============================
+ *
+ * `fireEvent.mouseEnter` DISPATCHES a `mouseenter`; jsdom evaluates no CSS, so what a hover
+ * WIRES is provable here and what it LOOKS like is not. The live ring is a source claim in
+ * CardTile.css plus Task 7's eye-check, and `is-live` below is the class that carries it — not
+ * the ring itself.
+ *
+ * `fireEvent`, and NO new dependency: `@testing-library/user-event` is not installed and
+ * `tests/package-contract.test.ts` pins the dependency list, so adding one would be a decision
+ * with a diff. The suite's existing DOM-event idiom is `fireEvent.load` / `.error` a few blocks
+ * up, and this is the same idiom applied to a pointer.
+ */
+describe('the tile sets the inspection target (c4-5 AC 10, AC 19, UX-DR14, UX-DR20)', () => {
+  it('sets the target on hover and lets go on leave', () => {
+    render(<CardTile {...BLACK_LOTUS} />)
+    const tile = screen.getByRole('button')
+
+    fireEvent.mouseEnter(tile)
+    expect(useInspectionStore.getState().hoveredId).toBe(BLACK_LOTUS.cardId)
+
+    fireEvent.mouseLeave(tile)
+    expect(useInspectionStore.getState().hoveredId).toBeNull()
+  })
+
+  it('does the same on keyboard FOCUS — full parity, in a slot of its own (UX-DR14)', () => {
+    render(<CardTile {...BLACK_LOTUS} />)
+    const tile = screen.getByRole('button')
+
+    // `EXPERIENCE.md`'s interaction primitives: "hover is never the only way to reach
+    // information — every hover behavior has focus parity". A tile that only answered a pointer
+    // would leave the whole detail panel unreachable from a keyboard. ITS OWN SLOT, not the
+    // hover's (PR #44 P1): with one shared slot, a `mouseleave` erased a still-focused tile's
+    // target — so focus writes `focusedId` and never `hoveredId`.
+    fireEvent.focus(tile)
+    expect(useInspectionStore.getState().focusedId).toBe(BLACK_LOTUS.cardId)
+    expect(useInspectionStore.getState().hoveredId).toBeNull()
+
+    fireEvent.blur(tile)
+    expect(useInspectionStore.getState().focusedId).toBeNull()
+  })
+
+  it('clears only its OWN focus, so a blur cannot erase the next tile’s focus', () => {
+    // THE RACE the keyed clears EXIST FOR (c4-5 Q8). Leaving one card and reaching the next
+    // produces two events and the losing tile's is free to land second; an unkeyed clear on
+    // blur would then erase a target the tile being MOVED TO has already set, and the panel
+    // would snap back to the cold-open card in the middle of a sweep.
+    const first = render(<CardTile {...BLACK_LOTUS} />)
+    const second = render(<CardTile cardId="second-card" name="Mox Pearl" />)
+    const tileOf = (r: ReturnType<typeof render>) => r.container.querySelector('button')!
+
+    fireEvent.focus(tileOf(first))
+    fireEvent.focus(tileOf(second))
+    fireEvent.blur(tileOf(first))
+
+    expect(useInspectionStore.getState().focusedId).toBe('second-card')
+  })
+
+  it('a mouse-leave does not strand a still-focused tile (PR #44 P1)', () => {
+    // THE REPORTED DEFECT, at the tile's own wiring: Tab-focus one tile, sweep the mouse over
+    // another and away. The leave clears only the POINTER slot, so the focused tile takes the
+    // target back — the panel and the live ring stay consistent with the focus ring on screen.
+    const focused = render(<CardTile {...BLACK_LOTUS} />)
+    const swept = render(<CardTile cardId="second-card" name="Mox Pearl" />)
+    const tileOf = (r: ReturnType<typeof render>) => r.container.querySelector('button')!
+
+    fireEvent.focus(tileOf(focused))
+    fireEvent.mouseEnter(tileOf(swept))
+    fireEvent.mouseLeave(tileOf(swept))
+
+    expect(useInspectionStore.getState().focusedId).toBe(BLACK_LOTUS.cardId)
+    expect(targetIdOf(useInspectionStore.getState())).toBe(BLACK_LOTUS.cardId)
+  })
+
+  it('pins on click, and releases on a SECOND single click (AC 19, AC 20)', () => {
+    render(<CardTile {...BLACK_LOTUS} />)
+    const tile = screen.getByRole('button')
+
+    // Enter and Space need no handler of their own: this is a real `<button>`, so the browser
+    // turns both into a `click`. That is also what makes "release is a second SINGLE click"
+    // free — `EXPERIENCE.md` bans double-click semantics outright.
+    fireEvent.click(tile)
+    expect(useInspectionStore.getState().pinnedId).toBe(BLACK_LOTUS.cardId)
+
+    fireEvent.click(tile)
+    expect(useInspectionStore.getState().pinnedId).toBeNull()
+  })
+
+  it('refuses to pin a card the app does not know (AC 17, UX-DR22)', () => {
+    // The refusal lives in the SLICE, not here — which is why this tile needs no `inspectable`
+    // prop and c4-3's placeholder needed no API change. The tile is where it is checked from,
+    // because Epic 6's thumbnails will click the same way.
+    useCardStore.setState((state) => ({
+      cards: {
+        ...state.cards,
+        [BLACK_LOTUS.cardId]: {
+          status: 'unknown',
+          reason: 'card_not_found',
+          placeholder: 'unknown-card',
+          summary: null,
+          retryable: false,
+        },
+      },
+    }))
+    render(<CardTile {...BLACK_LOTUS} />)
+
+    fireEvent.click(screen.getByRole('button'))
+    expect(useInspectionStore.getState().pinnedId).toBeNull()
+  })
+
+  it('lets a CHILD control opt out with stopPropagation — c4-6’s flip, proven early', () => {
+    // The contract c4-6 relies on, asserted now rather than discovered then: its flip control
+    // sits INSIDE this button and must "only flip, and never set, pin or clear the inspection".
+    // Because the handlers are on the button and `click` bubbles, a `stopPropagation()` in the
+    // child suppresses the pin with no edit to this component — and this is the proof, planted
+    // as a real listener on a real descendant.
+    const { container } = render(<CardTile {...BLACK_LOTUS} quantity={2} />)
+    const child = container.querySelector('.card-tile-quantity')!
+    child.addEventListener('click', (event) => event.stopPropagation())
+
+    fireEvent.click(child)
+    expect(useInspectionStore.getState().pinnedId).toBeNull()
+
+    // …and the same click WITHOUT the child stopping it does reach the tile, so the assertion
+    // above is about propagation rather than about the element being unclickable.
+    const other = render(<CardTile cardId="other" name="Mox Ruby" quantity={2} />)
+    fireEvent.click(other.container.querySelector('.card-tile-quantity')!)
+    expect(useInspectionStore.getState().pinnedId).toBe('other')
+  })
+
+  it('carries `is-live` when it IS the target, and nothing when it is not (AC 34)', () => {
+    const { container } = render(<CardTile {...BLACK_LOTUS} />)
+    const tile = container.querySelector('button')!
+
+    expect(tile.classList.contains('is-live')).toBe(false)
+
+    act(() => setDefaultTarget(BLACK_LOTUS.cardId))
+    // THE COLD-OPEN CARD IS LIVE WITH NO INTERACTION, which is why the slice holds the default
+    // rather than the panel resolving it privately: the tile and the panel are looking at one
+    // answer. A CLASS, not a computed style — jsdom applies none, and the ring itself is
+    // `--shadow-live-ring` in CardTile.css (Task 7 looks at it).
+    expect(tile.classList.contains('is-live')).toBe(true)
+    // …and it is still card-shaped, so the class list is added to rather than replaced.
+    expect(tile.classList.contains('card-shape')).toBe(true)
+
+    act(() => togglePin('some-other-card'))
+    expect(tile.classList.contains('is-live')).toBe(false)
+  })
+})
+
 describe('what a screen reader gets (AC 10, AC 11, AC 20)', () => {
-  it('is a real button, in the Tab order, with no handler in this story', () => {
+  it('is a real button, in the Tab order', () => {
     render(<CardTile {...BLACK_LOTUS} />)
     const tile = screen.getByRole('button')
 
     // A REAL `<button>` (UX-DR47, unconditional) — not a `tabIndex` on a div, which
     // `jsx-a11y/no-static-element-interactions` makes an ESLint error. It is focusable by being
     // a button, so nothing sets `tabindex` and nothing needs to.
+    //
+    // This test read "…with no handler in this story" until c4-5, which is the story that added
+    // them. What it asserts about the ELEMENT is unchanged, and deliberately so: the handlers
+    // arrived without reshaping the control, which is exactly what c4-4 shipped it bare for.
     expect(tile.tagName).toBe('BUTTON')
     expect(tile.getAttribute('type')).toBe('button')
     expect(tile.getAttribute('tabindex')).toBeNull()

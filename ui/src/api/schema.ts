@@ -98,7 +98,9 @@ export type DeckCardSummary = Schemas['DeckCardSummary']
  *
  * Ledgered since c3-2 and declined twice on the same reason — an export with no consumer is
  * dead code (c3-2 declined it; c4-1 declined it again, having no fetch for it). This commit is
- * the one that gives it one. `CardFace` stays declined: **c4-6** renders the flip control.
+ * the one that gives it one. (`CardFace` was declined here too, and assigned to **c4-6**;
+ * **c4-5** turned out to be its first consumer — see {@link CardFace} for the measurement that
+ * moved it, stated as a ledger correction rather than a silent edit.)
  *
  * The wire's own docstring records the fact the derivation rests on: *"The order of `cards` is
  * not meaningful… A consumer that wants a stable presentation order (by type, by mana value, by
@@ -120,6 +122,33 @@ export type DeckDetail = Schemas['DeckDetail']
  * broken invariant"* — nothing validates the id on the way in.
  */
 export type ActiveDeck = Schemas['ActiveDeck']
+
+/**
+ * One face of a multi-faced printing: its own name, mana cost, type line, oracle text and — when
+ * the card's artwork is per-face — its own images.
+ *
+ * **Consumer: the card detail panel** (`src/containers/CardDetail/CardDetail.tsx`, story c4-5).
+ *
+ * ==== A LEDGER CORRECTION, STATED RATHER THAN MADE SILENTLY ============================
+ * This alias was declined at c3-2 and again above, with `c4-6` (*"renders the flip control"*)
+ * named as its inheritor. **c4-5 turned out to be the first consumer**, on a measurement the
+ * received two-tier story had never been checked against: `CardSummary` already carries
+ * `oracle_text`, so for a single-faced card hydration adds nothing this panel can DRAW — while
+ * **all 3,225 cards in the shipped corpus that carry `card_faces` have a BLANK top-level
+ * `oracle_text`, 100% of them**, and 2,274 carry the degenerate type line `Card // Card`. For
+ * that population the real name, type line and rules text exist ONLY here. Six of the 99 cards
+ * in the largest real deck are in it. So *"the rest fills in place"* is true — it just fills in
+ * place for 6% of a deck rather than all of it, and this is the field it fills from.
+ *
+ * ==== EVERY FIELD IS OPTIONAL **AND** NULLABLE, AND THAT IS THE WIRE, NOT CAUTION =====
+ * The backend models a face as all-optional with an open index signature, so a consumer must
+ * narrow every field it reads — which is why `CardDetail` runs each one through the same
+ * `given()` string narrowing the tile and the placeholder use, rather than through truthiness.
+ * `image_uris` is here for completeness and **c4-6's** flip control; nothing in c4-5 reads it,
+ * because art goes through `cardImageUrl` and never through a URL taken off a record (AD-11,
+ * `tests/no-scryfall-hosts.test.ts`).
+ */
+export type CardFace = Schemas['CardFace']
 
 /**
  * The closed set of reason tokens (AD-16), as a TypeScript string union.

@@ -1468,20 +1468,69 @@ describe('the containers are a declared category with a posture of its own', () 
         './CardGrid.css',
       ],
     },
-    // c4-4's tile, and the module that made this category necessary: `useState`, `useCallback`,
-    // a `ref` and two `on*` handlers, every one of them banned in the directory next door. TWO
+    // c4-4's tile, and the module that made this category necessary: a hook, a `ref` and — as of
+    // c4-5 — SEVEN `on*` handlers, every one of them banned in the directory next door. TWO
     // stylesheets, deliberately — see QuantityBadge.css's header for the CARD_SHAPED collision
-    // that separates them.
+    // that separates them. c4-5 added the inspection verbs and moved the art state machine into
+    // the shared hook, which is why `../useCardArt` and `../../state/inspection` are here and
+    // `useState`/`useCallback` no longer are.
     {
       file: 'src/containers/CardTile/CardTile.tsx',
       imports: [
         '../../components/CardPlaceholder/CardPlaceholder',
+        '../../state/inspection',
+        '../useCardArt',
         './CardTile.css',
         './QuantityBadge.css',
         './imageUrl',
         'react',
       ],
     },
+    // c4-5's detail panel. The most connected container in the tree, and every one of its
+    // imports is a permitted root: three primitives it COMPOSES, three state modules it READS
+    // (never writes — the verbs live in the slice), one sibling container's path builder, its
+    // own two stylesheets and its own copy module. No `zustand`, no `src/api/client`, no
+    // `fetch` — the panel decides that a record is needed and `hydrateCard` owns the request.
+    {
+      file: 'src/containers/CardDetail/CardDetail.tsx',
+      imports: [
+        '../../api/schema',
+        '../../components/CardPlaceholder/CardPlaceholder',
+        '../../components/ManaCost/ManaCost',
+        '../../components/Panel/Panel',
+        '../../state/cards',
+        '../../state/deckGroups',
+        '../../state/inspection',
+        '../CardTile/imageUrl',
+        '../useCardArt',
+        './CardDetail.css',
+        './CardDetailChrome.css',
+        './copy',
+        './deckMemory',
+        'react',
+      ],
+    },
+    // The deck-transition memory (review 2026-08-05): the one deck-shaped fact the panel's
+    // inspection clearing needs, module-scope so it survives the panel unmounting on a surface
+    // flip. Its own file for `imageUrl`'s stated reason — `react-refresh/only-export-components`
+    // makes a helper export from a component file an ESLint error — and NOT in the inspection
+    // slice, whose header promises it holds no deck. One import, and it is a TYPE.
+    {
+      file: 'src/containers/CardDetail/deckMemory.ts',
+      imports: ['../../state/deckGroups'],
+    },
+    // c4-5's copy module — the first one in this tree. `imports: []` for the reason
+    // `StatePanel/copy.ts` and `CardPlaceholder/copy.ts` are import-free: `tests/` is the
+    // `nodenext` project and `src/` the `bundler` one, so a `ui/tests` file may import an app
+    // module only if that module has no relative imports of its own (measured at c3-9 — twelve
+    // TS2835 errors with `npm test` green throughout). `tests/pin-announcement-copy.test.ts`
+    // imports this one.
+    { file: 'src/containers/CardDetail/copy.ts', imports: [] },
+    // The three art states and the two halves of the browser-cache race, shared by the tile and
+    // the panel from c4-5 onward. It sits at the ROOT of this tree rather than inside either
+    // consumer, which is `src/components/filled.ts`'s precedent stated in its own header: "a
+    // helper shared by two components does not live inside one of them".
+    { file: 'src/containers/useCardArt.ts', imports: ['react'] },
     // The image-route path builder. `imports: []` is the strongest form of "this is a string,
     // from a string" — no react, no DOM, no store and, above all, no fetch. It is a module of
     // its own because `react-refresh/only-export-components` is an ESLint error and a component
@@ -1556,8 +1605,13 @@ describe('the containers are a declared category with a posture of its own', () 
     return shipped.length === listed.length && shipped.every((f, i) => f === listed[i])
   }
 
-  it('is reading all three container modules (non-vacuity)', () => {
-    expect(CONTAINERS).toHaveLength(3)
+  it('is reading every container module (non-vacuity)', () => {
+    // 3 at c4-4, which created the category; 6 at c4-5, which added the detail panel, its copy
+    // module and the shared art hook; 7 since that story's review added the deck-transition
+    // memory (2026-08-05). The number is pinned rather than derived so that a new container is
+    // a DECISION with a diff — the same reason the token inventory is pinned — and the coverage
+    // guard below is what makes forgetting to move it impossible rather than merely discouraged.
+    expect(CONTAINERS).toHaveLength(7)
     for (const { file } of CONTAINERS) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }
@@ -1597,8 +1651,24 @@ describe('the containers are a declared category with a posture of its own', () 
 
   it.each(CONTAINERS)('$file reaches no module outside the permitted roots', ({ imports }) => {
     // The POSITIVE half of the exhaustive list: even a correctly-declared import must resolve
-    // into react, the primitives, the containers themselves, or the state layer. `src/api/`,
-    // `zustand` and anything else is a category decision, not an import.
+    // into react, the primitives, the containers themselves, the state layer, or `src/api/` FOR
+    // A TYPE. `zustand` and anything else is a category decision, not an import.
+    //
+    // ==== `src/api/` JOINED AT c4-5, AND IT IS A CATEGORY DECISION MADE IN THE OPEN =======
+    // This list read "react, the primitives, the containers themselves, or the state layer",
+    // with `src/api/` named as excluded. c4-5's detail panel is the first container that has to
+    // NAME a wire shape — it renders a hydrated `Card`, and reads `card_faces[0]` because 100%
+    // of the corpus's faced cards carry a blank top-level `oracle_text` — and the alternative to
+    // importing the alias is re-declaring the shape, which `tests/wire-contract.test.ts` bans
+    // outright and `src/api/schema.ts` exists to make unnecessary.
+    //
+    // The permission is exactly the one `posture.test.ts` already gives every PRIMITIVE — *"a
+    // component may take a TYPE from anywhere and a VALUE from nowhere but its own tree"* — and
+    // `states.ts` has taken `ErrorReason` from `../../api/schema` since c3-2 under it. What made
+    // that safe there is that types are erased and values are behaviour; the same split is what
+    // makes it safe here, and the test BELOW is what enforces the half this one cannot see. A
+    // value import of `src/api/client.ts` from a container would be a second network door, so it
+    // is banned by name rather than left to the `fetch(` scan, which would never see it.
     //
     // NORMALISED FIRST (review 2026-08-04): the regexes read the specifier's SPELLING, and
     // `'../../state/../api/client'` spells a permitted root while resolving outside every one of
@@ -1614,10 +1684,80 @@ describe('the containers are a declared category with a posture of its own', () 
       (specifier) =>
         specifier !== 'react' &&
         !specifier.endsWith('.css') &&
-        !/^\.\.\/\.\.\/(?:components|state)\//.test(specifier) &&
+        !/^\.\.\/\.\.\/(?:components|state|api)\//.test(specifier) &&
         !/^\.\.?\/[A-Za-z]/.test(specifier),
     )
     expect(outside).toEqual([])
+  })
+
+  // ONE regex, used by the guard AND by its firing-half probe below. Extracted at review
+  // 2026-08-05: the probe originally re-declared this pattern inline, so a "fix" to the guard's
+  // copy would have left the probe green against its private one — the exact vacuous-negative-
+  // control failure this suite's own history records twice. `matchAll` species-clones the regex,
+  // so sharing one `/g` object between call sites is safe.
+  const TYPE_ONLY_IMPORT = /\bimport\s+(type\s+)?[^'"]*?\bfrom\s+['"]([^'"]+)['"]/g
+
+  it.each(CONTAINERS)('$file takes a wire shape as a TYPE and never as a value', ({ file }) => {
+    // THE OTHER HALF OF THE c4-5 WIDENING, and the half that carries the weight. The roots check
+    // above reads SPECIFIERS, so it cannot tell `import type { Card }` from
+    // `import { readCard }` — and one of those is a second door to the network in a codebase
+    // whose whole posture is that there is exactly one (`posture.test.ts:339`).
+    //
+    // Keyed on the FORM rather than on the module, so `src/api/client.ts`, `src/api/types` and
+    // an `src/api/` module nobody has written yet are all covered by the same line: any import
+    // from that root must be `import type`. That is the identical rule `posture.test.ts` applies
+    // to the primitives, restated for the category that did not have it.
+    //
+    // The INLINE-TYPE form — a `type` keyword inside the braces — is DELIBERATELY not accepted:
+    // `verbatimModuleSyntax` is on, so that spelling still emits the import and still RUNS the
+    // module. `posture.test.ts` makes the same distinction for the same measured reason.
+    const source = withoutComments(sourceOf(file))
+    const apiImports = [...source.matchAll(TYPE_ONLY_IMPORT)].filter(([, , specifier]) =>
+      /(^|\/)\.\.\/\.\.\/api\//.test(`/${specifier}`),
+    )
+
+    for (const [whole, typeOnly, specifier] of apiImports) {
+      expect(
+        typeOnly,
+        `${file} imports ${specifier} as a VALUE: ${whole.trim()}. A container may take a wire ` +
+          `SHAPE from src/api/ (types are erased); it may not take behaviour, because ` +
+          `src/api/client.ts is the one door to the network and importing it here would open a ` +
+          `second one. Use \`import type\` — and not \`import { type X }\`, which still runs ` +
+          `the module under verbatimModuleSyntax.`,
+      ).toBeDefined()
+    }
+  })
+
+  it('would catch a value import from src/api/ — the firing half of the type-only rule', () => {
+    // Fed inline rather than by breaking a real file, so the proof survives the repair. Three
+    // spellings: the plain value import, the inline-type form that still runs the module, and
+    // the one that is legitimately fine. AGAINST THE GUARD'S OWN REGEX (`TYPE_ONLY_IMPORT`,
+    // shared above) — a probe matching a private copy proves nothing about the guard.
+    const typeOnlyOf = (line: string) => [...line.matchAll(TYPE_ONLY_IMPORT)].map((m) => m[1])
+
+    //
+    // The inline-type probe names `Widget`, not a real schema key, and that is not cosmetic:
+    // `tests/wire-contract.test.ts` scans every tracked source — this file included — for a
+    // declaration whose name matches a `components.schemas` key — and to a regex, an inline-type
+    // import of a real shape is indistinguishable from declaring one. Naming a real shape here,
+    // even in this comment, fails that guard from inside a probe: measured, not predicted.
+    expect(typeOnlyOf("import { readCard } from '../../api/client'")).toEqual([undefined])
+    expect(typeOnlyOf("import { type Widget } from '../../api/schema'")).toEqual([undefined])
+    expect(typeOnlyOf("import type { Widget } from '../../api/schema'")).toEqual(['type '])
+  })
+
+  it('keeps oracle paragraph breaks beside the clamp — pre-line in the scroller rule', () => {
+    // `oracle_text` separates abilities with `\n` and the panel renders the wire value VERBATIM
+    // into one element, so the clamp's own rule must declare `white-space: pre-line` — without
+    // it every multi-ability card in the corpus reads as one run-together sentence (found at
+    // review 2026-08-05; jsdom evaluates no CSS, so this is a SOURCE claim, asserted against
+    // the same block as the clamp so neither declaration moves without the other).
+    const oracle = sourceOf('src/containers/CardDetail/CardDetailChrome.css').match(
+      /\.card-detail-oracle\s*\{[^}]*\}/,
+    )?.[0]
+    expect(oracle).toBeDefined()
+    expect(oracle).toMatch(/max-height:\s*21em/)
+    expect(oracle).toMatch(/white-space:\s*pre-line/)
   })
 
   it.each(CONTAINERS)('$file makes no request and imports no state library', ({ file }) => {

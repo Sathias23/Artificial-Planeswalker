@@ -139,6 +139,48 @@
   outline-offset: 0;
 }
 
+/* THE LIVE STATE — THE CARD CURRENTLY UNDER INSPECTION (story c4-5, UX-DR20, DESIGN.md:379).
+   "`live` (the card under inspection) adds `{components.card-tile.live-ring}`": a 1px accent
+   edge plus a 20px accent glow, shipped as `--shadow-live-ring` because the box-shadow
+   allowed-list makes a composite unwritable in a component stylesheet at all.
+
+   `--accent`, NEVER `--accent-dim`, and the reason lives in DESIGN.md beside the token rather
+   than here: tiles also appear on `--surface-overlay` inside agent views, where `--accent-dim`
+   is 2.70:1 and fails the 3:1 non-text floor (UX-DR6). That is the M4/C3 correction, carried by
+   the token — so this file spends no accent tone of its own and cannot get it wrong.
+
+   ==== THREE RULES, BECAUSE box-shadow IS ONE PROPERTY ==================================
+   A live tile can also be hovered or focused, and a single `box-shadow` cannot be added to — so
+   each combination is named. Without the second rule the ring vanishes the instant a pointer
+   crosses the PINNED card, which is precisely the tile a reader is most likely to be pointing
+   at; without the third, Tabbing to a pinned card the mouse happens to be over would lose the
+   FOCUS indicator to the hover rule's higher specificity, which is an accessibility defect
+   rather than a cosmetic one.
+
+   The third composes rather than replaces: the focus composite is listed FIRST so it paints on
+   top (its 2px band covers the live ring's 1px band entirely, which is the intended reading —
+   one unambiguous focus indicator), while the live ring's 20px glow still spreads beyond it, so
+   the card stays visibly the live one. Order within the value is deliberate; order within the
+   file is what keeps stylelint's `no-descending-specificity` quiet, since that rule groups by
+   the last compound selector and `.card-tile…` (0,1,0 → 0,2,0) and `.card-tile.is-live…`
+   (0,2,0 → 0,3,0) are two separate, individually ascending groups.
+
+   NO TRANSITION AND NO TRANSFORM. The live state changes on every hover, so animating it would
+   be the same defect UX-DR42 bans for the detail panel's content swap. The only motion in this
+   file is still c4-4's hover pop and image fade, which is why `tokens.css`'s enumerated
+   shipped-motion pin needs no edit from this story. */
+.card-tile.is-live {
+  box-shadow: var(--shadow-live-ring), var(--shadow-rest);
+}
+
+.card-tile.is-live:hover {
+  box-shadow: var(--shadow-live-ring), var(--shadow-raise);
+}
+
+.card-tile.is-live:focus-visible {
+  box-shadow: var(--shadow-focus-ring-over-art), var(--shadow-live-ring), var(--shadow-raise);
+}
+
 /* THE THREE THINGS THAT CAN FILL THE CARD, IN ONE BOX.
 
    `> .card-shape` reaches c4-3's placeholder roots through the PUBLIC contract — the class every

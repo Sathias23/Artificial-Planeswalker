@@ -1,6 +1,15 @@
-import { useCallback, useId, useState } from 'react'
+import { useId } from 'react'
 
 import { CardPlaceholder } from '../../components/CardPlaceholder/CardPlaceholder'
+import {
+  clearFocused,
+  clearHovered,
+  setFocused,
+  setHovered,
+  togglePin,
+  useIsLiveTarget,
+} from '../../state/inspection'
+import { useCardArt } from '../useCardArt'
 import './CardTile.css'
 import { cardImageUrl } from './imageUrl'
 import './QuantityBadge.css'
@@ -47,24 +56,40 @@ import './QuantityBadge.css'
  * `tests/store-writes.test.ts`), and it would re-render the whole grid on every image arrival —
  * ninety-nine renders of ninety-nine tiles on the one sweep the epic wants to be cheap.
  *
- * ================= THE WARM-CACHE RACE, WHICH IS THE NORMAL PATH HERE ==================
+ * **It now lives in `../useCardArt`, and that is a MOVE rather than a change** (c4-5). The
+ * three states, the warm/cold cache race and BOTH of its arms are identical for the detail
+ * panel's `size=large` render, and this particular fix has already been repaired once — two
+ * copies would be one copy repaired and one not. The state is still per consumer; only the
+ * spelling of it is shared. Read that module's header for the whole race argument, which used
+ * to live here.
  *
- * A successful image is served `Cache-Control: public, max-age=31536000, immutable`, so **every
- * render after the first is a browser-cache hit** and the `load` event can be dispatched before
- * React has anything listening. A tile that could only ever leave the loading state from an
- * `onLoad` callback would then show a silent well forever, on exactly the path NFR-05's
- * one-second warm render describes — the happy case failing while the cold case works.
+ * ================= AND NOW THE TILE RESPONDS (c4-5, UX-DR14, UX-DR20) ==================
  *
- * {@link CardTile.settleIfCached} closes it by asking the element instead of waiting for the
- * event, which is the standard mitigation and needs a `ref` — the third independent reason this
- * cannot be a listed primitive. `naturalWidth > 0` is load-bearing beside `complete`:
- * `complete` is also true for a BROKEN image, and treating a broken image as loaded would swap
- * the named placeholder for a blank rectangle, which AD-11 forbids.
+ * The `<button>` c4-4 shipped with no handler at all has three now, and they are the whole of
+ * this component's part in the inspection contract. They set a target; they do not decide
+ * anything about it, do not fetch, and do not touch a store directly — `setHovered`,
+ * `clearHovered` and `togglePin` are the inspection slice's verbs and the slice is where the
+ * resolution and the unknown-card refusal live (c4-5's Q8 and AC 17).
  *
- * **jsdom can see neither half of this.** It loads no images, fires no `load` and reports
- * `naturalWidth` as 0 — so the guard is inert there (which is what lets the well assertions in
- * `CardTile.test.tsx` mean anything) and the claim it makes is UNPROVABLE in this suite. It is
- * declared here and checked by eye against a warm browser cache in Task 7.
+ * **Focus parity is not an extra, it is the rule** (UX-DR14 — *"hover OR keyboard focus"*;
+ * `EXPERIENCE.md`'s interaction primitives — *"hover is never the only way to reach
+ * information"*). `onFocus`/`onBlur` do the same job as `onMouseEnter`/`onMouseLeave` **in a
+ * slot of their own** (`setFocused`/`clearFocused` — PR #44's P1: with one shared slot, a
+ * `mouseleave` erased a still-focused tile's target), and every clear names the card it is
+ * leaving so that leaving THIS tile cannot erase a target the tile being reached has already
+ * set.
+ *
+ * **Enter and Space need no handler.** This is a real `<button>`, so the browser turns both into
+ * a `click` — which is also why `EXPERIENCE.md`'s ban on double-click semantics costs nothing:
+ * the second single click is a release, decided by identity inside `togglePin`.
+ *
+ * **THE HANDLERS ARE ON THE BUTTON, WHICH IS WHAT LETS c4-6 OPT OUT.** The flip control lands
+ * inside this same element and must *"only flip, and never set, pin or clear the inspection"*.
+ * Because `click` bubbles to the button, a `stopPropagation()` in that control's own handler
+ * suppresses the pin with no edit here — and `mouseenter`/`mouseleave` do not bubble at all, so
+ * a pointer moving onto the control never leaves the tile as far as this component is concerned.
+ * That contract is written down in `src/state/inspection.ts` too, so neither story has to
+ * discover it in the other's file.
  *
  * ================= AN `onError` CARRIES NO WIRE TOKEN, AND IT DOES NOT NEED ONE ========
  *
@@ -88,11 +113,13 @@ import './QuantityBadge.css'
  *
  * ================= WHAT THIS TILE DELIBERATELY DOES NOT DO =============================
  *
- * No inspection, no pin, no hover→detail wiring: the `<button>` ships with **no handler at
- * all**, so **c4-5** adds one rather than reshaping the component. No flip control and no
- * `face` parameter — **c4-6's**, and it owns the tile's TOP-LEFT, which is why the badge is
- * pinned top-right. No `deck_changed` refetch, no shimmer, no quantity glow, no live region —
- * Epic 5 and c7-5. No `useCardEntry` subscription (Q9): see {@link CardTileProps}.
+ * No flip control and no `face` parameter — **c4-6's**, and it owns the tile's TOP-LEFT, which
+ * is why the badge is pinned top-right. No `deck_changed` refetch, no shimmer, no quantity glow,
+ * and **no live region of its own** — Epic 5 and c7-5; the pin announcement is the DETAIL
+ * PANEL's single polite region (c4-5 AC 23), because ninety-nine tiles each owning one is
+ * ninety-nine ways to say the same sentence. No `useCardEntry` subscription (Q9): see
+ * {@link CardTileProps}. And **no hydration** — the tile still fetches nothing; whoever decides
+ * a full record is needed calls `hydrateCard`, and that is the panel.
  */
 
 /**
@@ -138,14 +165,6 @@ export interface CardTileProps {
 }
 
 /**
- * Whether the image has arrived, failed, or is still in flight.
- *
- * A three-state union rather than two booleans, because `loading && failed` is a state that
- * cannot happen and a pair of booleans is a pair that can express it.
- */
-type ArtState = 'loading' | 'shown' | 'failed'
-
-/**
  * A string prop that is actually there, or `null`.
  *
  * The identical `typeof` + `trim()` spelling `CardPlaceholder`, `DeckBadges` and `ManaCost` all
@@ -162,41 +181,23 @@ const given = (value: string | null | undefined): string | null => {
 }
 
 export function CardTile({ cardId, name, cost, typeLine, quantity }: CardTileProps) {
-  const [art, setArt] = useState<ArtState>('loading')
-  // THE VERDICT BELONGS TO THE CARD, NOT TO THE SLOT (review 2026-08-04). Today's one call site
-  // keys each `<li>` by `card_id`, so a different card remounts a fresh tile — but that is the
-  // CALLER's discipline, and this component is exported. A tile handed a different `cardId` on
-  // the same mount would otherwise keep the old card's `failed` (a placeholder for a card whose
-  // picture is fine) or its `shown` (opacity 1 over pixels that have not arrived). The reset is
-  // the render-time adjustment React documents for exactly this — during render, BEFORE the new
-  // `src` ever commits, so no cached `load`/`error` for the old card can race it the way an
-  // effect could be raced.
-  const [artFor, setArtFor] = useState(cardId)
-  if (artFor !== cardId) {
-    setArtFor(cardId)
-    setArt('loading')
-  }
+  // The three art states, the `ref` that settles a cached image and both event handlers — see
+  // `../useCardArt`, which is where c4-4's own implementation of all of it moved when c4-5
+  // needed the identical thing at `size=large`. DESTRUCTURED rather than held as an object, and
+  // that is a lint requirement rather than a habit: `react-hooks/refs` reads a member access
+  // during render as reading a ref, so `art.settleIfCached` in the JSX below is an error while a
+  // plain identifier is not (measured — see that module's `CardArt` docstring).
+  const { state: art, settleIfCached, onLoad: onArtLoad, onError: onArtError } = useCardArt(cardId)
+  // Q7's ruling, and the whole reason it is a per-tile SELECTOR rather than a prop from the
+  // grid: this returns a BOOLEAN, so zustand v5's referential comparison re-renders exactly the
+  // tiles whose value flipped — two per hover — instead of all ninety-nine on every cursor
+  // movement across the grid.
+  const live = useIsLiveTarget(cardId)
   // `useId` — a HOOK, in a component whose caption sits OUTSIDE its button and therefore has to
   // be pointed at rather than contained. A listed primitive may not call one at all; `Panel`
   // records that exact constraint as the reason it uses `aria-label` instead. This component is
   // a container, so the hook is available and the structure below is free to be the right one.
   const captionId = useId()
-
-  // See the header. `useCallback` with no dependencies is what keeps the identity stable, so
-  // React attaches this ONCE rather than detaching and re-attaching it on every state change —
-  // which would call it again with the same node and make the reasoning here harder than it is.
-  //
-  // BOTH halves of the race, not one (review 2026-08-04). The mirror of the cached success is
-  // the cached FAILURE: a refusal answered instantly — the negative cache holds one in memory
-  // for up to 300 s (c3-8) — can dispatch `error` before React is listening, exactly as a warm
-  // hit can dispatch `load`. A settle that only knew the success half would leave that tile on
-  // the silent well forever, with the named placeholder AD-11 promises unreachable. `complete`
-  // is true for a broken image too; `naturalWidth` is what says which kind of settled this is.
-  const settleIfCached = useCallback((node: HTMLImageElement | null) => {
-    if (node === null) return
-    if (!node.complete) return
-    setArt(node.naturalWidth > 0 ? 'shown' : 'failed')
-  }, [])
 
   const caption = given(name)
 
@@ -235,7 +236,43 @@ export function CardTile({ cardId, name, cost, typeLine, quantity }: CardTilePro
           `aria-labelledby` on the FAILED path is deliberately absent: there is no caption to
           point at, and the accessible name falls back to the button's contents — which is c4-3's
           named placeholder, already naming the card exactly once. */}
-      <button type="button" className="card-shape card-tile" aria-labelledby={labelledBy}>
+      <button
+        type="button"
+        /* `is-live` is the class DESIGN.md's `components.card-tile.live-ring` hangs on, and it
+           is the ONLY thing this component does with its liveness — the ring itself is
+           `--shadow-live-ring` in CardTile.css, because a composite box-shadow cannot be
+           written in a component stylesheet at all (stylelint's allowed-list). */
+        className={live ? 'card-shape card-tile is-live' : 'card-shape card-tile'}
+        aria-labelledby={labelledBy}
+        /* THE INSPECTION CONTRACT, AND NOTHING ELSE (c4-5, UX-DR14, UX-DR20). Four handlers,
+           no decisions: what an id MEANS — whether it can be inspected at all, whether a click
+           pins or releases, what wins between hover and pin — belongs to the slice, so that
+           c4-7's deck rows and Epic 6's thumbnails get the identical behaviour from the
+           identical verbs rather than from four copies of a rule.
+
+           HOVER AND FOCUS ARE THE SAME CONTRACT IN TWO SLOTS, which is UX-DR14 read literally
+           ("hover OR keyboard focus") and `EXPERIENCE.md`'s "hover is never the only way to
+           reach information". Each modality writes its OWN slot (PR #44 P1: one shared slot
+           let a `mouseleave` erase a still-focused tile's target), and each leave-handler
+           names the card it is leaving, so that a `blur` landing after the next tile's
+           `focus` cannot erase a target that tile has already set (see `clearHovered` /
+           `clearFocused`).
+
+           NO `onKeyDown`. This is a real `<button>`, so the browser already turns Enter and
+           Space into a `click` — which is also what makes "release is a second SINGLE click"
+           free rather than something to implement (double-click semantics are banned outright,
+           `EXPERIENCE.md`).
+
+           ON THE BUTTON, DELIBERATELY: `click` bubbles, so c4-6's flip control suppresses the
+           pin from inside this element with `stopPropagation()` and no edit here, while
+           `mouseenter`/`mouseleave` do not bubble at all, so moving the pointer onto that
+           control never reads as leaving the tile. */
+        onMouseEnter={() => setHovered(cardId)}
+        onMouseLeave={() => clearHovered(cardId)}
+        onFocus={() => setFocused(cardId)}
+        onBlur={() => clearFocused(cardId)}
+        onClick={() => togglePin(cardId)}
+      >
         {art === 'failed' ? (
           /* THE NAMED PLACEHOLDER, from the props the deck payload already carried. Not from
              `entry.placeholder` and not from a wire token — see the header. */
@@ -271,8 +308,8 @@ export function CardTile({ cardId, name, cost, typeLine, quantity }: CardTilePro
                  Lowercase DOM attributes, passed through unchanged by React 19; the one that
                  would need camelCase is `fetchPriority`, and this tile sets none. */
               decoding="async"
-              onLoad={() => setArt('shown')}
-              onError={() => setArt('failed')}
+              onLoad={onArtLoad}
+              onError={onArtError}
             />
           </>
         )}

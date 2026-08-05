@@ -104,6 +104,37 @@ const booting = (active: Response, deck?: Response) => {
 }
 
 /**
+ * `GET /api/cards/{card_id}`'s body — the hydration route, which acquired its FIRST production
+ * caller in story c4-5.
+ *
+ * Two fields are all `cardOf` validates (`id` and `name`, both non-blank), and the rest are here
+ * because the detail panel draws them. Routed below so that the panel's one hydration is a
+ * modelled answer rather than whatever the poll happened to be handing out — which is the same
+ * repair c4-2 made when it turned this fixture route-aware for a second caller.
+ */
+const cardRecord = (name: string) =>
+  new Response(
+    JSON.stringify({
+      id: `id-${name}`,
+      name,
+      oracle_id: `oracle-${name}`,
+      mana_cost: '{G}',
+      cmc: 1,
+      type_line: 'Creature — Elf Druid',
+      oracle_text: 'Tap: Add G.',
+      colors: ['G'],
+      color_identity: ['G'],
+      rarity: 'common',
+      set_code: 'tst',
+      set_name: 'Test Set',
+      collector_number: '1',
+      legalities: {},
+      games: ['paper'],
+    }),
+    { status: 200 },
+  )
+
+/**
  * Answer the POLL with each response in turn, repeating the last one forever — and answer the two
  * boot routes from {@link booting}.
  *
@@ -117,6 +148,13 @@ const answering = (...responses: Response[]) => {
     const path = String(input)
     if (path.startsWith('/api/deck/')) return Promise.resolve(bootDeck.clone())
     if (path === '/api/active-deck') return Promise.resolve(bootActive.clone())
+    // c4-5's third caller: the detail panel hydrates its inspection target. Answered from the id
+    // in the path, because unlike the two boot routes there is no single "the" card — the panel
+    // asks for whichever one it is showing, and a test that pinned one answer for all of them
+    // could not tell "hydrates the cold-open card" from "hydrates everything".
+    if (path.startsWith('/api/cards/')) {
+      return Promise.resolve(cardRecord(decodeURIComponent(path.slice('/api/cards/id-'.length))))
+    }
     const response = responses[Math.min(index, responses.length - 1)]
     index += 1
     return Promise.resolve(response.clone())
@@ -383,7 +421,21 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     render(<App />)
     await settle()
 
-    const banner = screen.getByRole('banner')
+    // SCOPED THROUGH THE `h1` RATHER THAN THROUGH `getByRole('banner')`, AND THE REASON IS A
+    // MEASURED jsdom FIDELITY LIMIT rather than a change of intent (c4-5).
+    //
+    // HTML-AAM maps `<header>` to the `banner` landmark ONLY when it is not a descendant of an
+    // `article`, `aside`, `main`, `nav` or `section` element. `aria-query` — which
+    // testing-library resolves roles through — maps it UNCONDITIONALLY. Measured with a two-
+    // header probe: a `<header>` inside `<section aria-label="…">` is reported as a second
+    // `banner` here, while a real browser reports one. c4-5's detail panel is the first titled
+    // `Panel` on a rendered surface, so its `.panel-header` is the first element to expose the
+    // difference — the shipped markup is correct and this suite cannot see that it is.
+    //
+    // So the shell's header is identified by the thing that actually distinguishes it: it is the
+    // one containing the document's `h1`. That is a stronger anchor than "the first banner",
+    // which would pass by document order rather than by identity.
+    const banner = screen.getByRole('heading', { level: 1 }).closest('header')!
     expect(within(banner).getByText('brawl')).toBeVisible()
     expect(within(banner).getByText('100')).toBeVisible()
     expect(within(banner).getByText('maindeck')).toBeVisible()
@@ -417,6 +469,16 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     // gate itself stays c8-5's. Asserted so the count is a fact rather than a claim.
     expect(document.body.textContent).not.toContain('c4-4')
     expect(document.body.textContent).not.toContain('c4-8')
+
+    // THE RIGHT COLUMN'S DISPLACEMENT, THE SAME SHAPE ONE STORY LATER (AC 6, added at review
+    // 2026-08-05 — the checkbox predated the assertion). c4-5 fills the right slot with the
+    // detail panel, so the shell's own placeholder — the one naming c4-5, c4-7 and c4-10 — is
+    // gone from a rendered deck view, and the F1 count drops by three keys at once because all
+    // three lived in that single string.
+    expect(screen.queryByText(/Card detail — c4-5/)).toBeNull()
+    expect(document.body.textContent).not.toContain('c4-5')
+    // …and the slot is FILLED, not merely emptied: the panel region is on the glass.
+    expect(screen.getByRole('region', { name: 'Card detail' })).toBeVisible()
   })
 
   it('puts the deck on the glass as card faces (c4-4, AC 16, FR-19)', async () => {
@@ -439,26 +501,46 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     // comes first (review 2026-08-04): a loop over an empty NodeList passes vacuously, so a
     // regression that dropped the `<img>` entirely would have satisfied the origin rule by
     // removing its subject.
-    const images = document.querySelectorAll('img')
-    expect(images).toHaveLength(tiles.length)
+    //
+    // ONE MORE THAN THE TILES SINCE c4-5, and the extra one is named rather than absorbed into a
+    // `>=`: the detail panel draws the inspection target's face at `size=large`. Spelling the
+    // arithmetic keeps this a count rather than a floor — a second stray `<img>` would still
+    // fail here, which a loosened comparison would have waved through.
+    const images = [...document.querySelectorAll('img')]
+    expect(images).toHaveLength(tiles.length + 1)
     for (const img of images) {
       expect(img.getAttribute('src')).toMatch(/^\/api\/card-image\//)
     }
+    // …and exactly one of them is the DETAIL render, at the size only that panel asks for.
+    expect(images.filter((img) => img.getAttribute('src')?.includes('size=large'))).toHaveLength(1)
   })
 
-  it('seeds the card cache from the payload, at no extra request (AC 17)', async () => {
+  it('seeds the card cache from the payload, and hydrates ONLY the inspected card (AC 17)', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     const fetchMock = answering(decks())
 
     render(<App />)
     await settle()
 
-    expect(useCardStore.getState().cards['id-Llanowar Elves']?.status).toBe('summary')
+    // THE PRE-EXISTING ASSERTION c4-5 CHANGED, AND IT IS STRENGTHENED RATHER THAN RELAXED.
+    // c4-2 wrote `expect(callsTo(fetchMock, '/api/cards/')).toBe(0)`, and that was the honest
+    // claim while nothing consumed the hydration tier: seeding is free, so nothing had to ask.
+    // c4-5 gives that route its first production caller — the detail panel hydrates its
+    // inspection target — so ZERO is no longer the property worth asserting. **ONE** is, and it
+    // is a much sharper statement of the same design:
+    //
+    //   the SUMMARY tier still costs nothing for every card in the deck (both entries below),
+    //   and hydration costs exactly one request for the ONE card being looked at — not 99, and
+    //   not one per render. Measured on the real 99-tile deck: 38,182 bytes already in hand
+    //   against 212,436 bytes over 99 requests, which is the cost this asymmetry avoids.
+    //
+    // The cold-open target is `Llanowar Elves`: no commander in this fixture, so the grid's
+    // visual order starts at the first populated type group, and `Creature` precedes `Land`.
+    expect(useCardStore.getState().cards['id-Llanowar Elves']?.status).toBe('hydrated')
     expect(useCardStore.getState().cards['id-Forest']?.status).toBe('summary')
-    // Two cards in the cache, and NOT ONE request to `/api/cards/`. Measured on the real 99-tile
-    // deck: 38,182 bytes already in hand against 212,436 bytes over 99 requests.
-    expect(callsTo(fetchMock, '/api/cards/')).toBe(0)
-    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(callsTo(fetchMock, '/api/cards/')).toBe(1)
+    expect(callsTo(fetchMock, '/api/cards/id-Llanowar%20Elves')).toBe(1)
+    expect(fetchMock).toHaveBeenCalledTimes(4)
   })
 
   it('shows the no-active-deck panel when there is genuinely no deck (AC 7)', async () => {
@@ -504,6 +586,12 @@ describe('a deck refusal reaches the glass as a PANEL, never as a status code (A
     await settle()
 
     expect(screen.getByRole('region', { name })).toBeVisible()
+
+    // AC 9a's OTHER HALF (Q14, L8 — added at review 2026-08-05: the branch shipped, the test
+    // did not). While a state panel occupies the glass the right column carries NO detail
+    // panel: `right` is `undefined` on every non-deck arm, so the state panel is the one
+    // subject on screen rather than sharing it with a card whose deck was just refused.
+    expect(screen.queryByRole('region', { name: 'Card detail' })).toBeNull()
   })
 
   it('answers a 400 on the deck read with no-active-deck, not the bug panel (Q5, AC 11)', async () => {

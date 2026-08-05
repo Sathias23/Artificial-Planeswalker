@@ -88,6 +88,14 @@ interface DesignFrontmatter {
      * `toBeDefined()` anchor instead of comparing `undefined` to `undefined`.
      */
     'card-tile': Record<string, string>
+    /**
+     * Added by story c4-5 (Q2, Q4). The panel's own block, and the second per-component
+     * composite home — `pinned-ring` lives here for the same reason `card-tile.live-ring`
+     * lives next door. Typed rather than reached through an `any` so that a `components.
+     * card-detail` block vanishing from DESIGN.md fails at the `toBeDefined()` anchor instead
+     * of comparing `undefined` to `undefined`, which is c4-4's own lesson applied.
+     */
+    'card-detail': Record<string, string>
   }
 }
 
@@ -246,13 +254,18 @@ const expectedNames = [
   '--shadow-raise',
   '--shadow-rest',
   '--glow',
-  // Story c4-4 (Q2). The ONE composite this layer carries that is not an elevation: DESIGN.md
+  // Story c4-4 (Q2). The first composite this layer carries that is not an elevation: DESIGN.md
   // files it under `components.card-tile`, not `components.elevation`, so it cannot be derived
   // from the block the three above come from — it is hand-listed for the same reason they are,
-  // and its value is asserted against the artefact just as theirs is. `components.card-tile`'s
-  // sibling `live-ring` is deliberately NOT here: nothing sets `live` on a tile until c4-5, and
-  // an inventory pinned by set equality exists so that an unused token is a visible decision.
+  // and its value is asserted against the artefact just as theirs is.
   '--shadow-focus-ring-over-art',
+  // Story c4-5 (Q4). The two INSPECTION rings, and the same reason: both are per-component
+  // treatments filed under `components.card-tile` / `components.card-detail` rather than on the
+  // depth ramp, so neither is derivable from a frontmatter block. `--shadow-live-ring`'s ABSENCE
+  // was an assertion of its own until this story — see the repaired test below, which is the
+  // mechanism that told this author the pin moves with the value.
+  '--shadow-live-ring',
+  '--shadow-pinned-ring',
 ]
 
 // ---------------------------------------------------------------------------------------
@@ -284,11 +297,13 @@ describe('the token layer is DESIGN.md (AC 1)', () => {
     expect(new Set(Object.keys(tokens))).toEqual(new Set(expectedNames))
     // 64 until story c2-9, which added `--font-mono` (Q2); 65 until story c4-4, which added
     // `--shadow-focus-ring-over-art` (Q2 again, and for the same kind of reason — a composite
-    // stylelint forbids inline). The count is pinned rather than derived so that adding a token
-    // is a DECISION with a diff, not a side effect — and this line moving is the open cost the
-    // ruling accepted. Its sibling is `declaredTokens.size` in tests/token-usage.test.ts; both
-    // move together or the pair is wrong.
-    expect(expectedNames).toHaveLength(66)
+    // stylelint forbids inline); 66 until story c4-5, which added BOTH inspection rings
+    // (`--shadow-live-ring` and `--shadow-pinned-ring`, Q4) in one commit because one story
+    // gives both a consumer. The count is pinned rather than derived so that adding a token is a
+    // DECISION with a diff, not a side effect — and this line moving is the open cost the ruling
+    // accepted. Its sibling is `declaredTokens.size` in tests/token-usage.test.ts; both move
+    // together or the pair is wrong.
+    expect(expectedNames).toHaveLength(68)
   })
 
   it('ships all 26 colours at exactly the DESIGN.md value', () => {
@@ -430,13 +445,52 @@ describe('the token layer is DESIGN.md (AC 1)', () => {
     expect(tokens['--shadow-focus-ring-over-art']).toContain('var(--surface-base)')
   })
 
-  it('does NOT ship the live ring, because nothing sets `live` until c4-5', () => {
-    // The other half of the c4-4 Q2 ruling, asserted rather than merely stated: `card-tile`
-    // declares TWO composites and this story ships one. If c4-5 adds the second, this test is
-    // the one that tells its author the pin moves with it — which is the whole mechanism the
-    // set-equality inventory exists to provide.
-    expect(design.components['card-tile']['live-ring']).toBeDefined()
-    expect(tokens['--shadow-live-ring']).toBeUndefined()
+  it("ships the card tile's LIVE ring at DESIGN.md's value (c4-5, Q4 — the repaired pin)", () => {
+    // THIS TEST READ "does NOT ship the live ring, because nothing sets `live` until c4-5", and
+    // its own comment named this repair: *"if c4-5 adds the second, this test is the one that
+    // tells its author the pin moves with it"*. It did exactly that, so it is REPAIRED rather
+    // than deleted — deleting it would throw away the mechanism at the moment it worked, and
+    // leave the next absent-by-design token with nothing to tell its story either.
+    //
+    // The assertion inverts and everything else about it stays: the artefact still has to
+    // declare the value, and the token still has to equal it byte-for-byte with references
+    // resolved on both sides.
+    const tile = design.components['card-tile']
+    expect(
+      tile['live-ring'],
+      "DESIGN.md's components.card-tile has no live-ring — did the artefact change shape?",
+    ).toBeDefined()
+    expect(normalise(tokens['--shadow-live-ring'])).toBe(normalise(tile['live-ring']))
+    // `--accent`, NEVER `--accent-dim` — the M4/C3 correction, which lives in the artefact and
+    // is asserted here so a "tidy-up" back to the dim tone fails rather than ships (UX-DR6).
+    expect(tokens['--shadow-live-ring']).toContain('var(--accent)')
+    expect(tokens['--shadow-live-ring']).not.toContain('var(--accent-dim)')
+  })
+
+  it("ships the detail panel's PINNED ring at DESIGN.md's amended value (c4-5, Q2)", () => {
+    // THE ARTEFACT WAS AMENDED IN THIS COMMIT, and this assertion is what makes that visible
+    // rather than convenient: DESIGN.md declared `pinned-ring: '0 0 0 1px {colors.accent-dim}'`
+    // on a component whose `background` it declares as `{colors.surface-overlay}` — 2.70:1, the
+    // pairing its own Colors table bans by name, and the identical defect the UX gate closed as
+    // M4/C3 for the live ring above without carrying the fix across.
+    //
+    // Because this suite compares byte-for-byte against the frontmatter, the two ways to be
+    // wrong are both loud: shipping `--accent` against an unamended artefact fails HERE, and
+    // shipping `--accent-dim` to satisfy an unamended artefact ships a 2.70:1 indicator that no
+    // guard could catch (`findAccentDimOnOverlay` is same-block only, and the background is the
+    // PARENT `Panel`'s). Amending the artefact is the only repair that leaves both true.
+    const detail = design.components['card-detail']
+    expect(
+      detail['pinned-ring'],
+      "DESIGN.md's components.card-detail has no pinned-ring — did the artefact change shape?",
+    ).toBeDefined()
+    expect(normalise(tokens['--shadow-pinned-ring'])).toBe(normalise(detail['pinned-ring']))
+    expect(tokens['--shadow-pinned-ring']).toContain('var(--accent)')
+    expect(tokens['--shadow-pinned-ring']).not.toContain('var(--accent-dim)')
+    // …and the artefact itself no longer names the banned tone on this component, which is the
+    // half that stops the amendment being silently reverted upstream.
+    expect(detail['pinned-ring']).not.toContain('accent-dim')
+    expect(detail.background).toBe('{colors.surface-overlay}')
   })
 
   it('declares every token in one themeable block (AC 2)', () => {

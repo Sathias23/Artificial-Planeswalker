@@ -19,7 +19,7 @@
 
 import { describe, expectTypeOf, it } from 'vitest'
 
-import type { ErrorReason, ErrorResponse, HealthResponse } from './schema'
+import type { Card, CardFace, ErrorReason, ErrorResponse, HealthResponse } from './schema'
 
 describe('generated wire types (AD-12)', () => {
   // `status` must stay the 'ok' literal, not widen to string: it is the closed token the
@@ -59,5 +59,29 @@ describe('generated wire types (AD-12)', () => {
       | 'payload_too_large'
       | 'internal_error'
     >()
+  })
+
+  /**
+   * `CardFace`, added by story c4-5 (Q1) — and pinned in the two directions that actually bite
+   * the detail panel.
+   *
+   * The panel narrows every face field before drawing it, and the reason that is REQUIRED rather
+   * than careful is here in the type: each one is optional AND nullable, so `face.name` is
+   * `string | null | undefined` and the three spellings of "absent" are all reachable from one
+   * response. A pin that only asserted the alias exists would not have said that.
+   */
+  it('pins CardFace as all-optional and all-nullable — the reason the panel narrows', () => {
+    expectTypeOf<CardFace['name']>().toEqualTypeOf<string | null | undefined>()
+    expectTypeOf<CardFace['type_line']>().toEqualTypeOf<string | null | undefined>()
+    expectTypeOf<CardFace['oracle_text']>().toEqualTypeOf<string | null | undefined>()
+    expectTypeOf<CardFace['mana_cost']>().toEqualTypeOf<string | null | undefined>()
+  })
+
+  it('pins CardFace as the element type of `Card.card_faces` — one shape, not two', () => {
+    // THE HALF THAT MAKES THE ALIAS LOAD-BEARING. `wire-contract.test.ts` bans a hand-written
+    // face shape outside `src/api/`, so the only way the panel can read a face is through this
+    // alias — and the only thing that makes the alias correct is that it IS what the hydrated
+    // record carries. A regeneration that renamed or restructured the schema reddens here.
+    expectTypeOf<NonNullable<Card['card_faces']>[number]>().toEqualTypeOf<CardFace>()
   })
 })
