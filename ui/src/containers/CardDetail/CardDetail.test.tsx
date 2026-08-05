@@ -1,10 +1,12 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Card, CardSummary, DeckCardSummary } from '../../api/schema'
 import { UNKNOWN_CARD_LABEL } from '../../components/CardPlaceholder/copy'
 import { resetCardCache, useCardStore } from '../../state/cards'
 import { boardsOf } from '../../state/deckGroups'
+import { flipCard, resetFaces } from '../../state/faces'
+import { FLIP_LABEL } from '../FlipControl/copy'
 import {
   clearPin,
   resetInspection,
@@ -678,5 +680,156 @@ describe('the panel updates in place on hover AND on focus (AC 10, UX-DR14)', ()
     // tile's handlers reach both; this proves the panel follows both.
     act(() => setFocused(ATRAXA))
     expect(within(region).getByText('Atraxa, Praetors’ Voice')).toBeVisible()
+  })
+})
+
+/**
+ * The panel follows the FACE (story c4-6, AC 6, AC 10, AC 11, AC 12, AC 13).
+ *
+ * ================= WHAT THESE CANNOT CARRY ============================================
+ *
+ * The panel's copy of the control is asserted here as an element, a name and a place in the DOM.
+ * Its 28px disc, its 32px hit box, its 0.65 → 1.0 opacity and the 3D rotation of the art behind
+ * it are all unevaluated in jsdom — source claims in `FlipControl.css` and `tokens.css`, measured
+ * by eye at Task 8. That `?size=large&face=1` is a fourth distinct browser-cache key is likewise
+ * a browser fact: jsdom loads no images at all.
+ */
+describe('the panel follows the flipped face (c4-6, AC 11, AC 12)', () => {
+  /** A flippable printing, hydrated: two faces, each carrying its own images (shape C). */
+  const PATHWAY = 'id-Clearwater'
+  const pathwayCard = (): Card => ({
+    ...record(PATHWAY, {
+      name: 'Clearwater Pathway // Murkwater Pathway',
+      type_line: 'Land // Land',
+      oracle_text: '',
+      mana_cost: '',
+      image_uris: null,
+      card_faces: [
+        {
+          name: 'Clearwater Pathway',
+          mana_cost: '{U}',
+          type_line: 'Land',
+          oracle_text: '{T}: Add {U}.',
+          image_uris: { normal: 'n', large: 'l' },
+        },
+        {
+          name: 'Murkwater Pathway',
+          mana_cost: '{B}',
+          type_line: 'Land — Swamp',
+          oracle_text: '{T}: Add {B}.',
+          image_uris: { normal: 'n', large: 'l' },
+        },
+      ],
+    }),
+  })
+
+  const pathwayDeck = boardsOf([row(PATHWAY, { name: 'Clearwater Pathway // Murkwater Pathway' })])
+
+  afterEach(resetFaces)
+
+  it('carries its OWN copy of the control, pinned inside the art box (AC 12)', () => {
+    seedHydrated(PATHWAY, pathwayCard())
+    const { container } = render(<CardDetail boards={pathwayDeck} />)
+
+    const control = screen.getByRole('button', { name: FLIP_LABEL })
+    expect(control).toBeVisible()
+    // "pinned to its art's top-left" — asserted as CONTAINMENT, which is what makes the CSS
+    // `top: var(--space-2); left: var(--space-2)` mean the ART BOX's corner rather than the
+    // panel's. The same component the tile mounts, not a second implementation (UX-DR15).
+    expect(container.querySelector('.card-detail-art')!.contains(control)).toBe(true)
+    expect(control.classList.contains('flip-control')).toBe(true)
+  })
+
+  it('renders NO control for a single-faced card, in the panel as in the grid (AC 2)', () => {
+    seedHydrated(ATRAXA, record(ATRAXA))
+    render(<CardDetail boards={oneCardDeck} />)
+    expect(screen.queryByRole('button', { name: FLIP_LABEL })).toBeNull()
+  })
+
+  it('renders the BACK face in all four fields once flipped (AC 11)', () => {
+    seedHydrated(PATHWAY, pathwayCard())
+    const { container } = render(<CardDetail boards={pathwayDeck} />)
+
+    // The front face first — `fromCard` reads `card_faces[0]`, never the top-level `Land // Land`.
+    expect(screen.getByText('Clearwater Pathway')).toBeVisible()
+    expect(screen.getByText('Land')).toBeVisible()
+    expect(screen.getByText('{T}: Add {U}.')).toBeVisible()
+
+    // A flip made through the STORE, which is how a click on the tile in the OTHER COLUMN reaches
+    // this panel: one answer, two readers (AC 10). The panel's own control is exercised below.
+    act(() => flipCard(PATHWAY, 2))
+
+    expect(screen.getByText('Murkwater Pathway')).toBeVisible()
+    expect(screen.getByText('Land — Swamp')).toBeVisible()
+    expect(screen.getByText('{T}: Add {B}.')).toBeVisible()
+    expect(screen.queryByText('Clearwater Pathway')).toBeNull()
+    // …and the mana cost, which is the fourth field and the one that renders as PIPS rather than
+    // as text: the front face is `{U}` and the back is `{B}`, so the blue pip must be gone.
+    expect(container.querySelectorAll('.mana-pip-b')).toHaveLength(1)
+    expect(container.querySelectorAll('.mana-pip-u')).toHaveLength(0)
+  })
+
+  it('asks the image route for the SAME face the text came from (AC 11, AC 13)', () => {
+    seedHydrated(PATHWAY, pathwayCard())
+    const { container } = render(<CardDetail boards={pathwayDeck} />)
+    const srcOf = (selector: string) => container.querySelector(selector)!.getAttribute('src')
+
+    // FRONT: `size=large` and NO `face=`, so the panel's front render is byte-identical to the one
+    // c4-5 shipped and the warm cache is not split (AC 13).
+    expect(srcOf('.is-front')).toBe(`/api/card-image/${PATHWAY}?size=large`)
+    // BACK: both parameters, in a stable order — a second ordering would be a second cache key for
+    // one picture, which is the whole reason the builder composes them as a list.
+    expect(srcOf('.is-back')).toBe(`/api/card-image/${PATHWAY}?size=large&face=1`)
+
+    act(() => flipCard(PATHWAY, 2))
+    expect(container.querySelector('.card-faces')!.getAttribute('data-flipped')).toBe('true')
+  })
+
+  it('keeps the per-field fallback, for the ten flippable cards with a null type line', () => {
+    // MEASURED: ten cards that DO get a flip control have a face with a null `type_line` — the
+    // Un-set "(cont'd)" minigame cards. `fromCard`'s `??` is PER FIELD, so such a face keeps its
+    // own name and rules text while the type line falls through to the top-level value. A
+    // per-record choice would blank the type line the moment the card was flipped.
+    const card = pathwayCard()
+    seedHydrated(PATHWAY, {
+      ...card,
+      card_faces: [card.card_faces![0], { ...card.card_faces![1], type_line: null }],
+    })
+    render(<CardDetail boards={pathwayDeck} />)
+
+    act(() => flipCard(PATHWAY, 2))
+    expect(screen.getByText('Murkwater Pathway')).toBeVisible()
+    expect(screen.getByText('{T}: Add {B}.')).toBeVisible()
+    expect(screen.getByText('Land // Land')).toBeVisible()
+  })
+
+  it('flips from the PANEL’s control without pinning, setting or clearing anything (AC 6)', () => {
+    seedHydrated(PATHWAY, pathwayCard())
+    render(<CardDetail boards={pathwayDeck} />)
+    const before = useInspectionStore.getState()
+
+    fireEvent.click(screen.getByRole('button', { name: FLIP_LABEL }))
+
+    // Against the SLICE's whole state: the panel's own control is inside a clickable-looking box
+    // and must still touch none of the inspection verbs (decide-once rule 15).
+    expect(useInspectionStore.getState()).toEqual(before)
+    expect(screen.getByText('Murkwater Pathway')).toBeVisible()
+  })
+
+  it('keeps the control while the shown face’s art has FAILED (Q8)', () => {
+    // The panel's half of Q8's ruling, and the reason the two art branches were merged into ONE
+    // art box: the placeholder replaces the FACES, not the box, so the control survives inside it
+    // and a face whose picture failed can always be flipped out of.
+    seedHydrated(PATHWAY, pathwayCard())
+    const { container } = render(<CardDetail boards={pathwayDeck} />)
+
+    fireEvent.error(container.querySelector('.is-front')!)
+    expect(container.querySelector('.card-placeholder')).not.toBeNull()
+    expect(screen.getByRole('button', { name: FLIP_LABEL })).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: FLIP_LABEL }))
+    // Flipped to a face whose art has NOT failed: the placeholder is gone and the faces are back.
+    expect(container.querySelector('.card-placeholder')).toBeNull()
+    expect(container.querySelector('.is-back')).not.toBeNull()
   })
 })

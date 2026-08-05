@@ -326,9 +326,53 @@
      layer to one component's element name; lowering the component's with `:where()` leaves the
      accessibility override at the mercy of the next rule anybody writes. An override that must
      win regardless of what a component declares is the textbook case for `!important`, and
-     stating it here is what keeps the next registration from copying the pattern blindly. */
-  .card-tile:hover,
-  .card-tile:focus-visible {
+     stating it here is what keeps the next registration from copying the pattern blindly.
+
+     ==== THE SELECTOR MOVED AT c4-6, AND THE MOVE IS THE POINT ==========================
+     This read `.card-tile:hover, .card-tile:focus-visible` until c4-6, whose flip control had to
+     become a SIBLING of the tile's button rather than a descendant of it (an interactive
+     descendant of a `<button>` is invalid HTML that React 19.2 warns about in development and
+     that assistive technology does not reliably expose — both measured). With the control
+     outside the button, `.card-tile:hover` is false while a pointer sits on it, so the pop moved
+     onto `.card-tile-frame`, which is the same BOX and a different element. The guard compares
+     selector TEXT per property, so this registration had to move in the same commit or the whole
+     suite would go red — a false FAILURE, which is the safe direction the residue at
+     `deferred-work.md:3750` was left standing for. */
+  .card-tile-frame:hover,
+  .card-tile-frame:has(:focus-visible) {
     transform: none !important;
+  }
+
+  /* ---- c4-6, THE DFC FLIP — THE FIRST 3D MOTION, AND THE FIRST THAT NEEDS A REPLACEMENT
+     RATHER THAN A REMOVAL -------------------------------------------------------------
+     UX-DR42's named fallback is "instant face swap". Two rotations ship (FlipControl.css): the
+     stacked-faces box turns 180° on flip, and the back face is pre-rotated 180° so that it reads
+     the right way round once it has. Both are `transform`, so both are switched off here — and
+     this is where this registration stops resembling c4-4's.
+
+     THE HOVER POP COULD SIMPLY BE REMOVED. THIS ONE CANNOT. `backface-visibility: hidden` is
+     what decides which of the two stacked faces is painted, and it decides it FROM the rotation:
+     with both transforms gone, both faces point at the viewer and the back — later in the DOM,
+     at the same `inset: 0` — covers the front at every setting, flipped or not. So switching the
+     motion off without replacing the mechanism would not produce "no rotation", it would produce
+     "always the back face", which is a worse render than the motion it removed.
+
+     The two `visibility` rules are that replacement, and they are the whole of the fallback:
+     each state paints exactly one face, instantly, with nothing to animate. `visibility` rather
+     than `display: none`, because the hidden face keeps its box — the layout of the card is the
+     same at both settings, which is the interchangeability UX-DR36 asks for everywhere else.
+
+     `deferred-work.md:3750` — *"the residue stands for whoever ships the next motion (c4-6's 3D
+     flip)"* — is therefore triggered TWICE by this one story: once by the flip's own two
+     rotations, and once by the hover pop's selector moving onto the frame above. Both are closed
+     here rather than carried. */
+  .card-faces[data-flipped='true'],
+  .card-face.is-back {
+    transform: none !important;
+  }
+
+  .card-faces[data-flipped='false'] .card-face.is-back,
+  .card-faces[data-flipped='true'] .card-face.is-front {
+    visibility: hidden;
   }
 }

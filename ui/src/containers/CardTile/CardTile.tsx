@@ -1,6 +1,7 @@
 import { useId } from 'react'
 
 import { CardPlaceholder } from '../../components/CardPlaceholder/CardPlaceholder'
+import { useFaceIndex } from '../../state/faces'
 import {
   clearFocused,
   clearHovered,
@@ -9,7 +10,9 @@ import {
   togglePin,
   useIsLiveTarget,
 } from '../../state/inspection'
+import { FlipControl } from '../FlipControl/FlipControl'
 import { useCardArt } from '../useCardArt'
+import { useImagedFaceCount } from '../imagedFaces'
 import './CardTile.css'
 import { cardImageUrl } from './imageUrl'
 import './QuantityBadge.css'
@@ -83,13 +86,49 @@ import './QuantityBadge.css'
  * a `click` — which is also why `EXPERIENCE.md`'s ban on double-click semantics costs nothing:
  * the second single click is a release, decided by identity inside `togglePin`.
  *
- * **THE HANDLERS ARE ON THE BUTTON, WHICH IS WHAT LETS c4-6 OPT OUT.** The flip control lands
- * inside this same element and must *"only flip, and never set, pin or clear the inspection"*.
- * Because `click` bubbles to the button, a `stopPropagation()` in that control's own handler
- * suppresses the pin with no edit here — and `mouseenter`/`mouseleave` do not bubble at all, so
- * a pointer moving onto the control never leaves the tile as far as this component is concerned.
- * That contract is written down in `src/state/inspection.ts` too, so neither story has to
- * discover it in the other's file.
+ * ================= AND NOW THE TILE FLIPS (c4-6, FR-04, FR-19, UX-DR15) ================
+ *
+ * **THE BUTTON IS NO LONGER THE OUTERMOST THING, AND THAT IS c4-6's SHARPEST RULING (Q2).**
+ * Four shipped comments — including the one that used to stand here — reserved the flip control's
+ * home INSIDE this button, on a property that is genuinely load-bearing:
+ * `mouseenter`/`mouseleave` do not fire between an element and its **descendants**, so a control
+ * inside the button could never read as leaving the tile. What none of them priced is that
+ * `<button>`'s content model bans interactive descendants outright. Task 0 measured what actually
+ * happens rather than assuming it:
+ *
+ *   React 19.2 emits *"In HTML, `<button>` cannot be a descendant of `<button>`."* — in the
+ *   **development build only** (`grep -c` over `react-dom-client.{development,production}.js`
+ *   gives 1 and 0). So the console noise never ships. What DOES ship is the tree: React builds
+ *   the DOM imperatively, so there is no parser to unnest it, and a `<button>` really inside a
+ *   `<button>` is not reliably exposed as a separate control by assistive technology.
+ *
+ * That is the deciding fact, not the content model in the abstract: an inner button would satisfy
+ * every jsdom assertion in this repo and could still be unreachable by a real screen reader —
+ * breaking c4-6's AC 7 (Enter and Space) and AC 8 (its Tab stop) on the only hardware that
+ * matters, in the one direction no gate here can see.
+ *
+ * **So the button and the control are SIBLINGS inside `.card-tile-frame`**, and the frame's box is
+ * exactly the card box (this button is `display: block; width: 100%` with `card-shape`'s aspect
+ * ratio), so the hover REGION does not change at all — only which element carries the listener.
+ * `onMouseEnter`/`onMouseLeave` and `onFocus`/`onBlur` move to the frame, which restores the
+ * containment property one element further out: those events still do not fire when the pointer
+ * moves between the frame's own children, and `focusin`/`focusout` bubble, so Tabbing from this
+ * tile to its OWN control keeps the tile's inspection target instead of dropping it — PR #44's P1
+ * defect, one element out.
+ *
+ * **`onClick` stays here**, because pinning is the CARD's action and the control's click must not
+ * be one. The control calls `stopPropagation()` anyway (its AC 6): under this shape nothing
+ * bubbles here, but the guarantee is what makes the same component safe inside the detail panel's
+ * art box today and inside c6-5's clickable thumbnails later.
+ *
+ * **The cascade repair that goes with it** is in `CardTile.css`: with the control outside this
+ * button, `.card-tile:hover` is FALSE while a pointer is on the control, so the hover pop and the
+ * raised shadow would drop out on exactly the gesture the control exists for. Every specificity
+ * in that file is preserved byte-for-byte — see its own comments.
+ *
+ * **The face itself is two stacked `<img>`s** (Q10), rendered only when the card is flippable, so
+ * a non-flippable tile still issues exactly one image request. Which one is showing is
+ * `src/state/faces.ts`'s, keyed by printing so the panel and every later thumbnail agree.
  *
  * ================= AN `onError` CARRIES NO WIRE TOKEN, AND IT DOES NOT NEED ONE ========
  *
@@ -113,13 +152,18 @@ import './QuantityBadge.css'
  *
  * ================= WHAT THIS TILE DELIBERATELY DOES NOT DO =============================
  *
- * No flip control and no `face` parameter — **c4-6's**, and it owns the tile's TOP-LEFT, which
- * is why the badge is pinned top-right. No `deck_changed` refetch, no shimmer, no quantity glow,
- * and **no live region of its own** — Epic 5 and c7-5; the pin announcement is the DETAIL
- * PANEL's single polite region (c4-5 AC 23), because ninety-nine tiles each owning one is
- * ninety-nine ways to say the same sentence. No `useCardEntry` subscription (Q9): see
- * {@link CardTileProps}. And **no hydration** — the tile still fetches nothing; whoever decides
- * a full record is needed calls `hydrateCard`, and that is the panel.
+ * No `deck_changed` refetch, no shimmer, no quantity glow, and **no live region of its own** —
+ * Epic 5 and c7-5; the pin announcement is the DETAIL PANEL's single polite region (c4-5 AC 23),
+ * because ninety-nine tiles each owning one is ninety-nine ways to say the same sentence. And
+ * **no hydration** — the tile still fetches nothing; whoever decides a full record is needed
+ * calls `hydrateCard`, and from c4-6 that is `App.tsx`'s after-commit deck sweep as well as the
+ * panel.
+ *
+ * c4-4's *"no `useCardEntry` subscription"* is the one line of this list that c4-6 spends, and it
+ * is spent through `../imagedFaces` rather than directly: the tile has to know whether it has a
+ * back face to draw, and `CardSummary` carries neither `card_faces` nor `image_uris`. That hook
+ * returns a NUMBER, so zustand v5's referential comparison re-renders a tile only when its own
+ * card's record lands — not all ninety-nine on every entry the sweep settles.
  */
 
 /**
@@ -181,13 +225,58 @@ const given = (value: string | null | undefined): string | null => {
 }
 
 export function CardTile({ cardId, name, cost, typeLine, quantity }: CardTileProps) {
+  // WHICH FACE, AND WHETHER THERE IS A SECOND ONE AT ALL (c4-6, Q3, Q10). A tile re-renders when
+  // ITS card's record lands or ITS face changes, and not otherwise — by two different mechanisms
+  // (review 2026-08-06 corrected this comment, which first credited "returns a NUMBER" for both):
+  // `useFaceIndex`'s selector really does return a number zustand v5 compares by value, but
+  // `useImagedFaceCount` subscribes through `useCardEntry`'s per-id ENTRY selector and derives
+  // its number after the comparison — the per-tile granularity is the per-id selector's, and the
+  // derived count never enters any subscription comparison.
+  const faceIndex = useFaceIndex(cardId)
+  const imagedFaces = useImagedFaceCount(cardId)
+  const flippable = imagedFaces > 1
+  // `data-flipped` is a boolean but the index is not: for every printing that exists today the
+  // two coincide (all 2,778 flippable cards have exactly two imaged faces, measured), and for a
+  // hypothetical third face "not the front" is still the honest thing for the rotation to say
+  // while the back `<img>`'s `src` follows the index.
+  const flipped = flippable && faceIndex !== 0
+  const backFace = faceIndex === 0 ? 1 : faceIndex
+
   // The three art states, the `ref` that settles a cached image and both event handlers — see
   // `../useCardArt`, which is where c4-4's own implementation of all of it moved when c4-5
   // needed the identical thing at `size=large`. DESTRUCTURED rather than held as an object, and
   // that is a lint requirement rather than a habit: `react-hooks/refs` reads a member access
   // during render as reading a ref, so `art.settleIfCached` in the JSX below is an error while a
   // plain identifier is not (measured — see that module's `CardArt` docstring).
-  const { state: art, settleIfCached, onLoad: onArtLoad, onError: onArtError } = useCardArt(cardId)
+  //
+  // TWO CALLS, ONE PER FACE (c4-6 Q7, Q8). `?face=1` is a different URL and therefore a different
+  // browser-cache entry, so the two faces load, fail and settle INDEPENDENTLY — a hook keyed on
+  // `cardId` alone would leave a flipped tile at `'shown'` over bytes that had not arrived. Both
+  // are called unconditionally because hooks must be; only the FLIPPABLE tile renders the second
+  // `<img>`, so a single-faced card still issues exactly one request.
+  //
+  // BOTH DESTRUCTURED, AND THE SECOND ONE PROVED THE RULE AGAIN: the first spelling here held
+  // each handle as an object (`front.onLoad`), and `react-hooks/refs` reported eight errors —
+  // exactly the failure `useCardArt`'s `CardArt` docstring records from the extraction that
+  // created it. A member access during render reads as reading a ref; a plain identifier does not.
+  const {
+    state: frontArt,
+    settleIfCached: settleFront,
+    onLoad: onFrontLoad,
+    onError: onFrontError,
+  } = useCardArt(cardId, 0)
+  const {
+    state: backArt,
+    settleIfCached: settleBack,
+    onLoad: onBackLoad,
+    onError: onBackError,
+  } = useCardArt(cardId, backFace)
+  // WHICHEVER FACE IS ON SCREEN GOVERNS THE WELL AND THE PLACEHOLDER (Q8). The alternative —
+  // letting the FRONT decide for both — would show a silent well over a back face that had
+  // already arrived, and would strand a card whose front picture failed on a placeholder it could
+  // never flip out of. The control itself is a sibling of this button, so it survives the failed
+  // branch replacing everything inside it, which is the other half of that ruling.
+  const art = flipped ? backArt : frontArt
   // Q7's ruling, and the whole reason it is a per-tile SELECTOR rather than a prop from the
   // grid: this returns a BOOLEAN, so zustand v5's referential comparison re-renders exactly the
   // tiles whose value flipped — two per hover — instead of all ninety-nine on every cursor
@@ -216,7 +305,32 @@ export function CardTile({ cardId, name, cost, typeLine, quantity }: CardTilePro
 
   return (
     <>
-      {/* THE BUTTON **IS** THE CARD, AND THAT IS A REPAIR THE EYE-CHECK FORCED (Task 7).
+      {/* THE FRAME (c4-6, Q2). It exists for ONE reason and carries no appearance of its own: the
+          flip control is a `<button>` and so is the tile, and an interactive descendant of a
+          `<button>` is invalid HTML that React 19.2 warns about in development and that assistive
+          technology does not reliably expose as a separate control (both measured — see the
+          header). So the two are SIBLINGS, and something has to hold them.
+
+          Its box is exactly the card box, because the button below is `display: block` at
+          `width: 100%` with `card-shape`'s aspect ratio — so pinning the control to this element's
+          top-left inside `--space-2` is pinning it to the CARD's top-left, which is DESIGN.md's
+          words, and the hover REGION is unchanged from c4-4's.
+
+          THE POINTER AND FOCUS HANDLERS LIVE HERE, AND THE CLICK DOES NOT. `mouseenter`/
+          `mouseleave` do not fire when the pointer moves between this element's own children, so
+          reaching the control never reads as leaving the tile — the property four shipped comments
+          were reaching for, restored one element further out. `focusin`/`focusout` (React's
+          `onFocus`/`onBlur`) bubble, so Tabbing from the tile to its OWN control keeps the tile's
+          inspection target rather than dropping it: PR #44's P1 defect, one element out. `onClick`
+          stays on the button, because pinning is the card's action and the flip must not be one. */}
+      <div
+        className="card-tile-frame"
+        onMouseEnter={() => setHovered(cardId)}
+        onMouseLeave={() => clearHovered(cardId)}
+        onFocus={() => setFocused(cardId)}
+        onBlur={() => clearFocused(cardId)}
+      >
+        {/* THE BUTTON **IS** THE CARD, AND THAT IS A REPAIR THE EYE-CHECK FORCED (Task 7).
           The first draft wrapped the art and the caption in one button and drew the focus ring
           on an inner frame. Rendered in a real browser with a real keyboard focus, that showed
           TWO indicators at once: the composite ring hugging the card's rounded corners, and the
@@ -236,15 +350,15 @@ export function CardTile({ cardId, name, cost, typeLine, quantity }: CardTilePro
           `aria-labelledby` on the FAILED path is deliberately absent: there is no caption to
           point at, and the accessible name falls back to the button's contents — which is c4-3's
           named placeholder, already naming the card exactly once. */}
-      <button
-        type="button"
-        /* `is-live` is the class DESIGN.md's `components.card-tile.live-ring` hangs on, and it
+        <button
+          type="button"
+          /* `is-live` is the class DESIGN.md's `components.card-tile.live-ring` hangs on, and it
            is the ONLY thing this component does with its liveness — the ring itself is
            `--shadow-live-ring` in CardTile.css, because a composite box-shadow cannot be
            written in a component stylesheet at all (stylelint's allowed-list). */
-        className={live ? 'card-shape card-tile is-live' : 'card-shape card-tile'}
-        aria-labelledby={labelledBy}
-        /* THE INSPECTION CONTRACT, AND NOTHING ELSE (c4-5, UX-DR14, UX-DR20). Four handlers,
+          className={live ? 'card-shape card-tile is-live' : 'card-shape card-tile'}
+          aria-labelledby={labelledBy}
+          /* THE INSPECTION CONTRACT, AND NOTHING ELSE (c4-5, UX-DR14, UX-DR20). Four handlers,
            no decisions: what an id MEANS — whether it can be inspected at all, whether a click
            pins or releases, what wins between hover and pin — belongs to the slice, so that
            c4-7's deck rows and Epic 6's thumbnails get the identical behaviour from the
@@ -263,58 +377,95 @@ export function CardTile({ cardId, name, cost, typeLine, quantity }: CardTilePro
            free rather than something to implement (double-click semantics are banned outright,
            `EXPERIENCE.md`).
 
-           ON THE BUTTON, DELIBERATELY: `click` bubbles, so c4-6's flip control suppresses the
-           pin from inside this element with `stopPropagation()` and no edit here, while
-           `mouseenter`/`mouseleave` do not bubble at all, so moving the pointer onto that
-           control never reads as leaving the tile. */
-        onMouseEnter={() => setHovered(cardId)}
-        onMouseLeave={() => clearHovered(cardId)}
-        onFocus={() => setFocused(cardId)}
-        onBlur={() => clearFocused(cardId)}
-        onClick={() => togglePin(cardId)}
-      >
-        {art === 'failed' ? (
-          /* THE NAMED PLACEHOLDER, from the props the deck payload already carried. Not from
-             `entry.placeholder` and not from a wire token — see the header. */
-          <CardPlaceholder variant="named-card" name={name} cost={cost} typeLine={typeLine} />
-        ) : (
-          <>
-            {/* THE SILENT WELL, until the pixels exist. It is a SIBLING the image covers
+           THE POINTER AND FOCUS HANDLERS ARE NO LONGER HERE — they moved to the frame above at
+           c4-6, because the flip control had to become a SIBLING of this button rather than a
+           descendant of it. `onClick` stayed, because pinning is the card's action; the control
+           calls `stopPropagation()` for the ancestors that are clickable elsewhere. */
+          onClick={() => togglePin(cardId)}
+        >
+          {art === 'failed' ? (
+            /* THE NAMED PLACEHOLDER, from the props the deck payload already carried. Not from
+             `entry.placeholder` and not from a wire token — see the header.
+             ON THE SHOWN FACE (c4-6 Q8): a card whose BACK picture failed draws this while
+             flipped and its own face while not, because `?face=1` is a different negative-cache
+             key and the two faces genuinely fail independently. The flip control survives this
+             branch — it is outside this button — so a failed face can always be flipped out of. */
+            <CardPlaceholder variant="named-card" name={name} cost={cost} typeLine={typeLine} />
+          ) : (
+            <>
+              {/* THE SILENT WELL, until the pixels exist. It is a SIBLING the image covers
                 rather than a background under it, and that is Q8's ruling: a `--surface-well`
                 painted on the same element would sit under a card face whose PNG corners are
                 transparent, which DESIGN.md explicitly cares about ("png faces with
                 transparent corners sit flush"). */}
-            {art === 'loading' ? <CardPlaceholder variant="loading" /> : null}
-            <img
-              ref={settleIfCached}
-              className="card-tile-image"
-              data-loaded={art === 'shown' ? 'true' : 'false'}
-              src={cardImageUrl(cardId)}
-              /* `alt=""`, and it is a RULING rather than a default (Q4, AC 11). UX-DR48 keeps
-                 `alt={name}` on grid tiles *"because there the image is the only carrier"* —
-                 and for THIS component that premise is measurably false: UX-DR14 puts the same
-                 name in a caption directly beneath the art, and `aria-labelledby` makes that
-                 caption the button's accessible name. With `alt={name}` as well, a
-                 screen-reader user would hear "Black Lotus Black Lotus". This tile has exactly
-                 the structure UX-DR48's OTHER clause describes for row thumbnails — *"use
-                 `alt=""` — the name is announced once, from the row text"* — so the rule's own
-                 logic is applied rather than its letter. `CardTile.test.tsx` proves the
-                 accessible name carries the name exactly once. */
-              alt=""
-              /* Q7: all ~99 mount at once, and the arithmetic is in the story record.
-                 `decoding="async"` keeps decode off the main thread; `loading="lazy"` is
-                 DELIBERATELY ABSENT — the grid is the app's primary surface and a
-                 scroll-triggered second fill pattern is one the UX inventory never describes.
-                 Lowercase DOM attributes, passed through unchanged by React 19; the one that
-                 would need camelCase is `fetchPriority`, and this tile sets none. */
-              decoding="async"
-              onLoad={onArtLoad}
-              onError={onArtError}
-            />
-          </>
-        )}
-        {copies > 1 ? (
-          /* THE QUANTITY BADGE (AC 9, UX-DR3, UX-DR16). Top-RIGHT: c4-6's flip control owns the
+              {art === 'loading' ? <CardPlaceholder variant="loading" /> : null}
+              {/* THE TWO STACKED FACES (c4-6 Q10, AC 14). `data-flipped` is present only when there
+                IS a second face, which is what scopes the 3D machinery to the 42 flippable rows
+                in the 40 real decks rather than putting a `preserve-3d` context on all ninety-nine
+                tiles. The rotation, the `backface-visibility` and the reduced-motion fallback all
+                live in FlipControl.css and tokens.css — this component chooses the FACE and
+                nothing about how it arrives. */}
+              <div className="card-faces" data-flipped={flippable ? String(flipped) : undefined}>
+                <img
+                  ref={settleFront}
+                  className="card-tile-image card-face is-front"
+                  data-loaded={frontArt === 'shown' ? 'true' : 'false'}
+                  src={cardImageUrl(cardId)}
+                  /* `alt=""`, and it is a RULING rather than a default (Q4, AC 11). UX-DR48 keeps
+                   `alt={name}` on grid tiles *"because there the image is the only carrier"* —
+                   and for THIS component that premise is measurably false: UX-DR14 puts the same
+                   name in a caption directly beneath the art, and `aria-labelledby` makes that
+                   caption the button's accessible name. With `alt={name}` as well, a
+                   screen-reader user would hear "Black Lotus Black Lotus". This tile has exactly
+                   the structure UX-DR48's OTHER clause describes for row thumbnails — *"use
+                   `alt=""` — the name is announced once, from the row text"* — so the rule's own
+                   logic is applied rather than its letter. `CardTile.test.tsx` proves the
+                   accessible name carries the name exactly once.
+
+                   UNCHANGED BY c4-6, AND THE RESIDUE IS DECLARED (Q12): while a DFC shows its
+                   back face, this tile's caption still reads the printing's COMBINED name
+                   (`Clearwater Pathway // Murkwater Pathway`) while the art shows one half. The
+                   panel's heading follows the face; the caption does not. Same divergence c4-5
+                   ledgered for the pin announcement, one surface further — epic manual-testing
+                   checklist, not a jsdom assertion. */
+                  alt=""
+                  /* Q7: all ~99 mount at once, and the arithmetic is in the story record.
+                   `decoding="async"` keeps decode off the main thread; `loading="lazy"` is
+                   DELIBERATELY ABSENT — the grid is the app's primary surface and a
+                   scroll-triggered second fill pattern is one the UX inventory never describes.
+                   Lowercase DOM attributes, passed through unchanged by React 19; the one that
+                   would need camelCase is `fetchPriority`, and this tile sets none. */
+                  decoding="async"
+                  onLoad={onFrontLoad}
+                  onError={onFrontError}
+                />
+                {flippable ? (
+                  /* THE BACK FACE, RENDERED ONLY WHEN THERE IS ONE. Measured: this costs 6 extra
+                   images on the 99-card Atraxa deck, 1 on `Prismatic Dragon`, and 42 across all
+                   40 real decks — the price of the flip being WARM and INSTANT rather than a
+                   cold fetch at the rotation's midpoint, which is what Q10's declined option (b)
+                   would have needed a JS timer for.
+
+                   `?face=` follows the INDEX rather than being pinned to 1, so a hypothetical
+                   third face swaps this element's `src` while the rotation stays put — and for
+                   every printing that exists today `backFace` is the constant 1, which keeps
+                   this URL a stable browser-cache key. */
+                  <img
+                    ref={settleBack}
+                    className="card-tile-image card-face is-back"
+                    data-loaded={backArt === 'shown' ? 'true' : 'false'}
+                    src={cardImageUrl(cardId, undefined, backFace)}
+                    alt=""
+                    decoding="async"
+                    onLoad={onBackLoad}
+                    onError={onBackError}
+                  />
+                ) : null}
+              </div>
+            </>
+          )}
+          {copies > 1 ? (
+            /* THE QUANTITY BADGE (AC 9, UX-DR3, UX-DR16). Top-RIGHT: c4-6's flip control owns the
              top-left and the two must never collide.
 
              IT IS NAMED RATHER THAN HIDDEN (Q6). UX-DR16 delegates the accessible quantity
@@ -324,12 +475,22 @@ export function CardTile({ cardId, name, cost, typeLine, quantity }: CardTilePro
              `aria-labelledby` above, which also fixes the reading ORDER: name first, then
              count, rather than the DOM order a name-from-contents would have imposed. No
              authored string is involved, so no COPY_MODULES entry is owed. */
-          <span
-            id={badgeId}
-            className="card-tile-quantity"
-          >{`${MULTIPLICATION_SIGN}${copies}`}</span>
-        ) : null}
-      </button>
+            <span
+              id={badgeId}
+              className="card-tile-quantity"
+            >{`${MULTIPLICATION_SIGN}${copies}`}</span>
+          ) : null}
+        </button>
+        {/* THE FLIP CONTROL (c4-6, AC 1, AC 8, AC 12). A SIBLING of the button, immediately after
+            it in DOM order — which is the whole of UX-DR40's *"immediately after its own tile"*
+            Tab stop, asserted as document order rather than as a `tabindex` (AC 8). It renders
+            `null` for the 35,483 cards that are not flippable, so the Tab order of an ordinary
+            deck is exactly c4-4's.
+
+            It takes only a `cardId`: the predicate, the material, the glyph and the label are all
+            its own, and the panel mounts the identical component against its art box (AC 12). */}
+        <FlipControl cardId={cardId} />
+      </div>
       {/* THE CAPTION (AC 5, AC 6, UX-DR14).
 
           NOT RENDERED BESIDE THE NAMED PLACEHOLDER, and that is AC 11 applied to the path it is
@@ -339,9 +500,11 @@ export function CardTile({ cardId, name, cost, typeLine, quantity }: CardTilePro
           announced once; the failed path is the same question with a different carrier, so it
           gets the same answer: whichever element is naming the card, only one of them does.
 
-          A SIBLING OF THE BUTTON, not a child — see the button's own comment. It is the button's
-          accessible name by reference rather than by containment, which is what lets the focus
-          ring be the card's shape rather than a rectangle around card-plus-text.
+          OUTSIDE THE FRAME, not merely outside the button — so the hover region stays the CARD
+          (c4-4's ruling, preserved through c4-6's restructure) rather than growing to include a
+          line of text below it. It is the button's accessible name by reference rather than by
+          containment, which is what lets the focus ring be the card's shape rather than a
+          rectangle around card-plus-text.
 
           Rendered only when there is a name to render, for the rest: `filled`-style totality
           rather than a present, invisible, announced-as-empty element. Measured: 0 of the 1,061

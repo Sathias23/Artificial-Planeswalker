@@ -6,6 +6,7 @@ import { Panel } from '../../components/Panel/Panel'
 import type { Card, CardFace, CardSummary } from '../../api/schema'
 import { hydrateCard, readCardEntry, useCardEntry, type CardEntry } from '../../state/cards'
 import type { DeckBoards } from '../../state/deckGroups'
+import { useFaceIndex } from '../../state/faces'
 import {
   clearPin,
   clearTransientTargets,
@@ -15,7 +16,9 @@ import {
   usePinnedId,
 } from '../../state/inspection'
 import { cardImageUrl } from '../CardTile/imageUrl'
+import { FlipControl } from '../FlipControl/FlipControl'
 import { useCardArt } from '../useCardArt'
+import { useImagedFaceCount } from '../imagedFaces'
 import { replacesRememberedDeck } from './deckMemory'
 import './CardDetail.css'
 import './CardDetailChrome.css'
@@ -107,8 +110,7 @@ import { PANEL_TITLE, UNPIN_LABEL, pinnedAnnouncement } from './copy'
  * `Card` for a future edit to reach for. `CardDetail.test.tsx` asserts that at the TYPE, which
  * is the only place an absence can be asserted.
  *
- * **No flip control and no `face` parameter** — c4-6's, and it owns the detail art's top-left
- * exactly as it owns the tile's. **No focus management and no skip-link target** — c4-11's,
+ * **No focus management and no skip-link target** — c4-11's,
  * which moves focus to the `<h2>` this panel already exposes. **No deck list, no format check** —
  * c4-7 and c4-10, which stack beneath this panel in the same column.
  *
@@ -166,25 +168,39 @@ const fromSummary = (summary: CardSummary | null): DetailContent =>
       }
 
 /**
- * A hydrated record, read **front face first** (AC 13, Q1).
+ * A hydrated record, read at **the face the reader chose** (AC 13, c4-5 Q1; c4-6 AC 11, Q9).
  *
- * `card_faces[0]` where it has a value, the top-level field otherwise — per field, not per
+ * `card_faces[faceIndex]` where it has a value, the top-level field otherwise — per field, not per
  * record, because the wire's faces are all-optional and a face carrying a name but no type line
  * is expressible. For the 3,225 faced cards the top-level `oracle_text` is blank in every single
  * one, so the face wins there by being the only thing present; for `name` and `type_line` the
  * face wins on merit, because the top-level values are `'Clearwater Pathway // Murkwater
  * Pathway'` and `'Land // Land'` — or, for 2,274 printings, the useless `'Card // Card'`.
  *
+ * **The per-field `??` survives c4-6 and is not replaced by a per-record choice**, and there is a
+ * measured population behind that: ten cards that DO get a flip control have a face with a null
+ * `type_line` — the Un-set "(cont'd)" minigame cards, e.g.
+ * `Roll for Initiative // Roll for Initiative (cont'd)`. A per-record fallback would blank their
+ * type line the moment they were flipped.
+ *
+ * **`card_faces` is indexed DIRECTLY, and the premise is stated** (c4-6 Q9). `resolve_face_images`
+ * returns only the IMAGED faces, in face order, so the two arrays differ for a partially imaged
+ * card — and this is only sound because the flip control renders exclusively where EVERY face is
+ * imaged, which makes the two coincide. Measured read-only: **0 partially imaged rows exist**.
+ * Whoever meets the first one owns the entry the ledger already opened
+ * (`deferred-work.md:2765-2770`). An out-of-range index falls through to the top-level fields
+ * rather than throwing, which is the same totality every other read here has.
+ *
  * **This is the one place the panel calls a card by a different name than the tile does**, and it
  * is deliberate rather than an oversight of c4-3's Q5 (*"four surfaces must not call one card by
  * two names"*). That ruling is about surfaces showing the SAME thing; this panel is showing one
  * FACE — the very face whose picture is above the text — and `EXPERIENCE.md` says so directly
  * for c4-6: *"while a DFC tile is showing its back face, hovering or pinning it targets that
- * face: the detail panel shows the back, its name, and its oracle text."* c4-6 makes the choice
- * of face a control; this story establishes that the panel is face-specific at all.
+ * face: the detail panel shows the back, its name, and its oracle text."* c4-5 established that
+ * the panel is face-specific at all; c4-6 makes the choice of face a control.
  */
-const fromCard = (card: Card): DetailContent => {
-  const face: CardFace | undefined = card.card_faces?.[0]
+const fromCard = (card: Card, faceIndex: number): DetailContent => {
+  const face: CardFace | undefined = card.card_faces?.[faceIndex]
   return {
     name: given(face?.name) ?? given(card.name),
     cost: given(face?.mana_cost) ?? given(card.mana_cost),
@@ -201,9 +217,9 @@ const fromCard = (card: Card): DetailContent => {
  * `'loading'` entry and re-reads it at settle time, so a request in flight and a request that
  * was refused both still have the free tier behind them.
  */
-const contentOf = (entry: CardEntry | undefined): DetailContent => {
+const contentOf = (entry: CardEntry | undefined, faceIndex = 0): DetailContent => {
   if (entry === undefined) return NOTHING_KNOWN
-  if (entry.status === 'hydrated') return fromCard(entry.card)
+  if (entry.status === 'hydrated') return fromCard(entry.card, faceIndex)
   return fromSummary(entry.summary)
 }
 
@@ -237,15 +253,40 @@ export function CardDetail({ boards }: CardDetailProps) {
   // was never seen simply reads `undefined` — and the empty id specifically is one `hydrateCard`
   // refuses terminally with zero requests, so it can never acquire an entry by accident.
   const entry = useCardEntry(targetId ?? '')
+  // WHICH FACE THE READER CHOSE (c4-6, AC 10, AC 11). Read from the same module-scope slice the
+  // tile reads, keyed by printing — so a card flipped in the grid is already flipped here when it
+  // becomes the target, and a card flipped HERE is flipped in the grid behind it. One answer, two
+  // readers; `useFaceIndex` returns a number, so this panel re-renders only when its own target's
+  // face moves.
+  const faceIndex = useFaceIndex(targetId ?? '')
+  const imagedFaces = useImagedFaceCount(targetId ?? '')
+  const flippable = imagedFaces > 1
+  const flipped = flippable && faceIndex !== 0
+  const backFace = faceIndex === 0 ? 1 : faceIndex
   // DESTRUCTURED, and that is a lint requirement rather than a habit: `react-hooks/refs` reads a
   // member access during render as reading a ref, so `art.settleIfCached` in the JSX below is an
   // error while a plain identifier is not. See `../useCardArt`'s `CardArt` docstring.
+  //
+  // TWO CALLS, ONE PER FACE, exactly as the tile makes them (c4-6 Q7, Q10) — and at `size=large`,
+  // so these are four distinct browser-cache keys per flippable card across the two surfaces. The
+  // back render is only mounted for a flippable card, so an ordinary card still costs the one
+  // `?size=large` request c4-5 shipped.
+  //
+  // BOTH DESTRUCTURED, for `react-hooks/refs`: a member access during render reads as reading a
+  // ref, so `front.onLoad` in the JSX below is an ESLint error while a plain identifier is not.
   const {
-    state: art,
-    settleIfCached,
-    onLoad: onArtLoad,
-    onError: onArtError,
-  } = useCardArt(targetId ?? '')
+    state: frontArt,
+    settleIfCached: settleFront,
+    onLoad: onFrontLoad,
+    onError: onFrontError,
+  } = useCardArt(targetId ?? '', 0)
+  const {
+    state: backArt,
+    settleIfCached: settleBack,
+    onLoad: onBackLoad,
+    onError: onBackError,
+  } = useCardArt(targetId ?? '', backFace)
+  const art = flipped ? backArt : frontArt
 
   // THE ANNOUNCEMENT IS CAPTURED DURING RENDER, NOT IN AN EFFECT (AC 23, UX-DR45).
   //
@@ -357,7 +398,7 @@ export function CardDetail({ boards }: CardDetailProps) {
     }
   }
 
-  const content = contentOf(entry)
+  const content = contentOf(entry, faceIndex)
   const pinned = pinnedId !== null
 
   return (
@@ -389,43 +430,86 @@ export function CardDetail({ boards }: CardDetailProps) {
                first place (AC 17) — so this is the honest render for a state that should not
                occur rather than a path with a population. */
             <CardPlaceholder variant="unknown-card" cardId={targetId} />
-          ) : art === 'failed' ? (
-            /* AD-11: a designed stand-in, never a broken-image glyph. The SAME 79-card
-               population as the grid — measured, `large` and `normal` are missing for exactly
-               the same set — plus whatever the CDN refuses transiently. The `<img>` is REMOVED
-               rather than hidden, because an element with a failed `src` still draws the
-               browser's own glyph. INSIDE the art box, exactly as the loading well is
-               (review 2026-08-05): the box is what carries `--shadow-rest` and the full-size
-               footprint, so a placeholder and a real face keep the same elevation and the same
-               geometry — the interchangeability CardDetail.css's header claims. */
-            <div className="card-shape card-detail-art">
-              <CardPlaceholder
-                variant="named-card"
-                name={content.name}
-                cost={content.cost}
-                typeLine={content.typeLine}
-              />
-            </div>
           ) : (
+            /* ONE ART BOX FOR BOTH OUTCOMES (c4-6). It used to be two, one per branch; the flip
+               control has to sit inside it either way (Q8: a face that failed can still be
+               flipped OUT of), and two boxes would have been two places to mount it and two
+               chances for one of them to be forgotten. The box is what carries `--shadow-rest`
+               and the full-size footprint, so a placeholder and a real face keep the same
+               elevation and the same geometry — the interchangeability CardDetail.css claims. */
             <div className="card-shape card-detail-art">
-              {art === 'loading' ? <CardPlaceholder variant="loading" /> : null}
-              <img
-                ref={settleIfCached}
-                className="card-detail-image"
-                data-loaded={art === 'shown' ? 'true' : 'false'}
-                src={cardImageUrl(targetId, 'large')}
-                /* `alt=""`, DIVERGING FROM UX-DR48'S LITERAL WORDS AND FOLLOWING ITS LOGIC
-                   (Q13). That rule keeps `alt={name}` on the detail panel "because there the
-                   image is the only carrier" — measurably false for this component, exactly as
-                   c4-4 found for the tile: the card's name renders in `--type-heading`
-                   immediately beneath the art, inside the same panel. c4-4's Q4 ruled the name
-                   is announced ONCE. The divergence is stated in the open here and goes on the
-                   epic manual-testing checklist for a real screen reader. */
-                alt=""
-                decoding="async"
-                onLoad={onArtLoad}
-                onError={onArtError}
-              />
+              {art === 'failed' ? (
+                /* AD-11: a designed stand-in, never a broken-image glyph. The SAME 79-card
+                   population as the grid — measured, `large` and `normal` are missing for exactly
+                   the same set — plus whatever the CDN refuses transiently. The `<img>` is
+                   REMOVED rather than hidden, because an element with a failed `src` still draws
+                   the browser's own glyph. ON THE SHOWN FACE (c4-6 Q8): `?face=1` is a different
+                   negative-cache key, so the two faces fail independently and the placeholder
+                   follows whichever one is being looked at. */
+                <CardPlaceholder
+                  variant="named-card"
+                  name={content.name}
+                  cost={content.cost}
+                  typeLine={content.typeLine}
+                />
+              ) : (
+                <>
+                  {art === 'loading' ? <CardPlaceholder variant="loading" /> : null}
+                  {/* THE SAME TWO STACKED FACES THE TILE DRAWS, from the same shared classes in
+                      FlipControl.css (c4-6 Q10). Sharing them rather than writing a second
+                      rotation here is what keeps CardDetail.css's own "NO MOTION, DELIBERATELY"
+                      claim literally true — this file still declares none — and what keeps the
+                      reduced-motion registration a single pair of selectors covering both
+                      surfaces rather than four. */}
+                  <div
+                    className="card-faces"
+                    data-flipped={flippable ? String(flipped) : undefined}
+                  >
+                    <img
+                      ref={settleFront}
+                      className="card-detail-image card-face is-front"
+                      data-loaded={frontArt === 'shown' ? 'true' : 'false'}
+                      src={cardImageUrl(targetId, 'large')}
+                      /* `alt=""`, DIVERGING FROM UX-DR48'S LITERAL WORDS AND FOLLOWING ITS LOGIC
+                         (c4-5 Q13). That rule keeps `alt={name}` on the detail panel "because
+                         there the image is the only carrier" — measurably false for this
+                         component, exactly as c4-4 found for the tile: the card's name renders in
+                         `--type-heading` immediately beneath the art, inside the same panel.
+                         c4-4's Q4 ruled the name is announced ONCE. Unchanged by c4-6, whose
+                         Q12 re-declares the same divergence for a flipped face: here the heading
+                         FOLLOWS the face, so the name a reader hears and the face they see agree
+                         — which is the half the tile's caption cannot manage. Epic
+                         manual-testing checklist, for a real screen reader. */
+                      alt=""
+                      decoding="async"
+                      onLoad={onFrontLoad}
+                      onError={onFrontError}
+                    />
+                    {flippable ? (
+                      <img
+                        ref={settleBack}
+                        className="card-detail-image card-face is-back"
+                        data-loaded={backArt === 'shown' ? 'true' : 'false'}
+                        src={cardImageUrl(targetId, 'large', backFace)}
+                        alt=""
+                        decoding="async"
+                        onLoad={onBackLoad}
+                        onError={onBackError}
+                      />
+                    ) : null}
+                  </div>
+                </>
+              )}
+              {/* THE PANEL'S OWN COPY OF THE CONTROL (c4-6 AC 12, UX-DR15) — "pinned to its art's
+                  top-left", which is this box's top-left because the box IS the card. The SAME
+                  component the tile mounts, not a second implementation: it takes a `cardId` and
+                  asks the same question about it, so the panel cannot disagree with the grid
+                  about which cards are flippable or which face is showing.
+
+                  INSIDE the art box rather than beside it, which is legal here and was not on the
+                  tile: this is a `<div>`, so an interactive descendant is ordinary content rather
+                  than the `<button>`-in-`<button>` the tile's Q2 had to route around. */}
+              <FlipControl cardId={targetId} />
             </div>
           )}
 

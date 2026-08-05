@@ -43,6 +43,26 @@ import { useCallback, useState } from 'react'
  * and the warm path is the second look at the same card; in the grid it is the other way round.
  * Same code, opposite weighting — stated because it changes what a reader should expect to see.
  *
+ * ================= AND c4-6 MAKES THE KEY TWO VALUES, WHICH IS A DEFECT REPAIRED (Q7) ==
+ *
+ * This hook keyed on `cardId` alone, and the day a face could change that stopped being enough.
+ * `?face=1` is a **different URL and therefore a different browser-cache entry**, so the first
+ * flip of any card is always a cold fetch — while `cardId` had not changed, so the state machine
+ * did not re-arm. Two failures followed from one line, and both are the kind a screenshot passes:
+ *
+ *   A flipped tile would sit at `'shown'` over an `<img>` whose new `src` had not arrived — the
+ *   OLD face at full opacity, with no silent well, until the new bytes landed and swapped under
+ *   the reader.
+ *
+ *   Worse, a tile whose FRONT art had `'failed'` renders `CardPlaceholder` **instead of** the
+ *   `<img>` — so there would be no element for a flip to change at all, and a card whose back
+ *   face is perfectly servable could never be reached.
+ *
+ * So the identity of a picture is `(cardId, face)`, not `cardId`, and {@link useCardArt} takes
+ * both. Everything else is unchanged: the reset is still the render-time adjustment React
+ * documents, and BOTH cached arms still settle — at the new key, which is the half that makes a
+ * warm second flip instant rather than stuck on a well.
+ *
  * ================= WHAT jsdom CAN SEE OF ANY OF THIS: NOTHING =========================
  *
  * jsdom loads no images, fires no `load`/`error`, and reports `naturalWidth: 0` always — so the
@@ -97,18 +117,31 @@ export interface CardArt {
  *
  * Args:
  *   cardId: The Scryfall printing uuid whose picture is being drawn. Changing it re-arms.
+ *   face: Which of that card's IMAGES is being drawn, zero-based (story c4-6, Q7). Changing it
+ *     re-arms too, because `?face=1` is a different URL and therefore a different cache entry —
+ *     see the header. Defaults to `0`, so every caller that draws one face only is unchanged and
+ *     needs no edit.
  *
  * Returns:
  *   The {@link CardArt} handle. Nothing here issues a request: the fetch is the BROWSER's, made
  *   by the `<img src>` the consumer renders, which is why `posture.test.ts`'s one-door list
  *   still reads `['src/api/client.ts']` with no edit.
  */
-export const useCardArt = (cardId: string): CardArt => {
+export const useCardArt = (cardId: string, face = 0): CardArt => {
+  // ONE STRING RATHER THAN TWO STATES, so the reset below stays a single comparison and cannot
+  // half-fire. The `cardId` here is the RAW store id — encoding happens later, in `cardImageUrl`,
+  // and c4-1's record gives ids "no shape constraint" — so a `#` in an id is expressible and the
+  // separator does not pretend otherwise (review 2026-08-06 corrected this comment's first
+  // spelling, which claimed a `#` "would have been percent-encoded before it ever reached a
+  // URL"). What actually bounds the risk: `face` is a small integer, so two keys collide only if
+  // one id textually ends in the other plus `#<digit>` — and the key never reaches a URL at all,
+  // so even that collision would only cost a missed re-arm rather than a wrong request.
+  const key = `${cardId}#${face}`
   const [state, setState] = useState<ArtState>('loading')
-  const [artFor, setArtFor] = useState(cardId)
+  const [artFor, setArtFor] = useState(key)
 
-  if (artFor !== cardId) {
-    setArtFor(cardId)
+  if (artFor !== key) {
+    setArtFor(key)
     setState('loading')
   }
 

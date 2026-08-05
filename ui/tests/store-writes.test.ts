@@ -95,6 +95,11 @@ const STORES: { store: string; owner: string; why: string }[] = [
     owner: 'src/state/inspection.ts',
     why: 'the FIRST slice whose input is a person rather than the wire (story c4-5, Q5). The spine sentence this file exists to enforce is narrowed IN THAT MODULE\'S HEADER to "nothing outside the store writes SERVER-DERIVED state", and the narrowing is safe for exactly the reason the bans below are keyed the way they are: the slice holds four card ids chosen by a hover, a focus or a click — no deck, no card record, no wire token, and nothing that any request could answer or any response contradict. The verbs (`setHovered`/`clearHovered`, `setFocused`/`clearFocused`, `togglePin`/`clearPin`, `clearTransientTargets`, `setDefaultTarget`) are the writers; the components that call them still touch no `setState`, which is what the scan below actually asserts.',
   },
+  {
+    store: 'useFaceStore',
+    owner: 'src/state/faces.ts',
+    why: "which FACE of a double-faced printing is showing (story c4-6, Q4, UX-DR15). The SECOND slice whose input is a person, inheriting c4-5's narrowing unchanged and needing no further one: it holds one non-negative integer per Scryfall printing uuid, chosen by a click on the flip control, and nothing about it is server-derived — no request can answer which face somebody wants to look at and no response can contradict it. `flipCard` is the one writer and `resetFaces` is its test-only twin; the control that calls them touches no `setState`. It is deliberately NOT cleared when a deck is replaced, which is the OPPOSITE of what `CardDetail`'s `deckMemory` does to the inspection slice three lines away — a pin names a place in a deck and is wrong the moment the deck changes, while a face index names a face of a CARD and stays right whether or not that card is on the glass (UX-DR15: \"a snap-back to the front face reads as a bug\"). Both rules are stated in this module's header so the next reader does not have to infer one from the other.",
+  },
 ]
 
 /** Whether one module's source writes the named store, by any spelling. See the header. */
