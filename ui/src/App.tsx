@@ -9,9 +9,11 @@ import { CardDetail } from './containers/CardDetail/CardDetail'
 import { CardGrid } from './containers/CardGrid/CardGrid'
 import { ColourDistribution } from './containers/ColourDistribution/ColourDistribution'
 import { DeckList } from './containers/DeckList/DeckList'
+import { FormatCheck } from './containers/FormatCheck/FormatCheck'
 import { ManaCurve } from './containers/ManaCurve/ManaCurve'
 import { hydrateDeckCards } from './state/cards'
 import { surfaceOf, useDeckState } from './state/deck'
+import { clearFormatCheck, loadFormatCheck } from './state/formatCheck'
 import { useSystemState } from './state/systemState'
 
 /**
@@ -164,6 +166,12 @@ export default function App() {
   // three slots below can read its fields without repeating the discriminant check.
   const deck = surface.kind === 'deck' ? surface : null
   const detail = deck?.detail ?? null
+  // THE DECK'S ID, AS A STRING, AND THAT IS THE WHOLE OF THE FORMAT CHECK'S DEPENDENCY (c4-10 Q5,
+  // Q7, AC 10). `detail` is a fresh OBJECT on every boot — the poll-recovery re-drive re-writes it
+  // with the same deck in it — so keying the effect below on `detail` would re-request this route
+  // on a re-boot and quietly break c4-2's per-mount request count. A string identity is what makes
+  // "one format-check request per deck id per mount" structurally true rather than carefully true.
+  const deckId = detail?.id ?? null
 
   // THE DECK-WIDE HYDRATION SWEEP (c4-6, Q1, AC 23), AND ITS PLACEMENT IS THE DECISION.
   //
@@ -218,6 +226,49 @@ export default function App() {
     if (detail === null) return
     hydrateDeckCards(detail.cards.map((row) => row.card_id))
   }, [detail])
+
+  // THE FORMAT CHECK'S ONE READ (c4-10, Q5, Q6, Q7, AC 9–12).
+  //
+  // ==== WHY IT IS DRIVEN FROM HERE AND NOT FROM THE PANEL ==============================
+  // A container MAY NOT reach the network (`shell.test.ts:2071-2086` refuses `fetch`, `zustand`
+  // and `.setState` in every container module) and `App.tsx` may not either
+  // (`posture.test.ts:344-357` asserts this file does not match the network family). `client.ts`
+  // is the one door, so `src/state/formatCheck.ts` owns the request and this line owns the
+  // DECISION to make it — the same split `hydrateDeckCards` above already uses, one story later.
+  // This file calls a state action and imports no client.
+  //
+  // ==== WHY NOT INSIDE `createDeckBoot`, WHICH IS THE OBVIOUS PLACE ====================
+  // It would make a panel's data a FIRST-PAINT dependency of the whole deck view, and it would
+  // put a network outcome inside the value whose reference identity IS the deck's identity —
+  // `deckMemory.ts` and `CardDetail`'s effect both read `boards` that way, so a report landing
+  // would read as a deck replacement and release the user's pin. The measured cost is worth
+  // stating for the same reason: this is a SECOND `get_deck_with_cards` on the backend, not a
+  // second validation — 5.2 ms median, 33.8 ms worst, over all 40 real decks in-process.
+  //
+  // ==== AND WHY IT CLEARS ==============================================================
+  // Without the `null` arm a report would outlive its deck: a deck deleted between two polls
+  // leaves the surface a state panel while the right column's third box still asserts a legality
+  // verdict about a deck that is no longer on the glass. `clearFormatCheck` also bumps the
+  // slice's generation, so a read in flight when the deck goes away writes nothing.
+  //
+  // ONE REQUEST PER DECK ID PER MOUNT, and no refetch (Q7): `deck_changed` is **c7-3's**, and
+  // half-building a refetch here would be a second coalescing rule to reconcile with that one.
+  //
+  // THE CLEANUP IS THE TEARDOWN HALF OF THE CITED PRECEDENT (c4-10 review): `createDeckBoot`
+  // pairs `start()` with `stop()` on cleanup, and this effect's first draft omitted its half —
+  // so an in-flight read survived unmount and wrote to the store, and a StrictMode dev remount
+  // fired a second WIRE request (the generation counter makes the second write harmless, not the
+  // request). `clearFormatCheck` bumps the generation, which abandons the in-flight read; on a
+  // deps change it runs before the next load, which re-drives from `'idle'` exactly as a deck
+  // switch already did through the loading write.
+  useEffect(() => {
+    if (deckId === null) {
+      clearFormatCheck()
+      return
+    }
+    void loadFormatCheck(deckId)
+    return clearFormatCheck
+  }, [deckId])
 
   return (
     <AppShell
@@ -293,12 +344,32 @@ export default function App() {
          BOTH panels are gated on the SAME `kind === 'deck'` test, inherited from the c4-5 Q14
          ruling above rather than re-decided here (AC 2). The deck list is permanently present
          beside the grid — never a toggled alternate view (FR-05, UX-DR19) — so there is no
-         view-mode state anywhere in this file. */
+         view-mode state anywhere in this file.
+
+         ==== AND NOW THERE ARE THREE (c4-10, AC 1, AC 2, AC 3) ============================
+         The **ninth** application of c2-9's displacement ruling, and the story that finally
+         displaces its OWN key from the shell's placeholder: that line named c4-5, c4-7 and
+         **c4-10** in one string, so it has been off a rendered deck view since c4-5 — what
+         changes here is that `c4-10` is now absent because its own panel is present. The C3
+         retro's F1 count drops to one (`c4-11`, in the skip-link work); the gate itself stays
+         c8-5's. `AppShell.tsx` is NOT touched and `AppShell.test.tsx` still asserts the
+         placeholder against the component's own props.
+
+         `.app-shell-column`'s existing `gap: var(--space-panel-gap)` stacks it 24px beneath the
+         deck list with no shell edit, exactly as the deck list stacked beneath the detail panel.
+         DOCUMENT ORDER IS THE CONTRACT — detail, list, format check — and `DESIGN.md:376` writes
+         the column as *"card detail, deck list, format check, stacked"* in that order.
+
+         `FormatCheck` takes NO PROP, and it is the only panel in the epic that does not: it
+         reads its own slice and needs neither `boards` nor the deck payload. That is worth
+         seeing here rather than only in its header — every sibling takes `boards`, and giving
+         this one the same shape would have coupled it to a derivation it does not use. */
       right={
         surface.kind === 'deck' ? (
           <>
             <CardDetail boards={surface.boards} />
             <DeckList boards={surface.boards} />
+            <FormatCheck />
           </>
         ) : undefined
       }

@@ -151,6 +151,57 @@ export type ActiveDeck = Schemas['ActiveDeck']
 export type CardFace = Schemas['CardFace']
 
 /**
+ * One row of `GET /api/deck/{deck_id}/format-check`: which check, how it came out, and why.
+ *
+ * **Consumer: the format check panel** (`src/containers/FormatCheck/FormatCheck.tsx`, story
+ * c4-10), through `readFormatCheck` in `src/api/client.ts` and the slice in
+ * `src/state/formatCheck.ts`.
+ *
+ * Declined at c3-3 with `c4-1 owns the aliases` as the reason, and declined again at c4-1 for the
+ * standing rule this file's header states: **an alias is added in the commit that gives it a
+ * consumer**, never before. This is that commit.
+ *
+ * Three facts a reader of this alias needs, all of them the backend's and none of them re-derived
+ * here:
+ *
+ *   - **`check` is a machine token and there is no label field anywhere on the wire.** The six
+ *     human labels are authored copy and live in `FormatCheck/copy.ts`.
+ *   - **Both enums generate as plain string-literal unions**, so a `switch` over `status` is
+ *     exhaustible by `tsc` and a seventh `check` name is a compile failure at the label map.
+ *   - **`detail` is DATA, not copy.** It is authored by `src/logic/deck_validator.py` and arrives
+ *     on the wire exactly as a card name does, which is why it is not in a copy module (c4-10
+ *     Q15, the argument `DeckList/copy.ts:25-31` makes verbatim).
+ */
+export type FormatCheckRow = Schemas['FormatCheckRow']
+
+/**
+ * The body of `GET /api/deck/{deck_id}/format-check`: a deck's construction legality as one row
+ * per check rather than a list of faults.
+ *
+ * **Consumer: the format check panel** (story c4-10). See {@link FormatCheckRow}.
+ *
+ * ==== `is_legal` IS A TRAP, AND THIS ALIAS IS WHERE A READER MEETS IT ==================
+ * The Pydantic model's own `Warning:` block (`deck_validator.py:557-565`) says it: `is_legal` is
+ * **not** a summary of the rows. It answers `false` both for a deck that breaks a rule and for a
+ * deck that could not be checked, so binding it to a headline renders a red verdict over six rows
+ * none of which is a violation. Read it as *"certified legal"*. **c4-10 binds it to nothing at
+ * all**, and `ui/tests/format-check-source.test.ts` asserts the identifier appears nowhere in
+ * `src/` outside the generated types and the declared fixture module — which is what turns that
+ * prose warning into a machine-checkable fact (`deferred-work.md:2430-2437` recorded that no
+ * such guard existed).
+ *
+ * To show a fault, look for `rows.some((r) => r.status === 'violation')`. To show "cannot be
+ * checked", branch on `format_recognized` — **not** on `format === null`, which would not even
+ * compile: the generated type is `string`, and an absent format is the empty string.
+ *
+ * `format` here is the **normalised** value (`format.strip().lower()`), while `DeckDetail.format`
+ * — which `DeckBadges` already renders 24px away in the header — is the **stored** one. This story
+ * is the first thing in the app to hold both at once; measured, **0 of 40** real decks differ, and
+ * nothing in the UI compares them (c4-10 Q14).
+ */
+export type FormatCheckReport = Schemas['FormatCheckReport']
+
+/**
  * The closed set of reason tokens (AD-16), as a TypeScript string union.
  *
  * Derived from `ErrorResponse` rather than re-listed, so a token added or removed on the Python

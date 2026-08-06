@@ -25,6 +25,7 @@ import App from './App'
 import { sentenceOf } from './components/Footer/copy'
 import { resetCardCache, useCardStore } from './state/cards'
 import { resetDeckState, useDeckStore } from './state/deck'
+import { resetFormatCheckState } from './state/formatCheck'
 import { INITIAL_SYSTEM_STATE, useSystemStore } from './state/systemState'
 
 /** One canned answer, built the way the backend builds it: a token, and nothing else. */
@@ -113,10 +114,63 @@ const deckDetail = (overrides: Record<string, unknown> = {}) =>
  */
 let bootActive: Response = activeDeck(null)
 let bootDeck: Response = refusal('deck_not_found', 404)
+/**
+ * What `GET /api/deck/{id}/format-check` answers — story c4-10's third boot-time route.
+ *
+ * Defaults to the REAL all-pass Standard report (`formatCheckReport()` below), so every existing
+ * deck-view test in this file gets a panel that draws rather than one that silently does not.
+ */
+let bootFormatCheck: Response = formatCheckReport()
 
-const booting = (active: Response, deck?: Response) => {
+const booting = (active: Response, deck?: Response, formatCheck?: Response) => {
   bootActive = active
   if (deck !== undefined) bootDeck = deck
+  if (formatCheck !== undefined) bootFormatCheck = formatCheck
+}
+
+/**
+ * `GET /api/deck/{deck_id}/format-check`'s body — story c4-10's route (AC 26).
+ *
+ * ✅ **VERIFIED REAL BODY, SYNTHETIC PAIRING** (c4-10 review): the BODY is the response the
+ * running backend gives for a real all-pass Standard deck, read out at `4e31ea7` by driving the
+ * real ASGI app against the shipped database — six rows in `CHECK_ORDER`, five passes and the
+ * permanent rotation advisory, which is what 35 of the 40 real decks look like. But this harness
+ * serves it beside `ATRAXA_DECK_ID`'s TWO-CARD deck detail, a pairing no backend would produce
+ * (the real answer for that deck is a size violation): the routes here are each real and
+ * mutually inconsistent, which is fine while nothing compares them and is declared so the day
+ * something does. Declared here rather than imported from `src/state/formatCheck.fixtures.ts`
+ * because this fixture must be a wire BODY (a JSON string), not a typed value, and stringifying
+ * the typed one would couple this harness to that module's shape for nothing.
+ */
+function formatCheckReport(overrides: Record<string, unknown> = {}) {
+  return new Response(
+    JSON.stringify({
+      is_legal: true,
+      format: 'standard',
+      format_recognized: true,
+      mainboard_count: 60,
+      sideboard_count: 0,
+      rows: [
+        { check: 'legality', status: 'pass', detail: 'Every card is legal in standard.' },
+        { check: 'size', status: 'pass', detail: 'Mainboard has 60 cards; the minimum is 60.' },
+        {
+          check: 'copy_limit',
+          status: 'pass',
+          detail: 'No card exceeds the copy limit; basic lands are exempt.',
+        },
+        { check: 'sideboard', status: 'pass', detail: 'Sideboard has 0 cards; the maximum is 15.' },
+        { check: 'banned', status: 'pass', detail: 'No card is banned in standard.' },
+        {
+          check: 'rotation',
+          status: 'advisory',
+          detail:
+            'Rotation exposure cannot be checked: the local card data carries no set release dates.',
+        },
+      ],
+      ...overrides,
+    }),
+    { status: 200 },
+  )
 }
 
 /**
@@ -162,6 +216,15 @@ const answering = (...responses: Response[]) => {
   let index = 0
   const fetchMock = vi.fn((input?: unknown) => {
     const path = String(input)
+    // ⚠️ FIRST, AND THE ORDER IS THE WHOLE POINT (c4-10). `/api/deck/{id}/format-check` STARTS
+    // WITH `/api/deck/`, so without this branch placed above the next line the format-check
+    // request is answered with the deck-detail body — a `200` that is not the contract, silently,
+    // in the one file that exercises the whole path end to end. `formatCheckOf` would report it
+    // as a contract violation, the panel would render nothing, and every assertion about the
+    // panel's ABSENCE would pass for entirely the wrong reason. There is a SECOND prefix-routing
+    // fixture in this file (see `heals a transient boot blip`) and it carries the same branch:
+    // fixing one and not the other is the half-repair this comment exists to prevent.
+    if (path.endsWith('/format-check')) return Promise.resolve(bootFormatCheck.clone())
     if (path.startsWith('/api/deck/')) return Promise.resolve(bootDeck.clone())
     if (path === '/api/active-deck') return Promise.resolve(bootActive.clone())
     // c4-5's third caller: the detail panel hydrates its inspection target. Answered from the id
@@ -183,6 +246,24 @@ const answering = (...responses: Response[]) => {
 const callsTo = (fetchMock: ReturnType<typeof answering>, path: string) =>
   fetchMock.mock.calls.filter(([input]) => String(input).startsWith(path)).length
 
+/**
+ * The two deck-prefixed routes, counted APART (c4-10).
+ *
+ * `callsTo` matches by prefix, and `/api/deck/{id}/format-check` starts with `/api/deck/` — so
+ * from this story onwards `callsTo(mock, '/api/deck/')` is the SUM of two independent reads and
+ * says nothing about either. Every request-count assertion that means "the deck detail" uses the
+ * first of these; the one that means "the format check" uses the second. Keeping `callsTo`
+ * unchanged is deliberate: its other callers (`/api/decks`, `/api/active-deck`) are unaffected,
+ * and narrowing it would have moved the problem rather than named it.
+ */
+const deckDetailCalls = (fetchMock: ReturnType<typeof answering>) =>
+  fetchMock.mock.calls.filter(
+    ([input]) => String(input).startsWith('/api/deck/') && !String(input).endsWith('/format-check'),
+  ).length
+
+const formatCheckCalls = (fetchMock: ReturnType<typeof answering>) =>
+  fetchMock.mock.calls.filter(([input]) => String(input).endsWith('/format-check')).length
+
 /** Let the in-flight poll settle without waiting for real time. */
 const settle = () => act(async () => void (await vi.advanceTimersByTimeAsync(0)))
 
@@ -195,8 +276,10 @@ beforeEach(() => {
   useSystemStore.setState(INITIAL_SYSTEM_STATE)
   resetDeckState()
   resetCardCache()
+  resetFormatCheckState()
   bootActive = activeDeck(null)
   bootDeck = refusal('deck_not_found', 404)
+  bootFormatCheck = formatCheckReport()
   answering(refusal('database_not_initialized', 503))
 })
 
@@ -341,6 +424,34 @@ describe('the panel is chosen by the wire, not by a constant (AC 1, AC 2)', () =
       // sibling that arrived after it.
       expect(screen.queryByRole('region', { name: 'Color distribution' })).toBeNull()
       expect(document.querySelector('.analysis-row')).toBeNull()
+      // …and NO format check (c4-10, AC 3). It rides the SAME `kind === 'deck'` gate, inherited
+      // from `App.tsx:101-119`'s c4-5 Q14 ruling rather than re-decided — L8 is cited, not
+      // re-opened. Asserted per-arm for c4-8's own review reason.
+      expect(screen.queryByRole('region', { name: 'Format check' })).toBeNull()
+    },
+  )
+
+  it.each(STATE_PANEL_ARMS)(
+    'issues NO format-check request behind the %s panel (c4-10, AC 3, AC 10)',
+    async (_label, arrange) => {
+      // ABSENCE OF THE PANEL IS NOT ABSENCE OF THE REQUEST, and only one of the two is visible in
+      // the DOM. The effect that drives the read is keyed on the deck id, so a non-deck surface
+      // must not reach the wire at all — otherwise the app would be paying a duplicated
+      // `get_deck_with_cards` on the backend to populate a panel nothing renders.
+      arrange()
+      // The current mock, read off the global rather than returned by `arrange` — whose signature
+      // is `() => void` and whose members re-stub `fetch` themselves.
+      const fetchMock = globalThis.fetch as unknown as ReturnType<typeof answering>
+      render(<App />)
+      await settle()
+
+      // (The first draft decorated this with `toBeGreaterThanOrEqual(0)` on the deck-detail
+      // count — always true, asserting nothing; the c4-10 review deleted it. The format-check
+      // absence below is the whole claim.)
+      expect(
+        fetchMock.mock.calls.filter(([input]) => String(input).endsWith('/format-check')),
+        'a format-check request was issued with no deck on the glass',
+      ).toHaveLength(0)
     },
   )
 })
@@ -455,7 +566,12 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     await settle()
 
     expect(callsTo(fetchMock, '/api/active-deck')).toBe(1)
-    expect(callsTo(fetchMock, `/api/deck/${ATRAXA_DECK_ID}`)).toBe(1)
+    // SEPARATED FROM THE FORMAT CHECK (c4-10, AC 10): this read used `callsTo` with the full deck
+    // path, which from this story on ALSO matches `/api/deck/{id}/format-check` and would have
+    // read 2 while still looking like an assertion about the detail route.
+    expect(deckDetailCalls(fetchMock)).toBe(1)
+    // …and the third boot-time request, once. Three per mount for a deck view, still a number.
+    expect(formatCheckCalls(fetchMock)).toBe(1)
     // C3 retro F2: the kicker and the `h1` stop saying the same words. `AppShell` is not edited —
     // the element, its level and its position are exactly where c2-6 put them.
     expect(
@@ -552,6 +668,35 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     expect(
       detailRegion.compareDocumentPosition(deckListRegion) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
+
+    // c4-10's OWN DISPLACEMENT, AND THE RIGHT COLUMN'S THIRD PANEL (c4-10, AC 1, AC 2, AC 3).
+    // The NINTH application of the c2-9 ruling, and the story that finally displaces its own key:
+    // the shell's right-column placeholder named c4-5, c4-7 and c4-10 in ONE string, so this key
+    // has been off a rendered deck view since c4-5 — what changes here is that it is now absent
+    // because its OWN panel is present. Both halves asserted, because the second is the one that
+    // would regress if the mount were dropped.
+    //
+    // F1 COUNT: the C3 retro counted six story-key-shaped strings on a real render. The left
+    // column's three went at c4-4/c4-8/c4-9 and the right column's three are now all displaced by
+    // their own panels — leaving ONE, `c4-11`, in the skip-link work. The gate itself stays c8-5's.
+    expect(document.body.textContent).not.toContain('c4-10')
+    const formatCheckRegion = screen.getByRole('region', { name: 'Format check' })
+    expect(formatCheckRegion).toBeVisible()
+
+    // DOCUMENT ORDER, NOT JUST PRESENCE (AC 2). `DESIGN.md:376` writes the column as "card
+    // detail, deck list, format check, stacked", in that order. Reordering the three Fragment
+    // children passes every presence assertion above; this is the one thing that notices — and
+    // it EXTENDS the detail-before-list pair rather than replacing it.
+    expect(
+      deckListRegion.compareDocumentPosition(formatCheckRegion) & Node.DOCUMENT_POSITION_FOLLOWING,
+      'the format check is not beneath the deck list',
+    ).toBeTruthy()
+
+    // …and the column has exactly THREE children now, up from two. A count rather than a
+    // presence check, so a fourth panel arriving by accident is a decision with a diff.
+    const rightColumn = formatCheckRegion.parentElement
+    expect(rightColumn?.className).toContain('app-shell-column')
+    expect(rightColumn?.children).toHaveLength(3)
 
     // c4-8's OWN DISPLACEMENT AND ITS PLACEMENT (AC 1, AC 2). The seventh application of the
     // c2-9 ruling and the first on the LEFT slot since c4-4: the curve is mounted, and it is
@@ -663,6 +808,27 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     const deckList = screen.getByRole('region', { name: 'Deck list' })
     expect(within(deckList).getAllByRole('listitem')).toHaveLength(2)
 
+    // THE THIRD LIST, COUNTED IN ITS OWN SCOPE (c4-10, AC 5, Q9). The comment above predicted
+    // this story by name — *"the next story to add a list (c4-10's format check) would hit the
+    // identical failure"* — and the scoping c4-7 added is what makes that prediction land as a
+    // new assertion instead of as a broken one. Six checks, always: the backend emits one row per
+    // check in `CHECK_ORDER` whether or not anything is wrong, so this number is six on every
+    // deck in the corpus and does not vary with the fixture above it.
+    const formatCheck = screen.getByRole('region', { name: 'Format check' })
+    expect(within(formatCheck).getAllByRole('listitem')).toHaveLength(6)
+    // AND THE DOCUMENT-WIDE TOTAL, WHICH IS **FOUR** LISTS AND NOT THREE (c4-10, AC 5).
+    // Worth writing down because the story's own context predicted three and the fourth is easy
+    // to miss: `ColourDistribution`'s LEGEND is a `<ul>` too (c4-9 shipped it as one deliberately
+    // — *"five entries in a mono-to-five-colour range is a list"*), and this fixture's single
+    // green pip gives it exactly one entry. So the honest sum is 2 tiles + 2 deck rows + 1 legend
+    // entry + 6 checks. Asserting the total beside the scoped counts is what makes the scoping
+    // exhaustive rather than merely separate — if a fifth list appears, this is the number that
+    // says so, and the scoped counts above say which one grew.
+    const legend = document.querySelector('.colour-legend')
+    expect(legend).not.toBeNull()
+    expect(within(legend as HTMLElement).getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.getAllByRole('listitem')).toHaveLength(2 + 2 + 1 + 6)
+
     // BOTH OF THESE WERE DOCUMENT-WIDE TOO, and both are scoped for the same reason (c4-7, Q9).
     // A tile and a row now name the same card and show the same count, on purpose — they are two
     // views of one deck — so an unscoped `getByRole`/`getByText` throws on multiple matches
@@ -744,7 +910,12 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     // hydrates the whole deck, so the cold-open card is asked for by BOTH — and it must still cost
     // one request, because `hydrateCard` shares the promise rather than issuing a second read.
     expect(callsTo(fetchMock, '/api/cards/id-Forest')).toBe(1)
-    expect(fetchMock).toHaveBeenCalledTimes(5)
+    // THE WHOLE-MOUNT TOTAL, ITEMISED SO THE NUMBER STAYS READABLE (c4-10, AC 10): one poll of
+    // `/api/decks`, one `/api/active-deck`, one deck detail, TWO card hydrations, and — new in
+    // this story — one format check. Six, and the new member is broken out beside it so that a
+    // bump here can never again be absorbed as "the sweep got bigger".
+    expect(formatCheckCalls(fetchMock)).toBe(1)
+    expect(fetchMock).toHaveBeenCalledTimes(6)
   })
 
   it('shows the no-active-deck panel when there is genuinely no deck (AC 7)', async () => {
@@ -809,6 +980,10 @@ describe('a deck refusal reaches the glass as a PANEL, never as a status code (A
     // …and NO colour distribution (c4-9 AC 3), for the same reason and on the same gate.
     expect(screen.queryByRole('region', { name: 'Color distribution' })).toBeNull()
     expect(document.querySelector('.analysis-row')).toBeNull()
+    // …and NO format check (c4-10 AC 3). The whole right column is `undefined` on a non-deck
+    // arm, so all three of its panels ride the one gate — and this is the assertion that would
+    // notice if the format check ever got a gate of its own.
+    expect(screen.queryByRole('region', { name: 'Format check' })).toBeNull()
   })
 
   it('answers a 400 on the deck read with no-active-deck, not the bug panel (Q5, AC 11)', async () => {
@@ -917,7 +1092,16 @@ describe('a deck refusal does not outlive the condition it reported (FR-22)', ()
     // without the panel leaving `no-active-deck` first.
     await advance(10 * 60_000)
     expect(callsTo(fetchMock, '/api/active-deck')).toBe(2)
-    expect(callsTo(fetchMock, '/api/deck/')).toBe(2)
+    // TWO deck-DETAIL reads, and ONE format check (c4-10, AC 10). `callsTo` matches by PREFIX and
+    // the format-check route shares the deck prefix, so the two are separated here rather than
+    // summed — which is also why the number below is 1 and not 2.
+    expect(deckDetailCalls(fetchMock)).toBe(2)
+    // THE ASYMMETRY IS THE POINT, AND IT IS c4-10's whole staleness argument in one number: the
+    // recovery edge re-boots and writes a NEW `DeckDetail` object for the SAME deck, so an effect
+    // keyed on that object would fire twice and pay a second `get_deck_with_cards`. Keyed on the
+    // deck ID string it fires once. This assertion is what makes that structural rather than
+    // careful, and it is c4-2's request count EXTENDED — still a number, still red on a repeat.
+    expect(formatCheckCalls(fetchMock)).toBe(1)
   })
 
   it('heals a transient boot blip the same way, when a poll transition follows', async () => {
@@ -933,6 +1117,12 @@ describe('a deck refusal does not outlive the condition it reported (FR-22)', ()
       vi.fn((input?: unknown) => {
         const path = String(input)
         if (path === '/api/active-deck') return Promise.resolve(activeDeck(ATRAXA_DECK_ID))
+        // ⚠️ THE SECOND PREFIX-ROUTING FIXTURE, AND IT NEEDS THE SAME BRANCH FIRST (c4-10).
+        // `/api/deck/{id}/format-check` starts with `/api/deck/`, so without this line the
+        // format-check request is answered by `deckRead()` — which here REJECTS, making the
+        // panel silently absent for a reason this test is not about. Fixing `answering()` and
+        // not this one is the half-repair the story's Dev Notes warn about by name.
+        if (path.endsWith('/format-check')) return Promise.resolve(formatCheckReport())
         if (path.startsWith('/api/deck/')) return deckRead()
         return Promise.resolve(pollAnswer.clone())
       }),
@@ -983,7 +1173,10 @@ describe('the boot does not poll, whatever the backend says (AC 12, Q6)', () => 
     await advance(2_000)
 
     expect(callsTo(fetchMock, '/api/active-deck')).toBe(1)
-    expect(callsTo(fetchMock, '/api/deck/')).toBe(1)
+    // Counted apart from this story onwards (c4-10): a poll transition re-renders the whole tree,
+    // and the format check must no more re-fire on a render than the boot does. One each.
+    expect(deckDetailCalls(fetchMock)).toBe(1)
+    expect(formatCheckCalls(fetchMock)).toBe(1)
   })
 })
 
