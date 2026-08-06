@@ -1399,7 +1399,12 @@ against a real screen is the closing step**; the numbers are what he is deciding
 The skip link and Tab-order work are **c4-11** — the shell builds no focus management. The
 numeric role now has real consumers: the panel count, the group-header count and the StatChip
 delta all landed in **c2-7**, so `findUnpairedNumericRole` is no longer a guard with nothing to
-guard; **c6-8**'s curve axis is next.
+guard; **c4-8**'s curve counts are the latest, and they arrived on 2026-08-06. (This line read
+_"c6-8's curve axis is next"_ until that story: a typo, and one worth recording rather than
+silently fixing — there is no curve anywhere in Epic 6, so the sentence pointed a reader at a
+story that could never satisfy it. Note also that c4-8's **axis labels** are `--type-micro`, not
+the numeric role: DESIGN.md:407 puts counts in `{typography.numeric}` and axis labels in
+`{typography.micro}`, so it is the counts above the bars that this guard covers.)
 
 `ui/dist` is no longer produced. A few ignore patterns still name it (`ui/.gitignore`,
 `.prettierignore`, the stylelint `--ignore-pattern`); they are harmless and deliberately left

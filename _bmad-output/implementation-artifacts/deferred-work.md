@@ -3543,6 +3543,34 @@ either has an owner story or is declared inside the file it constrains.
   **Medium** — two surfaces of one app disagreeing about a number is the exact failure the epic's
   "the grid and the list panel cannot disagree" clause is about, one layer out.)
 
+  > **DISPOSITION at c4-8 (2026-08-06): DECLINED for that story, RE-HOMED, and upgraded from
+  > latent to OBSERVABLE.** The Python keeps the whole-string test. Changing it moves
+  > `assess_deck_power`'s input for 5 of the 40 real decks, and `mana_base.py`'s land count feeds
+  > the power score's frozen benchmark set — a benchmark re-validation does not belong inside a
+  > seven-bar `ui/` panel. **Home: a Python story that owns the scoring surface** (Epic 5's
+  > calibration set is the artefact that has to move with it).
+  >
+  > **What changed is that the divergence is now VISIBLE**: c4-8 ships the front-face land test,
+  > so `analyze_mana_curve` and the mana curve panel now answer "how many lands" differently for
+  > `Green Fury`, `Green Fury v2`, `Ayara Black Devotion`, `Ayara Black Devotion v2 (owned)` and
+  > `Infinite Guideline Station v2 (owned)` — **7 live non-sideboard rows / 7 quantity**.
+  >
+  > ⚠️ **THE "84" ABOVE IS CORRECT AND WAS NEARLY "CORRECTED" INTO AN ERROR.** c4-8's own AC 38
+  > carried it as a stale number owing a fix to 82, on the reading that c4-7 had corrected the
+  > same figure in `deckGroups.ts`. Re-measured at `0fdb41b`, they are **three different
+  > quantities** and only one of them is 82:
+  >
+  > | comparison | corpus | note |
+  > |---|---:|---|
+  > | whole-string vs **front-face WORD** test (what c4-8 ships) | **84** | this entry's number |
+  > | whole-string vs front-face **substring** test | 82 | the shape c4-8's Q4 proposed and declined |
+  > | whole-string vs `groupOf` | 116 | of which 82 carry `//` — `deckGroups.ts:37-44`'s decomposition, reproduced exactly |
+  >
+  > The number is left at 84 and the TEST IS NOW NAMED beside it, which is what it was missing.
+  > The general lesson is the one worth carrying: *a bare number in a ledger entry is not
+  > checkable, because the same defect measures differently under three tests that all sound like
+  > "the front-face policy".*
+
 ## Deferred from: c4-3-card-placeholders-named-unknown-and-loading-wells (2026-08-04)
 
 **Inherited deferrals, dispositions in one place** (C2 retro ruling R2). Twelve entries were

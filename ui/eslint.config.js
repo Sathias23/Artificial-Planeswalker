@@ -135,14 +135,89 @@ export default tseslint.config(
       // attribute's own typing — but that is still this attribute, so a story needing it
       // changes this rule and says why, in the open, rather than discovering the gate does
       // not apply to it. (Brad's ruling 2026-07-27.)
+      //
+      // ==== AND THAT STORY IS HERE. THE HATCH IS TAKEN, IN THE OPEN (c4-8, Q10, AC 17) =====
+      //
+      // A mana curve's bar height IS the data. There is no class-based spelling of "this bar is
+      // 62% as tall as the tallest one" — the value is a number computed from the deck at
+      // render time, and seven of them change whenever the deck does. The alternatives were
+      // priced: a stylesheet of pre-baked percentage classes is a quantisation of the data (and
+      // the real scale extreme is 39-versus-0 in one deck, so the buckets it would need are not
+      // a small set), and an `eslint-disable` comment on the one line that matters is the
+      // failure this reservation exists to prevent.
+      //
+      // SO THE RULE IS NARROWED, NOT DISABLED, AND NOT TURNED OFF FOR A FILE. The two
+      // selectors below keep the error for every `style` attribute this project has ever had
+      // and admit exactly one new shape: an object literal whose keys are ALL drawn from the
+      // NAMED runtime-channel allowlist. `style={{ padding: '18px' }}` is still an error. So is
+      // `style={{ '--h': x, color: 'red' }}` — one non-permitted property re-opens the whole
+      // hole — and so is `style={{ '--surface-well': x }}`: a `--`-prefixed key can name a REAL
+      // design token and re-theme every descendant consuming it, which no stylelint rule and no
+      // stylesheet scan would ever see (review finding, c4-8). The hatch is therefore an exact
+      // NAME allowlist, not a prefix test — the same protocol RUNTIME_CUSTOM_PROPERTIES uses in
+      // tests/token-usage.test.ts, and the two lists move together: a story adding a channel
+      // adds it in both places, in the open, or one of the two gates goes red (Brad's ruling
+      // 2026-08-06). Today the list is one name: --curve-bar-height, c4-8's bar height.
+      //
+      // DIRECT-CHILD PATHS, NOT DESCENDANT :has, in both selectors — the c4-8 review's
+      // correction of its own first amendment. The shipped draft tested
+      // `:has(ObjectExpression …)` over the attribute's whole subtree, which read "contains a
+      // literal somewhere" as "IS a literal": `style={fn({ '--h': x })}` and
+      // `style={cond ? { '--h': x } : hiddenObj}` both contain a compliant literal and both
+      // smuggle arbitrary properties past every static reader — the exact shape the first
+      // selector's own message claims to close. The anchor is `JSXExpressionContainer`, which
+      // can only ever be the attribute's own value wrapper, so a literal nested inside a
+      // property's VALUE (`fmt({ pad: 1 })`) no longer false-positives either. (esquery does
+      // not support a leading combinator inside :has — `:has(> X)` matches NOTHING, silently —
+      // which is why the anchor is a named parent rather than a child combinator.)
+      //
+      // Reported once per ATTRIBUTE, never per property, and that is what keeps
+      // tests/lint-gates.test.ts's `inline-style-violation.tsx` pin at exactly 2: that fixture
+      // has two `style` attributes carrying five plain properties between them, and a
+      // property-level selector would report five. If that count moves, the narrowing is wrong.
+      // The two firing shapes share one selector (`:matches`) for the same reason: a spread
+      // AND a plain property in one attribute is one violation, not two.
+      //
+      // What the token layer still protects, unchanged: every colour, radius, shadow, spacing,
+      // duration and type value in this project comes from a token, because the custom property
+      // this hatch admits is CONSUMED in a .css file (`height: var(--curve-bar-height)`) where
+      // stylelint and tests/token-usage.test.ts can both see the declaration around it. The
+      // hatch passes a NUMBER through the attribute; it does not pass a style — and with the
+      // name allowlist, it cannot pass a token override either.
       'no-restricted-syntax': [
         'error',
         {
-          selector: 'JSXAttribute[name.name="style"]',
+          // Not a direct inline object literal at all — nothing static can prove what is in
+          // it. The attribute's value must BE `{…}` or `{…} as CSSProperties` (the cast is
+          // load-bearing: React's CSSProperties has no index signature for `--` keys, so the
+          // bare literal is TS2353); a call, a ternary, a variable or a string hides its keys
+          // and stays an error however compliant an object it contains.
+          selector:
+            'JSXAttribute[name.name="style"]:not([value.expression.type="ObjectExpression"]):not([value.expression.type="TSAsExpression"][value.expression.expression.type="ObjectExpression"])',
+          message:
+            'Inline style={{…}} bypasses the whole token layer — no stylelint rule and no ' +
+            'guard in tests/token-usage.test.ts can see it. A style attribute that is not a ' +
+            'literal object (or a literal directly under one `as` cast) hides its keys from ' +
+            'every static reader, so it cannot be the named-channel form c4-8 opened. Put the ' +
+            'rule in a .css file and reach values through var(--…). See ui/README.md, ' +
+            '"The token layer".',
+        },
+        {
+          // The ordinary case, and the one the ban has always been about: the attribute IS a
+          // literal, but it carries a spread, a computed key, or any property whose key is not
+          // a declared runtime channel. `[key.value="--curve-bar-height"]` is an exact string
+          // match against the allowlist; an identifier key (`padding`) or a computed key has
+          // no matching `value`, so `:not()` fires — conservative in the right direction.
+          selector:
+            'JSXAttribute[name.name="style"]:has(:matches(JSXExpressionContainer > ObjectExpression, JSXExpressionContainer > TSAsExpression > ObjectExpression) > :matches(SpreadElement, Property:not([key.value="--curve-bar-height"])))',
           message:
             'Inline style={{…}} bypasses the whole token layer — no stylelint rule and no ' +
             'guard in tests/token-usage.test.ts can see it. Put the rule in a .css file and ' +
-            'reach values through var(--…). See ui/README.md, "The token layer".',
+            'reach values through var(--…). The ONLY permitted form is an object literal ' +
+            'whose keys are all DECLARED runtime channels (today: --curve-bar-height), with ' +
+            'no spread — a bare `--` prefix is not enough, because a custom property can ' +
+            'override a real design token for every descendant (c4-8, AC 17). See ' +
+            'ui/README.md, "The token layer".',
         },
       ],
     },
