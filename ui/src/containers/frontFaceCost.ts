@@ -1,5 +1,5 @@
-import type { CardSummary } from '../../api/schema'
-import type { CardEntry } from '../../state/cards'
+import type { CardSummary } from '../api/schema'
+import type { CardEntry } from '../state/cards'
 
 /**
  * The front face of a double-faced card, as a deck row must show it (story c4-7, Q2, AC 23,
@@ -15,6 +15,22 @@ import type { CardEntry } from '../../state/cards'
  * from a component file breaks fast refresh. `imageUrl.ts`, `deckMemory.ts`, `imagedFaces.ts` and
  * `useCardArt.ts` are the four precedents, and this is the fifth — its own module, its own
  * `CONTAINERS` entry (decide-once ruling 3).
+ *
+ * ================= AND IT MOVED UP ONE LEVEL AT c4-9, WHICH IS THE SHIPPED RULE ========
+ *
+ * It lived at `src/containers/DeckList/frontFaceCost.ts` for exactly as long as it had one
+ * consumer. c4-9's colour bar needs the same three-shape resolution — a pip count is a count of
+ * the FRONT FACE's pips, and 87.8% of faced cards carry a blank top-level cost — so there are now
+ * two, in two different container directories.
+ *
+ * The alternative was a cross-tree import (`../DeckList/frontFaceCost` from
+ * `ColourDistribution/`), and it was declined rather than merely not chosen: `filled.ts`'s header
+ * already states the rule in words — *"a helper shared by two components does not live inside one
+ * of them"* — and `imagedFaces.ts` and `useCardArt.ts` sit at this tree's root for precisely this
+ * reason. `imageUrl.ts` stays inside `CardTile/` because it still has one consumer, which is the
+ * same rule pointing the other way. A silent import reaching into a sibling container's directory
+ * is the shape `shell.test.ts`'s exhaustive import lists exist to make visible; moving the file is
+ * how the decision gets a diff.
  *
  * ================= WHY THE NAME HALF LIVES HERE TOO, DESPITE THE FILENAME =============
  *

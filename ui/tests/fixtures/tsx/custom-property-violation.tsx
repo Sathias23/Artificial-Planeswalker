@@ -81,3 +81,15 @@ export function TokenOverride({ colour }: { colour: string }) {
 export function UndeclaredChannel({ share }: { share: number }) {
   return <div style={{ '--curve-bar-index': share } as React.CSSProperties} />
 }
+
+/* STORY c4-9 (Q13, AC 19): the allowlist grew to TWO names, and this is the case that proves
+   growing it did not weaken the rule. `--colour-bar-share` is declared and `width` is not, and
+   ONE non-permitted property still re-opens the whole hole — the `MixedProperties` argument
+   restated against the NEW channel, because a second entry is exactly when someone re-tests
+   whether the negation still applies per-property.
+
+   It also stands for the probe AC 39(r) enumerates: a plain `style={{ width: … }}` must still
+   error after the amendment, and the segment width must reach CSS through the channel. */
+export function ColourShareBesideAPlainWidth({ share }: { share: string }) {
+  return <div style={{ '--colour-bar-share': share, width: '62%' } as React.CSSProperties} />
+}

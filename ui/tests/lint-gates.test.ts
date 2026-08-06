@@ -201,14 +201,20 @@ describe('eslint inline-style ban (story c2-4 review ruling)', () => {
 
     const firing = result.messages.filter((m) => m.ruleId === INLINE_STYLE_RULE)
 
-    // (n) NINE attributes, nine messages — one per ATTRIBUTE, which is the property that keeps
+    // (n) TEN attributes, ten messages — one per ATTRIBUTE, which is the property that keeps
     // `inline-style-violation.tsx` at 2. The five from implementation (a plain property, an
     // on-scale one, a MIXED object, a non-literal, and a spread) plus the four the review
     // added: a call and a ternary WRAPPING a compliant literal (the descendant-`:has` evasion
     // — "contains a literal" is not "is a literal"), a REAL design token as the key (the
     // prefix-test hole: `--surface-well` inline re-themes every descendant), and a
     // right-prefix wrong-name channel (`--curve-bar-index` is not on the allowlist).
-    expect(firing).toHaveLength(9)
+    //
+    // The tenth joined at c4-9, when the allowlist grew from one name to two: the NEW channel
+    // beside a plain `width`. It is the `MixedProperties` argument restated against the second
+    // entry, because a second entry is exactly when someone re-tests whether the negation still
+    // applies per-property — and it is enumerated probe (r), which asks that a plain
+    // `style={{ width: … }}` still error after the amendment.
+    expect(firing).toHaveLength(10)
     expect(new Set(firing.map((m) => m.severity))).toEqual(new Set([2]))
     for (const message of firing) {
       expect(message.message).toContain('bypasses the whole token layer')
@@ -229,6 +235,7 @@ describe('eslint inline-style ban (story c2-4 review ruling)', () => {
       "<div style={tall ? ({ '--curve-bar-height': '100%' } as React.CSSProperties) : someObject} />",
       "return <div style={{ '--surface-well': colour } as React.CSSProperties} />",
       "return <div style={{ '--curve-bar-index': share } as React.CSSProperties} />",
+      "return <div style={{ '--colour-bar-share': share, width: '62%' } as React.CSSProperties} />",
     ]) {
       expect(
         flagged.some((line) => line === declaration),

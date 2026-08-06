@@ -7,6 +7,7 @@ import { Footer } from './components/Footer/Footer'
 import { StatePanel } from './components/StatePanel/StatePanel'
 import { CardDetail } from './containers/CardDetail/CardDetail'
 import { CardGrid } from './containers/CardGrid/CardGrid'
+import { ColourDistribution } from './containers/ColourDistribution/ColourDistribution'
 import { DeckList } from './containers/DeckList/DeckList'
 import { ManaCurve } from './containers/ManaCurve/ManaCurve'
 import { hydrateDeckCards } from './state/cards'
@@ -245,20 +246,34 @@ export default function App() {
          sibling inside this element and editing nothing else (Q6).
 
          Gated on the SAME `kind === 'deck'` test as the grid beside it, inherited from the
-         c4-5 Q14 ruling rather than re-decided here (AC 2) — and note this is a DIFFERENT gate
+         c4-5 Q14 ruling rather than re-decided here (AC 3) — and note this is a DIFFERENT gate
          from the right column's: the left slot renders a `StatePanel` in the other five cases,
-         not a placeholder. `ManaCurve` itself renders nothing when the curve is empty (Q12).
-         On a land-only deck that leaves the row's EMPTY div in the DOM, with the column gap
-         still applied beneath the grid — accepted posture (review, 2026-08-06), pinned by
-         App.test.tsx's land-only test rather than papered over: gating the row here would need
-         the curve's total, a second derivation of what curve.ts owns, for a state no corpus
-         deck can produce. c4-9, which gives the row its second child, is named to revisit it. */
+         not a placeholder.
+
+         ==== THE ROW HAS ITS SECOND CHILD (c4-9, AC 1, AC 2), AND NOTHING ELSE HERE MOVED ====
+         `AnalysisRow` was built at c4-8 to be right twice — one child filling the width, two at
+         exactly 1:1 — so this story lands by adding a sibling and editing neither that component
+         nor `AppShell.tsx`. The EIGHTH application of c2-9's displacement ruling; the shell's
+         left-column placeholder (the line naming c4-4, c4-8 and c4-9) still fires whenever
+         `left` is empty, which `AppShell.test.tsx:115` asserts against the component's own props.
+         Document order is the contract: the curve first, the colour bar second, matching
+         DESIGN.md's *"the mana-curve and color-distribution panels below it as a 1:1 pair"*.
+
+         ==== AND THE EMPTY ROW IS NO LONGER THIS FILE'S PROBLEM (c4-9, Q10, AC 33) =========
+         Each panel still owns its own emptiness — `ManaCurve` renders nothing for a zero curve,
+         `ColourDistribution` nothing for a zero pip total — and this comment used to end by
+         accepting the row's EMPTY div surviving in the DOM with the column gap still applied
+         beneath the grid, because gating it here would need a derivation this file must not
+         perform. That is CLOSED, and not here: `.analysis-row:empty { display: none }` lets the
+         row answer for itself, with no total in this file, no second derivation of anything, and
+         no `App.tsx` edit at all. Story 4.12 inherits it. */
       left={
         surface.kind === 'deck' ? (
           <>
             <CardGrid boards={surface.boards} />
             <AnalysisRow>
               <ManaCurve boards={surface.boards} />
+              <ColourDistribution boards={surface.boards} />
             </AnalysisRow>
           </>
         ) : surface.panel === 'no-active-deck' ? (

@@ -24,10 +24,19 @@ import './AnalysisRow.css'
  * At narrow widths two children SHRINK, staying 1:1 — they do not stack. The shipped draft
  * carried a `flex-wrap: wrap` and a comment promising stacking; the review removed both,
  * because with a zero flex basis and `min-width: 0` every child's hypothetical main size is 0
- * and the line can never overflow — the wrap was unreachable and the promise false. If c4-9
- * wants a real stacking breakpoint for the two-panel row, that is a non-zero flex-basis with a
- * derived, cited value — that story's decision, named here so its author finds a decision
- * rather than a surprise.
+ * and the line can never overflow — the wrap was unreachable and the promise false.
+ *
+ * **c4-9 RULED THE BREAKPOINT THIS COMMENT USED TO LEAVE OPEN: there is none, and this file did
+ * not change for it.** The squeeze case is narrower than the app's own floor — UX-DR8 drops the
+ * right column beneath the left below ~1100px, which WIDENS this column — and the thing that
+ * runs out of room first is the colour legend, which wraps gracefully in its own stylesheet. See
+ * `AnalysisRow.css` for the measurements.
+ *
+ * **And the empty row it left behind is closed, in CSS rather than in `App.tsx`.** c4-8 accepted
+ * a row that stayed in the DOM (with the column's 24px gap) when its only child rendered `null`,
+ * and named c4-9 to revisit it; `.analysis-row:empty { display: none }` is that revisit, and it
+ * costs no second derivation of either panel's data. Story 4.12 inherits a row that already
+ * handles its own emptiness.
  *
  * ================= A PRIMITIVE, NOT A CONTAINER (c4-4 Q1, ruling 1) ===================
  *

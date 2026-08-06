@@ -207,6 +207,25 @@ const COPY_MODULES: Map<string, string> = new Map([
       'interpolated into those sentences are DATA, computed from the deck, and are deliberately ' +
       'not in this module.',
   ],
+  [
+    'src/containers/ColourDistribution/copy.ts',
+    'the colour distribution panel’s authored words (story c4-9): the panel TITLE — sourced ' +
+      'verbatim from DESIGN.md:408’s anatomy list, exactly as c4-8 sourced "Mana curve" — the ' +
+      '`<figure>`’s own accessible NAME (a different string, for c4-8’s reason: a region and the ' +
+      'graphic inside it sharing one name makes a screen-reader user hear it twice), the six ' +
+      'COLOUR NAMES, the unit noun in "12 pips" and the "%" sign. The colour names carry more ' +
+      'weight here than a label usually does, and that is the whole reason this module exists: ' +
+      'Q9(iv) ships the legend’s ManaPip DECORATIVE, so UX-DR18’s "the legend is the accessible ' +
+      'data path" resolves to these six words being the ONLY route by which a colour reaches a ' +
+      'screen-reader user at all. They also sit on the copy side of the data line for ' +
+      'GROUP_LABELS’ reason one axis over: the wire says "{W}" and parse.ts says "w", and ' +
+      'NOTHING anywhere says "White" — an author chose it. A SECOND word table for the six ' +
+      'colours now exists beside parse.ts’s private COLOUR_NAMES, deliberately and in different ' +
+      'registers (that one is lowercase inside a spoken sentence, this one capitalised and ' +
+      'standalone), and the module states the divergence rather than leaving two lists silent. ' +
+      'The pluralisation of "pip" is INVENTED — UX-DR18 specifies no noun at all — and says so. ' +
+      'The COUNTS and the PERCENTAGES are DATA, computed from the deck, and are not here.',
+  ],
 ])
 
 /**
