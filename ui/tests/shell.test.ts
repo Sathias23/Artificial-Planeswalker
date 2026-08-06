@@ -1560,6 +1560,48 @@ describe('the containers are a declared category with a posture of its own', () 
     // `nodenext` project and `src/` the `bundler` one, so a `ui/tests` file may import an app
     // module only if that module has no relative imports of its own.
     { file: 'src/containers/FlipControl/copy.ts', imports: [] },
+    // c4-7's deck list — the right column's second panel, and the FIRST production consumer of
+    // two primitives that had never been on a screen: `GroupHeader` (zero consumers since it
+    // shipped at c2-7) and `Panel` at `level="default"`. It is a container rather than a
+    // primitive by the c4-4 Q1 ruling, and it needs the category for the same three reasons the
+    // tile did: it calls hooks (`useIsLiveTarget`, `useCardEntry`), it declares five `on*`
+    // handlers, and it reads the store through `src/state/`. `../../api/schema` and
+    // `../../state/deckGroups` are TYPE-only imports; the rule reads the specifier, so both are
+    // listed either way.
+    {
+      file: 'src/containers/DeckList/DeckList.tsx',
+      imports: [
+        '../../api/schema',
+        '../../components/GroupHeader/GroupHeader',
+        '../../components/ManaCost/ManaCost',
+        '../../components/Panel/Panel',
+        '../../state/cards',
+        '../../state/deckGroups',
+        '../../state/inspection',
+        './DeckList.css',
+        './copy',
+        './frontFaceCost',
+      ],
+    },
+    // c4-7's copy module — the THIRD in this tree, the fifth in the app. The panel title, the two
+    // board labels nobody specified, and the nine type-group headings. `imports: []` is
+    // load-bearing here for a sharper reason than usual: AC 19 wants the label map coupled to
+    // `TypeGroup` in both directions, which would ordinarily be `satisfies Record<TypeGroup, …>`
+    // — and that needs an import this module may not have, because `TS2835` is a RESOLUTION error
+    // that fires against the specifier whether or not `import type` erases it at emit. So the map
+    // is declared here and ASSERTED in `DeckList.tsx`, which is `CardPlaceholder`'s shape exactly.
+    { file: 'src/containers/DeckList/copy.ts', imports: [] },
+    // c4-7's front-face resolution. Its own module because `react-refresh/only-export-components`
+    // is an ESLint error, so a helper exported from a component file breaks fast refresh — the
+    // fifth application of that split after `imageUrl.ts`, `deckMemory.ts`, `imagedFaces.ts` and
+    // `useCardArt.ts`. It answers one question in two halves: the NAME is free from the deck
+    // payload (99.0% of faced cards store the combined string), while the COST is blank at the
+    // top level for 87.8% of them and reachable only through the hydration cache — which is why
+    // a pure string helper needs `../../state/cards` for a TYPE.
+    {
+      file: 'src/containers/DeckList/frontFaceCost.ts',
+      imports: ['../../api/schema', '../../state/cards'],
+    },
     // The one mirror of `resolve_face_images` (c4-6). It sits at the ROOT of this tree rather than
     // inside `FlipControl/` because TWO components need the answer — the control, to decide
     // whether to exist, and `CardTile`, to decide whether to render a second stacked `<img>` for
@@ -1649,7 +1691,8 @@ describe('the containers are a declared category with a posture of its own', () 
     // container is a DECISION with a diff — the same reason the token inventory is pinned — and
     // the coverage guard below is what makes forgetting to move it impossible rather than merely
     // discouraged.
-    expect(CONTAINERS).toHaveLength(10)
+    // 13 at c4-7, which adds the deck list, its copy module and the front-face resolution.
+    expect(CONTAINERS).toHaveLength(13)
     for (const { file } of CONTAINERS) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }

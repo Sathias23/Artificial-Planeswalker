@@ -1,0 +1,211 @@
+/* DeckList — the deck as a text list, grouped by type (story c4-7, UX-DR3, UX-DR12, UX-DR19,
+   UX-DR44, UX-DR47, DESIGN.md "Deck data").
+
+   NOT CARD-SHAPED, AND THAT IS ASSERTED IN BOTH DIRECTIONS (AC 14, UX-DR4). This file draws
+   text rows: no `--radius-card`, no `aspect-ratio`, no card face anywhere. It is deliberately
+   absent from tests/token-usage.test.ts's CARD_SHAPED allowlist — membership is a DECLARATION
+   that a file draws cards, and a text list that joined it would weaken the claim the list
+   exists to make. The exclusivity gate runs the other way too: nothing here may carry the
+   chrome radius a card-shaped file would.
+
+   `deferred-work.md:3587-3596` names `.deck-row` BY NAME as the illustrative case for the next
+   cross-file card-shape collision — *"a card-shaped element given a chrome radius by a rule in
+   a NON-card-shaped file (`.deck-row .card-shape { … }`) is in neither half"*. No such rule is
+   written here: this file styles only its own `.deck-*` classes and never reaches into a
+   `.card-shape` descendant, so the collision stays hypothetical. */
+
+/* The sections stack; the panel body's 12px padding is Panel's and is not touched here. */
+.deck-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* THE CONTAINER OWNS THE HORIZONTAL INSET, BECAUSE THE HEADER REFUSES TO (AC 16).
+   `GroupHeader.css:13-15` ships no horizontal padding deliberately — *"a group header aligns
+   with the rows it divides, and whatever container holds them owns that inset"*. Applying it
+   HERE, to the section, is what that comment asks for and it keeps the primitive unrestyled:
+   the header and the rows inherit one left edge from their common ancestor rather than the
+   consumer reaching into `.group-header` to push it about. */
+.deck-list-section {
+  padding-inline: var(--space-2);
+}
+
+/* The list reset, local rather than global for the reason CardGrid.css gives about its own: a
+   `ul` is the correct semantics and a bulleted column of deck rows is not the correct
+   presentation. */
+.deck-list-rows {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+/* THE ROW GRID (AC 8, AC 12).
+   DESIGN.md `components.deck-row.columns`: 'minmax(34px, max-content) minmax(0, 1fr) auto'.
+   THREE tracks, not
+   four — the fourth was a 64px price gutter and there is no price data anywhere in this system;
+   the frontmatter at DESIGN.md:178-191 carries the measurement and the amendment.
+   `minmax(34px, max-content)` on the quantity: 34px holds two digits plus the multiplication
+   sign (the largest quantity in any real deck is 34), but 34 is a corpus measurement and not a
+   bound — unlimited-copy cards (Relentless Rats and kin) put `×100` one import away, so the
+   track floors at today's width and grows for a wider quantity instead of clipping into the
+   name (review 2026-08-06 ruling; DESIGN.md carries the matching amendment).
+
+   `minmax(0, 1fr)` and NEVER a bare `1fr` (shell.test.ts:960): `1fr` means `minmax(auto, 1fr)`,
+   which floors the track at MIN-CONTENT, so one unbreakable 33-character card name would widen
+   its column past its share and the ellipsis below would never fire.
+
+   A `<button>` reset, in the manner CardTile.css:126-134 established: the UA's own background,
+   border, padding and centred font would all fight the grid. `text-align: start` because a
+   button centres its text by default and every column here is read left-to-right.
+
+   THE HIT BOX IS ≥24×24px (AC 7, UX-DR47), and it is padding that guarantees it rather than a
+   `min-height` literal needing its own citation: `--type-body` is 14px at 1.5 (21px) and
+   `--space-1` above and below adds 8px, so the row is 29px tall before any cost pips widen it.
+   Measured in the browser at the eye-check rather than asserted here. */
+.deck-row {
+  display: grid;
+  grid-template-columns: minmax(34px, max-content) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding-block: var(--space-1);
+
+  /* Leading space so the 2px inset rule never touches the quantity glyph when the row is live;
+     no trailing space, so the cost sits against the panel body's own 12px padding. */
+  padding-inline: var(--space-1) 0;
+  border: none;
+  background: none;
+  text-align: start;
+
+  /* DESIGN.md:193, `components.deck-row.radius`: '{rounded.sm}'. */
+  border-radius: var(--radius-sm);
+
+  /* MECHANICAL REDUCED-MOTION, and that is why there is no rule in tokens.css for this row.
+     Both properties are expressed entirely through a duration TOKEN, so zeroing `--motion-pulse`
+     in the reduced-motion block makes the tint instant — UX-DR42's named fallback for this
+     motion, which that block has reserved by name since c4-4. Nothing here transforms, scales,
+     rotates or translates, so there is nothing a zeroed duration would merely make FASTER. */
+  transition:
+    background-color var(--motion-pulse) var(--ease-out),
+    box-shadow var(--motion-pulse) var(--ease-out);
+}
+
+/* HOVER, THEN LIVE, AT EQUAL SPECIFICITY SO THE LATER WINS BY ORDER (AC 32).
+   Both selectors are (0,2,0), which is the whole of `no-descending-specificity`'s requirement
+   and the reason `.deck-row.is-live` is written rather than a descendant form.
+
+   A hover state is needed even though hovering a row normally MAKES it live, and the case that
+   needs it is the pinned one: while another card is pinned, `targetIdOf` returns the pin, so a
+   hovered row is not live and would otherwise give no feedback at all. `--surface-overlay` is
+   the surface ramp's own value for *"rows and cards within panels"* (DESIGN.md Colors), so this
+   is the ramp being used as specified rather than a hover colour being invented. */
+.deck-row:hover {
+  background-color: var(--surface-overlay);
+}
+
+/* THE FOCUS RING (AC 32, UX-DR40, UX-DR46).
+   `:focus-visible`, never `:focus` — the shipped idiom, and a mouse click should not leave a
+   ring behind it. `outline` rather than a box-shadow composite, because unlike a card tile this
+   row sits on a KNOWN surface: there is no arbitrary artwork behind it, so the two-band
+   `--shadow-focus-ring-over-art` treatment buys nothing. `outline: none` appears nowhere in
+   this file in any of its four spellings. */
+.deck-row:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* THE LIVE ROW — THE CARD CURRENTLY UNDER INSPECTION (AC 13, UX-DR19, UX-DR20).
+   DESIGN.md:194-195: `live-background: '{colors.accent-glow}'` and
+   `live-rule: 'inset 2px 0 0 {colors.accent}'`.
+
+   The rule is a TOKEN because it cannot be anything else: .stylelintrc.json's box-shadow
+   allowed-list admits `none` or a comma-list of var(--shadow-…) / var(--glow) and nothing
+   else, so `inset 2px 0 0 …` cannot be written here at all (68 -> 69, both pins moved).
+
+   It is an INSET shadow rather than a `border-left` on purpose: a border would shift every
+   column 2px sideways on becoming live, and a cursor sweeping a dense list would turn that into
+   a shimmer. `--accent` at 6.21:1 on the panel and 4.26:1 over the row's own tint, both clear of
+   the 3:1 non-text floor; `--accent-dim` would be 3.05:1 and 2.09:1 and is banned by name. */
+.deck-row.is-live {
+  background-color: var(--accent-glow);
+  box-shadow: var(--shadow-deck-row-live);
+}
+
+/* THE QUANTITY (AC 9, UX-DR3, UX-DR19).
+   DESIGN.md:405: "quantity in {typography.numeric} {colors.text-tertiary}".
+
+   BOTH NUMERIC COMPANIONS IN THIS ONE BLOCK. The `font` shorthand RESETS
+   `font-variant-numeric`, so the role alone renders proportional digits and a column of counts
+   down a deck list stops lining up — the exact defect UX-DR3 exists to prevent, in the one
+   place in the app with the most digits stacked vertically.
+
+   `text-align: end` so the digits sit against the name column: "×4" and "×34" then share a
+   right edge, which is what makes a scanned column read as numbers rather than as ragged text. */
+.deck-row-quantity {
+  color: var(--text-tertiary);
+  font: var(--type-numeric);
+  font-variant-numeric: var(--type-numeric-features);
+  text-align: end;
+}
+
+/* THE NAME AT REST (AC 10, Q12).
+   DESIGN.md:405 gives the LIVE case ("body-strong {colors.text-primary} when live") and the
+   rest ROLE ({typography.body}) but no rest COLOUR. `--text-secondary` is a reading of an
+   underspecified line, recorded as such rather than as a fact: the parenthetical attaches
+   `text-primary` to the live case specifically, which only reads as a distinction if rest is
+   something else, and a row that changes both weight AND tier on becoming live is the clearer
+   signal. DESIGN.md:294 ("text-primary for names") would suggest otherwise; the mock uses
+   secondary.
+
+   `min-width: 0` is what makes the ellipsis fire at all: a grid item defaults to
+   `min-width: auto`, floored at min-content, so without this the `minmax(0, 1fr)` track's
+   minimum is quietly overridden by the longest name and the column simply grows. Worst front
+   face in a real deck is 33 characters; the corpus worst is 141. */
+.deck-row-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font: var(--type-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The cost track. `auto`, so it takes exactly the width its pips need and the name track
+   absorbs the rest. `ManaCost` is unmodified and unresized (AC 11) — its pips are fixed at
+   16.25px in `em` off `--type-numeric` by ManaPip.css:21-31, deliberately, so a row cannot ask
+   for smaller ones. It wraps on its own (`flex-wrap: wrap`), which is why `align-items: center`
+   on the row is what keeps a two-line cost centred against its name. */
+.deck-row-cost {
+  display: flex;
+  min-width: 0;
+}
+
+/* THE LIVE ROW'S TEXT — BOTH TIERS MOVE, AND THE SECOND ONE IS A CONTRAST FIX (AC 10, AC 13).
+   Written as `.deck-row.is-live .x` (0,3,0) AFTER the (0,1,0) rules above, so specificity
+   ascends and `no-descending-specificity` is satisfied.
+
+   THE NAME is DESIGN.md:405 as written: `body-strong` at `{colors.text-primary}`.
+
+   THE QUANTITY IS NOT IN THE ARTEFACT, AND IT IS HERE BECAUSE OF A MEASUREMENT. DESIGN.md's
+   Colors table states that all three text tiers clear 4.5:1 "on all four surfaces" — but a live
+   row is a FIFTH surface that table does not cover: `--accent-glow` is
+   `rgba(139,147,255,0.22)`, which composites over `--surface-panel` to `#32365A`. Against that,
+   `--text-tertiary` measures **3.73:1** and `--type-numeric` is 13px, so the 4.5:1 small-text
+   floor applies and the quantity FAILS AA in the live state alone — while measuring a
+   comfortable 5.43:1 at rest, which is why nothing catches it. `--text-secondary` on the same
+   composite is 5.89:1.
+
+   This is the M4/C3 family arriving a third time (card-tile live-ring, card-detail pinned-ring,
+   and now a text tier over a tint rather than a marker over a surface), so it is FIXED here and
+   the artefact amended in the same commit, exactly as c4-5 did. The `findAccentDimOnOverlay`
+   guard cannot see it: that guard is same-block only, and this defect is a composite of a
+   parent's background with a child's colour. */
+.deck-row.is-live .deck-row-name {
+  color: var(--text-primary);
+  font: var(--type-body-strong);
+}
+
+.deck-row.is-live .deck-row-quantity {
+  color: var(--text-secondary);
+}

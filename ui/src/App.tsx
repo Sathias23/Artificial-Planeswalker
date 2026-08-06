@@ -6,6 +6,7 @@ import { Footer } from './components/Footer/Footer'
 import { StatePanel } from './components/StatePanel/StatePanel'
 import { CardDetail } from './containers/CardDetail/CardDetail'
 import { CardGrid } from './containers/CardGrid/CardGrid'
+import { DeckList } from './containers/DeckList/DeckList'
 import { hydrateDeckCards } from './state/cards'
 import { surfaceOf, useDeckState } from './state/deck'
 import { useSystemState } from './state/systemState'
@@ -236,7 +237,26 @@ export default function App() {
           <StatePanel state={surface.panel} />
         )
       }
-      right={surface.kind === 'deck' ? <CardDetail boards={surface.boards} /> : undefined}
+      /* THE RIGHT COLUMN NOW STACKS TWO PANELS (c4-7, AC 1, AC 2, AC 3).
+         A Fragment, and nothing else is needed: `.app-shell-column` is already
+         `display:flex; flex-direction:column; gap: var(--space-panel-gap)` (AppShell.css:151-156),
+         so a second child stacks 24px beneath the first with no shell edit. `AppShell.tsx` is NOT
+         touched — the sixth application of c2-9's displacement ruling, and its `/c4-7/`
+         placeholder still fires whenever `right` is empty, which `AppShell.test.tsx:161`/`:171`
+         assert against the component's own props.
+
+         BOTH panels are gated on the SAME `kind === 'deck'` test, inherited from the c4-5 Q14
+         ruling above rather than re-decided here (AC 2). The deck list is permanently present
+         beside the grid — never a toggled alternate view (FR-05, UX-DR19) — so there is no
+         view-mode state anywhere in this file. */
+      right={
+        surface.kind === 'deck' ? (
+          <>
+            <CardDetail boards={surface.boards} />
+            <DeckList boards={surface.boards} />
+          </>
+        ) : undefined
+      }
       footer={<Footer />}
     />
   )
