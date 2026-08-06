@@ -1,0 +1,174 @@
+/* ManaCurve — the track, the bars, the height mechanism and the two type roles
+   (story c4-8, UX-DR3, UX-DR7, UX-DR17, UX-DR42, DESIGN.md:205-209, :407).
+
+   ==== DESIGN.md GIVES THIS COMPONENT ITS COLOURS AND ITS RADIUS, AND NO GEOMETRY ========
+   `components.curve-bar` is four keys — `track`, `fill`, `radius`, `segment-hairline` — and
+   every one of them resolves to a token that already exists (`--surface-well`,
+   `--border-strong`, `--radius-sm`). So the token inventory does NOT move: 69 holds and neither
+   pin is touched (AC 31).
+
+   What DESIGN.md does NOT give is a height, a bar width or a gap. AC 15's own escape clause
+   applies — *"or the story records what the values are derived from instead"* — and the answer
+   is: **from the spacing scale, composed**, so that this file contains NO px literal at all
+   except the one the platform requires (see the visually-hidden block at the bottom). The mock's
+   `gap: 6`, `maxWidth: 26` and `height: 72/76` are none of them on the 4/8/12/16/24/32/48 scale,
+   and `DESIGN.md:360` calls exactly that shape *"drift, not spec"*.
+
+   ==== THIS FILE IS NOT CARD-SHAPED, IN BOTH DIRECTIONS (AC 20, UX-DR4) =================
+   A curve draws no card, so this stylesheet does NOT join `CARD_SHAPED` in
+   tests/token-usage.test.ts and `--radius-card` appears nowhere in it. Both halves matter: the
+   allowlist half would let a chrome radius in, and the converse half is what an allowlist keyed
+   on `--radius-card` alone would never look for.
+
+   ==== AND IT IS NOT DATA INK (AC 14, UX-DR7, Q8) =======================================
+   **THE BARS DO NOT STACK BY COLOUR, SO NO `--mana-*` TOKEN APPEARS IN THIS FILE**, and
+   `MANA_DATA_INK` stays at its single entry (`ManaPip.css`). That is a decision, not an
+   omission, and the measurement is the reason: `colors` is `[]` for 2,842 of the 3,225 faced
+   cards, only 495 of those carry a `card_faces[0].colors` to draw from, and **24 live rows / 32
+   quantity would paint as colourless from a field that is structurally blank** rather than from
+   the card's actual colour — the c4-6 `oracle_text` / c4-7 `mana_cost` family, a third time.
+   c4-9 is the colour surface and owns the legend that makes colour accessible; a stacked curve
+   would say the same thing worse and twice. DESIGN.md's unstacked fill is the CHROME token, and
+   `ui/README.md:695-697` is satisfied by there being no segment at all rather than by a segment
+   taking a class. */
+
+/* The figure. `margin: 0` because the UA stylesheet gives `<figure>` a 1em block-and-inline
+   margin that would inset the chart inside `Panel`'s own 12px body padding — the same reason
+   `.panel-title` zeroes an `<h2>`. */
+.mana-curve {
+  margin: 0;
+}
+
+/* The seven columns. `gap: var(--space-2)` — on the scale, where the mock's 6px is not. */
+.mana-curve-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+/* One bucket: count, well, axis label. `flex: 1 1 0` so the seven share the fluid column
+   equally at any width, and `min-width: 0` because a flex item defaults to min-content — the
+   per-item half of the argument `.app-shell-column` already makes for itself. */
+.mana-curve-column {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* AC 16 — the numeric role and its companion in the SAME rule block, which is the decide-once
+   ruling and the shape `findUnpairedNumericRole` enforces. The `font` shorthand RESETS
+   `font-variant-numeric`, so the role applied alone renders proportional digits and a row of
+   seven counts stops lining up (UX-DR3). DESIGN.md:407: counts "in {typography.numeric}
+   {colors.text-tertiary}". */
+.mana-curve-count {
+  color: var(--text-tertiary);
+  font: var(--type-numeric);
+  font-variant-numeric: var(--type-numeric-features);
+}
+
+/* THE WELL — DESIGN.md: "bars per mana value on a {components.curve-bar.track} well at
+   {components.curve-bar.radius}".
+
+   THE HEIGHT IS COMPOSED FROM THE SPACING SCALE, not written as a literal: `--space-7` (48px)
+   plus `--space-5` (24px) is 72px, which is the tallest chart the mock draws and is reachable
+   from the scale in one addition. DESIGN.md specifies no height for this component, so this is
+   AC 15's "derived from" branch rather than a citation — and it means this file needs no
+   DESIGN.md citation for a px value it never writes.
+
+   `justify-content: flex-end` is what makes a bar grow UPWARD from the floor of the well. */
+.mana-curve-track {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-self: stretch;
+  height: calc(var(--space-7) + var(--space-5));
+  border-radius: var(--radius-sm);
+  background: var(--surface-well);
+}
+
+/* THE BAR (AC 14, AC 17, AC 19).
+
+   ==== THE FILL IS A CHROME TOKEN, BY NAME =============================================
+   `--border-strong` is `components.curve-bar.fill`, and UX-DR7 bans the alternative in writing:
+   *"including curve-bar fills, which use {components.curve-bar.fill} (a chrome token)"*. The
+   composition reference fills with `var(--mana-colorless)` — the one thing this rule exists to
+   forbid. See this file's header for why the bars do not stack.
+
+   ==== THE HEIGHT IS THE DATA (AC 17, Q10) ============================================
+   `var(--curve-bar-height)` is set per bar from `ManaCurve.tsx`, through the custom-property
+   escape hatch `eslint.config.js` reserved for this story BY NAME and which this story amended
+   in the open. The property carries a NUMBER; every colour, radius and duration around it still
+   comes from the token layer, which is what that rule protects.
+
+   The fallback `0%` is not decoration: if the attribute were ever absent the bar would inherit
+   `auto` and fill the whole well, which is the loudest possible way to be wrong.
+
+   ==== A ZERO BUCKET DRAWS NOTHING (AC 19, Q10 b) =====================================
+   The mock floors the height at 2px so an empty bucket still draws. Declined: the mock has no
+   TRACK, and this design does — the empty well already says "this bucket exists and is empty",
+   where a 2px stub says "this bucket has a small number in it", which is false. 24 of the 40
+   real decks exercise it and one of them (`Iron Man, Modern Marvel — reminder`) is six empty
+   buckets out of seven.
+
+   ==== THE MOTION tokens.css:297 RESERVES BY NAME (AC 26, AC 27, UX-DR42) =============
+   *"Curve-bar height -> instant jump (c4-8)"*. It is a `height` transition through
+   `--motion-glide`, so the reduced-motion block's four zeroed duration tokens neutralise it by
+   the ORDINARY mechanism — no `!important` neutralisation is needed and **the enumerated
+   shipped-motion pin stays at 4**, because that pin lists TRANSFORMS and this story ships none.
+   Nothing pulses, loops or alternates: there is no `animation` here at all. */
+.mana-curve-bar {
+  width: 100%;
+  height: var(--curve-bar-height, 0%);
+  border-radius: var(--radius-sm);
+  background: var(--border-strong);
+  transition: height var(--motion-glide) var(--ease-glide);
+}
+
+/* AC 16 — the axis labels. DESIGN.md:407: "axis labels in {typography.micro}". `--type-micro`
+   is UPPERCASE and tracked by derived guard, and that is harmless here for the reason it was
+   NOT harmless on c4-4's card captions: every one of these labels is a digit or a digit and a
+   `+`, so there is no letter for a case transform to change. */
+.mana-curve-axis {
+  color: var(--text-tertiary);
+  font: var(--type-micro);
+  letter-spacing: var(--tracking-micro);
+  text-transform: uppercase;
+}
+
+/* THE VISUALLY-HIDDEN TABLE (AC 22, Q7, UX-DR17, UX-DR44).
+
+   ==== RE-DECLARED, NOT SHARED — AND THAT IS A DECISION ================================
+   `CardDetailChrome.css:182-199` has the only other clip-rect block in the repo. It is NOT
+   promoted to a shared utility here: two instances is not a pattern, and `card-geometry.css` was
+   promoted at c4-3 only because four stories consumed it. **Recorded as a third-instance
+   trigger: whoever writes the third visually-hidden block promotes it to `src/styles/`.**
+
+   Two deliberate differences from that copy, stated so the divergence reads as a decision:
+     - **No `pointer-events: none`.** That rule is there because an absolutely-positioned 1px
+       box that swallowed a click would be indistinguishable from a bug; a static table in the
+       normal flow of a 12px-padded panel body intercepts nothing.
+     - **No `aria-live`, ever.** That element is a live region; this one is a static alternative.
+       A curve that announced on every deck change would be a second announcer (AC 24).
+
+   ==== WHY NOT display: none ==========================================================
+   Both `display: none` and `visibility: hidden` remove an element from the accessibility tree,
+   so the alternative would exist and never be read — a failure no rendered-output assertion can
+   see. The clip-rect idiom keeps it in the tree at a size no reader sees.
+
+   `1px` — DESIGN.md specifies NO visually-hidden treatment for any component, so there is no
+   artefact value to cite and this is the standard WCAG clip-rect idiom instead; a geometry
+   literal must name its source (the c2-6 AC 18 ruling) and this one's source is the platform,
+   not the design system. Not `0`: a zero-sized element is dropped from the accessibility tree by
+   some engines, which is the one direction no jsdom test can see. */
+.mana-curve-table {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

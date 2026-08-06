@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 
+import { AnalysisRow } from './components/AnalysisRow/AnalysisRow'
 import { AppShell } from './components/AppShell/AppShell'
 import { DeckBadges } from './components/DeckBadges/DeckBadges'
 import { Footer } from './components/Footer/Footer'
@@ -7,6 +8,7 @@ import { StatePanel } from './components/StatePanel/StatePanel'
 import { CardDetail } from './containers/CardDetail/CardDetail'
 import { CardGrid } from './containers/CardGrid/CardGrid'
 import { DeckList } from './containers/DeckList/DeckList'
+import { ManaCurve } from './containers/ManaCurve/ManaCurve'
 import { hydrateDeckCards } from './state/cards'
 import { surfaceOf, useDeckState } from './state/deck'
 import { useSystemState } from './state/systemState'
@@ -228,9 +230,37 @@ export default function App() {
           />
         )
       }
+      /* THE LEFT COLUMN NOW STACKS THE GRID AND THE ANALYSIS ROW (c4-8, AC 1, AC 2, AC 3).
+         A Fragment, exactly as the right column took one at c4-7, and for the same reason:
+         `.app-shell-column` is already `display:flex; flex-direction:column; gap:
+         var(--space-panel-gap)` (AppShell.css:151-156), so a second child stacks 24px beneath
+         the grid with no shell edit. `AppShell.tsx` is NOT touched — the SEVENTH application of
+         c2-9's displacement ruling, and the first on the LEFT slot since c4-4. Its placeholder
+         (the line naming c4-4, c4-8 and c4-9) still fires whenever `left` is empty, which
+         `AppShell.test.tsx:115` asserts against the component's own props.
+
+         `AnalysisRow` rather than the panel directly, because `AppShell.tsx:127` assigns the
+         1:1 pair to THIS story by name and c4-9 supplies the second panel: the row renders one
+         child at full width today and two at exactly 1:1 the day that story lands, by adding a
+         sibling inside this element and editing nothing else (Q6).
+
+         Gated on the SAME `kind === 'deck'` test as the grid beside it, inherited from the
+         c4-5 Q14 ruling rather than re-decided here (AC 2) — and note this is a DIFFERENT gate
+         from the right column's: the left slot renders a `StatePanel` in the other five cases,
+         not a placeholder. `ManaCurve` itself renders nothing when the curve is empty (Q12).
+         On a land-only deck that leaves the row's EMPTY div in the DOM, with the column gap
+         still applied beneath the grid — accepted posture (review, 2026-08-06), pinned by
+         App.test.tsx's land-only test rather than papered over: gating the row here would need
+         the curve's total, a second derivation of what curve.ts owns, for a state no corpus
+         deck can produce. c4-9, which gives the row its second child, is named to revisit it. */
       left={
         surface.kind === 'deck' ? (
-          <CardGrid boards={surface.boards} />
+          <>
+            <CardGrid boards={surface.boards} />
+            <AnalysisRow>
+              <ManaCurve boards={surface.boards} />
+            </AnalysisRow>
+          </>
         ) : surface.panel === 'no-active-deck' ? (
           <StatePanel state="no-active-deck" decks={system.decks} />
         ) : (

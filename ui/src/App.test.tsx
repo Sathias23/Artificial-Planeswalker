@@ -293,6 +293,36 @@ describe('the panel is chosen by the wire, not by a constant (AC 1, AC 2)', () =
     // `CLIENT_ONLY_STATES`; ledgered in deferred-work.md so the residue has a named home.
     expect(screen.getByRole('region', { name: 'No deck on the glass.' })).toBeVisible()
   })
+
+  // c4-8 AC 2's "absent behind EVERY state panel", made a fact rather than an argument (added
+  // at review 2026-08-06). The shipped draft asserted the curve's absence behind the two
+  // 503 deck-read panels and covered the rest with a structural comment ("the left slot
+  // renders a StatePanel on every non-deck arm") — reasonable, and exactly the shape a later
+  // per-arm regression walks through unnoticed. Every distinct panel this file can produce now
+  // carries the assertion; the two deck-read 503 arms keep theirs in their own test below.
+  const STATE_PANEL_ARMS: [string, () => void][] = [
+    ['database-not-set-up (fresh install)', () => {}],
+    ['database-updating', () => answering(refusal('database_unavailable', 503))],
+    ['internal-error', () => answering(refusal('internal_error', 500))],
+    [
+      'no-active-deck',
+      () => {
+        booting(activeDeck(null))
+        answering(decks('Boros Aggro'))
+      },
+    ],
+  ]
+  it.each(STATE_PANEL_ARMS)(
+    'leaves NO curve and NO analysis row behind the %s panel (c4-8, AC 2)',
+    async (_label, arrange) => {
+      arrange()
+      render(<App />)
+      await settle()
+
+      expect(screen.queryByRole('region', { name: 'Mana curve' })).toBeNull()
+      expect(document.querySelector('.analysis-row')).toBeNull()
+    },
+  )
 })
 
 /**
@@ -469,6 +499,12 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     // gate itself stays c8-5's. Asserted so the count is a fact rather than a claim.
     expect(document.body.textContent).not.toContain('c4-4')
     expect(document.body.textContent).not.toContain('c4-8')
+    // c4-9 too, and all three keys lived in the SAME left-column string — so this one has been
+    // off the glass since c4-4 displaced that placeholder, and c4-8 is the story that finally
+    // fills the row the string promised. F1 count: the left column contributed three keys to
+    // the C3 retro's six, all three gone; `c4-10` and `c4-11` are what remain, in the RIGHT
+    // column's placeholder and in the skip-link work. The gate itself stays c8-5's.
+    expect(document.body.textContent).not.toContain('c4-9')
 
     // THE RIGHT COLUMN'S DISPLACEMENT, THE SAME SHAPE ONE STORY LATER (AC 6, added at review
     // 2026-08-05 — the checkbox predated the assertion). c4-5 fills the right slot with the
@@ -495,6 +531,56 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     expect(
       detailRegion.compareDocumentPosition(deckListRegion) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
+
+    // c4-8's OWN DISPLACEMENT AND ITS PLACEMENT (AC 1, AC 2). The seventh application of the
+    // c2-9 ruling and the first on the LEFT slot since c4-4: the curve is mounted, and it is
+    // mounted BENEATH the grid inside the analysis row `AppShell.tsx:127` assigned to this
+    // story by name.
+    const curveRegion = screen.getByRole('region', { name: 'Mana curve' })
+    expect(curveRegion).toBeVisible()
+    const gridPanel = document.querySelector('.card-grid')
+    expect(gridPanel).not.toBeNull()
+    expect(
+      gridPanel!.compareDocumentPosition(curveRegion) & Node.DOCUMENT_POSITION_FOLLOWING,
+      'the mana curve is not beneath the card grid',
+    ).toBeTruthy()
+
+    // …and it is inside the ROW rather than a bare third child of the column, because that is
+    // what makes c4-9 a one-line addition instead of a layout change (Q6, AC 3).
+    const analysisRow = document.querySelector('.analysis-row')
+    expect(analysisRow).not.toBeNull()
+    expect(analysisRow!.contains(curveRegion)).toBe(true)
+    // ONE child today. The day c4-9 lands this becomes two and the ratio is 1:1 with no edit
+    // to `App.tsx`'s layout — asserted here so "one child today" is a recorded fact rather than
+    // an accident of what has shipped.
+    expect(analysisRow!.children).toHaveLength(1)
+  })
+
+  it('leaves an EMPTY analysis row on a land-only deck — documented posture, not an accident (Q12)', async () => {
+    // REVIEW FINDING (c4-8): `<AnalysisRow>` is unconditional in the deck arm, so when
+    // `ManaCurve` renders null (a zero curve), the row's empty div remains a real flex child of
+    // `.app-shell-column` and the column's panel gap still applies beneath the grid. The shipped
+    // draft's comment claimed "no panel rather than an empty box" — false; the box is in the
+    // DOM. Gating the row would need the curve's total in App.tsx — a second derivation of what
+    // `curve.ts` owns — for a state NO corpus deck can produce (all 40 have a non-empty curve).
+    // So the empty box is the ACCEPTED posture, pinned here so it is a decision c4-9 inherits
+    // in the open: the story that gives the row its second child is the one to revisit whether
+    // an all-null row should render at all.
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({ cards: [deckCard('Forest', 'Basic Land — Forest', 24)] }),
+    )
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    // The deck view is on the glass, the curve is hidden, and the row is present-but-empty.
+    expect(document.querySelector('.card-grid')).not.toBeNull()
+    expect(screen.queryByRole('region', { name: 'Mana curve' })).toBeNull()
+    const emptyRow = document.querySelector('.analysis-row')
+    expect(emptyRow).not.toBeNull()
+    expect(emptyRow!.children).toHaveLength(0)
   })
 
   it('puts the deck on the glass as card faces (c4-4, AC 16, FR-19)', async () => {
@@ -667,6 +753,12 @@ describe('a deck refusal reaches the glass as a PANEL, never as a status code (A
     // `kind === 'deck'` gate, and this is the assertion that notices if the list ever gets
     // its own.
     expect(screen.queryByRole('region', { name: 'Deck list' })).toBeNull()
+    // …and NO mana curve (c4-8 AC 2). Written WITH the branch rather than after it, which is
+    // the shape the last two stories had to be corrected into. The left slot renders a
+    // `StatePanel` on every non-deck arm, so the curve — and the analysis row that holds it —
+    // are absent behind every one of the six state panels, not merely this one.
+    expect(screen.queryByRole('region', { name: 'Mana curve' })).toBeNull()
+    expect(document.querySelector('.analysis-row')).toBeNull()
   })
 
   it('answers a 400 on the deck read with no-active-deck, not the bug panel (Q5, AC 11)', async () => {

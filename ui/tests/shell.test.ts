@@ -1037,6 +1037,53 @@ describe('geometry literals are documented, not merely tolerated (AC 18)', () =>
   })
 })
 
+describe('the analysis pair row is 1:1 by CONSTRUCTION (story c4-8, Q6, AC 3)', () => {
+  // WHY THIS READS THE STYLESHEET RATHER THAN RENDERING. `AnalysisRow.test.tsx` proves the
+  // ARITY — one child, two children, none — and jsdom has no layout engine, so it cannot
+  // observe the ratio those children resolve to. The specific silent failure: with
+  // `flex-basis: auto` the wider panel's CONTENT decides the split, the pair is not 1:1 at all,
+  // and every rendered assertion in that file still passes. The rule is therefore read, over
+  // the same git-derived list every other guard in this suite walks.
+  const ROW_CSS = 'src/components/AnalysisRow/AnalysisRow.css'
+  const rowSource = sourceOf(ROW_CSS)
+  const childRule = /\.analysis-row\s*>\s*\*\s*\{([^}]*)\}/.exec(rowSource)?.[1] ?? ''
+
+  it('is reading the real stylesheet (non-vacuity)', () => {
+    // `shippedStylesheets` is the module-scope git-derived list; an untracked stylesheet would
+    // not be in it, so this is also the `git add` check for this file.
+    expect(shippedStylesheets).toContain(ROW_CSS)
+    expect(childRule.length, 'the `.analysis-row > *` rule was not found at all').toBeGreaterThan(
+      10,
+    )
+  })
+
+  it('gives every child a ZERO-basis flex factor, so the split is not content-driven', () => {
+    expect(childRule).toMatch(/flex:\s*1\s+1\s+0\s*;/)
+  })
+
+  it('gives every child min-width: 0, so an unbreakable panel cannot widen the app', () => {
+    // The per-item half of the argument `.app-shell-column` and `.app-shell-columns` both make:
+    // a flex item's default `min-width` is `min-content`, and without this the app's ONE scroll
+    // container inherits a horizontal overflow it does not own.
+    expect(childRule).toMatch(/min-width:\s*0\s*;/)
+  })
+
+  it('uses NO two-track grid — the shape that leaves a dead half-width gutter', () => {
+    // c4-7's Q1 rejected exactly this in the price column: "a visible empty column reads as a
+    // loading failure". `repeat(2, minmax(0, 1fr))` with one child would do it to HALF the
+    // fluid column, and it would look correct in every test until c4-9 shipped.
+    expect(rowSource).not.toMatch(/grid-template-columns/)
+    expect(rowSource).not.toMatch(/repeat\(/)
+  })
+
+  it('spends the panel gap through DESIGN.md’s own token and writes no px literal', () => {
+    expect(rowSource).toContain('var(--space-panel-gap)')
+    // Belt and braces with the citation guard above: that one requires a DESIGN.md reference
+    // near any literal, and this says there is no literal to cite.
+    expect(pxLiteralsIn(rowSource)).toEqual([])
+  })
+})
+
 describe('the shell is presentation-only, and that is asserted (AC 16)', () => {
   const shellSourceText = sourceOf(SHELL_TSX)
 
@@ -1250,6 +1297,15 @@ describe('the component primitives are presentation-only, and that is asserted',
     // this one to assert the shipped label against EXPERIENCE.md byte-for-byte. An import added
     // here would silently un-gate the copy.
     { file: 'src/components/CardPlaceholder/copy.ts', imports: [] },
+    // c4-8's analysis pair row. `AppShell.tsx:127` assigned the 1:1 pair to that story BY NAME —
+    // "c4-8 composes the row, c4-9 supplies the second panel" — so the row had to be built one
+    // story before its second child exists, and it is here rather than in `CONTAINERS` because
+    // it holds no state, calls no hook, reads no store and attaches no handler. One prop, and it
+    // is `children`. The `react` import is the `ReactNode` type, exactly as `Panel`'s is.
+    {
+      file: 'src/components/AnalysisRow/AnalysisRow.tsx',
+      imports: ['./AnalysisRow.css', 'react'],
+    },
   ]
 
   const withoutComments = (source: string) =>
@@ -1265,7 +1321,9 @@ describe('the component primitives are presentation-only, and that is asserted',
     // 15 until c4-3's `CardPlaceholder.tsx` and its `copy.ts` — which is the coverage guard below
     // working as designed rather than a number being bumped: the component was written,
     // `git ls-files` saw it, and this list had to name it before the suite went green again.
-    expect(PRIMITIVES).toHaveLength(17)
+    // 18 at c4-8's `AnalysisRow` — the pair row `AppShell.tsx:127` assigned to that story by
+    // name, built one story before the panel that shares it.
+    expect(PRIMITIVES).toHaveLength(18)
     for (const { file } of PRIMITIVES) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }
@@ -1602,6 +1660,44 @@ describe('the containers are a declared category with a posture of its own', () 
       file: 'src/containers/DeckList/frontFaceCost.ts',
       imports: ['../../api/schema', '../../state/cards'],
     },
+    // c4-8's mana curve. The SHORTEST import list of any container in this tree, and that is the
+    // story's headline rather than an accident: `CardSummary.cmc` rides on the deck payload, so
+    // this panel reaches for no cache, no hook and no network — it composes one primitive, reads
+    // the derivation `src/state/` already performed, and derives its seven numbers from it. It is
+    // the third reader of `surface.boards`, after `CardGrid` and `DeckList`.
+    {
+      file: 'src/containers/ManaCurve/ManaCurve.tsx',
+      imports: [
+        '../../components/Panel/Panel',
+        '../../state/deckGroups',
+        './ManaCurve.css',
+        './copy',
+        './curve',
+        'react',
+      ],
+    },
+    // c4-8's copy module — the FOURTH in this tree, the tenth in the app. `imports: []` for the
+    // settled `TS2835` reason, and one that earns it: the per-bar name BUILDER lives here rather
+    // than in the component because `copy-rules.test.ts` declares "a string reaching an
+    // `aria-label` through an expression" as a residue it cannot read, and declaring the words
+    // where the content half scans them is what closes it before a reviewer has to.
+    { file: 'src/containers/ManaCurve/copy.ts', imports: [] },
+    // c4-8's derivation. Its own module for the same `react-refresh/only-export-components`
+    // reason as `frontFaceCost.ts` — the SIXTH application of that split. It reuses `frontFace`
+    // and deliberately does NOT reuse `groupOf` — see its header for the 32 corpus lands that
+    // reuse would have counted as spells.
+    //
+    // `../../state/deckGroups` appears TWICE, and that is the exhaustive form working rather
+    // than a duplicate: `DeckBoards` is a type and `frontFace` is a value, so they are two
+    // statements, and this list is a list of import STATEMENTS. `ManaPip`'s entry above notes
+    // the same thing from the other side — it takes a value and a type from ONE statement and
+    // is therefore listed once. The single-statement spelling is not available here:
+    // `verbatimModuleSyntax` is on in both tsconfigs and nothing in `src/` uses an inline
+    // `type` specifier, so matching the house idiom costs one line in this list.
+    {
+      file: 'src/containers/ManaCurve/curve.ts',
+      imports: ['../../state/deckGroups', '../../state/deckGroups'],
+    },
     // The one mirror of `resolve_face_images` (c4-6). It sits at the ROOT of this tree rather than
     // inside `FlipControl/` because TWO components need the answer — the control, to decide
     // whether to exist, and `CardTile`, to decide whether to render a second stacked `<img>` for
@@ -1692,7 +1788,11 @@ describe('the containers are a declared category with a posture of its own', () 
     // the coverage guard below is what makes forgetting to move it impossible rather than merely
     // discouraged.
     // 13 at c4-7, which adds the deck list, its copy module and the front-face resolution.
-    expect(CONTAINERS).toHaveLength(13)
+    // 16 at c4-8, which adds the mana curve, its copy module and its derivation. The panel's
+    // PAIR-ROW wrapper is NOT here: `AnalysisRow` holds no state, calls no hook and reads no
+    // store, so it is a primitive and lands in `PRIMITIVES` above (c4-4 Q1's category rule
+    // applied in the direction it is usually applied against).
+    expect(CONTAINERS).toHaveLength(16)
     for (const { file } of CONTAINERS) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }

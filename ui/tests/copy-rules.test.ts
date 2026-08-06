@@ -190,6 +190,23 @@ const COPY_MODULES: Map<string, string> = new Map([
       'card NAMES, TYPE LINES, mana COSTS and QUANTITIES the same component renders are DATA, ' +
       'arrive from the wire, and are deliberately not in this module.',
   ],
+  [
+    'src/containers/ManaCurve/copy.ts',
+    'the mana curve panel’s authored words (story c4-8): the panel TITLE, the `<figure>`’s own ' +
+      'accessible NAME — deliberately a different string, because a region and the graphic ' +
+      'inside it sharing one name makes a screen-reader user hear it twice with nothing to tell ' +
+      'them apart — the visually-hidden table’s CAPTION and its two column HEADERS, the `+` that ' +
+      'makes the last bucket open-ended, and the per-bar name BUILDER. That builder is why this ' +
+      'module matters more than its size suggests: it is residue 3 of this file’s own header — a ' +
+      'string reaching an `aria-label` through an EXPRESSION, which the attribute half cannot ' +
+      'read — so the words are declared here first rather than left as literals in the ' +
+      'component, and the content half then scans every one of them. UX-DR17 supplies exactly ' +
+      'one worked example ("3 drops: 8 cards") and NO pluralisation rule, so "1 drop: 1 card" is ' +
+      'INVENTED and the module says so in the open; the open-ended bucket keeps the plural ' +
+      'because "7+" names a range rather than one value. The COUNTS and the MANA VALUES ' +
+      'interpolated into those sentences are DATA, computed from the deck, and are deliberately ' +
+      'not in this module.',
+  ],
 ])
 
 /**

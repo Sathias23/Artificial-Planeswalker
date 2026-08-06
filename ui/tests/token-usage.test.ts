@@ -553,10 +553,63 @@ const findRoleWithoutCompanions = (
 }
 
 /** A `var()` naming no real token silently renders nothing. */
-const findUnknownTokenReferences = (files: string[], known: Set<string>): string[] =>
+/**
+ * Custom properties that are SET FROM MARKUP AT RUNTIME, not declared in the token layer.
+ *
+ * ================= A THIRD CATEGORY, AND STORY c4-8 IS THE FIRST TO NEED IT =============
+ *
+ * Until c4-8 every `var(--…)` in every stylesheet in this repo was a DESIGN TOKEN, so
+ * `findUnknownTokenReferences` could treat "not declared in tokens.css" as "misspelled, and it
+ * resolves to nothing at runtime". That inference is now incomplete: a custom property can also
+ * be a *channel*, declared nowhere and written per element by a component through the
+ * `style` attribute — which is precisely the escape hatch `eslint.config.js` reserved for *"a
+ * computed bar height in c4-8"* and which that story amended the rule to open.
+ *
+ * **It was found by this guard going red, not by anyone predicting it**, which is worth saying:
+ * the story enumerated the ESLint rule and the two lint fixtures as the work, and the token
+ * guard is a third gate the hatch collides with that no artefact mentioned.
+ *
+ * ================= AN ALLOWLIST, IN THE OPEN, FOR THE MANA_DATA_INK REASON ==============
+ *
+ * Not a pattern exemption (`/^--curve-/`, or "anything with a fallback"). Both of those are
+ * rules an author can satisfy by accident, and the failure this guard exists to catch — a
+ * MISSPELLED token name resolving to nothing — looks exactly like a runtime channel from the
+ * outside. So each entry is named, with the file that consumes it and the reason, and a
+ * non-vacuity test proves the consuming file actually references it. A story adding a second
+ * channel adds an entry here, the same protocol `MANA_DATA_INK` and `PRIMITIVES` use.
+ *
+ * The narrowness is the point: the property is allowed in ONE file, so the same name spelled in
+ * another stylesheet is still a failure.
+ */
+const RUNTIME_CUSTOM_PROPERTIES: Map<string, { file: string; reason: string }> = new Map([
+  [
+    '--curve-bar-height',
+    {
+      file: 'src/containers/ManaCurve/ManaCurve.css',
+      reason:
+        'the mana curve bar height IS the data (story c4-8, Q10, AC 17) — a per-bar percentage ' +
+        'computed from the deck at render time, which no class can express and which changes ' +
+        'whenever the deck does. Written by ManaCurve.tsx through the custom-property escape ' +
+        'hatch eslint.config.js reserved for this story by name; declared in NO stylesheet on ' +
+        'purpose, because it has no design value — it is a channel, not a token. The fallback ' +
+        '`0%` in the rule is what makes an absent attribute draw nothing rather than a full bar.',
+    },
+  ],
+])
+
+// The reader is injectable for the same reason findCardRadiusInMarkup's is (and it was the
+// c4-8 review that added the seam here): the "nowhere else" half of the channel scoping needs
+// to play a channel's declaration in a file its entry does not name, and no shipped stylesheet
+// legitimately contains one — so without the seam that half is either untested or vacuous.
+const findUnknownTokenReferences = (
+  files: string[],
+  known: Set<string>,
+  read: (file: string) => string = sourceOf,
+): string[] =>
   files.flatMap((file) =>
-    [...new Set(referencedTokensIn(sourceOf(file)))]
+    [...new Set(referencedTokensIn(read(file)))]
       .filter((name) => !known.has(name))
+      .filter((name) => RUNTIME_CUSTOM_PROPERTIES.get(name)?.file !== file)
       .map(
         (name) =>
           `${file} references ${name}, which ${TOKEN_FILE} does not declare — it resolves to ` +
@@ -1103,6 +1156,66 @@ describe('token usage across the shipped stylesheets', () => {
 
   it('references no token that does not exist', () => {
     expect(findUnknownTokenReferences(shippedStylesheets, declaredTokens)).toEqual([])
+  })
+
+  describe('the runtime custom-property channel (story c4-8, Q10, AC 17)', () => {
+    it('permits each declared channel in its OWN file, and nowhere else', () => {
+      // The narrowness is the whole guard. `--curve-bar-height` is legal in ManaCurve.css
+      // because a component writes it there; the same name in any other stylesheet is still a
+      // reference to a token that does not exist.
+      for (const [name, { file }] of RUNTIME_CUSTOM_PROPERTIES) {
+        expect(
+          findUnknownTokenReferences([file], declaredTokens).join('\n'),
+          `${name} is not permitted in its own file`,
+        ).not.toContain(name)
+
+        // THE "NOWHERE ELSE" HALF, DRIVEN RATHER THAN LOCATED (review finding, c4-8): the
+        // shipped draft found a second stylesheet, asserted it EXISTED, and never fed it
+        // through the guard — and its exclusion predicate keyed FILE PATHS into a Map keyed
+        // by PROPERTY NAMES, so it proved nothing and nobody noticed because the result was
+        // discarded. The injected reader (the findCardRadiusInMarkup seam) plays the same
+        // declaration in a file the entry does not name, and the guard must report it — this
+        // is the assertion that goes red if the per-file filter in findUnknownTokenReferences
+        // ever degrades into a name-only exemption.
+        expect(
+          findUnknownTokenReferences(
+            ['src/probe.css'],
+            declaredTokens,
+            () => `.probe { height: var(${name}); }`,
+          ).join('\n'),
+          `${name} outside ${file} is not reported — the scoping is not real`,
+        ).toContain(name)
+      }
+    })
+
+    it('is NOT vacuous — every entry is a tracked file that really references its property', () => {
+      // The `MANA_DATA_INK` lesson: an allowlist entry naming a renamed or deleted file permits
+      // nothing and reads as coverage. Both halves are checked, so a stale entry fails loudly.
+      for (const [name, { file, reason }] of RUNTIME_CUSTOM_PROPERTIES) {
+        expect(shippedStylesheets, `${file} is not a git-tracked stylesheet`).toContain(file)
+        expect(
+          referencedTokensIn(sourceOf(file)),
+          `${file} does not reference ${name} — the entry permits nothing`,
+        ).toContain(name)
+        // And the property really is undeclared: an entry for something tokens.css DOES declare
+        // would be a token quietly relabelled as a runtime channel to dodge the two pins.
+        expect(declaredTokens.has(name), `${name} is a declared token, not a runtime channel`).toBe(
+          false,
+        )
+        expect(reason.length, `${name}'s entry carries no real reason`).toBeGreaterThan(40)
+      }
+    })
+
+    it('still fails a MISSPELLED token — the failure this guard exists for', () => {
+      // The firing half, and the reason this is an allowlist rather than a pattern exemption:
+      // a misspelled token name and a runtime channel look identical from the outside, so any
+      // rule shaped like `/^--curve-/` or "has a fallback" would let the typo through too.
+      const misspelled = findUnknownTokenReferences(
+        ['src/containers/ManaCurve/ManaCurve.css'],
+        new Set([...declaredTokens].filter((t) => t !== '--surface-well')),
+      )
+      expect(misspelled.join('\n')).toContain('--surface-well')
+    })
   })
 
   it('never pulses or loops (AC 12)', () => {
