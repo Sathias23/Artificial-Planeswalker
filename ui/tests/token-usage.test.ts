@@ -42,6 +42,8 @@ const TOKEN_FILE = 'src/styles/tokens.css'
 
 // git is the file authority, not readdir: it cannot see node_modules, dist or coverage, and
 // a stray stylesheet is caught the moment it is committed — which is when CI sees it.
+// DECLARED LIMIT (c4-7 review): the same blindness applies to an un-`git add`ed stylesheet, so
+// a NEW file passes this sweep vacuously until staged; tree-walk redesign in deferred-work.md.
 // `tests/fixtures/` is excluded for the same reason `npm run lint` excludes it: those files
 // exist to be broken, and are fed to these guards explicitly below.
 const shippedStylesheets = execFileSync('git', ['ls-files', '*.css'], {
@@ -1082,8 +1084,9 @@ describe('token usage across the shipped stylesheets', () => {
     // `--shadow-live-ring` and `--shadow-pinned-ring` (Q4), which move together because one
     // story gives both a consumer. Sibling pin: `expectedNames` in tests/tokens.test.ts, which
     // is the one that checks the VALUE against DESIGN.md. Both move together or the pair is
-    // wrong — and c4-4's probe (j) is the proof that moving only one goes red.
-    expect(declaredTokens.size).toBe(68)
+    // wrong — and c4-4's probe (j) is the proof that moving only one goes red. 68 until story
+    // c4-7's `--shadow-deck-row-live` (Q6), the deck row's inset live rule.
+    expect(declaredTokens.size).toBe(69)
   })
 
   it('never puts --accent-dim on --surface-overlay (AC 10, UX-DR6)', () => {

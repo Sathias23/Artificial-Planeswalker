@@ -83,8 +83,12 @@ import { describe, expect, it } from 'vitest'
 const uiRoot = fileURLToPath(new URL('..', import.meta.url))
 const sourceOf = (repoRelative: string) => readFileSync(join(uiRoot, repoRelative), 'utf8')
 
-// git, not readdir — the authority every other guard in this project uses, so an untracked
-// module cannot pass vacuously and a committed one cannot escape CI.
+// git, not readdir — the authority every other guard in this project uses: node_modules, dist
+// and coverage are invisible to it, and a committed module cannot escape CI. DECLARED LIMIT
+// (the c4-7 false-green, corrected at review — this comment used to claim the opposite): an
+// un-`git add`ed module is equally invisible, so a NEW module passes this sweep vacuously until
+// it is staged. The tree-walk redesign is ledgered in deferred-work.md; until then the registry
+// entry for a new module and the `git add` must land together.
 const shippedModules = execFileSync('git', ['ls-files', 'src/*.ts', 'src/*.tsx'], {
   cwd: uiRoot,
   encoding: 'utf8',
@@ -168,6 +172,23 @@ const COPY_MODULES: Map<string, string> = new Map([
       'in a read-aloud attribute, which is exactly what this file’s attribute half collects and ' +
       'what decide-once rule 16 forbids; the STATE travels on `aria-pressed` instead. The card ' +
       'NAME, its FACES and their TYPE LINES are data, arrive from the wire, and are not here.',
+  ],
+  [
+    'src/containers/DeckList/copy.ts',
+    'the deck list panel’s authored words (story c4-7): the panel TITLE — sourced from ' +
+      'EXPERIENCE.md:36, which names this surface, with "panel" dropped because a `<section>` ' +
+      'called "Deck list panel" announces its own kind twice — the COMMANDER and SIDEBOARD ' +
+      'labels, and the nine type-group HEADINGS. The two board labels are specified in NO ' +
+      'artefact and were handed here by name (deckGroups.ts:188, CardGrid.tsx:27), so they are ' +
+      'decisions this module states rather than quotes. The group headings sit on the copy side ' +
+      'of the data line even though they are named after card types, and the distinction is the ' +
+      'one a later reader will question: `TYPE_GROUPS`’ members are the STORE’s internal ' +
+      'vocabulary, never the wire’s — `type_line` says "Legendary Creature — Human Soldier", ' +
+      'nothing on the wire says "Creature" alone and nothing at all says "Creatures". The plural ' +
+      'forms were chosen by an author from DESIGN.md’s one worked example, which is what makes ' +
+      'them copy; uppercasing stays in CSS so the accessible name keeps the readable word. The ' +
+      'card NAMES, TYPE LINES, mana COSTS and QUANTITIES the same component renders are DATA, ' +
+      'arrive from the wire, and are deliberately not in this module.',
   ],
 ])
 

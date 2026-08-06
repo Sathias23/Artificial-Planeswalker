@@ -3826,3 +3826,84 @@ lives on is given so this section is checkable rather than merely reassuring.
   Declared residue, not a defect: the window is one cold open per deck per tab and closes itself.
   Added to the epic manual-testing checklist (entry 5 in the c4-6 record). **Home: the epic
   manual-testing checklist.**
+
+## Deferred from: code review of c4-7-deck-list-panel (2026-08-06)
+
+- **`frontFaceCost` shape 2 rests on a point-in-time corpus measurement, unguarded against future
+  imports.** A faced card with any non-blank, non-split top-level `mana_cost` is returned verbatim
+  and never cross-checked against `card_faces[0]`, even when hydration disagrees — test-pinned as
+  the deliberate posture (`frontFaceCost.test.ts`, summary-wins fixture). The invariant ("no faced
+  card's top-level cost is the back face's") was **measured at `d51b467`**, not guaranteed by any
+  schema; a future Scryfall import that populates top-level costs differently renders wrong pips
+  silently, with no analogue of the price column's type-level absence assertion. The guard belongs
+  to the importer / weekly live-contract canary layer (c3-retro precedent), not this panel.
+  **Home: the Scryfall canary / importer, next time either is touched.**
+- **The registry guards are structurally blind to untracked modules (the c4-7 false-green
+  mechanism).** `copy-rules.test.ts`, `token-usage.test.ts` and `posture.test.ts` all walk
+  `git ls-files`, so an un-`git add`ed module is invisible to every registry sweep — c4-7's first
+  full run was green with no CONTAINERS entry written, and the exact same blindness let the c4-3
+  and c4-7 bundle assets go missing from their diffs. The comment corrections (declared-limit
+  notes per `wire-contract.test.ts:106`) and this ledger entry are the c4-7 review's patch; the
+  real fix — a filesystem walk cross-checked against `ls-files`, failing on any untracked source
+  file under `ui/src/` — is deferred. **Home: the guard suite, first story that touches any
+  registry test.**
+
+## Dispositions from: dev of c4-7-deck-list-panel (2026-08-06)
+
+Written at the c4-7 review, not the story commit — the dev commit recorded all of these only in
+its Dev Agent Record, and this ledger write is itself a review patch (the c4-4/5/6 precedent is
+that the story commit writes its own ledger).
+
+**The nine inherited deferrals, a disposition each (AC 38):**
+
+- **Panel (default level) + GroupHeader appearance — RESOLVED.** Eye-checked against Chrome with
+  numbers (8.59:1 label, 5.43:1 count); the warned-of tone-over-wash failure does not occur.
+- **The ` // ` separator spoken as literal characters — CLOSED BY CONSTRUCTION on deck rows
+  only.** `frontFaceCost` splits before rendering, so a separator never reaches `ManaCost` from a
+  deck row (measured live: `anySeparatorSpoken: false`). **Still live wherever a COMBINED cost
+  renders — `CardDetail` and `CardPlaceholder` both still pass an unsplit cost.** Re-homed
+  unchanged for those surfaces.
+- **ManaPip/ManaCost appearance — RESOLVED as composition only** (no wrap, no overflow, fixed pip
+  size in the row's cost track).
+- **The `'Card // Card'` grouping fix — DECLINED and re-homed with the reason (Q10).** The data
+  blocker is gone; the mechanism one is not: `boardsOf` runs once at store-write time and the
+  reference identity is what `deckMemory.ts` and `CardDetail`'s deck-transition effect key on, so
+  re-deriving after hydration would fire a spurious transition and release the user's pin.
+  2,274 corpus rows, 0 in any live deck. **Home: a story that owns the derivation's timing** (a
+  hydration-aware second pass, or the `CardSummary` field c4-6's Q1 priced).
+- **`strategy` wire asymmetry — NOT TRIGGERED, re-homed unchanged (Q13).** Deck-level prose with
+  no row to sit in; still awaiting its first reader.
+- **`DeckRepository.list_decks` ties on `created_at` — NOT TRIGGERED, re-homed unchanged.** That
+  entry means the list of DECKS; this story renders the cards of one deck and never calls
+  `GET /api/decks`.
+- **UX-DR44's heading-level collision — MEASURED, NO CORRECTION HOMED (Q15).** Chrome reports a
+  flat list of `level=2` headings with the two `region`s carrying the grouping; declined on
+  evidence, not taste. The same tree confirms the phantom-`banner` jsdom blind spot from the
+  other side (Chrome: exactly one banner; jsdom would report three).
+- **F1 story-key strings — COUNT RECORDED.** `c4-7` displaced by its own panel (both halves
+  asserted in `App.test.tsx`); **5 F1 keys remain on a rendered deck view**; the gate stays
+  c8-5's.
+- **Panel-stacking vertical budget — FED INTO Q7 AND MEASURED.** This panel adds 3,198 px beneath
+  the card-detail panel; no internal scroller (Q7) — the page scrolls and every row is a Tab stop
+  the browser scrolls into view.
+
+**New entries this story raises:**
+
+- **The plugin bundle mirror is checked by nothing (AC 42).** Hand-copied and verified
+  byte-identical this story; `src/companion/app/static/` is CI-enforced (`ci.yml:154-167`) but
+  `plugin/server/src/companion/app/static/assets/` has no test, no workflow, no script.
+  **Home: the C4 retro**, as a one-line workflow addition.
+- **`CardTile.tsx:178` says its constant is "written as an escape" and ships the literal
+  character.** Same codepoint, nothing renders differently — but the comment is untrue of the
+  line beneath it. Not edited at c4-7 (don't-break file, cosmetic change). And the honest
+  postscript: **`DeckList.tsx`'s own constant shipped the identical defect and was caught at the
+  c4-7 review** — the escape is real only post-review. **Home: whoever next edits
+  `CardTile.tsx`.**
+- **Q3's three-spelling divergence — a named manual-testing-checklist residue.** One card renders
+  as `Clearwater Pathway` (deck row, front face per UX-DR19), `Clearwater Pathway // Murkwater
+  Pathway` (tile caption, combined per c4-6), and is announced combined (c4-5's pin
+  announcement). Raised, not discovered; UX-DR19 followed as written. **Home: the epic
+  manual-testing checklist, beside the MDFC announcement entry above
+  (`deferred-work.md:3788-3794`).**
+- *(The `CONTAINERS`/registry-guard blindness to untracked modules is ledgered in the c4-7
+  review section above — one entry, not two.)*

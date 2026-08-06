@@ -479,6 +479,22 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     expect(document.body.textContent).not.toContain('c4-5')
     // …and the slot is FILLED, not merely emptied: the panel region is on the glass.
     expect(screen.getByRole('region', { name: 'Card detail' })).toBeVisible()
+
+    // c4-7's OWN DISPLACEMENT (deferral 8, F1). The shell's placeholder named three stories in
+    // one string and c4-5 displaced all three at once, so this key was already off the glass
+    // before this story mounted anything — what changes at c4-7 is that it is now displaced by
+    // its OWN panel rather than by a sibling's. Both halves asserted, because the second is the
+    // one that would regress if the mount were dropped.
+    expect(document.body.textContent).not.toContain('c4-7')
+    const deckListRegion = screen.getByRole('region', { name: 'Deck list' })
+    expect(deckListRegion).toBeVisible()
+    // PLACEMENT, NOT JUST PRESENCE (AC 1–3, added at review 2026-08-06): the detail panel sits
+    // ABOVE the deck list in the right column. Swapping the two Fragment children in `App.tsx`
+    // passes every presence assertion in this file; document order is the one thing that notices.
+    const detailRegion = screen.getByRole('region', { name: 'Card detail' })
+    expect(
+      detailRegion.compareDocumentPosition(deckListRegion) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
   })
 
   it('puts the deck on the glass as card faces (c4-4, AC 16, FR-19)', async () => {
@@ -490,10 +506,41 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
 
     // The other half of the displacement: the slot is FILLED, not merely emptied. Two cards in
     // the fixture, so two tiles — each a real button, each pointing at our own origin.
-    const tiles = screen.getAllByRole('listitem')
+    //
+    // SCOPED, NOT BUMPED (c4-7, Q9). This read `screen.getAllByRole('listitem')` — queried over
+    // the WHOLE DOCUMENT — until c4-7 put a second `ul`/`li` structure on the same screen, at
+    // which point it counted four. Bumping `2` to `2 + rowCount` would have kept the number green
+    // while PRESERVING the coupling that made it red: the next story to add a list (c4-10's
+    // format check) would hit the identical failure, and the number would say nothing about which
+    // list grew. Scoping to the grid's own `<ul>` is the repair, and it makes the assertion mean
+    // what its comment always claimed — two TILES.
+    //
+    // The grid's `<ul>` is reached by class rather than by role+name because its `Panel` is
+    // deliberately UNTITLED (c4-4, Q6): an unnamed `<section>` has no role at all, which is
+    // correct behaviour and leaves no accessible handle to scope by.
+    const grid = document.querySelector('.card-grid')
+    expect(grid, 'the card grid is not on the glass at all').not.toBeNull()
+    const tiles = within(grid as HTMLElement).getAllByRole('listitem')
     expect(tiles).toHaveLength(2)
-    expect(screen.getByRole('button', { name: /Llanowar Elves/ })).toBeVisible()
-    expect(screen.getByText('×10')).toBeVisible()
+
+    // …and the deck list is the OTHER list, counted separately and by its own name, so the two
+    // can never again be conflated by a document-wide query. Two cards in the fixture means two
+    // rows, wherever their type groups put them.
+    const deckList = screen.getByRole('region', { name: 'Deck list' })
+    expect(within(deckList).getAllByRole('listitem')).toHaveLength(2)
+
+    // BOTH OF THESE WERE DOCUMENT-WIDE TOO, and both are scoped for the same reason (c4-7, Q9).
+    // A tile and a row now name the same card and show the same count, on purpose — they are two
+    // views of one deck — so an unscoped `getByRole`/`getByText` throws on multiple matches
+    // rather than failing an assertion, which is a worse failure because it says nothing about
+    // which view is wrong. Asserting BOTH sides is what makes the duplication deliberate: the
+    // grid's tile and the list's row each carry the name and the quantity.
+    expect(
+      within(grid as HTMLElement).getByRole('button', { name: /Llanowar Elves/ }),
+    ).toBeVisible()
+    expect(within(grid as HTMLElement).getByText('×10')).toBeVisible()
+    expect(within(deckList).getByRole('button', { name: /Llanowar Elves/ })).toBeVisible()
+    expect(within(deckList).getByText('×10')).toBeVisible()
 
     // AND STILL NO REQUEST FOR AN IMAGE, from this app. The pictures arrive through
     // `<img src>` and the browser's own HTTP cache, which is why `posture.test.ts`'s one-door
@@ -506,8 +553,19 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     // `>=`: the detail panel draws the inspection target's face at `size=large`. Spelling the
     // arithmetic keeps this a count rather than a floor — a second stray `<img>` would still
     // fail here, which a loosened comparison would have waved through.
+    //
+    // c4-7 ADDS NOTHING TO THIS SUM, and that is the assertion rather than an omission: the deck
+    // list is TEXT-FIRST (AC 15, UX-DR19), which is exactly why a card with no image data or an
+    // unrecognised id renders identically to any other row there. `tiles` is now grid-scoped, so
+    // this arithmetic still reads "one per tile, plus the detail panel" and did not need
+    // loosening — the correct repair for a document-wide count was to scope the count, not to
+    // weaken the comparison.
     const images = [...document.querySelectorAll('img')]
     expect(images).toHaveLength(tiles.length + 1)
+    // `<img>` ELEMENTS, not `role="img"` — `ManaCost` legitimately renders its pip run as a
+    // labelled `role="img"` span, and counting roles here would assert the opposite of the truth.
+    // What the deck list must not do is fetch a picture.
+    expect(deckList.querySelectorAll('img')).toHaveLength(0)
     for (const img of images) {
       expect(img.getAttribute('src')).toMatch(/^\/api\/card-image\//)
     }
@@ -604,6 +662,11 @@ describe('a deck refusal reaches the glass as a PANEL, never as a status code (A
     // panel: `right` is `undefined` on every non-deck arm, so the state panel is the one
     // subject on screen rather than sharing it with a card whose deck was just refused.
     expect(screen.queryByRole('region', { name: 'Card detail' })).toBeNull()
+    // …and NO deck list either (c4-7 AC 2 — added at review 2026-08-06: the same checkbox-
+    // without-its-test shape, one story on). Both right-column panels ride the one
+    // `kind === 'deck'` gate, and this is the assertion that notices if the list ever gets
+    // its own.
+    expect(screen.queryByRole('region', { name: 'Deck list' })).toBeNull()
   })
 
   it('answers a 400 on the deck read with no-active-deck, not the bug panel (Q5, AC 11)', async () => {

@@ -96,6 +96,14 @@ interface DesignFrontmatter {
      * of comparing `undefined` to `undefined`, which is c4-4's own lesson applied.
      */
     'card-detail': Record<string, string>
+    /**
+     * Added by story c4-7 (Q1, Q6). The deck row's block — home to `live-rule`, the fourth
+     * per-component composite, and to `columns`, whose amendment in this same commit dropped a
+     * 64px price track that had no data source anywhere in the system. Typed for the reason the
+     * two above are: a `components.deck-row` block vanishing from DESIGN.md must fail at the
+     * `toBeDefined()` anchor rather than compare `undefined` to `undefined`.
+     */
+    'deck-row': Record<string, string>
   }
 }
 
@@ -266,6 +274,11 @@ const expectedNames = [
   // mechanism that told this author the pin moves with the value.
   '--shadow-live-ring',
   '--shadow-pinned-ring',
+  // Story c4-7 (Q6). The deck row's live rule, and the same reason a fourth time: DESIGN.md files
+  // it under `components.deck-row`, not `components.elevation`, so it is not derivable from a
+  // frontmatter block and is hand-listed like the three above. It is the first of the four that
+  // is an INSET shadow — asserted below against the artefact, byte-for-byte, exactly as they are.
+  '--shadow-deck-row-live',
 ]
 
 // ---------------------------------------------------------------------------------------
@@ -302,8 +315,10 @@ describe('the token layer is DESIGN.md (AC 1)', () => {
     // gives both a consumer. The count is pinned rather than derived so that adding a token is a
     // DECISION with a diff, not a side effect — and this line moving is the open cost the ruling
     // accepted. Its sibling is `declaredTokens.size` in tests/token-usage.test.ts; both move
-    // together or the pair is wrong.
-    expect(expectedNames).toHaveLength(68)
+    // together or the pair is wrong. 68 until story c4-7, which added `--shadow-deck-row-live`
+    // (Q6) — the deck row's inset live rule, which stylelint's box-shadow allowed-list forbids
+    // inline exactly as it forbids the three composites above.
+    expect(expectedNames).toHaveLength(69)
   })
 
   it('ships all 26 colours at exactly the DESIGN.md value', () => {
@@ -491,6 +506,46 @@ describe('the token layer is DESIGN.md (AC 1)', () => {
     // half that stops the amendment being silently reverted upstream.
     expect(detail['pinned-ring']).not.toContain('accent-dim')
     expect(detail.background).toBe('{colors.surface-overlay}')
+  })
+
+  it("ships the deck row's LIVE RULE at DESIGN.md's value (c4-7, Q6)", () => {
+    // The fourth hand-listed composite, and the first INSET one. It is a token for the reason the
+    // three above are: .stylelintrc.json's box-shadow allowed-list admits `none` or a comma-list
+    // of var(--shadow-…) / var(--glow) and nothing else, so `inset 2px 0 0 …` cannot be written
+    // in DeckList.css at all.
+    const row = design.components['deck-row']
+    expect(
+      row['live-rule'],
+      "DESIGN.md's components.deck-row has no live-rule — did the artefact change shape?",
+    ).toBeDefined()
+    expect(normalise(tokens['--shadow-deck-row-live'])).toBe(normalise(row['live-rule']))
+    // `inset` is the whole point — a `border-left` would shift every column 2px sideways on
+    // becoming live, and a cursor sweeping a dense row list would read that as a shimmer.
+    expect(tokens['--shadow-deck-row-live']).toContain('inset')
+    // The M4/C3 ban, inherited rather than repaired: this is the one live marker in the app whose
+    // artefact specified `{colors.accent}` correctly the first time, and this pins it there.
+    expect(tokens['--shadow-deck-row-live']).toContain('var(--accent)')
+    expect(tokens['--shadow-deck-row-live']).not.toContain('var(--accent-dim)')
+    expect(row['live-rule']).not.toContain('accent-dim')
+  })
+
+  it('has no price track left in the deck row, and the artefact says why (c4-7, Q1, AC 12)', () => {
+    // THE ARTEFACT WAS AMENDED IN THIS COMMIT (Q1), and this is the assertion that makes it
+    // visible rather than convenient — the same mechanism the pinned-ring amendment above uses.
+    //
+    // The fourth track reserved 64px for a right-aligned PRICE. Measured at `d51b467`: `cards`
+    // has 23 columns and none is a price, no schema declares one, and the Scryfall importer never
+    // reads the `prices` object at all — the data was never imported rather than dropped.
+    // `tests/unit/companion/test_routes_cards.py:136` asserts that absence on purpose.
+    const row = design.components['deck-row']
+    // `minmax(34px, max-content)`, not a bare `34px` (c4-7 review ruling): 34 is the corpus
+    // maximum quantity, which is a measurement and not a bound — an unlimited-copy import
+    // (×100 Relentless Rats) must widen the track rather than clip into the name column.
+    expect(row.columns).toBe('minmax(34px, max-content) minmax(0, 1fr) auto')
+    expect(row.columns).not.toContain('64px')
+    // …and the bare `1fr` could not have shipped either — `shell.test.ts:960` bans a
+    // content-floored track, and `minmax(0, 1fr)` is that guard's own named correct form.
+    expect(row.columns).not.toMatch(/(^|\s)1fr(\s|$)/)
   })
 
   it('declares every token in one themeable block (AC 2)', () => {

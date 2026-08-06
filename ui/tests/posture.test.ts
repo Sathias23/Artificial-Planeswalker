@@ -49,6 +49,8 @@ const uiRoot = fileURLToPath(new URL('..', import.meta.url))
 
 // git is the file authority, not readdir: node_modules, dist and coverage are invisible to it,
 // and a stray file is caught the moment it is committed — which is when CI sees it.
+// DECLARED LIMIT (c4-7 review): an un-`git add`ed source is equally invisible, so a NEW file
+// passes this sweep vacuously until staged; tree-walk redesign in deferred-work.md.
 const trackedSources = execFileSync('git', ['ls-files', 'src'], { cwd: uiRoot, encoding: 'utf8' })
   .split('\n')
   .filter(Boolean)

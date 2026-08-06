@@ -27,8 +27,21 @@
  * *"so a modal/double-faced card whose front is a spell is treated as a nonland"*;
  * `src/logic/assessment/mana_base.py::_is_land` and `src/logic/mana_curve.py` use a **whole-string**
  * `"land" in type_line.lower()` and document that as v1 policy. FR-05 and UX-DR17 both say FRONT
- * FACE, so this module follows `view_model.py`. **84 corpus cards** would be misgrouped by the
- * whole-string policy and **four of them are in real decks today**:
+ * FACE, so this module follows `view_model.py`.
+ *
+ * **82 corpus cards** are misgrouped by the whole-string policy *through the front-face split* —
+ * that is, because their `type_line` names two faces — and **four of them are in real decks
+ * today**. Re-measured at `d51b467`; this line read **84** until story c4-7, a two-card drift
+ * since `2095050`.
+ *
+ * ⚠️ **82 is not the whole disagreement, and saying which one it is is why this number keeps
+ * drifting.** {@link groupOf} and the whole-string policy disagree on **116** corpus cards in
+ * total. The other **34** are SINGLE-faced cards that disagree for an unrelated reason —
+ * first-match-wins precedence, not the split: `Artifact Land` (25 of them) groups as **Artifact**
+ * because Artifact precedes Land in {@link TYPE_GROUPS}, and `Land Creature — Island Fish` groups
+ * as **Creature**. The split clause below does not address those and is not meant to. Re-measure
+ * with `('Land' in type_line) !== (groupOf(type_line) === 'Land')`, then partition on whether the
+ * type line contains `//`: 82 that do, 34 that do not.
  *
  *   | Agadeem's Awakening // Agadeem, the Undercrypt      | `Sorcery // Land`                            | **Sorcery**     |
  *   | Kazandu Mammoth // Kazandu Valley                   | `Creature — Elephant // Land`                | **Creature**    |
@@ -84,8 +97,16 @@ import type { DeckCardSummary, DeckDetail } from '../api/schema'
  * deck**. Noted so the next reader finds it stated rather than surprising.
  *
  * `Other` is the residual AC 16 demands, and it is what makes conservation possible: a card the
- * scheme does not name is CARRIED, never dropped. 1 live row needs it today — the two copies of
- * "Pym Particles", whose `type_line` is literally `'Card'`.
+ * scheme does not name is CARRIED, never dropped. **Exactly 1 live row needs it today**: the
+ * `fmsc` #28 printing of "Pym Particles", whose `type_line` is literally `'Card'`, quantity 1, in
+ * *Kotis, the Fangkeeper — 100-card Brawl*.
+ *
+ * ⚠️ This line read *"the two copies of Pym Particles"* until story c4-7, which is
+ * self-contradictory beside the "1 live row" in the same sentence — and the way it went wrong is
+ * worth keeping, because it is a trap the next re-measurement will walk into too. There ARE two
+ * live rows named "Pym Particles", but they are two different PRINTINGS in two different decks:
+ * `msh` #70 is an ordinary `Sorcery` and groups as one. Counting by NAME finds two; counting by
+ * GROUP finds one, and this bucket is about the group.
  */
 export const TYPE_GROUPS = [
   'Creature',

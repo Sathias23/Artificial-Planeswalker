@@ -247,6 +247,35 @@
      TO THE LAYER" — and these are the two components it was talking about. */
   --shadow-live-ring: 0 0 0 1px var(--accent), 0 0 20px var(--accent-glow);
   --shadow-pinned-ring: 0 0 0 1px var(--accent);
+
+  /* THE DECK ROW'S LIVE RULE (story c4-7, Q6, UX-DR19).
+     68 -> 69, and the pins moved in the same commit: `expectedNames` + `toHaveLength` in
+     tests/tokens.test.ts, and `declaredTokens.size` in tests/token-usage.test.ts.
+
+     `components.deck-row.live-rule`, byte-for-byte — a 2px accent bar down the row's leading
+     edge, drawn as an INSET shadow so it costs no layout: a `border-left` would shift every
+     row's content 2px sideways on becoming live, which is exactly the kind of jitter a cursor
+     sweeping a dense list turns into a shimmer. The row's live TINT is a plain background
+     colour (`components.deck-row.live-background`, `--accent-glow`) and needs no token of its
+     own, because a single colour is not a composite.
+
+     IT IS A TOKEN BECAUSE IT CANNOT BE ANYTHING ELSE, and the constraint is the same one the
+     three composites above hit: .stylelintrc.json's `box-shadow` allowed-list admits `none` or
+     a comma-list of var(--shadow-…) / var(--glow) AND NOTHING ELSE, so `inset 2px 0 0 …`
+     cannot be written in DeckList.css at all. ui/README.md ruled it — "ADD A TOKEN TO THE
+     LAYER; do not inline it, and do not declare it in your own file."
+
+     `var(--accent)`, and NOT `--accent-dim`, needs no correction here — DESIGN.md's frontmatter
+     already specifies `{colors.accent}` for this one. That is the M4/C3 fix arriving correct
+     the first time, where the tile's live ring and the detail panel's pinned ring each had to
+     be amended after the fact; this story inherits the precedent and the ban rather than the
+     defect. On `--surface-panel`, which is what a row actually sits on (`--surface-overlay` is
+     the row's HOVER colour, not its resting ground), `--accent` is 6.21:1 and `--accent-dim`
+     would be 3.05:1 — and over the row's own live tint the pair is 4.26:1 against 2.09:1, where
+     `--accent-dim` fails the 3:1 non-text floor outright. DeckList.css carries both
+     measurements beside the rule that composites them (corrected at the c4-7 review: this
+     comment previously claimed the overlay surface and the detail panel's 5.5:1/2.70:1 pair). */
+  --shadow-deck-row-live: inset 2px 0 0 var(--accent);
 }
 
 /* ==== THE REDUCED-MOTION REGISTRATION POINT ============================================
@@ -375,4 +404,28 @@
   .card-faces[data-flipped='true'] .card-face.is-front {
     visibility: hidden;
   }
+
+  /* ---- c4-7, THE DECK-ROW LIVE TINT — MECHANICAL, AND DELIBERATELY WITHOUT A RULE ------
+     UX-DR42's inventory row for this motion is above and has been reserved BY NAME since c4-4:
+     "Deck-row live tint -> instant (c4-7)". This is the story that fills it, and what it fills
+     it with is a statement rather than a declaration.
+
+     `.deck-row` transitions `background-color` and `box-shadow` over `var(--motion-pulse)` and
+     NOTHING ELSE. That is expressed entirely through a duration token, so zeroing
+     `--motion-pulse` at the top of this block already makes it instant — it is MECHANICAL, in
+     exactly the sense c4-4 drew the distinction for its image fade-in, and writing a rule for
+     it here would suggest the mechanism does not work.
+
+     THE DISTINCTION IS THE WHOLE REASON THIS BLOCK EXISTS, so it is worth saying which side
+     this lands on and why it was checked rather than assumed. A zeroed duration makes a
+     `transform` INSTANT, not ABSENT — that is why the hover pop and the flip above need their
+     own `none !important` rules. **This row ships no transform, no scale, no rotation and no
+     translation**, so there is nothing left moving once the durations are zero: the tint
+     appears at once and the inset rule appears at once, which is precisely the named fallback.
+
+     The consequence for the guard is recorded rather than left to be rediscovered: the
+     enumerated shipped-motion pin in tests/token-usage.test.ts (four entries, all c4-6's) does
+     NOT move for this story, because that pin is keyed on `transform` declarations and this
+     story adds none. A later story that gives a deck row a transform inherits both halves — the
+     rule here and the pin there. */
 }
