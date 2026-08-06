@@ -27,13 +27,16 @@ import {
   CARD_PATH_PREFIX,
   DECKS_PATH,
   DECK_PATH_PREFIX,
+  FORMAT_CHECK_PATH_SUFFIX,
   READ_TIMEOUT_MS,
   cardPath,
   deckPath,
+  formatCheckPath,
   readActiveDeck,
   readCard,
   readDeck,
   readDecks,
+  readFormatCheck,
 } from './client'
 
 // Typed as `fetch` itself, not as the zero-argument stub it happens to be: the assertions below
@@ -641,6 +644,228 @@ describe('neither boot reader retries (AC 12, Q6)', () => {
     const fetchMock = responding('{"reason": "internal_error"}', 500)
 
     await readActiveDeck()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ===================== c4-10: the format check ==========================================
+
+/**
+ * A REAL report, copied out of the running backend rather than composed (c4-10 AC 26).
+ *
+ * Measured read-only at `4e31ea7` by driving the real ASGI app against the shipped database:
+ * this is `GET /api/deck/{id}/format-check` for a real all-pass Standard deck, verbatim — six
+ * rows in `CHECK_ORDER`, five passes and the permanent rotation advisory. Nothing here is
+ * invented, which is what AC 26 asks for and what c4-8's High cost when it was not true.
+ */
+const formatCheckBody = (overrides: Record<string, unknown> = {}) =>
+  JSON.stringify({
+    is_legal: true,
+    format: 'standard',
+    format_recognized: true,
+    mainboard_count: 60,
+    sideboard_count: 0,
+    rows: [
+      { check: 'legality', status: 'pass', detail: 'Every card is legal in standard.' },
+      { check: 'size', status: 'pass', detail: 'Mainboard has 60 cards; the minimum is 60.' },
+      {
+        check: 'copy_limit',
+        status: 'pass',
+        detail: 'No card exceeds the copy limit; basic lands are exempt.',
+      },
+      { check: 'sideboard', status: 'pass', detail: 'Sideboard has 0 cards; the maximum is 15.' },
+      { check: 'banned', status: 'pass', detail: 'No card is banned in standard.' },
+      {
+        check: 'rotation',
+        status: 'advisory',
+        detail:
+          'Rotation exposure cannot be checked: the local card data carries no set release dates.',
+      },
+    ],
+    ...overrides,
+  })
+
+describe('readFormatCheck addresses the deck route it hangs off (c4-10 AC 7)', () => {
+  it('asks for /api/deck/<id>/format-check, uncached, with the shared clock', async () => {
+    const fetchMock = responding(formatCheckBody(), 200)
+
+    await readFormatCheck(ATRAXA_DECK_ID)
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toBe(`/api/deck/${ATRAXA_DECK_ID}/format-check`)
+    expect(fetchMock.mock.calls[0][1]?.cache).toBe('no-store')
+    // One `request()` helper, one timeout guard — not a second copy of the clock.
+    expect(fetchMock.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('is built ON deckPath, so the encoding argument holds rather than being restated', () => {
+    // MEASURED at c4-2 against the running backend, not argued: a RAW `../decks` id answers
+    // `200` carrying the DECK LIST. This route inherits that hazard, and inherits the fix by
+    // construction rather than by a second `encodeURIComponent` call that could be forgotten.
+    expect(formatCheckPath('../decks')).toBe('/api/deck/..%2Fdecks/format-check')
+    expect(formatCheckPath(ATRAXA_DECK_ID)).toBe(`${deckPath(ATRAXA_DECK_ID)}/format-check`)
+    expect(formatCheckPath('a/b?c#d')).toBe('/api/deck/a%2Fb%3Fc%23d/format-check')
+  })
+
+  it('shares the deck prefix — the fact every routing fixture has to branch on FIRST', () => {
+    // Not trivia: `'/api/deck/x/format-check'.startsWith(DECK_PATH_PREFIX)` is TRUE, so a test
+    // harness that checks the deck prefix first answers this route with the deck-detail body —
+    // a `200` that is not this contract, silently, in whichever file exercises the whole path.
+    // `App.test.tsx` carries the branch in BOTH of its routing fixtures because of this line.
+    expect(formatCheckPath(ATRAXA_DECK_ID).startsWith(DECK_PATH_PREFIX)).toBe(true)
+    expect(formatCheckPath(ATRAXA_DECK_ID).endsWith(FORMAT_CHECK_PATH_SUFFIX)).toBe(true)
+  })
+})
+
+describe('a 200 from the format check: the rows are the contract (c4-10 AC 7)', () => {
+  it('returns the promised record, six rows in CHECK_ORDER', async () => {
+    responding(formatCheckBody(), 200)
+
+    const outcome = await readFormatCheck(ATRAXA_DECK_ID)
+
+    expect(outcome.kind).toBe('report')
+    expect(outcome.kind === 'report' && outcome.report.rows.map((r) => r.check)).toEqual([
+      'legality',
+      'size',
+      'copy_limit',
+      'sideboard',
+      'banned',
+      'rotation',
+    ])
+  })
+
+  it.each([
+    ['a missing rows array', formatCheckBody({ rows: undefined })],
+    ['rows as an object', formatCheckBody({ rows: { legality: 'pass' } })],
+    ['a scalar body', '"format-check"'],
+    ['a body that is not JSON', '<!doctype html><title>proxy</title>'],
+    ['a null body', 'null'],
+    // The next three are c4-10 review decision 1a. EMPTY rows drew the exact panel the
+    // missing-rows case above refuses — a titled "Format check" over nothing — and the first
+    // draft's own docstring made the argument while the code accepted it, untested. A NULL or
+    // SCALAR element is worse than empty: the container dereferences `row.check` during render
+    // with no error boundary, so one bad element took down the whole deck view (FR-13 inverted).
+    ['an empty rows array', formatCheckBody({ rows: [] })],
+    ['a null row element', formatCheckBody({ rows: [{ check: 'legality' }, null] })],
+    ['a scalar row element', formatCheckBody({ rows: ['legality'] })],
+  ])('reports %s as a contract violation, not as a report with no rows', async (_label, body) => {
+    // The `namesOf` posture: an empty format-check panel reads as "nothing to report" about a
+    // deck that was never checked, which is a calm and confidently wrong thing to draw.
+    responding(body, 200)
+
+    expect(await readFormatCheck(ATRAXA_DECK_ID)).toEqual({ kind: 'error', reason: null })
+  })
+
+  it('accepts the FORMATLESS report unchanged — it is a 200, never an error (Q8)', async () => {
+    // DECLARED SYNTHETIC, and measured rather than composed: produced by overriding a real
+    // deck's format to `'potato'` and running the real `format_check`. `deck_validator.py`'s own
+    // docstring rules it — *"never a different body and never an error"* — so a reader that
+    // routed this to the `error` arm would be inventing a shape the contract deliberately
+    // does not have.
+    responding(
+      formatCheckBody({
+        is_legal: false,
+        format: 'potato',
+        format_recognized: false,
+        rows: [
+          {
+            check: 'legality',
+            status: 'advisory',
+            detail: "'potato' is not a recognized format, so legality could not be checked.",
+          },
+          { check: 'size', status: 'pass', detail: 'Mainboard has 60 cards; the minimum is 60.' },
+          {
+            check: 'copy_limit',
+            status: 'pass',
+            detail: 'No card exceeds the copy limit; basic lands are exempt.',
+          },
+          {
+            check: 'sideboard',
+            status: 'pass',
+            detail: 'Sideboard has 0 cards; the maximum is 15.',
+          },
+          {
+            check: 'banned',
+            status: 'advisory',
+            detail: "'potato' is not a recognized format, so banned cards could not be checked.",
+          },
+          {
+            check: 'rotation',
+            status: 'advisory',
+            detail:
+              'Rotation exposure cannot be checked: the local card data carries no set release dates.',
+          },
+        ],
+      }),
+      200,
+    )
+
+    const outcome = await readFormatCheck(ATRAXA_DECK_ID)
+
+    expect(outcome.kind).toBe('report')
+    expect(outcome.kind === 'report' && outcome.report.format_recognized).toBe(false)
+    expect(outcome.kind === 'report' && outcome.report.rows).toHaveLength(6)
+  })
+
+  it('accepts a single off-vocabulary row object — the non-vacuity half', async () => {
+    // (The c4-10 review retitled this: the first draft's title claimed "rows are all violations"
+    // over a fixture that was one nonsense row — the body was right and the caption was not.)
+    // Otherwise every refusal above would pass for a narrower that refused anything unusual.
+    // Row FIELDS are deliberately not validated (see `formatCheckOf`, decision 1a): only the
+    // shape the renderer cannot survive — a non-object element, an empty array — is refused, so
+    // an off-vocabulary row still reaches the report arm and renders degraded-but-standing.
+    responding(
+      formatCheckBody({ rows: [{ check: 'nonsense', status: 'exploded', detail: '' }] }),
+      200,
+    )
+
+    const outcome = await readFormatCheck(ATRAXA_DECK_ID)
+
+    expect(outcome.kind).toBe('report')
+    expect(outcome.kind === 'report' && outcome.report.rows).toHaveLength(1)
+  })
+})
+
+describe('the format check refuses in the deck vocabulary, and stays a value', () => {
+  it.each([
+    // MEASURED, not assumed: an unknown id AND a malformed id both answer `404 deck_not_found`
+    // on this route — the deck routes carry no id shape constraint, unlike the card ones, so
+    // there is no `400 invalid_request` to expect here at all.
+    ['deck_not_found', 404],
+    ['database_not_initialized', 503],
+    ['database_unavailable', 503],
+    ['payload_too_large', 413],
+    ['internal_error', 500],
+  ])('passes %s (%d) through unvalidated', async (reason, status) => {
+    responding(JSON.stringify({ reason }), status)
+
+    expect(await readFormatCheck(ATRAXA_DECK_ID)).toEqual({ kind: 'error', reason })
+  })
+
+  it('never rejects, on any of the four malformed inputs', async () => {
+    for (const body of [null, '<!doctype html>', '{"detail": "x"}', '{"reason": 42}']) {
+      responding(body, 503)
+      await expect(readFormatCheck(ATRAXA_DECK_ID)).resolves.toEqual({
+        kind: 'error',
+        reason: null,
+      })
+    }
+
+    stubFetch(() => Promise.reject(new TypeError('Failed to fetch')))
+    await expect(readFormatCheck(ATRAXA_DECK_ID)).resolves.toEqual({ kind: 'unreachable' })
+  })
+
+  it.each([
+    ['a 503', () => responding('{"reason": "database_not_initialized"}', 503)],
+    ['a network rejection', () => stubFetch(() => Promise.reject(new TypeError('nope')))],
+  ])('makes exactly ONE request for %s — no retry, no timer (AC 11)', async (_label, arrange) => {
+    // The c3-2 trap applies here as it does to every path-parameter route, and this route has a
+    // second reason of its own: the panel draws NOTHING on a refusal (Q6), so a retry would be
+    // spending requests to fix a screen nobody can see is broken.
+    const fetchMock = arrange()
+
+    await readFormatCheck(ATRAXA_DECK_ID)
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })

@@ -2352,16 +2352,41 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   limit report `copy_limit`, or a new `restricted` rule?). **Home: unowned** — its own story.
   (Severity: Low while no vintage deck exists; Medium the day one does.)
 
-- **`_MIN_MAINBOARD = 60` applies regardless of format, and c3-3 published that to a human for the
-  first time.** A deliberately documented Phase-1 limitation (D-1.6b) that until now was reported
-  only to an agent, which could caveat it. The format-check panel renders the size row directly,
-  so a Commander deck is now told on the glass that 60 cards satisfies a format that wants 100.
-  Measured: brawl and standardbrawl are genuinely 60-card formats, so the **20** brawl-family
-  decks in the real deck table are correct and only Commander is affected — and there are
-  currently **0** commander decks saved, which is why nothing looks wrong today. **Fix shape**: a
-  per-format minimum (a dict beside `_SINGLETON_FORMATS`, keyed the same way), plus the
-  "any number of copies" exemption cards the same scope note defers. **Home: unowned** — a
-  `src/logic` rule story. (Severity: Low today, Medium the first time a Commander deck is saved.)
+- **`_MIN_MAINBOARD = 60` applies regardless of format, and c4-10 put that in front of a person.**
+  A deliberately documented Phase-1 limitation (D-1.6b) that until c3-3 was reported only to an
+  agent, which could caveat it. The format-check panel renders the size row directly.
+
+  ⚠️ **THIS ENTRY'S MEASUREMENT WAS BACKWARDS AND IS CORRECTED HERE (c4-10, Q13).** It read:
+  *"brawl and standardbrawl are genuinely 60-card formats, so the **20** brawl-family decks in the
+  real deck table are correct and only Commander is affected — and there are currently **0**
+  commander decks saved, which is why nothing looks wrong today."* Every clause of that is wrong
+  except the last. `deck_validator.py`'s own comment carried the same claim and is corrected in the
+  same commit. **All four numbers, re-measured read-only at `4e31ea7` by driving the real ASGI app
+  against the shipped database:**
+
+  1. **This repo's own shipped skill contradicts the code comment.**
+     `plugin/skills/format-legality/SKILL.md:76-78` — `Brawl (Historic) | **100 (exact)**` and
+     `Standard Brawl | **60**`. They are two different formats; "brawl-family" conflated them.
+  2. **The database agrees with the skill.** All **18** `brawl` decks have a mainboard of exactly
+     **100** — min 100, max 100 — and 16 of them carry a `commander=1` row. There are **2**
+     `standardbrawl` decks, genuinely 60.
+  3. **There are 0 commander decks**, so the entry's named at-risk population is **empty**.
+  4. **The actually-affected population is the largest single format in the table**: 18 of 40
+     decks, **45%**, each shown `Mainboard has 100 cards; the minimum is 60.` for a format that is
+     exact-100 rather than a minimum at all.
+
+  No verdict changes today, because all 18 sit at exactly 100 — **the defect is in the sentence,
+  not the badge**. A 61-card Brawl deck would be told `pass`; a 99-card one would be told the
+  minimum is 60. c4-10 pins the sentence in its suite
+  (`formatCheck.fixtures.test.ts`, AC 28) so the measurement survives outside this file.
+
+  **Fix shape**: a per-format minimum (a dict beside `_SINGLETON_FORMATS`, keyed the same way),
+  plus a vocabulary decision for EXACT-vs-MINIMUM formats — `the minimum is 100` is still wrong for
+  Brawl, which wants exactly 100 — plus the "any number of copies" exemption cards the same scope
+  note defers. **Declined at c4-10** with the MCP blast radius as the reason: `validate_deck` serves
+  the agent tools as well as this panel, so the rule change moves `assess_deck_power`'s inputs too.
+  **Home: unowned** — a `src/logic` rule story. (Severity: **upgraded to Medium** — it was Low
+  while only an agent read it; from c4-10 it is on the glass for 45% of the deck table.)
 
 - **The component-name set is pinned in TWO hand-synchronised places, and the story text named
   one.** `tests/unit/companion/test_routes_decks.py` and `test_routes_cards.py` each assert the
@@ -2399,6 +2424,22 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   `format_recognized`, that is a signal the field was over-built and it should be deleted rather
   than maintained. (Severity: Low.)
 
+  ⚠️ **ANSWERED AT c4-10 (Q8), AND THE DELETE-SIGNAL FIRED — recorded rather than dressed up.**
+  `CHECK_ORDER` is **consumed**: the panel renders the payload's order and re-sorts nothing, pinned
+  by a test that feeds it a *reversed* payload and asserts the render follows it. **`FormatCheck.tsx`
+  does NOT read `format_recognized`**, and the reason is a fact about the backend rather than an
+  oversight here: the same function that sets it `false` also rewrites the `legality` and `banned`
+  rows to `advisory` with `_unanswerable`'s sentence, so by the time a renderer sees the report
+  *"this could not be checked"* is **already on the glass twice, in words**. A branch on the boolean
+  could only re-state those two rows, and the layout deliberately does not change
+  (`deck_validator.py:550-556`) — a class or `data-` attribute with no styling and no consumer
+  would be decoration dressed as a read. The behaviour under that state IS pinned, against a
+  declared-synthetic formatless report driven through the real component: six rows, both advisory
+  sentences rendered, three `caution` badges, three `positive`, and **nothing negative**.
+  **Disposition: the field is NOT deleted** (Python is untouched this story) and the question is
+  re-homed — its real consumer is a **non-rendering** one (an agent, or the header pill Q4b
+  declined). **Home: the C4 retro**, with the delete-signal recorded as fired for the panel.
+
 - **`format_recognized: true` does not mean the format key is present in the card data.**
   `_KNOWN_FORMATS` is a hand-maintained frozenset in source; `legalities` comes from a separately
   imported database. If the two skew — `_KNOWN_FORMATS` updated for a new Scryfall format ahead of
@@ -2425,6 +2466,19 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   document the asymmetry where c4-1's store holds both. **Home: c4-10 or c4-1**, whichever first
   holds both values at once. (Severity: Low.)
 
+  ⚠️ **THE HOME CONDITION IS NOW MET, AND c4-10 CLOSED IT BY CONSTRUCTION (Q14).** That story is
+  the first thing in the app to hold both values at once — `DeckBadges` renders the **stored**
+  format in the header and the format-check panel holds the **normalised** one 24px away. **The
+  panel renders no format string in its own chrome at all**: it has no headline (Q4) and its six
+  labels are format-independent, so the two values are never compared and the divergence never
+  reaches a comparison. Asserted by test over the panel's title and its six labels. Re-measured:
+  still **0 of 40**. Note the one place the normalised value *does* reach the glass — the `detail`
+  sentences interpolate it (`Every card is legal in brawl.`), which is DATA arriving from the wire,
+  beside the stored value in the header. On today's corpus they read identically. **The underlying
+  asymmetry is re-homed unchanged** (normalise at write time in `create_deck`): closing it by
+  construction in one consumer is not the same as fixing it. **Home: unowned** — a `src/data`
+  story. (Severity: Low.)
+
 ## Deferred from: code review of c3-3-format-check-endpoint-over-the-existing-validators (round 2, 2026-08-01)
 
 - **`is_legal: false` above six non-violation rows is a live UI trap, mitigated only by prose.**
@@ -2435,6 +2489,21 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   render a red headline over six rows none of which is a violation. **Home: c4-10** (the format
   check panel), plus a named line on the epic C3 manual-testing checklist. (Severity: Low here,
   Medium if c4-10 binds it unread.)
+
+  ✅ **CLOSED AT c4-10 (Q4, AC 19), AND THE "nothing machine-checkable" CLAUSE IS NO LONGER TRUE.**
+  `is_legal` is bound to **nothing**: no headline, no summary badge, no `Panel` `count`, and no use
+  of `Panel`'s own `badges` slot — that third venue ruled against explicitly rather than overlooked,
+  because no component in the app has ever used it and nothing currently exercises it. The prose
+  `Warning:` block is now a **guard**: `tests/format-check-source.test.ts` walks `git ls-files` over
+  `src/`, strips comments, and asserts the identifier `is_legal` appears nowhere outside
+  `src/api/types.d.ts` and the test files — with a non-vacuity half proving the scan can see the
+  identifier where one really is, and proving that `schema.ts`'s doc comment about the trap is
+  exempted by comment-stripping rather than by skipping the file. The trap itself is a **passing
+  test**: the declared-synthetic formatless report carries `is_legal: false` with zero violation
+  rows, and the panel renders three `caution` badges, three `positive`, and no `badge-negative`.
+  Live exposure remains **zero** (the trap needs an unrecognised format; all 40 real decks have
+  one), which is exactly why the guard rather than the corpus is what protects it. Verified by
+  probe (c): binding the field reddens the suite, closed by that named test.
 
 - **The copy-limit row answers definitively under the 4-copy fallback for a format it cannot
   interpret.** Greptile P1 on PR #31, ruled ledger-not-fix (Brad, 2026-08-01). For an
@@ -4121,3 +4190,76 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
 - **The inline-style channel allowlist is global and value-unconstrained** (`ui/eslint.config.js:230`). With two declared channels, cross-story misuse is now expressible: `--curve-bar-height` written from `ColourDistribution.tsx` (or `--colour-bar-share` from `ManaCurve.tsx`), or an absurd value (`'9999%'`), passes both ESLint and `RUNTIME_CUSTOM_PROPERTIES` — the tests-side map already records each channel's owning file, but the ESLint half ignores it. Fix shape when a third channel arrives: per-file scoping of the `:not([key.value=…])` chain, or a tests-side owner assertion walking real call sites.
 - **A colour-bar segment below ~0.24% share is invisible while its legend entry remains** (`ColourDistribution.css:116-118`). The 1px `--surface-well` hairline plus global `border-box` consumes the whole resolved width of a sub-1px segment, so the bar shows N−1 colours and the legend N. Needs ~450+ total pips (Commander-scale); thinnest live segment is 15.35px. Revisit if deck scale ever grows past the current corpus.
 - **Zero-total conflates "genuinely colourless deck" with "hydration not yet arrived"** (`ColourDistribution.tsx:147`). A deck whose every non-land is blank-top-level-cost renders no panel at first paint, then the panel materializes mid-sweep and snaps the curve from full width to half — an unannounced layout jump sitting inside the accepted c4-6 no-re-drive window. No corpus deck reaches the state; a fix would need a "pips possibly pending" signal distinct from `total === 0`, which is Epic-6-shaped territory (the same seam as the sweep-recovery keeper).
+
+## Deferred from: c4-10-format-check-panel (2026-08-06)
+
+- **A format-check refusal is SILENT, by ruling, and that is a real cost with no signal.**
+  (`ui/src/state/formatCheck.ts`, Q6, AC 12.) `'refused'`, `'unreachable'` and *"a 200 that is not
+  the contract"* all render `null`: the right column loses its third panel and keeps its first two,
+  and **nothing anywhere tells the user a check was attempted and failed**. The ruling is right —
+  the two client precedents point opposite ways (`ui/README.md:1263-1286`), and a format-check
+  refusal is neither a card (one tile among a hundred) nor a deck (the surface itself), so routing
+  it through `panelFor` would replace a working deck view with *"The companion hit a bug"* because
+  one auxiliary read failed, which is FR-13 inverted. What is deferred is the *signal*, not the
+  posture. **The panel also owns no timer and never retries**, so a transient failure persists
+  until reload. **Fix shape**: an inline, calm "could not be checked" state inside the panel's own
+  body — never a state panel, never a banner — which needs a vocabulary decision this story had no
+  mandate to make. **Home: Epic 7's refetch (c7-3), or c8-6.** (Severity: Low — measured live
+  exposure is zero on a healthy backend, and the read is a non-event at 5.2 ms median.)
+
+- **The format check goes stale the moment the agent changes the deck** (Q7, AC 11). One read per
+  active-deck id per mount, no refetch, no `deck_changed` handler — `epics-companion-app.md:698`
+  puts UX-DR35's refetch wholly in Epic 7, and half-building one here would be a second coalescing
+  rule to reconcile with that story's. The concrete failure: the agent adds a banned card, the deck
+  view updates through Epic 5/7's path, and the legality panel keeps asserting the *old* verdict —
+  which is exactly the loop UJ-1 closes. **Home: c7-3**, named in the module header so its author
+  reads it there rather than here. (Severity: Medium once `deck_changed` exists; unreachable today,
+  because nothing re-drives the deck except a poll-recovery edge that re-boots the same id.)
+
+- **When a check flips `pass → violation` after first paint, nothing will announce it** (Q16,
+  AC 29). No `aria-live` ships here, and the reason is that **nothing moves**: there is no refetch
+  (above) and this panel derives nothing from the hydration sweep, so it is the first panel in the
+  epic to escape c4-6's no-re-drive window *structurally* rather than by luck of which field it
+  needed. The day c7-3 wires `deck_changed`, a silent change becomes reachable and a sighted user
+  sees a red pill appear while a screen-reader user is told nothing. **Home: c7-5**, which already
+  owns *"the change is announced once, and motion is never the only signal"* together with its
+  reduced-motion fallback. (Severity: Low today — unreachable; Medium the day the refetch lands.)
+
+- **The header legality pill was predicted twice and does not exist** (Q4b). `ui/README.md:1344`
+  and `:1396` both asserted that c4-10 would add a `standard legal` pill beside the header's format
+  and size badges. **It did not ship**, and both lines are corrected in the same commit — the sixth
+  forward statement that file has had falsified. Reasons: it is outside story 4.10's five
+  acceptance criteria, which describe only the right-column panel; its tone would have to be
+  **synthesized** from `format_recognized` plus a row scan — the `is_legal` trap below, in the one
+  place on screen with no rows beside it to contradict it; and it would put a second consumer of
+  `GET /api/deck/{id}/format-check` in a second column with no shared state. **Home: the C4 retro**,
+  or a later header story. (Severity: Low — a mock feature, not a requirement.)
+
+- **`components.legality-row.padding` was off-scale and is amended, but the artefact's OTHER
+  numbers for this panel do not exist at all.** (Q10, Q2.) `'9px 2px'` → `'{spacing.2} {spacing.1}'`
+  in this commit. What remains: there is **no row-height token, no minimum and no number anywhere**
+  for this component, and c4-10's second line makes row height genuinely variable (measured live:
+  66.3px with a one-line detail, 86.3–87.3px with two, panel 452 × 475px all-pass and 452 × 517px
+  formatless). That was fine to ship — nothing depended on a fixed row — but a later story that
+  *does* need one has no artefact to read. **Home: unowned.** (Severity: Low.)
+
+- **The story's own Dev Notes claimed the plugin bundle mirror is "checked by NOTHING", and that
+  is FALSE — measured.** `tests/unit/companion/test_spa.py::TestThePluginMirror` compares
+  `plugin/server/src/companion/app/static/` against `src/companion/app/static/` **byte-for-byte,
+  names and bytes**, and it is what went red on this story's first `uv run pytest` after the
+  rebuild. c4-7 raised the gap and homed it on the C4 retro; the gap was already closed. **Two
+  entries are corrected rather than re-opened**: the mirror has a local test *and* a CI drift check
+  (`.github/workflows/ci.yml`), and the residue is only that neither runs from the `ui/` side, so a
+  frontend-only `npm test` still cannot see a stale mirror. **Home: the C4 retro**, downgraded from
+  *"unguarded"* to *"guarded on the Python side only"*. (Severity: Low.)
+
+## Deferred from: code review of c4-10-format-check-panel (2026-08-06)
+
+- **The `.test.ts` exemption pair creates an unguarded fixture dead zone.** The `is_legal` scan
+  (`ui/tests/format-check-source.test.ts:97`) and the copy guard both exempt every `\.test\.tsx?$`
+  file under `src/`, so a `src/**/*.fixtures.test.ts` module is visible to no source-level gate —
+  c4-10's `formatCheck.fixtures.test.ts` is the first file to occupy that zone deliberately (its
+  header argues the classification), and there is no registry, allowlist or count pinning how many
+  such files exist. The next story that wants an authored string or a bound field past a guard has
+  been shown the door. **Home: the C4 retro** — decide whether fixture-library test files need a
+  declared registry or the exemption needs narrowing. (Severity: Low.)

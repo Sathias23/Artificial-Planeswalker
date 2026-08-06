@@ -21,7 +21,8 @@
  * (2), and the guard, its comment and `ui/README.md`'s *"Not here yet"* section were edited in
  * this same commit. **The next route goes here too.** `GET /api/deck/{deck_id}` is c4-2's,
  * `GET /api/active-deck` is c4-2's, the format check is c4-10's — all of them belong in this file
- * until somebody argues the one-door property away on purpose.
+ * until somebody argues the one-door property away on purpose. **c4-10 landed the last of those
+ * four**; `readFormatCheck` is below, and the sentence above is now a record rather than a plan.
  *
  * ================= WHAT c4-2 INHERITS ===================================================
  *
@@ -87,7 +88,14 @@
  * while hiding the asymmetry that decides how the boot is written.
  */
 
-import type { ActiveDeck, Card, DeckDetail, DeckSummary, ErrorResponse } from './schema'
+import type {
+  ActiveDeck,
+  Card,
+  DeckDetail,
+  DeckSummary,
+  ErrorResponse,
+  FormatCheckReport,
+} from './schema'
 
 /**
  * The one route this story polls. Read by `tests/copy-tails.test.ts`, which holds
@@ -271,6 +279,68 @@ export type DeckOutcome =
   | { readonly kind: 'error'; readonly reason: string | null }
   | { readonly kind: 'unreachable' }
 
+/**
+ * Where `GET /api/deck/{deck_id}/format-check` lives: the deck path, plus this suffix.
+ *
+ * A SUFFIX rather than a second prefix constant, because the route genuinely hangs off the deck
+ * one — `decks.py` registers it as `/deck/{deck_id}/format-check` on the same router — and two
+ * independent prefixes would let the two drift into addressing different decks.
+ *
+ * ⚠️ **It shares {@link DECK_PATH_PREFIX}, which is why every test fixture that routes by path
+ * prefix must branch on THIS first.** `'/api/deck/{id}/format-check'.startsWith('/api/deck/')` is
+ * true, so a harness that checks the deck prefix first answers this route with the deck-detail
+ * body — a `200` that is not the contract, silently. `App.test.tsx` carries the branch in both of
+ * its routing fixtures.
+ */
+export const FORMAT_CHECK_PATH_SUFFIX = '/format-check'
+
+/**
+ * The format-check path for one deck id.
+ *
+ * Built on {@link deckPath}, so the `encodeURIComponent` argument that constant's docstring makes
+ * — measured, not argued: a raw `../decks` id answers `200` **carrying the deck list** — holds
+ * here for free rather than being restated and then forgotten. The suffix is appended AFTER
+ * encoding, so it stays a path segment of its own.
+ *
+ * The empty id is the one case encoding cannot make safe, exactly as for {@link deckPath}:
+ * `formatCheckPath('')` is `/api/deck//format-check`, which addresses nothing. It is refused one
+ * layer up in `src/state/formatCheck.ts`, before any request is made, in the manner
+ * `createDeckBoot` and `hydrateCard` both established.
+ *
+ * Args:
+ *   deckId: The deck id as the agent set it — untrusted, and treated that way.
+ *
+ * Returns:
+ *   The request path.
+ */
+export const formatCheckPath = (deckId: string): string =>
+  `${deckPath(deckId)}${FORMAT_CHECK_PATH_SUFFIX}`
+
+/**
+ * What one read of `GET /api/deck/{deck_id}/format-check` came back with. The same three cases as
+ * every other reader in this module, and for the same reasons:
+ *
+ * - `report` — a `200` whose body was the promised record. **Note what is NOT a separate case: a
+ *   deck whose format cannot be checked.** `deck_validator.py:550-556` is explicit — *"the same
+ *   shape whatever the answer … never a different body and never an error"* — so a formatless
+ *   deck lands here with `format_recognized: false` and six ordinary rows, not in `error`.
+ * - `error` — a response arrived and the request was refused. `reason` is the body's token
+ *   **exactly as it crossed the wire and unvalidated**, or `null` when the body could not yield
+ *   one. `deck_not_found` is the whole of this route's declared refusal vocabulary beside the two
+ *   database tokens; measured, an unknown id **and** a malformed one both answer `404
+ *   deck_not_found`, never `400`.
+ * - `unreachable` — no response at all.
+ *
+ * **None of the three becomes a panel** (c4-10 Q6). The card precedent applies rather than the
+ * deck one: the deck is still on the glass, so there is a working view to protect, and routing an
+ * auxiliary panel's refusal through `panelFor` would replace it with *"The companion hit a bug"* —
+ * FR-13 inverted. `src/state/formatCheck.ts` is where this outcome goes and it draws nothing.
+ */
+export type FormatCheckOutcome =
+  | { readonly kind: 'report'; readonly report: FormatCheckReport }
+  | { readonly kind: 'error'; readonly reason: string | null }
+  | { readonly kind: 'unreachable' }
+
 /** The `reason` a body carries, or `null` if it carries none this code can read. */
 const reasonOf = (body: unknown): string | null => {
   if (typeof body !== 'object' || body === null) return null
@@ -380,6 +450,50 @@ const deckOf = (body: unknown): DeckDetail | null => {
   if (typeof record.name !== 'string' || record.name.trim() === '') return null
   if (!Array.isArray(record.cards)) return null
   return body as DeckDetail
+}
+
+/**
+ * The format-check report out of a `200` body, or `null` if the body was not the promised record.
+ *
+ * **One field, and the choice of which one is the whole argument.** `deckOf` checks three and
+ * `cardOf` two, each picking the fields their consumers read first. This report's consumer reads
+ * exactly one thing — `rows` — and draws six list items straight out of it, so `Array.isArray` on
+ * that field is both the minimum AC 7 asks for and the maximum that is honest: a body without it
+ * would put an empty format-check panel on the glass, which reads as *"nothing to report"* about a
+ * deck that was never checked. That is the same failure `namesOf` refuses for the deck poll.
+ *
+ * The scalars are deliberately NOT checked. `is_legal` is bound to nothing anywhere in the app
+ * (c4-10 Q4), `format` reaches no chrome (Q14), and the two counts are unread — so a validator for
+ * them would be a hand-maintained second copy of `openapi.json` guarding fields no consumer looks
+ * at, which is exactly the drift `wire-contract.test.ts` exists to ban.
+ *
+ * **The rows must be a NON-EMPTY array of objects, and both halves were review rulings (c4-10
+ * review, decision 1a) correcting the first draft.** Empty first: the six-rows-always contract
+ * means `{rows: []}` is never the promised record, and accepting it drew the exact panel the
+ * paragraph above refuses for a missing `rows` — a titled "Format check" over nothing, reading
+ * as *"nothing to report"* about a deck that was never checked. Elements second: the container
+ * dereferences `row.check` on every element with no error boundary above it, so a single `null`
+ * in an otherwise-good array would throw DURING RENDER and take down the whole deck view — FR-13
+ * inverted by one bad element, a strictly worse failure than the silent `refused` this narrower
+ * returns instead. Field-level row validation stays OUT (the `check`/`status`/`detail` values are
+ * the openapi drift gate's business); what is refused here is only the shape the renderer
+ * physically cannot survive.
+ *
+ * ⚠️ **Row FIELDS are still not validated, and the degraded rendering is stated rather than
+ * guarded** (the first draft claimed *"the map lookup is guarded at the call site"* — false, the
+ * review found; there is no call-site guard). A row whose `check` is off-vocabulary renders an
+ * UNDEFINED label; an off-vocabulary `status` renders an empty `Badge` (its own runtime clamp
+ * absorbs the unknown tone) — while the `detail` sentence, which carries 100% of the information,
+ * still renders. The real defences are the type-level totality asserts in `FormatCheck.tsx`
+ * (which catch a VOCABULARY change at compile time, the way `banned` arrived at c3-3) and the
+ * openapi drift gate; a runtime fallback label was priced and declined as a fifth vocabulary.
+ */
+const formatCheckOf = (body: unknown): FormatCheckReport | null => {
+  if (typeof body !== 'object' || body === null) return null
+  const record = body as Partial<FormatCheckReport>
+  if (!Array.isArray(record.rows) || record.rows.length === 0) return null
+  if (!record.rows.every((row) => typeof row === 'object' && row !== null)) return null
+  return body as FormatCheckReport
 }
 
 /** A response that ARRIVED: whether it was a 2xx, and whatever body could be read out of it. */
@@ -554,4 +668,42 @@ export const readDeck = async (deckId: string): Promise<DeckOutcome> => {
   const deck = deckOf(received.body)
   // A `200` that is not the promised record: the posture `readDecks` and `readCard` both take.
   return deck === null ? { kind: 'error', reason: null } : { kind: 'deck', deck }
+}
+
+/**
+ * Check one deck against its own format, once, and report what happened without ever throwing.
+ *
+ * **ONE request, no retry, no loop, no timer** — the fourth reader in this module to say so, and
+ * the one with the least to gain from an exception. `readDeck`'s argument transfers unchanged
+ * (this route carries a path parameter, so the c3-2 measurement in this file's header applies:
+ * a backend with no database answers `database_not_initialized` to an id that could never have
+ * succeeded, and a client deciding retryability from the token alone would ask forever), and
+ * there is a second argument that is this route's own: **the panel this feeds draws nothing when
+ * the read fails** (c4-10 Q6), so a retry would be spending requests to fix a screen the user
+ * cannot tell is broken.
+ *
+ * The whole cost is worth stating because it is not the validation. Measured in-process against
+ * the shipped database over all 40 real decks: **min 3.0 / median 5.2 / max 33.8 ms**, a non-event
+ * against NFR-05's 1 s — but what it buys is a **second** `get_deck_with_cards` on top of the one
+ * `GET /api/deck/{deck_id}` already paid. The expense is a duplicated eager load, not the rules.
+ *
+ * Args:
+ *   deckId: The deck id, as the agent set it. Encoded into the path by {@link formatCheckPath};
+ *     not validated here, because there IS no shape to validate against — c3-1 Q4 ruled that a
+ *     deck id has no declared shape, and this route's own answer is the authority. Measured: an
+ *     unknown id and a malformed id both answer `404 deck_not_found`, never `400`.
+ *
+ * Returns:
+ *   A `FormatCheckOutcome`. Never rejects — a rejection is `{ kind: 'unreachable' }`.
+ */
+export const readFormatCheck = async (deckId: string): Promise<FormatCheckOutcome> => {
+  const received = await request(formatCheckPath(deckId))
+  if (received === null) return { kind: 'unreachable' }
+
+  if (!received.ok) return { kind: 'error', reason: reasonOf(received.body) }
+
+  const report = formatCheckOf(received.body)
+  // A `200` that is not the promised record: the posture every reader above takes. `null` is the
+  // reason a contract violation has — there is no token for "the backend answered something else".
+  return report === null ? { kind: 'error', reason: null } : { kind: 'report', report }
 }

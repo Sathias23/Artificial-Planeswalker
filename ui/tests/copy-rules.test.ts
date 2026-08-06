@@ -89,6 +89,28 @@ const sourceOf = (repoRelative: string) => readFileSync(join(uiRoot, repoRelativ
 // un-`git add`ed module is equally invisible, so a NEW module passes this sweep vacuously until
 // it is staged. The tree-walk redesign is ledgered in deferred-work.md; until then the registry
 // entry for a new module and the `git add` must land together.
+/**
+ * Wire-fixture modules: plain `src/` files holding VERBATIM backend responses for tests to share.
+ *
+ * Their sentences are DATA, not copy — authored by `src/logic/deck_validator.py` and arriving
+ * over the network exactly as a card name does (c4-10 Q15) — so `COPY_MODULES` may not own them
+ * (a copy owner holding wire sentences would make that Map's claim meaningless, decide-once rule
+ * 14) and this scan must not collect them. A NAMED registry with a reason, rather than the
+ * test-file blanket the c4-10 review's deferred C4-retro item warns about: adding a file here is
+ * a declaration that every string in it is a recorded backend response, and the file's own pins
+ * (`formatCheck.fixtures.test.ts`) are what hold that declaration to the shipped contract.
+ */
+const WIRE_FIXTURE_MODULES: Map<string, string> = new Map([
+  [
+    'src/state/formatCheck.fixtures.ts',
+    'the format-check fixture bodies (story c4-10, review decision 2a) — verified-real or ' +
+      'declared-synthetic `GET /api/deck/{id}/format-check` responses whose `detail` sentences ' +
+      'are deck_validator.py output, shared by three test files and pinned by ' +
+      'formatCheck.fixtures.test.ts. Split out of that test file because a test module imported ' +
+      'by other test modules registers its describes in every importer.',
+  ],
+])
+
 const shippedModules = execFileSync('git', ['ls-files', 'src/*.ts', 'src/*.tsx'], {
   cwd: uiRoot,
   encoding: 'utf8',
@@ -96,6 +118,7 @@ const shippedModules = execFileSync('git', ['ls-files', 'src/*.ts', 'src/*.tsx']
   .split('\n')
   .filter(Boolean)
   .filter((file) => !/\.test\.tsx?$/.test(file))
+  .filter((file) => !WIRE_FIXTURE_MODULES.has(file))
 
 /**
  * Where user-facing copy may live -> why that module is a copy owner.
@@ -225,6 +248,28 @@ const COPY_MODULES: Map<string, string> = new Map([
       'standalone), and the module states the divergence rather than leaving two lists silent. ' +
       'The pluralisation of "pip" is INVENTED — UX-DR18 specifies no noun at all — and says so. ' +
       'The COUNTS and the PERCENTAGES are DATA, computed from the deck, and are not here.',
+  ],
+  [
+    'src/containers/FormatCheck/copy.ts',
+    'the format check panel’s authored words (story c4-10): the panel TITLE — sourced from ' +
+      'DESIGN.md:423 and EXPERIENCE.md:37, with "panel" dropped for DECK_LIST_TITLE’s reason — ' +
+      'the six row LABELS, and the three STATUS WORDS the badge carries. This module exists ' +
+      'because the wire has NO label field at all: `check` is a machine token (`copy_limit`), ' +
+      'and nothing on the wire, in DESIGN.md or in EXPERIENCE.md’s prose ever says "Copy limit". ' +
+      'Two of the six labels are decisions rather than quotations and the module states both: ' +
+      'the mock’s first slot holds a FORMAT STRING ("Standard"), not a label, which Q14 keeps ' +
+      'out of this panel’s chrome — so "Legality" is authored from EXPERIENCE.md:37’s IA row — ' +
+      'and the mock’s "Banned or restricted" is a FALSE label that does not ship, because ' +
+      'deck_validator.py reports a `restricted` card through the LEGALITY row deliberately and ' +
+      'pinned, so a row so labelled could never fire for one. The three status words are the ' +
+      'wire’s own vocabulary rather than the mock’s six derived values ("60 / 60", "no ' +
+      'violations", "11 cards"), which are on the wire nowhere and whose computation would be a ' +
+      'construction rule written in TypeScript — the fifth declared hole in c3-3’s own rule ' +
+      'guard, which find_rule_violations states in writing it cannot see. THE SIX `detail` ' +
+      'SENTENCES ARE NOT HERE AND MUST NOT BE: they are authored by src/logic/deck_validator.py ' +
+      'and arrive over the wire exactly as a card name does, so moving them here would make this ' +
+      'Map’s whole claim meaningless (decide-once rule 14). Uppercasing stays in Badge.css so ' +
+      'the readable word survives for anyone copying the text.',
   ],
 ])
 

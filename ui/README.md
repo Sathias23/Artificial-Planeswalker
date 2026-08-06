@@ -1341,9 +1341,20 @@ what changed is only which of the two the running app shows. Each displacement i
 - **The `h1` and the header badges, as of c4-2.** `deckName` takes the deck's name; `badges` takes
   `<DeckBadges />`, which is `Badge`'s first on-screen consumer anywhere in the app. The badges say
   the format (`brawl`, `standard`, …) and the size (`100 maindeck`, plus `15 sideboard` only when
-  there is one), all in the `neutral` tone. **They make no legality claim** — the mock's
-  `standard legal` pill is **c4-10's**, over a `format-check` endpoint c4-2 never calls, and a
-  `positive` tone here would assert something the app never asked the backend.
+  there is one), all in the `neutral` tone. **They make no legality claim**, and a `positive` tone
+  here would assert something the app never asked the backend.
+
+  ⚠️ **CORRECTED AT c4-10 (Q4b), which is the SIXTH forward statement this file has had falsified.**
+  This bullet used to end _"the mock's `standard legal` pill is **c4-10's**, over a `format-check`
+  endpoint c4-2 never calls"_. **c4-10 shipped and the header pill did NOT.** Three reasons, all
+  ruled in that story: it is outside the epic's five acceptance criteria for story 4.10, which
+  describe only the right-column panel; the pill's tone would have to be **synthesized** from
+  `format_recognized` plus a scan of the rows, which is exactly the `is_legal` trap
+  `deferred-work.md:2430-2437` homes on that story — in the one place on screen with no rows beside
+  it to contradict it; and it would put a **second** consumer of `GET /api/deck/{id}/format-check`
+  in a **second** column with no shared state. The honest home is the **C4 retro**, or a later
+  header story, and the mock's pill remains unimplemented rather than quietly assumed.
+
 - **The footer, as of c2-10.** `App.tsx` passes `<Footer />` into the `footer` slot. Unlike
   every other region this one is **not waiting for data** — the attribution is a condition of
   public release (NFR-08), correct from day one, and no later story replaces it. See _The
@@ -1393,8 +1404,21 @@ under WCAG 1.4.11's 3:1. That is accepted for `neutral` — a badge is a static 
 component, and its boundary carries no information the wash does not — but it is a live
 constraint for **c4-10**, whose format-check badge carries STATE: the four semantic tones' borders
 are 6.73–11.49:1 and fine, so a state distinguished by tone is safe and a state distinguished by
-the neutral border would not be. The header badge slot is **filled** as of c4-2; **c4-10** adds
-the legality pill beside it. The one remaining primitive is the nav pill (**c6-8**).
+the neutral border would not be.
+
+**c4-10 discharged that constraint by construction and re-measured the numbers on ITS OWN
+SURFACE.** `TONE_FOR_STATUS` is total over the wire's three statuses and **never returns
+`neutral`**, coupled to `BADGE_TONES` by a type-level assert, so the unsafe state is unreachable
+rather than avoided. Two corrections to the figures above, both computed from the shipped hexes:
+the ratios on record are on `--surface-base`, and this panel's badges sit on `--surface-panel`,
+where **`neutral`'s `--border-strong` hairline is 1.75:1 — worse than the 1.89:1 recorded** — while
+the three semantic tones measure **`positive` 7.21:1 · `negative` 5.60:1 · `caution` 8.14:1** text
+over their own washes (against 7.96 / 6.15 / 8.99 on `--surface-base`, which reproduces c4-2's
+record to rounding). All three clear 4.5:1 with headroom. The unmeasured half — any of this under
+the four alternate themes — is re-homed unchanged.
+
+The header badge slot is **filled** as of c4-2, and **c4-10 declined to add a legality pill beside
+it** (see the corrected bullet above). The one remaining primitive is the nav pill (**c6-8**).
 
 #### Colour is never the sole carrier — the CVD question, measured at c4-3
 

@@ -1773,6 +1773,38 @@ describe('the containers are a declared category with a posture of its own', () 
     // all (the legend's pip ships decorative). Their coupling to `ManaColour` in both directions
     // is asserted in `ColourDistribution.tsx`, which imports both halves.
     { file: 'src/containers/ColourDistribution/copy.ts', imports: [] },
+    // c4-10's format check — and the SHORTEST import list of any container in the tree, which is
+    // the entry's whole point. Every other panel in the epic takes `boards` and most reach the
+    // card cache; this one takes **no prop at all**, reads its own slice, and imports neither
+    // `../../state/cards`, `../../state/deckGroups` nor `../../state/inspection`. That absence is
+    // the cleanest don't-break in the epic (AC 13) and it is why this panel is the first to escape
+    // c4-6's no-re-drive window STRUCTURALLY rather than by luck of which field it needed.
+    //
+    // `../../api/schema` is a TYPE-only import (`FormatCheckRow`, for the both-directions
+    // couplings of `copy.ts`'s two maps and the tone map). `../../components/Badge/tones` is also
+    // type-only (`BadgeTone`) — the third coupling axis, which is what makes `Badge`'s runtime
+    // clamp unreachable from this call site rather than merely unused.
+    //
+    // `../../state/formatCheck` is a VALUE import (`useFormatCheck`) and it READS only: the
+    // request lives in that module, `App.tsx` decides when to make it, and this container reaches
+    // the network nowhere — which is the ban `shell.test.ts`'s own posture block enforces below.
+    {
+      file: 'src/containers/FormatCheck/FormatCheck.tsx',
+      imports: [
+        '../../api/schema',
+        '../../components/Badge/Badge',
+        '../../components/Badge/tones',
+        '../../components/Panel/Panel',
+        '../../state/formatCheck',
+        './FormatCheck.css',
+        './copy',
+      ],
+    },
+    // c4-10's copy module — the SIXTH in this tree, the twelfth in the app. `imports: []` for the
+    // settled `TS2835` reason, and this one earns it in a way worth naming: `ui/tests` imports it
+    // directly (`tests/format-check-source.test.ts`), so the import-freedom is not a convention
+    // here but a load-bearing property that file asserts before it relies on it.
+    { file: 'src/containers/FormatCheck/copy.ts', imports: [] },
     // c4-9's derivation — the SEVENTH application of the `react-refresh/only-export-components`
     // split. Two imports of the same parse module for the reason `curve.ts`'s entry spells out:
     // this list is a list of import STATEMENTS, and `verbatimModuleSyntax` makes the inline
@@ -1891,7 +1923,11 @@ describe('the containers are a declared category with a posture of its own', () 
     // 19 at c4-9, which adds the colour distribution, its copy module and its derivation. It
     // also MOVES `frontFaceCost.ts` up a level rather than adding a fourth — the count is +3
     // either way, and the coverage guard below is what makes the rename impossible to forget.
-    expect(CONTAINERS).toHaveLength(19)
+    // 21 at c4-10, which adds the format check and its copy module — and only those TWO. It ships
+    // no derivation module of its own, because there is nothing to derive: the backend already
+    // decided every verdict and `deck_validator.py`'s own guard declares that a rule re-written in
+    // TypeScript is invisible to it, so a `rows.ts` here would be the exact hole that guard names.
+    expect(CONTAINERS).toHaveLength(21)
     for (const { file } of CONTAINERS) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }
