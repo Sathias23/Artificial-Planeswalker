@@ -3935,3 +3935,189 @@ that the story commit writes its own ledger).
   (`deferred-work.md:3788-3794`).**
 - *(The `CONTAINERS`/registry-guard blindness to untracked modules is ledgered in the c4-7
   review section above — one entry, not two.)*
+
+## Dispositions from: dev of c4-9-colour-distribution-panel (2026-08-06)
+
+Written in the STORY COMMIT rather than at review — c4-7's review raised the omission as a
+finding and c4-8 wrote one disposition block while eight others lived only in its record. All
+nine inherited deferrals, all eight triggered residues and the four new entries are here.
+
+**The nine inherited deferrals, a disposition each (AC 40):**
+
+- **`ManaPip` / `ManaCost` appearance (`:1400-1419`) — RESOLVED, as composition, and this is the
+  LAST of the three homes.** The five visual claims were resolved at c4-3; what that entry
+  reserved for c4-7 and c4-9 was *"composition, which a harness cannot show"*. Composition
+  verdict from the CDP eye-check: the legend's pip sits on a 13px baseline beside three text
+  runs, at its `1.25em`/16.25px size, with no wrap inside an entry and no overflow at either
+  measured width. The entry is now fully discharged.
+- **CVD — "colour is the sole carrier" (`:1447-1471`, Medium, STILL OPEN) — ADVANCED WITH A NEW
+  MEASUREMENT, AND NOT CLOSED.** This is the most on-point deferral the epic has for this panel:
+  a segmented colour bar is a graphic whose only channel is hue. Two halves, and this story is
+  careful not to conflate them:
+  - **Distinguishability** — measured fresh against the SHIPPED hexes (the only prior
+    measurement, `review-accessibility.md`, carries a *"⚠ SUPERSEDED — do not action"* banner and
+    predates the Voltglass palette). **All 15 adjacent `--mana-*` pairs are under the 3:1
+    non-text floor**, 8 under 1.3:1, worst `--mana-b`/`--mana-colorless` at **1.03:1**, best
+    `--mana-w`/`--mana-r` at **2.30:1** — slightly *worse* than the 2.73:1 on record. But every
+    segment clears the `--surface-well` track at **6.62:1 to 15.20:1**, so the shipped **1px
+    track-coloured hairline** turns 15 sub-3:1 boundaries into 15 at 6.62:1 or better, with no
+    new token and no new colour. `DESIGN.md` amended (`components.color-bar.segment-hairline`).
+  - **Identifiability** — NOT closed by the hairline, and the legend is UX-DR18's answer: every
+    entry names its colour in visible TEXT. That serves a sighted CVD reader, which the
+    `role="img"` name never did.
+  - ⚠️ **The entry stays OPEN at Medium**, awaiting Brad's acceptance of the c4-3 dE numbers.
+    Nothing here closes it; the story is explicit that a hairline is not an answer to
+    identifiability and a legend is not an answer to distinguishability.
+- **The two Python land policies disagree with FR-05/UX-DR17 (`:3536-3572`) — NOT RE-OPENED.**
+  Declined and re-homed at c4-8, with the divergence upgraded to observable. This story asks the
+  same question one axis over (pips, not lands) and answers it the same way — see Q16 below —
+  so the entry is re-homed unchanged. Its home remains a Python story that owns the scoring
+  surface.
+- **The `'Card // Card'` grouping fix (`:3515-3520`) — DECLINED AGAIN, ON THE SAME MECHANISM,
+  ONE STORY LATER.** c4-7 declined it because re-deriving `boards` after hydration would fire a
+  spurious deck-transition clear and release the user's pin. **This story reads hydration results
+  and does NOT re-derive `boards`** — `coloursOf` walks the existing partition along a new axis
+  (colour) and rebuilds nothing — so the mechanism is untouched and the decline stands. Worth
+  noting the two populations are the same one: all 2,284 `Card // Card` rows are also §C's
+  *"unpippable by any route"* set, so this panel would gain nothing from the fix either.
+- **F1: story-key-shaped strings on the rendered view (`:3456-3464`, `:3765`) — COUNT RECORDED.**
+  `c4-9` is now displaced **by its own panel** rather than by a sibling's (both halves asserted
+  in `App.test.tsx`). The left column has contributed its last: `c4-10` and `c4-11` remain, in
+  the right column's placeholder and the skip-link work. The gate itself stays **c8-5's**.
+- **Panel-stacking vertical budget (advisory) — MEASURED, AND THIS ONE GROWS THE ROW RATHER THAN
+  THE COLUMN.** Unlike c4-7 (+3,198 px beneath) and c4-8 (+168 px), this panel is a SIBLING: if
+  its legend were taller than the curve, the row would grow and both panels with it. Measured on
+  the eye-check — see the story record for the row's height before and after.
+- **The 21em oracle scroller is keyboard-unreachable (`:3806-3814`, c4-11's) — NOT TRIGGERED, and
+  the reason is structural rather than incidental**: this panel contains no scroller of any kind
+  and adds **zero Tab stops**, so it neither worsens nor touches the entry. Re-homed unchanged.
+- **`DeckRepository.list_decks` ties on `created_at` (`:1668-1699`, Medium-High) — NOT TRIGGERED,
+  re-homed unchanged.** That entry is about the list of DECKS; this story renders one deck's
+  cards and never calls `GET /api/decks`. Same disposition as c4-7's and c4-8's.
+- **The registry guards are blind to untracked modules (`:3869-3877`) — TAKEN IN PART, AND THE
+  REST DECLINED WITH A REASON.** This entry is homed to *"the first story that touches any
+  registry test"*, and this story touches **three** (`shell.test.ts`, `copy-rules.test.ts`,
+  `token-usage.test.ts`), so silence was not available. What it took: nothing about the
+  `ls-files` walk, and instead the **adjacent hole the same walk has**, found by this story's own
+  file move — see the new entries below. What it declined: the filesystem-walk redesign, because
+  the honest fix is one guard shared by three suites and a story that adds a panel is not where a
+  guard-suite refactor belongs. **Home unchanged: the guard suite.** The concrete mitigation
+  remains the one c4-7's review wrote down — `git add` before believing a green run, which this
+  story did (AC 44).
+
+**The eight triggered residues, a line each:**
+
+- **The `MANA_DATA_INK` invitation (`ui/README.md:678-681`) — ACCEPTED.**
+  `ColourDistribution.css` is the allowlist's **second entry and its first joiner since c2-8
+  declared it**. c4-8 declined with a measurement and wrote *"c4-9 remains invited"*; this story
+  could not decline, because UX-DR18 calls its bar *"data ink used correctly"* in the artefact's
+  own words. Both invitations are now answered, and they went opposite ways.
+- **`--mana-gold`'s first consumer (`ui/README.md:706-710`) — THE PREDICTION WAS WRONG AND IS
+  CORRECTED IN THIS DIFF.** The README predicted this story would spend gold and move the count
+  6 → 7. It joined the allowlist and did **not** spend gold: UX-DR17's gold is a *multicolour
+  card* contributing one segment to a stacked curve, UX-DR18 specifies a **pip count**, and a pip
+  is never gold. Count stays **6 of 7**, and the absence is now **asserted by a test** rather
+  than noted in prose. Gold's real first consumer is a stacked curve or a colour-identity dot,
+  neither of which is in Phase 1.
+- **The visually-hidden idiom's third instance — NOT TRIGGERED, stated rather than left as an
+  absence.** UX-DR18 makes the legend the accessible data path and the legend is VISIBLE text, so
+  no third clip-rect block ships and c4-8's promotion trigger does not fire. It remains armed for
+  whoever writes the third.
+- **The split-card `cmc` divergence, re-homed here by name (`curve.ts:39`, `curve.test.ts:219`)
+  — DECLINED, AND THE COMMENTS THAT NAMED THIS STORY ARE CORRECTED.** See Q12 and the new entry
+  below.
+- **The next story that renders an identifier / picks a type role (`:3626-3637`) — ANSWERED ON
+  THE RECORD.** This panel renders two numeric values. `--type-numeric` (with its mandatory
+  `font-variant-numeric` companion) for the pip COUNT, `--type-micro` (with `--tracking-micro`
+  and its `text-transform`) for the PERCENTAGE. `DESIGN.md`'s colour-distribution anatomy
+  specifies neither; the authority is the composition reference, corroborated by `DESIGN.md:407`'s
+  curve counts and `components.deck-row`'s quantity, both `{typography.numeric}`
+  `{colors.text-tertiary}`. The residue's point stands — nothing CHECKS that the right role was
+  chosen — and is re-homed unchanged.
+- **`StatChip`'s first surface — TRIGGERED FOR THE FIRST TIME, AND DECLINED IN BOTH HALVES.** The
+  composition reference ends this panel with three `StatChip`s: `Sources R 19`, `Sources W 16`,
+  `Deck value {total}`. **`Deck value` is a price and there is no price anywhere in this system**
+  — c4-7 measured it out of existence and amended `DESIGN.md` twice to say so. **"Sources"**
+  appears in no UX-DR, no `DESIGN.md` line and no AC; it exists only in `EXPERIENCE.md:34`'s IA
+  row (*"Pip distribution, source counts, deck value"*). Neither ships. `StatChip` therefore
+  still has **no surface**, and `EXPERIENCE.md:34` / `:173` carry two claims the product does not
+  make. **Home: the C4 retro**, with the `DESIGN.md` price amendments as the precedent for how to
+  correct an artefact that promises data that does not exist.
+- **The cross-file card-shape collision (`:3587-3596`) — NOT TRIGGERED.** This stylesheet styles
+  only its own `.colour-*` classes, reaches into no `.card-shape` descendant, and draws no card;
+  it neither joins `CARD_SHAPED` nor names `--radius-card`. Both directions asserted.
+- **The hydration sweep's no-re-drive window (c4-6 review ruling 1) — TRIGGERED, AND THE
+  ONE-STORY REPRIEVE c4-8 OPENED IS OVER.** This panel depends on the sweep for **+48 pips across
+  16 of 40 decks**, so a backend blip *during* the sweep leaves those pips permanently missing
+  with no error state, while single-faced neighbours look fine. c4-2's edge-triggered recovery
+  only re-boots from `refused`/`none`, so nothing re-drives it. **Cited as the documented
+  posture, not re-opened** — and this story is the first where the consequence is a moving
+  PERCENTAGE rather than a missing pip, which is why `aria-live` is banned here rather than
+  merely absent.
+
+**New entries this story raises:**
+
+- **Q16 — `compute_pip_signals` and the colour bar now answer "how much black is this deck"
+  differently, on FIVE AXES AT ONCE.** `mana_base.py:343-390` feeds `_mana_efficiency_score`
+  through `dimensions.py:667-702` and thence `assess_deck_power`, whose calibration benchmark set
+  is Epic 5's frozen artefact — re-validating it does not belong inside a colour bar, so the
+  Python is unchanged and `uv run pytest` is untouched. **The divergence is upgraded from latent
+  to OBSERVABLE**, and every axis carries its own live count, because c4-8's lesson is on the
+  record (*"a bare number in a ledger entry is not checkable when three tests all sound like the
+  same policy"*):
+
+  | axis | Python (`compute_pip_signals`) | the bar | live exposure |
+  |---|---|---|---:|
+  | hybrid `{W/U}` | counts for **nobody** (bare pips only) | credits **both** colours | **29 copies / 10 decks** |
+  | Phyrexian `{U/P}` | counts for nobody | counts as its colour | **7 copies / 10 decks** |
+  | generic-hybrid `{2/R}` | counts for nobody | counts as red | **0 live** (62 corpus) |
+  | the sideboard | **included** by default (`:349-350`) | excluded (Q6) | **87 pips / 5 decks** |
+  | split / Adventure / Omen costs | `_pip_cost` reads `card_faces[0]` when top-level is blank, and the WHOLE string otherwise | front face always | **27 rows / 53 copies** |
+
+  The land policies also still differ (whole-string vs front-face word), which is the separate
+  entry at `:3536-3572`. **Home: a Python story that owns the scoring surface**, with Epic 5's
+  calibration set as the artefact that has to move with it.
+
+- **The numeric mana-value parser has NO home in Phase 1, and the two comments that gave it one
+  are corrected.** `curve.ts:36-40` and `curve.test.ts:212-236` both re-homed the split-card
+  `cmc` divergence to c4-9 *"which must parse costs anyway"*. **c4-9 parses costs into PIPS**: it
+  walks `ManaSymbolToken.colours` and never adds a generic cost, so nothing it wrote converts a
+  cost string to a number, and the sentence turned out to describe the whole of `ui/` rather than
+  a gap this story would fill. Both comments now name the real condition — *whoever writes a
+  numeric mana-value parser* — and the red-in-waiting pin stays exactly as it is. Exposure is
+  unchanged and still zero: **137 corpus cards, 0 live**. **Home: a story that needs a mana
+  value, and there is none in Phase 1.**
+
+- **THREE MEASUREMENT-INSTRUMENT DEFECTS, and they are the same defect in three places.** This
+  epic's standing theme is coverage that reads as coverage; all three of these are in the
+  instruments used to MEASURE, which is the worst place for it:
+  1. **`card_faces IS NOT NULL` matches all 38,261 rows.** The column is `NOT NULL` and a
+     non-faced card stores the JSON *string* `'null'` (35,036 of them). The only correct
+     predicate is `json_type(card_faces)='array'` → **3,225**. Any fixture or measurement query
+     using the nullable form passes vacuously over the whole corpus.
+  2. **`deck_cards` has 2,027 rows but only 1,999 belong to a live deck.** **28 rows / 89 copies
+     across 2 deck ids have no `decks` row at all** — orphans from deleted decks. A measurement
+     that does not join `decks` over-counts by that much, and this is why §A's totals reproduce
+     only with the join present. `deckGroups.ts:230` already quotes the correct 1,999.
+  3. **The evasion-probe harness reported both do-nothing negative controls RED**, and the reason
+     was not the controls: every one of the 57 files failed with `TypeError: Cannot read
+     properties of undefined (reading 'config')` and *"Vitest failed to find the current suite"*
+     — **zero assertions executed**, under which every probe reads "caught" for free. This is the
+     **third time in this epic** a probe harness has been caught by its own negative controls,
+     and the second time the cause was the runner rather than the guard. The harness now
+     VALIDATES each run (a real `Tests N passed` line, no crash signature) and retries an invalid
+     one rather than scoring it. **Home: the C4 retro** — the repair keeps being re-invented per
+     story, and a shared harness is the thing that would stop it.
+
+- **`EXPERIENCE.md:34` and `:173` promise data this product does not have.** The IA row reads
+  *"Pip distribution, source counts, deck value"*. Pip distribution ships here; **source counts
+  appear in no UX-DR, no `DESIGN.md` line and no AC**, and **deck value is a price, which c4-7
+  measured out of existence** (23 columns in `cards`, none a price; the Scryfall importer never
+  reads the `prices` object). `DESIGN.md` was amended twice for the price; `EXPERIENCE.md` was
+  not. **Home: the C4 retro**, with the `DESIGN.md` amendments as the precedent.
+
+## Deferred from: code review of c4-9-colour-distribution-panel (2026-08-06)
+
+- **The inline-style channel allowlist is global and value-unconstrained** (`ui/eslint.config.js:230`). With two declared channels, cross-story misuse is now expressible: `--curve-bar-height` written from `ColourDistribution.tsx` (or `--colour-bar-share` from `ManaCurve.tsx`), or an absurd value (`'9999%'`), passes both ESLint and `RUNTIME_CUSTOM_PROPERTIES` — the tests-side map already records each channel's owning file, but the ESLint half ignores it. Fix shape when a third channel arrives: per-file scoping of the `:not([key.value=…])` chain, or a tests-side owner assertion walking real call sites.
+- **A colour-bar segment below ~0.24% share is invisible while its legend entry remains** (`ColourDistribution.css:116-118`). The 1px `--surface-well` hairline plus global `border-box` consumes the whole resolved width of a sub-1px segment, so the bar shows N−1 colours and the legend N. Needs ~450+ total pips (Commander-scale); thinnest live segment is 15.35px. Revisit if deck scale ever grows past the current corpus.
+- **Zero-total conflates "genuinely colourless deck" with "hydration not yet arrived"** (`ColourDistribution.tsx:147`). A deck whose every non-land is blank-top-level-cost renders no panel at first paint, then the panel materializes mid-sweep and snaps the curve from full width to half — an unannounced layout jump sitting inside the accepted c4-6 no-re-drive window. No corpus deck reaches the state; a fix would need a "pips possibly pending" signal distinct from `total === 0`, which is Epic-6-shaped territory (the same seam as the sweep-recovery keeper).

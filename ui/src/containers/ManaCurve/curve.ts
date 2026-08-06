@@ -36,8 +36,14 @@ import { frontFace } from '../../state/deckGroups'
  * Not fixed here (Q2). The fix is a numeric mana-value parser; `ui/` has none — `ManaCost` and
  * `describeManaCost` parse a cost into PIPS and nothing anywhere converts a cost string to a
  * number — and writing the second cost parser in `ui/` inside a seven-bar panel is the wrong
- * home. **Re-homed to c4-9**, which must parse costs anyway. `curve.test.ts` pins the known-
- * wrong bucket, so the next author finds a red test rather than a screenshot.
+ * home. `curve.test.ts` pins the known-wrong bucket, so the next author finds a red test rather
+ * than a screenshot.
+ *
+ * ⚠️ **THIS PARAGRAPH RE-HOMED THE FIX TO c4-9 BY NAME, AND c4-9 DECLINED — corrected here
+ * rather than left standing.** That story counts PIPS: it walks `ManaSymbolToken.colours` and
+ * never adds a generic cost, so nothing in it converts a cost to a number either, and the
+ * sentence above turned out to describe the whole of `ui/` rather than a gap c4-9 would fill.
+ * **The real home is whoever needs a numeric mana value, and no Phase 1 story does.**
  *
  * ================= THE BOARD POLICY, WHICH IS INVISIBLE FROM THE CODE (Q5) =============
  *

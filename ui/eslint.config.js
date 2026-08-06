@@ -157,7 +157,24 @@ export default tseslint.config(
       // NAME allowlist, not a prefix test — the same protocol RUNTIME_CUSTOM_PROPERTIES uses in
       // tests/token-usage.test.ts, and the two lists move together: a story adding a channel
       // adds it in both places, in the open, or one of the two gates goes red (Brad's ruling
-      // 2026-08-06). Today the list is one name: --curve-bar-height, c4-8's bar height.
+      // 2026-08-06).
+      //
+      // ==== THE SECOND CHANNEL JOINS, IN THE OPEN (c4-9, Q13, AC 19) =====================
+      //
+      // --colour-bar-share is c4-9's segment width, and it is the first test of whether the
+      // "exact NAME allowlist" protocol survives a second entry rather than quietly becoming a
+      // prefix again. It does not: the list below is two literal strings, and a third story
+      // adds a third the same way.
+      //
+      // It carries a RAW PIP COUNT, not a percentage, which is worth noting because it makes
+      // this channel narrower than c4-8's rather than wider: `flex-grow` performs the division
+      // in the browser, so no percentage is computed in TSX at all, nothing can divide by zero
+      // at the call site, and the value crossing the attribute is an integer. The consuming
+      // declaration is `flex-grow: var(--colour-bar-share, 0)` in ColourDistribution.css, where
+      // stylelint and tests/token-usage.test.ts can both see the rule around it.
+      //
+      // Today the list is two names: --curve-bar-height (c4-8's bar height) and
+      // --colour-bar-share (c4-9's segment width).
       //
       // DIRECT-CHILD PATHS, NOT DESCENDANT :has, in both selectors — the c4-8 review's
       // correction of its own first amendment. The shipped draft tested
@@ -205,19 +222,21 @@ export default tseslint.config(
         {
           // The ordinary case, and the one the ban has always been about: the attribute IS a
           // literal, but it carries a spread, a computed key, or any property whose key is not
-          // a declared runtime channel. `[key.value="--curve-bar-height"]` is an exact string
-          // match against the allowlist; an identifier key (`padding`) or a computed key has
-          // no matching `value`, so `:not()` fires — conservative in the right direction.
+          // a declared runtime channel. Each `[key.value="…"]` is an exact string match against
+          // the allowlist; an identifier key (`padding`) or a computed key has no matching
+          // `value`, so the chained `:not()`s fire — conservative in the right direction. A
+          // third channel is a third `:not()`, which is the protocol working rather than a
+          // reason to loosen back to a prefix.
           selector:
-            'JSXAttribute[name.name="style"]:has(:matches(JSXExpressionContainer > ObjectExpression, JSXExpressionContainer > TSAsExpression > ObjectExpression) > :matches(SpreadElement, Property:not([key.value="--curve-bar-height"])))',
+            'JSXAttribute[name.name="style"]:has(:matches(JSXExpressionContainer > ObjectExpression, JSXExpressionContainer > TSAsExpression > ObjectExpression) > :matches(SpreadElement, Property:not([key.value="--curve-bar-height"]):not([key.value="--colour-bar-share"])))',
           message:
             'Inline style={{…}} bypasses the whole token layer — no stylelint rule and no ' +
             'guard in tests/token-usage.test.ts can see it. Put the rule in a .css file and ' +
             'reach values through var(--…). The ONLY permitted form is an object literal ' +
-            'whose keys are all DECLARED runtime channels (today: --curve-bar-height), with ' +
-            'no spread — a bare `--` prefix is not enough, because a custom property can ' +
-            'override a real design token for every descendant (c4-8, AC 17). See ' +
-            'ui/README.md, "The token layer".',
+            'whose keys are all DECLARED runtime channels (today: --curve-bar-height, ' +
+            '--colour-bar-share), with no spread — a bare `--` prefix is not enough, because a ' +
+            'custom property can override a real design token for every descendant (c4-8, ' +
+            'AC 17; c4-9, AC 19). See ui/README.md, "The token layer".',
         },
       ],
     },

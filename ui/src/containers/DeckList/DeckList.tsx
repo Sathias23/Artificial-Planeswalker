@@ -14,7 +14,7 @@ import {
 } from '../../state/inspection'
 import { COMMANDER_LABEL, DECK_LIST_TITLE, GROUP_LABELS, SIDEBOARD_LABEL } from './copy'
 import './DeckList.css'
-import { frontFaceCost, frontFaceName } from './frontFaceCost'
+import { frontFaceCost, frontFaceName } from '../frontFaceCost'
 
 /**
  * The deck as a text list, grouped by type — the right column's second panel

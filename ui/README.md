@@ -676,11 +676,13 @@ been enforced by nothing for four stories — a rule with no consumer and no gat
 The gate is in `tests/token-usage.test.ts` and has two halves (plus a markup half, below):
 
 - **Which files may reference a `--mana-*` at all** — the `MANA_DATA_INK` allowlist, each entry
-  carrying the reason that file is data ink. Today it is `ManaPip.css` alone. **c4-8** (stacked
-  curve segments) and **c4-9** (the colour-distribution bar) add their own entry, in their own
-  story, in the open — the same protocol `PRIMITIVES` uses. A non-vacuity test proves every
-  entry is a path git actually tracks, so a rename fails loudly rather than silently permitting
-  nothing.
+  carrying the reason that file is data ink. Both invitations have now been answered, and they
+  went opposite ways, which is the protocol working rather than failing: **c4-8 DECLINED** on a
+  measurement (a curve stacked by colour would paint 24 live rows colourless from a structurally
+  blank `colors` field) and **c4-9 JOINED** — `ColourDistribution.css` is the list's second
+  entry and its first since c2-8, because UX-DR18 calls its bar _"data ink used correctly"_ in
+  the artefact's own words. A non-vacuity test proves every entry is a path git actually tracks,
+  so a rename fails loudly rather than silently permitting nothing.
 - **Which properties may spend one** — an **allowlist**: `background`, `background-color`,
   `background-image`, `fill`, `stop-color`. Nothing else. It is an allowlist rather than a ban
   list on purpose, and that is the general lesson: "ban the family, never enumerate members" has
@@ -698,16 +700,29 @@ take a class, not a `fill=` attribute.
 **The half no static reader can decide is review's**, declared in the guard's own comment the
 way `surfaces.ts` declares its own: whether a given curve bar is genuinely **stacked** is a
 property of the data bound to it and the elements composed at runtime. **c4-8's reviewer must
-look**; the gate will not have looked for them. The same comment declares a second residual:
+look**; the gate will not have looked for them. (c4-8 shipped no stacking at all, so that
+residue was answered by there being no segment rather than by inspection; c4-9's segments are
+the first the question genuinely applies to.) The same comment declares a second residual:
 chrome-shaped spend **through an allowed property in an allowlisted file** (a hover tint, a
 button-like background) passes both halves — the allowlist _reason_ is what review checks it
 against.
 
-**`--mana-gold` is the family's seventh token and has no consumer yet** — deliberately: it is
+**`--mana-gold` is the family's seventh token and STILL has no consumer** — deliberately: it is
 not a cost colour, so `MANA_COLOUR_ORDER` (the parser's vocabulary) excludes it and the pip
-class-coverage guard derives 21 classes from six colours. Its first consumer (likely c4-9's
-colour-identity bar) joins `MANA_DATA_INK` in the open and moves the guard's spent-token count
-from 6 to 7 there, not silently.
+class-coverage guard derives 21 classes from six colours.
+
+⚠️ **The prediction this paragraph used to make was wrong, and c4-9 corrected it.** It read
+_"its first consumer (likely c4-9's colour-identity bar) joins `MANA_DATA_INK` in the open and
+moves the guard's spent-token count from 6 to 7 there"_. c4-9 **did** join the allowlist — it is
+the first joiner since c2-8 — and it **did not spend gold**, because the prediction had the
+wrong graphic: UX-DR17's gold is a _multicolour card_ contributing one segment to a stacked
+curve, while UX-DR18 specifies a **pip count**, and **a pip is never gold**. `{W/U}` is a
+white-or-blue pip, which `ManaPip` already draws as a two-stop gradient across two real tokens.
+
+The spent-token count therefore stays **6 of 7**, and the absence is now **asserted by a test**
+rather than noted in prose (`tests/token-usage.test.ts`, _"still has NO consumer for
+--mana-gold"_) — an absence nothing protects is an absence that ends silently. Gold's real first
+consumer is a stacked curve or a colour-identity dot, and **neither is in Phase 1**.
 
 **One class per colour, never a token name built at runtime.** The composition reference writes
 `'var(--mana-' + color + ')'` into an inline style. The lint error is the least of it: a
@@ -753,9 +768,21 @@ element's children are presentational, so nothing double-announces.
 symbol reads as its own raw text (`{HW}` → _"HW"_), which is honest rather than silent — the
 same rule the pips follow, in words.
 
-**A standalone `ManaPip` is decorative by default**, with an **opt-in** `label`. c4-9's legend
-puts a pip beside its own text count, and a doubled announcement there is the flooding UX-DR45
-warns about, so the default is the safe direction.
+**A standalone `ManaPip` is decorative by default**, with an **opt-in** `label`.
+
+⚠️ **This paragraph used to name c4-9's legend as the `label` prop's caller, and c4-9 shipped it
+DECORATIVE instead** — the correction is worth keeping because it is the opt-in defaulting the
+right way. The reasoning was right and the conclusion inverted: a legend entry puts a pip beside
+its own text count, and the entry already says the colour, the count and the percentage in
+words, so a labelled pip there is exactly the doubled announcement UX-DR45 warns about. The prop
+therefore has **no caller in Phase 1**, and it is right that it exists and is unused: the safe
+direction is the default, and a story that genuinely needs a named pip (one drawn without text
+beside it) opts in.
+
+That also makes the colour NAME load-bearing copy rather than a label —
+`ColourDistribution/copy.ts` owns the six words, and they are the only route by which a colour
+reaches a screen-reader user at all. Which is what UX-DR18's _"the legend is the accessible data
+path"_ means when it is taken literally.
 
 #### No symbol lookalike, including the Phyrexian Φ
 

@@ -595,6 +595,23 @@ const RUNTIME_CUSTOM_PROPERTIES: Map<string, { file: string; reason: string }> =
         '`0%` in the rule is what makes an absent attribute draw nothing rather than a full bar.',
     },
   ],
+  [
+    '--colour-bar-share',
+    {
+      file: 'src/containers/ColourDistribution/ColourDistribution.css',
+      reason:
+        'the colour bar segment width IS the data (story c4-9, Q13, AC 19) — one segment per ' +
+        'colour, sized by that colour’s share of the deck’s pips, which no class can express ' +
+        'because a percentage is continuous. THE SECOND ENTRY ON THIS LIST, and the first test ' +
+        'of whether the exact-NAME protocol survives growth rather than sliding back into a ' +
+        '`/^--/` prefix: it does, in both places at once (eslint.config.js chains a second ' +
+        '`:not([key.value=…])`). It is NARROWER than --curve-bar-height rather than wider — it ' +
+        'carries a RAW PIP COUNT, and `flex-grow: var(--colour-bar-share, 0)` makes the BROWSER ' +
+        'divide, so no percentage is computed in TSX and no call site can divide by zero. The ' +
+        'fallback `0` is what makes an absent attribute draw nothing rather than let a zero ' +
+        'basis grow to fill the whole track.',
+    },
+  ],
 ])
 
 // The reader is injectable for the same reason findCardRadiusInMarkup's is (and it was the
@@ -684,6 +701,17 @@ const MANA_DATA_INK: Map<string, string> = new Map([
     'src/components/ManaPip/ManaPip.css',
     'the pip IS the datum: a filled circle whose entire content is the colour of the symbol it ' +
       'stands for (UX-DR13, story c2-8).',
+  ],
+  [
+    'src/containers/ColourDistribution/ColourDistribution.css',
+    'the segment IS the datum: one band per colour, sized by that colour’s share of the deck’s ' +
+      'pips, and UX-DR18 calls it "data ink used correctly" in the artefact’s own words (story ' +
+      'c4-9). THE FIRST JOINER SINCE c2-8 DECLARED THIS LIST — c2-8 named c4-8 and c4-9 as the ' +
+      'two invited, c4-8 declined with a measurement (a curve stacked by colour would paint 24 ' +
+      'live rows colourless from a structurally blank `colors` field) and wrote "c4-9 remains ' +
+      'invited"; this story cannot decline, because its bar is mana-* ink by specification. ' +
+      'Every spend is through `background` and through a CLASS, which is ManaPip.css’s shape ' +
+      'and the only way in: the markup half allows none anywhere outside a stylesheet.',
   ],
 ])
 
@@ -1331,11 +1359,43 @@ describe('token usage across the shipped stylesheets', () => {
     // And the consumer genuinely spends the tokens, so "no findings" means "checked and clean".
     // SIX of the family's SEVEN: `--mana-gold` (tokens.css declares it for multicolour
     // identity) has no pip class and no consumer yet — deliberately, because MANA_COLOUR_ORDER
-    // is the parser's colour vocabulary and "gold" is not a cost colour. Its first consumer
-    // (c4-9's colour-identity bar is the likely one) joins MANA_DATA_INK in the open and spends
-    // it as a fill, and this count moves to 7 THERE, not silently (review 2026-07-29).
+    // is the parser's colour vocabulary and "gold" is not a cost colour.
     const spent = referencedTokensIn(sourceOf(MANA_PIP_CSS)).filter(isManaToken)
     expect(new Set(spent).size).toBe(6)
+  })
+
+  it('still has NO consumer for --mana-gold — c4-9 declined it, and the count stays 6 of 7', () => {
+    // ==== THE PREDICTION THIS ASSERTION REPLACES (story c4-9, Q8, AC 17) =================
+    // The comment above used to end *"its first consumer (c4-9's colour-identity bar is the
+    // likely one) joins MANA_DATA_INK in the open and spends it as a fill, and this count moves
+    // to 7 THERE"*, and `ui/README.md` said the same. **That prediction was wrong, and it is
+    // corrected here rather than left standing**: c4-9 DID join MANA_DATA_INK — it is the first
+    // joiner since this list was declared — and it did NOT spend gold.
+    //
+    // The reason is the one MANA_COLOUR_ORDER already encodes in writing: gold is a CARD-level
+    // property (UX-DR17 uses it for a multicolour card contributing one segment to a stacked
+    // curve), and UX-DR18 specifies a PIP count. **A pip is never gold.** `{W/U}` is a
+    // white-or-blue pip, and ManaPip already draws it as a two-stop gradient across two real
+    // tokens; a gold band in a colour bar would name neither half of a cost anyone pays.
+    //
+    // ASSERTED RATHER THAN OBSERVED (c4-5's AC-14 pattern): an absence that is only ever noted
+    // in prose is an absence nothing protects. Gold's first consumer is a stacked curve or a
+    // colour-identity dot, neither of which is in Phase 1 — and whichever story ships it moves
+    // this count to 7 by deleting this test, in the open.
+    const goldSpenders = [...MANA_DATA_INK.keys()].filter((file) =>
+      referencedTokensIn(sourceOf(file)).some((name) => /^--mana-gold$/.test(name)),
+    )
+    expect(goldSpenders).toEqual([])
+
+    // …and specifically not in c4-9's own stylesheet, named so the failure says which file.
+    const COLOUR_BAR_CSS = 'src/containers/ColourDistribution/ColourDistribution.css'
+    expect(MANA_DATA_INK.has(COLOUR_BAR_CSS), 'the colour bar is not declared data ink').toBe(true)
+    expect(sourceOf(COLOUR_BAR_CSS)).not.toMatch(/var\(\s*--mana-gold/)
+
+    // NON-VACUITY: the same reader DOES find the six colours the bar really spends, so an empty
+    // result above means "checked and clean" rather than "read the wrong file".
+    const barSpends = new Set(referencedTokensIn(sourceOf(COLOUR_BAR_CSS)).filter(isManaToken))
+    expect(barSpends.size).toBe(6)
   })
 
   it('declares every colour class ManaPip.tsx can name — all 21 of them (AC 12)', () => {

@@ -216,10 +216,21 @@ describe('double-faced cards bucket by their front face — for free (AC 8)', ()
     // ACCIDENT, one `add_card_to_deck` from wrong.
     //
     // Not fixed here: the fix is a numeric mana-value parser, `ui/` has none, and building one
-    // is `ManaCost`'s territory rather than a seven-bar panel's. Re-homed to c4-9, which must
-    // parse costs anyway. When somebody writes it, THIS TEST goes red and tells them where:
-    // the fixed derivation buckets the front face at 4, so the expectation below becomes
-    // `[0, 0, 0, 1, 0, 0, 0]` and this pin is retired in the same commit.
+    // is `ManaCost`'s territory rather than a seven-bar panel's. When somebody writes it, THIS
+    // TEST goes red and tells them where: the fixed derivation buckets the front face at 4, so
+    // the expectation below becomes `[0, 0, 0, 1, 0, 0, 0]` and this pin is retired in the same
+    // commit.
+    //
+    // ⚠️ THE CONDITION ABOVE USED TO NAME c4-9 — *"re-homed to c4-9, which must parse costs
+    // anyway"* — AND c4-9 DECLINED, so the comment is corrected to name the real trigger rather
+    // than a story that has shipped without pulling it. c4-9 parses costs into PIPS: it walks
+    // `ManaSymbolToken.colours` and never adds a generic cost, so nothing it wrote converts a
+    // cost string to a number, and building one anyway — to fix a divergence with ZERO live
+    // exposure, inside a panel with sixteen questions of its own — was scope it could not
+    // justify. **The home is whoever writes a numeric mana-value parser, and there is no story
+    // in Phase 1 that needs one.** Leaving "c4-9" here would have been a shipped comment
+    // predicting a fix that never arrived, which is the same defect this file's own review
+    // correction below records.
     //
     // REVIEW CORRECTION (c4-8): the shipped draft gave this card the type line `'Land // Land'`
     // — a fabrication (the DB says `'Enchantment — Room // Enchantment — Room'`, and no card

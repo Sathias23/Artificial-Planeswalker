@@ -64,3 +64,24 @@ export function NestedValueObject({ share }: { share: number }) {
     />
   )
 }
+
+/* THE SECOND DECLARED CHANNEL, ADDED BY STORY c4-9 (Q13, AC 19).
+
+   The point of putting it here is that the allowlist is a LIST OF EXACT NAMES rather than a
+   prefix, so a second entry has to be added twice — once in `eslint.config.js` and once in
+   `RUNTIME_CUSTOM_PROPERTIES` in tests/token-usage.test.ts — and this fixture is where the
+   ESLint half is proven to have grown rather than loosened. `custom-property-violation.tsx`
+   carries the converse: this channel beside a plain property still errors.
+
+   `--colour-bar-share` carries a RAW PIP COUNT, which makes it narrower than c4-8's channel
+   rather than wider: `flex-grow: var(--colour-bar-share, 0)` in ColourDistribution.css performs
+   the division in the browser, so no percentage is computed in TSX and nothing here can divide
+   by zero. */
+export function ColourBarSegment({ count }: { count: number }) {
+  return (
+    <div
+      className="colour-bar-segment colour-bar-segment-b"
+      style={{ '--colour-bar-share': `${count}` } as React.CSSProperties}
+    />
+  )
+}

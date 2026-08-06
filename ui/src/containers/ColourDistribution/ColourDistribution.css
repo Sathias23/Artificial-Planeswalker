@@ -1,0 +1,224 @@
+/* ColourDistribution — the track, the segments, the hairline and the legend
+   (story c4-9, UX-DR3, UX-DR7, UX-DR13, UX-DR18, DESIGN.md:210-213, :408).
+
+   ==== THIS FILE IS DATA INK, AND IT IS THE FIRST TO JOIN SINCE c2-8 ====================
+   `MANA_DATA_INK` in tests/token-usage.test.ts has had exactly ONE entry (ManaPip.css) since
+   c2-8 declared it, naming c4-8 and c4-9 as the two stories invited to join. c4-8 declined with
+   a measurement — a curve stacked by colour would paint 24 live rows colourless from a
+   structurally blank `colors` field — and wrote *"c4-9 remains invited"*. **This story cannot
+   decline**: UX-DR18 says the bar is *"segmented by `mana-*` proportional to pip count"* and
+   calls it *"data ink used correctly"* in the artefact's own words. A segment IS the datum.
+
+   Every spend below goes through `background`, which is on the property allowlist, and through a
+   CLASS — never an inline style, never a `fill=` attribute, never a token name built at runtime.
+   That is ManaPip.css's shape, and it is the only way in: the markup half of the guard allows
+   NO `--mana-*` anywhere outside a stylesheet, because there is no markup allowlist to join.
+
+   `--mana-gold` does NOT appear here (Q8), and its absence is asserted by a test rather than
+   left to inspection. A pip is never gold — `{W/U}` is a white-OR-blue pip, which ManaPip draws
+   as a two-stop gradient across two real tokens — and `MANA_COLOUR_ORDER` excludes gold for
+   exactly that reason, in writing. The spent-token count therefore stays 6 of 7, and
+   `ui/README.md`'s prediction that this story would be gold's first consumer is corrected in
+   this commit.
+
+   ==== NOT CARD-SHAPED, IN BOTH DIRECTIONS (AC 22, UX-DR4) =============================
+   A colour bar draws no card, so this stylesheet does NOT join `CARD_SHAPED` and
+   `--radius-card` appears nowhere in it. Both halves matter: the allowlist half would let a
+   chrome radius in, and the converse half is what an allowlist keyed on `--radius-card` alone
+   would never look for. */
+
+/* The figure. `margin: 0` because the UA stylesheet gives `<figure>` a 1em block-and-inline
+   margin that would inset the graphic inside `Panel`'s own 12px body padding — the same reason
+   `.panel-title` zeroes an `<h2>` and `.mana-curve` zeroes this one. */
+.colour-distribution {
+  margin: 0;
+}
+
+/* THE TRACK (AC 15) — DESIGN.md:210-213, `components.color-bar`: *"a single
+   {components.color-bar.height} bar at {rounded.pill} on {components.color-bar.track}"*.
+
+   THE ONE px LITERAL IN THIS FILE, AND IT HAS A CITATION RATHER THAN A DERIVATION. `14px` is
+   DESIGN.md:212's own `color-bar.height`, and unlike c4-8's 72px track it CANNOT be composed
+   from the 4/8/12/16/24/32/48 spacing scale — 14 is not on it and no addition of scale steps
+   reaches it. So the citation is the mechanism, which is what AC 15's first branch is for.
+   No token is added for it: `validation-report-2026-07-25.md:75` already flags
+   `color-bar.height` as over-tokenised in DESIGN.md, so the inventory holds at 69.
+
+   `overflow: hidden` is what makes the pill radius clip the segments' square corners — without
+   it the first and last segments would paint past the rounded ends of their own track. */
+.colour-bar {
+  display: flex;
+  overflow: hidden;
+  height: 14px; /* DESIGN.md:212 — components.color-bar.height */
+  border-radius: var(--radius-pill);
+  background: var(--surface-well);
+}
+
+/* THE SEGMENT (AC 19, Q13).
+
+   ==== THE WIDTH IS THE DATA, AND THE BROWSER DOES THE DIVISION ========================
+   `--colour-bar-share` carries a RAW PIP COUNT, written per segment by ColourDistribution.tsx
+   through the named runtime channel added to `eslint.config.js` and `RUNTIME_CUSTOM_PROPERTIES`
+   in this commit. `flex-grow` distributes the track's free space in proportion to those
+   factors, so the segments always fill the bar EXACTLY — no percentage is computed at the call
+   site, so the divide-by-zero the epic AC names has nothing to divide, and the printed
+   percentages (which round) cannot drag the geometry out of true with them.
+
+   THE SHORTHAND, AND THAT IS A CORRECTION RATHER THAN A PREFERENCE. The first draft wrote the
+   three longhands, arguing that *"a `var()` inside a shorthand is exactly where a fallback
+   silently stops applying"*. `npm run lint` said otherwise —
+   `declaration-block-no-redundant-longhand-properties` is an ERROR here — and the argument was
+   wrong anyway: a declaration containing `var()` is substituted BEFORE it is parsed, so
+   `flex: var(--colour-bar-share, 0) 0 0` resolves to `flex: 6 0 0`, and to `flex: 0 0 0` when
+   the attribute is absent. The fallback applies exactly as it would in a longhand. It matches
+   `.analysis-row > *`'s `flex: 1 1 0` one layer up, which is the same three-part spelling for
+   the same reason: with a `flex-basis: auto` the segments' (empty) CONTENT would decide the
+   split and the bar would not be proportional at all.
+
+   The fallback `0` is not decoration: if the attribute were ever absent the segment would take
+   `flex-grow: 0` and draw nothing, where an `auto` basis would let it fill the bar — the
+   loudest possible way to be wrong, and the same argument `--curve-bar-height`'s `0%` makes. */
+.colour-bar-segment {
+  flex: var(--colour-bar-share, 0) 0 0;
+  min-width: 0;
+}
+
+/* THE HAIRLINE (AC 18, Q7) — and it is a MEASURED accessibility repair, not a garnish.
+
+   WCAG 2.x contrast over the shipped hexes in tokens.css:127-133: **all 15 adjacent `--mana-*`
+   pairs are under the 3:1 non-text floor**, 8 of them under 1.3:1, the worst
+   (`--mana-b` against `--mana-colorless`) at **1.03:1** and the best (`--mana-w` against
+   `--mana-r`) at 2.30:1 — slightly worse than the 2.73:1 the pre-Voltglass
+   `review-accessibility.md` recorded before it was superseded. Two adjacent segments can
+   therefore be genuinely indistinguishable.
+
+   But EVERY segment clears the track it sits on: `--mana-r` at 6.62:1 up to `--mana-w` at
+   15.20:1 against `--surface-well`. So a 1px separator IN THE TRACK COLOUR turns 15 sub-3:1
+   boundaries into 15 boundaries at 6.62:1 or better, with one declaration, no new token and no
+   new colour — and it reads as the track showing through rather than as a drawn line, because
+   the bar already sits on exactly that surface.
+
+   `1px` — DESIGN.md:209 gives `curve-bar.segment-hairline` the value `1px {colors.surface-well}`
+   for precisely this job. `color-bar`'s own frontmatter has no such key; this is a cited
+   derivation from the sibling component's pattern and is recorded as an amendment
+   `components.color-bar` should carry.
+
+   THE ADJACENT-SIBLING SELECTOR IS THE WHOLE OF "the outer edges do not gain one": a hairline
+   on the first segment's leading edge would paint a 1px notch into the pill's rounded end,
+   where the track already IS the separation.
+
+   ⚠️ THIS CLOSES DISTINGUISHABILITY AND NOT IDENTIFIABILITY, and the two must not be conflated.
+   `deferred-work.md:1447-1471` is open at Medium on exactly that distinction — *"telling two
+   pips apart"* versus *"knowing WHICH colour a pip is"* — and the legend, not this line, is
+   UX-DR18's answer to the second. Measured for the record: at the ~423px half-width this row
+   gives each panel, the thinnest segment in any real deck is 15.35px (`MSH — Ultron's Forge`,
+   1 black pip of 26), so the hairline costs the thinnest live segment about 6.5% of its width. */
+.colour-bar-segment + .colour-bar-segment {
+  border-inline-start: 1px solid var(--surface-well);
+}
+
+/* ==== THE SIX SEGMENT COLOURS ==========================================================
+   One class per colour, each naming its own token DIRECTLY — the ManaPip.css shape, and for
+   the same three closed reasons: a custom property declared here would be a guard failure
+   (only tokens.css may declare one), an inline style is an ESLint error, and a name built at
+   runtime is invisible to `findUnknownTokenReferences`, so a bad colour would paint a
+   TRANSPARENT segment that no test can see.
+
+   `background`, which is on the `MANA_INK_PROPERTY` allowlist. There is no `.colour-bar-segment`
+   default fill: unlike a pip, a segment with no colour class cannot exist — `coloursOf` emits
+   only the six `ManaColour` letters, and the both-directions type assert in
+   ColourDistribution.tsx is what keeps that true. */
+.colour-bar-segment-w {
+  background: var(--mana-w);
+}
+
+.colour-bar-segment-u {
+  background: var(--mana-u);
+}
+
+.colour-bar-segment-b {
+  background: var(--mana-b);
+}
+
+.colour-bar-segment-r {
+  background: var(--mana-r);
+}
+
+.colour-bar-segment-g {
+  background: var(--mana-g);
+}
+
+.colour-bar-segment-c {
+  background: var(--mana-colorless);
+}
+
+/* THE LEGEND (AC 20, AC 24, UX-DR18).
+
+   The list reset, local rather than global for the reason CardGrid.css and DeckList.css both
+   give about their own: a `ul` is the correct semantics and a bulleted row of colour names is
+   not the correct presentation.
+
+   `flex-wrap: wrap` IS reachable here, unlike the one c4-8's review removed from
+   `AnalysisRow.css` — these children have `flex-basis: auto` and real content widths, so a
+   five-colour legend genuinely overflows a narrow panel and genuinely wraps. That is Q11's
+   answer to the narrow-width question: the legend wraps gracefully rather than the ROW
+   stacking, which needs no breakpoint, no media query and no derived flex-basis.
+
+   The two gaps differ on purpose: `--space-1` between wrapped ROWS and `--space-4` between
+   entries on one row, so a wrapped legend reads as a block of entries rather than as a grid. */
+.colour-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.colour-legend-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* THE COLOUR'S NAME — the accessible carrier (AC 24, Q9 iv). `--type-body` at
+   `--text-secondary`, the tier a deck row's own name uses: this is the entry's subject, not its
+   metadata, and the pip beside it is decorative. */
+.colour-legend-name {
+  color: var(--text-secondary);
+  font: var(--type-body);
+}
+
+/* THE COUNT — `--type-numeric` with its companion in the SAME rule block, which is the
+   decide-once ruling and the shape `findUnpairedNumericRole` enforces: the `font` shorthand
+   RESETS `font-variant-numeric`, so the role applied alone renders proportional digits and a
+   wrapped column of counts stops lining up (UX-DR3).
+
+   THE ROLE IS CHOSEN, NOT INHERITED, and the residue at `deferred-work.md:3626-3637` asks this
+   story to say on what authority: `DESIGN.md`'s colour-distribution anatomy specifies neither
+   role, so the source is the composition reference — which puts the count in the numeric role
+   and the percentage in micro — corroborated by `DESIGN.md:407`'s curve counts and
+   `components.deck-row`'s quantity, both `{typography.numeric}` `{colors.text-tertiary}`. */
+.colour-legend-count {
+  color: var(--text-tertiary);
+  font: var(--type-numeric);
+  font-variant-numeric: var(--type-numeric-features);
+}
+
+/* THE PERCENTAGE — `--type-micro`, with its tracking companion and its case transform, the
+   shape c4-8's axis labels established. The transform is a no-op on this content for the same
+   reason it was harmless there: every one of these strings is digits and a `%`, so there is no
+   letter for `uppercase` to change. */
+.colour-legend-percent {
+  color: var(--text-tertiary);
+  font: var(--type-micro);
+  letter-spacing: var(--tracking-micro);
+  text-transform: uppercase;
+}
+
+/* NO MOTION ANYWHERE IN THIS FILE (AC 30, AC 31, UX-DR42). No `transition`, no `animation`,
+   nothing that pulses, loops or alternates — so there is no row to add to the reduced-motion
+   inventory at tokens.css:285-317 and **UX-DR42 needs no amendment**. That is a decision rather
+   than an omission: a segment width that animated would be a bar visibly re-flowing through
+   ~99 hydrations during a cold-open sweep, which is the moving-percentages problem this panel
+   already answers with silence (AC 26). The enumerated shipped-motion pin stays at 4. */

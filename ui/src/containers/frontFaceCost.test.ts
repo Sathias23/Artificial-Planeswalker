@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import type { CardSummary } from '../../api/schema'
-import type { CardEntry } from '../../state/cards'
+import type { CardSummary } from '../api/schema'
+import type { CardEntry } from '../state/cards'
 import { frontFaceCost, frontFaceName } from './frontFaceCost'
 
 /**

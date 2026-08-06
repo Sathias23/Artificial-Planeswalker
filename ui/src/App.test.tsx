@@ -40,7 +40,18 @@ const activeDeck = (deckId: string | null) =>
 
 const ATRAXA_DECK_ID = '813d0434-1bed-4419-bf9d-d9e4070704c4'
 
-const deckCard = (name: string, typeLine: string, quantity = 1) => ({
+/**
+ * One deck row, with the two derivation-bearing fields REAL rather than blanked (c4-9).
+ *
+ * `mana_cost` and `cmc` were hard-coded to `''` and `0` for every card this helper built, which
+ * was harmless while the only derivation reading them bucketed everything at `cmc <= 1` anyway
+ * — and stopped being harmless the moment a panel counted PIPS: `Llanowar Elves` below is a real
+ * card whose real cost is `{G}`, and a fixture that gives it a blank one is the c4-8 High in
+ * miniature (a real card name carrying invented field values, under which a derivation is never
+ * exercised at all). Both are parameters now, both default to the old values so every existing
+ * call site is unchanged, and the one card that has a real cost is given it.
+ */
+const deckCard = (name: string, typeLine: string, quantity = 1, manaCost = '', cmc = 0) => ({
   card_id: `id-${name}`,
   quantity,
   sideboard: false,
@@ -48,8 +59,8 @@ const deckCard = (name: string, typeLine: string, quantity = 1) => ({
   card: {
     id: `id-${name}`,
     name,
-    mana_cost: '',
-    cmc: 0,
+    mana_cost: manaCost,
+    cmc,
     type_line: typeLine,
     oracle_text: '',
     colors: [],
@@ -74,7 +85,12 @@ const deckDetail = (overrides: Record<string, unknown> = {}) =>
       created_at: '2026-07-01T00:00:00Z',
       updated_at: '2026-08-01T00:00:00Z',
       cards: [
-        deckCard('Llanowar Elves', 'Creature — Elf Druid'),
+        // The real printing's real values, measured at `1ed2e83`: `{G}`, cmc 1. (The corpus
+        // also holds a TOKEN `Llanowar Elves` with a blank cost and the type line
+        // `'Token Creature — Elf Druid'`; this is the other one.) The curve is unmoved —
+        // `bucketOf` folds `cmc <= 1` into bucket 1 either way — and the colour bar now has
+        // exactly one green pip to draw, which is what makes c4-9's mount observable here.
+        deckCard('Llanowar Elves', 'Creature — Elf Druid', 1, '{G}', 1),
         deckCard('Forest', 'Basic Land — Forest', 10),
       ],
       ...overrides,
@@ -313,13 +329,17 @@ describe('the panel is chosen by the wire, not by a constant (AC 1, AC 2)', () =
     ],
   ]
   it.each(STATE_PANEL_ARMS)(
-    'leaves NO curve and NO analysis row behind the %s panel (c4-8, AC 2)',
+    'leaves NO analysis panel and NO analysis row behind the %s panel (c4-8/c4-9, AC 3)',
     async (_label, arrange) => {
       arrange()
       render(<App />)
       await settle()
 
       expect(screen.queryByRole('region', { name: 'Mana curve' })).toBeNull()
+      // c4-9's panel rides the SAME `kind === 'deck'` gate, and asserting it per-arm rather
+      // than covering it with a structural comment is c4-8's own review finding applied to the
+      // sibling that arrived after it.
+      expect(screen.queryByRole('region', { name: 'Color distribution' })).toBeNull()
       expect(document.querySelector('.analysis-row')).toBeNull()
     },
   )
@@ -499,11 +519,12 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     // gate itself stays c8-5's. Asserted so the count is a fact rather than a claim.
     expect(document.body.textContent).not.toContain('c4-4')
     expect(document.body.textContent).not.toContain('c4-8')
-    // c4-9 too, and all three keys lived in the SAME left-column string — so this one has been
-    // off the glass since c4-4 displaced that placeholder, and c4-8 is the story that finally
-    // fills the row the string promised. F1 count: the left column contributed three keys to
-    // the C3 retro's six, all three gone; `c4-10` and `c4-11` are what remain, in the RIGHT
-    // column's placeholder and in the skip-link work. The gate itself stays c8-5's.
+    // c4-9 too — and as of THIS story it is green by its own panel rather than by a sibling's
+    // displacement. All three keys lived in the SAME left-column string, so this one has been
+    // off the glass since c4-4; what changes here is that the row that string promised is now
+    // FULL. F1 count: the left column contributed three keys to the C3 retro's six, all three
+    // gone; `c4-10` and `c4-11` are what remain, in the RIGHT column's placeholder and in the
+    // skip-link work. The gate itself stays c8-5's.
     expect(document.body.textContent).not.toContain('c4-9')
 
     // THE RIGHT COLUMN'S DISPLACEMENT, THE SAME SHAPE ONE STORY LATER (AC 6, added at review
@@ -550,22 +571,44 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     const analysisRow = document.querySelector('.analysis-row')
     expect(analysisRow).not.toBeNull()
     expect(analysisRow!.contains(curveRegion)).toBe(true)
-    // ONE child today. The day c4-9 lands this becomes two and the ratio is 1:1 with no edit
-    // to `App.tsx`'s layout — asserted here so "one child today" is a recorded fact rather than
-    // an accident of what has shipped.
-    expect(analysisRow!.children).toHaveLength(1)
+
+    // c4-9's OWN DISPLACEMENT, AND THE ROW'S SECOND CHILD (c4-9, AC 1, AC 2). The EIGHTH
+    // application of the c2-9 ruling. This assertion read `toHaveLength(1)` for one story, under
+    // a comment promising *"the day c4-9 lands this becomes two"* — this is that day, and the
+    // promise is kept with no edit to `App.tsx`'s layout and none at all to `AnalysisRow.tsx`.
+    const colourRegion = screen.getByRole('region', { name: 'Color distribution' })
+    expect(colourRegion).toBeVisible()
+    expect(analysisRow!.contains(colourRegion)).toBe(true)
+    expect(analysisRow!.children).toHaveLength(2)
+
+    // DOCUMENT ORDER, NOT JUST PRESENCE (AC 2). Swapping the two children passes every presence
+    // assertion above; order is the one thing that notices, and DESIGN.md's layout section
+    // writes the pair as *"the mana-curve and color-distribution panels"* in that order.
+    expect(
+      curveRegion.compareDocumentPosition(colourRegion) & Node.DOCUMENT_POSITION_FOLLOWING,
+      'the colour distribution is not the SECOND child of the analysis row',
+    ).toBeTruthy()
+
+    // ⚠️ THE 1:1 SHARE ITSELF IS NOT ASSERTED HERE, AND CANNOT BE: jsdom applies no stylesheet,
+    // so `flex: 1 1 0` on the child slot is a claim about `AnalysisRow.css` source and is
+    // asserted in `shell.test.ts` (AC 2's "read from the stylesheet, not assumed"). The rendered
+    // widths are the eye-check's, at 1440px and at UX-DR8's ~1100px floor.
   })
 
-  it('leaves an EMPTY analysis row on a land-only deck — documented posture, not an accident (Q12)', async () => {
-    // REVIEW FINDING (c4-8): `<AnalysisRow>` is unconditional in the deck arm, so when
-    // `ManaCurve` renders null (a zero curve), the row's empty div remains a real flex child of
-    // `.app-shell-column` and the column's panel gap still applies beneath the grid. The shipped
-    // draft's comment claimed "no panel rather than an empty box" — false; the box is in the
-    // DOM. Gating the row would need the curve's total in App.tsx — a second derivation of what
-    // `curve.ts` owns — for a state NO corpus deck can produce (all 40 have a non-empty curve).
-    // So the empty box is the ACCEPTED posture, pinned here so it is a decision c4-9 inherits
-    // in the open: the story that gives the row its second child is the one to revisit whether
-    // an all-null row should render at all.
+  it('empties the analysis row on a land-only deck — the precondition c4-9 hides it on (Q10)', async () => {
+    // c4-8's REVIEW FINDING, AND c4-9's ANSWER TO IT. `<AnalysisRow>` is unconditional in the
+    // deck arm, so when BOTH children render null — a land-only deck has no curve and no
+    // coloured pips — the row's empty div remains a real flex child of `.app-shell-column`, and
+    // the column's 24px panel gap still applied beneath the grid. That was ACCEPTED posture at
+    // c4-8, because gating the row in `App.tsx` would have needed the curve's total there: a
+    // second derivation of what `curve.ts` owns, for a state NO corpus deck can produce (all 40
+    // have a non-empty curve AND at least 2 pips).
+    //
+    // c4-9 closes it without that derivation: `.analysis-row:empty { display: none }` lets the
+    // row answer for itself. What this test can assert in jsdom is the DOM half — the row is
+    // present and has NO child nodes, which is exactly the condition `:empty` keys on — and
+    // `shell.test.ts` asserts the CSS half against the stylesheet source, because jsdom applies
+    // no styles and would report `display` as an empty string either way.
     booting(
       activeDeck(ATRAXA_DECK_ID),
       deckDetail({ cards: [deckCard('Forest', 'Basic Land — Forest', 24)] }),
@@ -575,12 +618,17 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     render(<App />)
     await settle()
 
-    // The deck view is on the glass, the curve is hidden, and the row is present-but-empty.
+    // The deck view is on the glass, BOTH panels are hidden, and the row has no children.
     expect(document.querySelector('.card-grid')).not.toBeNull()
     expect(screen.queryByRole('region', { name: 'Mana curve' })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Color distribution' })).toBeNull()
     const emptyRow = document.querySelector('.analysis-row')
     expect(emptyRow).not.toBeNull()
     expect(emptyRow!.children).toHaveLength(0)
+    // NOT A WHITESPACE TEXT NODE EITHER: `:empty` matches only an element with no child nodes at
+    // ALL, text included, so a child rendering `' '` rather than `null` would silently re-open
+    // the gap while `children` still read 0. This is the assertion that would notice.
+    expect(emptyRow!.childNodes).toHaveLength(0)
   })
 
   it('puts the deck on the glass as card faces (c4-4, AC 16, FR-19)', async () => {
@@ -758,6 +806,8 @@ describe('a deck refusal reaches the glass as a PANEL, never as a status code (A
     // `StatePanel` on every non-deck arm, so the curve — and the analysis row that holds it —
     // are absent behind every one of the six state panels, not merely this one.
     expect(screen.queryByRole('region', { name: 'Mana curve' })).toBeNull()
+    // …and NO colour distribution (c4-9 AC 3), for the same reason and on the same gate.
+    expect(screen.queryByRole('region', { name: 'Color distribution' })).toBeNull()
     expect(document.querySelector('.analysis-row')).toBeNull()
   })
 

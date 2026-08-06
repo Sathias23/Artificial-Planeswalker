@@ -8,13 +8,49 @@
 
 /* NO `flex-wrap` — REMOVED AT REVIEW (c4-8), because with `flex: 1 1 0` and `min-width: 0`
    children every item's hypothetical main size is ZERO, so the line can never overflow and
-   `wrap` was dead code advertising a stacking behaviour that could not happen. At narrow
-   widths two panels SHRINK 1:1 rather than stack; whether c4-9's second panel wants a real
-   stacking breakpoint (a non-zero flex-basis, which needs a derived and cited value) is that
-   story's decision, flagged to it by name — it owns the first screen with two children. */
+   `wrap` was dead code advertising a stacking behaviour that could not happen. At narrow widths
+   two panels SHRINK 1:1 rather than stack.
+
+   ==== AND c4-9 RULED THE BREAKPOINT QUESTION THIS COMMENT USED TO LEAVE OPEN (Q11) =======
+   This paragraph read *"whether c4-9's second panel wants a real stacking breakpoint … is that
+   story's decision, flagged to it by name"*. **Ruled: NO breakpoint, and the row is unchanged.**
+   The measurable facts: the row is 870px at a 1440px window, so two children are ~423px each;
+   UX-DR8 puts the app's floor at ~1100px, BELOW which the right column drops beneath the left —
+   which WIDENS this column rather than narrowing it, so the squeeze case is narrower than the
+   app's own stated floor. The thing that actually runs out of room first is the colour legend,
+   and its answer is to wrap gracefully (`ColourDistribution.css` — where `flex-wrap` IS
+   reachable, because those children have real content widths rather than a zero basis). A
+   flex-basis here would need a derived and cited value to solve a problem the legend solves for
+   free. Measured on the eye-check at both widths.
+
+   ==== AND THE EMPTY ROW c4-8 LEFT BEHIND IS CLOSED HERE (c4-9, Q10, AC 33) ===============
+   c4-8 shipped `<AnalysisRow>` unconditionally in `App.tsx`'s deck arm, so a deck whose curve is
+   empty left the row's div in the DOM as a real flex child of `.app-shell-column` — with the
+   column's 24px panel gap still applied beneath the grid, a phantom band of space under nothing.
+   That was pinned as accepted posture with **c4-9 named to revisit it**, because gating the row
+   in `App.tsx` would have needed the curve's total there: a SECOND derivation of what `curve.ts`
+   owns, for a state no corpus deck can produce.
+
+   `:empty` is the revisit, and it needs none of that. The row owns its own emptiness — no gate
+   in `App.tsx`, no total, no re-derivation of anything, and nothing for either panel to know
+   about the other. When both children render `null` React leaves this element with no child
+   nodes at all, `:empty` matches, and `display: none` takes it out of the flex layout entirely
+   so the parent's gap goes with it.
+
+   DECLARED LIMIT, because `:empty` is exact rather than approximate: it matches only an element
+   with NO child nodes, text and whitespace included. That is precisely the condition wanted here
+   (a panel renders a `<section>` or it renders `null`), and it would stop matching the day a
+   child rendered a whitespace text node — which no `Panel` can do. **Story 4.12 hides all three
+   analysis panels on an empty deck by name and ships after this one**, so this is that clause
+   arriving early: c4-12's author is told here that the row is already handled and only the
+   panels' own conditions are theirs. */
 .analysis-row {
   display: flex;
   gap: var(--space-panel-gap);
+}
+
+.analysis-row:empty {
+  display: none;
 }
 
 /* THE WHOLE OF THE 1:1 CONTRACT, IN ONE RULE.
