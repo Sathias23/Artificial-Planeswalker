@@ -20,7 +20,7 @@ baseline_commit: 2df2461
 
 # Story C5.2: Same-origin session endpoint minting single-use WebSocket tickets
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -499,6 +499,36 @@ _bmad-output/implementation-artifacts/deferred-work.md  UPDATE  same commit as a
   - [x] `build_plugin` + `shasum` verification, **after** the last edit
   - [x] All Python and frontend gates; ledger entries in `deferred-work.md` in the same commit
   - [x] Dev Notes KB self-check
+
+### Review Findings
+
+<!-- Code review 2026-08-08: three layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor), all completed. 16 raw findings, 1 merged duplicate, 3 dismissed as noise. -->
+
+**All 10 patches applied 2026-08-08** (the decision resolved as a patch): TTL number stripped from
+the wire description and both generated artifacts regenerated (`openapi.json` +
+`types.d.ts` no longer carry "30 seconds"); eviction prose now states the repeatable-flood bound
+honestly; test-module docstring declares its two forced store-read exceptions; eviction policy
+added to the `TicketStore` class docstring (AC 10 literal placement met); `math.isfinite` guard
+with NaN/inf tests (+2, suite 2,594 → 2,596); `resident_count` docstring warns resident ≠ live;
+no-lock argument keeps only the suspension-point reasoning; Host/Origin scan strips all docstrings
+via AST; `_store`'s "unguarded" claim corrected; route TTL test moved strictly past the boundary.
+Gates: full suite 2,596 passed / 54 deselected; `mypy src/` clean; ruff clean; frontend typecheck
+clean, 1,694 tests passed; plugin mirror rebuilt and sha256-verified on all five files after the
+last edit.
+
+- [x] [Review][Decision] **RESOLVED (Brad, 2026-08-08): option (a) — reword and regenerate.** The TTL is published on the wire, contradicting Q4's "deliberately unpublished" ruling — `SessionTicket`'s docstring leading paragraph ("expires **30 seconds** after it was issued", `src/companion/contracts.py:293-295`) ships in `components.schemas.SessionTicket.description` (verified in the committed `ui/src/api/openapi.json`). Q4 is honoured for the *field* but violated as a prose wire commitment: a client author reading the generated types will treat 30 s as contract, and changing `TICKET_TTL_SECONDS` silently breaks a published number. Options: (a) reword the leading paragraph to "within seconds"/"short-lived" and regenerate both artefacts, or (b) rule the prose mention acceptable and amend Q4's record to say the *number* may appear as guidance while the *field* stays unpublished.
+- [x] [Review][Patch] Eviction prose overstates the bound — "one recoverable re-mint" is actually repeatable starvation under a sustained mint flood; a hostile local page looping the unauthenticated mint evicts every legitimate ticket within the flood's period, so the legitimate client can lose the mint→upgrade race indefinitely, not once [src/companion/app/routes/session.py:14-16]
+- [x] [Review][Patch] Test-module docstring overclaims "``app.state.ticket_store`` is never read to make an assertion" — contradicted in the same file by `test_the_shipped_ttl_reaches_the_route` (asserts via direct `store.consume(...)`) and `TestTheStoreIsCreatedByTheLifespan`; the consume-side exception is forced (no wire surface until c5-3) but undeclared [tests/unit/companion/test_routes_session.py:21-23]
+- [x] [Review][Patch] AC 10 literal placement not met — the eviction policy and its cost live on the `MAX_TICKETS` constant docstring, while the `TicketStore` class docstring never states the policy [src/companion/app/state.py:401-421]
+- [x] [Review][Patch] Non-finite `ttl` passes the positivity guard — `float("nan")`/`float("inf")` compare `False` against `<= 0`; NaN deadlines refuse every consume and never prune. Guard: `if not math.isfinite(ttl) or ttl <= 0` [src/companion/app/state.py:261]
+- [x] [Review][Patch] `resident_count` reads expired-but-unpruned residue as resident — expired tickets are pruned only on `mint()`, never on `consume()` or by time, so after a mint burst with no further mints the count reports garbage as live; at minimum the property docstring should warn any future metrics consumer [src/companion/app/state.py:272-282, 342]
+- [x] [Review][Patch] The no-lock argument cites CPython bytecode atomicity it does not need — "single CPython operation" is fragile (free-threaded builds, a future `to_thread`) while "synchronous method, no `await`, single-threaded event loop" is sufficient alone; keep only the durable argument [src/companion/app/state.py module docstring]
+- [x] [Review][Patch] The Host/Origin source-scan test strips only the module docstring — `_store`'s and `mint_session_ticket`'s docstrings are scanned as "executable" text, so a purely editorial doc edit mentioning "Host" or "Origin" reddens a structural security test; strip docstrings via `ast` instead [tests/unit/companion/test_routes_session.py]
+- [x] [Review][Patch] `_store`'s "Deliberately unguarded" claim is literally false — the code *is* a guard (`if store is None: raise AttributeError(...)`) manufacturing the exception type the accessor just suppressed; correct the docstring (and consider `RuntimeError` for honest intent — both reach the 500 middleware) [src/companion/app/routes/session.py:44-63]
+- [x] [Review][Patch] Exact-boundary float equality in the route-level TTL test is brittle — `clocked.now += TICKET_TTL_SECONDS` lands bit-identical to the stored deadline and relies on float coincidence; the unit tests own the boundary, so this test should advance strictly past it [tests/unit/companion/test_routes_session.py:404-421]
+- [x] [Review][Defer] `consume()` has zero production callers, so "single-use" is unproven on any production path — c5-3 wires it into the upgrade handler, where the no-await compare-and-set argument must be re-made against the real handshake code (e.g. no `await` slipped between validation steps) [src/companion/app/state.py:312-340] — deferred, declared story scoping; homed on c5-3
+- [x] [Review][Defer] The Q3/AD-5 ruling is narrated in ≥5 shipped prose locations (state.py, security.py ×2, main.py "CORRECTED AT c5-2" block, test_routes_active_deck.py) with no consistency guard — this diff itself corrected three guessed-wrong paragraphs and answered them with more forward-looking prose about c5-3/c5-5/c5-6 — deferred, process debt; candidate for the C5 retro
+- [x] [Review][Defer] `scripts/dump_openapi.py`'s docstring is becoming a dated changelog — two more paragraphs of measurement narrative this story, nothing tests the claims, and it has already contradicted itself once (corrected here) — deferred, process debt; candidate for the C5 retro
 
 ---
 

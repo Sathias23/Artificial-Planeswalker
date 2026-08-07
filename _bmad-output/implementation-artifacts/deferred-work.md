@@ -5068,3 +5068,27 @@ engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries cha
   and the ordering between them. **Home: unowned, informational** — cheap, and the next story to
   add a component is the natural one. (Severity: Low — it costs a confused half-hour, not
   correctness.)
+
+## Deferred from: code review of c5-2-same-origin-session-endpoint-minting-single-use-websocket-tickets (2026-08-08)
+
+- **`consume()` has zero production callers, so "single-use" is unproven on any production path.**
+  Every consume/expiry/eviction property is unit-only; nothing in the running app calls
+  `TicketStore.consume` until c5-3 wires it into the WebSocket upgrade handler. The no-lock
+  argument (one synchronous `dict.pop`, no `await` between read and delete) must be re-made
+  against the real handshake code — c5-3 can quietly break the atomicity assumption (e.g. an
+  `await` slipped between validation steps) with no failing test here. **Home: c5-3** — the story
+  that calls consume must show the call sits in synchronous code and add a guard or test for it.
+- **The Q3/AD-5 ruling is narrated in five or more shipped prose locations with no consistency
+  guard.** `state.py`'s module docstring, `security.py:16-30` plus `install_security`'s docstring,
+  `main.py`'s "CORRECTED AT c5-2" block, and `test_routes_active_deck.py`'s narrowing docstring
+  all restate the same ruling. The c5-2 diff is itself the proof of the failure mode: three
+  shipped forward-looking paragraphs guessed wrong about this story and had to be corrected, and
+  the corrections added more forward-looking prose about c5-3/c5-5/c5-6 in the same breath. Each
+  future story inherits an N-way prose-sync obligation nothing tests. **Home: C5 retro** — decide
+  a single canonical home for cross-module rulings and let the other sites point at it.
+- **`scripts/dump_openapi.py`'s docstring is becoming a dated changelog.** c5-2 added two more
+  paragraphs of measurement narrative plus an italicised correction of the script's own prior
+  (false since c3-8) truncation claim. None of it affects behaviour, nothing tests it, and it has
+  already contradicted itself once. The falsification-correction *content* is valuable; a dump
+  script's docstring is the wrong ledger. **Home: C5 retro** — pick the right ledger and move the
+  narrative there.
