@@ -11,6 +11,7 @@ import { ColourDistribution } from './containers/ColourDistribution/ColourDistri
 import { DeckList } from './containers/DeckList/DeckList'
 import { FormatCheck } from './containers/FormatCheck/FormatCheck'
 import { ManaCurve } from './containers/ManaCurve/ManaCurve'
+import { SkipLink } from './containers/SkipLink/SkipLink'
 import { hydrateDeckCards } from './state/cards'
 import { surfaceOf, useDeckState } from './state/deck'
 import { clearFormatCheck, loadFormatCheck } from './state/formatCheck'
@@ -270,8 +271,41 @@ export default function App() {
     return clearFormatCheck
   }, [deckId])
 
+  // THE SKIP LINK'S PRESENCE CONDITION (c4-11, AC 4, Q3), AND IT IS ONE TEST COVERING THREE CASES.
+  //
+  // UX-DR31 says "any surface rendering a POPULATED grid"; `EXPERIENCE.md:100` contradicts itself
+  // inside a single table row — its *Use* column says "First Tab stop on every surface" while its
+  // body says "Present on every surface that renders a populated grid". And an EMPTY deck (c4-12)
+  // satisfies neither branch of the written rule: it renders no state panel, so the withdrawal
+  // trigger is absent, and its grid is not populated, so the presence trigger is absent too.
+  //
+  // Ruled: present iff a deck is on the glass AND it has at least one card. That covers the state
+  // panel (no deck) and c4-12's empty deck (no cards). The reason is that an empty deck has
+  // NOTHING TO SKIP — zero tiles and zero rows between the link and the right column, so the link
+  // would save zero Tab stops. NOT because the target would be missing: `CardDetail` renders its
+  // frame (carrying `SKIP_TARGET_ID`) and the `Panel` `<h2>` unconditionally — AC 7's own
+  // "the panel is always there" region test pins that — and UX-DR20's "first card of the first
+  // type group" fills the panel's CONTENT, not its heading. (The first written form of this
+  // comment claimed the target would not exist; corrected at code review 2026-08-07.)
+  //
+  // Read off `surface` and `boards`, NOT re-derived: `deck.ts:388-390` warns by name that
+  // `surfaceOf` exists so its consumers "read the same answer rather than each re-deriving it from
+  // `deck !== null`". The card test spans EVERY board the corridor draws from — commander plus
+  // mainboard (the set `CardGrid.tsx:76` spreads into tiles) AND the sideboard, because c4-7's
+  // deck list renders a focusable row per sideboard card too (`DeckList.tsx:251-274`). A
+  // sideboard-only deck has no tiles but still has a corridor of rows, and it was the code-review
+  // ruling (2026-08-07, review of this story) that the link's condition is "any focusable deck
+  // row exists", not "any tile exists" — the tile-only spelling withdrew the link from a state
+  // neither of Q3's two documented cases covers.
+  const hasCards =
+    deck !== null &&
+    (deck.boards.commander.length > 0 ||
+      deck.boards.sideboard.length > 0 ||
+      deck.boards.mainboard.some((group) => group.cards.length > 0))
+
   return (
     <AppShell
+      skipLink={hasCards ? <SkipLink /> : undefined}
       deckName={deck?.detail.name}
       badges={
         deck === null ? undefined : (
@@ -351,9 +385,17 @@ export default function App() {
          displaces its OWN key from the shell's placeholder: that line named c4-5, c4-7 and
          **c4-10** in one string, so it has been off a rendered deck view since c4-5 — what
          changes here is that `c4-10` is now absent because its own panel is present. The C3
-         retro's F1 count drops to one (`c4-11`, in the skip-link work); the gate itself stays
-         c8-5's. `AppShell.tsx` is NOT touched and `AppShell.test.tsx` still asserts the
-         placeholder against the component's own props.
+         retro's F1 count drops to one; the gate itself stays c8-5's. `AppShell.tsx` is NOT touched
+         and `AppShell.test.tsx` still asserts the placeholder against the component's own props.
+
+         ⚠️ CORRECTED AT c4-11 (Q14). This line named the remaining key as **`c4-11`, in the
+         skip-link work** — and so did c4-9's record and `App.test.tsx`'s two comments. All three
+         were wrong in the same direction, and the skip link renders no story key at all. The key
+         that actually remains is **`c6-8`**: `AppShell.tsx:117` renders `slot(nav, 'Agent-view nav
+         pills land here — c6-8.')` and this file never passes `nav`, so that string is on the
+         glass on EVERY surface, including a fully loaded deck. It has been there since c2-6 and
+         was missed because every F1 assertion below names a `c4-*` key and none looks for a `c6-*`
+         one — a count that only ever checked the keys someone thought of. Asserted now.
 
          `.app-shell-column`'s existing `gap: var(--space-panel-gap)` stacks it 24px beneath the
          deck list with no shell edit, exactly as the deck list stacked beneath the detail panel.

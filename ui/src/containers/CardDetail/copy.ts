@@ -82,3 +82,27 @@ export const UNPIN_LABEL = 'Unpin'
  *   The whole announcement.
  */
 export const pinnedAnnouncement = (name: string): string => `Pinned — ${name}`
+
+/**
+ * The oracle scroller's accessible name (c4-11, AC 21, Q8, `deferred-work.md:3875-3883`).
+ *
+ * ==== WHY A CLAMPED PARAGRAPH NEEDS A NAME AT ALL =====================================
+ * The rules text is clamped at `max-height: 21em` — 294px, 14 lines, measured live at c4-6 — with
+ * `overflow-y: auto`. WCAG 2.1.1 requires that scrollable content be reachable from a keyboard
+ * *whenever* it can overflow, so the element takes `tabindex="0"`. A Tab stop with no accessible
+ * name announces as an unlabelled group, which is worse than the defect it repairs — so it takes
+ * `role="group"` and this string together, or none of the three.
+ *
+ * `role="group"` rather than `role="region"`: a region is a LANDMARK, and a landmark per card
+ * would put a nameless-until-hydrated entry in every screen reader's landmark list and move the
+ * count `AppShell.test.tsx` pins. A group is a grouping, which is what this is.
+ *
+ * **The words name the box, not its contents.** "Rules text" is what the box holds; the card's
+ * own oracle text is DATA and stays out of this module for the reason the header states. A label
+ * naming the card would rename this element on every hover — the exact defect `PANEL_TITLE`'s
+ * note above exists to prevent, one element further down the same panel.
+ *
+ * Sentence case, no trailing period: it is a label in the same voice as `UNPIN_LABEL`, and it is
+ * spoken as a name rather than read as a sentence.
+ */
+export const ORACLE_SCROLLER_LABEL = 'Rules text'

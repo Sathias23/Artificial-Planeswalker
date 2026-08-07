@@ -271,6 +271,25 @@ const COPY_MODULES: Map<string, string> = new Map([
       'Map’s whole claim meaningless (decide-once rule 14). Uppercasing stays in Badge.css so ' +
       'the readable word survives for anyone copying the text.',
   ],
+  [
+    'src/containers/SkipLink/copy.ts',
+    'the skip link’s one authored string (story c4-11): "Skip past the deck grid", the visible ' +
+      'text and therefore the accessible name of the first Tab stop in the document. It is here ' +
+      'for the ordinary reason every copy module is — a sentence the user reads needs one ' +
+      'address for UX-DR33’s voice rules to point at — but it is UNUSUAL in this epic for having ' +
+      'NOTHING TO RULE: DESIGN.md:418, EXPERIENCE.md:100 and epics:506 all carry the string byte ' +
+      'for byte, with no disagreement about case, punctuation or wording, so it is transcribed ' +
+      'rather than authored and the content half below compares it against the artefact. WHAT ' +
+      'THE WORDS PROMISE IS ALSO A MEASURED CLAIM AND THE MODULE STATES IT: "past the deck grid" ' +
+      'is exactly what the link delivers and deliberately no more — it moves focus to the card ' +
+      'detail panel’s heading, and on the largest real deck the FOOTER is still 101 Tab stops ' +
+      'beyond that, because c4-7’s deck list sits between them. A label promising the end of the ' +
+      'page would be a label that lies on 36 of 40 real decks, so the residue is carried on c8-6 ' +
+      'by name instead of being papered over with wording. No other words: the link announces ' +
+      'nothing (there is no aria-live here — CardDetail’s single polite region stays the app’s ' +
+      'only one), and the DOM id it targets is a handle rather than copy, so SKIP_TARGET_ID ' +
+      'lives in focusHome.ts where both sides of the lookup can import it.',
+  ],
 ])
 
 /**

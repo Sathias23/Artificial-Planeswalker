@@ -1,0 +1,131 @@
+/* THE SKIP LINK — hidden until it is the thing you reached, then a chip at the window's top-left.
+
+   Story c4-11, AC 1, AC 3, AC 8, UX-DR31, UX-DR40, UX-DR47, `DESIGN.md:418` + `:300-304`.
+
+   ==== DESIGN.md GIVES THIS COMPONENT NO NUMBERS, AND SAYS SO ITSELF =====================
+   `DESIGN.md:410` lists the skip link among the components with **no visual precedent**, and the
+   imported mock has zero skip-link markup. What `:418` and `:300-304` DO specify is the material,
+   and every one of those is a token consumed below: a `{rounded.sm}` chip on
+   `{colors.surface-panel}` with a border (DESIGN.md:302 — `1px solid {colors.accent-dim}`,
+   quoted verbatim: the WIDTH is specified, and there is no border-width token family for it to
+   come from, which is why it ships as a literal carrying this citation), text in
+   `{typography.body-strong}` at `{colors.accent}`, carrying the standard `{components.focus-ring}`.
+   The token pairing is pre-blessed by name — `token-usage.test.ts:2197-2205` uses `.skip-link`
+   itself as the canonical legal example proving `--accent-dim` on `--surface-panel` is NOT the
+   banned `--accent-dim`-on-`--surface-overlay` pairing (2.70:1). Measured here: 3.05:1, passing.
+
+   What it specifies NOWHERE is size, padding, inset or z-index. Those are below, each with the
+   only citation available to it. */
+
+/* AT REST IT IS THE SHARED CLIP-RECT AND NOTHING ELSE.
+
+   The element carries `visually-hidden` (promoted to `src/styles/` in this commit — c4-11 is the
+   THIRD instance, the trigger `ManaCurve.css:141-165` wrote down) plus this class. So there is no
+   geometry here at all: the base rule below only undoes the `<button>` UA chrome that would
+   otherwise flash for one frame between focus and the reveal painting.
+
+   `appearance: none` and a transparent background rather than the reveal's real colours: at rest
+   this box is 1px and clipped, so its colours are unobservable — declaring the chip's material
+   here as well would be two places to change one design. */
+.skip-link {
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* ON FOCUS IT BECOMES THE CHIP (AC 3).
+
+   `:focus-visible`, NEVER `:focus` (decide-once ruling 7). A link that is only reachable by Tab
+   always matches `:focus-visible`, so nothing is lost — and the two are not interchangeable here:
+   `.skip-link` is a real `<button>`, and a `:focus` reveal would leave the chip painted on the
+   screen after a MOUSE click on it, which is the stray-indicator problem `:focus-visible` exists
+   to solve. Specificity (0,2,0) beats `.visually-hidden`'s (0,1,0), so every clipped property is
+   undone here rather than fought with `!important`.
+
+   ==== EVERY PROPERTY THE CLIP-RECT SET IS EXPLICITLY UNDONE =============================
+   `width`/`height: auto`, `overflow: visible`, `clip-path: none`. Undoing the clip WITHOUT
+   undoing the 1px box would reveal a 1px chip — visible, focusable, and unreadable — which is the
+   quiet way this AC passes in source and fails on screen. `position` is re-declared as `fixed`
+   rather than left as the clip-rect's `absolute`, which is the geometry decision below.
+
+   ==== position: fixed, AND WHY IT IS NOT A SECOND OVERLAY (Q9) ==========================
+   `absolute` is unavailable: `.app-shell` carries NO `position` (measured — `AppShell.css:51-57`
+   is `display:flex; flex-direction:column; gap; height:100dvh; padding`), so an absolute box would
+   resolve against the initial containing block anyway, and ADDING `position: relative` to the
+   shell is an edit with cascade reach across every descendant. `fixed` says what is meant:
+   `DESIGN.md:418` puts this at *"the window's top-left"* — the WINDOW's, not the shell's content
+   box, so `--space-gutter` is deliberately not the inset.
+
+   `shell.test.ts:948-955` bans a second full-window fixed layer, and this is not one. Read
+   `findFullWindowFixedLayers` (`:530-547`) rather than guessing: it returns a block only when
+   `verticalCovered && horizontalCovered`, where each axis needs BOTH sides anchored (`top` AND
+   `bottom`) or a viewport-span size. This block anchors `top` and `left` only and declares no
+   size, so it covers NEITHER axis and the guard cannot read it as an overlay. `.app-shell-overlay`
+   stays the only full-window fixed layer.
+
+   `--space-4` (16px) for both insets — from the spacing scale, which `DESIGN.md:379` makes
+   mandatory: *"Every value in the UI comes from this scale."* A literal would need a citation
+   the artefact cannot supply, and a token is the better answer anyway.
+
+   `z-index: 10` — BELOW the overlay's 20 (`AppShell.css`, UX-DR38 fixes the overlay stack at
+   exactly one level deep), so an open agent view is never covered by a skip link that is only
+   reachable when the view is closed. Above 0 so the chip paints over the header it overlaps.
+   Neither number is in any artefact; the reason is the constraint, and it is written here.
+
+   ==== THE 24×24 FLOOR IS LOAD-BEARING, NOT DECORATIVE (AC 8, UX-DR47) ==================
+   24px — DESIGN.md's global rule "a ≥ 24×24px hit area" (`:462`), and the same requirement
+   applied to a link's hit box at `:419`. BOTH axes, so `min-width` sits beside `min-height` —
+   `Footer.css:83-89`'s both-axes idiom, with the citations corrected in this same commit (they
+   had drifted to `:375`/`:418`).
+
+   It is a real floor rather than a formality: `--type-body-strong` is `700 14px/1.5`, a **21px**
+   line box — UNDER the 24px minimum on its own. The padding below lifts the box clear of it
+   today, which is exactly why the minimums stay: they make the floor structural rather than a
+   consequence of a padding value a later story could reduce without noticing what it was holding
+   up. jsdom proves the declarations; only the eye-check can prove the rendered box.
+
+   Padding from the scale (`--space-2` / `--space-3`), per `DESIGN.md:379` again — `{spacing.2}`
+   to `{spacing.3}` is what that line names "for internal clusters". */
+.skip-link:focus-visible {
+  position: fixed;
+  top: var(--space-4);
+  left: var(--space-4);
+  z-index: 10;
+  width: auto;
+  height: auto;
+  min-width: 24px;
+  min-height: 24px;
+  padding: var(--space-2) var(--space-3);
+  overflow: visible;
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+  clip-path: none;
+  color: var(--accent);
+  font: var(--type-body-strong);
+
+  /* THE STANDARD RING, KNOWN-SURFACE TIER (`DESIGN.md:418`, AC 3, AC 16). The chip paints its own
+     `--surface-panel` background, so there is no card art under it and the over-art composite
+     would be the wrong treatment — this takes the same two declarations `.deck-row`,
+     `.card-detail-unpin` and `.footer-attribution-link` carry. Measured: `--focus-ring` `#b3baff`
+     on `--surface-panel` `#191c2b` is 9.16:1.
+
+     The UA ring is REPLACED, never removed — `outline: none` is banned in all four spellings. */
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* NO MOTION, DELIBERATELY (AC 27, AC 28, UX-DR42).
+
+   The reveal is a state change with no transition, following `Footer.css:18-21`'s precedent —
+   ship it motionless. That is not timidity: a skip link that FADES in is a skip link a fast
+   typist has already Tabbed past before it is legible, and `tokens.css:285-317`'s reduced-motion
+   inventory would have to grow a row plus a UX-DR42 amendment for an animation whose only effect
+   is to delay the one thing the component exists to do.
+
+   So `prefers-reduced-motion: reduce` changes nothing here, and there is nothing to register.
+   Stated rather than left as an absence, because an absence is what a later story would fill. */

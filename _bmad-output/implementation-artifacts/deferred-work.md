@@ -1639,6 +1639,22 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   browser check. **Tab to both links.** (Severity: Medium — it is the token layer's focus
   contract getting its first real exercise, and c4-11 inherits whatever is learned here.)
 
+  📐 **c4-11 (2026-08-07) supplies the NUMBER this entry never had, which is the half no browser
+  check was needed for** — `c4-6:1155-1157` left it as an open composite question and no figure
+  existed anywhere. Computed by WCAG 2.x relative luminance against `--focus-ring` `#b3baff`:
+  **`--surface-well` 10.35:1 · `--surface-base` 9.94:1 · `--surface-panel` 9.16:1 ·
+  `--surface-overlay` 8.11:1** — every authored surface clears 1.4.11's 3:1 non-text floor by more
+  than 2.5×. **Against white card art it is 1.84:1, and against mid-grey art 2.14:1 — both FAIL.**
+  That measurement **proves the design rather than questioning it**: it is precisely why
+  `--shadow-focus-ring-over-art` exists, because the composite's outer `--surface-base` band
+  measures **9.94:1 against the ring and 18.33:1 against white art**, so what carries 1.4.11 over a
+  painting is the *adjacent-pair* contrast, not the ring against the art.
+
+  **The rendered half is the eye-check's and it is discharged there** (c4-11 Task 7): whether the
+  ring is legible around the footer links at the very bottom edge of the window, and whether the
+  over-art band is ACTUALLY PAINTED — because if it is ever dropped, the indicator silently fails
+  on every light card face and no jsdom test in this repo can see it.
+
 - **The border and the surface.** `border-top: 1px solid var(--border-hairline)` over
   `background: var(--surface-base)` is `DESIGN.md`'s frontmatter verbatim. Note that the
   background is the same token as the page canvas, so the *only* visible separation is the
@@ -3844,6 +3860,20 @@ lives on is given so this section is checkable rather than merely reassuring.
   primitive's root is an edit c4-4 was told not to make). **Home: c4-5**, which mounts the same
   component as detail art and can re-decide with two consumers in view. (Severity: Low.)
 
+  ⚠️ **HOME CORRECTED, and it was stale by two stories.** c4-5 did not take it; **c4-6 re-homed it
+  to c4-11 — but only in the c4-6 story record, never here**, so this entry went on naming a story
+  that had already passed it on. Recorded because it is the failure mode a ledger has: a
+  disposition written in a story file and not in the ledger is a disposition nobody will find.
+
+  ❌ **DECLINED at c4-11 (2026-08-07), with the reason, and re-homed to the C4 RETRO.** c4-6 had
+  already measured the whole of it — every engine renders it, React does not warn, the accessible
+  name computes normally — and c4-6 *closed* the harder INTERACTIVE-descendant version of the same
+  seam. What remains is a spec-letter violation with **zero measured accessibility impact**, and
+  the fix means changing `CardPlaceholder`'s root: the edit c4-4 was explicitly told not to make.
+  Making that change for no measurable gain, in the story whose entire subject is the accessibility
+  floor, would be the wrong use of this story's licence. Saying so plainly is worth more than the
+  change. **Home: the C4 retro**, which can weigh it against the other primitive-root questions.
+
 - **The reduced-motion transform guard compares SELECTOR TEXT.** A fallback whose selector differs
   from the motion's — even one the cascade would resolve correctly — reads as unregistered. False
   failure, not false pass; the repair is to write the matching selector. (Severity: Low.)
@@ -3881,6 +3911,31 @@ lives on is given so this section is checkable rather than merely reassuring.
   renegotiate: it owns the keyboard/focus story and the Tab-order additions. Ruled at review
   (Brad, 2026-08-05): defer, not fix-now. **Home: c4-11 — scope the AC 25 assertion, enumerate
   the new Tab stop, and make the scroller focusable in the same change.**
+
+  ✅ **CLOSED at c4-11 (2026-08-07), all three parts in one change**, exactly as the mandate asked.
+  `.card-detail-oracle` now carries `tabindex="0"`, `role="group"` and an `aria-label` from
+  `CardDetail/copy.ts` (`ORACLE_SCROLLER_LABEL = 'Rules text'`), with the known-surface focus ring
+  in `CardDetailChrome.css`; AC 25's assertion is **narrowed rather than deleted** — from "no
+  `[tabindex]` anywhere in the panel" to "no `[tabindex]` outside the oracle scroller", named by
+  SELECTOR rather than counted, with the reason written into the test so the not-a-modal claim it
+  protects stays legible; and the stop is added to UX-DR40's rewritten enumeration.
+
+  ⚠️ **TWO CORRECTIONS TO THIS ENTRY'S OWN NUMBERS, both re-measured read-only at c4-11.**
+  (1) *"the 63 corpus cards whose rules text exceeds 500 characters"* counts **top-level
+  `oracle_text` only**. Faced cards store their rules text per face and blank at top level (the
+  c4-6 / c4-7 / c4-9 family, a fourth time), so counting what `CardDetail` can actually RENDER it
+  is **103 of 38,261**. The 63 reproduces exactly as a top-level count, so the figure was not
+  wrong — it was measuring the wrong thing. (2) The **live** exposure is **one card in one deck of
+  forty**: `Ajani, Sleeper Agent`, 530 characters, in `Atraxa Counter Cabinet`. c4-6 measured the
+  clamp at 294px / 14 lines and the deepest real back face at 126px, so **the clamp has never been
+  observed to fire on a real deck.**
+
+  **The cost is recorded rather than hidden**: this adds **one permanent Tab stop to the right
+  column on every deck**, to serve a scroller that overflows on one live card. That is the correct
+  trade under 2.1.1 — reachability is required *whenever* content can overflow, not only when it
+  usually does — and the conditional alternative (focusable only when `scrollHeight > clientHeight`)
+  was **considered and rejected in writing**: jsdom resolves no layout so it cannot be verified,
+  and a Tab stop that appears and disappears is the defect `c4-6:507-508` priced against.
 
 - **The MDFC pin announcement speaks the combined name; the panel renders the face name.** A
   faced card pinned before hydration announces the summary tier's `"Clearwater Pathway //
@@ -4263,3 +4318,146 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   such files exist. The next story that wants an authored string or a bound field past a guard has
   been shown the door. **Home: the C4 retro** — decide whether fixture-library test files need a
   declared registry or the exemption needs narrowing. (Severity: Low.)
+
+## Deferred from: c4-11-keyboard-floor-skip-link-tab-order-and-focus-management (2026-08-07)
+
+### Dispositions of the nine inherited deferrals (C2 retro ruling R2)
+
+1. **The 21em oracle scroller is keyboard-unreachable** — ✅ **CLOSED**, all three parts in one
+   change, with two corrections to its own population figures. Written in place at the entry itself
+   (`:3875`) rather than only here.
+2. **The focus ring's appearance has never been looked at** (C2 retro item 4, C3 retro `:566`) —
+   📐 **the missing NUMBER is supplied** at the entry itself (`:1634`), and the rendered half is
+   discharged by this story's eye-check. ⚠️ The C3 retro's Block-E table (`:489`) mislabels this
+   item as *"Deck-list panel with a genuinely long deck"*; `:566` is authoritative.
+3. **`CardPlaceholder` renders a `<div>` inside the tile's `<button>`** — ❌ **DECLINED with the
+   reason, re-homed to the C4 retro**, and this ledger's stale *"Home: c4-5"* **corrected** (c4-6
+   re-homed it in its story record only, never here).
+4. **F1: story-key-shaped strings on the rendered view** — ⚠️ **the forward statement was WRONG, in
+   two directions.** See the new entry below.
+5. **The registry guards are blind to untracked modules** (`:3938-3946`) — **declined, with the
+   limit re-declared rather than claimed away.** This story touches four registry guards
+   (`CONTAINERS`, `COPY_MODULES`, and its own two new files) and closes none of it: the fix is a
+   redesign of how the guards enumerate files, which is a larger change than a story that merely
+   *adds* entries should make. `tests/keyboard-floor.test.ts` states the limit in its own header,
+   where the next author will read it. **Home: unchanged** — the guard suite.
+6. **AC 1's residue has a keyboard half** (`:3919-3925`) — **re-homed unchanged to the epic
+   manual-testing checklist, with the exposure re-stated.** Flip controls materialise inside the
+   cold-open hydration sweep (~1 s), so a keyboard user Tabbing during a cold open meets Tab stops
+   appearing mid-traverse. **This story cannot fix it**: the control's existence depends on hydrated
+   data, and the alternatives were priced and declined at c4-6 Q1. Re-measured here: **42 flip
+   controls across the 40 real decks, 6 on each Atraxa deck, and 20 of 40 decks have none** — so on
+   half the corpus the defect has no exposure at all. (Severity: Low.)
+7. **jsdom cannot report an accessible name's spelling** (`:3851-3853`) and **the MDFC pin
+   announcement speaks the combined name** (`:3885-3891`) — **confirmed not this story's, re-homed
+   unchanged to the epic manual-testing checklist.** Neither is a keyboard-reachability question;
+   both need a real screen reader.
+8. **The `:root { font: var(--type-body) }` rem-basis entry** (`:1254-1261`, previously **unowned**)
+   — ❌ **DECLINED BY NAME rather than left unmentioned**, which is what R2 asks for. This story is
+   the closest thing to an accessibility pass the epic has, and it is still the wrong home: the
+   entry is about whether the document basis should be `rem` so a browser's font-size setting scales
+   the UI — a **typography and layout** decision touching every token and every component, not a
+   keyboard-reachability one. Nothing in this story's diff moves it either way. **The honest
+   re-home is Epic 8's release-readiness pass**, where a whole-UI scaling decision can be taken with
+   the rendered product in hand. (Severity: Low.)
+9. **`eslint-plugin-jsx-a11y` carries a DoS advisory** (`:1074-1083`) — **confirmed NOT triggered,
+   re-homed unchanged.** `npm audit fix --force` was **not** run. The plugin carries the entire
+   UX-DR47 gate and the "fix" is a downgrade across a major boundary.
+
+### Triggered "whoever ships the next X" residues
+
+- **The visually-hidden idiom's third instance** (`ManaCurve.css:141-165`) — ✅ **IT FIRED, and the
+  promotion happened in this commit.** c4-9 and c4-10 each asserted it had not. Measured at Task 0:
+  exactly **two** production copies existed (`CardDetailChrome.css`, `ManaCurve.css`; the third grep
+  hit is a test file). `.visually-hidden` now lives in `src/styles/visually-hidden.css`, `@import`ed
+  by `src/index.css` beside `card-geometry.css` and consumed BY CLASS NAME, so no component imports
+  a cross-tree stylesheet. **Scope held to the three files it named**: `pointer-events: none` stayed
+  with the one consumer that wants it, and `.mana-curve-table`'s rule was removed outright because
+  every declaration in it was identical to the shared one.
+- **The hydration sweep's no-re-drive window** (c4-6 ruling 1) — **NOT triggered.** This story reads
+  no card data, makes no network request, and derives nothing from `boards` beyond "is there at
+  least one card". Stated structurally, as c4-10 did.
+- **`StatChip`'s first surface** — **not triggered.**
+- **The C2 retro's manual-testing items** — item 4 is discharged here (deferral 2 above); item 14
+  (the footer's measured 24px box) is Epic 8's and stays there.
+- **The cross-file card-shape collision** (`:3587-3596`) — **not triggered.** The skip link draws no
+  card: `--radius-card` appears nowhere in `SkipLink.css` and `CARD_SHAPED` holds at four entries.
+
+### New entries declared by c4-11
+
+- **AC 9 is NOT fully covered, and the uncovered half is named.** The skip link's own withdrawal is
+  handled — if it holds focus when it unmounts, focus is handed to the `<h1>` deck name through the
+  shared `focusHome` idiom, with three arms tested (held focus; never had it; had it and lost it
+  before unmounting). **The half this story cannot reach**: a *tile* or a *deck row* holding focus
+  when the deck is deleted or refetched to `no-active-deck`. React unmounting the focused node drops
+  focus to `<body>` and Tab restarts from the top of the page — the exact failure
+  `CardDetail.tsx:385-388` records for the unpin control. The repair is a focus hand-off **at the
+  transition**, which needs `deck_changed`; that signal is Epic 7's and **c7-6** is the story that
+  renders the transition. **Home: c7-6**, by name, with the mechanism written down.
+  (Severity: Medium.)
+
+- **The skip link does not reach the footer, and the footer is why the story says it exists.**
+  Measured over all 40 real decks at c4-11: the corridor is **206 Tab stops max / 78 median / 102.0
+  mean**; the link removes only the first **105**; **19 of 40** decks remain >50 stops from the
+  footer and **36 of 40** remain >20. Behind them are exactly two links, one the Wizards Fan Content
+  Policy notice that NFR-08 and `DESIGN.md:419` make *"a condition of public release, not a design
+  choice"*. UX-DR31 specifies ONE link and this story shipped exactly that;
+  `validation-report-2026-07-25.md:45` already records the gap as gate H3's still-open half.
+  **The alternative is costed rather than left to be re-derived**: a second link ("Skip to footer",
+  or retargeting this one past the deck list) closes ~42 stops on the median deck and costs one more
+  component plus a DESIGN.md + EXPERIENCE.md amendment. **Home: c8-6**, which actions or re-accepts
+  the revisit-before-public-release flag. (Severity: Medium.)
+
+- **The connection pill's DOM position is decided by nobody, and three stories each assume someone
+  else did it.** UX-DR40 (before this story's rewrite) put it between the deck rows and the footer;
+  **c5-7** cites UX-DR47 and is silent on position; **c10-1** calls it *"the last stop before the
+  footer"* — while `DESIGN.md:445` places it physically **bottom-left**, in the other column from
+  the deck rows. c4-11 **declined to decide it without the component** and marked it unbuilt in the
+  enumeration instead. **Home: c5-7**, by name. (Severity: Low.)
+
+- **F1's remaining story key is `c6-8`, not `c4-11` — and the C3 retro's count of six was itself an
+  undercount.** c4-9 and c4-10 both recorded *"`c4-11` remains, in the skip-link work"*. Verified at
+  c4-11: the string `c4-11` appears only in **comments** (`App.tsx`, `App.test.tsx`, and ten sites
+  across five other modules) and the skip link renders no story key at all. But
+  **`AppShell.tsx:117` renders `slot(nav, 'Agent-view nav pills land here — c6-8.')` and `App.tsx`
+  has never passed `nav`**, so that string is on the glass on **every** surface including a fully
+  loaded deck — and has been since c2-6. It was missed because every F1 assertion names a `c4-*` key
+  and none ever looked for a `c6-*` one: **a count that only checked the keys someone thought of**,
+  which is this epic's coverage-that-reads-as-coverage theme in a COUNT rather than in a guard. Both
+  halves are now asserted in `App.test.tsx`. The gate itself stays **c8-5's**; the remaining key is
+  displaced by **c6-8**. (Severity: Low.)
+
+- **A SECOND DOCUMENT-LEVEL KEY LISTENER WAS UNGUARDED, AND THE PROBE FOUND IT.** The contract —
+  one `keydown` on `document`, in the **bubble** phase, with **capture reserved for c6-5's agent
+  view** — is written in `CardDetail.tsx:88-101`, in UX-DR39, in `EXPERIENCE.md` and in this story's
+  don't-break list, and was **enforced nowhere**. Probe (j) added a capture-phase listener, ran the
+  full 1,655-test suite, and nothing went red. Closed in this commit by
+  `tests/keyboard-floor.test.ts`, which asserts the listener SET (one, named by file and event) and
+  the PHASE (no `true` / `capture: true` argument), each with a non-vacuity anchor. **Recorded
+  rather than quietly fixed**, per the epic's standing rule. (Severity: Medium — now closed.)
+
+- **`tests/keyboard-floor.test.ts` cannot see specificity, and says so.** It asks whether a
+  `:focus-visible` rule EXISTS for a focusable element's class, not whether a later selector
+  outranks it. `CardTile.css:54-75` records a real instance of exactly that trap being found by eye
+  rather than by a gate. A selector-weight model is a bigger instrument than this guard needs.
+  **Home: unowned** — recorded so the next reader knows the shape of the hole. (Severity: Low.)
+
+- **A naive JSX opening-tag regex fails SILENTLY, and it nearly shipped inside this story's own
+  flagship guard.** The first draft of `keyboard-floor.test.ts` stripped JSX comments with
+  `\{\s*\/\*[\s\S]*?\*\/\s*\}`; when the first `*/` is not followed by `}` the engine backtracks to
+  a later one, and a single match swallowed **4,700 characters of `FlipControl.tsx` — 10,257 bytes
+  in, 611 out**. The component then contained no `<button>` at all and was **excused from every rule
+  in the file**. Separately, `<button[^>]*>` truncates on the `>` inside `onClick={() => …}`, which
+  returned `CardTile`'s button with an EMPTY class list. **Both were caught by the guard's own
+  by-FILE non-vacuity anchor rather than by review** — the fifth consecutive story in which this
+  epic's coverage-that-reads-as-coverage class landed in the story's own named guard, and the first
+  in which the anchor caught it first. (Severity: Low — closed, and recorded as method.)
+
+- **A probe that produces INVALID source is not a caught probe.** First-pass probe (f) mutated
+  `SkipLink.tsx` into TSX that would not parse; the run collected **1,596** tests instead of ~1,655
+  and every assertion in the suite read "caught" for free. The harness's own `MIN_TESTS` validation
+  flagged it as `HARNESS-BROKEN` rather than scoring it, and it was re-run with valid source. This
+  is the **fifth** recorded instance in this epic of a probe harness lying, and the second cause
+  beyond the ledgered lowercase-drive-letter crash (`:3708-3718`). **Home: the C4 retro**, with the
+  method: validate the collected-test count on every probe run, and treat a shortfall as a broken
+  harness rather than as evidence. (Severity: Low.)

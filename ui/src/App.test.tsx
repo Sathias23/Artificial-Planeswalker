@@ -182,6 +182,22 @@ function formatCheckReport(overrides: Record<string, unknown> = {}) {
  * modelled answer rather than whatever the poll happened to be handing out — which is the same
  * repair c4-2 made when it turned this fixture route-aware for a second caller.
  */
+/**
+ * The six real MDFC Pathways in `Atraxa Counter Cabinet v2` — the deck's 6 flip controls
+ * (c4-6's measurement: the only flippable rows in that deck), under the full `A // B` names the
+ * `cards` table actually stores (VERIFIED REAL against the live DB at code review 2026-08-07).
+ * Named here so the hydration route below can answer them with two imaged faces, which is what
+ * makes a tile grow a flip control.
+ */
+const PATHWAY_NAMES: readonly string[] = [
+  'Branchloft Pathway // Boulderloft Pathway',
+  'Barkchannel Pathway // Tidechannel Pathway',
+  'Brightclimb Pathway // Grimclimb Pathway',
+  'Clearwater Pathway // Murkwater Pathway',
+  'Darkbore Pathway // Slitherbore Pathway',
+  'Hengegate Pathway // Mistgate Pathway',
+]
+
 const cardRecord = (name: string) =>
   new Response(
     JSON.stringify({
@@ -200,6 +216,21 @@ const cardRecord = (name: string) =>
       collector_number: '1',
       legalities: {},
       games: ['paper'],
+      // Shape C — per-face images, no top-level map — for the six Pathways, so the corridor pin
+      // below renders their flip controls exactly as the live backend makes them render. Each
+      // half of the stored `A // B` name is its face's name, which is how the corpus spells it.
+      ...(PATHWAY_NAMES.includes(name)
+        ? {
+            image_uris: null,
+            card_faces: name.split(' // ').map((faceName, index) => ({
+              name: faceName,
+              mana_cost: '',
+              type_line: 'Land',
+              oracle_text: '',
+              image_uris: { normal: `https://cards.test/${index === 0 ? 'front' : 'back'}.jpg` },
+            })),
+          }
+        : {}),
     }),
     { status: 200 },
   )
@@ -639,8 +670,9 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     // displacement. All three keys lived in the SAME left-column string, so this one has been
     // off the glass since c4-4; what changes here is that the row that string promised is now
     // FULL. F1 count: the left column contributed three keys to the C3 retro's six, all three
-    // gone; `c4-10` and `c4-11` are what remain, in the RIGHT column's placeholder and in the
-    // skip-link work. The gate itself stays c8-5's.
+    // gone; `c4-10` is what remains, in the RIGHT column's placeholder. The gate itself stays
+    // c8-5's. (This comment named `c4-11` beside it until that story measured the claim and found
+    // it false — the skip link renders no story key. See the correction at the end of this test.)
     expect(document.body.textContent).not.toContain('c4-9')
 
     // THE RIGHT COLUMN'S DISPLACEMENT, THE SAME SHAPE ONE STORY LATER (AC 6, added at review
@@ -678,8 +710,27 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     //
     // F1 COUNT: the C3 retro counted six story-key-shaped strings on a real render. The left
     // column's three went at c4-4/c4-8/c4-9 and the right column's three are now all displaced by
-    // their own panels — leaving ONE, `c4-11`, in the skip-link work. The gate itself stays c8-5's.
+    // their own panels. This comment said that left "ONE, `c4-11`, in the skip-link work".
+    //
+    // ⚠️ MEASURED AT c4-11 AND CORRECTED (Q14). That was wrong twice over, and both halves are
+    // worth keeping:
+    //
+    //   1. The skip link renders NO story key. `c4-11` appears in this repo only inside comments
+    //      (`App.tsx`, this file, and ten sites across five other modules) — never as rendered
+    //      text. c4-9's and c4-10's records both forward-stated the same claim; all three were
+    //      wrong in the same direction.
+    //   2. There IS a key still on the glass, and the count of six never included it: `c6-8`, from
+    //      `AppShell.tsx:117`'s nav placeholder. `App.tsx` has never passed `nav`, so that string
+    //      renders on EVERY surface including this one. The C3 retro's six was itself an
+    //      undercount — every assertion in this test names a `c4-*` key, so a `c6-*` one was
+    //      invisible to a check that only ever looked for the keys someone had thought of. That is
+    //      this epic's coverage-that-reads-as-coverage theme, in a COUNT rather than a guard.
+    //
+    // So: F1's real remaining count on a rendered deck view is ONE, and it is `c6-8`. Both halves
+    // are asserted below rather than left in prose, so the next story inherits a fact.
     expect(document.body.textContent).not.toContain('c4-10')
+    expect(document.body.textContent).not.toContain('c4-11')
+    expect(document.body.textContent).toContain('c6-8')
     const formatCheckRegion = screen.getByRole('region', { name: 'Format check' })
     expect(formatCheckRegion).toBeVisible()
 
@@ -1195,6 +1246,168 @@ describe('the boot does not poll, whatever the backend says (AC 12, Q6)', () => 
  * written into `App.tsx` and `ui/README.md` where the next surface's author will read it, and
  * the second test below is what makes it a gate rather than a note.
  */
+describe('the skip link is present exactly when there is something to skip (c4-11, AC 4)', () => {
+  const SKIP = 'Skip past the deck grid'
+
+  it('is on the glass, and FIRST, for a loaded deck with cards', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    const link = screen.getByRole('button', { name: SKIP })
+    expect(link).toBeInTheDocument()
+    // FIRST in the document, which is first in the Tab order because nothing carries a tabindex.
+    expect(document.querySelector('.app-shell')?.firstElementChild).toBe(link)
+    // …and there is genuinely a grid behind it, so the presence is not vacuous.
+    expect(document.querySelector('.card-tile')).not.toBeNull()
+  })
+
+  // WITHDRAWN BEHIND EVERY STATE PANEL — PARAMETRIZED OVER EVERY ARM, NOT A REPRESENTATIVE ONE
+  // (AC 4). UX-DR31 withdraws the link when "a state panel occupies the left column", and
+  // `surfaceOf` returns `{ kind: 'panel' }` for all six `StateKey`s. A test that checked one arm
+  // would pass through a condition written `panel !== 'no-active-deck'`, which is exactly the
+  // shape a later edit reaches for. Four arms arrive from the wire; the two client-only states
+  // (`disconnected`, `database-updating-stalled`) are unreachable from a wire response by
+  // construction — c5-6 and c3-9 own their triggers — so those two are driven through
+  // `useSystemStore.setState` directly, exactly as their real triggers will write them. All six,
+  // per the AC's letter (code review 2026-08-07: the first written form drove four and declared
+  // the other two structurally covered).
+  const WIRE_DRIVEN_ARMS: readonly [string, string, number][] = [
+    ['database-not-initialized', 'database_not_initialized', 503],
+    ['database-updating', 'database_unavailable', 503],
+    ['internal-error', 'internal_error', 500],
+    ['no-active-deck', 'deck_not_found', 404],
+  ]
+
+  for (const [panel, reason, status] of WIRE_DRIVEN_ARMS) {
+    it(`is withdrawn behind the ${panel} panel`, async () => {
+      answering(refusal(reason, status), decks('Boros Aggro'))
+
+      render(<App />)
+      await settle()
+
+      // The state panel really is on the glass — without this the absence below would be an
+      // assertion about a page that failed to render anything at all.
+      expect(document.querySelector('.state-panel')).not.toBeNull()
+      expect(document.querySelector('.card-tile')).toBeNull()
+
+      expect(screen.queryByRole('button', { name: SKIP })).toBeNull()
+      // …and nothing rendered a placeholder in its slot either: the shell's first child is the
+      // header, so there is no story key sitting where the link would have been.
+      expect(document.querySelector('.app-shell')?.firstElementChild?.tagName).toBe('HEADER')
+    })
+  }
+
+  const STORE_DRIVEN_ARMS = ['disconnected', 'database-updating-stalled'] as const
+
+  for (const panel of STORE_DRIVEN_ARMS) {
+    it(`is withdrawn behind the ${panel} panel (store-driven — its wire trigger is not this story's)`, async () => {
+      // No deck on the glass, which is the state these panels can actually occupy: `surfaceOf`
+      // gives a LOADED deck priority over the system panel (deck.ts:426 — the deck-wins posture),
+      // so the left column shows these arms only from the no-deck state. Driven through
+      // `useSystemStore.setState` exactly as their real triggers (poller unreachable / stalled
+      // clock) will write them.
+      booting(activeDeck(null))
+      answering(decks())
+
+      render(<App />)
+      await settle()
+
+      act(() => {
+        useSystemStore.setState({ panel, decks: [] })
+      })
+
+      expect(document.querySelector('.state-panel')).not.toBeNull()
+      expect(document.querySelector('.card-tile')).toBeNull()
+      expect(screen.queryByRole('button', { name: SKIP })).toBeNull()
+      expect(document.querySelector('.app-shell')?.firstElementChild?.tagName).toBe('HEADER')
+    })
+  }
+
+  it('is withdrawn on an EMPTY deck — the case UX-DR31 does not cover (Q3, c4-12)', async () => {
+    // The gap Q3 exists to close. An empty deck renders NO state panel, so UX-DR31's withdrawal
+    // trigger is absent — and its grid is not populated, so the presence trigger is absent too.
+    // It falls between both branches of the written rule.
+    //
+    // The reason is that an empty deck has NOTHING TO SKIP — zero tiles and zero deck rows sit
+    // between the link and the right column, so the link would save zero Tab stops. (The first
+    // written form of this comment claimed the link's target would not exist; that was FALSE —
+    // `CardDetail` renders its frame and `<h2>` unconditionally, and UX-DR20's "first card" fills
+    // the panel's content, not its heading. Corrected at code review 2026-08-07.)
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail({ cards: [], mainboard_count: 0 }))
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    // A DECK is on the glass — not a state panel. This is what makes the case distinct from the
+    // four above, and a fixture that quietly produced a panel would make this test a duplicate.
+    expect(document.querySelector('.state-panel')).toBeNull()
+    expect(screen.getByRole('heading', { level: 1 }).textContent).not.toBe(
+      'Artificial Planeswalker',
+    )
+    expect(document.querySelector('.card-tile')).toBeNull()
+
+    expect(screen.queryByRole('button', { name: SKIP })).toBeNull()
+  })
+
+  it('is PRESENT on a sideboard-only deck — rows are a corridor even when tiles are not', async () => {
+    // The state Q3's two documented cases both miss, found at code review 2026-08-07: the grid
+    // spreads commander + mainboard (`CardGrid.tsx:76`) but c4-7's deck list ALSO renders a
+    // focusable row per sideboard card — so a sideboard-only deck has zero tiles and a real
+    // corridor of rows. Ruled: the link's condition is "any focusable deck row exists", not "any
+    // tile exists".
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({
+        cards: [{ ...deckCard('Pithing Needle', 'Artifact'), sideboard: true }],
+        mainboard_count: 0,
+        sideboard_count: 1,
+      }),
+    )
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    // No tiles — and the link is on the glass anyway, because the rows are.
+    expect(document.querySelector('.card-tile')).toBeNull()
+    expect(document.querySelector('.deck-row')).not.toBeNull()
+    expect(screen.getByRole('button', { name: SKIP })).toBeInTheDocument()
+  })
+
+  it('moves focus into the right column when activated, end to end (AC 5)', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    const link = screen.getByRole('button', { name: SKIP })
+    const detail = screen.getByRole('region', { name: 'Card detail' })
+
+    act(() => {
+      link.focus()
+      link.click()
+    })
+
+    // THE REAL PANEL'S REAL HEADING — not the stand-in `SkipLink.test.tsx` uses. This is the
+    // assertion that proves the id on `CardDetail`'s frame and the lookup in `SkipLink` actually
+    // meet, which neither file can show on its own.
+    const heading = screen.getByRole('heading', { name: 'Card detail' })
+    expect(document.activeElement).toBe(heading)
+    expect(detail.contains(document.activeElement)).toBe(true)
+
+    // AND IT SKIPPED THE GRID: the focused heading comes AFTER every tile in document order.
+    const lastTile = [...document.querySelectorAll('.card-tile')].at(-1)!
+    expect(
+      lastTile.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+})
+
 describe('the attribution is on the surface (c2-10, AC 15)', () => {
   it('renders inside the contentinfo landmark, by role and by text', () => {
     render(<App />)
@@ -1227,6 +1440,66 @@ describe('the attribution is on the surface (c2-10, AC 15)', () => {
     expect(screen.queryByText(/Scryfall and Fan Content attribution lands here/)).toBeNull()
   })
 
+  it('is still the LAST pair of Tab stops, with the skip link first (c4-11, AC 11)', async () => {
+    // THE CORRIDOR, END TO END, over a real rendered deck (AC 11). Asserted as DOCUMENT ORDER —
+    // never as a `tabindex` value and never through `userEvent.tab()` (Q11: jsdom implements no
+    // sequential focus navigation, so that call would walk user-event's own heuristic list rather
+    // than this app's DOM). `CardTile.test.tsx:595-605` set this precedent.
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({
+        cards: [
+          deckCard('Llanowar Elves', 'Creature — Elf Druid', 1, '{G}', 1),
+          deckCard('Forest', 'Basic Land — Forest', 24),
+        ],
+      }),
+    )
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    // The focusable set, derived from the DOM rather than listed — the same posture the app-wide
+    // guards take. `[tabindex]` is in the selector so the oracle scroller is included; a positive
+    // `tabindex` anywhere would also show up here and break the order below, which is the point.
+    const focusables = [...document.querySelectorAll<HTMLElement>('a[href], button, [tabindex]')]
+    const at = (el: Element | null) => focusables.indexOf(el as HTMLElement)
+
+    // NON-VACUITY (AC 32): this deck really does render a grid, a detail panel and a footer, so
+    // the ordering assertions below have something to order. A fixture that rendered none of them
+    // would pass every `toBeLessThan` by comparing -1 with -1.
+    expect(focusables.length).toBeGreaterThan(4)
+
+    const skip = screen.getByRole('button', { name: 'Skip past the deck grid' })
+    const firstTile = document.querySelector('.card-tile')
+    const firstRow = document.querySelector('.deck-row')
+    const oracle = document.querySelector('.card-detail-oracle')
+    const footerLinks = within(screen.getByRole('contentinfo')).getAllByRole('link')
+
+    expect(firstTile).not.toBeNull()
+    expect(firstRow).not.toBeNull()
+    expect(footerLinks).toHaveLength(2)
+
+    // THE SKIP LINK IS FIRST — before the header, and therefore before every tile.
+    expect(at(skip)).toBe(0)
+    expect(at(skip)).toBeLessThan(at(firstTile))
+
+    // THE GRID PRECEDES THE RIGHT COLUMN, which is the whole reason the skip link exists.
+    expect(at(firstTile)).toBeLessThan(at(firstRow))
+
+    // THE DETAIL PANEL'S OWN STOPS COME BEFORE THE FIRST DECK ROW (Q2's enumeration correction —
+    // UX-DR40 omitted them entirely). The oracle scroller is c4-11's new stop; it lives in the
+    // detail panel, which stacks ABOVE the deck list.
+    expect(oracle).not.toBeNull()
+    expect(at(oracle)).toBeLessThan(at(firstRow))
+
+    // AND THE FOOTER LINKS ARE LAST — the two stops the story's user statement is about, and the
+    // ones still 101 stops away on the largest real deck even after using the link.
+    expect(at(footerLinks[0])).toBe(focusables.length - 2)
+    expect(at(footerLinks[1])).toBe(focusables.length - 1)
+    expect(at(firstRow)).toBeLessThan(at(footerLinks[0]))
+  })
+
   it('survives every system state, because it is not in the changing slot', async () => {
     // The left column is now wire-driven, and the footer is not. Asserted after a transition
     // rather than only at mount, because "correct from day one and forever" is the claim
@@ -1239,5 +1512,170 @@ describe('the attribution is on the surface (c2-10, AC 15)', () => {
 
     await advance(2_000)
     expect(screen.getByRole('contentinfo').textContent).toBe(sentenceOf())
+  })
+})
+
+/**
+ * The corridor numbers of §A, pinned in the SUITE rather than only in the story file (c4-11,
+ * AC 31) — over the two shapes the AC names: the 99-tile / 6-flip-control `Atraxa Counter
+ * Cabinet v2` and the 1-card `Iron Man, Modern Marvel — reminder`.
+ *
+ * The identity being pinned is §A's own arithmetic: corridor = tiles + flip controls + the
+ * oracle scroller + deck rows, with the skip link before it and the two footer links after it.
+ * Atraxa v2 (VERIFIED REAL against the live DB at code review 2026-08-07: 99 rows — 1 commander
+ * + 98 mainboard, NO sideboard — quantity 100, exactly 6 flippable Pathways) gives
+ * 99 + 6 + 1 + 99 = **205**, of which the link removes the first 105 (tiles + flips) and leaves
+ * 100. The 92 filler mainboard names are DECLARED SYNTHETIC IN PLACE: only the COUNT is the
+ * fixture's claim, and the count is the real deck's.
+ */
+describe('the corridor numbers of §A are pinned in the suite (c4-11, AC 31, AC 11)', () => {
+  const atraxaShape = () => [
+    {
+      ...deckCard(
+        'Atraxa, Praetors’ Voice',
+        'Legendary Creature — Phyrexian Angel',
+        1,
+        '{G}{W}{U}{B}',
+        4,
+      ),
+      commander: true,
+    },
+    ...PATHWAY_NAMES.map((name) => deckCard(name, 'Land')),
+    ...Array.from({ length: 92 }, (_, i) =>
+      deckCard(`Synthetic Filler ${i + 1}`, 'Creature — Test', 1),
+    ),
+  ]
+
+  const focusablesNow = () => [
+    ...document.querySelectorAll<HTMLElement>('a[href], button, [tabindex]'),
+  ]
+
+  it('pins 205 = 99 tiles + 6 flips + 1 oracle + 99 rows on the Atraxa shape, and the flip adjacency', async () => {
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({ cards: atraxaShape(), mainboard_count: 100, distinct_cards: 99 }),
+    )
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    // The hydration sweep is what grows the six flip controls; give its ~99 staggered requests
+    // time to land before counting anything.
+    await advance(10_000)
+
+    const focusables = focusablesNow()
+    const at = (el: Element | null) => focusables.indexOf(el as HTMLElement)
+
+    // The shape really rendered: NON-VACUITY for every count below.
+    expect(document.querySelectorAll('.card-tile')).toHaveLength(99)
+    expect(document.querySelectorAll('.card-tile-frame .flip-control')).toHaveLength(6)
+    expect(document.querySelectorAll('.deck-row')).toHaveLength(99)
+
+    const skip = screen.getByRole('button', { name: 'Skip past the deck grid' })
+    const oracle = document.querySelector('.card-detail-oracle')
+    const footerLinks = within(screen.getByRole('contentinfo')).getAllByRole('link')
+    expect(oracle).not.toBeNull()
+    expect(footerLinks).toHaveLength(2)
+
+    // THE PIN: §A's arithmetic, produced by the DOM rather than recomputed from the artefact.
+    // 1 skip + 99 tiles + 6 flips + 1 oracle + 99 rows + 2 footer links = 208 focusables…
+    expect(focusables).toHaveLength(208)
+    // …the corridor from the header to the first footer link is 205 stops…
+    expect(at(footerLinks[0]) - at(skip) - 1).toBe(205)
+    // …the link removes the first 105 of them (every tile and every flip control)…
+    expect(at(oracle) - at(skip) - 1).toBe(105)
+    // …and the footer is STILL 100 stops away after using it — the story's own headline, at this
+    // deck's scale (206/105/101 is the LARGEST deck's row count, which carries a sideboard).
+    expect(at(footerLinks[0]) - at(oracle)).toBe(100)
+
+    // THE FLIP ADJACENCY (AC 11): every flip control's immediately-preceding Tab stop is its OWN
+    // tile — the sibling inside the same `.card-tile-frame` — never a trailing group.
+    const flips = focusables.filter((el) => el.classList.contains('flip-control'))
+    expect(flips).toHaveLength(6)
+    for (const flip of flips) {
+      const ownTile = flip.closest('.card-tile-frame')?.querySelector('.card-tile')
+      expect(focusables[at(flip) - 1]).toBe(ownTile)
+    }
+  })
+
+  it('pins the intra-panel order — unpin, then flip, then oracle — while a flippable card is pinned (AC 11)', async () => {
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({ cards: atraxaShape(), mainboard_count: 100, distinct_cards: 99 }),
+    )
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    await advance(10_000)
+
+    // Pin a Pathway: its tile's click is the pin gesture (c4-5), and a FLIPPABLE pin is what
+    // makes all three panel stops exist at once — the published UX-DR40 enumeration's intra-panel
+    // clause, which no other test renders.
+    const pathwayFrame = [...document.querySelectorAll('.card-tile-frame')].find((frame) =>
+      frame.querySelector('.flip-control'),
+    )!
+    act(() => {
+      pathwayFrame.querySelector<HTMLElement>('.card-tile')!.click()
+    })
+
+    const detail = screen.getByRole('region', { name: 'Card detail' })
+    const inPanel = focusablesNow().filter((el) => detail.contains(el))
+    // Exactly three stops, in exactly the published order — asserted as the full class sequence
+    // so a reorder OR an addition reddens this rather than sliding by a `toBeLessThan`.
+    expect(inPanel.map((el) => el.className.split(' ')[0])).toEqual([
+      'card-detail-unpin',
+      'flip-control',
+      'card-detail-oracle',
+    ])
+  })
+
+  it('pins 3 = 1 tile + 1 oracle + 1 row on the 1-card deck (Iron Man, Modern Marvel — reminder)', async () => {
+    // The other end of the corridor's range, and the deck the AC names (VERIFIED REAL: one card,
+    // `Iron Man, Modern Marvel`). The link still renders — presence is "at least one card", and
+    // this is exactly one.
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({
+        cards: [deckCard('Iron Man, Modern Marvel', 'Legendary Creature — Human Hero', 1)],
+        mainboard_count: 1,
+        distinct_cards: 1,
+      }),
+    )
+    answering(decks('Iron Man, Modern Marvel — reminder'))
+
+    render(<App />)
+    await settle()
+
+    const focusables = focusablesNow()
+    const at = (el: Element | null) => focusables.indexOf(el as HTMLElement)
+    const skip = screen.getByRole('button', { name: 'Skip past the deck grid' })
+    const oracle = document.querySelector('.card-detail-oracle')
+    const footerLinks = within(screen.getByRole('contentinfo')).getAllByRole('link')
+
+    // 1 skip + 1 tile + 1 oracle + 1 row + 2 footer links = 6 focusables; corridor of 3.
+    expect(focusables).toHaveLength(6)
+    expect(at(footerLinks[0]) - at(skip) - 1).toBe(3)
+    expect(at(oracle) - at(skip) - 1).toBe(1)
+    expect(at(footerLinks[0]) - at(oracle)).toBe(2)
+  })
+})
+
+describe('the jsdom phantom-banner count (c4-11, AC 25)', () => {
+  it('holds at SIX banners in jsdom on a loaded deck — asserted, not assumed', async () => {
+    // aria-query maps `<header>` to `banner` UNCONDITIONALLY, so every titled Panel's `<header>`
+    // reads as a banner here while a real browser scopes `banner` to the `<body>`-level header
+    // alone — the eye-check read Chrome's OWN AX tree and measured EXACTLY ONE. Six = the shell's
+    // real `<header>` + five titled panels (mana curve, colour distribution, format check, card
+    // detail, deck list). This assertion is the number's home in the SUITE: when a later story
+    // adds a titled panel, this moves by one ON PURPOSE, and the jsdom-vs-Chrome split stays
+    // written where the count is enforced rather than only in the story file.
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    expect(screen.getAllByRole('banner')).toHaveLength(6)
   })
 })

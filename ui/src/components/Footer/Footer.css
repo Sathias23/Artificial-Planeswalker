@@ -68,12 +68,20 @@
    so the two can never drift apart, and the hover rule below is then the ONLY colour decision in
    this file that has to be read.
 
-   24px — DESIGN.md: "each link's hit area ≥ 24px tall" (`:375`), and the same file's global rule
-   "a ≥ 24×24px hit area" (`:418`) — BOTH axes, so `min-width` sits beside `min-height`. This is
+   24px — DESIGN.md: "each link's hit area ≥ 24px tall" (`:419`), and the same file's global rule
+   "a ≥ 24×24px hit area" (`:462`) — BOTH axes, so `min-width` sits beside `min-height`. This is
    the named non-ban used correctly: a hit box is geometry with no token family, so it is a
    literal, and it carries its citation in the same sentence as the value. `inline-block` is what
    makes the minimums apply at all — on a plain inline box they do nothing, which is the quiet
    way this AC would have been satisfied in source and false on screen.
+
+   ⚠️ BOTH CITATIONS CORRECTED AT c4-11 (AC 41). They were written as `:375` and `:418`, and both
+   had DRIFTED as DESIGN.md grew: `:375` is now the font-delivery paragraph and `:418` is the Skip
+   link bullet, so a reader following either arrived somewhere that says nothing about hit areas.
+   Re-read from the file as it stands: `:419` carries "each link's hit area ≥ 24px tall" and `:462`
+   carries the global "≥ 24×24px hit area" rule. The same drift hit `ManaPip.css:3` (`366` → `428`)
+   and c2-10's own record — **a DESIGN.md line number copied from a prior implementation artefact
+   is the thing to distrust**, which is why c4-11 re-read every citation it makes.
 
    NOT `inline-flex`, AND THAT IS A REVIEW FIND (2026-07-30), NOT A PREFERENCE: text decorations
    do not propagate into flex items, so an underline declared on an (inline-)flex anchor renders

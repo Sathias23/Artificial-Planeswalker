@@ -1599,6 +1599,13 @@ describe('the containers are a declared category with a posture of its own', () 
         '../../state/inspection',
         '../CardTile/imageUrl',
         '../FlipControl/FlipControl',
+        // c4-11's extraction. The four-line focus hand-off this panel SHIPPED FIRST (c4-5's
+        // unpin control, review 2026-08-05) moved to the tree root when the skip link became its
+        // second caller — AC 6 requires "exactly one focus home and one implementation of it".
+        // The specifier appearing here is the whole visible cost of the extraction, which is what
+        // this list is for; `CardDetail.test.tsx:559-579` passing UNCHANGED is what proves it was
+        // an extraction rather than a rewrite.
+        '../focusHome',
         '../imagedFaces',
         '../useCardArt',
         './CardDetail.css',
@@ -1833,6 +1840,42 @@ describe('the containers are a declared category with a posture of its own', () 
     // case: "a helper shared by two components does not live inside one of them". `useCardArt.ts`
     // and `imageUrl.ts` are the two shipped precedents.
     { file: 'src/containers/imagedFaces.ts', imports: ['../state/cards'] },
+    // c4-11's skip link — the first Tab stop in the document, and the epic's only purely
+    // structural component. It is a CONTAINER rather than a primitive because it attaches
+    // `onClick`, `onFocus` and `onBlur`, three handlers `src/components/`'s set-equality posture
+    // bans outright. `ui/README.md:548` named c4-11 in the inheriting list before it was written.
+    //
+    // NOTE WHAT IS ABSENT, because it is the whole shape of the component: no `../../state/…` of
+    // any kind. Whether this renders at all is `App.tsx`'s call off the ONE `surfaceOf` answer, so
+    // there is no slice in scope for a later edit to re-derive presence from — `deck.ts:388-390`
+    // warns by name against a third derivation, and an exhaustive import list is the strongest
+    // available form of that warning. No `../../api/…` either: it reaches no network and reads no
+    // wire shape.
+    {
+      file: 'src/containers/SkipLink/SkipLink.tsx',
+      imports: ['../focusHome', './SkipLink.css', './copy', 'react'],
+    },
+    // c4-11's copy module — the FOURTH in this tree, the twelfth in the app. One string, and for
+    // once nothing to rule: `DESIGN.md:418`, `EXPERIENCE.md:100` and `epics:506` all carry "Skip
+    // past the deck grid" byte for byte. `imports: []` for `CardDetail/copy.ts`'s measured reason:
+    // `tests/` is the `nodenext` project and `src/` the `bundler` one, so a `ui/tests` file may
+    // import an app module only if that module has no relative imports of its own — and
+    // `copy-rules.test.ts` imports this one to compare the string against the artefact.
+    { file: 'src/containers/SkipLink/copy.ts', imports: [] },
+    // c4-11's focus hand-off — the EIGHTH application of the
+    // `react-refresh/only-export-components` split, and the second module promoted to this tree's
+    // root for the shared-helper rule after `frontFaceCost.ts`. It has exactly two callers by
+    // design: `CardDetail`'s unpin control (which shipped the four lines first, at c4-5) and the
+    // skip link. AC 6 makes that a requirement — "exactly one focus home and one implementation of
+    // it" — so a third copy of `tabIndex = -1` / focus / remove-on-blur is a defect rather than a
+    // duplication.
+    //
+    // `imports: []`, and it is the strongest statement this list can make about the module: no
+    // react, no store, no wire, no DOM library. It takes an `Element` and calls two DOM methods on
+    // it. Everything about WHICH element is the caller's, which is why neither caller's lookup
+    // lives here — `CardDetail` scopes to its own frame ref, and the skip link cannot scope to
+    // anything because it is mounted outside all three landmarks.
+    { file: 'src/containers/focusHome.ts', imports: [] },
     // The image-route path builder. `imports: []` is the strongest form of "this is a string,
     // from a string" — no react, no DOM, no store and, above all, no fetch. It is a module of
     // its own because `react-refresh/only-export-components` is an ESLint error and a component
@@ -1927,7 +1970,11 @@ describe('the containers are a declared category with a posture of its own', () 
     // no derivation module of its own, because there is nothing to derive: the backend already
     // decided every verdict and `deck_validator.py`'s own guard declares that a rule re-written in
     // TypeScript is invisible to it, so a `rows.ts` here would be the exact hole that guard names.
-    expect(CONTAINERS).toHaveLength(21)
+    // 24 at c4-11, which adds the skip link, its copy module and the focus hand-off. The third is
+    // an EXTRACTION rather than a new capability — `CardDetail` shipped those four lines at c4-5
+    // and this story gave them a second caller — so the count moves by three while the app grows
+    // by one component.
+    expect(CONTAINERS).toHaveLength(24)
     for (const { file } of CONTAINERS) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }
