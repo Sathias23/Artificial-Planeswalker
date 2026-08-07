@@ -151,7 +151,17 @@ reasons unrelated to whatever is being bisected.
 **Import wire types from `src/api/schema.ts`, never from `./types` directly.** The generated
 file is shaped for a generator, not a reader — reaching a response body means indexing
 `components['schemas'][…]`. `schema.ts` does that once and re-exports narrow aliases
-(`HealthResponse`, `ErrorResponse`, `ErrorReason`). Both rules are enforced by
+(`HealthResponse`, `ErrorResponse`, `DeckSummary`, `ErrorReason`, from **c4-1** `Card`,
+`CardSummary` and `DeckCardSummary`, and from **c4-2** `DeckDetail` and `ActiveDeck`: **twelve**
+as of c4-10, counted from `schema.ts` at c4-12's conformance sweep — this said "nine", its c4-2
+value, through four stories that each added one).
+This sentence said "three" until c4-1 noticed it; `DeckSummary` had landed in c3-9. **An alias is
+added only in the commit that gives it a consumer** — an unused export is dead code, which is why
+c3-2 declined to add `Card` and left it ledgered for the first story that consumed one, and why
+c4-1 declined `DeckDetail` for the same reason before c4-2's fetch needed it. `CardFace` was
+declined and ledgered until **c4-5** turned out to be its first consumer — it is exported today,
+and this sentence read "still declined and still ledgered" for five stories after that stopped
+being true (corrected at c4-12's conformance sweep). **c4-6** renders the flip control. Both rules are enforced by
 `tests/wire-contract.test.ts`, which bans re-declaring any shape the backend describes — or any
 alias `schema.ts` exports, `ErrorReason` included — anywhere in tracked TypeScript (`src/`,
 `tests/`, `config/`) outside `src/api/`, and scans everything but `schema.ts` itself (files
@@ -222,7 +232,7 @@ else these bans apply, and each one fails the build:
 stacking level, a card-tile minimum — these are the one value family that stays a literal, and
 saying so explicitly is what stops the next author reading `452px` as drift. There is no token
 family to point at, and adding one is not available: `tests/token-usage.test.ts` pins
-`declaredTokens.size` at **65** and `tests/tokens.test.ts` asserts every token name
+`declaredTokens.size` at **69** and `tests/tokens.test.ts` asserts every token name
 byte-for-byte against `DESIGN.md`'s frontmatter, which contains no layout-width token. An
 unenforceable ban is worse than a documented exception, so the rule is:
 
@@ -536,6 +546,45 @@ the same defect one call site up, and no lint rule or guard reaches it. Stated h
 ruling in c2-7 got a derived gate, and this one is prose plus review because the failure lives
 in files that do not exist yet.
 
+### The containers — where a component that BEHAVES lives
+
+Set by story **c4-4**, and it is a decide-once ruling roughly fifteen later component stories
+inherit: **c4-5**, **c4-6**, **c4-7**, **c4-10**, **c4-11**, **c5-7**, **c6-5**…**c6-8** and
+**c9-1**…**c9-3** all land here rather than in `src/components/`.
+
+**`src/components/` is CLOSED, and a component that holds state cannot join it.** That is
+structural, not stylistic: `tests/shell.test.ts:1257` asserts SET EQUALITY between
+`git ls-files 'src/components/*.ts(x)'` and `PRIMITIVES + AppShell.tsx`, and every listed member
+is then held to bans on hooks of any family, `on*` in both positions, `ref` in both positions,
+spread, and a value `react` import — with `tests/posture.test.ts` banning three of those a second
+time over the same directory. A card tile needs `<img onLoad>` to know whether the pixels arrived
+and a `ref` to survive the warm-cache race, so a module for it under `src/components/` is a **red
+test both ways**: listed, the posture bans fire; unlisted, the coverage guard fires. That is the
+category-change signal `shell.test.ts` names in its own prose, arriving for the first time.
+
+**So containers live in `src/containers/`, with their own git-derived coverage guard** (added in
+the same commit, `tests/shell.test.ts`'s `CONTAINERS` block — an uncovered directory is how the
+next fifteen stories would escape every gate in the repo at once).
+
+**The posture, in full.** A container MAY hold state, call hooks of any family, declare and
+attach handlers, hold a `ref`, read the store through `src/state/`, and compose primitives. It
+may NOT reach the network (the door is still `src/api/client.ts`, named exhaustively), import a
+state library directly, write a store slice from outside its own module, or declare a design
+token. Its import list is exhaustive and its permitted roots are checked, same as a primitive's.
+
+**Why a new tree rather than a second list inside `src/components/`, measured.** The
+cheaper-looking option was to widen the covered set and leave the files where they were. Three
+guards are path-scoped to that directory — `shell.test.ts`'s coverage guard and posture bans,
+`posture.test.ts`'s three `it.each(componentSources)` blocks, and `shell.test.ts`'s **`px`-literal
+DESIGN.md citation check** — and the decisive one is not the count but what an exemption would
+have blinded: `posture.test.ts`'s cross-tree import rule filters on
+`!target.startsWith('src/components/')`, so a container exempted from it would have made **a
+presentation-only primitive importing a stateful container invisible to every guard in the repo**.
+With the containers outside that tree, the rule that was already green catches it, for free. The
+one real cost is that the `px`-literal citation check had to be **widened** (its scope is now a
+list of roots) rather than weakened — and a later tree of the same kind adds its root there, in
+the open.
+
 #### Tinting a surface from a semantic token
 
 The mechanism c6-7's suggestion rows, c9-1's swap rows and c9-2's tier rows reuse rather than
@@ -543,7 +592,7 @@ each inventing one. DESIGN.md asks a tone to "tint background and border from it
 token — never from hard-coded RGB", and **every obvious spelling of that is banned**:
 `rgba(95,212,160,0.12)` by `function-disallowed-list`, and `color-mix(in srgb, var(--positive)
 12%, transparent)` by the **same rule** (measured). There is no translucent `--positive-wash`
-token and the layer is closed at 64.
+token and the layer is closed at 69.
 
 The answer is a **pseudo-element wash**:
 
@@ -576,7 +625,7 @@ token" reads. The `color-mix()` ban stands unchanged; this story shipped no gate
 
 **A role token plus its companion — never a `font-size`, never a new token, never a stylelint
 exception.** DESIGN.md's StatChip value is 17px; `font-size: 17px` is a lint error and a
-`--type-stat-value` token would break both `declaredTokens.size === 64` and the byte-for-byte
+`--type-stat-value` token would break both `declaredTokens.size === 69` and the byte-for-byte
 name contract against DESIGN.md's frontmatter, which makes it a UX-artefact change rather than
 a frontend one. `--type-heading` **is** `500 17px/1.3`, so:
 
@@ -631,11 +680,13 @@ been enforced by nothing for four stories — a rule with no consumer and no gat
 The gate is in `tests/token-usage.test.ts` and has two halves (plus a markup half, below):
 
 - **Which files may reference a `--mana-*` at all** — the `MANA_DATA_INK` allowlist, each entry
-  carrying the reason that file is data ink. Today it is `ManaPip.css` alone. **c4-8** (stacked
-  curve segments) and **c4-9** (the colour-distribution bar) add their own entry, in their own
-  story, in the open — the same protocol `PRIMITIVES` uses. A non-vacuity test proves every
-  entry is a path git actually tracks, so a rename fails loudly rather than silently permitting
-  nothing.
+  carrying the reason that file is data ink. Both invitations have now been answered, and they
+  went opposite ways, which is the protocol working rather than failing: **c4-8 DECLINED** on a
+  measurement (a curve stacked by colour would paint 24 live rows colourless from a structurally
+  blank `colors` field) and **c4-9 JOINED** — `ColourDistribution.css` is the list's second
+  entry and its first since c2-8, because UX-DR18 calls its bar _"data ink used correctly"_ in
+  the artefact's own words. A non-vacuity test proves every entry is a path git actually tracks,
+  so a rename fails loudly rather than silently permitting nothing.
 - **Which properties may spend one** — an **allowlist**: `background`, `background-color`,
   `background-image`, `fill`, `stop-color`. Nothing else. It is an allowlist rather than a ban
   list on purpose, and that is the general lesson: "ban the family, never enumerate members" has
@@ -653,16 +704,29 @@ take a class, not a `fill=` attribute.
 **The half no static reader can decide is review's**, declared in the guard's own comment the
 way `surfaces.ts` declares its own: whether a given curve bar is genuinely **stacked** is a
 property of the data bound to it and the elements composed at runtime. **c4-8's reviewer must
-look**; the gate will not have looked for them. The same comment declares a second residual:
+look**; the gate will not have looked for them. (c4-8 shipped no stacking at all, so that
+residue was answered by there being no segment rather than by inspection; c4-9's segments are
+the first the question genuinely applies to.) The same comment declares a second residual:
 chrome-shaped spend **through an allowed property in an allowlisted file** (a hover tint, a
 button-like background) passes both halves — the allowlist _reason_ is what review checks it
 against.
 
-**`--mana-gold` is the family's seventh token and has no consumer yet** — deliberately: it is
+**`--mana-gold` is the family's seventh token and STILL has no consumer** — deliberately: it is
 not a cost colour, so `MANA_COLOUR_ORDER` (the parser's vocabulary) excludes it and the pip
-class-coverage guard derives 21 classes from six colours. Its first consumer (likely c4-9's
-colour-identity bar) joins `MANA_DATA_INK` in the open and moves the guard's spent-token count
-from 6 to 7 there, not silently.
+class-coverage guard derives 21 classes from six colours.
+
+⚠️ **The prediction this paragraph used to make was wrong, and c4-9 corrected it.** It read
+_"its first consumer (likely c4-9's colour-identity bar) joins `MANA_DATA_INK` in the open and
+moves the guard's spent-token count from 6 to 7 there"_. c4-9 **did** join the allowlist — it is
+the first joiner since c2-8 — and it **did not spend gold**, because the prediction had the
+wrong graphic: UX-DR17's gold is a _multicolour card_ contributing one segment to a stacked
+curve, while UX-DR18 specifies a **pip count**, and **a pip is never gold**. `{W/U}` is a
+white-or-blue pip, which `ManaPip` already draws as a two-stop gradient across two real tokens.
+
+The spent-token count therefore stays **6 of 7**, and the absence is now **asserted by a test**
+rather than noted in prose (`tests/token-usage.test.ts`, _"still has NO consumer for
+--mana-gold"_) — an absence nothing protects is an absence that ends silently. Gold's real first
+consumer is a stacked curve or a colour-identity dot, and **neither is in Phase 1**.
 
 **One class per colour, never a token name built at runtime.** The composition reference writes
 `'var(--mana-' + color + ')'` into an inline style. The lint error is the least of it: a
@@ -708,9 +772,21 @@ element's children are presentational, so nothing double-announces.
 symbol reads as its own raw text (`{HW}` → _"HW"_), which is honest rather than silent — the
 same rule the pips follow, in words.
 
-**A standalone `ManaPip` is decorative by default**, with an **opt-in** `label`. c4-9's legend
-puts a pip beside its own text count, and a doubled announcement there is the flooding UX-DR45
-warns about, so the default is the safe direction.
+**A standalone `ManaPip` is decorative by default**, with an **opt-in** `label`.
+
+⚠️ **This paragraph used to name c4-9's legend as the `label` prop's caller, and c4-9 shipped it
+DECORATIVE instead** — the correction is worth keeping because it is the opt-in defaulting the
+right way. The reasoning was right and the conclusion inverted: a legend entry puts a pip beside
+its own text count, and the entry already says the colour, the count and the percentage in
+words, so a labelled pip there is exactly the doubled announcement UX-DR45 warns about. The prop
+therefore has **no caller in Phase 1**, and it is right that it exists and is unused: the safe
+direction is the default, and a story that genuinely needs a named pip (one drawn without text
+beside it) opts in.
+
+That also makes the colour NAME load-bearing copy rather than a label —
+`ColourDistribution/copy.ts` owns the six words, and they are the only route by which a colour
+reaches a screen-reader user at all. Which is what UX-DR18's _"the legend is the accessible data
+path"_ means when it is taken literally.
 
 #### No symbol lookalike, including the Phyrexian Φ
 
@@ -730,6 +806,139 @@ on overlay surfaces inside every agent view. The `findAccentDimOnOverlay` guard 
 the cross-block case that guard declares it cannot see. So the rule is not "check the guard" —
 it is **do not write the token here**. The composition reference uses it for the accent badge's
 border; that is the drift this rule exists to stop.
+
+### The card shape — read this before writing a card-shaped component
+
+Set by story **c4-3**, and it is the seam **c4-4** (tile), **c4-5** (detail art) and **c4-6**
+(flipped face) inherit rather than re-derive.
+
+**There is exactly ONE declaration of the card geometry in this codebase**, and it is
+`.card-shape` in `src/styles/card-geometry.css`:
+
+```css
+.card-shape {
+  aspect-ratio: 63 / 88;
+  border-radius: var(--radius-card);
+}
+```
+
+**Consume it by class name. Do not import it, and do not write either declaration again.** The
+file is `@import`ed by `src/index.css` beside `fonts.css` and `tokens.css`, so the class is
+globally available and a card-shaped component's own stylesheet contains only its surface, its
+type and its layout. Importing it from a component would ALSO fail `tests/posture.test.ts` — a
+component may take a value from nowhere but its own tree, and `../../styles/…` is not that.
+
+**Why a class and not a token.** `tests/tokens.test.ts:265` is a **set equality** over an
+inventory derived from `DESIGN.md`'s `colors` / `typography` / `rounded` / `spacing` / `motion` /
+`focus` / `elevation` frontmatter blocks, pinned at 69. `components.card-tile.aspect` is in none
+of those blocks, so **`--card-aspect` cannot be added without failing that gate**. Adding it is a
+DESIGN.md amendment plus a moved pin, argued in the open — not a token added quietly.
+
+**Why global rather than owned by c4-3.** The same argument `src/index.css` already makes for the
+box-sizing reset, in its own words: _"every component from c2-7 onwards inherits the same hazard
+the moment it sizes and pads itself, which is why the reset is global"_. Four stories draw this
+rectangle; a class owned by the first of them would make the other three import across component
+directories.
+
+**UX-DR4's exclusivity is a GATE as of c4-3, in both directions** — `CARD_SHAPED` in
+`tests/token-usage.test.ts`, the same allowlist idiom as `MANA_DATA_INK`:
+
+- nothing outside the listed files may spend `--radius-card` (_"nothing else in the UI borrows
+  the card radius"_), and
+- **no listed file may spend a chrome radius** (_"cards never borrow a chrome radius"_) — written
+  as `--radius-` minus `--radius-card`, so a `--radius-xl` invented later is covered. This half is
+  not redundant: `border-radius: var(--radius-md)` on a card is what the composition reference
+  actually ships, and DESIGN.md:362 corrects it by name.
+- a third half scans non-CSS sources, because a `var(--radius-card)` in markup would meet neither.
+
+**A later card-shaped story adds its stylesheet to `CARD_SHAPED` with its reason**, and gets the
+second half applied to it in the same move. What the gate cannot see is declared beside it:
+whether an element carrying `card-shape` is genuinely a card (that is markup, and review's),
+inline geometry (banned by eslint), and cross-file composition.
+
+**c4-4 is the first story to join, and it found the collision the list makes visible.** The card
+tile spends no `--radius-card` at all — the shape arrives through the class — so half ONE would
+never have looked at it, and joining is what turns half TWO on. That immediately collided with the
+quantity badge, which DESIGN.md gives `{rounded.pill}`: the badge is chrome sitting ON a card
+rather than a card. **The resolution is two files, not an exception in the guard** —
+`CardTile.css` is card-shaped and listed, `QuantityBadge.css` is chrome and deliberately is not.
+Reach for that shape rather than weakening a rule that is currently total.
+
+**Clipping is NOT in the shared class, deliberately.** Whether content clips is a statement about
+content, not about shape — `CardPlaceholder.css` sets its own `overflow: hidden` for the
+141-character name the corpus really contains, and c4-4's tile sets its own to clip art to the
+card corners.
+
+**The footprint claim is now confirmed by eye (c4-4, Task 7).** c4-3 could only prove that the
+placeholder declares the shape and that the element carries the class; whether a placeholder and a
+real card face occupy the same rectangle in a real grid was re-homed here by name. Rendered in
+Edge against the running backend with the 99-card deck active: **they do** — loading wells, named
+placeholders and loaded faces sit in identical rows with no seam, so UX-DR36's _"layout never
+reflows when art arrives"_ is now an observation rather than a derivation.
+
+### Motion — the first of it, and how a later story registers its own
+
+Set by story **c4-4**, which shipped the first `transition`, the first `transform`, the first
+`:hover` state on anything but a footer link and the first z-index raise in the codebase. Six
+stylesheets still carry a _"NO MOTION, DELIBERATELY"_ header and that is still correct for them.
+
+**Durations come from `--motion-*` and easings from `--ease-*`.** A literal duration anywhere in a
+`transition` or `animation` is a lint error, and nothing pulses, loops or alternates at any
+setting.
+
+**`tokens.css`'s `prefers-reduced-motion` block is the ONE registration point**, and c4-4 is the
+first story to extend it. The distinction that matters, because it is easy to get wrong:
+
+- **A motion expressed entirely through a duration token is MECHANICAL.** Zeroing the four
+  durations already switches it off. The tile's image fade is this, and it registers nothing —
+  writing a second declaration for it would suggest the mechanism does not work.
+- **A motion a duration cannot reach registers EXPLICITLY, in that block, in the story that builds
+  it.** Zeroing a duration makes `transform: scale(1.06)` INSTANT, not ABSENT — the tile would
+  still jump 6% the moment a pointer crossed it, which is the vestibular motion UX-DR42 asks to
+  remove, arriving faster.
+
+**That rule is now a GATE rather than prose** (`tests/token-usage.test.ts`): every shipped block
+declaring a motion property — `transform`, and the individual `scale`/`rotate`/`translate`, per
+property — must have that property `none !important` on the same selector in the reduced-motion
+block (review 2026-08-04 hardened both: a no-`!important` registration is the cascade no-op the
+paragraph below measures, and `scale: 1.06` is the same pop in another spelling). The RULE is
+derived, so c4-6's 3D flip and c6-5's bloom are caught the day they are written — but the guard
+also carries an ENUMERATED pin of the shipped-motion list, so the story that adds a motion moves
+that pin in the same commit, the way the token pins move. It was found by c4-4's own probe (e),
+which deleted the fallback and left the whole suite green.
+
+**The override carries `!important`, and that is measured.** `.card-tile:hover` in `tokens.css`
+and in `CardTile.css` have identical specificity, and `tokens.css` is `@import`ed first — so
+without it the block would parse cleanly, read correctly and do nothing at all.
+
+### The focus ring over art, and why `outline` is still authored
+
+Set by story **c4-4** (Q2). DESIGN.md files `focus-ring-over-art` under `components.card-tile`,
+and `.stylelintrc.json`'s `box-shadow` allowed-list admits `none` or a comma-list of
+`var(--shadow-…)` / `var(--glow)` **and nothing else** — so the composite cannot be written in a
+component stylesheet at all. It ships as **`--shadow-focus-ring-over-art`**, the 66th token, with
+both pins moved together (`expectedNames` + `toHaveLength` in `tests/tokens.test.ts`,
+`declaredTokens.size` in `tests/token-usage.test.ts`) and its value asserted against the artefact
+the way the three elevation tokens are. `components.card-tile.live-ring` is deliberately NOT
+shipped: nothing sets `live` until **c4-5**, and an inventory pinned by set equality exists so
+that an unused token is a visible decision.
+
+**The `outline` is authored, not removed, and the eye-check is why.** `outline: none` is banned in
+every spelling (UX-DR46) and there is no legal way around it — but a browser draws its OWN ring on
+`:focus-visible` unless the author sets `outline`, and the first draft of the tile therefore
+rendered **two indicators at once**: the composite hugging the card's rounded corners and the UA
+ring as a sharp-cornered rectangle around card-plus-caption. Two repairs, together:
+
+- **the focusable element IS the card** (the `<button>` carries `card-shape`, and the caption is a
+  sibling that names it through `aria-labelledby`), so an authored outline hugs the same rounded
+  rectangle; and
+- **the outline is given the composite's own inner band** — `var(--focus-ring-width)` solid
+  `var(--focus-ring)` at offset 0 — so the two mechanisms occupy the same pixels instead of
+  stacking, and the composite's `--surface-base` outer band still separates the indicator from the
+  panel. `--focus-ring-offset` is deliberately unused here: the offset that suits a text link is
+  what would split this ring in two.
+
+Confirmed in Edge with a real keyboard focus, over a light card face and a dark one.
 
 ### The state panel, and where user-facing copy lives
 
@@ -774,6 +983,17 @@ halves, because either alone is worthless:
   `src/`. Keyed by **character family**: emoji by `\p{Extended_Pictographic}`, and exclamation
   marks by NFKC-normalising first, so Unicode's own compatibility decompositions enumerate
   `！`, `︕`, `﹗`, `‼` and `⁉` instead of a hand-written list.
+
+**Six copy modules as of c4-3**, and the newest one is the smallest possible: `CardPlaceholder/
+copy.ts` holds exactly ONE string, `"Unknown card"`, gated byte-for-byte against `EXPERIENCE.md`
+by `tests/unknown-card-copy.test.ts` — the assertion that file had promised since c3-2 would move
+there _"the day c4-3 lands"_. Two things about it are worth carrying forward. **A copy module may
+legitimately hold one string**: the per-module non-vacuity threshold read `> 3` until c4-3, which
+would have forced words into a module whose own header forbids them, so the strength moved to a
+TOTAL across all declared modules. And **the card name, type line, mana cost and truncated ID the
+same component renders are DATA, not copy** — they arrive as props and are deliberately absent
+from the module, because a copy owner that also held card names would make the claim `COPY_MODULES`
+exists to state meaningless.
 
 Both halves read the **TypeScript AST**, not the file text, and that is load-bearing: the
 generated `types.d.ts` quotes the banned phrase in a JSDoc comment, and `!` is an operator in
@@ -936,6 +1156,33 @@ your story, verify it rather than inherit it.
 | **That a tile can stay a placeholder for up to five minutes _after_ the CDN has recovered.** c3-8 negative-caches image fetch failures with an exponential backoff, keyed on id + size + face: **30 s** after the first failure, doubling per consecutive failure, **capped at 300 s**. A request inside that window is answered from memory as `502 image_fetch_failed` — byte-identical to a fresh failure, deliberately, because the client has no different action to take. **The consequence for c4-4 is the whole of this row: the backend will keep saying "no picture" for up to 300 seconds after the CDN starts working again, and the SPA has no per-image retry UI** (`EXPERIENCE.md`'s own words: _"negative-cached with backoff — no request storms, no per-image retry UI"_). A tile that waits for the backend to change its mind will look stuck; a tile that retries in a loop will be answered from memory and change nothing. Recovery is automatic on the next request after the window, and a success clears the key's history entirely. **What this does NOT fix, and c4-4 should not design around it as though it did:** the _first_ paint against a dead CDN still issues all ~99 requests and takes roughly **124 s** at `min(1/0.1, 4/5.0)` = 0.8 fetches/s — 99 distinct keys have nothing remembered yet. The pacer bounds that paint; the backoff bounds every one after it. Unlike the two rows above, this story's behaviour **is** partly on the wire: the 300 s ceiling and the backoff are described in `ErrorResponse`'s generated JSDoc, deliberately, so the fetch author reads it where they work. The numbers themselves live in code, not in the schema.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `src/companion/app/images.py`, the four `NEGATIVE_CACHE_*` docstrings and `NegativeCache`; `tests/unit/companion/test_routes_card_image.py::TestTheDeckScaleClaim` and `TestRecoveryIsComplete`   | c4-4, which owns the tile; c10-3 owns real-latency profiling                    |
 | **Whether a credential's _vocabulary_ reached the generated types.** c3-4's leak scan checks `types.d.ts` for the token value itself (which is exact and total) **and** for four literal markers — `agent_token`, `mint_token`, `companion.json`, `Bearer`. The value check is a real gate; the marker list is an **enumeration, not a family**, and the project's own standing agreement says to ban the family instead. It is kept as an enumeration deliberately, because the family here is _"prose that teaches a browser where a credential lives"_ and that is no more statically decidable than UX-DR33's blameless-copy rule. A docstring explaining the credential in words the list does not contain would pass. What genuinely holds the line is structural and lives elsewhere: the credential is read from `request.headers` inside a dependency, so no `securitySchemes` component and no per-operation `security` block can be generated at all (asserted in `test_committed_schema.py`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `tests/unit/companion/test_discovery.py::test_the_token_leaks_into_no_surface_of_the_route_that_reads_it`, and `test_committed_schema.py::test_no_security_scheme_is_documented`                  | Review, on any story that adds an agent-only endpoint                           |
 | **Whether the fresh-install transition happens on a real screen.** c3-9's poll, its backoff, its stalled clock and the wire→panel mapping are all asserted in jsdom from ONE mount, which is what makes FR-22's "no manual refresh" a gate rather than a description — but jsdom paints nothing. The live half was confirmed at the HTTP layer instead (empty data dir → `503 database_not_initialized` → plant `cards.db` → `200`, same process, no restart); what no gate here has seen is the PAGE doing it, or the four newly-reachable panels rendered by a browser — in particular the command chip and the two-paragraph guidance/action stack, which `no-active-deck` does not exercise.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `src/App.test.tsx`'s FR-22 block; the story record's Task 8                                                                                                                                       | The epic manual-testing checklist                                               |
+| **Whether an element carrying `card-shape` is actually a CARD (UX-DR4).** c4-3's `CARD_SHAPED` allowlist gates both halves of the card-radius rule over STYLESHEETS — nothing outside the listed files may spend `--radius-card`, and no listed file may spend a chrome radius — but the class list that puts the shape on an element lives in TSX and is chosen at runtime. `.card-shape` on a `<nav>` reads as a perfectly clean stylesheet. The converse is also invisible: a card-shaped element given a chrome radius by a rule in a NON-card-shaped file (`.deck-row .card-shape { … }`) is in neither half.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `tests/token-usage.test.ts`, the `CARD_SHAPED` header                                                                                                                                             | Review, and c4-4 is the first story where the cross-file case becomes plausible |
+| **Whether the RIGHT type role was chosen for the content.** MEASURED at c4-3 by a probe that PASSED: putting the truncated card ID back in the uppercase `--type-micro` role — correctly paired with both its companions, so `findRoleWithoutCompanions` was satisfied — left the whole suite green at 1,021 passed. Every typography guard asks whether a role travels with its companions; none asks whether the role suits the value. c4-3 closed the one instance (the ID's block is now checked against `cards.py`'s lowercase-only `_CARD_ID_PATTERN`, read from the file), but the GENERAL rule — do not uppercase data the reader may type back — is not statically decidable, because whether a string is retypeable lives in the product.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `tests/token-usage.test.ts`, the c4-3 Q4 test                                                                                                                                                     | Review, at every story that renders an identifier                               |
+| **Whether a fixed-aspect box is actually laid out that way.** c4-3's geometry claim is split across two instruments and NEITHER is a pixel: a source read proves `.card-shape` declares `aspect-ratio: 63 / 88` and `border-radius: var(--radius-card)` exactly once in the tree, and a jsdom test proves the rendered element carries the class. `getComputedStyle(el).aspectRatio` in jsdom returns the empty string and would pass for the wrong reason — the sixth recorded instance of that trap in this epic. That the box IS 63:88 on screen was confirmed by eye at c4-3 against a 176 × 245.9 rule; that it matches a real card FACE beside it is c4-4's.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `src/components/CardPlaceholder/CardPlaceholder.test.tsx` header                                                                                                                                  | c4-4, in composition                                                            |
+| **Running `tests/token-usage.test.ts` ALONE crashes the runner.** Measured at c4-3: `npx vitest run tests/token-usage.test.ts` fails with `TypeError: Cannot read properties of undefined (reading 'config')` — the file imports two `src/` modules across the project boundary, so resolving it standalone picks the wrong project. `npm test` runs it correctly. This matters for PROBES: a single-file invocation exits non-zero for the wrong reason, and a probe harness matching on exit code alone will report a guard as firing when the runner merely crashed. Run the whole suite when proving a guard fires.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | measured at c4-3, probe harness round 1                                                                                                                                                           | Anyone writing a probe against that file                                        |
+| **How a screen READER phrases the tile's accessible name.** The NAME itself is pinned exactly: measured at review 2026-08-04 with `computeAccessibleName`, jsdom reports `Black Lotus ×4` — `aria-labelledby` ID order (caption first, badge second, the order the component chose), with a space between the references. (The story's first record claimed jsdom ran the parts together as `×4Black Lotus`; measured, that was false in both halves, and the Q6 test now asserts the exact spelling.) What no jsdom assertion carries is how a real screen reader ANNOUNCES that name — pauses, the `×` read as "times" or "multiplication sign", the button role placement.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `src/containers/CardTile/CardTile.test.tsx`, the Q6 test                                                                                                                                          | The epic manual-testing checklist, with a real screen reader                    |
+| **Whether `<div>`-inside-`<button>` matters.** `CardPlaceholder`'s root is a `<div>` and `<button>`'s content model is phrasing content, so c4-4 mounting the placeholder inside the tile is invalid HTML by the letter of the spec. Measured: every engine renders it, React's `validateDOMNesting` does not warn, and the accessible name computes normally. The alternatives were worse — moving the placeholder outside the button breaks UX-DR36's same-box claim, and changing the primitive's root element is an edit to a component c4-4 was told not to touch. **Accepted with the argument; c4-5 mounts the same placeholder as detail art and can re-decide with two consumers in view.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | this row, and the `CardTile.tsx` header                                                                                                                                                           | Review, or c4-5                                                                 |
+| **Whether a reduced-motion fallback actually reaches its motion.** c4-4's transform guard compares SELECTOR TEXT, not resolved specificity: a transform on `.card-tile:hover .thing` neutralised by a rule on `.card-tile:hover` reads as unregistered even though the cascade would switch it off. That is a false FAILURE, whose repair is to write the matching selector — the outcome the rule wants anyway. Resolving it properly needs the cascade, which is the first row of this table.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `tests/token-usage.test.ts`, the transform-neutralisation guard                                                                                                                                   | The author, loudly; then review                                                 |
+
+**The four rows above that were written FOR c4-4 have their dispositions here**, so nothing is
+left merely ticked:
+
+- **The binary-response type lie** (_"c4-4 must read the response as a blob and must not derive
+  its handling from the type"_) — **MOOT, by construction.** Nothing in `ui/src` reads the image
+  response at all: art reaches the screen through `<img src>` and the browser's HTTP cache, so
+  there is no body to mishandle and `posture.test.ts`'s one-door list needed no edit. The row
+  stays for whoever eventually fetches image bytes; nobody should.
+- **The pacer's cold-paint arithmetic** — **HONOURED, and it is Q7's whole subject.** All ~99
+  `<img>` mount at once with `decoding="async"` and deliberately no `loading="lazy"`; the record
+  carries the arithmetic both ways. Re-measured on this machine at c4-4: a 99-tile deck is
+  **8.47 MB** (the row's 8.5 MB, confirmed) and a fully warm backend serves it at **5.6 ms/tile**
+  sequentially — faster than the ~10.3 ms the row records, and the same order.
+- **The warm-vs-cold `Content-Type` divergence** — **MOOT.** No code keys on the header, or reads
+  it; the tile branches on `load` and `error` events only.
+- **The 300-second negative-cache window** — **HONOURED.** The tile shows no spinner, sets no
+  timeout and never retries: `onError` fires once per `src` and the failure lives in state, so a
+  re-render cannot re-arm it. That is exactly _"a tile that retries in a loop will be answered
+  from memory and change nothing"_ implemented rather than merely read.
 
 Backend guards carry the same discipline. The two that matter most here:
 `tests/unit/companion/test_import_boundary.py` is **AST-only**, so it sees modules no test imports
@@ -960,34 +1207,108 @@ directory needs adding to one of those two `include` lists.
 
 The `/ws` proxy entry is **c5-6**.
 
-**The fetch layer and the store now exist, and this paragraph used to say they did not.** Until
-c3-9 it assigned the runtime `fetch` layer to **c4-1** and the `GET /api/decks` call to **c4-2** —
-and c3-9's own epic AC requires it to transition _"to the no-active-deck state, listing available
-decks"_, which is that call. The ruling (Q1) was to build the seam rather than a throwaway, and
-the boundary it draws is:
+**The fetch layer, the store and the card cache all exist now, and this paragraph has been wrong
+twice.** Until c3-9 it assigned the runtime `fetch` layer to **c4-1** and the `GET /api/decks` call
+to **c4-2**; c3-9 corrected that and assigned the card routes and the cache to **c4-1**, which has
+now landed. The boundary as it actually stands:
 
-- **`src/api/decks.ts`** is the ONE door to the network in `ui/src`, asserted exhaustively in
-  `tests/posture.test.ts`. It exports `readDecks()`, which returns a total outcome union and never
-  rejects. **c4-1 extends this module** with the card routes, the cache and the in-flight
-  deduping — the deduping goes _around_ this shape, not through it.
-- **`src/state/`** holds the store's first (and today only) slice: `systemState.ts` (the zustand
-  store plus the `useSystemState` hook), `poller.ts` (the backoff and the stalled clock) and
-  `panel.ts` (the one place a wire token becomes a `StateKey`). **c4-1 adds slices beside these**;
-  AD-12's one-store rule is what makes that the cheap path.
-- **What c3-9 does NOT cover, and c4-1 must not assume it does:** per-card fetches
-  (`GET /api/cards/{card_id}`, `GET /api/card-image/{scryfall_id}`), the WebSocket, any cache, and
-  any request with a path parameter. The last one is load-bearing — see the retry note below.
-- **c4-2** still owns the deck bootstrap in the sense that matters: c3-9 reads deck NAMES for the
-  `no-active-deck` panel's list and nothing else. There is no deck view, no active deck and no
-  deck detail call.
+- **`src/api/client.ts`** is the ONE door to the network in `ui/src`, asserted exhaustively in
+  `tests/posture.test.ts`. **It was `src/api/decks.ts` until c4-1 (Q1)**, and the rename is the
+  point: the property that guard protects is _"one door, named exhaustively"_, not _"the door is
+  called `decks.ts`"_, so when the card route arrived the choice was between a second module (which
+  fails that green assertion by design, and would have meant weakening a one-door rule into a
+  per-directory one to buy a filename) and a name that stops promising a single route. **c4-2's
+  two boot routes went into it, as promised** — it now exports `readDecks()`, `readCard(cardId)`,
+  `readActiveDeck()` and `readDeck(deckId)`, each returning a total outcome union and none of them
+  ever rejecting, all four sharing one private `request()` helper so there is one timeout guard
+  and one `no-store` decision. **c4-10's format check landed in it too, as predicted** —
+  `readFormatCheck(deckId)` is the fifth member, sharing the same `request()` helper; this line
+  read _"the next route is c4-10's format check, and it goes here too"_ until c4-12's conformance
+  sweep found it still written as a prediction after the story had shipped.
+- **The two boot routes fail in DIFFERENT vocabularies, and that is a design statement.** Measured
+  against the committed `openapi.json`: `GET /api/active-deck` publishes `200/400/500` and
+  **structurally cannot answer `503`** — `routes/active_deck.py` holds no `DbSession` at all —
+  while `GET /api/deck/{deck_id}` publishes `200/400/404/413/500/503`. So the epic's
+  database-refusal criteria are about the second request alone, and the two readers have separate
+  outcome unions rather than one that models failures the first route cannot produce.
+- **`src/state/`** holds the store: `systemState.ts` (the zustand store plus the `useSystemState`
+  hook), `poller.ts` (the backoff and the stalled clock), `panel.ts` (the one place a wire token
+  becomes a `StateKey`), from c4-1 **`cards.ts`, the one card hydration cache**, and from c4-2
+  **`deck.ts` (the boot, the refusal vocabulary and `surfaceOf`) and `deckGroups.ts` (the type
+  grouping)**. `cards.ts` and `deck.ts` are second and third `create()` calls and still one cache
+  and one deck: `useSystemState` subscribes with no selector, so folding them into that store
+  would re-render the whole app on every tile's hydration. AD-12 bans a second state LIBRARY, not
+  a second store instance. **Nothing outside each slice's own module writes it**, which is
+  `tests/store-writes.test.ts` rather than a convention.
+- **The cache is TWO-TIER, and the bulk tier is free.** `GET /api/deck/{deck_id}` already embeds a
+  full `CardSummary` per card, so `seedCardSummaries(deckCards)` populates name/cost/type-line for
+  a whole deck with **zero** requests. Measured on the largest real deck (99 tiles): 38,182 bytes
+  in one request against 212,436 bytes in 99 for the full rows. `hydrateCard(cardId)` fetches the
+  rest per id, on demand, deduping concurrent callers onto one shared promise. **c4-2 calls the
+  seeder** with the payload its own fetch already returns.
+- **What still does NOT exist:** the WebSocket (**c5-6**), and any `fetch` for image BYTES — art
+  reaches the screen through `<img src="/api/card-image/…">` and the browser's own HTTP cache,
+  backed by `IMAGE_CACHE_CONTROL` and c3-7's disk cache. There is no image cache in `ui/src` and
+  there should not be one. **c4-4 is the first story to put remote images on the screen and it
+  left the door list untouched**, which is the point: an `<img src>` is a request the browser
+  makes, not one the app makes. The URL is built by `cardImageUrl` in
+  `src/containers/CardTile/imageUrl.ts` — deliberately NOT in `client.ts`, whose whole meaning is
+  "requests are made here" — and it spells no `size`, because `normal` is the route's default and
+  **the URL is the browser's cache key**. **c4-5** (a larger detail render) and **c4-6** (`face=1`)
+  extend that one function rather than each writing a second template string.
 
-**The retry rule, stated where c4-1 will read it.** The poll retries `503`s quietly, and it is
-safe to because `/api/decks` **has no path parameter**. Measured at c3-2 and pinned in
+**The retry rule, and how c4-1 answered it.** The deck poll retries `503`s quietly, and it is safe
+to because `/api/decks` **has no path parameter**. Measured at c3-2 and pinned in
 `test_routes_cards.py`: a malformed id sent to a backend with no database answers
 `database_not_initialized`, not `invalid_request`, because FastAPI solves dependencies before it
-collects validation errors. So a per-card fetch that copies this retry loop will retry a request
-whose id can never succeed, forever. Bound the attempts per id, or key the retry on something
-other than the token alone.
+collects validation errors. So a per-card fetch that copied this retry loop would retry a request
+whose id can never succeed, forever. **`readCard` therefore has no retry at all** — one request,
+no timer, no loop — and the bound lives with the thing that decides to ask again:
+`MAX_ATTEMPTS_PER_CARD = 3` in `src/state/cards.ts`, counted per id and cumulatively across calls.
+A `card_not_found` is terminal on the first answer and remembered for the life of the tab.
+
+**A card refusal never puts a panel on the glass** (FR-13). `panelFor()` is not called on the card
+path, and that is a rule: `card_not_found` maps to `null` in `PANEL_FOR_REASON` and `panelFor`
+clamps `null` to `'internal-error'`, so routing a card token through it would replace a working
+deck view with _"The companion hit a bug"_ because one card was missing. `src/state/cards.ts`
+records the token and a `PlaceholderKey` from `states.ts`'s own vocabulary; **c4-3 renders it** —
+`CardPlaceholder`, whose variant type is BUILT from `PlaceholderKey`, so a third placeholder key
+added to `states.ts` is a `tsc` failure in the component. A consumer maps `entry.placeholder` to a
+variant and passes plain props; **nothing re-derives a placeholder from a wire token**, and a
+`switch (entry.reason)` in a component is the drift that field exists to prevent.
+One ruling to know: a `400 invalid_request` on a CARD read draws the unknown-card placeholder
+(c4-1 Q5), even though `states.ts` classifies that token "no UI response at all" — because the
+premise behind that classification (_"the SPA never generates a malformed request"_) is exactly
+what fails when the id came out of `deck_cards`, a column with no shape constraint.
+
+**A DECK refusal ALWAYS does, and that is the same rule rather than its opposite** (c4-2). The
+deck IS the surface, so there is no view left standing to protect: `src/state/deck.ts` routes deck
+refusals through `panelFor()`, and `PANEL_FOR_REASON.deck_not_found → 'no-active-deck'` — written
+at c2-9 and **unreachable dead code until c4-2**, because `panelFor` was only ever called by the
+poll and `/api/decks` does not publish that token — finally has a live producer. The same Q5 shape
+recurs: a `400 invalid_request` on a DECK read draws the no-active-deck panel, recorded in a
+per-context map beside the consumer with `states.ts` untouched, because the id came from
+`PUT /api/active-deck`, which stores **any non-blank string up to 256 characters verbatim** and
+never checks the deck exists. Letting it reach `panelFor` unmodified answers an agent typo with
+_"The companion hit a bug."_
+
+**Which surface is on the glass is decided in ONE expression**, `surfaceOf(deck, system)` in
+`src/state/deck.ts` (c4-2 Q1): a loaded deck first, then a deck refusal that decided a panel of
+its own, then the system panel. The middle arm is why the order is not simply "deck, else system"
+— the deck read's two `503`s must put THEIR panels up, and a rule that let the poll win would make
+that criterion pass only by coincidence. `App.tsx` renders the answer and computes none of it.
+
+**The deck boot has no timer and no poll of its own** (c4-2 Q6), and that is the same argument
+`readCard` makes one layer down: `MAX_ATTEMPTS_PER_CARD` exists because RENDERS call the card
+path in a loop, and nothing loops here. One `GET /api/active-deck` and at most one
+`GET /api/deck/{id}` per mount, asserted as a request count over ten minutes of fake time — plus
+**one edge-triggered re-drive per poll recovery** (the c4-2 review): when the poll's panel
+transitions INTO `no-active-deck` while the deck state is `refused` or `none`, the boot re-runs
+once, so a deck refusal settled during a DB build does not outlive the build (FR-22). The bound
+is structural — edges are backend-state transitions, not a loop the client can wind, and a
+loaded deck is never re-driven. The re-drive after a deck CHANGES is still Epic 5's
+`deck_changed`, not a second poller; a transient blip after the poll has already settled healthy
+has no later edge and waits for reload or c5-6's reconnect.
 
 **The threshold this story owns:** `STALLED_AFTER_MS = 60_000` in `src/state/poller.ts` — 60
 seconds of _continuous_ `database_unavailable`, and that token only. `database_not_initialized`
@@ -997,47 +1318,155 @@ doubling, capped at 30 s (`POLL_BASE_MS`, `POLL_MULTIPLIER`, `POLL_CEILING_MS`).
 The application shell landed in **c2-6**, so the token layer now has a real consumer and
 `src/App.css` is gone with the placeholder it styled. What the shell deliberately does _not_
 build is every region it holds open, each of which renders a placeholder line naming its owner
-until that story lands: card detail is **c4-5**, the deck list is **c4-7**, the format check is
-**c4-10**, the agent-view nav pills are **c6-8**, and the agent view that drops into the overlay
-slot is **c6-5**. The `h1` carries the product name provisionally; **c4-2** replaces its content
-with the deck name and nothing about the element moves.
+until that story lands. **Three of the five have now landed and their placeholders are
+displaced** — card detail (**c4-5**), the deck list (**c4-7**) and the format check (**c4-10**) —
+leaving the agent-view nav pills (**c6-8**, the one story key still on the glass on every surface,
+including a fully loaded deck) and the agent view that drops into the overlay slot (**c6-5**). **The `h1` carries the deck name as of c4-2** — it carried the product name
+provisionally until then, which meant the kicker and the heading said the same words (C3 retro
+F2); nothing about the element, its level or its position moved, and `filled()`'s fallback still
+fires when there is no deck, which is what keeps a fresh install from being heading-less.
 
-**Two regions are already filled, and both by displacement rather than deletion.** The pattern
-is c2-9's decide-once ruling, applied twice now: the shell's placeholder still fires whenever
+**Four regions are now filled, and all four by displacement rather than deletion.** The pattern
+is c2-9's decide-once ruling, applied four times: the shell's placeholder still fires whenever
 its slot is empty, `AppShell.test.tsx` still asserts it against the component's own props, and
 what changed is only which of the two the running app shows. Each displacement is recorded in
 `App.tsx` beside the prop that causes it.
 
-- **The left column, as of c2-9, and WIRE-DRIVEN as of c3-9.** `App.tsx` passes a `StatePanel`
-  into the `left` slot, displacing the placeholder that names c4-4 and c4-8. c2-9 passed a
-  constant, which was honest at the time — there was no fetch layer and no store, so there
-  genuinely was no active deck. **c3-9 replaced the constant with the poll**: which panel shows is
-  chosen from the response's `reason` token through `states.ts`'s `PANEL_FOR_REASON`, and the app
-  transitions from the database panel to the deck list on its own with no refresh (FR-22).
-  **c4-2 / c4-4** replace it once more, with a deck when there is a deck.
+- **The left column, as of c2-9, WIRE-DRIVEN as of c3-9, DECK-DRIVEN as of c4-2, and now THE DECK
+  ITSELF as of c4-4.** `App.tsx` passes a `StatePanel` into the `left` slot, displacing the
+  placeholder that named c4-4 and c4-8. c2-9 passed a constant, which was honest at the time —
+  there was no fetch layer and no store, so there genuinely was no active deck. **c3-9 replaced
+  the constant with the poll**: which panel shows is chosen from the response's `reason` token
+  through `states.ts`'s `PANEL_FOR_REASON`, and the app transitions from the database panel to the
+  deck list on its own with no refresh (FR-22). **c4-2 made it conditional on a deck**: when one
+  was loaded there was no panel at all, and the slot fell back to the shell's own placeholder —
+  the honest displacement rather than a regression, and what made c4-4's slot findable by its own
+  id. **c4-4 fills it with a `CardGrid`**, the fourth application of the same c2-9 ruling: the
+  shell is still untouched, its placeholder still fires when `left` is empty, and only
+  `App.test.tsx`'s displacement assertion changed. That also removes one of the six
+  story-key-shaped strings the C3 retro's action **F1** counted on a real render; the gate itself
+  is still **c8-5's**.
+- **The `h1` and the header badges, as of c4-2.** `deckName` takes the deck's name; `badges` takes
+  `<DeckBadges />`, which is `Badge`'s first on-screen consumer anywhere in the app. The badges say
+  the format (`brawl`, `standard`, …) and the size (`100 maindeck`, plus `15 sideboard` only when
+  there is one), all in the `neutral` tone. **They make no legality claim**, and a `positive` tone
+  here would assert something the app never asked the backend.
+
+  ⚠️ **CORRECTED AT c4-10 (Q4b), which is the SIXTH forward statement this file has had falsified.**
+  This bullet used to end _"the mock's `standard legal` pill is **c4-10's**, over a `format-check`
+  endpoint c4-2 never calls"_. **c4-10 shipped and the header pill did NOT.** Three reasons, all
+  ruled in that story: it is outside the epic's five acceptance criteria for story 4.10, which
+  describe only the right-column panel; the pill's tone would have to be **synthesized** from
+  `format_recognized` plus a scan of the rows, which is exactly the `is_legal` trap
+  `deferred-work.md:2430-2437` homes on that story — in the one place on screen with no rows beside
+  it to contradict it; and it would put a **second** consumer of `GET /api/deck/{id}/format-check`
+  in a **second** column with no shared state. The honest home is the **C4 retro**, or a later
+  header story, and the mock's pill remains unimplemented rather than quietly assumed.
+
 - **The footer, as of c2-10.** `App.tsx` passes `<Footer />` into the `footer` slot. Unlike
   every other region this one is **not waiting for data** — the attribution is a condition of
   public release (NFR-08), correct from day one, and no later story replaces it. See _The
   footer attribution_ above for the three rulings it carries.
 
-Eight presentation primitives have landed — `Panel`, `Badge`, `StatChip` and `GroupHeader` in
-**c2-7**, `ManaPip` and `ManaCost` in **c2-8**, `StatePanel` in **c2-9**, `Footer` in **c2-10** —
-and all eight are documented under _Components_ above. **`StatePanel` and `Footer` are the two
-with an on-screen consumer**; the other six still have none, so `npm run build` leaves them out
-of the module graph entirely and their **appearance is not dev-verified** (jsdom applies no
-stylesheet). Each is checked by
-eye at its first consuming story: `Panel` at **c4-5** (card detail, the first real
-`level="overlay"` panel) and **c4-7** (the deck list) — **re-homed from c2-9**, which turned out
-not to render a `Panel` at all (Q6) — the group header and deck-row context at **c4-7**, the
-badge at **c4-2** and **c4-10**, and the pip and cost at **c4-3** (card placeholders), **c4-7**
-(deck rows) and **c4-9** (the colour-distribution legend). The header badge slot in `AppShell.tsx` is **still
-empty on purpose** — c2-7 shipped `Badge` without filling it, and **c4-2** and **c4-10** are its
-fillers. The one remaining primitive is the nav pill (**c6-8**).
+Ten presentation primitives have landed — `Panel`, `Badge`, `StatChip` and `GroupHeader` in
+**c2-7**, `ManaPip` and `ManaCost` in **c2-8**, `StatePanel` in **c2-9**, `Footer` in **c2-10**,
+`DeckBadges` in **c4-2**, `CardPlaceholder` in **c4-3** — and all ten are documented under
+_Components_ above. **Nine of the ten now have an on-screen consumer** as of c4-10, and each was checked by eye at its
+first consuming story: `Panel` at **c4-5** (card detail, the first real `level="overlay"` panel)
+and **c4-7** (the deck list) — **re-homed from c2-9**, which turned out not to render a `Panel` at
+all (Q6) — `GroupHeader` at **c4-7** (zero consumers from c2-7 until then), `ManaPip`/`ManaCost` at
+**c4-9**, `StatChip` alone still awaiting a surface (ledgered, homed on the C4 retro). This
+paragraph read _"the four with an on-screen consumer; the other six still have none"_ — a c2-10
+sentence its own next paragraph already falsified — and is corrected at c4-12's conformance
+sweep.
 
-The skip link and Tab-order work are **c4-11** — the shell builds no focus management. The
+**`Panel`'s first on-screen consumer is `CardGrid` (c4-4), and it is UNTITLED.** The counts a
+reader needs are already in the `h1` and `DeckBadges`, so a panel title carrying "60 cards · 16
+distinct" — the mock's shape — would be the third statement of the same number on one screen; and
+an untitled `Panel` invents no name, so it adds no duplicate landmark. The titled `level="overlay"`
+panel is still unverified and still **c4-5's**. **One live constraint c4-4 hands forward:**
+`Panel.css` is `overflow: hidden` with 12px body padding, so a tile's `--shadow-rest` is clipped
+at the panel's edge. Measured at the eye-check, the 1.06 hover pop itself fits (5.3px per side
+against 12px of padding) and the clipping is not visible on this theme — but a lighter theme or a
+larger pop would make it so, and `Panel` is a primitive a consumer may not restyle.
+
+**`ManaPip`'s and `ManaCost`'s appearance is DEV-VERIFIED as of c4-3**, on a throwaway harness
+that served the BUILT stylesheet to Edge against hand-written markup — the same instrument c4-2
+used for `Badge`, and the answer to c4-3's Q1. All five ledgered claims, open since c2-8, hold:
+the pip is a **circle**; the hybrid gradient's **hard stop reads as a clean 45° split with no
+blur**; the 13px glyph sits centred and legible in the 16.25px circle (`0 2 X T P S` all
+checked); the wide case **GROWS into a pill rather than clipping** (`{1000000}`, `{HW}`, `{100}`);
+and a 15-pip cost **wraps to a second row inside a 176px card** rather than overflowing it, as
+does the 46-character five-face cost. **The CVD question is measured rather than assumed** — see
+_Colour is never the sole carrier_ below. What the harness could NOT answer is composition: a
+placeholder beside a real card face in a real grid is **c4-4's**, by name.
+
+**`Badge`'s eye-check is DONE, at c4-2, and so are its contrast numbers.** Both were ledgered as
+Medium since c2-7 and neither had been performed. Rendered in Edge against the running backend
+with a real deck active: the pseudo-element wash sits **behind** the text as `z-index: -1` +
+`isolation: isolate` intend, so the feared failure — _a solid blank pill with invisible text_ —
+does not occur. Measured contrast, all five tones, text over their own wash: `neutral` **7.60:1**,
+`accent` **8.33:1**, `positive` **7.97:1**, `negative` **6.17:1**, `caution` **8.99:1** — every
+one clear of the 4.5:1 floor. **One number does not clear a floor**: `neutral`'s
+`--border-strong` hairline is **1.89:1** against the page and **1.54:1** against its own wash,
+under WCAG 1.4.11's 3:1. That is accepted for `neutral` — a badge is a static label, not a UI
+component, and its boundary carries no information the wash does not — but it is a live
+constraint for **c4-10**, whose format-check badge carries STATE: the four semantic tones' borders
+are 6.73–11.49:1 and fine, so a state distinguished by tone is safe and a state distinguished by
+the neutral border would not be.
+
+**c4-10 discharged that constraint by construction and re-measured the numbers on ITS OWN
+SURFACE.** `TONE_FOR_STATUS` is total over the wire's three statuses and **never returns
+`neutral`**, coupled to `BADGE_TONES` by a type-level assert, so the unsafe state is unreachable
+rather than avoided. Two corrections to the figures above, both computed from the shipped hexes:
+the ratios on record are on `--surface-base`, and this panel's badges sit on `--surface-panel`,
+where **`neutral`'s `--border-strong` hairline is 1.75:1 — worse than the 1.89:1 recorded** — while
+the three semantic tones measure **`positive` 7.21:1 · `negative` 5.60:1 · `caution` 8.14:1** text
+over their own washes (against 7.96 / 6.15 / 8.99 on `--surface-base`, which reproduces c4-2's
+record to rounding). All three clear 4.5:1 with headroom. The unmeasured half — any of this under
+the four alternate themes — is re-homed unchanged.
+
+The header badge slot is **filled** as of c4-2, and **c4-10 declined to add a legality pill beside
+it** (see the corrected bullet above). The one remaining primitive is the nav pill (**c6-8**).
+
+#### Colour is never the sole carrier — the CVD question, measured at c4-3
+
+Ledgered **Medium** since c2-8 and homed on the c4-3 eye-check: _for a sighted
+colour-vision-deficient user, a pip's colour IS its sole carrier_ — `ManaPip` draws no glyph for
+the five WUBRG colours, deliberately (UX-DR7 bans mana-symbol icon fonts, and the glyph slot is
+reserved for counts, `{X}` and Phyrexian `P`).
+
+**Measured** rather than eyeballed, at c4-3: the six shipped `--mana-*` colours were pushed
+through the Machado severity-1.0 dichromacy matrices in linear RGB and compared pairwise as CIE
+Lab ΔE. The **worst pair under each vision type**:
+
+| vision       | worst pair | ΔE       |
+| ------------ | ---------- | -------- |
+| normal       | B / C      | **24.5** |
+| protanopia   | U / B      | **10.0** |
+| deuteranopia | R / G      | **14.1** |
+| tritanopia   | B / C      | **10.9** |
+
+Every pair stays above ΔE 10 under every simulated deficiency — roughly **4× the just-noticeable
+difference** for large flat colour patches — so the five colours remain mutually distinguishable
+and the levers the ledger held in reserve (a glyph-slot letter, a DESIGN.md amendment) are **not
+needed**. Two honest limits: a simulation is not a person, and this measures _distinguishability_
+(can you tell two pips apart) rather than _identifiability_ (can you tell which colour a pip is)
+— the latter is what `describeManaCost`'s `role="img"` name carries for screen readers, and for a
+sighted CVD reader it remains a real gap that only a glyph would close. **Brad's acceptance
+against a real screen is the closing step**; the numbers are what he is deciding against.
+
+The skip link and Tab-order work **landed at c4-11** (2026-08-07) — the shell itself still builds
+no focus management; `SkipLink` is a container and the hand-off lives in `containers/focusHome.ts`.
+This read _"are c4-11"_, in the future tense, until c4-12's conformance sweep. The
 numeric role now has real consumers: the panel count, the group-header count and the StatChip
 delta all landed in **c2-7**, so `findUnpairedNumericRole` is no longer a guard with nothing to
-guard; **c6-8**'s curve axis is next.
+guard; **c4-8**'s curve counts are the latest, and they arrived on 2026-08-06. (This line read
+_"c6-8's curve axis is next"_ until that story: a typo, and one worth recording rather than
+silently fixing — there is no curve anywhere in Epic 6, so the sentence pointed a reader at a
+story that could never satisfy it. Note also that c4-8's **axis labels** are `--type-micro`, not
+the numeric role: DESIGN.md:407 puts counts in `{typography.numeric}` and axis labels in
+`{typography.micro}`, so it is the counts above the bars that this guard covers.)
 
 `ui/dist` is no longer produced. A few ignore patterns still name it (`ui/.gitignore`,
 `.prettierignore`, the stylelint `--ignore-pattern`); they are harmless and deliberately left

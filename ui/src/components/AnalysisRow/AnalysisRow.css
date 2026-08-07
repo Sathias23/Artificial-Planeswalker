@@ -1,0 +1,78 @@
+/* AnalysisRow — the 1:1 analysis pair (story c4-8, Q6, AC 3, UX-DR8, DESIGN.md "Layout &
+   Spacing").
+
+   NO px LITERAL ANYWHERE IN THIS FILE, deliberately. `--space-panel-gap` is DESIGN.md's own
+   `{spacing.panel-gap}` (24px), which is the gap the shell already puts between stacked panels
+   — so the row reads as part of the same rhythm rather than as a nested layout with opinions of
+   its own. */
+
+/* NO `flex-wrap` — REMOVED AT REVIEW (c4-8), because with `flex: 1 1 0` and `min-width: 0`
+   children every item's hypothetical main size is ZERO, so the line can never overflow and
+   `wrap` was dead code advertising a stacking behaviour that could not happen. At narrow widths
+   two panels SHRINK 1:1 rather than stack.
+
+   ==== AND c4-9 RULED THE BREAKPOINT QUESTION THIS COMMENT USED TO LEAVE OPEN (Q11) =======
+   This paragraph read *"whether c4-9's second panel wants a real stacking breakpoint … is that
+   story's decision, flagged to it by name"*. **Ruled: NO breakpoint, and the row is unchanged.**
+   The measurable facts: the row is 870px at a 1440px window, so two children are ~423px each;
+   UX-DR8 puts the app's floor at ~1100px, BELOW which the right column drops beneath the left —
+   which WIDENS this column rather than narrowing it, so the squeeze case is narrower than the
+   app's own stated floor. The thing that actually runs out of room first is the colour legend,
+   and its answer is to wrap gracefully (`ColourDistribution.css` — where `flex-wrap` IS
+   reachable, because those children have real content widths rather than a zero basis). A
+   flex-basis here would need a derived and cited value to solve a problem the legend solves for
+   free. Measured on the eye-check at both widths.
+
+   ==== AND THE EMPTY ROW c4-8 LEFT BEHIND IS CLOSED HERE (c4-9, Q10, AC 33) ===============
+   c4-8 shipped `<AnalysisRow>` unconditionally in `App.tsx`'s deck arm, so a deck whose curve is
+   empty left the row's div in the DOM as a real flex child of `.app-shell-column` — with the
+   column's 24px panel gap still applied beneath the grid, a phantom band of space under nothing.
+   That was pinned as accepted posture with **c4-9 named to revisit it**, because gating the row
+   in `App.tsx` would have needed the curve's total there: a SECOND derivation of what `curve.ts`
+   owns, for a state no corpus deck can produce.
+
+   `:empty` is the revisit, and it needs none of that. The row owns its own emptiness — no gate
+   in `App.tsx`, no total, no re-derivation of anything, and nothing for either panel to know
+   about the other. When both children render `null` React leaves this element with no child
+   nodes at all, `:empty` matches, and `display: none` takes it out of the flex layout entirely
+   so the parent's gap goes with it.
+
+   DECLARED LIMIT, because `:empty` is exact rather than approximate: it matches only an element
+   with NO child nodes, text and whitespace included. That is precisely the condition wanted here
+   (a panel renders a `<section>` or it renders `null`), and it would stop matching the day a
+   child rendered a whitespace text node — which no `Panel` can do. **Story 4.12 hides all three
+   analysis panels on an empty deck by name and ships after this one**, so this is that clause
+   arriving early: c4-12's author is told here that the row is already handled and only the
+   panels' own conditions are theirs. */
+.analysis-row {
+  display: flex;
+  gap: var(--space-panel-gap);
+}
+
+.analysis-row:empty {
+  display: none;
+}
+
+/* THE WHOLE OF THE 1:1 CONTRACT, IN ONE RULE.
+
+   `flex: 1 1 0` — grow and shrink from a ZERO basis, so the split is decided by the flex factor
+   rather than by the panels' content. `flex: 1` alone resolves to `flex: 1 1 0%` and would be
+   equivalent, but the explicit triple is what makes the basis readable: with `flex-basis: auto`
+   the wider panel's CONTENT would win and the pair would not be 1:1 at all.
+
+   `min-width: 0` because a flex item's default `min-width` is `min-content` — the per-item half
+   of the argument `.app-shell-column` and `.app-shell-columns` both already make. Without it a
+   panel containing anything unbreakable pushes the row wider than its parent and the app's one
+   scroll container inherits a horizontal overflow it does not own.
+
+   `> *`, and this is LAYOUT ON A CHILD SLOT rather than restyling a primitive (ruling 13): it
+   names no `Panel` class, reaches into no descendant, and changes nothing about how a panel
+   paints its own surface, radius, padding or overflow. `.app-shell-column` does the same thing
+   with `gap` to the same panels.
+
+   `:where()` is NOT used here and does not need to be: this is a brand-new class with no
+   existing cascade to preserve, so c4-6's specificity-repair idiom has nothing to repair. */
+.analysis-row > * {
+  flex: 1 1 0;
+  min-width: 0;
+}

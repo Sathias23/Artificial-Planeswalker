@@ -17,3 +17,71 @@ export function ClassStyled() {
 export function ConditionallyStyled({ isLive }: { isLive: boolean }) {
   return <div className={isLive ? 'deck-row deck-row--live' : 'deck-row'}>Row</div>
 }
+
+/* THE ONE SHAPE THE BAN ADMITS, ADDED BY STORY c4-8 (Q10, AC 17, AC 34 n′).
+
+   The fixture named *clean* is the honest place for it: this file is the one that says "this
+   shape is permitted", and it is asserted at ZERO messages for the inline-style rule in the
+   same invocation that asserts inline-style-violation.tsx at exactly two.
+
+   A data-driven bar height cannot be a class — the value is computed from the deck at render
+   time — so `no-restricted-syntax` was NARROWED rather than disabled: an object literal whose
+   keys are all DECLARED runtime channels passes, and the value is consumed by a `.css` rule
+   (`height: var(--curve-bar-height)`) where stylelint and tests/token-usage.test.ts can both
+   see it. Nothing about the token layer is weakened: this attribute carries a NUMBER, not a
+   style.
+
+   ONE property, and it is the whole allowlist. The c4-8 review tightened the hatch from the
+   `/^--/` prefix to the exact channel NAME (a prefix admits `--surface-well`, a real token an
+   attribute may not override), so this fixture carries the one declared channel; the
+   second-property and wrong-name cases live in custom-property-violation.tsx, where they FIRE.
+
+   THE CAST IS NOT OPTIONAL, AND IT CORRECTS THE STORY'S OWN PREMISE. c4-8's Q10 says a dynamic
+   value "sets a CSS CUSTOM PROPERTY through the style attribute's own typing". Measured with
+   `npx tsc -b --force` at React 19.2: it does not. `React.CSSProperties` extends csstype's
+   `Properties`, which has no index signature for `--`-prefixed keys, so the object literal is
+   `TS2353: '--curve-bar-height' does not exist in type 'Properties<…>'`. The escape hatch is
+   real; the typing that was supposed to carry it is not. */
+export function CustomPropertyStyled({ share }: { share: number }) {
+  return (
+    <div
+      className="mana-curve-bar"
+      style={{ '--curve-bar-height': `${share * 100}%` } as React.CSSProperties}
+    />
+  )
+}
+
+/* THE FALSE-POSITIVE HALF OF THE REVIEW'S DIRECT-CHILD CORRECTION. An object literal nested
+   inside a permitted property's VALUE is not a style object at all — it is an argument to
+   whatever computes the value. The shipped draft's descendant `:has` reached into it and
+   errored; the anchored selector reads only the attribute's own top-level keys. */
+const withUnit = (options: { scale: number }): string => `${options.scale}%`
+export function NestedValueObject({ share }: { share: number }) {
+  return (
+    <div
+      className="mana-curve-bar"
+      style={{ '--curve-bar-height': withUnit({ scale: share * 100 }) } as React.CSSProperties}
+    />
+  )
+}
+
+/* THE SECOND DECLARED CHANNEL, ADDED BY STORY c4-9 (Q13, AC 19).
+
+   The point of putting it here is that the allowlist is a LIST OF EXACT NAMES rather than a
+   prefix, so a second entry has to be added twice — once in `eslint.config.js` and once in
+   `RUNTIME_CUSTOM_PROPERTIES` in tests/token-usage.test.ts — and this fixture is where the
+   ESLint half is proven to have grown rather than loosened. `custom-property-violation.tsx`
+   carries the converse: this channel beside a plain property still errors.
+
+   `--colour-bar-share` carries a RAW PIP COUNT, which makes it narrower than c4-8's channel
+   rather than wider: `flex-grow: var(--colour-bar-share, 0)` in ColourDistribution.css performs
+   the division in the browser, so no percentage is computed in TSX and nothing here can divide
+   by zero. */
+export function ColourBarSegment({ count }: { count: number }) {
+  return (
+    <div
+      className="colour-bar-segment colour-bar-segment-b"
+      style={{ '--colour-bar-share': `${count}` } as React.CSSProperties}
+    />
+  )
+}

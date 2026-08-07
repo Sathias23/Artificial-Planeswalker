@@ -1406,6 +1406,18 @@ the gate-output rule rather than left as "we meant to".
   static proof available, and both fail *legibly-but-wrongly* rather than loudly. Check the
   `{1000000}` and `{W/U}` cases first.)
 
+  > **RESOLVED at c4-3 (2026-08-04). All five claims hold; nothing needed a nudge.** Paid on a
+  > throwaway harness — the BUILT stylesheet served to Edge against hand-written markup, the same
+  > instrument c4-2 used for `Badge` — and screenshotted at 6x. **The pip is a circle.** **The
+  > hybrid gradient's hard stop reads as a clean 45 degree split with no blur.** **The 13px glyph
+  > sits centred and legible in the 16.25px circle** at the 0.8 ratio this entry flagged as most
+  > likely to want a nudge — `0 2 X T P S` all checked, none crowded. **The wide case GROWS into a
+  > pill rather than clipping** (`{1000000}`, `{HW}`, `{100}`). **Row wrapping works**: fifteen
+  > B.F.M. pips wrap to a second row inside a **176px** card — narrower than the 452px column this
+  > entry worried about, so the harder case was the one measured. The two named-first cases
+  > (`{1000000}`, `{W/U}`) were checked first, as instructed. **c4-7 and c4-9 inherit nothing from
+  > this entry**; what remains for them is composition, which a harness cannot show.
+
 - **The `--mana-*` data-ink rule's "unstacked curve bar" half is REVIEW'S, not the gate's.**
   UX-DR7 bans a WUBRG token on "an unstacked curve bar", and whether a given bar is genuinely
   stacked is a property of the data bound to it and the elements composed at runtime — both in
@@ -1422,6 +1434,16 @@ the gate-output rule rather than left as "we meant to".
   decided against something real. (Severity: Low — 338 of 32,318 costs, and the literal reading
   is honest rather than wrong.)
 
+  > **c4-3 disposition (2026-08-04): CONFIRMED LIVE, RE-HOMED to c4-7 unchanged.** A split card
+  > does now render here — `Heaven // Earth` is a fixture in `CardPlaceholder.test.tsx`, and its
+  > cost `{X}{G} // {X}{R}{R}` renders five pips and the literal ` // ` text run. So the entry's
+  > condition ("where a split card first renders") is met and the reading was heard against
+  > something real. **The phrasing is unchanged, deliberately**: the placeholder is a fallback
+  > slot, not a reading surface, and c4-3 also sharpened the population — **all 79** cards that
+  > permanently need the named placeholder are split-named, but **all 79 have a BLANK mana cost**,
+  > so `describeManaCost` is never called for them and the separator is never spoken on this
+  > surface at all. The decision belongs where a cost is read aloud in prose: **c4-7's deck rows**.
+
 - **For sighted colour-vision-deficient users, a pip's colour IS its sole carrier** (added at
   c2-8's code review). A `{W}` pip and a `{G}` pip differ in nothing but fill — no letter, no
   pattern — so the `role="img"` accessible name serves AT users while a sighted CVD user cannot
@@ -1433,6 +1455,20 @@ the gate-output rule rather than left as "we meant to".
   and plain text is not a lookalike) or a DESIGN.md amendment — Brad's call, made against a real
   screen. (Severity: **Medium** — an accessibility gap for a real user class, but one the design
   contract currently mandates.)
+
+  > **c4-3 disposition (2026-08-04): MEASURED, and the levers are NOT needed — pending Brad's
+  > acceptance against a real screen, which this entry reserves to him.** The six shipped
+  > `--mana-*` colours were pushed through the Machado severity-1.0 dichromacy matrices in linear
+  > RGB and compared pairwise as CIE Lab dE. Worst pair per vision type: **normal B/C 24.5**,
+  > **protanopia U/B 10.0**, **deuteranopia R/G 14.1**, **tritanopia B/C 10.9**. Every pair stays
+  > above dE 10 under every simulated deficiency — roughly 4x the just-noticeable difference for
+  > large flat patches — so the plain circles do NOT read as indistinguishable and neither lever
+  > (a glyph-slot letter, a DESIGN.md amendment) is called for. **Two limits, stated rather than
+  > glossed:** a simulation is not a person, and this measures *distinguishability* (telling two
+  > pips apart) rather than *identifiability* (knowing WHICH colour a pip is) — the latter stays a
+  > real gap for a sighted CVD reader that only a glyph would close, and it is the gap the
+  > `role="img"` name closes for AT users. **Stays OPEN at Medium until Brad accepts the numbers;
+  > it is no longer waiting on an eye-check that has not happened.**
 
 - **`{Y}`, `{Z}`, `{S}`, `{L}`, `{D}` and `{HW}` are deliberately NOT in the parser's symbol
   table.** Each is real in the shipped database and each renders correctly today — as a
@@ -1602,6 +1638,22 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   clearly visible around a 24px inline-flex box at the very bottom edge of the window is a
   browser check. **Tab to both links.** (Severity: Medium — it is the token layer's focus
   contract getting its first real exercise, and c4-11 inherits whatever is learned here.)
+
+  📐 **c4-11 (2026-08-07) supplies the NUMBER this entry never had, which is the half no browser
+  check was needed for** — `c4-6:1155-1157` left it as an open composite question and no figure
+  existed anywhere. Computed by WCAG 2.x relative luminance against `--focus-ring` `#b3baff`:
+  **`--surface-well` 10.35:1 · `--surface-base` 9.94:1 · `--surface-panel` 9.16:1 ·
+  `--surface-overlay` 8.11:1** — every authored surface clears 1.4.11's 3:1 non-text floor by more
+  than 2.5×. **Against white card art it is 1.84:1, and against mid-grey art 2.14:1 — both FAIL.**
+  That measurement **proves the design rather than questioning it**: it is precisely why
+  `--shadow-focus-ring-over-art` exists, because the composite's outer `--surface-base` band
+  measures **9.94:1 against the ring and 18.33:1 against white art**, so what carries 1.4.11 over a
+  painting is the *adjacent-pair* contrast, not the ring against the art.
+
+  **The rendered half is the eye-check's and it is discharged there** (c4-11 Task 7): whether the
+  ring is legible around the footer links at the very bottom edge of the window, and whether the
+  over-art band is ACTUALLY PAINTED — because if it is ever dropped, the indicator silently fails
+  on every light card face and no jsdom test in this repo can see it.
 
 - **The border and the surface.** `border-top: 1px solid var(--border-hairline)` over
   `background: var(--surface-base)` is `DESIGN.md`'s frontmatter verbatim. Note that the
@@ -1893,6 +1945,12 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   the wire as normal. Pre-existing schema shape; this story merely put it on the wire. **Home:
   c4-1/c4-2**, the first real consumers of these types. (Severity: Low.)
 
+  **Not triggered at c4-1 (2026-08-02); the whole entry is c4-2's.** c4-1 consumed `Card`,
+  `CardSummary` and `DeckCardSummary` and hit neither half: no `strategy`, no `format` and none of
+  the three count fields appears on any of them — they live on `DeckSummary` / `DeckDetail`, and
+  c4-1 deliberately did not alias `DeckDetail`, having no consumer for it. **Home: c4-2**,
+  unshared, which reads exactly those fields when it renders the deck header.
+
 - **`_is_ref_rooted` will misfire on the first legitimate union response model.**
   **✅ RESOLVED at c3-3 (2026-08-01, Q5 — Brad took this half of the question).**
   `tests/unit/companion/test_errors.py` puts `anyOf`/`oneOf`/`allOf` in `_OBJECT_SHAPE_KEYS`, so a
@@ -2000,6 +2058,18 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   variant and the no-image variant are different populations reached by different routes (a 404
   token versus a 200 with null images). (Severity: Low.)
 
+  > **RESOLVED at c4-3 (2026-08-04) — the 79 re-verified, and their SHAPE measured for the first
+  > time.** Re-counted read-only against the live DB: 38,261 rows, **79** with no image data
+  > anywhere. What this entry did not know is what those 79 LOOK like, and it changes the layout
+  > the placeholder had to survive: **all 79 have `type_line` exactly `'Card // Card'`**, **all 79
+  > have a BLANK `mana_cost`**, and **all 79 have a doubled `X // X` name** (longest 66 chars,
+  > `Asmoranomardicadaistinaculdacar // Asmoranomardicadaistinaculdacar`). So UX-DR22's three-part
+  > composition degrades, MEASURED, to a name and nothing else for every card that permanently
+  > needs this variant — which is not a reason to change the design but is why AC 7 is about being
+  > correct when two of three parts are empty. Two of the 79 are now fixtures in
+  > `CardPlaceholder.test.tsx`. **And 0 of 2,027 live deck rows are such a printing**, so in a deck
+  > view the named placeholder is only ever reached transiently, through `image_fetch_failed`.
+
 - **The `states.ts` classification of panel-less tokens is gated by the compiler but read by
   nothing.** c3-2 added `PLACEHOLDER_FOR_REASON`, `NO_UI_RESPONSE` and three type-level asserts so
   the third meaning of `null` is machine-readable rather than a comment (Q3, satisfying retro R1).
@@ -2018,6 +2088,21 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   whole-screen poll means a client bug, so it renders `internal-error` rather than consulting which
   KIND of `null` it was. **If c4-3 does not consume the classification, delete it.**
   (Severity: Low.)
+
+  > **✅ CLOSED at c4-3 (2026-08-04): the classification is CONSUMED, not deleted.** This entry
+  > made the delete conditional and c4-3 is the condition, so the answer is stated plainly.
+  > `src/components/CardPlaceholder/CardPlaceholder.tsx` imports `PlaceholderKey` (type-only) and
+  > builds its variant union FROM it — `PlaceholderKey | 'loading'` — and the coupling is enforced
+  > in BOTH directions by two type-level asserts in the component: `EveryPlaceholderKeyHasProps`
+  > fails if a third key is added to `states.ts` with no props member, and `NoVariantIsUnknownToStates`
+  > fails if the union is widened to a bare `string` (the evasion the first assert alone would pass,
+  > because every key still has a member). Both were PROBED: probes (d) and (g) of c4-3 are `tsc`
+  > failures with `npm test` staying green — the c4-1 asymmetry again, and why `npx tsc -b --force`
+  > is a gate of its own. `PLACEHOLDER_FOR_REASON` also gets a RUNTIME consumer, in
+  > `CardPlaceholder.test.tsx`, which renders every variant its values name rather than trusting
+  > the type. **Nothing in `states.ts` was edited to make consumption work**, which was the design
+  > smell this entry was watching for. `NO_UI_RESPONSE` remains consumed by nothing at runtime and
+  > stays where c3-9 left it.
 
 - **`ui/README.md`'s blind-spot map now carries the "does this prose address a TypeScript reader"
   residue, which is a REVIEW obligation with no gate.** Added at c3-2 alongside the family-keyed
@@ -2050,11 +2135,40 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   **Fix shapes**, none taken here: add explicit extensions in `states.ts` (breaks the app project's
   convention), exclude `src` from the node project's graph, or keep the current workaround — a
   source read, with the runtime value pinned in the app-project test beside the module.
-  **Home: c4-1**, the first story that will want to import real app modules into `ui/tests` at any
-  scale (a fetch layer is exactly the thing whose tests reach across). Until then the workaround
+  ~~**Home: c4-1**, the first story that will want to import real app modules into `ui/tests` at any
+  scale (a fetch layer is exactly the thing whose tests reach across).~~ Until then the workaround
   is documented in `unknown-card-copy.test.ts` and in `ui/README.md`'s blind-spot map.
   (Severity: Medium — the symptom points at the wrong file, and CI runs `tsc -b` without
   `--force`, so a cached-clean result can ship.)
+
+  **NOT TRIGGERED at c4-1 (2026-08-02) — re-homed by name, with the reason.** The prediction was
+  reasonable and it did not hold: c4-1's fetch layer and cache are tested **inside the app
+  project** (`src/api/client.test.ts`, `src/state/cards.test.ts`), which is where AC 24 puts them —
+  jsdom, no configuration, no cross-project import. What c4-1 added under `ui/tests/` is a change
+  to `posture.test.ts`'s door list, and that guard reads source as **text** via
+  `readFileSync` + `git ls-files`; it imports no app module and therefore cannot trip the cascade.
+  `npx tsc -b --force` was run and is green, so this is a measured "did not fire", not an
+  assumption. **Home: the first story that actually imports a real `src/` module into `ui/tests/`.**
+  Nothing in C4 obviously does — the epic's remaining guards are file-reading guards of the same
+  shape — so the realistic candidate is **c5-1**'s event envelope or whichever story first wants a
+  runtime value from `src/` inside a node-project test. (Severity: unchanged, Medium.)
+
+  > **✅ TRIGGERED AND CLOSED at c4-3 (2026-08-04) — by the story c4-1 said probably would not.**
+  > `tests/unknown-card-copy.test.ts` now imports a real `src/` module: `UNKNOWN_CARD_LABEL` from
+  > `src/components/CardPlaceholder/copy.ts`, so the shipped label can be asserted BYTE-FOR-BYTE
+  > against `EXPERIENCE.md` — the assertion that file has promised since c3-2 would land "the day
+  > c4-3 lands". **It does not fire, and the rule is now stated precisely rather than
+  > approximately.** The constraint was never "a `ui/tests` file may not import an app module"; it
+  > is **"may not import an app module that has RELATIVE imports of its own"**, because those are
+  > what `nodenext` demands extensions for. `copy.ts` has `imports: []` — pinned exhaustively by
+  > `shell.test.ts`'s `PRIMITIVES`, so an import added there is a red test before it is a `tsc`
+  > cascade — which is the same property `copy.test.ts` relies on for `StatePanel/copy.ts`, and it
+  > is now a property two guards protect rather than a coincidence. **`npx tsc -b --force` was run
+  > and is green**, so this is a measured "did not fire". The MEDIUM half of the entry stands
+  > unchanged and un-fixed: the symptom still points at the wrong file, and CI still runs `tsc -b`
+  > without `--force`. **Home for the fix shapes: unchanged.**
+
+
 
 ## Deferred from: code review of c3-2 (2026-07-31)
 
@@ -2069,8 +2183,29 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   prevented, and the failure mode is the exact one FR-13 exists to stop ("one unknown card must
   never fail a whole view") wearing a different token. **Fix shape**: either the hydration layer
   treats a 400 on a card fetch as a placeholder case, or the id shape is validated where deck rows
-  are read. **Home: c4-1** (the hydration cache) with **c4-3** (the placeholder) as its consumer.
+  are read. ~~**Home: c4-1** (the hydration cache) with **c4-3** (the placeholder) as its consumer.~~
   (Severity: Medium if it ever fires, Low probability today.)
+
+  **✅ RESOLVED at c4-1 (2026-08-02, Q5) — and closed on BOTH fix shapes, not one.** The ruling:
+  **a `400 invalid_request` on a per-card read IS the unknown-card case.**
+  `PLACEHOLDER_FOR_CARD_REFUSAL` in `src/state/cards.ts` maps it to `states.ts`'s own
+  `'unknown-card'` `PlaceholderKey`, beside `card_not_found`, whose value is read OUT of
+  `PLACEHOLDER_FOR_REASON` rather than re-typed. The argument, written in the code: `states.ts`
+  classifies that token `NO_UI_RESPONSE` on the premise *"the SPA never generates a malformed
+  request"*, and that premise is **exactly what fails here** — an id the app cannot render is an id
+  the app cannot render, whichever token says so. `states.ts` is untouched, because the
+  destination is context-dependent rather than a property of the token, and adding
+  `invalid_request` to `PLACEHOLDER_FOR_REASON` would break `ReasonClassificationsAreDisjoint`.
+  The second fix shape landed too: `cardPath()` runs the id through `encodeURIComponent`, so an id
+  carrying `/`, `?` or `#` can no longer change WHICH route is addressed — it stays one path
+  segment and the route's uuid pattern refuses it. Both halves are test-pinned. ~~**c4-3 renders the
+  placeholder**; the token and the destination are waiting for it.~~
+  **✅ THE RENDER ARRIVED at c4-3 (2026-08-04).** `CardPlaceholder variant="unknown-card"` draws the
+  label and the truncated id, and `CardPlaceholder.test.tsx` drives the whole path for real —
+  `hydrateCard` with an injected reader returning `card_not_found`, then the rendered placeholder
+  read out of the DOM. The consumer branches on `entry.placeholder`, never on `entry.reason`, so
+  the c4-1 ruling is what selects the variant rather than a second map in a component. **This
+  entry is fully closed: token, destination and render.**
 
 - **`Card` is now a banned type name across all of `ui/`, and there is no sanctioned alias to
   import instead.** `wire-contract.test.ts` derives its ban from `components.schemas`, so `Card`
@@ -2081,8 +2216,18 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   declaring a local `interface Card` — is precisely what the gate rejects. **Fix shape**: add the
   aliases to `schema.ts` in the story that first needs them (one line each; the barrel is the
   sanctioned single reader). Not done here because c3-2 ships no component and an unused export
-  would be dead code. **Home: c4-1**, the first frontend story to consume a wire shape.
+  would be dead code. ~~**Home: c4-1**, the first frontend story to consume a wire shape.~~
   (Severity: Low — a five-minute detour, but an unsignposted one.)
+
+  **✅ RESOLVED at c4-1 (2026-08-02).** `src/api/schema.ts` now exports **seven** aliases:
+  `HealthResponse`, `ErrorResponse`, `DeckSummary`, `ErrorReason` and — new here — `Card`,
+  `CardSummary` and `DeckCardSummary`, each with a docstring naming its consumer (`readCard`, the
+  cache's `hydrated` tier; the cache's `summary` tier; `seedCardSummaries`, which **c4-2** calls).
+  **`CardFace` and `DeckDetail` were deliberately NOT added**: nothing in this commit consumes
+  them, and c3-2's own reason for declining — an unused export is dead code — applies to c4-1
+  exactly as it applied to c3-2. c4-2 adds `DeckDetail` when its fetch needs it; whichever story
+  renders a flip control (**c4-6**) adds `CardFace`. `ui/README.md:154` claimed three aliases when
+  four already shipped; corrected in the same commit.
 
 - **`GET /api/cards/{card_id}` sets no cache headers on a resource that is immutable between
   database refreshes.** `cards.py`'s module docstring claims c3-5's image route shares "the same
@@ -2098,9 +2243,25 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   shares nothing with a file on disk but the word, and implementing it inside c3-7 would have been
   a second mechanism smuggled in under a docstring's phrasing. `cards.py`'s module docstring now
   says so explicitly, in the past tense, so the sentence cannot be read as a live claim again.
-  **The route still sets no cache headers, and that half stays homed on c4-1** beside the
-  hydration cache it belongs with. (Severity: Low. **Status: half closed** — the false claim is
-  gone; the missing headers remain c4-1's.)
+  ~~**The route still sets no cache headers, and that half stays homed on c4-1** beside the
+  hydration cache it belongs with.~~ (Severity: Low. **Status: half closed** — the false claim is
+  gone.)
+
+  **RE-HOMED at c4-1 (2026-08-02, Q7) — declined here, with the measurement that makes it a
+  decision rather than a dodge.** The theory this was homed on was that the hydration cache is the
+  layer that makes the missing headers moot, and **measured, that theory holds**: the cache issues
+  **one request per id per tab** and never re-requests a hydrated id, so the population an `ETag`
+  would serve is *page reloads*, not renders. The entry's own worst case — *"a c4-x deck view
+  hydrating 60–100 cards re-fetches every full record on every render"* — is now structurally
+  impossible, and the sentence is superseded rather than merely unfixed. Two further facts: the
+  client sends `cache: 'no-store'` on card reads (deliberately, so that a header-less response
+  cannot be heuristically cached into staleness across a database refresh), which would make an
+  `ETag` inert until that decision were revisited; and implementing it would be a **backend** change
+  in a story whose whole product is a store slice, making AC 27's "the Python side is unchanged"
+  false for no measured gain. **Home: the C4 retrospective**, which is where "close this as
+  superseded, or do it with the cache in view" should actually be decided — the epic's twelve
+  stories are the ones that will have exercised the cache on real decks by then.
+  (Severity: Low, and lower than when it was written.)
 
 - **`test_openapi_contract._descriptions()` does not mirror the truncator's `_DATA_KEYS` skip.**
   `without_python_docstring_sections` deliberately does not descend into `example`/`examples`/
@@ -2207,16 +2368,41 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   limit report `copy_limit`, or a new `restricted` rule?). **Home: unowned** — its own story.
   (Severity: Low while no vintage deck exists; Medium the day one does.)
 
-- **`_MIN_MAINBOARD = 60` applies regardless of format, and c3-3 published that to a human for the
-  first time.** A deliberately documented Phase-1 limitation (D-1.6b) that until now was reported
-  only to an agent, which could caveat it. The format-check panel renders the size row directly,
-  so a Commander deck is now told on the glass that 60 cards satisfies a format that wants 100.
-  Measured: brawl and standardbrawl are genuinely 60-card formats, so the **20** brawl-family
-  decks in the real deck table are correct and only Commander is affected — and there are
-  currently **0** commander decks saved, which is why nothing looks wrong today. **Fix shape**: a
-  per-format minimum (a dict beside `_SINGLETON_FORMATS`, keyed the same way), plus the
-  "any number of copies" exemption cards the same scope note defers. **Home: unowned** — a
-  `src/logic` rule story. (Severity: Low today, Medium the first time a Commander deck is saved.)
+- **`_MIN_MAINBOARD = 60` applies regardless of format, and c4-10 put that in front of a person.**
+  A deliberately documented Phase-1 limitation (D-1.6b) that until c3-3 was reported only to an
+  agent, which could caveat it. The format-check panel renders the size row directly.
+
+  ⚠️ **THIS ENTRY'S MEASUREMENT WAS BACKWARDS AND IS CORRECTED HERE (c4-10, Q13).** It read:
+  *"brawl and standardbrawl are genuinely 60-card formats, so the **20** brawl-family decks in the
+  real deck table are correct and only Commander is affected — and there are currently **0**
+  commander decks saved, which is why nothing looks wrong today."* Every clause of that is wrong
+  except the last. `deck_validator.py`'s own comment carried the same claim and is corrected in the
+  same commit. **All four numbers, re-measured read-only at `4e31ea7` by driving the real ASGI app
+  against the shipped database:**
+
+  1. **This repo's own shipped skill contradicts the code comment.**
+     `plugin/skills/format-legality/SKILL.md:76-78` — `Brawl (Historic) | **100 (exact)**` and
+     `Standard Brawl | **60**`. They are two different formats; "brawl-family" conflated them.
+  2. **The database agrees with the skill.** All **18** `brawl` decks have a mainboard of exactly
+     **100** — min 100, max 100 — and 16 of them carry a `commander=1` row. There are **2**
+     `standardbrawl` decks, genuinely 60.
+  3. **There are 0 commander decks**, so the entry's named at-risk population is **empty**.
+  4. **The actually-affected population is the largest single format in the table**: 18 of 40
+     decks, **45%**, each shown `Mainboard has 100 cards; the minimum is 60.` for a format that is
+     exact-100 rather than a minimum at all.
+
+  No verdict changes today, because all 18 sit at exactly 100 — **the defect is in the sentence,
+  not the badge**. A 61-card Brawl deck would be told `pass`; a 99-card one would be told the
+  minimum is 60. c4-10 pins the sentence in its suite
+  (`formatCheck.fixtures.test.ts`, AC 28) so the measurement survives outside this file.
+
+  **Fix shape**: a per-format minimum (a dict beside `_SINGLETON_FORMATS`, keyed the same way),
+  plus a vocabulary decision for EXACT-vs-MINIMUM formats — `the minimum is 100` is still wrong for
+  Brawl, which wants exactly 100 — plus the "any number of copies" exemption cards the same scope
+  note defers. **Declined at c4-10** with the MCP blast radius as the reason: `validate_deck` serves
+  the agent tools as well as this panel, so the rule change moves `assess_deck_power`'s inputs too.
+  **Home: unowned** — a `src/logic` rule story. (Severity: **upgraded to Medium** — it was Low
+  while only an agent read it; from c4-10 it is on the glass for 45% of the deck table.)
 
 - **The component-name set is pinned in TWO hand-synchronised places, and the story text named
   one.** `tests/unit/companion/test_routes_decks.py` and `test_routes_cards.py` each assert the
@@ -2254,6 +2440,22 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   `format_recognized`, that is a signal the field was over-built and it should be deleted rather
   than maintained. (Severity: Low.)
 
+  ⚠️ **ANSWERED AT c4-10 (Q8), AND THE DELETE-SIGNAL FIRED — recorded rather than dressed up.**
+  `CHECK_ORDER` is **consumed**: the panel renders the payload's order and re-sorts nothing, pinned
+  by a test that feeds it a *reversed* payload and asserts the render follows it. **`FormatCheck.tsx`
+  does NOT read `format_recognized`**, and the reason is a fact about the backend rather than an
+  oversight here: the same function that sets it `false` also rewrites the `legality` and `banned`
+  rows to `advisory` with `_unanswerable`'s sentence, so by the time a renderer sees the report
+  *"this could not be checked"* is **already on the glass twice, in words**. A branch on the boolean
+  could only re-state those two rows, and the layout deliberately does not change
+  (`deck_validator.py:550-556`) — a class or `data-` attribute with no styling and no consumer
+  would be decoration dressed as a read. The behaviour under that state IS pinned, against a
+  declared-synthetic formatless report driven through the real component: six rows, both advisory
+  sentences rendered, three `caution` badges, three `positive`, and **nothing negative**.
+  **Disposition: the field is NOT deleted** (Python is untouched this story) and the question is
+  re-homed — its real consumer is a **non-rendering** one (an agent, or the header pill Q4b
+  declined). **Home: the C4 retro**, with the delete-signal recorded as fired for the panel.
+
 - **`format_recognized: true` does not mean the format key is present in the card data.**
   `_KNOWN_FORMATS` is a hand-maintained frozenset in source; `legalities` comes from a separately
   imported database. If the two skew — `_KNOWN_FORMATS` updated for a new Scryfall format ahead of
@@ -2280,6 +2482,19 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   document the asymmetry where c4-1's store holds both. **Home: c4-10 or c4-1**, whichever first
   holds both values at once. (Severity: Low.)
 
+  ⚠️ **THE HOME CONDITION IS NOW MET, AND c4-10 CLOSED IT BY CONSTRUCTION (Q14).** That story is
+  the first thing in the app to hold both values at once — `DeckBadges` renders the **stored**
+  format in the header and the format-check panel holds the **normalised** one 24px away. **The
+  panel renders no format string in its own chrome at all**: it has no headline (Q4) and its six
+  labels are format-independent, so the two values are never compared and the divergence never
+  reaches a comparison. Asserted by test over the panel's title and its six labels. Re-measured:
+  still **0 of 40**. Note the one place the normalised value *does* reach the glass — the `detail`
+  sentences interpolate it (`Every card is legal in brawl.`), which is DATA arriving from the wire,
+  beside the stored value in the header. On today's corpus they read identically. **The underlying
+  asymmetry is re-homed unchanged** (normalise at write time in `create_deck`): closing it by
+  construction in one consumer is not the same as fixing it. **Home: unowned** — a `src/data`
+  story. (Severity: Low.)
+
 ## Deferred from: code review of c3-3-format-check-endpoint-over-the-existing-validators (round 2, 2026-08-01)
 
 - **`is_legal: false` above six non-violation rows is a live UI trap, mitigated only by prose.**
@@ -2290,6 +2505,21 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   render a red headline over six rows none of which is a violation. **Home: c4-10** (the format
   check panel), plus a named line on the epic C3 manual-testing checklist. (Severity: Low here,
   Medium if c4-10 binds it unread.)
+
+  ✅ **CLOSED AT c4-10 (Q4, AC 19), AND THE "nothing machine-checkable" CLAUSE IS NO LONGER TRUE.**
+  `is_legal` is bound to **nothing**: no headline, no summary badge, no `Panel` `count`, and no use
+  of `Panel`'s own `badges` slot — that third venue ruled against explicitly rather than overlooked,
+  because no component in the app has ever used it and nothing currently exercises it. The prose
+  `Warning:` block is now a **guard**: `tests/format-check-source.test.ts` walks `git ls-files` over
+  `src/`, strips comments, and asserts the identifier `is_legal` appears nowhere outside
+  `src/api/types.d.ts` and the test files — with a non-vacuity half proving the scan can see the
+  identifier where one really is, and proving that `schema.ts`'s doc comment about the trap is
+  exempted by comment-stripping rather than by skipping the file. The trap itself is a **passing
+  test**: the declared-synthetic formatless report carries `is_legal: false` with zero violation
+  rows, and the panel renders three `caution` badges, three `positive`, and no `badge-negative`.
+  Live exposure remains **zero** (the trap needs an unrecognised format; all 40 real decks have
+  one), which is exactly why the guard rather than the corpus is what protects it. Verified by
+  probe (c): binding the field reddens the suite, closed by that named test.
 
 - **The copy-limit row answers definitively under the 4-copy fallback for a format it cannot
   interpret.** Greptile P1 on PR #31, ruled ledger-not-fix (Brad, 2026-08-01). For an
@@ -2465,9 +2695,19 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   `test_routes_card_image.py::TestTheBurstDoesNotOutlastTheConnectionPool` so a later story that
   slows the pacer sees the cliff. The clean fix is to read the row, release the session, *then*
   queue — rejected here because it takes this one route off `DbSession`, the annotation c3-1…c3-5
-  standardised on, for a problem that does not bite at these constants. **Home: c4-1**, beside the
-  hydration cache, which already carries this route's whole-row-read entry. (Severity: Low at the
+  standardised on, for a problem that does not bite at these constants. ~~**Home: c4-1**, beside the
+  hydration cache, which already carries this route's whole-row-read entry.~~ (Severity: Low at the
   shipped constants; High for whichever story changes them without reading this.)
+
+  **RE-HOMED at c4-1 (2026-08-02, Q7) → c4-4.** This is a property of the **image** route's pacer
+  and connection pool, and c4-1 touches neither: it ships a store slice and a JSON reader, adds no
+  Python, and issues **no image request at all** (art reaches the screen through `<img>` and the
+  browser's HTTP cache — there is no `fetch` for image bytes in `ui/src`). Homing it here on
+  "beside the hydration cache" was a filing convenience, not a technical relationship. The story
+  that will actually produce the burst this entry describes is **c4-4, the card-art grid** — the
+  first surface that mounts ~99 `<img src="/api/card-image/…">` at once and therefore the first
+  thing that can push the pacer queue past the pool timeout. **Home: c4-4**, and it should be read
+  before that story changes any pacer constant.
 
 - **`4` was declared out of c3-3's deck-construction-limit family, and that is a ruling made by
   c3-6 rather than a discovery.** `TestNoRuleInTheShell` bans the literals `60`/`15`/`4` anywhere
@@ -2581,8 +2821,16 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   `CardRepository.get_by_id` returns the `Card` the sibling route already answers with — so an
   image request pays for oracle text, legalities and every other column to read one URL. Ledgered
   rather than optimised: a narrow projection would be the second card shape AD-1 exists to
-  prevent. **Home: c4-1**, beside the hydration cache, which is the layer that could make this
-  free. (Severity: Low — local SQLite, one row.)
+  prevent. ~~**Home: c4-1**, beside the hydration cache, which is the layer that could make this
+  free.~~ (Severity: Low — local SQLite, one row.)
+
+  **RE-HOMED at c4-1 (2026-08-02, Q7) → c4-4.** The theory — that the hydration cache is the layer
+  that could make this free — does **not** hold, and saying so is the honest move. The cache holds
+  the JSON record from `GET /api/cards/{card_id}`; the wasted read is on `GET
+  /api/card-image/{scryfall_id}`, a route c4-1 never calls and whose consumer is an `<img>` tag the
+  browser drives. No amount of caching card ROWS in the SPA changes how the image route reads one.
+  **Home: c4-4** (the card-art grid), the first story that issues these requests in bulk and
+  therefore the first that could measure whether the whole-row read is worth a projection.
 
 - **`HEAD` and `Range` are not supported on the image route.** `GET` only. A browser will not ask
   for either on an `<img>`, and nothing in the feature needs them; `HEAD` would additionally
@@ -2821,7 +3069,17 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   would actually have caught c3-7's sibling race and c3-8's carve-out.
 
   **DECISION PARKED by Brad, 2026-08-02**, pending the rest of the manual-testing checklist.
-  **Home: re-decide with c4-1's hydration cache in view.** (Severity: Low.)
+  ~~**Home: re-decide with c4-1's hydration cache in view.**~~ (Severity: Low.)
+
+  **RE-HOMED at c4-1 (2026-08-02) → the C4 retrospective.** c4-1's hydration cache is now shipped
+  and it is *in view*, so the disposition this entry asked for can be given: **the cache changes
+  nothing about `images.py`.** c4-1 adds no Python at all, calls no image route, and its cache holds
+  card ROWS — the three mechanisms in `images.py` (pacer, disk cache, negative cache) are untouched
+  and un-approached by it. So the split question is exactly as open as it was, with one fewer
+  unknown. Re-deciding it inside a frontend story would be deciding it on no new evidence.
+  **Home: the C4 retrospective** — by then c4-4 (the art grid) and c4-6 (the flip control) will have
+  exercised all three mechanisms against real decks, which is the evidence the decision actually
+  wants. (Severity: Low.)
 
 - **This machine's full-suite runtime is too noisy to support the before→after claim AC 24 asks
   for, and that is worth knowing before the next story tries to make one.** Three consecutive runs
@@ -3129,8 +3387,18 @@ either has an owner story or is declared inside the file it constrains.
   interleaving this ledger already documents — each flip resets the schedule, so sustained
   alternation approaches one request per 2 s against a backend that is deliberately busy, which is
   what `POLL_CEILING_MS`'s docstring says the ceiling exists to prevent. By-design per Q2; the cost
-  was not weighed there. **Home: c4-1**, which copies this seam for its per-card fetches and should
-  decide whether token-change resets need damping (e.g. no reset between the two database tokens).
+  was not weighed there. ~~**Home: c4-1**, which copies this seam for its per-card fetches and should
+  decide whether token-change resets need damping (e.g. no reset between the two database tokens).~~
+
+  **RE-HOMED at c4-1 (2026-08-02, Q6) → c5-6, and the premise it was homed on turned out to be
+  false.** c4-1 does **not** copy this seam: `readCard` has no backoff, no schedule and no timer at
+  all, and AC 12's bound is a cumulative **attempt count per id**
+  (`MAX_ATTEMPTS_PER_CARD = 3`) rather than a token-driven retry loop — so there is no `delay` for
+  a token change to reset and nothing here to damp. Beyond that, the damping question is about
+  `poller.ts`'s whole-screen poll, and **c5-6 already owns the family of sibling entries about that
+  poller's re-drive behaviour** (C3 retro ruling R3: *"c5-6 resolves the family; it should not solve
+  one third of it"*). **Home: c5-6.** If a later per-card path ever grows a schedule, this decision
+  comes with it.
 - **`database-updating-stalled` permanently forfeits FR-22's self-transition.**
   `RETRIES_QUIETLY['database-updating-stalled']` is `false` (ruled in `states.ts:233` — *"continuing
   to retry silently is the behaviour this state exists to replace"*), so once escalated the poll
@@ -3161,4 +3429,1454 @@ either has an owner story or is declared inside the file it constrains.
   per-card fetches and the WebSocket. The threshold is `STALLED_AFTER_MS = 60_000` with a
   `STALLED_MIN_REFUSALS = 4` observation floor. The prose homes are `ui/README.md`'s "Not here
   yet" + blind-spot row and the module headers; this entry exists so the ledger names the seam
-  too. **Home: c4-1 and c4-2 read this before extending.**
+  too. ~~**Home: c4-1 and c4-2 read this before extending.**~~
+
+  **✅ READ AND ACTED ON at c4-1 (2026-08-02); half closed, c4-2's half stands.** Every clause was
+  honoured and one was amended by ruling. The seam was **extended, not replaced**: the module is
+  still the one network door and still a total outcome union that never rejects, and `readCard`
+  was written to that shape. The deduping went **around** it, in `src/state/cards.ts`, exactly as
+  the ruling said. The not-retry-safe warning was the operative one and it produced
+  `MAX_ATTEMPTS_PER_CARD`, whose docstring carries the c3-2 measurement so the reason travels with
+  the constant. **The amendment: the door is now `src/api/client.ts`, not `src/api/decks.ts`**
+  (c4-1 Q1) — the guard's property was always "one door, named exhaustively", and a module named
+  for decks that exports `readCard` is the "prose outrunning code" finding this epic has now made
+  four times. `posture.test.ts:328`, its comment and `ui/README.md` moved in the same commit.
+  **The c4-2 half is untouched and still owed**: it inherits a poll already calling
+  `GET /api/decks`, its job is to read the DECK rather than the deck names, and it now also
+  inherits `seedCardSummaries` — the entry point that turns the `DeckCardSummary[]` its own fetch
+  already returns into the cache's summary tier for zero extra requests. **Home: c4-2.**
+
+## Deferred from: code review of c4-1-a-single-card-hydration-cache-with-in-flight-deduping (2026-08-02)
+
+- **Three transient failures make an id terminal for the tab's life while the whole-screen poller
+  self-heals (FR-22 asymmetry).** `retryable` counts `unreachable` outcomes against
+  `MAX_ATTEMPTS_PER_CARD = 3` (`ui/src/state/cards.ts:389`), so a backend restart or network blip
+  during one hover sweep spends an id's three attempts forever — while `poller.ts` retries
+  indefinitely and the panel "comes alive on its own". The story record declares this residue and
+  names the fix: `resetCardCache()` on the `deck_changed` (or recovery) transition, which **c4-2**
+  owns. Home: c4-2, with c4-5 (detail panel) as the story that would make it visible.
+  **Companion question, same home (Greptile PR #40, P2, ruled option-1 "declare" by Brad
+  2026-08-02):** a `hydrateCard` promise that a reset orphans still resolves with the entry it
+  computed for the discarded world — the store write is generation-guarded, the return value is
+  not. Harmless while resets are test-only and consumers render from `useCardEntry`; the moment
+  c4-2 wires a production reset, decide whether awaiting callers need the fresh answer (widen the
+  return to `CardEntry | undefined`) or the docstring's "the store is the authority" ruling
+  stands. Declared in `hydrateCard`'s Returns docstring.
+- **`useCardEntry` is untested.** A React render harness would be needed and no testing library is
+  in the dependency set (adding one casually is banned by AC 21 / package-contract). Home: c4-3
+  (first consumer) — its component tests exercise the hook for real; if c4-3 introduces a testing
+  library for its own needs, add a direct `useCardEntry` subscription test then.
+
+  > **✅ RESOLVED at c4-3 (2026-08-04) — and the stated reason was FALSE, as c4-2 already recorded.**
+  > `@testing-library/react@^16.3.2` has shipped all along; no dependency was added and
+  > `package-contract.test.ts` is untouched. The hook is now exercised through its real contract in
+  > `CardPlaceholder.test.tsx`: a test component subscribes with `useCardEntry`, and four
+  > assertions drive it — an id never seen renders the WELL rather than an unknown card (`undefined`
+  > means "never seen" and only that); `seedCardSummaries` makes it **re-render** with the card's
+  > name, which is the whole contract of a selector that starts nothing; a `card_not_found` refusal
+  > through `hydrateCard` with an injected reader turns it into the unknown placeholder; and a
+  > `database_unavailable` refusal LEAVES THE SUMMARY STANDING, because `placeholder` is `null`
+  > there. **The component itself does not subscribe (c4-3 Q7)** — a listed primitive may hold no
+  > hook of any family, so the subscription lives at the call site and the test component is the
+  > shape c4-4's tile will take.
+
+## Deferred from: c4-2-deck-state-bootstrap-and-the-type-grouped-decklist (2026-08-02)
+
+### The ten inherited deferrals, each with a disposition (AC 28, C2 retro ruling R2)
+
+1. **`GET /api/decks` and `GET /api/deck/{id}` have never been called by a browser** (`:1666`,
+   Low, "Home: c4-2"). **✅ RESOLVED, and by a real browser rather than by argument.** The
+   companion was launched (`src.companion.app.server.run`), a deck was set active over the real
+   `PUT /api/active-deck`, and the built SPA was rendered in **Microsoft Edge (headless=new)**
+   against `http://127.0.0.1:8765/`. Both boot routes were exercised through the security
+   envelope by a browser, and the deck rendered. Screenshots captured for three states: a loaded
+   deck, a `404` clearing to no-active-deck, and a hostile id. **The Vite dev-proxy path
+   (`changeOrigin`, c2-1) is still unexercised** — the render was against the served bundle, not
+   `npm run dev`. **Home for that remainder: the next story that runs `npm run dev` in anger.**
+2. **Generated-type optionality asymmetry** (`:1889`, Low, "Home: c4-2, unshared"). **DECLINED,
+   with the measurement that makes it a decline rather than a deferral.** The half that would have
+   bitten does not exist: `openapi-typescript` renders a schema `default` as a **required**
+   property, so `mainboard_count`, `sideboard_count` and `distinct_cards` are `number` in
+   `types.d.ts` — **not** `number | undefined` — and there is no spurious `undefined` branch to
+   absorb. Verified by reading the generated file, not assumed. What remains is genuinely
+   asymmetric (`strategy?: string | null` versus `format: string | null`, a Python-default
+   artifact) and is a field **this story does not read**; fixing the wire means changing a Pydantic
+   default that `create_deck` and the MCP server both call. Real blast radius, no consumer.
+   **Re-homed by name to the first story that reads `strategy` — c4-7 (the deck list) is the
+   nearest candidate.** The `@default 0` half is CLOSED, not carried.
+3. **No sanctioned `DeckDetail` alias** (`:2108`). **✅ RESOLVED.** `src/api/schema.ts` now exports
+   **nine** aliases: c4-2 adds `DeckDetail` (consumer: `readDeck`, and the `deck` arm of the deck
+   slice) and `ActiveDeck` (consumer: `readActiveDeck`), each with a docstring naming it.
+   **`CardFace` is still declined** on c3-2's own reason — an unused export is dead code — and
+   remains **c4-6's**, the story that renders a flip control.
+4. **The c4-1/c4-2 seam restatement** (`:3252`, "The c4-2 half is untouched and still owed").
+   **✅ READ AND ACTED ON; the entry is now fully closed.** The seam was extended, not replaced:
+   `src/api/client.ts` is still the one door (`posture.test.ts:328` green with no edit), both new
+   readers are total unions that never reject and never return `null`, and both go through the
+   existing private `request()` rather than calling `fetch` a third and fourth time. The poll was
+   inherited unchanged — its job is still the deck NAMES — and `seedCardSummaries` is called with
+   the payload this story's own fetch returns, for zero extra requests.
+5. **Three transient failures make an id terminal for the tab's life while the poller self-heals
+   (FR-22 asymmetry)** (`:3280`, "the named fix is `resetCardCache()` on the `deck_changed` (or
+   recovery) transition, which c4-2 owns"). **RE-HOMED BY NAME to c5-4 / c5-6.** The entry homed
+   it here on the theory that c4-2 owns a `deck_changed` transition; **measured, it does not** —
+   `deck_changed` is an Epic 5 WebSocket message, and this story boots once and never switches
+   decks. A blanket reset on a deck switch is probably the wrong fix anyway: the cache is keyed by
+   printing uuid and shared with Epic 6's agent views (AD-12's second sentence), so resetting on a
+   deck change throws away hydration for every card the two decks share. **c5-4 (the event
+   handlers) owns the transition; c5-6 (reconnect/refetch) owns the recovery half.**
+6. **The orphaned-hydration return residue** (`:3287`, Greptile PR #40 P2, ruled *declare*).
+   **RE-HOMED WITH ENTRY 5, to c5-4 / c5-6**, because it was explicitly conditional on this story
+   wiring a production reset — *"the moment c4-2 wires a production reset, decide…"* — and c4-2
+   wires none. `resetCardCache()` remains test-only. The docstring's "the store is the authority"
+   ruling stands untouched.
+7. **The primitives' APPEARANCE is not dev-verified** (`:1331`, **Medium**) **and the tone-over-
+   wash CONTRAST is unmeasured** (`:1357`). **✅ RESOLVED FOR `Badge`; the rest re-homed.** See
+   the measurements in §"What c4-2 measured" below. `Panel` (**c4-5** / **c4-7**), `StatChip`
+   (first surface that carries one) and `GroupHeader` (**c4-7**) still have no on-screen consumer
+   and remain unverified — **home unchanged**.
+8. **C3 retro F2 — the kicker and the `h1` say the same words** (retro `:225`). **✅ RESOLVED**,
+   and confirmed on a real screen: the kicker reads `ARTIFICIAL PLANESWALKER` and the `h1` reads
+   `Atraxa Counter Cabinet v2 (owned)`. `AppShell.tsx` was not edited; the swap is a prop.
+9. **C3 retro action item 4 — a gate banning story-key-shaped strings from rendered text**
+   (`/\bc\d+-\d+\b/`), owner *"Sathias (c8-5, or earlier if a C4 story is nearer)"*. **DECLINED;
+   stays c8-5 (Q8), and the reason is now measured rather than predicted.** c4-2 REMOVES two of
+   the offending strings from the deck view (the `h1`'s product name and the badge placeholder
+   naming `c2-7 / c4-2 / c4-10`) and **leaves six on screen**, counted off the real render:
+   `c4-4`, `c4-8`, `c4-9` in the left column and `c4-5`, `c4-7`, `c4-10` in the right, plus
+   `c6-8` in the nav. Every one of them is CORRECT today, so a gate built here ships either
+   disabled or with an allowlist — and an allowlisted ban is the "enumerate members" anti-pattern
+   this epic has now violated three times. **Home: c8-5, unchanged.**
+10. **C3 retro carried manual-testing items A3/A4** (*"c4-2 renders four of the five panels for
+    real; A3–A6 are its acceptance surface"*). **PARTIALLY PERFORMED, remainder fed forward.**
+    Two of the five were rendered by a real engine here: `no-active-deck` (with the real deck list
+    of 15 names) and the deck view that displaces it. **A3–A6's database panels
+    (`database-updating`, `database-updating-stalled`, `internal-error`, `database-not-initialized`)
+    still need a backend in those states**, which this story could not manufacture without
+    corrupting the live database. **Home: the C4 manual-testing checklist**, with the trade the
+    retro already ruled — after c4-2 a failure is ambiguous between the panel and the new wiring.
+
+### The two corrections this ledger pass owed (AC 28)
+
+- **`@testing-library/react` IS in the dependency set** — `^16.3.2`, with `@testing-library/dom`
+  and `@testing-library/jest-dom@~6.9.1`, and `App.test.tsx` has used it since c3-9. The
+  `useCardEntry` deferral's stated reason (*"no testing library is in the dependency set"*) is
+  **false**; the deferral's HOME (c4-3) is still right, but for the honest reason that c4-3 is the
+  first consumer rather than for a dependency that already ships. c4-2 used the library freely.
+- **c4-1's "0 dangling references across 2,027 `deck_cards` rows"** is right about **card**
+  references and wrong about the row count's meaning: **28 of those 2,027 rows are orphaned by
+  DECK id** (2 deleted decks, no FK enforcement on the async engine), so the live population is
+  **1,999**. Neither changes a decision; both are numbers later stories will quote.
+
+### What c4-2 measured, so nobody measures it twice
+
+- **`Badge`'s appearance, on a real screen.** Rendered in Edge against the running backend. The
+  `::before` wash sits BEHIND the text — `z-index: -1` plus `isolation: isolate` behave as
+  `Badge.css` argues they would — so the ledgered failure mode (*a solid blank pill with invisible
+  text*) **does not occur**. This was the Medium-severity half of entry 7.
+- **Contrast, all five tones, text over their own wash**: `neutral` **7.60:1**, `accent`
+  **8.33:1**, `positive` **7.97:1**, `negative` **6.17:1**, `caution` **8.99:1**. Every one clear
+  of 4.5:1. Washes computed as the tone at `opacity: 0.12` composited over `--surface-base`
+  (`neutral`'s is opaque `--surface-overlay`).
+- **One number that does NOT clear a floor, and what it constrains.** `neutral`'s
+  `--border-strong` hairline is **1.89:1** on the page and **1.54:1** on its own wash, against
+  WCAG 1.4.11's 3:1 non-text floor. **Accepted for `neutral`**: a badge is a static label rather
+  than a UI component, and its boundary carries no information its wash does not. **A live
+  constraint for c4-10**, whose format-check badge carries STATE — the four semantic borders are
+  6.73:1 / 9.96:1 / 7.32:1 / 11.49:1 and fine, so a state distinguished by TONE is safe and a
+  state distinguished by the neutral border would not be.
+- **The URL-encoding argument, confirmed against a live backend rather than reasoned.** Raw
+  `GET /api/deck/../decks` answers **`200` carrying the DECK LIST** — it does not fail, it
+  succeeds against a different route, and a client interpolating raw would render `/api/decks`'s
+  array as a deck. Encoded, `..%2Fdecks` answers `404 invalid_request`. Note the status/token
+  split in that second answer: AD-16's "nothing keys off a bare status code" made vivid.
+- **The type-group corpus facts.** 38,261 cards; 3,183 type lines containing `//`; **2,274**
+  literally `'Card // Card'` (real front-face type only in `card_faces`, **0 in any live deck**);
+  400 literally `'Card'` (**2 live rows**, "Pym Particles"); 88 live rows carrying more than one
+  primary type on the front face; 4 corpus `Land Creature` (**0 live**).
+
+### New residues c4-2 declares
+
+- **The `'Card // Card'` printing cannot be grouped correctly from the deck payload.** Its real
+  front-face type lives only in `card_faces[0].type_line`, which `DeckCardSummary`'s embedded
+  `CardSummary` does not carry. 2,274 in the corpus, **0 in any live deck** — latent, not live.
+  Fixing it means 99 extra card fetches for a case no deck contains. **Home: c4-6**, which adds
+  `CardFace` and renders faces anyway; if it lands, the grouping can read the front face properly
+  for the ids already hydrated. (Severity: Low.)
+- **29 distinct corpus type lines discriminate the front-face rule; 0 are in any deck.** A type
+  line only discriminates when its front face carries NO em-dash (so the subtype strip cannot
+  remove the back face) AND the back face's group precedes the front's — e.g.
+  `'Land // Legendary Creature — Demon'` (Westvale Abbey). `deckGroups.test.ts` pins six by name.
+  Recorded because **the obvious fixtures do not discriminate**: a probe deleting `frontFace()`
+  from `groupOf` left 27 assertions green, including all four "land policy" cards. (Severity:
+  Low — the rule is right; the note is about where it can be tested.)
+- **There is no re-drive after the boot.** A deck the agent sets while the tab is open does not
+  appear until Epic 5's `deck_changed`. Specified, not a bug — `poller.ts` still stops after one
+  `200` and `App.test.tsx` still asserts that — but it is the difference a user would notice
+  between this story and a finished product. **Home: c5-4.** (Severity: Low.)
+- **A `404` clears the client while the backend still reports that deck id as active.** So the
+  next cold open asks for the deleted deck again and clears again: one wasted request per boot,
+  self-correcting the moment the agent sets another deck. The alternative — the client telling the
+  backend to forget an id — is a `PUT` this story has no mandate to make. **Home: c5-4**, with the
+  `deck_changed` design. (Severity: Low.)
+- **`src/logic/mana_curve.py` and `src/logic/assessment/mana_base.py` still use the WHOLE-STRING
+  land policy**, which disagrees with FR-05/UX-DR17 and with this story's front-face grouping on
+  **84 corpus cards, 4 of them in real decks** (Agadeem's Awakening, Kazandu Mammoth, Dowsing
+  Dagger, Journey to Eternity). The frontend is now correct and the Python is not, so the two will
+  report different land counts for the same deck. **Home: c4-8** (the mana-curve panel), where it
+  is a `src/logic` change with MCP blast radius and deserves its own decision. (Severity:
+  **Medium** — two surfaces of one app disagreeing about a number is the exact failure the epic's
+  "the grid and the list panel cannot disagree" clause is about, one layer out.)
+
+  > **DISPOSITION at c4-8 (2026-08-06): DECLINED for that story, RE-HOMED, and upgraded from
+  > latent to OBSERVABLE.** The Python keeps the whole-string test. Changing it moves
+  > `assess_deck_power`'s input for 5 of the 40 real decks, and `mana_base.py`'s land count feeds
+  > the power score's frozen benchmark set — a benchmark re-validation does not belong inside a
+  > seven-bar `ui/` panel. **Home: a Python story that owns the scoring surface** (Epic 5's
+  > calibration set is the artefact that has to move with it).
+  >
+  > **What changed is that the divergence is now VISIBLE**: c4-8 ships the front-face land test,
+  > so `analyze_mana_curve` and the mana curve panel now answer "how many lands" differently for
+  > `Green Fury`, `Green Fury v2`, `Ayara Black Devotion`, `Ayara Black Devotion v2 (owned)` and
+  > `Infinite Guideline Station v2 (owned)` — **7 live non-sideboard rows / 7 quantity**.
+  >
+  > ⚠️ **THE "84" ABOVE IS CORRECT AND WAS NEARLY "CORRECTED" INTO AN ERROR.** c4-8's own AC 38
+  > carried it as a stale number owing a fix to 82, on the reading that c4-7 had corrected the
+  > same figure in `deckGroups.ts`. Re-measured at `0fdb41b`, they are **three different
+  > quantities** and only one of them is 82:
+  >
+  > | comparison | corpus | note |
+  > |---|---:|---|
+  > | whole-string vs **front-face WORD** test (what c4-8 ships) | **84** | this entry's number |
+  > | whole-string vs front-face **substring** test | 82 | the shape c4-8's Q4 proposed and declined |
+  > | whole-string vs `groupOf` | 116 | of which 82 carry `//` — `deckGroups.ts:37-44`'s decomposition, reproduced exactly |
+  >
+  > The number is left at 84 and the TEST IS NOW NAMED beside it, which is what it was missing.
+  > The general lesson is the one worth carrying: *a bare number in a ledger entry is not
+  > checkable, because the same defect measures differently under three tests that all sound like
+  > "the front-face policy".*
+
+## Deferred from: c4-3-card-placeholders-named-unknown-and-loading-wells (2026-08-04)
+
+**Inherited deferrals, dispositions in one place** (C2 retro ruling R2). Twelve entries were
+homed on or shared with this story; most have a disposition written beside their own entry above
+— (4), (8) and (9) live only in this index, which is their disposition of record (corrected at
+code review; the sentence previously claimed all twelve were annotated in place) — and this is
+the index: (1) `ManaPip`/`ManaCost` appearance — **RESOLVED**, all five claims hold;
+(2) the CVD question — **MEASURED**, levers not needed, open at Medium pending Brad's acceptance;
+(3) the ` // ` separator spoken literally — **CONFIRMED LIVE, RE-HOMED to c4-7** with a sharpened
+population; (4) whether copy is second-person and blameless — **HONOURED, does not close** (see
+below); (5) the 79 no-image cards — **RESOLVED**, and their shape measured for the first time;
+(6) the `states.ts` classification — **CONSUMED, not deleted**, which is the answer that entry
+made conditional on this story; (7) a malformed card id renders nothing — **the render arrived**,
+entry fully closed; (8) `Card` banned with no alias — **not needed** (see below); (9) `card_faces`
+untyped — **no face consumed** (see below); (10) `useCardEntry` untested — **RESOLVED**;
+(11) the `ui/tests` import rule — **TRIGGERED AND CLOSED**, and the rule is now stated precisely;
+(12) the C3 retro's manual-testing items — this story adds its eye-check outcomes and nothing
+else to that list.
+
+- **Disposition (8), `Card` is banned with no sanctioned alias: NOT NEEDED, and the reason is
+  structural rather than lucky.** `CardPlaceholder` takes four plain string props and imports no
+  wire type at all — not even from `src/api/schema.ts`'s nine aliases. That is the posture
+  `DeckBadges` set at c4-2 and it is the right one for a presentation primitive: a `CardSummary`
+  prop would drag the wire alias into the component tree, which `posture.test.ts`'s cross-tree
+  value-import ban and `wire-contract.test.ts`'s name ban both exist to prevent. **The caller does
+  the reading and the component does the drawing.** No alias was added; the count stays at nine.
+
+- **Disposition (9), `card_faces` is untyped on the wire: THIS STORY CONSUMES NO FACE, deliberately.**
+  It renders `CardSummary`'s single `name` and single `type_line`, unsplit (Q5), and never touches
+  `card_faces`. Face-specific rendering is **c4-6's**, where `CardFace` already ships with
+  `extra="allow"`. The entry's home is unchanged.
+
+- **Disposition (4), whether copy is second-person and blameless: HONOURED, and it does not close.**
+  This story ships exactly one authored string, `"Unknown card"`, and it was read: sentence case,
+  no exclamation mark, no blame, no apology, and it names a state rather than accusing the reader
+  or the app. It is byte-for-byte the artefact's own label, so the judgement that matters was made
+  in `EXPERIENCE.md`. The entry stays open permanently, as it says it does — c4-12 and c6-6 owe
+  the same reading.
+
+**New residues declared by this story.**
+
+- **Whether an element carrying `card-shape` is actually a CARD is not decidable from a stylesheet
+  (UX-DR4).** c4-3 made both halves of the card-radius rule a gate — nothing outside `CARD_SHAPED`
+  may spend `--radius-card`, and no `CARD_SHAPED` file may spend a chrome radius — and both read
+  CSS. The class list that puts the shape on an element lives in TSX and is chosen at runtime, so
+  `.card-shape` on a `<nav>` reads as a perfectly clean stylesheet, and a card-shaped element given
+  a chrome radius by a rule in a NON-card-shaped file (`.deck-row .card-shape { … }`) is in neither
+  half. The guard says so in its own header and `ui/README.md` says so where c4-4's author will be
+  reading. **Home: review, at every card-shaped story; c4-4 is the first where the cross-file case
+  becomes plausible.** (Severity: Low — the gate covers the two realistic mistakes; this is the
+  third.)
+
+- **Nothing checks that the RIGHT type role was chosen for the content — MEASURED by a probe that
+  PASSED.** Probe (j) of this story put the truncated card ID back into the uppercase
+  `--type-micro` role, correctly paired with BOTH its companions so `findRoleWithoutCompanions` was
+  satisfied, and **the whole suite stayed green at 1,021 passed**. Every typography guard in this
+  repo asks whether a role travels with its companions; none asks whether the role suits the value.
+  c4-3 closed the one instance — `.card-placeholder-id` is now checked against `cards.py`'s
+  `_CARD_ID_PATTERN`, **read from the file**, so if the route ever accepts uppercase the guard's
+  own premise fails loudly — but the general rule (*do not uppercase data the reader may type
+  back*) is not statically decidable, because whether a string is retypeable lives in the product.
+  **Home: review, at every story that renders an identifier, a set code or a command.**
+  (Severity: Low individually, and the class is worth knowing about: it fails *legibly but
+  wrongly*, which is the failure nobody looks at.)
+
+- **Running `tests/token-usage.test.ts` ALONE crashes the runner, which can make a probe lie.**
+  Measured at c4-3: `npx vitest run tests/token-usage.test.ts` fails with `TypeError: Cannot read
+  properties of undefined (reading 'config')` — the file imports two `src/` modules across the
+  project boundary, so resolving it standalone picks the wrong project. `npm test` runs it
+  correctly and the tree is fine. **The reason this is ledgered rather than shrugged at**: the
+  first run of this story's probe harness matched on exit code and reported **six guards as firing
+  when the runner had merely crashed**, which is precisely the "a guard that fails for the wrong
+  reason" defect this epic's reviews keep finding — in the instrument this time rather than in the
+  code. All six were re-run against the full suite. **Home: anyone writing a probe against that
+  file; the rule is "prove a guard fires with `npm test`, never a single-file run".**
+  (Severity: Low, but it silently inverts a probe's result.)
+
+- **The named placeholder's `overflow-wrap: anywhere` breaks long names mid-word, and it is a
+  trade rather than a defect.** Measured on screen at the 176px grid floor: the 66-character
+  doubled name of the largest permanent-population card renders as
+  `Asmoranomardicadais / tinaculdacar // Asmoranomardicadais / tinaculdacar` across four lines. The
+  alternative is a name that paints straight through the card edge, because a 31-character single
+  word has nowhere legal to break at 176px. Accepted here; **c4-4 owns the grid and could revisit
+  it** with a real column width in hand (a wider minimum column, or a line clamp with the full name
+  still exposed to assistive tech). (Severity: Low — it is ugly for one card in 38,261, and it is
+  correct for the 141-character name that motivated the rule.) **And the VERTICAL edge of the same
+  trade, added at code review:** `.card-placeholder` pairs `overflow: hidden` with the fixed 63:88
+  box and `justify-content: center`, so a name+pips+type stack TALLER than the box clips at both
+  edges with no clamp and no ellipsis. Not reached by anything measured (the 141-char corpus name
+  wraps inside the box at 176px, eye-checked), but nothing declares the limit either — same home,
+  **c4-4**, same lever (a real column width, or a line clamp).
+
+- **A whole view of loading wells is total silence to assistive technology — and nobody owns that
+  question yet.** Added at c4-3's code review. Each well is `aria-hidden="true"` and
+  EXPERIENCE.md:72 mandates exactly that PER TILE ("No copy. Wells stay silent") — but during
+  first paint a grid is *nothing but* wells, so an AT user gets zero indication that anything is
+  loading anywhere. Whether the VIEW (not the tile) should carry a single polite live-region note
+  during load is a composition question this story structurally cannot answer — it mounts nothing.
+  **Home: c4-4**, which owns the grid and the first composition an AT user will actually meet.
+  (Severity: Low today — nothing mounts a well until c4-4 — but it should be decided there rather
+  than inherited by accident.)
+
+## Deferred from: code review of c4-3-card-placeholders-named-unknown-and-loading-wells (2026-08-04)
+
+- **Running `ui/tests/token-usage.test.ts` standalone crashes the vitest runner** — the file
+  imports two `src/` modules across the project boundary, and resolving it alone picks the wrong
+  vitest project (`TypeError: Cannot read properties of undefined (reading 'config')`). The crash
+  exits non-zero, which once made a probe harness report six guards as firing when nothing had
+  asserted anything. Pre-existing project-resolution behaviour, not introduced by c4-3; the
+  standing mitigation is the rule already ledgered above — a guard's firing is proven with the
+  full `npm test`, never a standalone file run.
+
+## Dispositions from: dev of c4-4-card-tile-and-the-card-art-grid (2026-08-04)
+
+Every entry homed on `c4-4` gets a disposition here (C2 retro ruling **R2** — inherited deferrals
+are acceptance criteria at context time). Twelve were listed in the story record; the line each
+lives on is given so this section is checkable rather than merely reassuring.
+
+1. **The pacer queue can outlive the connection-pool timeout (`:2617`)** — **NOT TRIGGERED, and
+   the lever was exercised.** Q7 ruled that all ~99 `<img>` mount at once (`decoding="async"`, no
+   `loading="lazy"`), which is the maximum burst this entry describes, and **no pacer constant was
+   changed**. Measured live against the running backend with the 99-card deck: a fully warm paint
+   is 99 requests in **0.55 s** (5.6 ms/tile) and never enters the pacer at all. The cold burst
+   was not reproduced from a browser because the disk cache was already warm on this machine —
+   **so the entry stands, unresolved, and `loading="lazy"` remains its one client-side lever.**
+   Re-home: **c10-3**, which owns real-latency profiling, or the C4 retrospective.
+
+2. **The image route reads the whole card row to get one URL (`:2742`)** — **NOT MEASURED, and
+   declined here with a reason.** This story issues the requests in bulk but has no instrument for
+   the backend's per-request cost, and the measurement that would settle it (a projection versus a
+   whole-row read, under load) is a backend change with its own gates. What c4-4 CAN contribute is
+   the volume it actually produces: 99 distinct ids, once per deck open. **Home: unchanged, C4
+   retrospective**, with that number in hand.
+
+3. **The backoff `502` answers with no `Retry-After` header (`:3213`)** — **DECLINED, and the UI
+   is now in view, which is what this entry was waiting for.** The tile cannot use a `Retry-After`
+   even if it were sent: a DOM `error` event carries no headers at all, and the SPA has no
+   per-image retry UI by design. A header nobody can read is not worth a wire change. **Closed.**
+
+4. **The named placeholder's `overflow-wrap: anywhere`, and the undeclared vertical edge
+   (`:3623-3636`)** — **REVISITED with a real column width, and left as it is.** Seen at the
+   eye-check at the 176px floor: the named placeholder renders name + type line centred with room
+   to spare, and no mid-word break occurred on any real card in the deck. The vertical half is
+   unchanged and still undeclared — a very tall stack would clip at both edges with no clamp.
+   **Re-home: c4-5**, which renders the same component at detail size where a clamp would be
+   visible, or review.
+
+5. **A whole view of loading wells is total silence to assistive technology (`:3638-3646`)** —
+   **RESOLVED IN STRUCTURE, with two declared corners (wording tightened by review 2026-08-04;
+   the first record claimed it flat).** Each well is still `aria-hidden`, but a grid of them is
+   no longer silent: every tile is a `<button>` named by its caption, so a first paint announces
+   "list, 99 items" and each card by name whether or not its picture has arrived. A polite load
+   note is not needed and is not added. The two corners the flat claim glossed: (a) a NAMELESS
+   card yields an unnamed focusable button — zero population measured (0 of 1,061), the FR-13
+   totality branch, and pinned as such by test; and (b) the announcement itself is
+   jsdom-unverifiable — the NAME's exact spelling is now asserted (`Black Lotus ×4`, measured),
+   but how a real screen reader phrases it is the epic checklist's, per the blind-spot row.
+
+6. **Whether an element carrying `card-shape` is actually a CARD (`:3587-3596`)** — **REVIEW'S,
+   and the cross-file case is now live.** c4-4 is the first story where a rule in one stylesheet
+   reaches a card-shaped element in another: `CardTile.css` gives `> .card-shape` position and
+   nothing else — no radius, no border, no background — and says so at the rule. Both directions
+   are a reviewer's to check, unchanged.
+
+7. **Nothing checks that the RIGHT type role was chosen for the content (`:3598`+)** — **SECOND
+   INSTANCE, ruled in the open (Q3).** Every card name in the grid renders in CAPITALS because
+   `findRoleWithoutCompanions` derives that requirement from DESIGN.md's own `label.textTransform`.
+   Ruled correct on its merits — a card name here is a chrome label under a picture, not
+   retypeable data like c4-3's truncated uuid, and browsers copy the untransformed text anyway —
+   and confirmed by eye on a real screen. Still not statically decidable; **review's, unchanged.**
+
+8. **The first paint against a fully dead CDN takes ~124 s (`:3131`)** — **NOT REPRODUCED.** The
+   manual testing this entry names as its escalation condition was performed against a live,
+   warm backend, so the dead-CDN path was never entered. Severity stays **Low**; **home: the epic
+   manual-testing checklist**, where killing the CDN is a deliberate step rather than an accident.
+
+9. **The `images.py` split decision (`:2989-2997`)** — **EVIDENCE FED FORWARD, not decided.** c4-4
+   exercised the route, the pacer, the disk cache and the negative cache from a real browser for
+   the first time and needed no change to any of them. **Home: unchanged, C4 retrospective**, with
+   c4-6 still to add the flip control.
+
+10. **c4-3's composition eye-check, re-homed here BY NAME (`ui/README.md`)** — **DONE.** A
+    placeholder beside a real card face in a real grid, at the same footprint: confirmed in Edge
+    against the running backend with the 99-card deck. Recorded in `ui/README.md` under _The card
+    shape_.
+
+11. **A `ui/tests/` file may import an app module only if that module has no relative imports** —
+    **NOT TRIGGERED.** c4-4's new guards read source as TEXT, the idiom every other guard uses, so
+    no new cross-project import was added. Confirmed with `npx tsc -b --force`, green.
+
+12. **C3 retro action F1 — a gate banning story-key-shaped strings from rendered UI text** —
+    **ONE OF THE SIX REMOVED.** The left column's placeholder (naming `c4-4` and `c4-8`) is
+    displaced by the grid, and `App.test.tsx` now asserts neither string is on a rendered deck
+    view. Five remain. **The gate itself stays c8-5's**, unchanged.
+
+### New residues declared by c4-4
+
+- **`CardPlaceholder` renders a `<div>`, and `<button>` takes phrasing content only.** Mounting
+  the placeholder inside the tile is invalid HTML by the letter of the spec. Measured: every
+  engine renders it, React does not warn, and the accessible name computes normally. Every
+  alternative was worse (moving the placeholder out breaks UX-DR36's same-box claim; changing the
+  primitive's root is an edit c4-4 was told not to make). **Home: c4-5**, which mounts the same
+  component as detail art and can re-decide with two consumers in view. (Severity: Low.)
+
+  ⚠️ **HOME CORRECTED, and it was stale by two stories.** c4-5 did not take it; **c4-6 re-homed it
+  to c4-11 — but only in the c4-6 story record, never here**, so this entry went on naming a story
+  that had already passed it on. Recorded because it is the failure mode a ledger has: a
+  disposition written in a story file and not in the ledger is a disposition nobody will find.
+
+  ❌ **DECLINED at c4-11 (2026-08-07), with the reason, and re-homed to the C4 RETRO.** c4-6 had
+  already measured the whole of it — every engine renders it, React does not warn, the accessible
+  name computes normally — and c4-6 *closed* the harder INTERACTIVE-descendant version of the same
+  seam. What remains is a spec-letter violation with **zero measured accessibility impact**, and
+  the fix means changing `CardPlaceholder`'s root: the edit c4-4 was explicitly told not to make.
+  Making that change for no measurable gain, in the story whose entire subject is the accessibility
+  floor, would be the wrong use of this story's licence. Saying so plainly is worth more than the
+  change. **Home: the C4 retro**, which can weigh it against the other primitive-root questions.
+
+- **The reduced-motion transform guard compares SELECTOR TEXT.** A fallback whose selector differs
+  from the motion's — even one the cascade would resolve correctly — reads as unregistered. False
+  failure, not false pass; the repair is to write the matching selector. (Severity: Low.)
+
+- **jsdom cannot report an accessible name's spelling.** It applies no CSS, so naming elements
+  concatenate with no separator (`×4Black Lotus`). Component tests assert membership instead. The
+  real announcement is **the epic manual-testing checklist's**, with a screen reader.
+
+- **The warm-cache `onLoad` race is UNPROVEN in both directions.** `settleIfCached` reads
+  `complete && naturalWidth > 0` on mount, and jsdom reports `complete: false` / `naturalWidth: 0`
+  always — so the suite can only prove the guard does not fire wrongly. That it fires RIGHTLY
+  needs a browser with a warm HTTP cache. **Home: the epic manual-testing checklist.**
+
+- **A cold paint against a cold backend — OBSERVED at review, 2026-08-04 (this residue is
+  closed).** Disk cache moved aside, 99-card deck active, real browser, real CDN. Two numbers,
+  and they are DIFFERENT numbers: the backend's fetch window was **9.3 s for all 99 images**
+  (measured from cache-file mtimes — the pacer's 0.1 s spacing turnstile binding exactly as
+  modelled), while the PERCEIVED paint was **2–3 s** — the browser prioritises in-viewport
+  images, so the visible screenful fills while the remaining tiles complete off-screen; on a
+  fast connection each tile appears the instant the pacer releases it. No spinner, no
+  broken-image glyph, no stuck tile. Net: the ~10 s figure is real but largely invisible; the
+  epic's "expected observation, not a defect" framing holds, and the experienced cold paint is
+  BETTER than the epic's expectation reads. What remains c10-3's is profiling (real bytes,
+  real latency percentiles), and the ~124 s dead-CDN first paint remains unobserved — the CDN
+  was alive. **Home: c10-3, narrowed to profiling and the dead-CDN case.**
+
+## Deferred from: code review of c4-5-persistent-card-detail-panel-with-transient-and-pinned-inspection (2026-08-05)
+
+- **The 21em oracle-text scroller is keyboard-unreachable.** `.card-detail-oracle` clamps at
+  14 lines with `overflow-y: auto` and contains no focusable element, so a keyboard-only user
+  cannot scroll the 63 corpus cards whose rules text exceeds 500 characters (WCAG 2.1.1). The
+  standard fix — `tabindex="0"` plus a labelled `role="group"` on the scroller — fails the AC 25
+  "not a modal" test (which asserts `[tabindex]` is absent from the panel) and adds a Tab stop
+  UX-DR40's enumerated order does not contain. Both of those contracts are c4-11's to
+  renegotiate: it owns the keyboard/focus story and the Tab-order additions. Ruled at review
+  (Brad, 2026-08-05): defer, not fix-now. **Home: c4-11 — scope the AC 25 assertion, enumerate
+  the new Tab stop, and make the scroller focusable in the same change.**
+
+  ✅ **CLOSED at c4-11 (2026-08-07), all three parts in one change**, exactly as the mandate asked.
+  `.card-detail-oracle` now carries `tabindex="0"`, `role="group"` and an `aria-label` from
+  `CardDetail/copy.ts` (`ORACLE_SCROLLER_LABEL = 'Rules text'`), with the known-surface focus ring
+  in `CardDetailChrome.css`; AC 25's assertion is **narrowed rather than deleted** — from "no
+  `[tabindex]` anywhere in the panel" to "no `[tabindex]` outside the oracle scroller", named by
+  SELECTOR rather than counted, with the reason written into the test so the not-a-modal claim it
+  protects stays legible; and the stop is added to UX-DR40's rewritten enumeration.
+
+  ⚠️ **TWO CORRECTIONS TO THIS ENTRY'S OWN NUMBERS, both re-measured read-only at c4-11.**
+  (1) *"the 63 corpus cards whose rules text exceeds 500 characters"* counts **top-level
+  `oracle_text` only**. Faced cards store their rules text per face and blank at top level (the
+  c4-6 / c4-7 / c4-9 family, a fourth time), so counting what `CardDetail` can actually RENDER it
+  is **103 of 38,261**. The 63 reproduces exactly as a top-level count, so the figure was not
+  wrong — it was measuring the wrong thing. (2) The **live** exposure is **one card in one deck of
+  forty**: `Ajani, Sleeper Agent`, 530 characters, in `Atraxa Counter Cabinet`. c4-6 measured the
+  clamp at 294px / 14 lines and the deepest real back face at 126px, so **the clamp has never been
+  observed to fire on a real deck.**
+
+  **The cost is recorded rather than hidden**: this adds **one permanent Tab stop to the right
+  column on every deck**, to serve a scroller that overflows on one live card. That is the correct
+  trade under 2.1.1 — reachability is required *whenever* content can overflow, not only when it
+  usually does — and the conditional alternative (focusable only when `scrollHeight > clientHeight`)
+  was **considered and rejected in writing**: jsdom resolves no layout so it cannot be verified,
+  and a Tab stop that appears and disappears is the defect `c4-6:507-508` priced against.
+
+- **The MDFC pin announcement speaks the combined name; the panel renders the face name.** A
+  faced card pinned before hydration announces the summary tier's `"Clearwater Pathway //
+  Murkwater Pathway"` while the panel, once the record lands, renders the front face's
+  `"Clearwater Pathway"` — the reader hears one name and reads another, for the ~6%-of-a-deck
+  faced population. Deliberate (re-announcing on hydration is the H4/C1 flood), declared in
+  `CardDetail.tsx`'s announcement comment at review 2026-08-05. **Home: the epic manual-testing
+  checklist — hear it with a real screen reader beside the em-dash entry already there.**
+
+## Deferred from: code review of c4-6-double-faced-card-flip-control (2026-08-06)
+
+- **An in-flight hydration sweep is not cancelled on deck replacement.** `hydrateDeckCards` fires
+  per `detail` identity with no abort path (`ui/src/App.tsx:213-216`), so switching decks mid-cold-
+  open lets up to ~99 stale card reads compete with the new deck's ~99 images on the six-connection
+  pool — the measured "+1.2 s tail" prices one sweep, not two overlapping ones. Not reachable
+  today: `deck_changed` handling is Epic 5's. **Home: Epic 5 (deck switching).**
+- **A failed FRONT face unmounts both stacked `<img>`s.** `CardTile`'s `art === 'failed'` arm
+  replaces the whole `.card-faces` block, so a back face mid-load when the front errors never
+  fires its `onLoad` and sticks at `'loading'`; flipping out of the failed face remounts both,
+  re-requesting the known-failed front (answered from the backend's negative cache). Self-heals on
+  remount; window is the flip-after-front-failure path only. **Home: unowned/latent — revisit if a
+  partial-failure population ever appears (see the partially-imaged-card entry above).**
+- **Three hand-rolled copies of the flippable wire fixture.** `CardTile.test.tsx`,
+  `FlipControl.test.tsx` and `CardDetail.test.tsx` each restate the shape-C hydrated `Card`; when
+  `CardFace` gains a field there are three places to drift. Test-only refactor: share one fixture
+  helper. **Home: any later c4 story that touches these suites.**
+- **A mid-sweep backend blip leaves cards unhydrated with no automatic re-sweep — accepted as
+  designed (review ruling 2026-08-06).** c4-2's recovery re-drive fires only from `refused`/`none`,
+  never while deck state is `deck` (`deck.ts:56-66`), so card reads refused during the sweep's
+  ~1 s cold-open window stay unhydrated (no flip control, no hydrated panel text) until the card
+  is individually inspected — which re-asks within the 3-attempt budget; one blip burns 1 of 3 —
+  or the page reloads (`cards.ts:100-108` documents reload as the recovery deliberately). If this
+  is ever met live, the written fix is: re-fire `hydrateDeckCards` over still-unhydrated retryable
+  ids on the poll's recovery edge (the c4-2 pattern), plus a negative-space test — today no test
+  exercises a failing sweep. **Home: unowned/latent, by ruling.**
+- **AC 1's residue has a keyboard half the story record did not state (review 2026-08-06).** The
+  flip control materialises when the sweep's record lands (~1 s window on the 99-card deck), so a
+  keyboard user Tabbing during a cold open meets Tab stops appearing mid-traverse — the UX-DR40
+  concern Q1 priced against the lazy alternative, present in miniature during the sweep window.
+  Declared residue, not a defect: the window is one cold open per deck per tab and closes itself.
+  Added to the epic manual-testing checklist (entry 5 in the c4-6 record). **Home: the epic
+  manual-testing checklist.**
+
+## Deferred from: code review of c4-7-deck-list-panel (2026-08-06)
+
+- **`frontFaceCost` shape 2 rests on a point-in-time corpus measurement, unguarded against future
+  imports.** A faced card with any non-blank, non-split top-level `mana_cost` is returned verbatim
+  and never cross-checked against `card_faces[0]`, even when hydration disagrees — test-pinned as
+  the deliberate posture (`frontFaceCost.test.ts`, summary-wins fixture). The invariant ("no faced
+  card's top-level cost is the back face's") was **measured at `d51b467`**, not guaranteed by any
+  schema; a future Scryfall import that populates top-level costs differently renders wrong pips
+  silently, with no analogue of the price column's type-level absence assertion. The guard belongs
+  to the importer / weekly live-contract canary layer (c3-retro precedent), not this panel.
+  **Home: the Scryfall canary / importer, next time either is touched.**
+- **The registry guards are structurally blind to untracked modules (the c4-7 false-green
+  mechanism).** `copy-rules.test.ts`, `token-usage.test.ts` and `posture.test.ts` all walk
+  `git ls-files`, so an un-`git add`ed module is invisible to every registry sweep — c4-7's first
+  full run was green with no CONTAINERS entry written, and the exact same blindness let the c4-3
+  and c4-7 bundle assets go missing from their diffs. The comment corrections (declared-limit
+  notes per `wire-contract.test.ts:106`) and this ledger entry are the c4-7 review's patch; the
+  real fix — a filesystem walk cross-checked against `ls-files`, failing on any untracked source
+  file under `ui/src/` — is deferred. **Home: the guard suite, first story that touches any
+  registry test.**
+
+## Dispositions from: dev of c4-7-deck-list-panel (2026-08-06)
+
+Written at the c4-7 review, not the story commit — the dev commit recorded all of these only in
+its Dev Agent Record, and this ledger write is itself a review patch (the c4-4/5/6 precedent is
+that the story commit writes its own ledger).
+
+**The nine inherited deferrals, a disposition each (AC 38):**
+
+- **Panel (default level) + GroupHeader appearance — RESOLVED.** Eye-checked against Chrome with
+  numbers (8.59:1 label, 5.43:1 count); the warned-of tone-over-wash failure does not occur.
+- **The ` // ` separator spoken as literal characters — CLOSED BY CONSTRUCTION on deck rows
+  only.** `frontFaceCost` splits before rendering, so a separator never reaches `ManaCost` from a
+  deck row (measured live: `anySeparatorSpoken: false`). **Still live wherever a COMBINED cost
+  renders — `CardDetail` and `CardPlaceholder` both still pass an unsplit cost.** Re-homed
+  unchanged for those surfaces.
+- **ManaPip/ManaCost appearance — RESOLVED as composition only** (no wrap, no overflow, fixed pip
+  size in the row's cost track).
+- **The `'Card // Card'` grouping fix — DECLINED and re-homed with the reason (Q10).** The data
+  blocker is gone; the mechanism one is not: `boardsOf` runs once at store-write time and the
+  reference identity is what `deckMemory.ts` and `CardDetail`'s deck-transition effect key on, so
+  re-deriving after hydration would fire a spurious transition and release the user's pin.
+  2,274 corpus rows, 0 in any live deck. **Home: a story that owns the derivation's timing** (a
+  hydration-aware second pass, or the `CardSummary` field c4-6's Q1 priced).
+- **`strategy` wire asymmetry — NOT TRIGGERED, re-homed unchanged (Q13).** Deck-level prose with
+  no row to sit in; still awaiting its first reader.
+- **`DeckRepository.list_decks` ties on `created_at` — NOT TRIGGERED, re-homed unchanged.** That
+  entry means the list of DECKS; this story renders the cards of one deck and never calls
+  `GET /api/decks`.
+- **UX-DR44's heading-level collision — MEASURED, NO CORRECTION HOMED (Q15).** Chrome reports a
+  flat list of `level=2` headings with the two `region`s carrying the grouping; declined on
+  evidence, not taste. The same tree confirms the phantom-`banner` jsdom blind spot from the
+  other side (Chrome: exactly one banner; jsdom would report three).
+- **F1 story-key strings — COUNT RECORDED.** `c4-7` displaced by its own panel (both halves
+  asserted in `App.test.tsx`); **5 F1 keys remain on a rendered deck view**; the gate stays
+  c8-5's.
+- **Panel-stacking vertical budget — FED INTO Q7 AND MEASURED.** This panel adds 3,198 px beneath
+  the card-detail panel; no internal scroller (Q7) — the page scrolls and every row is a Tab stop
+  the browser scrolls into view.
+
+**New entries this story raises:**
+
+- **The plugin bundle mirror is checked by nothing (AC 42).** Hand-copied and verified
+  byte-identical this story; `src/companion/app/static/` is CI-enforced (`ci.yml:154-167`) but
+  `plugin/server/src/companion/app/static/assets/` has no test, no workflow, no script.
+  **Home: the C4 retro**, as a one-line workflow addition.
+- **`CardTile.tsx:178` says its constant is "written as an escape" and ships the literal
+  character.** Same codepoint, nothing renders differently — but the comment is untrue of the
+  line beneath it. Not edited at c4-7 (don't-break file, cosmetic change). And the honest
+  postscript: **`DeckList.tsx`'s own constant shipped the identical defect and was caught at the
+  c4-7 review** — the escape is real only post-review. **Home: whoever next edits
+  `CardTile.tsx`.**
+- **Q3's three-spelling divergence — a named manual-testing-checklist residue.** One card renders
+  as `Clearwater Pathway` (deck row, front face per UX-DR19), `Clearwater Pathway // Murkwater
+  Pathway` (tile caption, combined per c4-6), and is announced combined (c4-5's pin
+  announcement). Raised, not discovered; UX-DR19 followed as written. **Home: the epic
+  manual-testing checklist, beside the MDFC announcement entry above
+  (`deferred-work.md:3788-3794`).**
+- *(The `CONTAINERS`/registry-guard blindness to untracked modules is ledgered in the c4-7
+  review section above — one entry, not two.)*
+
+## Dispositions from: dev of c4-9-colour-distribution-panel (2026-08-06)
+
+Written in the STORY COMMIT rather than at review — c4-7's review raised the omission as a
+finding and c4-8 wrote one disposition block while eight others lived only in its record. All
+nine inherited deferrals, all eight triggered residues and the four new entries are here.
+
+**The nine inherited deferrals, a disposition each (AC 40):**
+
+- **`ManaPip` / `ManaCost` appearance (`:1400-1419`) — RESOLVED, as composition, and this is the
+  LAST of the three homes.** The five visual claims were resolved at c4-3; what that entry
+  reserved for c4-7 and c4-9 was *"composition, which a harness cannot show"*. Composition
+  verdict from the CDP eye-check: the legend's pip sits on a 13px baseline beside three text
+  runs, at its `1.25em`/16.25px size, with no wrap inside an entry and no overflow at either
+  measured width. The entry is now fully discharged.
+- **CVD — "colour is the sole carrier" (`:1447-1471`, Medium, STILL OPEN) — ADVANCED WITH A NEW
+  MEASUREMENT, AND NOT CLOSED.** This is the most on-point deferral the epic has for this panel:
+  a segmented colour bar is a graphic whose only channel is hue. Two halves, and this story is
+  careful not to conflate them:
+  - **Distinguishability** — measured fresh against the SHIPPED hexes (the only prior
+    measurement, `review-accessibility.md`, carries a *"⚠ SUPERSEDED — do not action"* banner and
+    predates the Voltglass palette). **All 15 adjacent `--mana-*` pairs are under the 3:1
+    non-text floor**, 8 under 1.3:1, worst `--mana-b`/`--mana-colorless` at **1.03:1**, best
+    `--mana-w`/`--mana-r` at **2.30:1** — slightly *worse* than the 2.73:1 on record. But every
+    segment clears the `--surface-well` track at **6.62:1 to 15.20:1**, so the shipped **1px
+    track-coloured hairline** turns 15 sub-3:1 boundaries into 15 at 6.62:1 or better, with no
+    new token and no new colour. `DESIGN.md` amended (`components.color-bar.segment-hairline`).
+  - **Identifiability** — NOT closed by the hairline, and the legend is UX-DR18's answer: every
+    entry names its colour in visible TEXT. That serves a sighted CVD reader, which the
+    `role="img"` name never did.
+  - ⚠️ **The entry stays OPEN at Medium**, awaiting Brad's acceptance of the c4-3 dE numbers.
+    Nothing here closes it; the story is explicit that a hairline is not an answer to
+    identifiability and a legend is not an answer to distinguishability.
+- **The two Python land policies disagree with FR-05/UX-DR17 (`:3536-3572`) — NOT RE-OPENED.**
+  Declined and re-homed at c4-8, with the divergence upgraded to observable. This story asks the
+  same question one axis over (pips, not lands) and answers it the same way — see Q16 below —
+  so the entry is re-homed unchanged. Its home remains a Python story that owns the scoring
+  surface.
+- **The `'Card // Card'` grouping fix (`:3515-3520`) — DECLINED AGAIN, ON THE SAME MECHANISM,
+  ONE STORY LATER.** c4-7 declined it because re-deriving `boards` after hydration would fire a
+  spurious deck-transition clear and release the user's pin. **This story reads hydration results
+  and does NOT re-derive `boards`** — `coloursOf` walks the existing partition along a new axis
+  (colour) and rebuilds nothing — so the mechanism is untouched and the decline stands. Worth
+  noting the two populations are the same one: all 2,284 `Card // Card` rows are also §C's
+  *"unpippable by any route"* set, so this panel would gain nothing from the fix either.
+- **F1: story-key-shaped strings on the rendered view (`:3456-3464`, `:3765`) — COUNT RECORDED.**
+  `c4-9` is now displaced **by its own panel** rather than by a sibling's (both halves asserted
+  in `App.test.tsx`). The left column has contributed its last: `c4-10` and `c4-11` remain, in
+  the right column's placeholder and the skip-link work. The gate itself stays **c8-5's**.
+- **Panel-stacking vertical budget (advisory) — MEASURED, AND THIS ONE GROWS THE ROW RATHER THAN
+  THE COLUMN.** Unlike c4-7 (+3,198 px beneath) and c4-8 (+168 px), this panel is a SIBLING: if
+  its legend were taller than the curve, the row would grow and both panels with it. Measured on
+  the eye-check — see the story record for the row's height before and after.
+- **The 21em oracle scroller is keyboard-unreachable (`:3806-3814`, c4-11's) — NOT TRIGGERED, and
+  the reason is structural rather than incidental**: this panel contains no scroller of any kind
+  and adds **zero Tab stops**, so it neither worsens nor touches the entry. Re-homed unchanged.
+- **`DeckRepository.list_decks` ties on `created_at` (`:1668-1699`, Medium-High) — NOT TRIGGERED,
+  re-homed unchanged.** That entry is about the list of DECKS; this story renders one deck's
+  cards and never calls `GET /api/decks`. Same disposition as c4-7's and c4-8's.
+- **The registry guards are blind to untracked modules (`:3869-3877`) — TAKEN IN PART, AND THE
+  REST DECLINED WITH A REASON.** This entry is homed to *"the first story that touches any
+  registry test"*, and this story touches **three** (`shell.test.ts`, `copy-rules.test.ts`,
+  `token-usage.test.ts`), so silence was not available. What it took: nothing about the
+  `ls-files` walk, and instead the **adjacent hole the same walk has**, found by this story's own
+  file move — see the new entries below. What it declined: the filesystem-walk redesign, because
+  the honest fix is one guard shared by three suites and a story that adds a panel is not where a
+  guard-suite refactor belongs. **Home unchanged: the guard suite.** The concrete mitigation
+  remains the one c4-7's review wrote down — `git add` before believing a green run, which this
+  story did (AC 44).
+
+**The eight triggered residues, a line each:**
+
+- **The `MANA_DATA_INK` invitation (`ui/README.md:678-681`) — ACCEPTED.**
+  `ColourDistribution.css` is the allowlist's **second entry and its first joiner since c2-8
+  declared it**. c4-8 declined with a measurement and wrote *"c4-9 remains invited"*; this story
+  could not decline, because UX-DR18 calls its bar *"data ink used correctly"* in the artefact's
+  own words. Both invitations are now answered, and they went opposite ways.
+- **`--mana-gold`'s first consumer (`ui/README.md:706-710`) — THE PREDICTION WAS WRONG AND IS
+  CORRECTED IN THIS DIFF.** The README predicted this story would spend gold and move the count
+  6 → 7. It joined the allowlist and did **not** spend gold: UX-DR17's gold is a *multicolour
+  card* contributing one segment to a stacked curve, UX-DR18 specifies a **pip count**, and a pip
+  is never gold. Count stays **6 of 7**, and the absence is now **asserted by a test** rather
+  than noted in prose. Gold's real first consumer is a stacked curve or a colour-identity dot,
+  neither of which is in Phase 1.
+- **The visually-hidden idiom's third instance — NOT TRIGGERED, stated rather than left as an
+  absence.** UX-DR18 makes the legend the accessible data path and the legend is VISIBLE text, so
+  no third clip-rect block ships and c4-8's promotion trigger does not fire. It remains armed for
+  whoever writes the third.
+- **The split-card `cmc` divergence, re-homed here by name (`curve.ts:39`, `curve.test.ts:219`)
+  — DECLINED, AND THE COMMENTS THAT NAMED THIS STORY ARE CORRECTED.** See Q12 and the new entry
+  below.
+- **The next story that renders an identifier / picks a type role (`:3626-3637`) — ANSWERED ON
+  THE RECORD.** This panel renders two numeric values. `--type-numeric` (with its mandatory
+  `font-variant-numeric` companion) for the pip COUNT, `--type-micro` (with `--tracking-micro`
+  and its `text-transform`) for the PERCENTAGE. `DESIGN.md`'s colour-distribution anatomy
+  specifies neither; the authority is the composition reference, corroborated by `DESIGN.md:407`'s
+  curve counts and `components.deck-row`'s quantity, both `{typography.numeric}`
+  `{colors.text-tertiary}`. The residue's point stands — nothing CHECKS that the right role was
+  chosen — and is re-homed unchanged.
+- **`StatChip`'s first surface — TRIGGERED FOR THE FIRST TIME, AND DECLINED IN BOTH HALVES.** The
+  composition reference ends this panel with three `StatChip`s: `Sources R 19`, `Sources W 16`,
+  `Deck value {total}`. **`Deck value` is a price and there is no price anywhere in this system**
+  — c4-7 measured it out of existence and amended `DESIGN.md` twice to say so. **"Sources"**
+  appears in no UX-DR, no `DESIGN.md` line and no AC; it exists only in `EXPERIENCE.md:34`'s IA
+  row (*"Pip distribution, source counts, deck value"*). Neither ships. `StatChip` therefore
+  still has **no surface**, and `EXPERIENCE.md:34` / `:173` carry two claims the product does not
+  make. **Home: the C4 retro**, with the `DESIGN.md` price amendments as the precedent for how to
+  correct an artefact that promises data that does not exist.
+- **The cross-file card-shape collision (`:3587-3596`) — NOT TRIGGERED.** This stylesheet styles
+  only its own `.colour-*` classes, reaches into no `.card-shape` descendant, and draws no card;
+  it neither joins `CARD_SHAPED` nor names `--radius-card`. Both directions asserted.
+- **The hydration sweep's no-re-drive window (c4-6 review ruling 1) — TRIGGERED, AND THE
+  ONE-STORY REPRIEVE c4-8 OPENED IS OVER.** This panel depends on the sweep for **+48 pips across
+  16 of 40 decks**, so a backend blip *during* the sweep leaves those pips permanently missing
+  with no error state, while single-faced neighbours look fine. c4-2's edge-triggered recovery
+  only re-boots from `refused`/`none`, so nothing re-drives it. **Cited as the documented
+  posture, not re-opened** — and this story is the first where the consequence is a moving
+  PERCENTAGE rather than a missing pip, which is why `aria-live` is banned here rather than
+  merely absent.
+
+**New entries this story raises:**
+
+- **Q16 — `compute_pip_signals` and the colour bar now answer "how much black is this deck"
+  differently, on FIVE AXES AT ONCE.** `mana_base.py:343-390` feeds `_mana_efficiency_score`
+  through `dimensions.py:667-702` and thence `assess_deck_power`, whose calibration benchmark set
+  is Epic 5's frozen artefact — re-validating it does not belong inside a colour bar, so the
+  Python is unchanged and `uv run pytest` is untouched. **The divergence is upgraded from latent
+  to OBSERVABLE**, and every axis carries its own live count, because c4-8's lesson is on the
+  record (*"a bare number in a ledger entry is not checkable when three tests all sound like the
+  same policy"*):
+
+  | axis | Python (`compute_pip_signals`) | the bar | live exposure |
+  |---|---|---|---:|
+  | hybrid `{W/U}` | counts for **nobody** (bare pips only) | credits **both** colours | **29 copies / 10 decks** |
+  | Phyrexian `{U/P}` | counts for nobody | counts as its colour | **7 copies / 10 decks** |
+  | generic-hybrid `{2/R}` | counts for nobody | counts as red | **0 live** (62 corpus) |
+  | the sideboard | **included** by default (`:349-350`) | excluded (Q6) | **87 pips / 5 decks** |
+  | split / Adventure / Omen costs | `_pip_cost` reads `card_faces[0]` when top-level is blank, and the WHOLE string otherwise | front face always | **27 rows / 53 copies** |
+
+  The land policies also still differ (whole-string vs front-face word), which is the separate
+  entry at `:3536-3572`. **Home: a Python story that owns the scoring surface**, with Epic 5's
+  calibration set as the artefact that has to move with it.
+
+- **The numeric mana-value parser has NO home in Phase 1, and the two comments that gave it one
+  are corrected.** `curve.ts:36-40` and `curve.test.ts:212-236` both re-homed the split-card
+  `cmc` divergence to c4-9 *"which must parse costs anyway"*. **c4-9 parses costs into PIPS**: it
+  walks `ManaSymbolToken.colours` and never adds a generic cost, so nothing it wrote converts a
+  cost string to a number, and the sentence turned out to describe the whole of `ui/` rather than
+  a gap this story would fill. Both comments now name the real condition — *whoever writes a
+  numeric mana-value parser* — and the red-in-waiting pin stays exactly as it is. Exposure is
+  unchanged and still zero: **137 corpus cards, 0 live**. **Home: a story that needs a mana
+  value, and there is none in Phase 1.**
+
+- **THREE MEASUREMENT-INSTRUMENT DEFECTS, and they are the same defect in three places.** This
+  epic's standing theme is coverage that reads as coverage; all three of these are in the
+  instruments used to MEASURE, which is the worst place for it:
+  1. **`card_faces IS NOT NULL` matches all 38,261 rows.** The column is `NOT NULL` and a
+     non-faced card stores the JSON *string* `'null'` (35,036 of them). The only correct
+     predicate is `json_type(card_faces)='array'` → **3,225**. Any fixture or measurement query
+     using the nullable form passes vacuously over the whole corpus.
+  2. **`deck_cards` has 2,027 rows but only 1,999 belong to a live deck.** **28 rows / 89 copies
+     across 2 deck ids have no `decks` row at all** — orphans from deleted decks. A measurement
+     that does not join `decks` over-counts by that much, and this is why §A's totals reproduce
+     only with the join present. `deckGroups.ts:230` already quotes the correct 1,999.
+  3. **The evasion-probe harness reported both do-nothing negative controls RED**, and the reason
+     was not the controls: every one of the 57 files failed with `TypeError: Cannot read
+     properties of undefined (reading 'config')` and *"Vitest failed to find the current suite"*
+     — **zero assertions executed**, under which every probe reads "caught" for free. This is the
+     **third time in this epic** a probe harness has been caught by its own negative controls,
+     and the second time the cause was the runner rather than the guard. The harness now
+     VALIDATES each run (a real `Tests N passed` line, no crash signature) and retries an invalid
+     one rather than scoring it. **Home: the C4 retro** — the repair keeps being re-invented per
+     story, and a shared harness is the thing that would stop it.
+
+- **`EXPERIENCE.md:34` and `:173` promise data this product does not have.** The IA row reads
+  *"Pip distribution, source counts, deck value"*. Pip distribution ships here; **source counts
+  appear in no UX-DR, no `DESIGN.md` line and no AC**, and **deck value is a price, which c4-7
+  measured out of existence** (23 columns in `cards`, none a price; the Scryfall importer never
+  reads the `prices` object). `DESIGN.md` was amended twice for the price; `EXPERIENCE.md` was
+  not. **Home: the C4 retro**, with the `DESIGN.md` amendments as the precedent.
+
+## Deferred from: code review of c4-9-colour-distribution-panel (2026-08-06)
+
+- **The inline-style channel allowlist is global and value-unconstrained** (`ui/eslint.config.js:230`). With two declared channels, cross-story misuse is now expressible: `--curve-bar-height` written from `ColourDistribution.tsx` (or `--colour-bar-share` from `ManaCurve.tsx`), or an absurd value (`'9999%'`), passes both ESLint and `RUNTIME_CUSTOM_PROPERTIES` — the tests-side map already records each channel's owning file, but the ESLint half ignores it. Fix shape when a third channel arrives: per-file scoping of the `:not([key.value=…])` chain, or a tests-side owner assertion walking real call sites.
+- **A colour-bar segment below ~0.24% share is invisible while its legend entry remains** (`ColourDistribution.css:116-118`). The 1px `--surface-well` hairline plus global `border-box` consumes the whole resolved width of a sub-1px segment, so the bar shows N−1 colours and the legend N. Needs ~450+ total pips (Commander-scale); thinnest live segment is 15.35px. Revisit if deck scale ever grows past the current corpus.
+- **Zero-total conflates "genuinely colourless deck" with "hydration not yet arrived"** (`ColourDistribution.tsx:147`). A deck whose every non-land is blank-top-level-cost renders no panel at first paint, then the panel materializes mid-sweep and snaps the curve from full width to half — an unannounced layout jump sitting inside the accepted c4-6 no-re-drive window. No corpus deck reaches the state; a fix would need a "pips possibly pending" signal distinct from `total === 0`, which is Epic-6-shaped territory (the same seam as the sweep-recovery keeper).
+
+## Deferred from: c4-10-format-check-panel (2026-08-06)
+
+- **A format-check refusal is SILENT, by ruling, and that is a real cost with no signal.**
+  (`ui/src/state/formatCheck.ts`, Q6, AC 12.) `'refused'`, `'unreachable'` and *"a 200 that is not
+  the contract"* all render `null`: the right column loses its third panel and keeps its first two,
+  and **nothing anywhere tells the user a check was attempted and failed**. The ruling is right —
+  the two client precedents point opposite ways (`ui/README.md:1263-1286`), and a format-check
+  refusal is neither a card (one tile among a hundred) nor a deck (the surface itself), so routing
+  it through `panelFor` would replace a working deck view with *"The companion hit a bug"* because
+  one auxiliary read failed, which is FR-13 inverted. What is deferred is the *signal*, not the
+  posture. **The panel also owns no timer and never retries**, so a transient failure persists
+  until reload. **Fix shape**: an inline, calm "could not be checked" state inside the panel's own
+  body — never a state panel, never a banner — which needs a vocabulary decision this story had no
+  mandate to make. **Home: Epic 7's refetch (c7-3), or c8-6.** (Severity: Low — measured live
+  exposure is zero on a healthy backend, and the read is a non-event at 5.2 ms median.)
+
+- **The format check goes stale the moment the agent changes the deck** (Q7, AC 11). One read per
+  active-deck id per mount, no refetch, no `deck_changed` handler — `epics-companion-app.md:698`
+  puts UX-DR35's refetch wholly in Epic 7, and half-building one here would be a second coalescing
+  rule to reconcile with that story's. The concrete failure: the agent adds a banned card, the deck
+  view updates through Epic 5/7's path, and the legality panel keeps asserting the *old* verdict —
+  which is exactly the loop UJ-1 closes. **Home: c7-3**, named in the module header so its author
+  reads it there rather than here. (Severity: Medium once `deck_changed` exists; unreachable today,
+  because nothing re-drives the deck except a poll-recovery edge that re-boots the same id.)
+
+- **When a check flips `pass → violation` after first paint, nothing will announce it** (Q16,
+  AC 29). No `aria-live` ships here, and the reason is that **nothing moves**: there is no refetch
+  (above) and this panel derives nothing from the hydration sweep, so it is the first panel in the
+  epic to escape c4-6's no-re-drive window *structurally* rather than by luck of which field it
+  needed. The day c7-3 wires `deck_changed`, a silent change becomes reachable and a sighted user
+  sees a red pill appear while a screen-reader user is told nothing. **Home: c7-5**, which already
+  owns *"the change is announced once, and motion is never the only signal"* together with its
+  reduced-motion fallback. (Severity: Low today — unreachable; Medium the day the refetch lands.)
+
+- **The header legality pill was predicted twice and does not exist** (Q4b). `ui/README.md:1344`
+  and `:1396` both asserted that c4-10 would add a `standard legal` pill beside the header's format
+  and size badges. **It did not ship**, and both lines are corrected in the same commit — the sixth
+  forward statement that file has had falsified. Reasons: it is outside story 4.10's five
+  acceptance criteria, which describe only the right-column panel; its tone would have to be
+  **synthesized** from `format_recognized` plus a row scan — the `is_legal` trap below, in the one
+  place on screen with no rows beside it to contradict it; and it would put a second consumer of
+  `GET /api/deck/{id}/format-check` in a second column with no shared state. **Home: the C4 retro**,
+  or a later header story. (Severity: Low — a mock feature, not a requirement.)
+
+- **`components.legality-row.padding` was off-scale and is amended, but the artefact's OTHER
+  numbers for this panel do not exist at all.** (Q10, Q2.) `'9px 2px'` → `'{spacing.2} {spacing.1}'`
+  in this commit. What remains: there is **no row-height token, no minimum and no number anywhere**
+  for this component, and c4-10's second line makes row height genuinely variable (measured live:
+  66.3px with a one-line detail, 86.3–87.3px with two, panel 452 × 475px all-pass and 452 × 517px
+  formatless). That was fine to ship — nothing depended on a fixed row — but a later story that
+  *does* need one has no artefact to read. **Home: unowned.** (Severity: Low.)
+
+- **The story's own Dev Notes claimed the plugin bundle mirror is "checked by NOTHING", and that
+  is FALSE — measured.** `tests/unit/companion/test_spa.py::TestThePluginMirror` compares
+  `plugin/server/src/companion/app/static/` against `src/companion/app/static/` **byte-for-byte,
+  names and bytes**, and it is what went red on this story's first `uv run pytest` after the
+  rebuild. c4-7 raised the gap and homed it on the C4 retro; the gap was already closed. **Two
+  entries are corrected rather than re-opened**: the mirror has a local test *and* a CI drift check
+  (`.github/workflows/ci.yml`), and the residue is only that neither runs from the `ui/` side, so a
+  frontend-only `npm test` still cannot see a stale mirror. **Home: the C4 retro**, downgraded from
+  *"unguarded"* to *"guarded on the Python side only"*. (Severity: Low.)
+
+## Deferred from: code review of c4-10-format-check-panel (2026-08-06)
+
+- **The `.test.ts` exemption pair creates an unguarded fixture dead zone.** The `is_legal` scan
+  (`ui/tests/format-check-source.test.ts:97`) and the copy guard both exempt every `\.test\.tsx?$`
+  file under `src/`, so a `src/**/*.fixtures.test.ts` module is visible to no source-level gate —
+  c4-10's `formatCheck.fixtures.test.ts` is the first file to occupy that zone deliberately (its
+  header argues the classification), and there is no registry, allowlist or count pinning how many
+  such files exist. The next story that wants an authored string or a bound field past a guard has
+  been shown the door. **Home: the C4 retro** — decide whether fixture-library test files need a
+  declared registry or the exemption needs narrowing. (Severity: Low.)
+
+## Deferred from: c4-11-keyboard-floor-skip-link-tab-order-and-focus-management (2026-08-07)
+
+### Dispositions of the nine inherited deferrals (C2 retro ruling R2)
+
+1. **The 21em oracle scroller is keyboard-unreachable** — ✅ **CLOSED**, all three parts in one
+   change, with two corrections to its own population figures. Written in place at the entry itself
+   (`:3875`) rather than only here.
+2. **The focus ring's appearance has never been looked at** (C2 retro item 4, C3 retro `:566`) —
+   📐 **the missing NUMBER is supplied** at the entry itself (`:1634`), and the rendered half is
+   discharged by this story's eye-check. ⚠️ The C3 retro's Block-E table (`:489`) mislabels this
+   item as *"Deck-list panel with a genuinely long deck"*; `:566` is authoritative.
+3. **`CardPlaceholder` renders a `<div>` inside the tile's `<button>`** — ❌ **DECLINED with the
+   reason, re-homed to the C4 retro**, and this ledger's stale *"Home: c4-5"* **corrected** (c4-6
+   re-homed it in its story record only, never here).
+4. **F1: story-key-shaped strings on the rendered view** — ⚠️ **the forward statement was WRONG, in
+   two directions.** See the new entry below.
+5. **The registry guards are blind to untracked modules** (`:3938-3946`) — **declined, with the
+   limit re-declared rather than claimed away.** This story touches four registry guards
+   (`CONTAINERS`, `COPY_MODULES`, and its own two new files) and closes none of it: the fix is a
+   redesign of how the guards enumerate files, which is a larger change than a story that merely
+   *adds* entries should make. `tests/keyboard-floor.test.ts` states the limit in its own header,
+   where the next author will read it. **Home: unchanged** — the guard suite.
+6. **AC 1's residue has a keyboard half** (`:3919-3925`) — **re-homed unchanged to the epic
+   manual-testing checklist, with the exposure re-stated.** Flip controls materialise inside the
+   cold-open hydration sweep (~1 s), so a keyboard user Tabbing during a cold open meets Tab stops
+   appearing mid-traverse. **This story cannot fix it**: the control's existence depends on hydrated
+   data, and the alternatives were priced and declined at c4-6 Q1. Re-measured here: **42 flip
+   controls across the 40 real decks, 6 on each Atraxa deck, and 20 of 40 decks have none** — so on
+   half the corpus the defect has no exposure at all. (Severity: Low.)
+7. **jsdom cannot report an accessible name's spelling** (`:3851-3853`) and **the MDFC pin
+   announcement speaks the combined name** (`:3885-3891`) — **confirmed not this story's, re-homed
+   unchanged to the epic manual-testing checklist.** Neither is a keyboard-reachability question;
+   both need a real screen reader.
+8. **The `:root { font: var(--type-body) }` rem-basis entry** (`:1254-1261`, previously **unowned**)
+   — ❌ **DECLINED BY NAME rather than left unmentioned**, which is what R2 asks for. This story is
+   the closest thing to an accessibility pass the epic has, and it is still the wrong home: the
+   entry is about whether the document basis should be `rem` so a browser's font-size setting scales
+   the UI — a **typography and layout** decision touching every token and every component, not a
+   keyboard-reachability one. Nothing in this story's diff moves it either way. **The honest
+   re-home is Epic 8's release-readiness pass**, where a whole-UI scaling decision can be taken with
+   the rendered product in hand. (Severity: Low.)
+9. **`eslint-plugin-jsx-a11y` carries a DoS advisory** (`:1074-1083`) — **confirmed NOT triggered,
+   re-homed unchanged.** `npm audit fix --force` was **not** run. The plugin carries the entire
+   UX-DR47 gate and the "fix" is a downgrade across a major boundary.
+
+### Triggered "whoever ships the next X" residues
+
+- **The visually-hidden idiom's third instance** (`ManaCurve.css:141-165`) — ✅ **IT FIRED, and the
+  promotion happened in this commit.** c4-9 and c4-10 each asserted it had not. Measured at Task 0:
+  exactly **two** production copies existed (`CardDetailChrome.css`, `ManaCurve.css`; the third grep
+  hit is a test file). `.visually-hidden` now lives in `src/styles/visually-hidden.css`, `@import`ed
+  by `src/index.css` beside `card-geometry.css` and consumed BY CLASS NAME, so no component imports
+  a cross-tree stylesheet. **Scope held to the three files it named**: `pointer-events: none` stayed
+  with the one consumer that wants it, and `.mana-curve-table`'s rule was removed outright because
+  every declaration in it was identical to the shared one.
+- **The hydration sweep's no-re-drive window** (c4-6 ruling 1) — **NOT triggered.** This story reads
+  no card data, makes no network request, and derives nothing from `boards` beyond "is there at
+  least one card". Stated structurally, as c4-10 did.
+- **`StatChip`'s first surface** — **not triggered.**
+- **The C2 retro's manual-testing items** — item 4 is discharged here (deferral 2 above); item 14
+  (the footer's measured 24px box) is Epic 8's and stays there.
+- **The cross-file card-shape collision** (`:3587-3596`) — **not triggered.** The skip link draws no
+  card: `--radius-card` appears nowhere in `SkipLink.css` and `CARD_SHAPED` holds at four entries.
+
+### New entries declared by c4-11
+
+- **AC 9 is NOT fully covered, and the uncovered half is named.** The skip link's own withdrawal is
+  handled — if it holds focus when it unmounts, focus is handed to the `<h1>` deck name through the
+  shared `focusHome` idiom, with three arms tested (held focus; never had it; had it and lost it
+  before unmounting). **The half this story cannot reach**: a *tile* or a *deck row* holding focus
+  when the deck is deleted or refetched to `no-active-deck`. React unmounting the focused node drops
+  focus to `<body>` and Tab restarts from the top of the page — the exact failure
+  `CardDetail.tsx:385-388` records for the unpin control. The repair is a focus hand-off **at the
+  transition**, which needs `deck_changed`; that signal is Epic 7's and **c7-6** is the story that
+  renders the transition. **Home: c7-6**, by name, with the mechanism written down.
+  (Severity: Medium.)
+
+- **The skip link does not reach the footer, and the footer is why the story says it exists.**
+  Measured over all 40 real decks at c4-11: the corridor is **206 Tab stops max / 78 median / 102.0
+  mean**; the link removes only the first **105**; **19 of 40** decks remain >50 stops from the
+  footer and **36 of 40** remain >20. Behind them are exactly two links, one the Wizards Fan Content
+  Policy notice that NFR-08 and `DESIGN.md:419` make *"a condition of public release, not a design
+  choice"*. UX-DR31 specifies ONE link and this story shipped exactly that;
+  `validation-report-2026-07-25.md:45` already records the gap as gate H3's still-open half.
+  **The alternative is costed rather than left to be re-derived**: a second link ("Skip to footer",
+  or retargeting this one past the deck list) closes ~42 stops on the median deck and costs one more
+  component plus a DESIGN.md + EXPERIENCE.md amendment. **Home: c8-6**, which actions or re-accepts
+  the revisit-before-public-release flag. (Severity: Medium.)
+
+- **The connection pill's DOM position is decided by nobody, and three stories each assume someone
+  else did it.** UX-DR40 (before this story's rewrite) put it between the deck rows and the footer;
+  **c5-7** cites UX-DR47 and is silent on position; **c10-1** calls it *"the last stop before the
+  footer"* — while `DESIGN.md:445` places it physically **bottom-left**, in the other column from
+  the deck rows. c4-11 **declined to decide it without the component** and marked it unbuilt in the
+  enumeration instead. **Home: c5-7**, by name. (Severity: Low.)
+
+- **F1's remaining story key is `c6-8`, not `c4-11` — and the C3 retro's count of six was itself an
+  undercount.** c4-9 and c4-10 both recorded *"`c4-11` remains, in the skip-link work"*. Verified at
+  c4-11: the string `c4-11` appears only in **comments** (`App.tsx`, `App.test.tsx`, and ten sites
+  across five other modules) and the skip link renders no story key at all. But
+  **`AppShell.tsx:117` renders `slot(nav, 'Agent-view nav pills land here — c6-8.')` and `App.tsx`
+  has never passed `nav`**, so that string is on the glass on **every** surface including a fully
+  loaded deck — and has been since c2-6. It was missed because every F1 assertion names a `c4-*` key
+  and none ever looked for a `c6-*` one: **a count that only checked the keys someone thought of**,
+  which is this epic's coverage-that-reads-as-coverage theme in a COUNT rather than in a guard. Both
+  halves are now asserted in `App.test.tsx`. The gate itself stays **c8-5's**; the remaining key is
+  displaced by **c6-8**. (Severity: Low.)
+
+- **A SECOND DOCUMENT-LEVEL KEY LISTENER WAS UNGUARDED, AND THE PROBE FOUND IT.** The contract —
+  one `keydown` on `document`, in the **bubble** phase, with **capture reserved for c6-5's agent
+  view** — is written in `CardDetail.tsx:88-101`, in UX-DR39, in `EXPERIENCE.md` and in this story's
+  don't-break list, and was **enforced nowhere**. Probe (j) added a capture-phase listener, ran the
+  full 1,655-test suite, and nothing went red. Closed in this commit by
+  `tests/keyboard-floor.test.ts`, which asserts the listener SET (one, named by file and event) and
+  the PHASE (no `true` / `capture: true` argument), each with a non-vacuity anchor. **Recorded
+  rather than quietly fixed**, per the epic's standing rule. (Severity: Medium — now closed.)
+
+- **`tests/keyboard-floor.test.ts` cannot see specificity, and says so.** It asks whether a
+  `:focus-visible` rule EXISTS for a focusable element's class, not whether a later selector
+  outranks it. `CardTile.css:54-75` records a real instance of exactly that trap being found by eye
+  rather than by a gate. A selector-weight model is a bigger instrument than this guard needs.
+  **Home: unowned** — recorded so the next reader knows the shape of the hole. (Severity: Low.)
+
+- **A naive JSX opening-tag regex fails SILENTLY, and it nearly shipped inside this story's own
+  flagship guard.** The first draft of `keyboard-floor.test.ts` stripped JSX comments with
+  `\{\s*\/\*[\s\S]*?\*\/\s*\}`; when the first `*/` is not followed by `}` the engine backtracks to
+  a later one, and a single match swallowed **4,700 characters of `FlipControl.tsx` — 10,257 bytes
+  in, 611 out**. The component then contained no `<button>` at all and was **excused from every rule
+  in the file**. Separately, `<button[^>]*>` truncates on the `>` inside `onClick={() => …}`, which
+  returned `CardTile`'s button with an EMPTY class list. **Both were caught by the guard's own
+  by-FILE non-vacuity anchor rather than by review** — the fifth consecutive story in which this
+  epic's coverage-that-reads-as-coverage class landed in the story's own named guard, and the first
+  in which the anchor caught it first. (Severity: Low — closed, and recorded as method.)
+
+- **A probe that produces INVALID source is not a caught probe.** First-pass probe (f) mutated
+  `SkipLink.tsx` into TSX that would not parse; the run collected **1,596** tests instead of ~1,655
+  and every assertion in the suite read "caught" for free. The harness's own `MIN_TESTS` validation
+  flagged it as `HARNESS-BROKEN` rather than scoring it, and it was re-run with valid source. This
+  is the **fifth** recorded instance in this epic of a probe harness lying, and the second cause
+  beyond the ledgered lowercase-drive-letter crash (`:3708-3718`). **Home: the C4 retro**, with the
+  method: validate the collected-test count on every probe run, and treat a shortfall as a broken
+  harness rather than as evidence. (Severity: Low.)
+
+## Dispositions from: dev of c4-12-empty-deck-state-and-the-cold-open-render-budget (2026-08-07)
+
+> The last story of Epic C4. Every inherited deferral named in its context gets a written
+> disposition **here**, in the ledger, rather than only in the story file — the c4-7 failure mode
+> the ledger itself records: *"a disposition written in a story file and not in the ledger is a
+> disposition nobody will find"*.
+
+> ⚠️ **AND THAT FAILURE MODE IS ITSELF THIS STORY'S FINDING.** **Fifteen shipped source modules
+> name `c4-12`** in their headers — `deck.ts`, `deckGroups.ts`, `CardGrid.tsx`, `AnalysisRow.css`,
+> `FormatCheck.tsx`, `ManaCurve.tsx`, `ColourDistribution.tsx`, `DeckList.tsx`, `inspection.ts`,
+> `App.tsx`, `App.test.tsx`, `CardGrid.test.tsx`, `copy-rules.test.ts`, `DeckBadges.test.tsx`,
+> `AppShell.tsx`'s placeholder chain — while this ledger named it **twice**. The work a story
+> inherits is discoverable by grepping the CODE, not by reading the ledger, which inverts what the
+> ledger is for. **Home: the C4 retro**, with the shape: a story's context pass must grep the
+> source tree for its own key, not only the ledger. (Severity: Medium.)
+
+### The fifteen inherited deferrals, each with its disposition
+
+1. **`:1539-1546` — the copy guard cannot decide the half that matters** (*"a reviewer of c2-10,
+   c4-3, **c4-12** and c6-6 must READ the copy"*). **HONOURED, and it stays permanently open.** This
+   story ships one authored sentence. It was read: second person (*"ask your agent"*), blameless
+   (it states a fact and assigns no fault — and the fact is that an empty deck is the NORMAL state
+   at creation), and it carries a concrete next action naming the one mechanism that can change the
+   state. The reading is recorded in the story's Debug Log, which is the deliverable; no assertion
+   was added that pretends to make it.
+
+2. **`:3691-3696` — c4-3's disposition (4)**: the same judgement, discharged by shipping the
+   artefact's own label byte-for-byte; *"c4-12 and c6-6 owe the same reading."* **HONOURED, same
+   mechanism.** `EMPTY_DECK_LINE` is `EXPERIENCE.md`'s string transcribed, em dash U+2014 and
+   trailing period included, and `ui/tests/empty-deck-copy.test.ts` compares the two. **c6-6 still
+   owes it.**
+
+3. **`:4247` — zero-total conflates "genuinely colourless" with "hydration not yet arrived"**, so a
+   colour panel can materialise mid-sweep and snap the analysis row from full width to half.
+   **READ BEFORE WRITING THE GATE, and the composition is UNCHANGED — stated rather than assumed.**
+   c4-12's gate is on the format check only, and it is a function of `boards`, which is settled at
+   the deck commit and never changes during hydration. So the two conditions do not compose: on an
+   empty deck all three panels are absent from first paint and none can materialise later (the
+   curve and colour totals cannot rise without cards, and the format check is not requested at
+   all); on a non-empty deck c4-12's gate is false throughout and the entry's behaviour is exactly
+   as before. **Neither better nor worse. Still open, still c4-9's shape.** (Severity: unchanged.)
+
+4. **`:4251-4263` — a format-check refusal is silent by ruling.** **NOT ABSORBED, and the two
+   `null` arms are kept distinguishable** — the state arm (`state.status !== 'report'`) lives in
+   `FormatCheck.tsx` and means *no report arrived*; c4-12's arm (`emptyDeck ? null : <FormatCheck/>`)
+   lives in `App.tsx` and means *the deck is empty*. Different files, different tests, so a
+   reviewer can tell a hidden panel from a failed one. **Home unchanged: c7-3 or c8-6.**
+
+5. **`:3965-3973` — the hydration sweep's no-re-drive window, accepted as designed.** **CITED, not
+   re-opened. This story's panel is OUTSIDE it entirely**: Q3/Q4 remove the format check from the
+   window by suppressing the request, and the empty-deck line derives from `boards`, which is
+   settled before any hydration begins.
+
+6. **`:2255-2263` — `ETag`/conditional requests, homed on the C4 retro** *"where the epic's twelve
+   stories are the ones that will have exercised the cache on real decks by then"*. **c4-12 is the
+   twelfth, and it feeds the measurement forward rather than deciding.** Measured 2026-08-07 in
+   Chrome 151 over CDP, real 99-card deck, n=5 per arm: a **repeat visit transfers 0 bytes of image
+   data for 106 image requests** (`immutable, max-age=31536000` doing its job — the browser never
+   asks), while the **99 card-detail JSON reads are paid in full on every visit** (not cacheable).
+   So an `ETag` would buy nothing on images and everything it could buy is on the card route.
+   **Decision still the retro's.**
+
+7. **`:3203-3216` / `:3830-3833` — the ~124 s cold paint against a dead CDN, never reproduced.**
+   **Not this story; added to the epic manual-testing checklist by name.** What IS now measured is
+   the healthy cold path: with the deck's 99 images moved out of the backend cache (n=3), the last
+   image response lands at **~11.0 s** while **full six-surface layout is unmoved at 278–390 ms**.
+
+8. **`:3777-3784` — the pacer queue vs the pool timeout; `loading="lazy"` as the one client-side
+   lever.** **UNCHANGED — this story did not reach for it.** The Q10 work turned out not to need a
+   client-side lever at all: the budget is met, and the one lever that was priced (the effect
+   ordering) is not an image lever. Recorded so the pre-pricing is not read as spent.
+
+9. **`:1672-1681` — `list_decks` materialises every deck's card list to count it.**
+   **RE-MEASURED AT 42 DECKS, NOT FIXED:** `GET /api/decks` costs ~95 ms of backend CPU and repeats
+   every 2 s (`poller.ts`, `POLL_BASE_MS = 2_000`). It is not on the deck surface's critical path —
+   `surfaceOf` prefers the deck — but it burns one of six sockets and one core through the first
+   ~100 ms of a cold open. **Home unchanged: c10-3.**
+
+10. **`:4236-4241`, `:4161-4169` — `EXPERIENCE.md` promises source counts and deck value;
+    `StatChip` still has no surface.** **CONFIRMED STILL OPEN.** Not this story. (`ui/README.md`'s
+    claim that six primitives lacked a consumer was corrected here — `StatChip` is now the only
+    one, which sharpens this entry rather than closing it.)
+
+11. **`:1592-1609` — 10px ALL-CAPS legal text readability. Home: Epic 8.** **NOT TOUCHED.**
+
+12. **`:4399-4409` — the skip link does not reach the footer (205 stops / 102.0 skipped). Home:
+    c8-6.** **NOT TOUCHED**, and no skip-link copy was edited. ⚠️ The corridor figure WAS corrected
+    in `DESIGN.md`, which read *"100+ Tab stops"* while `EXPERIENCE.md` already carried c4-11's
+    measured numbers — two peer artefacts disagreeing about the same measurement. The ledger entry
+    itself is unchanged.
+
+13. **`:4355-4362` — the `rem` basis. Declined by name at c4-11, re-homed to Epic 8.** **NOT TAKEN.**
+
+14. **`:4313-4320` — the `.test.ts` exemption pair's unguarded fixture dead zone.**
+    **DIRECTLY RELEVANT AND HONOURED IN PLACE.** Every empty-deck fixture this story adds lives in
+    exactly that zone and is **declared synthetic where it is written** — `App.test.tsx`'s
+    `emptyDeck()` and `CardGrid.test.tsx`'s `boardsOf([])` both carry the measurement that forces
+    it: **0 of 42 decks have zero `deck_cards` rows**, so there is no verified-real row to reach
+    for. **Entry unchanged; home still the C4 retro.**
+
+15. **`:4044-4047`, `:4301-4309` — the plugin bundle mirror is guarded on the Python side only.**
+    **REBUILT AND sha256-VERIFIED BY HAND** in this commit, per the story's AC. **Entry unchanged:
+    a frontend-only `npm test` still cannot see a stale mirror. Home: the C4 retro.**
+
+### New, from this story
+
+- **⚠️ THE `decks` TABLE AND `deck_cards` DISAGREE: 28 ORPHAN ROWS ACROSS 2 DELETED DECKS.**
+  Measured read-only 2026-08-07: `SELECT COUNT(DISTINCT deck_id) FROM deck_cards` returns **44**
+  while `SELECT COUNT(*) FROM decks` returns **42**. Two deck ids (`136ce5b1-…`, 22 rows / 57
+  cards, and `55af0ef7-…`, 6 rows / 32 cards) have card rows and no deck. So `delete_deck` leaves
+  its `deck_cards` behind — the same shape as the already-recorded fact that `remove_card_from_deck`
+  never touches `decks`. **No user-visible effect today** (every read path starts from a `decks`
+  row, so the orphans are unreachable), and it is invisible to any frontend gate. It also means
+  **any census computed from `deck_cards` alone over-counts by two decks** — the story context's
+  own §F distribution did, and this ledger entry is how the next census avoids it.
+  **Home: c10-3**, with the Python-side counterpart. (Severity: Low — data hygiene, not behaviour.)
+
+- **A sideboard-only deck renders an empty grid with NO empty-deck line, and no artefact describes
+  that state.** `deckIsEmpty` is sideboard-inclusive by c4-11's ruling (a deck holding a sideboard
+  has cards, and *"This deck is empty"* over it would be false copy under UX-DR33), while
+  `CardGrid` draws commander + mainboard only. **Unreachable from live data — 0 of 42 decks have
+  zero mainboard rows and ≥1 sideboard row** — so it is recorded as a named residue rather than
+  answered by inventing copy. Pinned in `CardGrid.test.tsx` so the choice is visible if it is ever
+  wrong. **Home: the C4 retro.** (Severity: Low.)
+
+- **⚠️ UX-DR20 SAYS THE DETAIL PANEL IS "NEVER EMPTY WHILE A DECK IS LOADED", AND AN EMPTY DECK IS
+  A LOADED DECK — ARTEFACT DEFECT, NOT REPAIRED HERE.** `inspection.ts`'s `coldOpenTargetOf`
+  returns `null` for a deck with no cards, with the comment *"which is c4-12's copy"*. c4-11's
+  correction resolved only the skip-link-TARGET half (*"`CardDetail` renders its frame and heading
+  unconditionally"*); **the panel's BODY on an empty deck is specified nowhere**, and neither is
+  `DeckList`'s — `DeckList.tsx` records that gap verbatim and refuses to invent copy for it.
+  `EXPERIENCE.md`'s two rows and this story's own ACs each name exactly THREE panels to hide and
+  neither of these is among them.
+  **SEEN, NOT ARGUED (eye-check, Chrome 151, 2026-08-07):** the two panels render as **57px empty
+  shells** — a `CARD DETAIL` header over a blank body and a `DECK LIST` header over a blank body —
+  beside a 47px grid strip, on an otherwise empty 1720×1080 canvas. That is precisely the
+  *"reads as a loading failure rather than as an absent feature"* failure mode `DESIGN.md` names by
+  hand. Ruled: **status quo, recorded, not repaired** — adding a fourth panel to the hide list
+  invents spec and inventing an empty-state sentence puts unsourced words on the glass.
+  **Home: the C4 retro**, with the DESIGN.md amendments as precedent. (Severity: Medium.)
+
+- **The effect ordering in `App.tsx` is worth ~180 ms of cold-open layout time and nothing enforced
+  it.** Measured over CDP, Chrome 151, the real 99-card deck: as shipped (sweep declared first) the
+  format-check request sits at **queue position 106–107** and full six-surface layout is
+  **311 / 363 / 428 ms** (min/median/max, n=5); with the two blocks swapped it is at **position 7**
+  and layout is **120 / 185 / 520 ms** (n=5). **Not swapped** — NFR-05's budget is met with ~570 ms
+  of headroom in every run of both cache readings, so the swap is an unrequested change to the
+  cold-open path, and the swapped arm's spread is wider. **Both effect comments now name the
+  other's queue position**, which is the only thing stopping the next reader reordering them by
+  accident. **Home: c10-3** (NFR-05 profiling is Phase 2), where the 180 ms is already priced.
+  (Severity: Low — an available improvement, not a defect.)
+
+- **⚠️ NFR-05's OWNER CANNOT CLOSE ITS OWN GAP, AND THIS STORY IS WHERE THAT WOULD HAVE BITTEN.**
+  `epics-companion-app.md` makes **Epic 4 the owner** of NFR-05 (*"the owner still holds
+  acceptance"*), while the only story carrying the gap-closing clause — *"any measured gap … is
+  closed, or recorded as an accepted deviation with its reason — not left ambiguous"* — is **10.3,
+  which is Phase 2**. So the acceptance point ships in this release and the repair does not.
+  **It did not bite: the measurement passes, so there is no gap to close.** Raised in the open
+  anyway, because the structure is unchanged and the next measurement may not pass.
+  **Home: the C4 retro / c10-3.** (Severity: Low today, structural.)
+
+- **~60 stale `DESIGN.md:NNN` anchors across 25 files, and the guard that looks like it checks them
+  does not.** `shell.test.ts` requires the *string* `"DESIGN.md"` within a sentence of every `px`
+  literal in a component stylesheet — it **never resolves the line number**. The c4-7/c4-9/c4-10/
+  c4-12 frontmatter amendments each grew the file and nothing re-based the citations; at least one
+  now cites a real but **wrong** component (`FormatCheck.css` → `DESIGN.md:423`, which is the Card
+  tile bullet). This is the epic's coverage-that-reads-as-coverage theme **inside a citation gate**.
+  **Not fixed here** — ~60 edits and a red guard on a story that is otherwise one sentence and one
+  conditional. **Home: the C4 retro**, with the guard's shape written down: resolve the anchor and
+  assert the cited line names the component. (Severity: Medium.)
+
+- **"Blank screen" has an operational definition for the first time, and it is this story's only.**
+  UX-DR36 and `EXPERIENCE.md` both assert *"a blank screen is never shown after first paint"* and
+  neither says what it means. Defined in `App.test.tsx` for c4-12 as: *at no point from first paint
+  onward does the app render a viewport containing none of {header, left-column content,
+  right-column content, footer}*. ⚠️ The criterion is a **verbatim duplicate of a story 7.4 AC**,
+  and the **refetch half** — the teardown UX-DR36 is really about — is **c7-4's**, handed back by
+  name. `states.ts`'s `NO_UI_RESPONSE` (three reasons that deliberately render nothing) is the one
+  classification in tension with the sentence: agent-facing and unreachable from a user surface
+  today, so it blanks nothing — but a story that routed one of them to a user surface would satisfy
+  `NO_UI_RESPONSE` and violate UX-DR36 in the same commit. **Home: c7-4.** (Severity: Low.)
+
+- **A newly written guard's regex was `\n`-only against CRLF artefacts, and only its non-vacuity
+  anchor caught it.** `empty-deck-copy.test.ts`'s DESIGN.md frontmatter reader used `\n {2}key:\n`;
+  the UX artefacts are **CRLF (485 of 485 line endings)**, so it captured the empty string and every
+  assertion in that describe would have passed over nothing. Caught because the anchor was written
+  FIRST and failed. **Seventh consecutive story in which this epic's coverage-that-reads-as-coverage
+  class landed in the story's own new guard — and the second in which the anchor caught it before a
+  reviewer did.** Recorded as method: **anchor first, then assert.** (Severity: Low — closed.)
+
+## Deferred from: code review of c4-12-empty-deck-state-and-the-cold-open-render-budget (2026-08-07)
+
+- **One-frame stale format-check report on a non-empty→non-empty deck switch** (`ui/src/App.tsx:350`).
+  When the active deck changes from deck A to deck B, the commit frame that renders deck B's header
+  precedes the effect pass that calls `clearFormatCheck`, so deck A's legality report can render
+  under deck B's header for one commit. Pre-existing shape — c4-12's deps change (`emptyDeck` added)
+  neither caused nor widened it. Candidate fixes if it ever matters on the glass: clear synchronously
+  on `deckId` change, or key the panel (`<FormatCheck key={deckId} />`).
+- **No committed CDP measurement harness behind the render-budget numbers** (`ui/src/App.tsx:244,331`).
+  Both effect comments carry "⚠️ DO NOT REORDER EITHER BLOCK WITHOUT RE-MEASURING" while every
+  measurement was taken with a scratchpad throwaway script (the story's own Task 4 sanctioned the
+  scratchpad), so AC 18's queue positions and latencies are preserved only as prose and are
+  irreproducible from the repo. Home on the **C4 retro** beside the ~60 stale `DESIGN.md:NNN`
+  anchors: decide whether a minimal committed harness (or a recorded recipe) is owed before anyone
+  is allowed to act on the reorder lever those comments price.
+
+## Rulings from: the EPIC C4 RETROSPECTIVE (2026-08-07)
+
+Eight decisions ruled by Sathias. R1/R2/R6 are process and live in
+`epic-c4-retro-2026-08-07.md`'s *Team agreements*; the ledger dispositions are below.
+
+### R5 — four entries CLOSED, each with the measurement that closes it
+
+- ✅ **CLOSED as SUPERSEDED — `GET /api/cards/{card_id}` sets no cache headers / `ETag`
+  (`:2101`, `:2255-2263`).** Homed here at c4-1 *"where the epic's twelve stories are the ones that
+  will have exercised the cache on real decks by then"*. Twelve have. The entry's own worst case —
+  *"a c4-x deck view hydrating 60–100 cards re-fetches every full record on every render"* — is
+  **structurally impossible**: `cards.ts` issues one request per id per tab and never re-requests a
+  hydrated id (measured live at c4-6, 99 reads on the 99-card deck, ceiling confirmed). The client
+  also sends `cache: 'no-store'` on card reads **deliberately**, so that a header-less response
+  cannot be heuristically cached into staleness across a database refresh — which would make an
+  `ETag` inert until that separate decision were revisited. Population an `ETag` would serve: page
+  reloads, not renders. **No further work. Re-open only if the `no-store` decision is revisited.**
+
+- ✅ **CLOSED as DECLINED — splitting `src/companion/app/images.py` (`:2989-2997`, `:3074-3082`,
+  `:3835-3838`).** Parked by Sathias at the C3 retro pending evidence; the evidence is now in and it
+  argues against the split. c4-4 mounted ~99 `<img>` at once (`decoding="async"`, no
+  `loading="lazy"` — the maximum burst the pacer entry describes) and c4-6 became the first `?face=`
+  caller. Between them the route, the **pacer**, the **disk cache** and the **negative cache** were
+  exercised from a real browser against real decks and **needed no change to any of them**: warm
+  paint 99 requests in 0.55 s, `?face=1` behaves as an ordinary distinct key throughout, no pacer
+  constant moved. The measured shape stands as recorded — **1,837 lines = 1,370 prose (74.6%) + 377
+  code (20.5%) + 289 blank** — so a split would divide ~125 lines of code per mechanism and destroy
+  the 108-line module header that explains their interaction (cache checked *before* the pacer;
+  negative cache *outside* `pacer.slot()`). Winston's C3 counter stands re-confirmed: finding
+  density tracked difficulty, not line count. **The adjacent action identified at C3 — a
+  prose-freshness pass over the nine large docstrings — is NOT closed by this and stays available.**
+
+- ✅ **CLOSED as ACCEPTED — `CardPlaceholder` renders a `<div>` inside the tile's `<button>`
+  (`:3743-3748`, `:3859-3875`).** Declined at c4-11 with the reason and re-homed here. Every engine
+  renders it; React 19.2 warns in its **development build only** (`grep -c` over both react-dom
+  builds gives 1 and 0) while the invalid nesting survives into the runtime tree; the accessible
+  name computes normally. c4-6 closed the **harder** version of the same seam — an *interactive*
+  descendant — by making the flip control a sibling, with `CardTile.test.tsx` asserting
+  `tile.querySelectorAll('button, a, input, select, textarea')` is empty. What remains is a
+  spec-letter violation with **zero measured accessibility impact**, against a fix that means
+  changing `CardPlaceholder`'s root — the edit c4-4 was explicitly told not to make, and one that
+  would serve one consumer against the other's interest. **This entry's own history is part of the
+  ruling:** its home was stale by two stories because c4-6 re-homed it in its story record and never
+  here. That failure mode is now a standing agreement (see below).
+
+- ✅ **CLOSED by AMENDING THE ARTEFACT — `EXPERIENCE.md:34` and `:173` promise data this product
+  does not have (`:4236-4241`, `:4161-4169`).** Both rows amended in the same commit as this
+  disposition, using the two `DESIGN.md` price amendments (c4-7) as the precedent for correcting an
+  artefact that promises data that does not exist. **`deck value` is a price**, and there is no
+  price anywhere in this system — 23 columns in `cards`, none a price; no schema field; and the
+  Scryfall importer never reads the `prices` object, so it was never imported rather than dropped
+  (with a Python test asserting the absence on purpose under the c3-2 Q4 ruling). **`source counts`**
+  appear in no UX-DR, no `DESIGN.md` line and no AC; they exist only in that IA row.
+  **Consequence, stated rather than left implied: `StatChip` has had NO surface since c2-7 and now
+  has no pending one.** It remains a shipped, tested, zero-consumer primitive — a fact, not a
+  backlog item. The `StatChip`-first-surface residue is closed with it.
+
+### R3 — F4 ledgered, closing C3 retro action item 6
+
+- ❗ **A failed first import leaves a schema-only `cards.db` that the companion then file-locks.**
+  Found by Sathias during C3 manual testing (finding F4, 2026-08-02) and **never ledgered** — C3
+  action item 6 asked for exactly this entry and it was not written, which is why it is being
+  written at the next retro instead. The importer creates the schema **before** downloading, so a
+  failed download leaves a rows-less database behind; the companion's next poll (≤ 30 s) opens it
+  under c1-6's lazy engine, and from that moment the user **can neither delete nor replace the
+  partial database** without stopping the companion — while the panel correctly instructs them to
+  re-run the import command.
+  **What is already right:** the *display* is correct (`is_database_initialized` returns `False` for
+  present-but-empty), and the blast radius is bounded — a second process *writing into* the file is
+  fine under WAL, so only wholesale file replacement is blocked.
+  **This is a recovery-path defect, not an import-path one**, and it is adjacent to but distinct
+  from c1-6's ledgered *"cached-engine path re-plants a zero-byte file"*.
+  **Home: c8-4** (install / first-run readiness), which owns the fresh-install experience a person
+  actually meets. (Severity: Medium — reachable on the public v0.4.0 today; bounded and recoverable
+  by stopping the companion.)
+
+### R4 — the empty-deck state ships as written
+
+- ⚖️ **RULED, status quo (`:4590-4604`).** The two empty right-column panel shells stand. Adding a
+  fourth panel to the hide list invents spec; inventing an empty-state sentence puts unsourced words
+  on the glass. **Entry stays open at Medium with the eye-check attached** — Chrome 151, 1720×1080:
+  a `CARD DETAIL` header over a blank body and a `DECK LIST` header over a blank body, 57 px each,
+  beside a 47 px grid strip — because that picture is what a revisit should decide against.
+  c4-12's own warning is recorded with it: *changing it is cheap today and expensive at Epic 8.*
+
+### New standing agreement raised by this ledger's own failures
+
+- 📌 **A disposition lives in the ledger, not only in the story record.** c4-11's sentence,
+  promoted: *"a disposition written in a story file and not in the ledger is a disposition nobody
+  will find."* Three worked instances in C4 — the `<div>`-in-`<button>` home stale by two stories;
+  c4-7's nine dispositions and three new entries existing only in its Dev Agent Record until review
+  demanded them; and **fifteen shipped source modules naming `c4-12` in their headers while this
+  file named it twice**. A story that re-homes an entry edits `deferred-work.md` in the same commit,
+  and a story's context pass greps the **source tree** for its own key, not only this file.
+
+## From: the Epic C4 manual-testing run — BLOCK I (2026-08-07)
+
+Block I was homed on **c4-2** at the C3 retro, acknowledged there and not run, so it had been
+carried across two epics. Run at the C4 retro through headless Chrome over CDP against a real
+backend on an isolated `PLANESWALKER_DATA_DIR`. **All four panels are now rendered by a real
+engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries change here.
+
+- ✅ **CLOSED — `database-updating`, `database-updating-stalled` and the state panels were never
+  rendered by a real engine (`:3310-3316`).** They have been now. A3: a `cards.db` that exists but
+  is not a SQLite file produces `DatabaseError` → `503 database_unavailable` → **"Card database is
+  updating."**, which is the entry's whole question answered — *a different panel from the same 503
+  status as A1's*. A4: the escalation fired at **t = 60.1 s on the 6th poll**, with both gates
+  observed independently. The `internal-error` panel remains unrendered by a real engine and is the
+  only member of the family still owed a first look; it is reachable from a malformed `200` body on
+  the deck read (c4-2's caught refusal), which is a harder fixture to stage than a corrupt file.
+  **Residue re-homed: `internal-error`'s first render → the Epic C5 manual-testing checklist.**
+
+- ⚠️ **CONFIRMED, NOT CLOSED — a backend that cannot be reached at all leaves whatever panel is on
+  screen, including on the very first load (`:3318-3328`).** Reproduced exactly as written: a first
+  load with nothing reachable renders **"No deck on the glass. Ask your agent to set an active deck
+  — it will appear here the moment it does."** and holds it while polls fail silently (4 attempts
+  observed, no state change). **Tolerability judged at the C4 retro, as the checklist item asks:
+  the entry undersells it by one notch.** The panel is not merely uninformative — its copy is
+  **actionable and wrong**, directing the user to an agent action that cannot succeed while the
+  same backend is unreachable. A1's copy is inert by comparison. **Home unchanged: c5-6**, whose
+  `disconnected` panel is the true one. Severity unchanged (Low-Medium: reachable only by starting
+  the browser before the backend), because the blast radius is not what moved — the copy's
+  imperative is.
+
+- 📌 **AMENDED — C3 action item 4 / F1: story-key-shaped strings on the rendered view.** The
+  recorded count is **wrong, and low**. c4-11 recorded one remaining key (`c6-8`) and that is true
+  **of a rendered deck view**, which is the only surface `App.test.tsx` asserts. Measured on a
+  **state-panel surface**: **six** distinct keys render — `c2-7`, `c4-2`, `c4-5`, `c4-7`, `c4-10`,
+  `c6-8`, seven occurrences. Both halves confirmed in one run (the deck view at the end of the
+  re-drive scenario carries `c6-8` alone). The mechanism is that the placeholders are displaced
+  **by the panels that replace them**, so every surface where those panels do not render still
+  carries every key — and the first screen a fresh install ever sees is exactly such a surface.
+  This is the epic's coverage-that-reads-as-coverage class again: the assertion's scope is narrower
+  than the claim resting on it. **Home unchanged (c8-5), priority raised**, and the gate's shape is
+  now specified by evidence: it must scan a rendered STATE-PANEL surface, not only a deck view.
+
+- ⚠️ **RE-OPENED — C3 retro finding F3 (vertical anchoring on an empty page) was homed on c4-12 and
+  is only half closed.** c4-12 shipped the empty-*deck* state; the **state-panel** case — panel
+  top-aligned with a large void beneath it, on the first screen of a fresh install — was never in
+  that story's scope and is unchanged. Seen again in this run's A1 and A3 screenshots.
+  **Home: unowned.** (Severity: Low — cosmetic, on a surface a healthy install passes through once.)
+
+### What this run CONFIRMED rather than changed
+
+- **c4-2's edge-triggered re-drive works on a real screen, and had never been seen.** Cold open
+  with an active deck set and no database → the deck read refuses and the glass shows the stale
+  panel; the database is then planted **while the tab is open** (no restart — with no file present
+  the backend holds no handle, so this is FR-22's own scenario extended to the deck path). Deck
+  reads went **1 → 3** and the panel was replaced by the full deck view in **~5 s**, with **one**
+  page navigation for the whole test. That is the High c4-2's review found and fixed, observed.
+- **C3 ruling R3's terminal consequence, felt rather than reasoned.** With the database restored
+  and the wire answering `200`, the poll count moved by **exactly 0** across 45 s and the stalled
+  panel stayed. R3 accepted this knowingly; what the run adds is that **the panel's own action line
+  names `initialize_database`**, so a user who complies *and succeeds* sees no change. Recorded
+  against c5-6, which owns the recovery.
+
+## From: the Epic C4 retrospective — the CDP harness is PROMOTED (2026-08-07)
+
+- ✅ **CLOSED — "No committed CDP measurement harness behind the render-budget numbers"
+  (`:4663-4669`, from c4-12's code review).** The entry asked whether *"a minimal committed harness
+  (or a recorded recipe) is owed before anyone is allowed to act on the reorder lever those comments
+  price."* **A harness is owed and is now committed: `scripts/cdp_harness.py`.**
+
+  It is the house pattern written down rather than a new one — c4-12's own Q9 specifies the shape
+  (*"ad-hoc CDP in Python (websockets + httpx), Chrome `--headless=new`, fresh profile, against the
+  committed SPA served by the running backend"*) and the only change is that it is no longer ad hoc.
+  Three subcommands: `budget` (the NFR-05 cold-open measurement), `panels` (the state panels of
+  manual-checklist Block I), `shot`.
+
+  **It reproduces the number the `App.tsx` comments cite, independently.** Run against the same
+  99-card deck (`Atraxa Counter Cabinet v2 (owned)`), n=5, fresh Chrome profile per run:
+
+  | | c4-12's record | this harness, 2026-08-07 |
+  |---|---|---|
+  | format-check queue position | **106–107** | **106**, all five runs |
+  | full six-surface layout | 311 / 363 / 428 ms | **382 / 403 / 453 ms** |
+  | card reads · total requests | 99 · ~205 | **99 · 213** |
+
+  The **queue position matches exactly**, and it is the structural claim the two effect comments
+  actually rest on. The layout times run ~40–70 ms higher and the difference is *not* treated as a
+  discrepancy: this arm ran against a data directory with **no warm backend image cache** (a fresh
+  copy holding only `cards.db`), which is nearer c4-12's cold-image arm than its fresh-profile one,
+  on a machine with sixteen MCP server processes resident. Both sets sit far inside NFR-05's
+  1,000 ms budget. **The lever is now re-measurable before anyone pulls it**, which is what the
+  entry asked for.
+
+  Q7's clock is preserved verbatim: `performance.timeOrigin` read in-page, stop at the moment the
+  **last** of the six named surfaces enters the DOM, seen by a `MutationObserver` installed at
+  **document-start**.
+
+  ⚠️ **What this does NOT close, stated because a harness that reads as covering more than it does
+  is this epic's own theme.** The C4 retro's action item 4 asks for **one committed *probe*
+  harness** — the thing that runs the full `npm test` for an evasion probe and validates the
+  collected-test count before scoring the run. **That is a different harness and it is still owed.**
+  `cdp_harness.py` drives a browser; it does not run vitest, and none of the five recorded
+  probe-harness lies would have been caught by it. Item 4 stays open.
+
+  📌 **The promotion found a real defect in its own first version, and the refusal caught it.** The
+  observer attached to `document.documentElement`, which is **null at document-start**, so
+  `.observe()` threw, the IIFE aborted, and every run reported "no surfaces arrived" while the page
+  rendered all six perfectly. The harness **refused to report a number** (by design — every C4 probe
+  harness that lied did so by scoring an empty run) but could not say *why*, so it now captures the
+  install-time error and prints it with the refusal. Fixed by observing `document`, which exists at
+  document-start. Recorded rather than quietly repaired: *an instrument that dies at install time
+  and leaves an empty result is indistinguishable from a page that rendered nothing.*
+
+  `websockets>=12.0` is now **declared** in the dev dependency group rather than borrowed from
+  `uvicorn[standard]`'s extra, and `plugin/server/pyproject.toml` was rebuilt to match (the mirror
+  copies `pyproject.toml` verbatim — caught by diffing the mirror, not by a guard, which is the
+  "guarded on the Python side only" residue behaving exactly as recorded). Gates after: `ruff check .`,
+  `ruff format --check .` (308 files), `mypy src/` and `mypy src/ --platform win32` (89 files) green;
+  `uv run pytest` **2,501 passed / 1 skipped — unchanged**.

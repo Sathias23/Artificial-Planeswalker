@@ -94,6 +94,40 @@ describe('eslint accessibility gate (UX-DR47, AC 8)', () => {
     )
     expect(a11yMessages).toEqual([])
   })
+
+  it('narrows the handler list to INTERACTIONS, and the narrowing is exactly two names (c4-4)', async () => {
+    // c4-4 removed `onError` and `onLoad` from both rules' handler lists, in the open, because
+    // neither is an interaction: they are resource-lifecycle events with no user in the causal
+    // chain, no keyboard equivalent to add and no role to promote. `clean.tsx` now carries an
+    // `<img onLoad onError>` — the shape c4-4's card tile needs to know whether a picture
+    // arrived — and the silence assertion above is what proves the narrowing works.
+    //
+    // THIS test is the drift half: it reads the RESOLVED config rather than the file, so a
+    // future story that restores the defaults, drops the option, or quietly shortens the list
+    // past the six interaction handlers goes red HERE, naming the rule.
+    const eslint = new ESLint({ cwd: uiRoot, ignore: false })
+    const config = (await eslint.calculateConfigForFile(fixture('a11y/clean.tsx'))) as {
+      rules: Record<string, unknown[]>
+    }
+
+    for (const rule of [A11Y_STATIC, A11Y_NONINTERACTIVE]) {
+      const entry = config.rules[rule]
+      expect(entry, `${rule} is not configured at all`).toBeDefined()
+      const options = entry[1] as { handlers?: string[] } | undefined
+      expect(options?.handlers, `${rule} lost its explicit handler list`).toEqual([
+        'onClick',
+        'onMouseDown',
+        'onMouseUp',
+        'onKeyPress',
+        'onKeyDown',
+        'onKeyUp',
+      ])
+      // The two that were removed, named — so the diff that puts either back is visible here
+      // rather than only in a component that stops linting.
+      expect(options?.handlers).not.toContain('onLoad')
+      expect(options?.handlers).not.toContain('onError')
+    }
+  })
 })
 
 describe('eslint inline-style ban (story c2-4 review ruling)', () => {
@@ -134,6 +168,80 @@ describe('eslint inline-style ban (story c2-4 review ruling)', () => {
     // Filtered to the rule under test, mirroring the a11y pair: an unrelated future rule must
     // not be able to fail a test named after the inline-style ban.
     expect(clean!.messages.filter((m) => m.ruleId === INLINE_STYLE_RULE)).toEqual([])
+  })
+
+  it('admits a custom-property-only style, and STILL reports a plain one (c4-8, AC 17)', async () => {
+    // THE AMENDMENT'S OWN GATE. `eslint.config.js`'s own comment reserved a custom-property
+    // escape hatch for "a computed bar height in c4-8" on the explicit condition that the story
+    // needing it CHANGE THE RULE AND SAY WHY, IN THE OPEN. c4-8 took it; this is the pair that
+    // proves the narrowing narrowed rather than loosened.
+    //
+    // The silent half is `clean.tsx`'s `CustomPropertyStyled`, covered by the zero-messages
+    // assertion above — which is the honest place for it, and is why that assertion is the one
+    // that would fail if the hatch were ever written wider than it is.
+    //
+    // The firing half is here, from source rather than from a fixture, because each case is one
+    // line and putting five near-identical components in `inline-style-violation.tsx` would
+    // move the `toHaveLength(2)` pin three stories old.
+    // A REAL FILE ON DISK, not `lintText` against a virtual path: `projectService: true` makes
+    // every linted `.ts`/`.tsx` belong to a tsconfig, and a path that is not on disk comes back
+    // as a FATAL parsing error with `ruleId: null` — which a filter on this rule's id reads as
+    // silence. Measured while writing this test: the first draft asserted five firing cases and
+    // saw zero messages for all five, and the reason was the parser, not the selector. A gate
+    // that cannot tell "the rule did not fire" from "the file was never parsed" is the vacuity
+    // failure this whole file exists to close.
+    const eslint = new ESLint({ cwd: uiRoot, ignore: false })
+    const [result] = await eslint.lintFiles([fixture('tsx/custom-property-violation.tsx')])
+
+    // NON-VACUITY FIRST: no fatal message, so the fixture genuinely parsed.
+    expect(
+      result.messages.filter((m) => m.fatal),
+      'the fixture did not parse — every count below would be vacuous',
+    ).toEqual([])
+
+    const firing = result.messages.filter((m) => m.ruleId === INLINE_STYLE_RULE)
+
+    // (n) TEN attributes, ten messages — one per ATTRIBUTE, which is the property that keeps
+    // `inline-style-violation.tsx` at 2. The five from implementation (a plain property, an
+    // on-scale one, a MIXED object, a non-literal, and a spread) plus the four the review
+    // added: a call and a ternary WRAPPING a compliant literal (the descendant-`:has` evasion
+    // — "contains a literal" is not "is a literal"), a REAL design token as the key (the
+    // prefix-test hole: `--surface-well` inline re-themes every descendant), and a
+    // right-prefix wrong-name channel (`--curve-bar-index` is not on the allowlist).
+    //
+    // The tenth joined at c4-9, when the allowlist grew from one name to two: the NEW channel
+    // beside a plain `width`. It is the `MixedProperties` argument restated against the second
+    // entry, because a second entry is exactly when someone re-tests whether the negation still
+    // applies per-property — and it is enumerated probe (r), which asks that a plain
+    // `style={{ width: … }}` still error after the amendment.
+    expect(firing).toHaveLength(10)
+    expect(new Set(firing.map((m) => m.severity))).toEqual(new Set([2]))
+    for (const message of firing) {
+      expect(message.message).toContain('bypasses the whole token layer')
+      expect(message.message).toContain('var(--')
+    }
+
+    // Each case resolved back through its own line, because a count of nine would also pass if
+    // one selector fired nine times and the other never fired at all.
+    const source = readFileSync(fixture('tsx/custom-property-violation.tsx'), 'utf8').split('\n')
+    const flagged = firing.map((m) => (source[m.line - 1] ?? '').trim())
+    for (const declaration of [
+      "return <div style={{ height: '62%' }} />",
+      "return <span style={{ marginTop: '4px' }} />",
+      "return <div style={{ '--bar-height': '62%', color: 'red' } as React.CSSProperties} />",
+      'return <div style={someObject} />',
+      "return <div style={{ ...someObject, '--bar-height': '62%' } as React.CSSProperties} />",
+      "return <div style={identity({ '--curve-bar-height': '62%' })} />",
+      "<div style={tall ? ({ '--curve-bar-height': '100%' } as React.CSSProperties) : someObject} />",
+      "return <div style={{ '--surface-well': colour } as React.CSSProperties} />",
+      "return <div style={{ '--curve-bar-index': share } as React.CSSProperties} />",
+      "return <div style={{ '--colour-bar-share': share, width: '62%' } as React.CSSProperties} />",
+    ]) {
+      expect(
+        flagged.some((line) => line === declaration),
+        `the narrowed rule no longer fires on \`${declaration}\``,
+      ).toBe(true)
+    }
   })
 })
 

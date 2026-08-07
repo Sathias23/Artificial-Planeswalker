@@ -1,0 +1,96 @@
+/* CardDetail — THE ART ONLY (story c4-5, UX-DR4, UX-DR36, DESIGN.md:387, `components.card-detail`).
+
+   ==== WHY THIS FILE HOLDS ONE THING, AND ITS CHROME IS NEXT DOOR ========================
+   This stylesheet is in `tests/token-usage.test.ts`'s CARD_SHAPED allowlist, and membership cuts
+   BOTH ways: it is the declaration that this file draws CARDS, and it is therefore also the ban
+   on spending a chrome radius here (`--radius-sm/md/lg/pill`, and any `--radius-*` invented
+   later). The panel's own frame needs `--radius-lg` for its pinned ring and the unpin control
+   needs nothing card-shaped at all, so both live in ./CardDetailChrome.css — the same split
+   CardTile.css / QuantityBadge.css established, for the same collision and not as an exception
+   carved into the guard.
+
+   ==== THE SHAPE IS NOT WRITTEN HERE ====================================================
+   `aspect-ratio: 63 / 88` and `border-radius: var(--radius-card)` are written exactly once, in
+   src/styles/card-geometry.css, and the art box carries `card-shape` alongside its own class.
+   This file writes NEITHER. That is what makes DESIGN.md:362's claim — a 176px grid thumbnail
+   and a full-width detail render read as the same object, because the corner curve is a
+   PERCENTAGE and scales with the box — structurally true rather than asserted twice.
+
+   `art-radius: '{rounded.card}'` in `components.card-detail` says the same thing from the
+   artefact's side, and it is satisfied by consuming the class rather than by re-declaring the
+   value (UX-DR4).
+
+   ==== NO px LITERAL IN THIS FILE, DELIBERATELY =========================================
+   Every length here is a token or a ratio. `shell.test.ts` requires a DESIGN.md citation within
+   a sentence of any px literal in a component stylesheet; the honest way to satisfy that rule is
+   to have nothing to cite.
+
+   ==== NO MOTION, DELIBERATELY (UX-DR42) ================================================
+   The detail content swaps on EVERY hover, so `tokens.css`'s reduced-motion inventory gives this
+   panel the fallback "instant, no crossfade" — and the strongest form of that is to ship no
+   transition in the first place, at any setting, so there is nothing for a media query to have
+   to switch off. The image below therefore does NOT fade the way a grid tile's does: a fade
+   would be a crossfade between two cards on a cursor sweep, which is precisely what the
+   inventory bans. It is a hard swap, and `data-loaded` exists to keep a half-decoded frame from
+   showing rather than to animate anything. */
+
+/* THE ART BOX. Everything that can fill it — the silent well, the named placeholder and the
+   `<img>` — is absolutely positioned inside, so the slot is at FULL SIZE before any image exists
+   and cannot reflow when one arrives (UX-DR36). The footprint is this element's, never the
+   content's, which is the same structure the tile uses and the reason a placeholder and a real
+   face are interchangeable without layout moving.
+
+   `overflow: hidden` clips the face to the card corners, declared HERE rather than in
+   `card-shape` for that shared class's own stated reason: clipping is a statement about CONTENT,
+   and a shared class that silently clipped would make this behave differently depending on
+   whether its author knew. This element is not a root and not the shell's scroller, so it is
+   outside `shell.test.ts`'s clip ban by construction — that ban names the roots and
+   `.app-shell-columns`, and explicitly leaves a panel's own clipping alone. */
+.card-detail-art {
+  position: relative;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+
+  /* DESIGN.md: "shadow-rest on card tiles and panels at rest". Never a literal — `graphite` and
+     `ink` declare both elevation tokens as `none`, so a hard-coded shadow breaks them. */
+  box-shadow: var(--shadow-rest);
+}
+
+/* The well and the named placeholder reach c4-3's roots through the PUBLIC contract — the
+   `card-shape` class every card-shaped thing carries — rather than through `.card-placeholder` /
+   `.card-placeholder-well`, which are that component's private names. This rule gives them
+   position and nothing else: no radius, no border, no background. (A rule in one file reaching a
+   card-shaped element in another is CARD_SHAPED's declared blind spot #3; it is named here so a
+   reviewer can see that what crosses the boundary is layout, not geometry.) */
+.card-detail-art > .card-shape,
+.card-detail-image {
+  position: absolute;
+  inset: 0;
+}
+
+/* THE CARD FACE AT `size=large`.
+
+   `object-fit: cover`, and the arithmetic rather than a habit: Scryfall's renders are 488 × 680
+   at `normal` and 672 × 936 at `large` (0.71765 and 0.71795) against the frame's 63 : 88
+   (0.71591) — a difference of 0.24% and 0.28%. `contain` would letterbox a hairline of the frame
+   between the art and the card's rounded corners at every width. Neither crops the artwork; one
+   of them shows a seam.
+
+   `opacity` WITHOUT a transition, which is the difference from CardTile.css and is the point:
+   the image starts transparent so a frame that has not decoded shows the well behind it rather
+   than a half-painted card, and then it simply IS there. See this file's header for why a fade
+   would be a crossfade here. */
+.card-detail-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+}
+
+/* A DATA ATTRIBUTE RATHER THAN A SECOND CLASS, because the state is a value the component
+   already holds and `data-loaded` reads the same in the DOM inspector as it does in the test
+   that asserts it. */
+.card-detail-image[data-loaded='true'] {
+  opacity: 1;
+}

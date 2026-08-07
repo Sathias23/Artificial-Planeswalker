@@ -29,6 +29,58 @@ describe('AppShell landmarks (AC 14, Q4)', () => {
     expect(screen.getAllByRole('contentinfo')).toHaveLength(1)
   })
 
+  it('keeps the counts at 1/1/1 WITH a skip link present (c4-11, AC 2)', () => {
+    // The first structural addition to this file in nine stories, and the thing it must not do is
+    // become a fourth landmark. Asserted WITH the slot filled, because the test above renders an
+    // empty shell and would stay green through a `<nav>` or `<aside>` wrapper here.
+    render(<AppShell skipLink={<button type="button">Skip past the deck grid</button>} />)
+
+    expect(screen.getAllByRole('banner')).toHaveLength(1)
+    expect(screen.getAllByRole('main')).toHaveLength(1)
+    expect(screen.getAllByRole('contentinfo')).toHaveLength(1)
+    expect(screen.queryAllByRole('navigation')).toHaveLength(0)
+    expect(screen.queryAllByRole('complementary')).toHaveLength(0)
+    expect(screen.queryAllByRole('region')).toHaveLength(0)
+  })
+
+  it('renders the skip link OUTSIDE all three landmarks, and FIRST (c4-11, AC 1, AC 2, Q5)', () => {
+    const { container } = render(
+      <AppShell
+        skipLink={<button type="button">Skip past the deck grid</button>}
+        left={<p>left column content</p>}
+        footer={<p>footer content</p>}
+      />,
+    )
+    const link = screen.getByRole('button', { name: 'Skip past the deck grid' })
+
+    // OUTSIDE ALL THREE. Q5 declined putting it inside `<header>`: a skip link is not banner
+    // content, and joining a landmark's accessible content buys nothing.
+    expect(screen.getByRole('banner').contains(link)).toBe(false)
+    expect(screen.getByRole('main').contains(link)).toBe(false)
+    expect(screen.getByRole('contentinfo').contains(link)).toBe(false)
+
+    // FIRST IN DOCUMENT ORDER, which — because nothing in this app carries a `tabindex` — is the
+    // whole of "the first Tab stop" (c4-6's ruling). Asserted as POSITION rather than as a
+    // `tabindex` value, following `CardTile.test.tsx:595-605`.
+    expect(container.querySelector('.app-shell')?.firstElementChild).toBe(link)
+    expect(
+      link.compareDocumentPosition(screen.getByRole('banner')) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it('renders NOTHING in the skip-link slot when it is empty — no placeholder (c4-11)', () => {
+    // The one slot in this file that deliberately breaks the AC 21 placeholder convention. Every
+    // other empty region renders a line naming its owning story; this one renders nothing at all,
+    // because it sits before the header on EVERY surface — including the ones where the link is
+    // correctly absent — so a placeholder would put a story key permanently in the most prominent
+    // position in the document. That is the exact defect the C3 retro's F1 item is about.
+    const { container } = render(<AppShell left={<p>left column content</p>} />)
+
+    expect(container.querySelector('.app-shell')?.firstElementChild?.tagName).toBe('HEADER')
+    expect(container.textContent).not.toContain('c4-11')
+    expect(container.textContent).not.toContain('Skip past the deck grid')
+  })
+
   it('puts BOTH columns inside the single main landmark', () => {
     render(<AppShell left={<p>left column content</p>} right={<p>right column content</p>} />)
 

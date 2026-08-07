@@ -19,7 +19,15 @@
 
 import { describe, expectTypeOf, it } from 'vitest'
 
-import type { ErrorReason, ErrorResponse, HealthResponse } from './schema'
+import type {
+  Card,
+  CardFace,
+  ErrorReason,
+  ErrorResponse,
+  FormatCheckReport,
+  FormatCheckRow,
+  HealthResponse,
+} from './schema'
 
 describe('generated wire types (AD-12)', () => {
   // `status` must stay the 'ok' literal, not widen to string: it is the closed token the
@@ -59,5 +67,76 @@ describe('generated wire types (AD-12)', () => {
       | 'payload_too_large'
       | 'internal_error'
     >()
+  })
+
+  /**
+   * `CardFace`, added by story c4-5 (Q1) — and pinned in the two directions that actually bite
+   * the detail panel.
+   *
+   * The panel narrows every face field before drawing it, and the reason that is REQUIRED rather
+   * than careful is here in the type: each one is optional AND nullable, so `face.name` is
+   * `string | null | undefined` and the three spellings of "absent" are all reachable from one
+   * response. A pin that only asserted the alias exists would not have said that.
+   */
+  it('pins CardFace as all-optional and all-nullable — the reason the panel narrows', () => {
+    expectTypeOf<CardFace['name']>().toEqualTypeOf<string | null | undefined>()
+    expectTypeOf<CardFace['type_line']>().toEqualTypeOf<string | null | undefined>()
+    expectTypeOf<CardFace['oracle_text']>().toEqualTypeOf<string | null | undefined>()
+    expectTypeOf<CardFace['mana_cost']>().toEqualTypeOf<string | null | undefined>()
+  })
+
+  it('pins CardFace as the element type of `Card.card_faces` — one shape, not two', () => {
+    // THE HALF THAT MAKES THE ALIAS LOAD-BEARING. `wire-contract.test.ts` bans a hand-written
+    // face shape outside `src/api/`, so the only way the panel can read a face is through this
+    // alias — and the only thing that makes the alias correct is that it IS what the hydrated
+    // record carries. A regeneration that renamed or restructured the schema reddens here.
+    expectTypeOf<NonNullable<Card['card_faces']>[number]>().toEqualTypeOf<CardFace>()
+  })
+
+  /**
+   * The format-check pair, added by story c4-10 — and pinned on the two properties the panel is
+   * BUILT on rather than on "the alias exists".
+   *
+   * `CHECK_ORDER` and the three-outcome vocabulary are declared constants on the Python side with
+   * tests of their own; what a TypeScript consumer needs is that both arrive as **closed
+   * string-literal unions**, because that is what makes the label map and the tone map exhaustible
+   * by `tsc`. A regeneration that widened either to `string` would leave every map still
+   * compiling, every test still green, and a seventh check silently unlabelled — which is the
+   * exact failure `Assert<[Exclude<…>] extends [never]>` in `FormatCheck.tsx` exists to catch and
+   * which THIS pin is the upstream half of.
+   */
+  it('pins the six check names as a closed union — the label map depends on it', () => {
+    expectTypeOf<FormatCheckRow['check']>().toEqualTypeOf<
+      'legality' | 'size' | 'copy_limit' | 'sideboard' | 'banned' | 'rotation'
+    >()
+  })
+
+  it('pins the three outcomes as a closed union — the tone map depends on it', () => {
+    // Three, and no fourth. `deck_validator.py:475-482` declares that as domain vocabulary and
+    // says mapping them onto a visual tone is the shell's job — which is why `TONE_FOR_STATUS`
+    // lives in the container and `neutral` is unreachable from it.
+    expectTypeOf<FormatCheckRow['status']>().toEqualTypeOf<'pass' | 'advisory' | 'violation'>()
+  })
+
+  it('pins FormatCheckRow as the element type of the report — one shape, not two', () => {
+    // The half that makes the alias load-bearing, exactly as for `CardFace` above:
+    // `wire-contract.test.ts` bans a hand-written row shape outside `src/api/`, so the panel can
+    // only read a row through this alias, and the only thing that makes the alias correct is that
+    // it IS what the report carries.
+    expectTypeOf<FormatCheckReport['rows'][number]>().toEqualTypeOf<FormatCheckRow>()
+  })
+
+  it('pins `format` as a non-nullable string — the reason there is no `=== null` branch', () => {
+    // `deferred-work.md:1972-1981` warned that a "no format" branch keyed on `format === null`
+    // would be dead code. It is stronger than that and this is where it is written down: the
+    // generated type is `string`, so that branch would not COMPILE. An absent format is `''`,
+    // and the field that answers the question is `format_recognized`.
+    expectTypeOf<FormatCheckReport['format']>().toEqualTypeOf<string>()
+    expectTypeOf<FormatCheckReport['format_recognized']>().toEqualTypeOf<boolean>()
+    // …and every field is REQUIRED — no `?`, no `| null` — which is why the narrower in
+    // `client.ts` checks shape rather than presence and no consumer writes `?? ''`.
+    expectTypeOf<FormatCheckRow['detail']>().toEqualTypeOf<string>()
+    expectTypeOf<FormatCheckReport['mainboard_count']>().toEqualTypeOf<number>()
+    expectTypeOf<FormatCheckReport['sideboard_count']>().toEqualTypeOf<number>()
   })
 })

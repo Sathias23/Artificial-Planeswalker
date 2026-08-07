@@ -189,11 +189,93 @@
   --ease-snap: cubic-bezier(0.2, 0, 0, 1);
 
   /* ---- Elevation ----------------------------------------------------------------------
-     Three tokens, and the ONLY legal source of a box-shadow. Composing is expected and
+     Four tokens, and the ONLY legal source of a box-shadow. Composing is expected and
      supported: `box-shadow: var(--shadow-rest), var(--glow)` passes the gate. */
   --shadow-raise: 0 0 0 1px rgb(139 147 255 / 14%), 0 12px 32px rgb(0 0 0 / 50%);
   --shadow-rest: 0 12px 32px rgb(0 0 0 / 50%);
   --glow: 0 0 16px var(--accent-glow);
+
+  /* THE FOCUS RING THAT HAS TO BE LEGIBLE OVER ARTWORK (story c4-4, Q2, UX-DR40, UX-DR41).
+     DESIGN.md's `components.card-tile.focus-ring-over-art`, byte-for-byte — a 2px ring in
+     `--focus-ring` hugging the card edge, then 2px more of `--surface-base` separating that
+     ring from whatever sits behind it. The inner band is what keeps it visible against a
+     bright card face; the outer band is what keeps it visible against the panel.
+
+     IT IS A TOKEN BECAUSE IT CANNOT BE ANYTHING ELSE, and that is measured rather than
+     preferred: `.stylelintrc.json`'s `box-shadow` allowed-list admits `none` or a comma-list
+     of `var(--shadow-…)` / `var(--glow)` AND NOTHING ELSE, so this composite cannot be
+     written in a component stylesheet at all. `ui/README.md` already ruled the answer and
+     named this exact case — "if you need a new composite (a live ring, a pinned ring), ADD A
+     TOKEN TO THE LAYER; do not inline it, and do not declare it in your own file."
+
+     THE PIN MOVES IN TWO FILES, AND THEY MOVE TOGETHER: `expectedNames` + `toHaveLength` in
+     tests/tokens.test.ts, and `declaredTokens.size` in tests/token-usage.test.ts. 65 until
+     c4-4, 66 from this token, 68 since c4-5's two rings below — the count lives in those two
+     pins, not here (a literal in this comment went stale once already; review 2026-08-05).
+
+     `components.card-tile.live-ring` was DELIBERATELY ABSENT until c4-5, because nothing set
+     `live` on a tile until its inspection contract, and this layer's standing rule is that an
+     entry is added in the commit that gives it a consumer. **c4-5 adds it, below.** */
+  --shadow-focus-ring-over-art: 0 0 0 2px var(--focus-ring), 0 0 0 4px var(--surface-base);
+
+  /* THE TWO INSPECTION RINGS (story c4-5, Q2, Q4, UX-DR6, UX-DR20).
+     66 -> 68, and the pins moved in the same commit: `expectedNames` + `toHaveLength` in
+     tests/tokens.test.ts, and `declaredTokens.size` in tests/token-usage.test.ts.
+
+     THE LIVE RING is `components.card-tile.live-ring`, byte-for-byte — a 1px accent edge plus a
+     20px accent glow, marking the card currently under inspection. The absence of this token
+     was ITSELF asserted, by a test whose name said why ("does NOT ship the live ring, because
+     nothing sets `live` until c4-5"); that test is REPAIRED rather than deleted, because it is
+     the mechanism that told this story's author the pin moves with the value.
+
+     THE PINNED RING is `components.card-detail.pinned-ring`, and it carries a correction to the
+     artefact rather than a copy of it. DESIGN.md declared it `{colors.accent-dim}` on a
+     component whose own background it declares as `{colors.surface-overlay}` — 2.70:1, the
+     pairing DESIGN.md's Colors table bans BY NAME three sections later, and the identical defect
+     the UX validation gate closed as M4/C3 for the live ring above. The fix was never carried
+     across. `--accent` is 5.5:1 on that surface and is the table's own named substitute, so
+     DESIGN.md's frontmatter was AMENDED in the same commit with the reason inline; tokens.test.ts
+     compares these values against that frontmatter, so shipping the correction without amending
+     the artefact would have been a red test, and shipping the artefact's value without the
+     correction would have been an accessibility defect that every gate waved through (the
+     `findAccentDimOnOverlay` guard is same-block only and cannot see a parent's background).
+
+     BOTH ARE TOKENS BECAUSE THEY CANNOT BE ANYTHING ELSE: .stylelintrc.json's `box-shadow`
+     allowed-list admits `none` or a comma-list of var(--shadow-…) / var(--glow) AND NOTHING
+     ELSE, so neither composite can be written in a component stylesheet at all. ui/README.md
+     ruled this by name — "if you need a new composite (a live ring, a pinned ring), ADD A TOKEN
+     TO THE LAYER" — and these are the two components it was talking about. */
+  --shadow-live-ring: 0 0 0 1px var(--accent), 0 0 20px var(--accent-glow);
+  --shadow-pinned-ring: 0 0 0 1px var(--accent);
+
+  /* THE DECK ROW'S LIVE RULE (story c4-7, Q6, UX-DR19).
+     68 -> 69, and the pins moved in the same commit: `expectedNames` + `toHaveLength` in
+     tests/tokens.test.ts, and `declaredTokens.size` in tests/token-usage.test.ts.
+
+     `components.deck-row.live-rule`, byte-for-byte — a 2px accent bar down the row's leading
+     edge, drawn as an INSET shadow so it costs no layout: a `border-left` would shift every
+     row's content 2px sideways on becoming live, which is exactly the kind of jitter a cursor
+     sweeping a dense list turns into a shimmer. The row's live TINT is a plain background
+     colour (`components.deck-row.live-background`, `--accent-glow`) and needs no token of its
+     own, because a single colour is not a composite.
+
+     IT IS A TOKEN BECAUSE IT CANNOT BE ANYTHING ELSE, and the constraint is the same one the
+     three composites above hit: .stylelintrc.json's `box-shadow` allowed-list admits `none` or
+     a comma-list of var(--shadow-…) / var(--glow) AND NOTHING ELSE, so `inset 2px 0 0 …`
+     cannot be written in DeckList.css at all. ui/README.md ruled it — "ADD A TOKEN TO THE
+     LAYER; do not inline it, and do not declare it in your own file."
+
+     `var(--accent)`, and NOT `--accent-dim`, needs no correction here — DESIGN.md's frontmatter
+     already specifies `{colors.accent}` for this one. That is the M4/C3 fix arriving correct
+     the first time, where the tile's live ring and the detail panel's pinned ring each had to
+     be amended after the fact; this story inherits the precedent and the ban rather than the
+     defect. On `--surface-panel`, which is what a row actually sits on (`--surface-overlay` is
+     the row's HOVER colour, not its resting ground), `--accent` is 6.21:1 and `--accent-dim`
+     would be 3.05:1 — and over the row's own live tint the pair is 4.26:1 against 2.09:1, where
+     `--accent-dim` fails the 3:1 non-text floor outright. DeckList.css carries both
+     measurements beside the rule that composites them (corrected at the c4-7 review: this
+     comment previously claimed the overlay surface and the detail panel's 5.5:1/2.70:1 pair). */
+  --shadow-deck-row-live: inset 2px 0 0 var(--accent);
 }
 
 /* ==== THE REDUCED-MOTION REGISTRATION POINT ============================================
@@ -239,4 +321,111 @@
     --motion-bloom: 0ms;
     --motion-aurora: 0ms;
   }
+
+  /* ---- c4-4, THE FIRST REGISTRATION THIS BLOCK HAS EVER TAKEN ------------------------
+     Two motions ship in c4-4 and they need DIFFERENT amounts of help, which is the whole
+     reason this block distinguishes a mechanism from a registration:
+
+       IMAGE FADE-IN -> instant appearance. `transition: opacity var(--motion-pulse)` is
+       expressed ENTIRELY through a duration token, so zeroing `--motion-pulse` above already
+       makes it instant. It is MECHANICAL, it needs nothing here, and writing a second
+       declaration for it would suggest the mechanism does not work.
+
+       CARD-TILE HOVER POP -> no scale, shadow only. This one is NOT mechanical, and that is
+       the trap this block's instruction exists for: a zeroed duration makes
+       `transform: scale(1.06)` INSTANT, not ABSENT. The tile would still jump 6% larger the
+       moment a pointer crossed it — which is precisely the vestibular motion UX-DR42 asks to
+       remove, arriving faster. So the scale is switched off HERE, explicitly, and the
+       elevation change is left alone: `--shadow-raise` is UX-DR42's named fallback ("no
+       scale, shadow only") and a shadow swap is not motion.
+
+     The z-index raise stays, and so does the shadow: UX-DR42's fallback is "no scale, SHADOW
+     ONLY", so the hover must still say something. A shadow swap is not motion, and the raised
+     z-index is paint order rather than movement — without it a tile with a raised shadow would
+     have its neighbours drawn over that shadow.
+
+     ==== WHY `!important`, WHICH IS OTHERWISE ABSENT FROM THIS CODEBASE ==================
+     MEASURED, not defensive. `.card-tile:hover` here and `.card-tile:hover` in CardTile.css
+     have IDENTICAL specificity (0,2,0), so the winner is decided by source order — and this
+     file loses it: tokens.css is `@import`ed at the top of src/index.css, and component
+     stylesheets are emitted after it in the bundle. Without `!important` this whole block
+     would parse cleanly, read correctly, and do nothing at all.
+
+     The alternatives were worse. Raising specificity with `button.card-tile` couples the token
+     layer to one component's element name; lowering the component's with `:where()` leaves the
+     accessibility override at the mercy of the next rule anybody writes. An override that must
+     win regardless of what a component declares is the textbook case for `!important`, and
+     stating it here is what keeps the next registration from copying the pattern blindly.
+
+     ==== THE SELECTOR MOVED AT c4-6, AND THE MOVE IS THE POINT ==========================
+     This read `.card-tile:hover, .card-tile:focus-visible` until c4-6, whose flip control had to
+     become a SIBLING of the tile's button rather than a descendant of it (an interactive
+     descendant of a `<button>` is invalid HTML that React 19.2 warns about in development and
+     that assistive technology does not reliably expose — both measured). With the control
+     outside the button, `.card-tile:hover` is false while a pointer sits on it, so the pop moved
+     onto `.card-tile-frame`, which is the same BOX and a different element. The guard compares
+     selector TEXT per property, so this registration had to move in the same commit or the whole
+     suite would go red — a false FAILURE, which is the safe direction the residue at
+     `deferred-work.md:3750` was left standing for. */
+  .card-tile-frame:hover,
+  .card-tile-frame:has(:focus-visible) {
+    transform: none !important;
+  }
+
+  /* ---- c4-6, THE DFC FLIP — THE FIRST 3D MOTION, AND THE FIRST THAT NEEDS A REPLACEMENT
+     RATHER THAN A REMOVAL -------------------------------------------------------------
+     UX-DR42's named fallback is "instant face swap". Two rotations ship (FlipControl.css): the
+     stacked-faces box turns 180° on flip, and the back face is pre-rotated 180° so that it reads
+     the right way round once it has. Both are `transform`, so both are switched off here — and
+     this is where this registration stops resembling c4-4's.
+
+     THE HOVER POP COULD SIMPLY BE REMOVED. THIS ONE CANNOT. `backface-visibility: hidden` is
+     what decides which of the two stacked faces is painted, and it decides it FROM the rotation:
+     with both transforms gone, both faces point at the viewer and the back — later in the DOM,
+     at the same `inset: 0` — covers the front at every setting, flipped or not. So switching the
+     motion off without replacing the mechanism would not produce "no rotation", it would produce
+     "always the back face", which is a worse render than the motion it removed.
+
+     The two `visibility` rules are that replacement, and they are the whole of the fallback:
+     each state paints exactly one face, instantly, with nothing to animate. `visibility` rather
+     than `display: none`, because the hidden face keeps its box — the layout of the card is the
+     same at both settings, which is the interchangeability UX-DR36 asks for everywhere else.
+
+     `deferred-work.md:3750` — *"the residue stands for whoever ships the next motion (c4-6's 3D
+     flip)"* — is therefore triggered TWICE by this one story: once by the flip's own two
+     rotations, and once by the hover pop's selector moving onto the frame above. Both are closed
+     here rather than carried. */
+  .card-faces[data-flipped='true'],
+  .card-face.is-back {
+    transform: none !important;
+  }
+
+  .card-faces[data-flipped='false'] .card-face.is-back,
+  .card-faces[data-flipped='true'] .card-face.is-front {
+    visibility: hidden;
+  }
+
+  /* ---- c4-7, THE DECK-ROW LIVE TINT — MECHANICAL, AND DELIBERATELY WITHOUT A RULE ------
+     UX-DR42's inventory row for this motion is above and has been reserved BY NAME since c4-4:
+     "Deck-row live tint -> instant (c4-7)". This is the story that fills it, and what it fills
+     it with is a statement rather than a declaration.
+
+     `.deck-row` transitions `background-color` and `box-shadow` over `var(--motion-pulse)` and
+     NOTHING ELSE. That is expressed entirely through a duration token, so zeroing
+     `--motion-pulse` at the top of this block already makes it instant — it is MECHANICAL, in
+     exactly the sense c4-4 drew the distinction for its image fade-in, and writing a rule for
+     it here would suggest the mechanism does not work.
+
+     THE DISTINCTION IS THE WHOLE REASON THIS BLOCK EXISTS, so it is worth saying which side
+     this lands on and why it was checked rather than assumed. A zeroed duration makes a
+     `transform` INSTANT, not ABSENT — that is why the hover pop and the flip above need their
+     own `none !important` rules. **This row ships no transform, no scale, no rotation and no
+     translation**, so there is nothing left moving once the durations are zero: the tint
+     appears at once and the inset rule appears at once, which is precisely the named fallback.
+
+     The consequence for the guard is recorded rather than left to be rediscovered: the
+     enumerated shipped-motion pin in tests/token-usage.test.ts (four entries, all c4-6's) does
+     NOT move for this story, because that pin is keyed on `transform` declarations and this
+     story adds none. A later story that gives a deck row a transform inherits both halves — the
+     rule here and the pin there. */
 }

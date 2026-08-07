@@ -31,9 +31,20 @@ import './ManaPip.css'
  * its own token directly, and `ui/tests/token-usage.test.ts` proves all 21 of them exist.
  *
  * DECORATIVE BY DEFAULT (Q4). A pip alone carries no accessible name: `ManaCost` labels the
- * whole cost on a `role="img"` wrapper, and a labelled pip inside it would double-announce.
- * c4-9's legend, which puts a pip beside its own text count, is the case the optional `label`
- * exists for — and it is opt-IN because the flooding UX-DR45 warns about is the default failure.
+ * whole cost on a `role="img"` wrapper, and a labelled pip inside it would double-announce. It
+ * is opt-IN because the flooding UX-DR45 warns about is the default failure.
+ *
+ * ⚠️ THIS COMMENT USED TO NAME c4-9's LEGEND AS THE `label` PROP'S CASE, AND c4-9 SHIPPED IT
+ * DECORATIVE. The correction is kept rather than deleted, because the reasoning was right and
+ * the conclusion was inverted by it: a legend entry puts a pip beside its own text count, and
+ * that entry already reads the colour, the count and the percentage as words — so a labelled pip
+ * there is precisely the doubled announcement this sentence warns about. UX-DR18 makes the
+ * legend the accessible data path, and it does that through TEXT.
+ *
+ * So the prop has NO CALLER in Phase 1, and that is the opt-in defaulting correctly rather than
+ * dead code: the case it exists for is a pip drawn with no text beside it, which nothing has
+ * needed yet. `ManaPip.test.tsx:78` remains its only witness, and it is titled for c4-9's legend
+ * — a name that is now historical rather than predictive.
  *
  * APPEARANCE IS NOT DEV-VERIFIED IN THIS STORY (AC 21). Nothing imports this component yet and
  * jsdom applies no stylesheet, so every claim about the circle, the fill and the split gradient

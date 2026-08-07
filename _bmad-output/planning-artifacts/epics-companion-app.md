@@ -505,8 +505,31 @@ area; the right column, nav and footer remain functional around it.
 
 UX-DR31: **Skip link** — "Skip past the deck grid", the first Tab stop on every surface rendering a
 populated grid, visually hidden until keyboard focus. Enter moves focus to the card detail panel
-heading. **Withdrawn when a State panel replaces the grid.** It exists because the grid is up to
-100+ Tab stops between the header and the entire right column.
+heading. The shipped control is a real **`<button>`, not an `<a href="#…">`** (c4-11 Q5, recorded
+here at the 2026-08-07 code review so the conventional anchor idiom is not "restored" by a later
+tidy-up): this app has no router, so a hash would write a history entry the app never reads, and a
+browser does not move `document.activeElement` to a non-focusable fragment target anyway — the
+imperative `tabIndex = -1` hand-off is required either way. **Withdrawn when a State panel
+replaces the grid** — and also on an **empty deck**, which satisfies neither branch of that rule
+as originally written (it renders no State panel and no populated grid) and where there is
+**nothing to skip**: zero tiles and zero deck rows sit between the link and the right column, so
+the link would save zero Tab stops. (An earlier form of this rule claimed the link's *target*
+would not exist on an empty deck; that was false — `CardDetail` renders its frame and heading
+unconditionally, and UX-DR20's "first card of the first type group" fills the panel's *content*,
+not its heading. Corrected at the c4-11 code review, 2026-08-07.) The shipped condition is
+therefore *a loaded deck with at least one card* — where "card" spans **every board including the
+sideboard**, because c4-7's deck list renders a focusable row per sideboard card and a
+sideboard-only deck still has a corridor of rows (c4-11 Q3, amended at the same review). It
+exists because the grid sits between the header and the entire right column.
+
+> **⚠️ MEASURED AT c4-11, 2026-08-07 — the "100+" figure this rule used to carry was stale by
+> roughly half.** Over all 40 real decks, deriving the corridor from the shipped component tree:
+> the run from the header to the first footer link is **206 Tab stops** on the largest deck,
+> **median 78, mean 102.0**. The cause is **c4-7**'s deck list, which turned every card into a
+> *second* focusable row — in the very column this link jumps into — and which did not exist when
+> "100+" was written. **The link removes only the first 105 of the 206**: after using it the footer
+> is still **101 stops away**, **19 of 40** decks remain more than 50 stops from the footer and
+> **36 of 40** remain more than 20. See UX-DR40's flag; the residue is homed on **c8-6**.
 
 UX-DR32: **Footer attribution** — one quiet full-width line, visible without scrolling on **every
 surface**: "Card data and imagery courtesy of Scryfall. Unofficial Fan Content permitted under the
@@ -563,11 +586,46 @@ never navigates or clears deck state. **Enter/Space** activates the focused elem
 **Banned:** drag-and-drop, right-click menus, double-click semantics, hover-only disclosure of
 unique information, and any control that edits the deck.
 
-UX-DR40: **Tab order** is skip link → header nav pills → card tiles in visual order, **each DFC's
-flip control immediately after its own tile** → deck-row list → connection pill → footer links;
-inside an open agent view, Tab is trapped. *(Arrow-key grid navigation is explicitly deferred out
-of MVP — gate H3 — with the skip link as sole mitigation and a revisit-before-public-release flag,
-since the Fan Content Policy links sit behind the grid.)*
+UX-DR40: **Tab order** is document order (nothing in the app carries a `tabindex`), and as of
+c4-11 the enumeration below is the order the **shipped DOM actually produces**. Unbuilt stops are
+marked as such rather than listed as if they existed:
+
+> skip link → *(header nav pills — **c6-8**, Epic 6; and UX-DR28 makes a pill non-focusable until
+> its kind has received a push, so on a cold-open session this stop never exists)* → card tiles in
+> visual order, **each DFC's flip control immediately after its own tile** → **card detail: the
+> unpin control (while pinned), the panel's own flip control (when the target is flippable), the
+> oracle scroller** → deck-row list → *(connection pill — **c5-7**, Epic 5)* → footer links;
+> inside an open agent view, Tab is trapped.
+
+**What changed and why (c4-11 Q2).** The previous enumeration was wrong in both directions. It
+named three stops that **cannot exist** — the nav pills and the connection pill are backlog, and
+`AppShell.tsx:117` still renders a placeholder where the pills go — and it **omitted four that
+already ship**: the card detail panel's unpin control (c4-5), its own copy of the flip control
+(c4-6), the oracle scroller (c4-11) and the skip link's target heading while it holds
+`tabindex="-1"`. `CardDetail.tsx:117-124` predicted the first omission by name and assigned the
+correction here: *"c4-11 must add it to the enumeration rather than rediscover it."*
+
+**The connection pill's DOM position is NOT decided here.** Three stories each assume someone else
+fixed it — this rule put it between the deck rows and the footer, c5-7 cites UX-DR47 and is silent
+on position, and c10-1 calls it *"the last stop before the footer"* — while `DESIGN.md:445` places
+it physically **bottom-left**, in the other column from the deck rows. Re-homed to **c5-7**, which
+is the story that builds the component.
+
+*(Arrow-key grid navigation is explicitly deferred out of MVP — gate H3 — with the skip link as
+sole mitigation and a **revisit-before-public-release flag**, since the Fan Content Policy links
+sit behind the grid. **The cost, measured over all 40 real decks at c4-11: 206 Tab stops max /
+78 median / 102.0 mean from the header to the first footer link; the skip link removes only the
+first 105, leaving 101; 19 of 40 decks stay more than 50 stops from the footer and 36 of 40 stay
+more than 20.** The flag is carried on **c8-6**, which actions or re-accepts it.)*
+
+⚠️ **Coverage-map defect, recorded rather than resolved**: this file's own **UX-DR coverage**
+table (under the *FR Coverage Map* section, below — cited by name rather than line number, after the
+first written form of this note minted `:698-702` in the very commit that added the ~45 lines
+that moved it; c4-11 code review, 2026-08-07) gives UX-DR40 to **Epic 4
+and Epic 8**, and UX-DR46 to **Epic 4 and Epic 5**, with two different verbs for the revisit flag
+(Epic 4 *"states the cost … and carries a flag"*; c8-6 *"consciously actions or re-accepts"* it).
+The two verbs are complementary, not contradictory — Epic 4 builds the floor, Epic 5 extends it to
+the connection pill, Epic 8 decides whether the floor is enough to release on.
 
 **Accessibility floor** (acceptance criteria, not polish)
 
@@ -2258,7 +2316,7 @@ So that the right column and the footer's licensing links are reachable in pract
 
 **Given** arrow-key grid navigation is deferred out of MVP
 **When** the deferral is recorded
-**Then** the cost is stated plainly in the story notes — a 100-card deck is 100+ sequential Tab stops between the header and the right column, with the skip link as sole mitigation — and it carries a revisit-before-public-release flag, since the footer's Fan Content Policy links sit behind the grid (UX-DR40)
+**Then** the cost is stated plainly in the story notes — **measured at c4-11 over all 40 real decks: 206 sequential Tab stops max / 78 median / 102.0 mean** from the header to the first footer link (the stale "100+" this clause used to carry predated c4-7's second focusable row per card), with the skip link as sole mitigation removing only the first 105 — and it carries a revisit-before-public-release flag, since the footer's Fan Content Policy links sit behind the grid (UX-DR40)
 
 ### Story 4.12: Empty deck state and the cold-open render budget
 

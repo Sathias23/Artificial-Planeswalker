@@ -138,11 +138,24 @@ components:
     background-overlay: '{colors.surface-overlay}'
     border: '1px solid {colors.border-hairline}'
     radius: '{rounded.lg}'
-    header-padding: '10px 14px'
-    body-padding: '12px 14px'
+    # AMENDED 2026-08-07 (story c4-12, Q13). These read `'10px 14px'` and `'12px 14px'`, transcribed
+    # from the composition reference. **The Layout & Spacing section below bans `14` BY NAME** —
+    # *"the mock's 18/14/9/7px one-offs are drift, not spec"* — and `10` is off the
+    # 4/8/12/16/24/32/48 scale too, so stylelint's allowed-list refuses both outright: they are a
+    # BUILD FAILURE, not a preference. `Panel.css` has shipped the scale pairs since c2-7 and its
+    # comments name these two values as the mock's; what was never done is amending the artefact
+    # they were also written into, which left this file specifying a value the app is forbidden to
+    # ship. Same repair, same reason, as `components.legality-row.padding` below.
+    header-padding: '{spacing.2} {spacing.3}'
+    body-padding: '{spacing.3}'
   badge:
     radius: '{rounded.pill}'
-    padding: '2px 9px'
+    # AMENDED 2026-08-07 (story c4-12, Q13). This read `'2px 9px'`. `9` is in the Layout & Spacing
+    # section's own enumerated drift list and `2` is off the scale; `Badge.css` has shipped
+    # `{spacing.1} {spacing.2}` since c2-7. The third and last of the family — the c4-10 amendment
+    # named these two files as *"the identical repair … already shipped twice"* and amended only
+    # the legality row.
+    padding: '{spacing.1} {spacing.2}'
     type: '{typography.label}'
   stat-chip:
     background: '{colors.surface-well}'
@@ -175,7 +188,26 @@ components:
     radius: '{rounded.pill}'
     backdrop: 'blur(6px)'
   deck-row:
-    columns: '34px 1fr auto 64px'
+    # AMENDED 2026-08-06 (story c4-7, Q1). This read `'34px 1fr auto 64px'`, whose fourth track
+    # reserved 64px for a right-aligned PRICE. There is no price data anywhere in this system and
+    # there never has been — measured, not inferred: `cards` has 23 columns and none is a price,
+    # no schema declares one, and `src/data/importers/transformers.py` (the field-by-field
+    # Scryfall projection) never reads the `prices` object at all, so it was never imported rather
+    # than dropped downstream. `tests/unit/companion/test_routes_cards.py:136` asserts the absence
+    # ON PURPOSE, under Brad's c3-2 Q4 ruling that the endpoint ships no price rather than a
+    # permanently-null one; c4-5 closed the identical clause on the card detail panel BY ABSENCE.
+    # A dead 64px gutter is the alternative and it is worse — a visible empty column reads as a
+    # loading failure rather than as an absent feature.
+    # The bare `1fr` also could not ship verbatim: `shell.test.ts:960` bans a content-floored
+    # track, because `1fr` means `minmax(auto, 1fr)` and one unbreakable card name would widen the
+    # column past its share. `minmax(0, 1fr)` is the guard's own named correct form.
+    # Stated inline so it is not "corrected" back, exactly as the c4-5 amendment above asks.
+    # AMENDED AGAIN 2026-08-06 (c4-7 review ruling): the quantity track was a fixed `34px`, sized
+    # to the corpus maximum (×34) — a measurement, not a bound. Unlimited-copy cards (Relentless
+    # Rats and kin) put ×100 one import away, and a fixed track would clip the digits into the
+    # name column. `minmax(34px, max-content)` floors at today's width and grows only when a
+    # wider quantity actually arrives.
+    columns: 'minmax(34px, max-content) minmax(0, 1fr) auto'
     radius: '{rounded.sm}'
     live-background: '{colors.accent-glow}'
     live-rule: 'inset 2px 0 0 {colors.accent}'
@@ -192,14 +224,39 @@ components:
     track: '{colors.surface-well}'
     height: 14px
     radius: '{rounded.pill}'
+    # Added 2026-08-06 (story c4-9, Q7) as a MEASURED accessibility repair rather than a
+    # preference, and deliberately the same value `curve-bar.segment-hairline` already carries.
+    # WCAG 2.x over the shipped hexes: all 15 adjacent `mana-*` pairs are under the 3:1 non-text
+    # floor, 8 of them under 1.3:1, worst `mana-b`/`mana-colorless` at 1.03:1 and best
+    # `mana-w`/`mana-r` at 2.30:1. But EVERY segment clears `surface-well` at 6.62:1 (`mana-r`)
+    # to 15.20:1 (`mana-w`), so a 1px separator in the TRACK colour turns 15 sub-3:1 boundaries
+    # into 15 at 6.62:1 or better, with no new token and no new colour. It closes
+    # DISTINGUISHABILITY only; identifiability is the legend's, and the two are different
+    # problems (deferred-work.md:1447-1471, open at Medium).
+    segment-hairline: '1px {colors.surface-well}'
   card-detail:
     background: '{colors.surface-overlay}'
     radius: '{rounded.lg}'
     art-radius: '{rounded.card}'
-    pinned-ring: '0 0 0 1px {colors.accent-dim}'
+    # AMENDED 2026-08-05 (story c4-5, Q2). This read `{colors.accent-dim}`, on a component whose
+    # own `background` two lines up is `{colors.surface-overlay}` — the exact pairing the Colors
+    # table below measures at 2.70:1 and bans by name. It is the identical defect the 07-25 gate
+    # closed as M4/C3 for `card-tile.live-ring`, and the fix was never carried across to this
+    # ring. `{colors.accent}` is 5.5:1 on this surface and is that table's own named substitute.
+    # Stated inline so it is not "corrected" back, exactly as C3 asked.
+    pinned-ring: '0 0 0 1px {colors.accent}'
   legality-row:
     rule: '1px solid {colors.border-hairline}'
-    padding: '9px 2px'
+    # AMENDED 2026-08-06 (story c4-10, Q10). This read `'9px 2px'`. Neither number is on the
+    # 4/8/12/16/24/32/48 spacing scale, the Layout & Spacing section below names the mock's
+    # "18/14/9/7px one-offs" as drift rather than spec — `9` is in that enumerated list — and
+    # stylelint's allowed-list refuses both outright, measured: it is a BUILD FAILURE, not a
+    # preference. `{spacing.2} {spacing.1}` (8px / 4px) is the nearest scale pair in both axes.
+    # The identical repair is already shipped twice with its citation inline: Panel.css:63-69
+    # ('10px 14px' -> 8/12) and Badge.css:52-54 ('2px 9px' -> 4/8, the same two numbers).
+    # No token is added for it — validation-report-2026-07-25.md:75 already flags this component
+    # family as over-tokenised, and both values resolve to existing scale tokens.
+    padding: '{spacing.2} {spacing.1}'
   nav-pill:
     background: '{colors.surface-panel}'
     border: '1px solid {colors.border-strong}'
@@ -249,6 +306,27 @@ components:
     border: '1px solid {colors.border-hairline}'
     radius: '{rounded.lg}'
     max-width: 480px
+  empty-deck-line:
+    # ADDED 2026-08-07 (story c4-12, Q2). This file specified the empty-deck state NOWHERE. The
+    # entire written specification was two EXPERIENCE.md table cells (`:70`, `:113`) carrying the
+    # copy, the type role, the colour and the words "no panel, no error styling" — while spacing,
+    # alignment, the container, a minimum height and the list semantics were all unlegislated.
+    # That made "the deck view matches DESIGN.md" UNSATISFIABLE for this branch rather than
+    # merely unchecked: `ui/tests/shell.test.ts` requires every `px` literal in a component
+    # stylesheet to carry a DESIGN.md citation within a sentence of the value, and there was
+    # nothing to cite. The treatment is therefore ruled and written here FIRST, and
+    # `CardGrid.css` written against it — the other order produces either a red guard or an
+    # invented citation.
+    #
+    # IT SPENDS NO LENGTH OF ITS OWN, and that is the decision rather than an omission. The line
+    # is the untitled card-grid Panel's ONLY child, so `{components.panel.body-padding}` already
+    # supplies the inset; a second one would be a value invented to fill a gap rather than a
+    # decision, which is the drift the Layout & Spacing scale exists to prevent. No min-height
+    # either: reserving grid-sized space for content that is deliberately absent is what makes an
+    # empty state read as a loading failure (see the Deck data note on that failure mode).
+    type: '{typography.body}'
+    foreground: '{colors.text-secondary}'
+    container: 'the untitled card-grid Panel — {components.panel.body-padding} is the whole of its inset'
   card-placeholder:
     background: '{colors.surface-overlay}'
     border: '1px solid {colors.border-strong}'
@@ -322,7 +400,7 @@ One family: **Space Grotesk** (fallback `system-ui, sans-serif`). Hierarchy come
 - `{typography.body}` / `{typography.body-strong}` — reasons, rationale, oracle text, state-panel copy, group descriptions.
 - `{typography.label}` — panel titles, type-group headers, nav pills, badges. Uppercase, tracked 0.1em. Keep label strings short: at 11px with that tracking, a long title is effortful to read. Panel titles that need to carry counts should put the count in `{typography.numeric}` beside the label, not inside it.
 - `{typography.micro}` — kicker labels, stat-chip labels, timestamps, footer attribution. Uppercase, tracked 0.08em.
-- `{typography.numeric}` — every count, quantity, price, and axis value. **Always tabular.**
+- `{typography.numeric}` — every count, quantity and axis value. **Always tabular.** (*Amended 2026-08-07, story c4-12, Q13*: this listed *price* among the roles, a residue of the same removal `components.deck-row.columns` and the Card detail panel bullet each recorded in 2026-08-06 — **there is no price data anywhere in this system**, so the role has nothing priced to set.)
 
 Tabular numerals are non-negotiable — columns of prices and live-updating counts must not jitter. The CSS `font` shorthand cannot carry `font-variant-numeric`, so `{typography.numeric}` defines the feature separately as `{typography.numeric.numeric-features}`, and the two are always applied together. Never set `font: var(--type-numeric)` alone.
 
@@ -371,7 +449,7 @@ Tonal layering (the surface ramp) does the everyday hierarchy work. Borders are 
 - **Badge** — pill, `{typography.label}`, 5 tones: neutral (`surface-overlay` / `text-secondary` / `border-strong`), accent, positive, negative, caution. Semantic tones tint background and border from their own semantic token — never from hard-coded RGB, which breaks every non-Voltglass theme.
 - **StatChip** — label in `{typography.micro}` `{colors.text-tertiary}` over a 17px `{typography.numeric}` value in `{colors.text-primary}`, on `{components.stat-chip.background}`. Optional delta in `{typography.micro}`, tinted `{colors.positive}` / `{colors.negative}` by sign.
 - **Agent views nav** (the nav pill) — the agent-view controls in the header, and the "Close · esc" control inside a view. `{components.nav-pill.padding}` at `{rounded.pill}`, `{typography.label}`. Hover/focus: border to `{components.nav-pill.hover-border}`, text to `{components.nav-pill.hover-foreground}`, plus `{components.nav-pill.hover-glow}`. A pill whose view has an unread push carries a `{components.nav-pill.unread-dot}` — the accent's meaning is "the agent put something here", so an unread push is exactly what it marks.
-- **Skip link** — "Skip past the deck grid": visually hidden until it receives keyboard focus; on focus it appears at the window's top-left as a `{components.skip-link.radius}` chip on `{components.skip-link.background}` with `{components.skip-link.border}`, text in `{typography.body-strong}` `{components.skip-link.foreground}`, carrying the standard `{components.focus-ring}`. It exists because the card grid can be 100+ Tab stops sitting between the header nav and everything in the right column. Behavior in EXPERIENCE.md.
+- **Skip link** — "Skip past the deck grid": visually hidden until it receives keyboard focus; on focus it appears at the window's top-left as a `{components.skip-link.radius}` chip on `{components.skip-link.background}` with `{components.skip-link.border}`, text in `{typography.body-strong}` `{components.skip-link.foreground}`, carrying the standard `{components.focus-ring}`. It exists because the card grid puts a long run of Tab stops between the header nav and everything in the right column — **measured 2026-08-07 on the largest real deck (Atraxa Counter Cabinet v2, 99 tiles): 205 stops from the top of the document to the footer, of which the link skips 102.0 on average** (amended 2026-08-07, story c4-12, Q13; this read *"100+ Tab stops"* while EXPERIENCE.md already carried c4-11's measured figures, so the two peer artefacts disagreed about the same number). Behavior in EXPERIENCE.md.
 - **Footer attribution** — one quiet line, full width, `{components.footer-attribution.background}` above `{components.footer-attribution.border-top}`, `{typography.micro}` in `{components.footer-attribution.foreground}` (`text-secondary`, 9.3:1 — this text is legally load-bearing and gets a passing tier, not a muted one): "Card data and imagery courtesy of Scryfall. Unofficial Fan Content permitted under the Wizards of the Coast Fan Content Policy. Not approved/endorsed by Wizards." Links persistently underlined (identifiable at rest, not hover-only); hover brightens to `{colors.text-primary}`; each link's hit area ≥ 24px tall. Visible without scrolling, and never louder than this. **Required on every surface — this is a condition of public release, not a design choice.**
 
 ### Deck data
@@ -380,12 +458,12 @@ Tonal layering (the surface ramp) does the everyday hierarchy work. Borders are 
 - **DFC flip control** — rendered only on double-faced cards. A circular `{components.dfc-flip.radius}` button at `{components.dfc-flip.size}` with a `{components.dfc-flip.hit-area}` hit box, pinned to the tile's **top-left** inside `{spacing.2}` — the top-right is occupied by the quantity badge, and the two must never collide. It shares the badge's material so the pair reads as one family: `{components.dfc-flip.background}` with `{components.dfc-flip.backdrop}` and `{components.dfc-flip.border}`, carrying a stroke-based two-arrow rotate glyph in `{components.dfc-flip.foreground}` — a plain UI glyph, never anything that could read as a mana or set symbol. Opacity `{components.dfc-flip.rest-opacity}` at rest so it never competes with the art, 1.0 when its tile is hovered or focused; hovering the control itself tints the glyph `{components.dfc-flip.hover-foreground}`. It is visibly a control, not part of the card, so flip-versus-inspect is unambiguous. Flip animation: 3D Y-rotation over `{components.dfc-flip.flip}`. The card detail panel gets its own copy of the control at the same spec, pinned to its art's top-left.
 - **Quantity badge** — `{typography.numeric}` count ("×4") pinned top-right inside `{spacing.2}` of the tile, on `{components.quantity-badge.background}` with `{components.quantity-badge.backdrop}` and `{components.quantity-badge.border}`. When a quantity changes on refetch it flashes the accent glow once — garnish; the accessible signal is the group-header count plus the live-region announcement.
 - **Mana curve** — bars per mana value on a `{components.curve-bar.track}` well at `{components.curve-bar.radius}`. Buckets are **1 … 7+**; lands are excluded; DFCs bucket by front face. Counts above bars in `{typography.numeric}` `{colors.text-tertiary}`; axis labels in `{typography.micro}`. Bars fill with `{components.curve-bar.fill}` — a *chrome* token. If bars are stacked by color, segments run in fixed order W·U·B·R·G·gold·colorless separated by `{components.curve-bar.segment-hairline}`, multicolor cards contribute one `mana-gold` segment, and the segments are `aria-hidden` decoration: the accessible data is the per-bar name and the visually-hidden table. Never fill an unstacked bar with a `mana-*` token.
-- **Color distribution** — a single `{components.color-bar.height}` bar at `{rounded.pill}` on `{components.color-bar.track}`, segmented by `mana-*` proportional to pip count, with a legend of `ManaPip` + count + percentage below. This is data ink used correctly.
+- **Color distribution** — a single `{components.color-bar.height}` bar at `{rounded.pill}` on `{components.color-bar.track}`, segmented by `mana-*` proportional to pip count, with a legend of `ManaPip` + count + percentage below. This is data ink used correctly. Adjacent segments are separated by `{components.color-bar.segment-hairline}` — **added 2026-08-06 (story c4-9, Q7) as a contrast correction rather than a preference**; the frontmatter carries the measurement, and the outer edges take none because the pill's ends are already the track. **"Proportional to pip count" means the FRONT FACE's pips** — amended 2026-08-06 (c4-9, Q1), because the clause resolved two ways and no artefact said which: counting the whole `mana_cost` string counts both halves of a split, Adventure or Omen cost, and measured against the shipped database that moves **10 of 40 real decks and re-orders the segments of 2** (`Prismatic Dragon` falls from 71 pips to 45 — 37% of its bar — and its order changes from B>U>G>R>W to U>B>G>R>W; the cause is the current-Standard TDM Omen cycle, not a corner case). The front face is what every other surface already reads — UX-DR17, FR-05, and the deck row's own cost — so a whole-string bar would be the only one in the app that does not. A **hybrid pip credits every colour it can be paid with**, so the counts sum to more than the symbols printed on the cards; Phyrexian is a modifier and not a colour; generic and `{X}` count for nobody; **lands are excluded**, because a land that taps for mana is a *source* rather than a demand. The legend's `ManaPip` is **decorative** and each entry names its colour in TEXT — that text is the accessible data path, which is why the bar itself is `aria-hidden`. **`mana-gold` does not appear here**: gold is a card-level property and a *pip* is never gold.
 - **ManaPip / ManaCost** — a plain circle filled with the `mana-*` token, `{colors.text-inverse}` numeral inside for generic costs. Deliberately not a mana-symbol shape. `ManaCost` parses full Scryfall cost strings: braces, hybrid (`{2/R}`, `{W/U}`) as a split or dual-tinted pip, Phyrexian, and `{X}` — never silently dropping a symbol it doesn't recognize.
-- **Deck row** — the text-list unit. `{components.deck-row.columns}`: quantity in `{typography.numeric}` `{colors.text-tertiary}`, name in `{typography.body}` (`body-strong` `{colors.text-primary}` when live), mana cost as pips, price right-aligned in `{typography.numeric}`. `live` tints the row `{components.deck-row.live-background}` with `{components.deck-row.live-rule}`.
+- **Deck row** — the text-list unit. `{components.deck-row.columns}`: quantity in `{typography.numeric}` `{colors.text-tertiary}`, name in `{typography.body}` (`body-strong` `{colors.text-primary}` when live), mana cost as pips. `live` tints the row `{components.deck-row.live-background}` with `{components.deck-row.live-rule}`, and the quantity moves to `{colors.text-secondary}` while it is live — **added 2026-08-06 (story c4-7), as a contrast correction rather than a preference**: `{colors.accent-glow}` composites over `{colors.surface-panel}` to `#32365A`, where `{colors.text-tertiary}` measures 3.73:1 against a 13px numeral and fails the 4.5:1 small-text floor, while measuring 5.43:1 at rest. This is a *fifth* surface the Contrast table below does not cover — it lists the four named surfaces, and a tinted row is none of them. Same family as the `card-tile.live-ring` and `card-detail.pinned-ring` corrections. **There is no price column** — amended 2026-08-06 (story c4-7, Q1); see the frontmatter note on `components.deck-row.columns` for the measurement. A double-faced row shows the **front face's** name and cost (UX-DR19): the name splits from the summary, but 87.8% of faced cards carry a blank top-level `mana_cost` whose real value lives only in `card_faces[0]`, so that half depends on hydration and paints late.
 - **Group header** — type-group dividers ("CREATURES") in `{typography.label}` `{components.group-header.foreground}` with the count right-aligned in `{typography.numeric}` `{colors.text-tertiary}`, over `{components.group-header.rule}`.
-- **Card detail panel** — the persistent right-column panel at `level="overlay"`. Full card face at `{components.card-detail.art-radius}` on `{components.card-detail.background}`, then name in `{typography.heading}` with mana cost right-aligned, type line in `{typography.body}` `{colors.text-secondary}` with price right-aligned in `{typography.numeric}`, and note/oracle text in `{typography.body}` `{colors.text-secondary}`. When pinned (see EXPERIENCE.md) it carries `{components.card-detail.pinned-ring}`.
-- **Format check** (the legality row) — label in `{typography.body}` `{colors.text-secondary}`, `Badge` right-aligned, over `{components.legality-row.rule}`.
+- **Card detail panel** — the persistent right-column panel at `level="overlay"`. Full card face at `{components.card-detail.art-radius}` on `{components.card-detail.background}`, then name in `{typography.heading}` with mana cost right-aligned, type line in `{typography.body}` `{colors.text-secondary}` — **no price beside it**: amended 2026-08-06 (c4-7 review) to match the deck-row amendment above; there is no price data anywhere in this system, c4-5 shipped this panel without one under Brad's c3-2 Q4 ruling, and this line previously still specified "price right-aligned in `{typography.numeric}`", inviting exactly the "correction" the amendments exist to prevent — and note/oracle text in `{typography.body}` `{colors.text-secondary}`. When pinned (see EXPERIENCE.md) it carries `{components.card-detail.pinned-ring}`. That ring uses `{colors.accent}`, **not `accent-dim`** — this panel's own background is `surface-overlay`, where `accent-dim` is 2.70:1 and fails the 3:1 non-text floor; the same correction the gate made for `{components.card-tile.live-ring}`.
+- **Format check** (the legality row) — label in `{typography.body}` `{colors.text-secondary}`, `Badge` right-aligned, over `{components.legality-row.rule}`, **with the check's `detail` sentence on a second line beneath the label in `{typography.body}` `{colors.text-tertiary}`** — the second line **added 2026-08-06 (story c4-10, Q2)**, as a correctness repair rather than a preference. This row had two slots and the endpoint it renders has **three fields, with 100% of the information in the third**: the wire carries `check` (a machine token — there is no label field anywhere on it), `status` (`pass`/`advisory`/`violation`) and `detail` (a server-authored sentence). Rendered to the two-slot letter, the one deck in forty with a real legality violation draws `Legality` and a red pill while the words **`'Pym Particles' is not legal in brawl.`** appear nowhere on the glass — in the panel whose own user story is *"I find out about a banned card"*. Three consequences, all measured on a real screen: **row height stops being uniform** (66.3px for a one-line detail, 86.3px for two, at 452px wide) and nothing in these artefacts ever specified one; the rotation advisory is 86 characters on **40 of 40 decks permanently**, so the second line is the panel's ordinary height rather than an exception path; and the whole panel measures **452 × 475px** on an all-pass deck. The sentence is `{typography.body}` and **not** `{typography.micro}` — micro carries `textTransform: uppercase`, and `'PYM PARTICLES' IS NOT LEGAL IN BRAWL.` destroys the card name the row exists to show — so it is distinguished from the label by TIER, which is `components.deck-row`'s own idiom; `{colors.text-tertiary}` measures 5.43:1 on `{colors.surface-panel}`. Two things the panel deliberately does **not** draw: **no headline verdict, no summary badge and no count** (`is_legal` is `false` both for a deck that breaks a rule and for one that could not be checked, so binding it renders a red verdict over six rows none of which is a violation), and **no format string in its own chrome** — this report's `format` is normalised while the header's badge is the stored value. The badge carries the **status word** (`Pass` / `Advisory` / `Violation`) rather than the mock's derived values (`'60 / 60'`, `'no violations'`, `'11 cards'`), which exist on the wire nowhere and whose computation would be a construction rule written in TypeScript, invisible to every Python guard. The mock's first label is a **format name** (`'Standard'`), not a label, and its `'Banned or restricted'` is a false label — see EXPERIENCE.md's amended component row.
 - **Card placeholder** (named + unknown-card variants) — a deliberately designed stand-in, never a broken-image glyph: card-shaped at `{components.card-placeholder.radius}` on `{components.card-placeholder.background}` with `{components.card-placeholder.border}`, rendering in chrome type — name centered in `{typography.body-strong}`, mana cost as pips above, type line in `{typography.micro}` `{colors.text-secondary}`. Unknown-card variant: name slot reads "Unknown card" with the truncated ID in `{colors.text-secondary}` (the ID is the only identifying information — load-bearing, so never a de-emphasized tier). Image-loading wells use the same shape on `{colors.surface-well}` with no text.
 
 ### Agent views
@@ -400,6 +478,7 @@ Tonal layering (the surface ramp) does the everyday hierarchy work. Borders are 
 
 - **Connection pill** — bottom-left, `{components.connection-pill.radius}` on `{components.connection-pill.background}` with `{components.connection-pill.border}`: a `{components.connection-pill.dot-size}` dot (`{colors.positive}` live · `{colors.caution}` reconnecting · `{colors.negative}` backend gone — all **static**, no pulse) plus `{typography.micro}` text naming the state and the active deck name. The dot never carries the state alone. Quiet at rest; it never animates. *This replaces `AgentStatus`, whose `idle | thinking | streaming` vocabulary describes agent cognition the app has no signal for.*
 - **State panel** — the shared shell for no-active-deck, database-not-initialized, database-updating and disconnected states: centered on `{components.state-panel.background}` at `{components.state-panel.radius}` with `{components.state-panel.border}`, max-width `{components.state-panel.max-width}`. Headline `{typography.heading}`, guidance `{typography.body}` `{colors.text-secondary}`, the concrete next action on its own line in `{typography.body-strong}` `{colors.accent}` (commands in an inline chip on `{colors.surface-well}` at `{rounded.sm}` in `{fonts.mono}` — the *only* place a second family appears, because a command is data the user retypes). No illustrations, no sad-face icons — calm text on a calm panel. The panel also covers **database-updating-stalled** and **internal-error**, added with their copy in story c2-9; a panel whose state has no honest next action renders none rather than inventing one.
+- **Empty deck line** — what a loaded deck with **zero cards** shows in place of its grid: the one sentence *"This deck is empty — ask your agent to add cards."* (EXPERIENCE.md's Voice and Tone row is the source; it is transcribed, not authored) in `{components.empty-deck-line.type}` `{components.empty-deck-line.foreground}`, as the **only child of the untitled card-grid Panel**. It **replaces** the `<ul>` rather than sitting inside or beside it: a `<p>` inside a `<ul>` is invalid against UX-DR44's mandated list semantics, and an empty list left beside the sentence announces *"list, 0 items"* to a screen-reader user **before** the sentence explaining why. **No panel of its own, no error styling, no icon, no `aria-live`** — an empty deck is the NORMAL state at creation (`create_deck` writes no card, and `remove_card_from_deck` never deletes the deck), it arrives as a plain 200 with `cards: []`, and it reaches the glass through the same loaded-deck surface a full deck does. It takes **no inset, no minimum height and no centering of its own** — `{components.panel.body-padding}` is the whole of its spacing, per the frontmatter note. The **mana curve, color distribution and format check** panels are hidden in this state (EXPERIENCE.md); the **card detail and deck list panels are not** — they render their frames with no card and no rows, which no artefact describes and which is recorded as an open artefact defect against UX-DR20 rather than repaired by inventing copy. **Added 2026-08-07 (story c4-12, Q2)**, because until this amendment the state was specified in EXPERIENCE.md only and this file's own rule — *"Every value in the UI comes from this scale"* — had nothing here to point at.
 
 ## Do's and Don'ts
 

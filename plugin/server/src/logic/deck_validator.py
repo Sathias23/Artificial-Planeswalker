@@ -170,12 +170,38 @@ def validate_card_addition(deck: Deck, card: Card, quantity: int) -> ValidationR
 #
 # Restated at c3-3, because that story changed WHO READS IT. Until then this
 # limitation was reported to an agent, which could caveat it; c3-3 puts the size
-# check on a panel a person looks at, so a Commander deck is now told in the UI
-# that 60 cards is enough when the format wants 100. Brawl and standardbrawl are
-# genuinely 60, so the 20 brawl-family decks in the real deck table are correct
-# and only Commander is affected — measured, not assumed. Deliberately NOT fixed
-# there: a per-format minimum is a rule change in this module, not a projection
-# concern. Ledgered in deferred-work.md with a named home.
+# check on a panel a person looks at.
+#
+# ⚠️ CORRECTED AT c4-10, AND THE PREVIOUS VERSION OF THIS COMMENT WAS BACKWARDS.
+# It read: "Brawl and standardbrawl are genuinely 60, so the 20 brawl-family
+# decks in the real deck table are correct and only Commander is affected —
+# measured, not assumed." Every clause of that is wrong except the last four
+# words, and c4-10 is the story that put the sentence in front of a person.
+#
+# What is actually true, measured read-only against the shipped database by
+# driving the real ASGI app (c4-10 Task 0):
+#
+#   * This repo's OWN SHIPPED SKILL says Brawl (Historic) is 100 EXACT and
+#     Standard Brawl is 60 — plugin/skills/format-legality/SKILL.md:76-78. The
+#     two are different formats and the old comment conflated them under
+#     "brawl-family".
+#   * The database agrees with the skill. All 18 `brawl` decks have a mainboard
+#     of exactly 100 (min 100 / max 100). There are 2 `standardbrawl` decks,
+#     genuinely 60.
+#   * There are 0 commander decks, so the named at-risk population is EMPTY,
+#     while the actually-affected one is the largest single format in the table:
+#     18 of 40 decks, 45%, each shown "the minimum is 60" for an exact-100
+#     format.
+#
+# No verdict changes today, because all 18 sit at exactly 100 — the defect is in
+# the SENTENCE, not the badge. A 61-card Brawl deck would be told `pass`, and a
+# 99-card one would be told the minimum is 60.
+#
+# STILL deliberately NOT fixed here (c4-10 Q13): a per-format minimum is a rule
+# change in this module with MCP blast radius (`validate_deck` serves the agent
+# tools too), and it needs its own vocabulary decision for EXACT-vs-MINIMUM
+# formats before a sentence can be written for either. Ledgered in
+# deferred-work.md with all four numbers and a named home.
 _MIN_MAINBOARD = 60
 _MAX_SIDEBOARD = 15
 _MAX_COPIES = 4

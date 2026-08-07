@@ -57,6 +57,10 @@ dev = [
     "pytest-asyncio>=1.2.0",
     "pytest-cov>=7.0.0",
     "ruff>=0.14.0",
+    # scripts/cdp_harness.py speaks the DevTools protocol, which is WebSocket-only. Already
+    # present transitively via uvicorn[standard], and declared here rather than borrowed: a
+    # committed tool that leans on another package's extra breaks the day that extra changes.
+    "websockets>=12.0",
 ]
 
 [tool.ruff]

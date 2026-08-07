@@ -1,0 +1,320 @@
+/* CardTile — the card face, its caption, and the first motion in this codebase
+   (story c4-4, FR-19, UX-DR4, UX-DR7, UX-DR14, UX-DR36, UX-DR40, UX-DR41, UX-DR42, UX-DR47).
+
+   ==== WHAT THIS FILE DOES NOT OWN: THE CARD SHAPE ======================================
+   `aspect-ratio` and `border-radius` are written exactly once, in src/styles/card-geometry.css,
+   and the tile's own button carries `card-shape` alongside its class. This file writes NEITHER,
+   and it is listed in tests/token-usage.test.ts's CARD_SHAPED allowlist — which cuts both ways:
+   membership is the declaration that this file draws CARDS, so a chrome radius here
+   (`--radius-sm/md/lg/pill`, and any `--radius-*` invented later) is a red test rather than a
+   review note. `--radius-md` is exactly what the composition reference ships for tiles, and
+   DESIGN.md:362 corrects it by name.
+
+   THAT IS ALSO WHY THE QUANTITY BADGE IS IN A FILE OF ITS OWN. The badge is CHROME sitting on a
+   card, not a card, and DESIGN.md gives it `{rounded.pill}` — so its `--radius-pill` cannot be
+   written here without failing the half of the guard this file's own membership turns on. It
+   lives in ./QuantityBadge.css, which is not card-shaped and says so.
+
+   ==== THIS IS THE FIRST MOTION IN THE CODEBASE, AND THE FIRST :hover ON ANYTHING =======
+   Measured across every tracked ui/src stylesheet before this commit: ZERO `transition`, ZERO
+   `animation`, ZERO `transform`. Six stylesheets carry a "NO MOTION, DELIBERATELY" header, and
+   CardPlaceholder.css:15 names this story — "a `transition` here would be pre-empting c4-4".
+
+   Two motions ship, and their reduced-motion halves are NOT the same kind of thing:
+
+     THE IMAGE FADE is `opacity` over `--motion-pulse`. It is expressed entirely through a
+     duration token, so tokens.css's reduced-motion block already makes it instant. MECHANICAL —
+     nothing is registered for it, deliberately.
+
+     THE HOVER POP is `transform: scale(1.06)`. A zeroed duration makes it INSTANT, NOT ABSENT,
+     so it carries its own registered fallback in tokens.css's block — the first entry that block
+     has ever taken. UX-DR42's named fallback is "no scale, shadow only", which is why the hover
+     also RAISES THE SHADOW: without a shadow change there would be nothing left for the fallback
+     to be. See tokens.css for why that override carries `!important`.
+
+   Durations come from `--motion-*` and easings from `--ease-*`; a literal duration anywhere in a
+   transition is a lint error, and nothing here pulses, loops or alternates. */
+
+/* THE FRAME, AND WHY THE POP MOVED ONTO IT (story c4-6, Q2).
+
+   c4-6's flip control is a `<button>`, and an interactive descendant of a `<button>` is invalid
+   HTML that React 19.2 warns about in development and that assistive technology does not reliably
+   expose as a separate control (both measured at that story's Task 0). So the control is a
+   SIBLING of the tile's button, and this element is what holds the two.
+
+   ==== THE CONSEQUENCE THAT HAD TO BE REPAIRED ========================================
+   With the control outside the button, `.card-tile:hover` is FALSE while the pointer sits on the
+   control — so the hover pop and the raised shadow would drop out on exactly the gesture the
+   control exists for, and a reduced-motion reader (whose ONLY hover signal is that shadow) would
+   lose their whole feedback. The trigger therefore widens from the button to this frame, whose
+   box is exactly the card box: the button below is `display: block` at `width: 100%` carrying
+   `card-shape`'s aspect ratio, so THE HOVER REGION IS UNCHANGED from c4-4's — only the element
+   listening moved.
+
+   ==== `:where()` IS WHAT KEEPS EVERY SPECIFICITY BELOW BYTE-IDENTICAL =================
+   `:where()` contributes ZERO specificity, so `:where(.card-tile-frame):hover .card-tile` is
+   (0,2,0) — the `:hover` counts, the frame does not — which is EXACTLY what `.card-tile:hover`
+   was. c4-4's whole cascade argument (three `box-shadow` rules, the focus composite winning over
+   the hover, the `no-descending-specificity` ordering) therefore survives verbatim rather than
+   being re-derived. The plain descendant form `.card-tile-frame:hover .card-tile` would be
+   (0,3,0) and would outrank every `.card-tile:focus-visible` rule after it — the identical trap
+   c4-4 recorded when it tried to hover the grid item.
+
+   ==== THE TRANSFORM IS HERE AND THE SHADOW IS NOT ====================================
+   The scale lives on the frame so the control scales WITH the card and stays pinned inside
+   `--space-2` of its corner; the shadow stays on the button because a shadow drawn on this
+   element would be a square outline around a `--radius-card` rectangle. `:has(:focus-visible)`
+   gives the frame the focus half — ANY focus inside the frame, so Tabbing from the tile to its
+   OWN control keeps the card popped (review 2026-08-06: the first spelling was
+   `:has(.card-tile:focus-visible)`, which un-popped the card on exactly the keyboard gesture the
+   pointer half was repaired for — the mirror image of the defect this frame exists to prevent,
+   and the reduced-motion reader's only signal with it). `:focus-visible` rather than
+   `:focus-within`, so a mouse click still leaves no pop behind it. Both selectors sit at
+   (0,2,0) — equal, which `no-descending-specificity` accepts.
+
+   Its `transform` is registered `none !important` in tokens.css's reduced-motion block, on these
+   exact selector texts, and the enumerated shipped-motion pin moved in the same commit. */
+.card-tile-frame {
+  position: relative;
+  display: block;
+
+  /* AC 17 — "in place". A `transform` affects neither layout nor hit testing, which is what lets
+     the pop be presentation-only: growing the element with `width`/`padding` instead would look
+     identical, move every neighbour, and change the hit targets UX-DR14 says it must not. Only
+     `transform` is transitioned; the shadow swap below is deliberately instant, so that the
+     reduced-motion fallback ("shadow only") is not itself an animation. */
+  transition: transform var(--motion-glide) var(--ease-glide);
+}
+
+.card-tile-frame:hover,
+.card-tile-frame:has(:focus-visible) {
+  /* BELOW THE OVERLAY LAYER'S 20 (AppShell.css:237, UX-DR38). A raised tile must slide over its
+     neighbours and under the agent view; `2` is the smallest value that does the first, and
+     UX-DR38 fixes the stack at exactly one full-window level so there is nothing between. */
+  z-index: 2;
+  transform: scale(1.06);
+}
+
+/* THE TILE IS A REAL BUTTON (AC 20, UX-DR47) — not a `tabIndex` on a div, which
+   `jsx-a11y/no-static-element-interactions` makes an ESLint error and UX-DR47 forbids
+   unconditionally. It ships with NO handler in this story; c4-5 adds one.
+
+   ==== AND THE BUTTON **IS** THE CARD — A REPAIR THE EYE-CHECK FORCED (Task 7) ==========
+   The first draft made the button a wrapper around the art AND the caption, with the ring on an
+   inner frame. In a real browser with real keyboard focus that renders TWO indicators: the
+   composite hugging the card's rounded corners, and the browser's OWN ring as a sharp-cornered
+   rectangle around card-plus-caption. Nothing may write `outline: none` in any spelling
+   (UX-DR46; stylelint bans all four), so the UA ring cannot be deleted — it can only be
+   REPLACED by an authored one, and an authored outline is the right shape only if the focused
+   element is the card itself. So it is, and the caption is a sibling that names it by
+   `aria-labelledby`.
+
+   The UA button chrome is reset here rather than inherited: a button's default background,
+   border and font are exactly the frame UX-DR7 forbids ("the card face IS the tile: no frame,
+   no title bar"). No colour literal is involved, so the token layer is untouched.
+
+   Everything that can fill the card — the loading well, the named placeholder and the `<img>` —
+   is absolutely positioned inside it, so the slot is at FULL SIZE before any image exists and
+   cannot reflow when one arrives (AC 7, UX-DR36). The footprint is this element's, never the
+   content's.
+
+   `overflow: hidden` clips the art to the card corners, declared HERE rather than in
+   `card-shape` for that shared class's own stated reason: clipping is a statement about CONTENT,
+   and a shared class that silently clipped would make this tile behave differently depending on
+   whether its author knew. It does not reach the box-shadow — a shadow is painted outside the
+   border box and `overflow` on the same element does not clip it. */
+.card-tile {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  overflow: hidden;
+
+  /* DESIGN.md: "shadow-rest on card tiles and panels at rest". Never a literal — `graphite` and
+     `ink` declare both elevation tokens as `none`, so a hard-coded shadow breaks them. */
+  box-shadow: var(--shadow-rest);
+}
+
+/* HOVER AND KEYBOARD FOCUS ARE THE SAME STATE (UX-DR14 — "hover OR keyboard focus"), so they
+   share one rule rather than drifting apart.
+
+   BOTH ARE ON THE BUTTON, at equal specificity, and that is a cascade decision rather than a
+   coincidence. Hovering the grid ITEM (so that pointing at the caption also pops the card) was
+   the first draft and stylelint's `no-descending-specificity` was right to reject it: a
+   `.card-grid-item:hover .card-tile` rule outranks every `.card-tile:focus-visible` rule after
+   it, so a tile that was hovered AND focused would have lost its ring to the hover's plain
+   shadow. Keeping both at `.card-tile:…` makes the later rule win by ORDER, which is legible.
+   The button IS the card, so hovering the card is the honest trigger anyway — and UX-DR14 puts
+   the inspection target on the tile, which is this element.
+
+   `:focus-visible`, never `:focus` — the shipped idiom is Footer.css:107, and a mouse click
+   should not leave a ring behind it.
+
+   THE HOVER HALF READS THE FRAME AT c4-6 (see the frame's own comment): the pointer being on the
+   flip control is still the pointer being on the tile, and `:where()` keeps this selector at the
+   (0,2,0) it has always been. So does the FOCUS half (review 2026-08-06): focus on the flip
+   control is still attention on the tile, so the frame-scoped `:has(:focus-visible)` form keeps
+   the raise while a keyboard reader sits on the control — without it the shadow (the
+   reduced-motion reader's ONLY signal) dropped on exactly that gesture. The RING below stays on
+   the button alone, because focus really is on one element and the ring is drawn on that one. */
+:where(.card-tile-frame):hover .card-tile,
+:where(.card-tile-frame):has(:focus-visible) .card-tile,
+.card-tile:focus-visible {
+  /* UX-DR42's "shadow only" fallback needs a shadow CHANGE to fall back TO, and this is it. The
+     tile's LIVE state is a different signal entirely (`live-ring`, accent + glow) and it is
+     c4-5's, so raising the elevation on hover does not collide with it on this component. The
+     scale and the z-index moved to `.card-tile-frame` at c4-6; a shadow cannot follow them,
+     because a shadow drawn on the frame would be a square outline around a rounded card. */
+  box-shadow: var(--shadow-raise);
+}
+
+/* THE FOCUS RING GOES OVER THE ART, WHICH IS WHY IT IS A COMPOSITE (AC 20, AC 21, UX-DR40).
+   DESIGN.md: "because a tile's focus indicator sits over arbitrary card art rather than a known
+   surface, tiles use focus-ring-over-art — the focus ring plus a dark outer edge — so the
+   indicator is visible against a light or a dark painting alike."
+
+   It is a TOKEN because it cannot be anything else: `.stylelintrc.json`'s box-shadow allowed-list
+   admits `none` or a comma-list of `var(--shadow-…)` / `var(--glow)` and nothing else, so the
+   two-ring value cannot be written here. Composing with the raise is expected and passes the
+   gate; the ring is first so it paints above the elevation.
+
+   ==== THE OUTLINE IS AUTHORED SO THAT IT COINCIDES WITH THE RING'S INNER BAND =========
+   Not removed — REPLACED, which is the only thing UX-DR46 permits and the only thing that
+   suppresses the UA default. The composite's first band is `0 0 0 2px var(--focus-ring)`: a 2px
+   ring in the focus colour hugging the card edge. An outline of `var(--focus-ring-width)` in
+   `var(--focus-ring)` at offset 0 is that same band, drawn by the other mechanism, on the same
+   rounded rectangle — so the two occupy the same pixels instead of stacking into two rings, and
+   the composite's `--surface-base` outer band still separates the whole indicator from the
+   panel behind it. Both halves come from the same tokens, so a theme cannot move one and not
+   the other. `--focus-ring-offset` is deliberately NOT used here: the offset that suits a text
+   link is what would split this ring in two. */
+.card-tile:focus-visible {
+  box-shadow: var(--shadow-focus-ring-over-art), var(--shadow-raise);
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: 0;
+}
+
+/* THE LIVE STATE — THE CARD CURRENTLY UNDER INSPECTION (story c4-5, UX-DR20, DESIGN.md:379).
+   "`live` (the card under inspection) adds `{components.card-tile.live-ring}`": a 1px accent
+   edge plus a 20px accent glow, shipped as `--shadow-live-ring` because the box-shadow
+   allowed-list makes a composite unwritable in a component stylesheet at all.
+
+   `--accent`, NEVER `--accent-dim`, and the reason lives in DESIGN.md beside the token rather
+   than here: tiles also appear on `--surface-overlay` inside agent views, where `--accent-dim`
+   is 2.70:1 and fails the 3:1 non-text floor (UX-DR6). That is the M4/C3 correction, carried by
+   the token — so this file spends no accent tone of its own and cannot get it wrong.
+
+   ==== THREE RULES, BECAUSE box-shadow IS ONE PROPERTY ==================================
+   A live tile can also be hovered or focused, and a single `box-shadow` cannot be added to — so
+   each combination is named. Without the second rule the ring vanishes the instant a pointer
+   crosses the PINNED card, which is precisely the tile a reader is most likely to be pointing
+   at; without the third, Tabbing to a pinned card the mouse happens to be over would lose the
+   FOCUS indicator to the hover rule's higher specificity, which is an accessibility defect
+   rather than a cosmetic one.
+
+   The third composes rather than replaces: the focus composite is listed FIRST so it paints on
+   top (its 2px band covers the live ring's 1px band entirely, which is the intended reading —
+   one unambiguous focus indicator), while the live ring's 20px glow still spreads beyond it, so
+   the card stays visibly the live one. Order within the value is deliberate; order within the
+   file is what keeps stylelint's `no-descending-specificity` quiet, since that rule groups by
+   the last compound selector and `.card-tile…` (0,1,0 → 0,2,0) and `.card-tile.is-live…`
+   (0,2,0 → 0,3,0) are two separate, individually ascending groups.
+
+   NO TRANSITION AND NO TRANSFORM. The live state changes on every hover, so animating it would
+   be the same defect UX-DR42 bans for the detail panel's content swap. The only motion in this
+   file is still c4-4's hover pop and image fade, which is why `tokens.css`'s enumerated
+   shipped-motion pin needs no edit from this story. */
+.card-tile.is-live {
+  box-shadow: var(--shadow-live-ring), var(--shadow-rest);
+}
+
+:where(.card-tile-frame):hover .card-tile.is-live,
+:where(.card-tile-frame):has(:focus-visible) .card-tile.is-live {
+  box-shadow: var(--shadow-live-ring), var(--shadow-raise);
+}
+
+.card-tile.is-live:focus-visible {
+  box-shadow: var(--shadow-focus-ring-over-art), var(--shadow-live-ring), var(--shadow-raise);
+}
+
+/* THE THREE THINGS THAT CAN FILL THE CARD, IN ONE BOX.
+
+   `> .card-shape` reaches c4-3's placeholder roots through the PUBLIC contract — the class every
+   card-shaped thing carries, consumed by name with no import — rather than through
+   `.card-placeholder` / `.card-placeholder-well`, which are that component's private names. It
+   gives them position and nothing else: no radius, no border, no background. (A rule in one file
+   reaching a card-shaped element in another is CARD_SHAPED's declared blind spot #3; it is
+   named here so a reviewer can see that what crosses the boundary is layout, not geometry.) */
+.card-tile > .card-shape,
+.card-tile-image {
+  position: absolute;
+  inset: 0;
+}
+
+/* THE CARD FACE ITSELF (AC 3, UX-DR7): no tint, no overlay, no gradient fade, no watermark, no
+   art crop — the whole printed face at `size=normal`.
+
+   `object-fit: cover`, and the arithmetic rather than a habit: Scryfall's `normal` render is
+   488 × 680 (0.71765) against the frame's 63 : 88 (0.71591), a difference of 0.24%. At the
+   grid's floor that is under half a pixel of the face's own margin — while `contain` would
+   letterbox a hairline of the frame between the art and the card's rounded corners on every
+   single tile. Neither crops the artwork; one of them shows a seam.
+
+   THE FADE IS THE SECOND MOTION, and it is the mechanical one: `opacity` over `--motion-pulse`,
+   which tokens.css's reduced-motion block already zeroes. The image starts transparent so an
+   image that has not decoded shows the well behind it rather than a half-painted frame. */
+.card-tile-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--motion-pulse) var(--ease-out);
+}
+
+/* A DATA ATTRIBUTE RATHER THAN A SECOND CLASS, because the state is a boolean the component
+   already holds and `data-loaded` reads the same in the DOM inspector as it does in the test
+   that asserts it. */
+.card-tile-image[data-loaded='true'] {
+  opacity: 1;
+}
+
+/* THE CAPTION (AC 5, AC 6, UX-DR14). DESIGN.md:379 — "caption below in {typography.label}
+   {colors.text-secondary}, single-line ellipsis".
+
+   ==== THE UPPERCASE IS A RULING, NOT A DEFAULT (Q3) ===================================
+   DESIGN.md puts this in the `label` role; the `label` role declares `textTransform: uppercase`
+   and `letterSpacing: 0.1em`; and `findRoleWithoutCompanions` DERIVES from exactly those two
+   facts a hard requirement that any block applying `font: var(--type-label)` also declares both
+   companions in the same rule. So every card name in the grid renders in CAPITALS, and the
+   composition reference does the opposite — it drops the uppercase and overrides the tracking to
+   0.02em. The mock cannot ship (DESIGN.md:366 — read it for arrangement, this file for rules).
+
+   IT IS ALSO THE RIGHT ANSWER ON ITS MERITS, which matters because no gate can make this call —
+   it is c4-3's probe (j) in its second instance, and a declared blind-spot row in ui/README.md.
+   A card name here is a CHROME LABEL under a picture, not retypeable data: unlike c4-3's
+   truncated uuid — which the backend's lowercase-only `_CARD_ID_PATTERN` would REFUSE if it were
+   typed back — nothing breaks if a reader copies "BLACK LOTUS", and browsers copy the
+   untransformed source text anyway. The uppercase is what makes a 176px caption read as a label
+   belonging to the picture rather than as a line of body text. Checked by eye in Task 7, which
+   is where a decision about how ninety-nine of these look together actually gets made.
+
+   ==== THE ELLIPSIS IS A REAL PATH, NOT A DEFENSIVE DEFAULT ============================
+   Measured on the largest real deck (99 tiles): the longest name is 42 characters, the median is
+   16, and 13 of 99 exceed 24 — which is roughly what fits at the 176px floor in 11px label type
+   at 0.1em tracking. So the ellipsis fires on about one tile in eight of a real deck. All three
+   declarations are load-bearing together: `nowrap` stops the reflow, `hidden` stops the spill,
+   and `text-overflow` is what makes the clip legible rather than abrupt. */
+.card-tile-caption {
+  font: var(--type-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  text-align: center;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

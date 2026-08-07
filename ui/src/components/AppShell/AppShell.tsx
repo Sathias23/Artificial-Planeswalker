@@ -50,6 +50,33 @@ import { filled } from '../filled'
 
 export interface AppShellProps {
   /**
+   * The skip link (c4-11), rendered as the FIRST child of the shell — before the `<header>`.
+   *
+   * ==== THIS IS AN EXCEPTION TO THE c2-9 DISPLACEMENT RULING, NOT AN APPLICATION OF IT ====
+   * Nine consecutive stories filled a region by DISPLACING a placeholder inside an existing slot,
+   * and this file was not edited once in any of them. A skip link cannot work that way: it must be
+   * the first Tab stop in the document, so it must PRECEDE the `<header>`, and there is no slot
+   * there to displace. Calling it what it is matters more than preserving a streak — the ruling
+   * held for nine stories because every one of those stories genuinely had a slot.
+   *
+   * ==== WHY IT IS NOT INSIDE `<header>` (c4-11 Q5) ======================================
+   * The alternative was to make it the header's first child, which needs no new prop. Declined: a
+   * skip link is not banner content, and putting it inside `banner` makes it part of a landmark's
+   * accessible content for no benefit to anyone. Here it is outside ALL THREE landmarks, which is
+   * what `AppShell.test.tsx` now asserts alongside the counts.
+   *
+   * **The landmark counts do not move**: still exactly one `banner`, one `main`, one `contentinfo`.
+   * A `<div>` before the header is not a landmark, and this slot must never become a fourth.
+   *
+   * NO PLACEHOLDER, and that is the one deliberate break from every other slot in this file. Every
+   * empty region below renders a line naming the story that fills it (AC 21) — but that line is
+   * rendered TEXT, and this element sits before the header on every surface including the ones
+   * where the link is correctly absent. A placeholder here would put a story key on the glass
+   * permanently and in the most prominent position in the document, which is the exact defect the
+   * C3 retro's F1 action item is about. `undefined` renders nothing at all.
+   */
+  skipLink?: ReactNode
+  /**
    * The `h1`'s content. Provisionally the product name (Q3): keeping an `h1` present means
    * the document is never heading-less in the no-active-deck state a fresh install STARTS in,
    * and it stops c2-9's state panel (an `h2` by UX-DR44) being the highest heading on the
@@ -86,9 +113,28 @@ export interface AppShellProps {
 const slot = (content: ReactNode, placeholder: string): ReactNode =>
   filled(content) ? content : <p className="app-shell-placeholder">{placeholder}</p>
 
-export function AppShell({ deckName, badges, nav, left, right, footer, overlay }: AppShellProps) {
+export function AppShell({
+  skipLink,
+  deckName,
+  badges,
+  nav,
+  left,
+  right,
+  footer,
+  overlay,
+}: AppShellProps) {
   return (
     <div className="app-shell">
+      {/* FIRST IN DOCUMENT ORDER, WHICH IS FIRST IN TAB ORDER (c4-11, AC 1).
+          Nothing in this app carries a `tabindex`, so the Tab order IS the document order (c4-6's
+          ruling) — which makes "the first Tab stop" a statement about THIS LINE'S POSITION and
+          nothing else. It is outside `<header>`, `<main>` and `<footer>`, so the three landmark
+          counts are unchanged; `AppShell.test.tsx` asserts both halves.
+
+          Rendered bare rather than through `slot()`: that helper's job is to substitute a
+          placeholder naming the owning story, and this is the one region that must render NOTHING
+          when empty — see the prop's docstring. */}
+      {skipLink}
       <header className="app-shell-header">
         <div className="app-shell-identity">
           {/* The product kicker, per DESIGN.md's "product kicker + deck name (left)". Until

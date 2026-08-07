@@ -16,6 +16,13 @@ temp/
 # .agents/plugins/ (the Codex marketplace file) IS committed, so never blanket-ignore .agents/.
 .agents/skills/
 
+# graphify — the local knowledge-graph index (26 MB, 530 files, regenerable with `/graphify`).
+# Kept ON DISK so the skill's fast path works, but never committed: graph.json and cache/ are
+# derived, and .graphify_root / .graphify_python hold absolute paths from the machine that built
+# it. GRAPH_REPORT.md is the only human-readable file and it goes stale the next time code lands,
+# so committing a graph report is a separate, deliberate decision rather than a side effect.
+/graphify-out/
+
 # Python
 __pycache__/
 *.py[cod]

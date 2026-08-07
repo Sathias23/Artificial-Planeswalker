@@ -59,7 +59,8 @@
    DESIGN.md asks for a 17px numeric value. `font-size: 17px` is a lint ERROR (measured on a
    probe under the real config: the `font-*` allowed-list admits only CSS-wide keywords), and
    the only other route — a `--type-stat-value` token — would break BOTH
-   `declaredTokens.size === 64` and tests/tokens.test.ts's byte-for-byte name contract against
+   `declaredTokens.size` (**69** as of c4-7; this read `64`, its c2-7 value — corrected at c4-12's
+   conformance sweep) and tests/tokens.test.ts's byte-for-byte name contract against
    DESIGN.md's frontmatter, which makes it a UX-artefact change rather than a frontend one.
 
    `--type-heading` IS `500 17px/1.3` and `--type-numeric` is `500 13px/1.4`: the same weight,

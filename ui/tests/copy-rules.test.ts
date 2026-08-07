@@ -83,8 +83,34 @@ import { describe, expect, it } from 'vitest'
 const uiRoot = fileURLToPath(new URL('..', import.meta.url))
 const sourceOf = (repoRelative: string) => readFileSync(join(uiRoot, repoRelative), 'utf8')
 
-// git, not readdir — the authority every other guard in this project uses, so an untracked
-// module cannot pass vacuously and a committed one cannot escape CI.
+// git, not readdir — the authority every other guard in this project uses: node_modules, dist
+// and coverage are invisible to it, and a committed module cannot escape CI. DECLARED LIMIT
+// (the c4-7 false-green, corrected at review — this comment used to claim the opposite): an
+// un-`git add`ed module is equally invisible, so a NEW module passes this sweep vacuously until
+// it is staged. The tree-walk redesign is ledgered in deferred-work.md; until then the registry
+// entry for a new module and the `git add` must land together.
+/**
+ * Wire-fixture modules: plain `src/` files holding VERBATIM backend responses for tests to share.
+ *
+ * Their sentences are DATA, not copy — authored by `src/logic/deck_validator.py` and arriving
+ * over the network exactly as a card name does (c4-10 Q15) — so `COPY_MODULES` may not own them
+ * (a copy owner holding wire sentences would make that Map's claim meaningless, decide-once rule
+ * 14) and this scan must not collect them. A NAMED registry with a reason, rather than the
+ * test-file blanket the c4-10 review's deferred C4-retro item warns about: adding a file here is
+ * a declaration that every string in it is a recorded backend response, and the file's own pins
+ * (`formatCheck.fixtures.test.ts`) are what hold that declaration to the shipped contract.
+ */
+const WIRE_FIXTURE_MODULES: Map<string, string> = new Map([
+  [
+    'src/state/formatCheck.fixtures.ts',
+    'the format-check fixture bodies (story c4-10, review decision 2a) — verified-real or ' +
+      'declared-synthetic `GET /api/deck/{id}/format-check` responses whose `detail` sentences ' +
+      'are deck_validator.py output, shared by three test files and pinned by ' +
+      'formatCheck.fixtures.test.ts. Split out of that test file because a test module imported ' +
+      'by other test modules registers its describes in every importer.',
+  ],
+])
+
 const shippedModules = execFileSync('git', ['ls-files', 'src/*.ts', 'src/*.tsx'], {
   cwd: uiRoot,
   encoding: 'utf8',
@@ -92,6 +118,7 @@ const shippedModules = execFileSync('git', ['ls-files', 'src/*.ts', 'src/*.tsx']
   .split('\n')
   .filter(Boolean)
   .filter((file) => !/\.test\.tsx?$/.test(file))
+  .filter((file) => !WIRE_FIXTURE_MODULES.has(file))
 
 /**
  * Where user-facing copy may live -> why that module is a copy owner.
@@ -124,6 +151,164 @@ const COPY_MODULES: Map<string, string> = new Map([
     'the word table `describeManaCost` speaks a mana cost from — "2 generic, white or blue" ' +
       '(story c2-8, UX-DR18). Prose assembled from single words, which is why it is listed ' +
       'DELIBERATELY rather than caught: see residue 2 in this file header.',
+  ],
+  [
+    'src/components/DeckBadges/DeckBadges.tsx',
+    'the two size-badge labels — the only words story c4-2 puts on screen. The deck NAME and ' +
+      'the FORMAT beside them are data, not copy, and arrive as props; these two are authored, ' +
+      'so they are declared here rather than smuggled past the prose detector as single words ' +
+      '(which is residue 5 of this file header, and using it deliberately would be an evasion ' +
+      'of the guard rather than a use of it). The legality claim the mock shows beside them is ' +
+      "c4-10's, over an endpoint c4-2 never calls.",
+  ],
+  [
+    'src/components/CardPlaceholder/copy.ts',
+    'the unknown-card placeholder label — the ONE authored string story c4-3 puts on screen, and ' +
+      'a contract with an artefact rather than a structural fragment: EXPERIENCE.md spells it, ' +
+      '`states.ts` routes `card_not_found` to it, and tests/unknown-card-copy.test.ts asserts the ' +
+      'shipped constant against the artefact byte-for-byte — which is the assertion that file has ' +
+      'promised since c3-2 would move here "the day c4-3 lands". The card NAME, TYPE LINE, mana ' +
+      'COST and truncated ID the same component renders are DATA, arrive as props, and are ' +
+      'deliberately not in this module: a copy owner that also held card names would make the ' +
+      'claim this Map exists to state meaningless.',
+  ],
+  [
+    'src/containers/CardDetail/copy.ts',
+    'the card detail panel’s three authored strings (story c4-5): the panel TITLE — which is ' +
+      'also its `role="region"` name and the `<h2>` c4-11’s skip link targets — the unpin ' +
+      'control’s label, and the pin announcement UX-DR45 fires once per pin. The first copy ' +
+      'module under `src/containers/`, and the reason the list is keyed on the FILE rather than ' +
+      'on a directory. The announcement is gated byte-for-byte against the epic’s own template ' +
+      'by tests/pin-announcement-copy.test.ts, the way the state-panel copy is gated against ' +
+      'EXPERIENCE.md and the attribution against DESIGN.md: copy is gated against whatever ' +
+      'wrote it. The card NAME, TYPE LINE, oracle TEXT and mana COST the same component renders ' +
+      'are DATA, arrive from the wire, and are deliberately not in this module.',
+  ],
+  [
+    'src/containers/FlipControl/copy.ts',
+    'the DFC flip control’s accessible name — the ONE authored string story c4-6 puts anywhere ' +
+      'near a screen, and it is never SEEN: it reaches a reader only through `aria-label`, which ' +
+      'is why it is owned here rather than left as a literal in the component. DESIGN.md ' +
+      'describes the control’s material, size, position and glyph and gives it no label at all, ' +
+      'so the string is a decision (Q6) and the module states it. It is deliberately STATIC ' +
+      '(Q11): a name that named the target face — "Show Murkwater Pathway" — would be card DATA ' +
+      'in a read-aloud attribute, which is exactly what this file’s attribute half collects and ' +
+      'what decide-once rule 16 forbids; the STATE travels on `aria-pressed` instead. The card ' +
+      'NAME, its FACES and their TYPE LINES are data, arrive from the wire, and are not here.',
+  ],
+  [
+    'src/containers/DeckList/copy.ts',
+    'the deck list panel’s authored words (story c4-7): the panel TITLE — sourced from ' +
+      'EXPERIENCE.md:36, which names this surface, with "panel" dropped because a `<section>` ' +
+      'called "Deck list panel" announces its own kind twice — the COMMANDER and SIDEBOARD ' +
+      'labels, and the nine type-group HEADINGS. The two board labels are specified in NO ' +
+      'artefact and were handed here by name (deckGroups.ts:188, CardGrid.tsx:27), so they are ' +
+      'decisions this module states rather than quotes. The group headings sit on the copy side ' +
+      'of the data line even though they are named after card types, and the distinction is the ' +
+      'one a later reader will question: `TYPE_GROUPS`’ members are the STORE’s internal ' +
+      'vocabulary, never the wire’s — `type_line` says "Legendary Creature — Human Soldier", ' +
+      'nothing on the wire says "Creature" alone and nothing at all says "Creatures". The plural ' +
+      'forms were chosen by an author from DESIGN.md’s one worked example, which is what makes ' +
+      'them copy; uppercasing stays in CSS so the accessible name keeps the readable word. The ' +
+      'card NAMES, TYPE LINES, mana COSTS and QUANTITIES the same component renders are DATA, ' +
+      'arrive from the wire, and are deliberately not in this module.',
+  ],
+  [
+    'src/containers/ManaCurve/copy.ts',
+    'the mana curve panel’s authored words (story c4-8): the panel TITLE, the `<figure>`’s own ' +
+      'accessible NAME — deliberately a different string, because a region and the graphic ' +
+      'inside it sharing one name makes a screen-reader user hear it twice with nothing to tell ' +
+      'them apart — the visually-hidden table’s CAPTION and its two column HEADERS, the `+` that ' +
+      'makes the last bucket open-ended, and the per-bar name BUILDER. That builder is why this ' +
+      'module matters more than its size suggests: it is residue 3 of this file’s own header — a ' +
+      'string reaching an `aria-label` through an EXPRESSION, which the attribute half cannot ' +
+      'read — so the words are declared here first rather than left as literals in the ' +
+      'component, and the content half then scans every one of them. UX-DR17 supplies exactly ' +
+      'one worked example ("3 drops: 8 cards") and NO pluralisation rule, so "1 drop: 1 card" is ' +
+      'INVENTED and the module says so in the open; the open-ended bucket keeps the plural ' +
+      'because "7+" names a range rather than one value. The COUNTS and the MANA VALUES ' +
+      'interpolated into those sentences are DATA, computed from the deck, and are deliberately ' +
+      'not in this module.',
+  ],
+  [
+    'src/containers/ColourDistribution/copy.ts',
+    'the colour distribution panel’s authored words (story c4-9): the panel TITLE — sourced ' +
+      'verbatim from DESIGN.md:408’s anatomy list, exactly as c4-8 sourced "Mana curve" — the ' +
+      '`<figure>`’s own accessible NAME (a different string, for c4-8’s reason: a region and the ' +
+      'graphic inside it sharing one name makes a screen-reader user hear it twice), the six ' +
+      'COLOUR NAMES, the unit noun in "12 pips" and the "%" sign. The colour names carry more ' +
+      'weight here than a label usually does, and that is the whole reason this module exists: ' +
+      'Q9(iv) ships the legend’s ManaPip DECORATIVE, so UX-DR18’s "the legend is the accessible ' +
+      'data path" resolves to these six words being the ONLY route by which a colour reaches a ' +
+      'screen-reader user at all. They also sit on the copy side of the data line for ' +
+      'GROUP_LABELS’ reason one axis over: the wire says "{W}" and parse.ts says "w", and ' +
+      'NOTHING anywhere says "White" — an author chose it. A SECOND word table for the six ' +
+      'colours now exists beside parse.ts’s private COLOUR_NAMES, deliberately and in different ' +
+      'registers (that one is lowercase inside a spoken sentence, this one capitalised and ' +
+      'standalone), and the module states the divergence rather than leaving two lists silent. ' +
+      'The pluralisation of "pip" is INVENTED — UX-DR18 specifies no noun at all — and says so. ' +
+      'The COUNTS and the PERCENTAGES are DATA, computed from the deck, and are not here.',
+  ],
+  [
+    'src/containers/FormatCheck/copy.ts',
+    'the format check panel’s authored words (story c4-10): the panel TITLE — sourced from ' +
+      'DESIGN.md:423 and EXPERIENCE.md:37, with "panel" dropped for DECK_LIST_TITLE’s reason — ' +
+      'the six row LABELS, and the three STATUS WORDS the badge carries. This module exists ' +
+      'because the wire has NO label field at all: `check` is a machine token (`copy_limit`), ' +
+      'and nothing on the wire, in DESIGN.md or in EXPERIENCE.md’s prose ever says "Copy limit". ' +
+      'Two of the six labels are decisions rather than quotations and the module states both: ' +
+      'the mock’s first slot holds a FORMAT STRING ("Standard"), not a label, which Q14 keeps ' +
+      'out of this panel’s chrome — so "Legality" is authored from EXPERIENCE.md:37’s IA row — ' +
+      'and the mock’s "Banned or restricted" is a FALSE label that does not ship, because ' +
+      'deck_validator.py reports a `restricted` card through the LEGALITY row deliberately and ' +
+      'pinned, so a row so labelled could never fire for one. The three status words are the ' +
+      'wire’s own vocabulary rather than the mock’s six derived values ("60 / 60", "no ' +
+      'violations", "11 cards"), which are on the wire nowhere and whose computation would be a ' +
+      'construction rule written in TypeScript — the fifth declared hole in c3-3’s own rule ' +
+      'guard, which find_rule_violations states in writing it cannot see. THE SIX `detail` ' +
+      'SENTENCES ARE NOT HERE AND MUST NOT BE: they are authored by src/logic/deck_validator.py ' +
+      'and arrive over the wire exactly as a card name does, so moving them here would make this ' +
+      'Map’s whole claim meaningless (decide-once rule 14). Uppercasing stays in Badge.css so ' +
+      'the readable word survives for anyone copying the text.',
+  ],
+  [
+    'src/containers/SkipLink/copy.ts',
+    'the skip link’s one authored string (story c4-11): "Skip past the deck grid", the visible ' +
+      'text and therefore the accessible name of the first Tab stop in the document. It is here ' +
+      'for the ordinary reason every copy module is — a sentence the user reads needs one ' +
+      'address for UX-DR33’s voice rules to point at — but it is UNUSUAL in this epic for having ' +
+      'NOTHING TO RULE: DESIGN.md:418, EXPERIENCE.md:100 and epics:506 all carry the string byte ' +
+      'for byte, with no disagreement about case, punctuation or wording, so it is transcribed ' +
+      'rather than authored and the content half below compares it against the artefact. WHAT ' +
+      'THE WORDS PROMISE IS ALSO A MEASURED CLAIM AND THE MODULE STATES IT: "past the deck grid" ' +
+      'is exactly what the link delivers and deliberately no more — it moves focus to the card ' +
+      'detail panel’s heading, and on the largest real deck the FOOTER is still 101 Tab stops ' +
+      'beyond that, because c4-7’s deck list sits between them. A label promising the end of the ' +
+      'page would be a label that lies on 36 of 40 real decks, so the residue is carried on c8-6 ' +
+      'by name instead of being papered over with wording. No other words: the link announces ' +
+      'nothing (there is no aria-live here — CardDetail’s single polite region stays the app’s ' +
+      'only one), and the DOM id it targets is a handle rather than copy, so SKIP_TARGET_ID ' +
+      'lives in focusHome.ts where both sides of the lookup can import it.',
+  ],
+  [
+    'src/containers/CardGrid/copy.ts',
+    'the empty-deck line (story c4-12): "This deck is empty — ask your agent to add cards.", the ' +
+      'ONE authored sentence a deck with zero cards on every board puts on the glass, rendered in ' +
+      'place of the grid’s `<ul>` inside the untitled `CardGrid` panel. Like the skip link’s ' +
+      'string it is TRANSCRIBED rather than authored — EXPERIENCE.md’s Voice and Tone table ' +
+      'carries it, em dash U+2014 and trailing period included — and tests/empty-deck-copy.test.ts ' +
+      'compares the shipped constant against that table cell byte-for-byte, which is copy gated ' +
+      'against whatever wrote it, exactly as the state panel is against EXPERIENCE.md and the ' +
+      'attribution against DESIGN.md. Shipping the artefact’s own words is ALSO the disposition of ' +
+      'a permanently-open ledger entry: the copy guard can check registration and banned ' +
+      'characters and cannot judge whether a sentence is blameless, and its own text says "a ' +
+      'reviewer of c2-10, c4-3, c4-12 and c6-6 must READ the copy" — c4-3 discharged that ' +
+      'judgement by shipping EXPERIENCE.md’s label verbatim and recorded that c4-12 owed the same ' +
+      'reading, which the story’s Debug Log records having performed. The module holds NOTHING ' +
+      'ELSE: the panel is untitled by c4-4’s ruling so there is no title here, the deck NAME and ' +
+      'COUNTS an empty deck still renders are data on other components, and the line is not ' +
+      'announced — no aria-live anywhere near it, CardDetail’s single polite region stays the ' +
+      'app’s only one.',
   ],
 ])
 
@@ -289,7 +474,23 @@ function walk(
               : undefined
 
         if (attribute !== undefined && USER_FACING_ATTRIBUTE.has(attribute)) {
-          found.push({ file, line: at(node), text: node.text, source: 'attribute' })
+          // AN EMPTY `alt` IS THE ABSENCE OF COPY, NOT COPY — AND `alt` ALONE (story c4-4;
+          // narrowed to its motivating case by review ruling 2026-08-04). The first component
+          // in this codebase to write an `alt` attribute wrote `alt=""` — the WCAG-required
+          // spelling for a decorative image, the whole point of UX-DR48's row-thumbnail clause
+          // — and this branch collected the empty string, so the file half demanded that a
+          // component owning NO WORDS AT ALL join COPY_MODULES.
+          //
+          // The exemption is `alt`-scoped ON PURPOSE: `alt=""` is the one empty spelling with a
+          // defined, correct meaning ("decorative"). An empty `aria-label` is not its analogue —
+          // it participates in the accname algorithm and can strip a control's name to the empty
+          // string, which is a defect this gate should surface (as "copy that needs an owner",
+          // the only voice it has) rather than bless. Whitespace-only counts as empty here, so a
+          // stray space inside `alt=" "` cannot re-open the false failure the narrowing fixed.
+          // Both directions are proven in the pairs below.
+          if (!(attribute === 'alt' && node.text.trim() === '')) {
+            found.push({ file, line: at(node), text: node.text, source: 'attribute' })
+          }
         } else if (PROSE.test(node.text)) {
           found.push({ file, line: at(node), text: node.text, source: 'prose' })
         } else if (includeEverything && node.text !== '') {
@@ -380,8 +581,28 @@ describe('user-facing copy lives in one place (AC 13, the file half)', () => {
       expect(
         allStringsIn(file, sourceOf(file)).length,
         `${file} is declared a copy module but the extractor found no strings in it`,
-      ).toBeGreaterThan(3)
+      ).toBeGreaterThan(0)
     }
+
+    // THE SCALE ANCHOR, WHICH IS WHAT THE PER-MODULE THRESHOLD USED TO CARRY. It read
+    // `toBeGreaterThan(3)` per module until story c4-3, and that number was tuned to modules
+    // holding a table of words — it made a copy module with exactly ONE authored string fail for
+    // being correct. `CardPlaceholder/copy.ts` is that module: its whole content is the label
+    // `"Unknown card"` gated byte-for-byte against EXPERIENCE.md, and the card name, type line
+    // and id the same component renders are DATA that must NOT be moved here. Padding the module
+    // to satisfy a threshold would have been the exact failure its own header warns about.
+    //
+    // So the per-module check became "the extractor sees something", and the strength moved to
+    // where it belongs: a TOTAL across the declared modules, which still fails loudly if the AST
+    // walk silently stops returning strings — the failure this whole file is shaped around.
+    const total = [...COPY_MODULES.keys()].reduce(
+      (sum, file) => sum + allStringsIn(file, sourceOf(file)).length,
+      0,
+    )
+    expect(
+      total,
+      'the string extractor is returning almost nothing across every copy module',
+    ).toBeGreaterThan(20)
 
     // And the extractor really sees the artefact copy, not merely "some strings".
     expect(
@@ -400,6 +621,37 @@ describe('user-facing copy lives in one place (AC 13, the file half)', () => {
 
   it('finds no user-facing copy outside a declared copy module', () => {
     expect(findCopyOutsideACopyModule(shippedModules)).toEqual([])
+  })
+
+  it.each([
+    ['an empty alt', '<img alt="" />'],
+    ['a whitespace-only alt', '<img alt=" " />'],
+  ])('does not read %s as copy — the silent half (c4-4)', (_label, markup) => {
+    // MEASURED BY c4-4, WHICH WROTE THE FIRST `alt` IN THIS CODEBASE. `alt=""` is the
+    // WCAG-required spelling for a decorative image — the card tile's picture is decorative
+    // because its caption names it, which is UX-DR48's own row-thumbnail logic — and the first
+    // draft of this walker collected the empty string, so the file half demanded that a
+    // component containing NO WORDS join COPY_MODULES. A copy owner that owns no copy makes
+    // this Map's claim meaningless, which is the failure the c4-3 threshold change was already
+    // about. The whitespace spelling is exempt too, so one stray keystroke inside the quotes
+    // cannot re-open the same false failure.
+    expect(
+      findCopyOutsideACopyModule(['src/probe.tsx'], () => `export const P = () => ${markup}`),
+    ).toEqual([])
+  })
+
+  it.each([
+    ['alt', '<img alt="Black Lotus, a jewelled flower" />'],
+    ['aria-label', '<span aria-label="four copies in the deck" />'],
+    // The exemption is `alt`-scoped (review ruling 2026-08-04): an empty `aria-label` strips a
+    // control's accessible name — a defect, not a decorative declaration — so it is COLLECTED,
+    // and the demand to join COPY_MODULES is the flag that makes someone look at it.
+    ['an EMPTY aria-label', '<span aria-label="" />'],
+    ['an EMPTY title', '<a title="" />'],
+  ])('still reads %s as copy — the firing half (c4-4)', (_label, markup) => {
+    expect(
+      findCopyOutsideACopyModule(['src/probe.tsx'], () => `export const P = () => ${markup}`),
+    ).toHaveLength(1)
   })
 })
 

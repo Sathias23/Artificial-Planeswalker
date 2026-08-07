@@ -9,7 +9,8 @@
    `rgba(95,212,160,0.12)` for the background and `rgba(...,0.35)` for the border: five tones,
    ten colour literals, and `rgba()` is banned (`function-disallowed-list`). So is the obvious
    repair — `color-mix(in srgb, var(--positive) 12%, transparent)` is banned by the SAME rule,
-   measured on a probe under the real config. And the token layer is closed at 64 tokens
+   measured on a probe under the real config. And the token layer is closed at **69** tokens (this read `64`, its c2-7 value — corrected at
+   c4-12's conformance sweep)
    asserted byte-for-byte against DESIGN.md's frontmatter, so there is no translucent
    `--positive-wash` to reach for and this story does not create one (AC 23).
 

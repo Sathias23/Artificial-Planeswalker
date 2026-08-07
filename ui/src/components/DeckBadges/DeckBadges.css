@@ -1,0 +1,29 @@
+/* DeckBadges — the deck header's format and size pills (story c4-2, UX-DR3, UX-DR8).
+
+   ONE RULE, and no layout. `.app-shell-badges` is already `display: flex` with
+   `gap: var(--space-2)`, and `.badge` is already `display: inline-flex` with
+   `gap: var(--space-1)` between its own children — so the pills space themselves and the count
+   spaces itself from its label. A wrapper element here would add a second flex context between
+   two that already agree, which is how a component starts owning layout that is not its own. */
+
+/* ==== THE COUNT CARRIES THE NUMERIC ROLE (Q9b, UX-DR3) ================================
+   `.badge` sets `font: var(--type-label)` — 11px, uppercase, tracked — whose figures are
+   PROPORTIONAL. UX-DR3 asks for tabular numerals on "every count, quantity, price and axis
+   value", and a size badge is a count. DESIGN.md's own label guidance spells the fix: put the
+   count in {typography.numeric} BESIDE the label, not inside it.
+
+   BOTH DECLARATIONS, TOGETHER. The `font` shorthand cannot carry font-variant-numeric — it
+   resets it to `normal` — so `font: var(--type-numeric)` alone renders exactly the proportional
+   digits it was written to fix. tests/token-usage.test.ts's findUnpairedNumericRole fails that
+   split, in this block, by name. */
+.deck-badges-count {
+  font: var(--type-numeric);
+  font-variant-numeric: var(--type-numeric-features);
+
+  /* `--tracking-label` is inherited from `.badge`, and it belongs to the LABEL role rather than
+     to this one: DESIGN.md gives `--type-numeric` no tracking token at all, so letting the
+     label's 0.1em ride along would apply one role's spacing to another role's text — and on
+     tabular figures, whose whole contract is a fixed advance width, it is the one place extra
+     tracking is measurable. `0` is what the allowed-list admits for a property with no token. */
+  letter-spacing: 0;
+}

@@ -43,7 +43,7 @@
 
 import { RETRIES_QUIETLY } from '../components/StatePanel/states'
 import type { StateKey } from '../components/StatePanel/copy'
-import { readDecks, type DecksOutcome } from '../api/decks'
+import { readDecks, type DecksOutcome } from '../api/client'
 import { panelFor } from './panel'
 
 /**
@@ -233,8 +233,16 @@ export const createPoller = ({
     // No response arrived, so nothing was decided: the panel stands and no update is emitted.
     if (outcome.kind === 'unreachable') return
 
-    // A `200` is `no-active-deck` and its deck list until **c4-2** ships the deck view — an
-    // empty array is the ordinary fresh-install answer, not an edge case, and renders nothing
+    // A `200` is `no-active-deck` and its deck list. **c4-2 has now shipped the deck view, and
+    // this line did NOT change** — which is the interesting half. This poll answers *"is the
+    // backend serving decks, and what are they called"*; whether a DECK is on the glass is a
+    // different question, answered by `GET /api/active-deck` in `src/state/deck.ts`, and
+    // `surfaceOf` is the one place the two are reconciled. So the decision below is still made
+    // and is simply not rendered when a deck outranks it — honest and cheap, and it keeps this
+    // file's single subject intact. What the deck view DOES still depend on here is the deck
+    // NAMES: they are what the `no-active-deck` panel lists, and nothing else fetches them.
+    //
+    // An empty array is the ordinary fresh-install answer, not an edge case, and renders nothing
     // extra.
     const decided = outcome.kind === 'decks' ? 'no-active-deck' : panelFor(outcome.reason)
     // BOTH halves, because they measure different things: the clock measures elapsed wall time,

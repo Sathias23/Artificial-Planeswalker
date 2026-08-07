@@ -65,7 +65,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, posix } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -991,7 +991,18 @@ describe('geometry literals are documented, not merely tolerated (AC 18)', () =>
   // documented in prose beside its rule, but a bare unitless number cannot be told apart
   // from the ones in `minmax(0, 1fr)`, `flex: 1` and `min-width: 0`, so it is review's
   // rather than this guard's.
-  const componentStylesheets = shippedStylesheets.filter((f) => f.startsWith('src/components/'))
+  // WIDENED BY c4-4, NOT WEAKENED (AC 2). This was `startsWith('src/components/')`, and it is
+  // the ONE path-scoped guard a new component tree would have silently exited — which matters
+  // more here than anywhere, because c4-4's `176px` grid minimum is exactly the literal this
+  // rule exists to police. Of the three guards scoped to `src/components/`, the other two are
+  // the primitives' coverage guard and `posture.test.ts`'s component rules, and a container is
+  // rightly outside BOTH of those; this one has nothing to do with statefulness, so it follows
+  // the component-shaped files wherever they live. A later tree of the same kind adds its root
+  // HERE, in the open, and the anchor below is what makes forgetting to visible.
+  const COMPONENT_ROOTS = ['src/components/', 'src/containers/']
+  const componentStylesheets = shippedStylesheets.filter((f) =>
+    COMPONENT_ROOTS.some((root) => f.startsWith(root)),
+  )
 
   it('is reading the component stylesheets at all (non-vacuity), and the shell pins its two', () => {
     // The anchor: the shell is a component stylesheet, and its literals are exactly the two
@@ -999,6 +1010,12 @@ describe('geometry literals are documented, not merely tolerated (AC 18)', () =>
     // a change to the pinned composition, and updating this list is the open way to make it.
     expect(componentStylesheets).toContain(SHELL_CSS)
     expect(pxLiteralsIn(shellSource).sort()).toEqual(['1100px', '452px'])
+    // …and the widened root is REACHING the new tree rather than merely being listed. Without
+    // this line the widening could be wrong (a typo in the prefix, a directory renamed) and
+    // every literal in it would pass by never being read — the vacuity failure this file's own
+    // doctrine calls the worse outcome. `176px` is the value at stake.
+    expect(componentStylesheets).toContain('src/containers/CardGrid/CardGrid.css')
+    expect(pxLiteralsIn(sourceOf('src/containers/CardGrid/CardGrid.css'))).toEqual(['176px'])
   })
 
   it('sources every px literal in every component stylesheet to DESIGN.md, beside the value', () => {
@@ -1017,6 +1034,80 @@ describe('geometry literals are documented, not merely tolerated (AC 18)', () =>
   it('says, in the file, why these are not tokens', () => {
     expect(shellSource).toContain('AC 18')
     expect(shellSource).toMatch(/not a token|NON-BAN/i)
+  })
+})
+
+describe('the analysis pair row is 1:1 by CONSTRUCTION (story c4-8, Q6, AC 3)', () => {
+  // WHY THIS READS THE STYLESHEET RATHER THAN RENDERING. `AnalysisRow.test.tsx` proves the
+  // ARITY — one child, two children, none — and jsdom has no layout engine, so it cannot
+  // observe the ratio those children resolve to. The specific silent failure: with
+  // `flex-basis: auto` the wider panel's CONTENT decides the split, the pair is not 1:1 at all,
+  // and every rendered assertion in that file still passes. The rule is therefore read, over
+  // the same git-derived list every other guard in this suite walks.
+  const ROW_CSS = 'src/components/AnalysisRow/AnalysisRow.css'
+  const rowSource = sourceOf(ROW_CSS)
+  const childRule = /\.analysis-row\s*>\s*\*\s*\{([^}]*)\}/.exec(rowSource)?.[1] ?? ''
+
+  it('is reading the real stylesheet (non-vacuity)', () => {
+    // `shippedStylesheets` is the module-scope git-derived list; an untracked stylesheet would
+    // not be in it, so this is also the `git add` check for this file.
+    expect(shippedStylesheets).toContain(ROW_CSS)
+    expect(childRule.length, 'the `.analysis-row > *` rule was not found at all').toBeGreaterThan(
+      10,
+    )
+  })
+
+  it('gives every child a ZERO-basis flex factor, so the split is not content-driven', () => {
+    expect(childRule).toMatch(/flex:\s*1\s+1\s+0\s*;/)
+  })
+
+  it('gives every child min-width: 0, so an unbreakable panel cannot widen the app', () => {
+    // The per-item half of the argument `.app-shell-column` and `.app-shell-columns` both make:
+    // a flex item's default `min-width` is `min-content`, and without this the app's ONE scroll
+    // container inherits a horizontal overflow it does not own.
+    expect(childRule).toMatch(/min-width:\s*0\s*;/)
+  })
+
+  it('uses NO two-track grid — the shape that leaves a dead half-width gutter', () => {
+    // c4-7's Q1 rejected exactly this in the price column: "a visible empty column reads as a
+    // loading failure". `repeat(2, minmax(0, 1fr))` with one child would do it to HALF the
+    // fluid column, and it would look correct in every test until c4-9 shipped.
+    expect(rowSource).not.toMatch(/grid-template-columns/)
+    expect(rowSource).not.toMatch(/repeat\(/)
+  })
+
+  it('spends the panel gap through DESIGN.md’s own token and writes no px literal', () => {
+    expect(rowSource).toContain('var(--space-panel-gap)')
+    // Belt and braces with the citation guard above: that one requires a DESIGN.md reference
+    // near any literal, and this says there is no literal to cite.
+    expect(pxLiteralsIn(rowSource)).toEqual([])
+  })
+
+  it('HIDES itself when both panels render null — c4-9 closing c4-8’s empty row (Q10, AC 33)', () => {
+    // THE OTHER HALF OF `App.test.tsx`'s land-only test, and it has to live here: jsdom applies
+    // no stylesheet, so that file can only assert the PRECONDITION (`childNodes` is empty) while
+    // the consequence is a CSS rule. Read as source, over the same git-derived list.
+    //
+    // c4-8 shipped an unconditional `<AnalysisRow>` in `App.tsx`'s deck arm, so a land-only deck
+    // left the row's div in the DOM with `.app-shell-column`'s 24px gap still applied beneath
+    // the grid — accepted posture, with c4-9 named to revisit it. `:empty` is the revisit, and
+    // the reason it is the right one is that it needs NOTHING from `App.tsx`: no curve total, no
+    // pip total, no second derivation of what `curve.ts` and `colours.ts` already own.
+    const emptyRule = /\.analysis-row:empty\s*\{([^}]*)\}/.exec(rowSource)?.[1] ?? ''
+    expect(emptyRule.length, 'the `.analysis-row:empty` rule was not found at all').toBeGreaterThan(
+      5,
+    )
+    expect(emptyRule).toMatch(/display:\s*none\s*;/)
+
+    // AND IT IS `display: none`, NOT `visibility: hidden` — the distinction is the whole point:
+    // `visibility: hidden` leaves the element in the flex layout, so the parent's gap survives
+    // and the phantom band this rule exists to remove would still be there.
+    expect(emptyRule).not.toMatch(/visibility/)
+    // Nor is the base rule hiding itself: a `display: none` on `.analysis-row` would hide the
+    // row ALWAYS, which every rendered assertion in `App.test.tsx` would still pass (jsdom
+    // applies no CSS) — the silent-failure shape this whole describe block is built around.
+    const baseRule = /\.analysis-row\s*\{([^}]*)\}/.exec(rowSource)?.[1] ?? ''
+    expect(baseRule).toMatch(/display:\s*flex\s*;/)
   })
 })
 
@@ -1198,19 +1289,68 @@ describe('the component primitives are presentation-only, and that is asserted',
     // nothing in its own file looks like a component. `imports: []` is the strongest form of
     // that claim — no react, no DOM, no store, nothing.
     { file: 'src/components/ManaCost/parse.ts', imports: [] },
+    // Story c4-2's one, and the first component in this list that COMPOSES another: it renders
+    // `Badge`, which until now had no on-screen consumer at all. No react import — its three
+    // props are a string and two numbers, so nothing in them is a `ReactNode`, which is the
+    // stronger claim. It is also a declared COPY module (`tests/copy-rules.test.ts`), because
+    // the two size labels are the only words this story puts on screen; being both is the shape
+    // `AppShell.tsx` already has, and the two lists ask different questions of the same file.
+    {
+      file: 'src/components/DeckBadges/DeckBadges.tsx',
+      imports: ['../Badge/Badge', './DeckBadges.css'],
+    },
+    // Story c4-3's two, and the first component in this list whose PROPS are a discriminated
+    // union rather than a flat bag: the loading well's member has one property, so there is
+    // nothing to say in a well that must stay silent, and the unknown variant has no `name` for
+    // a copy-paste to fill with a real card's.
+    //
+    // `../StatePanel/states` is the second cross-tree entry in this list after `states.ts`'s own
+    // `../../api/schema`, and it is TYPE-ONLY: the variant union is built FROM `PlaceholderKey`
+    // so a third placeholder key in that file fails `tsc` here. No react import — none of its
+    // props is a `ReactNode`, which is what also makes the well unable to hide a caller's
+    // content when it declares `aria-hidden`.
+    //
+    // NOTE WHAT IS ABSENT: `src/styles/card-geometry.css`. The shared card shape is @imported by
+    // `src/index.css` rather than by the components that consume it, which is what keeps this
+    // list free of a cross-tree stylesheet — `posture.test.ts`'s value-import rule would fail a
+    // component importing `../../styles/…`, and four later stories would each have had to.
+    {
+      file: 'src/components/CardPlaceholder/CardPlaceholder.tsx',
+      imports: ['../ManaCost/ManaCost', '../StatePanel/states', './CardPlaceholder.css', './copy'],
+    },
+    // The one authored string this story puts on screen. `imports: []` is not tidiness here: a
+    // `ui/tests/` file may import an app module only if that module has no relative imports (the
+    // measured `tsc -b` project-boundary rule), and `tests/unknown-card-copy.test.ts` imports
+    // this one to assert the shipped label against EXPERIENCE.md byte-for-byte. An import added
+    // here would silently un-gate the copy.
+    { file: 'src/components/CardPlaceholder/copy.ts', imports: [] },
+    // c4-8's analysis pair row. `AppShell.tsx:127` assigned the 1:1 pair to that story BY NAME —
+    // "c4-8 composes the row, c4-9 supplies the second panel" — so the row had to be built one
+    // story before its second child exists, and it is here rather than in `CONTAINERS` because
+    // it holds no state, calls no hook, reads no store and attaches no handler. One prop, and it
+    // is `children`. The `react` import is the `ReactNode` type, exactly as `Panel`'s is.
+    {
+      file: 'src/components/AnalysisRow/AnalysisRow.tsx',
+      imports: ['./AnalysisRow.css', 'react'],
+    },
   ]
 
   const withoutComments = (source: string) =>
     source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
 
-  it('is reading all eight primitives and all six helpers (non-vacuity)', () => {
+  it('is reading all ten primitives and all seven helpers (non-vacuity)', () => {
     // Every assertion below loops over PRIMITIVES. A list that had quietly lost a member — a
     // renamed directory, a component moved — would let that member pass by never being read,
     // which is the vacuity failure this file's own doctrine calls the worse outcome. Proving
     // each file EXISTS and is non-trivial is what stops "nothing is wrong" reading the same
     // as "nothing was read".
-    // 12 until story c2-10's `Footer.tsx` and `Footer/copy.ts`.
-    expect(PRIMITIVES).toHaveLength(14)
+    // 12 until story c2-10's `Footer.tsx` and `Footer/copy.ts`; 14 until c4-2's `DeckBadges.tsx`;
+    // 15 until c4-3's `CardPlaceholder.tsx` and its `copy.ts` — which is the coverage guard below
+    // working as designed rather than a number being bumped: the component was written,
+    // `git ls-files` saw it, and this list had to name it before the suite went green again.
+    // 18 at c4-8's `AnalysisRow` — the pair row `AppShell.tsx:127` assigned to that story by
+    // name, built one story before the panel that shares it.
+    expect(PRIMITIVES).toHaveLength(18)
     for (const { file } of PRIMITIVES) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }
@@ -1321,6 +1461,18 @@ describe('the component primitives are presentation-only, and that is asserted',
     expect(withoutComments(panel)).not.toMatch(/useId/)
   })
 
+  it('is the WHOLE of src/components/, with no container smuggled in beside it (c4-4, AC 1)', () => {
+    // The other direction of c4-4's Q1 ruling, and the reason `src/components/` can still be
+    // described in one sentence. Every assertion in this describe block loops over PRIMITIVES,
+    // and PRIMITIVES is proven to equal the directory by the coverage guard above — so
+    // "everything under src/components/ is presentation-only" is TOTAL, with no exempted member
+    // and no filtered-out list. That totality is what makes `posture.test.ts`'s three
+    // `it.each(componentSources)` blocks safe to leave keyed on the raw directory, and it is
+    // what makes a primitive importing a container a red test for free (see CONTAINERS below).
+    expect(PRIMITIVES.map((p) => p.file).every((f) => f.startsWith('src/components/'))).toBe(true)
+    expect(PRIMITIVES.some((p) => p.file.startsWith('src/containers/'))).toBe(false)
+  })
+
   it("keeps the mock's min-width out of StatChip.css (AC 11), where the source is actually read", () => {
     // Moved here from StatChip.test.tsx by review (2026-07-29): the DOM version asserted the
     // inline `style` attribute, which a `min-width` in the STYLESHEET would never touch —
@@ -1328,6 +1480,806 @@ describe('the component primitives are presentation-only, and that is asserted',
     // DESIGN.md's `components.stat-chip` declares no min-width, so there is no truthful
     // citation for one; the chip sizes to its content.
     expect(sourceOf('src/components/StatChip/StatChip.css')).not.toMatch(/\bmin-width\s*:/)
+  })
+})
+
+// ---------------------------------------------------------------------------------------
+// The containers (story c4-4, AC 1, AC 2) — the category for a component that BEHAVES
+// ---------------------------------------------------------------------------------------
+
+describe('the containers are a declared category with a posture of its own', () => {
+  /**
+   * WHY THIS LIST EXISTS AT ALL, and why the answer is "because of c4-4".
+   *
+   * The block above is a SET EQUALITY over `src/components/`, and every member of it is banned
+   * from holding a hook of any family, from declaring or attaching an `on*` handler, from
+   * holding a `ref` in either position, from spreading, and from importing React as a value.
+   * `posture.test.ts` bans three of those a second time over the same directory. A card tile
+   * needs `<img onLoad>` to know when the pixels exist and a `ref` to survive the warm-cache
+   * race — so a module for it under `src/components/` is a RED TEST BOTH WAYS: listed, the
+   * posture bans fire; unlisted, the coverage guard fires.
+   *
+   * That is not a gate to route around. It is the category-change signal this file says out
+   * loud in its own prose — *"the day a primitive needs a hook it has stopped being
+   * presentation-only — that is a SIGNAL — the component belongs in a different category and
+   * its story should say so"*. c4-4 is the story that says so.
+   *
+   * ==== WHY A NEW TREE RATHER THAN A SECOND LIST IN THE SAME DIRECTORY ==================
+   * The cheaper-looking answer was to keep the files under `src/components/` and widen the
+   * covered set with a second list here. MEASURED, that costs more than it saves, and the
+   * decisive number is not the count of guards — it is what one of them would stop seeing:
+   *
+   *   `posture.test.ts:197` bans a value import from outside the tree, and its filter is
+   *   `!target.startsWith('src/components/')`. A container living INSIDE that directory would
+   *   have to be exempted from the rule — and the exemption would make a PRESENTATION-ONLY
+   *   PRIMITIVE IMPORTING A STATEFUL CONTAINER invisible to every guard in the repo, because
+   *   the import target would still start with `src/components/`. A primitive that renders a
+   *   container has silently acquired everything the primitive posture exists to deny.
+   *
+   *   With the containers OUTSIDE that tree, the same existing rule catches it with no new
+   *   guard, no edit and no exemption — the firing proof is in `posture.test.ts`. The layering
+   *   (primitives know nothing of containers; containers compose primitives) is enforced by a
+   *   rule that was already green.
+   *
+   * The real cost of the new tree is ONE guard that had to be widened rather than weakened:
+   * the `px`-literal DESIGN.md citation check below is scoped by directory, and it is the gate
+   * that polices this story's own `176px` grid minimum. Its scope is now a list of roots. The
+   * other two path-scoped guards — this file's coverage guard and posture's component rules —
+   * are exactly the ones a container must not be held to, so there is nothing to replace.
+   *
+   * ==== THE POSTURE, WRITTEN DOWN =======================================================
+   * A container MAY hold state, call hooks of any family, declare and attach handlers, hold a
+   * `ref`, read the store through `src/state/`, and compose primitives.
+   *
+   * It may NOT reach the network (the door is `src/api/client.ts` and stays exhaustively
+   * named), import a state library directly, write a store slice from outside its own module,
+   * or declare a design token. The first three are asserted below; the fourth is a stylesheet
+   * property and `token-usage.test.ts` already scans every tracked `.css` in the repo.
+   *
+   * The import lists are EXHAUSTIVE for the reason the primitives' are: a module nobody
+   * thought to ban is precisely the one that would get through.
+   */
+  const CONTAINERS: { file: string; imports: string[] }[] = [
+    // c4-4's grid. It holds NO state — a container may, it need not — and it is here because it
+    // composes a container and reads the derivation in `src/state/`, either of which
+    // `posture.test.ts` would fail under `src/components/`. `../../state/deckGroups` is a
+    // TYPE-only import; the rule below reads the specifier, so the entry is listed either way.
+    // c4-12 took up the invitation this file's own header left ("a place for c4-12 to put its
+    // line"): the empty-deck sentence renders HERE, replacing the `<ul>`. `../../state/deckGroups`
+    // was already listed as a TYPE-only import and is now a VALUE one too — `deckIsEmpty`, the one
+    // expression `App.tsx`'s `hasCards` is the negation of. That is the whole visible cost of the
+    // predicate landing beside `DeckBoards` instead of in a fifth spelling, and this list is where
+    // it shows. `./copy` is the new module.
+    {
+      file: 'src/containers/CardGrid/CardGrid.tsx',
+      imports: [
+        '../../components/Panel/Panel',
+        '../../state/deckGroups',
+        '../CardTile/CardTile',
+        './CardGrid.css',
+        './copy',
+      ],
+    },
+    // c4-12's copy module — the SIXTH in this tree and the ninth in the app. One sentence, the
+    // empty-deck line, transcribed byte-for-byte from EXPERIENCE.md. `imports: []` for
+    // `CardDetail/copy.ts`'s measured reason: `tests/` is the `nodenext` project and `src/` the
+    // `bundler` one, so a `ui/tests` file may import an app module only if that module has no
+    // relative imports of its own. `tests/empty-deck-copy.test.ts` imports this one.
+    { file: 'src/containers/CardGrid/copy.ts', imports: [] },
+    // c4-4's tile, and the module that made this category necessary: a hook, a `ref` and — as of
+    // c4-5 — SEVEN `on*` handlers, every one of them banned in the directory next door. TWO
+    // stylesheets, deliberately — see QuantityBadge.css's header for the CARD_SHAPED collision
+    // that separates them. c4-5 added the inspection verbs and moved the art state machine into
+    // the shared hook, which is why `../useCardArt` and `../../state/inspection` are here and
+    // `useState`/`useCallback` no longer are.
+    // c4-6 added three: the flip control it mounts as a SIBLING of its own button, the face store
+    // that decides which side is showing, and the one mirror of `resolve_face_images` — which the
+    // tile needs for itself, to decide whether to render a second stacked `<img>` at all. It is
+    // still the module that made this category necessary.
+    {
+      file: 'src/containers/CardTile/CardTile.tsx',
+      imports: [
+        '../../components/CardPlaceholder/CardPlaceholder',
+        '../../state/faces',
+        '../../state/inspection',
+        '../FlipControl/FlipControl',
+        '../imagedFaces',
+        '../useCardArt',
+        './CardTile.css',
+        './QuantityBadge.css',
+        './imageUrl',
+        'react',
+      ],
+    },
+    // c4-5's detail panel. The most connected container in the tree, and every one of its
+    // imports is a permitted root: three primitives it COMPOSES, three state modules it READS
+    // (never writes — the verbs live in the slice), one sibling container's path builder, its
+    // own two stylesheets and its own copy module. No `zustand`, no `src/api/client`, no
+    // `fetch` — the panel decides that a record is needed and `hydrateCard` owns the request.
+    // c4-6 added three: the face store, the flip control it mounts as its own copy at the art
+    // box's top-left (UX-DR15), and the shared `resolve_face_images` mirror it needs to know
+    // whether to draw a second stacked face at `size=large`.
+    {
+      file: 'src/containers/CardDetail/CardDetail.tsx',
+      imports: [
+        '../../api/schema',
+        '../../components/CardPlaceholder/CardPlaceholder',
+        '../../components/ManaCost/ManaCost',
+        '../../components/Panel/Panel',
+        '../../state/cards',
+        '../../state/deckGroups',
+        '../../state/faces',
+        '../../state/inspection',
+        '../CardTile/imageUrl',
+        '../FlipControl/FlipControl',
+        // c4-11's extraction. The four-line focus hand-off this panel SHIPPED FIRST (c4-5's
+        // unpin control, review 2026-08-05) moved to the tree root when the skip link became its
+        // second caller — AC 6 requires "exactly one focus home and one implementation of it".
+        // The specifier appearing here is the whole visible cost of the extraction, which is what
+        // this list is for; `CardDetail.test.tsx:559-579` passing UNCHANGED is what proves it was
+        // an extraction rather than a rewrite.
+        '../focusHome',
+        '../imagedFaces',
+        '../useCardArt',
+        './CardDetail.css',
+        './CardDetailChrome.css',
+        './copy',
+        './deckMemory',
+        'react',
+      ],
+    },
+    // The deck-transition memory (review 2026-08-05): the one deck-shaped fact the panel's
+    // inspection clearing needs, module-scope so it survives the panel unmounting on a surface
+    // flip. Its own file for `imageUrl`'s stated reason — `react-refresh/only-export-components`
+    // makes a helper export from a component file an ESLint error — and NOT in the inspection
+    // slice, whose header promises it holds no deck. One import, and it is a TYPE.
+    {
+      file: 'src/containers/CardDetail/deckMemory.ts',
+      imports: ['../../state/deckGroups'],
+    },
+    // c4-5's copy module — the first one in this tree. `imports: []` for the reason
+    // `StatePanel/copy.ts` and `CardPlaceholder/copy.ts` are import-free: `tests/` is the
+    // `nodenext` project and `src/` the `bundler` one, so a `ui/tests` file may import an app
+    // module only if that module has no relative imports of its own (measured at c3-9 — twelve
+    // TS2835 errors with `npm test` green throughout). `tests/pin-announcement-copy.test.ts`
+    // imports this one.
+    { file: 'src/containers/CardDetail/copy.ts', imports: [] },
+    // The three art states and the two halves of the browser-cache race, shared by the tile and
+    // the panel from c4-5 onward. It sits at the ROOT of this tree rather than inside either
+    // consumer, which is `src/components/filled.ts`'s precedent stated in its own header: "a
+    // helper shared by two components does not live inside one of them".
+    { file: 'src/containers/useCardArt.ts', imports: ['react'] },
+    // c4-6's flip control — the DFC face toggle, mounted TWICE (the tile's frame and the detail
+    // panel's art box) from ONE module, because UX-DR15 asks the panel for "its own copy at the
+    // same spec" and two components would be two chances to drift. It reads two stores and
+    // attaches a handler, every one of which is banned next door. It imports the inspection slice
+    // NOT AT ALL, and that absence is load-bearing: decide-once rule 15 is "a flip is not an
+    // inspection", and an exhaustive import list is the strongest available form of it — there is
+    // no verb in scope to call by accident.
+    {
+      file: 'src/containers/FlipControl/FlipControl.tsx',
+      imports: ['../../state/faces', '../imagedFaces', './FlipControl.css', './copy'],
+    },
+    // c4-6's copy module — the SECOND in this tree, and the fourth in the app. One string, the
+    // control's accessible name. `imports: []` for `CardDetail/copy.ts`'s reason: `tests/` is the
+    // `nodenext` project and `src/` the `bundler` one, so a `ui/tests` file may import an app
+    // module only if that module has no relative imports of its own.
+    { file: 'src/containers/FlipControl/copy.ts', imports: [] },
+    // c4-7's deck list — the right column's second panel, and the FIRST production consumer of
+    // two primitives that had never been on a screen: `GroupHeader` (zero consumers since it
+    // shipped at c2-7) and `Panel` at `level="default"`. It is a container rather than a
+    // primitive by the c4-4 Q1 ruling, and it needs the category for the same three reasons the
+    // tile did: it calls hooks (`useIsLiveTarget`, `useCardEntry`), it declares five `on*`
+    // handlers, and it reads the store through `src/state/`. `../../api/schema` and
+    // `../../state/deckGroups` are TYPE-only imports; the rule reads the specifier, so both are
+    // listed either way.
+    {
+      file: 'src/containers/DeckList/DeckList.tsx',
+      imports: [
+        '../../api/schema',
+        '../../components/GroupHeader/GroupHeader',
+        '../../components/ManaCost/ManaCost',
+        '../../components/Panel/Panel',
+        '../../state/cards',
+        '../../state/deckGroups',
+        '../../state/inspection',
+        // Was `./frontFaceCost` until c4-9 promoted that module to this tree's root, where a
+        // helper with two consumers belongs. The specifier moving is the whole visible cost of
+        // the promotion, and it is visible HERE, which is what this list is for.
+        '../frontFaceCost',
+        './DeckList.css',
+        './copy',
+      ],
+    },
+    // c4-7's copy module — the THIRD in this tree, the fifth in the app. The panel title, the two
+    // board labels nobody specified, and the nine type-group headings. `imports: []` is
+    // load-bearing here for a sharper reason than usual: AC 19 wants the label map coupled to
+    // `TypeGroup` in both directions, which would ordinarily be `satisfies Record<TypeGroup, …>`
+    // — and that needs an import this module may not have, because `TS2835` is a RESOLUTION error
+    // that fires against the specifier whether or not `import type` erases it at emit. So the map
+    // is declared here and ASSERTED in `DeckList.tsx`, which is `CardPlaceholder`'s shape exactly.
+    { file: 'src/containers/DeckList/copy.ts', imports: [] },
+    // c4-7's front-face resolution. Its own module because `react-refresh/only-export-components`
+    // is an ESLint error, so a helper exported from a component file breaks fast refresh — the
+    // fifth application of that split after `imageUrl.ts`, `deckMemory.ts`, `imagedFaces.ts` and
+    // `useCardArt.ts`. It answers one question in two halves: the NAME is free from the deck
+    // payload (99.0% of faced cards store the combined string), while the COST is blank at the
+    // top level for 87.8% of them and reachable only through the hydration cache — which is why
+    // a pure string helper needs `../../state/cards` for a TYPE.
+    // MOVED UP ONE LEVEL AT c4-9, and the move is the decision this entry records. It lived at
+    // `src/containers/DeckList/frontFaceCost.ts` for exactly as long as it had one consumer;
+    // c4-9's colour bar needs the same three-shape resolution (a pip count is a count of the
+    // FRONT FACE's pips), so there are now two, in two different container directories.
+    // `filled.ts`'s header states the rule — *"a helper shared by two components does not live
+    // inside one of them"* — and `imagedFaces.ts` and `useCardArt.ts` sit at this tree's root
+    // under it. `imageUrl.ts` stays inside `CardTile/` because it still has one consumer, which
+    // is the same rule pointing the other way.
+    //
+    // ⚠️ A CORRECTION TO c4-9's OWN PREMISE, worth leaving here: that story's context says a
+    // container importing from a sibling container's directory *"has no precedent in this
+    // repo"*. It has one — `CardTile.tsx` imports `../FlipControl/FlipControl` — and the roots
+    // check below permits the shape outright. So the move was chosen on the shared-helper rule,
+    // not on the absence of a precedent that in fact exists.
+    {
+      file: 'src/containers/frontFaceCost.ts',
+      imports: ['../api/schema', '../state/cards'],
+    },
+    // c4-8's mana curve. The SHORTEST import list of any container in this tree, and that is the
+    // story's headline rather than an accident: `CardSummary.cmc` rides on the deck payload, so
+    // this panel reaches for no cache, no hook and no network — it composes one primitive, reads
+    // the derivation `src/state/` already performed, and derives its seven numbers from it. It is
+    // the third reader of `surface.boards`, after `CardGrid` and `DeckList`.
+    {
+      file: 'src/containers/ManaCurve/ManaCurve.tsx',
+      imports: [
+        '../../components/Panel/Panel',
+        '../../state/deckGroups',
+        './ManaCurve.css',
+        './copy',
+        './curve',
+        'react',
+      ],
+    },
+    // c4-8's copy module — the FOURTH in this tree, the tenth in the app. `imports: []` for the
+    // settled `TS2835` reason, and one that earns it: the per-bar name BUILDER lives here rather
+    // than in the component because `copy-rules.test.ts` declares "a string reaching an
+    // `aria-label` through an expression" as a residue it cannot read, and declaring the words
+    // where the content half scans them is what closes it before a reviewer has to.
+    { file: 'src/containers/ManaCurve/copy.ts', imports: [] },
+    // c4-8's derivation. Its own module for the same `react-refresh/only-export-components`
+    // reason as `frontFaceCost.ts` — the SIXTH application of that split. It reuses `frontFace`
+    // and deliberately does NOT reuse `groupOf` — see its header for the 32 corpus lands that
+    // reuse would have counted as spells.
+    //
+    // `../../state/deckGroups` appears TWICE, and that is the exhaustive form working rather
+    // than a duplicate: `DeckBoards` is a type and `frontFace` is a value, so they are two
+    // statements, and this list is a list of import STATEMENTS. `ManaPip`'s entry above notes
+    // the same thing from the other side — it takes a value and a type from ONE statement and
+    // is therefore listed once. The single-statement spelling is not available here:
+    // `verbatimModuleSyntax` is on in both tsconfigs and nothing in `src/` uses an inline
+    // `type` specifier, so matching the house idiom costs one line in this list.
+    {
+      file: 'src/containers/ManaCurve/curve.ts',
+      imports: ['../../state/deckGroups', '../../state/deckGroups'],
+    },
+    // c4-9's colour distribution — the mana curve's sibling in the analysis row, and the panel
+    // with the LONGEST import list of the two by a distance. Where `ManaCurve` reached for no
+    // cache at all, this one subscribes to the whole card map: `cmc` rides on `CardSummary` and
+    // a pip count does not, so 87.75% of faced cards carry a blank top-level `mana_cost` whose
+    // real value only hydration supplies. `../../state/cards` is a VALUE import (`useCardStore`)
+    // and it reads only — no `setState`, no slice of its own, no request: `App.tsx` owns the
+    // sweep and this panel reads what it has already put there.
+    //
+    // `../../components/ManaCost/parse` is a TYPE-only import here (`ManaColour`, for the
+    // both-directions coupling of `copy.ts`'s labels); the parser's VALUES are used one module
+    // over, in `colours.ts`.
+    {
+      file: 'src/containers/ColourDistribution/ColourDistribution.tsx',
+      imports: [
+        '../../components/ManaCost/parse',
+        '../../components/ManaPip/ManaPip',
+        '../../components/Panel/Panel',
+        '../../state/cards',
+        '../../state/deckGroups',
+        './ColourDistribution.css',
+        './colours',
+        './copy',
+        'react',
+      ],
+    },
+    // c4-9's copy module — the FIFTH in this tree, the eleventh in the app. `imports: []` for the
+    // settled `TS2835` reason, and one this module earns twice over: it owns the six colour
+    // NAMES, which Q9(iv) makes the only route by which a colour reaches a screen-reader user at
+    // all (the legend's pip ships decorative). Their coupling to `ManaColour` in both directions
+    // is asserted in `ColourDistribution.tsx`, which imports both halves.
+    { file: 'src/containers/ColourDistribution/copy.ts', imports: [] },
+    // c4-10's format check — and the SHORTEST import list of any container in the tree, which is
+    // the entry's whole point. Every other panel in the epic takes `boards` and most reach the
+    // card cache; this one takes **no prop at all**, reads its own slice, and imports neither
+    // `../../state/cards`, `../../state/deckGroups` nor `../../state/inspection`. That absence is
+    // the cleanest don't-break in the epic (AC 13) and it is why this panel is the first to escape
+    // c4-6's no-re-drive window STRUCTURALLY rather than by luck of which field it needed.
+    //
+    // `../../api/schema` is a TYPE-only import (`FormatCheckRow`, for the both-directions
+    // couplings of `copy.ts`'s two maps and the tone map). `../../components/Badge/tones` is also
+    // type-only (`BadgeTone`) — the third coupling axis, which is what makes `Badge`'s runtime
+    // clamp unreachable from this call site rather than merely unused.
+    //
+    // `../../state/formatCheck` is a VALUE import (`useFormatCheck`) and it READS only: the
+    // request lives in that module, `App.tsx` decides when to make it, and this container reaches
+    // the network nowhere — which is the ban `shell.test.ts`'s own posture block enforces below.
+    {
+      file: 'src/containers/FormatCheck/FormatCheck.tsx',
+      imports: [
+        '../../api/schema',
+        '../../components/Badge/Badge',
+        '../../components/Badge/tones',
+        '../../components/Panel/Panel',
+        '../../state/formatCheck',
+        './FormatCheck.css',
+        './copy',
+      ],
+    },
+    // c4-10's copy module — the SIXTH in this tree, the twelfth in the app. `imports: []` for the
+    // settled `TS2835` reason, and this one earns it in a way worth naming: `ui/tests` imports it
+    // directly (`tests/format-check-source.test.ts`), so the import-freedom is not a convention
+    // here but a load-bearing property that file asserts before it relies on it.
+    { file: 'src/containers/FormatCheck/copy.ts', imports: [] },
+    // c4-9's derivation — the SEVENTH application of the `react-refresh/only-export-components`
+    // split. Two imports of the same parse module for the reason `curve.ts`'s entry spells out:
+    // this list is a list of import STATEMENTS, and `verbatimModuleSyntax` makes the inline
+    // `type` specifier unavailable, so a value import and a type import are two lines.
+    //
+    // `../ManaCurve/curve` is the cross-directory import c4-9 ruled IN rather than out, and the
+    // asymmetry with `frontFaceCost.ts` above is deliberate: moving a whole module whose every
+    // export is shared costs one `git mv`, while splitting ONE export out of `curve.ts` would
+    // separate `isLand` from the three-land-policies argument its own docstring makes about it.
+    // AC 10 asks for the function to be reused rather than forked, and this is that.
+    {
+      file: 'src/containers/ColourDistribution/colours.ts',
+      imports: [
+        '../../components/ManaCost/parse',
+        '../../components/ManaCost/parse',
+        '../../state/cards',
+        '../../state/deckGroups',
+        '../ManaCurve/curve',
+        '../frontFaceCost',
+      ],
+    },
+    // The one mirror of `resolve_face_images` (c4-6). It sits at the ROOT of this tree rather than
+    // inside `FlipControl/` because TWO components need the answer — the control, to decide
+    // whether to exist, and `CardTile`, to decide whether to render a second stacked `<img>` for
+    // the back face — and `src/components/filled.ts`'s header states the rule for exactly that
+    // case: "a helper shared by two components does not live inside one of them". `useCardArt.ts`
+    // and `imageUrl.ts` are the two shipped precedents.
+    { file: 'src/containers/imagedFaces.ts', imports: ['../state/cards'] },
+    // c4-11's skip link — the first Tab stop in the document, and the epic's only purely
+    // structural component. It is a CONTAINER rather than a primitive because it attaches
+    // `onClick`, `onFocus` and `onBlur`, three handlers `src/components/`'s set-equality posture
+    // bans outright. `ui/README.md:548` named c4-11 in the inheriting list before it was written.
+    //
+    // NOTE WHAT IS ABSENT, because it is the whole shape of the component: no `../../state/…` of
+    // any kind. Whether this renders at all is `App.tsx`'s call off the ONE `surfaceOf` answer, so
+    // there is no slice in scope for a later edit to re-derive presence from — `deck.ts:388-390`
+    // warns by name against a third derivation, and an exhaustive import list is the strongest
+    // available form of that warning. No `../../api/…` either: it reaches no network and reads no
+    // wire shape.
+    {
+      file: 'src/containers/SkipLink/SkipLink.tsx',
+      imports: ['../focusHome', './SkipLink.css', './copy', 'react'],
+    },
+    // c4-11's copy module — the FOURTH in this tree, the twelfth in the app. One string, and for
+    // once nothing to rule: `DESIGN.md:418`, `EXPERIENCE.md:100` and `epics:506` all carry "Skip
+    // past the deck grid" byte for byte. `imports: []` for `CardDetail/copy.ts`'s measured reason:
+    // `tests/` is the `nodenext` project and `src/` the `bundler` one, so a `ui/tests` file may
+    // import an app module only if that module has no relative imports of its own — and
+    // `copy-rules.test.ts` imports this one to compare the string against the artefact.
+    { file: 'src/containers/SkipLink/copy.ts', imports: [] },
+    // c4-11's focus hand-off — the EIGHTH application of the
+    // `react-refresh/only-export-components` split, and the second module promoted to this tree's
+    // root for the shared-helper rule after `frontFaceCost.ts`. It has exactly two callers by
+    // design: `CardDetail`'s unpin control (which shipped the four lines first, at c4-5) and the
+    // skip link. AC 6 makes that a requirement — "exactly one focus home and one implementation of
+    // it" — so a third copy of `tabIndex = -1` / focus / remove-on-blur is a defect rather than a
+    // duplication.
+    //
+    // `imports: []`, and it is the strongest statement this list can make about the module: no
+    // react, no store, no wire, no DOM library. It takes an `Element` and calls two DOM methods on
+    // it. Everything about WHICH element is the caller's, which is why neither caller's lookup
+    // lives here — `CardDetail` scopes to its own frame ref, and the skip link cannot scope to
+    // anything because it is mounted outside all three landmarks.
+    { file: 'src/containers/focusHome.ts', imports: [] },
+    // The image-route path builder. `imports: []` is the strongest form of "this is a string,
+    // from a string" — no react, no DOM, no store and, above all, no fetch. It is a module of
+    // its own because `react-refresh/only-export-components` is an ESLint error and a component
+    // file that also exports a helper breaks fast refresh; the split is what lets c4-5 and c4-6
+    // extend ONE builder rather than each writing a second template string. Held to the same
+    // posture as the components beside it, for the reason `tones.ts` and `parse.ts` are: a pure
+    // module next to a component is exactly where behaviour arrives first, because nothing in
+    // its own file looks like a component.
+    { file: 'src/containers/CardTile/imageUrl.ts', imports: [] },
+  ]
+
+  // A WALK rather than a regex (review 2026-08-04): the first spelling was a `//`-to-newline
+  // regex, and the double-faced-name idiom this very component family traffics in — a string
+  // holding `'X // Y'` — would have deleted the rest of the line, code included, before any ban
+  // below ran. String and template contents are KEPT (the import rules read specifiers out of
+  // them); only comments are dropped. Same walker, same declared residue, as posture.test.ts's.
+  const withoutComments = (source: string): string => {
+    let out = ''
+    let index = 0
+    while (index < source.length) {
+      const pair = source.slice(index, index + 2)
+      if (pair === '//') {
+        while (index < source.length && source[index] !== '\n') index += 1
+        continue
+      }
+      if (pair === '/*') {
+        const close = source.indexOf('*/', index + 2)
+        index = close === -1 ? source.length : close + 2
+        continue
+      }
+      const char = source[index]
+      if (char === '"' || char === "'" || char === '`') {
+        out += char
+        index += 1
+        while (index < source.length && source[index] !== char) {
+          if (source[index] === '\\') {
+            out += source[index]
+            index += 1
+          }
+          if (index < source.length) {
+            out += source[index]
+            index += 1
+          }
+        }
+        if (index < source.length) {
+          out += char
+          index += 1
+        }
+        continue
+      }
+      out += char
+      index += 1
+    }
+    return out
+  }
+
+  const containerFilesOnDisk = (): string[] =>
+    execFileSync('git', ['ls-files', 'src/containers/*.ts', 'src/containers/*.tsx'], {
+      cwd: uiRoot,
+      encoding: 'utf8',
+    })
+      .split('\n')
+      .filter(Boolean)
+
+  // The comparison the coverage guard AND its firing half both run (review 2026-08-04 — the
+  // firing half's first spelling asserted that appending to an array changes it, which exercised
+  // nothing). One function, two feeds: the real `git ls-files` in the guard, the same list plus
+  // a planted module in the probe.
+  const coversExactly = (onDisk: string[]): boolean => {
+    const shipped = onDisk.filter((f) => !/\.test\.tsx?$/.test(f)).sort()
+    const listed = CONTAINERS.map((c) => c.file).sort()
+    return shipped.length === listed.length && shipped.every((f, i) => f === listed[i])
+  }
+
+  it('is reading every container module (non-vacuity)', () => {
+    // 3 at c4-4, which created the category; 6 at c4-5, which added the detail panel, its copy
+    // module and the shared art hook; 7 since that story's review added the deck-transition
+    // memory (2026-08-05); 10 at c4-6, which adds the flip control, its copy module and the one
+    // mirror of `resolve_face_images`. The number is pinned rather than derived so that a new
+    // container is a DECISION with a diff — the same reason the token inventory is pinned — and
+    // the coverage guard below is what makes forgetting to move it impossible rather than merely
+    // discouraged.
+    // 13 at c4-7, which adds the deck list, its copy module and the front-face resolution.
+    // 16 at c4-8, which adds the mana curve, its copy module and its derivation. The panel's
+    // PAIR-ROW wrapper is NOT here: `AnalysisRow` holds no state, calls no hook and reads no
+    // store, so it is a primitive and lands in `PRIMITIVES` above (c4-4 Q1's category rule
+    // applied in the direction it is usually applied against).
+    // 19 at c4-9, which adds the colour distribution, its copy module and its derivation. It
+    // also MOVES `frontFaceCost.ts` up a level rather than adding a fourth — the count is +3
+    // either way, and the coverage guard below is what makes the rename impossible to forget.
+    // 21 at c4-10, which adds the format check and its copy module — and only those TWO. It ships
+    // no derivation module of its own, because there is nothing to derive: the backend already
+    // decided every verdict and `deck_validator.py`'s own guard declares that a rule re-written in
+    // TypeScript is invisible to it, so a `rows.ts` here would be the exact hole that guard names.
+    // 24 at c4-11, which adds the skip link, its copy module and the focus hand-off. The third is
+    // an EXTRACTION rather than a new capability — `CardDetail` shipped those four lines at c4-5
+    // and this story gave them a second caller — so the count moves by three while the app grows
+    // by one component.
+    // 25 at c4-12, and it is the smallest move in the epic: ONE module, a `copy.ts` holding a
+    // single sentence. The story renders that sentence from an EXISTING container (`CardGrid`, at
+    // the invitation its own header left) and puts its one predicate in an EXISTING state module
+    // (`deckIsEmpty`, beside `DeckBoards`), so the tree grows by a copy owner and nothing else —
+    // which is the shape a story that adds "one sentence and one conditional" should have.
+    expect(CONTAINERS).toHaveLength(25)
+    for (const { file } of CONTAINERS) {
+      expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
+    }
+  })
+
+  it('covers every container module on disk — the list cannot silently fall behind', () => {
+    // THE COVERAGE GUARD THIS CATEGORY SHIPS WITH, IN THE SAME COMMIT THAT CREATES IT (AC 1).
+    // An uncovered directory is how the next fifteen component stories would escape every gate
+    // in this repo at once — c4-5, c4-6, c4-7, c4-10, c4-11, c5-7, c6-5…c6-8 and c9-1…c9-3 all
+    // land here. Same authority as every other file walk in this suite: git, not readdir, so an
+    // untracked module cannot pass vacuously either.
+    const onDisk = containerFilesOnDisk()
+    expect(coversExactly(onDisk)).toBe(true)
+
+    // The `.test.` exemption is for TEST files, and that is checked rather than assumed (review
+    // 2026-08-04): a runtime module named `hooks.test.ts` would otherwise ship from this tree
+    // covered by no list and held to no posture — a module invisible through its filename.
+    for (const file of onDisk.filter((f) => /\.test\.tsx?$/.test(f))) {
+      expect(
+        sourceOf(file),
+        `${file} is exempt from CONTAINERS as a test file, but imports nothing from vitest`,
+      ).toMatch(/from ['"]vitest['"]/)
+    }
+  })
+
+  it.each(CONTAINERS)('$file imports exactly what it declares', ({ file, imports }) => {
+    const source = withoutComments(sourceOf(file))
+    const modules = [
+      ...source.matchAll(/(?:import|export)\s+(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/g),
+    ].map((m) => m[1])
+    expect(modules.sort()).toEqual(imports)
+
+    // The two runtime routes around a static import are closed by name, exactly as they are for
+    // the primitives: a dynamic `import()` of a store slice is still a door.
+    expect(source).not.toMatch(/\b(?:require|import)\s*\(/)
+  })
+
+  it.each(CONTAINERS)('$file reaches no module outside the permitted roots', ({ imports }) => {
+    // The POSITIVE half of the exhaustive list: even a correctly-declared import must resolve
+    // into react, the primitives, the containers themselves, the state layer, or `src/api/` FOR
+    // A TYPE. `zustand` and anything else is a category decision, not an import.
+    //
+    // ==== `src/api/` JOINED AT c4-5, AND IT IS A CATEGORY DECISION MADE IN THE OPEN =======
+    // This list read "react, the primitives, the containers themselves, or the state layer",
+    // with `src/api/` named as excluded. c4-5's detail panel is the first container that has to
+    // NAME a wire shape — it renders a hydrated `Card`, and reads `card_faces[0]` because 100%
+    // of the corpus's faced cards carry a blank top-level `oracle_text` — and the alternative to
+    // importing the alias is re-declaring the shape, which `tests/wire-contract.test.ts` bans
+    // outright and `src/api/schema.ts` exists to make unnecessary.
+    //
+    // The permission is exactly the one `posture.test.ts` already gives every PRIMITIVE — *"a
+    // component may take a TYPE from anywhere and a VALUE from nowhere but its own tree"* — and
+    // `states.ts` has taken `ErrorReason` from `../../api/schema` since c3-2 under it. What made
+    // that safe there is that types are erased and values are behaviour; the same split is what
+    // makes it safe here, and the test BELOW is what enforces the half this one cannot see. A
+    // value import of `src/api/client.ts` from a container would be a second network door, so it
+    // is banned by name rather than left to the `fetch(` scan, which would never see it.
+    //
+    // NORMALISED FIRST (review 2026-08-04): the regexes read the specifier's SPELLING, and
+    // `'../../state/../api/client'` spells a permitted root while resolving outside every one of
+    // them. `posix.normalize` collapses the traversal before the roots are read, so what is
+    // tested is where the import GOES, not how it is written.
+    const normalised = imports.map((specifier) => {
+      if (!specifier.startsWith('.')) return specifier
+      const collapsed = posix.normalize(specifier)
+      // `normalize` strips a leading `./`; put it back so the roots below read unchanged.
+      return collapsed.startsWith('.') ? collapsed : `./${collapsed}`
+    })
+    const outside = normalised.filter(
+      (specifier) =>
+        specifier !== 'react' &&
+        !specifier.endsWith('.css') &&
+        !/^\.\.\/\.\.\/(?:components|state|api)\//.test(specifier) &&
+        !/^\.\.?\/[A-Za-z]/.test(specifier),
+    )
+    expect(outside).toEqual([])
+  })
+
+  // ONE regex, used by the guard AND by its firing-half probe below. Extracted at review
+  // 2026-08-05: the probe originally re-declared this pattern inline, so a "fix" to the guard's
+  // copy would have left the probe green against its private one — the exact vacuous-negative-
+  // control failure this suite's own history records twice. `matchAll` species-clones the regex,
+  // so sharing one `/g` object between call sites is safe.
+  const TYPE_ONLY_IMPORT = /\bimport\s+(type\s+)?[^'"]*?\bfrom\s+['"]([^'"]+)['"]/g
+
+  /**
+   * Whether a specifier reaches `src/api/`, AT ANY DEPTH — shared by the guard and by its probe
+   * for `TYPE_ONLY_IMPORT`'s reason: a probe matching a private copy proves nothing.
+   */
+  const REACHES_API = (specifier: string) => /(^|\/)(?:\.\.\/)+api\//.test(`/${specifier}`)
+
+  it.each(CONTAINERS)('$file takes a wire shape as a TYPE and never as a value', ({ file }) => {
+    // THE OTHER HALF OF THE c4-5 WIDENING, and the half that carries the weight. The roots check
+    // above reads SPECIFIERS, so it cannot tell `import type { Card }` from
+    // `import { readCard }` — and one of those is a second door to the network in a codebase
+    // whose whole posture is that there is exactly one (`posture.test.ts:339`).
+    //
+    // Keyed on the FORM rather than on the module, so `src/api/client.ts`, `src/api/types` and
+    // an `src/api/` module nobody has written yet are all covered by the same line: any import
+    // from that root must be `import type`. That is the identical rule `posture.test.ts` applies
+    // to the primitives, restated for the category that did not have it.
+    //
+    // The INLINE-TYPE form — a `type` keyword inside the braces — is DELIBERATELY not accepted:
+    // `verbatimModuleSyntax` is on, so that spelling still emits the import and still RUNS the
+    // module. `posture.test.ts` makes the same distinction for the same measured reason.
+    // DEPTH-INDEPENDENT, AND THAT IS A c4-9 CORRECTION RATHER THAN A TIDY-UP. This filter read
+    // `/(^|\/)\.\.\/\.\.\/api\//` — exactly TWO levels up — which was true of every container
+    // while every container lived one directory deep. c4-9 promoted `frontFaceCost.ts` to
+    // `src/containers/`, where the same import is written `'../api/schema'`, and the old pattern
+    // stops matching it: the module would have gone on importing a wire shape with this guard
+    // silently no longer looking. A guard that quietly narrows when a file MOVES is the same
+    // coverage-that-reads-as-coverage failure this epic keeps finding, so the pattern now counts
+    // one-or-more `../` segments and covers every depth this tree can have.
+    const source = withoutComments(sourceOf(file))
+    const apiImports = [...source.matchAll(TYPE_ONLY_IMPORT)].filter(([, , specifier]) =>
+      REACHES_API(specifier),
+    )
+
+    for (const [whole, typeOnly, specifier] of apiImports) {
+      expect(
+        typeOnly,
+        `${file} imports ${specifier} as a VALUE: ${whole.trim()}. A container may take a wire ` +
+          `SHAPE from src/api/ (types are erased); it may not take behaviour, because ` +
+          `src/api/client.ts is the one door to the network and importing it here would open a ` +
+          `second one. Use \`import type\` — and not \`import { type X }\`, which still runs ` +
+          `the module under verbatimModuleSyntax.`,
+      ).toBeDefined()
+    }
+  })
+
+  it('would catch a value import from src/api/ — the firing half of the type-only rule', () => {
+    // Fed inline rather than by breaking a real file, so the proof survives the repair. Three
+    // spellings: the plain value import, the inline-type form that still runs the module, and
+    // the one that is legitimately fine. AGAINST THE GUARD'S OWN REGEX (`TYPE_ONLY_IMPORT`,
+    // shared above) — a probe matching a private copy proves nothing about the guard.
+    const typeOnlyOf = (line: string) => [...line.matchAll(TYPE_ONLY_IMPORT)].map((m) => m[1])
+
+    //
+    // The inline-type probe names `Widget`, not a real schema key, and that is not cosmetic:
+    // `tests/wire-contract.test.ts` scans every tracked source — this file included — for a
+    // declaration whose name matches a `components.schemas` key — and to a regex, an inline-type
+    // import of a real shape is indistinguishable from declaring one. Naming a real shape here,
+    // even in this comment, fails that guard from inside a probe: measured, not predicted.
+    expect(typeOnlyOf("import { readCard } from '../../api/client'")).toEqual([undefined])
+    expect(typeOnlyOf("import { type Widget } from '../../api/schema'")).toEqual([undefined])
+    expect(typeOnlyOf("import type { Widget } from '../../api/schema'")).toEqual(['type '])
+
+    // AND THE FILTER REACHES BOTH DEPTHS (c4-9). The guard's own selection step is where it
+    // silently narrowed: with `frontFaceCost.ts` promoted to `src/containers/`, its wire import
+    // is written `'../api/schema'`, which the previous two-levels-exactly pattern did not match
+    // at all — so the rule above would have run over an EMPTY list and passed by looking at
+    // nothing. Both spellings, and one that must NOT match.
+    expect(REACHES_API('../../api/schema')).toBe(true)
+    expect(REACHES_API('../api/schema')).toBe(true)
+    expect(REACHES_API('../../state/cards')).toBe(false)
+    // …and it is genuinely reaching a real container: the promoted module is in the list and
+    // spells its import the shorter way, which is the case that made this change necessary.
+    expect(CONTAINERS.find((c) => c.file === 'src/containers/frontFaceCost.ts')?.imports).toContain(
+      '../api/schema',
+    )
+  })
+
+  it('keeps oracle paragraph breaks beside the clamp — pre-line in the scroller rule', () => {
+    // `oracle_text` separates abilities with `\n` and the panel renders the wire value VERBATIM
+    // into one element, so the clamp's own rule must declare `white-space: pre-line` — without
+    // it every multi-ability card in the corpus reads as one run-together sentence (found at
+    // review 2026-08-05; jsdom evaluates no CSS, so this is a SOURCE claim, asserted against
+    // the same block as the clamp so neither declaration moves without the other).
+    const oracle = sourceOf('src/containers/CardDetail/CardDetailChrome.css').match(
+      /\.card-detail-oracle\s*\{[^}]*\}/,
+    )?.[0]
+    expect(oracle).toBeDefined()
+    expect(oracle).toMatch(/max-height:\s*21em/)
+    expect(oracle).toMatch(/white-space:\s*pre-line/)
+  })
+
+  it.each(CONTAINERS)('$file makes no request and imports no state library', ({ file }) => {
+    const source = withoutComments(sourceOf(file))
+
+    // THE ONE-DOOR RULE, SCOPED. `posture.test.ts` already asserts the door list exhaustively
+    // over all of `src/`, and this story leaves that list reading `['src/api/client.ts']` with
+    // NO EDIT — an `<img src>` is a request the BROWSER makes, not one the app makes, and no
+    // code in `ui/src` ever holds the bytes. Asserted here as well because the containers are
+    // the category most likely to reach for one, and a rule stated only in prose is not one.
+    expect(source).not.toMatch(/\b(?:fetch|XMLHttpRequest|EventSource|WebSocket)\s*\(/)
+    expect(source).not.toMatch(/navigator\.sendBeacon/)
+    // AD-12: no second state library, and no reaching past `src/state/` to the one we have.
+    expect(source).not.toMatch(/from\s+['"]zustand['"]/)
+    // AD-12's other half, and `store-writes.test.ts`'s: nothing outside a slice's own module
+    // writes it. A container subscribes; it does not set.
+    expect(source).not.toMatch(/\.setState\b/)
+  })
+
+  it('ships the blessed track and the token gap — the POSITIVE half of AC 12', () => {
+    // Added by review 2026-08-04: everything else in this suite only BANS bad grid forms (the
+    // bare `1fr`, the content-floored minmax), so a drift from the blessed track — or a gap
+    // quietly moved off `--space-panel-gap` — passed every gate while the component test's
+    // header claimed otherwise. These are source claims on the shipped stylesheet; that the
+    // grid REFLOWS at real widths stays Task 7's, and jsdom cannot carry it.
+    const grid = sourceOf('src/containers/CardGrid/CardGrid.css')
+    expect(grid).toMatch(/grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(176px,\s*1fr\)\)/)
+    expect(grid).toMatch(/gap:\s*var\(--space-panel-gap\)/)
+  })
+
+  it('keeps the empty-deck line calm — the NARROW claim, in place of CALM_STYLESHEETS (c4-12)', () => {
+    // Q16'S RULING, MADE AS A PIN RATHER THAN AS A COMMENT. `CALM_STYLESHEETS` in
+    // token-usage.test.ts is the obvious home for UX-DR30's "no error styling", but it is keyed on
+    // a whole FILE — and this file draws the card grid's arrangement, so joining it would assert
+    // calmness over every rule in here and every rule a later story adds. That is a claim about
+    // the grid, not about the one line UX-DR30 speaks to. So the claim is made narrowly, here,
+    // against the rule block itself.
+    //
+    // ⚠️ WHAT IT CANNOT SEE, DECLARED: it reads ONE stylesheet's ONE block. A colour, border or
+    // background reaching `.card-grid-empty` from another file, an inline style, or a token
+    // redefined under a different theme are all invisible to it. Nothing does any of those today
+    // (the element is a bare `<p>` with one class, and `token-usage.test.ts` scans every tracked
+    // `.css` for declarations), and this comment is the record of the gap rather than a claim
+    // that there is none.
+    const emptyLineCss = sourceOf('src/containers/CardGrid/CardGrid.css')
+    // Comments are stripped BEFORE the block is cut: a `}` inside a comment would truncate the
+    // `[^}]*` capture and every declaration after it would escape both pins below — the first of
+    // three mechanical evasion holes closed at code review 2026-08-07 (the other two: property
+    // case, and `var()` fallback literals).
+    const block =
+      /\.card-grid-empty\s*\{([^}]*)\}/.exec(emptyLineCss.replace(/\/\*[\s\S]*?\*\//g, ''))?.[1] ??
+      ''
+
+    // NON-VACUITY FIRST: a rename or a deleted rule yields `''`, over which every assertion below
+    // would pass while asserting nothing — the epic's coverage-that-reads-as-coverage shape, in
+    // the exact place it has landed six stories running.
+    expect(block.length, '.card-grid-empty is missing from CardGrid.css').toBeGreaterThan(30)
+
+    // Lower-cased because CSS property names are case-insensitive: `Background:` is a live
+    // declaration the browser honours, and an `[a-z-]`-only capture would simply not see it —
+    // the exactly-three pin would stay green while a fourth property shipped.
+    const declared = [...block.matchAll(/^\s*([a-zA-Z-]+)\s*:/gm)]
+      .map((m) => m[1].toLowerCase())
+      .sort()
+    // EXACTLY these three, both directions. An extra `background`, `border`, `padding`,
+    // `min-height` or `text-align` is a treatment DESIGN.md does not specify and this is where it
+    // surfaces; a missing `margin` is the UA `<p>` margin returning and breaking the panel inset.
+    expect(declared).toEqual(['color', 'font', 'margin'])
+
+    // The two tokens DESIGN.md's `components.empty-deck-line` names, and NO others — so a
+    // semantic colour (`--negative`, `--caution`) arriving here fails even though it would satisfy
+    // the property list above.
+    const spent = [...block.matchAll(/var\((--[\w-]+)/g)].map((m) => m[1]).sort()
+    expect(spent).toEqual(['--text-secondary', '--type-body'])
+
+    // And no `var(--token, fallback)`: the capture above reads only the token NAME, so
+    // `var(--text-secondary, red)` would satisfy the exact-token pin while shipping a literal
+    // colour through its fallback arm. The scale's tokens carry their own values; a fallback
+    // here could only ever be an invented one.
+    expect(block).not.toMatch(/var\(\s*--[\w-]+\s*,/)
+
+    // `--type-body` is one of the four roles that need NO companion declaration (display, label
+    // and micro carry tracking or transform; body does not) — so the bare `font:` shorthand here
+    // is correct rather than an unpaired-role defect, and `token-usage.test.ts`'s companion guard
+    // is what would say otherwise. Asserted so the reason is pinned, not remembered.
+    expect(block).not.toMatch(/letter-spacing|text-transform|font-variant-numeric/)
+  })
+
+  it('is a category that is actually USED — otherwise it is theatre', () => {
+    // The non-vacuity half of the ruling itself. If no container ever held a hook, a ref or a
+    // handler, this whole directory would be an unjustified second home for presentation-only
+    // components and the primitives' posture should simply have been obeyed. `CardTile` is the
+    // proof that the category was forced rather than chosen.
+    const tile = withoutComments(sourceOf('src/containers/CardTile/CardTile.tsx'))
+    expect(tile).toMatch(/\buse[A-Z]\w*\s*\(/)
+    expect(tile).toMatch(/\bref\s*=/)
+    expect(tile).toMatch(/\bon[A-Z]\w*\s*=/)
+  })
+
+  it('would catch a container that never joined the list (probe a)', () => {
+    // The firing half of the coverage guard, fed through the SAME comparison the guard runs
+    // (review 2026-08-04 — the first spelling asserted that appending to an array changes it,
+    // which exercised neither `git ls-files` nor the comparison). Same real `ls-files` output,
+    // one planted module: the guard's own function must refuse it — and refuse a `.test.ts`
+    // spelling being used to smuggle a runtime module past the exemption is checked in the
+    // guard itself.
+    const real = containerFilesOnDisk()
+    expect(coversExactly(real)).toBe(true)
+    expect(coversExactly([...real, 'src/containers/Sneaky/Sneaky.tsx'])).toBe(false)
+    // …and the exemption is not a hole in THIS comparison for a listed module gone missing:
+    expect(coversExactly(real.filter((f) => f !== 'src/containers/CardTile/CardTile.tsx'))).toBe(
+      false,
+    )
   })
 })
 
