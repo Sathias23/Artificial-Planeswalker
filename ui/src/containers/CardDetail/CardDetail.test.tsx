@@ -17,7 +17,7 @@ import {
 } from '../../state/inspection'
 import { CardGrid } from '../CardGrid/CardGrid'
 import { CardDetail } from './CardDetail'
-import { PANEL_TITLE, UNPIN_LABEL, pinnedAnnouncement } from './copy'
+import { ORACLE_SCROLLER_LABEL, PANEL_TITLE, UNPIN_LABEL, pinnedAnnouncement } from './copy'
 import { resetDeckMemory } from './deckMemory'
 
 /**
@@ -175,7 +175,36 @@ describe('the panel is always there, and it is a region (AC 7, AC 24, AC 25, AC 
     // described, because "persistent panel" and "modal" are one careless prop apart.
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(container.querySelector('[aria-modal]')).toBeNull()
-    expect(container.querySelector('[tabindex]')).toBeNull()
+
+    // ==== NARROWED AT c4-11, NOT DELETED (AC 22, Q8) ==================================
+    // This read `container.querySelector('[tabindex]')` and had to change, because c4-11 gives
+    // `.card-detail-oracle` a `tabindex="0"` under the WCAG 2.1.1 mandate at
+    // `deferred-work.md:3875-3883`. THE REASON IT IS WRITTEN DOWN rather than the assertion simply
+    // relaxed: what this line protects is the NOT-A-MODAL claim, and a modal is made of a focus
+    // TRAP — the `[tabindex]` sweep was only ever a cheap proxy for one. Deleting it would drop
+    // the claim; leaving it would forbid the fix. So it is scoped to "no `[tabindex]` OUTSIDE the
+    // oracle scroller", and the two attributes that would actually make this a modal keep their
+    // own unconditional assertions above.
+    //
+    // The exception is named by SELECTOR rather than counted, so a second focusable element
+    // smuggled into the panel fails this even though the count would still be one.
+    const tabbables = [...container.querySelectorAll('[tabindex]')]
+    expect(tabbables.map((el) => el.className)).toEqual(['card-detail-oracle'])
+
+    // …and the scroller is a GROUP, never a landmark or a dialog: `role="region"` here would put
+    // a per-card entry in the landmark list and move the count `AppShell.test.tsx` pins.
+    expect(tabbables[0].getAttribute('role')).toBe('group')
+    expect(tabbables[0].getAttribute('tabindex')).toBe('0')
+    expect(tabbables[0].getAttribute('aria-label')).toBe(ORACLE_SCROLLER_LABEL)
+
+    // THE NON-VACUITY ANCHOR (AC 32). This fixture must actually RENDER oracle text — a card with
+    // none renders no scroller at all, under which every assertion above would be checking an
+    // empty list and passing by looking at nothing. That is the "vacuous fixture" shape this
+    // epic's reviews have caught in four consecutive stories.
+    expect(tabbables).toHaveLength(1)
+    // TRIMMED, so a fixture whose oracle text degraded to whitespace cannot satisfy "actually
+    // renders oracle text" (code review 2026-08-07).
+    expect(tabbables[0].textContent?.trim()).not.toBe('')
   })
 })
 

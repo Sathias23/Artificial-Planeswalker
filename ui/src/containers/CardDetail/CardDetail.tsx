@@ -17,12 +17,13 @@ import {
 } from '../../state/inspection'
 import { cardImageUrl } from '../CardTile/imageUrl'
 import { FlipControl } from '../FlipControl/FlipControl'
+import { SKIP_TARGET_ID, focusHome } from '../focusHome'
 import { useCardArt } from '../useCardArt'
 import { useImagedFaceCount } from '../imagedFaces'
 import { replacesRememberedDeck } from './deckMemory'
 import './CardDetail.css'
 import './CardDetailChrome.css'
-import { PANEL_TITLE, UNPIN_LABEL, pinnedAnnouncement } from './copy'
+import { ORACLE_SCROLLER_LABEL, PANEL_TITLE, UNPIN_LABEL, pinnedAnnouncement } from './copy'
 
 /**
  * The persistent card detail panel — the right column's permanent occupant, and the thing that
@@ -388,14 +389,20 @@ export function CardDetail({ boards }: CardDetailProps) {
   // `<h2>` — the one element c4-11's skip link already targets, so the two stories converge on
   // a single focus home. `tabIndex = -1` is set IMPERATIVELY and removed on blur: the panel at
   // rest carries no `[tabindex]`, which is what AC 25's not-a-modal assertion checks.
+  //
+  // ==== THE FOUR LINES ARE NOW `../focusHome`, AND THAT IS c4-11's AC 6 (Q2) ============
+  // That story's skip link moves focus to THIS heading, so the two callers needed the identical
+  // hand-off. AC 6 makes "exactly one focus home and one implementation of it" a requirement, so
+  // the body moved out and the behaviour did not: `CardDetail.test.tsx:559-579` passes UNCHANGED,
+  // which is the only evidence that an extraction is an extraction rather than a rewrite.
+  //
+  // The LOOKUP stays here rather than moving with it. It is scoped to this panel's own frame ref
+  // — a document-wide `'h2'` would find the mana curve's heading, because the left column precedes
+  // the right in document order — and the skip link, mounted outside all three landmarks, cannot
+  // scope anything. It reaches the same element through `SKIP_TARGET_ID` on the frame below.
   const releaseAndRefocus = () => {
     clearPin()
-    const title = frameRef.current?.querySelector('h2')
-    if (title instanceof HTMLElement) {
-      title.tabIndex = -1
-      title.addEventListener('blur', () => title.removeAttribute('tabindex'), { once: true })
-      title.focus()
-    }
+    focusHome(frameRef.current?.querySelector('h2'))
   }
 
   const content = contentOf(entry, faceIndex)
@@ -407,7 +414,17 @@ export function CardDetail({ boards }: CardDetailProps) {
        and a ring drawn on a wrapper with no radius would be a square outline around a
        `--radius-lg` panel. So the wrapper matches the panel's own radius and the ring is a
        box-shadow on it — see CardDetailChrome.css. */
-    <div ref={frameRef} className={pinned ? 'card-detail is-pinned' : 'card-detail'}>
+    /* `id` — THE SKIP LINK'S TARGET HANDLE (c4-11, AC 1, AC 5). The only DOM id in `ui/src`, and
+       it is on the FRAME rather than the `<h2>` because `Panel` is a primitive a consumer may not
+       restyle and may not call a hook, so it cannot produce an id from `useId` and takes no prop
+       for one. The frame is the outermost thing this component owns, so the link resolves
+       `#card-detail` and then asks the panel for its own heading — which is exactly what
+       `releaseAndRefocus` above does with its ref. One element, reached two ways, by design. */
+    <div
+      ref={frameRef}
+      id={SKIP_TARGET_ID}
+      className={pinned ? 'card-detail is-pinned' : 'card-detail'}
+    >
       <Panel
         title={PANEL_TITLE}
         level="overlay"
@@ -528,8 +545,37 @@ export function CardDetail({ boards }: CardDetailProps) {
           {content.typeLine === null ? null : (
             <p className="card-detail-type">{content.typeLine}</p>
           )}
+          {/* THE ORACLE SCROLLER IS A TAB STOP (c4-11, AC 21–24, Q8, WCAG 2.1.1).
+              `deferred-work.md:3875-3883` mandates three actions in ONE commit — scope AC 25's
+              assertion, enumerate the new stop, make the scroller focusable — and this is the
+              third. The clamp is `max-height: 21em` with `overflow-y: auto`, and content that can
+              scroll must be reachable by keyboard whether or not it usually overflows.
+
+              ALL THREE ATTRIBUTES OR NONE. A `tabindex` alone is an unlabelled stop; `role="group"`
+              makes it a named grouping rather than a LANDMARK (a region here would put an entry in
+              every screen reader's landmark list, per card, and move the count AppShell.test.tsx
+              pins); the label from copy.ts is what it announces as.
+
+              ==== THE COST, STATED RATHER THAN HIDDEN (Q8) ==============================
+              This adds ONE PERMANENT TAB STOP to the right column on EVERY deck, to serve a
+              scroller that overflows on exactly ONE card in the entire live corpus — `Ajani,
+              Sleeper Agent`, 530 chars, in `Atraxa Counter Cabinet`, re-measured at Task 0 (103 of
+              38,261 corpus cards can overflow; the clamp has never been OBSERVED to fire on a real
+              deck). That is the correct trade under 2.1.1, and it is a real cost.
+
+              THE CONDITIONAL ALTERNATIVE IS REJECTED IN WRITING: making it focusable only when
+              `scrollHeight > clientHeight` cannot be verified in jsdom (no layout — every box is
+              zeroes), and a Tab stop that appears and disappears with content is the precise defect
+              `c4-6:507-508` priced against when it refused a control that materialised mid-Tab. */}
           {content.oracleText === null ? null : (
-            <p className="card-detail-oracle">{content.oracleText}</p>
+            <p
+              className="card-detail-oracle"
+              tabIndex={0}
+              role="group"
+              aria-label={ORACLE_SCROLLER_LABEL}
+            >
+              {content.oracleText}
+            </p>
           )}
         </div>
       </Panel>
@@ -539,7 +585,11 @@ export function CardDetail({ boards }: CardDetailProps) {
           and must not become one, so the thing that DOES speak is a separate element that
           carries no card content and changes only when a pin does. Empty at rest, and emptied
           on release — removing content is not an announcement. */}
-      <p className="card-detail-announcement" aria-live="polite">
+      {/* `visually-hidden` FIRST, then this element's own class — the shared clip-rect (promoted
+          to `src/styles/` at c4-11, third instance) plus the one declaration only this consumer
+          wants, `pointer-events: none`. Order is documentation, not cascade: the two rules touch
+          no common property. */}
+      <p className="visually-hidden card-detail-announcement" aria-live="polite">
         {announced.text}
       </p>
     </div>

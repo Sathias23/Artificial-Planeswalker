@@ -140,35 +140,19 @@
 
 /* THE VISUALLY-HIDDEN TABLE (AC 22, Q7, UX-DR17, UX-DR44).
 
-   ==== RE-DECLARED, NOT SHARED — AND THAT IS A DECISION ================================
-   `CardDetailChrome.css:182-199` has the only other clip-rect block in the repo. It is NOT
-   promoted to a shared utility here: two instances is not a pattern, and `card-geometry.css` was
-   promoted at c4-3 only because four stories consumed it. **Recorded as a third-instance
-   trigger: whoever writes the third visually-hidden block promotes it to `src/styles/`.**
+   ==== THE TRIGGER THIS BLOCK WROTE DOWN HAS FIRED (c4-11) ==============================
+   This block used to carry its own copy of the WCAG clip-rect and declined to promote it, naming
+   the condition that would change that: *"two instances is not a pattern … whoever writes the
+   third visually-hidden block promotes it to `src/styles/`."* c4-9 and c4-10 each asserted it had
+   not fired; **c4-11's skip link is the third**, so the geometry now lives once in
+   `src/styles/visually-hidden.css` and this element carries that class beside its own.
 
-   Two deliberate differences from that copy, stated so the divergence reads as a decision:
-     - **No `pointer-events: none`.** That rule is there because an absolutely-positioned 1px
-       box that swallowed a click would be indistinguishable from a bug; a static table in the
-       normal flow of a 12px-padded panel body intercepts nothing.
-     - **No `aria-live`, ever.** That element is a live region; this one is a static alternative.
-       A curve that announced on every deck change would be a second announcer (AC 24).
+   The rule that stood here is GONE rather than emptied — every declaration in it was identical to
+   the shared one, so there is no difference left to state. (`CardDetailChrome.css`'s copy kept
+   exactly one: `pointer-events: none`, which only that consumer wants.) The class name survives
+   as this table's hook; the geometry does not live here any more.
 
-   ==== WHY NOT display: none ==========================================================
-   Both `display: none` and `visibility: hidden` remove an element from the accessibility tree,
-   so the alternative would exist and never be read — a failure no rendered-output assertion can
-   see. The clip-rect idiom keeps it in the tree at a size no reader sees.
-
-   `1px` — DESIGN.md specifies NO visually-hidden treatment for any component, so there is no
-   artefact value to cite and this is the standard WCAG clip-rect idiom instead; a geometry
-   literal must name its source (the c2-6 AC 18 ruling) and this one's source is the platform,
-   not the design system. Not `0`: a zero-sized element is dropped from the accessibility tree by
-   some engines, which is the one direction no jsdom test can see. */
-.mana-curve-table {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
+   The one thing that was always this element's own and still is: **no `aria-live`, ever.** The
+   announcement region is a live region; this is a static alternative, and a curve that announced
+   on every deck change would be a second announcer (AC 24). Asserted in `ManaCurve.test.tsx`,
+   not left to this comment. */

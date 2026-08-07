@@ -190,7 +190,10 @@ export function ManaCurve({ boards }: ManaCurveProps) {
             rather than seven unanchored numbers. Visually hidden by the clip-rect idiom in
             `ManaCurve.css` — NOT `display: none` and NOT `visibility: hidden`, both of which
             remove it from the accessibility tree entirely. */}
-        <table className="mana-curve-table">
+        {/* `visually-hidden` carries the clip-rect, promoted to `src/styles/` at c4-11 under the
+            third-instance trigger `ManaCurve.css` itself wrote down. `mana-curve-table` survives
+            as this table's hook and declares no geometry of its own any more. */}
+        <table className="visually-hidden mana-curve-table">
           <caption>{TABLE_CAPTION}</caption>
           <thead>
             <tr>

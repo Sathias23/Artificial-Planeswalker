@@ -179,6 +179,26 @@
   outline-offset: var(--focus-ring-offset);
 }
 
+/* THE SCROLLER'S RING (c4-11, AC 21, Q8, WCAG 2.1.1).
+
+   `.card-detail-oracle` carries `tabindex="0"` as of c4-11, so it is a real Tab stop and needs a
+   real indicator — a focusable element with no visible focus is UX-DR46's whole subject. It sits
+   on `--surface-panel`, a known surface, so it takes the KNOWN-SURFACE tier verbatim: the same two
+   declarations `.card-detail-unpin` above, `.deck-row` and `.footer-attribution-link` all carry.
+   NOT the over-art composite — there is no card art behind this box, and the composite's outer
+   `--surface-base` band exists to separate the ring from a painting.
+
+   `:focus-visible`, never `:focus`. Unlike the controls beside it this element can also be focused
+   by a CLICK — a user selecting rules text lands inside it — and `:focus` would leave a ring
+   behind every such selection. `:focus-visible` shows it for the keyboard reach that 2.1.1 is
+   about and stays silent for the mouse, which is exactly the distinction it exists to draw.
+
+   The UA ring is REPLACED, never removed: `outline: none` is banned in all four spellings. */
+.card-detail-oracle:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
 /* THE PIN ANNOUNCEMENT REGION (AC 23, AC 24, UX-DR45).
 
    Visually hidden and NOT `display: none` / `visibility: hidden` — both of those remove an
@@ -186,14 +206,17 @@
    idiom keeps it in the tree at a size no reader sees. `pointer-events: none` because an
    absolutely-positioned 1px box that swallowed a click would be indistinguishable from a bug.
 
-   See this file's header for why `1px` and not `0`. */
+   ==== THE CLIP-RECT MOVED OUT AT c4-11, AND ONLY THE DIFFERENCE STAYED ================
+   The seven geometry declarations that used to sit here are now `.visually-hidden` in
+   `src/styles/visually-hidden.css`, and the element carries BOTH classes. c4-11's skip link was
+   the third copy, which is the exact trigger `ManaCurve.css:141-165` wrote down when it declined
+   to promote at the second. Nothing about this element's rendering changed.
+
+   `pointer-events: none` did NOT move, and that is the decision rather than an oversight: only
+   this consumer wants it. An absolutely-positioned 1px box that swallowed a click would be
+   indistinguishable from a bug — but a static table intercepts nothing, and a skip link MUST take
+   pointer events the moment it is revealed. A shared default two of three consumers had to undo
+   is worse than one declaration in the one place that needs it. */
 .card-detail-announcement {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
   pointer-events: none;
 }
