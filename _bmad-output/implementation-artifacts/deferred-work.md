@@ -4667,3 +4667,98 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   irreproducible from the repo. Home on the **C4 retro** beside the ~60 stale `DESIGN.md:NNN`
   anchors: decide whether a minimal committed harness (or a recorded recipe) is owed before anyone
   is allowed to act on the reorder lever those comments price.
+
+## Rulings from: the EPIC C4 RETROSPECTIVE (2026-08-07)
+
+Eight decisions ruled by Sathias. R1/R2/R6 are process and live in
+`epic-c4-retro-2026-08-07.md`'s *Team agreements*; the ledger dispositions are below.
+
+### R5 — four entries CLOSED, each with the measurement that closes it
+
+- ✅ **CLOSED as SUPERSEDED — `GET /api/cards/{card_id}` sets no cache headers / `ETag`
+  (`:2101`, `:2255-2263`).** Homed here at c4-1 *"where the epic's twelve stories are the ones that
+  will have exercised the cache on real decks by then"*. Twelve have. The entry's own worst case —
+  *"a c4-x deck view hydrating 60–100 cards re-fetches every full record on every render"* — is
+  **structurally impossible**: `cards.ts` issues one request per id per tab and never re-requests a
+  hydrated id (measured live at c4-6, 99 reads on the 99-card deck, ceiling confirmed). The client
+  also sends `cache: 'no-store'` on card reads **deliberately**, so that a header-less response
+  cannot be heuristically cached into staleness across a database refresh — which would make an
+  `ETag` inert until that separate decision were revisited. Population an `ETag` would serve: page
+  reloads, not renders. **No further work. Re-open only if the `no-store` decision is revisited.**
+
+- ✅ **CLOSED as DECLINED — splitting `src/companion/app/images.py` (`:2989-2997`, `:3074-3082`,
+  `:3835-3838`).** Parked by Sathias at the C3 retro pending evidence; the evidence is now in and it
+  argues against the split. c4-4 mounted ~99 `<img>` at once (`decoding="async"`, no
+  `loading="lazy"` — the maximum burst the pacer entry describes) and c4-6 became the first `?face=`
+  caller. Between them the route, the **pacer**, the **disk cache** and the **negative cache** were
+  exercised from a real browser against real decks and **needed no change to any of them**: warm
+  paint 99 requests in 0.55 s, `?face=1` behaves as an ordinary distinct key throughout, no pacer
+  constant moved. The measured shape stands as recorded — **1,837 lines = 1,370 prose (74.6%) + 377
+  code (20.5%) + 289 blank** — so a split would divide ~125 lines of code per mechanism and destroy
+  the 108-line module header that explains their interaction (cache checked *before* the pacer;
+  negative cache *outside* `pacer.slot()`). Winston's C3 counter stands re-confirmed: finding
+  density tracked difficulty, not line count. **The adjacent action identified at C3 — a
+  prose-freshness pass over the nine large docstrings — is NOT closed by this and stays available.**
+
+- ✅ **CLOSED as ACCEPTED — `CardPlaceholder` renders a `<div>` inside the tile's `<button>`
+  (`:3743-3748`, `:3859-3875`).** Declined at c4-11 with the reason and re-homed here. Every engine
+  renders it; React 19.2 warns in its **development build only** (`grep -c` over both react-dom
+  builds gives 1 and 0) while the invalid nesting survives into the runtime tree; the accessible
+  name computes normally. c4-6 closed the **harder** version of the same seam — an *interactive*
+  descendant — by making the flip control a sibling, with `CardTile.test.tsx` asserting
+  `tile.querySelectorAll('button, a, input, select, textarea')` is empty. What remains is a
+  spec-letter violation with **zero measured accessibility impact**, against a fix that means
+  changing `CardPlaceholder`'s root — the edit c4-4 was explicitly told not to make, and one that
+  would serve one consumer against the other's interest. **This entry's own history is part of the
+  ruling:** its home was stale by two stories because c4-6 re-homed it in its story record and never
+  here. That failure mode is now a standing agreement (see below).
+
+- ✅ **CLOSED by AMENDING THE ARTEFACT — `EXPERIENCE.md:34` and `:173` promise data this product
+  does not have (`:4236-4241`, `:4161-4169`).** Both rows amended in the same commit as this
+  disposition, using the two `DESIGN.md` price amendments (c4-7) as the precedent for correcting an
+  artefact that promises data that does not exist. **`deck value` is a price**, and there is no
+  price anywhere in this system — 23 columns in `cards`, none a price; no schema field; and the
+  Scryfall importer never reads the `prices` object, so it was never imported rather than dropped
+  (with a Python test asserting the absence on purpose under the c3-2 Q4 ruling). **`source counts`**
+  appear in no UX-DR, no `DESIGN.md` line and no AC; they exist only in that IA row.
+  **Consequence, stated rather than left implied: `StatChip` has had NO surface since c2-7 and now
+  has no pending one.** It remains a shipped, tested, zero-consumer primitive — a fact, not a
+  backlog item. The `StatChip`-first-surface residue is closed with it.
+
+### R3 — F4 ledgered, closing C3 retro action item 6
+
+- ❗ **A failed first import leaves a schema-only `cards.db` that the companion then file-locks.**
+  Found by Sathias during C3 manual testing (finding F4, 2026-08-02) and **never ledgered** — C3
+  action item 6 asked for exactly this entry and it was not written, which is why it is being
+  written at the next retro instead. The importer creates the schema **before** downloading, so a
+  failed download leaves a rows-less database behind; the companion's next poll (≤ 30 s) opens it
+  under c1-6's lazy engine, and from that moment the user **can neither delete nor replace the
+  partial database** without stopping the companion — while the panel correctly instructs them to
+  re-run the import command.
+  **What is already right:** the *display* is correct (`is_database_initialized` returns `False` for
+  present-but-empty), and the blast radius is bounded — a second process *writing into* the file is
+  fine under WAL, so only wholesale file replacement is blocked.
+  **This is a recovery-path defect, not an import-path one**, and it is adjacent to but distinct
+  from c1-6's ledgered *"cached-engine path re-plants a zero-byte file"*.
+  **Home: c8-4** (install / first-run readiness), which owns the fresh-install experience a person
+  actually meets. (Severity: Medium — reachable on the public v0.4.0 today; bounded and recoverable
+  by stopping the companion.)
+
+### R4 — the empty-deck state ships as written
+
+- ⚖️ **RULED, status quo (`:4590-4604`).** The two empty right-column panel shells stand. Adding a
+  fourth panel to the hide list invents spec; inventing an empty-state sentence puts unsourced words
+  on the glass. **Entry stays open at Medium with the eye-check attached** — Chrome 151, 1720×1080:
+  a `CARD DETAIL` header over a blank body and a `DECK LIST` header over a blank body, 57 px each,
+  beside a 47 px grid strip — because that picture is what a revisit should decide against.
+  c4-12's own warning is recorded with it: *changing it is cheap today and expensive at Epic 8.*
+
+### New standing agreement raised by this ledger's own failures
+
+- 📌 **A disposition lives in the ledger, not only in the story record.** c4-11's sentence,
+  promoted: *"a disposition written in a story file and not in the ledger is a disposition nobody
+  will find."* Three worked instances in C4 — the `<div>`-in-`<button>` home stale by two stories;
+  c4-7's nine dispositions and three new entries existing only in its Dev Agent Record until review
+  demanded them; and **fifteen shipped source modules naming `c4-12` in their headers while this
+  file named it twice**. A story that re-homes an entry edits `deferred-work.md` in the same commit,
+  and a story's context pass greps the **source tree** for its own key, not only this file.
