@@ -11,8 +11,13 @@ story by name.** c1-5 installs no ``CORSMiddleware`` at all, deliberately and pe
 (``test_security.py::TestCorsIsDeliberatelyAbsent``), because AD-13 serves the SPA from this same
 backend and an empty grant *is* "restricted to the app's own origin". A page on another origin can
 therefore issue this ``GET`` — but with no ``Access-Control-Allow-Origin`` on the response it cannot
-**read** the result, so it cannot learn a ticket. It can only burn them, and ``MAX_TICKETS``'s
-earliest-expiry eviction bounds that to one recoverable re-mint for the legitimate client. AD-5 and
+**read** the result, so it cannot learn a ticket. It can only burn them — and burning is
+repeatable, not one-shot: a page that *loops* the mint keeps the store at ``MAX_TICKETS`` and can
+evict each of the legitimate client's replacement tickets in turn, costing it a failed upgrade and
+a re-mint per attempt for as long as the flood runs. That is denial, never theft, it requires a
+hostile page live on this machine for the whole duration, and the alternative — refusing the mint
+at the cap — hands the same attacker a *permanent* denial instead (see :data:`MAX_TICKETS`). AD-5
+and
 review finding S-6 both home ``Origin`` validation on the **upgrade**, which is c5-3's; duplicating
 it here would put the same decision in two places to keep in sync, and would break any future Vite
 dev proxy that rewrites ``Host`` but not ``Origin``.
@@ -51,7 +56,9 @@ def _store(request: Request) -> TicketStore:
         The store the lifespan created.
 
     Raises:
-        AttributeError: Deliberately unguarded, for the reason
+        AttributeError: Raised by hand when the store is missing — the accessor's ``getattr``
+            already swallowed the attribute miss, so this restores the loud failure a bare
+            ``app.state.ticket_store`` read would have produced, for the reason
             :func:`src.companion.app.routes.active_deck._slot` states: a missing store can only
             mean the lifespan never ran, which is a wiring bug with no modelled token, and letting
             it reach :class:`~src.companion.app.errors.UnhandledErrorMiddleware` as

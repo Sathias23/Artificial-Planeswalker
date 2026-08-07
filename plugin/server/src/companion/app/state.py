@@ -44,10 +44,12 @@ be defence against nothing, and would read to the next author as though a race e
 than omitted (AC 18).** The paragraph above named "a compare-and-set, a write that consults the old
 value" as the change that earns a lock, and :meth:`TicketStore.consume` is exactly that: it must
 read a ticket and destroy it, and two callers presenting the same ticket must not both win. The
-lock is still unnecessary, because the compare-and-set is spelled as **one** ``dict.pop`` —
-:meth:`dict.pop` resolves the lookup and the deletion inside a single CPython operation, and the
-method is **synchronous**, so there is no ``await`` between the read and the delete and therefore no
-interleaving point at which a second caller could observe the ticket still present. Two concurrent
+lock is still unnecessary, because the compare-and-set is spelled as **one** ``dict.pop`` inside a
+**synchronous** method on the single-threaded event loop: there is no ``await`` between the read
+and the delete and therefore no interleaving point at which a second caller could observe the
+ticket still present. That — the absence of a suspension point, not any bytecode-atomicity claim
+about ``pop`` itself — is the whole argument, and it is the one that stays checkable against a
+future change rather than against an interpreter version. Two concurrent
 consumes of one ticket are two ``pop`` calls: the first returns the expiry, the second returns
 ``None``. That is precisely what a lock would produce, at the cost of making :meth:`consume`
 awaitable and pulling ``async`` into c5-3's handshake path for nothing.
@@ -59,6 +61,7 @@ loop into a thread pool, where the GIL — not the absence of a suspension point
 thing serialising the two operations.
 """
 
+import math
 import secrets
 import time
 from collections.abc import Callable
@@ -214,6 +217,12 @@ class TicketStore:
     *only* startup step which may fail a launch stays literally true. And the clock is
     **injected**, so the 30-second TTL is proven at zero wall clock: a test that sleeps is a defect.
 
+    **Bounded, and at the cap the earliest-expiring resident is evicted** (AC 10). Every ticket
+    carries the same TTL, so earliest-expiring is also oldest-minted. The cost of an eviction: the
+    client whose ticket was dropped loses its next upgrade and re-mints — recoverable, where
+    refusing the mint at the cap would be a permanent denial under the same flood; see
+    :data:`MAX_TICKETS` for the full argument and the bound's sizing.
+
     **Nothing is persisted, and that is CM-3 rather than an omission.** A ticket outliving the
     process it authenticates would be a credential for a socket that no longer exists; a restart
     begins with an empty store and every client re-mints. So nothing here reaches disk,
@@ -236,8 +245,10 @@ class TicketStore:
             for an hour. The route never passes this; only tests do.
 
     Raises:
-        ValueError: ``ttl`` is not positive (every ticket would be born expired, so no handshake
-            could ever succeed) or ``max_tickets`` is below one (the eviction would ``min()`` over
+        ValueError: ``ttl`` is not a positive finite number (non-positive, every ticket would be
+            born expired, so no handshake could ever succeed; ``nan`` or ``inf``, every deadline
+            comparison would quietly answer ``False`` and expiry would never fire) or
+            ``max_tickets`` is below one (the eviction would ``min()`` over
             an empty map on the first mint). A guard against a mis-injected test parameter, not a
             startup risk: the lifespan constructs with the module constants and no arguments, so
             the accessor's "construction cannot fail" claim stays true on every production path.
@@ -258,8 +269,10 @@ class TicketStore:
         max_tickets: int = MAX_TICKETS,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        if ttl <= 0:
-            raise ValueError(f"ttl must be positive, got {ttl}")
+        # `not isfinite` rather than trusting `<= 0`: nan compares False against everything, so it
+        # would sail through a sign check and then disarm every deadline comparison downstream.
+        if not math.isfinite(ttl) or ttl <= 0:
+            raise ValueError(f"ttl must be positive and finite, got {ttl}")
         if max_tickets < 1:
             raise ValueError(f"max_tickets must be at least 1, got {max_tickets}")
         self._ttl = ttl
@@ -278,6 +291,10 @@ class TicketStore:
         that can distinguish *pruning* an expired ticket from merely *ignoring* it on read. Every
         behavioural assertion in the suite is identical under both, and a map that only ignores
         expiry reaches its cap on garbage and then evicts live tickets to make room for it.
+
+        **Resident is not live.** Expired tickets are pruned at :meth:`mint`, not by time, so
+        between mints this count includes tickets already past their deadline. A future metrics or
+        dashboard reader wanting "live tickets right now" must not read this as that.
         """
         return len(self._deadlines)
 

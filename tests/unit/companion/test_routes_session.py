@@ -18,11 +18,15 @@ and it is proven at zero wall clock by injecting :class:`FakeClock`'s time sourc
 store's own unit tests, and through a monkeypatched *constructor* for the route-level ones, which is
 the pattern ``test_routes_card_image.py`` established for the pacer and the negative cache.
 
-**Everything route-level is asserted through the wire.** ``app.state.ticket_store`` is never read to
-make an assertion: a test that inspected it would pass with the route deleted (the rule
-``test_routes_active_deck.py`` states about the active-deck slot).
+**Mint-side route assertions go through the wire** (the rule ``test_routes_active_deck.py`` states
+about the active-deck slot: a test that only inspected ``app.state`` would pass with the route
+deleted). Two declared exceptions read the store directly, and each is forced: the consume half has
+**no wire surface until c5-3**, so ``test_the_shipped_ttl_reaches_the_route`` must close its
+mint-to-expiry loop through ``store.consume``; and ``TestTheStoreIsCreatedByTheLifespan`` is
+*about* the lifespan's wiring of ``app.state``, so the state key is its subject, not its shortcut.
 """
 
+import ast
 import logging
 from pathlib import Path
 
@@ -218,11 +222,26 @@ class TestTheHostEnvelopeIsInherited:
         ``request`` only for ``request.app``, which the import-level assertion below pins.
         """
         source = (_ROUTE_MODULE).read_text(encoding="utf-8")
-        code = "\n".join(line for line in source.splitlines() if not line.lstrip().startswith("#"))
-        # The prose above the code discusses both headers at length and must be free to; this reads
-        # the module's docstring as prose too, so the assertion is about executable lines. Split on
-        # the closing triple-quote of the module docstring.
-        body = code.split('"""', 2)[-1]
+        # The prose discusses both headers at length and must be free to — the module docstring,
+        # AND every function/class docstring, are prose. Stripped via the AST rather than by
+        # splitting on the module docstring's closing quotes, so that documenting the Host envelope
+        # in a *handler* docstring stays an editorial act instead of reddening a security test.
+        doc_lines: set[int] = set()
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.Module | ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+                first = node.body[0] if node.body else None
+                if (
+                    isinstance(first, ast.Expr)
+                    and isinstance(first.value, ast.Constant)
+                    and isinstance(first.value.value, str)
+                    and first.end_lineno is not None
+                ):
+                    doc_lines.update(range(first.lineno, first.end_lineno + 1))
+        body = "\n".join(
+            line
+            for number, line in enumerate(source.splitlines(), start=1)
+            if number not in doc_lines and not line.lstrip().startswith("#")
+        )
 
         assert "Origin" not in body
         assert "Host" not in body
@@ -418,7 +437,11 @@ class TestTheThirtySecondTtl:
             assert store.consume(issued) is True
 
             replacement = (await client.get(_PATH)).json()["ticket"]
-            clocked.now += TICKET_TTL_SECONDS
+            # Strictly PAST the deadline, not exactly at it: the exact half-open boundary is the
+            # unit tests' property (`test_a_ticket_exactly_at_the_deadline_is_already_expired`);
+            # landing there from a float sum would re-prove it by bit-coincidence, and this test
+            # is about the wiring, not the boundary.
+            clocked.now += TICKET_TTL_SECONDS + 1.0
 
             assert store.consume(replacement) is False
 
@@ -485,6 +508,15 @@ class TestTheInjectedParametersAreGuarded:
         # Every ticket would be born expired, so no handshake could ever succeed — a mechanism
         # that fails closed everywhere and explains nothing.
         with pytest.raises(ValueError, match="ttl must be positive"):
+            TicketStore(ttl=ttl)
+
+    @pytest.mark.parametrize("ttl", [float("nan"), float("inf")])
+    def test_a_non_finite_ttl_is_refused(self, ttl):
+        # Both sail through a bare sign check: nan compares False against everything, so with
+        # nan deadlines every consume is refused AND pruning never fires; with inf nothing ever
+        # expires. Either way the guard's own docstring claim — a mis-injected parameter fails
+        # loudly — would be false, so the constructor refuses them the same way.
+        with pytest.raises(ValueError, match="ttl must be positive and finite"):
             TicketStore(ttl=ttl)
 
     @pytest.mark.parametrize("max_tickets", [0, -1])

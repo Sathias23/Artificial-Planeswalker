@@ -748,9 +748,9 @@ export interface components {
          * @description The body of ``GET /api/session`` — one short-lived credential for one WebSocket upgrade.
          *
          *     Read this immediately before opening the socket and present it on the upgrade. It is
-         *     **single-use** and expires **30 seconds** after it was issued, so it cannot be stored, shared
-         *     between tabs, or reused across reconnects: a client that reconnects asks for a new one every
-         *     time, which is the intended and inexpensive path rather than a fallback.
+         *     **single-use** and **short-lived** — it expires soon after it was issued — so it cannot be
+         *     stored, shared between tabs, or reused across reconnects: a client that reconnects asks for a
+         *     new one every time, which is the intended and inexpensive path rather than a fallback.
          *
          *     Consuming it destroys it whether or not the handshake then succeeds, so a retry needs a fresh
          *     ticket — including after an upgrade that failed for an unrelated reason.
