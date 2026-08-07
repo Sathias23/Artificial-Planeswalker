@@ -431,9 +431,9 @@ _NonBlankRationale = Annotated[
 
 Same stance as :data:`_NonBlankReason` — required explanatory text, no fallback."""
 
-_NullableDeckId = Annotated[
-    str, Field(max_length=_MAX_DECK_ID_LENGTH), AfterValidator(_refuse_blank_text)
-] | None
+_NullableDeckId = (
+    Annotated[str, Field(max_length=_MAX_DECK_ID_LENGTH), AfterValidator(_refuse_blank_text)] | None
+)
 """A signal payload's ``deck_id``: ``None`` means "refetch whatever is active"; a present value is
 capped and refused when blank (c5-1 review round 2, Brad 2026-08-07) — an empty string is a third
 state that is neither a real id nor the documented ``None`` sentinel.

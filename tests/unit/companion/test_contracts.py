@@ -538,14 +538,12 @@ class TestTheCaps:
         # a normal-sized one is small.
         oversized = _envelope(
             "groups",
-            {
-                "items": [
-                    _group(rationale="r" * 600, card_ids=["c" * 128] * 60) for _ in range(12)
-                ]
-            },
+            {"items": [_group(rationale="r" * 600, card_ids=["c" * 128] * 60) for _ in range(12)]},
         )
         serialised = _AGENT_EVENT.dump_json(_AGENT_EVENT.validate_python(oversized))
-        assert len(serialised) > 64 * 1024, "payload must actually clear the cap to prove non-enforcement"
+        assert len(serialised) > 64 * 1024, (
+            "payload must actually clear the cap to prove non-enforcement"
+        )
 
 
 class TestReviewRoundTwoIdCaps:

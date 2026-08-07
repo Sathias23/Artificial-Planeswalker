@@ -80,7 +80,9 @@ _SUMMARY_LINE = re.compile(r"=+\s*(?P<body>.+?)\s+in\s+[\d.]+s(?:\s*\([^)]*\))?\
 # Every category here was collected and entered the run; `warnings` and `deselected` deliberately
 # absent — the first is not a test, the second never entered the collected count (`--collect-only
 # -q` reports the post-`-m` figure).
-_SUMMARY_TOKEN = re.compile(r"(?P<count>\d+) (?P<category>failed|passed|skipped|xfailed|xpassed|errors?)\b")
+_SUMMARY_TOKEN = re.compile(
+    r"(?P<count>\d+) (?P<category>failed|passed|skipped|xfailed|xpassed|errors?)\b"
+)
 
 
 @dataclass(frozen=True)
@@ -110,7 +112,9 @@ class ProbeResult:
     def proof_line(self) -> str:
         """One pasteable line stating what was run and what came back."""
         bad = len(self.failed) + len(self.errored)
-        verdict = "0 failed" if not bad else f"{len(self.failed)} failed, {len(self.errored)} errored"
+        verdict = (
+            "0 failed" if not bad else f"{len(self.failed)} failed, {len(self.errored)} errored"
+        )
         return (
             f"full suite (-m '{_MARKER}'): {self.collected} collected, {verdict}, "
             f"exit {self.exit_code}"
@@ -198,7 +202,8 @@ def _check(result: ProbeResult, expect_red: list[str], expect_green: bool) -> li
     # but nothing consulted it, so this exact case previously certified green).
     if expect_green and (result.failed or result.errored):
         complaints.append(
-            f"expected a green suite; failed: {list(result.failed)}, errored: {list(result.errored)}"
+            f"expected a green suite; failed: {list(result.failed)}, "
+            f"errored: {list(result.errored)}"
         )
     # Substring rather than equality: a parametrised guard reports as `...test_x[case]`, and the
     # author naming the test should not have to guess the id pytest will print. Ruled and kept as-is
