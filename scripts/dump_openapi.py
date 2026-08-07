@@ -130,10 +130,15 @@ this paragraph as the gate. (Until c3-4 there were **two** such pins, in the dec
 tests; Q5 consolidated them into that one file, so c3-5 edits one place rather than discovering the
 second by running the suite as c3-2 and c3-3 each did.)
 
-**There is no dummy endpoint, and none is needed.** Story **c5-1**'s ``POST /agent/events`` declares
+**There is no dummy endpoint, and none is needed.** Story **c5-5**'s ``POST /agent/events`` declares
 the WebSocket event-envelope union as its *request body*, so every per-kind payload lands in
 ``components.schemas`` from the route itself — one generator covers both the REST and the WebSocket
-halves of the contract (AD-12).
+halves of the contract (AD-12). The models themselves are **c5-1**'s, and that story shipped them
+with the schema unchanged at twelve components: a model no route references never lands in
+``components.schemas`` at all, so declaring the union bought no TypeScript until the route existed.
+That is the sequencing this paragraph originally mis-attributed to a single story (corrected at
+c5-1, 2026-08-07), and it is the reason the shape here is a *confirmed negative* — c5-1 proved the
+generated pair byte-identical rather than proving a union appeared.
 
 Usage:
     uv run python -m scripts.dump_openapi     # -> ui/src/api/openapi.json (committed)

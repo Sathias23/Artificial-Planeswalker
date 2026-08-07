@@ -16,8 +16,16 @@
  *    hand-written `interface HealthResponse`. `ui/tests/wire-contract.test.ts` reads the
  *    `components.schemas` keys out of the committed `openapi.json` and fails on any such
  *    declaration, so the rule grows on its own — it did exactly that when **c3-1** added the four
- *    deck models, with no edit to the test, and it will again when **c5-1** adds the event
- *    envelope.
+ *    deck models, with no edit to the test.
+ *
+ *    ⚠️ **The event envelope did NOT grow it, and this comment used to predict that it would.**
+ *    **c5-1** shipped the whole envelope — six kinds, four payload shapes, two system signals — and
+ *    `components.schemas` stayed at **twelve**. Measured, 2026-08-07: a Pydantic model that no
+ *    route references never reaches `components.schemas` at all, so declaring a union buys no
+ *    TypeScript until something puts it on a route. That happens at **c5-5**, which declares the
+ *    union as `POST /agent/events`'s request body — and the rule will grow on its own that day,
+ *    still with no edit to the test. The lesson worth keeping: *the story that defines a wire type
+ *    and the story that publishes it are not always the same story.*
  *
  * `import type` / `export type` only: `verbatimModuleSyntax` is on, and nothing about a `.d.ts`
  * may reach the runtime bundle.

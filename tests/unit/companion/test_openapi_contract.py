@@ -29,7 +29,7 @@ from typing import Any
 from scripts.dump_openapi import OUTPUT_PATH, render_schema
 from src.companion import contracts
 from src.companion.app import main as main_module
-from src.companion.app.main import build_app, without_python_docstring_sections
+from src.companion.app.main import _DATA_KEYS, build_app, without_python_docstring_sections
 from src.companion.app.routes import health
 
 REGENERATE = "uv run python -m scripts.dump_openapi"
@@ -106,22 +106,42 @@ outside the family, which the non-vacuity test pins.
 """
 
 
-def _descriptions(node: Any) -> list[str]:
-    """Collect every ``description`` string in a decoded schema, at any depth.
+def _descriptions(node: Any, *, in_properties: bool = False) -> list[str]:
+    """Collect every documentation ``description`` string in a decoded schema, at any depth.
+
+    Mirrors ``main._truncate_descriptions``' walk exactly, including its skip of the
+    :data:`~src.companion.app.main._DATA_KEYS` subtrees — imported rather than re-declared, so the
+    two cannot drift apart. **This skip is c5-1's, and it fixes a latent unsatisfiable red**
+    (``deferred-work.md``, homed on this story): the truncator does not descend into
+    ``example``/``examples``/``default``/``const``/``enum``, because a ``description`` key there is
+    payload data reproduced byte-for-byte. This collector used to descend everywhere, so the first
+    example payload carrying a ``description`` whose value happened to contain a colon-terminated
+    line would fail the family scan below with a message reading "fix it at the Python docstring"
+    — pointing at a docstring that does not exist.
+
+    Measured on the committed schema when the skip was added (2026-08-07): **zero** descriptions sit
+    under a data key today, so the two walks return identical lists and nothing changed colour. The
+    fix is taken now because c5-1 is the first story to add example payloads at all.
 
     Args:
         node: Any part of the schema document.
+        in_properties: Whether *node* is a ``properties`` map, whose keys are property names rather
+            than data markers — so a property genuinely called ``example`` is still descended into.
 
     Returns:
-        Every description found, in traversal order.
+        Every documentation description found, in traversal order.
     """
     found: list[str] = []
     if isinstance(node, dict):
         description = node.get("description")
-        if isinstance(description, str):
+        if isinstance(description, str) and not in_properties:
             found.append(description)
-        for value in node.values():
-            found.extend(_descriptions(value))
+        for key, value in node.items():
+            if key in _DATA_KEYS and not in_properties:
+                continue
+            found.extend(
+                _descriptions(value, in_properties=key == "properties" and not in_properties)
+            )
     elif isinstance(node, list):
         for item in node:
             found.extend(_descriptions(item))
@@ -176,6 +196,53 @@ def test_render_schema_is_the_writers_own_rendering() -> None:
     assert rendered.endswith("}\n")
     assert not rendered.endswith("}\n\n")
     assert "\r" not in rendered
+
+
+class TestTheCollectorMirrorsTheTruncator:
+    """c5-1: `_descriptions` skips the same data subtrees the truncator does, or it lies.
+
+    The family scan below reports every hit as "fix it at the Python docstring". A description
+    inside an ``example`` payload has no docstring to fix, so collecting one would produce a red
+    nobody can satisfy — the failure mode `deferred-work.md` homed on this story.
+    """
+
+    def test_a_description_inside_an_example_payload_is_not_collected(self):
+        # The pair, in one call: the schema's own description IS collected and the example's
+        # payload field of the same name is NOT. A collector that skipped everything would pass
+        # the first assertion vacuously, which is why the second is on the same document.
+        schema = {
+            "description": "Documentation: this is a docstring.",
+            "example": {"description": "Args: this is payload data, not a docstring."},
+        }
+
+        assert _descriptions(schema) == ["Documentation: this is a docstring."]
+
+    def test_a_property_actually_named_example_is_still_descended_into(self):
+        # The inverse care the truncator takes: inside a `properties` map the same words are
+        # property NAMES, so a model with a field called `example` still has its description read.
+        schema = {"properties": {"example": {"description": "A field that is called example."}}}
+
+        assert _descriptions(schema) == ["A field that is called example."]
+
+    def test_the_skip_changes_nothing_in_the_committed_schema_today(self):
+        # MEASURED at c5-1 (2026-08-07): zero descriptions sit under a data key in the live schema,
+        # so this fix was taken pre-emptively and moved no needle. When that stops being true this
+        # test goes red and the reader learns the fix started mattering.
+        schema: dict[str, Any] = json.loads(OUTPUT_PATH.read_text(encoding="utf-8"))
+
+        def collect_everything(node: Any) -> list[str]:
+            found: list[str] = []
+            if isinstance(node, dict):
+                if isinstance(node.get("description"), str):
+                    found.append(node["description"])
+                for value in node.values():
+                    found.extend(collect_everything(value))
+            elif isinstance(node, list):
+                for item in node:
+                    found.extend(collect_everything(item))
+            return found
+
+        assert _descriptions(schema) == collect_everything(schema)
 
 
 class TestDescriptionsAreSummaries:
