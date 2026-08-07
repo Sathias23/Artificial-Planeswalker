@@ -17,7 +17,7 @@ from starlette.routing import Mount
 
 from src.companion.app import spa
 from src.companion.app.main import build_app
-from src.companion.app.routes import active_deck, cards, decks, health
+from src.companion.app.routes import active_deck, cards, decks, health, session
 
 _TYPED_ERROR_MEDIA_TYPE = "application/json"
 
@@ -312,11 +312,20 @@ class TestTheTypedErrorContractSurvivesTheFallback:
         # c3-4 IS the other kind and owed the line: active_deck.router is a new router, so this
         # test went red naming /api/active-deck as an extra item on the left. That red is the
         # mechanism working — it is what a story adding a router is supposed to see.
+        #
+        # c5-2 is the third instance of that kind and paid the same tax, predicted in advance by
+        # `deferred-work.md:1905-1930` (which names c5-2 by key) and then measured: adding
+        # session.router to build_app() reddened this test with "Extra items in the left set:
+        # '/api/session'" before the line below existed. Its mint is a new router rather than a
+        # route on an existing one because /api/session is not a deck, a card or the active deck —
+        # joining any of those would have made that module's docstring false to save two lines,
+        # which is the trade c3-4 already refused.
         without_spa = FastAPI()
         without_spa.include_router(health.router)
         without_spa.include_router(decks.router)
         without_spa.include_router(cards.router)
         without_spa.include_router(active_deck.router)
+        without_spa.include_router(session.router)
 
         assert set(build_app().openapi()["paths"]) == set(without_spa.openapi()["paths"])
 

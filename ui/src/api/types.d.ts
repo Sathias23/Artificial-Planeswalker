@@ -253,6 +253,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mint Session Ticket
+         * @description Issue a single-use ticket for one WebSocket upgrade.
+         *
+         *     Call this immediately before opening the socket, and present the ticket on the upgrade. Every
+         *     call issues a **new** ticket — there is no session to resume and nothing is reused — so a client
+         *     that reconnects asks again rather than holding one.
+         *
+         *     Requires **no credential**: the browser holds none and never will (AD-5), the same ruling
+         *     ``GET /api/active-deck`` already answers under. There is no failure path to model, so under a
+         *     running lifespan the response is always ``200``.
+         */
+        get: operations["mint_session_ticket_api_session_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -714,6 +742,26 @@ export interface components {
             status: "ok";
             /** Instance Id */
             instance_id: string;
+        };
+        /**
+         * SessionTicket
+         * @description The body of ``GET /api/session`` — one short-lived credential for one WebSocket upgrade.
+         *
+         *     Read this immediately before opening the socket and present it on the upgrade. It is
+         *     **single-use** and **short-lived** — it expires soon after it was issued — so it cannot be
+         *     stored, shared between tabs, or reused across reconnects: a client that reconnects asks for a
+         *     new one every time, which is the intended and inexpensive path rather than a fallback.
+         *
+         *     Consuming it destroys it whether or not the handshake then succeeds, so a retry needs a fresh
+         *     ticket — including after an upgrade that failed for an unrelated reason.
+         *
+         *     The endpoint is **same-origin and credential-free**: the browser holds no credential and never
+         *     will, and it is the absence of any cross-origin read permission on this response — not a
+         *     credential — that keeps another page from learning a ticket.
+         */
+        SessionTicket: {
+            /** Ticket */
+            ticket: string;
         };
     };
     responses: never;
@@ -1187,6 +1235,44 @@ export interface operations {
             };
             /** @description reason: forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description reason: internal_error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    mint_session_ticket_api_session_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionTicket"];
+                };
+            };
+            /** @description reason: invalid_request */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

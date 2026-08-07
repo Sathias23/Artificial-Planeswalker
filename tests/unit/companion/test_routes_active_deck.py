@@ -721,18 +721,77 @@ class TestTheBoundariesThisRouteMustNotCross:
 
         assert not offenders, f"the MCP server grew active-deck state: {offenders}"
 
-    def test_the_active_deck_slot_holds_no_credential(self):
-        """AC 13 (AD-5): the two credentials share no storage.
+    def test_the_state_module_names_no_agent_credential(self):
+        """AC 13 (AD-5): the agent credential is absent from the module holding display state.
 
-        c5-2's WebSocket ticket does not exist yet, so the assertable half is that the display
-        state and the credential live in different objects and the state module's code knows
-        nothing about tokens. Stated so c5-2 inherits a rule rather than a coincidence.
+        **NARROWED AT c5-2 (AC 14), and the narrowing is the interesting part.** c3-4 wrote this
+        guard forward-looking, banning ``ticket`` alongside the agent-token names *"so c5-2
+        inherits a rule rather than a coincidence"* — on the assumption that the ticket store would
+        land in ``security.py``. c5-2's Q3 ruled the other way (``security.py``'s one proven
+        structural property is that it *stores nothing*, and a compare-and-set cannot be split from
+        its storage), so ``state.py`` legitimately grew a :class:`TicketStore` — and this guard
+        reddened on the noun ``ticket``, which is the opposite of what it exists to catch.
+
+        ``ticket`` therefore leaves the ban list; **every agent-token-specific name stays**, and
+        ``token`` staying is what keeps ``discovery.mint_token``'s bare sibling out. Note the ban
+        is on *identifiers*, not prose: ``code_identifiers`` is AST-only, so the paragraphs above
+        may discuss the agent token freely while a reference to one fails.
+
+        **What this now proves, read against the code rather than against its own comment:** that
+        no name in ``state.py``'s syntax tree is spelled like the agent credential. **What it
+        cannot see:** the credential reached indirectly — ``getattr(app.state, "agent_" + "token")``
+        or an import aliased to a different name. That residual hole is why AC 15's sibling below
+        exists, and why it asserts the *call graph* rather than a second vocabulary.
         """
         identifiers = code_identifiers(_REPO_ROOT / "src/companion/app/state.py")
 
-        assert {"ActiveDeckSlot", "active_deck", "deck_id"} <= identifiers  # non-vacuity
-        banned = {"token", "agent_token", "credential", "secret", "mint_token", "ticket"}
-        assert not (banned & identifiers), f"the slot reached for {banned & identifiers}"
+        # Non-vacuity, both holders: a scan that found neither would satisfy any ban list.
+        assert {"ActiveDeckSlot", "active_deck", "deck_id"} <= identifiers
+        assert {"TicketStore", "ticket_store", "mint", "consume"} <= identifiers
+        banned = {"token", "agent_token", "credential", "secret", "mint_token"}
+        assert not (banned & identifiers), f"the state module reached for {banned & identifiers}"
+
+    def test_the_ticket_store_shares_no_code_path_with_the_agent_token(self):
+        """AC 15 (AD-5): the two credentials share no code path, asserted structurally.
+
+        **This replaces the coverage AC 14 gave up, and it is strictly stronger than the noun-ban
+        it replaces.** Banning the word ``ticket`` never proved anything about the agent token; it
+        proved that ``state.py`` had not yet grown a ticket store. What AD-5 actually requires is
+        that the ticket and the agent token *"share no storage and no code path"* — so this walks
+        the module that holds the ticket store and asserts the four ways a code path could be
+        shared, each of which is a real construct in this codebase rather than a hypothetical:
+
+        * importing :mod:`src.companion.discovery` (whose ``mint_token`` mints the agent token);
+        * reading the ``agent_token`` accessor or ``app.state.agent_token``;
+        * calling ``presented_credential`` / ``agent_token_is_valid`` / ``require_agent_token``;
+        * reaching the ``Bearer`` channel via ``AgentToken`` or ``_AUTHORIZATION_HEADER``.
+
+        **What it compares:** the set of identifiers ``state.py``'s AST mentions against that
+        vocabulary. **What it cannot see:** a shared path built entirely out of names it does not
+        know — the same indirection hole its sibling has — and anything the *route* module does,
+        which is why ``test_routes_session.py`` re-asserts the property over the wire on a real
+        response and real captured logs.
+        """
+        identifiers = code_identifiers(_REPO_ROOT / "src/companion/app/state.py")
+
+        # Non-vacuity, and a real one: the walk must be finding the ticket store's OWN code, or
+        # every absence below is satisfied by scanning an empty set.
+        assert {"TicketStore", "secrets", "token_urlsafe", "MAX_TICKETS"} <= identifiers
+
+        shared_paths = {
+            "discovery",
+            "mint_token",
+            "agent_token",
+            "presented_credential",
+            "agent_token_is_valid",
+            "require_agent_token",
+            "AgentToken",
+            "_AUTHORIZATION_HEADER",
+        }
+        assert not (shared_paths & identifiers), (
+            f"the ticket store shares a code path with the agent token: "
+            f"{shared_paths & identifiers} (AD-5)"
+        )
 
     def test_the_credential_check_reads_one_accessor_and_stores_nothing(self):
         """AC 13's other half: the check is stateless.
