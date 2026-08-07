@@ -2168,6 +2168,25 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   > unchanged and un-fixed: the symptom still points at the wrong file, and CI still runs `tsc -b`
   > without `--force`. **Home for the fix shapes: unchanged.**
 
+  > **NOT TRIGGERED at c5-1 (2026-08-07) — the candidate c4-1 named by name, and it was the wrong
+  > guess for a structural reason worth writing down.** c4-1 predicted "**c5-1**'s event envelope"
+  > as the realistic candidate. c5-1 shipped the whole envelope and **added no `ui/` code at all**:
+  > the union is Python, it is unreferenced by any route, and it therefore produces no TypeScript
+  > for a `ui/tests/` file to import. That is not an accident of scheduling — it is the same fact
+  > that inverted the epic's own AC 8 into a confirmed negative. **The candidate was mis-identified
+  > because "the story that defines the wire types" and "the story that first imports them into a
+  > node-project test" are different stories whenever the defining story adds no route.**
+  >
+  > **Proven, not asserted:** `npx tsc -b --force` was run in `ui/` and exits **0** (2026-08-07) —
+  > `--force` specifically, because CI runs `tsc -b` without it and a cached-clean result can ship.
+  >
+  > **Re-homed with the reason: the first story that puts the event union on a route AND asserts a
+  > generated type from `ui/tests/`.** That is **c5-5** at the earliest (it declares
+  > `POST /agent/events`, so the union first reaches `types.d.ts` there), and more likely **c6-x**,
+  > where a view actually consumes the narrowed payload. The narrowed c4-3 rule still governs what
+  > would fire: not "a `ui/tests` file may not import an app module" but "may not import an app
+  > module that has **relative imports of its own**". (Severity: unchanged, Medium.)
+
 
 
 ## Deferred from: code review of c3-2 (2026-07-31)
@@ -2273,6 +2292,32 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   to fix. **Fix shape**: give `_descriptions` the same `_DATA_KEYS` skip, ideally by importing the
   constant rather than re-declaring it. **Home: c5-1**, the first story expected to add example
   payloads (the event-envelope union). (Severity: Low, latent.)
+
+  > **✅ TRIGGERED AND CLOSED at c5-1 (2026-08-07) — fix taken, in the prescribed shape.** c5-1 did
+  > add example payloads: `json_schema_extra={"examples": [...]}` on all four item models and all
+  > six envelope classes, ruled in by Brad (Q8) precisely because this entry is homed here and this
+  > is the story that should pay for it. `_descriptions()` now takes `_DATA_KEYS` **imported from
+  > `main`**, not re-declared, and mirrors the truncator's walk exactly — including the inverse
+  > `in_properties` care, so a model with a field genuinely called `example` still has its
+  > description read. **MEASURED before and after: 65 descriptions both ways, and the two lists are
+  > element-for-element identical** — zero descriptions sit under a data key in the committed schema
+  > today, exactly as this entry predicted, so the fix moved nothing and is pre-emptive.
+  >
+  > **One nuance this entry could not have known, recorded because it changes when the trap could
+  > next have fired.** c5-1's examples do **not** reach the committed schema at all: the models are
+  > unreferenced by any route, and a model no route references never lands in `components.schemas`.
+  > So the trap would not have fired here even with examples added — the first schema-reachable
+  > example payload arrives at **c5-5**, when `POST /agent/events` declares the union as its request
+  > body. The fix is taken early rather than exactly-in-time, which is the cheap direction.
+  >
+  > **Three tests ship with it** (`TestTheCollectorMirrorsTheTruncator`), because a fix with no
+  > firing proof is the class this epic's R2 exists to stop: a description inside an `example`
+  > payload is not collected while the schema's own description on the same document is (the
+  > non-vacuity pair, in one call); a property literally named `example` is still descended into;
+  > and the committed schema still yields an identical list under both walks, so the reader learns
+  > the moment that stops being true. **Firing proof: deleting the `_DATA_KEYS` skip reddens
+  > `test_a_description_inside_an_example_payload_is_not_collected` through the full 2,526-test
+  > run** (not a single-file run — verified through `scripts/probe_harness.py`). **CLOSED.**
 
 ## Deferred from: code review of c3-2-card-detail-endpoint, round 2 (2026-07-31)
 
@@ -4880,3 +4925,78 @@ engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries cha
   "guarded on the Python side only" residue behaving exactly as recorded). Gates after: `ruff check .`,
   `ruff format --check .` (308 files), `mypy src/` and `mypy src/ --platform win32` (89 files) green;
   `uv run pytest` **2,501 passed / 1 skipped — unchanged**.
+
+
+## Deferred from: c5-1-the-event-envelope-and-every-per-kind-payload-contract (2026-08-07)
+
+- **AD-1's construction-limit family no longer scans `src/companion/contracts.py`, and that is a
+  narrowed guard rather than a closed one.** AD-7 caps an agent push at **60** items, and
+  `contracts.py` declares it as `_MAX_ITEMS = 60`. `test_routes_format_check.py`'s AD-1 scan flags
+  any `60` or `15` anywhere under `src/companion/` — so the cap reddened the suite on first run.
+  **This was found by the guard, not predicted by the story**: the story's DON'T-BREAK list has
+  seven entries and this is not among them, and it is the **second measured collision** of this
+  family after c3-6's `FETCH_CONCURRENCY = 4`. The file's own docstring had just claimed *"nothing
+  in this shell has an innocent reason to write `60` or `15`"*; that sentence is now corrected in
+  place rather than left standing.
+
+  **What was done, and why not the c3-6 move.** c3-6 answered its collision by dropping `4` from
+  `_LIMIT_LITERALS` entirely. Doing that to `60` would have cost the family its most distinctive
+  literal **everywhere**, including in the route shell where a deck-size rule genuinely could be
+  reimplemented. Instead a new `_LIMIT_FAMILY_EXEMPT` names **one file**, and exempts it from **one
+  family**: a legality read, a validator import, a `.quantity` count or a rebuilt format-name set in
+  `contracts.py` still flags exactly as before. The justification is structural rather than
+  stylistic — `contracts.py` is the AD-3 leaf, import-constrained to stdlib and `pydantic`, so it
+  cannot reach the card database, the deck repository or `src.logic`; a deck-construction rule needs
+  a deck to be about, and there is none in scope. Spelling the cap as something other than `60` to
+  slip past the scan was not available: that module's own docstring rules obfuscation a violation on
+  sight.
+
+  **What it costs, stated rather than glossed.** A future author could implement a deck-size rule
+  inside `contracts.py` — a validator counting `card_ids` against 60 and calling it legality — and
+  this family would not see it. Two things stand where it used to, and neither is this family: the
+  AD-3 import boundary denies that author the card data such a rule would have to be about, and
+  `test_contracts.py` pins every cap by literal value **and** by which field it bounds. Three new
+  tests hold the exemption narrow (`test_the_limit_exemption_is_scoped_to_one_file`,
+  `test_the_exempt_file_still_flags_every_other_family`,
+  `test_the_exemption_names_only_paths_that_exist`), each with a firing proof through the full run.
+  **Home for a revisit: the C5 retrospective**, which is where "is a per-file exemption the right
+  shape, or should the family key on *use* rather than on *presence* of a literal?" should be
+  decided — with two collisions on the record instead of one. (Severity: Low, and narrower than the
+  alternative that was declined.)
+
+- **The probe harness exists for pytest and does not exist for `ui/`.** C4 retro action item 4 was
+  homed on c5-1 by name and is **discharged only on the Python side** (Q11, Brad 2026-08-07):
+  `scripts/probe_harness.py` owns its own pytest argv — it accepts no test paths, no `-k` and no
+  `-m` — so the recorded lie of "a single-file run presented as a full run" is not something a
+  caller can do wrong. It reports the collected count with every verdict and refuses to score a run
+  that did not complete. **It earned that last check during this very story**: a planted violation
+  that happened to be a `SyntaxError` produced "0 failed", and only the collected count (1,450
+  against 2,526) and pytest's exit 2 revealed the suite had never run. That check is now in the
+  harness.
+
+  **What is still owed: the vitest half.** Three of the five recorded probe-harness lies
+  (a lowercase-drive working directory, `shell=True` on Windows, an unparseable TSX file) are
+  specific to the frontend toolchain and cannot occur in a Python-only story, which is why this was
+  scoped rather than built whole. **Home: the first C5 story that touches `ui/` and plants a
+  frontend guard** — realistically **c5-6** or the first Epic 6 view story. (Severity: Low.)
+
+- **Two artefact amendments are owed and are recorded here so they are not rediscovered
+  (AC 26).** Neither is c5-1's to make — both live in planning artifacts this story does not own —
+  and both are now decided rather than open.
+
+  1. **AD-6's kind enum is SIX, not five.** `ARCHITECTURE-SPINE.md` and the epic's Contracts section
+     both still enumerate five, naming only `deck_changed`. Story 5.1's own acceptance criteria add
+     `active_deck_changed` with its justification, and being both later and more specific it wins;
+     `contracts.py` ships six and `test_contracts.py` pins the set against a hand-written literal.
+     The spine amendment is **already tracked as owed at Epic 8** — this entry only records that the
+     code went first and that the disagreement is a known supersession, not drift.
+  2. **413 `payload_too_large`, not 422.** AD-7, `epics:237` and Story 6.4 all still say **422**;
+     AD-16, Story 5.5 and Story 6.1 say **413**, *"per the c1-4 review ruling, was 422"*. **413 is
+     authoritative**, and `contracts.py`'s `_MAX_ENVELOPE_BYTES` docstring now says so at the point
+     of use. This is not merely a documentation tidy: `test_committed_schema.py` asserts FastAPI's
+     auto-422 components are **stripped**, so a 422 answer would contradict a shipped pin.
+     **Enforcement is c5-5's**; recording the supersession was c5-1's, and no `ErrorReason` token
+     was added — the set stays at **ten**, because `payload_too_large` was added early and
+     deliberately *"before Epic 5 freezes the union"*. **Home for the artefact edits: Epic 8**,
+     alongside the spine amendment above. (Severity: Low — both are documentation drift against
+     shipped, tested code.)

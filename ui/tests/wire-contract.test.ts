@@ -11,9 +11,13 @@
  * Reading the schema is what gives the rule its authority and its growth: it covers exactly the
  * shapes the backend actually describes today. c3-1's four deck models arrived that way
  * (2026-07-31) — the ban list grew with no edit to the mechanism; the only additions here were
- * two non-vacuity anchors asserting the growth happened (c3-1 review). **c5-1**'s event-envelope
- * payloads will be picked up the same way on the day those routes land. A hard-coded
- * name list would stop growing and become decoration — do not turn it into one. The aliases
+ * two non-vacuity anchors asserting the growth happened (c3-1 review). **c5-1** shipped the
+ * event-envelope payloads and this ban list did **not** grow — which is the mechanism working, not
+ * failing: a model no route references never reaches `components.schemas`, so there was nothing to
+ * pick up (measured 2026-08-07, schema unchanged at twelve components). "On the day those routes
+ * land" was the operative clause all along, and that day is **c5-5**, which puts the union on
+ * `POST /agent/events`. A hard-coded name list would stop growing and become decoration — do not
+ * turn it into one. The aliases
  * `src/api/schema.ts` re-exports are read the same way (from that file's `export type` lines),
  * because a derived alias like `ErrorReason` never appears in `components.schemas` yet is
  * exactly the shape a hand-rolled duplicate would drift from (c2-3 review ruling, 2026-07-27).
