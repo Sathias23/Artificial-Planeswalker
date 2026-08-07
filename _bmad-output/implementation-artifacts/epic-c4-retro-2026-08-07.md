@@ -416,6 +416,59 @@ explicitly, so this list is mostly transcription rather than invention.
 build, then let the build finish, and confirm the glass leaves the stale 503 panel **without a
 refresh**. That is the High this epic's second story fixed and it has never been seen.
 
+> ## ✅ BLOCK I RUN 2026-08-07 — all four panels rendered by a real engine, plus the bonus
+>
+> Driven through **headless Chrome 141 over CDP** against a **real companion backend** on an
+> isolated `PLANESWALKER_DATA_DIR` in the scratchpad. The shipped `cards.db` was **copied once**
+> and used as the restore source — nothing wrote to the user's real data directory, and no real
+> companion was running (`companion.json` absent from the real dir, verified). Screenshots and
+> raw JSON are throwaway, per the standing scratchpad posture.
+>
+> | # | Result | Evidence |
+> |---|---|---|
+> | **A1** (control) | ✅ PASS | no `cards.db` → wire `503 database_not_initialized` → **"Card database not set up yet."** |
+> | **A3** | ✅ **PASS — the point of the test confirmed** | a `cards.db` that exists but is not a SQLite file → `DatabaseError` → wire `503 database_unavailable` → **"Card database is updating."** — *a genuinely different panel from the same 503 status* |
+> | **A4** ① | ✅ PASS | escalated at **t = 60.1 s on the 6th poll**; both gates observed independently (`STALLED_AFTER_MS` 60 s **and** `STALLED_MIN_REFUSALS` 4). Backoff visible in the poll cadence (3·4·4·4·5·5·5·5·5·6) |
+> | **A4** ② | ✅ PASS **as designed — C3 ruling R3 felt for the first time** | database restored, backend healthy (**wire 200**), and after **45 s the poll count moved by exactly 0** and the glass still read "Card database still updating." Recovers only on manual refresh |
+> | **A5** | ✅ PASS | backend stopped with the tab open: panel **unchanged**, poll **kept retrying** (2 → 7, 4 transport failures), **did not** claim `disconnected`, no stack on the glass |
+> | **A6** | ⚠️ **ledgered defect CONFIRMED** | first load, nothing reachable: **"No deck on the glass. Ask your agent to set an active deck…"**, stable, while 4 polls failed silently |
+> | **BONUS** | ✅ **PASS — c4-2's High confirmed live** | cold open with an active deck and no database → stale refusal panel; database planted **while the tab was open** → deck reads **1 → 3**, panel replaced by the full deck view in **~5 s**, **1 page navigation** (the initial load) — **no reload** |
+>
+> **A4's bite is sharper than the ledger records it.** The stalled panel's own action line reads
+> *"Check your agent session — if no import is running, ask it to rebuild the database
+> (`initialize_database`)."* A user who does exactly that, **and succeeds**, sees nothing change:
+> the poll is provably frozen (delta 0 over 45 s of a healthy backend). R3 accepted this
+> knowingly; what is new is that the instruction on screen is the one action that cannot help.
+>
+> **A6 tolerability, judged as the item asks.** Worse than "the wrong panel", though not by much
+> in blast radius. The copy is not merely uninformative, it is **actionable and wrong** — it
+> directs the user to ask their agent to set a deck, when the backend is unreachable and the
+> agent's own call would fail for the same reason. A1's copy is at least inert. Home stays
+> **c5-6**; severity stays Low-Medium (reachable only by opening the browser before the backend).
+>
+> ### Two findings this run produced that no story had
+>
+> 1. **🔴 F1's census is wrong, and the gate matters more than recorded.** On a **state-panel
+>    surface** the rendered page carries **six** distinct story keys — `c2-7`, `c4-2`, `c4-5`,
+>    `c4-7`, `c4-10`, `c6-8` (7 occurrences). c4-11 recorded the remaining count as **one**
+>    (`c6-8`), and that is true **of a rendered deck view** — which is the only surface
+>    `App.test.tsx` ever asserted. Confirmed both ways in this run: the deck view at the end of the
+>    bonus scenario carries `c6-8` alone. **The placeholders are displaced by the panels that
+>    replace them, so any surface where those panels do not render still shows every key.** This is
+>    the epic's coverage-that-reads-as-coverage class one more time — the assertion's scope is
+>    narrower than the claim built on it — and it raises C3 action item 4 from "one string left" to
+>    "six, on the first screen a fresh install ever sees".
+> 2. **C3 retro finding F3 is still live on state-panel surfaces.** The panel is top-aligned with a
+>    large void beneath it. F3 was homed on **c4-12**, which shipped the empty-*deck* state; the
+>    empty-*column-behind-a-state-panel* case was never in that story's scope and still is not.
+>
+> *(Recorded for honesty, since this retro's own theme demands it: the harness reproduced two of
+> the epic's ledgered failure modes and one new one. `subprocess.run([...], shell=True)` on Windows
+> — the exact c4-10 probe-harness bug — left a stranded backend holding `cards.db`; a PowerShell
+> process filter matched its own command text and reported a phantom survivor; and one assertion
+> read `<main>` for a deck name that lives in the header, producing a false negative the headings
+> disproved. All three were caught by checking the raw data rather than the summary.)*
+
 ### Block J — judgement calls only a person can settle 🟡
 
 | # | Look at | Recorded position |
@@ -495,7 +548,8 @@ Three findings that carry forward as facts rather than as work:
 | 1 | **R1 — trigger-gated inheritance**, from c5-1. Full text for triggered deferrals; one line + ledger anchor for the rest; don't-breaks scoped to the diff's own files. | Sathias (c5-1 onward) | A C5 story's `## Dev Notes` is measurably smaller than C4's 41 KB average without losing a disposition |
 | 2 | **R2 — every new guard ships a firing proof** (planted violation red through the FULL suite + one line on what the assertion compares). | Sathias (standing) | No C5 story's review finds a vacuous or tautological assertion in the story's own new guard |
 | 3 | **R3 — ledger F4** (failed-import / companion file-lock), **home c8-4**. Closes C3 action item 6. | Amelia — **in this retro** | A `deferred-work.md` entry with a named owner story |
-| 4 | **One committed probe harness.** Validates the collected-test count, refuses a run carrying the crash signature, uses a native uppercase-drive path, and carries the do-nothing negative controls. | Sathias (c5-1) | A C5 story runs probes through the committed harness; no story rebuilds the validation |
+| 4 | **One committed probe harness.** Validates the collected-test count, refuses a run carrying the crash signature, uses a native uppercase-drive path, and carries the do-nothing negative controls. ⚠️ **Still open after the CDP promotion below** — `scripts/cdp_harness.py` drives a browser, not vitest, and would have caught none of the five recorded probe-harness lies. | Sathias (c5-1) | A C5 story runs probes through the committed harness; no story rebuilds the validation |
+| 4b | **✅ DONE 2026-08-07 — the CDP measurement harness is promoted**: `scripts/cdp_harness.py` (`budget` / `panels` / `shot`). Closes c4-12's *"no committed CDP measurement harness"* residue. Reproduces the render-budget number independently — **format-check queue position 106 on all five runs** against the recorded 106–107 — so the reorder lever those `App.tsx` comments price is re-measurable before anyone pulls it. `websockets` declared in the dev group rather than borrowed from `uvicorn[standard]`; plugin mirror rebuilt; all Python gates green, suite unchanged at 2,501. | Amelia — **in this retro** | ✅ met |
 | 5 | **Fix the `DESIGN.md` citation guard**: resolve the anchor and assert the cited line names the component; re-base the ~60 stale anchors. | Sathias (C5, standalone) | The guard resolves line numbers and the tree is green |
 | 6 | **"Grep your own key" in the context pass**: `grep -rn '<story-key>' ui/src src tests` is a step in every story's Task 0, not only a ledger read. | Sathias (c5-1 onward) | Every C5 story's context section lists the source modules naming its key |
 | 7 | **Plugin-mirror check reachable from `ui/`** so a frontend-only `npm test` can see a stale mirror. | Sathias (C5) | `npm test` fails on a deliberately stale `plugin/` mirror |

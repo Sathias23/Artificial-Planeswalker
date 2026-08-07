@@ -4762,3 +4762,121 @@ Eight decisions ruled by Sathias. R1/R2/R6 are process and live in
   demanded them; and **fifteen shipped source modules naming `c4-12` in their headers while this
   file named it twice**. A story that re-homes an entry edits `deferred-work.md` in the same commit,
   and a story's context pass greps the **source tree** for its own key, not only this file.
+
+## From: the Epic C4 manual-testing run — BLOCK I (2026-08-07)
+
+Block I was homed on **c4-2** at the C3 retro, acknowledged there and not run, so it had been
+carried across two epics. Run at the C4 retro through headless Chrome over CDP against a real
+backend on an isolated `PLANESWALKER_DATA_DIR`. **All four panels are now rendered by a real
+engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries change here.
+
+- ✅ **CLOSED — `database-updating`, `database-updating-stalled` and the state panels were never
+  rendered by a real engine (`:3310-3316`).** They have been now. A3: a `cards.db` that exists but
+  is not a SQLite file produces `DatabaseError` → `503 database_unavailable` → **"Card database is
+  updating."**, which is the entry's whole question answered — *a different panel from the same 503
+  status as A1's*. A4: the escalation fired at **t = 60.1 s on the 6th poll**, with both gates
+  observed independently. The `internal-error` panel remains unrendered by a real engine and is the
+  only member of the family still owed a first look; it is reachable from a malformed `200` body on
+  the deck read (c4-2's caught refusal), which is a harder fixture to stage than a corrupt file.
+  **Residue re-homed: `internal-error`'s first render → the Epic C5 manual-testing checklist.**
+
+- ⚠️ **CONFIRMED, NOT CLOSED — a backend that cannot be reached at all leaves whatever panel is on
+  screen, including on the very first load (`:3318-3328`).** Reproduced exactly as written: a first
+  load with nothing reachable renders **"No deck on the glass. Ask your agent to set an active deck
+  — it will appear here the moment it does."** and holds it while polls fail silently (4 attempts
+  observed, no state change). **Tolerability judged at the C4 retro, as the checklist item asks:
+  the entry undersells it by one notch.** The panel is not merely uninformative — its copy is
+  **actionable and wrong**, directing the user to an agent action that cannot succeed while the
+  same backend is unreachable. A1's copy is inert by comparison. **Home unchanged: c5-6**, whose
+  `disconnected` panel is the true one. Severity unchanged (Low-Medium: reachable only by starting
+  the browser before the backend), because the blast radius is not what moved — the copy's
+  imperative is.
+
+- 📌 **AMENDED — C3 action item 4 / F1: story-key-shaped strings on the rendered view.** The
+  recorded count is **wrong, and low**. c4-11 recorded one remaining key (`c6-8`) and that is true
+  **of a rendered deck view**, which is the only surface `App.test.tsx` asserts. Measured on a
+  **state-panel surface**: **six** distinct keys render — `c2-7`, `c4-2`, `c4-5`, `c4-7`, `c4-10`,
+  `c6-8`, seven occurrences. Both halves confirmed in one run (the deck view at the end of the
+  re-drive scenario carries `c6-8` alone). The mechanism is that the placeholders are displaced
+  **by the panels that replace them**, so every surface where those panels do not render still
+  carries every key — and the first screen a fresh install ever sees is exactly such a surface.
+  This is the epic's coverage-that-reads-as-coverage class again: the assertion's scope is narrower
+  than the claim resting on it. **Home unchanged (c8-5), priority raised**, and the gate's shape is
+  now specified by evidence: it must scan a rendered STATE-PANEL surface, not only a deck view.
+
+- ⚠️ **RE-OPENED — C3 retro finding F3 (vertical anchoring on an empty page) was homed on c4-12 and
+  is only half closed.** c4-12 shipped the empty-*deck* state; the **state-panel** case — panel
+  top-aligned with a large void beneath it, on the first screen of a fresh install — was never in
+  that story's scope and is unchanged. Seen again in this run's A1 and A3 screenshots.
+  **Home: unowned.** (Severity: Low — cosmetic, on a surface a healthy install passes through once.)
+
+### What this run CONFIRMED rather than changed
+
+- **c4-2's edge-triggered re-drive works on a real screen, and had never been seen.** Cold open
+  with an active deck set and no database → the deck read refuses and the glass shows the stale
+  panel; the database is then planted **while the tab is open** (no restart — with no file present
+  the backend holds no handle, so this is FR-22's own scenario extended to the deck path). Deck
+  reads went **1 → 3** and the panel was replaced by the full deck view in **~5 s**, with **one**
+  page navigation for the whole test. That is the High c4-2's review found and fixed, observed.
+- **C3 ruling R3's terminal consequence, felt rather than reasoned.** With the database restored
+  and the wire answering `200`, the poll count moved by **exactly 0** across 45 s and the stalled
+  panel stayed. R3 accepted this knowingly; what the run adds is that **the panel's own action line
+  names `initialize_database`**, so a user who complies *and succeeds* sees no change. Recorded
+  against c5-6, which owns the recovery.
+
+## From: the Epic C4 retrospective — the CDP harness is PROMOTED (2026-08-07)
+
+- ✅ **CLOSED — "No committed CDP measurement harness behind the render-budget numbers"
+  (`:4663-4669`, from c4-12's code review).** The entry asked whether *"a minimal committed harness
+  (or a recorded recipe) is owed before anyone is allowed to act on the reorder lever those comments
+  price."* **A harness is owed and is now committed: `scripts/cdp_harness.py`.**
+
+  It is the house pattern written down rather than a new one — c4-12's own Q9 specifies the shape
+  (*"ad-hoc CDP in Python (websockets + httpx), Chrome `--headless=new`, fresh profile, against the
+  committed SPA served by the running backend"*) and the only change is that it is no longer ad hoc.
+  Three subcommands: `budget` (the NFR-05 cold-open measurement), `panels` (the state panels of
+  manual-checklist Block I), `shot`.
+
+  **It reproduces the number the `App.tsx` comments cite, independently.** Run against the same
+  99-card deck (`Atraxa Counter Cabinet v2 (owned)`), n=5, fresh Chrome profile per run:
+
+  | | c4-12's record | this harness, 2026-08-07 |
+  |---|---|---|
+  | format-check queue position | **106–107** | **106**, all five runs |
+  | full six-surface layout | 311 / 363 / 428 ms | **382 / 403 / 453 ms** |
+  | card reads · total requests | 99 · ~205 | **99 · 213** |
+
+  The **queue position matches exactly**, and it is the structural claim the two effect comments
+  actually rest on. The layout times run ~40–70 ms higher and the difference is *not* treated as a
+  discrepancy: this arm ran against a data directory with **no warm backend image cache** (a fresh
+  copy holding only `cards.db`), which is nearer c4-12's cold-image arm than its fresh-profile one,
+  on a machine with sixteen MCP server processes resident. Both sets sit far inside NFR-05's
+  1,000 ms budget. **The lever is now re-measurable before anyone pulls it**, which is what the
+  entry asked for.
+
+  Q7's clock is preserved verbatim: `performance.timeOrigin` read in-page, stop at the moment the
+  **last** of the six named surfaces enters the DOM, seen by a `MutationObserver` installed at
+  **document-start**.
+
+  ⚠️ **What this does NOT close, stated because a harness that reads as covering more than it does
+  is this epic's own theme.** The C4 retro's action item 4 asks for **one committed *probe*
+  harness** — the thing that runs the full `npm test` for an evasion probe and validates the
+  collected-test count before scoring the run. **That is a different harness and it is still owed.**
+  `cdp_harness.py` drives a browser; it does not run vitest, and none of the five recorded
+  probe-harness lies would have been caught by it. Item 4 stays open.
+
+  📌 **The promotion found a real defect in its own first version, and the refusal caught it.** The
+  observer attached to `document.documentElement`, which is **null at document-start**, so
+  `.observe()` threw, the IIFE aborted, and every run reported "no surfaces arrived" while the page
+  rendered all six perfectly. The harness **refused to report a number** (by design — every C4 probe
+  harness that lied did so by scoring an empty run) but could not say *why*, so it now captures the
+  install-time error and prints it with the refusal. Fixed by observing `document`, which exists at
+  document-start. Recorded rather than quietly repaired: *an instrument that dies at install time
+  and leaves an empty result is indistinguishable from a page that rendered nothing.*
+
+  `websockets>=12.0` is now **declared** in the dev dependency group rather than borrowed from
+  `uvicorn[standard]`'s extra, and `plugin/server/pyproject.toml` was rebuilt to match (the mirror
+  copies `pyproject.toml` verbatim — caught by diffing the mirror, not by a guard, which is the
+  "guarded on the Python side only" residue behaving exactly as recorded). Gates after: `ruff check .`,
+  `ruff format --check .` (308 files), `mypy src/` and `mypy src/ --platform win32` (89 files) green;
+  `uv run pytest` **2,501 passed / 1 skipped — unchanged**.
