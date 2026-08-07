@@ -64,12 +64,18 @@ class TestThePathSet:
     """Every path the companion serves, and nothing else."""
 
     def test_the_paths_are_exactly_these(self, schema):
-        # SEVEN as of c3-5 (`/api/card-image/{scryfall_id}`). A story adding a route edits this
-        # line — here, and nowhere else. Note the two deck spellings are not a typo: the list is
-        # plural `/api/decks`, the detail is singular `/api/deck/{deck_id}`, and c3-3's format
-        # check hangs off the singular one. c3-5's path parameter is spelled `scryfall_id` where
-        # its sibling spells the same identifier `card_id`, because the epic names the path that
-        # way; both publish the same constraint, which `test_routes_card_image.py` asserts.
+        # EIGHT as of c5-2 (`/api/session`). A story adding a route edits this line — here, and
+        # nowhere else. Note the two deck spellings are not a typo: the list is plural
+        # `/api/decks`, the detail is singular `/api/deck/{deck_id}`, and c3-3's format check
+        # hangs off the singular one. c3-5's path parameter is spelled `scryfall_id` where its
+        # sibling spells the same identifier `card_id`, because the epic names the path that way;
+        # both publish the same constraint, which `test_routes_card_image.py` asserts.
+        #
+        # c5-2's `/api/session` is the first path added since c3-5, and it INVERTS c5-1's
+        # headline: c5-1 shipped sixteen models and moved neither count, because a model no route
+        # references never reaches the document at all. c5-2 puts one model on one route, so both
+        # counts move together — 7 → 8 here and 12 → 13 below — which is the ordinary case the
+        # confirmed-negative shape was the exception to.
         assert set(schema["paths"]) == {
             "/api/active-deck",
             "/api/card-image/{scryfall_id}",
@@ -77,6 +83,7 @@ class TestThePathSet:
             "/api/deck/{deck_id}",
             "/api/deck/{deck_id}/format-check",
             "/api/decks",
+            "/api/session",
             "/health",
         }
 
@@ -181,7 +188,7 @@ class TestTheComponentSet:
     """
 
     def test_the_component_names_are_exactly_these(self, schema):
-        # TWELVE as of c3-5. `Card` is c3-2's, the two `FormatCheck*` models are c3-3's, and
+        # THIRTEEN as of c5-2. `Card` is c3-2's, the two `FormatCheck*` models are c3-3's, and
         # `ActiveDeck` / `ActiveDeckRequest` are c3-4's — the latter being the first REQUEST body
         # in the whole document; every shape before it described a response.
         #
@@ -191,6 +198,13 @@ class TestTheComponentSet:
         # 6,455 stored face objects carry 24 distinct keys and a strict model would silently
         # truncate shipped MCP tool output. That is not an AD-1 breach: there is still exactly one
         # card shape and exactly one face shape, both in `src/data/schemas`.
+        #
+        # `SessionTicket` is c5-2's, and it is the first component this shell has added since
+        # c3-5. It is ALSO the only one of the SEVENTEEN models c5-1 defined plus this one that
+        # reaches the document: c5-1's sixteen are all still absent, because none is referenced by
+        # a route yet and an unreferenced model never lands here. That asymmetry is the rule
+        # working, not a gap — c5-5 declares the event union as `POST /agent/events`'s request
+        # body and the rest arrive together at that point.
         assert set(schema["components"]["schemas"]) == {
             "ActiveDeck",
             "ActiveDeckRequest",
@@ -204,6 +218,7 @@ class TestTheComponentSet:
             "FormatCheckReport",
             "FormatCheckRow",
             "HealthResponse",
+            "SessionTicket",
         }
 
     def test_the_auto_generated_validation_shapes_are_absent(self, schema):
@@ -277,6 +292,27 @@ class TestTheDatabaseTokensAreDeclared:
         # that made `responses` per-include rather than app-wide is what this asserts still holds.
         for method in ("get", "put"):
             assert "503" not in schema["paths"]["/api/active-deck"][method]["responses"]
+
+    def test_the_session_route_declares_neither_a_503_nor_a_413(self, schema):
+        # AC 23. c5-2 mirrors c3-4's ruling on both counts rather than inheriting either: no
+        # database dependency means no 503 to promise, and a body-less GET means no 413. It is
+        # therefore deliberately ABSENT from DATABASE_BACKED above — asserted below rather than
+        # left as a silent omission, because a list a route quietly fails to join looks identical
+        # to a list a route was forgotten from.
+        #
+        # The 413 half is the ledgered wart `deferred-work.md` homes on c5-5: a body-less GET that
+        # declares one promises a `types.d.ts` consumer a branch that can never answer, and every
+        # new GET route doubles it wherever it is declared. /health and the four database-backed
+        # operations still carry theirs by inheritance; /api/session and /api/active-deck do not,
+        # which is the direction the wart is being unwound in.
+        responses = schema["paths"]["/api/session"]["get"]["responses"]
+
+        # Non-vacuity: the operation really was found and really declares its typed failures, so
+        # the two absences below are about a populated mapping rather than an empty one.
+        assert set(responses) == {"200", "400", "500"}
+        assert self._reasons(schema, "/api/session", "get", "400") == {"invalid_request"}
+        assert self._reasons(schema, "/api/session", "get", "500") == {"internal_error"}
+        assert ("/api/session", "get") not in self.DATABASE_BACKED
 
     def test_the_scan_can_tell_the_two_apart(self, schema):
         # Non-vacuity, and it is a real one: `_reasons` returns a SET parsed out of prose, so a

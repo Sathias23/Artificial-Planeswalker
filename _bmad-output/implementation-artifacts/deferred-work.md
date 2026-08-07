@@ -1926,6 +1926,15 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   unedited — **56 passed**. So c3-3 never owed a line, and neither will c3-4/c3-5 if their routes
   join an existing router. The comment in `test_spa.py` now says this, so the next author does not
   go looking for an edit they do not owe.
+  **Tax paid, c5-2 (2026-08-08).** `routes/session.py` is a new router, so c5-2 was the first of
+  the two stories this entry names by key to come due — and it came due exactly as advertised:
+  adding `session.router` to `build_app()` reddened
+  `test_the_schema_is_unchanged_by_installing_the_mount` with *"Extra items in the left set:
+  '/api/session'"* before the line existed, and the harness re-proved it red through the full
+  2,594-test suite with the line deleted again. One line added. **c5-5 remains outstanding** and is
+  now the only story this entry still names. The "derive the list from `build_app()`" fix is still
+  not taken: at three consecutive paid taxes the named-failure trade is still winning, and c5-2 has
+  no more standing to change a shared test's design than c3-3 did.
 
 ## Deferred from: code review of c3-1-deck-list-and-deck-detail-endpoints (2026-07-31, post-commit pass)
 
@@ -2338,6 +2347,15 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   with the consequence spelled out for a client author (*a 413 on a body-less GET is unreachable;
   ignore it*). **Home: c5-5**, which adds the ingest cap, makes the 413 real, and cannot avoid
   deciding which operations answer it. (Severity: Low.)
+  **c5-2's disposition, recorded so c5-5 does not re-litigate it (2026-08-08).** This entry warned
+  the wart is *"doubled by every new GET route"*, and c5-2 added one. It did **not** double it:
+  `/api/session` declares `invalid_request` and `internal_error` only, mirroring the per-include
+  narrowing c3-4 already applied to `/api/active-deck` rather than inheriting the shared set. So
+  the count of body-less GETs publishing an unreachable 413 is **unchanged at six**, not seven, and
+  the two most recent route-adding stories have both declined to add to it. That is now a
+  two-instance pattern rather than one story's choice, and it narrows c5-5's job: the six are all
+  *pre-existing* declarations on the `shared`/`database_responses` includes, so curating them is a
+  single edit at two call sites — not a survey. **Home: still c5-5.**
 
 - **The image-discriminator prose is maintained by hand in two Python docstrings with no drift
   gate between them.** The same three paragraphs (split-card trap, per-face `image_uris`
@@ -5000,3 +5018,53 @@ engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries cha
      deliberately *"before Epic 5 freezes the union"*. **Home for the artefact edits: Epic 8**,
      alongside the spine amendment above. (Severity: Low — both are documentation drift against
      shipped, tested code.)
+
+## Deferred from: c5-2-same-origin-session-endpoint-minting-single-use-websocket-tickets (2026-08-08)
+
+- **`Origin` on REST: RULED, and c1-5's open question is CLOSED.** c1-5 recorded the question and
+  homed it on c5-2 and c5-3 by name (`c1-5:357-358`, `:625-631`). **Ruling (Q1, Brad 2026-08-08):
+  `GET /api/session` does NOT validate `Origin`.** The reasoning, so c5-3 inherits a decision rather
+  than re-deriving one: there is no `CORSMiddleware` and c1-5 ruled there never will be
+  (`TestCorsIsDeliberatelyAbsent`), so a page on another origin can *issue* the mint but cannot
+  *read* the response — it cannot steal a ticket, only burn tickets, which `MAX_TICKETS`' hard cap
+  and earliest-expiry eviction bound to one recoverable re-mint for the legitimate client. AD-5 and
+  review finding S-6 both home `Origin` on the **upgrade**; putting it here too would be one
+  decision maintained in two places, and would break any future Vite dev proxy that rewrites `Host`
+  but not `Origin` (`:3539` records that path as still unexercised). Asserted structurally by
+  `test_routes_session.py::test_the_route_module_contains_no_host_or_origin_check_of_its_own`.
+  **Home: c5-3** for the upgrade half, which is now the only half left open. (Severity: none —
+  this is a closed ruling, kept for the audit trail.)
+
+- **`errors.supported_methods` under a non-root `Mount`: c5-2 is NOT the story that triggers it,
+  confirmed rather than assumed.** The entry above homes that hole on *"the story that adds a
+  non-root mount"*. c5-2 adds an `APIRouter` with a `prefix="/api"`, which is not a `Mount` — FastAPI
+  flattens it into the route table the walk already reads, and `install_spa`'s mount at `/` is
+  unchanged and still the only mount in the app. Measured: `test_routes_active_deck.py::
+  TestTheMethodSemantics` passed unedited. **Home: unchanged.** (Severity: none — a confirmation.)
+
+- **Two `Example:` blocks in `security.py` are still executed by nothing, and that is now a stated
+  decision rather than an omission.** c5-1 established the house answer for this (fold
+  `doctest.testmod(module)` into an ordinary test, because `testpaths` is scoped to `tests/` and
+  `--doctest-modules` never reaches `src/`), and c5-2 applied it to `src/companion/app/state.py` —
+  whose `ActiveDeckSlot` example had also never run. `security.py:97,116` still have not. **Not
+  taken here deliberately:** a story that starts executing another module's untested examples owns
+  whatever they turn out to say, and c5-2 has no other reason to touch that module's behaviour.
+  **Fix shape:** two lines, in the same shape as `test_routes_session.py::TestTheDocstringExamplesRun`
+  — and the honest generalisation is a single test that walks every `src/companion` module rather
+  than a per-module opt-in that the next author also has to remember. **Home: unowned**, most
+  naturally c5-3, which edits `security.py` for the upgrade gate. (Severity: Low — an example that
+  is wrong is a docstring that lies, and nothing would say so.)
+
+- **`test_committed_schema.py` cannot see a source change until `gen:api` has run, and this cost
+  two probe attempts before it was understood.** Measured at c5-2's R2 pass: planting an extra
+  `payload_too_large` on the session include, and separately renaming the route's path, left every
+  pin in that file **green** while reddening `test_openapi_contract.py::
+  test_committed_schema_matches_the_live_app`. The reason is the file's whole design — it asserts
+  against the committed `ui/src/api/openapi.json`, not against `build_app().openapi()` — so it pins
+  *what was shipped*, and `test_openapi_contract.py` is the separate guard that pins *shipped equals
+  live*. Both are correct and the pair is complete; what was missing is that nothing said so, so a
+  future R2 pass will plant in source, see green, and reasonably conclude the guard is broken.
+  **Fix shape:** one sentence in `test_committed_schema.py`'s module docstring naming its sibling
+  and the ordering between them. **Home: unowned, informational** — cheap, and the next story to
+  add a component is the natural one. (Severity: Low — it costs a confused half-hour, not
+  correctness.)

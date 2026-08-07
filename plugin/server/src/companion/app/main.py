@@ -31,7 +31,7 @@ from src.companion.app.errors import (
     install_error_handling,
     without_auto_validation_schema,
 )
-from src.companion.app.routes import active_deck, cards, decks, health
+from src.companion.app.routes import active_deck, cards, decks, health, session
 from src.companion.app.security import install_security
 from src.companion.app.spa import install_spa
 
@@ -201,6 +201,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.agent_token = discovery.mint_token()
     app.state.database = deps.Database()
     app.state.active_deck = state.ActiveDeckSlot()
+    # Same shape and the same reason as the negative cache below: a dict and a clock, so there is
+    # no `build_*` factory, nothing lands in `_shutdown`, and AD-15's "publishing the discovery
+    # file is the ONLY startup step that may fail a launch" stays literally true (c5-2). Created
+    # here rather than in `build_app()` so that function keeps its zero-side-effect property
+    # (AD-10) — and so a restart genuinely begins with an empty store (CM-3).
+    app.state.ticket_store = state.TicketStore()
     app.state.image_client = images.build_image_client()
     app.state.image_pacer = images.Pacer()
     app.state.image_cache = images.build_image_cache()
@@ -495,19 +501,37 @@ def build_app() -> FastAPI:
     app.include_router(
         active_deck.router, responses=error_responses("invalid_request", "internal_error")
     )
+    # Exactly the same pair, for exactly the same two reasons, and c5-2 confirmed both rather than
+    # inheriting them: no database dependency means no 503 to promise, and a body-less GET means no
+    # 413. The second one is the wart `deferred-work.md` homes on c5-5 — every new GET route
+    # doubles an unreachable 413 wherever one is declared — and declaring it here would have been
+    # the first time this feature added to it deliberately. `/api/session` also adds NO new
+    # `ErrorReason` token: the set stays closed at ten, because AD-16's rule is that a token exists
+    # to drive a UI state and ticket churn is designed to be invisible.
+    app.include_router(
+        session.router, responses=error_responses("invalid_request", "internal_error")
+    )
     # Ordering, and it is the whole point: user_middleware[0] is the most recently added
     # middleware, so the error middleware must be installed *last* to end up outermost — where it
     # can type the failures of every middleware added before it. The Host check goes above this
     # line so that a fault in the security envelope itself answers as a typed 500 rather than an
     # untyped traceback (on http scopes — the error middleware passes websocket scopes through,
-    # a gap c5-3 owns); c5-2 and c5-5 add their pieces inside install_security, not here.
+    # a gap c5-3 owns); c5-5 adds its piece inside install_security, not here.
+    #
+    # CORRECTED AT c5-2, which falsified the previous version of that clause ("c5-2 and c5-5 add
+    # their pieces inside install_security, not here"). c5-2 adds neither a middleware nor a
+    # security line: its mint is an ORDINARY ENDPOINT, so it adds an include_router above, and its
+    # store is created by the lifespan. c5-3 — the handshake gate — is the story that sentence was
+    # really describing. Corrected in the same commit that falsified it, per c3-9's rule; a `#`
+    # comment in a non-wire position, so it costs no regeneration diff.
     install_security(app)
     install_error_handling(app)
     # MUST STAY LAST. install_spa mounts the SPA bundle at "/", and Starlette matches routes in
     # list order, so a mount at "/" matches every path and shadows everything registered after it
     # — silently: a route would answer 200 with index.html instead of running the endpoint.
-    # c3-1's decks router, c3-2's cards router and c3-4's active-deck router are registered above
-    # this line; c5-2 and c5-5 add theirs there too. (c3-3 added a route and edited nothing here,
+    # c3-1's decks router, c3-2's cards router, c3-4's active-deck router and c5-2's session router
+    # are registered above this line; c5-5 adds its /agent router there too. (c3-3 added a route
+    # and edited nothing here,
     # by design: its format-check endpoint is a deck sub-resource that joined the decks router,
     # which is already above this line. A story adding a route to an EXISTING router inherits the
     # ordering; only a story adding a router has to touch this block. c3-5 is the second instance

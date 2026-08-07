@@ -13,9 +13,21 @@ Two independent checks live here, and they are independent on purpose.
 
 Both fail **closed** on a missing input, and that shared rule is the point rather than a
 coincidence — see :func:`host_is_allowed` and :func:`agent_token_is_valid`, whose ``None`` handling
-is deliberately identical. c5-2's WebSocket ticket is the third member and joins here; AD-5 requires
-it to share **no storage and no code path** with the agent token, which is why the credential check
-below stores nothing and reads exactly one accessor.
+is deliberately identical.
+
+**The WebSocket ticket is the third member, and it does NOT live here — corrected at c5-2
+(2026-08-08).** The previous version of this paragraph said it "joins here"; the spine's module map
+disagreed with itself (``state.py # … tickets — in memory`` beside ``security.py # Host validation,
+token, ticket mint/consume``), and a single-use consume is a compare-and-set **over the storage**,
+so whichever module holds the dict holds the consume. It holds neither here:
+:class:`~src.companion.app.state.TicketStore` lives in :mod:`src.companion.app.state`, ruled at
+c5-2's Q3 on the ground that **this module's one proven structural property is that it stores
+nothing** — ``test_routes_active_deck.py`` AST-walks it for any module-level mutable container,
+probed against four planted violations — and that property is the strongest evidence AD-5 has in
+the package. What remains true, and is the part that mattered: AD-5 requires the ticket to share
+**no storage and no code path** with the agent token, which is why the credential check below
+stores nothing and reads exactly one accessor. c5-3 imports the store's accessor to gate the
+upgrade; it does not move the store.
 
 **What the check defends against.** Binding the socket to ``127.0.0.1`` stops a request from
 *another machine* and nothing else. The attack this module exists to close comes from the machine
@@ -417,9 +429,14 @@ def install_security(app: FastAPI) -> None:
     previous version of this paragraph promised the token would land "here beside it"; c3-4 built
     it and ruled otherwise, two stories ahead of the c5-5 that was scheduled to.
 
-    Story c5-2's WebSocket ticket is still to come and is genuinely middleware-shaped (it gates a
-    handshake, not an endpoint), so this remains the one wiring call and ``build_app()`` never
-    grows a second security line.
+    **The previous version of this paragraph was half right, and c5-2 falsified the other half.**
+    It said story c5-2's WebSocket ticket "is still to come and is genuinely middleware-shaped (it
+    gates a handshake, not an endpoint), so this remains the one wiring call and ``build_app()``
+    never grows a second security line." The ticket has two halves and they are not the same shape:
+    the **consume** does gate a handshake and is c5-3's, but the **mint** is an ordinary credential-
+    free endpoint, so c5-2 grew ``build_app()`` by an ``include_router`` — not a security line, but
+    a line — and put its store on the lifespan. What survives: this is still the one *security*
+    wiring call, and the store it does not hold is in :mod:`src.companion.app.state` (c5-2, Q3).
 
     Args:
         app: The application to install onto.

@@ -287,6 +287,40 @@ class ActiveDeckRequest(BaseModel):
         return value
 
 
+class SessionTicket(BaseModel):
+    """The body of ``GET /api/session`` — one short-lived credential for one WebSocket upgrade.
+
+    Read this immediately before opening the socket and present it on the upgrade. It is
+    **single-use** and expires **30 seconds** after it was issued, so it cannot be stored, shared
+    between tabs, or reused across reconnects: a client that reconnects asks for a new one every
+    time, which is the intended and inexpensive path rather than a fallback.
+
+    Consuming it destroys it whether or not the handshake then succeeds, so a retry needs a fresh
+    ticket — including after an upgrade that failed for an unrelated reason.
+
+    The endpoint is **same-origin and credential-free**: the browser holds no credential and never
+    will, and it is the absence of any cross-origin read permission on this response — not a
+    credential — that keeps another page from learning a ticket.
+
+    Attributes:
+        ticket: The value to present on the upgrade. Opaque: it has no parseable structure, carries
+            no identity, and nothing about it should be inspected, logged or persisted.
+
+            The remaining lifetime is deliberately **not** published (c5-2, Q4, Brad 2026-08-08).
+            A client mints per attempt and never inspects the TTL, so a field would be a wire
+            commitment with no consumer — and Story 8.3's amendment list currently omits
+            ``GET /api/session`` precisely because NFR-01 names the endpoint and nothing else.
+            This paragraph sits below the header on purpose: it is repo-internal reasoning, and
+            ``main._DOCSTRING_SECTIONS`` truncates it off the wire.
+
+    Example:
+        >>> SessionTicket(ticket="p2s5...").model_dump()
+        {'ticket': 'p2s5...'}
+    """
+
+    ticket: str
+
+
 # ---------------------------------------------------------------------------------------------
 # The agent event envelope and its six payloads (AD-6, AD-7, FR-11, FR-18)
 #

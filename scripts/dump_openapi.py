@@ -26,7 +26,34 @@ took it to nine components and five paths, adding the first wire shapes describe
 rather than ``src/data``; story **c3-4** (``/api/active-deck``) took it to eleven components and
 six paths, adding ``ActiveDeck`` and ``ActiveDeckRequest``; and story **c3-5**
 (``/api/card-image/{scryfall_id}``) took it to **twelve components and seven paths**, adding
-``CardFace``. Story **c3-6**'s pacer **shipped and needed nothing here**, exactly as this
+``CardFace``; and story **c5-2** (``/api/session``) took it to **thirteen components and eight
+paths**, adding ``SessionTicket`` — the first addition since c3-5, and the first from Epic C5.
+
+That last one is worth a sentence because it is the **inverse of the story immediately before it**.
+c5-1 defined sixteen models and moved neither count, since a model no route references never
+reaches ``components.schemas``; c5-2 defines *one* and moves both, because it puts that one on a
+route. Same rule, opposite headline — and the pair is the cleanest demonstration in this ledger
+that what lands here is *reachability from a route*, not *existence in* ``contracts.py``. Measured
+2026-08-08: 7 paths / 12 components before, 8 / 13 after, both generated files committed.
+
+**c5-2 falsified a claim this ledger has carried since c3-8, and measured the correction
+(2026-08-08).** The bullet below says *"a Pydantic model's* ``description`` *is the whole
+docstring"* and that the Google-section truncation *"applies to* **route** *docstrings"*. It does
+not: ``_CompanionFastAPI.openapi()``'s normaliser walks **every** description in the document, so a
+model's docstring is cut at its first Google section exactly as a route's is. Measured across all
+four wire models that have one — ``HealthResponse``, ``ErrorResponse``, ``ActiveDeck`` and
+``SessionTicket`` all carry ``Attributes:`` and ``Example:`` in source, and **none** of the four
+ships either on the wire.
+
+What c3-8 actually observed remains true and is the useful half: its ``ErrorResponse`` edit landed
+*above* that model's ``Attributes:`` header, which is why it crossed in full, bullet list and all.
+The corrected rule is therefore one rule rather than two: **everything above the first Google
+section ships, on models and on routes alike.** c5-2 relied on it deliberately in both places — the
+handler's ``Args:`` (which names the injected ``Response``) and ``SessionTicket``'s ``Attributes:``
+(which carries the Q4 reasoning for *not* publishing the TTL) were both cut, while the single-use
+and 30-second semantics a client author genuinely needs shipped in full.
+
+Story **c3-6**'s pacer **shipped and needed nothing here**, exactly as this
 paragraph predicted — the prediction was settled by *running* ``npm run gen:api`` and pasting
 ``git status --porcelain``, not by argument: seven paths and twelve components, both generated
 files byte-identical. Story **c3-7**'s disk cache **shipped and needed nothing here either**,
@@ -48,9 +75,13 @@ diff in both generated files, because the story edited
 
 Two things were learned by measuring rather than reasoning, and both are worth keeping:
 
-* **A class docstring on a wire model is wire-visible in its entirety**, bullet list and all — not
-  merely its leading paragraph. The truncation rule that trims Google sections applies to *route*
-  docstrings; a Pydantic model's ``description`` is the whole docstring.
+* **A class docstring on a wire model is wire-visible well past its leading paragraph**, bullet
+  list and all. *(Second clause CORRECTED at c5-2, 2026-08-08 — it read "the truncation rule that
+  trims Google sections applies to route docstrings; a Pydantic model's* ``description`` *is the
+  whole docstring", and that is false: the normaliser walks every description in the document, so a
+  model is cut at its first Google section too. c3-8's edit crossed because it sat above
+  ``ErrorResponse``'s* ``Attributes:`` *header, not because models are exempt. See the c5-2
+  paragraph above for the measurement across all four models.)*
 * **An attribute docstring on a** ``Literal`` **type alias is NOT.** The same commit edited
   ``ErrorReason``'s docstring and that edit did not cross the wire at all. Two docstrings, twelve
   lines apart in one file, on opposite sides of the boundary — which is the kind of thing nobody
