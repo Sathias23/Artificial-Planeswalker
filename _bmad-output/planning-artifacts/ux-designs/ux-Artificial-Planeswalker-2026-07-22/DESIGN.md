@@ -138,11 +138,24 @@ components:
     background-overlay: '{colors.surface-overlay}'
     border: '1px solid {colors.border-hairline}'
     radius: '{rounded.lg}'
-    header-padding: '10px 14px'
-    body-padding: '12px 14px'
+    # AMENDED 2026-08-07 (story c4-12, Q13). These read `'10px 14px'` and `'12px 14px'`, transcribed
+    # from the composition reference. **The Layout & Spacing section below bans `14` BY NAME** —
+    # *"the mock's 18/14/9/7px one-offs are drift, not spec"* — and `10` is off the
+    # 4/8/12/16/24/32/48 scale too, so stylelint's allowed-list refuses both outright: they are a
+    # BUILD FAILURE, not a preference. `Panel.css` has shipped the scale pairs since c2-7 and its
+    # comments name these two values as the mock's; what was never done is amending the artefact
+    # they were also written into, which left this file specifying a value the app is forbidden to
+    # ship. Same repair, same reason, as `components.legality-row.padding` below.
+    header-padding: '{spacing.2} {spacing.3}'
+    body-padding: '{spacing.3}'
   badge:
     radius: '{rounded.pill}'
-    padding: '2px 9px'
+    # AMENDED 2026-08-07 (story c4-12, Q13). This read `'2px 9px'`. `9` is in the Layout & Spacing
+    # section's own enumerated drift list and `2` is off the scale; `Badge.css` has shipped
+    # `{spacing.1} {spacing.2}` since c2-7. The third and last of the family — the c4-10 amendment
+    # named these two files as *"the identical repair … already shipped twice"* and amended only
+    # the legality row.
+    padding: '{spacing.1} {spacing.2}'
     type: '{typography.label}'
   stat-chip:
     background: '{colors.surface-well}'
@@ -293,6 +306,27 @@ components:
     border: '1px solid {colors.border-hairline}'
     radius: '{rounded.lg}'
     max-width: 480px
+  empty-deck-line:
+    # ADDED 2026-08-07 (story c4-12, Q2). This file specified the empty-deck state NOWHERE. The
+    # entire written specification was two EXPERIENCE.md table cells (`:70`, `:113`) carrying the
+    # copy, the type role, the colour and the words "no panel, no error styling" — while spacing,
+    # alignment, the container, a minimum height and the list semantics were all unlegislated.
+    # That made "the deck view matches DESIGN.md" UNSATISFIABLE for this branch rather than
+    # merely unchecked: `ui/tests/shell.test.ts` requires every `px` literal in a component
+    # stylesheet to carry a DESIGN.md citation within a sentence of the value, and there was
+    # nothing to cite. The treatment is therefore ruled and written here FIRST, and
+    # `CardGrid.css` written against it — the other order produces either a red guard or an
+    # invented citation.
+    #
+    # IT SPENDS NO LENGTH OF ITS OWN, and that is the decision rather than an omission. The line
+    # is the untitled card-grid Panel's ONLY child, so `{components.panel.body-padding}` already
+    # supplies the inset; a second one would be a value invented to fill a gap rather than a
+    # decision, which is the drift the Layout & Spacing scale exists to prevent. No min-height
+    # either: reserving grid-sized space for content that is deliberately absent is what makes an
+    # empty state read as a loading failure (see the Deck data note on that failure mode).
+    type: '{typography.body}'
+    foreground: '{colors.text-secondary}'
+    container: 'the untitled card-grid Panel — {components.panel.body-padding} is the whole of its inset'
   card-placeholder:
     background: '{colors.surface-overlay}'
     border: '1px solid {colors.border-strong}'
@@ -366,7 +400,7 @@ One family: **Space Grotesk** (fallback `system-ui, sans-serif`). Hierarchy come
 - `{typography.body}` / `{typography.body-strong}` — reasons, rationale, oracle text, state-panel copy, group descriptions.
 - `{typography.label}` — panel titles, type-group headers, nav pills, badges. Uppercase, tracked 0.1em. Keep label strings short: at 11px with that tracking, a long title is effortful to read. Panel titles that need to carry counts should put the count in `{typography.numeric}` beside the label, not inside it.
 - `{typography.micro}` — kicker labels, stat-chip labels, timestamps, footer attribution. Uppercase, tracked 0.08em.
-- `{typography.numeric}` — every count, quantity, price, and axis value. **Always tabular.**
+- `{typography.numeric}` — every count, quantity and axis value. **Always tabular.** (*Amended 2026-08-07, story c4-12, Q13*: this listed *price* among the roles, a residue of the same removal `components.deck-row.columns` and the Card detail panel bullet each recorded in 2026-08-06 — **there is no price data anywhere in this system**, so the role has nothing priced to set.)
 
 Tabular numerals are non-negotiable — columns of prices and live-updating counts must not jitter. The CSS `font` shorthand cannot carry `font-variant-numeric`, so `{typography.numeric}` defines the feature separately as `{typography.numeric.numeric-features}`, and the two are always applied together. Never set `font: var(--type-numeric)` alone.
 
@@ -415,7 +449,7 @@ Tonal layering (the surface ramp) does the everyday hierarchy work. Borders are 
 - **Badge** — pill, `{typography.label}`, 5 tones: neutral (`surface-overlay` / `text-secondary` / `border-strong`), accent, positive, negative, caution. Semantic tones tint background and border from their own semantic token — never from hard-coded RGB, which breaks every non-Voltglass theme.
 - **StatChip** — label in `{typography.micro}` `{colors.text-tertiary}` over a 17px `{typography.numeric}` value in `{colors.text-primary}`, on `{components.stat-chip.background}`. Optional delta in `{typography.micro}`, tinted `{colors.positive}` / `{colors.negative}` by sign.
 - **Agent views nav** (the nav pill) — the agent-view controls in the header, and the "Close · esc" control inside a view. `{components.nav-pill.padding}` at `{rounded.pill}`, `{typography.label}`. Hover/focus: border to `{components.nav-pill.hover-border}`, text to `{components.nav-pill.hover-foreground}`, plus `{components.nav-pill.hover-glow}`. A pill whose view has an unread push carries a `{components.nav-pill.unread-dot}` — the accent's meaning is "the agent put something here", so an unread push is exactly what it marks.
-- **Skip link** — "Skip past the deck grid": visually hidden until it receives keyboard focus; on focus it appears at the window's top-left as a `{components.skip-link.radius}` chip on `{components.skip-link.background}` with `{components.skip-link.border}`, text in `{typography.body-strong}` `{components.skip-link.foreground}`, carrying the standard `{components.focus-ring}`. It exists because the card grid can be 100+ Tab stops sitting between the header nav and everything in the right column. Behavior in EXPERIENCE.md.
+- **Skip link** — "Skip past the deck grid": visually hidden until it receives keyboard focus; on focus it appears at the window's top-left as a `{components.skip-link.radius}` chip on `{components.skip-link.background}` with `{components.skip-link.border}`, text in `{typography.body-strong}` `{components.skip-link.foreground}`, carrying the standard `{components.focus-ring}`. It exists because the card grid puts a long run of Tab stops between the header nav and everything in the right column — **measured 2026-08-07 on the largest real deck (Atraxa Counter Cabinet v2, 99 tiles): 205 stops from the top of the document to the footer, of which the link skips 102.0 on average** (amended 2026-08-07, story c4-12, Q13; this read *"100+ Tab stops"* while EXPERIENCE.md already carried c4-11's measured figures, so the two peer artefacts disagreed about the same number). Behavior in EXPERIENCE.md.
 - **Footer attribution** — one quiet line, full width, `{components.footer-attribution.background}` above `{components.footer-attribution.border-top}`, `{typography.micro}` in `{components.footer-attribution.foreground}` (`text-secondary`, 9.3:1 — this text is legally load-bearing and gets a passing tier, not a muted one): "Card data and imagery courtesy of Scryfall. Unofficial Fan Content permitted under the Wizards of the Coast Fan Content Policy. Not approved/endorsed by Wizards." Links persistently underlined (identifiable at rest, not hover-only); hover brightens to `{colors.text-primary}`; each link's hit area ≥ 24px tall. Visible without scrolling, and never louder than this. **Required on every surface — this is a condition of public release, not a design choice.**
 
 ### Deck data
@@ -444,6 +478,7 @@ Tonal layering (the surface ramp) does the everyday hierarchy work. Borders are 
 
 - **Connection pill** — bottom-left, `{components.connection-pill.radius}` on `{components.connection-pill.background}` with `{components.connection-pill.border}`: a `{components.connection-pill.dot-size}` dot (`{colors.positive}` live · `{colors.caution}` reconnecting · `{colors.negative}` backend gone — all **static**, no pulse) plus `{typography.micro}` text naming the state and the active deck name. The dot never carries the state alone. Quiet at rest; it never animates. *This replaces `AgentStatus`, whose `idle | thinking | streaming` vocabulary describes agent cognition the app has no signal for.*
 - **State panel** — the shared shell for no-active-deck, database-not-initialized, database-updating and disconnected states: centered on `{components.state-panel.background}` at `{components.state-panel.radius}` with `{components.state-panel.border}`, max-width `{components.state-panel.max-width}`. Headline `{typography.heading}`, guidance `{typography.body}` `{colors.text-secondary}`, the concrete next action on its own line in `{typography.body-strong}` `{colors.accent}` (commands in an inline chip on `{colors.surface-well}` at `{rounded.sm}` in `{fonts.mono}` — the *only* place a second family appears, because a command is data the user retypes). No illustrations, no sad-face icons — calm text on a calm panel. The panel also covers **database-updating-stalled** and **internal-error**, added with their copy in story c2-9; a panel whose state has no honest next action renders none rather than inventing one.
+- **Empty deck line** — what a loaded deck with **zero cards** shows in place of its grid: the one sentence *"This deck is empty — ask your agent to add cards."* (EXPERIENCE.md's Voice and Tone row is the source; it is transcribed, not authored) in `{components.empty-deck-line.type}` `{components.empty-deck-line.foreground}`, as the **only child of the untitled card-grid Panel**. It **replaces** the `<ul>` rather than sitting inside or beside it: a `<p>` inside a `<ul>` is invalid against UX-DR44's mandated list semantics, and an empty list left beside the sentence announces *"list, 0 items"* to a screen-reader user **before** the sentence explaining why. **No panel of its own, no error styling, no icon, no `aria-live`** — an empty deck is the NORMAL state at creation (`create_deck` writes no card, and `remove_card_from_deck` never deletes the deck), it arrives as a plain 200 with `cards: []`, and it reaches the glass through the same loaded-deck surface a full deck does. It takes **no inset, no minimum height and no centering of its own** — `{components.panel.body-padding}` is the whole of its spacing, per the frontmatter note. The **mana curve, color distribution and format check** panels are hidden in this state (EXPERIENCE.md); the **card detail and deck list panels are not** — they render their frames with no card and no rows, which no artefact describes and which is recorded as an open artefact defect against UX-DR20 rather than repaired by inventing copy. **Added 2026-08-07 (story c4-12, Q2)**, because until this amendment the state was specified in EXPERIENCE.md only and this file's own rule — *"Every value in the UI comes from this scale"* — had nothing here to point at.
 
 ## Do's and Don'ts
 

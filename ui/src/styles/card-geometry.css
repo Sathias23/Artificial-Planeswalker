@@ -17,7 +17,8 @@
 
    A TOKEN WAS NOT AVAILABLE, and that is measured rather than assumed: tests/tokens.test.ts:265
    asserts SET EQUALITY over an inventory derived from DESIGN.md's `colors` / `typography` /
-   `rounded` / `spacing` / `motion` / `focus` / `elevation` frontmatter blocks, pinned at 65
+   `rounded` / `spacing` / `motion` / `focus` / `elevation` frontmatter blocks, pinned at **69**
+   (this read `65`, its c4-4 value — corrected at c4-12's conformance sweep)
    tokens. `components.card-tile.aspect` is in none of those blocks, so `--card-aspect` cannot be
    added without failing that gate. (`--radius-card` IS a token, and this file is its first
    consumer — it had zero before this story.)

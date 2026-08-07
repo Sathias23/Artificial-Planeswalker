@@ -14,6 +14,7 @@ import { ManaCurve } from './containers/ManaCurve/ManaCurve'
 import { SkipLink } from './containers/SkipLink/SkipLink'
 import { hydrateDeckCards } from './state/cards'
 import { surfaceOf, useDeckState } from './state/deck'
+import { deckIsEmpty } from './state/deckGroups'
 import { clearFormatCheck, loadFormatCheck } from './state/formatCheck'
 import { useSystemState } from './state/systemState'
 
@@ -174,6 +175,22 @@ export default function App() {
   // "one format-check request per deck id per mount" structurally true rather than carefully true.
   const deckId = detail?.id ?? null
 
+  // THE EMPTY DECK, READ ONCE (c4-12, Q1, AC 1, AC 7, AC 9, AC 10, AC 12).
+  //
+  // A deck with zero cards on every board is a `{kind:'deck'}` surface exactly like a full one —
+  // `deck.ts` settles any 200 that way and `boardsOfDeck` over `cards: []` yields three empty
+  // boards — so there is NO new `Surface` arm and no third re-derivation from `deck !== null`
+  // (c4-2's decide-once ruling). The predicate itself lives beside `DeckBoards` in
+  // `deckGroups.ts`, which is the module that OWNS that type and produces it; see its docstring
+  // for why one expression exists rather than a fifth spelling, and for the sideboard ruling it
+  // inherits from `hasCards` below.
+  //
+  // It is read HERE, above both effects, because two consumers need it at different moments: the
+  // format check's request (suppressed for an empty deck, below) and the format check's RENDER
+  // (gated in the right column). Computing it twice would be the drift `deckGroups.ts` exists to
+  // prevent, in the one file that already reads the derivation three ways.
+  const emptyDeck = deck !== null && deckIsEmpty(deck.boards)
+
   // THE DECK-WIDE HYDRATION SWEEP (c4-6, Q1, AC 23), AND ITS PLACEMENT IS THE DECISION.
   //
   // c4-6's flip control must render "when its tile renders", and whether a card HAS a back face
@@ -200,7 +217,8 @@ export default function App() {
   //
   // ==== WHAT IT COSTS, AS A NUMBER (AC 23) ==============================================
   // At most one request per DISTINCT card id, once per deck per tab: **99** for the largest of the
-  // 40 real decks, fewer for all the others. `hydrateCard` dedupes in flight, refuses a hydrated
+  // 42 real decks (40 when this was first measured at c4-6 — the count moved, the maximum did
+  // not; re-keyed at c4-12 per AC 30), fewer for all the others. `hydrateCard` dedupes in flight, refuses a hydrated
   // id and never re-asks a terminal refusal, so a re-render costs nothing and the ceiling holds.
   // `App.test.tsx` pins the count for its own fixture rather than trusting this comment.
   //
@@ -223,6 +241,30 @@ export default function App() {
   // reads the payload's own `cards` array verbatim — not `boards` — so it is not a second
   // flattening of the derivation `deckGroups.ts` owns (AD-12), and it therefore also covers the
   // sideboard rows c4-7 will draw.
+  //
+  // ==== ⚠️ THIS EFFECT IS DECLARED FIRST, AND THAT IS LOAD-BEARING (c4-12, Q10, AC 20) ==
+  // React runs effects in DECLARATION ORDER, so the 99 reads below are issued BEFORE the format
+  // check declared under them. The transport is HTTP/1.1 (`server.py` — uvicorn's default h11, no
+  // h2) and Chrome caps 6 connections per origin, so that ordering decides where the format
+  // check's single request sits in the queue. **Measured over CDP against the committed SPA and
+  // the running backend, Chrome 151, 2026-08-07, on the real 99-card Atraxa deck:**
+  //
+  //   as shipped (this first)     format-check request at queue position 106–107; full layout
+  //                               311 / 363 / 428 ms (min/median/max, n=5, fresh profile)
+  //   the two blocks SWAPPED      queue position 7; full layout 120 / 185 / 520 ms (n=5)
+  //
+  // So the order is worth roughly **180 ms of the six-surface layout time** and it is nobody's
+  // accident: this comment and the one below now each name the other's queue position, because
+  // before this story neither mentioned the other at all and the next reader would have reordered
+  // them without knowing what moved.
+  //
+  // **NOT SWAPPED, and that is the ruling rather than an oversight.** The budget is NFR-05's
+  // 1 second and the shipped order meets it with ≥572 ms of headroom in every one of the 13
+  // recorded runs across all three arms (n=5 fresh profile, n=5 warm HTTP cache, n=3 cold image
+  // cache; worst full layout 428 ms), so the swap is an unrequested behaviour change to the cold-open
+  // path — measured, recorded, and left for whoever owns the improvement. It also is not free:
+  // the swapped arm's spread was WIDER (120–520 ms against 311–428 ms), because moving the format
+  // check ahead of the sweep moves it ahead of the images too.
   useEffect(() => {
     if (detail === null) return
     hydrateDeckCards(detail.cards.map((row) => row.card_id))
@@ -244,7 +286,8 @@ export default function App() {
   // `deckMemory.ts` and `CardDetail`'s effect both read `boards` that way, so a report landing
   // would read as a deck replacement and release the user's pin. The measured cost is worth
   // stating for the same reason: this is a SECOND `get_deck_with_cards` on the backend, not a
-  // second validation — 5.2 ms median, 33.8 ms worst, over all 40 real decks in-process.
+  // second validation — 5.2 ms median, 33.8 ms worst, measured over the then-40 real decks
+  // in-process (42 at c4-12's re-key, AC 30; two more decks move neither number's order).
   //
   // ==== AND WHY IT CLEARS ==============================================================
   // Without the `null` arm a report would outlive its deck: a deck deleted between two polls
@@ -262,14 +305,66 @@ export default function App() {
   // request). `clearFormatCheck` bumps the generation, which abandons the in-flight read; on a
   // deps change it runs before the next load, which re-drives from `'idle'` exactly as a deck
   // switch already did through the loading write.
+  //
+  // ==== AND WHY AN EMPTY DECK DOES NOT ASK AT ALL (c4-12, Q4, AC 10) ===================
+  // The request is suppressed rather than made-and-ignored, and the reason is not thrift. The
+  // precedent is already asserted one story back — `App.test.tsx` pins "no format-check request
+  // behind a state panel" — and this is the same rule for the same reason: a panel that cannot
+  // be seen must not be a round trip on the one path NFR-05 measures.
+  //
+  // What the answer WOULD have been is worth writing down, because it is the honest argument for
+  // hiding the panel and neither artefact makes it. Run against the real validator (measured
+  // 2026-08-07, `format_check` over a zero-card deck, `standard` and `brawl` identical): SIX rows,
+  // nothing raised, nothing 404'd — one true `size` violation ("Mainboard has 0 cards; the
+  // minimum is 60") and **four vacuous greens**: *"Every card is legal in standard"*, *"No card
+  // exceeds the copy limit"*, *"No card is banned in standard"*, *"Sideboard has 0 cards"*. Three
+  // of those are confident assertions ABOUT ZERO CARDS — technically true, rhetorically false —
+  // and `routes/decks.py` names the failure mode in its own comment. That is what the panel would
+  // have said to someone who has not added a card yet.
+  //
+  // `emptyDeck` is in the deps rather than folded into `deckId`, so a deck that gains its first
+  // card while the tab is open WOULD ask then — today the only shipped path that rewrites
+  // `detail` mid-session is the poll-recovery re-drive (c4-2), so the edge is real only in that
+  // corner until c7-3's `deck_changed` refetch lands; the dep is the forward contract, not a live
+  // feature (code-review correction, 2026-08-07). It is a BOOLEAN, so the poll-recovery re-drive
+  // (which rewrites `detail` with the same deck in it) still recomputes to the same value and
+  // issues nothing.
+  //
+  // ⚠️ EVERY PATH THROUGH THIS EFFECT CLEARS, and the empty/null arm clears EAGERLY ON ENTRY
+  // rather than registering a cleanup — only the load arm returns `clearFormatCheck` (an arm that
+  // takes the early return has no in-flight read to abandon at unmount; what it must kill is the
+  // PREVIOUS deck's report, now, before this render shows it). c4-10's review found the missing
+  // cleanup half once already; an empty deck taking the early return must still CLEAR, or a
+  // report from the previous deck outlives it. (First written as "the teardown arm is
+  // UNCONDITIONAL" — literally false about the shape; corrected at code review 2026-08-07.)
+  //
+  // ==== ⚠️ THIS EFFECT IS DECLARED SECOND, BEHIND THE SWEEP (c4-12, Q10, AC 20) ========
+  // The other half of the decision written above the sweep — read that comment for the numbers;
+  // this one states the consequence FOR THIS PANEL, because it is the one that pays for it.
+  //
+  // This request costs the backend **5.0 ms** (measured in-process, of which `format_check()`
+  // itself is 0.07 ms — the rest is a duplicated `get_deck_with_cards` the route's own comment
+  // flags). It is nonetheless **the last of AC 15's six named surfaces to paint, by a wide
+  // margin**: `FormatCheck` renders `null` until its report lands, so the panel does not exist
+  // until this request is answered — and because the effect above is declared first, the request
+  // is queued at position **106–107** behind the 99-card sweep and the images, through six HTTP/1.1
+  // sockets. Measured 2026-08-07 in Chrome: the other five surfaces are all in the DOM at ~205 ms
+  // and this one arrives at 311–428 ms. **A 5 ms read is 200 ms of the layout time.**
+  //
+  // Moving this block ABOVE the sweep puts it at queue position 7 and roughly halves the number.
+  // It is not done here (the budget is met with headroom either way — see the sweep's comment),
+  // and this note exists so that the day someone needs the 180 ms, the lever is already priced.
+  //
+  // ⚠️ DO NOT REORDER EITHER BLOCK WITHOUT RE-MEASURING. That is the whole reason both comments
+  // now name the other's queue position.
   useEffect(() => {
-    if (deckId === null) {
+    if (deckId === null || emptyDeck) {
       clearFormatCheck()
       return
     }
     void loadFormatCheck(deckId)
     return clearFormatCheck
-  }, [deckId])
+  }, [deckId, emptyDeck])
 
   // THE SKIP LINK'S PRESENCE CONDITION (c4-11, AC 4, Q3), AND IT IS ONE TEST COVERING THREE CASES.
   //
@@ -297,11 +392,15 @@ export default function App() {
   // ruling (2026-08-07, review of this story) that the link's condition is "any focusable deck
   // row exists", not "any tile exists" — the tile-only spelling withdrew the link from a state
   // neither of Q3's two documented cases covers.
-  const hasCards =
-    deck !== null &&
-    (deck.boards.commander.length > 0 ||
-      deck.boards.sideboard.length > 0 ||
-      deck.boards.mainboard.some((group) => group.cards.length > 0))
+  //
+  // ==== THE BOARD TEST MOVED, AND THE RULING DID NOT (c4-12, Q1) =======================
+  // Everything above still holds word for word; what changed is WHERE the three-board expression
+  // lives. c4-12 needs the same question answered for its empty-deck line, and two spellings of
+  // "does this deck have anything in it" in one file is the drift `deckGroups.ts` was written to
+  // prevent. So the expression is `deckIsEmpty` beside `DeckBoards`, and this line is its exact
+  // negation — a change to the sideboard clause is now structurally a change to both, instead of
+  // a change to one that a reviewer has to notice was not made to the other.
+  const hasCards = deck !== null && !emptyDeck
 
   return (
     <AppShell
@@ -405,13 +504,42 @@ export default function App() {
          `FormatCheck` takes NO PROP, and it is the only panel in the epic that does not: it
          reads its own slice and needs neither `boards` nor the deck payload. That is worth
          seeing here rather than only in its header — every sibling takes `boards`, and giving
-         this one the same shape would have coupled it to a derivation it does not use. */
+         this one the same shape would have coupled it to a derivation it does not use.
+
+         ==== AND THE ONE PANEL c4-12 HIDES (Q3, AC 7, AC 9) ==============================
+         THIS IS THE ONLY NEW GATE THE EMPTY-DECK STORY ADDS, and the count is the finding.
+         AC 7 names THREE panels to hide and TWO OF THEM ALREADY HIDE THEMSELVES: `ManaCurve`
+         returns `null` on a zero curve total, `ColourDistribution` on a zero pip total, and
+         `AnalysisRow.css`'s `:empty` rule then collapses the row that held them. All three
+         shipped deliberately, naming this story — c4-9's is written as *"c4-12's clause
+         arriving early … c4-12's author is told here that the row is already handled and only
+         the panels' own conditions are theirs."* Adding a card-count gate for either would
+         duplicate a working mechanism AND redden the land-only test, which pins those two
+         panels absent on a deck that HAS cards.
+
+         The format check is different, and its own header says why in advance: *"This panel's
+         data is never empty: six rows, always. So there is no self-gate to lean on and story
+         4.12 … is the only thing that will ever hide it."* So the gate is here, in `App.tsx`,
+         and NOT in the panel — deliberately, so the panel keeps exactly ONE self-owned `null`
+         arm (`state.status !== 'report'`, which means *a report has not arrived*, including a
+         refusal that `deferred-work.md` records as silent by ruling) and this story's arm stays
+         visibly a DIFFERENT decision made somewhere else. A reviewer can tell a hidden panel
+         from a failed one because the two live in different files.
+
+         `emptyDeck` and not `!hasCards` — for LEGIBILITY, not behaviour: inside this
+         `surface.kind === 'deck'` branch `deck !== null`, so `!hasCards` reduces to `emptyDeck`
+         identically, sideboard-only deck included (both spellings render the panel there — see
+         `deckIsEmpty`'s docstring for that residue). The first draft of this comment claimed the
+         two differ; they do not, and the record was corrected at code review 2026-08-07. The
+         chosen spelling is the one that names the actual question, so a future edit to
+         `hasCards`'s condition (say, a focusability clause for the skip link) cannot silently
+         move this panel's gate with it. */
       right={
         surface.kind === 'deck' ? (
           <>
             <CardDetail boards={surface.boards} />
             <DeckList boards={surface.boards} />
-            <FormatCheck />
+            {emptyDeck ? null : <FormatCheck />}
           </>
         ) : undefined
       }

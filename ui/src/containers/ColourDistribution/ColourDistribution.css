@@ -98,10 +98,12 @@
    new colour — and it reads as the track showing through rather than as a drawn line, because
    the bar already sits on exactly that surface.
 
-   `1px` — DESIGN.md:209 gives `curve-bar.segment-hairline` the value `1px {colors.surface-well}`
-   for precisely this job. `color-bar`'s own frontmatter has no such key; this is a cited
-   derivation from the sibling component's pattern and is recorded as an amendment
-   `components.color-bar` should carry.
+   `1px` — DESIGN.md gives `curve-bar.segment-hairline` the value `1px {colors.surface-well}` for
+   precisely this job, and `components.color-bar.segment-hairline` now carries it too: the
+   amendment this comment used to say *"`components.color-bar` should carry"* SHIPPED IN THE SAME
+   STORY (c4-9, Q7), so the derivation is no longer a borrowed pattern — it is the component's own
+   spec. Corrected at c4-12's conformance sweep, which found the clause still written in the
+   future tense.
 
    THE ADJACENT-SIBLING SELECTOR IS THE WHOLE OF "the outer edges do not gain one": a hairline
    on the first segment's leading edge would paint a 1px notch into the pill's rounded end,

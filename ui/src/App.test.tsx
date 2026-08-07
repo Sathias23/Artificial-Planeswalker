@@ -18,11 +18,12 @@
  * vitest project in vite.config.ts; nothing needs setting up per file.
  */
 
-import { act, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
 import { sentenceOf } from './components/Footer/copy'
+import { EMPTY_DECK_LINE } from './containers/CardGrid/copy'
 import { resetCardCache, useCardStore } from './state/cards'
 import { resetDeckState, useDeckStore } from './state/deck'
 import { resetFormatCheckState } from './state/formatCheck'
@@ -1336,7 +1337,13 @@ describe('the skip link is present exactly when there is something to skip (c4-1
     // written form of this comment claimed the link's target would not exist; that was FALSE —
     // `CardDetail` renders its frame and `<h2>` unconditionally, and UX-DR20's "first card" fills
     // the panel's content, not its heading. Corrected at code review 2026-08-07.)
-    booting(activeDeck(ATRAXA_DECK_ID), deckDetail({ cards: [], mainboard_count: 0 }))
+    // `distinct_cards: 0` spelled with the other two zeroes — the builder's default of 2 beside
+    // `cards: []` is a wire body no backend produces (code review 2026-08-07; the empty-deck
+    // describe's own `emptyDeck()` helper records why all three counts are 0 together).
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({ cards: [], mainboard_count: 0, distinct_cards: 0 }),
+    )
     answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
     render(<App />)
@@ -1677,5 +1684,387 @@ describe('the jsdom phantom-banner count (c4-11, AC 25)', () => {
     await settle()
 
     expect(screen.getAllByRole('banner')).toHaveLength(6)
+  })
+})
+
+describe('the empty deck (story c4-12, AC 1, AC 3-5, AC 7-10, AC 14)', () => {
+  /**
+   * ⚠️ **THIS FIXTURE IS SYNTHETIC, AND IT HAS TO BE** (AC 31, c4-10 AC 26, c4-11 AC 31).
+   *
+   * Measured read-only against the shipped database on 2026-08-07: **0 of 42 decks** have zero
+   * `deck_cards` rows, and the smallest real deck is a ONE-card one (`Iron Man, Modern Marvel —
+   * reminder`). There is no verified-real row to reach for, so this is declared synthetic rather
+   * than dressed up — the third option does not exist.
+   *
+   * It is nonetheless a **reachable** state, and reachable two ways: `DeckRepository.create_deck`
+   * inserts a deck and writes no card at all (the MCP wrapper's own first line says *"empty
+   * `cards`"*), and `remove_card_from_deck` issues one `DELETE`, never counts what remains and
+   * never touches `decks`. So this is a synthetic fixture for the NORMAL state at creation, not
+   * an invented one — and the backend answers it with a plain **200** carrying `cards: []` (an
+   * empty ARRAY, never absent and never `null`), which is what `deckDetail` models below.
+   */
+  const emptyDeck = () =>
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({ cards: [], mainboard_count: 0, distinct_cards: 0 }),
+    )
+
+  it('shows the line INSTEAD OF the list, inside the untitled panel (AC 1, AC 3)', async () => {
+    emptyDeck()
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    // A DECK IS ON THE GLASS, NOT A PANEL. Without this the assertions below would be satisfied
+    // by an app that rendered a state panel — the one shape EXPERIENCE.md forbids here by name.
+    expect(document.querySelector('.state-panel')).toBeNull()
+    expect(document.querySelector('.card-grid-empty')).not.toBeNull()
+
+    // The sentence, from the shipped constant rather than a retyped literal.
+    expect(screen.getByText(EMPTY_DECK_LINE)).toBeVisible()
+
+    // REPLACED, not emptied (AC 3). An empty `<ul>` left beside the line announces "list, 0
+    // items" before the sentence explaining why — so the grid's list must be GONE, not childless.
+    // The deck list panel renders `<ul>`s of its own, which is why this is scoped to the grid's
+    // class rather than counting lists document-wide.
+    expect(document.querySelector('.card-grid')).toBeNull()
+    expect(document.querySelectorAll('.card-tile')).toHaveLength(0)
+  })
+
+  it('renders the header exactly as a full deck does, including a 0 maindeck badge (AC 5)', async () => {
+    emptyDeck()
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    // EXPERIENCE.md: *"Deck name and header render normally."* The zero count is SHOWN rather
+    // than hidden — `DeckBadges` pins that behaviour in its own suite, and this is the end-to-end
+    // half: a badge that vanished at zero would make an empty deck look like a missing one.
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
+      'Atraxa Counter Cabinet v2 (owned)',
+    )
+    // The badge splits its count into its own `<span>` — `{count}` then the bare word — so the
+    // assertion is on the BADGE's text rather than on a single text node. Written this way
+    // deliberately: `getByText('0 maindeck')` fails against the shipped markup, and "fixing" it by
+    // asserting `getByText('0')` alone would pass against a `0` rendered anywhere on the page.
+    const maindeck = [...document.querySelectorAll('.badge')].find((node) =>
+      node.textContent?.includes('maindeck'),
+    )
+    // `'0maindeck'` with no space, and that is the SHIPPED markup rather than a defect: JSX drops
+    // the newline+indent between `{mainboardCount}`'s span and the bare word, and the visible gap
+    // comes from `Badge`'s own layout. Pinned as the real string so a later reader does not
+    // "fix" the fixture toward a space the DOM never had.
+    expect(maindeck?.textContent).toBe('0maindeck')
+    expect(maindeck?.querySelector('.deck-badges-count')?.textContent).toBe('0')
+    expect(screen.getByText('brawl')).toBeVisible()
+  })
+
+  it('never lets the left slot fall through to the shell placeholder (AC 4)', async () => {
+    emptyDeck()
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    // THE ASSERTION THIS FILE ALREADY MADE — ON THE WRONG FIXTURE. The existing no-story-key
+    // checks run on the TWO-CARD deck, where `left` is obviously filled; the state this story
+    // creates is the one where a careless `undefined` would put *"The card-art grid lands here —
+    // c4-4 …"* on the glass, and nothing would have caught it. Asserted here, on the empty
+    // fixture, which is the whole point of AC 4.
+    expect(screen.queryByText(/The card-art grid lands here/)).toBeNull()
+    for (const key of ['c4-4', 'c4-5', 'c4-8', 'c4-9', 'c4-10', 'c4-12']) {
+      expect(document.body.textContent, `${key} is on the glass`).not.toContain(key)
+    }
+
+    // …and the ONE key that IS still on the glass, everywhere, since c2-6: `c6-8`, in the shell's
+    // agent-view nav placeholder. c4-11 corrected the record that named `c4-11` here. COUNTED
+    // rather than merely present, because "not zero" would survive a second key arriving.
+    expect(document.body.textContent?.match(/c6-8/g)).toHaveLength(1)
+  })
+
+  it('hides all three analysis panels — and only ONE of them by this story gate (AC 7-9)', async () => {
+    emptyDeck()
+    const mock = answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    expect(screen.queryByRole('region', { name: 'Mana curve' })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Color distribution' })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Format check' })).toBeNull()
+
+    // THE ROW ITSELF IS STILL IN THE DOM WITH NO CHILD NODES — the `:empty` condition c4-9
+    // shipped for this story by name. That is the proof no card-count gate was added in
+    // `App.tsx` for the row: a gate there would have removed the element, not emptied it.
+    const row = document.querySelector('.analysis-row')
+    expect(row).not.toBeNull()
+    expect(row!.childNodes).toHaveLength(0)
+
+    // AND THE REQUEST WAS NEVER MADE (AC 10, Q4) — matching the precedent this file already pins
+    // for a state panel. A hidden panel that still fetched would be a wasted round trip on the
+    // exact cold-open path NFR-05 measures, for a report of four vacuous greens nobody sees.
+    expect(formatCheckCalls(mock)).toBe(0)
+    // …while the deck detail WAS read, so the zero above is a suppression rather than an app
+    // that never booted.
+    expect(deckDetailCalls(mock)).toBe(1)
+  })
+
+  it('proves the curve and colour hide on THEIR OWN totals, not on a card count (AC 8)', async () => {
+    // THE DISCRIMINATOR, AND WITHOUT IT AC 8 IS UNFALSIFIABLE. On an empty deck "zero cards" and
+    // "zero curve total" coincide, so absence there is consistent with EITHER mechanism. A
+    // LAND-ONLY deck separates them: it HAS cards (tiles render, the deck list has rows, the skip
+    // link is present) and still has nothing for either panel to say, because both exclude lands.
+    //
+    // So this test asserts the two panels absent WHILE the format check is PRESENT — which is
+    // only possible if the curve and the colour bar hide on their own zero totals and the format
+    // check is gated on emptiness. A card-count gate in `App.tsx` would have hidden all three
+    // here; a self-gate inside the format check would have hidden it too.
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({ cards: [deckCard('Forest', 'Basic Land — Forest', 24)] }),
+    )
+    const mock = answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    expect(document.querySelector('.card-tile')).not.toBeNull()
+    expect(screen.queryByRole('region', { name: 'Mana curve' })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Color distribution' })).toBeNull()
+    // The panel this story gates is on the glass, because the deck is NOT empty.
+    expect(screen.getByRole('region', { name: 'Format check' })).toBeVisible()
+    expect(formatCheckCalls(mock)).toBe(1)
+    // …and no empty-deck line either: a deck of lands is not an empty deck.
+    expect(screen.queryByText(EMPTY_DECK_LINE)).toBeNull()
+  })
+
+  it('keeps the card detail and deck list panels — the recorded artefact gap (AC 13)', async () => {
+    emptyDeck()
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    // RULED AND PINNED, NOT SILENT. `EXPERIENCE.md`'s two rows and this story's own ACs each name
+    // exactly THREE panels to hide, and neither of these is among them — so they render their
+    // frames with no card and no rows. That is status quo by ruling (adding a fourth panel to the
+    // hide list would be inventing spec; inventing an empty-state sentence would put unsourced
+    // words on the glass), and it CONTRADICTS UX-DR20's "the detail panel is never empty while a
+    // deck is loaded", because an empty deck is a loaded deck. The contradiction is recorded in
+    // `deferred-work.md` as an artefact defect rather than repaired here, and this assertion is
+    // what makes the shipped behaviour a fixed point while that stays open.
+    expect(screen.getByRole('region', { name: 'Card detail' })).toBeVisible()
+    expect(screen.getByRole('region', { name: 'Deck list' })).toBeVisible()
+    expect(document.querySelector('.deck-row')).toBeNull()
+  })
+
+  it('adds no live region anywhere, and reads as THREE banners in jsdom (AC 14)', async () => {
+    emptyDeck()
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    // THREE, not six — and the difference is the reason. aria-query maps `<header>` to `banner`
+    // UNCONDITIONALLY, so every titled `Panel`'s header reads as a banner in jsdom while a real
+    // browser scopes `banner` to the `<body>`-level header alone (c4-11's eye-check read Chrome's
+    // own AX tree and measured exactly ONE). On a loaded deck that gives 6 = the shell's header +
+    // five titled panels. Here THREE of those five are hidden — the curve, the colour
+    // distribution and the format check — so the count is the shell's header + card detail + deck
+    // list. The number moving is the point: it is the same phantom, arithmetically consistent
+    // with the three panels this story hides, and the sibling pin at 6 is what it is consistent
+    // WITH.
+    expect(screen.getAllByRole('banner')).toHaveLength(3)
+
+    // NO SECOND ANNOUNCEMENT MECHANISM (decide-once ruling 7). `CardDetail`'s single polite
+    // region stays the app's only one; a panel-visibility change that announced itself would be
+    // the fourth mechanism in this epic doing the same job. Counted across the whole document,
+    // and the survivor is proved to be the detail panel's rather than a new one.
+    const live = [...document.querySelectorAll('[aria-live]')]
+    expect(live).toHaveLength(1)
+    expect(live[0].getAttribute('aria-live')).toBe('polite')
+    // …and it is the EXISTING one rather than a new one. Identified by its own class, NOT by an
+    // ancestor lookup: the announcement element sits deliberately OUTSIDE the `Card detail` panel
+    // — that placement is the whole of the H4/C1 gate fix, because the panel must not itself be a
+    // live region — so `closest('[aria-label="Card detail"]')` correctly returns null and would
+    // have made this assertion a false failure about a correct app.
+    expect(live[0].className).toContain('card-detail-announcement')
+    // Empty at rest on an empty deck: there is no card to pin, so nothing is announced.
+    expect(live[0].textContent).toBe('')
+  })
+})
+
+describe('never blank, defined operationally (story c4-12, AC 23, AC 24)', () => {
+  /**
+   * **THE DEFINITION, BECAUSE NO ARTEFACT SUPPLIES ONE (Q12).**
+   *
+   * UX-DR36 asserts *"a blank screen is never shown after first paint"*, `EXPERIENCE.md` asserts
+   * it again, and neither says what it means operationally. Two stories would otherwise invent two
+   * tests for one unfalsifiable sentence — so it is defined HERE, for this story, in the narrowest
+   * form that is still a real claim:
+   *
+   *   **At no point from first paint onward does the app render a viewport containing none of
+   *   {header, left-column content, right-column content, footer}.**
+   *
+   * Four slots, and the criterion is satisfied if ANY of them carries content — not all four. That
+   * matters, because three of the six surfaces this suite drives legitimately have an EMPTY right
+   * column: `surfaceOf` returns `{kind:'panel'}` for every refusal, and c4-5's Q14 ruling renders
+   * the right column only for `kind === 'deck'`. A definition demanding all four would be red on
+   * correct behaviour.
+   *
+   * ⚠️ **SCOPE, DECLARED (AC 24).** This criterion is a **verbatim duplicate** of a story 7.4
+   * acceptance criterion — the epics file writes the same sentence word for word — and c4-12's own
+   * wording (*"any point after first paint"*) is BROADER than its epic. The half UX-DR36 is really
+   * about is the **refetch teardown**: a surface that empties itself while re-reading. That path
+   * does not exist in Epic 4 (there is no `deck_changed` refetch; c7-3 owns it) and is handed back
+   * to **c7-4** by name rather than half-tested here.
+   *
+   * ⚠️ **THE ONE CLASSIFICATION IN TENSION WITH THE SENTENCE**, cited rather than resolved:
+   * `states.ts`'s `NO_UI_RESPONSE` names three reasons (`invalid_request`, `forbidden`,
+   * `payload_too_large`) that deliberately render NOTHING. They are agent-facing and unreachable
+   * from the surfaces this app renders, so they do not blank a viewport today — but a future story
+   * that routes one of them to a user surface would satisfy `NO_UI_RESPONSE` and violate UX-DR36
+   * at the same time. Recorded, not repaired.
+   *
+   * ⚠️ **WHAT THIS CANNOT SEE.** jsdom has no layout engine and no paint. "Not blank" here means
+   * *the DOM carries text in one of the four slots*, which is strictly weaker than *a human sees
+   * something*: a slot filled with `color: transparent`, a zero-height column or an off-screen
+   * element would all pass. The visual half is the eye-check's, and it is recorded in the story
+   * rather than claimed here.
+   */
+  const slots = () => ({
+    header: document.querySelector('.app-shell-header')?.textContent ?? '',
+    left: document.querySelectorAll('.app-shell-column')[0]?.textContent ?? '',
+    right: document.querySelectorAll('.app-shell-column')[1]?.textContent ?? '',
+    footer: document.querySelector('.app-shell-footer')?.textContent ?? '',
+  })
+
+  const notBlank = (where: string) => {
+    const filledSlots = Object.entries(slots()).filter(([, text]) => text.trim() !== '')
+    expect(filledSlots.length, `${where}: every one of the four slots was empty`).toBeGreaterThan(0)
+    return filledSlots.map(([name]) => name)
+  }
+
+  it('is a criterion that can FAIL — the non-vacuity anchor for every case below', () => {
+    // WITHOUT THIS, `notBlank` IS SATISFIED BY ANY PAGE AT ALL and the six cases below assert
+    // nothing — the epic's coverage-that-reads-as-coverage shape, which has landed in the
+    // flagship guard of six consecutive stories. Fed a document with no shell in it, the reader
+    // must report ZERO filled slots, which is the failing condition it exists to detect.
+    document.body.innerHTML = '<div></div>'
+    expect(Object.values(slots()).every((text) => text.trim() === '')).toBe(true)
+    expect(() => notBlank('an empty document')).toThrow()
+  })
+
+  it('holds through the deck boot — before the answer arrives and after', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+
+    // FIRST PAINT, BEFORE ANY RESPONSE HAS SETTLED. This is the moment the criterion is really
+    // about: the shell renders synchronously with a `booting` state behind it, and the header and
+    // footer are what carry it.
+    expect(notBlank('first paint, mid-boot')).toEqual(expect.arrayContaining(['header', 'footer']))
+
+    await settle()
+    expect(notBlank('deck settled')).toEqual(['header', 'left', 'right', 'footer'])
+  })
+
+  it('holds behind every refusal panel, and through recovery back to a deck', async () => {
+    // FOUR WIRE REFUSALS. The right column is legitimately EMPTY for all of them (c4-5 Q14), which
+    // is why the criterion is "any of the four" rather than "all four" — and asserting the empty
+    // one explicitly is what stops that clause reading as a fudge.
+    // The third column is whether the POLL can ever announce recovery for this token:
+    // `poller.ts`'s `RETRIES_QUIETLY` is deliberately `false` for `internal-error` (deterministic
+    // — a quiet retry loop would hammer a bug), and a `deck_not_found` poll answer clamps to the
+    // same terminal panel, so for those two the poll stops and NO recovery edge can ever arrive
+    // (`deck.ts`: "a blip … after the poll has already stopped has no later edge to heal it").
+    // Discovered by measurement at code review 2026-08-07: the first draft of the recovery arm
+    // drove all four and iteration three sat on "The companion hit a bug." forever — which is the
+    // shipped posture, not a defect.
+    for (const [reason, status, recovers] of [
+      ['database_not_initialized', 503, true],
+      ['database_unavailable', 503, true],
+      ['internal_error', 500, false],
+      ['deck_not_found', 404, false],
+    ] as const) {
+      booting(activeDeck(ATRAXA_DECK_ID), refusal(reason, status))
+      answering(refusal(reason, status), decks('Boros Aggro'))
+
+      render(<App />)
+      await settle()
+
+      // ⚠️ ALL FOUR, AND THE FOURTH IS A MEASUREMENT THAT CORRECTS THIS TEST'S FIRST DRAFT. It
+      // asserted `['header', 'left', 'footer']` on the reasoning that `surfaceOf` returns
+      // `{kind:'panel'}` for every refusal and c4-5's Q14 ruling renders the right column only for
+      // `kind === 'deck'` — true, and yet the slot is NOT empty: `AppShell`'s own `slot()` helper
+      // substitutes its placeholder whenever a slot is unfilled, so the right column carries
+      // *"Card detail — c4-5 …"* instead of nothing. That is c2-9's honest-displacement posture
+      // doing exactly its job, and it is also the reason the C3 retro's F1 story-key count is
+      // non-zero at all. Written down here because the first draft's reasoning was sound and its
+      // conclusion was wrong, which is precisely what a measured assertion is for.
+      expect(notBlank(reason)).toEqual(['header', 'left', 'right', 'footer'])
+      expect(document.querySelector('.state-panel')).not.toBeNull()
+      expect(slots().right).toContain('c4-5')
+
+      // THE RECOVERY HALF — the title's second clause, and it was MISSING at first review: this
+      // loop settled every refusal and never advanced the poll, so "through recovery back to a
+      // deck" was a claim the body never exercised (the epic's coverage-that-reads-as-coverage
+      // class, seventh consecutive story, this time in a test TITLE — code review 2026-08-07).
+      // The backend heals on both routes and the poll's next 2 s tick would carry the queued
+      // healthy answer — where the poll is still ticking. For the two tokens that retry, c4-2's
+      // recovery edge re-drives the boot and the criterion must hold on the deck surface that
+      // RETURNS, from the same mount; for the two terminal tokens the poll has stopped, no edge
+      // can arrive, and the criterion must hold on the refusal panel that STAYS — both halves of
+      // AC 23's sentence, asserted rather than assumed.
+      booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+      await advance(2_000)
+      if (recovers) {
+        expect(notBlank(`${reason} → recovered`)).toEqual(['header', 'left', 'right', 'footer'])
+        expect(document.querySelector('.state-panel')).toBeNull()
+        expect(document.querySelector('.card-tile')).not.toBeNull()
+      } else {
+        expect(notBlank(`${reason} → terminal, still filled`)).toEqual([
+          'header',
+          'left',
+          'right',
+          'footer',
+        ])
+        expect(document.querySelector('.state-panel')).not.toBeNull()
+      }
+
+      // The suite's `afterEach(cleanup)` runs once per TEST, not once per loop iteration, and the
+      // store reset is in `beforeEach` for the same reason — so a loop that mounts four times has
+      // to unmount and reset between them itself, or the second iteration renders two Apps into
+      // one document and every `querySelector` reads the first one's DOM.
+      cleanup()
+      useSystemStore.setState(INITIAL_SYSTEM_STATE)
+      resetDeckState()
+      resetCardCache()
+      resetFormatCheckState()
+    }
+  })
+
+  it('holds on the EMPTY deck — the state this story creates (AC 23)', async () => {
+    // All three counts 0 together — the real wire body, matching the empty-deck describe's own
+    // `emptyDeck()` helper rather than leaving the builder's `distinct_cards: 2` beside
+    // `cards: []` (code review 2026-08-07).
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({ cards: [], mainboard_count: 0, distinct_cards: 0 }),
+    )
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    // ALL FOUR, and that is the whole argument for the in-grid line over a hidden panel: the deck
+    // has nothing in it and the app still fills every slot. The left column carries the sentence
+    // (not the shell's placeholder), the right column carries two panels instead of three.
+    expect(notBlank('empty deck')).toEqual(['header', 'left', 'right', 'footer'])
+    expect(slots().left).toContain(EMPTY_DECK_LINE)
+    expect(slots().left).not.toContain('The card-art grid lands here')
   })
 })
