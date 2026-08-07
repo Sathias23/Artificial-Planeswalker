@@ -290,6 +290,26 @@ const COPY_MODULES: Map<string, string> = new Map([
       'only one), and the DOM id it targets is a handle rather than copy, so SKIP_TARGET_ID ' +
       'lives in focusHome.ts where both sides of the lookup can import it.',
   ],
+  [
+    'src/containers/CardGrid/copy.ts',
+    'the empty-deck line (story c4-12): "This deck is empty — ask your agent to add cards.", the ' +
+      'ONE authored sentence a deck with zero cards on every board puts on the glass, rendered in ' +
+      'place of the grid’s `<ul>` inside the untitled `CardGrid` panel. Like the skip link’s ' +
+      'string it is TRANSCRIBED rather than authored — EXPERIENCE.md’s Voice and Tone table ' +
+      'carries it, em dash U+2014 and trailing period included — and tests/empty-deck-copy.test.ts ' +
+      'compares the shipped constant against that table cell byte-for-byte, which is copy gated ' +
+      'against whatever wrote it, exactly as the state panel is against EXPERIENCE.md and the ' +
+      'attribution against DESIGN.md. Shipping the artefact’s own words is ALSO the disposition of ' +
+      'a permanently-open ledger entry: the copy guard can check registration and banned ' +
+      'characters and cannot judge whether a sentence is blameless, and its own text says "a ' +
+      'reviewer of c2-10, c4-3, c4-12 and c6-6 must READ the copy" — c4-3 discharged that ' +
+      'judgement by shipping EXPERIENCE.md’s label verbatim and recorded that c4-12 owed the same ' +
+      'reading, which the story’s Debug Log records having performed. The module holds NOTHING ' +
+      'ELSE: the panel is untitled by c4-4’s ruling so there is no title here, the deck NAME and ' +
+      'COUNTS an empty deck still renders are data on other components, and the line is not ' +
+      'announced — no aria-live anywhere near it, CardDetail’s single polite region stays the ' +
+      'app’s only one.',
+  ],
 ])
 
 /**

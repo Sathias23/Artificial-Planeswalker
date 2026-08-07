@@ -4461,3 +4461,209 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   beyond the ledgered lowercase-drive-letter crash (`:3708-3718`). **Home: the C4 retro**, with the
   method: validate the collected-test count on every probe run, and treat a shortfall as a broken
   harness rather than as evidence. (Severity: Low.)
+
+## Dispositions from: dev of c4-12-empty-deck-state-and-the-cold-open-render-budget (2026-08-07)
+
+> The last story of Epic C4. Every inherited deferral named in its context gets a written
+> disposition **here**, in the ledger, rather than only in the story file — the c4-7 failure mode
+> the ledger itself records: *"a disposition written in a story file and not in the ledger is a
+> disposition nobody will find"*.
+
+> ⚠️ **AND THAT FAILURE MODE IS ITSELF THIS STORY'S FINDING.** **Fifteen shipped source modules
+> name `c4-12`** in their headers — `deck.ts`, `deckGroups.ts`, `CardGrid.tsx`, `AnalysisRow.css`,
+> `FormatCheck.tsx`, `ManaCurve.tsx`, `ColourDistribution.tsx`, `DeckList.tsx`, `inspection.ts`,
+> `App.tsx`, `App.test.tsx`, `CardGrid.test.tsx`, `copy-rules.test.ts`, `DeckBadges.test.tsx`,
+> `AppShell.tsx`'s placeholder chain — while this ledger named it **twice**. The work a story
+> inherits is discoverable by grepping the CODE, not by reading the ledger, which inverts what the
+> ledger is for. **Home: the C4 retro**, with the shape: a story's context pass must grep the
+> source tree for its own key, not only the ledger. (Severity: Medium.)
+
+### The fifteen inherited deferrals, each with its disposition
+
+1. **`:1539-1546` — the copy guard cannot decide the half that matters** (*"a reviewer of c2-10,
+   c4-3, **c4-12** and c6-6 must READ the copy"*). **HONOURED, and it stays permanently open.** This
+   story ships one authored sentence. It was read: second person (*"ask your agent"*), blameless
+   (it states a fact and assigns no fault — and the fact is that an empty deck is the NORMAL state
+   at creation), and it carries a concrete next action naming the one mechanism that can change the
+   state. The reading is recorded in the story's Debug Log, which is the deliverable; no assertion
+   was added that pretends to make it.
+
+2. **`:3691-3696` — c4-3's disposition (4)**: the same judgement, discharged by shipping the
+   artefact's own label byte-for-byte; *"c4-12 and c6-6 owe the same reading."* **HONOURED, same
+   mechanism.** `EMPTY_DECK_LINE` is `EXPERIENCE.md`'s string transcribed, em dash U+2014 and
+   trailing period included, and `ui/tests/empty-deck-copy.test.ts` compares the two. **c6-6 still
+   owes it.**
+
+3. **`:4247` — zero-total conflates "genuinely colourless" with "hydration not yet arrived"**, so a
+   colour panel can materialise mid-sweep and snap the analysis row from full width to half.
+   **READ BEFORE WRITING THE GATE, and the composition is UNCHANGED — stated rather than assumed.**
+   c4-12's gate is on the format check only, and it is a function of `boards`, which is settled at
+   the deck commit and never changes during hydration. So the two conditions do not compose: on an
+   empty deck all three panels are absent from first paint and none can materialise later (the
+   curve and colour totals cannot rise without cards, and the format check is not requested at
+   all); on a non-empty deck c4-12's gate is false throughout and the entry's behaviour is exactly
+   as before. **Neither better nor worse. Still open, still c4-9's shape.** (Severity: unchanged.)
+
+4. **`:4251-4263` — a format-check refusal is silent by ruling.** **NOT ABSORBED, and the two
+   `null` arms are kept distinguishable** — the state arm (`state.status !== 'report'`) lives in
+   `FormatCheck.tsx` and means *no report arrived*; c4-12's arm (`emptyDeck ? null : <FormatCheck/>`)
+   lives in `App.tsx` and means *the deck is empty*. Different files, different tests, so a
+   reviewer can tell a hidden panel from a failed one. **Home unchanged: c7-3 or c8-6.**
+
+5. **`:3965-3973` — the hydration sweep's no-re-drive window, accepted as designed.** **CITED, not
+   re-opened. This story's panel is OUTSIDE it entirely**: Q3/Q4 remove the format check from the
+   window by suppressing the request, and the empty-deck line derives from `boards`, which is
+   settled before any hydration begins.
+
+6. **`:2255-2263` — `ETag`/conditional requests, homed on the C4 retro** *"where the epic's twelve
+   stories are the ones that will have exercised the cache on real decks by then"*. **c4-12 is the
+   twelfth, and it feeds the measurement forward rather than deciding.** Measured 2026-08-07 in
+   Chrome 151 over CDP, real 99-card deck, n=5 per arm: a **repeat visit transfers 0 bytes of image
+   data for 106 image requests** (`immutable, max-age=31536000` doing its job — the browser never
+   asks), while the **99 card-detail JSON reads are paid in full on every visit** (not cacheable).
+   So an `ETag` would buy nothing on images and everything it could buy is on the card route.
+   **Decision still the retro's.**
+
+7. **`:3203-3216` / `:3830-3833` — the ~124 s cold paint against a dead CDN, never reproduced.**
+   **Not this story; added to the epic manual-testing checklist by name.** What IS now measured is
+   the healthy cold path: with the deck's 99 images moved out of the backend cache (n=3), the last
+   image response lands at **~11.0 s** while **full six-surface layout is unmoved at 278–390 ms**.
+
+8. **`:3777-3784` — the pacer queue vs the pool timeout; `loading="lazy"` as the one client-side
+   lever.** **UNCHANGED — this story did not reach for it.** The Q10 work turned out not to need a
+   client-side lever at all: the budget is met, and the one lever that was priced (the effect
+   ordering) is not an image lever. Recorded so the pre-pricing is not read as spent.
+
+9. **`:1672-1681` — `list_decks` materialises every deck's card list to count it.**
+   **RE-MEASURED AT 42 DECKS, NOT FIXED:** `GET /api/decks` costs ~95 ms of backend CPU and repeats
+   every 2 s (`poller.ts`, `POLL_BASE_MS = 2_000`). It is not on the deck surface's critical path —
+   `surfaceOf` prefers the deck — but it burns one of six sockets and one core through the first
+   ~100 ms of a cold open. **Home unchanged: c10-3.**
+
+10. **`:4236-4241`, `:4161-4169` — `EXPERIENCE.md` promises source counts and deck value;
+    `StatChip` still has no surface.** **CONFIRMED STILL OPEN.** Not this story. (`ui/README.md`'s
+    claim that six primitives lacked a consumer was corrected here — `StatChip` is now the only
+    one, which sharpens this entry rather than closing it.)
+
+11. **`:1592-1609` — 10px ALL-CAPS legal text readability. Home: Epic 8.** **NOT TOUCHED.**
+
+12. **`:4399-4409` — the skip link does not reach the footer (205 stops / 102.0 skipped). Home:
+    c8-6.** **NOT TOUCHED**, and no skip-link copy was edited. ⚠️ The corridor figure WAS corrected
+    in `DESIGN.md`, which read *"100+ Tab stops"* while `EXPERIENCE.md` already carried c4-11's
+    measured numbers — two peer artefacts disagreeing about the same measurement. The ledger entry
+    itself is unchanged.
+
+13. **`:4355-4362` — the `rem` basis. Declined by name at c4-11, re-homed to Epic 8.** **NOT TAKEN.**
+
+14. **`:4313-4320` — the `.test.ts` exemption pair's unguarded fixture dead zone.**
+    **DIRECTLY RELEVANT AND HONOURED IN PLACE.** Every empty-deck fixture this story adds lives in
+    exactly that zone and is **declared synthetic where it is written** — `App.test.tsx`'s
+    `emptyDeck()` and `CardGrid.test.tsx`'s `boardsOf([])` both carry the measurement that forces
+    it: **0 of 42 decks have zero `deck_cards` rows**, so there is no verified-real row to reach
+    for. **Entry unchanged; home still the C4 retro.**
+
+15. **`:4044-4047`, `:4301-4309` — the plugin bundle mirror is guarded on the Python side only.**
+    **REBUILT AND sha256-VERIFIED BY HAND** in this commit, per the story's AC. **Entry unchanged:
+    a frontend-only `npm test` still cannot see a stale mirror. Home: the C4 retro.**
+
+### New, from this story
+
+- **⚠️ THE `decks` TABLE AND `deck_cards` DISAGREE: 28 ORPHAN ROWS ACROSS 2 DELETED DECKS.**
+  Measured read-only 2026-08-07: `SELECT COUNT(DISTINCT deck_id) FROM deck_cards` returns **44**
+  while `SELECT COUNT(*) FROM decks` returns **42**. Two deck ids (`136ce5b1-…`, 22 rows / 57
+  cards, and `55af0ef7-…`, 6 rows / 32 cards) have card rows and no deck. So `delete_deck` leaves
+  its `deck_cards` behind — the same shape as the already-recorded fact that `remove_card_from_deck`
+  never touches `decks`. **No user-visible effect today** (every read path starts from a `decks`
+  row, so the orphans are unreachable), and it is invisible to any frontend gate. It also means
+  **any census computed from `deck_cards` alone over-counts by two decks** — the story context's
+  own §F distribution did, and this ledger entry is how the next census avoids it.
+  **Home: c10-3**, with the Python-side counterpart. (Severity: Low — data hygiene, not behaviour.)
+
+- **A sideboard-only deck renders an empty grid with NO empty-deck line, and no artefact describes
+  that state.** `deckIsEmpty` is sideboard-inclusive by c4-11's ruling (a deck holding a sideboard
+  has cards, and *"This deck is empty"* over it would be false copy under UX-DR33), while
+  `CardGrid` draws commander + mainboard only. **Unreachable from live data — 0 of 42 decks have
+  zero mainboard rows and ≥1 sideboard row** — so it is recorded as a named residue rather than
+  answered by inventing copy. Pinned in `CardGrid.test.tsx` so the choice is visible if it is ever
+  wrong. **Home: the C4 retro.** (Severity: Low.)
+
+- **⚠️ UX-DR20 SAYS THE DETAIL PANEL IS "NEVER EMPTY WHILE A DECK IS LOADED", AND AN EMPTY DECK IS
+  A LOADED DECK — ARTEFACT DEFECT, NOT REPAIRED HERE.** `inspection.ts`'s `coldOpenTargetOf`
+  returns `null` for a deck with no cards, with the comment *"which is c4-12's copy"*. c4-11's
+  correction resolved only the skip-link-TARGET half (*"`CardDetail` renders its frame and heading
+  unconditionally"*); **the panel's BODY on an empty deck is specified nowhere**, and neither is
+  `DeckList`'s — `DeckList.tsx` records that gap verbatim and refuses to invent copy for it.
+  `EXPERIENCE.md`'s two rows and this story's own ACs each name exactly THREE panels to hide and
+  neither of these is among them.
+  **SEEN, NOT ARGUED (eye-check, Chrome 151, 2026-08-07):** the two panels render as **57px empty
+  shells** — a `CARD DETAIL` header over a blank body and a `DECK LIST` header over a blank body —
+  beside a 47px grid strip, on an otherwise empty 1720×1080 canvas. That is precisely the
+  *"reads as a loading failure rather than as an absent feature"* failure mode `DESIGN.md` names by
+  hand. Ruled: **status quo, recorded, not repaired** — adding a fourth panel to the hide list
+  invents spec and inventing an empty-state sentence puts unsourced words on the glass.
+  **Home: the C4 retro**, with the DESIGN.md amendments as precedent. (Severity: Medium.)
+
+- **The effect ordering in `App.tsx` is worth ~180 ms of cold-open layout time and nothing enforced
+  it.** Measured over CDP, Chrome 151, the real 99-card deck: as shipped (sweep declared first) the
+  format-check request sits at **queue position 106–107** and full six-surface layout is
+  **311 / 363 / 428 ms** (min/median/max, n=5); with the two blocks swapped it is at **position 7**
+  and layout is **120 / 185 / 520 ms** (n=5). **Not swapped** — NFR-05's budget is met with ~570 ms
+  of headroom in every run of both cache readings, so the swap is an unrequested change to the
+  cold-open path, and the swapped arm's spread is wider. **Both effect comments now name the
+  other's queue position**, which is the only thing stopping the next reader reordering them by
+  accident. **Home: c10-3** (NFR-05 profiling is Phase 2), where the 180 ms is already priced.
+  (Severity: Low — an available improvement, not a defect.)
+
+- **⚠️ NFR-05's OWNER CANNOT CLOSE ITS OWN GAP, AND THIS STORY IS WHERE THAT WOULD HAVE BITTEN.**
+  `epics-companion-app.md` makes **Epic 4 the owner** of NFR-05 (*"the owner still holds
+  acceptance"*), while the only story carrying the gap-closing clause — *"any measured gap … is
+  closed, or recorded as an accepted deviation with its reason — not left ambiguous"* — is **10.3,
+  which is Phase 2**. So the acceptance point ships in this release and the repair does not.
+  **It did not bite: the measurement passes, so there is no gap to close.** Raised in the open
+  anyway, because the structure is unchanged and the next measurement may not pass.
+  **Home: the C4 retro / c10-3.** (Severity: Low today, structural.)
+
+- **~60 stale `DESIGN.md:NNN` anchors across 25 files, and the guard that looks like it checks them
+  does not.** `shell.test.ts` requires the *string* `"DESIGN.md"` within a sentence of every `px`
+  literal in a component stylesheet — it **never resolves the line number**. The c4-7/c4-9/c4-10/
+  c4-12 frontmatter amendments each grew the file and nothing re-based the citations; at least one
+  now cites a real but **wrong** component (`FormatCheck.css` → `DESIGN.md:423`, which is the Card
+  tile bullet). This is the epic's coverage-that-reads-as-coverage theme **inside a citation gate**.
+  **Not fixed here** — ~60 edits and a red guard on a story that is otherwise one sentence and one
+  conditional. **Home: the C4 retro**, with the guard's shape written down: resolve the anchor and
+  assert the cited line names the component. (Severity: Medium.)
+
+- **"Blank screen" has an operational definition for the first time, and it is this story's only.**
+  UX-DR36 and `EXPERIENCE.md` both assert *"a blank screen is never shown after first paint"* and
+  neither says what it means. Defined in `App.test.tsx` for c4-12 as: *at no point from first paint
+  onward does the app render a viewport containing none of {header, left-column content,
+  right-column content, footer}*. ⚠️ The criterion is a **verbatim duplicate of a story 7.4 AC**,
+  and the **refetch half** — the teardown UX-DR36 is really about — is **c7-4's**, handed back by
+  name. `states.ts`'s `NO_UI_RESPONSE` (three reasons that deliberately render nothing) is the one
+  classification in tension with the sentence: agent-facing and unreachable from a user surface
+  today, so it blanks nothing — but a story that routed one of them to a user surface would satisfy
+  `NO_UI_RESPONSE` and violate UX-DR36 in the same commit. **Home: c7-4.** (Severity: Low.)
+
+- **A newly written guard's regex was `\n`-only against CRLF artefacts, and only its non-vacuity
+  anchor caught it.** `empty-deck-copy.test.ts`'s DESIGN.md frontmatter reader used `\n {2}key:\n`;
+  the UX artefacts are **CRLF (485 of 485 line endings)**, so it captured the empty string and every
+  assertion in that describe would have passed over nothing. Caught because the anchor was written
+  FIRST and failed. **Seventh consecutive story in which this epic's coverage-that-reads-as-coverage
+  class landed in the story's own new guard — and the second in which the anchor caught it before a
+  reviewer did.** Recorded as method: **anchor first, then assert.** (Severity: Low — closed.)
+
+## Deferred from: code review of c4-12-empty-deck-state-and-the-cold-open-render-budget (2026-08-07)
+
+- **One-frame stale format-check report on a non-empty→non-empty deck switch** (`ui/src/App.tsx:350`).
+  When the active deck changes from deck A to deck B, the commit frame that renders deck B's header
+  precedes the effect pass that calls `clearFormatCheck`, so deck A's legality report can render
+  under deck B's header for one commit. Pre-existing shape — c4-12's deps change (`emptyDeck` added)
+  neither caused nor widened it. Candidate fixes if it ever matters on the glass: clear synchronously
+  on `deckId` change, or key the panel (`<FormatCheck key={deckId} />`).
+- **No committed CDP measurement harness behind the render-budget numbers** (`ui/src/App.tsx:244,331`).
+  Both effect comments carry "⚠️ DO NOT REORDER EITHER BLOCK WITHOUT RE-MEASURING" while every
+  measurement was taken with a scratchpad throwaway script (the story's own Task 4 sanctioned the
+  scratchpad), so AC 18's queue positions and latencies are preserved only as prose and are
+  irreproducible from the repo. Home on the **C4 retro** beside the ~60 stale `DESIGN.md:NNN`
+  anchors: decide whether a minimal committed harness (or a recorded recipe) is owed before anyone
+  is allowed to act on the reorder lever those comments price.

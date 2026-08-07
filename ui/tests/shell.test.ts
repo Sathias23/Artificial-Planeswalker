@@ -1544,6 +1544,12 @@ describe('the containers are a declared category with a posture of its own', () 
     // composes a container and reads the derivation in `src/state/`, either of which
     // `posture.test.ts` would fail under `src/components/`. `../../state/deckGroups` is a
     // TYPE-only import; the rule below reads the specifier, so the entry is listed either way.
+    // c4-12 took up the invitation this file's own header left ("a place for c4-12 to put its
+    // line"): the empty-deck sentence renders HERE, replacing the `<ul>`. `../../state/deckGroups`
+    // was already listed as a TYPE-only import and is now a VALUE one too — `deckIsEmpty`, the one
+    // expression `App.tsx`'s `hasCards` is the negation of. That is the whole visible cost of the
+    // predicate landing beside `DeckBoards` instead of in a fifth spelling, and this list is where
+    // it shows. `./copy` is the new module.
     {
       file: 'src/containers/CardGrid/CardGrid.tsx',
       imports: [
@@ -1551,8 +1557,15 @@ describe('the containers are a declared category with a posture of its own', () 
         '../../state/deckGroups',
         '../CardTile/CardTile',
         './CardGrid.css',
+        './copy',
       ],
     },
+    // c4-12's copy module — the SIXTH in this tree and the ninth in the app. One sentence, the
+    // empty-deck line, transcribed byte-for-byte from EXPERIENCE.md. `imports: []` for
+    // `CardDetail/copy.ts`'s measured reason: `tests/` is the `nodenext` project and `src/` the
+    // `bundler` one, so a `ui/tests` file may import an app module only if that module has no
+    // relative imports of its own. `tests/empty-deck-copy.test.ts` imports this one.
+    { file: 'src/containers/CardGrid/copy.ts', imports: [] },
     // c4-4's tile, and the module that made this category necessary: a hook, a `ref` and — as of
     // c4-5 — SEVEN `on*` handlers, every one of them banned in the directory next door. TWO
     // stylesheets, deliberately — see QuantityBadge.css's header for the CARD_SHAPED collision
@@ -1974,7 +1987,12 @@ describe('the containers are a declared category with a posture of its own', () 
     // an EXTRACTION rather than a new capability — `CardDetail` shipped those four lines at c4-5
     // and this story gave them a second caller — so the count moves by three while the app grows
     // by one component.
-    expect(CONTAINERS).toHaveLength(24)
+    // 25 at c4-12, and it is the smallest move in the epic: ONE module, a `copy.ts` holding a
+    // single sentence. The story renders that sentence from an EXISTING container (`CardGrid`, at
+    // the invitation its own header left) and puts its one predicate in an EXISTING state module
+    // (`deckIsEmpty`, beside `DeckBoards`), so the tree grows by a copy owner and nothing else —
+    // which is the shape a story that adds "one sentence and one conditional" should have.
+    expect(CONTAINERS).toHaveLength(25)
     for (const { file } of CONTAINERS) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }
@@ -2177,6 +2195,64 @@ describe('the containers are a declared category with a posture of its own', () 
     const grid = sourceOf('src/containers/CardGrid/CardGrid.css')
     expect(grid).toMatch(/grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(176px,\s*1fr\)\)/)
     expect(grid).toMatch(/gap:\s*var\(--space-panel-gap\)/)
+  })
+
+  it('keeps the empty-deck line calm — the NARROW claim, in place of CALM_STYLESHEETS (c4-12)', () => {
+    // Q16'S RULING, MADE AS A PIN RATHER THAN AS A COMMENT. `CALM_STYLESHEETS` in
+    // token-usage.test.ts is the obvious home for UX-DR30's "no error styling", but it is keyed on
+    // a whole FILE — and this file draws the card grid's arrangement, so joining it would assert
+    // calmness over every rule in here and every rule a later story adds. That is a claim about
+    // the grid, not about the one line UX-DR30 speaks to. So the claim is made narrowly, here,
+    // against the rule block itself.
+    //
+    // ⚠️ WHAT IT CANNOT SEE, DECLARED: it reads ONE stylesheet's ONE block. A colour, border or
+    // background reaching `.card-grid-empty` from another file, an inline style, or a token
+    // redefined under a different theme are all invisible to it. Nothing does any of those today
+    // (the element is a bare `<p>` with one class, and `token-usage.test.ts` scans every tracked
+    // `.css` for declarations), and this comment is the record of the gap rather than a claim
+    // that there is none.
+    const emptyLineCss = sourceOf('src/containers/CardGrid/CardGrid.css')
+    // Comments are stripped BEFORE the block is cut: a `}` inside a comment would truncate the
+    // `[^}]*` capture and every declaration after it would escape both pins below — the first of
+    // three mechanical evasion holes closed at code review 2026-08-07 (the other two: property
+    // case, and `var()` fallback literals).
+    const block =
+      /\.card-grid-empty\s*\{([^}]*)\}/.exec(emptyLineCss.replace(/\/\*[\s\S]*?\*\//g, ''))?.[1] ??
+      ''
+
+    // NON-VACUITY FIRST: a rename or a deleted rule yields `''`, over which every assertion below
+    // would pass while asserting nothing — the epic's coverage-that-reads-as-coverage shape, in
+    // the exact place it has landed six stories running.
+    expect(block.length, '.card-grid-empty is missing from CardGrid.css').toBeGreaterThan(30)
+
+    // Lower-cased because CSS property names are case-insensitive: `Background:` is a live
+    // declaration the browser honours, and an `[a-z-]`-only capture would simply not see it —
+    // the exactly-three pin would stay green while a fourth property shipped.
+    const declared = [...block.matchAll(/^\s*([a-zA-Z-]+)\s*:/gm)]
+      .map((m) => m[1].toLowerCase())
+      .sort()
+    // EXACTLY these three, both directions. An extra `background`, `border`, `padding`,
+    // `min-height` or `text-align` is a treatment DESIGN.md does not specify and this is where it
+    // surfaces; a missing `margin` is the UA `<p>` margin returning and breaking the panel inset.
+    expect(declared).toEqual(['color', 'font', 'margin'])
+
+    // The two tokens DESIGN.md's `components.empty-deck-line` names, and NO others — so a
+    // semantic colour (`--negative`, `--caution`) arriving here fails even though it would satisfy
+    // the property list above.
+    const spent = [...block.matchAll(/var\((--[\w-]+)/g)].map((m) => m[1]).sort()
+    expect(spent).toEqual(['--text-secondary', '--type-body'])
+
+    // And no `var(--token, fallback)`: the capture above reads only the token NAME, so
+    // `var(--text-secondary, red)` would satisfy the exact-token pin while shipping a literal
+    // colour through its fallback arm. The scale's tokens carry their own values; a fallback
+    // here could only ever be an invented one.
+    expect(block).not.toMatch(/var\(\s*--[\w-]+\s*,/)
+
+    // `--type-body` is one of the four roles that need NO companion declaration (display, label
+    // and micro carry tracking or transform; body does not) — so the bare `font:` shorthand here
+    // is correct rather than an unpaired-role defect, and `token-usage.test.ts`'s companion guard
+    // is what would say otherwise. Asserted so the reason is pinned, not remembered.
+    expect(block).not.toMatch(/letter-spacing|text-transform|font-variant-numeric/)
   })
 
   it('is a category that is actually USED — otherwise it is theatre', () => {

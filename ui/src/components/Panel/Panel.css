@@ -9,7 +9,8 @@
    GEOMETRY LITERALS ARE A DOCUMENTED NON-BAN, inherited from AppShell.css (c2-6 AC 18) and
    enforced as a GATE over every component stylesheet since that story's review round. There
    are two here — the hairline border and the live dot — and each carries its DESIGN.md
-   citation beside the value. Neither can be a token: `declaredTokens.size` is pinned at 64 and
+   citation beside the value. Neither can be a token: `declaredTokens.size` is pinned (**69** as of c4-7; this comment read
+   `64`, its value when c2-7 shipped, and is corrected at c4-12's conformance sweep) and
    tests/tokens.test.ts asserts every name byte-for-byte against DESIGN.md's frontmatter, so
    adding one is not available (AC 23).
 

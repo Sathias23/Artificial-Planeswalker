@@ -160,7 +160,11 @@ describe('the footer attribution is DESIGN.md, byte for byte (AC 1, AC 2)', () =
     // bullet's prose would satisfy a length check and nothing else here would notice. The count
     // is the COMPONENTS SECTION's, not the file's (review find, 2026-07-30) — an unrelated
     // section gaining a bullet must not turn a licensing gate red.
-    expect(readComponentBullets(componentsSectionOf(readFileSync(DESIGN_MD, 'utf8'))).size).toBe(24)
+    // 24 until story c4-12, which added **Empty deck line** under "System presence & states" —
+    // the treatment for a deck with zero cards, which DESIGN.md specified NOWHERE before that
+    // commit. This pin moving is the intended signal: a Components bullet arriving is a design
+    // decision with a diff, and this is one of the two places that says so out loud.
+    expect(readComponentBullets(componentsSectionOf(readFileSync(DESIGN_MD, 'utf8'))).size).toBe(25)
     expect(artefactSentence.length).toBeGreaterThan(100)
     expect(artefactSentence.startsWith('Card data')).toBe(true)
     // And the module side: five parts, so neither loop below can pass by iterating nothing.

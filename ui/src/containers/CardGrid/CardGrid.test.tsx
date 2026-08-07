@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { boardsOf } from '../../state/deckGroups'
 import { CardGrid } from './CardGrid'
+import { EMPTY_DECK_LINE } from './copy'
 
 /**
  * The card-art grid (story c4-4, AC 12–AC 16).
@@ -152,17 +153,68 @@ describe('the structure (AC 13, AC 16)', () => {
   })
 })
 
-describe('an empty deck reaches this story, and it must not invent c4-12’s copy (Q10)', () => {
-  it('renders an empty list and nothing else', () => {
+describe('an empty deck reaches this story, and c4-12’s copy landed here (c4-12, AC 1, AC 3)', () => {
+  // ⚠️ THIS DESCRIBE WAS REWRITTEN, NOT ADDED, AND THE REWRITE IS THE POINT. Its title used to be
+  // *"it must not invent c4-12's copy (Q10)"* and its body asserted `container.textContent === ''`
+  // — a correct claim for c4-4, and FALSE the moment c4-12 landed. The story that lands a promised
+  // line has to retire the test that promised it, in the same commit; leaving both would have made
+  // this file red, and deleting it would have dropped the only per-component coverage of the state.
+  //
+  // ⚠️ THE FIXTURE IS SYNTHETIC AND DECLARED SO IN PLACE (AC 31). `boardsOf([])` models a deck
+  // with zero rows, and measured 2026-08-07 against the shipped database **no such deck exists**:
+  // 0 of 42 decks have zero `deck_cards` rows, and the smallest real deck is a 1-card one. It is
+  // nonetheless the NORMAL state at creation — `create_deck` inserts a deck and writes no card —
+  // so this is a synthetic fixture for a reachable state, not an invented one.
+
+  it('renders the line in place of the list, as the untitled panel’s only child', () => {
     const { container } = render(<CardGrid boards={boardsOf([])} />)
 
-    // `boardsOf([])` returns three empty boards. The honest render is an empty `<ul>` inside an
-    // untitled panel — a PLACE for c4-12 to put EXPERIENCE.md:70's line, rather than a state
-    // pretending to be one. Writing that copy here would fail `copy-rules.test.ts` and pre-empt
-    // a story; crashing, or drawing a titled panel with a stray header, would be worse than
-    // either.
+    // THE `<ul>` IS GONE, NOT EMPTIED (AC 3). A `<p>` inside a `<ul>` is invalid against UX-DR44,
+    // and an empty list left beside the sentence announces "list, 0 items" BEFORE the sentence
+    // explaining why. `queryByRole('list')` is the assertion that notices the difference; a
+    // `toHaveLength(0)` on `li` would pass for either shape.
+    expect(screen.queryByRole('list')).toBeNull()
+    expect(container.querySelectorAll('li')).toHaveLength(0)
+
+    // The line itself, from the shipped constant rather than a retyped literal — a copy of the
+    // string here would drift from `copy.ts` silently, and `tests/empty-deck-copy.test.ts` is what
+    // ties that constant to EXPERIENCE.md.
+    expect(screen.getByText(EMPTY_DECK_LINE)).toBeVisible()
+    expect(container.querySelectorAll('.card-grid-empty')).toHaveLength(1)
+
+    // …and it is the panel's ONLY child, which is what "replaces" means structurally.
+    expect(container.querySelector('.panel-body')?.children).toHaveLength(1)
+  })
+
+  it('keeps the panel untitled and adds no landmark, exactly as a full grid does', () => {
+    render(<CardGrid boards={boardsOf([])} />)
+
+    // c4-4's untitled ruling survives the empty state. A titled panel here would put a NEW entry
+    // in a screen-reader user's landmark list that appears only when a deck is empty — a surface
+    // that grows a landmark by having less in it.
+    expect(screen.queryByRole('region')).toBeNull()
+    expect(screen.queryByRole('heading')).toBeNull()
+  })
+
+  it('renders NO line for a deck that has only a sideboard — the named residue (Q1)', () => {
+    // THE STATE NO ARTEFACT DESCRIBES, PINNED SO THE CHOICE IS VISIBLE. `deckIsEmpty` is
+    // sideboard-INCLUSIVE (c4-11's ruling, and because "This deck is empty" would be false copy
+    // over a deck with cards in it), so a sideboard-only deck is not empty — and this grid draws
+    // commander + mainboard only, so it has no tiles either. The honest render is the empty `<ul>`
+    // c4-4 shipped, with no sentence.
+    //
+    // Unreachable from live data — 0 of 42 decks have zero mainboard rows and at least one
+    // sideboard row — so it is recorded rather than answered with invented copy. This fixture is
+    // SYNTHETIC and says so.
+    const sideboardOnly = boardsOf([
+      deckCard('Duress', 'Sorcery', { sideboard: true, quantity: 3 }),
+    ])
+
+    const { container } = render(<CardGrid boards={sideboardOnly} />)
+
     expect(screen.getByRole('list')).toBeVisible()
     expect(container.querySelectorAll('li')).toHaveLength(0)
-    expect(container.textContent).toBe('')
+    expect(screen.queryByText(EMPTY_DECK_LINE)).toBeNull()
+    expect(container.querySelectorAll('.card-grid-empty')).toHaveLength(0)
   })
 })

@@ -274,3 +274,72 @@ export const boardsOf = (cards: readonly DeckCardSummary[]): DeckBoards => {
 
 /** {@link boardsOf} over a whole payload — the one call `src/state/deck.ts` makes. */
 export const boardsOfDeck = (detail: DeckDetail): DeckBoards => boardsOf(detail.cards)
+
+/**
+ * **THE ONE ANSWER TO "IS THIS DECK EMPTY?" (story c4-12, Q1, AC 1, AC 7, AC 11, AC 12).**
+ *
+ * ================= WHY A FIFTH PREDICATE WOULD HAVE BEEN A DEFECT ======================
+ *
+ * Four predicates about "does this deck have anything in it" were live at once when this story
+ * started, and each answers a DIFFERENT question:
+ *
+ *   | predicate                     | includes sideboard? | true for a land-only deck? |
+ *   | `hasCards` (`App.tsx`)        | **yes**             | yes                        |
+ *   | the grid's tile list          | no (commander+main) | yes                        |
+ *   | `curve.total > 0`             | no (lands excluded) | **no**                     |
+ *   | `distribution.total > 0`      | no (lands excluded) | **no**                     |
+ *
+ * `deck.ts:388-390` warns by name that `surfaceOf` exists so its consumers *"read the same answer
+ * rather than each re-deriving it"*, and this is the same hazard one axis over. So there is ONE
+ * expression, here, and `App.tsx`'s `hasCards` is its exact negation rather than a second copy —
+ * a change to one is a change to both, structurally.
+ *
+ * ================= IT IS SIDEBOARD-INCLUSIVE, AND THAT IS A RULING ======================
+ *
+ * The board test is c4-11's, verbatim (code-review ruling, 2026-08-07, reasoned at
+ * `App.tsx`): a deck whose only content is a sideboard HAS cards. Two reasons, and the second
+ * is the one that matters here: c4-7's deck list renders a focusable row per sideboard card, so
+ * such a deck has a real Tab corridor; and the copy this predicate gates says *"This deck is
+ * empty"*, which would be **false on the glass** for a deck holding a sideboard — a UX-DR33
+ * violation authored by a predicate rather than by a writer.
+ *
+ * ⚠️ **THE RESIDUE THAT FOLLOWS, STATED RATHER THAN HIDDEN.** A sideboard-only deck is therefore
+ * NOT empty, renders no line, and shows an empty `<ul>` inside the untitled grid panel — a state
+ * **no artefact describes**. It is unreachable from live data (measured 2026-08-07 against the
+ * shipped database: **0 of 42 decks** have zero mainboard rows and ≥1 sideboard row; 41 sideboard
+ * rows exist across 5 decks, every one of them beside a full mainboard), so it is recorded as a
+ * named residue rather than answered by inventing copy for it. `App.test.tsx` pins the deck it
+ * DOES change — the skip link stays present there — so the choice is visible if it is ever wrong.
+ *
+ * The UX-DR36 half of the residue, stated too (code review 2026-08-07): on that deck the LEFT
+ * column carries no visible text at all — an empty `<ul>` in the untitled panel, both analysis
+ * panels self-hidden on their own zero totals — which is the closest reachable state to the
+ * blank viewport AC 23 defines. The never-blank criterion holds only because the right column
+ * and header do; a per-slot tightening of that definition would fail the left slot here first.
+ *
+ * ================= WHAT IT DELIBERATELY DOES NOT MEAN ==================================
+ *
+ * **Not "nothing to draw".** A land-only deck is not empty by this predicate and must not be:
+ * it has tiles and rows. Its curve and colour panels are absent for their own reason — a zero
+ * curve total and a zero pip total — and those two guards are NOT this one. c4-9 wrote that
+ * distinction down for this story by name (`AnalysisRow.css`), and `App.test.tsx`'s land-only
+ * test is what stops the two being conflated later.
+ *
+ * **Not "the payload is empty".** It reads the DERIVATION, not `detail.cards`, so it cannot
+ * disagree with what the grid and the list actually render — which is the whole reason this
+ * module exists (*"so the grid and the list panel cannot disagree"*).
+ *
+ * Args:
+ *   boards: `surfaceOf`'s answer for a loaded deck, verbatim.
+ *
+ * Returns:
+ *   `true` iff every board is empty.
+ */
+export const deckIsEmpty = (boards: DeckBoards): boolean =>
+  boards.commander.length === 0 &&
+  boards.sideboard.length === 0 &&
+  // `.some(...)` rather than `mainboard.length === 0`, which is equivalent TODAY only because
+  // `boardsOf` above drops zero-card groups before returning. Spelling the card test out means
+  // this predicate survives that filter changing; the shorter form would silently start
+  // reporting a deck of empty group headers as non-empty.
+  !boards.mainboard.some((group) => group.cards.length > 0)

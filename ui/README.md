@@ -152,12 +152,16 @@ reasons unrelated to whatever is being bisected.
 file is shaped for a generator, not a reader — reaching a response body means indexing
 `components['schemas'][…]`. `schema.ts` does that once and re-exports narrow aliases
 (`HealthResponse`, `ErrorResponse`, `DeckSummary`, `ErrorReason`, from **c4-1** `Card`,
-`CardSummary` and `DeckCardSummary`, and from **c4-2** `DeckDetail` and `ActiveDeck`: **nine**).
+`CardSummary` and `DeckCardSummary`, and from **c4-2** `DeckDetail` and `ActiveDeck`: **twelve**
+as of c4-10, counted from `schema.ts` at c4-12's conformance sweep — this said "nine", its c4-2
+value, through four stories that each added one).
 This sentence said "three" until c4-1 noticed it; `DeckSummary` had landed in c3-9. **An alias is
 added only in the commit that gives it a consumer** — an unused export is dead code, which is why
 c3-2 declined to add `Card` and left it ledgered for the first story that consumed one, and why
-c4-1 declined `DeckDetail` for the same reason before c4-2's fetch needed it. `CardFace` is still
-declined and still ledgered; **c4-6** renders the flip control. Both rules are enforced by
+c4-1 declined `DeckDetail` for the same reason before c4-2's fetch needed it. `CardFace` was
+declined and ledgered until **c4-5** turned out to be its first consumer — it is exported today,
+and this sentence read "still declined and still ledgered" for five stories after that stopped
+being true (corrected at c4-12's conformance sweep). **c4-6** renders the flip control. Both rules are enforced by
 `tests/wire-contract.test.ts`, which bans re-declaring any shape the backend describes — or any
 alias `schema.ts` exports, `ErrorReason` included — anywhere in tracked TypeScript (`src/`,
 `tests/`, `config/`) outside `src/api/`, and scans everything but `schema.ts` itself (files
@@ -228,7 +232,7 @@ else these bans apply, and each one fails the build:
 stacking level, a card-tile minimum — these are the one value family that stays a literal, and
 saying so explicitly is what stops the next author reading `452px` as drift. There is no token
 family to point at, and adding one is not available: `tests/token-usage.test.ts` pins
-`declaredTokens.size` at **65** and `tests/tokens.test.ts` asserts every token name
+`declaredTokens.size` at **69** and `tests/tokens.test.ts` asserts every token name
 byte-for-byte against `DESIGN.md`'s frontmatter, which contains no layout-width token. An
 unenforceable ban is worse than a documented exception, so the rule is:
 
@@ -588,7 +592,7 @@ each inventing one. DESIGN.md asks a tone to "tint background and border from it
 token — never from hard-coded RGB", and **every obvious spelling of that is banned**:
 `rgba(95,212,160,0.12)` by `function-disallowed-list`, and `color-mix(in srgb, var(--positive)
 12%, transparent)` by the **same rule** (measured). There is no translucent `--positive-wash`
-token and the layer is closed at 64.
+token and the layer is closed at 69.
 
 The answer is a **pseudo-element wash**:
 
@@ -621,7 +625,7 @@ token" reads. The `color-mix()` ban stands unchanged; this story shipped no gate
 
 **A role token plus its companion — never a `font-size`, never a new token, never a stylelint
 exception.** DESIGN.md's StatChip value is 17px; `font-size: 17px` is a lint error and a
-`--type-stat-value` token would break both `declaredTokens.size === 64` and the byte-for-byte
+`--type-stat-value` token would break both `declaredTokens.size === 69` and the byte-for-byte
 name contract against DESIGN.md's frontmatter, which makes it a UX-artefact change rather than
 a frontend one. `--type-heading` **is** `500 17px/1.3`, so:
 
@@ -826,7 +830,7 @@ component may take a value from nowhere but its own tree, and `../../styles/…`
 
 **Why a class and not a token.** `tests/tokens.test.ts:265` is a **set equality** over an
 inventory derived from `DESIGN.md`'s `colors` / `typography` / `rounded` / `spacing` / `motion` /
-`focus` / `elevation` frontmatter blocks, pinned at 65. `components.card-tile.aspect` is in none
+`focus` / `elevation` frontmatter blocks, pinned at 69. `components.card-tile.aspect` is in none
 of those blocks, so **`--card-aspect` cannot be added without failing that gate**. Adding it is a
 DESIGN.md amendment plus a moved pin, argued in the open — not a token added quietly.
 
@@ -1217,7 +1221,10 @@ now landed. The boundary as it actually stands:
   two boot routes went into it, as promised** — it now exports `readDecks()`, `readCard(cardId)`,
   `readActiveDeck()` and `readDeck(deckId)`, each returning a total outcome union and none of them
   ever rejecting, all four sharing one private `request()` helper so there is one timeout guard
-  and one `no-store` decision. The next route is c4-10's format check, and it goes here too.
+  and one `no-store` decision. **c4-10's format check landed in it too, as predicted** —
+  `readFormatCheck(deckId)` is the fifth member, sharing the same `request()` helper; this line
+  read _"the next route is c4-10's format check, and it goes here too"_ until c4-12's conformance
+  sweep found it still written as a prediction after the story had shipped.
 - **The two boot routes fail in DIFFERENT vocabularies, and that is a design statement.** Measured
   against the committed `openapi.json`: `GET /api/active-deck` publishes `200/400/500` and
   **structurally cannot answer `503`** — `routes/active_deck.py` holds no `DbSession` at all —
@@ -1311,9 +1318,10 @@ doubling, capped at 30 s (`POLL_BASE_MS`, `POLL_MULTIPLIER`, `POLL_CEILING_MS`).
 The application shell landed in **c2-6**, so the token layer now has a real consumer and
 `src/App.css` is gone with the placeholder it styled. What the shell deliberately does _not_
 build is every region it holds open, each of which renders a placeholder line naming its owner
-until that story lands: card detail is **c4-5**, the deck list is **c4-7**, the format check is
-**c4-10**, the agent-view nav pills are **c6-8**, and the agent view that drops into the overlay
-slot is **c6-5**. **The `h1` carries the deck name as of c4-2** — it carried the product name
+until that story lands. **Three of the five have now landed and their placeholders are
+displaced** — card detail (**c4-5**), the deck list (**c4-7**) and the format check (**c4-10**) —
+leaving the agent-view nav pills (**c6-8**, the one story key still on the glass on every surface,
+including a fully loaded deck) and the agent view that drops into the overlay slot (**c6-5**). **The `h1` carries the deck name as of c4-2** — it carried the product name
 provisionally until then, which meant the kicker and the heading said the same words (C3 retro
 F2); nothing about the element, its level or its position moved, and `filled()`'s fallback still
 fires when there is no deck, which is what keeps a fresh install from being heading-less.
@@ -1363,13 +1371,14 @@ what changed is only which of the two the running app shows. Each displacement i
 Ten presentation primitives have landed — `Panel`, `Badge`, `StatChip` and `GroupHeader` in
 **c2-7**, `ManaPip` and `ManaCost` in **c2-8**, `StatePanel` in **c2-9**, `Footer` in **c2-10**,
 `DeckBadges` in **c4-2**, `CardPlaceholder` in **c4-3** — and all ten are documented under
-_Components_ above. **`StatePanel`, `Footer`, `DeckBadges` and (through it) `Badge` are the four
-with an on-screen consumer**; the other six still have none, so `npm run build` leaves them out of
-the module graph entirely and their **appearance is not dev-verified** (jsdom applies no
-stylesheet). Each is checked by eye at its first consuming story: `Panel` at **c4-5** (card
-detail, the first real `level="overlay"` panel) and **c4-7** (the deck list) — **re-homed from
-c2-9**, which turned out not to render a `Panel` at all (Q6) — and the group header and deck-row
-context at **c4-7**.
+_Components_ above. **Nine of the ten now have an on-screen consumer** as of c4-10, and each was checked by eye at its
+first consuming story: `Panel` at **c4-5** (card detail, the first real `level="overlay"` panel)
+and **c4-7** (the deck list) — **re-homed from c2-9**, which turned out not to render a `Panel` at
+all (Q6) — `GroupHeader` at **c4-7** (zero consumers from c2-7 until then), `ManaPip`/`ManaCost` at
+**c4-9**, `StatChip` alone still awaiting a surface (ledgered, homed on the C4 retro). This
+paragraph read _"the four with an on-screen consumer; the other six still have none"_ — a c2-10
+sentence its own next paragraph already falsified — and is corrected at c4-12's conformance
+sweep.
 
 **`Panel`'s first on-screen consumer is `CardGrid` (c4-4), and it is UNTITLED.** The counts a
 reader needs are already in the `h1` and `DeckBadges`, so a panel title carrying "60 cards · 16
@@ -1447,7 +1456,9 @@ needed**. Two honest limits: a simulation is not a person, and this measures _di
 sighted CVD reader it remains a real gap that only a glyph would close. **Brad's acceptance
 against a real screen is the closing step**; the numbers are what he is deciding against.
 
-The skip link and Tab-order work are **c4-11** — the shell builds no focus management. The
+The skip link and Tab-order work **landed at c4-11** (2026-08-07) — the shell itself still builds
+no focus management; `SkipLink` is a container and the hand-off lives in `containers/focusHome.ts`.
+This read _"are c4-11"_, in the future tense, until c4-12's conformance sweep. The
 numeric role now has real consumers: the panel count, the group-header count and the StatChip
 delta all landed in **c2-7**, so `findUnpairedNumericRole` is no longer a guard with nothing to
 guard; **c4-8**'s curve counts are the latest, and they arrived on 2026-08-06. (This line read
