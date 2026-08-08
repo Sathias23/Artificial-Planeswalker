@@ -88,8 +88,14 @@ class CompanionError(Exception):
     serialisation all stay in one place. The callers so far are c1-6 (``get_session``, for a missing
     or unpopulated database), c3-1 (``read_deck``, for a missing deck), c3-2 (``read_card``, for
     a missing card), c3-3 (``read_deck_format_check``, for a missing deck again) and c3-4
-    (:func:`~src.companion.app.security.require_agent_token`, for a refused credential); c5-5's
-    oversized push is still to come.
+    (:func:`~src.companion.app.security.require_agent_token`, for a refused credential).
+
+    **c5-5's oversized push is NOT on that list, and the reason is this class's own rule.** The
+    story was predicted here as the next caller; it turned out to need the opposite. The body cap
+    is middleware (:class:`~src.companion.app.body_cap.BodyCapMiddleware`), so it sits *outside*
+    ``ExceptionMiddleware`` and must **send** ``payload_too_large`` rather than raise it — exactly
+    what the "Middleware does not raise this" paragraph below requires. The caller list is
+    therefore unchanged by c5-5, which is the prediction being falsified rather than fulfilled.
 
     c3-4's is the first caller that is **not an endpoint body and not a** ``GET``: it is a
     dependency guarding a ``PUT``, which works for the same reason c1-6's session dependency does —
@@ -186,7 +192,15 @@ def error_responses(*reasons: ErrorReason) -> dict[int | str, dict[str, Any]]:
     ``GET /api/card-image/{scryfall_id}`` declares **three** — ``card_not_found``,
     ``no_image_data`` and ``image_fetch_failed`` — the most any route has declared, and the first
     to put two tokens under one status by declaration rather than by inheritance (both 404s land
-    in one entry naming each, which is what the grouping below exists for). c5-5 follows.
+    in one entry naming each, which is what the grouping below exists for).
+
+    c5-5 follows, and is the first caller to **narrow** rather than add: its include declares
+    ``invalid_request | forbidden | payload_too_large | internal_error`` for ``POST /agent/events``,
+    and — the part that touched other routes — it removed ``payload_too_large`` from both *shared*
+    include sets in ``build_app()``, so the six body-less ``GET``s stopped publishing a 413 none of
+    them can answer. ``PUT /api/active-deck`` gained it at the route beside its ``forbidden``. The
+    declaration is about what the *operation* can answer, and c5-5 is the story that made that
+    sentence true of the whole document rather than of the newest routes only.
 
     c3-5 is also the first caller on a route whose **success** body is not JSON. That changes
     nothing here — the declarations this builds are per status and describe the error bodies —
@@ -579,9 +593,13 @@ def install_error_handling(app: FastAPI) -> None:
       a deterministic ``ArgumentError`` or ``InvalidRequestError`` correctly lands.
 
     Kept as a single function so the endpoint stories (c1-6, c3-1, c5-5) wire nothing new — they
-    raise :class:`CompanionError` and the plumbing is already there. c1-5's middleware is the
-    deliberate exception: it *sends* its typed body rather than raising (see
-    :class:`CompanionError`'s docstring) and installs through ``install_security``, not here.
+    raise :class:`CompanionError` and the plumbing is already there. **c5-5 is listed for its
+    route**, whose ``forbidden`` arrives through the shipped ``AgentToken`` dependency with no new
+    plumbing; its *body cap* is the other shape. Middleware is the deliberate exception, and there
+    are now two instances of it rather than one: c1-5's ``Host`` check and c5-5's
+    :class:`~src.companion.app.body_cap.BodyCapMiddleware`. Both *send* their typed body rather
+    than raising (see :class:`CompanionError`'s docstring), and both install through their own
+    ``install_*`` call in ``build_app()``, not here.
 
     Call this **last** in ``build_app()``: ``app.user_middleware[0]`` is the most recently added
     middleware, so adding :class:`UnhandledErrorMiddleware` last is what puts it outermost, where it

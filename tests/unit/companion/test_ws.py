@@ -492,8 +492,10 @@ class TestTheRegistryVocabularyGuardIsReplaced:
     def test_ws_builds_no_registry_of_its_own(self):
         """The sibling of ``test_the_upgrade_reaches_the_store_through_the_one_accessor``.
 
-        A second registry would be a second answer to "how many clients are connected", which is
-        the number AD-8 has c5-5 report.
+        A second registry would be a second answer to "how many clients are connected". c5-5
+        reports a THIRD thing — `broadcast()`'s delivered count (Q1) — and that is precisely why
+        this guard still matters: two accountings that can legitimately disagree are a design;
+        three, one of them accidental, is a bug.
         """
         tree = ast.parse(_WS_SOURCE.read_text(encoding="utf-8"))
         constructions = [
@@ -975,7 +977,12 @@ class TestTheDocstringExamplesRun:
 
 
 class TestTheConnectionRegistry:
-    """AC 1-5: the holder c5-5 will read a count from, beside the ticket store it copies.
+    """AC 1-5: the holder c5-7's connection pill will read a count from, beside the ticket store
+    it copies.
+
+    c5-5 was the story named here, and it ruled otherwise (Q1, Brad 2026-08-08): its receipt
+    carries the delivered count from `broadcast()`, not `connected_count`. The property is kept
+    for the live-gauge question c5-7 asks.
 
     Driven entirely against :class:`FakeConnection`, which is the point of the structural protocol:
     the registry is a container, and a container's contract is provable without a web server.
@@ -1022,7 +1029,9 @@ class TestTheConnectionRegistry:
 
     def test_adding_the_same_connection_twice_registers_it_once(self):
         """One socket is one client: the handler registers once, but a re-entrant add must not
-        double it, or c5-5's count would over-report the tabs that exist."""
+        double it, or every count derived from this set would over-report the tabs that exist —
+        c5-7's pill directly, and c5-5's delivered count indirectly, since the fan-out iterates a
+        snapshot of this set and would write to the same socket twice."""
         registry, connection = ConnectionRegistry(), FakeConnection()
 
         registry.add(connection)

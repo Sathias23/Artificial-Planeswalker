@@ -22,10 +22,12 @@
  *    **c5-1** shipped the whole envelope — six kinds, four payload shapes, two system signals — and
  *    `components.schemas` stayed at **twelve**. Measured, 2026-08-07: a Pydantic model that no
  *    route references never reaches `components.schemas` at all, so declaring a union buys no
- *    TypeScript until something puts it on a route. That happens at **c5-5**, which declares the
- *    union as `POST /agent/events`'s request body — and the rule will grow on its own that day,
- *    still with no edit to the test. The lesson worth keeping: *the story that defines a wire type
- *    and the story that publishes it are not always the same story.*
+ *    TypeScript until something puts it on a route. **That happened at c5-5**, which declares the
+ *    union as `POST /agent/events`'s request body — and the rule grew on its own exactly as
+ *    predicted, still with no edit to the test: twelve components at c5-1, thirteen after c5-2's
+ *    ticket, **thirty** after c5-5 collected seventeen models in one step (measured 2026-08-08).
+ *    The lesson worth keeping, now confirmed in both directions: *the story that defines a wire
+ *    type and the story that publishes it are not always the same story.*
  *
  * `import type` / `export type` only: `verbatimModuleSyntax` is on, and nothing about a `.d.ts`
  * may reach the runtime bundle.

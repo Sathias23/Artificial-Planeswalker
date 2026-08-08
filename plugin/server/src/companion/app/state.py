@@ -422,7 +422,9 @@ def ticket_store(app: FastAPI) -> TicketStore | None:
 
 
 # ---------------------------------------------------------------------------------------------
-# The connection registry (CM-3, FR-06, AD-8) — c5-4 registers and fans out, c5-5 reads the count.
+# The connection registry (CM-3, FR-06, AD-8) — c5-4 registers and fans out. c5-5 was scheduled to
+# read `connected_count` and ruled otherwise (Q1): its receipt carries `broadcast()`'s DELIVERED
+# count instead, and this property waits for c5-7's connection pill, which wants a live gauge.
 # The third and last of the Structural Seed's three nouns for this module.
 # ---------------------------------------------------------------------------------------------
 
@@ -521,12 +523,23 @@ class ConnectionRegistry:
 
     @property
     def connected_count(self) -> int:
-        """How many clients are registered right now — the number story 5.5 answers with.
+        """How many clients are registered right now — **not** the number ``POST /agent/events``
+        answers with.
 
-        ``POST /agent/events`` reports the delivery count it achieved (AD-8, FR-06), so this must
-        be **queryable, cheap and free of I/O**: it is one ``len`` over an in-memory set, reads no
-        database (AD-7) and cannot fail. c5-5 finds it waiting rather than adding accounting to a
-        push path that is not allowed to do work.
+        **Corrected at c5-5 (Q1, Brad 2026-08-08), which is the story that had to choose.** This
+        docstring used to open "the number story 5.5 answers with" while its own second paragraph
+        said the endpoint "reports the delivery count it achieved" — two different numbers, stated
+        one line apart. The ruling went to the delivery count:
+        :func:`~src.companion.app.ws.broadcast`'s return value, which counts clients that actually
+        took the frame and drops any that failed mid-fan-out. The two agree except in that failure
+        race, and in exactly that window this property over-reports a tab that is already gone —
+        so "how many browsers saw it", which is the question the endpoint exists to answer, is
+        answerable only by the other one.
+
+        **Kept, and wanted.** c5-7's connection pill asks the question this property actually
+        answers — *is anything listening right now* — which is a live gauge rather than a receipt
+        for one push. So it stays **queryable, cheap and free of I/O**: one ``len`` over an
+        in-memory set, no database (AD-7), no failure mode.
 
         **Registered is not reachable.** A tab that vanished without a disconnect frame stays
         counted until the next broadcast fails to write to it (or its handler's ``finally`` runs),

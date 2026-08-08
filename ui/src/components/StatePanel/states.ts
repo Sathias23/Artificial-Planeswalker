@@ -126,9 +126,12 @@ export const PANEL_FOR_REASON = {
   // "re-read the discovery file and retry exactly once" lives — which is the whole reason it is a
   // token of its own instead of another `invalid_request`.
   forbidden: null,
-  // NO UI RESPONSE AT ALL, BY DESIGN. An agent push over the ingest cap (c5-5) is surfaced to
-  // the AGENT, through the MCP tool's outcome vocabulary — the party that can actually send a
-  // smaller one. The glass never sees it.
+  // NO UI RESPONSE AT ALL, BY DESIGN. An agent push over the ingest cap is surfaced to the
+  // AGENT, through the MCP tool's outcome vocabulary — the party that can actually send a smaller
+  // one. The glass never sees it. Reachable for real since **c5-5**, which shipped the pre-parse
+  // 64 KB body cap that finally produces this token; before that it was declared and unreachable.
+  // The `null` here is unchanged by that, and deliberately so: becoming reachable is not a reason
+  // to grow a panel for a failure the reader did not cause and cannot fix.
   payload_too_large: null,
   internal_error: 'internal-error',
 } satisfies Record<ErrorReason, StateKey | null>

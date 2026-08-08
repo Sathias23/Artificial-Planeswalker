@@ -1198,7 +1198,12 @@ class TestCommittedSchema:
         assert "deck_not_found" in responses["404"]["description"]
         # Non-vacuity: the app-level declarations are present too, so the 404 above is the
         # per-route declaration rather than a difference in whether responses exist at all.
-        assert {"400", "413", "500", "503"} <= set(responses)
+        #
+        # `413` dropped at c5-5: a body-less GET cannot answer it, and it was inherited from the
+        # shared include set while `payload_too_large` had no producer anywhere. The curation moved
+        # it to the two operations that can (`POST /agent/events`, `PUT /api/active-deck`).
+        assert {"400", "500", "503"} <= set(responses)
+        assert "413" not in responses
 
     def test_the_route_takes_no_games_parameter(self, schema):
         """AC 9: UX-DR21 names six checks and platform availability is not one of them."""

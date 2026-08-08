@@ -37,6 +37,7 @@ from src.companion.contracts import (
     Confidence,
     DeckChangedEvent,
     DeckChangedPayload,
+    EventIngestReceipt,
     EventKind,
     GroupItem,
     GroupsEvent,
@@ -525,7 +526,9 @@ class TestTheCaps:
             TierItem(**_tier(note="n" * 201))
 
     def test_the_envelope_byte_cap_is_sixty_four_kilobytes_and_is_not_enforced_here(self):
-        # AC 16 / Q9: declared here, enforced at c5-5. WHAT THIS CANNOT SEE: it is a bound on the
+        # AC 16 / Q9: declared here, ENFORCED SINCE c5-5 by `app.body_cap.BodyCapMiddleware` —
+        # which is outside this leaf entirely, so this assertion is unchanged and still correct.
+        # WHAT THIS CANNOT SEE: it is a bound on the
         # REQUEST, and a model validator runs after parsing — so it could reject an oversized
         # envelope but not stop the process from buffering it, which is the property that matters.
         # The assertion below is therefore that the constant exists and that no model enforces it.
@@ -656,6 +659,39 @@ class TestReviewRoundTwoExamplesRoundTrip:
         for example in examples:
             event = _AGENT_EVENT.validate_python(example)
             assert event.kind == kind
+
+
+class TestTheIngestReceipt:
+    """c5-5's one new wire model: what ``POST /agent/events`` answers with (Q1, Brad 2026-08-08).
+
+    Driven directly like everything else in this file — the *route's* behaviour, including which
+    number actually reaches this model, is ``test_routes_agent_events.py``'s subject. What is
+    asserted here is the shape alone.
+    """
+
+    def test_it_carries_the_client_count_and_nothing_else(self):
+        # One field, by name. AD-16's unwrapped-success rule plus CM-1's no-echo rule leave exactly
+        # this: the agent learns how many browsers received its push and learns nothing else back.
+        # Spelled `clients` to match the SPINE sequence diagram's `200 {clients: 1}`.
+        assert EventIngestReceipt(clients=3).model_dump() == {"clients": 3}
+
+    def test_zero_is_an_ordinary_value_rather_than_an_error(self):
+        # A push nobody heard is a success (`ws.broadcast`'s own contract): the companion with no
+        # tab open is the ordinary state, not a failure the agent should retry.
+        assert EventIngestReceipt(clients=0).clients == 0
+
+    def test_the_wire_description_names_no_internal_number(self):
+        # c5-2's TTL lesson, re-applied: the prose above `Attributes:` ships VERBATIM as the
+        # schema `description` and therefore into `types.d.ts` and `/docs`. The envelope byte cap
+        # is an implementation number that lives in `_MAX_ENVELOPE_BYTES`'s own docstring; a
+        # concrete figure here would be a wire commitment nobody ruled.
+        description = EventIngestReceipt.__doc__ or ""
+        summary = description.split("Attributes:")[0]
+
+        assert "64" not in summary
+        assert "KB" not in summary
+        # Non-vacuity: there is real prose to have found a number in.
+        assert len(summary.split()) > 20
 
 
 class TestReviewRoundTwoDoctests:

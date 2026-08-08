@@ -382,9 +382,11 @@ def agent_token_is_valid(presented: str | None, expected: str | None) -> bool:
     ``""`` are equal, so a length-only guard would let two empty credentials authenticate each
     other — the same fail-open shape as ``None``/``None`` wearing a different spelling. It is
     unreachable through the shipped route (:func:`presented_credential` collapses an empty
-    credential to ``None``, and a minted token is never empty), which is exactly why it is worth
-    closing here: an unreachable hole is one refactor away from being reachable, and the next
-    caller is c5-5.
+    credential to ``None``, and a minted token is never empty), which is exactly why it was worth
+    closing here: an unreachable hole is one refactor away from being reachable. **c5-5 arrived as
+    that next caller and added no comparison at all** — ``POST /agent/events`` annotates
+    :data:`AgentToken` and reads nothing about credentials itself, so this function still has
+    exactly one call site and the hole stayed closed by construction rather than by review.
 
     **Compared as bytes, deliberately.** ``secrets.compare_digest`` accepts ``str`` only when *both*
     arguments are ASCII-only and raises ``TypeError`` otherwise. Header values decode as latin-1, so
@@ -478,9 +480,14 @@ AgentToken = Annotated[None, Depends(require_agent_token)]
 """The annotation every agent-authenticated handler writes, and the only one it should.
 
 Story c3-4 (``PUT /api/active-deck``) is the first caller; c5-5's ``POST /agent/events`` is the
-second and inherits the whole contract — the header spelling, the fail-closed comparison and the
-``forbidden`` token — rather than writing a second check. A route annotates a parameter with this
-and reads nothing about credentials itself.
+second and **inherited the whole contract** — the header spelling, the fail-closed comparison and
+the ``forbidden`` token — rather than writing a second check. A route annotates a parameter with
+this and reads nothing about credentials itself.
+
+Measured at c5-5, because "inherits the whole contract" is the kind of claim that decays quietly:
+``test_routes_agent_events.py`` AST-scans that route module and fails if it so much as names
+``presented_credential``, ``agent_token_is_valid``, ``require_agent_token``, ``agent_token``,
+``compare_digest`` or ``Header``. Two callers, still one comparison site.
 
 Injects ``None`` on purpose: the dependency exists for its **effect**, and a route that has been
 authorised has nothing further to learn from the credential. Handing the token to the endpoint
@@ -518,7 +525,9 @@ def install_security(app: FastAPI) -> None:
     /api/active-deck`` and its ``PUT`` sit in one module with different answers, which is a
     decision a route declares rather than one a middleware re-derives from a path list. The
     previous version of this paragraph promised the token would land "here beside it"; c3-4 built
-    it and ruled otherwise, two stories ahead of the c5-5 that was scheduled to.
+    it and ruled otherwise, two stories ahead of the c5-5 that was scheduled to. **c5-5 confirmed
+    the ruling by using it**: its route annotates :data:`AgentToken` and this function gained not
+    one line.
 
     **A prediction this docstring made twice, and got wrong twice — now settled by measurement.**
     The original said c5-2's WebSocket ticket "is still to come and is genuinely middleware-shaped
@@ -534,9 +543,17 @@ def install_security(app: FastAPI) -> None:
     what a check does, and *middleware* describes where it has to live. They are independent. A
     WebSocket route reads its own headers and closes its own connection, so it needs no middleware
     position to gate from — only the ``Host`` check, which must see **every** scope including ones
-    no route claims, genuinely needs one. What survives unbroken across both corrections: this is
-    still the one *security* wiring call, and the store it does not hold is in
-    :mod:`src.companion.app.state` (c5-2, Q3).
+    no route claims, genuinely needs one.
+
+    **c5-5 is in, and it split both ways — which is the lesson above paying out.** Its ``POST
+    /agent/events`` is an ordinary route with an ``AgentToken`` dependency, so it grew
+    ``build_app()`` by a fourth ``include_router`` and touched nothing here. Its **body cap** is
+    genuinely middleware-shaped and for exactly the reason this paragraph gives: the cap must see
+    every ``http`` scope before anything parses it, which is a position no route can occupy. So
+    ``build_app()`` did grow a second middleware line — but it is ``install_body_cap``, not a
+    security line, because a resource ceiling is not a statement about who the caller is. What
+    survives unbroken across all three corrections: **this is still the one *security* wiring
+    call**, and the store it does not hold is in :mod:`src.companion.app.state` (c5-2, Q3).
 
     Args:
         app: The application to install onto.

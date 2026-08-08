@@ -328,7 +328,11 @@ class TestCompanionError:
 
 
 class TestErrorResponsesHelper:
-    """AC 8: one construction site for the OpenAPI declaration; c3-1 and c3-2 use it, c5-5 next."""
+    """AC 8: one construction site for the OpenAPI declaration; c3-1, c3-2 and c5-5 all use it.
+
+    c5-5 is the first caller to NARROW: it dropped `payload_too_large` from both shared include
+    sets and re-declared it on the two operations that can answer it. The helper itself needed no
+    change, which was the point of Q4 touching the caller rather than this function."""
 
     def test_it_keys_by_the_mapped_status_and_declares_the_model(self):
         declared = error_responses("deck_not_found", "invalid_request")
@@ -347,7 +351,7 @@ class TestErrorResponsesHelper:
         assert "database_unavailable" in declared[503]["description"]
 
     def test_a_repeated_token_is_documented_once(self):
-        # c3-1 and c3-2 reuse this helper and c5-5 will; a careless double declaration must not
+        # c3-1, c3-2 and now c5-5 reuse this helper; a careless double declaration must not
         # ship "reason: x | x" into the generated docs.
         declared = error_responses("invalid_request", "invalid_request")
 
@@ -638,11 +642,25 @@ class TestStructuralPins:
         )
 
     def test_the_error_body_is_declared_on_the_routes(self):
-        responses = build_app().openapi()["paths"]["/health"]["get"]["responses"]
+        # `413` LEFT THIS LIST AT c5-5 and moved to the operation below, which is the curation
+        # working rather than a loss of coverage. Until then `payload_too_large` had no producer
+        # anywhere and `/health` — a body-less GET — declared it purely by inheritance from a
+        # shared include set. c5-5 built the pre-parse cap, removed the token from both shared
+        # sets, and declared it on the two operations that can actually answer it.
+        paths = build_app().openapi()["paths"]
+        responses = paths["/health"]["get"]["responses"]
 
-        for status in ("400", "413", "500", "503"):
+        for status in ("400", "500", "503"):
             schema = responses[status]["content"]["application/json"]["schema"]
             assert schema == {"$ref": "#/components/schemas/ErrorResponse"}
+
+        # The 413 half, asserted where it is now REACHABLE: same construction site, same
+        # `ErrorResponse` ref, so the typed body cannot drift just because the token moved.
+        for path, method in (("/agent/events", "post"), ("/api/active-deck", "put")):
+            schema = paths[path][method]["responses"]["413"]["content"]["application/json"][
+                "schema"
+            ]
+            assert schema == {"$ref": "#/components/schemas/ErrorResponse"}, path
 
     @staticmethod
     def _ref_rooted_cases():

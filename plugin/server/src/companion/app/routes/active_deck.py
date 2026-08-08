@@ -98,10 +98,16 @@ async def read_active_deck(request: Request) -> ActiveDeck:
     return ActiveDeck(deck_id=_slot(request).deck_id)
 
 
+# `payload_too_large` joins `forbidden` here at c5-5, not in `build_app()`'s include: this route
+# has a body and can genuinely answer 413 now that the pre-parse cap exists, while the sibling
+# `GET` above carries no body and still cannot. Declaring per-operation is the whole point of the
+# curation c5-5 did to the two shared include sets (Q4, Brad 2026-08-08) — the cap is enforced by
+# `BodyCapMiddleware` for BOTH body endpoints with one mechanism, but only the operations that can
+# answer it say so.
 @router.put(
     "/active-deck",
     response_model=ActiveDeck,
-    responses=error_responses("forbidden"),
+    responses=error_responses("forbidden", "payload_too_large"),
 )
 async def set_active_deck(
     request: Request, body: ActiveDeckRequest, _credential: AgentToken
