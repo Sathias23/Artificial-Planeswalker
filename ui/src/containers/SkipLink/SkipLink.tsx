@@ -77,8 +77,11 @@ import { SKIP_LINK_LABEL } from './copy'
  *
  * ================= WHAT IT DELIBERATELY DOES NOT DO ====================================
  *
- * **No `aria-live`, no announcement** (AC 26, Q12). `CardDetail`'s single polite region stays the
- * only one in the app. The link's own accessible name is the announcement.
+ * **No `aria-live`, no announcement** (AC 26, Q12). The link's own accessible name is the
+ * announcement. (This used to add *"`CardDetail`'s single polite region stays the only one in the
+ * app"* — falsified at **c5-7**, which shipped the connection pill's, the second of the three
+ * UX-DR45 authorises. The claim this component actually makes is the one above: it announces
+ * nothing.)
  *
  * **No key listener of any kind.** Esc is `CardDetail`'s single document-BUBBLE listener, and the
  * document CAPTURE phase stays reserved for c6-5's agent view (`CardDetail.tsx:88-101`). This

@@ -92,6 +92,42 @@ export interface AppShellProps {
   left?: ReactNode
   /** The 452px column: card detail (c4-5), deck list (c4-7), format check (c4-10). */
   right?: ReactNode
+  /**
+   * The connection pill (c5-7), rendered between `</main>` and `<footer>`.
+   *
+   * ==== THE SECOND EXCEPTION TO THE c2-9 DISPLACEMENT RULING, AND THE SECOND NEW SLOT ====
+   * `skipLink` above is the first, and this is its mirror image at the other end of the document:
+   * a region whose POSITION is the requirement, with no existing slot to displace. The skip link
+   * must precede the `<header>`; the pill must follow the `</main>` and precede the `<footer>`,
+   * and there was no element between those two.
+   *
+   * ==== WHY THIS POSITION, WHICH IS A RULING THIS PROP EXISTS TO RECORD (c5-7 Q1, dw:4597) ====
+   * Three artefacts each assumed someone else had decided it: UX-DR40 put the pill between the
+   * deck rows and the footer, c10-1 calls it *"the last stop before the footer"*, and
+   * `DESIGN.md:479` places it physically **bottom-left** — the opposite column from the deck rows.
+   * c4-11 declined to decide without the component and re-homed it here by name.
+   *
+   * Ruled (Brad, 2026-08-08): document order places it AFTER both columns and IMMEDIATELY BEFORE
+   * the footer, which makes it the last Tab stop before the footer links — satisfying UX-DR40's
+   * enumeration and c10-1's wording at once — while `ConnectionPill.css` pins it visually to the
+   * bottom-left corner. The alternative, an in-flow last child of the LEFT column, would place it
+   * before the entire right column in Tab order and contradict all three artefacts.
+   *
+   * ==== WHY A PROP AND NOT THE LEFT SLOT'S FRAGMENT ======================================
+   * `App.tsx` renders `<StatePanel>` into `left` in five of its six arms, so the deck-arm Fragment
+   * that c4-8 and c4-9 extended is reachable on ONE surface. The pill's AC 1 is *every* surface —
+   * every state panel, an empty deck and a cold open included — so mounting it there would fail
+   * silently on the five surfaces nobody would think to check. A slot is the honest shape.
+   *
+   * NO PLACEHOLDER, the skip link's reason applied a second time: this element is FIXED to a
+   * window corner on every surface, so a placeholder line here would put a story key permanently
+   * on the glass in one of the most persistent positions in the document — the C3 retro's F1
+   * defect, made worse by never scrolling away. `undefined` renders nothing at all.
+   *
+   * **The landmark counts do not move**: still exactly one `banner`, one `main`, one `contentinfo`.
+   * A `<div>` between `main` and `footer` is not a landmark, and this slot must never become one.
+   */
+  connectionPill?: ReactNode
   /** Scryfall and Fan Content attribution. c2-10. */
   footer?: ReactNode
   /**
@@ -120,6 +156,7 @@ export function AppShell({
   nav,
   left,
   right,
+  connectionPill,
   footer,
   overlay,
 }: AppShellProps) {
@@ -182,6 +219,16 @@ export function AppShell({
         </div>
       </main>
 
+      {/* AFTER BOTH COLUMNS, BEFORE THE FOOTER — WHICH IS THE WHOLE OF THE RULING (c5-7 Q1).
+          Nothing in this app carries a `tabindex`, so the Tab order IS the document order (c4-6's
+          ruling), and this line's position is therefore the entire statement "the pill is the last
+          Tab stop before the footer links". `UX-DR40`'s enumeration and `EXPERIENCE.md`'s Tab-order
+          cell were updated from their "(connection pill — c5-7)" markers to this shipped truth in
+          the same commit.
+
+          Rendered bare rather than through `slot()`, for the skip link's reason: a placeholder
+          naming the owning story would be pinned to a window corner permanently. See the prop. */}
+      {connectionPill}
       <footer className="app-shell-footer">
         {slot(footer, 'Scryfall and Fan Content attribution lands here — c2-10.')}
       </footer>

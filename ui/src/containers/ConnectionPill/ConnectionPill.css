@@ -1,0 +1,180 @@
+/* The connection pill (story c5-7, UX-DR29, UX-DR40, UX-DR46, UX-DR47,
+   `DESIGN.md:479` + `components.connection-pill`, `EXPERIENCE.md:43`, `:97`, `:155`).
+
+   NO COMPOSITION REFERENCE EXISTS FOR THIS COMPONENT. `DESIGN.md:445` lists what the imported
+   mock demonstrates and what it does not, and the connection pill is on the SECOND list — beside
+   the State panel, the DFC flip control, the footer attribution and the skip link. The
+   `components.connection-pill` frontmatter block and the `:479` bullet are the whole source;
+   there is no arrangement to read and no drift table to write.
+
+   THE MATERIAL IS FOUR DECLARATIONS AND THEY ARE ALL QUOTED (AC 16). `background:
+   {colors.surface-panel}`, `border: 1px solid {colors.border-hairline}`, `radius: {rounded.pill}`,
+   `dot-size: 8px` — every one resolves to a token that already exists, which is why the token
+   inventory count does not move for this story. A `--connection-pill-*` token would have to earn
+   both pins (`tokens.test.ts:321`, `token-usage.test.ts:1170`) and there is nothing here to spend
+   it on.
+
+   ALL THREE STATUS COLOURS ARE SPENT HERE, BY SPECIFICATION, and that is pre-authorised rather
+   than smuggled: `token-usage.test.ts:1012-1016` names this component while explaining why the
+   calm-surface allowlist is SCOPED — *"c5-7's connection pill spends all three status colours by
+   specification. A repo-wide ban would be false."* This file is deliberately NOT in
+   `CALM_STYLESHEETS`; the state panel is, and that is the surface UX-DR30 protects.
+
+   NO `--accent` ANYWHERE. `DESIGN.md:366` reserves the accent for LIVE AGENT ATTENTION, and a
+   connection status is not that. The three semantic fills plus `--focus-ring` are the whole
+   palette — the same discipline `Footer.css` states for the same reason.
+
+   ==== NOTHING IN THIS FILE MOVES, UNDER ANY SETTING ==================================
+   `tokens.css:305-312` bans `animation-iteration-count` other than 1, the `infinite` keyword and
+   the alternate directions across every stylesheet in `ui/`, and names **this component** as the
+   reason that ban exists: *"The connection pill (c5-7) is the component this exists to protect."*
+   So: no `animation`, and no `transition` either — not on the dot, not on the focus ring, not on
+   the border. There is consequently NOTHING to register in the reduced-motion inventory at the
+   foot of `tokens.css`, which is the cheapest correct answer to a motion requirement (the
+   `Footer.css` precedent: *"a motion with no registered fallback is an incomplete story"*).
+
+   ==== WHY THE DECK NAME IS NOT `--type-micro`, WHICH DESIGN.md ASSIGNS IT ============
+   `DESIGN.md:479` writes *"`{typography.micro}` text naming the state and the active deck name"*.
+   The state word takes that role. **The deck name may not**, and a GATE decides that rather than
+   taste: `--type-micro` drags `text-transform: uppercase` — derived from DESIGN.md's own
+   `textTransform:` key, and `findRoleWithoutCompanions` in `tests/token-usage.test.ts` reads the
+   RULE BLOCK, so the companion cannot be split off — and an uppercased `SULTAI MIDRANGE` destroys
+   the mixed-case name this pill exists to show.
+
+   This is c4-3's lesson arriving a third time; c4-10 hit the identical wall with the format
+   check's server-authored sentence (*"'PYM PARTICLES' IS NOT LEGAL IN BRAWL."*) and resolved it
+   the same way: keep the role for the LABEL, give the DATA a case-preserving role, and
+   distinguish the two by TIER instead. The shipped precedent for exactly this pairing is in the
+   shell's own header — `.app-shell-kicker` is micro/uppercase/tertiary and `.app-shell-deck-name`
+   beside it is not. `DESIGN.md:479` carries the amendment, made in this commit, the way
+   `:236-237` (c4-10) and the empty-deck-line bullet (c4-12) carry theirs. */
+
+/* ==== THE PILL ========================================================================
+   `position: fixed`, and this is the ruled shape rather than a convenience (c5-7 Q1, dw:4597).
+   The element's DOM position — a sibling between `</main>` and `<footer>` — is what makes it the
+   last Tab stop before the footer links; this rule is what makes it render bottom-left, in the
+   other column from the deck rows, which is where `DESIGN.md:479` and `EXPERIENCE.md:43` put it.
+   The two artefacts were never in conflict: one was describing Tab order and the other the screen.
+
+   ANCHORED AT ONE CORNER, NOT FOUR, and `shell.test.ts` was written knowing this component was
+   coming: its full-window-layer guard is value-aware precisely so *"a pill pinned to one corner"*
+   stays silent (`:482-489`, and `fixtures/css/shell-violation.css:256` is that shape as a probe).
+   `bottom` and `left` alone leave both axes released at their far ends, so this is not a level of
+   the overlay stack and UX-DR38's one-level-deep rule is untouched. No `z-index` either: a
+   positioned element already paints above the in-flow footer, and declaring a level would invite
+   exactly the second-layer question that rule exists to close.
+
+   ==== IT MUST NOT OCCLUDE THE FOOTER, WHICH IS LEGALLY LOAD-BEARING (NFR-08) =========
+   The footer is a full-width one-line strip whose Scryfall / Fan Content links are a condition of
+   public release, and `.app-shell` frames the window with `--space-gutter`. The strip's own height
+   is its `1px` border-top plus `--space-3` of padding over one line of `--type-micro` (10px at
+   1.3) — 26px — so its top edge sits `--space-gutter` + 26px above the window floor.
+   `calc(var(--space-gutter) + var(--space-6))` clears that with room to spare and spends NO
+   geometry literal to do it: two existing spacing tokens, so the clearance retunes with the frame
+   rather than drifting away from it. That the clearance LOOKS right at every supported width is
+   the eye-check's — jsdom resolves no layout, so no test here can claim it. */
+.connection-pill {
+  position: fixed;
+  bottom: calc(var(--space-gutter) + var(--space-6));
+  left: var(--space-gutter);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+
+  /* 24px — DESIGN.md's global rule (`:462`): "a >= 24x24px hit area", restated for this element
+     by name in `EXPERIENCE.md:155` ("nav pills, the close pill, footer links, deck rows, the
+     connection pill"). BOTH axes, because the pill's box is text-sized and a 10px/13px line box
+     is under the floor on its own — `Footer.css:91-97`'s idiom, and `keyboard-floor.test.ts`'s
+     `DECLARES_MIN` is where this element is classified rather than waved through. */
+  min-width: 24px;
+  min-height: 24px;
+  padding: var(--space-1) var(--space-3);
+
+  /* 1px — DESIGN.md, `components.connection-pill.border`: "1px solid {colors.border-hairline}". */
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-pill);
+  background: var(--surface-panel);
+  color: var(--text-tertiary);
+
+  /* `font: inherit` rather than a role: the two text spans below carry the roles, and a UA button
+     font here would fight them. This is not a `--type-*` application, so it owes no companions.
+
+     No `cursor: pointer` — the header's "NO HANDLER, AND THAT IS THE HONEST SHAPE" argument is
+     about the affordance, not just the ARIA attributes: a hand cursor promises a click does
+     something, and this button's only future action (c10-1's tooltip reveal) does not exist yet.
+     The UA default for a focusable `<button>` with no pointer styling is fine as-is. */
+  font: inherit;
+}
+
+/* `:focus-visible`, not `:focus` — a mouse click on the pill should not leave a ring behind it,
+   and UX-DR46's requirement is about the KEYBOARD indicator (`Footer.css:103-119`'s reasoning).
+
+   THE KNOWN-SURFACE TIER, which is the whole of this component's classification in
+   `keyboard-floor.test.ts`: the plain outline at `--focus-ring-offset`. The other tier — the
+   over-art composite at offset 0 — is for elements sitting on card art, and this one sits on
+   `--surface-panel`. `--focus-ring`, never `--accent-bright`: the two carry one hex, so no eye
+   check could tell them apart and only a token-identity guard can (`keyboard-floor.test.ts:371`).
+
+   Nothing here sets `outline: none` in any of its four spellings, so there is no removal needing
+   a replacement. */
+.connection-pill:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* ==== THE DOT =========================================================================
+   `Panel.css:110-118`'s idiom at this component's own size, with ONE deliberate difference: the
+   panel's live dot carries `box-shadow: var(--glow)` and this one carries no glow at all. A glow
+   marks LIVE AGENT ATTENTION (`DESIGN.md:366`); UX-DR29's dot is a plain semantic fill reporting a
+   socket. `flex-shrink: 0` so it keeps its size when a long deck name compresses the row.
+
+   NO `transition` AND NO `animation` — see the file header. The colour changes between states by
+   the class changing, instantly, which is what "static under every setting" means. */
+.connection-pill-dot {
+  /* 8px — DESIGN.md, `components.connection-pill.dot-size`: "8px". Twice, for width and height.
+     Larger than the Panel's 6px dot, which is a different component's spec. */
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+}
+
+.connection-pill-dot.is-live {
+  background: var(--positive);
+}
+
+.connection-pill-dot.is-reconnecting {
+  background: var(--caution);
+}
+
+.connection-pill-dot.is-down {
+  background: var(--negative);
+}
+
+/* The text wrapper carries no gap of its own: the spacing between the state word and the deck
+   name is the LITERAL spaces around the em dash, so `button.textContent` is byte-identical to
+   `pillText()` and the glass, the accessible name and the announcement are one string. */
+.connection-pill-text {
+  min-width: 0;
+}
+
+/* THE ROLE AND BOTH ITS COMPANIONS IN ONE BLOCK. `--type-micro` drags `--tracking-micro` AND
+   `text-transform: uppercase`, and `findRoleWithoutCompanions` reads the BLOCK, not the file —
+   splitting them across a base rule and a modifier fails even though the cascade would produce
+   the right pixels (`Footer.css:29-33` states the same rule for the same guard). */
+.connection-pill-state {
+  color: var(--text-tertiary);
+  font: var(--type-micro);
+  letter-spacing: var(--tracking-micro);
+  text-transform: uppercase;
+}
+
+/* The separator and the deck NAME take the case-preserving tier — see the file header for why
+   this is a gate's decision rather than a preference. `--text-secondary` puts the name one tier
+   ABOVE the state word, which is the correct hierarchy for a pill whose reason to name a deck at
+   all is that the deck is the thing the user is looking at. */
+.connection-pill-separator,
+.connection-pill-deck {
+  color: var(--text-secondary);
+  font: var(--type-body);
+}

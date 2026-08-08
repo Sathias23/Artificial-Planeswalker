@@ -8,6 +8,7 @@ import { StatePanel } from './components/StatePanel/StatePanel'
 import { CardDetail } from './containers/CardDetail/CardDetail'
 import { CardGrid } from './containers/CardGrid/CardGrid'
 import { ColourDistribution } from './containers/ColourDistribution/ColourDistribution'
+import { ConnectionPill } from './containers/ConnectionPill/ConnectionPill'
 import { DeckList } from './containers/DeckList/DeckList'
 import { FormatCheck } from './containers/FormatCheck/FormatCheck'
 import { ManaCurve } from './containers/ManaCurve/ManaCurve'
@@ -563,6 +564,20 @@ export default function App() {
           </>
         ) : undefined
       }
+      /* UNCONDITIONAL, AND THAT IS AC 1 RATHER THAN A SIMPLIFICATION (c5-7).
+         Every other slot on this shell is gated on a surface — the grid and the three analysis
+         panels on `surface.kind === 'deck'`, the skip link on `hasCards`, the badges on a loaded
+         deck. The pill is gated on nothing at all: it renders on a loaded deck, on all six state
+         panels, on an empty deck and on a cold open, which is what *"always visible"* means
+         (FR-15, `EXPERIENCE.md:43`, `:112`).
+
+         It takes NO PROP, and it is the second container in the app that does not (`FormatCheck`
+         is the first). It reads `connection` from the system slice and the deck name from the
+         deck slice through their own hooks — deliberately NOT off `surface` or `deck` in this
+         file, because `surfaceOf` returns a PANEL surface in exactly the `'down'` state where the
+         pill must still know a deck is loaded (`deck.ts:481-486`). Passing either from here would
+         have handed it the one answer it must not use. */
+      connectionPill={<ConnectionPill />}
       footer={<Footer />}
     />
   )

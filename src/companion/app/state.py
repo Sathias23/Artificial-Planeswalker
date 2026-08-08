@@ -433,7 +433,18 @@ def ticket_store(app: FastAPI) -> TicketStore | None:
 # ---------------------------------------------------------------------------------------------
 # The connection registry (CM-3, FR-06, AD-8) — c5-4 registers and fans out. c5-5 was scheduled to
 # read `connected_count` and ruled otherwise (Q1): its receipt carries `broadcast()`'s DELIVERED
-# count instead, and this property waits for c5-7's connection pill, which wants a live gauge.
+# count instead.
+#
+# ⚠️ THE FOLLOW-ON PREDICTION WAS FALSIFIED, and is recorded rather than quietly worked around
+# (c5-7, Q6, 2026-08-08). This comment used to end "and this property waits for c5-7's connection
+# pill, which wants a live gauge". The pill shipped, and it wants no such thing: FR-15 and UX-DR29
+# specify a client-side status (live / reconnecting / backend gone) plus the active deck's name,
+# and a connected-client count appears in neither. The pill reads its own socket through the
+# browser's store and makes no backend call at all.
+#
+# `connected_count` is still consumed — see its own docstring — and the honest statement of who
+# might want it is "a future status surface", with c10-1 the nearest candidate; note that c10-1
+# reads `GET /health` for a port and an instance id, still not this count.
 # The third and last of the Structural Seed's three nouns for this module.
 # ---------------------------------------------------------------------------------------------
 
@@ -545,10 +556,22 @@ class ConnectionRegistry:
         so "how many browsers saw it", which is the question the endpoint exists to answer, is
         answerable only by the other one.
 
-        **Kept, and wanted.** c5-7's connection pill asks the question this property actually
-        answers — *is anything listening right now* — which is a live gauge rather than a receipt
-        for one push. So it stays **queryable, cheap and free of I/O**: one ``len`` over an
-        in-memory set, no database (AD-7), no failure mode.
+        **Kept — and the reason given for keeping it was wrong** (c5-7, Q6, Brad 2026-08-08).
+        This paragraph used to read "c5-7's connection pill asks the question this property
+        actually answers". It does not. The shipped pill reports *this browser's own* socket
+        status and the active deck's name (FR-15, UX-DR29); it makes no request to this backend,
+        and a count of other clients appears nowhere in its specification. Recorded as a falsified
+        prediction in the c5-6 mould rather than silently dropped.
+
+        What the property IS for is unchanged and real: it is consumed by this module's own test
+        suite (:mod:`tests.unit.companion.test_ws`) and by
+        :mod:`tests.unit.companion.test_routes_active_deck`. :mod:`~src.companion.app.ws`'s
+        ``broadcast`` reads only :meth:`snapshot`, :meth:`add` and :meth:`discard` — never this
+        property. The question it answers — *is anything listening right now* — is a live gauge a
+        future STATUS SURFACE could want.
+        c10-1 is the nearest candidate and is not a user of it either: it reads ``GET /health``
+        for a port and an instance id. So it stays **queryable, cheap and free of I/O**: one
+        ``len`` over an in-memory set, no database (AD-7), no failure mode.
 
         **Registered is not reachable.** A tab that vanished without a disconnect frame stays
         counted until the next broadcast fails to write to it (or its handler's ``finally`` runs),

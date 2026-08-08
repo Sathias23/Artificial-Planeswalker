@@ -81,6 +81,59 @@ describe('AppShell landmarks (AC 14, Q4)', () => {
     expect(container.textContent).not.toContain('Skip past the deck grid')
   })
 
+  it('renders the connection pill AFTER main and BEFORE the footer (c5-7, AC 9, Q1)', () => {
+    // THE DOM-POSITION RULING, ASSERTED RATHER THAN DESCRIBED — this is the machine-checkable
+    // half of dw:4597, which three artefacts each assumed someone else had closed. Nothing in
+    // this app carries a `tabindex`, so document order IS Tab order (c4-6's ruling) and these
+    // two comparisons ARE the claim "the last Tab stop before the footer links".
+    render(
+      <AppShell
+        left={<p>left column content</p>}
+        connectionPill={<button type="button">Connected</button>}
+        footer={<p>footer content</p>}
+      />,
+    )
+    const pill = screen.getByRole('button', { name: 'Connected' })
+
+    // AFTER the columns: `main` precedes the pill.
+    expect(
+      screen.getByRole('main').compareDocumentPosition(pill) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    // BEFORE the footer: the pill precedes `contentinfo`.
+    expect(
+      pill.compareDocumentPosition(screen.getByRole('contentinfo')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    // And OUTSIDE all three landmarks, like the skip link at the other end of the document —
+    // a `<div>` between `main` and `footer` must never become a fourth landmark.
+    expect(screen.getByRole('banner').contains(pill)).toBe(false)
+    expect(screen.getByRole('main').contains(pill)).toBe(false)
+    expect(screen.getByRole('contentinfo').contains(pill)).toBe(false)
+  })
+
+  it('keeps the counts at 1/1/1 WITH a connection pill present (c5-7, AC 9)', () => {
+    render(
+      <AppShell
+        connectionPill={<button type="button">Connected</button>}
+        footer={<p>footer content</p>}
+      />,
+    )
+
+    expect(screen.getAllByRole('banner')).toHaveLength(1)
+    expect(screen.getAllByRole('main')).toHaveLength(1)
+    expect(screen.getAllByRole('contentinfo')).toHaveLength(1)
+  })
+
+  it('renders NOTHING in the pill slot when it is empty — no placeholder (c5-7)', () => {
+    // The skip link's exception applied a second time, and for a sharper reason: this element is
+    // FIXED to a window corner on every surface, so a placeholder naming c5-7 would sit on the
+    // glass permanently AND never scroll away. `main` is followed directly by the footer.
+    const { container } = render(<AppShell left={<p>left column content</p>} />)
+
+    expect(screen.getByRole('main').nextElementSibling?.tagName).toBe('FOOTER')
+    expect(container.textContent).not.toContain('c5-7')
+  })
+
   it('puts BOTH columns inside the single main landmark', () => {
     render(<AppShell left={<p>left column content</p>} right={<p>right column content</p>} />)
 

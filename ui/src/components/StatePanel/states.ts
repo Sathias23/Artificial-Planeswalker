@@ -274,7 +274,9 @@ export const RETRIES_QUIETLY = {
   // **This entry is READ AT RUNTIME as of c5-6** — `src/state/socket.ts` indexes it to decide
   // whether to keep scheduling behind the panel, so flipping it to `false` really does stop the
   // loop. That is the difference between a declaration and a contract, and `socket.test.ts` flips
-  // it in a try/finally to prove the behaviour follows. (The PILL is still c5-7's.)
+  // it in a try/finally to prove the behaviour follows. **The PILL shipped at c5-7**, and its
+  // `down` copy is the announcement — "Backend gone — retrying quietly" — which is TRUE only
+  // while this entry is `true`. `copy-tails.test.ts` now holds the two together.
   disconnected: true,
   'internal-error': false,
 } satisfies Record<StateKey, boolean>

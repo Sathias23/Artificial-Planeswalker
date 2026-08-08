@@ -982,12 +982,19 @@ class TestTheDocstringExamplesRun:
 
 
 class TestTheConnectionRegistry:
-    """AC 1-5: the holder c5-7's connection pill will read a count from, beside the ticket store
-    it copies.
+    """AC 1-5: the holder the fan-out counts clients from, beside the ticket store it copies.
 
-    c5-5 was the story named here, and it ruled otherwise (Q1, Brad 2026-08-08): its receipt
-    carries the delivered count from `broadcast()`, not `connected_count`. The property is kept
-    for the live-gauge question c5-7 asks.
+    TWO SUCCESSIVE PREDICTIONS ABOUT WHO WANTS `connected_count` HAVE NOW BEEN FALSIFIED, and both
+    are recorded rather than rewritten out. c5-5 was named first and ruled otherwise (Q1, Brad
+    2026-08-08): its receipt carries the delivered count from `broadcast()`. This docstring then
+    said the property was kept "for the live-gauge question c5-7 asks" — and c5-7 shipped on
+    2026-08-08 asking no such question. Its connection pill reports the browser's OWN socket
+    status and the active deck's name (FR-15, UX-DR29) and calls this backend not at all.
+
+    The property is kept because this test module and `test_routes_active_deck.py` consume it —
+    `ws.broadcast` itself reads only `snapshot`/`add`/`discard`, never this property. The honest
+    owner of the live-gauge question is a future status surface, and c10-1 — the nearest
+    candidate — reads `GET /health` rather than a client count.
 
     Driven entirely against :class:`FakeConnection`, which is the point of the structural protocol:
     the registry is a container, and a container's contract is provable without a web server.
@@ -1035,8 +1042,10 @@ class TestTheConnectionRegistry:
     def test_adding_the_same_connection_twice_registers_it_once(self):
         """One socket is one client: the handler registers once, but a re-entrant add must not
         double it, or every count derived from this set would over-report the tabs that exist —
-        c5-7's pill directly, and c5-5's delivered count indirectly, since the fan-out iterates a
-        snapshot of this set and would write to the same socket twice."""
+        c5-5's delivered count included, since the fan-out iterates a snapshot of this set and
+        would write to the same socket twice. (This used to name "c5-7's pill directly" as the
+        other consumer; that prediction was falsified when the pill shipped reading nothing from
+        this backend — see the class docstring.)"""
         registry, connection = ConnectionRegistry(), FakeConnection()
 
         registry.add(connection)

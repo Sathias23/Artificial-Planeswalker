@@ -594,8 +594,8 @@ marked as such rather than listed as if they existed:
 > its kind has received a push, so on a cold-open session this stop never exists)* → card tiles in
 > visual order, **each DFC's flip control immediately after its own tile** → **card detail: the
 > unpin control (while pinned), the panel's own flip control (when the target is flippable), the
-> oracle scroller** → deck-row list → *(connection pill — **c5-7**, Epic 5)* → footer links;
-> inside an open agent view, Tab is trapped.
+> oracle scroller** → deck-row list → **connection pill (c5-7 — SHIPPED 2026-08-08)** → footer
+> links; inside an open agent view, Tab is trapped.
 
 **What changed and why (c4-11 Q2).** The previous enumeration was wrong in both directions. It
 named three stops that **cannot exist** — the nav pills and the connection pill are backlog, and
@@ -605,18 +605,35 @@ already ship**: the card detail panel's unpin control (c4-5), its own copy of th
 `tabindex="-1"`. `CardDetail.tsx:117-124` predicted the first omission by name and assigned the
 correction here: *"c4-11 must add it to the enumeration rather than rediscover it."*
 
-**The connection pill's DOM position is NOT decided here.** Three stories each assume someone else
-fixed it — this rule put it between the deck rows and the footer, c5-7 cites UX-DR47 and is silent
-on position, and c10-1 calls it *"the last stop before the footer"* — while `DESIGN.md:445` places
-it physically **bottom-left**, in the other column from the deck rows. Re-homed to **c5-7**, which
-is the story that builds the component.
+**The connection pill's DOM position WAS decided by nobody, and c5-7 decided it (dw:4597, CLOSED
+2026-08-08).** Three stories each assumed someone else had fixed it — this rule put it between the
+deck rows and the footer, c5-7 cited UX-DR47 and was silent on position, and c10-1 calls it *"the
+last stop before the footer"* — while `DESIGN.md:479` places it physically **bottom-left**, in the
+other column from the deck rows. c4-11 declined to decide it without the component and re-homed it
+to **c5-7**, which built the component and ruled it (Brad, 2026-08-08):
+
+> The pill is a sibling between `</main>` and `<footer>` in `AppShell.tsx` — **after both columns
+> and immediately before the footer**, which is the enumeration above — while `ConnectionPill.css`
+> pins it visually to the **bottom-left** corner with a `position: fixed` inset that clears the
+> footer strip. Document order and visual position are therefore both satisfied, and the two
+> readings that looked contradictory were only ever about different axes: this rule and c10-1 were
+> describing TAB order, `DESIGN.md` was describing the SCREEN.
+
+The rejected alternative is recorded because it is the one a later reader would reach for: an
+in-flow last child of the LEFT column renders bottom-left with no fixed positioning at all, and
+puts the pill *before the entire right column* in Tab order — contradicting this enumeration,
+c10-1's wording, and (on any surface where the left column is a state panel) AC 1 as well.
 
 *(Arrow-key grid navigation is explicitly deferred out of MVP — gate H3 — with the skip link as
 sole mitigation and a **revisit-before-public-release flag**, since the Fan Content Policy links
 sit behind the grid. **The cost, measured over all 40 real decks at c4-11: 206 Tab stops max /
 78 median / 102.0 mean from the header to the first footer link; the skip link removes only the
 first 105, leaving 101; 19 of 40 decks stay more than 50 stops from the footer and 36 of 40 stay
-more than 20.** The flag is carried on **c8-6**, which actions or re-accepts it.)*
+more than 20.** ⚠️ **Every one of those figures gains exactly +1 as of c5-7 and was not
+re-measured** — the connection pill is an always-present stop inside this corridor, so the sweep's
+numbers become 207 / 79 / 103.0 with 102 left after the skip link. The suite's pins were recomputed
+from the DOM; the 40-deck sweep was not re-run. The flag is carried on **c8-6**, which actions or
+re-accepts it.)*
 
 ⚠️ **Coverage-map defect, recorded rather than resolved**: this file's own **UX-DR coverage**
 table (under the *FR Coverage Map* section, below — cited by name rather than line number, after the

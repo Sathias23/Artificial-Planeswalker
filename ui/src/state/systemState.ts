@@ -46,8 +46,10 @@ export interface SystemState {
    *
    * **A field on this slice rather than a fourth store, and that was a ruling.** The alternative
    * spends a `STORES` entry in `store-writes.test.ts` and a whole writer module on ONE
-   * three-valued field whose only two consumers — `surfaceOf` and **c5-7**'s connection pill —
-   * both already read this slice. What makes it belong here rather than merely fit: the poll and
+   * three-valued field whose only two consumers — `surfaceOf` and the connection pill (**shipped
+   * at c5-7**, reading through {@link useConnection}) — both already read this slice. The
+   * prediction held: the second consumer arrived one story later and needed no new store. What
+   * makes the field belong here rather than merely fit: the poll and
    * the socket are the app's two answers to the same question, *is the backend there*, and the
    * one place they are reconciled is `surfaceOf`, which takes this whole object.
    *
@@ -97,6 +99,36 @@ export const useSystemStore = create<SystemState>(() => INITIAL_SYSTEM_STATE)
 export const applyConnection = (connection: ConnectionStatus): void => {
   useSystemStore.setState({ connection })
 }
+
+/**
+ * The connection status alone, for a consumer that wants only that field (story c5-7, Q5).
+ *
+ * ==== WHY A SECOND HOOK RATHER THAN A SECOND `useSystemState()` CALLER ==================
+ * {@link useSystemState} does two things — it subscribes AND it owns the poll — and its docstring
+ * makes "`App` is the ONE consumer" a rule rather than an observation, because every mounted
+ * caller creates its own poller. So a second consumer could not use it even if it wanted the whole
+ * slice. This hook is the read half with none of the ownership: no effect, no poller, no writes.
+ *
+ * ==== AND IT IS SELECTOR-BASED, WHICH IS dw:5430's DISPOSITION ==========================
+ * That entry records the selector-less subscription in `App` as a standing cost *"the pill (c5-7)
+ * and Epic 6 will both inherit"*, and homes the question here: **"c5-7 if the pill wants finer
+ * granularity."** It does. `App` re-renders wholesale on every system write — `panel`, `decks` and
+ * `connection` alike — and a pill that subscribed the same way would add a second whole-store
+ * subscription to re-render a component that can only ever show one of the three fields. With the
+ * selector, the pill re-renders when `connection` changes and at no other time.
+ *
+ * **The entry is CLOSED by this, and the cost it records is not.** `App`'s own subscription is
+ * unchanged and still selector-less, deliberately: it reads all three fields, so a selector there
+ * would be ceremony. What dw:5430 asked was whether the pill wanted finer granularity; the answer
+ * is yes, and it is one line rather than a change to how the store is written.
+ *
+ * The store, {@link applyConnection} and `store-writes.test.ts`'s `STORES` table are untouched:
+ * this adds a READER, and a reader is not a writer.
+ *
+ * Returns:
+ *   The current connection status. Re-renders the caller only when that field changes.
+ */
+export const useConnection = (): ConnectionStatus => useSystemStore((state) => state.connection)
 
 /**
  * Watch the system state change, without naming the store (c4-2 review, the recovery re-drive).
