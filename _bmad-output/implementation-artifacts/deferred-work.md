@@ -1935,6 +1935,18 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   now the only story this entry still names. The "derive the list from `build_app()`" fix is still
   not taken: at three consecutive paid taxes the named-failure trade is still winning, and c5-2 has
   no more standing to change a shared test's design than c3-3 did.
+  **TAX PAID OUT — ENTRY CLOSED, c5-5 (2026-08-08).** `routes/agent_events.py` is a new router, so
+  the last story this entry named by key came due and paid: adding `agent_events.router` to
+  `build_app()` reddened `test_the_schema_is_unchanged_by_installing_the_mount` with *"Extra items
+  in the left set: '/agent/events'"* before the line existed. One line added, exactly as advertised.
+  **No story key remains outstanding on this entry.** The "derive the list" fix is *still* not
+  taken, and after four consecutive paid taxes that is now a settled preference rather than a
+  deferral: each tax cost one line and produced a named failure naming the missing path, which is
+  the trade the design was chosen for. Anyone reopening this should bring a story that got it wrong,
+  not a story that found it tedious. A second observation worth keeping, because it was measured
+  four times and never stated: **the tax has never once caught a real bug** — every red was the
+  author's own new router, seen immediately. Its value is the shape of the failure it would produce
+  for the author who *doesn't* notice, which no amount of paid tax can evidence.
 
 ## Deferred from: code review of c3-1-deck-list-and-deck-detail-endpoints (2026-07-31, post-commit pass)
 
@@ -2356,6 +2368,23 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   two-instance pattern rather than one story's choice, and it narrows c5-5's job: the six are all
   *pre-existing* declarations on the `shared`/`database_responses` includes, so curating them is a
   single edit at two call sites — not a survey. **Home: still c5-5.**
+  **CLOSED, c5-5 (Q4, Brad 2026-08-08), and c5-2's narrowing was exactly right.** The fix was a
+  single edit at two call sites, as predicted: `payload_too_large` removed from `health_responses`
+  and `database_responses` in `build_app()`, and declared per-route on the two operations that can
+  answer it — `POST /agent/events` (its own include) and `PUT /api/active-deck` (beside its
+  existing `forbidden`). `error_responses` itself needed no change, which is what Q4 touching the
+  *caller* rather than the helper was preserving.
+  **Zero body-less GETs now publish an unreachable 413**, down from six. Pinned two ways, because
+  an absence is easy to reintroduce: `test_routes_agent_events.py::
+  TestTheCapIsDeclaredOnlyWhereItCanAnswer::test_exactly_the_two_body_bearing_operations_declare_it`
+  walks the whole document and asserts the declaring set is exactly those two operations, and
+  `test_errors.py`'s structural pin now asserts the `ErrorResponse` ref on the 413 where it is
+  reachable instead of on `/health`. An R2 probe restoring the token to the shared health set
+  reddened three tests plus the byte-snapshot guard.
+  **What made it safe now and not at c3-9**: until c5-5 the token had no producer anywhere, so
+  *every* declaration was unreachable and "which operations can answer it" had the empty set as its
+  honest answer. Because the cap is middleware rather than a per-route dependency, the declaring
+  set and the enforcing set are now the same two operations by construction. (Severity: closed.)
 
 - **The image-discriminator prose is maintained by hand in two Python docstrings with no drift
   gate between them.** The same three paragraphs (split-card trap, per-face `image_uris`
@@ -2618,6 +2647,24 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   has **no producer** — and AD-7's 64 KB envelope limit. (Severity: Low — a loopback port behind
   `Host` validation, reachable only by local software that could do worse directly. But "the first
   endpoint with a body shipped with no thought about body size" is a sentence worth never writing.)
+  **CLOSED, c5-5 (Q2, Brad 2026-08-08).** Built as `src/companion/app/body_cap.py`'s
+  `BodyCapMiddleware` — pure ASGI, installed by `install_body_cap(app)` before `install_security`
+  so it ends up innermost of the three middlewares. It enforces `Content-Length` first (a courtesy
+  that refuses an honest client without a transfer) and a **counted-bytes** bound second (the one
+  that actually holds, since a caller controls its own headers), sends `error_response(
+  "payload_too_large")` rather than raising — the c1-5 ruling, and an R2 probe confirmed a raise
+  here surfaces as a false `500` on six tests — and never calls the inner application for an
+  over-cap request, so no route can ever receive a partial body.
+  **Every requirement this entry set was met:** one mechanism, both endpoints (`POST /agent/events`
+  *and* `PUT /api/active-deck`, neither containing a line about size); middleware-shaped as Q4
+  predicted; and designed against the 64 KB envelope rather than against one story's ~40-byte body.
+  `payload_too_large` has a producer for the first time since c1-4.
+  **One measurement the entry could not have anticipated, recorded because it changes how the two
+  caps relate.** They are **not nested**: a `groups` envelope with every string at its field limit
+  and every list at its length serialises to **104,067 bytes**, 1.6x the ceiling, while violating no
+  field cap at all. So the byte cap can refuse a payload pydantic would accept, and the two
+  rejection classes overlap rather than partitioning the input. The byte cap wins when both apply,
+  because it runs first.
 
 - **There is no way to clear the active deck over the wire.** `ActiveDeckRequest.deck_id` is
   required and does not accept `null`, so the only transitions are *set* and *process restart*
@@ -2690,6 +2737,21 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   must consciously decide whether that pin is a contract or a snapshot — a middleware-level cap
   changes the observable order and would red the pin. **Home: c5-5.** (Severity: Low on loopback;
   it is also a free validation oracle for unauthenticated callers until the cap lands.)
+  **DISPOSITIONED — ENTRY CLOSED, c5-5 (Q3, Brad 2026-08-08). Ruled: SNAPSHOT.** Nothing designed
+  that order; FastAPI did, and the pin recorded a measurement of 0.140.0. So the story was free to
+  change it, and the fail-cheap order (refuse on size before buffering or authenticating) is the
+  right one.
+  **What the ruling predicted did not happen, and the difference is the useful part.** The entry —
+  and the story's own Q3 — expected the middleware to redden this pin. **It did not** (measured
+  2026-08-08, full suite). The cap only reorders *oversized* bodies, and both bodies the pin drives
+  are a few dozen bytes, so both original assertions held untouched. The disposition therefore cost
+  an **addition** rather than a revision: a third assertion pinning that an oversized body answers
+  `413` with no credential at all, so the whole total ordering (size, then body, then credential) is
+  legible in one test rather than split across two files. No assertion was deleted and nothing went
+  through review as a revision, because there was nothing to revise.
+  **The free validation oracle this entry mentions is now narrower but not gone**: an
+  unauthenticated caller still learns 400-vs-403 for well-sized bodies. That is unchanged by c5-5
+  and remains unowned.
 - **A future hand-raised 405's deliberate headers are overridden or case-split by the `Allow`
   recompute.** `errors.py`'s 405 branch replaces any author-supplied `Allow` with the
   partial-match union — which, for a request that *fully* matched the raising route, excludes that
@@ -5105,6 +5167,21 @@ engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries cha
   and the ordering between them. **Home: unowned, informational** — cheap, and the next story to
   add a component is the natural one. (Severity: Low — it costs a confused half-hour, not
   correctness.)
+  **OBEYED AND CONFIRMED at c5-5 (2026-08-08) — the first story since this was ledgered with a real
+  schema diff, and the warning was worth its words.** c5-5 moved the document by one path and
+  seventeen components. Running `npm run gen:api` between the source change and the pin update was
+  what made the two `test_committed_schema.py` reds meaningful rather than noise; the four
+  route-level schema assertions in `test_routes_agent_events.py` were red for exactly this reason
+  until the regeneration ran, and would have read as an authoring bug to anyone who had not read
+  this entry.
+  **Confirmed a second time by the R2 pass, in the direction the entry describes.** The probe that
+  restored `payload_too_large` to the shared health include reddened
+  `test_openapi_contract.py::test_committed_schema_matches_the_live_app` — the *shipped-equals-live*
+  guard — alongside the live-app assertions, while the pins reading the committed file behaved
+  exactly as this entry says they would. The pair is complete and the ordering is real.
+  **The fix shape is still not taken** and is still worth a sentence: c5-5 read this entry instead
+  of rediscovering it, which is the entry doing its job, but that only works for an author who
+  finds the ledger. (Severity: Low, unchanged. **Home: still unowned.**)
 
 ## Deferred from: code review of c5-2-same-origin-session-endpoint-minting-single-use-websocket-tickets (2026-08-08)
 

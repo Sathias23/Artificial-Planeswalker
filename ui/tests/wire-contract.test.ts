@@ -15,9 +15,13 @@
  * event-envelope payloads and this ban list did **not** grow — which is the mechanism working, not
  * failing: a model no route references never reaches `components.schemas`, so there was nothing to
  * pick up (measured 2026-08-07, schema unchanged at twelve components). "On the day those routes
- * land" was the operative clause all along, and that day is **c5-5**, which puts the union on
- * `POST /agent/events`. A hard-coded name list would stop growing and become decoration — do not
- * turn it into one. The aliases
+ * land" was the operative clause all along, and **that day was c5-5**, which put the union on
+ * `POST /agent/events` — measured 2026-08-08: `components.schemas` went from thirteen to
+ * **thirty**, and the ban list grew by seventeen names with **no edit to this file**. That is the
+ * strongest evidence the derive-don't-enumerate design has produced: one route declaration, and
+ * every event model became a banned hand-roll automatically. A hard-coded name list would have
+ * needed seventeen additions and would have stopped growing the next time. Do not turn it into
+ * one. The aliases
  * `src/api/schema.ts` re-exports are read the same way (from that file's `export type` lines),
  * because a derived alias like `ErrorReason` never appears in `components.schemas` yet is
  * exactly the shape a hand-rolled duplicate would drift from (c2-3 review ruling, 2026-07-27).

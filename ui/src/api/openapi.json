@@ -31,16 +31,6 @@
               }
             }
           },
-          "413": {
-            "description": "reason: payload_too_large",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
           "503": {
             "description": "reason: database_unavailable",
             "content": {
@@ -86,16 +76,6 @@
           },
           "400": {
             "description": "reason: invalid_request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "reason: payload_too_large",
             "content": {
               "application/json": {
                 "schema": {
@@ -156,16 +136,6 @@
           },
           "400": {
             "description": "reason: invalid_request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "reason: payload_too_large",
             "content": {
               "application/json": {
                 "schema": {
@@ -244,16 +214,6 @@
               }
             }
           },
-          "413": {
-            "description": "reason: payload_too_large",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
           "503": {
             "description": "reason: database_not_initialized | database_unavailable",
             "content": {
@@ -317,16 +277,6 @@
           },
           "400": {
             "description": "reason: invalid_request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "reason: payload_too_large",
             "content": {
               "application/json": {
                 "schema": {
@@ -428,16 +378,6 @@
           },
           "400": {
             "description": "reason: invalid_request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "reason: payload_too_large",
             "content": {
               "application/json": {
                 "schema": {
@@ -581,6 +521,16 @@
                 }
               }
             }
+          },
+          "413": {
+            "description": "reason: payload_too_large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -603,6 +553,106 @@
           },
           "400": {
             "description": "reason: invalid_request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "reason: internal_error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/events": {
+      "post": {
+        "summary": "Ingest Event",
+        "description": "Relay one agent event to every connected client, and report how many received it.\n\nAnswers ``200`` whether twenty tabs were listening or none were. **Zero is a success**: a\ncompanion with no browser open is the ordinary state, the event was delivered exactly as\ninstructed, and a caller that retried on zero would push duplicates at the first tab to open.\n\nThe event is relayed **verbatim** — nothing here rewrites, enriches or validates its contents\nbeyond the envelope's own declared shape. Card ids in particular are not checked against the\ndatabase; a view degrades an unknown entry and renders the rest.",
+        "operationId": "ingest_event_agent_events_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/SuggestionsEvent"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SwapsEvent"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TierListEvent"
+                  },
+                  {
+                    "$ref": "#/components/schemas/GroupsEvent"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DeckChangedEvent"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ActiveDeckChangedEvent"
+                  }
+                ],
+                "title": "Body",
+                "discriminator": {
+                  "propertyName": "kind",
+                  "mapping": {
+                    "suggestions": "#/components/schemas/SuggestionsEvent",
+                    "swaps": "#/components/schemas/SwapsEvent",
+                    "tier_list": "#/components/schemas/TierListEvent",
+                    "groups": "#/components/schemas/GroupsEvent",
+                    "deck_changed": "#/components/schemas/DeckChangedEvent",
+                    "active_deck_changed": "#/components/schemas/ActiveDeckChangedEvent"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventIngestReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "reason: invalid_request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "reason: forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "reason: payload_too_large",
             "content": {
               "application/json": {
                 "schema": {
@@ -647,6 +697,69 @@
         ],
         "title": "ActiveDeck",
         "description": "Which deck the companion is currently displaying, or ``null`` for none (FR-07).\n\n``null`` is the answer, not the absence of one. The active deck is a resource that always\nexists and whose value may be \"no deck\", so asking on a cold open answers ``200`` with\n``deck_id: null`` — never ``404``, and never a different shape. **The same model answers both\noperations**, so a reader has one shape to render and a writer has one shape to assert on.\n\nThe value lives in the companion's memory and **dies with the process**: after a restart this\nreports ``null`` again, whatever was displayed before. That is specified behaviour rather than a\nlimitation — the agent sets the deck, so a fresh backend genuinely has no deck to show until it\nis told (FR-07, CM-3).\n\nA non-null ``deck_id`` is **not a promise that the deck still exists.** Nothing validates it on\nthe way in — that is the MCP tool's job, since it is the party with database access and the one\nthat must tell the agent (AD-16) — and a deck can be deleted after being set. A reader that\nfetches the deck and gets ``deck_not_found`` is seeing the ordinary case, not a broken\ninvariant."
+      },
+      "ActiveDeckChangedEvent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "kind": {
+            "type": "string",
+            "const": "active_deck_changed",
+            "title": "Kind"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/ActiveDeckChangedPayload"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "ts",
+          "kind",
+          "payload"
+        ],
+        "title": "ActiveDeckChangedEvent",
+        "description": "A system signal that the companion is now displaying a different deck (AD-6, FR-07).\n\nCarries no view. A reader switches to the named deck, or clears to the no-active-deck state\nwhen the id is ``None``.",
+        "examples": [
+          {
+            "id": "5e1a8fd2-6293-4a54-b17e-bf629dca5e48",
+            "kind": "active_deck_changed",
+            "payload": {
+              "deck_id": "076ac3ed-b59a-431f-b286-af7ed2c8704e"
+            },
+            "ts": "2026-08-07T09:20:00Z"
+          }
+        ]
+      },
+      "ActiveDeckChangedPayload": {
+        "properties": {
+          "deck_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deck Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ActiveDeckChangedPayload",
+        "description": "The companion is now displaying a different deck — switch to it (FR-07, FR-11).\n\n**Not the same signal as** ``deck_changed``, and the distinction is load-bearing: this one says\n*which deck you are looking at* has changed, the other says *the deck you are looking at was\nedited*. A client that conflates them refetches the deck it is leaving instead of the one it is\nswitching to, and shows stale contents that look authoritative.\n\nIt fires on **every** set, including one that writes the same deck id again. Suppressing a\nredundant broadcast sounds like a free optimisation and is not: the active-deck slot needs no\nlock precisely because writing it is a single assignment that never consults the old value, and\n\"only broadcast if it changed\" is exactly a read-modify-write. A duplicate signal costs one\nidempotent refetch; the alternative costs a lock (Q10, Brad 2026-08-07)."
       },
       "ActiveDeckRequest": {
         "properties": {
@@ -1020,6 +1133,69 @@
         "title": "DeckCardSummary",
         "description": "One card entry in a deck: how many, which board, and the card itself.\n\nCarries the quantity, whether the entry is sideboard, whether it is the\ncommander, and a summary of the card. The card is a bounded summary rather\nthan the full card record, so a decklist stays small; fetch the full card\nseparately when detail (legalities, images, faces) is needed."
       },
+      "DeckChangedEvent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "kind": {
+            "type": "string",
+            "const": "deck_changed",
+            "title": "Kind"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/DeckChangedPayload"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "ts",
+          "kind",
+          "payload"
+        ],
+        "title": "DeckChangedEvent",
+        "description": "A system signal that a deck's contents were edited (AD-6, FR-11).\n\nCarries no view. A reader refetches and re-renders whatever it was already showing.",
+        "examples": [
+          {
+            "id": "4d0f7ec1-5182-4f43-a06d-ae518cbf4d37",
+            "kind": "deck_changed",
+            "payload": {
+              "deck_id": "076ac3ed-b59a-431f-b286-af7ed2c8704e"
+            },
+            "ts": "2026-08-07T09:19:00Z"
+          }
+        ]
+      },
+      "DeckChangedPayload": {
+        "properties": {
+          "deck_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deck Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "DeckChangedPayload",
+        "description": "The contents of a deck were edited — refetch it (FR-11).\n\nA system signal, not a view: it carries no items and renders nothing. NFR-04's model is\n\"something changed, refetch\", so this says which deck and stops.\n\n``deck_id`` is **nullable, and that is deliberate today rather than lax**. A later phase emits a\ndeck-agnostic version of this same signal — \"some deck you may be showing changed\" — and if the\nfield shipped required, that phase would have to break a contract already committed into a\n``.d.ts`` and two mirrored plugin bundles. Which is the exact ripple this whole story exists to\nprevent, so the nullability is bought now, for free (Q5, Brad 2026-08-07)."
+      },
       "DeckDetail": {
         "properties": {
           "id": {
@@ -1220,6 +1396,20 @@
         "title": "ErrorResponse",
         "description": "The body of every non-2xx response — the token, and nothing else (AD-16).\n\nThe serialised shape is exactly ``{\"reason\": \"<token>\"}``. There is deliberately **no**\n``message``, ``detail``, ``status`` or ``errors[]`` field:\n\n* **the copy lives in the UI.** ``EXPERIENCE.md`` fixes the verbatim wording of every state\n  panel, and UX-DR33 bans \"something went wrong\"; a server-side prose field would be a second\n  source of user-facing copy that no UX review covers.\n* **prose would leak input back.** FastAPI's validation detail echoes the offending value, and\n  the companion is one ``fetch`` away from any page in the browser. The detail goes to the log.\n* **the token is the contract.** Anything a human needs beyond it belongs in the log. If a\n  later story genuinely needs machine-readable specifics, it adds a *typed* optional field with\n  a named UX consumer — not a free-text bucket.\n\nWhat each token means on the glass, which is why the set is closed:\n\n* ``deck_not_found`` — the deck the caller asked for is gone (deleted between a push and a\n  refetch); the SPA clears to the **No-active-deck** panel.\n* ``card_not_found`` — no card in the local database carries that printing id. The **only**\n  token whose destination is not a panel: the view that referenced the card renders normally\n  and shows an **\"Unknown card\"** placeholder in that one slot, with no banner and no apology\n  (FR-13). One unknown card must never fail a whole view or a whole push. The placeholder is\n  built in c4-3.\n* ``no_image_data`` — the card exists, but there is no artwork to serve for what was asked:\n  either the printing carries no image data at all (79 cards in the shipped corpus), or the\n  requested face is beyond the images it has. **Permanent** — retrying cannot help — so the\n  view renders normally and that one slot draws the **named Card placeholder** (the card's\n  name, mana cost and type line, which the client already holds from\n  ``GET /api/cards/{card_id}``). Never a grey rectangle, a 1×1 pixel or a generic card back.\n* ``image_fetch_failed`` — the card's image URL is known but could not be retrieved: the CDN\n  timed out, answered a non-2xx, returned something that was not an image, or the stored URL\n  pointed somewhere the companion refuses to fetch from. **Transient**, which is the whole\n  reason it is a separate token from ``no_image_data`` — the pixels are identical (the same\n  named Card placeholder) but only this one may ever be retried. Since c3-8 a failure is\n  **negative-cached with an exponential backoff**, so a repeat request inside the window is\n  answered from memory with this same token and no CDN request at all; the window starts at 30\n  seconds, doubles per consecutive failure and is capped at 300. Indistinguishable from a fresh\n  failure on the wire, deliberately: a client has no different action to take, and the\n  consequence a reader of this file should know is that a tile can stay a placeholder for up to\n  the ceiling **after** the CDN has recovered.\n* ``database_not_initialized`` — fresh install, no card database yet; the **\"Card database not\n  set up yet.\"** panel, which tells the user to ask their agent to run ``initialize_database``.\n* ``database_unavailable`` — reads are failing transiently (a bulk refresh in flight, or an\n  unhandled backend fault); the **\"Card database is updating.\"** panel, which retries quietly.\n* ``invalid_request`` — the request itself was malformed, or aimed at a path/method/``Host``\n  the companion does not serve. No panel of its own: the SPA never generates one, so it means\n  a client bug or a stray caller, and the log is where it is diagnosed.\n* ``forbidden`` — an agent-only endpoint was called without a valid credential (c3-4). Like\n  ``payload_too_large``, the audience is the **agent**, not the glass: the browser never holds\n  the credential and never calls a route that wants one, so a panel here would report a\n  failure the reader did not cause and cannot fix. Its consumer is the MCP tool's outcome\n  vocabulary, where AD-8's re-read-discovery-and-retry-once lives.\n* ``payload_too_large`` — an agent push exceeded the ingest cap (c5-5). Surfaced to the *agent*\n  through the MCP tool's outcome vocabulary, not to the glass.\n* ``internal_error`` — the companion itself hit an unhandled bug (500). Deterministic, so the\n  SPA must **not** quietly retry it the way ``database_unavailable`` retries; its state panel\n  is written in Epic 2 (c2-9). The log carries the traceback; the wire carries the token."
       },
+      "EventIngestReceipt": {
+        "properties": {
+          "clients": {
+            "type": "integer",
+            "title": "Clients"
+          }
+        },
+        "type": "object",
+        "required": [
+          "clients"
+        ],
+        "title": "EventIngestReceipt",
+        "description": "The body of ``POST /agent/events`` — how many connected clients received the push (FR-06).\n\nThe push itself carries no answer: a WebSocket frame is written and not acknowledged, so this\nreceipt is the **only** thing that tells a caller whether its content actually reached a\nbrowser. That is what the endpoint is for — an agent that pushed a tier list can say \"shown in\ntwo tabs\" or \"nothing is listening\" rather than guessing.\n\n**Zero is a success, not a failure.** A companion with no tab open is the ordinary state, and a\npush nobody heard is delivered exactly as instructed; the caller should report that rather than\nretry. Nothing about the payload is echoed back (CM-1) — the agent already has what it sent, and\na body that repeated it would double the cost of every push to say nothing new."
+      },
       "FormatCheckReport": {
         "properties": {
           "is_legal": {
@@ -1299,6 +1489,127 @@
         "title": "FormatCheckRow",
         "description": "One check in a deck's format report: what was checked, how it came out, and why.\n\n``status`` is one of ``pass``, ``advisory`` or ``violation``. ``advisory`` means the check\ncould not be answered rather than that the deck failed it — an unrecognised format, or a\ncheck with no local data behind it — so it should never be presented as a fault in the deck.\nA row is present for every check whether or not anything is wrong, so a panel can render a\ncomplete list rather than only bad news."
       },
+      "GroupItem": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "rationale": {
+            "type": "string",
+            "maxLength": 600,
+            "title": "Rationale"
+          },
+          "card_ids": {
+            "items": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "type": "array",
+            "maxItems": 60,
+            "title": "Card Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "title",
+          "rationale"
+        ],
+        "title": "GroupItem",
+        "description": "One named group of cards and the paragraph explaining it (AD-7).\n\nThe ``title`` renders as a heading with a count and the ``rationale`` as the paragraph beneath\nit. This ``title`` is the **group's own**, not the payload-level agent-view header — the two\nlive at different levels and a push may carry both.\n\nA group may reference cards **outside the active deck**: grouping is an argument about cards,\nnot an inventory of the deck, so a group naming a card the reader does not own is legal and\nrenders normally.\n\nAn empty ``card_ids`` list is legal, and the view skips it.",
+        "examples": [
+          {
+            "card_ids": [
+              "076ac3ed-b59a-431f-b286-af7ed2c8704e"
+            ],
+            "rationale": "These accelerate you into the six-drops a turn early, which is the whole plan.",
+            "title": "Ramp"
+          }
+        ]
+      },
+      "GroupsEvent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "kind": {
+            "type": "string",
+            "const": "groups",
+            "title": "Kind"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/GroupsPayload"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "ts",
+          "kind",
+          "payload"
+        ],
+        "title": "GroupsEvent",
+        "description": "An agent push gathering cards into named groups (AD-6).\n\nSame envelope as every other event: ``kind`` selects the payload shape, ``id`` is opaque\nidentity, ``ts`` is the timezone-aware ordering key.",
+        "examples": [
+          {
+            "id": "3c9e6db0-4071-4e32-bf5c-9d407bae3c26",
+            "kind": "groups",
+            "payload": {
+              "items": [
+                {
+                  "card_ids": [
+                    "076ac3ed-b59a-431f-b286-af7ed2c8704e"
+                  ],
+                  "rationale": "Accelerates into the six-drops.",
+                  "title": "Ramp"
+                }
+              ],
+              "title": "What this deck is doing"
+            },
+            "ts": "2026-08-07T09:18:00Z"
+          }
+        ]
+      },
+      "GroupsPayload": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GroupItem"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "GroupsPayload",
+        "description": "Cards gathered into named groups, each with a paragraph of reasoning (AD-7).\n\nNothing re-sorts the groups. An empty ``items`` list is legal."
+      },
       "HealthResponse": {
         "properties": {
           "status": {
@@ -1332,6 +1643,429 @@
         ],
         "title": "SessionTicket",
         "description": "The body of ``GET /api/session`` — one short-lived credential for one WebSocket upgrade.\n\nRead this immediately before opening the socket and present it on the upgrade. It is\n**single-use** and **short-lived** — it expires soon after it was issued — so it cannot be\nstored, shared between tabs, or reused across reconnects: a client that reconnects asks for a\nnew one every time, which is the intended and inexpensive path rather than a fallback.\n\nConsuming it destroys it whether or not the handshake then succeeds, so a retry needs a fresh\nticket — including after an upgrade that failed for an unrelated reason.\n\nThe endpoint is **same-origin and credential-free**: the browser holds no credential and never\nwill, and it is the absence of any cross-origin read permission on this response — not a\ncredential — that keeps another page from learning a ticket."
+      },
+      "SuggestionItem": {
+        "properties": {
+          "card_id": {
+            "type": "string",
+            "maxLength": 128,
+            "title": "Card Id"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Reason"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "card_id",
+          "reason"
+        ],
+        "title": "SuggestionItem",
+        "description": "One card the agent thinks is worth adding, and why (AD-7).\n\nIts own shape over a bare card reference, rather than one fat optional bag shared by all four\npayload kinds: a reader of the generated TypeScript should not have to know which fields are\npopulated for which kind.\n\n``reason`` is one line of secondary text beneath the card name — the cap is what makes that\nhonest. ``category`` is a **badge, not a grouping**: suggestions render as a flat list with no\nsectioning, so two items carrying the same category sit next to unrelated ones and nothing\nreorders them.\n\nThe card is named by its Scryfall printing uuid and by nothing else — no card name, no mana\ncost, no type line. Resolving a name to an id is the existing MCP tools' job, and duplicating\ncard data here would create a second copy that can disagree with the database (FR-13).",
+        "examples": [
+          {
+            "card_id": "076ac3ed-b59a-431f-b286-af7ed2c8704e",
+            "category": "Curve",
+            "confidence": "high",
+            "reason": "Fills the two-drop gap and blocks the aggro decks in this meta."
+          }
+        ]
+      },
+      "SuggestionsEvent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "kind": {
+            "type": "string",
+            "const": "suggestions",
+            "title": "Kind"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/SuggestionsPayload"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "ts",
+          "kind",
+          "payload"
+        ],
+        "title": "SuggestionsEvent",
+        "description": "An agent push of suggested cards (AD-6).\n\nEvery event on this wire is ``{kind, id, ts, payload}``, and ``kind`` is what tells a reader\nwhich payload shape it is holding — narrowing on it is a single step, in Python and in the\ngenerated TypeScript alike.\n\n``id`` is **opaque**. It exists for identity and de-duplication and carries **no ordering**: a\nproducer is free to mint a UUID4, and a reader that sorts by ``id`` because some id schemes\nhappen to sort chronologically will get a wrong order from one that does not.\n\n``ts`` is the ordering key, and it must be **timezone-aware** — a naive value is refused.\nSession history sorts across kinds and across tabs, so two events minted in different offsets\nhave to be comparable; producers use the UTC clock.",
+        "examples": [
+          {
+            "id": "0f6e2a11-9c3d-4b7e-8a52-1d4f6c8b0e33",
+            "kind": "suggestions",
+            "payload": {
+              "items": [
+                {
+                  "card_id": "076ac3ed-b59a-431f-b286-af7ed2c8704e",
+                  "category": "Curve",
+                  "confidence": "high",
+                  "reason": "Fills the two-drop gap."
+                }
+              ],
+              "title": "Resilience options"
+            },
+            "ts": "2026-08-07T09:15:00Z"
+          }
+        ]
+      },
+      "SuggestionsPayload": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SuggestionItem"
+            },
+            "type": "array",
+            "maxItems": 60,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SuggestionsPayload",
+        "description": "A flat list of cards the agent suggests adding (AD-7).\n\nFlat is the specification, not a simplification: suggestions render as one list with no\nsectioning, and an item's ``category`` is a badge on the row rather than a heading above a\nblock.\n\nAn empty ``items`` list is legal. The view skips an empty push rather than rejecting it, so\n\"I looked and found nothing\" is expressible."
+      },
+      "SwapItem": {
+        "properties": {
+          "out_card_id": {
+            "type": "string",
+            "maxLength": 128,
+            "title": "Out Card Id"
+          },
+          "in_card_id": {
+            "type": "string",
+            "maxLength": 128,
+            "title": "In Card Id"
+          },
+          "rationale": {
+            "type": "string",
+            "maxLength": 600,
+            "title": "Rationale"
+          },
+          "out_qty": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Out Qty"
+          },
+          "in_qty": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "In Qty"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "out_card_id",
+          "in_card_id",
+          "rationale",
+          "out_qty",
+          "in_qty"
+        ],
+        "title": "SwapItem",
+        "description": "One card out, one card in, and the reasoning for the trade (AD-7).\n\nThe two quantities render as the literal ``\"Out · N copies\"`` and ``\"In · N copies\"``, and the\n``rationale`` sits beside the pair — it is per-swap, not per-payload, because a list of swaps\nwith one shared justification is a list the reader cannot act on selectively.\n\n**Zero is a legal quantity.** A swap whose in-card has no copies available renders \"0 copies\"\nand is a designed case, not a malformed one, so neither quantity may be constrained to be\npositive. A ``ge=1`` here would reject a payload the experience specification asks for.\n\nThere is deliberately **no price field.** The design asks for a price chip and Epic 9 inherited\nthe ask, but no price data exists anywhere in this system — the card table carries no price\ncolumn and the Scryfall importer never reads the ``prices`` object — so the field could never be\npopulated. Four earlier amendments already stripped price from the deck row and the detail\npanel; this is the one they missed, struck here so Epic 9 does not rediscover it as a bug\n(Q3, Brad 2026-08-07). Nothing is lost that could have been shown.",
+        "examples": [
+          {
+            "confidence": "medium",
+            "in_card_id": "9f2b1c44-0d3e-4a77-8f21-6b0a5d3e2c19",
+            "in_qty": 0,
+            "out_card_id": "076ac3ed-b59a-431f-b286-af7ed2c8704e",
+            "out_qty": 2,
+            "rationale": "Same role one turn earlier, and it survives the format's commonest removal spell."
+          }
+        ]
+      },
+      "SwapsEvent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "kind": {
+            "type": "string",
+            "const": "swaps",
+            "title": "Kind"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/SwapsPayload"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "ts",
+          "kind",
+          "payload"
+        ],
+        "title": "SwapsEvent",
+        "description": "An agent push of one-for-one card trades (AD-6).\n\nSame envelope as every other event: ``kind`` selects the payload shape, ``id`` is opaque\nidentity, ``ts`` is the timezone-aware ordering key.",
+        "examples": [
+          {
+            "id": "1a7c4b98-2e5f-4c10-9d3a-7b2e5f8c1a04",
+            "kind": "swaps",
+            "payload": {
+              "items": [
+                {
+                  "in_card_id": "9f2b1c44-0d3e-4a77-8f21-6b0a5d3e2c19",
+                  "in_qty": 0,
+                  "out_card_id": "076ac3ed-b59a-431f-b286-af7ed2c8704e",
+                  "out_qty": 2,
+                  "rationale": "Same role, one turn earlier."
+                }
+              ],
+              "title": "Cheaper removal"
+            },
+            "ts": "2026-08-07T09:16:00Z"
+          }
+        ]
+      },
+      "SwapsPayload": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SwapItem"
+            },
+            "type": "array",
+            "maxItems": 60,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SwapsPayload",
+        "description": "A list of one-for-one card trades, each with its own reasoning (AD-7).\n\nAn empty ``items`` list is legal and renders as a skipped view."
+      },
+      "TierItem": {
+        "properties": {
+          "letter": {
+            "type": "string",
+            "enum": [
+              "S",
+              "A",
+              "B",
+              "C",
+              "D"
+            ],
+            "title": "Letter"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "card_ids": {
+            "items": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "type": "array",
+            "maxItems": 60,
+            "title": "Card Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "letter",
+          "name"
+        ],
+        "title": "TierItem",
+        "description": "One tier of a tier list — a letter, the name that gives it meaning, and its cards (AD-7).\n\nThe letter is a large glyph in a coloured chip and drives a five-stop ramp; the ``name`` sits\nbeneath it and is the **accessible carrier of rank**, which is why it may not be blank. Colour\nalone must never be what tells a reader that S beats D, so a payload with an empty name silently\nbreaks an accessibility floor rather than merely looking unfinished.\n\nTiers appear in **payload order**. Nothing sorts them by letter, dedupes them or re-orders them,\nand two ``A`` tiers with different names is a legal payload — the agent's ordering is the\nagent's argument.\n\nAn empty ``card_ids`` list is legal. The view skips an empty tier rather than rejecting the\npush, so a tier list that names a rank with nothing currently in it still arrives intact.",
+        "examples": [
+          {
+            "card_ids": [
+              "076ac3ed-b59a-431f-b286-af7ed2c8704e"
+            ],
+            "letter": "S",
+            "name": "Auto-include",
+            "note": "Play four of each in every build of this archetype."
+          }
+        ]
+      },
+      "TierListEvent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Id"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ts"
+          },
+          "kind": {
+            "type": "string",
+            "const": "tier_list",
+            "title": "Kind"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/TierListPayload"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "ts",
+          "kind",
+          "payload"
+        ],
+        "title": "TierListEvent",
+        "description": "An agent push ranking cards into named tiers (AD-6).\n\nSame envelope as every other event: ``kind`` selects the payload shape, ``id`` is opaque\nidentity, ``ts`` is the timezone-aware ordering key.",
+        "examples": [
+          {
+            "id": "2b8d5ca9-3f60-4d21-ae4b-8c3f6a9d2b15",
+            "kind": "tier_list",
+            "payload": {
+              "items": [
+                {
+                  "card_ids": [
+                    "076ac3ed-b59a-431f-b286-af7ed2c8704e"
+                  ],
+                  "letter": "S",
+                  "name": "Auto-include"
+                }
+              ],
+              "title": "How this deck's creatures rank"
+            },
+            "ts": "2026-08-07T09:17:00Z"
+          }
+        ]
+      },
+      "TierListPayload": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TierItem"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TierListPayload",
+        "description": "Cards ranked into named tiers, in the order the agent put them (AD-7).\n\nThe list is capped at twelve rather than at five: the letter vocabulary is closed at five, but\nrepeating a letter under a different name is legal, so the number of tiers and the number of\nletters are different quantities.\n\nNothing re-sorts the tiers. An empty ``items`` list is legal."
       }
     }
   }

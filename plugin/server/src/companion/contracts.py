@@ -56,9 +56,12 @@ echo back is bounded.
 It bounds a *field*, not a *request*. The body is read and parsed before dependencies are solved
 (measured against FastAPI 0.140.0's ``routing.py``: body at lines 423-448, ``solve_dependencies`` at
 473), so this constraint cannot stop an unauthenticated caller from making the process buffer a
-large body — only from storing one. The pre-parse cap belongs to **c5-5**, which owns
-``payload_too_large`` and AD-7's 64 KB envelope limit, and should be one mechanism for both
-endpoints rather than two; ``deferred-work.md`` homes it there by name.
+large body — only from storing one. **The pre-parse cap shipped at c5-5** as
+:class:`~src.companion.app.body_cap.BodyCapMiddleware`, which owns
+``payload_too_large`` and AD-7's 64 KB envelope limit. It **is** one mechanism for both endpoints
+rather than two, exactly as ``deferred-work.md``'s entry (now closed) asked: a pure-ASGI middleware
+outside the routers, so neither ``PUT /api/active-deck`` nor ``POST /agent/events`` contains a line
+about size.
 """
 
 
@@ -333,10 +336,12 @@ class SessionTicket(BaseModel):
 # narrowed "until somebody needs it" would be paid for later as a `.d.ts` regeneration through
 # both mirrored plugin bundles.
 #
-# None of these models reaches `components.schemas` yet, and that is correct rather than a bug:
-# a model no route references never lands there (`main.py:443-445`). The union becomes reachable
-# when **c5-5** declares it as `POST /agent/events`'s request body; a dummy endpoint to force it
-# in early is explicitly banned (c2-3).
+# NONE OF THESE MODELS REACHED `components.schemas` UNTIL c5-5, and that was correct rather than a
+# bug: a model no route references never lands there (`main.py:443-445`). The union became
+# reachable when **c5-5** declared it as `POST /agent/events`'s request body — one route
+# declaration, seventeen models, thirteen components to thirty in a single step. A dummy endpoint
+# to force them in early was explicitly banned (c2-3), and the ban held: no such endpoint was ever
+# written, and the union arrived on a real route the way AD-12 said it would.
 # ---------------------------------------------------------------------------------------------
 
 
@@ -368,10 +373,15 @@ _MAX_CARD_ID_LENGTH = 128
 """The cap on any single card id on this wire (c5-1 review, Brad 2026-08-07).
 
 A bound, **not a shape**: AD-7's "not validated for shape" stands — an unknown id still resolves to
-the unknown-card placeholder rather than a rejected push. But until c5-5 enforces
+the unknown-card placeholder rather than a rejected push. Capped because, before c5-5 enforced
 :data:`_MAX_ENVELOPE_BYTES`, an unbounded id string was the one field family through which a fully
-validating envelope could carry megabytes, so the length is capped now while the contract is still
+validating envelope could carry megabytes; the length was capped then, while the contract was still
 free to change. A Scryfall printing uuid is 36 characters; 128 is headroom, not a format claim.
+
+**Worth keeping now that both caps are enforced**: they are *not* nested. Measured at c5-5, a
+``groups`` envelope with every string at its limit and every list at its length is **104,067
+bytes** — 1.6x the 64 KB ceiling — and violates no field cap at all. So this bound narrows what one
+id may carry; it does not make the envelope cap unreachable by well-formed content.
 """
 
 _MAX_EVENT_ID_LENGTH = 128
@@ -412,12 +422,19 @@ _MAX_TIER_NOTE_LENGTH = 200
 _MAX_ENVELOPE_BYTES = 64 * 1024
 """The ceiling on one serialised envelope, in bytes (AD-7).
 
-**Declared here, enforced at c5-5** (Q9, Brad 2026-08-07). This is a bound on the *request*, not on
-any field, and the property that matters is how much an unauthenticated caller can make the process
-buffer. A pydantic model validator runs *after* parsing, so it could reject an oversized envelope
-but could not stop it from being read into memory — which is the whole point of the cap. The
-pre-parse mechanism belongs with ``payload_too_large``, and ``_MAX_DECK_ID_LENGTH`` above already
-homes it on c5-5 by name, one mechanism for both endpoints rather than two.
+**Declared here at c5-1, ENFORCED SINCE c5-5** (Q9, Brad 2026-08-07; mechanism ruled at c5-5's Q2,
+Brad 2026-08-08). This is a bound on the *request*, not on any field, and the property that matters
+is how much an unauthenticated caller can make the process buffer. A pydantic model validator runs
+*after* parsing, so it could reject an oversized envelope but could not stop it from being read
+into memory — which is the whole point of the cap. The pre-parse mechanism therefore lives with
+``payload_too_large`` in :mod:`src.companion.app.body_cap`, as one middleware covering both body
+endpoints rather than two per-route checks.
+
+**Not nested with the field caps above.** Measured at c5-5: a ``groups`` envelope at every field
+limit serialises to 104,067 bytes, so this ceiling can refuse a payload pydantic would accept. The
+two rejection classes overlap rather than partitioning the input — a field violation answers
+``400 invalid_request`` (the AD-16 handler), a byte violation answers ``413`` here, and a body can
+qualify for both, in which case the byte cap wins because it runs first.
 
 Over-cap is **rejected, never truncated**: a truncated payload is a payload that renders wrong
 without saying so. The answer is **413** ``payload_too_large``, not 422 — AD-16 superseded AD-7's
@@ -540,8 +557,8 @@ two.
 
 # WIRE-VISIBLE, IN FULL. This class docstring crosses the wire as the schema `description`, uncut —
 # it carries no Google-style header above the `Attributes:` block, so every paragraph before that
-# header reaches `openapi.json`, `types.d.ts` and `/docs` once c5-5 puts the union on a route.
-# Editing it IS a wire change from that story onward (Q9, c3-9).
+# header reaches `openapi.json`, `types.d.ts` and `/docs`. c5-5 put the union on a route, so this
+# is no longer conditional: editing it IS a wire change and costs a regeneration (Q9, c3-9).
 class SuggestionItem(BaseModel):
     """One card the agent thinks is worth adding, and why (AD-7).
 
@@ -593,8 +610,8 @@ class SuggestionItem(BaseModel):
     confidence: Confidence | None = None
 
 
-# WIRE-VISIBLE, IN FULL. As above — the prose before `Attributes:` becomes the schema description
-# and the generated JSDoc from c5-5 onward (Q9, c3-9).
+# WIRE-VISIBLE, IN FULL. As above — the prose before `Attributes:` is the schema description and
+# the generated JSDoc, live since c5-5 put the union on a route (Q9, c3-9).
 class SwapItem(BaseModel):
     """One card out, one card in, and the reasoning for the trade (AD-7).
 
@@ -1226,12 +1243,17 @@ consumer narrows twice or casts once, in every view, forever.
 
 **Every member is its own named model, never an inline object.** That is what makes each branch a
 ``$ref`` in the generated schema, which is the shape ``test_errors.py``'s ``_is_ref_rooted`` union
-arm admits. Note that guard does **not** run at c5-1 and will not run at c5-5 either: it walks the
-2xx *response* bodies of existing routes, and this union is a *request* body. Nothing in the suite
-would catch an inline member, so this is a design constraint held by hand, not a gate to lean on.
+arm admits. That guard did **not** run at c5-1 and — **confirmed at c5-5, which put the union on a
+route** — still does not: it walks the 2xx *response* bodies of existing routes, and this union is
+a *request* body. The prediction held. What changed is that the union is now in the document, so
+``test_routes_agent_events.py`` asserts the six ``$ref`` arms by name against the committed
+artifact; that is the gate this paragraph said did not exist, and it is a hand-written one on the
+request body rather than the general response-shape family.
 
 Validate with ``TypeAdapter(AgentEvent)``: the alias is an ``Annotated`` union rather than a
-``BaseModel``, so it has no ``model_validate`` of its own.
+``BaseModel``, so it has no ``model_validate`` of its own. **Not needed in the route** — FastAPI
+validates a discriminated union natively as a request-body annotation, which is why
+``routes/agent_events.py`` contains no adapter.
 """
 
 
@@ -1274,3 +1296,54 @@ assert set(DEFAULT_TITLE_BY_KIND) == set(get_args(EventKind)) - {
     "the two system signals) — a missing or extra entry here is the 'seventh push kind added "
     "without meeting this decision' danger the docstring above describes."
 )
+
+
+# ---------------------------------------------------------------------------------------------
+# The ingest receipt (c5-5, FR-06, AD-8)
+#
+# END OF THE c5-1 BLOCK. The section header above says "everything below this line is declared in
+# one story (c5-1) on purpose", and that claim is about the envelope and its payloads — this
+# divider is where it stops. What follows is the *answer* to a push of that union rather than a
+# member of it, which is why it is a sibling of the block rather than an addition inside it.
+# ---------------------------------------------------------------------------------------------
+
+
+# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description (Q9, c3-9),
+# so it is written for the agent author reading `/docs`, not for a maintainer reading this file.
+class EventIngestReceipt(BaseModel):
+    """The body of ``POST /agent/events`` — how many connected clients received the push (FR-06).
+
+    The push itself carries no answer: a WebSocket frame is written and not acknowledged, so this
+    receipt is the **only** thing that tells a caller whether its content actually reached a
+    browser. That is what the endpoint is for — an agent that pushed a tier list can say "shown in
+    two tabs" or "nothing is listening" rather than guessing.
+
+    **Zero is a success, not a failure.** A companion with no tab open is the ordinary state, and a
+    push nobody heard is delivered exactly as instructed; the caller should report that rather than
+    retry. Nothing about the payload is echoed back (CM-1) — the agent already has what it sent, and
+    a body that repeated it would double the cost of every push to say nothing new.
+
+    Attributes:
+        clients: How many clients the event was written to, never negative.
+
+            **Delivered, not registered** (Q1, Brad 2026-08-08). This is
+            :func:`~src.companion.app.ws.broadcast`'s return value: clients that took the frame,
+            with any that failed mid-fan-out dropped from the count and from the registry. The
+            alternative — sampling
+            :attr:`~src.companion.app.state.ConnectionRegistry.connected_count` around the
+            broadcast — reads the set the fan-out is concurrently pruning, so it can over-report a
+            tab that vanished in exactly the window ``broadcast``'s accepted-residual paragraph
+            describes. "How many browsers saw it" is the question this endpoint exists to answer,
+            and only the delivered count answers it truthfully. This paragraph sits below the
+            header deliberately: ``main._DOCSTRING_SECTIONS`` truncates it off the wire, and which
+            of two internal accountings was chosen is repo-internal reasoning.
+
+            It is a count at the moment of the fan-out and **not** a live gauge — a tab may open or
+            close immediately afterwards. Nothing should be cached from it.
+
+    Example:
+        >>> EventIngestReceipt(clients=0).model_dump()
+        {'clients': 0}
+    """
+
+    clients: int

@@ -124,17 +124,31 @@ half moved:
   decision that would want its own regeneration"*, and the measurement says a ``#`` comment is not
   one. A docstring still is.
 
-**A KNOWN WART IN THIS DOCUMENT, recorded rather than fixed (c3-9, Q8).** Six body-less ``GET``
-operations publish ``413 payload_too_large`` in their client contract, because the declaration is
-made per *include* rather than per *method* and the shared set carries the 413 for the ``POST``
-c5-5 will add. So the generated types tell a fetch author to handle a response the same document
-elsewhere describes as *"surfaced to the agent… The glass never sees it"*. It is pre-existing,
-inherited, and doubled by every new ``GET``. c3-9 declined to fix it: curating ``error_responses``
-per method is a real change to a shared declaration site with six routes of blast radius, made in
-a story whose frontend half is already the largest in the epic, and Q4 touched the *caller* rather
-than the helper. **Re-homed on c5-5 by name** — the story that adds the cap, makes the 413 real,
-and must decide which operations can actually answer it. Until then: a ``413`` on a body-less
-``GET`` is unreachable, and a client may ignore it.
+**THE 413 WART IS CLOSED AS OF c5-5 (Q4, Brad 2026-08-08).** For the record, because the fix is
+only legible next to what it fixed: six body-less ``GET`` operations used to publish
+``413 payload_too_large`` in their client contract, because the declaration was made per *include*
+rather than per *method* and the shared set carried the 413 for the ``POST`` c5-5 would add. The
+generated types told a fetch author to handle a response the same document elsewhere describes as
+*"surfaced to the agent… The glass never sees it"*. It was pre-existing, inherited, and doubled by
+every new ``GET``. c3-9 declined to fix it — curating ``error_responses`` per method is a real
+change to a shared declaration site with six routes of blast radius, and Q4 touched the *caller*
+rather than the helper — and re-homed it on c5-5 by name, as the story that adds the cap, makes
+the 413 real, and must decide which operations can actually answer it.
+
+c5-5 did exactly that, in **two call-site edits and no helper change**: ``payload_too_large`` was
+removed from both shared include sets in ``build_app()`` and declared per-route on the two
+operations that can answer it — ``POST /agent/events`` (via its own include, which carries no
+other route) and ``PUT /api/active-deck`` (beside its existing ``forbidden``). Its sibling
+``GET /api/active-deck`` carries a body-less read and declares nothing, which is the distinction
+the whole exercise was about. The shape is exactly the one this paragraph specified, which is worth
+noting: the fix a deferral describes is sometimes the fix that lands.
+
+**What made it safe to do now and not before** is that the token stopped being a fiction. Until
+c5-5, ``payload_too_large`` had no producer anywhere in the app, so *every* declaration of it was
+unreachable and "which operations can answer it" had the empty set as its honest answer.
+``BodyCapMiddleware`` is the producer, and because it is middleware rather than a per-route
+dependency it bounds both body endpoints with one mechanism — so the declaration set and the
+enforcement set are the same two operations by construction, not by hand-synchronisation.
 
 **The exception, and it is c3-5's.** That endpoint has **no** ``response_model``, because its
 success body is image bytes: a model would emit a JSON ``$ref`` for a body that is binary. A
@@ -161,15 +175,29 @@ this paragraph as the gate. (Until c3-4 there were **two** such pins, in the dec
 tests; Q5 consolidated them into that one file, so c3-5 edits one place rather than discovering the
 second by running the suite as c3-2 and c3-3 each did.)
 
-**There is no dummy endpoint, and none is needed.** Story **c5-5**'s ``POST /agent/events`` declares
-the WebSocket event-envelope union as its *request body*, so every per-kind payload lands in
-``components.schemas`` from the route itself — one generator covers both the REST and the WebSocket
-halves of the contract (AD-12). The models themselves are **c5-1**'s, and that story shipped them
-with the schema unchanged at twelve components: a model no route references never lands in
-``components.schemas`` at all, so declaring the union bought no TypeScript until the route existed.
-That is the sequencing this paragraph originally mis-attributed to a single story (corrected at
-c5-1, 2026-08-07), and it is the reason the shape here is a *confirmed negative* — c5-1 proved the
-generated pair byte-identical rather than proving a union appeared.
+**There was no dummy endpoint, and none was needed — c5-5 has now proved it.** Story **c5-5**'s
+``POST /agent/events`` declares the WebSocket event-envelope union as its *request body*, so every
+per-kind payload landed in ``components.schemas`` from the route itself — one generator covering
+both the REST and the WebSocket halves of the contract (AD-12). The models themselves are
+**c5-1**'s, and that story shipped them with the schema unchanged at twelve components: a model no
+route references never lands in ``components.schemas`` at all, so declaring the union bought no
+TypeScript until the route existed. That is the sequencing this paragraph originally
+mis-attributed to a single story (corrected at c5-1, 2026-08-07), and it is why the shape at c5-1
+was a *confirmed negative* — c5-1 proved the generated pair byte-identical rather than proving a
+union appeared.
+
+**Measured at c5-5**: one route declaration moved the component count from thirteen to **thirty**,
+collecting seventeen models in a single step — six envelopes, six payloads, four item models and
+this story's ``EventIngestReceipt``. That is the AD-12 mechanism paying out the whole debt c5-1
+took on, and it is the strongest evidence in the feature for the "declare the models early, let the
+route collect them" sequencing.
+
+One measurement worth keeping, because a story predicted otherwise: ``TierLetter`` and
+``Confidence`` did **not** become named components. Both are ``Literal`` aliases rather than
+``Enum`` classes, so pydantic inlines each as an ``enum`` on the field that uses it. The generated
+TypeScript still gets a closed union at every use site; what it does not get is a reusable named
+type. Left alone — promoting them would mean reshaping two contract aliases to satisfy a schema
+preference.
 
 Usage:
     uv run python -m scripts.dump_openapi     # -> ui/src/api/openapi.json (committed)

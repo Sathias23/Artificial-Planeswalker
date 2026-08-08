@@ -725,8 +725,16 @@ class TestCommittedSchema:
 
         # Non-vacuity: the app-level declarations are on both, so the difference above is the
         # per-route declaration and not a difference in whether responses exist at all.
-        assert {"400", "413", "500", "503"} <= set(detail)
-        assert {"400", "413", "500", "503"} <= set(listing)
+        #
+        # `413` dropped from both sets at c5-5. These are body-less GETs and could never answer it;
+        # they carried it only by inheritance from the shared include set, back when
+        # `payload_too_large` had no producer at all. c5-5 built the cap and curated the
+        # declaration down to the two operations that can genuinely answer it — so its absence
+        # here is the fix landing, not coverage lost.
+        assert {"400", "500", "503"} <= set(detail)
+        assert {"400", "500", "503"} <= set(listing)
+        assert "413" not in detail
+        assert "413" not in listing
 
     def test_the_success_bodies_are_unwrapped(self, schema):
         """AC 1, AC 2: a bare array of ``DeckSummary``, and ``DeckDetail`` itself."""

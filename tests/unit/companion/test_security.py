@@ -18,6 +18,7 @@ import pytest
 from starlette.middleware.cors import CORSMiddleware
 
 from src.companion.app import server
+from src.companion.app.body_cap import BodyCapMiddleware
 from src.companion.app.errors import UnhandledErrorMiddleware
 from src.companion.app.main import build_app
 from src.companion.app.security import (
@@ -436,12 +437,25 @@ class TestNonHttpScopes:
 class TestMiddlewareOrder:
     """AC 8: the security middleware is installed *inside* the error middleware."""
 
-    def test_the_stack_is_exactly_error_then_security(self):
+    def test_the_stack_is_exactly_error_then_security_then_the_body_cap(self):
         # user_middleware[0] is the most recently added, i.e. the outermost. Pinning the whole
-        # list rather than index 0 makes a future insertion between the two visible.
+        # list rather than index 0 makes a future insertion between any two visible — which is
+        # exactly what caught c5-5's addition, deliberately.
+        #
+        # `BodyCapMiddleware` is INNERMOST of the three, and each boundary is a decision:
+        #
+        # * inside `UnhandledErrorMiddleware`, so a fault in the byte counting is typed as a 500
+        #   rather than escaping as a traceback — the same net the Host check sits under;
+        # * inside `HostValidationMiddleware`, so a request that never legitimately addressed this
+        #   process is refused BEFORE its body is read. Reversing these two would make the cap
+        #   buffer up to 64 KB on behalf of a DNS-rebinding caller the envelope was about to
+        #   reject anyway;
+        # * outside the routers, which is what makes it one mechanism for both body endpoints
+        #   rather than a per-route dependency (c5-5, Q2, Brad 2026-08-08).
         assert [m.cls for m in build_app().user_middleware] == [
             UnhandledErrorMiddleware,
             HostValidationMiddleware,
+            BodyCapMiddleware,
         ]
 
 

@@ -26,7 +26,7 @@ from pydantic import TypeAdapter
 
 from src.companion.app.main import agent_token, build_app
 from src.companion.app.state import active_deck, connection_registry
-from src.companion.contracts import ActiveDeckChangedEvent, AgentEvent
+from src.companion.contracts import _MAX_ENVELOPE_BYTES, ActiveDeckChangedEvent, AgentEvent
 from tests.unit.companion.conftest import FakeConnection, open_socket
 
 _PATH = "/api/active-deck"
@@ -561,17 +561,43 @@ class TestAMalformedBody:
         that fails to parse raises ``RequestValidationError`` before the credential is ever
         checked. A body that parses cleanly then meets the dependency. Both are pinned so a
         framework upgrade that reorders them is visible.
+
+        **DISPOSITIONED AT c5-5 AS A SNAPSHOT, THEN EXTENDED RATHER THAN REVISED** (Q3, Brad
+        2026-08-08). ``deferred-work.md`` flagged this pin as the thing c5-5's pre-parse body cap
+        would redden, and asked the story to decide whether it recorded a *contract* the feature
+        owes or a *snapshot* of measured framework behaviour. Ruled: **snapshot** — nothing
+        designed this order, FastAPI did.
+
+        What the ruling predicted, and what actually happened, differ, so both are recorded here.
+        The prediction was that ``BodyCapMiddleware`` would redden this test and the pin would need
+        revising through review. **It did not go red** (measured 2026-08-08, full suite). The cap
+        only reorders *oversized* bodies, and both bodies below are a few dozen bytes — so the two
+        assertions above continued to hold untouched, and the disposition cost an **addition**
+        rather than a correction. The third assertion is that addition: the total ordering now has
+        a cheaper rung above both, and it is pinned here beside them so the whole order is legible
+        in one place rather than split across two files.
         """
+        oversized = b'{"deck_id": "' + b"x" * (_MAX_ENVELOPE_BYTES + 1) + b'"}'
         async with lifespan_client(build_app()) as client:
             unparseable = await client.put(
                 _PATH, content=b"{{{", headers={"content-type": "application/json"}
             )
             parseable_but_invalid = await client.put(_PATH, json={"deck_id": _FIRST_DECK})
+            over_cap = await client.put(
+                _PATH, content=oversized, headers={"content-type": "application/json"}
+            )
 
         # Body first: the parse failure outranks the missing credential.
         assert unparseable.status_code == 400
         # Dependency second: a well-formed body reaches the credential check and is refused.
         assert parseable_but_invalid.status_code == 403
+        # Size FIRST OF ALL, as of c5-5: the byte cap runs in middleware, above both the parser and
+        # the dependency solver, so an oversized body is refused without a credential and without
+        # being parsed. That is the correct fail-cheap order — the process must not buffer
+        # megabytes on behalf of a caller it was going to refuse — and it is the one arm of this
+        # ordering that IS a designed contract rather than a measured framework detail.
+        assert over_cap.status_code == 413
+        assert over_cap.json() == {"reason": "payload_too_large"}
 
 
 class TestNotShadowedBySpa:

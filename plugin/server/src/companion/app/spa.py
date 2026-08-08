@@ -118,7 +118,9 @@ def _route_paths(routes: Iterable[BaseRoute], prefix: str = "") -> Iterator[str]
       carries **neither** — its routes hang off ``.original_router`` and its prefix off
       ``.include_context``. Missing this shape is not a crash, it is a silently empty reservation:
       every prefix a story registers via ``include_router`` (c3-1's ``/api``, c5-5's ``/agent``)
-      would fall through to the SPA index instead of a typed 404.
+      would fall through to the SPA index instead of a typed 404. **c5-5 landed and the walk held**:
+      ``agent`` is derived, ``GET /agent/eventz`` answers the typed 404, and the prefix set moved
+      from six entries to seven with no change to this function.
 
     Those last two attributes are FastAPI internals, so every read is a ``getattr`` with a
     fallback — and ``test_spa.py::test_the_reserved_prefixes_are_derived_from_the_route_table``
@@ -197,8 +199,9 @@ class _SpaMount(Mount):
     partial is exactly how Starlette produces ``405`` with the RFC-mandated ``Allow`` header, and
     ``errors.py`` deliberately preserves those headers because dropping them "would make the typed
     body a downgrade". Without this class, ``POST /health`` answers ``405`` with no ``Allow``, and
-    once c5-5 adds a POST-only ``/agent/events`` a plain ``GET`` of it would answer ``404``
-    instead of ``405 Allow: POST``.
+    — **the POST-only ``/agent/events`` this paragraph predicted arrived at c5-5** — a plain ``GET``
+    of it would answer ``404`` instead of ``405 Allow: POST``. It is the first path in the app
+    served by exactly one method, which makes it the cleanest case this class exists for.
 
     **c3-4 got there before c5-5 and measured it.** ``PUT /api/active-deck`` made that path the
     first served by more than one method, and a ``POST`` of it answers ``405`` carrying an
@@ -372,8 +375,10 @@ def install_spa(app: FastAPI, *, static_dir: Path | None = None) -> None:
 
     **Call this last in** ``build_app()``. A mount at ``/`` matches every path, and Starlette
     matches routes in list order, so any router registered *after* this call is shadowed — its
-    endpoints answer ``200`` with ``index.html`` instead of running. c3-1, c5-2 and c5-5 all add
-    routers and must add them above the ``install_spa(app)`` line.
+    endpoints answer ``200`` with ``index.html`` instead of running. c3-1, c5-2, c5-3 and c5-5 all
+    add routers, and all four add them above the ``install_spa(app)`` line. c5-5's ``/agent`` is
+    the one with the least margin for error: ``_RESERVED_SEED``'s belt-and-braces covers ``/api``
+    only, so ordering is the *sole* thing keeping that prefix out of the mount's reach.
 
     Construction stays inert (AD-10): this stats two paths and builds an in-process object. It
     creates no directory, binds no port and opens no database.

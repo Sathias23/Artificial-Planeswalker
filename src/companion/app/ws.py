@@ -46,7 +46,12 @@ socket that survived, and :class:`~src.companion.app.state.ConnectionRegistry` �
 itself — stays in ``state.py``, which is where the Structural Seed homes ``connections``. That
 split is the load-bearing part: a registry that also knew how to serialise an envelope would put
 the wire format in the state file, and a fan-out that owned its own set would give this process
-two answers to "how many clients are connected" for c5-5 to choose between.
+two answers to "how many clients are connected" for c5-5 to choose between. **c5-5 chose**
+(Q1, Brad 2026-08-08): its receipt carries :func:`broadcast`'s *delivered* count — clients that
+took the frame — not
+:attr:`~src.companion.app.state.ConnectionRegistry.connected_count`, which over-reports a tab that
+failed mid-fan-out. The two answers were never a defect; having both is what let the endpoint pick
+the truthful one for "how many browsers saw it".
 
 **Fire-and-forget means sequential and awaited, not detached** (NFR-04, AD-9). ``create_task`` is
 banned on this path, so :func:`broadcast` writes to each client in turn inside its caller's
@@ -360,7 +365,10 @@ async def broadcast(app: FastAPI, event: AgentEvent) -> int:
     the caller's coroutine — that is what fire-and-forget means here, and a detached task would
     outlive the request that started it. Nothing on this path opens a session, and the values it
     writes were already in memory before it was called, which is what keeps NFR-05's 250 ms budget
-    reachable before c5-5 measures it.
+    reachable. **c5-5 put this function on an HTTP route and did not measure the budget** — the
+    250 ms concurrent-push measurement is c10-3's, and c5-5's tests are in-process with no wall
+    clock in them (the package's "a test that sleeps is a defect" rule). What c5-5 did confirm is
+    the shape: ``POST /agent/events`` is one awaited call to this function, no database, no task.
 
     **Two overlapping calls to this function are not serialised against each other, and that is an
     accepted residual, not an oversight** (c5-4 review, Brad 2026-08-08). Nothing here holds a

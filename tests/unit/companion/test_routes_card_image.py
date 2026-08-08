@@ -1174,7 +1174,8 @@ class TestAQueuedBurstDoesNotStallTheApp:
     async def test_health_answers_repeatedly_while_a_burst_of_images_is_queued(
         self, image_shapes, lifespan_client, stalled_cdn
     ):
-        """The epic's AC names `POST /agent/events`, which does not exist until c5-1/c5-5.
+        """The epic's AC names `POST /agent/events`, which exists as of c5-5 — and this test was
+        deliberately NOT rewritten onto it.
 
         `/health` is the honest stand-in available today, and the substitution is recorded rather
         than passed off as the same test — the literal AC (a concurrent push meeting its 250 ms

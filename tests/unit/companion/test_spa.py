@@ -17,7 +17,7 @@ from starlette.routing import Mount
 
 from src.companion.app import spa
 from src.companion.app.main import build_app
-from src.companion.app.routes import active_deck, cards, decks, health, session
+from src.companion.app.routes import active_deck, agent_events, cards, decks, health, session
 
 _TYPED_ERROR_MEDIA_TYPE = "application/json"
 
@@ -320,12 +320,20 @@ class TestTheTypedErrorContractSurvivesTheFallback:
         # route on an existing one because /api/session is not a deck, a card or the active deck —
         # joining any of those would have made that module's docstring false to save two lines,
         # which is the trade c3-4 already refused.
+        # c5-5 is the fourth instance of the router-adding kind, and the LAST story
+        # `deferred-work.md`'s router-tax entry names by key — the tax is paid out here. Its
+        # `agent_events.router` is a new router rather than a route on an existing one for the
+        # reason that decided c3-4 and c5-2 the same way: `/agent/events` is not a deck, a card,
+        # the active deck or a session, and joining any of those routers would have made that
+        # module's docstring false to save two lines. Measured before the line below existed:
+        # "Extra items in the left set: '/agent/events'".
         without_spa = FastAPI()
         without_spa.include_router(health.router)
         without_spa.include_router(decks.router)
         without_spa.include_router(cards.router)
         without_spa.include_router(active_deck.router)
         without_spa.include_router(session.router)
+        without_spa.include_router(agent_events.router)
 
         assert set(build_app().openapi()["paths"]) == set(without_spa.openapi()["paths"])
 
@@ -439,7 +447,16 @@ class TestMountOrdering:
         # behaviour c5-3 wanted anyway: a plain `GET /ws` now answers the typed 404 instead of
         # serving index.html, pinned at `test_ws.py::test_a_plain_http_get_of_the_ws_path_is_a_
         # typed_404`. A prediction corrected in the same commit that falsified it (c3-9's rule).
-        assert reserved == {"api", "health", "docs", "redoc", "openapi.json", "ws"}, (
+        # `agent` added by c5-5, and it is the entry the comment above spent two stories
+        # PREDICTING: "misses every prefix c3-1 (/api) and c5-5 (/agent) will register the same
+        # way". The prediction is now spent and correct — `/agent/events` arrives via
+        # `include_router`, the walk descends into the `_IncludedRouter` and reserves its first
+        # segment, so `GET /agent/eventz` answers the typed 404 instead of index.html
+        # (`test_routes_agent_events.py::test_an_unrouted_sibling_path_is_refused_rather_than_
+        # falling_back`). Note what this does NOT provide: `_RESERVED_SEED` still covers `/api`
+        # alone, so derivation is the only thing reserving `agent`, and derivation runs at mount
+        # time — which is why `build_app()`'s registration order remains the real protection.
+        assert reserved == {"agent", "api", "health", "docs", "redoc", "openapi.json", "ws"}, (
             f"Reserved prefixes changed: {sorted(reserved)}.\n\n"
             "If a prefix is MISSING: spa._route_paths reads FastAPI internals "
             "(_IncludedRouter.original_router and .include_context.prefix) to descend into "
