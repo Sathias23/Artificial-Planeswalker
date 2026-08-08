@@ -54,6 +54,13 @@ consumes of one ticket are two ``pop`` calls: the first returns the expiry, the 
 ``None``. That is precisely what a lock would produce, at the cost of making :meth:`consume`
 awaitable and pulling ``async`` into c5-3's handshake path for nothing.
 
+**c5-3 made the call and the argument survived contact with it.** The consume's one production
+caller is :func:`src.companion.app.ws._handshake_is_authorised`, which is a **plain** ``def``
+holding the entire handshake decision — read ``Origin``, evaluate it, reach the store, pop. A
+plain ``def`` cannot contain an ``await``, so the no-suspension-point property is enforced by the
+language rather than by the paragraph below, and reintroducing one means changing that ``def`` to
+``async def`` — which is the second of the three breakers named next. ``test_ws.py`` asserts both.
+
 **What would break that argument**, stated so the next author can check it against their change
 rather than against this sentence: splitting the pop into a ``get`` plus a ``del``; making
 :meth:`consume` ``async`` and awaiting anything between the two; or moving the store off the event
@@ -144,6 +151,9 @@ def active_deck(app: FastAPI) -> ActiveDeckSlot | None:
 
 # ---------------------------------------------------------------------------------------------
 # The WebSocket ticket store (AD-5, NFR-01) — c5-2 mints and expires, c5-3 consumes.
+# Both halves are shipped as of c5-3: `src.companion.app.ws._handshake_is_authorised` is the
+# consume's one production caller, and it is a plain `def`, which is what makes the no-lock
+# argument below checkable rather than merely asserted.
 # ---------------------------------------------------------------------------------------------
 
 

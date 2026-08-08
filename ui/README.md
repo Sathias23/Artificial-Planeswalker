@@ -49,8 +49,15 @@ by a real round trip in `tests/devProxyRoundTrip.test.ts` — both directions �
 reading the config object.
 
 Note that `changeOrigin` affects the **`Host`** header only. It does not touch the browser's
-`Origin` header; the WebSocket upgrade validates `Origin` as well, and that is **c5-3**'s
-problem, not this proxy's.
+`Origin` header — and as of **c5-3 the WebSocket upgrade validates `Origin`**, against exactly
+`http://127.0.0.1:{bound_port}` and `http://localhost:{bound_port}`, fail-closed.
+
+That combination has a consequence worth knowing before it is discovered in a browser: under
+`vite dev` the page is served from Vite's own port, so its `Origin` names Vite, and a proxied
+handshake would arrive with a rewritten `Host` (which passes) and an unrewritten `Origin` (which
+does not). Nothing is broken today — `/ws` is deliberately absent from `PROXIED_PATTERNS`, so no
+handshake is proxied at all. **c5-6** adds both the WebSocket client and that proxy entry, and
+owns the fix; it is ledgered in `deferred-work.md` rather than left to be rediscovered.
 
 ### Where the build output goes
 

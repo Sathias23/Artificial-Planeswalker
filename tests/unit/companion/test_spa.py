@@ -430,7 +430,16 @@ class TestMountOrdering:
         #   bare child segment (e.g. `decks` from prefix="/api") would be silently stolen from
         #   the SPA's client-route namespace. `in`-assertions stay green on that; equality does
         #   not.
-        assert reserved == {"api", "health", "docs", "redoc", "openapi.json"}, (
+        # `ws` added by c5-3, and it is the first entry here contributed by a WEBSOCKET route.
+        # The story predicted this file owed no edit — true of the hand-mirrored router list at
+        # `test_the_schema_is_unchanged_by_installing_the_mount` (a WS route has no OpenAPI
+        # operation, so that comparison is genuinely untouched) and FALSE of this one, which reads
+        # the route table rather than the schema. `_route_paths` descends into `WebSocketRoute`
+        # exactly as into `Route`, so registering `/ws` reserved its first segment — which is the
+        # behaviour c5-3 wanted anyway: a plain `GET /ws` now answers the typed 404 instead of
+        # serving index.html, pinned at `test_ws.py::test_a_plain_http_get_of_the_ws_path_is_a_
+        # typed_404`. A prediction corrected in the same commit that falsified it (c3-9's rule).
+        assert reserved == {"api", "health", "docs", "redoc", "openapi.json", "ws"}, (
             f"Reserved prefixes changed: {sorted(reserved)}.\n\n"
             "If a prefix is MISSING: spa._route_paths reads FastAPI internals "
             "(_IncludedRouter.original_router and .include_context.prefix) to descend into "

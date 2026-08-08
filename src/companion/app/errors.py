@@ -518,8 +518,12 @@ class UnhandledErrorMiddleware:
         """Serve one ASGI event stream, converting an escaping exception into a typed response.
 
         Args:
-            scope: The connection scope. Non-``http`` scopes (``lifespan``, and c5-3's
-                ``websocket``) pass straight through — there is no JSON body to send on those.
+            scope: The connection scope. Non-``http`` scopes (``lifespan`` and ``websocket``) pass
+                straight through — there is no JSON body to send on those. That is **permanent**
+                rather than a gap awaiting a story: c5-3's Q6 ruled that the WebSocket upgrade
+                catches its own faults and answers with a close code (``1011``), so this middleware
+                keeps one shape instead of growing a second for one caller. See
+                :func:`src.companion.app.ws.websocket_upgrade`.
             receive: The ASGI receive channel.
             send: The ASGI send channel, wrapped so we know whether the response already started.
         """
