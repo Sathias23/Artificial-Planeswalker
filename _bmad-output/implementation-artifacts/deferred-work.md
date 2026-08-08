@@ -2629,13 +2629,21 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   it should take if wanted**: a `DELETE /api/active-deck`, not a nullable request field — the
   request model staying non-null is what keeps `PUT` unambiguous. (Severity: Low.)
 
-- **Nothing broadcasts the change.** `PUT /api/active-deck` stores and returns; no hook, callback
-  registry or placeholder was built for the notification, deliberately (an unused hook is a design
-  decision made by a story that cannot see the requirements). **Home: c5-4**, which adds one call
-  after the store, to a handler that will exist — the insertion point is marked by a comment in
-  `set_active_deck`. The value it broadcasts is the same `ActiveDeck` shape the two operations
-  already answer with, which is why Q3 chose `200`-with-body over `204`. (Severity: none — this is
-  a named seam, not a gap.)
+- ~~**Nothing broadcasts the change.**~~ **✅ CLOSED by c5-4 (2026-08-08).** `PUT /api/active-deck`
+  now awaits `ws.broadcast_active_deck_changed(request.app, slot.deck_id)` after the store and
+  before the return — one line, exactly where the comment reserved it, and the comment is gone. The
+  seam cost no scaffolding to remove, which is the entry's own prediction confirmed.
+  **One correction to this entry, which predated c5-1**: it says the value broadcast is "the same
+  `ActiveDeck` shape". The wire object is an `ActiveDeckChangedEvent` — the `{kind, id, ts,
+  payload}` envelope AD-6 specifies — whose `payload` is an `ActiveDeckChangedPayload`, a
+  *different class* sharing the same field and nullability (`{deck_id: string | null}`) but **not**
+  the same bound — `ActiveDeck.deck_id` is a bare `str | None` with no length cap and no
+  blank-refusal, while `ActiveDeckChangedPayload.deck_id` caps at `_MAX_DECK_ID_LENGTH` and refuses
+  a blank string (review finding, 2026-08-08 — an earlier version of this correction claimed "same
+  bound", which was itself wrong). So the entry's reasoning holds and its noun does not; c5-1
+  minted the separate payload class deliberately, so a later deck-agnostic signal can diverge in
+  validation without touching this endpoint's contract — which is exactly what happened. Nothing
+  rippled, and the schema pins did not move (8 paths / 13 components, `gen:api` byte-identical).
 
 - **`errors.supported_methods` walks framework internals to repair the `Allow` header.** c3-4
   found that Starlette 0.48.0 builds a 405's `Allow` from the **first** partially-matching route
@@ -3586,13 +3594,19 @@ either has an owner story or is declared inside the file it constrains.
    `deck_changed` is an Epic 5 WebSocket message, and this story boots once and never switches
    decks. A blanket reset on a deck switch is probably the wrong fix anyway: the cache is keyed by
    printing uuid and shared with Epic 6's agent views (AD-12's second sentence), so resetting on a
-   deck change throws away hydration for every card the two decks share. **c5-4 (the event
-   handlers) owns the transition; c5-6 (reconnect/refetch) owns the recovery half.**
+   deck change throws away hydration for every card the two decks share. ~~**c5-4 (the event
+   handlers) owns the transition; c5-6 (reconnect/refetch) owns the recovery half.**~~
+   **RE-HOMED ENTIRELY TO c5-6** (c5-4, Q6, Brad 2026-08-08). The phrase "c5-4 (the event
+   handlers)" was a guess about which story would build the *client* side, and it was wrong: c5-4
+   is backend-only — a registry, a fan-out and one route call — and `ui/src` is byte-unchanged by
+   it. **c5-6 builds the browser's connect/reconnect loop and therefore every event handler**, so
+   both halves of this entry live there.
 6. **The orphaned-hydration return residue** (`:3287`, Greptile PR #40 P2, ruled *declare*).
-   **RE-HOMED WITH ENTRY 5, to c5-4 / c5-6**, because it was explicitly conditional on this story
-   wiring a production reset — *"the moment c4-2 wires a production reset, decide…"* — and c4-2
-   wires none. `resetCardCache()` remains test-only. The docstring's "the store is the authority"
-   ruling stands untouched.
+   ~~**RE-HOMED WITH ENTRY 5, to c5-4 / c5-6**~~ **RE-HOMED WITH ENTRY 5, TO c5-6** (c5-4, Q6,
+   Brad 2026-08-08 — same reason: there is no c5-4 client code to hang it on), because it was
+   explicitly conditional on c4-2 wiring a production reset — *"the moment c4-2 wires a production
+   reset, decide…"* — and c4-2 wires none. `resetCardCache()` remains test-only. The docstring's
+   "the store is the authority" ruling stands untouched.
 7. **The primitives' APPEARANCE is not dev-verified** (`:1331`, **Medium**) **and the tone-over-
    wash CONTRAST is unmeasured** (`:1357`). **✅ RESOLVED FOR `Badge`; the rest re-homed.** See
    the measurements in §"What c4-2 measured" below. `Panel` (**c4-5** / **c4-7**), `StatChip`
@@ -3676,12 +3690,20 @@ either has an owner story or is declared inside the file it constrains.
 - **There is no re-drive after the boot.** A deck the agent sets while the tab is open does not
   appear until Epic 5's `deck_changed`. Specified, not a bug — `poller.ts` still stops after one
   `200` and `App.test.tsx` still asserts that — but it is the difference a user would notice
-  between this story and a finished product. **Home: c5-4.** (Severity: Low.)
+  between this story and a finished product. ~~**Home: c5-4.**~~ **BACKEND HALF ✅ CLOSED by c5-4
+  (2026-08-08); BROWSER HALF RE-HOMED TO c5-6** (c5-4, Q6, Brad 2026-08-08). The signal now exists
+  on the wire — every open socket receives an `active_deck_changed` envelope the instant the agent
+  sets a deck, proven with two concurrently open sockets and one `PUT`. What is still missing is a
+  browser that is *listening*: `ui/src` opens no WebSocket at all (verified at c5-3 and again
+  here), so **c5-6** — the connect/reconnect loop — owns the half a user can see. (Severity: Low.)
 - **A `404` clears the client while the backend still reports that deck id as active.** So the
   next cold open asks for the deleted deck again and clears again: one wasted request per boot,
   self-correcting the moment the agent sets another deck. The alternative — the client telling the
-  backend to forget an id — is a `PUT` this story has no mandate to make. **Home: c5-4**, with the
-  `deck_changed` design. (Severity: Low.)
+  backend to forget an id — is a `PUT` this story has no mandate to make. ~~**Home: c5-4**, with
+  the `deck_changed` design.~~ **RE-HOMED TO c5-6** (c5-4, Q6, Brad 2026-08-08). This is a
+  *client-loop* concern — it is about what the browser does with a `404` while a socket is open —
+  and c5-4 shipped backend-only: there are no client event handlers in this diff to hang it on.
+  c5-6 builds them. (Severity: Low.)
 - **`src/logic/mana_curve.py` and `src/logic/assessment/mana_base.py` still use the WHOLE-STRING
   land policy**, which disagrees with FR-05/UX-DR17 and with this story's front-face grouping on
   **84 corpus cards, 4 of them in real decks** (Agadeem's Awakening, Kazandu Mammoth, Dowsing

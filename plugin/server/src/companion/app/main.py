@@ -208,6 +208,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # here rather than in `build_app()` so that function keeps its zero-side-effect property
     # (AD-10) — and so a restart genuinely begins with an empty store (CM-3).
     app.state.ticket_store = state.TicketStore()
+    # The third holder from `state.py`, and the same shape for the third time: a set, so no
+    # `build_*` factory and nothing in `_shutdown` (c5-4). Deliberately NOT torn down — closing
+    # every registered socket on shutdown would be a second close path racing uvicorn's own, and
+    # the process is ending anyway; the registry dies with it, which is CM-3's whole point.
+    app.state.connections = state.ConnectionRegistry()
     app.state.image_client = images.build_image_client()
     app.state.image_pacer = images.Pacer()
     app.state.image_cache = images.build_image_cache()
