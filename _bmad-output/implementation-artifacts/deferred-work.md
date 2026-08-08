@@ -5034,6 +5034,13 @@ engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries cha
   `test_routes_session.py::test_the_route_module_contains_no_host_or_origin_check_of_its_own`.
   **Home: c5-3** for the upgrade half, which is now the only half left open. (Severity: none —
   this is a closed ruling, kept for the audit trail.)
+  **CLOSED at c5-3 (2026-08-08) — both halves are now ruled and shipped.** The upgrade half landed
+  as `security.origin_is_allowed`, a pure predicate beside `host_is_allowed` and derived from the
+  same `allowed_authorities` set so the two can never drift; the handshake evaluates it **before**
+  the consume, so a refused foreign page cannot burn the ticket it carried (`test_ws.py::
+  TestOriginIsCheckedBeforeTheTicket`). A missing `Origin` rejects (Q4, fail-closed). The Vite
+  dev-proxy consequence this entry predicted is real and is ledgered separately below, homed on
+  c5-6.
 
 - **`errors.supported_methods` under a non-root `Mount`: c5-2 is NOT the story that triggers it,
   confirmed rather than assumed.** The entry above homes that hole on *"the story that adds a
@@ -5054,6 +5061,14 @@ engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries cha
   than a per-module opt-in that the next author also has to remember. **Home: unowned**, most
   naturally c5-3, which edits `security.py` for the upgrade gate. (Severity: Low — an example that
   is wrong is a docstring that lies, and nothing would say so.)
+  **CLOSED at c5-3 (2026-08-08), and closed in the generalised shape this entry asked for** rather
+  than the two-line one. `test_ws.py::TestTheDocstringExamplesRun::
+  test_every_example_in_every_companion_module_passes` **discovers** every module under
+  `src/companion` from the tree and runs `doctest.testmod` over all of them, so a module added
+  tomorrow is covered with no edit and the "next author also has to remember" failure mode is gone.
+  `security.py`'s two blocks now execute (and pass), pinned by name in a sibling test so the
+  specific gap cannot silently lapse. The c5-1 and c5-2 per-module tests are **not deleted** — a
+  passing guard is not removed for being redundant (C4 retro).
 
 - **`test_committed_schema.py` cannot see a source change until `gen:api` has run, and this cost
   two probe attempts before it was understood.** Measured at c5-2's R2 pass: planting an extra
@@ -5078,6 +5093,15 @@ engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries cha
   against the real handshake code — c5-3 can quietly break the atomicity assumption (e.g. an
   `await` slipped between validation steps) with no failing test here. **Home: c5-3** — the story
   that calls consume must show the call sits in synchronous code and add a guard or test for it.
+  **CLOSED at c5-3 (2026-08-08), and the showing is structural rather than a promise.** The one
+  production caller is `ws._handshake_is_authorised`, a **plain `def`** that holds the *entire*
+  handshake decision — read `Origin`, evaluate it, reach the store, pop. A plain `def` cannot
+  contain an `await`, so the property is enforced by the language: reintroducing a suspension point
+  requires changing that `def` to `async def`, which is one of the three breakers `state.py`
+  already names. Four guards pin it (`test_ws.py::TestTheConsumeStaysSynchronous`): `consume` is
+  not a coroutine function, the gate is an `ast.FunctionDef` and not an `AsyncFunctionDef`, it
+  contains no `Await` node, and — the non-vacuity that makes the other three mean anything — both
+  decisions really are inside it. A fifth pins the first breaker: the pop is still one statement.
 - **The Q3/AD-5 ruling is narrated in five or more shipped prose locations with no consistency
   guard.** `state.py`'s module docstring, `security.py:16-30` plus `install_security`'s docstring,
   `main.py`'s "CORRECTED AT c5-2" block, and `test_routes_active_deck.py`'s narrowing docstring
@@ -5092,3 +5116,38 @@ engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries cha
   already contradicted itself once. The falsification-correction *content* is valuable; a dump
   script's docstring is the wrong ledger. **Home: C5 retro** — pick the right ledger and move the
   narrative there.
+
+## Deferred from: c5-3-authenticated-websocket-upgrade-with-host-and-origin-validation (2026-08-08)
+
+- **The Vite dev proxy rewrites `Host` but not `Origin`, so a proxied handshake will be refused —
+  and the refusal is now reachable, because c5-3 shipped the `Origin` check.** Under `vite dev` the
+  page is served from Vite's port, so the browser's `Origin` names Vite; `changeOrigin: true`
+  rewrites the forwarded `Host` to the backend's authority (which passes) and leaves `Origin`
+  untouched (which does not). **Nothing is broken today**, measured rather than assumed: `/ws` is
+  deliberately absent from `PROXIED_PATTERNS` (`ui/config/devProxy.ts`), so no handshake is proxied
+  at all and the dev loop is unaffected. It becomes real the moment a `/ws` entry is added.
+  **Fix shape:** three candidates, and picking between them is the deferred work, not the fix —
+  (a) have the proxy rewrite `Origin` too, which is the smallest change and the one that keeps the
+  backend's check strict; (b) teach the dev build to connect directly to the backend port and skip
+  the proxy for the socket; (c) widen `allowed_origins` under an explicit dev flag, which is the
+  worst of the three because it puts a bypass in shipped security code. **Home: c5-6**, which adds
+  both the WebSocket client and the proxy entry, and is therefore the first story that can observe
+  it. Recorded in `ui/README.md`'s proxy section too, next to the `changeOrigin` explanation, so it
+  is found by someone reading the proxy rather than only by someone reading this file.
+  (Severity: Medium — it would present as "the socket never connects in dev" with a 403 and no
+  message, which is a slow thing to diagnose from the browser side.)
+
+- **`test_spa.py` owed an edit that the c5-3 story context predicted it would not, and the
+  prediction was wrong for an interesting reason.** The story reasoned that a WebSocket-only router
+  owes `test_spa.py` nothing because a WS route has no OpenAPI operation. That is true of
+  `test_the_schema_is_unchanged_by_installing_the_mount` (the hand-mirrored router list, which
+  compares `openapi()["paths"]` and was genuinely untouched) and **false** of
+  `test_the_reserved_prefixes_are_derived_from_the_route_table`, which reads the **route table**
+  rather than the schema: `spa._route_paths` descends into `WebSocketRoute` exactly as into `Route`,
+  so registering `/ws` reserved the segment `ws` and that test went red naming it. The red was the
+  mechanism working as its own failure message describes. The consequence is a *better* behaviour
+  than the one Q1 predicted — a plain `GET /ws` now answers the typed 404 instead of serving
+  `index.html` — and it is pinned deliberately. **Fix shape:** none needed; recorded because the
+  general rule "a WS router owes the schema tests nothing" is true and the adjacent rule "…therefore
+  owes `test_spa.py` nothing" is not, and c5-4/c5-5 will be reasoning from the same file.
+  **Home: none** — informational. (Severity: none.)

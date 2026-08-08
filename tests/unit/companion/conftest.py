@@ -159,6 +159,104 @@ async def _lifespan_client(
             yield client
 
 
+_OMIT = object()
+"""Sentinel for :func:`drive_handshake`'s header arguments: ``None`` means *send no header*, so
+"caller said nothing" needs a value of its own. Without it a test could not ask for the
+missing-``Origin`` case at all, which is the case c5-3's Q4 exists to rule."""
+
+_NORMAL_CLOSURE = 1000
+"""The close code the client reports when it goes away tidily. Only the *type* of the disconnect
+message matters to the drain loop; this is here so the fake is not silently sending ``None``."""
+
+
+async def drive_handshake(
+    app,
+    *,
+    path="/ws",
+    ticket=_OMIT,
+    origin=_OMIT,
+    host=_OMIT,
+    frames=(),
+):
+    """Run one WebSocket handshake against *app* at the ASGI level and return everything it sent.
+
+    **Why this shape (c5-3, Q7, Brad 2026-08-08).** ``httpx.ASGITransport`` — the seam every other
+    companion test uses — speaks the ASGI *request* protocol only and cannot drive a ``websocket``
+    scope at all. Starlette's ``TestClient.websocket_connect`` can, but it runs the app on a thread
+    portal with its own lifespan handling, which would put a second lifespan-entry idiom into a
+    package that deliberately has exactly one (see this module's docstring). So this generalises
+    what ``test_security.py`` already does against the middleware — build a scope, drive it with
+    real async ``receive``/``send`` stubs, collect the messages — through the **real** router, and
+    leaves the lifespan to the caller's ``async with lifespan_client(app)``.
+
+    That division is what makes the interesting tests possible: the caller mints a ticket over HTTP
+    through the ordinary seam and then presents it here, against the same running app, which is the
+    actual sequence a browser performs.
+
+    Args:
+        app: A companion application whose lifespan is already running.
+        path: The path to hand shake at.
+        ticket: The value of the ``ticket`` query parameter. Omit for no query string at all;
+            pass ``""`` for a present-but-empty parameter.
+        origin: The ``Origin`` header. Omit for this app's own origin (the accepted case), or pass
+            ``None`` to send no ``Origin`` header at all.
+        host: The ``Host`` header. Omit for this app's own authority, which is what the shipped
+            :class:`~src.companion.app.security.HostValidationMiddleware` requires.
+        frames: Client-to-server messages delivered after the handshake, before the disconnect.
+
+    Returns:
+        Every ASGI message the application sent, in order — ``[{"type": "websocket.close", ...}]``
+        for a refusal, ``[{"type": "websocket.accept", ...}, ...]`` for an accepted socket.
+    """
+    port = main.bound_port(app)
+    assert port is not None, (
+        "app.state.bound_port is unset — stamp it (directly, or via lifespan_client's default) "
+        "before driving a handshake, or this helper silently builds a '127.0.0.1:None' host/"
+        "origin header instead of the test-setup failure that actually happened"
+    )
+    headers = []
+    if host is _OMIT:
+        headers.append((b"host", f"127.0.0.1:{port}".encode("latin-1")))
+    elif host is not None:
+        headers.append((b"host", host.encode("latin-1")))
+    if origin is _OMIT:
+        headers.append((b"origin", f"http://127.0.0.1:{port}".encode("latin-1")))
+    elif origin is not None:
+        headers.append((b"origin", origin.encode("latin-1")))
+
+    query_string = b"" if ticket is _OMIT else f"ticket={ticket}".encode("latin-1")
+    scope = {
+        "type": "websocket",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "scheme": "ws",
+        "path": path,
+        "raw_path": path.encode("latin-1"),
+        "query_string": query_string,
+        "root_path": "",
+        "headers": headers,
+        "client": ("127.0.0.1", 51234),
+        "server": ("127.0.0.1", port),
+        "subprotocols": [],
+        "state": {},
+    }
+
+    # The connect, then whatever the test wants to say, then a disconnect that repeats forever: a
+    # handler that keeps reading past the disconnect must not hang the suite waiting for a message
+    # the fake was never going to send.
+    incoming = iter([{"type": "websocket.connect"}, *frames])
+    sent = []
+
+    async def receive():
+        return next(incoming, {"type": "websocket.disconnect", "code": _NORMAL_CLOSURE})
+
+    async def send(message):
+        sent.append(message)
+
+    await app(scope, receive, send)
+    return sent
+
+
 @pytest.fixture
 def lifespan_client():
     """Return the :func:`_lifespan_client` context manager.

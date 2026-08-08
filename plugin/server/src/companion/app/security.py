@@ -135,6 +135,90 @@ def host_is_allowed(host: str | None, port: int | None) -> bool:
     return host.strip().lower() in allowed_authorities(port)
 
 
+_ORIGIN_SCHEME = "http://"
+"""The only scheme a page served by this backend can have been loaded over.
+
+c1-3 binds a plain HTTP socket and there is no TLS anywhere in the companion, so an ``https``
+origin naming our own authority is *by construction* some other page — a service worker, a proxy,
+or an attacker who noticed that allow-lists often forget the scheme. Prefixing the authority set
+rather than comparing authorities alone is what keeps the scheme part of the decision.
+"""
+
+
+def allowed_origins(port: int) -> frozenset[str]:
+    """Return every origin a page legitimately served by this process can present on *port*.
+
+    **Derived from** :func:`allowed_authorities` **rather than written out again**, and that is the
+    whole design: ``Host`` and ``Origin`` are answering two different questions (*what did you
+    address* versus *what page is calling*) about the **same** two loopback spellings on the
+    **same** bound port. Two hand-written literal sets would be two things to keep in sync, and the
+    first divergence would be a silent one — an origin the Host check accepts and this one refuses,
+    or worse. Deriving makes agreement a fact rather than a convention, and
+    ``test_security.py::TestTheAllowedOrigins`` asserts the derivation from both directions.
+
+    It also inherits the port-80 carve-out for free, which is correct rather than merely
+    convenient: RFC 6454's ASCII serialisation omits the default port exactly as an HTTP client
+    omits it from ``Host``, so ``http://localhost`` is the *right* spelling on :80 and a wrong one
+    everywhere else.
+
+    Args:
+        port: The port the runner actually bound.
+
+    Returns:
+        ``{"http://127.0.0.1:<port>", "http://localhost:<port>"}``, plus the bare-authority forms
+        when *port* is 80.
+
+    Example:
+        >>> sorted(allowed_origins(8765))
+        ['http://127.0.0.1:8765', 'http://localhost:8765']
+    """
+    return frozenset(f"{_ORIGIN_SCHEME}{authority}" for authority in allowed_authorities(port))
+
+
+def origin_is_allowed(origin: str | None, port: int | None) -> bool:
+    """Report whether *origin* is a page this process may open a WebSocket for (c5-3, AD-5).
+
+    The upgrade half of the ``Origin`` ruling AD-5 and review finding S-6 both home here. The mint
+    (``GET /api/session``) deliberately does **not** check ``Origin`` — c5-2's Q1 — because a
+    cross-origin page can issue that ``GET`` but cannot read its response, so it can burn tickets
+    and never learn one. The handshake is the other half, and it is the half that matters: a
+    WebSocket upgrade is not a fetch, so no preflight and no ``Access-Control-Allow-Origin`` stands
+    between a hostile local page and this socket. ``Origin`` is what the browser sets and the page
+    cannot forge, so it is the only thing that distinguishes them.
+
+    **Independent of** :func:`host_is_allowed`, **and both are required.** ``Host`` says which
+    authority the caller believed it was addressing — it catches DNS rebinding. ``Origin`` says
+    which page is doing the calling — it catches the ordinary hostile tab, which addresses
+    ``127.0.0.1`` perfectly honestly. Neither implies the other, and the handshake asks both.
+
+    The header is compared after ``.strip().lower()`` and by exact string match against
+    :func:`allowed_origins`; nothing is parsed or normalised, for the reason the module docstring
+    gives about ``Host``.
+
+    Args:
+        origin: The ``Origin`` header value, or ``None`` when it was absent or ambiguous.
+        port: The port from application state, or ``None`` if the runner never bound one.
+
+    Returns:
+        ``True`` only for an exact match. A missing header rejects (Q4, Brad 2026-08-08): browsers
+        always send ``Origin`` on a WebSocket handshake, c5-8's real client sets it explicitly, and
+        the fail-closed shape is the one :func:`host_is_allowed` and :func:`agent_token_is_valid`
+        already share. A missing port rejects for the same reason it does there — an envelope that
+        cannot be evaluated is a reason to refuse.
+
+    Example:
+        >>> origin_is_allowed("HTTP://LOCALHOST:8765", 8765)
+        True
+        >>> origin_is_allowed("http://evil.example.com:8765", 8765)
+        False
+        >>> origin_is_allowed(None, 8765)
+        False
+    """
+    if origin is None or port is None:
+        return False
+    return origin.strip().lower() in allowed_origins(port)
+
+
 def _host_headers(scope: Scope) -> list[str]:
     """Return every ``Host`` header value on *scope*, in arrival order.
 
@@ -418,9 +502,16 @@ def install_security(app: FastAPI) -> None:
     :class:`~src.companion.app.errors.UnhandledErrorMiddleware` outermost — which is what makes a
     fault in the ``Host`` check itself answer as a typed ``500 internal_error`` rather than an
     untyped traceback. That net covers ``http`` scopes only: the error middleware passes
-    ``websocket`` scopes straight through (there is no JSON body to send on those), so a fault
-    while validating a handshake escapes raw — acceptable while nothing on the ws path can raise,
-    and c5-3 owns the question when it adds the upgrade.
+    ``websocket`` scopes straight through, because there is no JSON body to send on those.
+
+    **c5-3 ruled the gap that left, and ruled it closed locally (Q6, Brad 2026-08-08).** The
+    previous version of this paragraph said a fault while validating a handshake "escapes raw —
+    acceptable while nothing on the ws path can raise, and c5-3 owns the question when it adds the
+    upgrade". Something on the ws path can raise now, and nothing escapes:
+    :func:`~src.companion.app.ws.websocket_upgrade` catches its own faults on both sides of
+    ``accept`` and closes ``1011``. The error middleware **stays http-only** — extending it to
+    websocket scopes would give one middleware a second shape for exactly one caller, and that
+    shape would have to duplicate the handler's own pre-accept/post-accept distinction anyway.
 
     **Installs the middleware half only.** The agent credential (:data:`AgentToken`) is a
     per-route dependency and is wired by the routes that want it, not from here — c3-4's ``GET
@@ -429,14 +520,23 @@ def install_security(app: FastAPI) -> None:
     previous version of this paragraph promised the token would land "here beside it"; c3-4 built
     it and ruled otherwise, two stories ahead of the c5-5 that was scheduled to.
 
-    **The previous version of this paragraph was half right, and c5-2 falsified the other half.**
-    It said story c5-2's WebSocket ticket "is still to come and is genuinely middleware-shaped (it
-    gates a handshake, not an endpoint), so this remains the one wiring call and ``build_app()``
-    never grows a second security line." The ticket has two halves and they are not the same shape:
-    the **consume** does gate a handshake and is c5-3's, but the **mint** is an ordinary credential-
-    free endpoint, so c5-2 grew ``build_app()`` by an ``include_router`` — not a security line, but
-    a line — and put its store on the lifespan. What survives: this is still the one *security*
-    wiring call, and the store it does not hold is in :mod:`src.companion.app.state` (c5-2, Q3).
+    **A prediction this docstring made twice, and got wrong twice — now settled by measurement.**
+    The original said c5-2's WebSocket ticket "is still to come and is genuinely middleware-shaped
+    (it gates a handshake, not an endpoint), so this remains the one wiring call and ``build_app()``
+    never grows a second security line." c5-2 falsified half of it: its **mint** is an ordinary
+    credential-free endpoint, so it grew ``build_app()`` by an ``include_router`` and put its store
+    on the lifespan. c5-2's replacement text kept the other half — that the **consume** "does gate a
+    handshake and is c5-3's" — and c5-3 falsified that too: the upgrade is a plain
+    ``@router.websocket`` route (:mod:`src.companion.app.ws`), added by a third
+    ``include_router``.
+
+    The lesson, stated so c5-5 does not inherit the same mistake: *gating a handshake* describes
+    what a check does, and *middleware* describes where it has to live. They are independent. A
+    WebSocket route reads its own headers and closes its own connection, so it needs no middleware
+    position to gate from — only the ``Host`` check, which must see **every** scope including ones
+    no route claims, genuinely needs one. What survives unbroken across both corrections: this is
+    still the one *security* wiring call, and the store it does not hold is in
+    :mod:`src.companion.app.state` (c5-2, Q3).
 
     Args:
         app: The application to install onto.

@@ -34,6 +34,7 @@ from src.companion.app.errors import (
 from src.companion.app.routes import active_deck, cards, decks, health, session
 from src.companion.app.security import install_security
 from src.companion.app.spa import install_spa
+from src.companion.app.ws import router as ws_router
 
 logger = logging.getLogger(__name__)
 
@@ -511,19 +512,39 @@ def build_app() -> FastAPI:
     app.include_router(
         session.router, responses=error_responses("invalid_request", "internal_error")
     )
+    # No `responses=` at all, and that is not an omission: `responses` describes an OPERATION in
+    # `app.openapi()`, and a WebSocket route has no operation there — OpenAPI does not model
+    # WebSockets, so c5-3 adds zero paths and zero components (proven, not assumed, by
+    # `test_committed_schema.py`'s untouched 8/13 pins and a byte-identical `gen:api`). A closed
+    # handshake carries no JSON body either, so there is no typed error to declare: the whole
+    # vocabulary on that wire is a close code. It still MUST be registered above `install_spa`,
+    # for the reason the block below states and one more that is specific to it — see
+    # `test_spa.py::test_the_mount_declines_non_http_scopes`.
+    app.include_router(ws_router)
     # Ordering, and it is the whole point: user_middleware[0] is the most recently added
     # middleware, so the error middleware must be installed *last* to end up outermost — where it
     # can type the failures of every middleware added before it. The Host check goes above this
     # line so that a fault in the security envelope itself answers as a typed 500 rather than an
     # untyped traceback (on http scopes — the error middleware passes websocket scopes through,
-    # a gap c5-3 owns); c5-5 adds its piece inside install_security, not here.
+    # which c5-3's Q6 ruled PERMANENT: the upgrade handler catches its own faults and closes 1011,
+    # so the middleware keeps one shape). c5-5 adds its piece inside install_security, not here.
     #
     # CORRECTED AT c5-2, which falsified the previous version of that clause ("c5-2 and c5-5 add
     # their pieces inside install_security, not here"). c5-2 adds neither a middleware nor a
     # security line: its mint is an ORDINARY ENDPOINT, so it adds an include_router above, and its
-    # store is created by the lifespan. c5-3 — the handshake gate — is the story that sentence was
-    # really describing. Corrected in the same commit that falsified it, per c3-9's rule; a `#`
-    # comment in a non-wire position, so it costs no regeneration diff.
+    # store is created by the lifespan.
+    #
+    # AND CORRECTED AGAIN AT c5-3, which falsified c5-2's replacement for it. That version said
+    # "c5-3 — the handshake gate — is the story that sentence was really describing", predicting a
+    # security line here. IT IS NOT. The upgrade is an ordinary FastAPI route on an APIRouter, so
+    # c5-3 added an include_router above this block exactly as c5-2 did, and install_security is
+    # STILL the one security wiring call — now two stories past the one that was supposed to grow
+    # it. What made the prediction wrong is worth keeping: "gates a handshake" describes what the
+    # check DOES, and middleware-versus-route is about WHERE the check can be expressed. A
+    # websocket route can read its own headers and close its own connection, so it needs no
+    # middleware position to do the gating from. c5-5 is now the only story still holding that
+    # prediction, and it should be read with this correction in mind. Same commit as the code that
+    # falsified it (c3-9's rule); a `#` comment in a non-wire position, so no regeneration diff.
     install_security(app)
     install_error_handling(app)
     # MUST STAY LAST. install_spa mounts the SPA bundle at "/", and Starlette matches routes in
