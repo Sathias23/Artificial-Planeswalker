@@ -227,6 +227,16 @@ concerns about functionality this story explicitly scopes out).
       `deck.detail.name` is blank, which nothing in the deck schema or the header's own deck-name
       display (`.app-shell-deck-name`) guards against either.
 
+- [x] [Review][Patch] Greptile P1 on PR #59 — the fixed pill's footer-clearance offset assumes a
+      single-line footer; below the app's own stated ~1100px floor the attribution wraps and the
+      pill visually covers part of it (NFR-08). Verified with a real headless-browser check
+      (screenshots at 700px and 480px confirmed genuine text coverage, not a bounding-box false
+      positive). Fixed by enforcing the stated floor (`min-width: 1100px` on `.app-shell`) rather
+      than open-coding a taller clearance constant — the footer stays single-line at every width
+      the app claims to support; narrower windows scroll horizontally instead. Verified fixed
+      visually after the change; full suites still green.
+      [ui/src/components/AppShell/AppShell.css]
+
 - [x] [Review][Defer] No max-width/overflow guard on the deck name inside the fixed-position pill
       for unusually long names [ui/src/containers/ConnectionPill/ConnectionPill.css:76-103] —
       deferred, pre-existing: matches the identical, pre-existing gap in `.app-shell-deck-name`
