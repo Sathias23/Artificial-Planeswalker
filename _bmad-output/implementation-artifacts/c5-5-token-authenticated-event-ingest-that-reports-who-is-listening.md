@@ -17,7 +17,7 @@ baseline_commit: 9b944a6
 
 # Story C5.5: Token-authenticated event ingest that reports who is listening
 
-Status: review
+Status: done
 
 <!-- Context engine analysis completed 2026-08-08: epics + SPINE + PRD + EXPERIENCE + c5-1..c5-4
 records + deferred-work + live source all mined; five ledger deferrals homed here are carried in
@@ -347,6 +347,14 @@ ripple: `payload_too_large` and `/agent/events` appear in no `skills/*/SKILL.md`
   edit; rewrite every fulfilled prose prediction; deferred-work dispositions for the five
   triggered entries; full suites + gates; Dev Agent Record (incl. Dev Notes KB self-check);
   **set status `review` and STOP** — Brad runs the three-layer review and raises the PR.
+
+### Review Findings
+
+- [x] [Review][Patch] `Content-Length: 0`/negative silently bypasses the counted-bytes bound in `BodyCapMiddleware` [src/companion/app/body_cap.py:113-132] — fixed: `_announces_a_body` now routes any *present* `Content-Length` header (zero, negative, or unparseable) through the counted-bytes path instead of trusting a non-positive parse.
+- [x] [Review][Patch] `EventIngestReceipt.clients` has no `Field(ge=0)` despite its "never negative" docstring [src/companion/contracts.py:1349] — fixed: added `Field(ge=0)`; schema regenerated (`openapi.json`/`types.d.ts`), plugin mirror rebuilt.
+- [x] [Review][Patch] `main.py:560` still asserts the falsified "c5-5 adds its piece inside install_security" prediction live and unquoted, instead of rewriting it in the c5-2/c5-3 correction pattern (item 1 / AC 15) [src/companion/app/main.py:560] — fixed: added a properly-patterned "CORRECTED A THIRD TIME AT c5-5" paragraph quoting and falsifying the stale clause, and removed the out-of-pattern duplicate paragraph that referenced a nonexistent correction above it.
+
+Suites re-verified after patches: Python 2,770 passed / 1 skipped (`-m "not integration"`, unchanged count); frontend 1,706 passed / 66 files; mypy --strict and ruff clean on all three patched files; `gen:api` re-run and committed; plugin mirror rebuilt.
 
 ## Open questions for Brad (recommendations first — rule before code)
 
