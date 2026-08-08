@@ -65,7 +65,10 @@
  *   sets while the tab is open and the poll HEALTHY still waits for Epic 5's `deck_changed` —
  *   that half of the residue stands, with its named home. So does a narrower one: a transient
  *   blip on a boot request AFTER the poll has already stopped has no later edge to heal it, and
- *   persists until reload or c5-6's reconnect.
+ *   persists until reload or c5-6's reconnect. **c5-6 has shipped that reconnect**, so the
+ *   residue is closed: {@link redriveDeckBoot} re-drives this boot on every reconnect success and
+ *   on every `deck_changed` / `active_deck_changed` frame, and neither is an edge this module has
+ *   to detect.
  * - **No render.** The grid is **c4-4**, the placeholders **c4-3**, the detail panel **c4-5**,
  *   the deck list and its group headers **c4-7**, the curve **c4-8**, the format check **c4-10**,
  *   the empty-deck state **c4-12**. {@link DeckBoards} ships declared and unread by this story's
@@ -77,6 +80,14 @@
  *   connection registry, a fan-out and one route call — so it builds no client event handler for
  *   either question to attach to. `c5-6` owns the browser's connect/reconnect loop, and therefore
  *   both halves.
+ *
+ *   **c5-6 answered both (Q6, Brad 2026-08-08), and the answer was not a reset.** A blanket
+ *   `resetCardCache()` on a deck transition is wrong: the cache is shared with Epic 6's views, so
+ *   it would discard hydration two decks hold in common to fix a per-id attempt budget. What
+ *   ships instead is `resetCardAttempts()` — counters only, hydrated entries untouched, and only
+ *   entries the BOUND made terminal re-armed. The orphaned-return declare stands unchanged,
+ *   because the new verb creates no orphans: it throws nothing away and bumps no generation. This
+ *   module is untouched by either ruling.
  */
 
 import { useEffect } from 'react'
@@ -90,7 +101,7 @@ import {
 } from '../api/client'
 import type { DeckDetail, ErrorReason } from '../api/schema'
 import type { StateKey } from '../components/StatePanel/copy'
-import { PANEL_FOR_REASON } from '../components/StatePanel/states'
+import { PANEL_FOR_REASON, type ClientOnlyState } from '../components/StatePanel/states'
 import { boardsOfDeck, type DeckBoards } from './deckGroups'
 import { panelFor } from './panel'
 import { seedCardSummaries } from './cards'
@@ -123,7 +134,9 @@ export type DeckState =
    *   3. `unreachable` — no response arrived, so nothing was decided. `poller.ts`'s posture
    *      exactly: claiming `internal-error` here would say *"The companion hit a bug"* about a
    *      backend that is merely absent, and the panel that describes an absent backend
-   *      (`disconnected`) is **c5-6's** by `CLIENT_ONLY_STATES`.
+   *      (`disconnected`) is **c5-6's** by `CLIENT_ONLY_STATES` — now shipped, and reached through
+   *      {@link surfaceOf}'s connection arm rather than through this union, which is why this
+   *      member is unchanged.
    */
   | { readonly status: 'none' }
   /** A deck loaded. `boards` is derived ONCE, here, at write time — see `deckGroups.ts`. */
@@ -398,6 +411,17 @@ export type Surface =
   | { readonly kind: 'panel'; readonly panel: StateKey }
 
 /**
+ * The panel a lost connection draws (story c5-6, Q3, AC 17).
+ *
+ * Typed `ClientOnlyState` and not `StateKey`, which is dw:3500's disposition made mechanical:
+ * `disconnected` is in `CLIENT_ONLY_STATES` precisely because no response can carry it, and this
+ * is one of the two places in the app that chooses a panel from something other than a wire
+ * token. Retarget it at a wire-sourced panel and `npm run typecheck` names it. See that
+ * constant's docstring in `states.ts` for why the consumption is type-level rather than runtime.
+ */
+const DISCONNECTED_PANEL: ClientOnlyState = 'disconnected'
+
+/**
  * THE PRECEDENCE, IN ONE EXPRESSION (Q1, AC 6, AC 7, AC 8, AC 9, AC 11).
  *
  * `EXPERIENCE.md`'s state table gives the answer row by row — *"Cold open, backend live, deck
@@ -419,17 +443,79 @@ export type Surface =
  *      still shows `no-active-deck` with the deck names the poll already fetched, non-clickable,
  *      and `App.test.tsx`'s existing assertions on that panel pass **unmodified**.
  *
+ * ==== AND NOW THERE IS A FOURTH ARM, ABOVE ALL THREE (c5-6, Q3, Brad 2026-08-08) =======
+ *
+ * **A lost connection outranks even a loaded deck**, and that needed a deliberate ruling because
+ * the two written rules point opposite ways. The epic's Story 5.6 says the Disconnected panel
+ * *"takes the left column"* and UX-DR30 allows one state panel at a time there; arm 1 above has
+ * ranked a loaded deck above every system panel since c4-2. Meanwhile **UX-DR35 says a deck is
+ * never torn down to a skeleton during reconnection.**
+ *
+ * Both hold, because they are about different moments. The arm below fires on `'down'` **only** —
+ * the two-gate threshold in `socket.ts`, sixty seconds and four failures — and the whole
+ * pre-exhaustion window is `'reconnecting'`, during which this function returns exactly what it
+ * returned before this story: **the deck stays on the glass, possibly stale, exactly as UX-DR35
+ * asks.** Only once the app is prepared to assert *"Lost the companion backend"* does the panel
+ * displace it.
+ *
+ * ⚠️ **It reads the CONNECTION, not the `panel` field**, and that is the point of Q3 rather than a
+ * detail of it. Writing `panel: 'disconnected'` into the shared field would put two writers on one
+ * slot: with the HTTP half up and the WS half failing, the next poll success is a CHANGE and would
+ * overwrite the disconnected panel while the socket was still down. Composing the two opinions
+ * here instead means neither erases the other — and it is what keeps `PANEL_FOR_REASON` and
+ * `panelFor` untouched, which `PanelSourcesAreDisjoint` requires: `disconnected` has no wire token
+ * by design.
+ *
+ * **The deck slice is untouched underneath.** Nothing is cleared, so when the socket comes back
+ * the `'live'` status re-renders straight back to the deck that was there — AC 9's *"comes back
+ * without a reload"*, for free, because this is a pure function over state nobody destroyed.
+ *
  * Args:
  *   deck: The deck slice.
- *   system: The system slice — `panel` only; `decks` belongs to whoever renders the panel.
+ *   system: The system slice — `panel` and `connection`; `decks` belongs to whoever renders the
+ *     panel.
  *
  * Returns:
  *   The one surface to render.
  */
 export const surfaceOf = (deck: DeckState, system: SystemState): Surface => {
+  if (system.connection === 'down') return { kind: 'panel', panel: DISCONNECTED_PANEL }
   if (deck.status === 'deck') return { kind: 'deck', detail: deck.detail, boards: deck.boards }
   if (deck.status === 'refused') return { kind: 'panel', panel: deck.panel }
   return { kind: 'panel', panel: system.panel }
+}
+
+/**
+ * The mounted `App`'s deck boot, re-driven — or a no-op when nothing is mounted (c5-6, AC 5).
+ *
+ * ==== WHY A SEAM AND NOT A SECOND BOOT ================================================
+ * `createDeckBoot` is already idempotent, generation-guarded, seeds the card summaries and settles
+ * every refusal into a panel; `useDeckState` already re-drives it on the poll-recovery edge with
+ * `stop()` then `start()`. So the reconnect refetch is not a new mechanism at all — it is the
+ * existing one, driven from a new trigger. Building a second "refetch the deck" path would be a
+ * second place for the two-request sequence, the blank-id gate and the seeding to drift.
+ *
+ * ==== WHY A MODULE SLOT RATHER THAN AN EXPORTED BOOT ==================================
+ * The boot must stay inside the effect — {@link useDeckState}'s docstring gives the reason (a
+ * module-level boot fires during import, in every test file that touches this module, and twice
+ * under StrictMode with no cleanup between) — but `connection.ts` needs to drive it and lives in
+ * a different module. So the INSTANCE stays in the effect and this slot references it while one is
+ * mounted. It is the mirror of `systemState.ts`'s `mounted` poller, and both exist for the same
+ * reason `subscribeSystemState` exists: a seam beats naming another module's store.
+ *
+ * **This is a DIFFERENT trigger from the poll edge, deliberately.** The edge-trigger below never
+ * re-drives a loaded `'deck'` — `App.test.tsx`'s "boots exactly once" pins that request count —
+ * whereas a reconnect re-drives whatever the state is, INCLUDING a loaded deck, because the whole
+ * point of the reconnect refetch is that the deck on the glass may have changed while the socket
+ * was gone (AC 5, AC 6). Nothing about the edge's semantics is weakened; a second trigger is
+ * added beside it.
+ */
+let mounted: DeckBoot | null = null
+
+export const redriveDeckBoot = (): void => {
+  if (mounted === null) return
+  mounted.stop()
+  mounted.start()
 }
 
 /**
@@ -468,6 +554,7 @@ export const surfaceOf = (deck: DeckState, system: SystemState): Surface => {
 export const useDeckState = (): DeckState => {
   useEffect(() => {
     const boot = createDeckBoot({ onUpdate: applyDeckState })
+    mounted = boot
     boot.start()
     const unsubscribe = subscribeSystemState((state, previous) => {
       if (state.panel !== 'no-active-deck' || previous.panel === 'no-active-deck') return
@@ -478,6 +565,10 @@ export const useDeckState = (): DeckState => {
     })
     return () => {
       unsubscribe()
+      // Identity-checked: a StrictMode remount runs this cleanup BEFORE the next effect, so an
+      // unconditional clear is correct today and would silently un-register the live boot the day
+      // that order changed. See {@link redriveDeckBoot}.
+      if (mounted === boot) mounted = null
       boot.stop()
     }
   }, [])

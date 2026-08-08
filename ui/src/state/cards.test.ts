@@ -21,6 +21,7 @@ import {
   INITIAL_CARD_CACHE,
   MAX_ATTEMPTS_PER_CARD,
   hydrateCard,
+  resetCardAttempts,
   resetCardCache,
   seedCardSummaries,
   useCardStore,
@@ -553,8 +554,10 @@ describe('a per-id read has a bound on attempts, and it is not the token (AC 12)
       await hydrateCard(SOL_RING, reader.read)
     }
 
-    // Q6: this story does not copy `poller.ts`'s backoff. If it ever needs a schedule, the
-    // token-change damping question (deferred-work, homed on c5-6) comes with it.
+    // Q6: this story does not copy `poller.ts`'s backoff, and it never will — **c5-6 ruled the
+    // damping question NO DAMPING (Q4) and closed dw:3526**, on the ground that the socket loop
+    // has one failure kind and supplies the recovery signal that made the question matter. What
+    // c5-6 added instead is `resetCardAttempts`, tested below: a budget, not a schedule.
     expect(timeout).not.toHaveBeenCalled()
     timeout.mockRestore()
   })
@@ -748,5 +751,145 @@ describe('the DEFAULT reader is the real network door', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0][0]).toBe(`/api/cards/${SOL_RING}`)
     expect(entryOf(SOL_RING)?.status).toBe('hydrated')
+  })
+})
+
+/**
+ * The attempt budget comes back on a reconnect; the knowledge does not go away
+ * (story c5-6, Q6, AC 16 — closing `deferred-work.md:3652-3671`).
+ *
+ * The asymmetry the ledger recorded: three transient failures make a card id terminal **for the
+ * life of the tab**, while the poll recovers, the deck boot re-drives and — as of c5-6 — the
+ * socket reconnects. A backend restarted mid-sweep therefore left a deck view with permanent
+ * holes that no amount of the app working correctly could fill, and the only recovery was a
+ * reload — the exact defect the rest of this story exists to remove one layer up.
+ */
+describe('resetCardAttempts gives the budget back, and only the budget (c5-6, Q6, AC 16)', () => {
+  const entry = (id: string) => useCardStore.getState().cards[id]
+
+  const refusing = (reason: string) => () =>
+    Promise.resolve({ kind: 'error', reason } as CardOutcome)
+
+  /** Spend one id's three attempts against a token `CARD_READ_IS_RETRYABLE` says IS retryable. */
+  const burn = async (id: string, reason = 'database_unavailable') => {
+    for (let n = 0; n < MAX_ATTEMPTS_PER_CARD; n += 1) await hydrateCard(id, refusing(reason))
+  }
+
+  it('re-arms an id the BOUND made terminal', async () => {
+    await burn(SOL_RING)
+    expect(entry(SOL_RING)).toEqual(
+      expect.objectContaining({
+        status: 'unknown',
+        reason: 'database_unavailable',
+        retryable: false,
+      }),
+    )
+
+    resetCardAttempts()
+
+    expect(entry(SOL_RING)).toEqual(expect.objectContaining({ status: 'unknown', retryable: true }))
+  })
+
+  it('and the re-armed id really is asked again — the flag is not decoration', async () => {
+    // Clearing the attempt MAP alone would do nothing visible, and this is where that half-repair
+    // would land: `retryable` is recorded ON the entry and `hydrateCard`'s gate reads the entry,
+    // not the map. Counting requests is the only assertion that can tell the two apart.
+    await burn(SOL_RING)
+    const { read, calls } = readerAnswering({ kind: 'error', reason: 'database_unavailable' })
+
+    await hydrateCard(SOL_RING, read)
+    expect(calls).toEqual([])
+
+    resetCardAttempts()
+    await hydrateCard(SOL_RING, read)
+
+    expect(calls).toEqual([SOL_RING])
+  })
+
+  it('leaves an id terminal BY TOKEN exactly where it was', async () => {
+    // `card_not_found` and `invalid_request` cannot succeed however many attempts they are given
+    // — a card row is immutable between database refreshes, and a malformed id fails the route's
+    // uuid pattern identically forever. Re-arming them would spend a request per missing card on
+    // every reconnect, forever, which is a worse defect than the one being fixed.
+    await hydrateCard(SOL_RING, refusing('card_not_found'))
+    await hydrateCard(ARCANE_SIGNET, refusing('invalid_request'))
+
+    resetCardAttempts()
+
+    expect(entry(SOL_RING)).toEqual(expect.objectContaining({ retryable: false }))
+    expect(entry(ARCANE_SIGNET)).toEqual(expect.objectContaining({ retryable: false }))
+  })
+
+  it('re-arms an id whose failure carried NO token at all', async () => {
+    // A network rejection, an unreadable body, an unknown token: `entryFor` treats all three as
+    // retryable-by-the-token, because the bound caps the cost either way and guessing "terminal"
+    // would permanently un-hydrate a card because a proxy returned HTML once. This function has
+    // to agree with that decision, or the two halves of one rule would disagree.
+    for (let n = 0; n < MAX_ATTEMPTS_PER_CARD; n += 1) {
+      await hydrateCard(SOL_RING, () => Promise.resolve({ kind: 'unreachable' }))
+    }
+    expect(entry(SOL_RING)).toEqual(expect.objectContaining({ retryable: false }))
+
+    resetCardAttempts()
+
+    expect(entry(SOL_RING)).toEqual(expect.objectContaining({ retryable: true }))
+  })
+
+  it('NEVER touches a hydrated entry — the knowledge is shared with Epic 6', async () => {
+    // The reason a blanket `resetCardCache()` was the wrong repair: this cache is shared (this
+    // module's own header names Epic 6's agent views as the other consumer), so discarding
+    // hydration would throw away rows two decks and four future views hold in common, and buy
+    // back a request per id for cards that were never broken.
+    await hydrateCard(SOL_RING, () =>
+      Promise.resolve({ kind: 'card', card: fullCard(SOL_RING, 'Sol Ring') }),
+    )
+    const before = entry(SOL_RING)
+
+    resetCardAttempts()
+
+    // Identity, not equality: a rewritten entry with the same contents is still a re-render.
+    expect(entry(SOL_RING)).toBe(before)
+    expect(entry(SOL_RING)?.status).toBe('hydrated')
+  })
+
+  it('leaves the summary tier alone as well', async () => {
+    seedCardSummaries([deckCard(ARCANE_SIGNET, 'Arcane Signet')])
+    // …with a burned id in the same store, so the write really does happen and this assertion is
+    // about what the write SPARED rather than about a write that never occurred.
+    await burn(SOL_RING)
+    const before = entry(ARCANE_SIGNET)
+
+    resetCardAttempts()
+
+    expect(entry(ARCANE_SIGNET)).toBe(before)
+  })
+
+  it('does not write the store at all when there is nothing to give back', () => {
+    // The store is read by every tile, so a no-op write on every reconnect would re-render a
+    // 99-tile grid for nothing.
+    const before = useCardStore.getState()
+
+    resetCardAttempts()
+    resetCardAttempts()
+
+    expect(useCardStore.getState()).toBe(before)
+  })
+
+  it('creates no orphans — the dw:3666 declare stands unchanged', async () => {
+    // `resetCardCache` bumps a generation precisely because a read in flight when the world is
+    // thrown away must write nowhere. This function throws nothing away and bumps nothing, so a
+    // read in flight across it settles normally — which is the DISPOSITION that ledger entry was
+    // waiting for rather than a repair of it.
+    let settleRead: (outcome: CardOutcome) => void = () => undefined
+    const pending = hydrateCard(
+      SOL_RING,
+      () => new Promise<CardOutcome>((resolve) => (settleRead = resolve)),
+    )
+
+    resetCardAttempts()
+    settleRead({ kind: 'card', card: fullCard(SOL_RING, 'Sol Ring') })
+    await pending
+
+    expect(entry(SOL_RING)?.status).toBe('hydrated')
   })
 })

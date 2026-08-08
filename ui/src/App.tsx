@@ -13,6 +13,7 @@ import { FormatCheck } from './containers/FormatCheck/FormatCheck'
 import { ManaCurve } from './containers/ManaCurve/ManaCurve'
 import { SkipLink } from './containers/SkipLink/SkipLink'
 import { hydrateDeckCards } from './state/cards'
+import { useAgentConnection } from './state/connection'
 import { surfaceOf, useDeckState } from './state/deck'
 import { deckIsEmpty } from './state/deckGroups'
 import { clearFormatCheck, loadFormatCheck } from './state/formatCheck'
@@ -163,6 +164,25 @@ import { useSystemState } from './state/systemState'
 export default function App() {
   const system = useSystemState()
   const surface = surfaceOf(useDeckState(), system)
+  // THE SOCKET, MOUNTED ONCE (c5-6, AC 1). Third in declaration order, behind the poll and the
+  // boot, and returning nothing: what it produces is `system.connection`, which `surfaceOf` two
+  // lines up already reads. `App` is its ONE consumer for the reason `useSystemState` and
+  // `useDeckState` both give — a second mounted caller is a second socket per tab.
+  //
+  // ==== WHERE THE UPGRADE LANDS IN THE REQUEST QUEUE (c4-12 Q10's measurement, extended) ==
+  // React runs effects in DECLARATION ORDER, and hooks called here run their effects BEFORE this
+  // component's own two `useEffect` blocks below. So the order on a cold open is: the poll's
+  // `GET /api/decks`, the boot's `GET /api/active-deck`, this loop's `GET /api/session`, then —
+  // once the ticket lands, a round trip later — the upgrade, and only then the 99-card sweep and
+  // the format check. The mint is one small request ahead of the sweep; the UPGRADE is not in the
+  // HTTP queue at all once established, which is the point of a socket.
+  //
+  // ⚠️ Declared HERE, above both `useEffect` blocks, and **the two blocks below are not moved**.
+  // Their relative order is measured and load-bearing (`:245-267` and `:341-359` each name the
+  // other's queue position, worth ~180 ms of the six-surface layout); adding a hook call above
+  // them changes neither, and this comment exists so the next reader can see that was checked
+  // rather than assumed.
+  useAgentConnection()
   // The one narrowing of the one rule. Not a second precedence decision: `surfaceOf` has already
   // said which of the two is true, and this line only gives the deck arm a name so that the
   // three slots below can read its fields without repeating the discriminant check.

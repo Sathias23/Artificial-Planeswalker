@@ -304,6 +304,62 @@ export const resetCardCache = (): void => {
   generation += 1
 }
 
+/**
+ * Give every id its {@link MAX_ATTEMPTS_PER_CARD} back, and re-arm the entries the bound alone
+ * made terminal (story c5-6, Q6, Brad 2026-08-08; `deferred-work.md:3652-3671`).
+ *
+ * ==== THE ASYMMETRY THIS CLOSES, AS THE LEDGER RECORDED IT =============================
+ * Three transient failures make a card id terminal **for the life of the tab**, while everything
+ * else in the app self-heals: the poll recovers, the deck boot re-drives on the recovery edge, and
+ * now the socket reconnects. A backend restarted mid-sweep therefore leaves a deck view with
+ * permanent holes in it that no amount of the app working correctly can fill — the only recovery
+ * was a reload, which is the exact defect this whole story exists to remove one layer up.
+ *
+ * ==== WHY THIS AND NOT `resetCardCache()` =============================================
+ * A blanket reset was the obvious repair and it is the wrong one. The cache is shared — this
+ * module's own header says Epic 6's agent views are the other consumer — so throwing away the
+ * hydrated entries would discard rows two decks and four future views hold in common, and buy
+ * back a request per id for cards that were never broken. **Hydration is knowledge; the attempt
+ * count is a budget.** A restart invalidates the budget and not the knowledge.
+ *
+ * ==== WHAT IS RE-ARMED, AND WHAT DELIBERATELY IS NOT ==================================
+ * Clearing {@link attempts} alone would do nothing visible, and that is the part worth stating
+ * because it is where a half-repair would land: `retryable` is recorded ON the entry by
+ * {@link entryFor}, and {@link hydrateCard}'s gate reads the entry, not the map. So this also
+ * rewrites the `unknown` entries whose terminality came from the BOUND — and only those. An id
+ * refused with `card_not_found` or `invalid_request` stays terminal, because
+ * {@link CARD_READ_IS_RETRYABLE} says those cannot succeed however many attempts they are given,
+ * and re-arming them would spend a request per missing card on every reconnect forever.
+ *
+ * The orphaned-hydration declare (`deferred-work.md:3666`) is untouched by this and **stands
+ * unchanged**: a read orphaned by a cache reset still resolves with the entry it computed. This
+ * function performs no reset and bumps no generation, so it creates no orphans — which is the
+ * disposition that entry was waiting for rather than a repair of it.
+ *
+ * Writes only when something actually changed, for `poller.ts`'s reason: this store is read by
+ * every tile, and a no-op write on every reconnect would re-render a 99-tile grid for nothing.
+ */
+export const resetCardAttempts = (): void => {
+  if (attempts.size === 0) return
+  attempts.clear()
+
+  useCardStore.setState((state) => {
+    const cards: Record<string, CardEntry> = { ...state.cards }
+    let changed = false
+    for (const [cardId, entry] of Object.entries(cards)) {
+      if (entry.status !== 'unknown' || entry.retryable) continue
+      // The token's own verdict, with the bound now spent to zero. `null` — no token at all, an
+      // unreadable body, a network rejection — is retryable for `entryFor`'s stated reason: the
+      // bound caps the cost either way, and guessing "terminal" would permanently un-hydrate a
+      // card because a proxy returned HTML once.
+      if (entry.reason !== null && !CARD_READ_IS_RETRYABLE[entry.reason]) continue
+      cards[cardId] = { ...entry, retryable: true }
+      changed = true
+    }
+    return changed ? { cards } : state
+  })
+}
+
 /** Whatever summary an existing entry carries, or `null`. `hydrated` needs none — it has the row. */
 const summaryOf = (entry: CardEntry | undefined): CardSummary | null => {
   if (entry === undefined) return null
@@ -430,6 +486,14 @@ const entryFor = (cardId: string, outcome: CardOutcome, summary: CardSummary | n
  * and the "loop" AC 12 bounds is the caller's — a component re-rendering, a cursor sweeping. That
  * is the honest shape for a cache whose consumers are renders, and it is why Q6 re-homed the
  * backoff-damping question to c5-6 rather than copying `poller.ts`'s schedule into a per-id path.
+ *
+ * **c5-6 ruled it (Q4, Brad 2026-08-08): NO DAMPING, and `dw:3526` is closed.** The socket loop
+ * has ONE failure kind — `ws.py` refuses every upgrade with the same bodyless `1008` — so its
+ * backoff resets only on a successful connection, and the alternating-token scenario that made
+ * the question worth asking cannot arise there at all. The poller's own reset-on-flip cost was
+ * accepted at c3-9 Q2 and stays accepted, because the socket now supplies the recovery signal
+ * that made the poller's tail latency matter in the first place. What DID change here is
+ * {@link resetCardAttempts}: an id this bound made terminal is re-armed on reconnect.
  *
  * Args:
  *   cardId: The Scryfall printing uuid.

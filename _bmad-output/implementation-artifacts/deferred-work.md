@@ -1,5 +1,42 @@
 # Deferred Work
 
+## Deferred from: code review of c5-6-client-reconnection, Group 3 (2026-08-08)
+
+> UI shell/API/dev-proxy diff (App.tsx, api/client.ts, api/schema.ts, components/StatePanel/states.ts,
+> config/devProxy.ts + tests) — third of a chunked review; 0 patch findings survived (one attempted
+> patch on devProxy.ts's WEBSOCKET_PATTERNS typing was reverted after testing showed it broke real
+> compilation).
+
+- source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
+  summary: "agentEventOf only validates the `kind` discriminant, not `id`/`ts`/`payload` — a frame like {\"kind\":\"deck_changed\"} with no id/ts/payload passes through typed as a full AgentEvent. Not exercised today (system-event kinds are dispatched by kind alone; the four agent-view kinds are dropped unread), becomes actionable when Epic 6 builds the agent views and reads those fields."
+  evidence: 'Blind Hunter + Edge Case Hunter, independently; ui/src/api/client.ts:701-716.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
+  summary: "The equivalence between the agent's outbound POST /agent/events body shape and the WebSocket frame the browser actually receives is asserted only in a comment (ws.py broadcasts the ingested event verbatim), with no cross-language contract test pinning it."
+  evidence: 'Blind Hunter; ui/src/api/schema.ts, ui/src/api/client.ts:662-669.'
+
+## Deferred from: code review of c5-6-client-reconnection, Group 1 (2026-08-08)
+
+> UI reconnection-core diff (`connection.ts`, `socket.ts`, `deck.ts`, `cards.ts`, `systemState.ts`,
+> `poller.ts` + tests) — first of a chunked review; Groups 2 (backend) and 3 (UI shell/API/dev-proxy)
+> still queued.
+
+- source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
+  summary: "useAgentConnection's socket does not reconcile the shared `connection` field on `stop()`/remount — if the component were ever unmounted and remounted while status was `down` or `live`, the store would show a stale value until the new socket's status next changes."
+  evidence: 'Blind Hunter + Edge Case Hunter, both independently; ui/src/state/socket.ts:491-497 (stop()) and ui/src/state/connection.ts (useAgentConnection). Pre-existing pattern: App is documented as the sole, permanently-mounted consumer of useSystemState, useDeckState and now useAgentConnection alike; none of the three defends against a remount all three explicitly disclaim as unsupported.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
+  summary: 'Two independent triggers (redriveDeckBoot() fired directly on a system event, and the pre-existing subscribeSystemState edge-trigger in useDeckState) can both re-drive the same DeckBoot instance in quick succession around one event, costing a redundant fetch.'
+  evidence: 'Blind Hunter; ui/src/state/deck.ts:559-565, ui/src/state/connection.ts:352-364. Idempotent and generation-guarded — low impact, narrow timing window.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
+  summary: 'Whether restartPollIfStopped/restartPoll actually close dw:3472/3544 and dw:3463 depends on backend behaviour outside this diff slice (does a DB rebuild or later DB death produce a deck_changed/active_deck_changed frame, or drop the socket?). Needs confirmation in the Group 2 (backend) review pass.'
+  evidence: 'Acceptance Auditor; ui/src/state/systemState.ts:186-216.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
+  summary: 'connection.ts (wiring restartPoll -> resetCardAttempts -> redriveDeckBoot on reconnect, and redriveDeckBoot -> restartPollIfStopped on a system event) has no dedicated unit test in this slice, nor does AgentSocketOptions.initialStatus. Needs confirmation in the Group 2 pass that App.test.tsx actually pins this call order rather than merely observing an eventual refetch.'
+  evidence: 'Acceptance Auditor + Blind Hunter; ui/src/state/connection.ts (whole file), ui/src/state/socket.ts:223 (initialStatus).'
+
 ## Deferred from: code review of story-7.4 (2026-07-17)
 
 > Test-hardening gaps in the `assess_deck_power` e2e suite (tests-only story; all 7 ACs met, suite green). Neither is a product defect — both are e2e-coverage extensions whose behavior is already guarded at the unit/model level.
@@ -5250,3 +5287,202 @@ engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries cha
   general rule "a WS router owes the schema tests nothing" is true and the adjacent rule "…therefore
   owes `test_spa.py` nothing" is not, and c5-4/c5-5 will be reasoning from the same file.
   **Home: none** — informational. (Severity: none.)
+
+## Dispositions from: dev of c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt (2026-08-08)
+
+**The story that was named as the home of a family, and closed it.** C3 retro ruling R3 said
+*"c5-6 resolves the family; it should not solve one third of it and leave the rest"*, and the Dev
+Notes carried ten trigger-gated anchors in full. Every one is dispositioned below — six CLOSED, two
+CLOSED-BY-RULING with the reason written down, one STANDS UNCHANGED, one re-scoped.
+
+All nine of the story's open questions were ruled by Brad **before any code**, as recommended, in
+one pass — the c5-5 protocol repeated. The rulings live in the story record; only their
+consequences for the ledger are here.
+
+### CLOSED
+
+- **dw:3451-3461 + dw:4930-4940 — first load with no backend holds "No deck on the glass." forever.**
+  **CLOSED.** The panel's copy is *actionable and wrong* about a backend that is not running, which
+  is why the severity was raised after Block I confirmed it live. `src/state/socket.ts` supplies the
+  signal the client did not have: sixty seconds and four failed attempts after a cold open against
+  nothing, the connection status reads `'down'` and `surfaceOf`'s new fourth arm puts the true
+  `disconnected` panel on the glass. **The first sixty seconds are deliberately unchanged** — a
+  backend restart takes a second or two, and a whole-screen panel flashing on every
+  `uvicorn --reload` save would be a worse defect than the one being fixed.
+  Asserted end to end in `App.test.tsx::the page reconnects on its own`, which pins BOTH halves
+  (the old panel at t=0, the true one at t=60 s).
+
+- **dw:3463-3470 — after one `200` the poll stops; a later DB death shows a stale panel until reload.**
+  **CLOSED.** `restartPollIfStopped()` in `systemState.ts` re-drives the poll when a
+  `deck_changed` / `active_deck_changed` frame arrives AND the panel on the glass is one
+  `RETRIES_QUIETLY` says does not retry itself. The gate is the CONTRACT rather than a list of the
+  three panel names, so a seventh panel decided later is covered with no edit.
+
+- **dw:3472-3478 + dw:3544-3555 (C3 retro R3) — `database-updating-stalled` is terminal.**
+  **CLOSED**, and this is the sibling that was felt live at Block I (wire `200`, poll count moved by
+  exactly 0 over 45 s — dw:4968-4972). Two triggers now recover it: a reconnect success restarts the
+  poll unconditionally (`restartPoll()` — a socket coming back is the strongest evidence the app
+  gets that the process it was talking to is gone, so a stalled clock inherited from it is not
+  evidence), and a system-kind frame restarts it via the gate above. `RETRIES_QUIETLY` is
+  **untouched**: the stalled state still does not retry itself, which is correct; what changed is
+  that something else can now re-drive it.
+
+- **dw:3756-3768 — the no-re-drive-after-boot browser half (`active_deck_changed` arrives and
+  nothing listens), plus the 404-clears-then-re-asks residue.**
+  **BOTH CLOSED.** The first is AC 11: `socket.ts` dispatches the two system kinds through one total
+  switch and `connection.ts` re-drives the boot on either. The second is dispositioned rather than
+  repaired, as predicted: the event now delivers the correction, so the one wasted request per cold
+  open against a deleted deck is self-correcting the moment the agent sets another deck — which the
+  agent's own `PUT` now announces on the wire.
+
+- **dw:5221-5237 — the Vite dev proxy rewrites `Host` but not `Origin` (Medium).**
+  **CLOSED by fix (a) of the three the entry enumerated** (Q7). The `/ws` entry rewrites `Origin` to
+  the backend target, exactly as `changeOrigin` does for `Host`. The backend check stays strict,
+  `security.py` ships no dev-time branch, and the whole accommodation lives in a file that never
+  reaches the bundle. (b) — dialling the backend port directly from the dev client — was declined
+  because it makes dev and prod diverge inside `client.ts`, where `agentSocketUrl` derives the whole
+  authority from `window.location` precisely so that it cannot; (c) — an `allowed_origins` widening
+  flag — was the entry's own *"worst of the three"*. Proven by a **real upgrade through a real Vite
+  server** in `devProxyRoundTrip.test.ts`, in both directions, not by a config assertion.
+  `ui/README.md:52-61`, which named c5-6 as owner, is rewritten.
+
+- **dw:1588 — the copy-tails fourth tail, declined at c3-9 and re-homed on c5-6 by name.**
+  **PAID.** `copy-tails.test.ts`'s last describe was deliberately weak *"until c5-6 arrives to
+  honour it"*; it now reads the shipped backoff's constants out of `src/state/socket.ts`, holds the
+  two-gate threshold to `poller.ts`'s `STALLED_AFTER_MS`, and asserts the loop READS
+  `RETRIES_QUIETLY` rather than paraphrasing it. **The pill itself stays unasserted and is asserted
+  to be unasserted** — it is c5-7's, and gating it now would be the prose-against-prose failure that
+  file exists to prevent.
+
+### CLOSED BY RULING, with the reason recorded
+
+- **dw:3526-3534 — the poller backoff-damping question (alternating tokens pin the backoff near
+  base).** **CLOSED: NO DAMPING** (Q4). The socket loop has exactly ONE failure kind — `ws.py:29-40`
+  refuses every upgrade with the same bodyless `1008`, deliberately indistinguishable — so its
+  backoff resets only on a successful connection and the alternating-token scenario cannot arise
+  there at all. The poller's own reset-on-flip cost was accepted at c3-9 Q2 and stays accepted,
+  because the socket now supplies the recovery signal that made the poller's tail latency matter.
+  No code change in `poller.ts`; its header and `cards.ts:432`'s note are rewritten to record the
+  ruling rather than the question.
+
+- **dw:3500-3505 — `CLIENT_ONLY_STATES` has no runtime consumer.** **CLOSED: it stays TYPE-LEVEL,
+  and the reason is written into `states.ts`** (AC 17). A runtime consumer would have to be a
+  membership test — *"is this panel client-only?"* — and nothing in the app asks that: the two
+  members are produced by two different mechanisms in two different modules, each of which names
+  its own panel directly because each knows which one it is producing. What c5-6 DID add is a third
+  type-level reader that is no longer merely a proof: the new `ClientOnlyState` alias types the
+  `DISCONNECTED_PANEL` constant in both `deck.ts` and `socket.ts`, so the two places in the app that
+  choose a panel from something other than a wire token are now compile-checked against this list.
+  Retarget either at a wire-sourced panel and `tsc` names it.
+
+### CLOSED with a narrower shape than the entry proposed
+
+- **dw:3652-3671 (entries 5 & 6, re-homed entirely to c5-6 at c5-4 Q6).**
+  - **Entry 5 — three transient failures make a card id terminal for the tab's life.** **CLOSED by
+    `resetCardAttempts()`** (Q6), called on reconnect success. Attempt counters only; hydrated
+    entries are never touched. **A blanket `resetCardCache()` was declined and the reason is the
+    entry's own**: the cache is shared with Epic 6's views, so a reset would discard hydration two
+    decks hold in common to fix a per-id budget. Only entries the BOUND made terminal are re-armed —
+    `card_not_found` and `invalid_request` stay terminal, because re-arming them would spend a
+    request per missing card on every reconnect forever. The half-repair worth naming: clearing the
+    attempt map ALONE does nothing visible, because `retryable` is recorded on the entry and
+    `hydrateCard`'s gate reads the entry; `cards.test.ts` asserts the REQUEST, not the flag.
+  - **Entry 6 — the orphaned-hydration declare.** **STANDS UNCHANGED, and that is its disposition.**
+    `resetCardAttempts` throws nothing away and bumps no generation, so it creates no orphans; the
+    declare was waiting for a ruling about whether the reset shape would make it worse, and the
+    answer is that the reset shape was not taken. Asserted (`creates no orphans — the dw:3666
+    declare stands unchanged`).
+
+### Re-scoped
+
+- **dw:5079-5083 — the probe-harness vitest half.** **SCOPED DECLINE** (Q9). This story ran its
+  twelve firing proofs the way c4 and c5-5 did — the full `npm test` by hand, collected count
+  checked, results pasted into the story record — and the committed vitest harness stays the
+  standalone process item it already is (owner "Brad (c5-1)", unstarted). Putting it inside the
+  epic's largest frontend story would have made a tool change ride a feature diff.
+  **One measurement worth carrying to whoever does build it:** a subprocess `npm test` launched with
+  a LOWERCASE drive letter (`c:\…`) resolves no vitest config on Windows and reports 67 failed
+  suites / "no tests" — i.e. every probe reads RED for a reason that has nothing to do with the
+  probe. The harness must normalise the drive letter and must validate the collected COUNT, not
+  just the exit code.
+
+### New, from this story
+
+- **The four agent-view kinds are received and deliberately dropped.** `suggestions`, `swaps`,
+  `tier_list` and `groups` reach the browser, are narrowed, and are discarded by the dispatch switch
+  with a recorded home: **Epic 6** builds the views. Not an error and not a crash — treating a valid
+  frame as malformed would make the agent's pushes look like a wire fault to whoever debugs c6-x.
+  **Home: Epic 6** (already scheduled). (Severity: none — designed.)
+
+- **A duplicate `active_deck_changed` costs one full boot each.** The backend fires on every `PUT`
+  including a redundant re-set (`ws.py:409-444`), and the client answers each with a
+  `stop()`/`start()` of the deck boot — two requests per duplicate. That is AC 12's *"one idempotent
+  refetch, nothing else"* and it is cheap, but an agent that re-set the same deck in a tight loop
+  would produce a request per set. No coalescing is shipped: a debounce is a second timing mechanism
+  to reconcile with the backoff, and there is no measured workload that needs one.
+  **Fix shape:** if it is ever needed, coalesce in `connection.ts` (one trailing re-drive per
+  animation frame), never in `deck.ts`. **Home: c10-3 or whoever measures a real agent push rate.**
+  (Severity: low.)
+
+- **The connection status is written on change only, and `App` subscribes to the system store
+  selector-less.** So a reconnect storm re-renders the whole tree twice per storm (down, then live)
+  rather than twice per attempt. That is deliberate and measured against `poller.ts`'s identical
+  rule; it is recorded because the selector-less subscription is a standing cost the pill (c5-7) and
+  Epic 6 will both inherit. **Home: c5-7 if the pill wants finer granularity.** (Severity: none.)
+
+- **jsdom DOES provide `WebSocket` — the story's own Dev Notes said it does not.**
+  Measured 2026-08-08 (`typeof new JSDOM().window.WebSocket === 'function'`). Recorded as a
+  **falsified prediction** rather than silently worked around, because it changed the test design:
+  without an explicit `vi.stubGlobal('WebSocket', …)` every one of `App.test.tsx`'s ~70 mounts would
+  attempt a real TCP connection to `ws://localhost:3000`, making the retry schedule depend on how
+  fast the OS refuses a connection. The stub is now installed in `beforeEach` and documented there.
+  **Home: none** — informational, and a correction to the Dev Notes rather than to code.
+
+- **`devProxyRoundTrip.test.ts` needed explicit upgraded-socket teardown.** An upgraded socket is
+  detached from the server's request lifecycle and stays open by definition, so `server.close()`
+  waits for it forever: the first run of the new block reported three tests "failed" with **no
+  failed expectation between them** — the `afterEach` hook hit its 10 s timeout. Both ends are now
+  destroyed by hand. Recorded because the failure mode is indistinguishable from a real one at a
+  glance, and c5-8 adds more real-socket tests to this exact file. **Home: c5-8 inherits the
+  pattern.** (Severity: none — fixed here.)
+
+- **Node's global `WebSocket` sends no `Origin` header.** It is not a browsing context. The first
+  draft of the round-trip's negative half used it and recorded the forwarded Origin as `<absent>` —
+  a negative half that cannot reproduce the header under test is not a negative half. The block now
+  drives raw `http.request` upgrades with an explicit `Origin`, which is also what `security.py`'s
+  docstring says c5-8's real client will have to do. **Home: c5-8** — it will need the same. (Severity: none.)
+
+- **The pre-existing `test_list_decks_with_strategy_field` flake fired once**, during this story's
+  post-prose Python run (`assert 'Control' is None`), and passed on an immediate clean re-run at the
+  expected 2,770 / 1 skipped. Not chased, per the Dev Notes' instruction; recorded as a second
+  sighting after c5-5's. **Home: C5 retro.** (Severity: low — two sightings now, not one.)
+
+- **An intermittent vitest "unhandled error" that costs ONE test file its collection.** Seen
+  **twice** during this story's verification: 66/67 files with 1,807/1,812 tests, and 66/67 with
+  1,805/1,812. In both cases no failing assertion was reported — the count simply dropped by one
+  file's worth of tests, with vitest's *"This might cause false positive tests"* warning. It then
+  **did not recur in 26 consecutive full runs**, including six deliberate attempts to reproduce the
+  exact shape both sightings had (a heavy multi-hundred-file write — `pre-commit run --all-files`
+  rebuilding `plugin/`, or `gen:api` — in the same shell invocation immediately before the run) and
+  three runs with a concurrent `git add -A` in flight. Unreproduced, so unfixed.
+
+  **The leading hypothesis, and the reason this entry is not filed as "probably nothing":
+  `devProxyRoundTrip.test.ts`'s declared TOCTOU, whose exposure THIS STORY TRIPLED.**
+  `ephemeralPort()` probes a port, closes it, and lets Vite bind it with `strictPort: true`; that
+  file's own comment accepts the probe-then-bind gap on the ground that a collision is *"a loud
+  EADDRINUSE, not a silent wrong-server test"*. c5-6 added four tests to that file, each starting
+  its own Vite server plus a stub backend — so the number of probe-then-bind windows per suite run
+  went from 5 to 9, and the number of listening sockets roughly doubled. A `listen` error raised
+  outside any test's own await is exactly an "unhandled error", and it would take its file's
+  collection with it.
+
+  **Fix shape (for whoever picks this up):** stop probing. Let Vite bind port `0` and read the real
+  port back off `vite.httpServer.address()` — which this file ALREADY does for its return value, so
+  the probe exists only to work around `server.port: 0` being falsy in Vite's config. Passing a
+  freshly-bound listener, or retrying the bind on EADDRINUSE, removes the window entirely. Note the
+  file's existing warning before changing anything: distinct ports per test are load-bearing for a
+  DIFFERENT reason (undici pools keep-alive sockets by origin, and shared ports caused a ~1-in-3
+  ECONNRESET flake), so the fix must keep ports distinct.
+  **Home: c5-8** — it adds the one real-socket integration test and will be working in this exact
+  file. (Severity: low — intermittent, loud when it fires, and it has never turned a real assertion
+  green.)

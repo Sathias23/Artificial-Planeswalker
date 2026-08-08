@@ -191,19 +191,55 @@ export const NO_UI_RESPONSE = [
 /**
  * Panels with no reason token at all, because their condition is CLIENT-SIDE.
  *
- * `disconnected` is produced by the WebSocket backoff exhausting its retries (**c5-6**) — there
- * is no response to carry a token, which is the whole point of the state.
+ * `disconnected` is produced by the WebSocket backoff reaching its two-gate announcement
+ * threshold (**c5-6** — `DISCONNECTED_AFTER_MS` elapsed AND `DISCONNECTED_MIN_FAILURES`
+ * observed). There is no response to carry a token, which is the whole point of the state.
  *
  * `database-updating-stalled` is the c1-6 corrupt-database ruling (Q5, Brad 2026-07-29). The
  * backend cannot tell 200ms of mid-import from a month of garbage — that is *why* decide-once
  * #4 ruled the condition transient — so it answers `database_unavailable` either way. The
  * distinguisher is ELAPSED TIME, which only the client has. **c3-9 owns the threshold and the
- * switch**, because c3-9 owns the polling; this story ships the copy and the panel.
+ * switch**, because c3-9 owns the polling; c2-9 shipped the copy and the panel.
+ *
+ * ================= THE DISPOSITION dw:3500 ASKED FOR (c5-6, AC 17) ======================
+ *
+ * The ledger recorded that this constant *"has no runtime consumer"*, and named c5-6 as the story
+ * that either gives it one or **says it should stay type-level**. Ruled: **type-level, and here is
+ * the reason** — with the assert below turning that ruling into something the compiler holds.
+ *
+ * A runtime consumer would have to be a MEMBERSHIP TEST — *"is this panel client-only?"* — and
+ * nothing in the app has that question. The two members are produced by two entirely different
+ * mechanisms in two different modules (a poll's elapsed clock; a socket's backoff), each of which
+ * names its own panel directly because each knows exactly which one it is producing. Code that
+ * asked the list instead would be deriving a panel from a category, which is one level of
+ * indirection above anything that would make it more correct.
+ *
+ * What the list is genuinely FOR is the totality proof: `EveryPanelHasASource` reads it to show
+ * that no panel exists without a source, and `PanelSourcesAreDisjoint` reads it to show that no
+ * panel has two. Both are erased from the bundle, both fail `npm run typecheck` naming the
+ * offender, and neither would be improved by a runtime array.
+ *
+ * **What c5-6 adds is a third reader, still type-level and no longer merely a proof.**
+ * `src/state/deck.ts` and `src/state/socket.ts` each hold the panel they select from a
+ * client-side condition, and both type that constant as `ClientOnlyState` rather than `StateKey`.
+ * So the two places in the app that choose a panel from something other than a wire token are
+ * compile-checked against this list: retarget either at a wire-sourced panel and `tsc` names it.
+ * That is the consumption the ledger was really asking for — it just is not a runtime one.
  */
 export const CLIENT_ONLY_STATES = [
   'disconnected',
   'database-updating-stalled',
 ] as const satisfies readonly StateKey[]
+
+/**
+ * A panel whose condition is client-side — the members of {@link CLIENT_ONLY_STATES} as a union.
+ *
+ * Exported so the two modules that select a panel from a client-side condition can type their
+ * choice with it instead of with the whole of `StateKey`. See {@link CLIENT_ONLY_STATES}'s
+ * disposition section: this alias is what makes that list a checked constraint on real code
+ * rather than a list two type asserts happen to read.
+ */
+export type ClientOnlyState = (typeof CLIENT_ONLY_STATES)[number]
 
 /**
  * Whether a state re-tries **on its own**, with no user action (AC 16, AC 22).
@@ -235,6 +271,10 @@ export const RETRIES_QUIETLY = {
   // worked, so continuing to retry silently is the behaviour this state exists to replace.
   'database-updating-stalled': false,
   // c5-6's backoff is the retry, and the connection pill is where it is announced (UX-DR45).
+  // **This entry is READ AT RUNTIME as of c5-6** — `src/state/socket.ts` indexes it to decide
+  // whether to keep scheduling behind the panel, so flipping it to `false` really does stop the
+  // loop. That is the difference between a declaration and a contract, and `socket.test.ts` flips
+  // it in a try/finally to prove the behaviour follows. (The PILL is still c5-7's.)
   disconnected: true,
   'internal-error': false,
 } satisfies Record<StateKey, boolean>

@@ -29,14 +29,21 @@ import {
   DECK_PATH_PREFIX,
   FORMAT_CHECK_PATH_SUFFIX,
   READ_TIMEOUT_MS,
+  SESSION_PATH,
+  WS_PATH,
+  agentEventOf,
+  agentSocketUrl,
   cardPath,
   deckPath,
   formatCheckPath,
+  openAgentSocket,
   readActiveDeck,
   readCard,
   readDeck,
   readDecks,
   readFormatCheck,
+  readSessionTicket,
+  type AgentSocketHandlers,
 } from './client'
 
 // Typed as `fetch` itself, not as the zero-argument stub it happens to be: the assertions below
@@ -223,7 +230,9 @@ describe('the four malformed inputs of AC 9, none of which may reject', () => {
     stubFetch(() => Promise.reject(new TypeError('Failed to fetch')))
 
     // NOT `{kind:'error', reason:null}`. No response arrived, so no state was decided, and the
-    // poller treats the two differently: see its header on why `disconnected` is c5-6's.
+    // poller treats the two differently: see its header on why `disconnected` is c5-6's. That
+    // panel now ships, from the SOCKET's threshold rather than from this reader — so an
+    // `unreachable` here still decides nothing, which is what lets the two compose.
     await expect(readDecks()).resolves.toEqual({ kind: 'unreachable' })
   })
 
@@ -868,5 +877,263 @@ describe('the format check refuses in the deck vocabulary, and stays a value', (
     await readFormatCheck(ATRAXA_DECK_ID)
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+/**
+ * The socket half of the one door (story c5-6, AC 1, AC 3, AC 13; Q1).
+ *
+ * `posture.test.ts` asserts the network-door list is exactly this module, and its family regex
+ * includes the socket constructor's name — so Q1 ruled the construction stays HERE and the loop
+ * takes a factory. These blocks are that ruling's tests: everything DOM-shaped about a socket
+ * stops in this file, and `src/state/socket.test.ts` never touches a constructor at all.
+ */
+describe('readSessionTicket mints one ticket, and never twice (AC 3)', () => {
+  it('asks for /api/session, uncached, and says so', async () => {
+    const fetchMock = responding('{"ticket": "abc"}', 200)
+
+    await expect(readSessionTicket()).resolves.toEqual({ kind: 'ticket', ticket: 'abc' })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toBe(SESSION_PATH)
+    // `no-store` on the CLIENT, matching `session.py`'s `no-store` on the response — and here
+    // both halves are load-bearing rather than tidy, because this is the one 200 in the app that
+    // carries a credential. A single-use ticket a cache is free to replay is single-use in name.
+    expect(fetchMock.mock.calls[0][1]?.cache).toBe('no-store')
+  })
+
+  it('has no path parameter — the property that makes the loop cheap to reason about', () => {
+    expect(SESSION_PATH).not.toMatch(/[{}:]/)
+  })
+
+  it('makes exactly ONE request against a wedged backend — the WAITING belongs to the loop', async () => {
+    // The mint holds no retry of its own, and here that is a TTL argument rather than the usual
+    // one: the ticket lives 30 s and the backoff ceiling is 30 s, so a reader that quietly waited
+    // before answering would hand the upgrade a ticket that had already begun expiring — at
+    // exactly the point in the schedule where there is no slack at all.
+    const fetchMock = stubFetch(() => new Promise<Response>(() => undefined))
+
+    void readSessionTicket()
+    await Promise.resolve()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ['a body that is not JSON', () => responding('<html>captive portal</html>', 200)],
+    ['a body with no ticket', () => responding('{}', 200)],
+    ['a ticket that is not a string', () => responding('{"ticket": 42}', 200)],
+    ['a BLANK ticket', () => responding('{"ticket": "   "}', 200)],
+  ])('reports %s as a contract violation, not as a credential', async (_label, arrange) => {
+    // A blank is refused for the same reason a missing one is: it is not a credential, and
+    // presenting it costs a failed upgrade that the wire cannot even explain (`1008`, no body,
+    // no reason token).
+    arrange()
+
+    await expect(readSessionTicket()).resolves.toEqual({ kind: 'error', reason: null })
+  })
+
+  it('carries a refusal token through, on a route that declares none', async () => {
+    // `session.py` publishes no failure path at all, so reaching this arm means something that is
+    // not the companion answered on the port. Modelled anyway: the union is a statement about the
+    // wire, not about the backend.
+    responding('{"reason": "internal_error"}', 500)
+
+    await expect(readSessionTicket()).resolves.toEqual({ kind: 'error', reason: 'internal_error' })
+  })
+
+  it('reports a lost backend as unreachable — the ordinary case this whole story is about', async () => {
+    stubFetch(() => Promise.reject(new TypeError('Failed to fetch')))
+
+    await expect(readSessionTicket()).resolves.toEqual({ kind: 'unreachable' })
+  })
+})
+
+describe('agentSocketUrl is built entirely from window.location (AC 1)', () => {
+  it('never names a port, and never switches the host spelling', () => {
+    const url = new URL(agentSocketUrl('abc'))
+
+    // The page's OWN authority, whatever it is. A hardcoded 8765 — or a hardcoded `127.0.0.1`
+    // where the page said `localhost` — would be visible right here. The spelling matters as much
+    // as the number: `security.py`'s `origin_is_allowed` compares the handshake's Origin by EXACT
+    // match after lowercasing, with nothing parsed or normalised.
+    expect(url.host).toBe(window.location.host)
+    expect(url.pathname).toBe(WS_PATH)
+    expect(agentSocketUrl('abc')).toContain(window.location.host)
+  })
+
+  it('presents the ticket as a QUERY parameter, encoded', () => {
+    // `ws.py:97` takes it in the query because a browser socket cannot set headers — the
+    // constructor accepts a URL and a subprotocol list and nothing else.
+    expect(new URL(agentSocketUrl('a b/c?d')).searchParams.get('ticket')).toBe('a b/c?d')
+    expect(agentSocketUrl('a b/c?d')).toContain('ticket=a%20b%2Fc%3Fd')
+  })
+
+  it('speaks ws: from an http: page and wss: from an https: one', () => {
+    expect(agentSocketUrl('abc').startsWith('ws://')).toBe(true)
+
+    // The `wss:` arm is unreachable today — the companion is http on loopback — and it exists
+    // because a hardcoded `ws:` on an https page is refused by every browser as mixed content:
+    // a one-word failure to prevent and an afternoon to diagnose.
+    const location = window.location
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { protocol: 'https:', host: 'example.test:443' },
+    })
+    try {
+      expect(agentSocketUrl('abc')).toBe('wss://example.test:443/ws?ticket=abc')
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: location })
+    }
+  })
+})
+
+describe('agentEventOf narrows one frame, or refuses it (AC 13)', () => {
+  const envelope = (kind: string) =>
+    JSON.stringify({ kind, id: 'x', ts: '2026-08-08T00:00:00Z', payload: {} })
+
+  it.each(['suggestions', 'swaps', 'tier_list', 'groups', 'deck_changed', 'active_deck_changed'])(
+    'accepts a %s frame',
+    (kind) => {
+      expect(agentEventOf(envelope(kind))?.kind).toBe(kind)
+    },
+  )
+
+  it.each([
+    ['a non-JSON frame', 'not json at all'],
+    ['an empty frame', ''],
+    ['a JSON scalar', '42'],
+    ['a JSON array', '[1, 2, 3]'],
+    ['JSON null', 'null'],
+    ['an object with no kind', '{"id": "x"}'],
+    ['a kind that is not a string', '{"kind": 7}'],
+    ['a kind this build does not know', envelope('telemetry')],
+    // `Object.hasOwn` rather than a truthiness check, for `panel.ts`'s reason: indexing a plain
+    // object with an inherited key returns a value, and a wire string is attacker-adjacent input.
+    ['a prototype key masquerading as a kind', envelope('__proto__')],
+    ['a prototype METHOD name', envelope('constructor')],
+  ])('refuses %s with null rather than throwing', (_label, data) => {
+    expect(agentEventOf(data)).toBeNull()
+  })
+
+  it('refuses a BINARY frame — the backend sends only text', () => {
+    // A frame's payload is genuinely `unknown`: a binary frame delivers a Blob or an
+    // ArrayBuffer. A non-string here is a contract violation and lands in the same null.
+    expect(agentEventOf(new ArrayBuffer(8))).toBeNull()
+    expect(agentEventOf(null)).toBeNull()
+    expect(agentEventOf(undefined)).toBeNull()
+  })
+})
+
+describe('openAgentSocket wires one socket, and collapses four outcomes into one (Q1)', () => {
+  /** A scriptable stand-in for the platform constructor. jsdom HAS one; we never want to use it. */
+  class FakeSocket {
+    static built: FakeSocket[] = []
+    onopen: (() => void) | null = null
+    onmessage: ((event: { data: unknown }) => void) | null = null
+    onclose: (() => void) | null = null
+    onerror: (() => void) | null = null
+    closed = 0
+    // A plain field, not a parameter property: `erasableSyntaxOnly` is on and a parameter
+    // property emits code.
+    readonly url: string
+    constructor(url: string) {
+      this.url = url
+      FakeSocket.built.push(this)
+    }
+    close() {
+      this.closed += 1
+    }
+  }
+
+  const recording = () => {
+    const opens: number[] = []
+    const closes: number[] = []
+    const messages: (string | null)[] = []
+    const handlers: AgentSocketHandlers = {
+      onOpen: () => opens.push(1),
+      onMessage: (event) => messages.push(event === null ? null : event.kind),
+      onClose: () => closes.push(1),
+    }
+    return { opens, closes, messages, handlers }
+  }
+
+  const install = () => {
+    FakeSocket.built = []
+    vi.stubGlobal('WebSocket', FakeSocket)
+    return FakeSocket
+  }
+
+  it('dials the URL the ticket belongs to, and attaches all four slots before returning', () => {
+    const Fake = install()
+    const { handlers } = recording()
+
+    openAgentSocket('the-ticket', handlers)
+
+    expect(Fake.built).toHaveLength(1)
+    expect(Fake.built[0].url).toBe(agentSocketUrl('the-ticket'))
+    // Attached BEFORE the return, so a handshake refused fast on loopback cannot dispatch into an
+    // empty slot.
+    for (const slot of ['onopen', 'onmessage', 'onclose', 'onerror'] as const) {
+      expect(Fake.built[0][slot]).not.toBeNull()
+    }
+  })
+
+  it('reports BOTH close and error as the same ending, and does not suppress the second', () => {
+    // `ws.py:29-40`: every refusal is close code 1008 pre-accept, rendered as HTTP 403, with no
+    // body and no reason token — a missing ticket, an expired one, a replayed one and a bad
+    // Origin are DELIBERATELY indistinguishable. There is nothing for two callbacks to say.
+    // Firing twice is left to the loop's generation counter on purpose: one mechanism answers
+    // both the duplicate and the stale-callback case, rather than two that must agree.
+    const Fake = install()
+    const { closes, handlers } = recording()
+
+    openAgentSocket('t', handlers)
+    Fake.built[0].onerror?.()
+    Fake.built[0].onclose?.()
+
+    expect(closes).toHaveLength(2)
+  })
+
+  it('narrows each frame on the way through, so the loop never sees a raw one', () => {
+    const Fake = install()
+    const { messages, handlers } = recording()
+
+    openAgentSocket('t', handlers)
+    Fake.built[0].onmessage?.({
+      data: JSON.stringify({ kind: 'deck_changed', id: 'x', ts: 'now', payload: {} }),
+    })
+    Fake.built[0].onmessage?.({ data: 'not json' })
+
+    expect(messages).toEqual(['deck_changed', null])
+  })
+
+  it('DETACHES before it closes, so its own close event cannot call back', () => {
+    // The ordering is the assertion. `close()` dispatches a close event, so leaving the slot
+    // attached would call back into a loop that has already decided this socket is over —
+    // harmless today (the generation check catches it) and exactly the kind of harmless that
+    // stops being harmless the day someone adds a counter to that path.
+    const Fake = install()
+    const { closes, handlers } = recording()
+
+    const handle = openAgentSocket('t', handlers)
+    handle.close()
+
+    expect(Fake.built[0].closed).toBe(1)
+    expect(Fake.built[0].onclose).toBeNull()
+    expect(Fake.built[0].onmessage).toBeNull()
+    expect(closes).toHaveLength(0)
+  })
+
+  it('opens the socket the LOOP would open — the two are not two spellings of the URL', () => {
+    // The non-vacuity half of Q1's ruling: this module is the only place a socket URL is built,
+    // so `createAgentSocket`'s default factory and this test dial the identical string. A second
+    // builder in `state/socket.ts` would be a second network door AND a second spelling.
+    const Fake = install()
+    const { handlers } = recording()
+
+    openAgentSocket('shared', handlers)
+
+    expect(Fake.built[0].url).toContain(`${WS_PATH}?ticket=shared`)
   })
 })

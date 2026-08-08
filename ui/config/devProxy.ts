@@ -62,21 +62,44 @@ const API_PATTERN = '^/api(?:[/?]|$)'
 const HEALTH_PATTERN = '^/health(?:\\?|$)'
 
 /**
+ * The WebSocket upgrade, added by **c5-6** with the client that opens it.
+ *
+ * Anchored like the other two and for the same reason, with one extra trap this one walks past:
+ * the real request is `GET /ws?ticket=<43 chars>` — `ws.py:97` takes the ticket as a query
+ * parameter, because a browser `WebSocket` cannot set headers — so a pattern that stopped at `$`
+ * would fail at the `?` and the upgrade would be answered with the SPA's index.html. That is the
+ * `/health?verbose=1` failure the round-2 review already found once, on a path where it is
+ * strictly harder to see: a socket that "just does not connect", with a 200 on the wire.
+ */
+const WS_PATTERN = '^/ws(?:[/?]|$)'
+
+/**
  * The proxied surfaces, as anchored patterns rather than bare prefixes.
  *
  * A bare `'/api'` key is a **prefix** match in Vite, so it would also swallow a future
  * frontend route named `/api-docs`, and a bare `'/health'` would swallow `/healthcheck` —
  * silently, by forwarding them to a backend that has never heard of them. Anchoring costs
  * one regex each and removes the trap before any such route exists.
- *
- * `/ws` is deliberately absent: **c5-6** adds it with the WebSocket client.
  */
-export const PROXIED_PATTERNS = [API_PATTERN, HEALTH_PATTERN] as const
+export const PROXIED_PATTERNS = [API_PATTERN, HEALTH_PATTERN, WS_PATTERN] as const
+
+/**
+ * The subset that carries a WebSocket upgrade rather than a request/response (**c5-6**).
+ *
+ * Exported so `tests/devProxy.test.ts` asserts membership rather than re-typing the regex, and so
+ * the two properties that only apply to a socket — `ws: true` and the `Origin` rewrite below —
+ * are decided in one place instead of at each entry.
+ */
+export const WEBSOCKET_PATTERNS: readonly string[] = [WS_PATTERN]
 
 /** A proxy entry as Vite consumes it. */
 export interface DevProxyEntry {
   target: string
   changeOrigin: boolean
+  /** Whether this entry proxies WebSocket upgrades. Absent (falsy) on the request/response ones. */
+  ws?: boolean
+  /** Request headers to overwrite on the way through. See {@link createDevProxy}. */
+  headers?: Record<string, string>
 }
 
 /** Where a resolution warning goes. Overridable so tests can assert the warning is emitted. */
@@ -156,7 +179,48 @@ export function backendTarget(
   return `http://127.0.0.1:${resolveBackendPort(env, onWarn)}`
 }
 
-/** Vite `server.proxy` config: every proxied pattern pointed at the backend, origin rewritten. */
+/**
+ * Vite `server.proxy` config: every proxied pattern pointed at the backend, origin rewritten.
+ *
+ * ==== THE `/ws` ENTRY NEEDS A SECOND HEADER REWRITE, AND `changeOrigin` IS NOT IT =======
+ * (c5-6, Q7, Brad 2026-08-08 — closing `deferred-work.md:5221-5237`, the Medium the ledger
+ * recorded as *"slow to diagnose from the browser side"*.)
+ *
+ * `changeOrigin: true` rewrites **`Host`** and nothing else. That is exactly what the
+ * `HostValidationMiddleware` needs and it is why every proxied `/api` call works — but a
+ * WebSocket upgrade is checked TWICE, and by two different rules that `security.py`'s own
+ * docstring insists are answering two different questions (*what did you address* against *who
+ * is asking*):
+ *
+ *   | check | header | what a dev-time proxied upgrade sends without this |
+ *   | Host   | `Host`   | rewritten by `changeOrigin` → the backend's authority → **passes** |
+ *   | Origin | `Origin` | the browser's own — Vite's authority, e.g. `http://localhost:5173` → **fails** |
+ *
+ * `origin_is_allowed` compares against `{"http://127.0.0.1:<backendPort>",
+ * "http://localhost:<backendPort>"}` by **exact match after lowercasing, with nothing parsed or
+ * normalised** — so the port alone is enough to miss. The failure is `1008` pre-accept, rendered
+ * as a bare `403` with no body and no reason token (`ws.py:29-40`, deliberately
+ * indistinguishable from an expired ticket), which in a browser is a socket that closes with no
+ * explanation at all. Every `/api` call keeps working, so nothing else on the page looks wrong.
+ *
+ * **Fix (a) of the three the ledger enumerated**, and the reason the other two lost:
+ *
+ *   - **(b) dial the backend port directly from the dev client** — makes dev and prod diverge
+ *     inside `client.ts`, where `agentSocketUrl` derives the whole authority from
+ *     `window.location` precisely so that it cannot.
+ *   - **(c) widen `allowed_origins` behind a flag** — the ledger's own *"worst of the three"*: a
+ *     bypass shipped in security code, live in the production build, to fix a dev-server problem.
+ *
+ * (a) keeps the backend check strict, ships no branch in `security.py`, and puts the entire
+ * accommodation in a file that never reaches the bundle. It is exactly what `changeOrigin` does
+ * for `Host`, applied to the second header — and `session.py`'s own docstring predicted this
+ * repair by name: *"[checking Origin at the mint] would break any future Vite dev proxy that
+ * rewrites `Host` but not `Origin`."*
+ *
+ * The header is written **only on the `/ws` entry**. The request/response routes have no `Origin`
+ * check to satisfy (c5-2 Q1 ruled the mint deliberately origin-free), so rewriting theirs would
+ * be an unrequested change to three working surfaces.
+ */
 export function createDevProxy(
   env: Record<string, string | undefined>,
   onWarn: WarnSink = consoleWarn,
@@ -169,6 +233,15 @@ export function createDevProxy(
         target,
         // See the module docstring. Without this the backend answers 400 invalid_request.
         changeOrigin: true,
+        ...(WEBSOCKET_PATTERNS.includes(pattern)
+          ? {
+              ws: true,
+              // Lowercase key: Node normalises incoming header names to lowercase, and
+              // http-proxy merges this map over them — a `Origin` key would ADD a second
+              // header rather than replace the browser's.
+              headers: { origin: target },
+            }
+          : {}),
       },
     ]),
   )
