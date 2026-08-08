@@ -52,12 +52,22 @@ Note that `changeOrigin` affects the **`Host`** header only. It does not touch t
 `Origin` header — and as of **c5-3 the WebSocket upgrade validates `Origin`**, against exactly
 `http://127.0.0.1:{bound_port}` and `http://localhost:{bound_port}`, fail-closed.
 
-That combination has a consequence worth knowing before it is discovered in a browser: under
+That combination had a consequence worth knowing before it was discovered in a browser: under
 `vite dev` the page is served from Vite's own port, so its `Origin` names Vite, and a proxied
 handshake would arrive with a rewritten `Host` (which passes) and an unrewritten `Origin` (which
-does not). Nothing is broken today — `/ws` is deliberately absent from `PROXIED_PATTERNS`, so no
-handshake is proxied at all. **c5-6** adds both the WebSocket client and that proxy entry, and
-owns the fix; it is ledgered in `deferred-work.md` rather than left to be rediscovered.
+does not) — a bodyless `1008`, rendered as a bare `403`, while every `/api` call on the same page
+kept working.
+
+**FIXED at c5-6 (Q7, Brad 2026-08-08), closing `deferred-work.md:5221-5237`.** The `/ws` entry
+is in `PROXIED_PATTERNS` now, it carries `ws: true`, and it **also rewrites `Origin` to the
+backend target** — the same thing `changeOrigin` does for `Host`, applied to the second header.
+The backend check stays strict and `security.py` ships no dev-time branch; the whole
+accommodation lives in `config/devProxy.ts`, which never reaches the bundle. The two alternatives
+the ledger enumerated both lost: dialling the backend port directly from the dev client makes dev
+and prod diverge inside `client.ts` (where `agentSocketUrl` derives the authority from
+`window.location` precisely so that it cannot), and an `allowed_origins` widening flag was the
+ledger's own _"worst of the three"_. `tests/devProxyRoundTrip.test.ts` proves it with a real
+upgrade through a real Vite server, in both directions.
 
 ### Where the build output goes
 
@@ -1212,7 +1222,8 @@ directory needs adding to one of those two `include` lists.
 
 ## Not here yet
 
-The `/ws` proxy entry is **c5-6**.
+~~The `/ws` proxy entry is **c5-6**.~~ **Landed at c5-6** — anchored, `ws: true`, and rewriting
+`Origin` as well as `Host`. See the dev-proxy section above.
 
 **The fetch layer, the store and the card cache all exist now, and this paragraph has been wrong
 twice.** Until c3-9 it assigned the runtime `fetch` layer to **c4-1** and the `GET /api/decks` call
@@ -1253,7 +1264,13 @@ now landed. The boundary as it actually stands:
   in one request against 212,436 bytes in 99 for the full rows. `hydrateCard(cardId)` fetches the
   rest per id, on demand, deduping concurrent callers onto one shared promise. **c4-2 calls the
   seeder** with the payload its own fetch already returns.
-- **What still does NOT exist:** the WebSocket (**c5-6**), and any `fetch` for image BYTES — art
+- **The WebSocket exists as of c5-6.** `openAgentSocket` is in `src/api/client.ts` beside the one
+  `fetch` — the door list in `tests/posture.test.ts` still reads exactly one entry, which was the
+  whole of that story's Q1 — and `src/state/socket.ts` takes the factory INJECTED so the loop
+  module never contains the banned identifier. The loop mints a fresh ticket per attempt, backs
+  off 2/4/8/16/30 s, and announces `disconnected` after 60 s AND 4 failures while continuing to
+  retry behind the panel.
+- **What still does NOT exist:** any `fetch` for image BYTES — art
   reaches the screen through `<img src="/api/card-image/…">` and the browser's own HTTP cache,
   backed by `IMAGE_CACHE_CONTROL` and c3-7's disk cache. There is no image cache in `ui/src` and
   there should not be one. **c4-4 is the first story to put remote images on the screen and it
@@ -1315,7 +1332,10 @@ once, so a deck refusal settled during a DB build does not outlive the build (FR
 is structural — edges are backend-state transitions, not a loop the client can wind, and a
 loaded deck is never re-driven. The re-drive after a deck CHANGES is still Epic 5's
 `deck_changed`, not a second poller; a transient blip after the poll has already settled healthy
-has no later edge and waits for reload or c5-6's reconnect.
+had no later edge and waited for reload or c5-6's reconnect. **c5-6 shipped that reconnect**, so
+the boot is now re-driven from three triggers rather than one: the poll-recovery edge above, a
+reconnect success, and any `deck_changed` / `active_deck_changed` frame. The edge's own semantics
+are unchanged — a loaded deck is still never re-driven by the POLL edge.
 
 **The threshold this story owns:** `STALLED_AFTER_MS = 60_000` in `src/state/poller.ts` — 60
 seconds of _continuous_ `database_unavailable`, and that token only. `database_not_initialized`

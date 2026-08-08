@@ -127,7 +127,12 @@ class TestTheHappyPath:
         assert _close_codes(replay) == [_POLICY_VIOLATION]
 
     async def test_two_sequential_sockets_each_need_their_own_ticket(self, lifespan_client):
-        """The shape c5-6's reconnect loop will actually perform: mint, upgrade, mint, upgrade."""
+        """The shape c5-6's reconnect loop actually performs: mint, upgrade, mint, upgrade.
+
+        **Fulfilled 2026-08-08.** `ui/src/state/socket.ts` ships that loop and
+        `socket.test.ts::mints once per attempt and never presents the same ticket twice` is this
+        test's browser-side twin, asserting the same sequence against a fake socket.
+        """
         app = build_app()
         async with lifespan_client(app) as client:
             first = await drive_handshake(app, ticket=await _mint(client))

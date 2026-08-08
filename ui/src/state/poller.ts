@@ -29,9 +29,17 @@
  * retry itself"*, and a `fetch` rejection produced no state — the panel does not change, so there
  * is nothing to look up. It is retried on the same backoff because a lost backend is transient by
  * nature. The panel that actually describes one — `disconnected`, *"Lost the companion backend"* —
- * is **c5-6's** by `CLIENT_ONLY_STATES`, whose condition is the WebSocket backoff exhausting its
- * retries, and this story may not claim it. The residue that leaves (a backend down at first load
- * shows the initial panel, quietly retrying) is ledgered in `deferred-work.md` against c5-6.
+ * is **c5-6's** by `CLIENT_ONLY_STATES`, whose condition is the WebSocket backoff reaching its
+ * announcement threshold, and this story may not claim it.
+ *
+ * **THE RESIDUE THAT LEFT IS CLOSED (c5-6, 2026-08-08).** It read *"a backend down at first load
+ * shows the initial panel, quietly retrying"* — ledgered at dw:3451, confirmed live at Block I and
+ * judged worse than recorded, because the panel it showed was `no-active-deck`, whose copy is
+ * actionable and wrong about a backend that is not running. `src/state/socket.ts` now supplies the
+ * missing signal: sixty seconds and four failed attempts after a cold open against nothing, the
+ * connection reads `'down'` and `surfaceOf` puts the true panel on the glass. **This poller is
+ * unchanged** — it still claims no state for an `unreachable`, which is what made the two halves
+ * composable instead of racing.
  *
  * ================= THE NUMBERS, WITH THEIR ARITHMETIC (Q2, Q3) ==========================
  *

@@ -33,7 +33,7 @@
  * may reach the runtime bundle.
  */
 
-import type { components } from './types'
+import type { components, paths } from './types'
 
 /** Every named shape in `components.schemas`, keyed by its Pydantic class name. */
 type Schemas = components['schemas']
@@ -210,6 +210,58 @@ export type FormatCheckRow = Schemas['FormatCheckRow']
  * nothing in the UI compares them (c4-10 Q14).
  */
 export type FormatCheckReport = Schemas['FormatCheckReport']
+
+/**
+ * The body of `GET /api/session`: one short-lived, single-use credential for one socket upgrade.
+ *
+ * **Consumer: `readSessionTicket` in `src/api/client.ts`** (story c5-6), called once per connect
+ * ATTEMPT — not once per session, not once per tab. The wire's own docstring is unusually
+ * prescriptive about that and every clause of it is a constraint on the loop rather than advice:
+ * *"single-use"*, *"it cannot be stored, shared between tabs, or reused across reconnects"*, and
+ * — the clause that decides the ordering inside the backoff — *"consuming it destroys it whether
+ * or not the handshake then succeeds, so a retry needs a fresh ticket, including after an upgrade
+ * that failed for an unrelated reason"*.
+ *
+ * Declared at **c5-2** and unaliased here until now, under this file's standing rule: an alias is
+ * added in the commit that gives it a consumer. This is that commit.
+ */
+export type SessionTicket = Schemas['SessionTicket']
+
+/**
+ * One frame off the WebSocket: the `{kind, id, ts, payload}` envelope, as a closed six-member
+ * discriminated union (AD-6).
+ *
+ * **Consumer: `agentEventOf` in `src/api/client.ts` and the one dispatch switch in
+ * `src/state/socket.ts`** (story c5-6).
+ *
+ * ==== IT IS REACHED THROUGH A ROUTE, NOT THROUGH `components.schemas` ==================
+ * There is no `AgentEvent` in `components.schemas` and there never was — the union is a Python
+ * `Annotated[… , Field(discriminator="kind")]`, and a discriminated union is not itself a named
+ * model. What the generator emits is the six MEMBERS as schemas plus the union spelled inline at
+ * the one place a route references it, which since **c5-5** is `POST /agent/events`'s request
+ * body. So this alias indexes `paths` rather than `Schemas`, and that is the whole reason this
+ * file's header keeps the c5-1/c5-5 measurement: *the story that defines a wire type and the
+ * story that publishes it are not always the same story.*
+ *
+ * **The direction is inverted and that is not a bug.** `/agent/events` is what the AGENT posts;
+ * this alias is what the BROWSER receives. They are the same envelope — `ws.py` broadcasts the
+ * ingested event verbatim — so reading the client's frame type off the server's request body is
+ * reading the one declaration both halves share, rather than writing a second one that could
+ * drift from it. If a later story gives the socket its own published schema, this alias moves and
+ * nothing that consumes it changes.
+ */
+export type AgentEvent =
+  paths['/agent/events']['post']['requestBody']['content']['application/json']
+
+/**
+ * The six `kind` discriminants, as a union — `'suggestions' | 'swaps' | … | 'active_deck_changed'`.
+ *
+ * Derived from {@link AgentEvent} rather than re-listed, for `ErrorReason`'s reason: a seventh
+ * kind added on the Python side arrives here through the generator instead of through someone
+ * remembering, and the total `switch` in `src/state/socket.ts` fails `npm run typecheck` naming
+ * the kind it does not handle. A hand-written copy of the six strings would compile forever.
+ */
+export type AgentEventKind = AgentEvent['kind']
 
 /**
  * The closed set of reason tokens (AD-16), as a TypeScript string union.

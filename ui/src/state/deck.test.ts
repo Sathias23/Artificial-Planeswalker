@@ -354,7 +354,9 @@ describe('a DECK refusal becomes a panel, through PANEL_FOR_REASON (AC 8, 9, 10,
   it('reports a lost backend as no-deck, never as "the companion hit a bug"', async () => {
     // `panelFor(null)` is `'internal-error'`, which would be a LIE about an absent backend. The
     // panel that describes one is `disconnected`, and it is c5-6's by `CLIENT_ONLY_STATES` —
-    // `poller.ts` takes exactly this posture for exactly this reason.
+    // `poller.ts` takes exactly this posture for exactly this reason. c5-6 has shipped it, and
+    // this arm is UNCHANGED: the panel is chosen in `surfaceOf` from the connection status, not
+    // here from a boot outcome, so a deck read that found nothing still settles `'none'`.
     const [state] = await boot(
       { kind: 'active-deck', deckId: ATRAXA_DECK_ID },
       {
@@ -464,7 +466,15 @@ describe('the deck payload seeds the card cache, for ZERO requests (AC 17)', () 
 })
 
 describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
-  const system = (panel: SystemState['panel']): SystemState => ({ panel, decks: [] })
+  /**
+   * A system slice for one panel. `connection` defaults to `'live'` — "the socket is not what
+   * this test is about" — so every assertion written before c5-6 keeps meaning exactly what it
+   * meant, and the fourth arm gets its own describe below rather than leaking into these.
+   */
+  const system = (
+    panel: SystemState['panel'],
+    connection: SystemState['connection'] = 'live',
+  ): SystemState => ({ panel, decks: [], connection })
   const loaded: DeckState = {
     status: 'deck',
     detail: detail(),
@@ -532,5 +542,69 @@ describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
       const surface = surfaceOf(deck, INITIAL_SYSTEM_STATE)
       expect(['deck', 'panel']).toContain(surface.kind)
     }
+  })
+
+  describe('the FOURTH arm: a lost connection outranks everything (c5-6, Q3, AC 7, AC 8)', () => {
+    const states: [string, DeckState][] = [
+      ['booting', INITIAL_DECK_STATE],
+      ['none', { status: 'none' }],
+      ['a loaded deck', loaded],
+      ['a deck refusal', { status: 'refused', reason: 'internal_error', panel: 'internal-error' }],
+    ]
+
+    it.each(states)('displaces %s once the connection is down', (_label, deck) => {
+      // Every arm, not a representative one: the whole content of Q3's ruling is that this one
+      // outranks arm 1, and a test that only checked `none` would pass through a rule written
+      // "below the deck".
+      expect(surfaceOf(deck, system('no-active-deck', 'down'))).toEqual({
+        kind: 'panel',
+        panel: 'disconnected',
+      })
+    })
+
+    it.each(states)(
+      'leaves %s exactly as it was while merely reconnecting (UX-DR35)',
+      (_l, deck) => {
+        // THE SILENT HALF, and the one that carries UX-DR35. The pre-exhaustion window is the whole
+        // of an ordinary backend restart, and during it this function must behave as though c5-6 had
+        // never touched it — a deck stays rendered, possibly stale, never torn down to a skeleton.
+        expect(surfaceOf(deck, system('database-updating', 'reconnecting'))).toEqual(
+          surfaceOf(deck, system('database-updating', 'live')),
+        )
+      },
+    )
+
+    it('overrides even a deck REFUSAL panel, which is the arm that outranks the poll', () => {
+      // Arm 2 exists so a deck read's own 503 is not overwritten by the poll's opinion. The
+      // connection arm sits above it too, because a 503 the client observed before the backend
+      // vanished says nothing about a backend that is now gone.
+      const refused: DeckState = {
+        status: 'refused',
+        reason: 'database_unavailable',
+        panel: 'database-updating',
+      }
+      expect(surfaceOf(refused, system('no-active-deck', 'down'))).toEqual({
+        kind: 'panel',
+        panel: 'disconnected',
+      })
+    })
+
+    it('reads the CONNECTION and not the panel field — the two-writers race Q3 avoided', () => {
+      // The failure this shape prevents: with the HTTP half up and the WS half failing (a proxy
+      // misconfiguration is the realistic case), a poll SUCCESS is a change, and a socket that had
+      // written `panel: 'disconnected'` into the shared field would have it overwritten while the
+      // socket was still down. Here a healthy poll and a dead socket compose instead of racing.
+      expect(surfaceOf({ status: 'none' }, system('no-active-deck', 'down'))).toEqual({
+        kind: 'panel',
+        panel: 'disconnected',
+      })
+    })
+
+    it('restores the deck the instant the connection returns — no reload, nothing recomputed', () => {
+      // AC 9 at the level of the pure function: the deck slice was never cleared, so recovery is a
+      // re-render of state nobody destroyed.
+      expect(surfaceOf(loaded, system('no-active-deck', 'down')).kind).toBe('panel')
+      expect(surfaceOf(loaded, system('no-active-deck', 'live')).kind).toBe('deck')
+    })
   })
 })

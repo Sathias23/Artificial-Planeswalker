@@ -236,8 +236,9 @@ class _SpaMount(Mount):
         """
         # Starlette's Mount matches websocket scopes too, but StaticFiles serves only HTTP — its
         # first line is `assert scope["type"] == "http"`. Without this decline, a WebSocket
-        # handshake to any unreserved path (c5-6's /ws, or any client route) would be dispatched
-        # into that assert and die as a server error instead of getting the router's clean
+        # handshake to any unreserved path (**c5-6's `/ws`, now shipped**, or any client route)
+        # would be dispatched into that assert and die as a server error instead of getting the
+        # router's clean
         # no-such-route rejection.
         if scope["type"] != "http":
             return Match.NONE, {}

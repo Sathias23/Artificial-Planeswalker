@@ -480,8 +480,8 @@ class TestMountOrdering:
     def test_the_mount_declines_non_http_scopes(self):
         # Starlette's Mount matches websocket scopes too, but StaticFiles serves only HTTP — its
         # first line is `assert scope["type"] == "http"`. A WebSocket handshake to an unreserved
-        # path (c5-6's /ws, or any client route) must get the router's clean no-such-route
-        # rejection, not an AssertionError dressed as a server error.
+        # path (c5-6's /ws — shipped — or any client route) must get the router's clean
+        # no-such-route rejection, not an AssertionError dressed as a server error.
         mount = build_app().routes[-1]
 
         match, _ = mount.matches({"type": "websocket", "path": "/decks/42", "root_path": ""})

@@ -12,6 +12,7 @@ import {
   BACKEND_PORT_ENV_VAR,
   DEFAULT_BACKEND_PORT,
   PROXIED_PATTERNS,
+  WEBSOCKET_PATTERNS,
   backendTarget,
   createDevProxy,
   resolveBackendPort,
@@ -110,7 +111,10 @@ describe('backendTarget', () => {
 })
 
 describe('createDevProxy (AC 12, AC 13 config half)', () => {
-  it('proxies /api and /health with changeOrigin enabled', () => {
+  it('proxies every declared surface with changeOrigin enabled', () => {
+    // Two surfaces until c5-6, three since: `/api`, `/health` and `/ws`. Read off
+    // `PROXIED_PATTERNS` rather than listed here, so the enumeration lives in one place and a
+    // fourth surface arrives in this assertion by itself.
     const proxy = createDevProxy({}, silent)
 
     expect(Object.keys(proxy).sort()).toEqual([...PROXIED_PATTERNS].sort())
@@ -143,9 +147,78 @@ describe('createDevProxy (AC 12, AC 13 config half)', () => {
     expect(new RegExp(healthPattern).test('/health?verbose=1')).toBe(true)
   })
 
-  it('does not yet proxy /ws — c5-6 adds it with the WebSocket client', () => {
-    for (const pattern of Object.keys(createDevProxy({}, silent))) {
-      expect(new RegExp(pattern).test('/ws')).toBe(false)
+  /**
+   * The `/ws` entry, added by c5-6 with the client that opens it (AC 18).
+   *
+   * This block REPLACES the `does not yet proxy /ws` assertion rather than sitting beside it. That
+   * assertion named this story as its inheritor in its own title, and the property it protected —
+   * *the proxy's surfaces are enumerated and nothing is proxied by accident* — is what the four
+   * assertions below now state about three surfaces instead of two.
+   */
+  describe('the /ws entry (c5-6, AC 18; Q7)', () => {
+    const ws = () => {
+      const proxy = createDevProxy({}, silent)
+      const pattern = Object.keys(proxy).find((key) => new RegExp(key).test('/ws'))
+      expect(pattern, 'nothing proxies /ws').toBeDefined()
+      return proxy[pattern!]
     }
+
+    it('proxies /ws, and the ticket query string with it', () => {
+      // The real request is `GET /ws?ticket=<43 chars>` — `ws.py:97` takes the ticket as a query
+      // parameter because a browser socket cannot set headers. A pattern anchored at `$` fails at
+      // the `?` and the upgrade is answered with the SPA's index.html: the `/health?verbose=1`
+      // failure of review round 2, on a path where it presents as "the socket just doesn't work".
+      const [pattern] = WEBSOCKET_PATTERNS
+      expect(new RegExp(pattern).test('/ws')).toBe(true)
+      expect(new RegExp(pattern).test('/ws?ticket=abc')).toBe(true)
+      // …and still anchored, so a future frontend route is not swallowed.
+      expect(new RegExp(pattern).test('/wsx')).toBe(false)
+      expect(new RegExp(pattern).test('/wsocket')).toBe(false)
+    })
+
+    it('enables WebSocket proxying on that entry, and on no other', () => {
+      // `ws: true` is what makes Vite forward the HTTP `upgrade` event at all. Without it the
+      // pattern matches, the request is proxied as an ordinary GET, and the handshake never
+      // completes — a failure with a 200 on the wire.
+      expect(ws().ws).toBe(true)
+      for (const [pattern, entry] of Object.entries(createDevProxy({}, silent))) {
+        if (WEBSOCKET_PATTERNS.includes(pattern)) continue
+        expect(entry.ws).toBeUndefined()
+      }
+    })
+
+    it('rewrites ORIGIN as well as Host — the fix dw:5221 asked for (Q7)', () => {
+      // `changeOrigin` rewrites `Host` and nothing else, and a WebSocket upgrade is checked
+      // TWICE: `host_is_allowed` on the Host, `origin_is_allowed` on the Origin. The browser sets
+      // Origin from the PAGE, which at dev time is Vite's authority — so without this line every
+      // proxied handshake is refused `1008` pre-accept, rendered as a bare 403 with no body and
+      // no reason token, while every `/api` call on the same page keeps working.
+      const entry = ws()
+      expect(entry.headers?.origin).toBe(entry.target)
+      expect(entry.target).toBe('http://127.0.0.1:8765')
+      // Lowercase key: Node normalises incoming header names, and http-proxy merges this map over
+      // them — an `Origin` key would ADD a second header rather than replace the browser's.
+      expect(Object.keys(entry.headers ?? {})).toEqual(['origin'])
+    })
+
+    it("leaves the request/response entries' Origin alone", () => {
+      // The mint deliberately does NOT check Origin (c5-2 Q1: a cross-origin page can issue that
+      // GET but cannot read its response), so rewriting the header on `/api` and `/health` would
+      // be an unrequested change to two working surfaces.
+      for (const [pattern, entry] of Object.entries(createDevProxy({}, silent))) {
+        if (WEBSOCKET_PATTERNS.includes(pattern)) continue
+        expect(entry.headers).toBeUndefined()
+      }
+    })
+
+    it('follows the port everywhere, so the rewritten Origin is never the default by accident', () => {
+      const proxy = createDevProxy({ [BACKEND_PORT_ENV_VAR]: '9123' }, silent)
+      const pattern = Object.keys(proxy).find((key) => new RegExp(key).test('/ws'))!
+
+      // The whole point of the rewrite is an EXACT match against `allowed_origins(port)` —
+      // `origin_is_allowed` lowercases and compares, parsing and normalising nothing. A rewritten
+      // Origin carrying the wrong port fails identically to no rewrite at all.
+      expect(proxy[pattern].headers?.origin).toBe('http://127.0.0.1:9123')
+    })
   })
 })

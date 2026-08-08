@@ -33,11 +33,16 @@ distinguish its own three cases — *"a caller that could tell them apart could 
 and an upgrade that leaked the fourth distinction would hand back exactly what the store withheld.
 The *log* may distinguish, and does: it is not the wire, and "the origin was wrong" versus "the
 ticket was not live" is the difference between two entirely different c5-6 debugging sessions.
+(c5-6 has now shipped, and confirms the design from the other side: the browser cannot read a
+failed handshake's status at all, so its loop has exactly one failure handler — back off, re-mint,
+retry — and could not branch on a reason even if one were published.)
 
 **No new ``ErrorReason`` token, and no JSON anywhere.** A closed WebSocket has no body to carry one,
 the token set is closed at ten, and AD-16's rule is that a token exists to drive a UI state — ticket
-churn is designed to be invisible (c5-6 re-mints and retries). ``1008`` is the shipped precedent
-from the ``Host`` middleware; ``1011`` appears only on the fail-closed internal-error path below.
+churn is designed to be invisible (**c5-6 ships that re-mint and retry**, and its own tests pin
+that a refused upgrade costs one backoff step and nothing on the glass). ``1008`` is the shipped
+precedent from the ``Host`` middleware; ``1011`` appears only on the fail-closed internal-error
+path below.
 
 **The fan-out is here too, and the registry it walks is not** (c5-4). The spine's module map lists
 this file as ``ws.py # upgrade + ticket consume + broadcast``, and all three are now present:
@@ -281,8 +286,10 @@ async def _drain_until_disconnect(websocket: WebSocket) -> None:
     **The channel is one-way (AD-6): the backend broadcasts, the browser listens.** Nothing in the
     contract gives a client frame a meaning, so there are only two honest things to do with one, and
     closing on chatter is the worse of them — it would turn an innocent client bug, a stray
-    keep-alive or a browser extension into a close, which c5-6's reconnect loop would answer with a
-    re-mint and a fresh handshake, converting one harmless frame into a storm.
+    keep-alive or a browser extension into a close, which c5-6's reconnect loop answers with a
+    re-mint and a fresh handshake, converting one harmless frame into a storm. **That loop now
+    exists**, so the sentence is a description rather than a prediction: `createAgentSocket` treats
+    every close identically, at a 2 s first retry.
 
     Reading is not optional even though the content is ignored. The receive channel is how a
     disconnect *arrives*: a handler that returned immediately after ``accept`` would close a socket

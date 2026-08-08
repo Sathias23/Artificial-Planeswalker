@@ -170,8 +170,12 @@ ticket exists to cover the gap between ``GET /api/session`` returning and the br
 magnitude of headroom for a stalled tab, and still short enough that a leaked ticket is worthless
 by the time anyone could act on it.
 
-Not a rate limit and not a session lifetime: c5-6 mints a **fresh** ticket per reconnect attempt
-and never inspects this value, which is why it is deliberately not published on the wire (Q4).
+Not a rate limit and not a session lifetime: **c5-6 shipped, and mints a fresh ticket per
+reconnect attempt** — ``createAgentSocket`` holds no ticket variable at all, so there is nothing
+for it to inspect this value with, which is why it is deliberately not published on the wire (Q4).
+The client's backoff ceiling is *also* 30 s, and its ordering is ``delay -> mint -> open`` for that
+reason: at the ceiling the two windows are equal and a pre-delay mint would present an expired
+ticket every time.
 """
 
 MAX_TICKETS = 256
@@ -180,7 +184,9 @@ MAX_TICKETS = 256
 **The bound exists because the mint is unauthenticated and therefore unbounded-callable.** No
 artefact specifies a number, so the reasoning is the specification: a legitimate browser holds *one*
 outstanding ticket — it mints, upgrades, and the upgrade consumes — and even a pathological
-reconnect storm at c5-6's backoff cannot keep hundreds alive inside a 30 s window. 256 is therefore
+reconnect storm at c5-6's backoff cannot keep hundreds alive inside a 30 s window — measured now
+that it ships: one mint per attempt on a 2/4/8/16/30 s schedule is **at most six inside any 30 s
+window, per tab**, and each is consumed or expired before the next. 256 is therefore
 two-and-a-half orders of magnitude above the real workload while capping the map at a few tens of
 kilobytes, which is the shape :class:`~src.companion.app.images.NegativeCache` already ships under.
 
@@ -188,7 +194,9 @@ kilobytes, which is the shape :class:`~src.companion.app.images.NegativeCache` a
 dropped, mirroring :meth:`~src.companion.app.images.NegativeCache._evict_earliest_expiry`. Since
 every ticket carries the same TTL that is the oldest one, so a local page that spams this endpoint
 can push a legitimate browser's ticket out and cost it one failed upgrade and one re-mint (c5-6
-already retries). The alternative — refusing to mint at the cap — hands that same attacker a
+ships that retry, and cannot tell this case from any other: ``ws.py`` refuses every failure with
+the same bodyless ``1008``, so the loop's answer to an eviction is the same as its answer to a
+restart). The alternative — refusing to mint at the cap — hands that same attacker a
 **permanent** denial instead of a recoverable one, and would need an ``ErrorReason`` token AC 12
 declines to add. A recoverable eviction beats an unrecoverable refusal.
 
@@ -316,7 +324,8 @@ class TicketStore:
 
         Every call returns a **distinct** value — there is no reuse, no caching and no
         one-per-client memo, because a ticket is consumed by the very next handshake and c5-6 mints
-        a new one per reconnect attempt.
+        a new one per reconnect attempt — which it now does: the browser's loop keeps no ticket
+        field, so a ticket cannot outlive the attempt that minted it.
 
         Expired tickets are pruned here rather than on read, mirroring
         :meth:`~src.companion.app.images.NegativeCache.record_failure`: otherwise the map fills with
