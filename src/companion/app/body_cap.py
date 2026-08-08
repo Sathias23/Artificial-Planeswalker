@@ -117,19 +117,16 @@ def _announces_a_body(scope: Scope) -> bool:
         scope: An ``http`` connection scope.
 
     Returns:
-        ``True`` for a non-zero ``Content-Length`` or a chunked transfer coding. ``False``
-        otherwise, which is what lets a body-less ``GET`` skip this middleware's machinery
-        entirely rather than waiting on a ``receive`` it was never going to read.
+        ``True`` if a ``Content-Length`` header is present at all — zero, negative, or
+        unparseable included, since any of those routes to the counted-bytes bound rather than
+        being trusted — or a chunked transfer coding is declared. ``False`` only when neither
+        signal is present, which is what lets a body-less ``GET`` skip this middleware's
+        machinery entirely rather than waiting on a ``receive`` it was never going to read.
     """
-    declared = _declared_length(scope)
-    if declared is not None and declared > 0:
+    if _header(scope, _CONTENT_LENGTH) is not None:
         return True
     encoding = _header(scope, _TRANSFER_ENCODING)
-    if encoding is not None and _CHUNKED in encoding.decode("latin-1").lower():
-        return True
-    # A present-but-unparseable Content-Length with no chunked coding: treat it as a body, so a
-    # malformed header cannot be used to skip the counting path.
-    return declared is None and _header(scope, _CONTENT_LENGTH) is not None
+    return encoding is not None and _CHUNKED in encoding.decode("latin-1").lower()
 
 
 class BodyCapMiddleware:

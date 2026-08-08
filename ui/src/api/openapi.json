@@ -1400,6 +1400,7 @@
         "properties": {
           "clients": {
             "type": "integer",
+            "minimum": 0.0,
             "title": "Clients"
           }
         },

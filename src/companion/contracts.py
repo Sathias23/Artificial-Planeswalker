@@ -1346,4 +1346,4 @@ class EventIngestReceipt(BaseModel):
         {'clients': 0}
     """
 
-    clients: int
+    clients: int = Field(ge=0)

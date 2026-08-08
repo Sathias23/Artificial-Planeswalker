@@ -557,7 +557,8 @@ def build_app() -> FastAPI:
     # line so that a fault in the security envelope itself answers as a typed 500 rather than an
     # untyped traceback (on http scopes — the error middleware passes websocket scopes through,
     # which c5-3's Q6 ruled PERMANENT: the upgrade handler catches its own faults and closes 1011,
-    # so the middleware keeps one shape). c5-5 adds its piece inside install_security, not here.
+    # so the middleware keeps one shape). c5-5's pre-parse body ceiling is installed here too, as
+    # its own call — see the third correction below.
     #
     # CORRECTED AT c5-2, which falsified the previous version of that clause ("c5-2 and c5-5 add
     # their pieces inside install_security, not here"). c5-2 adds neither a middleware nor a
@@ -572,16 +573,17 @@ def build_app() -> FastAPI:
     # it. What made the prediction wrong is worth keeping: "gates a handshake" describes what the
     # check DOES, and middleware-versus-route is about WHERE the check can be expressed. A
     # websocket route can read its own headers and close its own connection, so it needs no
-    # middleware position to do the gating from. c5-5 is now the only story still holding that
-    # prediction, and it should be read with this correction in mind. Same commit as the code that
-    # falsified it (c3-9's rule); a `#` comment in a non-wire position, so no regeneration diff.
-    # c5-5's pre-parse body ceiling, and the one place `main.py`'s long-standing "c5-5 adds its
-    # piece inside install_security" prediction turns out to have been HALF right — see the
-    # correction paragraph above. It is genuinely a middleware, and genuinely NOT a security
-    # wiring line: `install_security` stays the one security call and this is its own, because the
-    # cap is about resource bounds rather than about who the caller is. Added FIRST so it ends up
-    # innermost of the three — `Host` refuses a wrongly-addressed request before its body is read,
-    # and a fault in the counting is still typed by the error middleware.
+    # middleware position to do the gating from. c5-5 was the only story still holding that
+    # prediction going into this commit.
+    #
+    # AND CORRECTED A THIRD TIME AT c5-5, which falsifies its own replacement for it ("c5-5 adds
+    # its piece inside install_security, not here"). HALF right: it genuinely is a middleware, but
+    # genuinely NOT a security wiring line — `install_security` stays the one security call, and
+    # the body ceiling is its own call, `install_body_cap`, because the cap is about resource
+    # bounds rather than about who the caller is. Added FIRST so it ends up innermost of the three
+    # — `Host` refuses a wrongly-addressed request before its body is read, and a fault in the
+    # counting is still typed by the error middleware. Same commit as the code that falsifies it
+    # (c3-9's rule); a `#` comment in a non-wire position, so no regeneration diff.
     install_body_cap(app)
     install_security(app)
     install_error_handling(app)
