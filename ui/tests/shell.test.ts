@@ -486,7 +486,10 @@ const findClippedRoot = (blocks: Block[]): string[] => {
  * already guarantees for shipped stylesheets.
  *
  * A pill pinned to one corner and a bar docked to one edge stay silent — c5-7 and a future
- * docked bar are not this rule's business.
+ * docked bar are not this rule's business. **c5-7 shipped exactly that shape** (2026-08-08):
+ * `.connection-pill` is `position: fixed` with `bottom` and `left` alone, so both axes stay
+ * released at their far ends and this guard never looks at it. The anticipation was correct and
+ * the tolerance is now load-bearing rather than hypothetical.
  *
  * `position: absolute` is deliberately NOT this shape. An absolute cover inside a positioned
  * parent is a panel's own veil, not a level of the overlay stack.
@@ -1898,6 +1901,40 @@ describe('the containers are a declared category with a posture of its own', () 
     // module next to a component is exactly where behaviour arrives first, because nothing in
     // its own file looks like a component.
     { file: 'src/containers/CardTile/imageUrl.ts', imports: [] },
+    // c5-7's connection pill — the FIRST container in this tree from Epic 5, and the first whose
+    // reason to be here is the STATE it reads rather than the handlers it attaches: it subscribes
+    // to two slices (`connection` from the system store, the deck's name from the deck store) and
+    // takes focus, either of which alone bars it from `src/components/`. `:1946` above named c5-7
+    // in this category by name, fifteen stories before it landed.
+    //
+    // BOTH state imports are SELECTOR hooks the modules export, never the stores' write side —
+    // `useConnection` was added to `systemState.ts` by this story (Q5, closing dw:5430) precisely
+    // so the pill subscribes to one FIELD instead of adding a second selector-less whole-store
+    // subscription beside `App`'s. `../../state/socket` is a TYPE import (`ConnectionStatus`),
+    // which is what keeps the WebSocket module's behaviour out of this file entirely.
+    //
+    // NOTE WHAT IS ABSENT: no `../../api/…` of any kind, in either form. The pill reads no wire
+    // shape and makes no request — its "is the backend there" answer arrives through the store
+    // that c5-6's loop writes, and the `/health` read that WOULD touch the network is c10-1's.
+    {
+      file: 'src/containers/ConnectionPill/ConnectionPill.tsx',
+      imports: [
+        '../../state/deck',
+        '../../state/socket',
+        '../../state/systemState',
+        './ConnectionPill.css',
+        './copy',
+        'react',
+      ],
+    },
+    // c5-7's copy module — the SEVENTH in this tree, and the first that AUTHORS its strings rather
+    // than transcribing them: no artefact specified the pill's words at all (see the module's own
+    // header). `imports: []` for `CardDetail/copy.ts`'s measured reason — `tests/` is the
+    // `nodenext` project and `src/` the `bundler` one, so a `ui/tests` file may import an app
+    // module only if that module has no relative imports of its own, and
+    // `tests/connection-pill-copy.test.ts` imports this one to gate the strings against
+    // EXPERIENCE.md's row.
+    { file: 'src/containers/ConnectionPill/copy.ts', imports: [] },
   ]
 
   // A WALK rather than a regex (review 2026-08-04): the first spelling was a `//`-to-newline
@@ -1992,7 +2029,13 @@ describe('the containers are a declared category with a posture of its own', () 
     // the invitation its own header left) and puts its one predicate in an EXISTING state module
     // (`deckIsEmpty`, beside `DeckBoards`), so the tree grows by a copy owner and nothing else —
     // which is the shape a story that adds "one sentence and one conditional" should have.
-    expect(CONTAINERS).toHaveLength(25)
+    // 27 at c5-7, the first Epic 5 story to add a component at all: the connection pill and its
+    // copy module. No derivation module — there is nothing to derive. The pill maps a status to a
+    // word and a class, and both maps are `Record`s over `ConnectionStatus` small enough to live
+    // beside the things they feed (the words in `copy.ts` because they are copy; the dot classes
+    // in the component because they are CSS identity). A third module here would be the same
+    // decision written twice.
+    expect(CONTAINERS).toHaveLength(27)
     for (const { file } of CONTAINERS) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }
@@ -2167,6 +2210,66 @@ describe('the containers are a declared category with a posture of its own', () 
     expect(oracle).toBeDefined()
     expect(oracle).toMatch(/max-height:\s*21em/)
     expect(oracle).toMatch(/white-space:\s*pre-line/)
+  })
+
+  it('binds each connection-dot class to ITS status token, not merely to a status token', () => {
+    // ⚠️ FOUND BY A FIRING PROOF, NOT BY DESIGN (c5-7, AC 19, probe P15). Every other assertion
+    // about the pill's dot reads the DOM, and jsdom evaluates no stylesheet — so
+    // `ConnectionPill.test.tsx` proves that `'down'` renders `is-down` and stops there. Pointing
+    // `.is-down` at `--caution` in the stylesheet passed the ENTIRE suite green: the one component
+    // in the app whose whole job is to signal by colour could ship the wrong colour, on the state
+    // that matters most, with 1,866 tests agreeing.
+    //
+    // The binding is therefore read out of the source, three ways round, because the failure this
+    // catches is a SWAP and a swap satisfies any per-class check that only asks "is it a status
+    // token". UX-DR29 assigns them by name: positive live, caution reconnecting, negative gone.
+    const pillCss = sourceOf('src/containers/ConnectionPill/ConnectionPill.css')
+    for (const [modifier, token] of [
+      ['is-live', '--positive'],
+      ['is-reconnecting', '--caution'],
+      ['is-down', '--negative'],
+    ] as const) {
+      const rule = new RegExp(`\\.connection-pill-dot\\.${modifier}\\s*\\{([^}]*)\\}`).exec(pillCss)
+      expect(rule, `no rule found for .connection-pill-dot.${modifier}`).not.toBeNull()
+      expect(
+        rule![1],
+        `.${modifier} does not fill from var(${token}) — UX-DR29 assigns the three status ` +
+          `colours to the three states by name, and a swap here is invisible to every DOM test`,
+      ).toMatch(new RegExp(`background:\\s*var\\(${token}\\)`))
+    }
+    // …and the dot spends NOTHING ELSE as a fill: a fourth rule pointing the dot at `--accent`
+    // would satisfy all three assertions above and still be wrong (`DESIGN.md:366` reserves the
+    // accent for live agent attention).
+    const fills = [
+      ...pillCss.matchAll(/\.connection-pill-dot[^{]*\{[^}]*background:\s*var\((--[a-z-]+)\)/g),
+    ]
+    expect(fills.map((m) => m[1]).sort()).toEqual(['--caution', '--negative', '--positive'])
+  })
+
+  it("keeps the deck name OUT of the micro/uppercase role the state word takes (c4-3's lesson, a third time)", () => {
+    // THE SAME SHAPE AS THE DOT-BINDING GUARD ABOVE, closed by code review rather than a firing
+    // proof (c5-7 review, 2026-08-08). `ConnectionPill.test.tsx`'s case-preservation test only
+    // proves the deck name STRING is present in the DOM — jsdom never applies `text-transform`,
+    // so nothing there can catch a regression that reattaches `--type-micro` (and its
+    // `text-transform: uppercase` companion) to `.connection-pill-deck`. An uppercased
+    // "SULTAI MIDRANGE" destroys the mixed-case name this pill exists to show — c4-3's lesson,
+    // repeated at c4-10, repeated here (`DESIGN.md:479`'s amendment note).
+    const pillCss = sourceOf('src/containers/ConnectionPill/ConnectionPill.css')
+
+    // The STATE WORD keeps the micro role — the positive half of the split, so this guard proves
+    // a deliberate split rather than a blanket "no uppercase anywhere" rule.
+    const stateRule = /\.connection-pill-state\s*\{([^}]*)\}/.exec(pillCss)
+    expect(stateRule, 'no rule found for .connection-pill-state').not.toBeNull()
+    expect(stateRule![1]).toMatch(/font:\s*var\(--type-micro\)/)
+    expect(stateRule![1]).toMatch(/text-transform:\s*uppercase/)
+
+    // The DECK NAME (and its separator, which shares its rule) must NOT take the micro role.
+    const deckRule = /\.connection-pill-separator,\s*\.connection-pill-deck\s*\{([^}]*)\}/.exec(
+      pillCss,
+    )
+    expect(deckRule, 'no rule found for .connection-pill-deck').not.toBeNull()
+    expect(deckRule![1]).not.toMatch(/--type-micro/)
+    expect(deckRule![1]).not.toMatch(/text-transform/)
   })
 
   it.each(CONTAINERS)('$file makes no request and imports no state library', ({ file }) => {
@@ -2418,7 +2521,8 @@ describe('the guards themselves fire', () => {
   })
 
   it('leaves a corner pill, a docked bar and an absolute cover alone (AC 10, narrow by design)', () => {
-    // c5-7's connection pill is fixed and pinned to a corner; a docked bar spans one axis;
+    // c5-7's connection pill is fixed and pinned to a corner — SHIPPED, and silent here; a
+    // docked bar spans one axis;
     // an absolute cover inside a positioned parent is a panel's own veil. None of them is a
     // level of the overlay stack, and a guard that flagged them would be one three stories
     // have to fight.

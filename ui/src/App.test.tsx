@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { sentenceOf } from './components/Footer/copy'
 import { EMPTY_DECK_LINE } from './containers/CardGrid/copy'
+import { CONNECTION_WORDS, pillText } from './containers/ConnectionPill/copy'
 import { MAX_ATTEMPTS_PER_CARD, hydrateCard, resetCardCache, useCardStore } from './state/cards'
 import { resetDeckState, useDeckStore } from './state/deck'
 import { resetFormatCheckState } from './state/formatCheck'
@@ -1705,7 +1706,7 @@ describe('the corridor numbers of §A are pinned in the suite (c4-11, AC 31, AC 
     ...document.querySelectorAll<HTMLElement>('a[href], button, [tabindex]'),
   ]
 
-  it('pins 205 = 99 tiles + 6 flips + 1 oracle + 99 rows on the Atraxa shape, and the flip adjacency', async () => {
+  it('pins 206 = 99 tiles + 6 flips + 1 oracle + 99 rows + 1 pill on Atraxa, and the flip adjacency', async () => {
     booting(
       activeDeck(ATRAXA_DECK_ID),
       deckDetail({ cards: atraxaShape(), mainboard_count: 100, distinct_cards: 99 }),
@@ -1733,15 +1734,30 @@ describe('the corridor numbers of §A are pinned in the suite (c4-11, AC 31, AC 
     expect(footerLinks).toHaveLength(2)
 
     // THE PIN: §A's arithmetic, produced by the DOM rather than recomputed from the artefact.
-    // 1 skip + 99 tiles + 6 flips + 1 oracle + 99 rows + 2 footer links = 208 focusables…
-    expect(focusables).toHaveLength(208)
-    // …the corridor from the header to the first footer link is 205 stops…
-    expect(at(footerLinks[0]) - at(skip) - 1).toBe(205)
-    // …the link removes the first 105 of them (every tile and every flip control)…
+    //
+    // ⚠️ EVERY NUMBER BELOW GAINED EXACTLY ONE AT c5-7, AND THAT IS THE PILL. It is the last Tab
+    // stop before the footer links (UX-DR40, and `AppShell.tsx` renders it between `</main>` and
+    // `<footer>`), so it lands INSIDE the skip→footer corridor and OUTSIDE the skip→oracle prefix
+    // — which is why the middle assertion is the one that did not move. The pin was recomputed
+    // rather than relaxed: a `toBeGreaterThan` here would have accepted a pill mounted anywhere.
+    //
+    // 1 skip + 99 tiles + 6 flips + 1 oracle + 99 rows + 1 pill + 2 footer links = 209 focusables…
+    expect(focusables).toHaveLength(209)
+    // Selected by CLASS, not by accessible name: this suite drives no socket, so the pill sits at
+    // the cold-open `'reconnecting'` status throughout and its words are not the live ones. Its
+    // POSITION is what this test is about, and the position is the same in every state.
+    const pill = document.querySelector('.connection-pill')
+    expect(pill).not.toBeNull()
+    expect(at(pill)).toBe(focusables.length - 3)
+    // …the corridor from the header to the first footer link is 206 stops (205 + the pill)…
+    expect(at(footerLinks[0]) - at(skip) - 1).toBe(206)
+    // …the link removes the first 105 of them (every tile and every flip control), UNCHANGED
+    // because the pill sits on the far side of the deck rows…
     expect(at(oracle) - at(skip) - 1).toBe(105)
-    // …and the footer is STILL 100 stops away after using it — the story's own headline, at this
-    // deck's scale (206/105/101 is the LARGEST deck's row count, which carries a sideboard).
-    expect(at(footerLinks[0]) - at(oracle)).toBe(100)
+    // …and the footer is STILL 101 stops away after using it — the story's own headline, at this
+    // deck's scale, one worse than c4-11 measured it. The largest real deck (which carries a
+    // sideboard) is a longer corridor again; these are this SHAPE's numbers, not that deck's.
+    expect(at(footerLinks[0]) - at(oracle)).toBe(101)
 
     // THE FLIP ADJACENCY (AC 11): every flip control's immediately-preceding Tab stop is its OWN
     // tile — the sibling inside the same `.card-tile-frame` — never a trailing group.
@@ -1785,7 +1801,7 @@ describe('the corridor numbers of §A are pinned in the suite (c4-11, AC 31, AC 
     ])
   })
 
-  it('pins 3 = 1 tile + 1 oracle + 1 row on the 1-card deck (Iron Man, Modern Marvel — reminder)', async () => {
+  it('pins 4 = 1 tile + 1 oracle + 1 row + 1 pill on the 1-card deck (Iron Man, Modern Marvel)', async () => {
     // The other end of the corridor's range, and the deck the AC names (VERIFIED REAL: one card,
     // `Iron Man, Modern Marvel`). The link still renders — presence is "at least one card", and
     // this is exactly one.
@@ -1808,11 +1824,13 @@ describe('the corridor numbers of §A are pinned in the suite (c4-11, AC 31, AC 
     const oracle = document.querySelector('.card-detail-oracle')
     const footerLinks = within(screen.getByRole('contentinfo')).getAllByRole('link')
 
-    // 1 skip + 1 tile + 1 oracle + 1 row + 2 footer links = 6 focusables; corridor of 3.
-    expect(focusables).toHaveLength(6)
-    expect(at(footerLinks[0]) - at(skip) - 1).toBe(3)
+    // 1 skip + 1 tile + 1 oracle + 1 row + 1 pill + 2 footer links = 7 focusables; corridor of 4.
+    // The pill is the +1 at BOTH ends of the epic's range, which is the honest cost of a stop that
+    // is always present: it is proportionally largest exactly where the corridor is shortest.
+    expect(focusables).toHaveLength(7)
+    expect(at(footerLinks[0]) - at(skip) - 1).toBe(4)
     expect(at(oracle) - at(skip) - 1).toBe(1)
-    expect(at(footerLinks[0]) - at(oracle)).toBe(2)
+    expect(at(footerLinks[0]) - at(oracle)).toBe(3)
   })
 })
 
@@ -2026,21 +2044,34 @@ describe('the empty deck (story c4-12, AC 1, AC 3-5, AC 7-10, AC 14)', () => {
     // WITH.
     expect(screen.getAllByRole('banner')).toHaveLength(3)
 
-    // NO SECOND ANNOUNCEMENT MECHANISM (decide-once ruling 7). `CardDetail`'s single polite
-    // region stays the app's only one; a panel-visibility change that announced itself would be
-    // the fourth mechanism in this epic doing the same job. Counted across the whole document,
-    // and the survivor is proved to be the detail panel's rather than a new one.
+    // NO SECOND ANNOUNCEMENT MECHANISM FOR *THIS* STORY (decide-once ruling 7). A
+    // panel-visibility change that announced itself would be the fourth mechanism in this epic
+    // doing the same job. Counted across the whole document, and every survivor is IDENTIFIED —
+    // the point of the pin is that a new region has to be declared here, not that the number is 1.
+    //
+    // ⚠️ THE COUNT MOVED TO TWO AT c5-7, AND THE PIN WAS UPDATED RATHER THAN WEAKENED (AC 11).
+    // UX-DR45's inventory authorises exactly three polite regions for this app — the connection
+    // pill, the agent-view heading and the pin announcement — so a second one arriving is the
+    // inventory being filled, not the rule being broken. The honest form of that is an EXHAUSTIVE
+    // list: `>= 1` would have let a genuinely undeclared third region through, which is the whole
+    // failure this assertion exists to catch. The agent-view heading is Epic 6's and is absent.
     const live = [...document.querySelectorAll('[aria-live]')]
-    expect(live).toHaveLength(1)
-    expect(live[0].getAttribute('aria-live')).toBe('polite')
-    // …and it is the EXISTING one rather than a new one. Identified by its own class, NOT by an
-    // ancestor lookup: the announcement element sits deliberately OUTSIDE the `Card detail` panel
-    // — that placement is the whole of the H4/C1 gate fix, because the panel must not itself be a
-    // live region — so `closest('[aria-label="Card detail"]')` correctly returns null and would
-    // have made this assertion a false failure about a correct app.
-    expect(live[0].className).toContain('card-detail-announcement')
-    // Empty at rest on an empty deck: there is no card to pin, so nothing is announced.
-    expect(live[0].textContent).toBe('')
+    expect(live).toHaveLength(2)
+    for (const region of live) expect(region.getAttribute('aria-live')).toBe('polite')
+
+    // EACH ONE NAMED. Identified by their own classes, NOT by an ancestor lookup: both
+    // announcement elements sit deliberately OUTSIDE the thing they describe — that placement is
+    // the whole of the H4/C1 gate fix for the detail panel, and the same reason keeps the pill's
+    // region outside the pill's `<button>` — so a `closest()` lookup correctly returns null and
+    // would have made this a false failure about a correct app.
+    const classes = live.map((region) => region.className)
+    expect(classes.some((c) => c.includes('card-detail-announcement'))).toBe(true)
+    expect(classes.some((c) => c.includes('connection-pill-announcement'))).toBe(true)
+
+    // BOTH EMPTY AT REST. There is no card to pin on an empty deck, and the connection has not
+    // transitioned since mount — the pill's region is silent on the initial render by design
+    // (c5-7 Q4), which is what stops every cold open announcing "Reconnecting".
+    for (const region of live) expect(region.textContent).toBe('')
   })
 })
 
@@ -2548,5 +2579,165 @@ describe('the page reconnects on its own (c5-6)', () => {
     expect(useCardStore.getState().cards['burned-id']).toEqual(
       expect.objectContaining({ status: 'unknown', retryable: true }),
     )
+  })
+})
+
+/**
+ * The connection pill against the REAL loop (story c5-7, AC 1, AC 7, AC 18).
+ *
+ * ================= WHY THESE ASSERTIONS ARE HERE AND NOT IN THE COMPONENT TEST =========
+ *
+ * `ConnectionPill.test.tsx` drives the two slices directly and proves what the component makes of
+ * them. Neither of the two claims below can be made from there:
+ *
+ *   1. **The pill is on EVERY surface** (AC 1). That is a fact about `App`'s composition — six
+ *      arms, five of which render a `StatePanel` into the left slot — and the exact failure mode
+ *      it guards is a pill mounted inside the deck-only Fragment, which would look correct in a
+ *      component test and be absent on five screens.
+ *   2. **A real drop moves it** (AC 18). `applyConnection('down')` in a component test asserts
+ *      that the pill reads a field. This walks c5-6's actual machinery — a socket that fails four
+ *      times over sixty seconds — so the dot the user would see is the dot produced by the loop.
+ *
+ * The `FakeSocket` + fake-timer idiom is the one the c5-6 block above established; nothing new is
+ * introduced here.
+ */
+describe('the connection pill reports the real loop (c5-7)', () => {
+  const DISCONNECTED = 'Lost the companion backend.'
+  const NO_DECK = 'No deck on the glass.'
+
+  const pill = () => document.querySelector('.connection-pill')!
+  const dotClass = () => document.querySelector('.connection-pill-dot')!.className
+  const announcement = () => document.querySelector('.connection-pill-announcement')!.textContent
+
+  const backendDown = () => {
+    const fetchMock = vi.fn(() => Promise.reject(new TypeError('Failed to fetch')))
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  // ==================== AC 18 — THE WALK ==============================================
+  it('walks live -> reconnecting -> down on the real backoff, and back (AC 2, AC 4, AC 18)', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    // COLD OPEN is `'reconnecting'` before the first upgrade completes — the honest value, and
+    // the reason the announcement policy must not fire on mount (Q4).
+    expect(dotClass()).toContain('is-reconnecting')
+    expect(pill()).toHaveTextContent(CONNECTION_WORDS.reconnecting)
+    expect(announcement()).toBe('')
+
+    // LIVE. The first upgrade lands, and THIS is the first thing the region ever says.
+    await connect()
+    expect(dotClass()).toContain('is-live')
+    expect(pill()).toHaveTextContent(pillText('live', 'Atraxa Counter Cabinet v2 (owned)'))
+    expect(announcement()).toBe(pillText('live', 'Atraxa Counter Cabinet v2 (owned)'))
+
+    // RECONNECTING. A drop, and the pre-exhaustion window: caution dot, deck still named, and
+    // (UX-DR35) the deck itself still on the glass — the pill does not pre-empt the panel. This
+    // is a genuine transition (live -> reconnecting), so per Q4's ruling the region announces it.
+    backendDown()
+    await drop()
+    expect(dotClass()).toContain('is-reconnecting')
+    expect(pill()).toHaveTextContent('Atraxa Counter Cabinet v2 (owned)')
+    expect(announcement()).toBe(pillText('reconnecting', 'Atraxa Counter Cabinet v2 (owned)'))
+    expect(screen.queryByRole('region', { name: DISCONNECTED })).toBeNull()
+
+    // DOWN. Both gates — sixty seconds AND four observed failures — which is what
+    // `advance(DISCONNECTED_AFTER_MS)` over a dead backend produces.
+    await advance(DISCONNECTED_AFTER_MS)
+    expect(dotClass()).toContain('is-down')
+    expect(pill().textContent).toBe(CONNECTION_WORDS.down)
+    expect(announcement()).toBe(CONNECTION_WORDS.down)
+
+    // RECOVERY, with no reload. The dot goes positive again and the words come back with it.
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+    await advance(30_000)
+    await connect()
+    expect(dotClass()).toContain('is-live')
+    expect(announcement()).toContain(CONNECTION_WORDS.live)
+  })
+
+  // ==================== AC 7 — THE PILL AND THE PANEL, TOGETHER ========================
+  it('renders BESIDE the Disconnected panel, not instead of it (AC 7)', async () => {
+    // `EXPERIENCE.md:119` writes this state as "Left column + pill" — both, simultaneously. The
+    // failure it guards against is a `surfaceOf`-driven pill, which would go quiet here.
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    backendDown()
+
+    render(<App />)
+    await settle()
+    await advance(DISCONNECTED_AFTER_MS)
+
+    expect(screen.getByRole('region', { name: DISCONNECTED })).toBeVisible()
+    expect(pill()).toBeVisible()
+    expect(dotClass()).toContain('is-down')
+  })
+
+  // ==================== AC 1 — EVERY SURFACE ==========================================
+  it('is present on a STATE-PANEL surface, where the left slot is not a deck at all (AC 1)', async () => {
+    // The landmine, asserted from the outside: `App.tsx` renders `<StatePanel>` into `left` in
+    // five of its six arms, so a pill mounted in the deck-only Fragment would be absent here and
+    // present in every component test.
+    booting(activeDeck(null))
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    await connect()
+
+    expect(screen.getByRole('region', { name: NO_DECK })).toBeVisible()
+    expect(pill()).toBeVisible()
+    // No deck loaded, so no name — and no placeholder standing in for one (AC 6).
+    expect(pill().textContent).toBe(CONNECTION_WORDS.live)
+  })
+
+  it('is present on a COLD OPEN, before any answer has arrived at all (AC 1)', async () => {
+    // The very first paint: no socket, no poll answer, no deck. `settle()` is deliberately NOT
+    // awaited — this is the frame before anything resolves.
+    booting(activeDeck(null))
+    answering(decks())
+
+    render(<App />)
+
+    expect(pill()).toBeVisible()
+    expect(dotClass()).toContain('is-reconnecting')
+    expect(announcement()).toBe('')
+    await settle()
+  })
+
+  it('is present on an EMPTY deck, and names it (AC 1, AC 6)', async () => {
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({ cards: [], mainboard_count: 0, sideboard_count: 0, distinct_cards: 0 }),
+    )
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    await connect()
+
+    expect(screen.getByText(EMPTY_DECK_LINE)).toBeVisible()
+    expect(pill()).toHaveTextContent('Atraxa Counter Cabinet v2 (owned)')
+  })
+
+  // ==================== AC 9 — THE DOM POSITION, AT THE ROOT ===========================
+  it('is the LAST Tab stop before the footer links, on a state-panel surface too (AC 9)', async () => {
+    // The corridor pins above assert this on a loaded deck. Asserted here as well because the
+    // shell slot is what makes it true, and a slot is easy to move: `AppShell` renders the pill
+    // between `</main>` and `<footer>` on every arm, not only the one with a deck in it.
+    booting(activeDeck(null))
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    await connect()
+
+    const focusables = [...document.querySelectorAll<HTMLElement>('a[href], button, [tabindex]')]
+    const footerLinks = within(screen.getByRole('contentinfo')).getAllByRole('link')
+    expect(footerLinks).toHaveLength(2)
+    expect(focusables.indexOf(pill() as HTMLElement)).toBe(focusables.indexOf(footerLinks[0]) - 1)
   })
 })

@@ -21,7 +21,8 @@
  * ================= THE THREE SIGNALS, AND Q5's RULING FOR EACH ==========================
  *
  * 1. **status** → written straight through to the system slice. `surfaceOf` reads it for the
- *    Disconnected panel (Q3); **c5-7**'s pill reads the same field.
+ *    Disconnected panel (Q3); the connection pill reads the same field, through the narrow
+ *    `useConnection()` selector `systemState.ts` grew for it (**shipped at c5-7**).
  *
  * 2. **reconnected** — a socket opened after at least one failure — re-drives **everything the
  *    outage could have made stale**, because a socket coming back is the strongest evidence the

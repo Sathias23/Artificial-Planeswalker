@@ -37,7 +37,12 @@ renders the rest (EXPERIENCE.md), which is the behaviour the whole no-DB ruling 
 returned, not what :attr:`~src.companion.app.state.ConnectionRegistry.connected_count` holds. They
 differ only when a client fails mid-fan-out, and in exactly that window the delivered count is the
 truthful answer to "how many browsers saw it", which is the question this endpoint exists to
-answer. ``connected_count`` remains for the c5-7 connection pill, which wants the other number.
+answer. ``connected_count`` remains — but **not for the reason this paragraph used to give**. It
+said the count "remains for the c5-7 connection pill, which wants the other number"; c5-7 shipped
+on 2026-08-08 and the pill wants neither number. It reports the browser's own socket status and
+the active deck's name (FR-15, UX-DR29) and calls this backend not at all. Recorded as a falsified
+prediction; the honest owner of that property is a future status surface, and even c10-1 — the
+nearest candidate — reads ``GET /health`` rather than a client count.
 
 **A novel first path segment**, and the only thing standing between ``/agent`` and the SPA
 catch-all is registration order in ``build_app()`` — ``/api``'s belt-and-braces seed in

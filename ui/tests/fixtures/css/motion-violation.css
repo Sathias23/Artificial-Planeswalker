@@ -6,6 +6,9 @@
    tempted by. The connection pill (c5-7) is the exact component a future author will want
    to give a breathing dot, and reduced-motion is NOT the escape hatch for it — a loop is
    banned at every setting, not just the reduced one. Hence a guard rather than a guideline.
+   The pill SHIPPED 2026-08-08 with no `animation` and no `transition` at all, so the guard has
+   still never had to fire on real code — which is the outcome it was written for, and the
+   reason this fixture keeps carrying the temptation instead of the component doing it.
 
    Kept in its own file so that violation.css's ten-warning UX-DR46 outline count — asserted
    unfiltered since story c2-1 — is not disturbed by a rule that shares its name. */

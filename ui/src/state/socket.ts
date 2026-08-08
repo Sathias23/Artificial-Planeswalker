@@ -157,7 +157,8 @@ export const DISCONNECTED_MIN_FAILURES = 4
  *   milliseconds either.
  * - `down` — the two gates above have both been satisfied. **The loop is still retrying**; this
  *   value means *say so*, not *stop*. `surfaceOf` reads it and puts the Disconnected panel on the
- *   glass; **c5-7**'s connection pill reads the same field for the same reason.
+ *   glass; the connection pill (**shipped at c5-7**) reads the same field for the same reason,
+ *   and renders its negative dot beside that panel rather than instead of it.
  *
  * A union rather than a boolean pair (`connected` + `exhausted`) for `DeckState`'s reason: two
  * booleans are two invariants that can disagree, and `{connected: true, exhausted: true}` has no

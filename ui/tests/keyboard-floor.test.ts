@@ -313,6 +313,10 @@ describe('the guard is reading the app at all (non-vacuity)', () => {
       'src/containers/CardDetail/CardDetail.tsx',
       'src/components/Footer/Footer.tsx',
       'src/containers/SkipLink/SkipLink.tsx',
+      // c5-7's connection pill — the app's LAST Tab stop before the footer links, and the first
+      // focusable element Epic 5 ships. A parser that stopped seeing it would excuse it from the
+      // ring rule, the hit-box rule and the real-control rule in one silent step.
+      'src/containers/ConnectionPill/ConnectionPill.tsx',
     ]) {
       expect(files, `no focusable element found in ${known}`).toContain(known)
     }
@@ -324,6 +328,10 @@ describe('the guard is reading the app at all (non-vacuity)', () => {
     // Two known members, one from each tier, asserted to be classified apart.
     expect(treatmentOf('card-tile')).toEqual([OVER_ART])
     expect(treatmentOf('footer-attribution-link')).toEqual([KNOWN_SURFACE])
+    // c5-7's pill sits on `--surface-panel`, so it takes the known-surface tier too — asserted
+    // here rather than only through the loop below, because a NEW member classified as `[]` would
+    // be reported by that loop as a missing ring when the real fault could be the parser.
+    expect(treatmentOf('connection-pill')).toEqual([KNOWN_SURFACE])
     // …and a class with no rule at all really does come back empty, which is the failure signal.
     expect(treatmentOf('card-detail-headline')).toEqual([])
   })
@@ -426,7 +434,10 @@ describe('every interactive element is a real control with a real hit box (AC 20
     // fall in one of the two named groups; a new one in neither reddens this test and forces the
     // author to classify it — declare the minimum, or claim well-clear where the claim is
     // checked-in and eye-checkable.
-    const DECLARES_MIN = ['footer-attribution-link', 'skip-link']
+    // `connection-pill` joins at c5-7 and it is the clearest member of the group: its tallest
+    // text is `--type-body`'s 14px at 1.5 (a 21px line box) beside a `--type-micro` word, so the
+    // pill is UNDER the floor on its own geometry and declares both minimums explicitly.
+    const DECLARES_MIN = ['footer-attribution-link', 'skip-link', 'connection-pill']
     // Well clear BY MEASURED GEOMETRY, each with its eye-check on record: the tile is card-sized,
     // the flip control's hit box is 32×32 (c4-6), the deck row spans the panel at ≥34px, the
     // unpin control measured 61×30 (c4-5), and the oracle scroller is a multi-line text block.

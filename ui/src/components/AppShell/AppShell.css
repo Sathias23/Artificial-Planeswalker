@@ -47,12 +47,27 @@
    This height is only correct because of the `box-sizing: border-box` reset in
    src/index.css. Under the CSS default of `content-box` this element would be
    100dvh + 64px tall — the gutter padding added to the declared height, not inside it — and
-   the window would scroll. That failure presents as a footer bug and is not one. */
+   the window would scroll. That failure presents as a footer bug and is not one.
+
+   `min-width: 1100px` — THE STATED FLOOR, ENFORCED (c5-7 review find, 2026-08-08, Greptile).
+   DESIGN.md has always said *"the app targets a window from ~1100px... up to ~2560px"*, and the
+   `width < 1100px` breakpoint below has re-stacked the columns on that promise since c2-1 — but
+   nothing made the floor TRUE below it. `ConnectionPill.css`'s fixed footer clearance assumes a
+   single-line, `--space-3`-padded `.footer-attribution` (measured 37px at every width from
+   1100px up), which the floor now guarantees; below it the paragraph wraps to two or three
+   lines and grows past that assumption, so the fixed pill visually covers part of the
+   attribution text — a defect against NFR-08's release condition, confirmed with a real
+   browser at 700px and 480px (jsdom resolves no layout, so no test caught it; this is the
+   `--space-3` claim earning its own eye-check, which nobody had performed below 1100px until
+   this finding). A horizontal scrollbar below the floor is the honest failure mode for a
+   mouse-first, desktop-target app (EXPERIENCE.md's own posture) — cheaper and more predictable
+   than a second reflow tier this app never designed for. */
 .app-shell {
   display: flex;
   flex-direction: column;
   gap: var(--space-panel-gap);
   height: 100dvh;
+  min-width: 1100px;
   padding: var(--space-gutter);
 }
 

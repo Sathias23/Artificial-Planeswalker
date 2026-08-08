@@ -4598,6 +4598,9 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   footer"* — while `DESIGN.md:445` places it physically **bottom-left**, in the other column from
   the deck rows. c4-11 **declined to decide it without the component** and marked it unbuilt in the
   enumeration instead. **Home: c5-7**, by name. (Severity: Low.)
+  **→ CLOSED BY DECISION at c5-7 (2026-08-08)** — a sibling between `</main>` and `<footer>`,
+  rendered `position: fixed` bottom-left. The two readings were about different axes. See
+  *Dispositions from: dev of c5-7-connection-pill* at the foot of this file.
 
 - **F1's remaining story key is `c6-8`, not `c4-11` — and the C3 retro's count of six was itself an
   undercount.** c4-9 and c4-10 both recorded *"`c4-11` remains, in the skip-link work"*. Verified at
@@ -5353,6 +5356,9 @@ consequences for the ledger are here.
   `RETRIES_QUIETLY` rather than paraphrasing it. **The pill itself stays unasserted and is asserted
   to be unasserted** — it is c5-7's, and gating it now would be the prose-against-prose failure that
   file exists to prevent.
+  **→ PAID IN FULL at c5-7 (2026-08-08)** — the deliberate non-assertion was CONVERTED into a real
+  mirror against the pill's shipped `down` copy and against `RETRIES_QUIETLY.disconnected`, not
+  deleted. See *Dispositions from: dev of c5-7-connection-pill* at the foot of this file.
 
 ### CLOSED BY RULING, with the reason recorded
 
@@ -5429,6 +5435,10 @@ consequences for the ledger are here.
   rather than twice per attempt. That is deliberate and measured against `poller.ts`'s identical
   rule; it is recorded because the selector-less subscription is a standing cost the pill (c5-7) and
   Epic 6 will both inherit. **Home: c5-7 if the pill wants finer granularity.** (Severity: none.)
+  **→ CLOSED at c5-7 (2026-08-08)** — it did want it: `systemState.ts` exports a one-line
+  `useConnection()` selector hook and the pill subscribes to that field alone. `App`'s own
+  selector-less subscription is unchanged and still a standing cost for Epic 6. See
+  *Dispositions from: dev of c5-7-connection-pill* at the foot of this file.
 
 - **jsdom DOES provide `WebSocket` — the story's own Dev Notes said it does not.**
   Measured 2026-08-08 (`typeof new JSDOM().window.WebSocket === 'function'`). Recorded as a
@@ -5486,3 +5496,127 @@ consequences for the ledger are here.
   **Home: c5-8** — it adds the one real-socket integration test and will be working in this exact
   file. (Severity: low — intermittent, loud when it fires, and it has never turned a real assertion
   green.)
+
+---
+
+## Dispositions from: dev of c5-7-connection-pill (2026-08-08)
+
+**The story that was handed a decision nobody had made, and made it.** Three entries were homed
+here by name; all three are closed below. All six of the story's open questions were ruled by Brad
+**before any code**, as recommended, in one pass — the c5-5 / c5-6 protocol repeated a third time.
+
+### CLOSED
+
+- **dw:4595-4600 — the connection pill's DOM position is decided by nobody, and three stories each
+  assume someone else did it.** **CLOSED by decision** (Q1, Brad 2026-08-08). The three artefacts
+  were never actually in conflict, and naming the axis is what dissolved it: UX-DR40 and c10-1 were
+  describing **Tab order**, `DESIGN.md:479` was describing the **screen**. The shipped answer
+  satisfies both — a new `AppShell` prop rendered as a sibling **between `</main>` and `<footer>`**,
+  which makes the pill the last Tab stop before the footer links, while `ConnectionPill.css` pins it
+  `position: fixed` to the **bottom-left** corner with a `calc(var(--space-gutter) + var(--space-6))`
+  inset that clears the footer strip.
+
+  Two things make this more than a note. First, the guard layer had **already anticipated it**:
+  `shell.test.ts`'s full-window-fixed-layer rule is value-aware precisely so a corner pill stays
+  silent, and `fixtures/css/shell-violation.css:256` carries that exact shape as a probe — written
+  in 2026-07-28's review with the reasoning *"a false positive c5-7 has to fight is the worse
+  outcome"*. The prediction held byte for byte. Second, the rejected alternative is recorded because
+  it is the one a later reader reaches for: an in-flow last child of the LEFT column renders
+  bottom-left with no fixed positioning at all — and puts the pill *before the entire right column*
+  in Tab order, contradicting UX-DR40, c10-1, and (on the five surfaces where the left column is a
+  state panel) AC 1 as well.
+
+  `epics-companion-app.md`'s UX-DR40 enumeration and `EXPERIENCE.md`'s Tab-order cell were both
+  updated from their "(connection pill — c5-7)" markers to the shipped truth in the same commit.
+
+- **dw:5349-5355 — the fourth copy tail's PILL clause, asserted-to-be-unasserted.** **PAID.**
+  c3-9 declined it (*"prose checked against prose"*), c5-6 paid the backoff half and left
+  `copy-tails.test.ts:284`'s deliberate non-assertion standing. c5-7 **converted** it rather than
+  deleting it: the row's *"Retrying-quietly note in the connection pill"* is now mirrored against
+  the pill's shipped `down` copy (`Backend gone — retrying quietly`) **and** against
+  `RETRIES_QUIETLY.disconnected`, so the note cannot be softened at either end without a red test.
+  The half that stands unchanged is the other one — `socket.ts` still contains no `pill` outside its
+  comments, because the pill reads the loop's field and the loop knows nothing about a pill.
+
+- **dw:5427-5431 — the selector-less system-store subscription, "Home: c5-7 if the pill wants finer
+  granularity."** **CLOSED — it did** (Q5). `systemState.ts` grew a one-line `useConnection()`
+  selector hook beside `useSystemState()`, so the pill re-renders when `connection` changes and at
+  no other time, instead of adding a second whole-store subscription beside `App`'s.
+
+  **What is closed is the QUESTION, not the cost.** `App`'s own subscription is deliberately
+  unchanged and still selector-less: it reads all three fields, so a selector there would be
+  ceremony. The entry asked whether the pill wanted finer granularity; the answer is yes, and it
+  cost one line and no change to how the store is written. `STORES` in `store-writes.test.ts` is
+  untouched — this added a reader, and a reader is not a writer.
+
+### New, from this story
+
+- **The measured Tab-corridor figures in `EXPERIENCE.md:143` and `epics-companion-app.md` are each
+  one stop short as of this story, and were NOT re-measured.** c4-11 measured the corridor from the
+  header to the first footer link over all 40 real decks — **206 max / 78 median / 102.0 mean**, with
+  the skip link removing the first 105 and leaving 101. The pill is an always-present stop *inside*
+  that corridor, so every one of those figures gains exactly **+1** on every deck (207 / 79 / 103.0;
+  105 removed, 102 left). Both suite pins were recomputed from the DOM rather than relaxed
+  (`App.test.tsx`: 208 → 209 focusables and a 206-stop corridor on the Atraxa shape; 6 → 7 and a
+  4-stop corridor on the 1-card deck), so the arithmetic is checked — but the 40-deck sweep behind
+  the artefact numbers was not re-run, and a derived +1 is not a measurement.
+
+  Note the shape of the cost: the pill is proportionally **worst where the corridor is shortest**
+  (a 1-card deck goes from 3 stops to 4), which is the opposite of where the skip link helps.
+  **Home: c8-6**, which already carries the revisit-before-public-release flag for this exact
+  corridor and is the story that actions or re-accepts it. (Severity: low — the direction and the
+  magnitude are both known exactly; only the artefact text is stale.)
+
+- **Two live-region prose claims were falsified by this story and are recorded rather than silently
+  edited.** `SkipLink.tsx:80` and `CardGrid/copy.ts:47` each asserted that *"CardDetail's single
+  polite region stays the only one in the app"* — true when written, false the moment the pill
+  shipped its own. Both rewritten to the claim those modules actually make (they announce nothing),
+  with the falsification named. Two more copies of the same sentence lived in `copy-rules.test.ts`'s
+  registry reasons and were corrected with them. **No home** — closed here. (Severity: none.)
+
+- **The accessible NAME and the DOM text of the pill differ by whitespace, and the test pins both.**
+  `button.textContent` is `Connected — Sultai Midrange` byte for byte; the computed accessible name
+  is `Connected—Sultai Midrange`, because the accname algorithm trims each contributing text node
+  before joining and the separator's spaces do not survive it. Measured, not predicted. Not repaired,
+  because the only repair is to give up the typography split that keeps the deck name mixed-case —
+  and no screen reader voices the difference. Recorded so the next author does not read it as a bug.
+  **No home.** (Severity: none.)
+
+- **A firing proof found a real hole that 1,866 green tests did not: nothing bound the dot's
+  modifier classes to their status TOKENS.** Probe P15 pointed `.connection-pill-dot.is-down` at
+  `--caution` instead of `--negative` and the FULL suite stayed green. The reason is structural and
+  will recur: `ConnectionPill.test.tsx` runs in jsdom, which evaluates no stylesheet, so every DOM
+  assertion about the dot can only reach the CLASS — it proves that `'down'` renders `is-down` and
+  stops there. The one component in the app whose entire job is to signal by colour could therefore
+  ship the wrong colour on the state that matters most, and no gate would object.
+
+  **Closed in this story** by a source-reading guard in `shell.test.ts` that binds all three
+  classes to their tokens *and* asserts the dot's complete fill set is exactly the three semantics
+  (a swap satisfies any per-class "is it a status token" check, and a fourth rule pointing at
+  `--accent` would satisfy all three per-class assertions and still be wrong).
+
+  **Recorded rather than merely fixed, because the general shape is unclosed**: any
+  class-to-token binding in this codebase is invisible to jsdom, and only the ones somebody
+  thought to read as source are checked. `Badge`'s tones, `ManaPip`'s colours and the deck row's
+  live tint are the same shape. **Home: C5 retro** — worth a decision about whether a derived
+  class→token guard is wanted repo-wide, rather than one per component that remembers.
+  (Severity: low — one instance found and closed; the class of hole is open.)
+
+## Deferred from: code review of c5-7-connection-pill (2026-08-08)
+
+- **Empty-string deck name (`''`) is not normalized to `null` before reaching the pill's render or
+  `pillText`.** `ConnectionPill.tsx:77-78`'s selector (`state.deck.status === 'deck' ?
+  state.deck.detail.name : null`) and `copy.ts:102-105`'s `pillText` both treat only `null` as "no
+  name" — a blank string would render a dangling em dash with nothing after it. Reachable only if
+  `deck.detail.name` is itself blank, which nothing in `src/data/schemas/deck.py`'s `name: str`
+  field (no `min_length`) prevents. **No home** — deferred as pre-existing: the header's own
+  deck-name display (`.app-shell-deck-name`) has the identical gap, so this is a systemic deck-name
+  validation question, not something specific to the pill. (Severity: low.)
+
+- **No max-width/overflow guard on the deck name inside the fixed-position connection pill for
+  unusually long names.** `ConnectionPill.css`'s `.connection-pill`/`.connection-pill-text`/
+  `.connection-pill-deck` rules have no `max-width`, `overflow`, `white-space` or `text-overflow` —
+  an unusually long deck name could grow the fixed pill past the viewport edge. **No home** —
+  deferred as pre-existing: `.app-shell-deck-name` (`AppShell.css:88-93`, the header's own
+  deck-name display) has the identical gap, so this matches an existing repo-wide pattern rather
+  than a defect unique to this story. (Severity: low.)

@@ -1011,7 +1011,9 @@ const findCardRadiusInMarkup = (
  *
  * SCOPED TO THE STYLESHEETS THAT DECLARE THEMSELVES CALM, and the scope is the reason rather
  * than an oversight: c4-10's format check maps a violation to `negative` and MUST spend that
- * token, and c5-7's connection pill spends all three status colours by specification. A
+ * token, and c5-7's connection pill spends all three status colours by specification — SHIPPED
+ * 2026-08-08, and `src/containers/ConnectionPill/ConnectionPill.css` is deliberately NOT added to
+ * the map below, which is exactly what this paragraph pre-authorised. A
  * repo-wide ban would be false. A later story that ships a calm surface adds its file here with
  * its own reason, the way `MANA_DATA_INK` grows.
  */

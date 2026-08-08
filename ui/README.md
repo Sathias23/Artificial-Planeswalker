@@ -567,7 +567,9 @@ in files that do not exist yet.
 
 Set by story **c4-4**, and it is a decide-once ruling roughly fifteen later component stories
 inherit: **c4-5**, **c4-6**, **c4-7**, **c4-10**, **c4-11**, **c5-7**, **c6-5**…**c6-8** and
-**c9-1**…**c9-3** all land here rather than in `src/components/`.
+**c9-1**…**c9-3** all land here rather than in `src/components/`. Every c4 story on that list has
+landed, and **c5-7** joined them on 2026-08-08 — its connection pill is the first Epic 5 member,
+and it qualifies on both counts at once (it subscribes to two slices AND it takes focus).
 
 **`src/components/` is CLOSED, and a component that holds state cannot join it.** That is
 structural, not stylistic: `tests/shell.test.ts:1257` asserts SET EQUALITY between
