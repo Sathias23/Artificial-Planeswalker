@@ -21,17 +21,35 @@ import doctest
 import importlib
 import inspect
 import logging
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from pydantic import TypeAdapter
 
 from src.companion.app import spa, state, ws
 from src.companion.app.main import bound_port, build_app
-from src.companion.app.state import TicketStore, ticket_store
-from tests.unit.companion.conftest import FakeClock, drive_handshake
+from src.companion.app.state import (
+    ConnectionRegistry,
+    TicketStore,
+    connection_registry,
+    ticket_store,
+)
+from src.companion.contracts import (
+    ActiveDeckChangedEvent,
+    ActiveDeckChangedPayload,
+    AgentEvent,
+)
+from tests.unit.companion.conftest import (
+    FakeClock,
+    FakeConnection,
+    drive_handshake,
+    open_socket,
+)
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _WS_SOURCE = _REPO_ROOT / "src/companion/app/ws.py"
+_STATE_SOURCE = _REPO_ROOT / "src/companion/app/state.py"
 _SESSION_PATH = "/api/session"
 _WS_LOGGER = "src.companion.app.ws"
 
@@ -421,24 +439,179 @@ class TestAfterTheSocketIsAccepted:
     async def test_the_handler_returns_on_disconnect_and_sends_nothing_after_accept(
         self, lifespan_client
     ):
-        """The channel is one-way today: c5-4 owns the first message this app ever sends."""
+        """REVISED AT c5-4, and it survives revision rather than deletion (AC 7).
+
+        The docstring this test used to carry said *"c5-4 owns the first message this app ever
+        sends"*, and c5-4 does now send one — so the sentence is spent, but the **assertion is
+        not**. A socket that connects and disconnects with no broadcast in between still sees
+        exactly one ``websocket.accept`` and nothing else: joining the registry is a set insertion,
+        not a frame. That is what this now pins, and it is the guard that would catch a future
+        story deciding to greet a new client with a hello or a state dump.
+        """
         app = build_app()
         async with lifespan_client(app) as client:
             sent = await drive_handshake(app, ticket=await _mint(client))
 
         assert [message["type"] for message in sent] == ["websocket.accept"]
 
-    async def test_no_connection_registry_was_scaffolded(self):
-        """AC 4's other half: the registry and the broadcast are c5-4's, and are absent."""
-        identifiers = {
-            node.id
-            for node in ast.walk(ast.parse(_WS_SOURCE.read_text(encoding="utf-8")))
-            if isinstance(node, ast.Name)
-        }
 
-        assert "router" in identifiers  # non-vacuity
-        assert not ({"broadcast", "connections", "ConnectionRegistry"} & identifiers)
-        assert not hasattr(state, "ConnectionRegistry")
+class TestTheRegistryVocabularyGuardIsReplaced:
+    """AC 14, 21: G7 is retired, and this is the set that replaces it (C4 retro item 13).
+
+    **What G7 was.** ``test_no_connection_registry_was_scaffolded`` asserted that ``ws.py``
+    mentioned none of ``{broadcast, connections, ConnectionRegistry}`` and that ``state.py``
+    exported no ``ConnectionRegistry`` — a guard against *scaffolding a story that had not been
+    designed*. It was written to redden on this story's first real line, and it did.
+
+    **Why it is removed rather than edited.** Its subject no longer exists: there is no
+    "not-yet-designed registry" to keep out. A guard whose premise is spent cannot be weakened into
+    a weaker version of itself without becoming decoration — so it goes, and these take over the
+    surface it was standing in front of. The C4 standing agreement is that a review-added mechanism
+    is never silently deleted: the removal and this replacement set both re-enter review with the
+    story, which is what this class's existence records.
+
+    **What the replacements protect, which G7 could not.** G7 could only assert absence. These
+    assert the *shape of the presence*: that the fan-out is in ``ws.py`` and the membership is in
+    ``state.py`` (the split the spine's module map rules), that there is exactly one serialiser,
+    and that neither of AD-9's or AD-7's two bans has been crossed on the push path.
+    """
+
+    def test_the_fan_out_lives_in_ws_and_the_membership_does_not(self):
+        """AC 14 (spine ``:451``): ``ws.py # upgrade + ticket consume + broadcast``.
+
+        **What it compares:** which module *defines* the fan-out and which defines the container.
+        **What it cannot see:** a third module importing both and adding a second fan-out of its
+        own — bounded instead by the serialiser guard below, which walks the whole package.
+        """
+        assert callable(ws.broadcast)
+        assert callable(ws.broadcast_active_deck_changed)
+        assert isinstance(ws.ConnectionRegistry, type)  # imported for the annotation…
+        assert "class ConnectionRegistry" not in _WS_SOURCE.read_text(encoding="utf-8")
+        assert "class ConnectionRegistry" in _STATE_SOURCE.read_text(encoding="utf-8")
+
+    def test_ws_builds_no_registry_of_its_own(self):
+        """The sibling of ``test_the_upgrade_reaches_the_store_through_the_one_accessor``.
+
+        A second registry would be a second answer to "how many clients are connected", which is
+        the number AD-8 has c5-5 report.
+        """
+        tree = ast.parse(_WS_SOURCE.read_text(encoding="utf-8"))
+        constructions = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "ConnectionRegistry"
+        ]
+
+        assert "connection_registry" in _identifiers(_WS_SOURCE)  # non-vacuity: it reads the one
+        assert constructions == [], "ws.py builds its own ConnectionRegistry"
+
+    def test_the_push_path_creates_no_task(self):
+        """AC 13 (AD-9): ``create_task`` is banned here, pinned structurally rather than by prose.
+
+        **What it compares:** every module under ``src/companion`` for the detached-execution
+        vocabulary. **What it cannot see:** a detachment spelled through a name it does not know
+        (a helper called ``spawn`` that wraps ``ensure_future`` in a module not scanned) — bounded
+        by the scan covering the whole package rather than only the diff's files.
+        """
+        offenders = []
+        for path in sorted((_REPO_ROOT / "src/companion").rglob("*.py")):
+            found = _identifiers(path) & {"create_task", "ensure_future", "TaskGroup", "gather"}
+            if found:
+                offenders.append(f"{path.name}: {sorted(found)}")
+
+        assert offenders == [], f"the companion detached execution somewhere: {offenders} (AD-9)"
+
+    def test_the_broadcast_path_opens_no_database(self):
+        """AC 13 (AD-7): no DB round-trip on the push path, protecting NFR-05's 250 ms budget.
+
+        **What it compares:** ``ws.py``'s syntax tree against this package's database vocabulary.
+        **What it cannot see:** a query reached through ``websocket.app.state`` by a name it does
+        not know — bounded by the module importing no session, engine or repository at all.
+        """
+        identifiers = _identifiers(_WS_SOURCE)
+
+        assert {"broadcast", "snapshot", "send_text"} <= identifiers  # non-vacuity
+        forbidden = {"deps", "Database", "DbSession", "get_session", "AsyncSession", "select"}
+        assert not (forbidden & identifiers), (
+            f"the broadcast path reached for {forbidden & identifiers} (AD-7)"
+        )
+
+    def test_the_websocket_module_holds_exactly_one_serialiser(self):
+        """AC 10, first half: one wire serialiser in ``ws.py``, and it is the event's own.
+
+        **What it compares:** every serialising call in ``ws.py``'s syntax tree. A hand-built
+        ``json.dumps({"kind": …})`` beside the model's own dump would be the second wire format
+        AC 10 forbids, and would show up here as a second call site. **What it cannot see:** a
+        serialiser in another module that ``ws.py`` imports and calls under a different name —
+        which is bounded by ``contracts.py`` shipping no such helper (asserted below) and by the
+        module importing nothing that could be one.
+
+        ``discovery.py``'s ``model_dump_json`` is deliberately **out of scope**: it writes
+        ``companion.json`` on disk, which is not the wire and not this event.
+        """
+        tree = ast.parse(_WS_SOURCE.read_text(encoding="utf-8"))
+        call_sites = [
+            node.func.attr
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"model_dump_json", "model_dump", "dumps", "json"}
+        ]
+
+        assert call_sites == ["model_dump_json"], (
+            f"expected exactly one wire serialiser in ws.py; found {call_sites} (AC 10)"
+        )
+
+    def test_the_serialisation_happens_outside_the_fan_out_loop(self):
+        """AC 10, second half — and this is the one that would catch the real regression.
+
+        Moving ``model_dump_json()`` inside the ``for`` would keep the count at one and still cost
+        a serialisation per client, which is what "serialised once per broadcast" exists to
+        prevent. **What it compares:** whether the dump's AST node is a descendant of any loop
+        inside :func:`~src.companion.app.ws.broadcast`. **What it cannot see:** a serialisation
+        hidden behind a call this function makes — bounded by the count guard above.
+        """
+        tree = ast.parse(_WS_SOURCE.read_text(encoding="utf-8"))
+        fan_out = next(
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == "broadcast"
+        )
+        loops = [node for node in ast.walk(fan_out) if isinstance(node, ast.For | ast.While)]
+        in_a_loop = [
+            node
+            for loop in loops
+            for node in ast.walk(loop)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "model_dump_json"
+        ]
+
+        assert loops, "non-vacuity: broadcast really does iterate the clients"
+        assert in_a_loop == [], "the envelope is serialised once per client, not once per broadcast"
+
+    def test_contracts_ships_no_wire_serialisation_helper(self):
+        """AC 10's third half: the path is the model's own dump, so there is nothing else to use.
+
+        ``contracts.py`` is a leaf and read-only for this story; a shared constructor, if one is
+        ever wanted, belongs in ``ws.py``. **What it compares:** that the contracts module defines
+        no module-level function whose name suggests it builds or serialises an envelope. **What it
+        cannot see:** such a helper added as a *method* on an envelope class — which would at least
+        be one wire format rather than two, and is a design conversation rather than a defect.
+        """
+        from src.companion import contracts
+
+        tree = ast.parse(Path(contracts.__file__).read_text(encoding="utf-8"))
+        helpers = [
+            node.name
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+            and any(word in node.name.lower() for word in ("serial", "envelope", "encode", "wire"))
+        ]
+
+        assert helpers == [], f"contracts.py grew a wire helper: {helpers}"
 
 
 class TestThePathAndTheMountOrdering:
@@ -799,6 +972,451 @@ class TestTheDocstringExamplesRun:
 
         assert results.attempted > 0, "security.py's Example: blocks stopped being executable"
         assert results.failed == 0
+
+
+class TestTheConnectionRegistry:
+    """AC 1-5: the holder c5-5 will read a count from, beside the ticket store it copies.
+
+    Driven entirely against :class:`FakeConnection`, which is the point of the structural protocol:
+    the registry is a container, and a container's contract is provable without a web server.
+    """
+
+    def test_a_fresh_registry_is_empty(self):
+        assert ConnectionRegistry().connected_count == 0
+
+    def test_construction_takes_no_positional_arguments(self):
+        """AC 1: keyword-only init, matching :class:`TicketStore`'s shape.
+
+        **What it compares:** the signature's parameter kinds. **What it cannot see:** whether
+        construction does I/O — which the next test covers by constructing one at import-safe
+        time and asserting nothing but the object came back.
+        """
+        parameters = inspect.signature(ConnectionRegistry.__init__).parameters
+
+        assert list(parameters) == ["self"], (
+            "the registry grew a constructor parameter; if it needs one it must be keyword-only, "
+            "the way TicketStore's are"
+        )
+
+    def test_two_registries_share_nothing(self):
+        """AC 1: inert construction, and no module-level container behind it.
+
+        A registry backed by a module-level set would make every app in the suite share one
+        connection list — and would be the CM-3 violation ``security.py``'s stores-nothing guard
+        exists to catch one module over.
+        """
+        first, second = ConnectionRegistry(), ConnectionRegistry()
+
+        first.add(FakeConnection())
+
+        assert first.connected_count == 1
+        assert second.connected_count == 0
+
+    def test_adding_a_connection_makes_it_countable_and_reachable(self):
+        registry, connection = ConnectionRegistry(), FakeConnection()
+
+        registry.add(connection)
+
+        assert registry.connected_count == 1
+        assert registry.snapshot() == (connection,)
+
+    def test_adding_the_same_connection_twice_registers_it_once(self):
+        """One socket is one client: the handler registers once, but a re-entrant add must not
+        double it, or c5-5's count would over-report the tabs that exist."""
+        registry, connection = ConnectionRegistry(), FakeConnection()
+
+        registry.add(connection)
+        registry.add(connection)
+
+        assert registry.connected_count == 1
+
+    def test_discard_removes_the_connection(self):
+        registry, connection = ConnectionRegistry(), FakeConnection()
+        registry.add(connection)
+
+        registry.discard(connection)
+
+        assert registry.connected_count == 0
+        assert registry.snapshot() == ()
+
+    def test_discarding_an_absent_connection_is_a_silent_no_op(self):
+        """AC 5, and it is load-bearing rather than defensive.
+
+        The fan-out drops a socket it could not write to **and** the handler's ``finally`` drops the
+        same socket when the drain returns. Both run, in either order, for one dying tab — so a
+        ``discard`` that raised on a miss would turn the ordinary disconnect into a 1011.
+        """
+        registry, connection = ConnectionRegistry(), FakeConnection()
+
+        registry.discard(connection)  # never added
+        registry.add(connection)
+        registry.discard(connection)
+        registry.discard(connection)  # already gone
+
+        assert registry.connected_count == 0
+
+    def test_the_snapshot_is_a_copy_the_caller_may_outlive(self):
+        """AC 5's other half: the fan-out mutates the registry **while** iterating its snapshot.
+
+        **What it compares:** that a registration made after the snapshot is not visible in it, and
+        that a discard during iteration does not raise. **What it cannot see:** anything about
+        ordering — the registry promises none, and AD-6 puts ordering on ``ts`` rather than on the
+        transport.
+        """
+        registry = ConnectionRegistry()
+        first, second = FakeConnection(), FakeConnection()
+        registry.add(first)
+        registry.add(second)
+
+        snapshot = registry.snapshot()
+        for connection in snapshot:
+            registry.discard(connection)
+        registry.add(FakeConnection())
+
+        assert len(snapshot) == 2
+        assert set(snapshot) == {first, second}
+        assert registry.connected_count == 1
+
+    def test_the_count_reads_no_database(self):
+        """AC 4 (AD-8, FR-06): story 5.5 returns this from ``POST /agent/events``.
+
+        **What it compares:** ``state.py``'s syntax tree for the database vocabulary this package
+        reaches a session through. **What it cannot see:** a query issued through a name it does
+        not know — which is bounded by the module importing no engine, asserted here too.
+        """
+        identifiers = _identifiers(_STATE_SOURCE)
+
+        assert {"ConnectionRegistry", "connected_count"} <= identifiers  # non-vacuity
+        forbidden = {"Database", "DbSession", "get_session", "AsyncSession", "deps", "select"}
+        assert not (forbidden & identifiers), (
+            f"state.py reached for {forbidden & identifiers}; the push path takes no DB (AD-7)"
+        )
+
+    def test_the_registry_carries_no_lock(self):
+        """AC 2: the argument is in the docstring, and the absence is asserted here.
+
+        **What it compares:** the module's syntax tree for lock vocabulary, plus a constructed
+        registry's own attributes. **What it cannot see:** a lock acquired somewhere else on the
+        registry's behalf — which ``ws.py``'s fan-out would have to spell, and nothing does.
+        """
+        identifiers = _identifiers(_STATE_SOURCE)
+
+        assert "ConnectionRegistry" in identifiers  # non-vacuity
+        assert not ({"Lock", "acquire", "asyncio", "threading"} & identifiers)
+        assert not [
+            name for name, value in vars(ConnectionRegistry()).items() if "lock" in name.lower()
+        ]
+
+    def test_the_no_lock_argument_is_written_down_rather_than_assumed(self):
+        """AC 2: ``state.py:36-68`` names what would earn a lock; this class must do the same.
+
+        **What it compares:** that the registry's own docstring states the argument and names its
+        breakers. **What it cannot see:** whether the argument is *correct* — that is review's job,
+        and the point of requiring it in prose is that review has something to check.
+        """
+        docstring = ConnectionRegistry.__doc__
+
+        assert docstring is not None
+        assert "lock" in docstring.lower()
+        assert "await" in docstring.lower(), (
+            "the no-lock argument rests on the absence of a suspension point; say so"
+        )
+
+
+def _an_event(deck_id="deck-under-test"):
+    """Build one ``active_deck_changed`` envelope, so a fan-out test has something to send."""
+    return ActiveDeckChangedEvent(
+        kind="active_deck_changed",
+        id="00000000000000000000000000000000",
+        ts=datetime(2026, 8, 8, 12, 0, tzinfo=UTC),
+        payload=ActiveDeckChangedPayload(deck_id=deck_id),
+    )
+
+
+class TestTheFanOut:
+    """AC 9-13: every client, once, byte-identical, and one failure contained to one socket.
+
+    Driven against :class:`FakeConnection` rather than the router, because the properties here are
+    the *fan-out's* — delivery, containment, accounting — and a socket adds nothing to any of them.
+    The single proof that the router really reaches this code with two real clients open is
+    ``TestTwoTabsOnePut`` below.
+    """
+
+    async def test_every_connected_client_receives_the_event(self, lifespan_client):
+        """AC 9 (FR-06): every client, not the first, not a sample."""
+        app = build_app()
+        async with lifespan_client(app):
+            registry = connection_registry(app)
+            clients = [FakeConnection() for _ in range(3)]
+            for client in clients:
+                registry.add(client)
+
+            delivered = await ws.broadcast(app, _an_event())
+
+        assert delivered == 3
+        assert all(len(client.sent) == 1 for client in clients)
+
+    async def test_every_client_receives_byte_identical_text(self, lifespan_client):
+        """AC 10: serialised once, so no client can be handed a differently-ordered rendering."""
+        app = build_app()
+        event = _an_event()
+        async with lifespan_client(app):
+            registry = connection_registry(app)
+            clients = [FakeConnection() for _ in range(3)]
+            for client in clients:
+                registry.add(client)
+
+            await ws.broadcast(app, event)
+
+        texts = {client.sent[0] for client in clients}
+        assert len(texts) == 1, "the clients received different bytes for one event"
+        assert texts == {event.model_dump_json()}
+
+    async def test_the_frame_parses_back_to_the_event_that_was_sent(self, lifespan_client):
+        """AC 16: what lands on the wire is a union member, validated the way a client would.
+
+        ``TypeAdapter(AgentEvent)`` is the discriminated union c5-1 froze, so this fails if the
+        envelope loses its ``kind``, its ``id`` or its ``ts`` — not merely if the text changes.
+        """
+        app = build_app()
+        async with lifespan_client(app):
+            client = FakeConnection()
+            connection_registry(app).add(client)
+
+            await ws.broadcast(app, _an_event(deck_id="a-particular-deck"))
+
+        event = TypeAdapter(AgentEvent).validate_json(client.sent[0])
+        assert isinstance(event, ActiveDeckChangedEvent)
+        assert event.kind == "active_deck_changed"
+        assert event.payload.deck_id == "a-particular-deck"
+
+    async def test_a_broadcast_to_nobody_succeeds_silently(self, lifespan_client, caplog):
+        """AC 11 (NFR-04): the ordinary state of a companion with no tab open."""
+        app = build_app()
+        async with lifespan_client(app):
+            with caplog.at_level(logging.WARNING, logger=_WS_LOGGER):
+                delivered = await ws.broadcast(app, _an_event())
+
+        assert delivered == 0
+        assert caplog.records == [], "a broadcast nobody hears is not worth a warning"
+
+    async def test_a_failing_client_is_contained_dropped_and_closed(self, lifespan_client, caplog):
+        """AC 8, 12: the epic's verbatim AC — removed without error, others unaffected."""
+        app = build_app()
+        async with lifespan_client(app):
+            registry = connection_registry(app)
+            healthy, gone = FakeConnection(), FakeConnection(fails=True)
+            registry.add(healthy)
+            registry.add(gone)
+
+            with caplog.at_level(logging.DEBUG, logger=_WS_LOGGER):
+                delivered = await ws.broadcast(app, _an_event())
+
+            assert registry.connected_count == 1, "the dead client is out of the set"
+            assert registry.snapshot() == (healthy,)
+
+        assert delivered == 1, "the count reports deliveries, not attempts"
+        assert len(healthy.sent) == 1, "the surviving client still received the event"
+        assert gone.closed == [_INTERNAL_ERROR], "the dead socket is closed best-effort"
+        assert [record.levelname for record in caplog.records] == ["DEBUG"], (
+            "a dying tab is routine; anything above DEBUG makes an operator's console noisy"
+        )
+
+    async def test_a_failing_client_does_not_stop_the_ones_after_it(self, lifespan_client):
+        """AC 12: containment is per-socket, so position in the fan-out must not matter.
+
+        Ten healthy clients around one broken one: a fan-out that aborted on the first failure
+        would deliver to some prefix of them, whatever order the set happens to iterate in.
+        """
+        app = build_app()
+        async with lifespan_client(app):
+            registry = connection_registry(app)
+            healthy = [FakeConnection() for _ in range(10)]
+            for client in healthy:
+                registry.add(client)
+            registry.add(FakeConnection(fails=True))
+
+            delivered = await ws.broadcast(app, _an_event())
+
+        assert delivered == 10
+        assert all(len(client.sent) == 1 for client in healthy)
+
+    async def test_no_exception_escapes_to_the_caller(self, lifespan_client):
+        """AC 12, 18: the mutation that triggered the broadcast must not learn about a dead tab."""
+        app = build_app()
+        async with lifespan_client(app):
+            connection_registry(app).add(FakeConnection(fails=True))
+
+            # No pytest.raises: the assertion is that this line returns a number.
+            assert await ws.broadcast(app, _an_event()) == 0
+
+    async def test_a_broadcast_before_the_lifespan_ran_is_a_no_op(self):
+        """AC 12: there is no app state to reach, and that is still not the caller's problem."""
+        assert await ws.broadcast(build_app(), _an_event()) == 0
+
+    async def test_the_active_deck_helper_mints_an_opaque_id_and_an_aware_timestamp(
+        self, lifespan_client
+    ):
+        """AC 16: backend-minted ``id``, aware-UTC ``ts``, and no two events share an id.
+
+        The id is opaque and for dedupe only — AD-6 puts *ordering* on ``ts`` — so this asserts
+        distinctness rather than any structure, which is the only property the contract promises.
+        """
+        app = build_app()
+        async with lifespan_client(app):
+            client = FakeConnection()
+            connection_registry(app).add(client)
+
+            await ws.broadcast_active_deck_changed(app, "deck-one")
+            await ws.broadcast_active_deck_changed(app, "deck-one")
+
+        adapter = TypeAdapter(AgentEvent)
+        first, second = (adapter.validate_json(text) for text in client.sent)
+        assert first.id != second.id, "two events shared an id; dedupe would drop the second"
+        assert first.ts.tzinfo is not None, "naive timestamps are banned project-wide"
+        assert first.ts.utcoffset() == timedelta(0), "aware UTC, not merely aware"
+
+    async def test_the_cleared_case_carries_a_null_deck_id(self, lifespan_client):
+        """The contract's nullable half, reachable through the helper rather than only by type."""
+        app = build_app()
+        async with lifespan_client(app):
+            client = FakeConnection()
+            connection_registry(app).add(client)
+
+            assert await ws.broadcast_active_deck_changed(app, None) == 1
+
+        assert TypeAdapter(AgentEvent).validate_json(client.sent[0]).payload.deck_id is None
+
+
+class TestTheSocketLifecycle:
+    """AC 6-8: a connection joins after accept and leaves on every exit path."""
+
+    async def test_the_socket_is_registered_while_the_drain_is_running(self, lifespan_client):
+        """AC 6: the positive half — a socket held open really is in the fan-out's set.
+
+        This is what ``open_socket`` exists for: ``drive_handshake`` returns only after the handler
+        has finished, so under it the count is always zero and this assertion would be vacuous.
+        """
+        app = build_app()
+        async with lifespan_client(app) as client:
+            registry = connection_registry(app)
+            assert registry.connected_count == 0  # non-vacuity: it starts empty
+
+            async with open_socket(app, ticket=await _mint(client)):
+                assert registry.connected_count == 1
+
+            assert registry.connected_count == 0, "the finally ran on the ordinary disconnect"
+
+    async def test_a_refused_handshake_never_joins(self, lifespan_client):
+        """AC 6: a rejected upgrade has no channel to write to, so it is not in the fan-out.
+
+        **What it cannot see — and this was found by its own R2 probe, not by reading it.** A
+        refusal returns *before* the accept block entirely, so moving ``registry.add`` to the line
+        above ``await websocket.accept()`` leaves this test green: the refused handshake still
+        never reaches either line. The case that distinguishes "after accept" from "before accept"
+        is an *authorised* handshake whose ``accept()`` fails, and that is the next test.
+        """
+        app = build_app()
+        async with lifespan_client(app):
+            registry = connection_registry(app)
+
+            await drive_handshake(app, ticket="never-minted")
+
+            assert registry.connected_count == 0
+
+    async def test_a_socket_that_failed_to_accept_is_never_registered(
+        self, lifespan_client, monkeypatch
+    ):
+        """AC 6: **only after** ``accept()`` succeeds — the half the refusal test cannot reach.
+
+        A connection registered before the accept that then fails would sit in the fan-out as a
+        socket the backend never established: every later broadcast would try to write to it,
+        fail, and drop it — noise for a client that was never there.
+
+        **What it compares:** the registry's count after an authorised handshake whose ``accept()``
+        raised. **What it cannot see:** a registration placed between ``accept()`` returning and the
+        drain starting, which is the shipped position and is what the two tests above observe.
+        """
+        app = build_app()
+
+        async def exploding_accept(self, *args, **kwargs):
+            raise RuntimeError("the peer is already gone")
+
+        monkeypatch.setattr("starlette.websockets.WebSocket.accept", exploding_accept)
+
+        async with lifespan_client(app) as client:
+            registry = connection_registry(app)
+
+            sent = await drive_handshake(app, ticket=await _mint(client))
+
+            assert not _was_accepted(sent), "non-vacuity: the fault really was inside accept()"
+            assert _close_codes(sent) == [_INTERNAL_ERROR]
+            assert registry.connected_count == 0
+
+    async def test_a_refused_origin_never_joins_either(self, lifespan_client):
+        """AC 6, paired with the acceptance above so the guard cannot pass by refusing all."""
+        app = build_app()
+        async with lifespan_client(app) as client:
+            registry = connection_registry(app)
+
+            await drive_handshake(app, ticket=await _mint(client), origin="http://evil.example")
+            assert registry.connected_count == 0
+
+            await drive_handshake(app, ticket=await _mint(client))
+            assert registry.connected_count == 0, "and the accepted one left again on disconnect"
+
+    async def test_the_1011_fault_path_also_unregisters(self, lifespan_client, monkeypatch):
+        """AC 6: **every** exit path, which is the half a plain ``discard`` after the drain misses.
+
+        A handler that unregistered on the line after the drain would leak a connection for every
+        fault — and the leaked object is a dead socket the next broadcast would try to write to.
+        """
+        app = build_app()
+
+        async def exploding_drain(websocket):
+            raise RuntimeError("the drain loop broke")
+
+        monkeypatch.setattr(ws, "_drain_until_disconnect", exploding_drain)
+
+        async with lifespan_client(app) as client:
+            registry = connection_registry(app)
+
+            sent = await drive_handshake(app, ticket=await _mint(client))
+
+            assert _was_accepted(sent), "non-vacuity: the fault is genuinely post-accept"
+            assert _close_codes(sent) == [_INTERNAL_ERROR]
+            assert registry.connected_count == 0
+
+    async def test_two_sockets_are_registered_at_once(self, lifespan_client):
+        """AC 9's precondition: the registry really holds concurrent tabs, not one at a time."""
+        app = build_app()
+        async with lifespan_client(app) as client:
+            registry = connection_registry(app)
+
+            async with open_socket(app, ticket=await _mint(client)):
+                async with open_socket(app, ticket=await _mint(client)):
+                    assert registry.connected_count == 2
+                assert registry.connected_count == 1
+
+            assert registry.connected_count == 0
+
+
+class TestTheRegistryAccessor:
+    """AC 3: one construction site, one accessor, ``None`` when the lifespan never ran."""
+
+    def test_a_constructed_app_has_no_registry(self):
+        assert connection_registry(build_app()) is None
+
+    async def test_the_lifespan_creates_one(self, lifespan_client):
+        app = build_app()
+
+        async with lifespan_client(app):
+            assert isinstance(connection_registry(app), ConnectionRegistry)
+
+    async def test_build_app_grew_no_side_effect(self):
+        """AC 3 (AD-10): the registry is a lifespan value, not a ``build_app()`` one."""
+        assert connection_registry(build_app()) is None
+        assert not hasattr(build_app().state, "connections")
 
 
 def _identifiers(path):

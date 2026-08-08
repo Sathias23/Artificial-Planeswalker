@@ -16,11 +16,13 @@ stays clean rather than trusting this paragraph.
 
 **Why this module rather than a bare ``app.state.active_deck_id``.** The Structural Seed names it:
 ``app/state.py # active deck, connections, tickets — in memory (AD-5)``. c5-2's WebSocket tickets
-landed here (:class:`TicketStore`) and c5-4's connection registry joins them, rather than inventing
-a third home, and keeping display state out of ``main.py`` leaves that module about identity and
-wiring. Both holders follow the shipped convention exactly — an inert object the lifespan creates,
-reached through one accessor (:func:`active_deck`, :func:`ticket_store`, mirroring
-:func:`src.companion.app.deps.database` and :func:`src.companion.app.main.bound_port`).
+landed here (:class:`TicketStore`) and c5-4's connection registry joined them
+(:class:`ConnectionRegistry`), rather than inventing a third home, and keeping display state out of
+``main.py`` leaves that module about identity and wiring. All three holders follow the shipped
+convention exactly — an inert object the lifespan creates, reached through one accessor
+(:func:`active_deck`, :func:`ticket_store`, :func:`connection_registry`, mirroring
+:func:`src.companion.app.deps.database` and :func:`src.companion.app.main.bound_port`). The seed's
+three nouns are now three objects in this file, and the module map's prediction is spent.
 
 **The ticket store is here rather than in** :mod:`~src.companion.app.security` **(c5-2, Q3, Brad
 2026-08-08), and the two modules disagreed in shipped prose until this story.** The spine's module
@@ -72,6 +74,7 @@ import math
 import secrets
 import time
 from collections.abc import Callable
+from typing import Protocol
 
 from fastapi import FastAPI
 
@@ -415,4 +418,186 @@ def ticket_store(app: FastAPI) -> TicketStore | None:
     # Annotated local rather than `return getattr(...)`: app.state is Any, and warn_return_any
     # would flag returning it directly.
     holder: TicketStore | None = getattr(app.state, "ticket_store", None)
+    return holder
+
+
+# ---------------------------------------------------------------------------------------------
+# The connection registry (CM-3, FR-06, AD-8) — c5-4 registers and fans out, c5-5 reads the count.
+# The third and last of the Structural Seed's three nouns for this module.
+# ---------------------------------------------------------------------------------------------
+
+
+class Connection(Protocol):
+    """What the fan-out needs a registered client to be — write to it, and close it (c5-4, Q1).
+
+    **Structural, so this module keeps importing no web framework.** ``state.py`` is a dict, a slot
+    and a clock; naming :class:`starlette.websockets.WebSocket` here would make the package's
+    innermost state holder depend on the ASGI layer that happens to be the only current caller, and
+    would force every registry unit test to build a scope and a ``receive``/``send`` pair to
+    register anything. A protocol costs nothing and buys the fakes.
+
+    **Three members rather than the one "an object with** ``send_text`` **" the story recommended**,
+    and the third is why: Q2 ruled that a send failure closes that socket best-effort, so the
+    fan-out's containment path needs :meth:`close` as well as :meth:`send_text`, and
+    :func:`src.companion.app.ws._close_quietly` consults the connection state before spending a
+    frame on a peer that has already gone. The recommendation predated the ruling; the ruling is
+    what the type has to serve.
+
+    :attr:`client_state` is typed ``object`` **deliberately**, and it is the one place this protocol
+    declines to be precise. This module never interprets the value — it is compared by identity
+    against a sentinel owned by the caller (``WebSocketState.DISCONNECTED``) — so naming
+    Starlette's enum here would import the framework for a value this file has no opinion about.
+    ``object`` is the honest type for "a token we pass through and never read".
+    """
+
+    @property
+    def client_state(self) -> object:
+        """Whatever the transport says about this connection, passed through uninterpreted."""
+
+    async def send_text(self, data: str) -> None:
+        """Write one text frame."""
+
+    async def close(self, code: int = 1000) -> None:
+        """Close the connection with *code*."""
+
+
+class ConnectionRegistry:
+    """The set of accepted WebSockets a broadcast fans out to (FR-06, AD-8, CM-3).
+
+    **A container, and deliberately nothing more.** It does not accept sockets, does not send, does
+    not close and does not know what an event is — :mod:`src.companion.app.ws` owns all four. What
+    lives here is the membership, for the same reason the ticket map does: the Structural Seed
+    homes ``connections`` in this module, and a registry that also fanned out would put the wire
+    format in the state file.
+
+    **No lock, and here is the argument** — the shape :class:`TicketStore` uses, re-made for this
+    class rather than inherited by assertion. Every operation is a **single synchronous container
+    mutation**: :meth:`add` is one ``set.add``, :meth:`discard` is one ``set.discard``,
+    :meth:`snapshot` is one ``tuple()`` and :attr:`connected_count` is one ``len``. None of them
+    reads a value and then writes a value derived from it, and none of them contains an ``await``,
+    so on the single-threaded event loop there is no point at which a second caller can observe a
+    half-applied change. Two concurrent registrations produce a set containing both; two concurrent
+    discards of one connection produce a set containing neither. That is exactly what a lock would
+    also produce, at the cost of making every one of these methods awaitable — including the
+    ``finally`` that must run while a socket is being torn down.
+
+    **What would break that argument**, stated so the next author can check it against their change
+    rather than against this sentence: a method that consults membership and then acts on it (a
+    ``add_if_absent``, a "broadcast only to clients that have not seen this id", any eviction
+    policy that picks a victim by reading the set first — the read-modify-write
+    :class:`TicketStore`'s docstring names in its own vocabulary); making any method ``async`` and
+    awaiting inside it; or iterating ``self._connections`` directly instead of a
+    :meth:`snapshot`, which would put the fan-out's own ``await`` inside a live iteration and turn
+    a disconnect into ``RuntimeError: Set changed size during iteration``.
+
+    **Unbounded, and that is a ruling rather than an oversight** (c5-4, Q7, Brad 2026-08-08). The
+    ticket store is capped because its mint is unauthenticated and therefore unbounded-callable; a
+    registration is not — every entry here cost the caller a same-origin ticket that was minted
+    under :data:`MAX_TICKETS` and destroyed on use, so the ticket cap already bounds the rate at
+    which this set can grow, and the process's own file-descriptor limit bounds the rest. A cap
+    here would need an eviction policy, and evicting a connection means closing a legitimate tab
+    that did nothing wrong — a permanent, visible failure to defend against a flood the layer above
+    has already metered.
+
+    **Nothing is persisted (CM-3).** A connection cannot outlive the process holding its socket, so
+    a restart begins with an empty set and every client reconnects — the same shape, and the same
+    reasoning, as the ticket store and the active-deck slot above.
+
+    **This registry shares no code path with the agent credential (AD-5)**, and holds nothing that
+    identifies a client beyond the connection object itself: no address, no ticket, no headers.
+    There is nothing here to leak into a log line.
+
+    Example:
+        >>> ConnectionRegistry().connected_count
+        0
+    """
+
+    def __init__(self) -> None:
+        # A set rather than a list: `discard` must be idempotent (AC 5) and membership is the whole
+        # contract, so the container that gives both for free is the right one. Connections are
+        # hashable by identity — nothing here defines `__eq__` — which is exactly the identity two
+        # tabs on one page need to be distinguishable by.
+        self._connections: set[Connection] = set()
+
+    @property
+    def connected_count(self) -> int:
+        """How many clients are registered right now — the number story 5.5 answers with.
+
+        ``POST /agent/events`` reports the delivery count it achieved (AD-8, FR-06), so this must
+        be **queryable, cheap and free of I/O**: it is one ``len`` over an in-memory set, reads no
+        database (AD-7) and cannot fail. c5-5 finds it waiting rather than adding accounting to a
+        push path that is not allowed to do work.
+
+        **Registered is not reachable.** A tab that vanished without a disconnect frame stays
+        counted until the next broadcast fails to write to it (or its handler's ``finally`` runs),
+        so this is the count of connections this process *believes* it holds, which is the only
+        count anything can honestly report without spending a frame to find out.
+        """
+        return len(self._connections)
+
+    def add(self, connection: Connection) -> None:
+        """Register *connection* as a client broadcasts must reach.
+
+        Called once per socket, immediately after ``accept()`` succeeds and never before — an
+        unaccepted handshake has no channel to write to, so registering earlier would put a
+        connection in the fan-out's path that the fan-out cannot use.
+
+        Idempotent: registering the same connection twice leaves one entry, so a re-entrant caller
+        cannot make :attr:`connected_count` over-report the tabs that exist.
+
+        Args:
+            connection: The accepted socket.
+        """
+        self._connections.add(connection)
+
+    def discard(self, connection: Connection) -> None:
+        """Unregister *connection*, whether or not it was ever registered.
+
+        **The silence on a miss is load-bearing, not defensive** (AC 5). One dying tab is dropped
+        twice on the ordinary path: the fan-out drops it when a send raises, and the handler's own
+        ``finally`` drops it when the drain returns — in either order, and both certainly run. A
+        method that raised on the second would convert a routine disconnect into the ``1011`` the
+        handler reserves for genuine faults.
+
+        Args:
+            connection: The socket to forget.
+        """
+        self._connections.discard(connection)
+
+    def snapshot(self) -> tuple[Connection, ...]:
+        """Return the registered connections as a tuple the caller may safely outlive.
+
+        **A copy, because the fan-out mutates this registry while walking it.** Sending is
+        asynchronous and a failed send discards its socket, so iterating the live set directly
+        would be a mutation during iteration; a tuple taken up front makes the broadcast operate on
+        a stable membership and lets a connection that disconnects mid-fan-out simply fail its own
+        send rather than corrupt everyone else's.
+
+        **No ordering is promised**, and none should be read into it — a set has none, and AD-6
+        puts event ordering on the envelope's ``ts`` rather than on the transport. A caller that
+        needs "in registration order" is describing a different data structure and should say so.
+
+        Returns:
+            Every currently registered connection, in unspecified order.
+        """
+        return tuple(self._connections)
+
+
+def connection_registry(app: FastAPI) -> ConnectionRegistry | None:
+    """Return the :class:`ConnectionRegistry` for *app*, or ``None`` if the lifespan never ran.
+
+    The single reader of ``app.state.connections``, mirroring :func:`active_deck` and
+    :func:`ticket_store` so the state key has one construction site and one accessor. ``None``
+    means **the lifespan never ran** — a constructed-but-never-started app, which on a supported
+    path only happens in a test.
+
+    Args:
+        app: The application to read.
+
+    Returns:
+        The registry, or ``None`` before startup.
+    """
+    # Annotated local rather than `return getattr(...)`: app.state is Any, and warn_return_any
+    # would flag returning it directly.
+    holder: ConnectionRegistry | None = getattr(app.state, "connections", None)
     return holder

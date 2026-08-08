@@ -20,10 +20,20 @@ agent; the backend stores what it is given.* A ``PUT`` naming a deck that does n
 **succeeds**, and the UI meets the ordinary ``deck_not_found`` path when it tries to fetch it.
 
 The state is in memory and dies with the process (:mod:`src.companion.app.state`), so a restart
-reports none — FR-07's specified behaviour, not a limitation. Nothing here broadcasts the change
-either: **c5-4** adds one call after the store, to a handler that will exist by then, and building a
-hook, callback registry or placeholder for it now would be scaffolding designed against a story that
-has not been written.
+reports none — FR-07's specified behaviour, not a limitation.
+
+**The ``PUT`` now broadcasts, in one awaited line and no more** (c5-4). What this module gained is
+a call to :func:`src.companion.app.ws.broadcast_active_deck_changed` after the store and before the
+return; what it deliberately did **not** gain is a hook, a callback registry, an event bus or any
+knowledge of the envelope — the id, the timestamp and the wire shape are all minted in ``ws.py``,
+which is where the fan-out lives. The prediction this paragraph used to carry ("c5-4 adds one call
+after the store, to a handler that will exist by then") is spent, and the reason it was worth
+writing is visible in the diff that fulfilled it: one line, no scaffolding to delete.
+
+**A broadcast failure cannot reach the caller.** The fan-out contains every per-client fault and
+returns a delivery count rather than raising, so a ``PUT`` that stored successfully answers ``200``
+whether zero, one or twenty tabs were listening (NFR-04's fire-and-forget). Refused credentials and
+failed stores never reach the call at all — it sits on the success path, after the write.
 
 Both bodies are unwrapped (AD-16) and both are the **same model**, so the "none" state is a value
 rather than a second shape.
@@ -34,6 +44,7 @@ from fastapi import APIRouter, Request
 from src.companion.app.errors import error_responses
 from src.companion.app.security import AgentToken
 from src.companion.app.state import ActiveDeckSlot, active_deck
+from src.companion.app.ws import broadcast_active_deck_changed
 from src.companion.contracts import ActiveDeck, ActiveDeckRequest
 
 router = APIRouter(prefix="/api")
@@ -126,12 +137,37 @@ async def set_active_deck(
 
     Returns:
         The active deck as it now stands, in the same shape the ``GET`` answers with.
+
+        **The "one shape serves the read, the write and the change notification" claim above was
+        checked against the shipped notification at c5-4, and review found the correction itself
+        needed correcting (2026-08-08).** The broadcast does not carry an
+        :class:`~src.companion.contracts.ActiveDeck`; it carries an
+        :class:`~src.companion.contracts.ActiveDeckChangedEvent` whose ``payload`` is an
+        :class:`~src.companion.contracts.ActiveDeckChangedPayload`. Those are two different classes
+        with the same field and the same nullability — ``{deck_id: string | null}`` — but **not**
+        the same bound: :class:`~src.companion.contracts.ActiveDeck` declares ``deck_id`` as a bare
+        ``str | None`` with no length cap and no blank-refusal, while
+        :class:`~src.companion.contracts.ActiveDeckChangedPayload` bounds it at
+        ``_MAX_DECK_ID_LENGTH`` and refuses a blank string. A client that can read this response
+        body can read that payload with the same field name and the same nullability — that is the
+        property the sentence was making — but must not assume the two validate identically. It is
+        **not** a claim that one Pydantic model is reused across both, and it never was: c5-1 minted
+        a separate payload class deliberately, so that a later deck-agnostic signal could diverge in
+        validation without touching this endpoint's contract — which is exactly the divergence that
+        exists today. This precision lives down here because the paragraphs above ``Args:`` ship
+        into ``components.schemas``, and editing it costs no schema regeneration (c3-9, AC 20/22).
     """
     slot = _slot(request)
     slot.set(body.deck_id)
-    # c5-4 adds its active_deck_changed broadcast on the line below, after the store and before the
-    # return. Nothing is stubbed for it here on purpose: an unused hook is a design decision made
-    # by a story that cannot see the requirements.
-    # Answered from the slot, not from `body`: "echo back what was stored" stays true by
-    # construction if set() ever gains normalisation or rejection.
-    return ActiveDeck(deck_id=slot.deck_id)
+    # Captured once, immediately after `set()` and before any suspension point — this is still a
+    # read from the slot rather than from `body` (echo-what-was-stored), but a *single* read: the
+    # broadcast below awaits, and a second `PUT` landing during that await can rewrite the slot
+    # before a later read would see it. Reading the slot again after the broadcast would let this
+    # request's own response disagree with both what it stored and what it just broadcast (review
+    # finding, 2026-08-08). `broadcast_active_deck_changed` never raises (AC 18) — a client that
+    # cannot be written to is that client's problem, and this mutation already succeeded.
+    deck_id = slot.deck_id
+    await broadcast_active_deck_changed(request.app, deck_id)
+    # Answered from the captured value, not a fresh slot read: "echo back what was stored" stays
+    # true even if a second `PUT` rewrites the slot while this one's broadcast is still in flight.
+    return ActiveDeck(deck_id=deck_id)

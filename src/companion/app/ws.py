@@ -39,19 +39,41 @@ the token set is closed at ten, and AD-16's rule is that a token exists to drive
 churn is designed to be invisible (c5-6 re-mints and retries). ``1008`` is the shipped precedent
 from the ``Host`` middleware; ``1011`` appears only on the fail-closed internal-error path below.
 
-**What is deliberately absent: the connection registry and the broadcast.** The spine's module map
-lists this file as ``ws.py # upgrade + ticket consume + broadcast``, and only the first two are
-here. c5-4 owns the registry (:mod:`src.companion.app.state` already reserves its home) and the
-fan-out; scaffolding either now would ship an empty holder for a story that has not been designed.
+**The fan-out is here too, and the registry it walks is not** (c5-4). The spine's module map lists
+this file as ``ws.py # upgrade + ticket consume + broadcast``, and all three are now present:
+:func:`websocket_upgrade` establishes the socket, :func:`broadcast` writes one event to every
+socket that survived, and :class:`~src.companion.app.state.ConnectionRegistry` — the membership
+itself — stays in ``state.py``, which is where the Structural Seed homes ``connections``. That
+split is the load-bearing part: a registry that also knew how to serialise an envelope would put
+the wire format in the state file, and a fan-out that owned its own set would give this process
+two answers to "how many clients are connected" for c5-5 to choose between.
+
+**Fire-and-forget means sequential and awaited, not detached** (NFR-04, AD-9). ``create_task`` is
+banned on this path, so :func:`broadcast` writes to each client in turn inside its caller's
+coroutine and returns when the last one is done. The theoretical cost is a slow client stalling the
+rest; it is accepted rather than solved, because these are loopback sockets writing a few hundred
+bytes into an OS buffer, and AD-9 already names the escalation shape (a ~1 s bounded await) for the
+day evidence demands one (c5-4, Q3, Brad 2026-08-08). What *is* handled is the client that fails
+outright: its exception is contained to its own socket, it is dropped from the registry, and every
+other client still receives the event.
 """
 
 import logging
+import uuid
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, WebSocket
+from fastapi import APIRouter, FastAPI, WebSocket
 from starlette.websockets import WebSocketState
 
 from src.companion.app.security import origin_is_allowed
-from src.companion.app.state import TicketStore, ticket_store
+from src.companion.app.state import (
+    Connection,
+    ConnectionRegistry,
+    TicketStore,
+    connection_registry,
+    ticket_store,
+)
+from src.companion.contracts import ActiveDeckChangedEvent, ActiveDeckChangedPayload, AgentEvent
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +179,28 @@ def _store(websocket: WebSocket) -> TicketStore:
     return store
 
 
+def _registry(websocket: WebSocket) -> ConnectionRegistry:
+    """Return the connection registry for the app serving *websocket*.
+
+    Args:
+        websocket: The accepted socket about to be registered.
+
+    Returns:
+        The registry the lifespan created.
+
+    Raises:
+        AttributeError: Raised by hand when the registry is missing, for exactly the reason
+            :func:`_store` states — the accessor's ``getattr`` already swallowed the attribute
+            miss, and a missing registry can only mean the lifespan never ran. Reached **after**
+            ``accept()`` on the one path that calls it, so :func:`websocket_upgrade`'s post-accept
+            handler turns it into a ``1011`` on the live socket rather than a refusal.
+    """
+    registry = connection_registry(websocket.app)
+    if registry is None:
+        raise AttributeError("no connection registry on this app; the lifespan did not run")
+    return registry
+
+
 def _handshake_is_authorised(websocket: WebSocket) -> bool:
     """Decide the whole handshake — ``Origin`` then ticket — without ever suspending.
 
@@ -237,7 +281,11 @@ async def _drain_until_disconnect(websocket: WebSocket) -> None:
 
     Reading is not optional even though the content is ignored. The receive channel is how a
     disconnect *arrives*: a handler that returned immediately after ``accept`` would close a socket
-    the client believes is open, which is precisely the connection c5-4 is about to want.
+    the client believes is open — and c5-4's registry now holds exactly this socket for the
+    duration of this loop, so returning early would unregister a client that is still listening.
+    **This loop is the authoritative disconnect detector**, and the registry's membership is
+    therefore only as current as the last frame this call read; :func:`broadcast` treats a failed
+    send as the second, later signal that a client has gone.
 
     Args:
         websocket: The accepted socket.
@@ -248,8 +296,8 @@ async def _drain_until_disconnect(websocket: WebSocket) -> None:
             return
 
 
-async def _close_quietly(websocket: WebSocket, code: int) -> None:
-    """Close *websocket* with *code*, tolerating a peer that has already gone.
+async def _close_quietly(connection: Connection, code: int) -> None:
+    """Close *connection* with *code*, tolerating a peer that has already gone.
 
     Used for every pre-accept close this module sends — the ordinary policy rejection as well as
     the fail-closed paths — because a peer that vanished mid-handshake can make the close frame
@@ -259,16 +307,141 @@ async def _close_quietly(websocket: WebSocket, code: int) -> None:
     is no primary error to protect, but the same peer-already-gone failure is just as reachable, so
     the same tolerance applies. Swallowed at ``DEBUG`` either way.
 
+    **c5-4 added a fourth caller and widened the parameter type, without changing the behaviour**:
+    :func:`broadcast` closes a client whose send just raised, which is the same peer-already-gone
+    situation arriving one frame later. The annotation is now
+    :class:`~src.companion.app.state.Connection` rather than
+    :class:`~starlette.websockets.WebSocket` so the fan-out can reach it over whatever the registry
+    holds — ``WebSocket`` satisfies that protocol, so every existing call site is unchanged in both
+    type and effect.
+
+    **Total, including the state check** (review finding, 2026-08-08): the ``client_state`` read is
+    guarded exactly like the ``close()`` call below it, because :func:`broadcast` invokes this
+    function from inside its own per-connection ``except`` block, outside the ``try`` that covers
+    ``send_text``. An unguarded read that raised there would escape past this function's caller
+    entirely and abort delivery to every client the fan-out had not yet reached — the opposite of
+    AC 12's "every other client still receives the event".
+
     Args:
-        websocket: The socket to close.
+        connection: The socket to close.
         code: The close code to send.
     """
-    if websocket.client_state is WebSocketState.DISCONNECTED:
-        return
     try:
-        await websocket.close(code=code)
+        if connection.client_state is WebSocketState.DISCONNECTED:
+            return
+    except Exception:  # pragma: no cover - defensive; see the state-check paragraph above
+        pass
+    try:
+        await connection.close(code=code)
     except Exception:  # pragma: no cover - defensive; the peer is already gone
         logger.debug("Could not send close frame %d; the peer is already gone", code)
+
+
+async def broadcast(app: FastAPI, event: AgentEvent) -> int:
+    """Write *event* to every client registered on *app*, and report how many received it.
+
+    **Serialised exactly once** (AC 10). ``model_dump_json()`` is called before the loop, not inside
+    it, so every client receives byte-identical text and a fan-out to twenty tabs costs one
+    serialisation rather than twenty. There is no second serialiser anywhere — each event is a
+    ``BaseModel`` and its own ``model_dump_json`` is the wire format, which is why ``contracts.py``
+    ships no helper for this and must not grow one.
+
+    **Nothing escapes to the caller** (AC 12, NFR-04). A send that raises is contained to its own
+    socket: logged at ``DEBUG`` — a tab that went away is routine, not an event an operator needs —
+    then discarded from the registry and closed best-effort, and the loop continues with the rest
+    (c5-4, Q2, Brad 2026-08-08). The handler's own ``finally`` remains the *authoritative*
+    unregister; this one is an early opportunistic drop, and
+    :meth:`~src.companion.app.state.ConnectionRegistry.discard` being idempotent is precisely what
+    makes the two harmless in either order. Anything else that goes wrong is caught by the outer
+    handler and reported as a delivery count rather than an exception, because the callers of this
+    function are mutations whose own result must not depend on whether a browser was listening.
+
+    **No** ``create_task`` **and no database** (AD-9, AD-7). The sends are sequential awaits inside
+    the caller's coroutine — that is what fire-and-forget means here, and a detached task would
+    outlive the request that started it. Nothing on this path opens a session, and the values it
+    writes were already in memory before it was called, which is what keeps NFR-05's 250 ms budget
+    reachable before c5-5 measures it.
+
+    **Two overlapping calls to this function are not serialised against each other, and that is an
+    accepted residual, not an oversight** (c5-4 review, Brad 2026-08-08). Nothing here holds a
+    per-connection lock, so two broadcasts racing on the same registered
+    :class:`~src.companion.app.state.Connection` — a second ``PUT /api/active-deck`` landing
+    mid-broadcast, or a later story's push overlapping this one — can each attempt to write to it at
+    once. Starlette's socket has no built-in protection against concurrent sends, so a raise from
+    the losing write is indistinguishable here from a dead client: it is discarded and closed even
+    though the tab was never gone. Accepted for the same reason as the slow-client stall above —
+    evidence, not a hypothetical, is what would justify the lock this module has deliberately
+    avoided everywhere else.
+
+    Args:
+        app: The application whose registry to fan out over.
+        event: The envelope to deliver, as one of the :data:`~src.companion.contracts.AgentEvent`
+            union's members.
+
+    Returns:
+        How many clients the event was written to. ``0`` when none are connected, which is a
+        success — a broadcast nobody hears is the ordinary state of a companion with no tab open.
+    """
+    delivered = 0
+    try:
+        registry = connection_registry(app)
+        if registry is None:
+            logger.debug("Nothing to broadcast to: the lifespan never ran")
+            return 0
+        text = event.model_dump_json()
+        # A snapshot rather than the live set: the loop below discards from the registry, and
+        # iterating the container being mutated is one of the three changes `state.py` names as
+        # breaking its no-lock argument.
+        for connection in registry.snapshot():
+            try:
+                await connection.send_text(text)
+            except Exception:
+                logger.debug("Dropping a client that could not be written to")
+                registry.discard(connection)
+                await _close_quietly(connection, _INTERNAL_ERROR)
+                continue
+            delivered += 1
+    except Exception:
+        logger.exception("Unhandled error broadcasting to connected clients")
+    return delivered
+
+
+async def broadcast_active_deck_changed(app: FastAPI, deck_id: str | None) -> int:
+    """Tell every connected client the companion is now displaying *deck_id* (FR-06, AD-6).
+
+    **The envelope is minted here rather than in the route** (c5-4, Q4, Brad 2026-08-08), so
+    ``routes/active_deck.py`` adds exactly one awaited line and neither ``uuid`` nor the clock
+    appears in a module about storing a string. ``id`` is opaque and exists for dedupe only —
+    ordering is ``ts``'s job, not the id's (AD-6) — and ``ts`` is timezone-aware UTC, never naive.
+
+    **It fires on every set, including one that writes the same id again**, and that is a ruling
+    this function must not optimise away: "only broadcast if it changed" is a read-modify-write, and
+    the active-deck slot needs no lock precisely because writing it never consults the old value
+    (Q10, ``contracts.py:890-894``). A duplicate signal costs one idempotent refetch.
+
+    Args:
+        app: The application whose clients to notify.
+        deck_id: The deck now being displayed, read from the slot rather than from the request
+            body, or ``None`` for the cleared case.
+
+    Returns:
+        How many clients received the event, as :func:`broadcast` counts them.
+    """
+    try:
+        event = ActiveDeckChangedEvent(
+            kind="active_deck_changed",
+            id=uuid.uuid4().hex,
+            ts=datetime.now(UTC),
+            payload=ActiveDeckChangedPayload(deck_id=deck_id),
+        )
+    except Exception:
+        # The value came from the slot, which stores whatever `PUT /api/active-deck` validated, so
+        # this is unreachable on the shipped path. It is caught anyway because the alternative is
+        # a mutation that stored successfully and then answered 500 (AC 18) — and the value is
+        # deliberately not logged: it is caller-supplied text of unbounded length.
+        logger.exception("Could not build an active_deck_changed event; nothing was broadcast")
+        return 0
+    return await broadcast(app, event)
 
 
 @router.websocket(WS_PATH)
@@ -292,6 +465,14 @@ async def websocket_upgrade(websocket: WebSocket) -> None:
     ``1011`` on the live socket — and the traceback is logged once, exactly as the http net does.
     The ordinary policy rejection (line 2 below) is not a fault, but it shares the same
     peer-already-gone tolerance via :func:`_close_quietly` rather than a raw ``websocket.close``.
+
+    **The accepted socket is registered for the life of the drain, and unregistered on every exit**
+    (c5-4). Registration happens after ``accept()`` and *inside* the post-accept fail-closed block,
+    so a missing registry closes ``1011`` rather than escaping; the ``finally`` around the drain
+    covers both the ordinary disconnect and the fault path, which is what stops a closed tab from
+    staying in :func:`broadcast`'s fan-out. Registration itself sends nothing — a socket that
+    connects and disconnects with no broadcast in between still sees exactly one
+    ``websocket.accept`` and nothing more.
 
     Args:
         websocket: The handshake, injected by FastAPI. Its query string carries the ticket and its
@@ -321,7 +502,17 @@ async def websocket_upgrade(websocket: WebSocket) -> None:
         return
 
     try:
-        await _drain_until_disconnect(websocket)
+        # Registered only now, and never earlier: an unaccepted handshake has no channel to write
+        # to, so a connection in the registry before this line is one the fan-out would fail on.
+        registry = _registry(websocket)
+        registry.add(websocket)
+        try:
+            await _drain_until_disconnect(websocket)
+        finally:
+            # EVERY exit path (AC 6) — the ordinary disconnect return, and the fault that falls
+            # through to the 1011 below. This is the authoritative unregister; `broadcast` may
+            # already have dropped the same socket, which is why `discard` is idempotent.
+            registry.discard(websocket)
     except Exception:
         logger.exception("Unhandled error on an accepted WebSocket")
         await _close_quietly(websocket, _INTERNAL_ERROR)

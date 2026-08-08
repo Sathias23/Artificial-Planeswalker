@@ -72,7 +72,11 @@
  *   own render, exactly as c4-1's cache did.
  * - **No cache reset.** `resetCardCache()` on a deck transition was homed here on the theory that
  *   this story owns a `deck_changed` transition; measured, it does not — see Q7's ruling in the
- *   story record, which re-homes it and the orphaned-return question to **c5-4 / c5-6** by name.
+ *   story record, which re-homed it and the orphaned-return question by name. **Narrowed at c5-4
+ *   (Q6, 2026-08-08) from "c5-4 / c5-6" to c5-6 alone**: c5-4 turned out to be backend-only — a
+ *   connection registry, a fan-out and one route call — so it builds no client event handler for
+ *   either question to attach to. `c5-6` owns the browser's connect/reconnect loop, and therefore
+ *   both halves.
  */
 
 import { useEffect } from 'react'
