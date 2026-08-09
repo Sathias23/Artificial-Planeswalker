@@ -5766,6 +5766,22 @@ recommended: the fourth story running with a clean pre-code sweep.
   flake and the live Scryfall tests stay out of it). AD-2 makes Windows the platform of record and
   the test IS the platform-of-record evidence; ~4 s of test against the only process-boundary
   coverage is the cheapest insurance on the docket.
+  **DELIVERED 2026-08-09 — PR #62, merged to master at `4cf4bd6`.** `ci.yml`'s
+  `companion-integration` job (windows-latest, py3.12, path-scoped, `timeout-minutes: 15`) ran
+  green on its first CI run: `collected 1 item`, `1 passed in 7.20s`, 33 s for the whole job.
+  **Two claims in the ruling above are FALSE and are corrected here rather than left to propagate:**
+  (1) "so the flake … stays out of it" — `-m integration` never collected
+  `test_list_decks_with_strategy_field` at all; that test carries no marker and has been running in
+  the `quality` jobs the whole time (see the scope-trap entry below, now retracted). The real reason
+  path-scoping is right is that the marker selects tests instantiating the live fastembed model.
+  (2) "AD-2 makes Windows the platform of record" — AD-2 is *"the MCP server is the only writer"*;
+  no AD names a platform of record. Both errors reached a shipped workflow comment before review
+  caught them.
+  **NOT closed by this delivery, and deliberately not presented as if it were:** the lane's firing
+  proof (a planted break red on Windows, green on ubuntu) was **not run** — R1 merged proving the
+  lane *runs*, not that it *discriminates* — and `companion-integration` is **not yet a required
+  check**, so a red lane does not block a merge. Both carry forward; see the R1 rows in
+  `sprint-status.yaml`.
 
 - **The `-m integration` scope trap, recorded so the next person does not rediscover it.** A bare
   `uv run pytest -m integration` collects `test_list_decks_with_strategy_field` (the twice-sighted
@@ -5773,6 +5789,17 @@ recommended: the fourth story running with a clean pre-code sweep.
   a red run says nothing about the companion. Every local run in this story was scoped
   `tests/integration/companion/`. Worth a marker or a scoped alias eventually. **Home: C5 retro.**
   (Severity: low.)
+  **PARTLY RETRACTED — MEASURED FALSE 2026-08-09 during R1's code review.** `-m integration` does
+  **not** collect `test_list_decks_with_strategy_field`: `tests/integration/data/test_deck_repository.py`
+  carries no marker anywhere (`grep -c integration` returns 0), so the flake is in the
+  `not integration` set and has been running in **both ubuntu `quality` jobs on every push** the
+  whole time. Living in `tests/integration/` is not a marker. The scope trap is REAL but for a
+  different and stronger reason: `-m integration` selects the live-network Scryfall tests **and**
+  several tests that instantiate the real fastembed model (`tests/integration/search/`,
+  `tests/integration/mcp_server/test_semantic_search_tool.py`). **This error propagated unchecked
+  into the C5 retro, into epic-c5 action item R4, and into a shipped `ci.yml` comment before an
+  adversarial review measured it — R4's premise ("today it sweeps in the flake") must be re-derived
+  before R4 is actioned.**
   **RULED at the C5 retro (2026-08-09), RE-HOMED to epic-c5 action item R4 (C6 prep, with the
   flake item):** the companion real-socket test gets its own marker so `-m integration` splits
   into things that mean something; the CI lane from R1 selects by path, so the marker serves
