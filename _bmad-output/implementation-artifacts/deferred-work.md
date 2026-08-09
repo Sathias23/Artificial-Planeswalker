@@ -5455,12 +5455,23 @@ consequences for the ledger are here.
   destroyed by hand. Recorded because the failure mode is indistinguishable from a real one at a
   glance, and c5-8 adds more real-socket tests to this exact file. **Home: c5-8 inherits the
   pattern.** (Severity: none — fixed here.)
+  **→ PAID at c5-8 (2026-08-09).** The pattern was inherited into Python rather than into this
+  file: `test_live_backend.py` closes the websocket client by hand before the server is
+  stopped, terminates **and waits** every child, and detaches its handles before teardown so a
+  raising `wait()` cannot skip the log close. ⚠️ **The premise was wrong**: c5-8 adds no tests
+  to `devProxyRoundTrip.test.ts` at all — its one real socket is Python-side. Recorded as a
+  falsified prediction rather than quietly fulfilled.
 
 - **Node's global `WebSocket` sends no `Origin` header.** It is not a browsing context. The first
   draft of the round-trip's negative half used it and recorded the forwarded Origin as `<absent>` —
   a negative half that cannot reproduce the header under test is not a negative half. The block now
   drives raw `http.request` upgrades with an explicit `Origin`, which is also what `security.py`'s
   docstring says c5-8's real client will have to do. **Home: c5-8** — it will need the same. (Severity: none.)
+  **→ PAID at c5-8 (2026-08-09).** `test_live_backend.py` passes `origin=` to
+  `websockets.connect` explicitly, for exactly the reason recorded here — the library sends no
+  `Origin` of its own because it is not a browsing context. **Measured, not assumed**: a
+  falsification probe removed the argument and the real handshake came back refused 403, which
+  is `security.py`'s fail-closed rule observed over a real socket for the first time.
 
 - **The pre-existing `test_list_decks_with_strategy_field` flake fired once**, during this story's
   post-prose Python run (`assert 'Control' is None`), and passed on an immediate clean re-run at the
@@ -5496,6 +5507,27 @@ consequences for the ledger are here.
   **Home: c5-8** — it adds the one real-socket integration test and will be working in this exact
   file. (Severity: low — intermittent, loud when it fires, and it has never turned a real assertion
   green.)
+  **→ PAID at c5-8 (2026-08-09), and one premise of this entry was falsified on the way.**
+  The probe is gone: `ephemeralPort()` is deleted, a monotonic counter supplies a distinct
+  STARTING port per Vite server, and `strictPort: false` lets Vite bind-and-retry on EADDRINUSE
+  — one atomic step with no window for anyone to bind into. Distinctness, which is load-bearing
+  for the *unrelated* undici keep-alive ECONNRESET flake, is preserved AND is now asserted:
+  every origin passes through `recordOrigin()`, which fails loudly on a repeat. It used to be a
+  property of a comment.
+
+  ⚠️ **The suggested fix shape was re-measured rather than inherited.** This entry proposed
+  "let Vite bind port 0 and read the real port back". That does not work in the installed Vite:
+  `{ port: 0, strictPort: true }` treats the falsy 0 as unset and falls back to the 5173 default
+  — measured directly by starting two servers, the second of which died with *"Port 5173 is
+  already in use"*. The file's original comment was right and this entry's fix shape was wrong;
+  the counter exists because of that measurement.
+
+  ⚠️ **The HOMING premise was also falsified**: this entry (and dw:5451's) said c5-8 "adds more
+  real-socket tests to this exact file" / "will be working in this exact file". It does not.
+  c5-8's one real socket is Python-side (`tests/integration/companion/test_live_backend.py`);
+  the only reason it touched `devProxyRoundTrip.test.ts` at all is that this debt was homed here
+  by name and Brad ruled (Q4, 2026-08-09) to pay it rather than re-home it a fourth time.
+  Verified after the change: that file green 5/5 consecutive runs, full frontend suite green.
 
 ---
 
@@ -5620,3 +5652,47 @@ here by name; all three are closed below. All six of the story's open questions 
   deferred as pre-existing: `.app-shell-deck-name` (`AppShell.css:88-93`, the header's own
   deck-name display) has the identical gap, so this matches an existing repo-wide pattern rather
   than a defect unique to this story. (Severity: low.)
+
+---
+
+## Dispositions from: dev of c5-8-the-one-real-socket-integration-test (2026-08-09)
+
+**The story eight in-source comments had been pointing at.** All three c5-8-homed entries are
+closed above (dw:5451 teardown pattern, dw:5459 explicit `Origin`, dw:5470 the vitest TOCTOU), and
+two of them carried premises this story falsified — both recorded in place rather than quietly
+fulfilled. All six of the story's open questions were ruled by Brad **before any code**, as
+recommended: the fourth story running with a clean pre-code sweep.
+
+### New, from this story
+
+- **CI never runs the one test AD-10 asks for, and that is now stated somewhere it can be acted
+  on.** `.github/workflows/ci.yml` runs `-m "not integration"` on ubuntu, so
+  `tests/integration/companion/test_live_backend.py` is deselected on every push and will be
+  deselected forever unless someone decides otherwise. AD-2 makes Windows the platform of record
+  and the story's AC discharges "passes on Windows" with a pasted local run — which is honest, and
+  is also exactly the arrangement that lets this test rot silently: nothing outside a developer's
+  local run will ever notice it break. **Home: C5 retro**, as a decision about whether a Windows
+  integration lane is worth its minutes (the whole file runs in ~4 s). (Severity: medium — not a
+  defect today, but the only test covering the process boundary has no automated home.)
+
+- **The `-m integration` scope trap, recorded so the next person does not rediscover it.** A bare
+  `uv run pytest -m integration` collects `test_list_decks_with_strategy_field` (the twice-sighted
+  flake already homed on the C5 retro) and the live Scryfall contract tests alongside this one, so
+  a red run says nothing about the companion. Every local run in this story was scoped
+  `tests/integration/companion/`. Worth a marker or a scoped alias eventually. **Home: C5 retro.**
+  (Severity: low.)
+
+- **Seven falsification probes were run against real backends, and all seven went RED** — the
+  story's own Dev Notes demanded at least one (*"a real-socket test that cannot fail is worse than
+  none"*). Two are worth keeping in the record because they proved something the code alone does
+  not state:
+
+  **F5 — the restart wait.** Removing `replacing=record_one.instance_id` from the second boot's
+  wait made the test return the *corpse's* record — same `instance_id` **and the same port** — and
+  the run went red on the next assertion. That is the proof that a hard kill genuinely leaves
+  `companion.json` behind, that the second backend really does walk c1-8's reclaim path, and that
+  waiting on file presence alone would have made the whole restart case vacuous.
+
+  **F2 — the explicit `Origin`.** Dropping `origin=` from the first upgrade got a real 403 from a
+  real handshake. `security.py`'s fail-closed Origin rule had been asserted in-process since c5-3;
+  this is the first time it has been observed over a socket. (Severity: none — all seven RED.)

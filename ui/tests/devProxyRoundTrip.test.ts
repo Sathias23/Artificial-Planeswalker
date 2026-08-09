@@ -18,7 +18,9 @@
 
 import { createHash, randomBytes } from 'node:crypto'
 import { createServer as createHttpServer, request as httpRequest, type Server } from 'node:http'
-import { createServer as createNetServer, type AddressInfo } from 'node:net'
+// `createServer` is no longer imported from here: the throwaway probe socket it opened was
+// dw:5470's TOCTOU, removed at c5-8. Only the address type is still wanted.
+import type { AddressInfo } from 'node:net'
 import type { Duplex } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 
@@ -72,24 +74,81 @@ async function startStubBackend(): Promise<StubBackend> {
 }
 
 /**
- * A real ephemeral port for the Vite server. `server.port: 0` does NOT mean "any port" to
- * Vite — 0 is falsy, so every server in this file landed on the default 5173. Undici's
- * fetch pools keep-alive sockets BY ORIGIN, so each test's first fetch could reuse a stale
- * socket to the previous test's just-closed server and die with ECONNRESET — an
- * intermittent, order-dependent flake (~1 in 3 runs once the file grew to five tests).
- * Distinct ports mean distinct origins mean no cross-test socket reuse. The probe-then-bind
- * gap is a real TOCTOU, accepted: `strictPort: true` makes a collision a loud EADDRINUSE,
- * not a silent wrong-server test.
+ * A DISTINCT port per Vite server, with no probe and therefore no TOCTOU (dw:5470, paid at c5-8).
+ *
+ * ==== WHY DISTINCT PORTS ARE LOAD-BEARING, WHICH IS THE HALF THAT DID NOT CHANGE ========
+ * Undici's fetch pools keep-alive sockets BY ORIGIN, so each test's first fetch could reuse a
+ * stale socket to the previous test's just-closed server and die with ECONNRESET — an
+ * intermittent, order-dependent flake (~1 in 3 runs once this file grew to five tests). Distinct
+ * ports mean distinct origins mean no cross-test socket reuse. **That requirement is untouched.**
+ *
+ * ==== WHAT CHANGED: THE PROBE IS GONE ==================================================
+ * This used to bind a throwaway `net` server on port 0, read the port the kernel assigned, close
+ * it, and hand the number to Vite with `strictPort: true`. Between the close and Vite's bind sat a
+ * genuine TOCTOU window, accepted at the time on the grounds that a collision would be *"a loud
+ * EADDRINUSE, not a silent wrong-server test"*. It was loud, but it was not harmless: `c5-6`
+ * sighted an intermittent vitest failure that cost one FILE its whole collection twice in 30 runs,
+ * and the leading hypothesis was this window — a `listen` error raised outside any test's own
+ * await is an "unhandled error", and it takes its file's collection with it. This story tripled
+ * nothing itself, but it inherited the debt by name.
+ *
+ * The replacement removes the window rather than narrowing it: a monotonic counter supplies a
+ * distinct STARTING port per server, and `strictPort: false` lets Vite bind-and-retry on
+ * EADDRINUSE — one atomic step, with no gap for anyone to bind into. The real port is then read
+ * back off `vite.httpServer.address()`, which this file already did for its return value, so the
+ * caller's contract is unchanged.
+ *
+ * ⚠️ **`server.port: 0` is still not an option, and that was re-measured at c5-8 rather than
+ * inherited from this comment's previous wording**: with `{ port: 0, strictPort: true }` Vite
+ * treats the falsy 0 as "unset" and falls back to its 5173 default — measured directly against
+ * the installed Vite by starting two servers, the second of which died with *"Port 5173 is
+ * already in use"*. The counter exists because of that, not out of caution.
+ *
+ * The base sits well clear of Vite's own 5173 default so a developer's running dev server is not
+ * the thing being collided with on every local run; a genuine collision is still resolved by the
+ * retry rather than by this number being lucky.
+ *
+ * **The counter tracks the requested port, not the bound one — `reserveVitePortPastActual` closes
+ * that gap (Greptile P1, caught on c5-8's PR).** If a retry ever moves a server onto a HIGHER port
+ * than it was asked for, the next call here would otherwise hand out a port a still-live server
+ * already holds; that collision resolves via ANOTHER retry, but the resulting real port can land
+ * exactly on an earlier server's, which is a duplicate origin `recordOrigin()` correctly treats as
+ * a failure. Every caller must re-seed the counter past whatever Vite actually bound.
  */
-async function ephemeralPort(): Promise<number> {
-  return await new Promise((resolve, reject) => {
-    const probe = createNetServer()
-    probe.once('error', reject)
-    probe.listen(0, '127.0.0.1', () => {
-      const port = (probe.address() as AddressInfo).port
-      probe.close(() => resolve(port))
-    })
-  })
+const VITE_PORT_BASE = 5310
+let nextVitePort = VITE_PORT_BASE
+
+function distinctVitePort(): number {
+  const port = nextVitePort
+  nextVitePort += 1
+  return port
+}
+
+/** Re-seeds the counter past a port Vite actually bound, so a retry can never be handed out again. */
+function reserveVitePortPastActual(boundPort: number): void {
+  nextVitePort = Math.max(nextVitePort, boundPort + 1)
+}
+
+/**
+ * Every origin this file has handed out, and the assertion that none repeats.
+ *
+ * The distinctness requirement was previously a PROPERTY OF A COMMENT: the probe returned a
+ * kernel-assigned port, the comment explained why that mattered, and nothing checked it. Now that
+ * the port is chosen by a counter and finally resolved by Vite's own retry, "distinct" is a claim
+ * this file makes rather than one the kernel makes for it — so it is asserted at the one place
+ * every server passes through. A repeat would resurrect the undici keep-alive ECONNRESET flake as
+ * an intermittent failure somewhere else entirely; here it is an immediate, named one.
+ */
+const issuedOrigins = new Set<string>()
+
+function recordOrigin(origin: string): string {
+  expect(
+    issuedOrigins.has(origin),
+    `two Vite servers in this file were handed the same origin (${origin}); distinct origins are ` +
+      `what stop undici reusing a keep-alive socket into a just-closed server`,
+  ).toBe(false)
+  issuedOrigins.add(origin)
+  return origin
 }
 
 async function startViteProxying(
@@ -120,7 +179,7 @@ async function startViteProxying(
     // dependency bump fails the NEXT local `npm test` once, unkillably (the timed-out
     // worker never persists the cache). Measured in review round 2.
     optimizeDeps: { noDiscovery: true },
-    server: { port: await ephemeralPort(), strictPort: true, host: '127.0.0.1', proxy },
+    server: { port: distinctVitePort(), strictPort: false, host: '127.0.0.1', proxy },
   })
 
   // Same ordering rule as the stub above: a failed `listen()` must still be cleaned up.
@@ -130,7 +189,8 @@ async function startViteProxying(
   await vite.listen()
 
   const address = vite.httpServer!.address() as AddressInfo
-  return { origin: `http://127.0.0.1:${address.port}` }
+  reserveVitePortPastActual(address.port)
+  return { origin: recordOrigin(`http://127.0.0.1:${address.port}`) }
 }
 
 /**
@@ -163,7 +223,7 @@ async function startViteProxyingWithoutOriginRewrite(targetPort: number): Promis
     root: fileURLToPath(new URL('..', import.meta.url)),
     logLevel: 'silent',
     optimizeDeps: { noDiscovery: true },
-    server: { port: await ephemeralPort(), strictPort: true, host: '127.0.0.1', proxy },
+    server: { port: distinctVitePort(), strictPort: false, host: '127.0.0.1', proxy },
   })
 
   openResources.push(async () => {
@@ -172,7 +232,8 @@ async function startViteProxyingWithoutOriginRewrite(targetPort: number): Promis
   await vite.listen()
 
   const address = vite.httpServer!.address() as AddressInfo
-  return { origin: `http://127.0.0.1:${address.port}` }
+  reserveVitePortPastActual(address.port)
+  return { origin: recordOrigin(`http://127.0.0.1:${address.port}`) }
 }
 
 describe('dev proxy Host rewriting (ruling R1, AC 13)', () => {
@@ -269,7 +330,9 @@ describe('dev proxy path matching is anchored, not prefixed', () => {
  * client is not a browsing context and **sends no `Origin` header at all**. A test whose negative
  * half cannot reproduce the header under test is not a negative half. Raw upgrade requests let
  * this file present the exact header a browser would, which is also what `security.py`'s docstring
- * says c5-8's real client will have to do.
+ * said c5-8's real client would have to do — and it did:
+ * `tests/integration/companion/test_live_backend.py` passes `origin=` to `websockets.connect` for
+ * exactly this reason, and a probe that removed it saw the real handshake refused 403.
  */
 describe('dev proxy WebSocket upgrades (c5-6, AC 18)', () => {
   const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'

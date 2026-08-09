@@ -1123,8 +1123,12 @@ class TestTwoTabsOnePut:
     socket was handed. Nothing synchronises the tabs — each receives the same broadcast
     independently, which is UX-DR37's rule.
 
-    The real-socket version of this — an actual port, an actual browser — is **c5-8's**, not this
-    story's (AD-10: exactly one integration-marked socket test in the whole feature).
+    The real-socket version of this — an actual port, an actual process — is **c5-8's**, not this
+    story's (AD-10: exactly one integration-marked socket test in the whole feature). It shipped on
+    2026-08-09 at ``tests/integration/companion/test_live_backend.py``, with one deliberate
+    narrowing worth knowing: it drives **one** real socket, not two, because what it exists to
+    prove is the process boundary rather than the fan-out arity. The two-tab claim stays here,
+    where it can be made without booting anything.
     """
 
     async def test_both_tabs_receive_the_same_event(self, lifespan_client):

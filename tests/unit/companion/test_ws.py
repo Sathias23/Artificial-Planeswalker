@@ -13,7 +13,11 @@ same call site**, so a guard cannot pass by refusing everything (c1-4's Greptile
 test that spends real time to prove an expiry is a defect (c3-6).
 
 There is no real socket anywhere in this file, and there must not be: AD-10 homes the one
-end-to-end browser-to-backend proof on **c5-8**, and no ``tests/integration/companion/`` exists.
+end-to-end proof on **c5-8**, which shipped it at
+``tests/integration/companion/test_live_backend.py`` (2026-08-09). That directory did not exist
+when this line was first written; it does now, it holds exactly one ``integration``-marked test,
+and the reason this file still drives the in-process ASGI callable is unchanged — 2,770 tests in
+under two minutes is a property of there being no sockets in them.
 """
 
 import ast
@@ -303,7 +307,12 @@ class TestTheOriginGate:
         assert _close_codes(sent) == [_POLICY_VIOLATION]
 
     async def test_a_missing_origin_header_is_refused(self, lifespan_client):
-        """Q4, ruled fail-closed: browsers always send it and c5-8's client sets it explicitly."""
+        """Q4, ruled fail-closed: browsers always send it, and c5-8's real client does too.
+
+        That second half stopped being a prediction on 2026-08-09:
+        ``tests/integration/companion/test_live_backend.py`` passes ``origin=`` explicitly, and a
+        probe that removed it saw the real handshake refused 403 — this rule, over a real socket.
+        """
         app = build_app()
         async with lifespan_client(app) as client:
             ticket = await _mint(client)
