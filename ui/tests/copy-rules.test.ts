@@ -286,8 +286,9 @@ const COPY_MODULES: Map<string, string> = new Map([
       'beyond that, because c4-7’s deck list sits between them. A label promising the end of the ' +
       'page would be a label that lies on 36 of 40 real decks, so the residue is carried on c8-6 ' +
       'by name instead of being papered over with wording. No other words: the link announces ' +
-      'nothing (there is no aria-live here — CardDetail’s single polite region stays the app’s ' +
-      'only one), and the DOM id it targets is a handle rather than copy, so SKIP_TARGET_ID ' +
+      'nothing (there is no aria-live here — the app’s polite regions are CardDetail’s pin ' +
+      'announcement and, since c5-7, the connection pill’s; this string is in neither), and the ' +
+      'DOM id it targets is a handle rather than copy, so SKIP_TARGET_ID ' +
       'lives in focusHome.ts where both sides of the lookup can import it.',
   ],
   [
@@ -307,8 +308,30 @@ const COPY_MODULES: Map<string, string> = new Map([
       'reading, which the story’s Debug Log records having performed. The module holds NOTHING ' +
       'ELSE: the panel is untitled by c4-4’s ruling so there is no title here, the deck NAME and ' +
       'COUNTS an empty deck still renders are data on other components, and the line is not ' +
-      'announced — no aria-live anywhere near it, CardDetail’s single polite region stays the ' +
-      'app’s only one.',
+      'announced — no aria-live anywhere near it. (That clause used to end "CardDetail’s single ' +
+      'polite region stays the app’s only one"; c5-7 shipped the second, so the claim that ' +
+      'survives is the one this module actually makes: the empty-deck line does not announce.)',
+  ],
+  [
+    'src/containers/ConnectionPill/copy.ts',
+    'the connection pill’s words (story c5-7): the three STATE WORDS — "Connected", ' +
+      '"Reconnecting", "Backend gone — retrying quietly" — the em-dash SEPARATOR that joins a ' +
+      'state to the active deck’s name, and the builder that assembles the pill’s whole text. It ' +
+      'is the FIRST module in this Map that AUTHORS rather than transcribes, and the reason is ' +
+      'that no artefact ever specified these strings: DESIGN.md:479 describes the pill’s ' +
+      'material — a dot, micro text "naming the state", the deck name — and gives not one word of ' +
+      'that text, while EXPERIENCE.md:97’s "live · reconnecting · backend gone" is a vocabulary ' +
+      'for the spec’s readers rather than copy for the glass. So the strings are a DECISION (Q3, ' +
+      'Brad 2026-08-08), stated here in the open, written into EXPERIENCE.md’s connection-pill ' +
+      'copy row in the same commit, and gated against that row by ' +
+      'tests/connection-pill-copy.test.ts — copy is gated against whatever wrote it, and when a ' +
+      'story is what writes it, the artefact and the constant land together. TWO VOICE DECISIONS ' +
+      'ARE LOAD-BEARING AND THE MODULE ARGUES BOTH: there is no ellipsis after "Reconnecting", ' +
+      'because a trailing "…" promises the animation tokens.css:305-312 bans repo-wide while ' +
+      'naming this very component as the reason the ban exists; and "Backend gone" states a fact ' +
+      'about a process rather than blaming anyone, which is UX-DR33’s rule applied to the one ' +
+      'string in this app most likely to reach for an apology. The DECK NAME is data — it arrives ' +
+      'from the wire through the deck slice and is deliberately not in this module.',
   ],
 ])
 

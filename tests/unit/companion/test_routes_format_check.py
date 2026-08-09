@@ -672,8 +672,50 @@ the same obfuscation stance as the adjacent literals. Ruled at c3-6 and ledgered
 was renaming a production constant to appease a guard, which is the definition of the thing this
 guard's own docstring warns about.
 
-The two survivors are the distinctive ones: nothing in this shell has an innocent reason to write
-``60`` or ``15``.
+The two survivors are the distinctive ones — but "nothing in this shell has an innocent reason to
+write ``60`` or ``15``" stopped being true at **c5-1** (2026-08-07), the second measured collision
+after c3-6's. AD-7 caps an agent push at 60 items, and ``contracts.py`` declares that cap as
+``_MAX_ITEMS = 60``: a bound on how long a list a wire model accepts, in a module that holds no deck
+and counts no cards. The response was **not** to drop ``60`` the way c3-6 dropped ``4`` — that would
+have cost the family its most distinctive literal everywhere, including in the route shell where a
+deck-size rule genuinely could be reimplemented. See :data:`_LIMIT_FAMILY_EXEMPT` for the narrower
+answer and what it costs.
+"""
+
+
+_LIMIT_FAMILY_EXEMPT = frozenset(
+    {"src/companion/contracts.py", "plugin/server/src/companion/contracts.py"}
+)
+"""Files where a bare construction *literal* is not evidence of a rule (c5-1, 2026-08-07).
+
+**Both paths, deliberately.** The walk below scans only ``src/companion`` today, so the plugin
+mirror's entry is currently inert — but the mirror is meant to be byte-identical to the source file
+(c5-1 review round 2), and naming only one of the two would turn "this scan widens to cover the
+mirror too" into a silent false-positive on the exact day someone makes that improvement, rather
+than a decision made once here.
+
+**Scoped two ways, and both matter.** It exempts one file, and it exempts that file from the
+construction-limit family **only**. A card legality read, a validator import, a ``.quantity`` count
+or a rebuilt format-name set in ``contracts.py`` still flags exactly as before — which is the whole
+reason this is a set of paths consulted by one branch rather than a file skipped by the walk.
+
+Why this file, specifically: it is the wire-contract leaf. It is import-constrained to the stdlib
+and ``pydantic`` (AD-3, enforced by ``test_import_boundary.py``), so it *cannot* reach the card
+database, the deck repository or ``src.logic``; it declares field bounds on payloads and applies
+them to nothing. A deck-construction rule needs a deck to apply itself to, and there is none in
+scope here. The route shell, where one plausibly could be, keeps the full family.
+
+**What this costs, stated rather than glossed.** A future author could reimplement a deck-size rule
+inside ``contracts.py`` — a validator counting ``card_ids`` against 60 and calling that legality —
+and this family would not see it. Two things stand where it used to: the AD-3 import boundary, which
+denies that author the card data such a rule would need to be about, and ``test_contracts.py``,
+which pins every cap in this file by literal value and by which field it bounds, so a 60 that
+quietly became a deck rule would have to pass a test asserting it is a list-length bound. Neither is
+this family, and neither is claimed to be.
+
+The alternative — spelling the cap as something other than ``60`` to get past the scan — is the
+obfuscation this module's own docstring says a reviewer must treat as a violation on sight. It was
+not available.
 """
 
 _FORMAT_NAMES = frozenset(
@@ -757,7 +799,8 @@ def find_rule_violations(source: str, rel_path: str) -> list[str]:
     * **a construction limit used** — an integer from :data:`_LIMIT_LITERALS` appearing anywhere
       as an integer constant. Deliberately *not* restricted to comparisons: ``_MIN = 60`` then
       ``n < _MIN`` is the same rule with one more line, and ``match n: case 60`` is the same rule
-      with different syntax.
+      with different syntax. This one family — and only this one — skips the files named in
+      :data:`_LIMIT_FAMILY_EXEMPT`.
     * **a format-name set rebuilt** — two or more Scryfall legality keys appearing together in a
       collection display or as dict keys, whatever else is in it.
     * **copies counted in the shell** — any ``.quantity`` access. AC 5 names "any copy counting"
@@ -821,8 +864,12 @@ def find_rule_violations(source: str, rel_path: str) -> list[str]:
                 ):
                     flag_validator_import(node.lineno, alias.name)
 
-        # --- a construction limit, in any position ---
-        elif isinstance(node, ast.Constant) and _is_limit(node.value):
+        # --- a construction limit, in any position (outside the one exempt file) ---
+        elif (
+            isinstance(node, ast.Constant)
+            and rel_path not in _LIMIT_FAMILY_EXEMPT
+            and _is_limit(node.value)
+        ):
             flag(
                 node.lineno,
                 str(node.value),
@@ -859,6 +906,37 @@ class TestNoRuleInTheShell:
             "src/companion must reimplement no deck-construction rule — AD-1 makes src/logic "
             "the one truth:\n" + "\n".join(f"  {line}" for line in offenders)
         )
+
+    def test_the_limit_exemption_is_scoped_to_one_file(self):
+        """c5-1: the same source flags everywhere except the one exempt path.
+
+        The assertion compares the scan's output for byte-identical source under two different
+        ``rel_path`` values — so it fails if the exemption ever widens to a second file, and fails
+        the other way if the exemption stops working. It does not read ``contracts.py``.
+        """
+        source = "_MAX_ITEMS = 60\n"
+
+        assert not find_rule_violations(source, "src/companion/contracts.py")
+        assert find_rule_violations(source, "src/companion/app/routes/decks.py")
+
+    def test_the_exempt_file_still_flags_every_other_family(self):
+        """c5-1: the exemption is one FAMILY wide, not a skipped file.
+
+        Each source below is planted against the exempt path and must still flag. If a future edit
+        turns the exemption into `if rel_path in _LIMIT_FAMILY_EXEMPT: return []`, every one of
+        these goes green at once — which is precisely the failure this test exists to catch.
+        """
+        exempt = "src/companion/contracts.py"
+
+        assert find_rule_violations("def go(c):\n    return c.legalities\n", exempt)
+        assert find_rule_violations("from src.logic.deck_validator import validate_deck\n", exempt)
+        assert find_rule_violations("def go(e):\n    return e.quantity\n", exempt)
+        assert find_rule_violations("F = {'standard', 'modern'}\n", exempt)
+
+    def test_the_exemption_names_only_paths_that_exist(self):
+        """A stale exempt path is a silent widening of nothing, but also a lie in the docstring."""
+        for rel_path in _LIMIT_FAMILY_EXEMPT:
+            assert (REPO_ROOT / rel_path).is_file(), f"{rel_path} is exempt but does not exist"
 
     def test_the_scan_is_not_looking_at_an_empty_tree(self):
         """Non-vacuity for the scan above: it genuinely visited the route module."""
@@ -1120,7 +1198,12 @@ class TestCommittedSchema:
         assert "deck_not_found" in responses["404"]["description"]
         # Non-vacuity: the app-level declarations are present too, so the 404 above is the
         # per-route declaration rather than a difference in whether responses exist at all.
-        assert {"400", "413", "500", "503"} <= set(responses)
+        #
+        # `413` dropped at c5-5: a body-less GET cannot answer it, and it was inherited from the
+        # shared include set while `payload_too_large` had no producer anywhere. The curation moved
+        # it to the two operations that can (`POST /agent/events`, `PUT /api/active-deck`).
+        assert {"400", "500", "503"} <= set(responses)
+        assert "413" not in responses
 
     def test_the_route_takes_no_games_parameter(self, schema):
         """AC 9: UX-DR21 names six checks and platform availability is not one of them."""

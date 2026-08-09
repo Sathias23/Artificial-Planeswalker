@@ -253,7 +253,10 @@ div.app-shell {
   overflow: hidden;
 }
 
-/* c5-7's connection pill: fixed, but pinned to one corner — not a full-window layer. */
+/* c5-7's connection pill: fixed, but pinned to one corner — not a full-window layer. SHIPPED
+   2026-08-08 in this exact shape (`ConnectionPill.css` declares `position: fixed` with `bottom`
+   and `left` only), so this block is no longer a prediction about a component that might arrive:
+   it is the probe for one that is on the glass. */
 .legal-corner-pill {
   position: fixed;
   top: var(--space-4);

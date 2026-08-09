@@ -64,19 +64,34 @@ class TestThePathSet:
     """Every path the companion serves, and nothing else."""
 
     def test_the_paths_are_exactly_these(self, schema):
-        # SEVEN as of c3-5 (`/api/card-image/{scryfall_id}`). A story adding a route edits this
-        # line — here, and nowhere else. Note the two deck spellings are not a typo: the list is
-        # plural `/api/decks`, the detail is singular `/api/deck/{deck_id}`, and c3-3's format
-        # check hangs off the singular one. c3-5's path parameter is spelled `scryfall_id` where
-        # its sibling spells the same identifier `card_id`, because the epic names the path that
-        # way; both publish the same constraint, which `test_routes_card_image.py` asserts.
+        # EIGHT as of c5-2 (`/api/session`). A story adding a route edits this line — here, and
+        # nowhere else. Note the two deck spellings are not a typo: the list is plural
+        # `/api/decks`, the detail is singular `/api/deck/{deck_id}`, and c3-3's format check
+        # hangs off the singular one. c3-5's path parameter is spelled `scryfall_id` where its
+        # sibling spells the same identifier `card_id`, because the epic names the path that way;
+        # both publish the same constraint, which `test_routes_card_image.py` asserts.
+        #
+        # c5-2's `/api/session` is the first path added since c3-5, and it INVERTS c5-1's
+        # headline: c5-1 shipped sixteen models and moved neither count, because a model no route
+        # references never reaches the document at all. c5-2 puts one model on one route, so both
+        # counts move together — 7 → 8 here and 12 → 13 below — which is the ordinary case the
+        # confirmed-negative shape was the exception to.
+        #
+        # NINE as of c5-5, and it is the FIRST PATH ON A NOVEL FIRST SEGMENT since c3-1's `/api`.
+        # `/agent/events` is also the story the note below the component set has been waiting for:
+        # one route declaration collects c5-1's entire model block at once, which is why this line
+        # moves by one and that one moves by seventeen. c5-3 and c5-4 both moved NEITHER count —
+        # a WebSocket route has no OpenAPI operation and a fan-out helper has no route at all — so
+        # this is the first real schema diff since c5-2.
         assert set(schema["paths"]) == {
+            "/agent/events",
             "/api/active-deck",
             "/api/card-image/{scryfall_id}",
             "/api/cards/{card_id}",
             "/api/deck/{deck_id}",
             "/api/deck/{deck_id}/format-check",
             "/api/decks",
+            "/api/session",
             "/health",
         }
 
@@ -181,7 +196,7 @@ class TestTheComponentSet:
     """
 
     def test_the_component_names_are_exactly_these(self, schema):
-        # TWELVE as of c3-5. `Card` is c3-2's, the two `FormatCheck*` models are c3-3's, and
+        # THIRTEEN as of c5-2. `Card` is c3-2's, the two `FormatCheck*` models are c3-3's, and
         # `ActiveDeck` / `ActiveDeckRequest` are c3-4's — the latter being the first REQUEST body
         # in the whole document; every shape before it described a response.
         #
@@ -191,19 +206,58 @@ class TestTheComponentSet:
         # 6,455 stored face objects carry 24 distinct keys and a strict model would silently
         # truncate shipped MCP tool output. That is not an AD-1 breach: there is still exactly one
         # card shape and exactly one face shape, both in `src/data/schemas`.
+        #
+        # `SessionTicket` is c5-2's, and it is the first component this shell has added since
+        # c3-5. It is ALSO the only one of the SEVENTEEN models c5-1 defined plus this one that
+        # reaches the document: c5-1's sixteen are all still absent, because none is referenced by
+        # a route yet and an unreferenced model never lands here. That asymmetry is the rule
+        # working, not a gap — c5-5 declares the event union as `POST /agent/events`'s request
+        # body and the rest arrive together at that point.
+        #
+        # THIRTY as of c5-5, and that prediction came true exactly: ONE route declaration
+        # collected SEVENTEEN models in a single step — c5-1's six envelopes, six payloads and
+        # four item models, plus this story's own `EventIngestReceipt`. It is the whole AD-12
+        # mechanism working as designed ("no dummy endpoint and no second generator"), and it is
+        # why c5-1 was allowed to ship sixteen models that moved no count at all.
+        #
+        # `TierLetter` and `Confidence` are DELIBERATELY ABSENT, and the story predicted otherwise
+        # — measured 2026-08-08. Both are `Literal` aliases rather than `Enum` classes, so pydantic
+        # inlines each as an `enum` on the field that uses it instead of promoting it to a named
+        # component. The generated TypeScript gets the same closed union either way; what it does
+        # not get is a reusable named type. Recorded rather than corrected: naming them would mean
+        # converting two contract aliases to enums to satisfy a schema-shape preference, which is
+        # not this story's call.
         assert set(schema["components"]["schemas"]) == {
             "ActiveDeck",
+            "ActiveDeckChangedEvent",
+            "ActiveDeckChangedPayload",
             "ActiveDeckRequest",
             "Card",
             "CardFace",
             "CardSummary",
             "DeckCardSummary",
+            "DeckChangedEvent",
+            "DeckChangedPayload",
             "DeckDetail",
             "DeckSummary",
             "ErrorResponse",
+            "EventIngestReceipt",
             "FormatCheckReport",
             "FormatCheckRow",
+            "GroupItem",
+            "GroupsEvent",
+            "GroupsPayload",
             "HealthResponse",
+            "SessionTicket",
+            "SuggestionItem",
+            "SuggestionsEvent",
+            "SuggestionsPayload",
+            "SwapItem",
+            "SwapsEvent",
+            "SwapsPayload",
+            "TierItem",
+            "TierListEvent",
+            "TierListPayload",
         }
 
     def test_the_auto_generated_validation_shapes_are_absent(self, schema):
@@ -277,6 +331,31 @@ class TestTheDatabaseTokensAreDeclared:
         # that made `responses` per-include rather than app-wide is what this asserts still holds.
         for method in ("get", "put"):
             assert "503" not in schema["paths"]["/api/active-deck"][method]["responses"]
+
+    def test_the_session_route_declares_neither_a_503_nor_a_413(self, schema):
+        # AC 23. c5-2 mirrors c3-4's ruling on both counts rather than inheriting either: no
+        # database dependency means no 503 to promise, and a body-less GET means no 413. It is
+        # therefore deliberately ABSENT from DATABASE_BACKED above — asserted below rather than
+        # left as a silent omission, because a list a route quietly fails to join looks identical
+        # to a list a route was forgotten from.
+        #
+        # The 413 half was the ledgered wart `deferred-work.md` homed on c5-5, and **c5-5 closed
+        # it** (Q4, Brad 2026-08-08). The wart: a body-less GET that declares 413 promises a
+        # `types.d.ts` consumer a branch that can never answer, and every new GET route doubled it
+        # wherever it was declared. When this comment was written, /health and the four
+        # database-backed operations still carried theirs by inheritance while /api/session and
+        # /api/active-deck did not — "the direction the wart is being unwound in". It is now
+        # unwound: `payload_too_large` is gone from BOTH shared include sets, and exactly two
+        # operations declare it, both because they can actually answer it. This assertion is
+        # therefore no longer the lone counter-example it was written as; it is the ordinary case.
+        responses = schema["paths"]["/api/session"]["get"]["responses"]
+
+        # Non-vacuity: the operation really was found and really declares its typed failures, so
+        # the two absences below are about a populated mapping rather than an empty one.
+        assert set(responses) == {"200", "400", "500"}
+        assert self._reasons(schema, "/api/session", "get", "400") == {"invalid_request"}
+        assert self._reasons(schema, "/api/session", "get", "500") == {"internal_error"}
+        assert ("/api/session", "get") not in self.DATABASE_BACKED
 
     def test_the_scan_can_tell_the_two_apart(self, schema):
         # Non-vacuity, and it is a real one: `_reasons` returns a SET parsed out of prose, so a

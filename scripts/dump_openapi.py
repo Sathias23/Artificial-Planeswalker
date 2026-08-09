@@ -26,7 +26,34 @@ took it to nine components and five paths, adding the first wire shapes describe
 rather than ``src/data``; story **c3-4** (``/api/active-deck``) took it to eleven components and
 six paths, adding ``ActiveDeck`` and ``ActiveDeckRequest``; and story **c3-5**
 (``/api/card-image/{scryfall_id}``) took it to **twelve components and seven paths**, adding
-``CardFace``. Story **c3-6**'s pacer **shipped and needed nothing here**, exactly as this
+``CardFace``; and story **c5-2** (``/api/session``) took it to **thirteen components and eight
+paths**, adding ``SessionTicket`` — the first addition since c3-5, and the first from Epic C5.
+
+That last one is worth a sentence because it is the **inverse of the story immediately before it**.
+c5-1 defined sixteen models and moved neither count, since a model no route references never
+reaches ``components.schemas``; c5-2 defines *one* and moves both, because it puts that one on a
+route. Same rule, opposite headline — and the pair is the cleanest demonstration in this ledger
+that what lands here is *reachability from a route*, not *existence in* ``contracts.py``. Measured
+2026-08-08: 7 paths / 12 components before, 8 / 13 after, both generated files committed.
+
+**c5-2 falsified a claim this ledger has carried since c3-8, and measured the correction
+(2026-08-08).** The bullet below says *"a Pydantic model's* ``description`` *is the whole
+docstring"* and that the Google-section truncation *"applies to* **route** *docstrings"*. It does
+not: ``_CompanionFastAPI.openapi()``'s normaliser walks **every** description in the document, so a
+model's docstring is cut at its first Google section exactly as a route's is. Measured across all
+four wire models that have one — ``HealthResponse``, ``ErrorResponse``, ``ActiveDeck`` and
+``SessionTicket`` all carry ``Attributes:`` and ``Example:`` in source, and **none** of the four
+ships either on the wire.
+
+What c3-8 actually observed remains true and is the useful half: its ``ErrorResponse`` edit landed
+*above* that model's ``Attributes:`` header, which is why it crossed in full, bullet list and all.
+The corrected rule is therefore one rule rather than two: **everything above the first Google
+section ships, on models and on routes alike.** c5-2 relied on it deliberately in both places — the
+handler's ``Args:`` (which names the injected ``Response``) and ``SessionTicket``'s ``Attributes:``
+(which carries the Q4 reasoning for *not* publishing the TTL) were both cut, while the single-use
+and 30-second semantics a client author genuinely needs shipped in full.
+
+Story **c3-6**'s pacer **shipped and needed nothing here**, exactly as this
 paragraph predicted — the prediction was settled by *running* ``npm run gen:api`` and pasting
 ``git status --porcelain``, not by argument: seven paths and twelve components, both generated
 files byte-identical. Story **c3-7**'s disk cache **shipped and needed nothing here either**,
@@ -48,9 +75,13 @@ diff in both generated files, because the story edited
 
 Two things were learned by measuring rather than reasoning, and both are worth keeping:
 
-* **A class docstring on a wire model is wire-visible in its entirety**, bullet list and all — not
-  merely its leading paragraph. The truncation rule that trims Google sections applies to *route*
-  docstrings; a Pydantic model's ``description`` is the whole docstring.
+* **A class docstring on a wire model is wire-visible well past its leading paragraph**, bullet
+  list and all. *(Second clause CORRECTED at c5-2, 2026-08-08 — it read "the truncation rule that
+  trims Google sections applies to route docstrings; a Pydantic model's* ``description`` *is the
+  whole docstring", and that is false: the normaliser walks every description in the document, so a
+  model is cut at its first Google section too. c3-8's edit crossed because it sat above
+  ``ErrorResponse``'s* ``Attributes:`` *header, not because models are exempt. See the c5-2
+  paragraph above for the measurement across all four models.)*
 * **An attribute docstring on a** ``Literal`` **type alias is NOT.** The same commit edited
   ``ErrorReason``'s docstring and that edit did not cross the wire at all. Two docstrings, twelve
   lines apart in one file, on opposite sides of the boundary — which is the kind of thing nobody
@@ -93,17 +124,31 @@ half moved:
   decision that would want its own regeneration"*, and the measurement says a ``#`` comment is not
   one. A docstring still is.
 
-**A KNOWN WART IN THIS DOCUMENT, recorded rather than fixed (c3-9, Q8).** Six body-less ``GET``
-operations publish ``413 payload_too_large`` in their client contract, because the declaration is
-made per *include* rather than per *method* and the shared set carries the 413 for the ``POST``
-c5-5 will add. So the generated types tell a fetch author to handle a response the same document
-elsewhere describes as *"surfaced to the agent… The glass never sees it"*. It is pre-existing,
-inherited, and doubled by every new ``GET``. c3-9 declined to fix it: curating ``error_responses``
-per method is a real change to a shared declaration site with six routes of blast radius, made in
-a story whose frontend half is already the largest in the epic, and Q4 touched the *caller* rather
-than the helper. **Re-homed on c5-5 by name** — the story that adds the cap, makes the 413 real,
-and must decide which operations can actually answer it. Until then: a ``413`` on a body-less
-``GET`` is unreachable, and a client may ignore it.
+**THE 413 WART IS CLOSED AS OF c5-5 (Q4, Brad 2026-08-08).** For the record, because the fix is
+only legible next to what it fixed: six body-less ``GET`` operations used to publish
+``413 payload_too_large`` in their client contract, because the declaration was made per *include*
+rather than per *method* and the shared set carried the 413 for the ``POST`` c5-5 would add. The
+generated types told a fetch author to handle a response the same document elsewhere describes as
+*"surfaced to the agent… The glass never sees it"*. It was pre-existing, inherited, and doubled by
+every new ``GET``. c3-9 declined to fix it — curating ``error_responses`` per method is a real
+change to a shared declaration site with six routes of blast radius, and Q4 touched the *caller*
+rather than the helper — and re-homed it on c5-5 by name, as the story that adds the cap, makes
+the 413 real, and must decide which operations can actually answer it.
+
+c5-5 did exactly that, in **two call-site edits and no helper change**: ``payload_too_large`` was
+removed from both shared include sets in ``build_app()`` and declared per-route on the two
+operations that can answer it — ``POST /agent/events`` (via its own include, which carries no
+other route) and ``PUT /api/active-deck`` (beside its existing ``forbidden``). Its sibling
+``GET /api/active-deck`` carries a body-less read and declares nothing, which is the distinction
+the whole exercise was about. The shape is exactly the one this paragraph specified, which is worth
+noting: the fix a deferral describes is sometimes the fix that lands.
+
+**What made it safe to do now and not before** is that the token stopped being a fiction. Until
+c5-5, ``payload_too_large`` had no producer anywhere in the app, so *every* declaration of it was
+unreachable and "which operations can answer it" had the empty set as its honest answer.
+``BodyCapMiddleware`` is the producer, and because it is middleware rather than a per-route
+dependency it bounds both body endpoints with one mechanism — so the declaration set and the
+enforcement set are the same two operations by construction, not by hand-synchronisation.
 
 **The exception, and it is c3-5's.** That endpoint has **no** ``response_model``, because its
 success body is image bytes: a model would emit a JSON ``$ref`` for a body that is binary. A
@@ -130,10 +175,29 @@ this paragraph as the gate. (Until c3-4 there were **two** such pins, in the dec
 tests; Q5 consolidated them into that one file, so c3-5 edits one place rather than discovering the
 second by running the suite as c3-2 and c3-3 each did.)
 
-**There is no dummy endpoint, and none is needed.** Story **c5-1**'s ``POST /agent/events`` declares
-the WebSocket event-envelope union as its *request body*, so every per-kind payload lands in
-``components.schemas`` from the route itself — one generator covers both the REST and the WebSocket
-halves of the contract (AD-12).
+**There was no dummy endpoint, and none was needed — c5-5 has now proved it.** Story **c5-5**'s
+``POST /agent/events`` declares the WebSocket event-envelope union as its *request body*, so every
+per-kind payload landed in ``components.schemas`` from the route itself — one generator covering
+both the REST and the WebSocket halves of the contract (AD-12). The models themselves are
+**c5-1**'s, and that story shipped them with the schema unchanged at twelve components: a model no
+route references never lands in ``components.schemas`` at all, so declaring the union bought no
+TypeScript until the route existed. That is the sequencing this paragraph originally
+mis-attributed to a single story (corrected at c5-1, 2026-08-07), and it is why the shape at c5-1
+was a *confirmed negative* — c5-1 proved the generated pair byte-identical rather than proving a
+union appeared.
+
+**Measured at c5-5**: one route declaration moved the component count from thirteen to **thirty**,
+collecting seventeen models in a single step — six envelopes, six payloads, four item models and
+this story's ``EventIngestReceipt``. That is the AD-12 mechanism paying out the whole debt c5-1
+took on, and it is the strongest evidence in the feature for the "declare the models early, let the
+route collect them" sequencing.
+
+One measurement worth keeping, because a story predicted otherwise: ``TierLetter`` and
+``Confidence`` did **not** become named components. Both are ``Literal`` aliases rather than
+``Enum`` classes, so pydantic inlines each as an ``enum`` on the field that uses it. The generated
+TypeScript still gets a closed union at every use site; what it does not get is a reusable named
+type. Left alone — promoting them would mean reshaping two contract aliases to satisfy a schema
+preference.
 
 Usage:
     uv run python -m scripts.dump_openapi     # -> ui/src/api/openapi.json (committed)

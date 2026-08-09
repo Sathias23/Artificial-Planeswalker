@@ -24,13 +24,14 @@ the real security envelope rather than around it.
 
 import asyncio
 from collections.abc import AsyncIterator, Mapping
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 import httpx
 import pytest
 from fastapi import FastAPI
 from starlette.routing import Mount
+from starlette.websockets import WebSocketState
 
 from src.companion.app import main
 from src.companion.app.main import lifespan
@@ -157,6 +158,277 @@ async def _lifespan_client(
             transport=transport, base_url=base_url, headers=headers
         ) as client:
             yield client
+
+
+_OMIT = object()
+"""Sentinel for :func:`drive_handshake`'s header arguments: ``None`` means *send no header*, so
+"caller said nothing" needs a value of its own. Without it a test could not ask for the
+missing-``Origin`` case at all, which is the case c5-3's Q4 exists to rule."""
+
+_NORMAL_CLOSURE = 1000
+"""The close code the client reports when it goes away tidily. Only the *type* of the disconnect
+message matters to the drain loop; this is here so the fake is not silently sending ``None``."""
+
+
+def _websocket_scope(app, *, path, ticket, origin, host):
+    """Build the ASGI ``websocket`` scope a handshake against *app* would arrive in.
+
+    Factored out of :func:`drive_handshake` by c5-4, which needed the identical scope for sockets
+    that stay **open** — two helpers hand-building one scope is two things to keep in step, and the
+    ``Host``/``Origin`` derivation below is exactly the part a divergence would silently break (the
+    c5-3 review already caught one bug in it).
+
+    Args:
+        app: A companion application whose lifespan is already running.
+        path: The path to hand shake at.
+        ticket: The ``ticket`` query parameter, or :data:`_OMIT` for no query string.
+        origin: The ``Origin`` header; :data:`_OMIT` for this app's own, ``None`` to send none.
+        host: The ``Host`` header; :data:`_OMIT` for this app's own authority.
+
+    Returns:
+        The scope dict.
+    """
+    port = main.bound_port(app)
+    assert port is not None, (
+        "app.state.bound_port is unset — stamp it (directly, or via lifespan_client's default) "
+        "before driving a handshake, or this helper silently builds a '127.0.0.1:None' host/"
+        "origin header instead of the test-setup failure that actually happened"
+    )
+    headers = []
+    if host is _OMIT:
+        headers.append((b"host", f"127.0.0.1:{port}".encode("latin-1")))
+    elif host is not None:
+        headers.append((b"host", host.encode("latin-1")))
+    if origin is _OMIT:
+        headers.append((b"origin", f"http://127.0.0.1:{port}".encode("latin-1")))
+    elif origin is not None:
+        headers.append((b"origin", origin.encode("latin-1")))
+
+    query_string = b"" if ticket is _OMIT else f"ticket={ticket}".encode("latin-1")
+    return {
+        "type": "websocket",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1",
+        "scheme": "ws",
+        "path": path,
+        "raw_path": path.encode("latin-1"),
+        "query_string": query_string,
+        "root_path": "",
+        "headers": headers,
+        "client": ("127.0.0.1", 51234),
+        "server": ("127.0.0.1", port),
+        "subprotocols": [],
+        "state": {},
+    }
+
+
+class FakeConnection:
+    """A registered client with no ASGI machinery behind it (c5-4, Q1/Q5).
+
+    **This is what the structural** :class:`~src.companion.app.state.Connection` **protocol buys.**
+    The registry stores anything that can be written to and closed, so every delivery, containment
+    and accounting assertion in the suite is driven against an object that records calls — no
+    scope, no ``receive``/``send`` pair, no task. The proofs that need the real router are the
+    two-tab wire tests, and they use :func:`open_socket` instead.
+
+    Lives here rather than in ``test_ws.py`` because two test modules need it — the fan-out's own
+    tests and the route's — and this package already learned at c3-7 what two hand-synchronised
+    copies of one fake cost.
+
+    Args:
+        fails: Make :meth:`send_text` raise, modelling the tab that went away between the registry
+            snapshot and the write.
+        client_state: What :func:`~src.companion.app.ws._close_quietly` reads to decide whether a
+            close frame is worth attempting. Defaults to connected, the case that exercises it.
+
+    Attributes:
+        sent: Every text frame written to this client, in order.
+        closed: Every close code this client was closed with.
+    """
+
+    def __init__(self, *, fails=False, client_state=WebSocketState.CONNECTED):
+        self.sent = []
+        self.closed = []
+        self.client_state = client_state
+        self._fails = fails
+
+    async def send_text(self, data):
+        """Record *data*, or raise if this fake was built to fail."""
+        if self._fails:
+            raise RuntimeError("this client is gone")
+        self.sent.append(data)
+
+    async def close(self, code=1000):
+        """Record the close code rather than tearing anything down."""
+        self.closed.append(code)
+
+
+class OpenSocket:
+    """A handle on a socket that is still open, and everything the app has sent it so far.
+
+    Yielded by :func:`open_socket`. The message list is the *live* one the ASGI ``send`` callable
+    appends to, so a frame pushed by a broadcast is visible the moment the broadcast's ``await``
+    returns — there is nothing to poll and nothing to wait for, which is what keeps this helper
+    inside the package's "a test that sleeps is a defect" rule.
+
+    Attributes:
+        sent: Every ASGI message the application has sent on this socket, in order.
+    """
+
+    def __init__(self):
+        self.sent = []
+
+    @property
+    def frames(self):
+        """The text frames the application pushed, as strings, in order.
+
+        Server-to-client text arrives as ``{"type": "websocket.send", "text": ...}``; the
+        ``websocket.accept`` that opened the socket is deliberately not one of these, so an empty
+        list means *nothing was broadcast to this client*.
+        """
+        return [
+            message["text"]
+            for message in self.sent
+            if message["type"] == "websocket.send" and "text" in message
+        ]
+
+    @property
+    def was_accepted(self):
+        """Whether the handshake was accepted rather than refused."""
+        return any(message["type"] == "websocket.accept" for message in self.sent)
+
+
+@asynccontextmanager
+async def open_socket(app, *, ticket, path="/ws", origin=_OMIT, host=_OMIT):
+    """Hold one accepted WebSocket open for the body of the block, and hand back what it receives.
+
+    **Why this exists alongside** :func:`drive_handshake` **(c5-4, Q5, Brad 2026-08-08).** That
+    helper runs one handshake *to completion*: its ``receive`` exhausts the caller's frames and then
+    repeats ``websocket.disconnect`` forever, so the handler always returns before the call does and
+    **no socket is ever open at the same time as anything else**. That is the right shape for
+    proving what a handshake answers, and it structurally cannot prove what a *broadcast* reaches:
+    FR-06's requirement is that **every** connected client receives an event, which needs two
+    sockets open concurrently while a third party pushes.
+
+    So this runs the app as a task with a controllable receive queue. The block body executes with
+    the handler parked in its drain loop and the connection registered, exactly as it is while a
+    real browser sits idle; on exit the queue is fed a ``websocket.disconnect`` and the task is
+    awaited, so the handler's ``finally`` runs and the registry is left clean.
+
+    **Still not a real socket.** There is no server, no port and no TCP anywhere — this drives the
+    same in-process ASGI callable ``drive_handshake`` does. AD-10 homes the one genuine
+    end-to-end proof on **c5-8**, which shipped it at
+    ``tests/integration/companion/test_live_backend.py`` (2026-08-09) — and this file still must
+    not grow one. The rule reads the same after the story as before it: the one real socket lives
+    over there, deselected by ``-m "not integration"``, and everything here stays in-process.
+
+    Args:
+        app: A companion application whose lifespan is already running.
+        ticket: The ticket to present. Required — an unauthenticated handshake is refused and never
+            reaches the open state this helper exists to hold.
+        path: The path to hand shake at.
+        origin: The ``Origin`` header; omit for this app's own.
+        host: The ``Host`` header; omit for this app's own authority.
+
+    Yields:
+        An :class:`OpenSocket` whose :attr:`~OpenSocket.frames` grow as the application pushes.
+    """
+    scope = _websocket_scope(app, path=path, ticket=ticket, origin=origin, host=host)
+    handle = OpenSocket()
+    incoming = asyncio.Queue()
+    incoming.put_nowait({"type": "websocket.connect"})
+    settled = asyncio.Event()
+
+    async def receive():
+        return await incoming.get()
+
+    async def send(message):
+        handle.sent.append(message)
+        # Either answer settles the handshake: an accept means the socket is open (and by the time
+        # this waiter is resumed the handler has run on to its first real suspension, which is the
+        # drain's `receive` — so registration has already happened), a close means it was refused
+        # and the block below should not pretend otherwise.
+        if message["type"] in {"websocket.accept", "websocket.close"}:
+            settled.set()
+
+    served = asyncio.create_task(app(scope, receive, send))
+    waiter = asyncio.create_task(settled.wait())
+    try:
+        # Wait on BOTH, so a handler that raises before sending anything fails the test with its
+        # own traceback instead of hanging the suite on an event nobody will ever set.
+        await asyncio.wait({served, waiter}, return_when=asyncio.FIRST_COMPLETED)
+        if served.done():
+            served.result()  # re-raise whatever killed it, rather than reporting a silent absence
+        assert handle.was_accepted, (
+            f"the handshake was refused, so no socket is open: {handle.sent}"
+        )
+        yield handle
+    finally:
+        # Cancelled once, here, and awaited before this context manager returns — cancelling twice
+        # without collecting the result (review finding, 2026-08-08) risked a "Task was destroyed
+        # but it is pending" warning if teardown outran the cancellation.
+        waiter.cancel()
+        with suppress(asyncio.CancelledError):
+            await waiter
+        incoming.put_nowait({"type": "websocket.disconnect", "code": _NORMAL_CLOSURE})
+        await served
+
+
+async def drive_handshake(
+    app,
+    *,
+    path="/ws",
+    ticket=_OMIT,
+    origin=_OMIT,
+    host=_OMIT,
+    frames=(),
+):
+    """Run one WebSocket handshake against *app* at the ASGI level and return everything it sent.
+
+    **Why this shape (c5-3, Q7, Brad 2026-08-08).** ``httpx.ASGITransport`` — the seam every other
+    companion test uses — speaks the ASGI *request* protocol only and cannot drive a ``websocket``
+    scope at all. Starlette's ``TestClient.websocket_connect`` can, but it runs the app on a thread
+    portal with its own lifespan handling, which would put a second lifespan-entry idiom into a
+    package that deliberately has exactly one (see this module's docstring). So this generalises
+    what ``test_security.py`` already does against the middleware — build a scope, drive it with
+    real async ``receive``/``send`` stubs, collect the messages — through the **real** router, and
+    leaves the lifespan to the caller's ``async with lifespan_client(app)``.
+
+    That division is what makes the interesting tests possible: the caller mints a ticket over HTTP
+    through the ordinary seam and then presents it here, against the same running app, which is the
+    actual sequence a browser performs.
+
+    Args:
+        app: A companion application whose lifespan is already running.
+        path: The path to hand shake at.
+        ticket: The value of the ``ticket`` query parameter. Omit for no query string at all;
+            pass ``""`` for a present-but-empty parameter.
+        origin: The ``Origin`` header. Omit for this app's own origin (the accepted case), or pass
+            ``None`` to send no ``Origin`` header at all.
+        host: The ``Host`` header. Omit for this app's own authority, which is what the shipped
+            :class:`~src.companion.app.security.HostValidationMiddleware` requires.
+        frames: Client-to-server messages delivered after the handshake, before the disconnect.
+
+    Returns:
+        Every ASGI message the application sent, in order — ``[{"type": "websocket.close", ...}]``
+        for a refusal, ``[{"type": "websocket.accept", ...}, ...]`` for an accepted socket.
+    """
+    scope = _websocket_scope(app, path=path, ticket=ticket, origin=origin, host=host)
+
+    # The connect, then whatever the test wants to say, then a disconnect that repeats forever: a
+    # handler that keeps reading past the disconnect must not hang the suite waiting for a message
+    # the fake was never going to send.
+    incoming = iter([{"type": "websocket.connect"}, *frames])
+    sent = []
+
+    async def receive():
+        return next(incoming, {"type": "websocket.disconnect", "code": _NORMAL_CLOSURE})
+
+    async def send(message):
+        sent.append(message)
+
+    await app(scope, receive, send)
+    return sent
 
 
 @pytest.fixture

@@ -1,5 +1,42 @@
 # Deferred Work
 
+## Deferred from: code review of c5-6-client-reconnection, Group 3 (2026-08-08)
+
+> UI shell/API/dev-proxy diff (App.tsx, api/client.ts, api/schema.ts, components/StatePanel/states.ts,
+> config/devProxy.ts + tests) — third of a chunked review; 0 patch findings survived (one attempted
+> patch on devProxy.ts's WEBSOCKET_PATTERNS typing was reverted after testing showed it broke real
+> compilation).
+
+- source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
+  summary: "agentEventOf only validates the `kind` discriminant, not `id`/`ts`/`payload` — a frame like {\"kind\":\"deck_changed\"} with no id/ts/payload passes through typed as a full AgentEvent. Not exercised today (system-event kinds are dispatched by kind alone; the four agent-view kinds are dropped unread), becomes actionable when Epic 6 builds the agent views and reads those fields."
+  evidence: 'Blind Hunter + Edge Case Hunter, independently; ui/src/api/client.ts:701-716.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
+  summary: "The equivalence between the agent's outbound POST /agent/events body shape and the WebSocket frame the browser actually receives is asserted only in a comment (ws.py broadcasts the ingested event verbatim), with no cross-language contract test pinning it."
+  evidence: 'Blind Hunter; ui/src/api/schema.ts, ui/src/api/client.ts:662-669.'
+
+## Deferred from: code review of c5-6-client-reconnection, Group 1 (2026-08-08)
+
+> UI reconnection-core diff (`connection.ts`, `socket.ts`, `deck.ts`, `cards.ts`, `systemState.ts`,
+> `poller.ts` + tests) — first of a chunked review; Groups 2 (backend) and 3 (UI shell/API/dev-proxy)
+> still queued.
+
+- source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
+  summary: "useAgentConnection's socket does not reconcile the shared `connection` field on `stop()`/remount — if the component were ever unmounted and remounted while status was `down` or `live`, the store would show a stale value until the new socket's status next changes."
+  evidence: 'Blind Hunter + Edge Case Hunter, both independently; ui/src/state/socket.ts:491-497 (stop()) and ui/src/state/connection.ts (useAgentConnection). Pre-existing pattern: App is documented as the sole, permanently-mounted consumer of useSystemState, useDeckState and now useAgentConnection alike; none of the three defends against a remount all three explicitly disclaim as unsupported.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
+  summary: 'Two independent triggers (redriveDeckBoot() fired directly on a system event, and the pre-existing subscribeSystemState edge-trigger in useDeckState) can both re-drive the same DeckBoot instance in quick succession around one event, costing a redundant fetch.'
+  evidence: 'Blind Hunter; ui/src/state/deck.ts:559-565, ui/src/state/connection.ts:352-364. Idempotent and generation-guarded — low impact, narrow timing window.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
+  summary: 'Whether restartPollIfStopped/restartPoll actually close dw:3472/3544 and dw:3463 depends on backend behaviour outside this diff slice (does a DB rebuild or later DB death produce a deck_changed/active_deck_changed frame, or drop the socket?). Needs confirmation in the Group 2 (backend) review pass.'
+  evidence: 'Acceptance Auditor; ui/src/state/systemState.ts:186-216.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
+  summary: 'connection.ts (wiring restartPoll -> resetCardAttempts -> redriveDeckBoot on reconnect, and redriveDeckBoot -> restartPollIfStopped on a system event) has no dedicated unit test in this slice, nor does AgentSocketOptions.initialStatus. Needs confirmation in the Group 2 pass that App.test.tsx actually pins this call order rather than merely observing an eventual refetch.'
+  evidence: 'Acceptance Auditor + Blind Hunter; ui/src/state/connection.ts (whole file), ui/src/state/socket.ts:223 (initialStatus).'
+
 ## Deferred from: code review of story-7.4 (2026-07-17)
 
 > Test-hardening gaps in the `assess_deck_power` e2e suite (tests-only story; all 7 ACs met, suite green). Neither is a product defect — both are e2e-coverage extensions whose behavior is already guarded at the unit/model level.
@@ -1926,6 +1963,27 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   unedited — **56 passed**. So c3-3 never owed a line, and neither will c3-4/c3-5 if their routes
   join an existing router. The comment in `test_spa.py` now says this, so the next author does not
   go looking for an edit they do not owe.
+  **Tax paid, c5-2 (2026-08-08).** `routes/session.py` is a new router, so c5-2 was the first of
+  the two stories this entry names by key to come due — and it came due exactly as advertised:
+  adding `session.router` to `build_app()` reddened
+  `test_the_schema_is_unchanged_by_installing_the_mount` with *"Extra items in the left set:
+  '/api/session'"* before the line existed, and the harness re-proved it red through the full
+  2,594-test suite with the line deleted again. One line added. **c5-5 remains outstanding** and is
+  now the only story this entry still names. The "derive the list from `build_app()`" fix is still
+  not taken: at three consecutive paid taxes the named-failure trade is still winning, and c5-2 has
+  no more standing to change a shared test's design than c3-3 did.
+  **TAX PAID OUT — ENTRY CLOSED, c5-5 (2026-08-08).** `routes/agent_events.py` is a new router, so
+  the last story this entry named by key came due and paid: adding `agent_events.router` to
+  `build_app()` reddened `test_the_schema_is_unchanged_by_installing_the_mount` with *"Extra items
+  in the left set: '/agent/events'"* before the line existed. One line added, exactly as advertised.
+  **No story key remains outstanding on this entry.** The "derive the list" fix is *still* not
+  taken, and after four consecutive paid taxes that is now a settled preference rather than a
+  deferral: each tax cost one line and produced a named failure naming the missing path, which is
+  the trade the design was chosen for. Anyone reopening this should bring a story that got it wrong,
+  not a story that found it tedious. A second observation worth keeping, because it was measured
+  four times and never stated: **the tax has never once caught a real bug** — every red was the
+  author's own new router, seen immediately. Its value is the shape of the failure it would produce
+  for the author who *doesn't* notice, which no amount of paid tax can evidence.
 
 ## Deferred from: code review of c3-1-deck-list-and-deck-detail-endpoints (2026-07-31, post-commit pass)
 
@@ -2168,6 +2226,25 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   > unchanged and un-fixed: the symptom still points at the wrong file, and CI still runs `tsc -b`
   > without `--force`. **Home for the fix shapes: unchanged.**
 
+  > **NOT TRIGGERED at c5-1 (2026-08-07) — the candidate c4-1 named by name, and it was the wrong
+  > guess for a structural reason worth writing down.** c4-1 predicted "**c5-1**'s event envelope"
+  > as the realistic candidate. c5-1 shipped the whole envelope and **added no `ui/` code at all**:
+  > the union is Python, it is unreferenced by any route, and it therefore produces no TypeScript
+  > for a `ui/tests/` file to import. That is not an accident of scheduling — it is the same fact
+  > that inverted the epic's own AC 8 into a confirmed negative. **The candidate was mis-identified
+  > because "the story that defines the wire types" and "the story that first imports them into a
+  > node-project test" are different stories whenever the defining story adds no route.**
+  >
+  > **Proven, not asserted:** `npx tsc -b --force` was run in `ui/` and exits **0** (2026-08-07) —
+  > `--force` specifically, because CI runs `tsc -b` without it and a cached-clean result can ship.
+  >
+  > **Re-homed with the reason: the first story that puts the event union on a route AND asserts a
+  > generated type from `ui/tests/`.** That is **c5-5** at the earliest (it declares
+  > `POST /agent/events`, so the union first reaches `types.d.ts` there), and more likely **c6-x**,
+  > where a view actually consumes the narrowed payload. The narrowed c4-3 rule still governs what
+  > would fire: not "a `ui/tests` file may not import an app module" but "may not import an app
+  > module that has **relative imports of its own**". (Severity: unchanged, Medium.)
+
 
 
 ## Deferred from: code review of c3-2 (2026-07-31)
@@ -2274,6 +2351,32 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   constant rather than re-declaring it. **Home: c5-1**, the first story expected to add example
   payloads (the event-envelope union). (Severity: Low, latent.)
 
+  > **✅ TRIGGERED AND CLOSED at c5-1 (2026-08-07) — fix taken, in the prescribed shape.** c5-1 did
+  > add example payloads: `json_schema_extra={"examples": [...]}` on all four item models and all
+  > six envelope classes, ruled in by Brad (Q8) precisely because this entry is homed here and this
+  > is the story that should pay for it. `_descriptions()` now takes `_DATA_KEYS` **imported from
+  > `main`**, not re-declared, and mirrors the truncator's walk exactly — including the inverse
+  > `in_properties` care, so a model with a field genuinely called `example` still has its
+  > description read. **MEASURED before and after: 65 descriptions both ways, and the two lists are
+  > element-for-element identical** — zero descriptions sit under a data key in the committed schema
+  > today, exactly as this entry predicted, so the fix moved nothing and is pre-emptive.
+  >
+  > **One nuance this entry could not have known, recorded because it changes when the trap could
+  > next have fired.** c5-1's examples do **not** reach the committed schema at all: the models are
+  > unreferenced by any route, and a model no route references never lands in `components.schemas`.
+  > So the trap would not have fired here even with examples added — the first schema-reachable
+  > example payload arrives at **c5-5**, when `POST /agent/events` declares the union as its request
+  > body. The fix is taken early rather than exactly-in-time, which is the cheap direction.
+  >
+  > **Three tests ship with it** (`TestTheCollectorMirrorsTheTruncator`), because a fix with no
+  > firing proof is the class this epic's R2 exists to stop: a description inside an `example`
+  > payload is not collected while the schema's own description on the same document is (the
+  > non-vacuity pair, in one call); a property literally named `example` is still descended into;
+  > and the committed schema still yields an identical list under both walks, so the reader learns
+  > the moment that stops being true. **Firing proof: deleting the `_DATA_KEYS` skip reddens
+  > `test_a_description_inside_an_example_payload_is_not_collected` through the full 2,526-test
+  > run** (not a single-file run — verified through `scripts/probe_harness.py`). **CLOSED.**
+
 ## Deferred from: code review of c3-2-card-detail-endpoint, round 2 (2026-07-31)
 
 - **A body-less GET publishes `413 payload_too_large` in its client contract.** The app-wide
@@ -2293,6 +2396,32 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   with the consequence spelled out for a client author (*a 413 on a body-less GET is unreachable;
   ignore it*). **Home: c5-5**, which adds the ingest cap, makes the 413 real, and cannot avoid
   deciding which operations answer it. (Severity: Low.)
+  **c5-2's disposition, recorded so c5-5 does not re-litigate it (2026-08-08).** This entry warned
+  the wart is *"doubled by every new GET route"*, and c5-2 added one. It did **not** double it:
+  `/api/session` declares `invalid_request` and `internal_error` only, mirroring the per-include
+  narrowing c3-4 already applied to `/api/active-deck` rather than inheriting the shared set. So
+  the count of body-less GETs publishing an unreachable 413 is **unchanged at six**, not seven, and
+  the two most recent route-adding stories have both declined to add to it. That is now a
+  two-instance pattern rather than one story's choice, and it narrows c5-5's job: the six are all
+  *pre-existing* declarations on the `shared`/`database_responses` includes, so curating them is a
+  single edit at two call sites — not a survey. **Home: still c5-5.**
+  **CLOSED, c5-5 (Q4, Brad 2026-08-08), and c5-2's narrowing was exactly right.** The fix was a
+  single edit at two call sites, as predicted: `payload_too_large` removed from `health_responses`
+  and `database_responses` in `build_app()`, and declared per-route on the two operations that can
+  answer it — `POST /agent/events` (its own include) and `PUT /api/active-deck` (beside its
+  existing `forbidden`). `error_responses` itself needed no change, which is what Q4 touching the
+  *caller* rather than the helper was preserving.
+  **Zero body-less GETs now publish an unreachable 413**, down from six. Pinned two ways, because
+  an absence is easy to reintroduce: `test_routes_agent_events.py::
+  TestTheCapIsDeclaredOnlyWhereItCanAnswer::test_exactly_the_two_body_bearing_operations_declare_it`
+  walks the whole document and asserts the declaring set is exactly those two operations, and
+  `test_errors.py`'s structural pin now asserts the `ErrorResponse` ref on the 413 where it is
+  reachable instead of on `/health`. An R2 probe restoring the token to the shared health set
+  reddened three tests plus the byte-snapshot guard.
+  **What made it safe now and not at c3-9**: until c5-5 the token had no producer anywhere, so
+  *every* declaration was unreachable and "which operations can answer it" had the empty set as its
+  honest answer. Because the cap is middleware rather than a per-route dependency, the declaring
+  set and the enforcing set are now the same two operations by construction. (Severity: closed.)
 
 - **The image-discriminator prose is maintained by hand in two Python docstrings with no drift
   gate between them.** The same three paragraphs (split-card trap, per-face `image_uris`
@@ -2555,6 +2684,24 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   has **no producer** — and AD-7's 64 KB envelope limit. (Severity: Low — a loopback port behind
   `Host` validation, reachable only by local software that could do worse directly. But "the first
   endpoint with a body shipped with no thought about body size" is a sentence worth never writing.)
+  **CLOSED, c5-5 (Q2, Brad 2026-08-08).** Built as `src/companion/app/body_cap.py`'s
+  `BodyCapMiddleware` — pure ASGI, installed by `install_body_cap(app)` before `install_security`
+  so it ends up innermost of the three middlewares. It enforces `Content-Length` first (a courtesy
+  that refuses an honest client without a transfer) and a **counted-bytes** bound second (the one
+  that actually holds, since a caller controls its own headers), sends `error_response(
+  "payload_too_large")` rather than raising — the c1-5 ruling, and an R2 probe confirmed a raise
+  here surfaces as a false `500` on six tests — and never calls the inner application for an
+  over-cap request, so no route can ever receive a partial body.
+  **Every requirement this entry set was met:** one mechanism, both endpoints (`POST /agent/events`
+  *and* `PUT /api/active-deck`, neither containing a line about size); middleware-shaped as Q4
+  predicted; and designed against the 64 KB envelope rather than against one story's ~40-byte body.
+  `payload_too_large` has a producer for the first time since c1-4.
+  **One measurement the entry could not have anticipated, recorded because it changes how the two
+  caps relate.** They are **not nested**: a `groups` envelope with every string at its field limit
+  and every list at its length serialises to **104,067 bytes**, 1.6x the ceiling, while violating no
+  field cap at all. So the byte cap can refuse a payload pydantic would accept, and the two
+  rejection classes overlap rather than partitioning the input. The byte cap wins when both apply,
+  because it runs first.
 
 - **There is no way to clear the active deck over the wire.** `ActiveDeckRequest.deck_id` is
   required and does not accept `null`, so the only transitions are *set* and *process restart*
@@ -2566,13 +2713,21 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   it should take if wanted**: a `DELETE /api/active-deck`, not a nullable request field — the
   request model staying non-null is what keeps `PUT` unambiguous. (Severity: Low.)
 
-- **Nothing broadcasts the change.** `PUT /api/active-deck` stores and returns; no hook, callback
-  registry or placeholder was built for the notification, deliberately (an unused hook is a design
-  decision made by a story that cannot see the requirements). **Home: c5-4**, which adds one call
-  after the store, to a handler that will exist — the insertion point is marked by a comment in
-  `set_active_deck`. The value it broadcasts is the same `ActiveDeck` shape the two operations
-  already answer with, which is why Q3 chose `200`-with-body over `204`. (Severity: none — this is
-  a named seam, not a gap.)
+- ~~**Nothing broadcasts the change.**~~ **✅ CLOSED by c5-4 (2026-08-08).** `PUT /api/active-deck`
+  now awaits `ws.broadcast_active_deck_changed(request.app, slot.deck_id)` after the store and
+  before the return — one line, exactly where the comment reserved it, and the comment is gone. The
+  seam cost no scaffolding to remove, which is the entry's own prediction confirmed.
+  **One correction to this entry, which predated c5-1**: it says the value broadcast is "the same
+  `ActiveDeck` shape". The wire object is an `ActiveDeckChangedEvent` — the `{kind, id, ts,
+  payload}` envelope AD-6 specifies — whose `payload` is an `ActiveDeckChangedPayload`, a
+  *different class* sharing the same field and nullability (`{deck_id: string | null}`) but **not**
+  the same bound — `ActiveDeck.deck_id` is a bare `str | None` with no length cap and no
+  blank-refusal, while `ActiveDeckChangedPayload.deck_id` caps at `_MAX_DECK_ID_LENGTH` and refuses
+  a blank string (review finding, 2026-08-08 — an earlier version of this correction claimed "same
+  bound", which was itself wrong). So the entry's reasoning holds and its noun does not; c5-1
+  minted the separate payload class deliberately, so a later deck-agnostic signal can diverge in
+  validation without touching this endpoint's contract — which is exactly what happened. Nothing
+  rippled, and the schema pins did not move (8 paths / 13 components, `gen:api` byte-identical).
 
 - **`errors.supported_methods` walks framework internals to repair the `Allow` header.** c3-4
   found that Starlette 0.48.0 builds a 405's `Allow` from the **first** partially-matching route
@@ -2619,6 +2774,21 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   must consciously decide whether that pin is a contract or a snapshot — a middleware-level cap
   changes the observable order and would red the pin. **Home: c5-5.** (Severity: Low on loopback;
   it is also a free validation oracle for unauthenticated callers until the cap lands.)
+  **DISPOSITIONED — ENTRY CLOSED, c5-5 (Q3, Brad 2026-08-08). Ruled: SNAPSHOT.** Nothing designed
+  that order; FastAPI did, and the pin recorded a measurement of 0.140.0. So the story was free to
+  change it, and the fail-cheap order (refuse on size before buffering or authenticating) is the
+  right one.
+  **What the ruling predicted did not happen, and the difference is the useful part.** The entry —
+  and the story's own Q3 — expected the middleware to redden this pin. **It did not** (measured
+  2026-08-08, full suite). The cap only reorders *oversized* bodies, and both bodies the pin drives
+  are a few dozen bytes, so both original assertions held untouched. The disposition therefore cost
+  an **addition** rather than a revision: a third assertion pinning that an oversized body answers
+  `413` with no credential at all, so the whole total ordering (size, then body, then credential) is
+  legible in one test rather than split across two files. No assertion was deleted and nothing went
+  through review as a revision, because there was nothing to revise.
+  **The free validation oracle this entry mentions is now narrower but not gone**: an
+  unauthenticated caller still learns 400-vs-403 for well-sized bodies. That is unchanged by c5-5
+  and remains unowned.
 - **A future hand-raised 405's deliberate headers are overridden or case-split by the `Allow`
   recompute.** `errors.py`'s 405 branch replaces any author-supplied `Allow` with the
   partial-match union — which, for a request that *fully* matched the raising route, excludes that
@@ -3523,13 +3693,19 @@ either has an owner story or is declared inside the file it constrains.
    `deck_changed` is an Epic 5 WebSocket message, and this story boots once and never switches
    decks. A blanket reset on a deck switch is probably the wrong fix anyway: the cache is keyed by
    printing uuid and shared with Epic 6's agent views (AD-12's second sentence), so resetting on a
-   deck change throws away hydration for every card the two decks share. **c5-4 (the event
-   handlers) owns the transition; c5-6 (reconnect/refetch) owns the recovery half.**
+   deck change throws away hydration for every card the two decks share. ~~**c5-4 (the event
+   handlers) owns the transition; c5-6 (reconnect/refetch) owns the recovery half.**~~
+   **RE-HOMED ENTIRELY TO c5-6** (c5-4, Q6, Brad 2026-08-08). The phrase "c5-4 (the event
+   handlers)" was a guess about which story would build the *client* side, and it was wrong: c5-4
+   is backend-only — a registry, a fan-out and one route call — and `ui/src` is byte-unchanged by
+   it. **c5-6 builds the browser's connect/reconnect loop and therefore every event handler**, so
+   both halves of this entry live there.
 6. **The orphaned-hydration return residue** (`:3287`, Greptile PR #40 P2, ruled *declare*).
-   **RE-HOMED WITH ENTRY 5, to c5-4 / c5-6**, because it was explicitly conditional on this story
-   wiring a production reset — *"the moment c4-2 wires a production reset, decide…"* — and c4-2
-   wires none. `resetCardCache()` remains test-only. The docstring's "the store is the authority"
-   ruling stands untouched.
+   ~~**RE-HOMED WITH ENTRY 5, to c5-4 / c5-6**~~ **RE-HOMED WITH ENTRY 5, TO c5-6** (c5-4, Q6,
+   Brad 2026-08-08 — same reason: there is no c5-4 client code to hang it on), because it was
+   explicitly conditional on c4-2 wiring a production reset — *"the moment c4-2 wires a production
+   reset, decide…"* — and c4-2 wires none. `resetCardCache()` remains test-only. The docstring's
+   "the store is the authority" ruling stands untouched.
 7. **The primitives' APPEARANCE is not dev-verified** (`:1331`, **Medium**) **and the tone-over-
    wash CONTRAST is unmeasured** (`:1357`). **✅ RESOLVED FOR `Badge`; the rest re-homed.** See
    the measurements in §"What c4-2 measured" below. `Panel` (**c4-5** / **c4-7**), `StatChip`
@@ -3613,12 +3789,20 @@ either has an owner story or is declared inside the file it constrains.
 - **There is no re-drive after the boot.** A deck the agent sets while the tab is open does not
   appear until Epic 5's `deck_changed`. Specified, not a bug — `poller.ts` still stops after one
   `200` and `App.test.tsx` still asserts that — but it is the difference a user would notice
-  between this story and a finished product. **Home: c5-4.** (Severity: Low.)
+  between this story and a finished product. ~~**Home: c5-4.**~~ **BACKEND HALF ✅ CLOSED by c5-4
+  (2026-08-08); BROWSER HALF RE-HOMED TO c5-6** (c5-4, Q6, Brad 2026-08-08). The signal now exists
+  on the wire — every open socket receives an `active_deck_changed` envelope the instant the agent
+  sets a deck, proven with two concurrently open sockets and one `PUT`. What is still missing is a
+  browser that is *listening*: `ui/src` opens no WebSocket at all (verified at c5-3 and again
+  here), so **c5-6** — the connect/reconnect loop — owns the half a user can see. (Severity: Low.)
 - **A `404` clears the client while the backend still reports that deck id as active.** So the
   next cold open asks for the deleted deck again and clears again: one wasted request per boot,
   self-correcting the moment the agent sets another deck. The alternative — the client telling the
-  backend to forget an id — is a `PUT` this story has no mandate to make. **Home: c5-4**, with the
-  `deck_changed` design. (Severity: Low.)
+  backend to forget an id — is a `PUT` this story has no mandate to make. ~~**Home: c5-4**, with
+  the `deck_changed` design.~~ **RE-HOMED TO c5-6** (c5-4, Q6, Brad 2026-08-08). This is a
+  *client-loop* concern — it is about what the browser does with a `404` while a socket is open —
+  and c5-4 shipped backend-only: there are no client event handlers in this diff to hang it on.
+  c5-6 builds them. (Severity: Low.)
 - **`src/logic/mana_curve.py` and `src/logic/assessment/mana_base.py` still use the WHOLE-STRING
   land policy**, which disagrees with FR-05/UX-DR17 and with this story's front-face grouping on
   **84 corpus cards, 4 of them in real decks** (Agadeem's Awakening, Kazandu Mammoth, Dowsing
@@ -4414,6 +4598,9 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   footer"* — while `DESIGN.md:445` places it physically **bottom-left**, in the other column from
   the deck rows. c4-11 **declined to decide it without the component** and marked it unbuilt in the
   enumeration instead. **Home: c5-7**, by name. (Severity: Low.)
+  **→ CLOSED BY DECISION at c5-7 (2026-08-08)** — a sibling between `</main>` and `<footer>`,
+  rendered `position: fixed` bottom-left. The two readings were about different axes. See
+  *Dispositions from: dev of c5-7-connection-pill* at the foot of this file.
 
 - **F1's remaining story key is `c6-8`, not `c4-11` — and the C3 retro's count of six was itself an
   undercount.** c4-9 and c4-10 both recorded *"`c4-11` remains, in the skip-link work"*. Verified at
@@ -4880,3 +5067,712 @@ engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries cha
   "guarded on the Python side only" residue behaving exactly as recorded). Gates after: `ruff check .`,
   `ruff format --check .` (308 files), `mypy src/` and `mypy src/ --platform win32` (89 files) green;
   `uv run pytest` **2,501 passed / 1 skipped — unchanged**.
+
+
+## Deferred from: c5-1-the-event-envelope-and-every-per-kind-payload-contract (2026-08-07)
+
+- **AD-1's construction-limit family no longer scans `src/companion/contracts.py`, and that is a
+  narrowed guard rather than a closed one.** AD-7 caps an agent push at **60** items, and
+  `contracts.py` declares it as `_MAX_ITEMS = 60`. `test_routes_format_check.py`'s AD-1 scan flags
+  any `60` or `15` anywhere under `src/companion/` — so the cap reddened the suite on first run.
+  **This was found by the guard, not predicted by the story**: the story's DON'T-BREAK list has
+  seven entries and this is not among them, and it is the **second measured collision** of this
+  family after c3-6's `FETCH_CONCURRENCY = 4`. The file's own docstring had just claimed *"nothing
+  in this shell has an innocent reason to write `60` or `15`"*; that sentence is now corrected in
+  place rather than left standing.
+
+  **What was done, and why not the c3-6 move.** c3-6 answered its collision by dropping `4` from
+  `_LIMIT_LITERALS` entirely. Doing that to `60` would have cost the family its most distinctive
+  literal **everywhere**, including in the route shell where a deck-size rule genuinely could be
+  reimplemented. Instead a new `_LIMIT_FAMILY_EXEMPT` names **one file**, and exempts it from **one
+  family**: a legality read, a validator import, a `.quantity` count or a rebuilt format-name set in
+  `contracts.py` still flags exactly as before. The justification is structural rather than
+  stylistic — `contracts.py` is the AD-3 leaf, import-constrained to stdlib and `pydantic`, so it
+  cannot reach the card database, the deck repository or `src.logic`; a deck-construction rule needs
+  a deck to be about, and there is none in scope. Spelling the cap as something other than `60` to
+  slip past the scan was not available: that module's own docstring rules obfuscation a violation on
+  sight.
+
+  **What it costs, stated rather than glossed.** A future author could implement a deck-size rule
+  inside `contracts.py` — a validator counting `card_ids` against 60 and calling it legality — and
+  this family would not see it. Two things stand where it used to, and neither is this family: the
+  AD-3 import boundary denies that author the card data such a rule would have to be about, and
+  `test_contracts.py` pins every cap by literal value **and** by which field it bounds. Three new
+  tests hold the exemption narrow (`test_the_limit_exemption_is_scoped_to_one_file`,
+  `test_the_exempt_file_still_flags_every_other_family`,
+  `test_the_exemption_names_only_paths_that_exist`), each with a firing proof through the full run.
+  **Home for a revisit: the C5 retrospective**, which is where "is a per-file exemption the right
+  shape, or should the family key on *use* rather than on *presence* of a literal?" should be
+  decided — with two collisions on the record instead of one. (Severity: Low, and narrower than the
+  alternative that was declined.)
+  **RULED at the C5 retro (2026-08-09), ENTRY CLOSED:** the family stays PRESENCE-KEYED with narrow
+  per-file exemptions — c5-1's `_LIMIT_FAMILY_EXEMPT` shape (one file, one family, held by three
+  tests with firing proofs) is the standing remedy. A use-keyed redesign was declined as costing
+  more than the two collisions did: both collisions were caught at zero escape cost, and the
+  exemption's blind spot (a future deck-size rule written inside `contracts.py`) is stated where it
+  lives. A THIRD collision reopens the question. Recorded as epic-c5 action item R10.
+
+- **The probe harness exists for pytest and does not exist for `ui/`.** C4 retro action item 4 was
+  homed on c5-1 by name and is **discharged only on the Python side** (Q11, Brad 2026-08-07):
+  `scripts/probe_harness.py` owns its own pytest argv — it accepts no test paths, no `-k` and no
+  `-m` — so the recorded lie of "a single-file run presented as a full run" is not something a
+  caller can do wrong. It reports the collected count with every verdict and refuses to score a run
+  that did not complete. **It earned that last check during this very story**: a planted violation
+  that happened to be a `SyntaxError` produced "0 failed", and only the collected count (1,450
+  against 2,526) and pytest's exit 2 revealed the suite had never run. That check is now in the
+  harness.
+
+  **What is still owed: the vitest half.** Three of the five recorded probe-harness lies
+  (a lowercase-drive working directory, `shell=True` on Windows, an unparseable TSX file) are
+  specific to the frontend toolchain and cannot occur in a Python-only story, which is why this was
+  scoped rather than built whole. **Home: the first C5 story that touches `ui/` and plants a
+  frontend guard** — realistically **c5-6** or the first Epic 6 view story. (Severity: Low.)
+  **RE-HOMED at the C5 retro (2026-08-09) to epic-c5 action item R5 (C6 prep, before Epic 6's
+  first frontend story):** c5-6 scope-declined it (Q9) and c5-7 ran FIFTEEN frontend plants by
+  hand — the epic's own measurement of what the missing half costs. The C4 sprint-status item is
+  closed as re-keyed; this entry stays the description of record until R5 pays it.
+
+- **Two artefact amendments are owed and are recorded here so they are not rediscovered
+  (AC 26).** Neither is c5-1's to make — both live in planning artifacts this story does not own —
+  and both are now decided rather than open.
+
+  1. **AD-6's kind enum is SIX, not five.** `ARCHITECTURE-SPINE.md` and the epic's Contracts section
+     both still enumerate five, naming only `deck_changed`. Story 5.1's own acceptance criteria add
+     `active_deck_changed` with its justification, and being both later and more specific it wins;
+     `contracts.py` ships six and `test_contracts.py` pins the set against a hand-written literal.
+     The spine amendment is **already tracked as owed at Epic 8** — this entry only records that the
+     code went first and that the disagreement is a known supersession, not drift.
+  2. **413 `payload_too_large`, not 422.** AD-7, `epics:237` and Story 6.4 all still say **422**;
+     AD-16, Story 5.5 and Story 6.1 say **413**, *"per the c1-4 review ruling, was 422"*. **413 is
+     authoritative**, and `contracts.py`'s `_MAX_ENVELOPE_BYTES` docstring now says so at the point
+     of use. This is not merely a documentation tidy: `test_committed_schema.py` asserts FastAPI's
+     auto-422 components are **stripped**, so a 422 answer would contradict a shipped pin.
+     **Enforcement is c5-5's**; recording the supersession was c5-1's, and no `ErrorReason` token
+     was added — the set stays at **ten**, because `payload_too_large` was added early and
+     deliberately *"before Epic 5 freezes the union"*. **Home for the artefact edits: Epic 8**,
+     alongside the spine amendment above. (Severity: Low — both are documentation drift against
+     shipped, tested code.)
+
+## Deferred from: c5-2-same-origin-session-endpoint-minting-single-use-websocket-tickets (2026-08-08)
+
+- **`Origin` on REST: RULED, and c1-5's open question is CLOSED.** c1-5 recorded the question and
+  homed it on c5-2 and c5-3 by name (`c1-5:357-358`, `:625-631`). **Ruling (Q1, Brad 2026-08-08):
+  `GET /api/session` does NOT validate `Origin`.** The reasoning, so c5-3 inherits a decision rather
+  than re-deriving one: there is no `CORSMiddleware` and c1-5 ruled there never will be
+  (`TestCorsIsDeliberatelyAbsent`), so a page on another origin can *issue* the mint but cannot
+  *read* the response — it cannot steal a ticket, only burn tickets, which `MAX_TICKETS`' hard cap
+  and earliest-expiry eviction bound to one recoverable re-mint for the legitimate client. AD-5 and
+  review finding S-6 both home `Origin` on the **upgrade**; putting it here too would be one
+  decision maintained in two places, and would break any future Vite dev proxy that rewrites `Host`
+  but not `Origin` (`:3539` records that path as still unexercised). Asserted structurally by
+  `test_routes_session.py::test_the_route_module_contains_no_host_or_origin_check_of_its_own`.
+  **Home: c5-3** for the upgrade half, which is now the only half left open. (Severity: none —
+  this is a closed ruling, kept for the audit trail.)
+  **CLOSED at c5-3 (2026-08-08) — both halves are now ruled and shipped.** The upgrade half landed
+  as `security.origin_is_allowed`, a pure predicate beside `host_is_allowed` and derived from the
+  same `allowed_authorities` set so the two can never drift; the handshake evaluates it **before**
+  the consume, so a refused foreign page cannot burn the ticket it carried (`test_ws.py::
+  TestOriginIsCheckedBeforeTheTicket`). A missing `Origin` rejects (Q4, fail-closed). The Vite
+  dev-proxy consequence this entry predicted is real and is ledgered separately below, homed on
+  c5-6.
+
+- **`errors.supported_methods` under a non-root `Mount`: c5-2 is NOT the story that triggers it,
+  confirmed rather than assumed.** The entry above homes that hole on *"the story that adds a
+  non-root mount"*. c5-2 adds an `APIRouter` with a `prefix="/api"`, which is not a `Mount` — FastAPI
+  flattens it into the route table the walk already reads, and `install_spa`'s mount at `/` is
+  unchanged and still the only mount in the app. Measured: `test_routes_active_deck.py::
+  TestTheMethodSemantics` passed unedited. **Home: unchanged.** (Severity: none — a confirmation.)
+
+- **Two `Example:` blocks in `security.py` are still executed by nothing, and that is now a stated
+  decision rather than an omission.** c5-1 established the house answer for this (fold
+  `doctest.testmod(module)` into an ordinary test, because `testpaths` is scoped to `tests/` and
+  `--doctest-modules` never reaches `src/`), and c5-2 applied it to `src/companion/app/state.py` —
+  whose `ActiveDeckSlot` example had also never run. `security.py:97,116` still have not. **Not
+  taken here deliberately:** a story that starts executing another module's untested examples owns
+  whatever they turn out to say, and c5-2 has no other reason to touch that module's behaviour.
+  **Fix shape:** two lines, in the same shape as `test_routes_session.py::TestTheDocstringExamplesRun`
+  — and the honest generalisation is a single test that walks every `src/companion` module rather
+  than a per-module opt-in that the next author also has to remember. **Home: unowned**, most
+  naturally c5-3, which edits `security.py` for the upgrade gate. (Severity: Low — an example that
+  is wrong is a docstring that lies, and nothing would say so.)
+  **CLOSED at c5-3 (2026-08-08), and closed in the generalised shape this entry asked for** rather
+  than the two-line one. `test_ws.py::TestTheDocstringExamplesRun::
+  test_every_example_in_every_companion_module_passes` **discovers** every module under
+  `src/companion` from the tree and runs `doctest.testmod` over all of them, so a module added
+  tomorrow is covered with no edit and the "next author also has to remember" failure mode is gone.
+  `security.py`'s two blocks now execute (and pass), pinned by name in a sibling test so the
+  specific gap cannot silently lapse. The c5-1 and c5-2 per-module tests are **not deleted** — a
+  passing guard is not removed for being redundant (C4 retro).
+
+- **`test_committed_schema.py` cannot see a source change until `gen:api` has run, and this cost
+  two probe attempts before it was understood.** Measured at c5-2's R2 pass: planting an extra
+  `payload_too_large` on the session include, and separately renaming the route's path, left every
+  pin in that file **green** while reddening `test_openapi_contract.py::
+  test_committed_schema_matches_the_live_app`. The reason is the file's whole design — it asserts
+  against the committed `ui/src/api/openapi.json`, not against `build_app().openapi()` — so it pins
+  *what was shipped*, and `test_openapi_contract.py` is the separate guard that pins *shipped equals
+  live*. Both are correct and the pair is complete; what was missing is that nothing said so, so a
+  future R2 pass will plant in source, see green, and reasonably conclude the guard is broken.
+  **Fix shape:** one sentence in `test_committed_schema.py`'s module docstring naming its sibling
+  and the ordering between them. **Home: unowned, informational** — cheap, and the next story to
+  add a component is the natural one. (Severity: Low — it costs a confused half-hour, not
+  correctness.)
+  **OBEYED AND CONFIRMED at c5-5 (2026-08-08) — the first story since this was ledgered with a real
+  schema diff, and the warning was worth its words.** c5-5 moved the document by one path and
+  seventeen components. Running `npm run gen:api` between the source change and the pin update was
+  what made the two `test_committed_schema.py` reds meaningful rather than noise; the four
+  route-level schema assertions in `test_routes_agent_events.py` were red for exactly this reason
+  until the regeneration ran, and would have read as an authoring bug to anyone who had not read
+  this entry.
+  **Confirmed a second time by the R2 pass, in the direction the entry describes.** The probe that
+  restored `payload_too_large` to the shared health include reddened
+  `test_openapi_contract.py::test_committed_schema_matches_the_live_app` — the *shipped-equals-live*
+  guard — alongside the live-app assertions, while the pins reading the committed file behaved
+  exactly as this entry says they would. The pair is complete and the ordering is real.
+  **The fix shape is still not taken** and is still worth a sentence: c5-5 read this entry instead
+  of rediscovering it, which is the entry doing its job, but that only works for an author who
+  finds the ledger. (Severity: Low, unchanged. **Home: still unowned.**)
+
+## Deferred from: code review of c5-2-same-origin-session-endpoint-minting-single-use-websocket-tickets (2026-08-08)
+
+- **`consume()` has zero production callers, so "single-use" is unproven on any production path.**
+  Every consume/expiry/eviction property is unit-only; nothing in the running app calls
+  `TicketStore.consume` until c5-3 wires it into the WebSocket upgrade handler. The no-lock
+  argument (one synchronous `dict.pop`, no `await` between read and delete) must be re-made
+  against the real handshake code — c5-3 can quietly break the atomicity assumption (e.g. an
+  `await` slipped between validation steps) with no failing test here. **Home: c5-3** — the story
+  that calls consume must show the call sits in synchronous code and add a guard or test for it.
+  **CLOSED at c5-3 (2026-08-08), and the showing is structural rather than a promise.** The one
+  production caller is `ws._handshake_is_authorised`, a **plain `def`** that holds the *entire*
+  handshake decision — read `Origin`, evaluate it, reach the store, pop. A plain `def` cannot
+  contain an `await`, so the property is enforced by the language: reintroducing a suspension point
+  requires changing that `def` to `async def`, which is one of the three breakers `state.py`
+  already names. Four guards pin it (`test_ws.py::TestTheConsumeStaysSynchronous`): `consume` is
+  not a coroutine function, the gate is an `ast.FunctionDef` and not an `AsyncFunctionDef`, it
+  contains no `Await` node, and — the non-vacuity that makes the other three mean anything — both
+  decisions really are inside it. A fifth pins the first breaker: the pop is still one statement.
+- **The Q3/AD-5 ruling is narrated in five or more shipped prose locations with no consistency
+  guard.** `state.py`'s module docstring, `security.py:16-30` plus `install_security`'s docstring,
+  `main.py`'s "CORRECTED AT c5-2" block, and `test_routes_active_deck.py`'s narrowing docstring
+  all restate the same ruling. The c5-2 diff is itself the proof of the failure mode: three
+  shipped forward-looking paragraphs guessed wrong about this story and had to be corrected, and
+  the corrections added more forward-looking prose about c5-3/c5-5/c5-6 in the same breath. Each
+  future story inherits an N-way prose-sync obligation nothing tests. **Home: C5 retro** — decide
+  a single canonical home for cross-module rulings and let the other sites point at it.
+  **RULED at the C5 retro (2026-08-09), RE-HOMED to epic-c5 action item R2 (C6 prep, standalone
+  sweep):** the canonical home for a cross-module ruling is THIS LEDGER (the entry that records the
+  ruling); every shipped prose site becomes a one-line pointer at it. Standing rule adopted with the
+  sweep: no new forward-looking cross-module prose in docstrings — c5-4's "do not widen it" order
+  generalised.
+- **`scripts/dump_openapi.py`'s docstring is becoming a dated changelog.** c5-2 added two more
+  paragraphs of measurement narrative plus an italicised correction of the script's own prior
+  (false since c3-8) truncation claim. None of it affects behaviour, nothing tests it, and it has
+  already contradicted itself once. The falsification-correction *content* is valuable; a dump
+  script's docstring is the wrong ledger. **Home: C5 retro** — pick the right ledger and move the
+  narrative there.
+  **RULED at the C5 retro (2026-08-09), RE-HOMED to epic-c5 action item R2 (same sweep):** the
+  right ledger is this file plus the story records, both of which already carry the narrative —
+  so the sweep DELETES the docstring's changelog paragraphs rather than moving them, leaving a
+  current-behaviour statement and one pointer.
+
+## Deferred from: c5-3-authenticated-websocket-upgrade-with-host-and-origin-validation (2026-08-08)
+
+- **The Vite dev proxy rewrites `Host` but not `Origin`, so a proxied handshake will be refused —
+  and the refusal is now reachable, because c5-3 shipped the `Origin` check.** Under `vite dev` the
+  page is served from Vite's port, so the browser's `Origin` names Vite; `changeOrigin: true`
+  rewrites the forwarded `Host` to the backend's authority (which passes) and leaves `Origin`
+  untouched (which does not). **Nothing is broken today**, measured rather than assumed: `/ws` is
+  deliberately absent from `PROXIED_PATTERNS` (`ui/config/devProxy.ts`), so no handshake is proxied
+  at all and the dev loop is unaffected. It becomes real the moment a `/ws` entry is added.
+  **Fix shape:** three candidates, and picking between them is the deferred work, not the fix —
+  (a) have the proxy rewrite `Origin` too, which is the smallest change and the one that keeps the
+  backend's check strict; (b) teach the dev build to connect directly to the backend port and skip
+  the proxy for the socket; (c) widen `allowed_origins` under an explicit dev flag, which is the
+  worst of the three because it puts a bypass in shipped security code. **Home: c5-6**, which adds
+  both the WebSocket client and the proxy entry, and is therefore the first story that can observe
+  it. Recorded in `ui/README.md`'s proxy section too, next to the `changeOrigin` explanation, so it
+  is found by someone reading the proxy rather than only by someone reading this file.
+  (Severity: Medium — it would present as "the socket never connects in dev" with a 403 and no
+  message, which is a slow thing to diagnose from the browser side.)
+
+- **`test_spa.py` owed an edit that the c5-3 story context predicted it would not, and the
+  prediction was wrong for an interesting reason.** The story reasoned that a WebSocket-only router
+  owes `test_spa.py` nothing because a WS route has no OpenAPI operation. That is true of
+  `test_the_schema_is_unchanged_by_installing_the_mount` (the hand-mirrored router list, which
+  compares `openapi()["paths"]` and was genuinely untouched) and **false** of
+  `test_the_reserved_prefixes_are_derived_from_the_route_table`, which reads the **route table**
+  rather than the schema: `spa._route_paths` descends into `WebSocketRoute` exactly as into `Route`,
+  so registering `/ws` reserved the segment `ws` and that test went red naming it. The red was the
+  mechanism working as its own failure message describes. The consequence is a *better* behaviour
+  than the one Q1 predicted — a plain `GET /ws` now answers the typed 404 instead of serving
+  `index.html` — and it is pinned deliberately. **Fix shape:** none needed; recorded because the
+  general rule "a WS router owes the schema tests nothing" is true and the adjacent rule "…therefore
+  owes `test_spa.py` nothing" is not, and c5-4/c5-5 will be reasoning from the same file.
+  **Home: none** — informational. (Severity: none.)
+
+## Dispositions from: dev of c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt (2026-08-08)
+
+**The story that was named as the home of a family, and closed it.** C3 retro ruling R3 said
+*"c5-6 resolves the family; it should not solve one third of it and leave the rest"*, and the Dev
+Notes carried ten trigger-gated anchors in full. Every one is dispositioned below — six CLOSED, two
+CLOSED-BY-RULING with the reason written down, one STANDS UNCHANGED, one re-scoped.
+
+All nine of the story's open questions were ruled by Brad **before any code**, as recommended, in
+one pass — the c5-5 protocol repeated. The rulings live in the story record; only their
+consequences for the ledger are here.
+
+### CLOSED
+
+- **dw:3451-3461 + dw:4930-4940 — first load with no backend holds "No deck on the glass." forever.**
+  **CLOSED.** The panel's copy is *actionable and wrong* about a backend that is not running, which
+  is why the severity was raised after Block I confirmed it live. `src/state/socket.ts` supplies the
+  signal the client did not have: sixty seconds and four failed attempts after a cold open against
+  nothing, the connection status reads `'down'` and `surfaceOf`'s new fourth arm puts the true
+  `disconnected` panel on the glass. **The first sixty seconds are deliberately unchanged** — a
+  backend restart takes a second or two, and a whole-screen panel flashing on every
+  `uvicorn --reload` save would be a worse defect than the one being fixed.
+  Asserted end to end in `App.test.tsx::the page reconnects on its own`, which pins BOTH halves
+  (the old panel at t=0, the true one at t=60 s).
+
+- **dw:3463-3470 — after one `200` the poll stops; a later DB death shows a stale panel until reload.**
+  **CLOSED.** `restartPollIfStopped()` in `systemState.ts` re-drives the poll when a
+  `deck_changed` / `active_deck_changed` frame arrives AND the panel on the glass is one
+  `RETRIES_QUIETLY` says does not retry itself. The gate is the CONTRACT rather than a list of the
+  three panel names, so a seventh panel decided later is covered with no edit.
+
+- **dw:3472-3478 + dw:3544-3555 (C3 retro R3) — `database-updating-stalled` is terminal.**
+  **CLOSED**, and this is the sibling that was felt live at Block I (wire `200`, poll count moved by
+  exactly 0 over 45 s — dw:4968-4972). Two triggers now recover it: a reconnect success restarts the
+  poll unconditionally (`restartPoll()` — a socket coming back is the strongest evidence the app
+  gets that the process it was talking to is gone, so a stalled clock inherited from it is not
+  evidence), and a system-kind frame restarts it via the gate above. `RETRIES_QUIETLY` is
+  **untouched**: the stalled state still does not retry itself, which is correct; what changed is
+  that something else can now re-drive it.
+
+- **dw:3756-3768 — the no-re-drive-after-boot browser half (`active_deck_changed` arrives and
+  nothing listens), plus the 404-clears-then-re-asks residue.**
+  **BOTH CLOSED.** The first is AC 11: `socket.ts` dispatches the two system kinds through one total
+  switch and `connection.ts` re-drives the boot on either. The second is dispositioned rather than
+  repaired, as predicted: the event now delivers the correction, so the one wasted request per cold
+  open against a deleted deck is self-correcting the moment the agent sets another deck — which the
+  agent's own `PUT` now announces on the wire.
+
+- **dw:5221-5237 — the Vite dev proxy rewrites `Host` but not `Origin` (Medium).**
+  **CLOSED by fix (a) of the three the entry enumerated** (Q7). The `/ws` entry rewrites `Origin` to
+  the backend target, exactly as `changeOrigin` does for `Host`. The backend check stays strict,
+  `security.py` ships no dev-time branch, and the whole accommodation lives in a file that never
+  reaches the bundle. (b) — dialling the backend port directly from the dev client — was declined
+  because it makes dev and prod diverge inside `client.ts`, where `agentSocketUrl` derives the whole
+  authority from `window.location` precisely so that it cannot; (c) — an `allowed_origins` widening
+  flag — was the entry's own *"worst of the three"*. Proven by a **real upgrade through a real Vite
+  server** in `devProxyRoundTrip.test.ts`, in both directions, not by a config assertion.
+  `ui/README.md:52-61`, which named c5-6 as owner, is rewritten.
+
+- **dw:1588 — the copy-tails fourth tail, declined at c3-9 and re-homed on c5-6 by name.**
+  **PAID.** `copy-tails.test.ts`'s last describe was deliberately weak *"until c5-6 arrives to
+  honour it"*; it now reads the shipped backoff's constants out of `src/state/socket.ts`, holds the
+  two-gate threshold to `poller.ts`'s `STALLED_AFTER_MS`, and asserts the loop READS
+  `RETRIES_QUIETLY` rather than paraphrasing it. **The pill itself stays unasserted and is asserted
+  to be unasserted** — it is c5-7's, and gating it now would be the prose-against-prose failure that
+  file exists to prevent.
+  **→ PAID IN FULL at c5-7 (2026-08-08)** — the deliberate non-assertion was CONVERTED into a real
+  mirror against the pill's shipped `down` copy and against `RETRIES_QUIETLY.disconnected`, not
+  deleted. See *Dispositions from: dev of c5-7-connection-pill* at the foot of this file.
+
+### CLOSED BY RULING, with the reason recorded
+
+- **dw:3526-3534 — the poller backoff-damping question (alternating tokens pin the backoff near
+  base).** **CLOSED: NO DAMPING** (Q4). The socket loop has exactly ONE failure kind — `ws.py:29-40`
+  refuses every upgrade with the same bodyless `1008`, deliberately indistinguishable — so its
+  backoff resets only on a successful connection and the alternating-token scenario cannot arise
+  there at all. The poller's own reset-on-flip cost was accepted at c3-9 Q2 and stays accepted,
+  because the socket now supplies the recovery signal that made the poller's tail latency matter.
+  No code change in `poller.ts`; its header and `cards.ts:432`'s note are rewritten to record the
+  ruling rather than the question.
+
+- **dw:3500-3505 — `CLIENT_ONLY_STATES` has no runtime consumer.** **CLOSED: it stays TYPE-LEVEL,
+  and the reason is written into `states.ts`** (AC 17). A runtime consumer would have to be a
+  membership test — *"is this panel client-only?"* — and nothing in the app asks that: the two
+  members are produced by two different mechanisms in two different modules, each of which names
+  its own panel directly because each knows which one it is producing. What c5-6 DID add is a third
+  type-level reader that is no longer merely a proof: the new `ClientOnlyState` alias types the
+  `DISCONNECTED_PANEL` constant in both `deck.ts` and `socket.ts`, so the two places in the app that
+  choose a panel from something other than a wire token are now compile-checked against this list.
+  Retarget either at a wire-sourced panel and `tsc` names it.
+
+### CLOSED with a narrower shape than the entry proposed
+
+- **dw:3652-3671 (entries 5 & 6, re-homed entirely to c5-6 at c5-4 Q6).**
+  - **Entry 5 — three transient failures make a card id terminal for the tab's life.** **CLOSED by
+    `resetCardAttempts()`** (Q6), called on reconnect success. Attempt counters only; hydrated
+    entries are never touched. **A blanket `resetCardCache()` was declined and the reason is the
+    entry's own**: the cache is shared with Epic 6's views, so a reset would discard hydration two
+    decks hold in common to fix a per-id budget. Only entries the BOUND made terminal are re-armed —
+    `card_not_found` and `invalid_request` stay terminal, because re-arming them would spend a
+    request per missing card on every reconnect forever. The half-repair worth naming: clearing the
+    attempt map ALONE does nothing visible, because `retryable` is recorded on the entry and
+    `hydrateCard`'s gate reads the entry; `cards.test.ts` asserts the REQUEST, not the flag.
+  - **Entry 6 — the orphaned-hydration declare.** **STANDS UNCHANGED, and that is its disposition.**
+    `resetCardAttempts` throws nothing away and bumps no generation, so it creates no orphans; the
+    declare was waiting for a ruling about whether the reset shape would make it worse, and the
+    answer is that the reset shape was not taken. Asserted (`creates no orphans — the dw:3666
+    declare stands unchanged`).
+
+### Re-scoped
+
+- **dw:5079-5083 — the probe-harness vitest half.** **SCOPED DECLINE** (Q9). This story ran its
+  twelve firing proofs the way c4 and c5-5 did — the full `npm test` by hand, collected count
+  checked, results pasted into the story record — and the committed vitest harness stays the
+  standalone process item it already is (owner "Brad (c5-1)", unstarted). Putting it inside the
+  epic's largest frontend story would have made a tool change ride a feature diff.
+  **One measurement worth carrying to whoever does build it:** a subprocess `npm test` launched with
+  a LOWERCASE drive letter (`c:\…`) resolves no vitest config on Windows and reports 67 failed
+  suites / "no tests" — i.e. every probe reads RED for a reason that has nothing to do with the
+  probe. The harness must normalise the drive letter and must validate the collected COUNT, not
+  just the exit code.
+
+### New, from this story
+
+- **The four agent-view kinds are received and deliberately dropped.** `suggestions`, `swaps`,
+  `tier_list` and `groups` reach the browser, are narrowed, and are discarded by the dispatch switch
+  with a recorded home: **Epic 6** builds the views. Not an error and not a crash — treating a valid
+  frame as malformed would make the agent's pushes look like a wire fault to whoever debugs c6-x.
+  **Home: Epic 6** (already scheduled). (Severity: none — designed.)
+
+- **A duplicate `active_deck_changed` costs one full boot each.** The backend fires on every `PUT`
+  including a redundant re-set (`ws.py:409-444`), and the client answers each with a
+  `stop()`/`start()` of the deck boot — two requests per duplicate. That is AC 12's *"one idempotent
+  refetch, nothing else"* and it is cheap, but an agent that re-set the same deck in a tight loop
+  would produce a request per set. No coalescing is shipped: a debounce is a second timing mechanism
+  to reconcile with the backoff, and there is no measured workload that needs one.
+  **Fix shape:** if it is ever needed, coalesce in `connection.ts` (one trailing re-drive per
+  animation frame), never in `deck.ts`. **Home: c10-3 or whoever measures a real agent push rate.**
+  (Severity: low.)
+
+- **The connection status is written on change only, and `App` subscribes to the system store
+  selector-less.** So a reconnect storm re-renders the whole tree twice per storm (down, then live)
+  rather than twice per attempt. That is deliberate and measured against `poller.ts`'s identical
+  rule; it is recorded because the selector-less subscription is a standing cost the pill (c5-7) and
+  Epic 6 will both inherit. **Home: c5-7 if the pill wants finer granularity.** (Severity: none.)
+  **→ CLOSED at c5-7 (2026-08-08)** — it did want it: `systemState.ts` exports a one-line
+  `useConnection()` selector hook and the pill subscribes to that field alone. `App`'s own
+  selector-less subscription is unchanged and still a standing cost for Epic 6. See
+  *Dispositions from: dev of c5-7-connection-pill* at the foot of this file.
+
+- **jsdom DOES provide `WebSocket` — the story's own Dev Notes said it does not.**
+  Measured 2026-08-08 (`typeof new JSDOM().window.WebSocket === 'function'`). Recorded as a
+  **falsified prediction** rather than silently worked around, because it changed the test design:
+  without an explicit `vi.stubGlobal('WebSocket', …)` every one of `App.test.tsx`'s ~70 mounts would
+  attempt a real TCP connection to `ws://localhost:3000`, making the retry schedule depend on how
+  fast the OS refuses a connection. The stub is now installed in `beforeEach` and documented there.
+  **Home: none** — informational, and a correction to the Dev Notes rather than to code.
+
+- **`devProxyRoundTrip.test.ts` needed explicit upgraded-socket teardown.** An upgraded socket is
+  detached from the server's request lifecycle and stays open by definition, so `server.close()`
+  waits for it forever: the first run of the new block reported three tests "failed" with **no
+  failed expectation between them** — the `afterEach` hook hit its 10 s timeout. Both ends are now
+  destroyed by hand. Recorded because the failure mode is indistinguishable from a real one at a
+  glance, and c5-8 adds more real-socket tests to this exact file. **Home: c5-8 inherits the
+  pattern.** (Severity: none — fixed here.)
+  **→ PAID at c5-8 (2026-08-09).** The pattern was inherited into Python rather than into this
+  file: `test_live_backend.py` closes the websocket client by hand before the server is
+  stopped, terminates **and waits** every child, and detaches its handles before teardown so a
+  raising `wait()` cannot skip the log close. ⚠️ **The premise was wrong**: c5-8 adds no tests
+  to `devProxyRoundTrip.test.ts` at all — its one real socket is Python-side. Recorded as a
+  falsified prediction rather than quietly fulfilled.
+
+- **Node's global `WebSocket` sends no `Origin` header.** It is not a browsing context. The first
+  draft of the round-trip's negative half used it and recorded the forwarded Origin as `<absent>` —
+  a negative half that cannot reproduce the header under test is not a negative half. The block now
+  drives raw `http.request` upgrades with an explicit `Origin`, which is also what `security.py`'s
+  docstring says c5-8's real client will have to do. **Home: c5-8** — it will need the same. (Severity: none.)
+  **→ PAID at c5-8 (2026-08-09).** `test_live_backend.py` passes `origin=` to
+  `websockets.connect` explicitly, for exactly the reason recorded here — the library sends no
+  `Origin` of its own because it is not a browsing context. **Measured, not assumed**: a
+  falsification probe removed the argument and the real handshake came back refused 403, which
+  is `security.py`'s fail-closed rule observed over a real socket for the first time.
+
+- **The pre-existing `test_list_decks_with_strategy_field` flake fired once**, during this story's
+  post-prose Python run (`assert 'Control' is None`), and passed on an immediate clean re-run at the
+  expected 2,770 / 1 skipped. Not chased, per the Dev Notes' instruction; recorded as a second
+  sighting after c5-5's. **Home: C5 retro.** (Severity: low — two sightings now, not one.)
+  **RULED at the C5 retro (2026-08-09), RE-HOMED to epic-c5 action item R4 (C6 prep):** one
+  BOUNDED reproduction attempt (repeat-run the file, both alone and inside the full suite); if it
+  does not reproduce, annotate the test with the two sighting dates and monitor — a third sighting
+  escalates to a real investigation. Coupled with the `-m integration` marker split below, which
+  makes the question answerable.
+
+- **An intermittent vitest "unhandled error" that costs ONE test file its collection.** Seen
+  **twice** during this story's verification: 66/67 files with 1,807/1,812 tests, and 66/67 with
+  1,805/1,812. In both cases no failing assertion was reported — the count simply dropped by one
+  file's worth of tests, with vitest's *"This might cause false positive tests"* warning. It then
+  **did not recur in 26 consecutive full runs**, including six deliberate attempts to reproduce the
+  exact shape both sightings had (a heavy multi-hundred-file write — `pre-commit run --all-files`
+  rebuilding `plugin/`, or `gen:api` — in the same shell invocation immediately before the run) and
+  three runs with a concurrent `git add -A` in flight. Unreproduced, so unfixed.
+
+  **The leading hypothesis, and the reason this entry is not filed as "probably nothing":
+  `devProxyRoundTrip.test.ts`'s declared TOCTOU, whose exposure THIS STORY TRIPLED.**
+  `ephemeralPort()` probes a port, closes it, and lets Vite bind it with `strictPort: true`; that
+  file's own comment accepts the probe-then-bind gap on the ground that a collision is *"a loud
+  EADDRINUSE, not a silent wrong-server test"*. c5-6 added four tests to that file, each starting
+  its own Vite server plus a stub backend — so the number of probe-then-bind windows per suite run
+  went from 5 to 9, and the number of listening sockets roughly doubled. A `listen` error raised
+  outside any test's own await is exactly an "unhandled error", and it would take its file's
+  collection with it.
+
+  **Fix shape (for whoever picks this up):** stop probing. Let Vite bind port `0` and read the real
+  port back off `vite.httpServer.address()` — which this file ALREADY does for its return value, so
+  the probe exists only to work around `server.port: 0` being falsy in Vite's config. Passing a
+  freshly-bound listener, or retrying the bind on EADDRINUSE, removes the window entirely. Note the
+  file's existing warning before changing anything: distinct ports per test are load-bearing for a
+  DIFFERENT reason (undici pools keep-alive sockets by origin, and shared ports caused a ~1-in-3
+  ECONNRESET flake), so the fix must keep ports distinct.
+  **Home: c5-8** — it adds the one real-socket integration test and will be working in this exact
+  file. (Severity: low — intermittent, loud when it fires, and it has never turned a real assertion
+  green.)
+  **→ PAID at c5-8 (2026-08-09), and one premise of this entry was falsified on the way.**
+  The probe is gone: `ephemeralPort()` is deleted, a monotonic counter supplies a distinct
+  STARTING port per Vite server, and `strictPort: false` lets Vite bind-and-retry on EADDRINUSE
+  — one atomic step with no window for anyone to bind into. Distinctness, which is load-bearing
+  for the *unrelated* undici keep-alive ECONNRESET flake, is preserved AND is now asserted:
+  every origin passes through `recordOrigin()`, which fails loudly on a repeat. It used to be a
+  property of a comment.
+
+  ⚠️ **The suggested fix shape was re-measured rather than inherited.** This entry proposed
+  "let Vite bind port 0 and read the real port back". That does not work in the installed Vite:
+  `{ port: 0, strictPort: true }` treats the falsy 0 as unset and falls back to the 5173 default
+  — measured directly by starting two servers, the second of which died with *"Port 5173 is
+  already in use"*. The file's original comment was right and this entry's fix shape was wrong;
+  the counter exists because of that measurement.
+
+  ⚠️ **The HOMING premise was also falsified**: this entry (and dw:5451's) said c5-8 "adds more
+  real-socket tests to this exact file" / "will be working in this exact file". It does not.
+  c5-8's one real socket is Python-side (`tests/integration/companion/test_live_backend.py`);
+  the only reason it touched `devProxyRoundTrip.test.ts` at all is that this debt was homed here
+  by name and Brad ruled (Q4, 2026-08-09) to pay it rather than re-home it a fourth time.
+  Verified after the change: that file green 5/5 consecutive runs, full frontend suite green.
+
+---
+
+## Dispositions from: dev of c5-7-connection-pill (2026-08-08)
+
+**The story that was handed a decision nobody had made, and made it.** Three entries were homed
+here by name; all three are closed below. All six of the story's open questions were ruled by Brad
+**before any code**, as recommended, in one pass — the c5-5 / c5-6 protocol repeated a third time.
+
+### CLOSED
+
+- **dw:4595-4600 — the connection pill's DOM position is decided by nobody, and three stories each
+  assume someone else did it.** **CLOSED by decision** (Q1, Brad 2026-08-08). The three artefacts
+  were never actually in conflict, and naming the axis is what dissolved it: UX-DR40 and c10-1 were
+  describing **Tab order**, `DESIGN.md:479` was describing the **screen**. The shipped answer
+  satisfies both — a new `AppShell` prop rendered as a sibling **between `</main>` and `<footer>`**,
+  which makes the pill the last Tab stop before the footer links, while `ConnectionPill.css` pins it
+  `position: fixed` to the **bottom-left** corner with a `calc(var(--space-gutter) + var(--space-6))`
+  inset that clears the footer strip.
+
+  Two things make this more than a note. First, the guard layer had **already anticipated it**:
+  `shell.test.ts`'s full-window-fixed-layer rule is value-aware precisely so a corner pill stays
+  silent, and `fixtures/css/shell-violation.css:256` carries that exact shape as a probe — written
+  in 2026-07-28's review with the reasoning *"a false positive c5-7 has to fight is the worse
+  outcome"*. The prediction held byte for byte. Second, the rejected alternative is recorded because
+  it is the one a later reader reaches for: an in-flow last child of the LEFT column renders
+  bottom-left with no fixed positioning at all — and puts the pill *before the entire right column*
+  in Tab order, contradicting UX-DR40, c10-1, and (on the five surfaces where the left column is a
+  state panel) AC 1 as well.
+
+  `epics-companion-app.md`'s UX-DR40 enumeration and `EXPERIENCE.md`'s Tab-order cell were both
+  updated from their "(connection pill — c5-7)" markers to the shipped truth in the same commit.
+
+- **dw:5349-5355 — the fourth copy tail's PILL clause, asserted-to-be-unasserted.** **PAID.**
+  c3-9 declined it (*"prose checked against prose"*), c5-6 paid the backoff half and left
+  `copy-tails.test.ts:284`'s deliberate non-assertion standing. c5-7 **converted** it rather than
+  deleting it: the row's *"Retrying-quietly note in the connection pill"* is now mirrored against
+  the pill's shipped `down` copy (`Backend gone — retrying quietly`) **and** against
+  `RETRIES_QUIETLY.disconnected`, so the note cannot be softened at either end without a red test.
+  The half that stands unchanged is the other one — `socket.ts` still contains no `pill` outside its
+  comments, because the pill reads the loop's field and the loop knows nothing about a pill.
+
+- **dw:5427-5431 — the selector-less system-store subscription, "Home: c5-7 if the pill wants finer
+  granularity."** **CLOSED — it did** (Q5). `systemState.ts` grew a one-line `useConnection()`
+  selector hook beside `useSystemState()`, so the pill re-renders when `connection` changes and at
+  no other time, instead of adding a second whole-store subscription beside `App`'s.
+
+  **What is closed is the QUESTION, not the cost.** `App`'s own subscription is deliberately
+  unchanged and still selector-less: it reads all three fields, so a selector there would be
+  ceremony. The entry asked whether the pill wanted finer granularity; the answer is yes, and it
+  cost one line and no change to how the store is written. `STORES` in `store-writes.test.ts` is
+  untouched — this added a reader, and a reader is not a writer.
+
+### New, from this story
+
+- **The measured Tab-corridor figures in `EXPERIENCE.md:143` and `epics-companion-app.md` are each
+  one stop short as of this story, and were NOT re-measured.** c4-11 measured the corridor from the
+  header to the first footer link over all 40 real decks — **206 max / 78 median / 102.0 mean**, with
+  the skip link removing the first 105 and leaving 101. The pill is an always-present stop *inside*
+  that corridor, so every one of those figures gains exactly **+1** on every deck (207 / 79 / 103.0;
+  105 removed, 102 left). Both suite pins were recomputed from the DOM rather than relaxed
+  (`App.test.tsx`: 208 → 209 focusables and a 206-stop corridor on the Atraxa shape; 6 → 7 and a
+  4-stop corridor on the 1-card deck), so the arithmetic is checked — but the 40-deck sweep behind
+  the artefact numbers was not re-run, and a derived +1 is not a measurement.
+
+  Note the shape of the cost: the pill is proportionally **worst where the corridor is shortest**
+  (a 1-card deck goes from 3 stops to 4), which is the opposite of where the skip link helps.
+  **Home: c8-6**, which already carries the revisit-before-public-release flag for this exact
+  corridor and is the story that actions or re-accepts it. (Severity: low — the direction and the
+  magnitude are both known exactly; only the artefact text is stale.)
+
+- **Two live-region prose claims were falsified by this story and are recorded rather than silently
+  edited.** `SkipLink.tsx:80` and `CardGrid/copy.ts:47` each asserted that *"CardDetail's single
+  polite region stays the only one in the app"* — true when written, false the moment the pill
+  shipped its own. Both rewritten to the claim those modules actually make (they announce nothing),
+  with the falsification named. Two more copies of the same sentence lived in `copy-rules.test.ts`'s
+  registry reasons and were corrected with them. **No home** — closed here. (Severity: none.)
+
+- **The accessible NAME and the DOM text of the pill differ by whitespace, and the test pins both.**
+  `button.textContent` is `Connected — Sultai Midrange` byte for byte; the computed accessible name
+  is `Connected—Sultai Midrange`, because the accname algorithm trims each contributing text node
+  before joining and the separator's spaces do not survive it. Measured, not predicted. Not repaired,
+  because the only repair is to give up the typography split that keeps the deck name mixed-case —
+  and no screen reader voices the difference. Recorded so the next author does not read it as a bug.
+  **No home.** (Severity: none.)
+
+- **A firing proof found a real hole that 1,866 green tests did not: nothing bound the dot's
+  modifier classes to their status TOKENS.** Probe P15 pointed `.connection-pill-dot.is-down` at
+  `--caution` instead of `--negative` and the FULL suite stayed green. The reason is structural and
+  will recur: `ConnectionPill.test.tsx` runs in jsdom, which evaluates no stylesheet, so every DOM
+  assertion about the dot can only reach the CLASS — it proves that `'down'` renders `is-down` and
+  stops there. The one component in the app whose entire job is to signal by colour could therefore
+  ship the wrong colour on the state that matters most, and no gate would object.
+
+  **Closed in this story** by a source-reading guard in `shell.test.ts` that binds all three
+  classes to their tokens *and* asserts the dot's complete fill set is exactly the three semantics
+  (a swap satisfies any per-class "is it a status token" check, and a fourth rule pointing at
+  `--accent` would satisfy all three per-class assertions and still be wrong).
+
+  **Recorded rather than merely fixed, because the general shape is unclosed**: any
+  class-to-token binding in this codebase is invisible to jsdom, and only the ones somebody
+  thought to read as source are checked. `Badge`'s tones, `ManaPip`'s colours and the deck row's
+  live tint are the same shape. **Home: C5 retro** — worth a decision about whether a derived
+  class→token guard is wanted repo-wide, rather than one per component that remembers.
+  (Severity: low — one instance found and closed; the class of hole is open.)
+  **RULED at the C5 retro (2026-08-09): YES — RE-HOMED to epic-c5 action item R3 (C6 prep or the
+  first C6 UI story):** generalise `shell.test.ts`'s dot guard into ONE derived source-reading
+  check binding every status-semantic class to its token (`Badge` tones, `ManaPip` colours, the
+  deck row's live tint, the pill dot), before Epic 6's agent views add more surfaces of exactly
+  this shape. Per-component guards that already exist are kept, not deleted.
+
+## Deferred from: code review of c5-7-connection-pill (2026-08-08)
+
+- **Empty-string deck name (`''`) is not normalized to `null` before reaching the pill's render or
+  `pillText`.** `ConnectionPill.tsx:77-78`'s selector (`state.deck.status === 'deck' ?
+  state.deck.detail.name : null`) and `copy.ts:102-105`'s `pillText` both treat only `null` as "no
+  name" — a blank string would render a dangling em dash with nothing after it. Reachable only if
+  `deck.detail.name` is itself blank, which nothing in `src/data/schemas/deck.py`'s `name: str`
+  field (no `min_length`) prevents. **No home** — deferred as pre-existing: the header's own
+  deck-name display (`.app-shell-deck-name`) has the identical gap, so this is a systemic deck-name
+  validation question, not something specific to the pill. (Severity: low.)
+
+- **No max-width/overflow guard on the deck name inside the fixed-position connection pill for
+  unusually long names.** `ConnectionPill.css`'s `.connection-pill`/`.connection-pill-text`/
+  `.connection-pill-deck` rules have no `max-width`, `overflow`, `white-space` or `text-overflow` —
+  an unusually long deck name could grow the fixed pill past the viewport edge. **No home** —
+  deferred as pre-existing: `.app-shell-deck-name` (`AppShell.css:88-93`, the header's own
+  deck-name display) has the identical gap, so this matches an existing repo-wide pattern rather
+  than a defect unique to this story. (Severity: low.)
+
+---
+
+## Dispositions from: dev of c5-8-the-one-real-socket-integration-test (2026-08-09)
+
+**The story eight in-source comments had been pointing at.** All three c5-8-homed entries are
+closed above (dw:5451 teardown pattern, dw:5459 explicit `Origin`, dw:5470 the vitest TOCTOU), and
+two of them carried premises this story falsified — both recorded in place rather than quietly
+fulfilled. All six of the story's open questions were ruled by Brad **before any code**, as
+recommended: the fourth story running with a clean pre-code sweep.
+
+### New, from this story
+
+- **CI never runs the one test AD-10 asks for, and that is now stated somewhere it can be acted
+  on.** `.github/workflows/ci.yml` runs `-m "not integration"` on ubuntu, so
+  `tests/integration/companion/test_live_backend.py` is deselected on every push and will be
+  deselected forever unless someone decides otherwise. AD-2 makes Windows the platform of record
+  and the story's AC discharges "passes on Windows" with a pasted local run — which is honest, and
+  is also exactly the arrangement that lets this test rot silently: nothing outside a developer's
+  local run will ever notice it break. **Home: C5 retro**, as a decision about whether a Windows
+  integration lane is worth its minutes (the whole file runs in ~4 s). (Severity: medium — not a
+  defect today, but the only test covering the process boundary has no automated home.)
+  **RULED at the C5 retro (2026-08-09): YES — RE-HOMED to epic-c5 action item R1 (C6 prep):** add
+  a Windows lane to `ci.yml` running `uv run pytest tests/integration/companion/` (scoped, so the
+  flake and the live Scryfall tests stay out of it). AD-2 makes Windows the platform of record and
+  the test IS the platform-of-record evidence; ~4 s of test against the only process-boundary
+  coverage is the cheapest insurance on the docket.
+
+- **The `-m integration` scope trap, recorded so the next person does not rediscover it.** A bare
+  `uv run pytest -m integration` collects `test_list_decks_with_strategy_field` (the twice-sighted
+  flake already homed on the C5 retro) and the live Scryfall contract tests alongside this one, so
+  a red run says nothing about the companion. Every local run in this story was scoped
+  `tests/integration/companion/`. Worth a marker or a scoped alias eventually. **Home: C5 retro.**
+  (Severity: low.)
+  **RULED at the C5 retro (2026-08-09), RE-HOMED to epic-c5 action item R4 (C6 prep, with the
+  flake item):** the companion real-socket test gets its own marker so `-m integration` splits
+  into things that mean something; the CI lane from R1 selects by path, so the marker serves
+  local runs.
+
+- **Seven falsification probes were run against real backends, and all seven went RED** — the
+  story's own Dev Notes demanded at least one (*"a real-socket test that cannot fail is worse than
+  none"*). Two are worth keeping in the record because they proved something the code alone does
+  not state:
+
+  **F5 — the restart wait.** Removing `replacing=record_one.instance_id` from the second boot's
+  wait made the test return the *corpse's* record — same `instance_id` **and the same port** — and
+  the run went red on the next assertion. That is the proof that a hard kill genuinely leaves
+  `companion.json` behind, that the second backend really does walk c1-8's reclaim path, and that
+  waiting on file presence alone would have made the whole restart case vacuous.
+
+  **F2 — the explicit `Origin`.** Dropping `origin=` from the first upgrade got a real 403 from a
+  real handshake. `security.py`'s fail-closed Origin rule had been asserted in-process since c5-3;
+  this is the first time it has been observed over a socket. (Severity: none — all seven RED.)
+
+## Dispositions from: the C5 retrospective (2026-08-09)
+
+All seven entries homed on this retro were ruled; each ruling is recorded inline at its entry
+(grep `RULED at the C5 retro`). Summary, with the sprint-status action item that owns each:
+
+1. **Windows integration CI lane** (`dw:5668` region) — **YES**, scoped
+   `tests/integration/companion/` lane in `ci.yml` → **R1**.
+2. **AD-1 limit-literal family shape** (`dw:5104` region) — **presence-keyed stands**, per-file
+   exemption is the standing remedy, third collision reopens → **R10, CLOSED by ruling**.
+3. **Q3/AD-5 N-way prose-sync** (`dw:5244` region) — canonical home is THIS LEDGER; prose sites
+   become one-line pointers; no new forward-looking cross-module prose in docstrings → **R2**.
+4. **`dump_openapi.py` docstring-as-changelog** (`dw:5252` region) — delete the changelog
+   paragraphs (content already lives here and in story records) → **R2** (same sweep).
+5. **`test_list_decks_with_strategy_field` flake, two sightings** (`dw:5476` region) — one bounded
+   reproduction attempt; annotate-and-monitor if it holds green; third sighting escalates → **R4**.
+6. **`-m integration` scope trap** (`dw:5678` region) — companion marker/scoped alias → **R4**.
+7. **Repo-wide class→token guard** (`dw:5617` region) — **YES**, one derived source-reading guard
+   before Epic 6's first view story → **R3**.
+
+Also executed or re-homed at this retro, beyond the seven:
+
+- **The vitest probe-harness half** (`dw:5115` region) — re-homed to **R5** (C6 prep); the C4
+  sprint-status item closes as re-keyed, Python half shipped at c5-1.
+- **Story 6.4's stale 422** — `epics-companion-app.md`'s 6.4 cap-breach AC amended in-retro to
+  413 `payload_too_large`, matching the shipped, tested contract (c1-4 ruling; 5.5 and 6.1 were
+  amended at c5-5, 6.4 had been missed). The AD-6/AD-7 spine amendments stay homed on Epic 8.
+- **UX-DR46 double-assignment** (Epics 4 AND 5 in the coverage map) — needs an owner decision,
+  not a mechanical edit → **R9**.
+- **C4 items 5 and 7** (DESIGN.md citation guard; plugin-mirror check from `ui/`) — re-homed to
+  **R6** and **R7** respectively; both C4 rows close as re-keyed. R6 carries a termination clause:
+  not done by the C6 retro → formally decline and demote the guard to a declared
+  string-proximity check.
+- **Standing-agreement amendment** — "review-added mechanisms re-enter review" widens to include
+  review-added TEST ASSERTIONS (c5-8's Greptile P2 was in an assertion its own review added; ruled
+  NOT a retroactive violation, the rule as written scoped to mechanisms) → **R8**.
+- **Named, not actioned:** the ~26-entry `unowned` cluster of `src/logic`/`src/data` questions
+  from the c3 era (`:2400`–`:3410` band) that no companion story can legitimately own. Candidate
+  for a between-epic ledger closing pass; deliberately NOT given a C6-prep home to keep the prep
+  list honest. Also standing: `dw:5197`'s twice-confirmed one-sentence fix
+  (`test_committed_schema.py` module docstring) remains unowned and cheap — fair game for R2's
+  sweep to absorb.

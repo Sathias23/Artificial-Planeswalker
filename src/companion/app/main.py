@@ -26,14 +26,16 @@ from fastapi import FastAPI
 
 from src.companion import discovery
 from src.companion.app import deps, images, state
+from src.companion.app.body_cap import install_body_cap
 from src.companion.app.errors import (
     error_responses,
     install_error_handling,
     without_auto_validation_schema,
 )
-from src.companion.app.routes import active_deck, cards, decks, health
+from src.companion.app.routes import active_deck, agent_events, cards, decks, health, session
 from src.companion.app.security import install_security
 from src.companion.app.spa import install_spa
+from src.companion.app.ws import router as ws_router
 
 logger = logging.getLogger(__name__)
 
@@ -201,6 +203,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.agent_token = discovery.mint_token()
     app.state.database = deps.Database()
     app.state.active_deck = state.ActiveDeckSlot()
+    # Same shape and the same reason as the negative cache below: a dict and a clock, so there is
+    # no `build_*` factory, nothing lands in `_shutdown`, and AD-15's "publishing the discovery
+    # file is the ONLY startup step that may fail a launch" stays literally true (c5-2). Created
+    # here rather than in `build_app()` so that function keeps its zero-side-effect property
+    # (AD-10) — and so a restart genuinely begins with an empty store (CM-3).
+    app.state.ticket_store = state.TicketStore()
+    # The third holder from `state.py`, and the same shape for the third time: a set, so no
+    # `build_*` factory and nothing in `_shutdown` (c5-4). Deliberately NOT torn down — closing
+    # every registered socket on shutdown would be a second close path racing uvicorn's own, and
+    # the process is ending anyway; the registry dies with it, which is CM-3's whole point.
+    app.state.connections = state.ConnectionRegistry()
     app.state.image_client = images.build_image_client()
     app.state.image_pacer = images.Pacer()
     app.state.image_cache = images.build_image_cache()
@@ -464,9 +477,17 @@ def build_app() -> FastAPI:
     # it can answer neither 503 token; narrowing a c1-2 route's committed schema is not this
     # story's call, and WIDENING it would be worse — an inherited over-declaration is a wart, a
     # freshly-added one is a lie.
-    health_responses = error_responses(
-        "invalid_request", "payload_too_large", "database_unavailable", "internal_error"
-    )
+    #
+    # AND `payload_too_large` IS GONE FROM BOTH SHARED SETS AS OF c5-5 (Q4, Brad 2026-08-08),
+    # which is the ledgered wart `deferred-work.md` homed on this story by name closing exactly as
+    # its own fix-shape described. Until c5-5 the token had no producer anywhere, so every
+    # operation declaring it — six body-less GETs — promised a `types.d.ts` consumer a branch that
+    # could never arrive, and each new GET route doubled the wart. c5-5 makes 413 real, and the
+    # curation is what keeps "makes it real" from meaning "makes six lies true-shaped": the two
+    # operations that can actually answer it declare it AT THE ROUTE, and nothing else declares it
+    # at all. c5-2 and c3-4 both declined to EXTEND the wart, which made per-include narrowing a
+    # two-instance pattern before this story; this is the story that unwinds it.
+    health_responses = error_responses("invalid_request", "database_unavailable", "internal_error")
     # …and the database-backed routers declare the token they have been answering since c1-6
     # (c3-9, Q4). `database_not_initialized` was undocumented on three routes and rising —
     # `TestDatabaseStates` asserts it by name in three test modules while the committed schema
@@ -481,7 +502,6 @@ def build_app() -> FastAPI:
     # advertised in the helper's docstring since c1-4 and had never fired.
     database_responses = error_responses(
         "invalid_request",
-        "payload_too_large",
         "database_not_initialized",
         "database_unavailable",
         "internal_error",
@@ -489,25 +509,90 @@ def build_app() -> FastAPI:
     app.include_router(health.router, responses=health_responses)
     app.include_router(decks.router, responses=database_responses)
     app.include_router(cards.router, responses=database_responses)
-    # No 503 (no database dependency) and no 413 (nothing enforces a body ceiling until c5-5's
-    # cap) — declaring either here would promise a types.d.ts consumer a branch that can never
-    # answer. The PUT's `forbidden` is declared at the route.
+    # No 503 (no database dependency). The 413 half of this comment used to read "nothing enforces
+    # a body ceiling until c5-5's cap"; c5-5 built the cap, so the PUT can now genuinely answer
+    # 413 — but it is declared AT THE ROUTE beside its existing `forbidden`, not here, because the
+    # sibling `GET /api/active-deck` carries no body and still cannot answer it. Per-operation is
+    # the whole point of the curation above.
     app.include_router(
         active_deck.router, responses=error_responses("invalid_request", "internal_error")
+    )
+    # Exactly the same pair, for exactly the same two reasons, and c5-2 confirmed both rather than
+    # inheriting them: no database dependency means no 503 to promise, and a body-less GET means no
+    # 413. The second one is the wart `deferred-work.md` homes on c5-5 — every new GET route
+    # doubles an unreachable 413 wherever one is declared — and declaring it here would have been
+    # the first time this feature added to it deliberately. `/api/session` also adds NO new
+    # `ErrorReason` token: the set stays closed at ten, because AD-16's rule is that a token exists
+    # to drive a UI state and ticket churn is designed to be invisible.
+    app.include_router(
+        session.router, responses=error_responses("invalid_request", "internal_error")
+    )
+    # No `responses=` at all, and that is not an omission: `responses` describes an OPERATION in
+    # `app.openapi()`, and a WebSocket route has no operation there — OpenAPI does not model
+    # WebSockets, so c5-3 adds zero paths and zero components (proven, not assumed, by
+    # `test_committed_schema.py`'s untouched 8/13 pins and a byte-identical `gen:api`). A closed
+    # handshake carries no JSON body either, so there is no typed error to declare: the whole
+    # vocabulary on that wire is a close code. It still MUST be registered above `install_spa`,
+    # for the reason the block below states and one more that is specific to it — see
+    # `test_spa.py::test_the_mount_declines_non_http_scopes`.
+    app.include_router(ws_router)
+    # c5-5's ingest, and the first router on a NOVEL first path segment since c3-1's /api. Four
+    # tokens and deliberately no 503: the route takes no session, so it must NOT join
+    # `TestTheDatabaseTokensAreDeclared.DATABASE_BACKED`. `payload_too_large` is declared here
+    # rather than inherited, because after the curation above this operation is one of exactly two
+    # in the app that can answer it — the other being `PUT /api/active-deck`, which declares its
+    # own at the route for the same reason.
+    #
+    # `/agent` is protected from the SPA catch-all by THIS LINE'S POSITION and nothing else: the
+    # `_RESERVED_SEED` belt-and-braces covers `/api` only (see the block below install_spa).
+    app.include_router(
+        agent_events.router,
+        responses=error_responses(
+            "invalid_request", "forbidden", "payload_too_large", "internal_error"
+        ),
     )
     # Ordering, and it is the whole point: user_middleware[0] is the most recently added
     # middleware, so the error middleware must be installed *last* to end up outermost — where it
     # can type the failures of every middleware added before it. The Host check goes above this
     # line so that a fault in the security envelope itself answers as a typed 500 rather than an
     # untyped traceback (on http scopes — the error middleware passes websocket scopes through,
-    # a gap c5-3 owns); c5-2 and c5-5 add their pieces inside install_security, not here.
+    # which c5-3's Q6 ruled PERMANENT: the upgrade handler catches its own faults and closes 1011,
+    # so the middleware keeps one shape). c5-5's pre-parse body ceiling is installed here too, as
+    # its own call — see the third correction below.
+    #
+    # CORRECTED AT c5-2, which falsified the previous version of that clause ("c5-2 and c5-5 add
+    # their pieces inside install_security, not here"). c5-2 adds neither a middleware nor a
+    # security line: its mint is an ORDINARY ENDPOINT, so it adds an include_router above, and its
+    # store is created by the lifespan.
+    #
+    # AND CORRECTED AGAIN AT c5-3, which falsified c5-2's replacement for it. That version said
+    # "c5-3 — the handshake gate — is the story that sentence was really describing", predicting a
+    # security line here. IT IS NOT. The upgrade is an ordinary FastAPI route on an APIRouter, so
+    # c5-3 added an include_router above this block exactly as c5-2 did, and install_security is
+    # STILL the one security wiring call — now two stories past the one that was supposed to grow
+    # it. What made the prediction wrong is worth keeping: "gates a handshake" describes what the
+    # check DOES, and middleware-versus-route is about WHERE the check can be expressed. A
+    # websocket route can read its own headers and close its own connection, so it needs no
+    # middleware position to do the gating from. c5-5 was the only story still holding that
+    # prediction going into this commit.
+    #
+    # AND CORRECTED A THIRD TIME AT c5-5, which falsifies its own replacement for it ("c5-5 adds
+    # its piece inside install_security, not here"). HALF right: it genuinely is a middleware, but
+    # genuinely NOT a security wiring line — `install_security` stays the one security call, and
+    # the body ceiling is its own call, `install_body_cap`, because the cap is about resource
+    # bounds rather than about who the caller is. Added FIRST so it ends up innermost of the three
+    # — `Host` refuses a wrongly-addressed request before its body is read, and a fault in the
+    # counting is still typed by the error middleware. Same commit as the code that falsifies it
+    # (c3-9's rule); a `#` comment in a non-wire position, so no regeneration diff.
+    install_body_cap(app)
     install_security(app)
     install_error_handling(app)
     # MUST STAY LAST. install_spa mounts the SPA bundle at "/", and Starlette matches routes in
     # list order, so a mount at "/" matches every path and shadows everything registered after it
     # — silently: a route would answer 200 with index.html instead of running the endpoint.
-    # c3-1's decks router, c3-2's cards router and c3-4's active-deck router are registered above
-    # this line; c5-2 and c5-5 add theirs there too. (c3-3 added a route and edited nothing here,
+    # c3-1's decks router, c3-2's cards router, c3-4's active-deck router and c5-2's session router
+    # are registered above this line; c5-5 adds its /agent router there too. (c3-3 added a route
+    # and edited nothing here,
     # by design: its format-check endpoint is a deck sub-resource that joined the decks router,
     # which is already above this line. A story adding a route to an EXISTING router inherits the
     # ordering; only a story adding a router has to touch this block. c3-5 is the second instance

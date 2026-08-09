@@ -22,8 +22,12 @@ from pathlib import Path
 
 import httpx
 import pytest
+from pydantic import TypeAdapter
 
 from src.companion.app.main import agent_token, build_app
+from src.companion.app.state import active_deck, connection_registry
+from src.companion.contracts import _MAX_ENVELOPE_BYTES, ActiveDeckChangedEvent, AgentEvent
+from tests.unit.companion.conftest import FakeConnection, open_socket
 
 _PATH = "/api/active-deck"
 
@@ -148,7 +152,7 @@ class TestTheWriteNeedsTheCredential:
 
         assert response.status_code == 200
         # Answers 200 echoing the stored value rather than 204 (Q3 part 4): one shape serves the
-        # read, the write, and c5-4's change notification.
+        # read, the write, and (since c5-4) the change notification it broadcasts.
         assert response.json() == {"deck_id": _FIRST_DECK}
 
     async def test_the_set_deck_is_then_readable(self, lifespan_client):
@@ -557,17 +561,43 @@ class TestAMalformedBody:
         that fails to parse raises ``RequestValidationError`` before the credential is ever
         checked. A body that parses cleanly then meets the dependency. Both are pinned so a
         framework upgrade that reorders them is visible.
+
+        **DISPOSITIONED AT c5-5 AS A SNAPSHOT, THEN EXTENDED RATHER THAN REVISED** (Q3, Brad
+        2026-08-08). ``deferred-work.md`` flagged this pin as the thing c5-5's pre-parse body cap
+        would redden, and asked the story to decide whether it recorded a *contract* the feature
+        owes or a *snapshot* of measured framework behaviour. Ruled: **snapshot** — nothing
+        designed this order, FastAPI did.
+
+        What the ruling predicted, and what actually happened, differ, so both are recorded here.
+        The prediction was that ``BodyCapMiddleware`` would redden this test and the pin would need
+        revising through review. **It did not go red** (measured 2026-08-08, full suite). The cap
+        only reorders *oversized* bodies, and both bodies below are a few dozen bytes — so the two
+        assertions above continued to hold untouched, and the disposition cost an **addition**
+        rather than a correction. The third assertion is that addition: the total ordering now has
+        a cheaper rung above both, and it is pinned here beside them so the whole order is legible
+        in one place rather than split across two files.
         """
+        oversized = b'{"deck_id": "' + b"x" * (_MAX_ENVELOPE_BYTES + 1) + b'"}'
         async with lifespan_client(build_app()) as client:
             unparseable = await client.put(
                 _PATH, content=b"{{{", headers={"content-type": "application/json"}
             )
             parseable_but_invalid = await client.put(_PATH, json={"deck_id": _FIRST_DECK})
+            over_cap = await client.put(
+                _PATH, content=oversized, headers={"content-type": "application/json"}
+            )
 
         # Body first: the parse failure outranks the missing credential.
         assert unparseable.status_code == 400
         # Dependency second: a well-formed body reaches the credential check and is refused.
         assert parseable_but_invalid.status_code == 403
+        # Size FIRST OF ALL, as of c5-5: the byte cap runs in middleware, above both the parser and
+        # the dependency solver, so an oversized body is refused without a credential and without
+        # being parsed. That is the correct fail-cheap order — the process must not buffer
+        # megabytes on behalf of a caller it was going to refuse — and it is the one arm of this
+        # ordering that IS a designed contract rather than a measured framework detail.
+        assert over_cap.status_code == 413
+        assert over_cap.json() == {"reason": "payload_too_large"}
 
 
 class TestNotShadowedBySpa:
@@ -721,18 +751,77 @@ class TestTheBoundariesThisRouteMustNotCross:
 
         assert not offenders, f"the MCP server grew active-deck state: {offenders}"
 
-    def test_the_active_deck_slot_holds_no_credential(self):
-        """AC 13 (AD-5): the two credentials share no storage.
+    def test_the_state_module_names_no_agent_credential(self):
+        """AC 13 (AD-5): the agent credential is absent from the module holding display state.
 
-        c5-2's WebSocket ticket does not exist yet, so the assertable half is that the display
-        state and the credential live in different objects and the state module's code knows
-        nothing about tokens. Stated so c5-2 inherits a rule rather than a coincidence.
+        **NARROWED AT c5-2 (AC 14), and the narrowing is the interesting part.** c3-4 wrote this
+        guard forward-looking, banning ``ticket`` alongside the agent-token names *"so c5-2
+        inherits a rule rather than a coincidence"* — on the assumption that the ticket store would
+        land in ``security.py``. c5-2's Q3 ruled the other way (``security.py``'s one proven
+        structural property is that it *stores nothing*, and a compare-and-set cannot be split from
+        its storage), so ``state.py`` legitimately grew a :class:`TicketStore` — and this guard
+        reddened on the noun ``ticket``, which is the opposite of what it exists to catch.
+
+        ``ticket`` therefore leaves the ban list; **every agent-token-specific name stays**, and
+        ``token`` staying is what keeps ``discovery.mint_token``'s bare sibling out. Note the ban
+        is on *identifiers*, not prose: ``code_identifiers`` is AST-only, so the paragraphs above
+        may discuss the agent token freely while a reference to one fails.
+
+        **What this now proves, read against the code rather than against its own comment:** that
+        no name in ``state.py``'s syntax tree is spelled like the agent credential. **What it
+        cannot see:** the credential reached indirectly — ``getattr(app.state, "agent_" + "token")``
+        or an import aliased to a different name. That residual hole is why AC 15's sibling below
+        exists, and why it asserts the *call graph* rather than a second vocabulary.
         """
         identifiers = code_identifiers(_REPO_ROOT / "src/companion/app/state.py")
 
-        assert {"ActiveDeckSlot", "active_deck", "deck_id"} <= identifiers  # non-vacuity
-        banned = {"token", "agent_token", "credential", "secret", "mint_token", "ticket"}
-        assert not (banned & identifiers), f"the slot reached for {banned & identifiers}"
+        # Non-vacuity, both holders: a scan that found neither would satisfy any ban list.
+        assert {"ActiveDeckSlot", "active_deck", "deck_id"} <= identifiers
+        assert {"TicketStore", "ticket_store", "mint", "consume"} <= identifiers
+        banned = {"token", "agent_token", "credential", "secret", "mint_token"}
+        assert not (banned & identifiers), f"the state module reached for {banned & identifiers}"
+
+    def test_the_ticket_store_shares_no_code_path_with_the_agent_token(self):
+        """AC 15 (AD-5): the two credentials share no code path, asserted structurally.
+
+        **This replaces the coverage AC 14 gave up, and it is strictly stronger than the noun-ban
+        it replaces.** Banning the word ``ticket`` never proved anything about the agent token; it
+        proved that ``state.py`` had not yet grown a ticket store. What AD-5 actually requires is
+        that the ticket and the agent token *"share no storage and no code path"* — so this walks
+        the module that holds the ticket store and asserts the four ways a code path could be
+        shared, each of which is a real construct in this codebase rather than a hypothetical:
+
+        * importing :mod:`src.companion.discovery` (whose ``mint_token`` mints the agent token);
+        * reading the ``agent_token`` accessor or ``app.state.agent_token``;
+        * calling ``presented_credential`` / ``agent_token_is_valid`` / ``require_agent_token``;
+        * reaching the ``Bearer`` channel via ``AgentToken`` or ``_AUTHORIZATION_HEADER``.
+
+        **What it compares:** the set of identifiers ``state.py``'s AST mentions against that
+        vocabulary. **What it cannot see:** a shared path built entirely out of names it does not
+        know — the same indirection hole its sibling has — and anything the *route* module does,
+        which is why ``test_routes_session.py`` re-asserts the property over the wire on a real
+        response and real captured logs.
+        """
+        identifiers = code_identifiers(_REPO_ROOT / "src/companion/app/state.py")
+
+        # Non-vacuity, and a real one: the walk must be finding the ticket store's OWN code, or
+        # every absence below is satisfied by scanning an empty set.
+        assert {"TicketStore", "secrets", "token_urlsafe", "MAX_TICKETS"} <= identifiers
+
+        shared_paths = {
+            "discovery",
+            "mint_token",
+            "agent_token",
+            "presented_credential",
+            "agent_token_is_valid",
+            "require_agent_token",
+            "AgentToken",
+            "_AUTHORIZATION_HEADER",
+        }
+        assert not (shared_paths & identifiers), (
+            f"the ticket store shares a code path with the agent token: "
+            f"{shared_paths & identifiers} (AD-5)"
+        )
 
     def test_the_credential_check_reads_one_accessor_and_stores_nothing(self):
         """AC 13's other half: the check is stateless.
@@ -811,3 +900,276 @@ class TestNothingIsLoggedThatShouldNotBe:
         # …and not one byte more.
         assert token not in message
         assert "wrong-" + token not in message
+
+
+async def _mint_ticket(client):
+    """Mint one WebSocket ticket over the shipped ``GET /api/session``, and return it."""
+    response = await client.get("/api/session")
+    assert response.status_code == 200, "the mint must work, or the socket tests are vacuous"
+    return response.json()["ticket"]
+
+
+class TestThePutBroadcasts:
+    """AC 16-19 (c5-4): the store is followed by exactly one ``active_deck_changed`` fan-out.
+
+    **This is the seam the comment at ``:132`` predicted, now asserted rather than described.** The
+    fan-out's own behaviour is proven in ``test_ws.py``; what belongs here is the *wiring* — that
+    the route calls it, on the success path only, with the id it stored, and that nothing the
+    broadcast does can change what the ``PUT`` answers.
+    """
+
+    async def test_a_successful_put_broadcasts_the_stored_id(self, lifespan_client):
+        """AC 16: through the real router, to a registered client, parsed as a union member."""
+        app = build_app()
+        async with lifespan_client(app) as client:
+            connection = FakeConnection()
+            connection_registry(app).add(connection)
+
+            response = await client.put(
+                _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer(agent_token(app))
+            )
+
+        assert response.status_code == 200
+        assert len(connection.sent) == 1, "exactly one event per set — not zero, not two"
+        event = TypeAdapter(AgentEvent).validate_json(connection.sent[0])
+        assert isinstance(event, ActiveDeckChangedEvent)
+        assert event.kind == "active_deck_changed"
+        assert event.payload.deck_id == _FIRST_DECK
+
+    async def test_the_broadcast_id_comes_from_the_slot_not_the_body(self, lifespan_client):
+        """AC 16: the notification and the response body must never be able to disagree.
+
+        Reading ``body.deck_id`` would pass every other test in this class and diverge silently the
+        day :meth:`ActiveDeckSlot.set` gains normalisation — so the property is asserted directly,
+        by making the slot store something the body never said and checking both answers follow.
+        """
+        app = build_app()
+        async with lifespan_client(app) as client:
+            connection = FakeConnection()
+            connection_registry(app).add(connection)
+            slot = active_deck(app)
+            slot.set = lambda deck_id: setattr(slot, "_deck_id", "rewritten-by-the-slot")
+
+            response = await client.put(
+                _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer(agent_token(app))
+            )
+
+        assert response.json() == {"deck_id": "rewritten-by-the-slot"}
+        event = TypeAdapter(AgentEvent).validate_json(connection.sent[0])
+        assert event.payload.deck_id == "rewritten-by-the-slot", (
+            "the broadcast read the request body; it must read what was stored"
+        )
+
+    async def test_it_fires_again_on_a_same_id_rewrite(self, lifespan_client):
+        """AC 17 (Q10, ``contracts.py:890-894``): no only-if-changed suppression.
+
+        Suppressing the duplicate is a read-modify-write, which is exactly what the slot's no-lock
+        design forbids. A duplicate signal costs one idempotent refetch; the alternative costs a
+        lock.
+        """
+        app = build_app()
+        async with lifespan_client(app) as client:
+            connection = FakeConnection()
+            connection_registry(app).add(connection)
+            headers = _bearer(agent_token(app))
+
+            await client.put(_PATH, json={"deck_id": _FIRST_DECK}, headers=headers)
+            await client.put(_PATH, json={"deck_id": _FIRST_DECK}, headers=headers)
+
+        assert len(connection.sent) == 2, "the same-id rewrite was suppressed (Q10 says it is not)"
+        adapter = TypeAdapter(AgentEvent)
+        first, second = (adapter.validate_json(text) for text in connection.sent)
+        assert first.payload.deck_id == second.payload.deck_id == _FIRST_DECK
+        assert first.id != second.id, "two distinct events, so a client can tell them apart"
+
+    async def test_a_refused_credential_broadcasts_nothing(self, lifespan_client):
+        """AC 18: the call sits after the store, on the success path only."""
+        app = build_app()
+        async with lifespan_client(app) as client:
+            connection = FakeConnection()
+            connection_registry(app).add(connection)
+
+            refused = await client.put(
+                _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer("not-the-token")
+            )
+            assert refused.status_code == 403
+            assert connection.sent == []
+
+            # Paired acceptance from the same call site, so this cannot pass by never broadcasting.
+            await client.put(
+                _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer(agent_token(app))
+            )
+
+        assert len(connection.sent) == 1
+
+    async def test_a_rejected_body_broadcasts_nothing(self, lifespan_client):
+        """AC 18: a body that never reaches the handler cannot reach the fan-out either.
+
+        ``400``, not ``422`` — AD-16 superseded the auto-422 and ``test_committed_schema.py``
+        asserts FastAPI's 422 components are stripped, so the typed ``invalid_request`` answer is
+        the shipped one.
+        """
+        app = build_app()
+        async with lifespan_client(app) as client:
+            connection = FakeConnection()
+            connection_registry(app).add(connection)
+
+            response = await client.put(
+                _PATH, json={"deck_id": "   "}, headers=_bearer(agent_token(app))
+            )
+
+        assert response.status_code == 400
+        assert connection.sent == []
+
+    async def test_a_dead_client_does_not_cost_the_put_its_200(self, lifespan_client):
+        """AC 18's headline, driven through the **shipped** helper rather than a planted fault.
+
+        This is the realistic failure — a tab that went away between the registry snapshot and the
+        write — and the requirement is that the mutation's own result is untouched by it.
+        """
+        app = build_app()
+        async with lifespan_client(app) as client:
+            registry = connection_registry(app)
+            registry.add(FakeConnection(fails=True))
+
+            response = await client.put(
+                _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer(agent_token(app))
+            )
+            stored = await client.get(_PATH)
+
+        assert response.status_code == 200
+        assert response.json() == {"deck_id": _FIRST_DECK}
+        assert stored.json() == {"deck_id": _FIRST_DECK}
+        assert registry.connected_count == 0, "and the dead client was dropped on the way past"
+
+    async def test_the_broadcast_helpers_are_total(self):
+        """AC 18's structural half, and the honest statement of **where** the containment lives.
+
+        The route adds one awaited call and no ``try`` (Q4: *"the route adds literally one awaited
+        call"*), so AC 18's "a fault inside the broadcast never affects the 200" holds only because
+        the two helpers **cannot raise** — every call they make is inside a ``try`` whose handler
+        catches ``Exception``. That is the property this pins.
+
+        **What it compares:** that every ``Call`` node in either helper's body sits inside a
+        ``Try`` — *or* is a call to the other helper, which this same test proves total. That
+        exemption is the composition rule made explicit: ``broadcast_active_deck_changed`` ends in
+        a bare ``return await broadcast(...)``, and wrapping a call that cannot raise would be
+        ceremony. **What it cannot see:** an exception raised by an ``except`` handler itself (a
+        logging call that blows up), which is the residual every catch-all in this package shares.
+        """
+        totals = {"broadcast", "broadcast_active_deck_changed"}
+        tree = ast.parse((_REPO_ROOT / "src/companion/app/ws.py").read_text(encoding="utf-8"))
+        helpers = {
+            node.name: node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.AsyncFunctionDef) and node.name in totals
+        }
+
+        assert set(helpers) == totals  # non-vacuity
+        for name, helper in helpers.items():
+            guarded = {
+                id(node)
+                for statement in helper.body
+                if isinstance(statement, ast.Try)
+                for node in ast.walk(statement)
+                if isinstance(node, ast.Call)
+            }
+            unguarded = [
+                ast.unparse(node)
+                for node in ast.walk(helper)
+                if isinstance(node, ast.Call)
+                and id(node) not in guarded
+                and not (isinstance(node.func, ast.Name) and node.func.id in totals)
+            ]
+            assert unguarded == [], f"{name} can raise at {unguarded}; the route has no net"
+            handlers = [
+                handler
+                for statement in helper.body
+                if isinstance(statement, ast.Try)
+                for handler in statement.handlers
+            ]
+            assert handlers, f"{name} has no except clause"
+            assert all(
+                isinstance(handler.type, ast.Name) and handler.type.id == "Exception"
+                for handler in handlers
+            ), f"{name} catches something narrower than Exception"
+
+    async def test_the_insertion_point_comment_was_replaced_by_the_call(self):
+        """AC 19: the marked line predicted a call; the call is what stands there now.
+
+        **What it compares:** the route module's identifiers for the awaited broadcast, and its
+        source for the comment that reserved the line. **What it cannot see:** whether the call is
+        positioned *after* the store — which the behavioural tests above cover by observing the
+        stored id arrive on the wire.
+        """
+        route_source = _REPO_ROOT / "src/companion/app/routes/active_deck.py"
+
+        assert "broadcast_active_deck_changed" in code_identifiers(route_source)
+        assert "c5-4 adds its active_deck_changed broadcast on the line below" not in (
+            route_source.read_text(encoding="utf-8")
+        )
+
+
+class TestTwoTabsOnePut:
+    """AC 9 (FR-06, UX-DR37): the multi-tab requirement, on the wire, through the real machinery.
+
+    **The one route-driven proof in this story, and the reason** ``conftest.open_socket``
+    **exists.**
+    Everything else about the fan-out is proven against fakes, which is cheaper and sharper — but
+    "every connected client receives it" is a claim about *concurrently open* sockets, and
+    ``drive_handshake`` structurally cannot hold two: it runs one handshake to completion. So this
+    drives two real handshakes through ``build_app()``, keeps both parked in their drain loops,
+    issues one ordinary authenticated ``PUT`` over the ordinary HTTP seam, and reads what each
+    socket was handed. Nothing synchronises the tabs — each receives the same broadcast
+    independently, which is UX-DR37's rule.
+
+    The real-socket version of this — an actual port, an actual process — is **c5-8's**, not this
+    story's (AD-10: exactly one integration-marked socket test in the whole feature). It shipped on
+    2026-08-09 at ``tests/integration/companion/test_live_backend.py``, with one deliberate
+    narrowing worth knowing: it drives **one** real socket, not two, because what it exists to
+    prove is the process boundary rather than the fan-out arity. The two-tab claim stays here,
+    where it can be made without booting anything.
+    """
+
+    async def test_both_tabs_receive_the_same_event(self, lifespan_client):
+        app = build_app()
+        async with lifespan_client(app) as client:
+            async with (
+                open_socket(app, ticket=await _mint_ticket(client)) as first,
+                open_socket(app, ticket=await _mint_ticket(client)) as second,
+            ):
+                assert connection_registry(app).connected_count == 2  # non-vacuity
+
+                response = await client.put(
+                    _PATH, json={"deck_id": _SECOND_DECK}, headers=_bearer(agent_token(app))
+                )
+
+                assert response.status_code == 200
+                assert len(first.frames) == 1, "the first tab was not reached"
+                assert len(second.frames) == 1, "the second tab was not reached"
+                assert first.frames == second.frames, "byte-identical, from one serialisation"
+
+                event = TypeAdapter(AgentEvent).validate_json(first.frames[0])
+                assert isinstance(event, ActiveDeckChangedEvent)
+                assert event.payload.deck_id == _SECOND_DECK
+
+    async def test_a_tab_that_closed_stops_receiving_and_the_other_does_not(self, lifespan_client):
+        """AC 8, verbatim from the epic: removed without error, and others are unaffected.
+
+        Driven as the sequence a user performs — two tabs, close one, set another deck — rather
+        than by reaching into the registry, so it fails if the handler's ``finally`` stops running.
+        """
+        app = build_app()
+        async with lifespan_client(app) as client:
+            headers = _bearer(agent_token(app))
+            async with open_socket(app, ticket=await _mint_ticket(client)) as survivor:
+                async with open_socket(app, ticket=await _mint_ticket(client)) as closing:
+                    await client.put(_PATH, json={"deck_id": _FIRST_DECK}, headers=headers)
+                    assert len(closing.frames) == 1  # non-vacuity: it really was reachable
+
+                assert connection_registry(app).connected_count == 1
+
+                await client.put(_PATH, json={"deck_id": _SECOND_DECK}, headers=headers)
+
+                assert len(closing.frames) == 1, "the closed tab received a second event"
+                assert len(survivor.frames) == 2, "the surviving tab missed the second event"

@@ -18,6 +18,7 @@ import pytest
 from starlette.middleware.cors import CORSMiddleware
 
 from src.companion.app import server
+from src.companion.app.body_cap import BodyCapMiddleware
 from src.companion.app.errors import UnhandledErrorMiddleware
 from src.companion.app.main import build_app
 from src.companion.app.security import (
@@ -25,7 +26,9 @@ from src.companion.app.security import (
     HostValidationMiddleware,
     agent_token_is_valid,
     allowed_authorities,
+    allowed_origins,
     host_is_allowed,
+    origin_is_allowed,
     presented_credential,
 )
 from tests.unit.companion.conftest import keep_spa_mount_last
@@ -42,6 +45,27 @@ the constant instead of reading application state fails here."""
 
 _SECURITY_LOGGER = "src.companion.app.security"
 
+
+# c5-3's AC 7/8 table: (Origin header, expected verdict, why).
+_ORIGIN_MATRIX = [
+    (f"http://127.0.0.1:{_PORT}", True, "the two supported spellings"),
+    (f"http://localhost:{_PORT}", True, "the two supported spellings"),
+    (f"HTTP://LOCALHOST:{_PORT}", True, "origins are compared case-insensitively"),
+    (f"  http://localhost:{_PORT}  ", True, "surrounding whitespace is stripped before matching"),
+    ("http://127.0.0.1", False, "a bare origin implies port 80, not the bound one"),
+    ("http://localhost", False, "a bare origin implies port 80, not the bound one"),
+    (f"http://127.0.0.1:{_OTHER_PORT}", False, "a mismatched port is a different page"),
+    (f"https://127.0.0.1:{_PORT}", False, "this backend is served over http; https is not us"),
+    (f"http://evil.example.com:{_PORT}", False, "the hostile-local-page case AD-5 names"),
+    (f"http://[::1]:{_PORT}", False, "the socket is IPv4-only, so ::1 is never our origin"),
+    (f"http://localhost.:{_PORT}", False, "trailing-dot FQDN — a classic allow-list bypass"),
+    (f"http://127.1:{_PORT}", False, "alternate loopback spelling"),
+    (f"http://127.0.0.1:{_PORT}/", False, "an origin has no path, not even an empty one"),
+    (f"127.0.0.1:{_PORT}", False, "an authority is not an origin — the scheme is part of it"),
+    ("null", False, "the opaque origin a sandboxed iframe or a file:// page sends"),
+    (None, False, "Q4: a missing Origin is refused, matching host_is_allowed's None handling"),
+    ("", False, "an empty Origin is absence by another name"),
+]
 
 # The AC 2 table, verbatim: (Host header, expected verdict, why).
 _MATRIX = [
@@ -156,6 +180,79 @@ class TestHostIsAllowed:
         # Decide-once #2: fail closed. A runner that forgot to stamp the port must produce a loud
         # 400 on the first request, not a silently disabled envelope.
         assert host_is_allowed(f"127.0.0.1:{_PORT}", None) is False
+
+
+class TestTheAllowedOrigins:
+    """c5-3 AC 7: the accepted set is the Host set with a scheme on it, and nothing more."""
+
+    def test_the_origins_carry_the_bound_port(self):
+        assert allowed_origins(_PORT) == frozenset(
+            {f"http://127.0.0.1:{_PORT}", f"http://localhost:{_PORT}"}
+        )
+
+    def test_the_origin_set_is_the_authority_set_with_a_scheme(self):
+        """The property that keeps the two checks from ever drifting apart.
+
+        ``Origin`` and ``Host`` name the same two loopback spellings on the same bound port, and
+        deriving one from the other is what makes that a fact rather than a pair of literals two
+        authors have to keep in sync. Asserted on a non-default port *and* on 80, because 80 is
+        where the two sets have their only interesting shape — see below.
+        """
+        for port in (_PORT, _OTHER_PORT, 80):
+            assert allowed_origins(port) == frozenset(
+                f"http://{authority}" for authority in allowed_authorities(port)
+            )
+
+    def test_port_80_also_accepts_the_bare_origins(self):
+        # RFC 6454's serialisation omits the default port, exactly as an HTTP client omits it from
+        # `Host` — so on :80 `http://localhost` is the *correct* spelling, not a lax one. Inherited
+        # from `allowed_authorities` rather than re-decided here, which is the point of deriving.
+        assert allowed_origins(80) == frozenset(
+            {
+                "http://127.0.0.1:80",
+                "http://localhost:80",
+                "http://127.0.0.1",
+                "http://localhost",
+            }
+        )
+
+    def test_no_https_origin_is_ever_allowed(self):
+        # The backend is plain HTTP on loopback (c1-3 binds no TLS), so an `https` origin is by
+        # construction some other page. Stated as its own assertion because it is the one part of
+        # the set that is about the *scheme* rather than the authority.
+        assert not any(origin.startswith("https://") for origin in allowed_origins(_PORT))
+
+
+class TestOriginIsAllowed:
+    """c5-3 AC 7, 8, 9: the whole Origin decision, as a pure function."""
+
+    @pytest.mark.parametrize(
+        ("origin", "expected", "why"),
+        _ORIGIN_MATRIX,
+        ids=[str(origin) for origin, _, _ in _ORIGIN_MATRIX],
+    )
+    def test_the_matrix(self, origin, expected, why):
+        assert origin_is_allowed(origin, _PORT) is expected, why
+
+    def test_a_bare_origin_is_accepted_only_on_port_80(self):
+        assert origin_is_allowed("http://localhost", 80) is True
+        assert origin_is_allowed("http://localhost", _PORT) is False
+
+    def test_no_bound_port_rejects_even_a_perfect_origin(self):
+        # The same fail-closed rule `host_is_allowed` states, for the same reason: an envelope
+        # that cannot be evaluated is a reason to refuse, not to wave the handshake through.
+        assert origin_is_allowed(f"http://127.0.0.1:{_PORT}", None) is False
+
+    def test_the_predicate_matches_host_is_allowed_on_every_authority(self):
+        """AC 7's real claim: the two checks agree about what "our origin" means.
+
+        Non-vacuity for the derivation test above, from the other direction — that one compares
+        two *sets*, this one drives both *predicates* over the same inputs and would catch a
+        divergence introduced in the comparison rather than in the set construction.
+        """
+        for host, expected, why in _MATRIX:
+            origin = None if host is None else f"http://{host.strip()}"
+            assert origin_is_allowed(origin, _PORT) is expected, why
 
 
 class TestTheEnvelopeOnTheWire:
@@ -340,12 +437,25 @@ class TestNonHttpScopes:
 class TestMiddlewareOrder:
     """AC 8: the security middleware is installed *inside* the error middleware."""
 
-    def test_the_stack_is_exactly_error_then_security(self):
+    def test_the_stack_is_exactly_error_then_security_then_the_body_cap(self):
         # user_middleware[0] is the most recently added, i.e. the outermost. Pinning the whole
-        # list rather than index 0 makes a future insertion between the two visible.
+        # list rather than index 0 makes a future insertion between any two visible — which is
+        # exactly what caught c5-5's addition, deliberately.
+        #
+        # `BodyCapMiddleware` is INNERMOST of the three, and each boundary is a decision:
+        #
+        # * inside `UnhandledErrorMiddleware`, so a fault in the byte counting is typed as a 500
+        #   rather than escaping as a traceback — the same net the Host check sits under;
+        # * inside `HostValidationMiddleware`, so a request that never legitimately addressed this
+        #   process is refused BEFORE its body is read. Reversing these two would make the cap
+        #   buffer up to 64 KB on behalf of a DNS-rebinding caller the envelope was about to
+        #   reject anyway;
+        # * outside the routers, which is what makes it one mechanism for both body endpoints
+        #   rather than a per-route dependency (c5-5, Q2, Brad 2026-08-08).
         assert [m.cls for m in build_app().user_middleware] == [
             UnhandledErrorMiddleware,
             HostValidationMiddleware,
+            BodyCapMiddleware,
         ]
 
 

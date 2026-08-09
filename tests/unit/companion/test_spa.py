@@ -17,7 +17,7 @@ from starlette.routing import Mount
 
 from src.companion.app import spa
 from src.companion.app.main import build_app
-from src.companion.app.routes import active_deck, cards, decks, health
+from src.companion.app.routes import active_deck, agent_events, cards, decks, health, session
 
 _TYPED_ERROR_MEDIA_TYPE = "application/json"
 
@@ -312,11 +312,28 @@ class TestTheTypedErrorContractSurvivesTheFallback:
         # c3-4 IS the other kind and owed the line: active_deck.router is a new router, so this
         # test went red naming /api/active-deck as an extra item on the left. That red is the
         # mechanism working — it is what a story adding a router is supposed to see.
+        #
+        # c5-2 is the third instance of that kind and paid the same tax, predicted in advance by
+        # `deferred-work.md:1905-1930` (which names c5-2 by key) and then measured: adding
+        # session.router to build_app() reddened this test with "Extra items in the left set:
+        # '/api/session'" before the line below existed. Its mint is a new router rather than a
+        # route on an existing one because /api/session is not a deck, a card or the active deck —
+        # joining any of those would have made that module's docstring false to save two lines,
+        # which is the trade c3-4 already refused.
+        # c5-5 is the fourth instance of the router-adding kind, and the LAST story
+        # `deferred-work.md`'s router-tax entry names by key — the tax is paid out here. Its
+        # `agent_events.router` is a new router rather than a route on an existing one for the
+        # reason that decided c3-4 and c5-2 the same way: `/agent/events` is not a deck, a card,
+        # the active deck or a session, and joining any of those routers would have made that
+        # module's docstring false to save two lines. Measured before the line below existed:
+        # "Extra items in the left set: '/agent/events'".
         without_spa = FastAPI()
         without_spa.include_router(health.router)
         without_spa.include_router(decks.router)
         without_spa.include_router(cards.router)
         without_spa.include_router(active_deck.router)
+        without_spa.include_router(session.router)
+        without_spa.include_router(agent_events.router)
 
         assert set(build_app().openapi()["paths"]) == set(without_spa.openapi()["paths"])
 
@@ -421,7 +438,25 @@ class TestMountOrdering:
         #   bare child segment (e.g. `decks` from prefix="/api") would be silently stolen from
         #   the SPA's client-route namespace. `in`-assertions stay green on that; equality does
         #   not.
-        assert reserved == {"api", "health", "docs", "redoc", "openapi.json"}, (
+        # `ws` added by c5-3, and it is the first entry here contributed by a WEBSOCKET route.
+        # The story predicted this file owed no edit — true of the hand-mirrored router list at
+        # `test_the_schema_is_unchanged_by_installing_the_mount` (a WS route has no OpenAPI
+        # operation, so that comparison is genuinely untouched) and FALSE of this one, which reads
+        # the route table rather than the schema. `_route_paths` descends into `WebSocketRoute`
+        # exactly as into `Route`, so registering `/ws` reserved its first segment — which is the
+        # behaviour c5-3 wanted anyway: a plain `GET /ws` now answers the typed 404 instead of
+        # serving index.html, pinned at `test_ws.py::test_a_plain_http_get_of_the_ws_path_is_a_
+        # typed_404`. A prediction corrected in the same commit that falsified it (c3-9's rule).
+        # `agent` added by c5-5, and it is the entry the comment above spent two stories
+        # PREDICTING: "misses every prefix c3-1 (/api) and c5-5 (/agent) will register the same
+        # way". The prediction is now spent and correct — `/agent/events` arrives via
+        # `include_router`, the walk descends into the `_IncludedRouter` and reserves its first
+        # segment, so `GET /agent/eventz` answers the typed 404 instead of index.html
+        # (`test_routes_agent_events.py::test_an_unrouted_sibling_path_is_refused_rather_than_
+        # falling_back`). Note what this does NOT provide: `_RESERVED_SEED` still covers `/api`
+        # alone, so derivation is the only thing reserving `agent`, and derivation runs at mount
+        # time — which is why `build_app()`'s registration order remains the real protection.
+        assert reserved == {"agent", "api", "health", "docs", "redoc", "openapi.json", "ws"}, (
             f"Reserved prefixes changed: {sorted(reserved)}.\n\n"
             "If a prefix is MISSING: spa._route_paths reads FastAPI internals "
             "(_IncludedRouter.original_router and .include_context.prefix) to descend into "
@@ -445,8 +480,8 @@ class TestMountOrdering:
     def test_the_mount_declines_non_http_scopes(self):
         # Starlette's Mount matches websocket scopes too, but StaticFiles serves only HTTP — its
         # first line is `assert scope["type"] == "http"`. A WebSocket handshake to an unreserved
-        # path (c5-6's /ws, or any client route) must get the router's clean no-such-route
-        # rejection, not an AssertionError dressed as a server error.
+        # path (c5-6's /ws — shipped — or any client route) must get the router's clean
+        # no-such-route rejection, not an AssertionError dressed as a server error.
         mount = build_app().routes[-1]
 
         match, _ = mount.matches({"type": "websocket", "path": "/decks/42", "root_path": ""})

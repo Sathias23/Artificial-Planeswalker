@@ -19,12 +19,20 @@
  *   | the stalled row's *"c3-9 owns the threshold"* | `STALLED_AFTER_MS`, and its `false` in `RETRIES_QUIETLY` |
  *   | the internal-error row's *"never retries itself"* | `RETRIES_QUIETLY['internal-error']` |
  *
- * The fourth — the disconnected row's *"Retrying-quietly note in the connection pill"* — is
- * **declined here and re-homed on c5-6 by name**, which owns the pill, its backoff and the
- * `disconnected` state. There is nothing in this repository for it to be checked against yet: a
- * gate on it today would assert prose against prose. It is re-homed rather than left as a fourth
- * "candidate home" note, because that is what AC 15 asks for and what the previous three drafts
- * of this item did not do.
+ * The fourth — the disconnected row's *"Retrying-quietly note in the connection pill"* — was
+ * **declined here and re-homed on c5-6 by name**, which owns its backoff and the `disconnected`
+ * state (the PILL was c5-7's). There was nothing in this repository for it to be checked against:
+ * a gate on it then would have asserted prose against prose. It was re-homed rather than left as a
+ * fourth "candidate home" note, because that is what AC 15 asks for and what the previous three
+ * drafts of this item did not do.
+ *
+ * **c5-6 PAID HALF OF IT AND c5-7 PAID THE REST (2026-08-08).** The last describe in this file is
+ * no longer a placeholder: it reads the shipped backoff's constants out of `src/state/socket.ts`,
+ * holds its two-gate threshold to `poller.ts`'s `STALLED_AFTER_MS`, and asserts that the loop reads
+ * `RETRIES_QUIETLY` rather than paraphrasing it. c5-7 then shipped the pill, so the last clause —
+ * the note itself — became checkable and its deliberate non-assertion was **converted into a real
+ * mirror** rather than deleted: the row's promise is now held against the pill's shipped words AND
+ * against the map the loop reads, so softening either end fails here.
  *
  * ================= WHY A NEW FILE RATHER THAN AN EDIT TO copy.test.ts ===================
  *
@@ -220,17 +228,116 @@ describe('the three tails that constrain this story are gated (AC 15)', () => {
   })
 })
 
-describe('the fourth tail is DECLINED and re-homed, not forgotten (AC 15)', () => {
-  it('records the disconnected row as c5-6 work, and asserts only that it is still there', () => {
-    // Deliberately weaker than the three above: there is no connection pill, no backoff and no
-    // `disconnected` selection in this repository yet, so any mirror this file asserted would be
-    // prose checked against prose. What it CAN do is fail if the clause disappears before c5-6
-    // arrives to honour it.
+/**
+ * The fourth tail, DECLINED at c3-9 and re-homed on c5-6 by name — **now paid in full** (c5-6
+ * AC 21, c5-7 AC 13).
+ *
+ * c3-9's own words for why it was declined: *"there is no connection pill, no backoff and no
+ * `disconnected` selection in this repository yet, so any mirror this file asserted would be prose
+ * checked against prose."* **All three now exist.** c5-6 shipped the backoff and the `disconnected`
+ * selection; c5-7 shipped the pill.
+ *
+ * So the assertions below come in two layers, and keeping them apart is the point. c5-6's half is
+ * about the MECHANISM: it exists, it has the two-gate shape the clause's *"retrying quietly"*
+ * implies, and the map the loop reads still says `true`. c5-7's half is about the NOTE: the row
+ * promises a retrying-quietly note in the pill, and the pill's shipped `down` copy is what that
+ * promise is now held against. Neither half alone would catch the drift the other sees — a pill
+ * that said "retrying quietly" over a loop that had stopped, or a loop that retried behind a pill
+ * that had stopped saying so.
+ *
+ * `src/state/socket.test.ts` carries the behavioural half — flip the entry and the loop stops
+ * retrying — which is the assertion no source-reading gate can make.
+ */
+describe('the fourth tail is PAID, not still deferred (AC 15 at c3-9; AC 21 at c5-6; AC 13 at c5-7)', () => {
+  /** The loop's own constants, read out of the shipped module rather than imported. See the header. */
+  const socketSource = stripComments(sourceOf('src/state/socket.ts'))
+  const constant = (name: string): number =>
+    Number(
+      new RegExp(`export const ${name} = ([\\d_]+)`).exec(socketSource)?.[1]?.replaceAll('_', '') ??
+        NaN,
+    )
+
+  it('records the disconnected row, and the clause is still there to be honoured', () => {
     expect(tails.get('Disconnected / backend restarted')).toMatch(
       /Retrying-quietly note in the connection pill/,
     )
-    // …and the half c5-6 will read: `disconnected` retries, and this story never selects it.
+  })
+
+  it('now has a real backoff behind that clause — the three constants c3-9 had nothing to read', () => {
+    // The mirror c3-9 could not write. A "retrying quietly" note is a promise about a mechanism,
+    // and until this story there was no mechanism for the note to be true OF.
+    expect(constant('SOCKET_BASE_MS')).toBeGreaterThan(0)
+    expect(constant('SOCKET_MULTIPLIER')).toBeGreaterThan(1)
+    // The ceiling is the difference between a backoff and a countdown to never — without it the
+    // note would be true for ten minutes and false forever after.
+    expect(constant('SOCKET_CEILING_MS')).toBeGreaterThan(constant('SOCKET_BASE_MS'))
+  })
+
+  it('selects `disconnected` from a TWO-GATE threshold, the shape the codebase already uses', () => {
+    // Elapsed time AND observed failures, `poller.ts`'s `STALLED_AFTER_MS` +
+    // `STALLED_MIN_REFUSALS` pair. One gate alone announces a lost backend to somebody who closed
+    // a laptop lid; this file is where the row's copy and that decision are held together.
+    expect(constant('DISCONNECTED_AFTER_MS')).toBe(STALLED_AFTER_MS)
+    expect(constant('DISCONNECTED_MIN_FAILURES')).toBeGreaterThan(1)
+  })
+
+  it('and the map the loop READS still says the state retries', () => {
+    // `RETRIES_QUIETLY.disconnected` stopped being a declaration at c5-6: `socket.ts` indexes it
+    // to decide whether to keep scheduling behind the panel. Flip it and the loop stops — which
+    // `src/state/socket.test.ts` proves by doing exactly that in a try/finally.
     expect(retriesQuietly('disconnected')).toBe('true')
+    expect(socketSource).toMatch(/RETRIES_QUIETLY/)
+  })
+
+  /**
+   * ⚠️ **CONVERTED AT c5-7 (AC 13), NOT DELETED.** This assertion used to read *"leaves the PILL
+   * to c5-7, and says so rather than half-asserting it"*, and its whole content was that the row
+   * mentions a connection pill and that `socket.ts` does not. That was the honest thing to assert
+   * while no pill existed — c3-9 declined the clause for the same reason and c5-6 shipped the
+   * backoff without the chrome — and it is the wrong thing to assert now that one does.
+   *
+   * The clause is *"Retrying-quietly note in the connection pill"*. Both halves of it are now
+   * checkable: there is a pill, and it carries a note. So the mirror is the real one — the row's
+   * promise against the SHIPPED string — and the deliberate-non-assertion is retired by being
+   * paid, which is what `deferred-work.md`'s dw:5354 entry was waiting for.
+   */
+  const pillWords = stripComments(sourceOf('src/containers/ConnectionPill/copy.ts'))
+  const pillDownWords = /down: '([^']*)'/.exec(pillWords)?.[1]
+
+  it('reads the pill’s shipped words at all (non-vacuity for the conversion)', () => {
+    // The failure this file's whole header is about: a regex that stopped matching returns
+    // `undefined`, and an `undefined` compared with `toContain` throws rather than passing — but
+    // an `undefined` fed to a `not.toMatch` would pass silently. Anchored before it is used.
+    expect(
+      pillDownWords,
+      'the down-state words were not found in the pill’s copy module',
+    ).toBeDefined()
+    expect(pillDownWords!.length).toBeGreaterThan(10)
+  })
+
+  it('MIRRORS the retrying-quietly note against the pill’s shipped copy (AC 13)', () => {
+    // The row promises the note lives in the pill. This is the assertion that fails if the copy is
+    // ever softened to "Backend gone" alone while the artefact still claims a retrying note — the
+    // drift no gate could see for two stories.
+    expect(tails.get('Disconnected / backend restarted')).toMatch(/Retrying-quietly note/i)
+    expect(pillDownWords).toMatch(/retrying quietly/i)
+  })
+
+  it('and the note is TRUE of the mechanism, not merely present in the string', () => {
+    // Copy checked against copy would be the failure this file exists to prevent, so the note is
+    // held to the LOOP as well: the pill may only say "retrying quietly" while the map the loop
+    // reads still says the state retries. Flip `RETRIES_QUIETLY.disconnected` and this fails —
+    // which is the whole point of the clause having been re-homed twice rather than asserted early.
+    expect(retriesQuietly('disconnected')).toBe('true')
+    expect(socketSource).toMatch(/RETRIES_QUIETLY/)
+  })
+
+  it('and `socket.ts` still contains no `pill` outside its comments', () => {
+    // THE HALF THAT STANDS UNCHANGED. The pill reads the loop's field; the loop knows nothing
+    // about a pill, and that separation is what stops the announcement chrome from becoming a
+    // second writer of the connection status (`systemState.ts:53-60`). c5-7 added a READER, and a
+    // reader does not need naming here.
+    expect(socketSource).not.toMatch(/pill/i)
   })
 })
 

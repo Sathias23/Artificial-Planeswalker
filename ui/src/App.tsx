@@ -8,11 +8,13 @@ import { StatePanel } from './components/StatePanel/StatePanel'
 import { CardDetail } from './containers/CardDetail/CardDetail'
 import { CardGrid } from './containers/CardGrid/CardGrid'
 import { ColourDistribution } from './containers/ColourDistribution/ColourDistribution'
+import { ConnectionPill } from './containers/ConnectionPill/ConnectionPill'
 import { DeckList } from './containers/DeckList/DeckList'
 import { FormatCheck } from './containers/FormatCheck/FormatCheck'
 import { ManaCurve } from './containers/ManaCurve/ManaCurve'
 import { SkipLink } from './containers/SkipLink/SkipLink'
 import { hydrateDeckCards } from './state/cards'
+import { useAgentConnection } from './state/connection'
 import { surfaceOf, useDeckState } from './state/deck'
 import { deckIsEmpty } from './state/deckGroups'
 import { clearFormatCheck, loadFormatCheck } from './state/formatCheck'
@@ -163,6 +165,25 @@ import { useSystemState } from './state/systemState'
 export default function App() {
   const system = useSystemState()
   const surface = surfaceOf(useDeckState(), system)
+  // THE SOCKET, MOUNTED ONCE (c5-6, AC 1). Third in declaration order, behind the poll and the
+  // boot, and returning nothing: what it produces is `system.connection`, which `surfaceOf` two
+  // lines up already reads. `App` is its ONE consumer for the reason `useSystemState` and
+  // `useDeckState` both give — a second mounted caller is a second socket per tab.
+  //
+  // ==== WHERE THE UPGRADE LANDS IN THE REQUEST QUEUE (c4-12 Q10's measurement, extended) ==
+  // React runs effects in DECLARATION ORDER, and hooks called here run their effects BEFORE this
+  // component's own two `useEffect` blocks below. So the order on a cold open is: the poll's
+  // `GET /api/decks`, the boot's `GET /api/active-deck`, this loop's `GET /api/session`, then —
+  // once the ticket lands, a round trip later — the upgrade, and only then the 99-card sweep and
+  // the format check. The mint is one small request ahead of the sweep; the UPGRADE is not in the
+  // HTTP queue at all once established, which is the point of a socket.
+  //
+  // ⚠️ Declared HERE, above both `useEffect` blocks, and **the two blocks below are not moved**.
+  // Their relative order is measured and load-bearing (`:245-267` and `:341-359` each name the
+  // other's queue position, worth ~180 ms of the six-surface layout); adding a hook call above
+  // them changes neither, and this comment exists so the next reader can see that was checked
+  // rather than assumed.
+  useAgentConnection()
   // The one narrowing of the one rule. Not a second precedence decision: `surfaceOf` has already
   // said which of the two is true, and this line only gives the deck arm a name so that the
   // three slots below can read its fields without repeating the discriminant check.
@@ -543,6 +564,20 @@ export default function App() {
           </>
         ) : undefined
       }
+      /* UNCONDITIONAL, AND THAT IS AC 1 RATHER THAN A SIMPLIFICATION (c5-7).
+         Every other slot on this shell is gated on a surface — the grid and the three analysis
+         panels on `surface.kind === 'deck'`, the skip link on `hasCards`, the badges on a loaded
+         deck. The pill is gated on nothing at all: it renders on a loaded deck, on all six state
+         panels, on an empty deck and on a cold open, which is what *"always visible"* means
+         (FR-15, `EXPERIENCE.md:43`, `:112`).
+
+         It takes NO PROP, and it is the second container in the app that does not (`FormatCheck`
+         is the first). It reads `connection` from the system slice and the deck name from the
+         deck slice through their own hooks — deliberately NOT off `surface` or `deck` in this
+         file, because `surfaceOf` returns a PANEL surface in exactly the `'down'` state where the
+         pill must still know a deck is loaded (`deck.ts:481-486`). Passing either from here would
+         have handed it the one answer it must not use. */
+      connectionPill={<ConnectionPill />}
       footer={<Footer />}
     />
   )

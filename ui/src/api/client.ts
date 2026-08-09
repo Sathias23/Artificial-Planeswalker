@@ -90,11 +90,14 @@
 
 import type {
   ActiveDeck,
+  AgentEvent,
+  AgentEventKind,
   Card,
   DeckDetail,
   DeckSummary,
   ErrorResponse,
   FormatCheckReport,
+  SessionTicket,
 } from './schema'
 
 /**
@@ -130,7 +133,9 @@ export const READ_TIMEOUT_MS = 10_000
  * - `unreachable` — no response at all: `fetch` itself rejected. NOT the same as `error` with a
  *   `null` reason, and the difference is load-bearing — see the poller, which retries this one
  *   without claiming a state, because the panel that describes a lost backend
- *   (`disconnected`) is **c5-6's** by `CLIENT_ONLY_STATES` and this story may not claim it.
+ *   (`disconnected`) is **c5-6's** by `CLIENT_ONLY_STATES`. **c5-6 has now claimed it**, from the
+ *   socket's two-gate threshold rather than from any response — so this poll still never decides
+ *   that state, and the sentence stands unchanged as a boundary rather than as an IOU.
  */
 export type DecksOutcome =
   | { readonly kind: 'decks'; readonly decks: readonly string[] }
@@ -341,6 +346,153 @@ export type FormatCheckOutcome =
   | { readonly kind: 'error'; readonly reason: string | null }
   | { readonly kind: 'unreachable' }
 
+/**
+ * Where one WebSocket ticket is minted (story c5-6, AD-5, NFR-01).
+ *
+ * No path parameter, like {@link DECKS_PATH} and {@link ACTIVE_DECK_PATH} — but neither route's
+ * retry argument transfers, and the reason is worth stating beside the constant rather than only
+ * in the loop. This route has **no failure to retry**: `session.py` says *"there is no failure
+ * path to model, so under a running lifespan the response is always `200`"*. The only thing that
+ * can go wrong here is that nothing is listening, and the answer to that is not "ask again in a
+ * moment" — it is the whole reconnect backoff in `src/state/socket.ts`, which owns the waiting.
+ *
+ * ⚠️ **The one 200 in this app that carries a credential**, and therefore the one whose
+ * `Cache-Control: no-store` is load-bearing rather than hygiene (c5-2 Q5). {@link request} already
+ * sends `cache: 'no-store'` on every route, so the client half of that agreement is free here —
+ * which is a coincidence worth naming, because the day someone relaxes that option for a
+ * cacheable route, this ticket is what it would start caching.
+ */
+export const SESSION_PATH = '/api/session'
+
+/**
+ * What one mint of `GET /api/session` came back with. The same three cases as every other reader
+ * in this module — with the second one carrying a fact rather than a caveat:
+ *
+ * - `ticket` — a `200` whose body was the promised record. **The only outcome a socket can be
+ *   opened from**, and it is good for exactly one upgrade attempt.
+ * - `error` — a response arrived and the request was refused. **The backend declares no refusal
+ *   on this route at all** (`session.py`: no database, so no `503`; no body, so no `413`), so
+ *   reaching this arm means something that is not the companion answered on the port — a stale
+ *   process, a captive portal, a proxy error page. It is modelled anyway, because "the route
+ *   cannot fail" is a statement about the backend and this union is a statement about the wire.
+ * - `unreachable` — no response at all. **This is the ordinary failure**, and the one the whole
+ *   reconnect loop is built around: the companion was restarted, or has not started yet.
+ */
+export type SessionOutcome =
+  | { readonly kind: 'ticket'; readonly ticket: string }
+  | { readonly kind: 'error'; readonly reason: string | null }
+  | { readonly kind: 'unreachable' }
+
+/**
+ * Where the socket lives, minus the query string.
+ *
+ * `ws.py:97` takes the ticket as a **query parameter** and not as a header, and the reason is a
+ * browser limitation rather than a design preference: the `WebSocket` constructor accepts a URL
+ * and a subprotocol list and nothing else, so a client-side page physically cannot set an
+ * `Authorization` header on a handshake. The constant is a bare path with no `{`, `}` or `:` —
+ * the same structurally-retry-safe shape {@link DECKS_PATH} has, and here it means the URL
+ * builder below has exactly one untrusted value to encode.
+ */
+export const WS_PATH = '/ws'
+
+/**
+ * The full socket URL for one ticket, built **entirely from `window.location`** (AC 1).
+ *
+ * ==== WHY NOTHING HERE IS CONFIGURED, AND THE PORT IS NEVER NAMED =====================
+ * The backend takes its port from `COMPANION_PORT` and may be told to take an ephemeral one, so
+ * any number written into this bundle would be wrong for the case it was written for. It does not
+ * need one: the SPA is served BY the companion (AD-13), so the page's own authority already IS
+ * the backend's authority in production, and in the dev loop Vite proxies `/ws` to it
+ * (`config/devProxy.ts`). Reading `window.location.host` means the socket lands wherever the page
+ * came from, whatever port that was.
+ *
+ * ==== AND WHY THE SPELLING MATTERS AS MUCH AS THE NUMBER ==============================
+ * `security.py:178-219`'s `origin_is_allowed` compares the handshake's `Origin` against
+ * `{"http://127.0.0.1:<port>", "http://localhost:<port>"}` by **exact match after lowercasing —
+ * nothing is parsed or normalised**. The browser derives that `Origin` from the PAGE, not from
+ * this URL, so a page opened on `localhost` and a socket dialled at `127.0.0.1` would present a
+ * `localhost` origin to a backend reached by address — which is allowed, since both spellings are
+ * in the set — but the reverse asymmetry is the one that bites: any spelling this function
+ * introduced that the page did not have is a spelling the check has never seen. Deriving the
+ * whole authority from `window.location` is what makes "the host spelling never switches between
+ * page and socket" structural rather than careful.
+ *
+ * The scheme is derived the same way: `wss:` for an `https:` page, `ws:` otherwise. Today the
+ * companion is `http:` on loopback and the `wss:` arm is unreachable — it is here because a
+ * hardcoded `ws:` on an `https:` page is refused by every browser as mixed content, and that is a
+ * one-word failure to prevent and an afternoon to diagnose.
+ *
+ * Args:
+ *   ticket: The ticket from {@link readSessionTicket}, verbatim. `encodeURIComponent` because a
+ *     query value must be one, not because a `token_urlsafe` string needs it: the backend mints
+ *     ~43 URL-safe characters, so this encodes to itself today. It is applied anyway for
+ *     {@link cardPath}'s reason — the encoding is a property of the POSITION, not of the value
+ *     that happens to occupy it now.
+ *
+ * Returns:
+ *   An absolute `ws://` or `wss://` URL.
+ */
+export const agentSocketUrl = (ticket: string): string => {
+  const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${scheme}//${window.location.host}${WS_PATH}?ticket=${encodeURIComponent(ticket)}`
+}
+
+/**
+ * What the loop wants to be told about a socket — three plain callbacks, no DOM types.
+ *
+ * **This shape is the whole of Q1's ruling made concrete** (Brad, 2026-08-08). `posture.test.ts`
+ * scans every tracked non-test module for the network family and asserts the match list is
+ * exactly `['src/api/client.ts']` — and its regex includes the socket constructor's name, so a
+ * loop module that so much as declared a variable of that type would become the app's second
+ * network door. The alternative on the table was to argue the door list open to two entries,
+ * which spends a decide-once ruling to buy nothing: the property being protected is *one place a
+ * connection is opened*, and a loop that never opens one is not an exception to it.
+ *
+ * So the door translates and the loop receives. Everything DOM-shaped about a socket — the
+ * constructor, the four handler slots, the event objects, `event.data` — stops here, and
+ * `src/state/socket.ts` sees three functions and a `close`. That is also why the `message`
+ * callback takes an already-narrowed {@link AgentEvent} rather than a string: parsing the wire is
+ * this module's job in the same way `deckOf` and `cardOf` are, and handing the loop a raw frame
+ * would put a second wire-shaped decision in a file whose subject is timing.
+ */
+export interface AgentSocketHandlers {
+  /** The upgrade succeeded and the socket is open. At most once per socket. */
+  readonly onOpen: () => void
+  /**
+   * One text frame arrived. `null` means it was NOT a frame this build can read — non-JSON, an
+   * unknown `kind`, or the wrong shape — reported rather than swallowed so the loop can decide
+   * (it ignores it; AC 13) and so a test can tell "a malformed frame was dropped" from "no frame
+   * arrived at all", which a silent drop here would make indistinguishable.
+   */
+  readonly onMessage: (event: AgentEvent | null) => void
+  /**
+   * The socket ended, for ANY reason: a clean close, a close code, a failed upgrade, a transport
+   * error. **The four browser outcomes are deliberately collapsed into one callback**, because
+   * the loop's answer to every one of them is identical — back off, re-mint, retry — and
+   * `ws.py:29-40` guarantees it could not act on the difference even if it wanted to: *"every
+   * refusal is close code 1008 pre-accept, rendered as HTTP 403, with no body and no reason
+   * token"*, so a missing ticket, an expired one, a replayed one and a bad `Origin` are
+   * indistinguishable on the wire by design.
+   *
+   * **May fire more than once** — a browser that dispatches `error` and then `close` calls this
+   * twice, and nothing here suppresses the second. That is the loop's generation counter's job
+   * (`src/state/socket.ts`), not an adapter's flag: a second failure callback and a stale one
+   * from a socket the loop already abandoned are the same problem, and one mechanism answers
+   * both.
+   */
+  readonly onClose: () => void
+}
+
+/** What the caller holds after {@link openAgentSocket}: the ability to abandon the socket. */
+export interface AgentSocketHandle {
+  /**
+   * Close it. Idempotent from the caller's side — a second call on an already-closed socket is
+   * a no-op in the platform, and the loop calls it exactly that way when it gives up on an
+   * attempt whose generation has moved on.
+   */
+  readonly close: () => void
+}
+
 /** The `reason` a body carries, or `null` if it carries none this code can read. */
 const reasonOf = (body: unknown): string | null => {
   if (typeof body !== 'object' || body === null) return null
@@ -494,6 +646,89 @@ const formatCheckOf = (body: unknown): FormatCheckReport | null => {
   if (!Array.isArray(record.rows) || record.rows.length === 0) return null
   if (!record.rows.every((row) => typeof row === 'object' && row !== null)) return null
   return body as FormatCheckReport
+}
+
+/**
+ * The six kinds this build knows, as a lookup — **keys only; the values carry no meaning.**
+ *
+ * `satisfies Record<AgentEventKind, true>` is what makes it a derivation rather than a copy: the
+ * key set is checked against the union {@link AgentEventKind} extracts from the generated types,
+ * so a seventh kind on the Python side fails `npm run typecheck` **naming the missing key**,
+ * exactly as `states.ts`'s `satisfies Record<ErrorReason, …>` caught c3-2's seventh token and
+ * c3-4's eighth. A `readonly string[]` with an `includes` would have compiled fine and quietly
+ * dropped the new kind at the narrower — which is the failure mode this repo has now measured
+ * three times.
+ */
+const AGENT_EVENT_KINDS = {
+  suggestions: true,
+  swaps: true,
+  tier_list: true,
+  groups: true,
+  deck_changed: true,
+  active_deck_changed: true,
+} satisfies Record<AgentEventKind, true>
+
+/**
+ * One text frame's payload, narrowed to an {@link AgentEvent} — or `null` if it is not one.
+ *
+ * **How much of a six-member union to check, and why the answer is `kind`.** The narrowers above
+ * settled the register for this module: `cardOf` checks two fields, `deckOf` three, `formatCheckOf`
+ * one, each picking what its consumer reads first and leaving the rest to the openapi drift gate.
+ * The consumer here reads exactly one field — the discriminant — because the whole of AC 11 is a
+ * `switch` over it and the four view kinds are received and dropped without their payloads being
+ * touched at all. So the check is: it parsed, it is an object, and its `kind` is one this build
+ * knows.
+ *
+ * **The known set is derived, not listed** (see {@link AgentEventKind}), so a seventh kind added
+ * on the Python side cannot be silently accepted here and then fall off the end of the loop's
+ * switch. `Object.hasOwn` on a plain object rather than `.includes` on an array is `panel.ts`'s
+ * and `cards.ts`'s idiom for the same reason both give: a wire string is attacker-adjacent input
+ * and `'__proto__'` indexes an inherited value.
+ *
+ * Three inputs produce `null` and they are genuinely three — non-JSON (`JSON.parse` throws), a
+ * JSON scalar or array (no `kind` to read), and an object whose `kind` is absent, non-string or
+ * unknown. All three are the same answer to the loop, which is why they are not a union.
+ *
+ * Args:
+ *   data: The frame's payload, exactly as it crossed the wire. Typed `unknown` because
+ *     `MessageEvent.data` genuinely is — a binary frame delivers a `Blob` or an `ArrayBuffer`,
+ *     and the backend sends only text, so a non-string here is a contract violation and lands in
+ *     the same `null` as a malformed one.
+ *
+ * Returns:
+ *   The event, or `null`.
+ */
+export const agentEventOf = (data: unknown): AgentEvent | null => {
+  if (typeof data !== 'string') return null
+
+  let body: unknown
+  try {
+    body = JSON.parse(data)
+  } catch {
+    return null
+  }
+
+  if (typeof body !== 'object' || body === null) return null
+  if (!('kind' in body)) return null
+  const kind: unknown = (body as Partial<AgentEvent>).kind
+  if (typeof kind !== 'string' || !Object.hasOwn(AGENT_EVENT_KINDS, kind)) return null
+  return body as AgentEvent
+}
+
+/**
+ * The ticket out of a `200` body, or `null` if the body was not the promised record.
+ *
+ * One field, and a blank counts as absent — the posture every narrower above takes. A blank
+ * ticket is not a credential and would be spent on an upgrade that can only be refused, so
+ * reporting it as a contract violation costs one failed round trip less than presenting it.
+ */
+const ticketOf = (body: unknown): string | null => {
+  if (typeof body !== 'object' || body === null) return null
+  // `in` rather than a cast, for `reasonOf`'s reason: the value on the wire is untyped JSON.
+  if (!('ticket' in body)) return null
+  const ticket: unknown = (body as Partial<SessionTicket>).ticket
+  if (typeof ticket !== 'string' || ticket.trim() === '') return null
+  return ticket
 }
 
 /** A response that ARRIVED: whether it was a 2xx, and whatever body could be read out of it. */
@@ -706,4 +941,85 @@ export const readFormatCheck = async (deckId: string): Promise<FormatCheckOutcom
   // A `200` that is not the promised record: the posture every reader above takes. `null` is the
   // reason a contract violation has — there is no token for "the backend answered something else".
   return report === null ? { kind: 'error', reason: null } : { kind: 'report', report }
+}
+
+/**
+ * Mint one WebSocket ticket, and report what happened without ever throwing.
+ *
+ * **ONE request, no retry, no loop, no timer** — the fifth reader in this module to say so, and
+ * the one where it matters most. The waiting belongs to `src/state/socket.ts`, and putting even a
+ * small retry here would break the ordering the whole design rests on: the ticket's TTL is
+ * **30 s** (`state.py:163`) and the backoff's ceiling is **30 s**, so at the ceiling the two
+ * windows are exactly equal. A mint that quietly waited before answering would hand the upgrade a
+ * ticket that had already begun expiring, every time, at the one point in the schedule where
+ * there is no slack at all. The loop's contract is `delay → mint → open`, and this function's job
+ * is to be the fast middle of it.
+ *
+ * Returns:
+ *   A `SessionOutcome`. Never rejects — a rejection is `{ kind: 'unreachable' }`.
+ */
+export const readSessionTicket = async (): Promise<SessionOutcome> => {
+  const received = await request(SESSION_PATH)
+  if (received === null) return { kind: 'unreachable' }
+
+  if (!received.ok) return { kind: 'error', reason: reasonOf(received.body) }
+
+  const ticket = ticketOf(received.body)
+  // A `200` that is not the promised record: the posture every reader above takes. `null` is the
+  // reason a contract violation has — there is no token for "the backend answered something else".
+  return ticket === null ? { kind: 'error', reason: null } : { kind: 'ticket', ticket }
+}
+
+/**
+ * Open the agent socket for one ticket (story c5-6, AC 1, AC 3; Q1).
+ *
+ * **The app's second network door, in the same file as the first** — see
+ * {@link AgentSocketHandlers} for why it is here and not beside the loop that uses it.
+ *
+ * Nothing about retrying, backing off or re-minting lives here: this function opens ONE socket
+ * with ONE ticket and reports what happens to it. That is `readCard`'s posture ported to a
+ * connection, and for the same reason — the thing that decides to try again is the thing that
+ * counts the tries, and it is one layer up.
+ *
+ * **The handlers are wired before this function returns**, so a socket that fails its upgrade
+ * synchronously-ish (a refused handshake is fast on loopback) cannot dispatch into an empty slot.
+ * `onerror` and `onclose` both land on {@link AgentSocketHandlers.onClose}: see that field for why
+ * one callback answers four browser outcomes, and why firing it twice is deliberately not
+ * suppressed here.
+ *
+ * Args:
+ *   ticket: A freshly minted ticket. **Single-presentation** — `state.py` pops it on every consume
+ *     attempt, success or not — so a caller that re-used one would be presenting a credential the
+ *     backend has already destroyed, and would receive the same indistinguishable `1008` a
+ *     forged one gets.
+ *   handlers: See {@link AgentSocketHandlers}.
+ *
+ * Returns:
+ *   An {@link AgentSocketHandle}.
+ */
+export const openAgentSocket = (
+  ticket: string,
+  handlers: AgentSocketHandlers,
+): AgentSocketHandle => {
+  const socket = new WebSocket(agentSocketUrl(ticket))
+
+  socket.onopen = () => handlers.onOpen()
+  socket.onmessage = (event: MessageEvent<unknown>) => handlers.onMessage(agentEventOf(event.data))
+  socket.onclose = () => handlers.onClose()
+  socket.onerror = () => handlers.onClose()
+
+  return {
+    close: () => {
+      // The handlers are DETACHED before the close, not after, and that is the ordering: `close()`
+      // dispatches a `close` event, so leaving `onclose` attached would call back into a loop that
+      // has already decided this socket is over — harmless today (the generation check catches it)
+      // and exactly the kind of harmless that stops being harmless when a later story adds a
+      // counter to that path.
+      socket.onopen = null
+      socket.onmessage = null
+      socket.onclose = null
+      socket.onerror = null
+      socket.close()
+    },
+  }
 }

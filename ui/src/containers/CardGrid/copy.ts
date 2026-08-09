@@ -44,9 +44,11 @@
  * one would be the *"reads as a loading failure rather than as an absent feature"* mistake
  * DESIGN.md names by hand.
  *
- * **Not announced.** No `aria-live` anywhere near it (AC 14). `CardDetail`'s single polite region
- * remains the only one in the app; a panel-visibility change that announced itself would be the
- * fourth mechanism in this epic doing the same job.
+ * **Not announced.** No `aria-live` anywhere near it (AC 14); a panel-visibility change that
+ * announced itself would be the fourth mechanism in this epic doing the same job. (This used to
+ * add *"`CardDetail`'s single polite region remains the only one in the app"* — falsified at
+ * **c5-7**, which shipped the connection pill's. Two of UX-DR45's three now exist, and neither is
+ * this line's.)
  *
  * **Not about the sideboard.** A deck holding only sideboard cards is NOT empty and does not show
  * this line — see `deckIsEmpty`'s docstring in `src/state/deckGroups.ts`. Saying "This deck is

@@ -308,7 +308,10 @@
    registered here because it is never permitted in the first place — stylelint bans
    animation-iteration-count other than 1, the `infinite` keyword in an `animation`
    shorthand, and alternate/alternate-reverse direction, across every stylesheet in ui/.
-   The connection pill (c5-7) is the component this exists to protect.
+   The connection pill (c5-7) is the component this exists to protect — and it SHIPPED that
+   way: `ConnectionPill.css` declares no `animation` and no `transition` at all, on the dot or
+   anywhere else, so the ban was never tested against it and there is nothing of that
+   component's to register in the inventory above.
 
    This block is asserted by reading the CSS SOURCE, never a rendered DOM: jsdom does not
    evaluate media queries into computed style, so a getComputedStyle() assertion here would

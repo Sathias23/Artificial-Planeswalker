@@ -12,7 +12,11 @@ structural rather than aspirational:
   (``contracts`` / ``discovery`` / ``client``) but never ``src.companion.app``; the leaf may import
   only the stdlib, ``pydantic``, ``httpx``, ``src.paths`` and its siblings; nothing outside
   ``src/companion/app/`` imports the app. ``tests/**`` is not scanned — the integration test in
-  story c5-8 must be free to boot the real app. Every companion file must sit in a guarded
+  story c5-8 must be free to boot the real app. **It shipped on 2026-08-09 and the exemption held
+  exactly as written**: ``tests/integration/companion/test_live_backend.py`` imports
+  ``src.companion.client`` and ``src.companion.discovery`` and launches the app in a child
+  process, and this guard stayed green with no edit — verified rather than assumed.
+  Every companion file must sit in a guarded
   category (``app/``, a ``_LEAF_MODULES`` entry, or a leaf-constrained ``__init__.py``) — the
   enumeration pin fails on anything unclassified, so a future module cannot sit outside the guard
   surface.

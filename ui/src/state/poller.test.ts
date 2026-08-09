@@ -382,7 +382,9 @@ describe('an unreachable backend claims no state and keeps trying', () => {
 
     // No update at all: `fetch` rejecting produced no response, so no state was decided.
     // `disconnected` — the panel that describes a lost backend — is c5-6's by
-    // `CLIENT_ONLY_STATES`, and this story must not claim it.
+    // `CLIENT_ONLY_STATES`, and this story must not claim it. **It still does not, after c5-6**:
+    // the socket writes a different field and `surfaceOf` composes the two, which is exactly the
+    // two-writers race that ruling was chosen to avoid.
     expect(updates).toEqual([])
     expect(at).toEqual([0, 2_000, 6_000])
 

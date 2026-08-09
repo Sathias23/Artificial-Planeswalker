@@ -24,9 +24,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { sentenceOf } from './components/Footer/copy'
 import { EMPTY_DECK_LINE } from './containers/CardGrid/copy'
-import { resetCardCache, useCardStore } from './state/cards'
+import { CONNECTION_WORDS, pillText } from './containers/ConnectionPill/copy'
+import { MAX_ATTEMPTS_PER_CARD, hydrateCard, resetCardCache, useCardStore } from './state/cards'
 import { resetDeckState, useDeckStore } from './state/deck'
 import { resetFormatCheckState } from './state/formatCheck'
+import { DISCONNECTED_AFTER_MS, SOCKET_BASE_MS } from './state/socket'
 import { INITIAL_SYSTEM_STATE, useSystemStore } from './state/systemState'
 
 /** One canned answer, built the way the backend builds it: a token, and nothing else. */
@@ -39,6 +41,87 @@ const decks = (...names: string[]) =>
 /** `GET /api/active-deck`'s body. `null` is the answer a fresh backend gives (FR-07). */
 const activeDeck = (deckId: string | null) =>
   new Response(JSON.stringify({ deck_id: deckId }), { status: 200 })
+
+/**
+ * `GET /api/session`'s body — story c5-6's FOURTH boot-time route, and the first credential the
+ * browser has ever held.
+ *
+ * A counter rather than a constant, because a reused ticket is exactly the defect AD-5 exists to
+ * prevent and a fixture that handed out one string could not show the difference. The real
+ * backend mints ~43 url-safe characters per call and pops each on presentation.
+ */
+let ticketsMinted = 0
+const sessionTicket = () => {
+  ticketsMinted += 1
+  return new Response(JSON.stringify({ ticket: `ticket-${ticketsMinted}` }), {
+    status: 200,
+    headers: { 'Cache-Control': 'no-store' },
+  })
+}
+
+/**
+ * Every socket the app has opened this test, newest last (story c5-6).
+ *
+ * ⚠️ **jsdom DOES provide `WebSocket`, and the story's Dev Notes predicted it did not** —
+ * measured 2026-08-08 and recorded as a falsified prediction rather than quietly worked around.
+ * That makes the stub below mandatory rather than merely convenient: without it every one of this
+ * file's ~70 mounts would attempt a real TCP connection to `ws://localhost:3000/ws?ticket=…`,
+ * which is slow, noisy, and would make the retry schedule depend on how fast the OS refuses a
+ * connection.
+ *
+ * The stub is the transport and NOTHING else — the URL construction, the mint, the loop, the
+ * backoff, the two exhaustion gates, the store write and the `surfaceOf` arm are all the shipped
+ * ones. That is the same bargain `fetch` has had in this file since c3-9.
+ */
+const sockets: FakeSocket[] = []
+
+class FakeSocket {
+  onopen: (() => void) | null = null
+  onmessage: ((event: { data: unknown }) => void) | null = null
+  onclose: (() => void) | null = null
+  onerror: (() => void) | null = null
+  closed = 0
+  // A plain field rather than a parameter property: `erasableSyntaxOnly` is on, and a parameter
+  // property emits code.
+  readonly url: string
+  constructor(url: string) {
+    this.url = url
+    sockets.push(this)
+  }
+  close() {
+    this.closed += 1
+  }
+}
+
+/** The socket the app is currently holding. */
+const socket = () => sockets[sockets.length - 1]
+
+/**
+ * Drive one socket event and let everything it started settle.
+ *
+ * The `advanceTimersByTimeAsync(0)` is not decoration: a socket event fires store writes and, on
+ * a reconnect, a whole re-boot — two awaited requests — so a helper that only dispatched would
+ * leave every assertion racing the microtask queue it started.
+ */
+const driveSocket = (fire: () => void) =>
+  act(async () => {
+    fire()
+    await vi.advanceTimersByTimeAsync(0)
+  })
+
+/** The upgrade succeeds. */
+const connect = () => driveSocket(() => socket().onopen?.())
+
+/** The socket drops — a restart, a refused handshake, a lost process. All one thing on the wire. */
+const drop = () => driveSocket(() => socket().onclose?.())
+
+/** One agent frame arrives, exactly as the backend serialises it. */
+const push = (kind: string, payload: Record<string, unknown> = {}) =>
+  driveSocket(() =>
+    socket().onmessage?.({
+      data: JSON.stringify({ kind, id: `id-${kind}`, ts: '2026-08-08T00:00:00Z', payload }),
+    }),
+  )
 
 const ATRAXA_DECK_ID = '813d0434-1bed-4419-bf9d-d9e4070704c4'
 
@@ -259,6 +342,12 @@ const answering = (...responses: Response[]) => {
     if (path.endsWith('/format-check')) return Promise.resolve(bootFormatCheck.clone())
     if (path.startsWith('/api/deck/')) return Promise.resolve(bootDeck.clone())
     if (path === '/api/active-deck') return Promise.resolve(bootActive.clone())
+    // c5-6's FOURTH route, and the fixture's fourth branch. Unrouted, this request would fall
+    // through to the poll's canned answer — a deck array, which `ticketOf` reads as a contract
+    // violation — so the loop would fail, back off, and retry through every `advance()` in this
+    // file. Not a hypothetical: it is what the suite did before this line was added, and it turned
+    // one test's "2 requests" into 26.
+    if (path === '/api/session') return Promise.resolve(sessionTicket())
     // c4-5's third caller: the detail panel hydrates its inspection target. Answered from the id
     // in the path, because unlike the two boot routes there is no single "the" card — the panel
     // asks for whichever one it is showing, and a test that pinned one answer for all of them
@@ -312,6 +401,13 @@ beforeEach(() => {
   bootActive = activeDeck(null)
   bootDeck = refusal('deck_not_found', 404)
   bootFormatCheck = formatCheckReport()
+  sockets.length = 0
+  ticketsMinted = 0
+  // The socket is CREATED by every mount and left un-opened unless a test opens it — see
+  // {@link sockets}. Un-opened rather than auto-opening, because "the upgrade is in flight" is
+  // the quiet default: it costs exactly one `GET /api/session` per mount and produces no
+  // failures, so no test inherits a backoff it did not ask for.
+  vi.stubGlobal('WebSocket', FakeSocket)
   answering(refusal('database_not_initialized', 503))
 })
 
@@ -421,7 +517,10 @@ describe('the panel is chosen by the wire, not by a constant (AC 1, AC 2)', () =
 
     // No response means no state was decided, so the initial panel stands and the poll keeps
     // trying. `disconnected` — the panel that describes a lost backend — is **c5-6's** by
-    // `CLIENT_ONLY_STATES`; ledgered in deferred-work.md so the residue has a named home.
+    // `CLIENT_ONLY_STATES`, and it now ships: this assertion is about the FIRST SIXTY SECONDS,
+    // which is deliberately unchanged (a backend restart must not flash a whole-screen panel).
+    // The other side of that threshold is asserted in `the page reconnects on its own`, which
+    // closes the dw:3451 residue this comment used to record as open.
     expect(screen.getByRole('region', { name: 'No deck on the glass.' })).toBeVisible()
   })
 
@@ -577,7 +676,13 @@ describe('the app comes alive on its own (AC 4, FR-22)', () => {
     // is named for. Counting the route makes the claim directly, and the total below pins the
     // other half: the boot's one active-deck request, and nothing else, for ten minutes.
     expect(callsTo(fetchMock, '/api/decks')).toBe(1)
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    // **AND c5-6 MOVES IT TO THREE, WHICH IS THE ASSERTION EARNING ITS KEEP.** The third is the
+    // socket's ONE `GET /api/session` — one mint, one upgrade, and then a connection that costs
+    // no requests at all for the remaining ten minutes. A reconnect loop that re-minted on a
+    // timer, or a socket the fixture failed to route (see `answering`), turns this number into
+    // dozens; that is exactly how the missing route was found.
+    expect(callsTo(fetchMock, '/api/session')).toBe(1)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 })
 
@@ -963,11 +1068,16 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     // one request, because `hydrateCard` shares the promise rather than issuing a second read.
     expect(callsTo(fetchMock, '/api/cards/id-Forest')).toBe(1)
     // THE WHOLE-MOUNT TOTAL, ITEMISED SO THE NUMBER STAYS READABLE (c4-10, AC 10): one poll of
-    // `/api/decks`, one `/api/active-deck`, one deck detail, TWO card hydrations, and — new in
-    // this story — one format check. Six, and the new member is broken out beside it so that a
-    // bump here can never again be absorbed as "the sweep got bigger".
+    // `/api/decks`, one `/api/active-deck`, one deck detail, TWO card hydrations, one format
+    // check, and — new in **c5-6** — one `GET /api/session`. SEVEN, with every member broken out
+    // beside it so that a bump here can never be absorbed as "the sweep got bigger".
+    //
+    // The socket's contribution to a cold open is that ONE mint, and then nothing: the upgrade is
+    // not an HTTP request the fixture can see, and a live connection costs no polling at all.
+    // That is the whole economic case for the channel, stated as a number rather than as prose.
     expect(formatCheckCalls(fetchMock)).toBe(1)
-    expect(fetchMock).toHaveBeenCalledTimes(6)
+    expect(callsTo(fetchMock, '/api/session')).toBe(1)
+    expect(fetchMock).toHaveBeenCalledTimes(7)
   })
 
   it('shows the no-active-deck panel when there is genuinely no deck (AC 7)', async () => {
@@ -1176,6 +1286,10 @@ describe('a deck refusal does not outlive the condition it reported (FR-22)', ()
         // not this one is the half-repair the story's Dev Notes warn about by name.
         if (path.endsWith('/format-check')) return Promise.resolve(formatCheckReport())
         if (path.startsWith('/api/deck/')) return deckRead()
+        // c5-6's fourth route, in the SECOND prefix-routing fixture too. The comment above warns
+        // that fixing `answering()` and not this one is a half-repair; the session route is the
+        // fourth chance to make exactly that mistake.
+        if (path === '/api/session') return Promise.resolve(sessionTicket())
         return Promise.resolve(pollAnswer.clone())
       }),
     )
@@ -1275,6 +1389,13 @@ describe('the skip link is present exactly when there is something to skip (c4-1
   // `useSystemStore.setState` directly, exactly as their real triggers will write them. All six,
   // per the AC's letter (code review 2026-08-07: the first written form drove four and declared
   // the other two structurally covered).
+  //
+  // ⚠️ **c5-6 SPLITS THAT PAIR, AND THE SPLIT IS THE POINT (AC 21).** `disconnected` now HAS a
+  // real trigger — the backoff's two exhaustion gates — so driving it through `setState` here
+  // would be asserting against a mechanism that no longer needs simulating. It moves to its own
+  // test below, driven end to end. `database-updating-stalled` stays store-driven: its trigger
+  // is c3-9's 60-second clock inside the poller and reaching it from here would mean sixty
+  // seconds of poll fixture to prove a skip-link rule.
   const WIRE_DRIVEN_ARMS: readonly [string, string, number][] = [
     ['database-not-initialized', 'database_not_initialized', 503],
     ['database-updating', 'database_unavailable', 503],
@@ -1301,7 +1422,35 @@ describe('the skip link is present exactly when there is something to skip (c4-1
     })
   }
 
-  const STORE_DRIVEN_ARMS = ['disconnected', 'database-updating-stalled'] as const
+  it('is withdrawn behind the disconnected panel — driven by the REAL backoff (c5-6, AC 21)', async () => {
+    // The conversion AC 21 asks for. Nothing here writes a store: the backend simply never
+    // answers the mint, the loop fails on its own schedule, and sixty seconds later the two gates
+    // agree. What is being asserted is unchanged — the link is withdrawn behind a state panel —
+    // but it is now asserted about the panel the shipped mechanism produces.
+    // Driven from a LOADED deck rather than from no-deck, which the four wire arms above cannot
+    // do: `surfaceOf` ranks a loaded deck above every system panel, so this is simultaneously the
+    // skip-link withdrawal AND Q3's fourth arm — the one state that displaces a deck.
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    expect(screen.getByRole('button', { name: SKIP })).toBeInTheDocument()
+
+    // The backend goes away — every route, not just the socket, which is what a restart is.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
+    )
+    await drop()
+    await advance(DISCONNECTED_AFTER_MS)
+
+    expect(screen.getByRole('region', { name: 'Lost the companion backend.' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: SKIP })).toBeNull()
+    expect(document.querySelector('.app-shell')?.firstElementChild?.tagName).toBe('HEADER')
+  })
+
+  const STORE_DRIVEN_ARMS = ['database-updating-stalled'] as const
 
   for (const panel of STORE_DRIVEN_ARMS) {
     it(`is withdrawn behind the ${panel} panel (store-driven — its wire trigger is not this story's)`, async () => {
@@ -1557,7 +1706,7 @@ describe('the corridor numbers of §A are pinned in the suite (c4-11, AC 31, AC 
     ...document.querySelectorAll<HTMLElement>('a[href], button, [tabindex]'),
   ]
 
-  it('pins 205 = 99 tiles + 6 flips + 1 oracle + 99 rows on the Atraxa shape, and the flip adjacency', async () => {
+  it('pins 206 = 99 tiles + 6 flips + 1 oracle + 99 rows + 1 pill on Atraxa, and the flip adjacency', async () => {
     booting(
       activeDeck(ATRAXA_DECK_ID),
       deckDetail({ cards: atraxaShape(), mainboard_count: 100, distinct_cards: 99 }),
@@ -1585,15 +1734,30 @@ describe('the corridor numbers of §A are pinned in the suite (c4-11, AC 31, AC 
     expect(footerLinks).toHaveLength(2)
 
     // THE PIN: §A's arithmetic, produced by the DOM rather than recomputed from the artefact.
-    // 1 skip + 99 tiles + 6 flips + 1 oracle + 99 rows + 2 footer links = 208 focusables…
-    expect(focusables).toHaveLength(208)
-    // …the corridor from the header to the first footer link is 205 stops…
-    expect(at(footerLinks[0]) - at(skip) - 1).toBe(205)
-    // …the link removes the first 105 of them (every tile and every flip control)…
+    //
+    // ⚠️ EVERY NUMBER BELOW GAINED EXACTLY ONE AT c5-7, AND THAT IS THE PILL. It is the last Tab
+    // stop before the footer links (UX-DR40, and `AppShell.tsx` renders it between `</main>` and
+    // `<footer>`), so it lands INSIDE the skip→footer corridor and OUTSIDE the skip→oracle prefix
+    // — which is why the middle assertion is the one that did not move. The pin was recomputed
+    // rather than relaxed: a `toBeGreaterThan` here would have accepted a pill mounted anywhere.
+    //
+    // 1 skip + 99 tiles + 6 flips + 1 oracle + 99 rows + 1 pill + 2 footer links = 209 focusables…
+    expect(focusables).toHaveLength(209)
+    // Selected by CLASS, not by accessible name: this suite drives no socket, so the pill sits at
+    // the cold-open `'reconnecting'` status throughout and its words are not the live ones. Its
+    // POSITION is what this test is about, and the position is the same in every state.
+    const pill = document.querySelector('.connection-pill')
+    expect(pill).not.toBeNull()
+    expect(at(pill)).toBe(focusables.length - 3)
+    // …the corridor from the header to the first footer link is 206 stops (205 + the pill)…
+    expect(at(footerLinks[0]) - at(skip) - 1).toBe(206)
+    // …the link removes the first 105 of them (every tile and every flip control), UNCHANGED
+    // because the pill sits on the far side of the deck rows…
     expect(at(oracle) - at(skip) - 1).toBe(105)
-    // …and the footer is STILL 100 stops away after using it — the story's own headline, at this
-    // deck's scale (206/105/101 is the LARGEST deck's row count, which carries a sideboard).
-    expect(at(footerLinks[0]) - at(oracle)).toBe(100)
+    // …and the footer is STILL 101 stops away after using it — the story's own headline, at this
+    // deck's scale, one worse than c4-11 measured it. The largest real deck (which carries a
+    // sideboard) is a longer corridor again; these are this SHAPE's numbers, not that deck's.
+    expect(at(footerLinks[0]) - at(oracle)).toBe(101)
 
     // THE FLIP ADJACENCY (AC 11): every flip control's immediately-preceding Tab stop is its OWN
     // tile — the sibling inside the same `.card-tile-frame` — never a trailing group.
@@ -1637,7 +1801,7 @@ describe('the corridor numbers of §A are pinned in the suite (c4-11, AC 31, AC 
     ])
   })
 
-  it('pins 3 = 1 tile + 1 oracle + 1 row on the 1-card deck (Iron Man, Modern Marvel — reminder)', async () => {
+  it('pins 4 = 1 tile + 1 oracle + 1 row + 1 pill on the 1-card deck (Iron Man, Modern Marvel)', async () => {
     // The other end of the corridor's range, and the deck the AC names (VERIFIED REAL: one card,
     // `Iron Man, Modern Marvel`). The link still renders — presence is "at least one card", and
     // this is exactly one.
@@ -1660,11 +1824,13 @@ describe('the corridor numbers of §A are pinned in the suite (c4-11, AC 31, AC 
     const oracle = document.querySelector('.card-detail-oracle')
     const footerLinks = within(screen.getByRole('contentinfo')).getAllByRole('link')
 
-    // 1 skip + 1 tile + 1 oracle + 1 row + 2 footer links = 6 focusables; corridor of 3.
-    expect(focusables).toHaveLength(6)
-    expect(at(footerLinks[0]) - at(skip) - 1).toBe(3)
+    // 1 skip + 1 tile + 1 oracle + 1 row + 1 pill + 2 footer links = 7 focusables; corridor of 4.
+    // The pill is the +1 at BOTH ends of the epic's range, which is the honest cost of a stop that
+    // is always present: it is proportionally largest exactly where the corridor is shortest.
+    expect(focusables).toHaveLength(7)
+    expect(at(footerLinks[0]) - at(skip) - 1).toBe(4)
     expect(at(oracle) - at(skip) - 1).toBe(1)
-    expect(at(footerLinks[0]) - at(oracle)).toBe(2)
+    expect(at(footerLinks[0]) - at(oracle)).toBe(3)
   })
 })
 
@@ -1878,21 +2044,34 @@ describe('the empty deck (story c4-12, AC 1, AC 3-5, AC 7-10, AC 14)', () => {
     // WITH.
     expect(screen.getAllByRole('banner')).toHaveLength(3)
 
-    // NO SECOND ANNOUNCEMENT MECHANISM (decide-once ruling 7). `CardDetail`'s single polite
-    // region stays the app's only one; a panel-visibility change that announced itself would be
-    // the fourth mechanism in this epic doing the same job. Counted across the whole document,
-    // and the survivor is proved to be the detail panel's rather than a new one.
+    // NO SECOND ANNOUNCEMENT MECHANISM FOR *THIS* STORY (decide-once ruling 7). A
+    // panel-visibility change that announced itself would be the fourth mechanism in this epic
+    // doing the same job. Counted across the whole document, and every survivor is IDENTIFIED —
+    // the point of the pin is that a new region has to be declared here, not that the number is 1.
+    //
+    // ⚠️ THE COUNT MOVED TO TWO AT c5-7, AND THE PIN WAS UPDATED RATHER THAN WEAKENED (AC 11).
+    // UX-DR45's inventory authorises exactly three polite regions for this app — the connection
+    // pill, the agent-view heading and the pin announcement — so a second one arriving is the
+    // inventory being filled, not the rule being broken. The honest form of that is an EXHAUSTIVE
+    // list: `>= 1` would have let a genuinely undeclared third region through, which is the whole
+    // failure this assertion exists to catch. The agent-view heading is Epic 6's and is absent.
     const live = [...document.querySelectorAll('[aria-live]')]
-    expect(live).toHaveLength(1)
-    expect(live[0].getAttribute('aria-live')).toBe('polite')
-    // …and it is the EXISTING one rather than a new one. Identified by its own class, NOT by an
-    // ancestor lookup: the announcement element sits deliberately OUTSIDE the `Card detail` panel
-    // — that placement is the whole of the H4/C1 gate fix, because the panel must not itself be a
-    // live region — so `closest('[aria-label="Card detail"]')` correctly returns null and would
-    // have made this assertion a false failure about a correct app.
-    expect(live[0].className).toContain('card-detail-announcement')
-    // Empty at rest on an empty deck: there is no card to pin, so nothing is announced.
-    expect(live[0].textContent).toBe('')
+    expect(live).toHaveLength(2)
+    for (const region of live) expect(region.getAttribute('aria-live')).toBe('polite')
+
+    // EACH ONE NAMED. Identified by their own classes, NOT by an ancestor lookup: both
+    // announcement elements sit deliberately OUTSIDE the thing they describe — that placement is
+    // the whole of the H4/C1 gate fix for the detail panel, and the same reason keeps the pill's
+    // region outside the pill's `<button>` — so a `closest()` lookup correctly returns null and
+    // would have made this a false failure about a correct app.
+    const classes = live.map((region) => region.className)
+    expect(classes.some((c) => c.includes('card-detail-announcement'))).toBe(true)
+    expect(classes.some((c) => c.includes('connection-pill-announcement'))).toBe(true)
+
+    // BOTH EMPTY AT REST. There is no card to pin on an empty deck, and the connection has not
+    // transitioned since mount — the pill's region is silent on the initial render by design
+    // (c5-7 Q4), which is what stops every cold open announcing "Reconnecting".
+    for (const region of live) expect(region.textContent).toBe('')
   })
 })
 
@@ -2066,5 +2245,499 @@ describe('never blank, defined operationally (story c4-12, AC 23, AC 24)', () =>
     expect(notBlank('empty deck')).toEqual(['header', 'left', 'right', 'footer'])
     expect(slots().left).toContain(EMPTY_DECK_LINE)
     expect(slots().left).not.toContain('The card-art grid lands here')
+  })
+})
+
+/**
+ * The reconnect loop at the root, and the family of stale-panel defects it closes (story c5-6,
+ * AC 5, AC 6, AC 7, AC 9, AC 11–16).
+ *
+ * ================= WHY THESE ASSERTIONS LIVE HERE AND NOT IN `socket.test.ts` ===========
+ *
+ * `socket.test.ts` proves the schedule, the ticket discipline and the dispatch — against injected
+ * effects, with no store, no render and no React. Every claim in THIS block is about what a human
+ * sees on a page they did not touch: a panel that appears, a deck that stays, a screen that comes
+ * back. That claim can only be made at the root, from ONE mount, which is the same argument c3-9
+ * made for putting FR-22's transition test here rather than on the poller.
+ *
+ * ================= WHAT THE LEDGER SAID, BEFORE THIS STORY =============================
+ *
+ * Four entries, all recorded as needing a signal the client did not have (`deferred-work.md`):
+ *
+ *   | dw:3451 + dw:4930 | first load, backend down: *"No deck on the glass."* forever — its copy **actionable and wrong**, severity raised after it was confirmed live |
+ *   | dw:3463           | after one `200` the poll stops; a later database death shows a stale healthy panel until reload |
+ *   | dw:3472 + dw:3544 | `database-updating-stalled` is terminal: obey the panel, succeed, and still need a manual refresh |
+ *   | dw:3652           | three transient failures make a card id terminal for the tab's life while everything else self-heals |
+ *
+ * The missing signal was a socket. Each `it` below is one of those rows, driven end to end.
+ */
+describe('the page reconnects on its own (c5-6)', () => {
+  const DISCONNECTED = 'Lost the companion backend.'
+  const NO_DECK = 'No deck on the glass.'
+
+  /** A backend that is not there: every route, not just the socket. That is what a restart is. */
+  const backendDown = () => {
+    const fetchMock = vi.fn(() => Promise.reject(new TypeError('Failed to fetch')))
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock as unknown as ReturnType<typeof answering>
+  }
+
+  it('opens exactly ONE socket per tab, built from the page authority (AC 1)', async () => {
+    render(<App />)
+    await settle()
+    await advance(10 * 60_000)
+
+    expect(sockets).toHaveLength(1)
+    // No port in the bundle: the socket lands wherever the page came from. `agentSocketUrl`'s own
+    // test pins the derivation; this one pins that the APP uses it.
+    expect(sockets[0].url).toContain(`//${window.location.host}/ws?ticket=`)
+    expect(sockets[0].url).toContain('ticket=ticket-1')
+  })
+
+  it('mints a FRESH ticket for every attempt, and never re-presents one (AC 3)', async () => {
+    render(<App />)
+    await settle()
+    await drop()
+    await advance(SOCKET_BASE_MS)
+
+    expect(sockets).toHaveLength(2)
+    // `state.py:318` pops the ticket on every consume attempt, success or not, so a client that
+    // held one would be presenting a credential the backend has already destroyed — and would
+    // receive the same indistinguishable `1008` a forged one gets.
+    expect(sockets[0].url).not.toBe(sockets[1].url)
+    expect(sockets[1].url).toContain('ticket=ticket-2')
+  })
+
+  // ==================== dw:3451 + dw:4930 — THE FIRST-LOAD DEFECT ======================
+  it('shows the DISCONNECTED panel on a first load with no backend, not "No deck on the glass" (AC 14)', async () => {
+    // The ledger's own words for what shipped before this story: the copy is *actionable and
+    // wrong* — it tells the reader to ask the agent to set a deck, about a backend that is not
+    // running. Confirmed live 2026-08-07 and judged **worse than recorded**.
+    backendDown()
+
+    render(<App />)
+    await settle()
+
+    // THE DEFECT, ASSERTED. This is what the page said, and for the first sixty seconds it still
+    // does — deliberately: a backend that is merely slow to start must not flash a panel.
+    expect(screen.getByRole('region', { name: NO_DECK })).toBeVisible()
+
+    await advance(DISCONNECTED_AFTER_MS)
+
+    // …and now the true panel, from the true condition. No token carried it — `disconnected` is
+    // in `CLIENT_ONLY_STATES` because there is no response to carry one.
+    expect(screen.getByRole('region', { name: DISCONNECTED })).toBeVisible()
+    expect(screen.queryByRole('region', { name: NO_DECK })).toBeNull()
+  })
+
+  it('KEEPS RETRYING behind the panel, and the panel is not a stop (AC 8)', async () => {
+    const fetchMock = backendDown()
+
+    render(<App />)
+    await settle()
+    await advance(DISCONNECTED_AFTER_MS)
+    expect(screen.getByRole('region', { name: DISCONNECTED })).toBeVisible()
+
+    const mints = callsTo(fetchMock, '/api/session')
+    await advance(10 * 60_000)
+
+    // Twenty more attempts at the 30 s ceiling. `RETRIES_QUIETLY.disconnected` is `true` and this
+    // is what that contract costs — and what makes the recovery below possible without a reload.
+    // Counted as MINT REQUESTS rather than as tickets handed out: this backend hands out none.
+    expect(callsTo(fetchMock, '/api/session') - mints).toBe(20)
+  })
+
+  it('comes back WITHOUT A RELOAD when the backend returns (AC 9, AC 5)', async () => {
+    // The family's whole point, and the row every other entry was waiting on.
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    backendDown()
+
+    render(<App />)
+    await settle()
+    await advance(DISCONNECTED_AFTER_MS)
+    expect(screen.getByRole('region', { name: DISCONNECTED })).toBeVisible()
+
+    // The companion comes back. Nothing remounts, nothing reloads, nobody presses anything.
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+    await advance(30_000)
+    await connect()
+
+    expect(screen.queryByRole('region', { name: DISCONNECTED })).toBeNull()
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
+  })
+
+  // ==================== UX-DR35 — THE DECK STAYS UP WHILE RECONNECTING =================
+  it('leaves a loaded deck on the glass for the whole pre-exhaustion window (AC 7)', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    await connect()
+    const heading = { level: 1 as const, name: 'Atraxa Counter Cabinet v2 (owned)' }
+    expect(screen.getByRole('heading', heading)).toBeVisible()
+
+    backendDown()
+    await drop()
+
+    // One second short of the threshold, through five failed attempts: the deck is still there,
+    // possibly stale, never torn down to a skeleton. UX-DR35, asserted at the moment it is most
+    // tempting to violate.
+    await advance(DISCONNECTED_AFTER_MS - 1_000)
+    expect(screen.getByRole('heading', heading)).toBeVisible()
+    expect(screen.queryByRole('region', { name: DISCONNECTED })).toBeNull()
+
+    // …and only THEN does the panel displace it (Q3's fourth `surfaceOf` arm).
+    await advance(1_000)
+    expect(screen.getByRole('region', { name: DISCONNECTED })).toBeVisible()
+    expect(screen.queryByRole('heading', heading)).toBeNull()
+  })
+
+  // ==================== FR-07 — THE ACTIVE DECK DIED WITH THE PROCESS ==================
+  it('lands on no-active-deck after a restart, as a state and not as an error (AC 6)', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    await connect()
+    expect(screen.getByRole('heading', { level: 1, name: /Atraxa/ })).toBeVisible()
+
+    // The companion restarts. `ActiveDeckSlot` lives in the process's memory and dies with it, so
+    // the fresh backend answers `{"deck_id": null}` whatever was on the glass before (FR-07).
+    await drop()
+    booting(activeDeck(null))
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+    await advance(SOCKET_BASE_MS)
+    await connect()
+
+    expect(screen.getByRole('region', { name: NO_DECK })).toBeVisible()
+    // NOT an error, and not the deck that no longer exists. `deck.ts:339` short-circuits a null
+    // id with no second request, so this costs one route, not a refusal round trip.
+    expect(screen.queryByRole('region', { name: 'The companion hit a bug.' })).toBeNull()
+    expect(screen.queryByRole('heading', { level: 1, name: /Atraxa/ })).toBeNull()
+  })
+
+  // ==================== dw:3756 — A FRAME ARRIVES AND SOMETHING LISTENS ================
+  it('switches decks on active_deck_changed — the event that had no listener (AC 11)', async () => {
+    booting(activeDeck(null))
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    await connect()
+    expect(screen.getByRole('region', { name: NO_DECK })).toBeVisible()
+
+    // The agent sets a deck. Before this story the frame reached the browser and nothing read it.
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    await push('active_deck_changed', { deck_id: ATRAXA_DECK_ID })
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
+    // The PAYLOAD is never read — the boot asks `GET /api/active-deck` first, so it fetches
+    // whichever deck is active NOW rather than the one the frame named. That is what makes
+    // `contracts.py`'s "never refetch the deck you are leaving" structural here.
+  })
+
+  it('costs one idempotent refetch per duplicate active_deck_changed (AC 12)', async () => {
+    // The backend fires on EVERY `PUT`, including a redundant re-set of the deck that is already
+    // active (`ws.py:409-444`). Three frames, three refetches, one screen — not a crash, not a
+    // loop, not a growing queue.
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    await connect()
+    const before = callsTo(fetchMock, '/api/active-deck')
+
+    await push('active_deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await push('active_deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await push('active_deck_changed', { deck_id: ATRAXA_DECK_ID })
+
+    expect(callsTo(fetchMock, '/api/active-deck') - before).toBe(3)
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
+    expect(sockets).toHaveLength(1)
+  })
+
+  it('refetches on deck_changed, and ignores the four agent-view kinds (AC 11)', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    await connect()
+    const before = callsTo(fetchMock, '/api/active-deck')
+
+    for (const kind of ['suggestions', 'swaps', 'tier_list', 'groups']) await push(kind)
+    // Epic 6 builds the views these carry. Received, dropped, and not a fault.
+    expect(callsTo(fetchMock, '/api/active-deck') - before).toBe(0)
+    expect(sockets[0].closed).toBe(0)
+
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    expect(callsTo(fetchMock, '/api/active-deck') - before).toBe(1)
+  })
+
+  it('ignores a malformed frame without closing the socket or the app (AC 13)', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    await connect()
+    const before = fetchMock.mock.calls.length
+
+    await driveSocket(() => {
+      socket().onmessage?.({ data: 'not json at all' })
+      socket().onmessage?.({ data: '{"kind": "telemetry"}' })
+      socket().onmessage?.({ data: JSON.stringify({ kind: 42 }) })
+    })
+
+    expect(fetchMock.mock.calls.length).toBe(before)
+    expect(sockets[0].closed).toBe(0)
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
+  })
+
+  // ==================== dw:3472 + dw:3544 — THE TERMINAL STALLED PANEL =================
+  it('recovers the stalled panel when the socket says something moved (AC 15)', async () => {
+    // C3 retro R3: *"c5-6 resolves the family; it should not solve one third of it."* This is the
+    // sibling that was felt live at Block I — wire `200`, poll count moved by exactly 0 over 45 s,
+    // because `RETRIES_QUIETLY['database-updating-stalled']` is `false` and rightly so: the quiet
+    // retry has already been running and has not worked. The replacement signal is the socket.
+    answering(refusal('database_unavailable', 503))
+
+    render(<App />)
+    await settle()
+    await connect()
+    await advance(60_000)
+    expect(screen.getByRole('region', { name: 'Card database still updating.' })).toBeVisible()
+
+    // The user obeys the panel, the rebuild finishes, and the agent touches a deck. Before this
+    // story the screen stayed exactly as it was until a manual refresh.
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
+  })
+
+  it('re-drives the poll on RECONNECT too, not only on an event (AC 15)', async () => {
+    // The other half of Q5: a reconnect restarts the poll unconditionally, because a socket
+    // coming back is the strongest evidence the app gets that the process it was talking to is
+    // gone. A stalled clock inherited from a process that no longer exists is not evidence.
+    answering(refusal('database_unavailable', 503))
+
+    render(<App />)
+    await settle()
+    await connect()
+    await advance(60_000)
+    expect(screen.getByRole('region', { name: 'Card database still updating.' })).toBeVisible()
+
+    await drop()
+    answering(decks('Boros Aggro'))
+    await advance(SOCKET_BASE_MS)
+    await connect()
+
+    expect(screen.getByRole('region', { name: NO_DECK })).toBeVisible()
+  })
+
+  // ==================== dw:3652 — THE TERMINAL CARD ID ================================
+  it('gives an exhausted card id its attempts back on reconnect (AC 16, Q6)', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    await connect()
+
+    // Burn one id's three attempts against a backend that is refusing with a token
+    // `CARD_READ_IS_RETRYABLE` says IS retryable — which is exactly the case the ledger recorded:
+    // everything else self-heals and this one does not.
+    const failing = () =>
+      Promise.resolve({ kind: 'error', reason: 'database_unavailable' } as const)
+    await act(async () => {
+      for (let n = 0; n < MAX_ATTEMPTS_PER_CARD; n += 1) await hydrateCard('burned-id', failing)
+    })
+    const spent = useCardStore.getState().cards['burned-id']
+    expect(spent).toEqual(expect.objectContaining({ status: 'unknown', retryable: false }))
+
+    await drop()
+    await advance(SOCKET_BASE_MS)
+    await connect()
+
+    // Askable again — and note what did NOT happen: nothing was reset. The hydrated entries this
+    // cache shares with Epic 6's views are untouched; only the budget came back.
+    expect(useCardStore.getState().cards['burned-id']).toEqual(
+      expect.objectContaining({ status: 'unknown', retryable: true }),
+    )
+  })
+})
+
+/**
+ * The connection pill against the REAL loop (story c5-7, AC 1, AC 7, AC 18).
+ *
+ * ================= WHY THESE ASSERTIONS ARE HERE AND NOT IN THE COMPONENT TEST =========
+ *
+ * `ConnectionPill.test.tsx` drives the two slices directly and proves what the component makes of
+ * them. Neither of the two claims below can be made from there:
+ *
+ *   1. **The pill is on EVERY surface** (AC 1). That is a fact about `App`'s composition — six
+ *      arms, five of which render a `StatePanel` into the left slot — and the exact failure mode
+ *      it guards is a pill mounted inside the deck-only Fragment, which would look correct in a
+ *      component test and be absent on five screens.
+ *   2. **A real drop moves it** (AC 18). `applyConnection('down')` in a component test asserts
+ *      that the pill reads a field. This walks c5-6's actual machinery — a socket that fails four
+ *      times over sixty seconds — so the dot the user would see is the dot produced by the loop.
+ *
+ * The `FakeSocket` + fake-timer idiom is the one the c5-6 block above established; nothing new is
+ * introduced here.
+ */
+describe('the connection pill reports the real loop (c5-7)', () => {
+  const DISCONNECTED = 'Lost the companion backend.'
+  const NO_DECK = 'No deck on the glass.'
+
+  const pill = () => document.querySelector('.connection-pill')!
+  const dotClass = () => document.querySelector('.connection-pill-dot')!.className
+  const announcement = () => document.querySelector('.connection-pill-announcement')!.textContent
+
+  const backendDown = () => {
+    const fetchMock = vi.fn(() => Promise.reject(new TypeError('Failed to fetch')))
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  // ==================== AC 18 — THE WALK ==============================================
+  it('walks live -> reconnecting -> down on the real backoff, and back (AC 2, AC 4, AC 18)', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+
+    // COLD OPEN is `'reconnecting'` before the first upgrade completes — the honest value, and
+    // the reason the announcement policy must not fire on mount (Q4).
+    expect(dotClass()).toContain('is-reconnecting')
+    expect(pill()).toHaveTextContent(CONNECTION_WORDS.reconnecting)
+    expect(announcement()).toBe('')
+
+    // LIVE. The first upgrade lands, and THIS is the first thing the region ever says.
+    await connect()
+    expect(dotClass()).toContain('is-live')
+    expect(pill()).toHaveTextContent(pillText('live', 'Atraxa Counter Cabinet v2 (owned)'))
+    expect(announcement()).toBe(pillText('live', 'Atraxa Counter Cabinet v2 (owned)'))
+
+    // RECONNECTING. A drop, and the pre-exhaustion window: caution dot, deck still named, and
+    // (UX-DR35) the deck itself still on the glass — the pill does not pre-empt the panel. This
+    // is a genuine transition (live -> reconnecting), so per Q4's ruling the region announces it.
+    backendDown()
+    await drop()
+    expect(dotClass()).toContain('is-reconnecting')
+    expect(pill()).toHaveTextContent('Atraxa Counter Cabinet v2 (owned)')
+    expect(announcement()).toBe(pillText('reconnecting', 'Atraxa Counter Cabinet v2 (owned)'))
+    expect(screen.queryByRole('region', { name: DISCONNECTED })).toBeNull()
+
+    // DOWN. Both gates — sixty seconds AND four observed failures — which is what
+    // `advance(DISCONNECTED_AFTER_MS)` over a dead backend produces.
+    await advance(DISCONNECTED_AFTER_MS)
+    expect(dotClass()).toContain('is-down')
+    expect(pill().textContent).toBe(CONNECTION_WORDS.down)
+    expect(announcement()).toBe(CONNECTION_WORDS.down)
+
+    // RECOVERY, with no reload. The dot goes positive again and the words come back with it.
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+    await advance(30_000)
+    await connect()
+    expect(dotClass()).toContain('is-live')
+    expect(announcement()).toContain(CONNECTION_WORDS.live)
+  })
+
+  // ==================== AC 7 — THE PILL AND THE PANEL, TOGETHER ========================
+  it('renders BESIDE the Disconnected panel, not instead of it (AC 7)', async () => {
+    // `EXPERIENCE.md:119` writes this state as "Left column + pill" — both, simultaneously. The
+    // failure it guards against is a `surfaceOf`-driven pill, which would go quiet here.
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    backendDown()
+
+    render(<App />)
+    await settle()
+    await advance(DISCONNECTED_AFTER_MS)
+
+    expect(screen.getByRole('region', { name: DISCONNECTED })).toBeVisible()
+    expect(pill()).toBeVisible()
+    expect(dotClass()).toContain('is-down')
+  })
+
+  // ==================== AC 1 — EVERY SURFACE ==========================================
+  it('is present on a STATE-PANEL surface, where the left slot is not a deck at all (AC 1)', async () => {
+    // The landmine, asserted from the outside: `App.tsx` renders `<StatePanel>` into `left` in
+    // five of its six arms, so a pill mounted in the deck-only Fragment would be absent here and
+    // present in every component test.
+    booting(activeDeck(null))
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    await connect()
+
+    expect(screen.getByRole('region', { name: NO_DECK })).toBeVisible()
+    expect(pill()).toBeVisible()
+    // No deck loaded, so no name — and no placeholder standing in for one (AC 6).
+    expect(pill().textContent).toBe(CONNECTION_WORDS.live)
+  })
+
+  it('is present on a COLD OPEN, before any answer has arrived at all (AC 1)', async () => {
+    // The very first paint: no socket, no poll answer, no deck. `settle()` is deliberately NOT
+    // awaited — this is the frame before anything resolves.
+    booting(activeDeck(null))
+    answering(decks())
+
+    render(<App />)
+
+    expect(pill()).toBeVisible()
+    expect(dotClass()).toContain('is-reconnecting')
+    expect(announcement()).toBe('')
+    await settle()
+  })
+
+  it('is present on an EMPTY deck, and names it (AC 1, AC 6)', async () => {
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({ cards: [], mainboard_count: 0, sideboard_count: 0, distinct_cards: 0 }),
+    )
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    await connect()
+
+    expect(screen.getByText(EMPTY_DECK_LINE)).toBeVisible()
+    expect(pill()).toHaveTextContent('Atraxa Counter Cabinet v2 (owned)')
+  })
+
+  // ==================== AC 9 — THE DOM POSITION, AT THE ROOT ===========================
+  it('is the LAST Tab stop before the footer links, on a state-panel surface too (AC 9)', async () => {
+    // The corridor pins above assert this on a loaded deck. Asserted here as well because the
+    // shell slot is what makes it true, and a slot is easy to move: `AppShell` renders the pill
+    // between `</main>` and `<footer>` on every arm, not only the one with a deck in it.
+    booting(activeDeck(null))
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    await connect()
+
+    const focusables = [...document.querySelectorAll<HTMLElement>('a[href], button, [tabindex]')]
+    const footerLinks = within(screen.getByRole('contentinfo')).getAllByRole('link')
+    expect(footerLinks).toHaveLength(2)
+    expect(focusables.indexOf(pill() as HTMLElement)).toBe(focusables.indexOf(footerLinks[0]) - 1)
   })
 })
