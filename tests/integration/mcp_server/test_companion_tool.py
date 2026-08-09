@@ -38,7 +38,10 @@ from src.mcp_server.tools.companion import set_active_deck
 from src.mcp_server.tools.deck_management import create_deck
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
 
-_MISSING_DECK = "deck-that-is-definitely-not-in-any-database-00000"
+_MISSING_DECK = "deck-not-in-database-00000"
+"""Short enough to stay under ``_ECHO_LIMIT`` (48) unmangled, so ``deck_id == _MISSING_DECK``
+assertions pin an exact match rather than a truncated one; the oversized-id case has its own
+test."""
 
 
 def _card(card_id: str, name: str) -> CardModel:
@@ -331,6 +334,55 @@ class TestTheResultIsCompact:
         result = await set_active_deck(session, deck_id=oversized_id)
 
         assert result.status == "deck_not_found"
+        assert len(result.model_dump_json()) < 400, result.model_dump_json()
+
+    async def test_a_database_not_initialized_result_stays_compact_for_an_oversized_id(
+        self, tmp_path: Path, client_stub
+    ):
+        """The database-layer guard runs *before* the miss check, so it needs the same bound."""
+        client_stub(PushOutcome(outcome="displayed", clients=1))
+        oversized_id = "x" * 5000
+        engine = create_engine(f"sqlite+aiosqlite:///{(tmp_path / 'empty.db').as_posix()}")
+        await init_database(engine)
+        session_factory = create_session_factory(engine)
+        async with session_factory() as empty_session:
+            result = await set_active_deck(empty_session, deck_id=oversized_id)
+        await engine.dispose()
+
+        assert result.status == "database_not_initialized"
+        assert len(result.model_dump_json()) < 400, result.model_dump_json()
+
+    async def test_a_database_error_result_stays_compact_for_an_oversized_id(
+        self, session, client_stub, monkeypatch
+    ):
+        """The ``DatabaseError`` branch reads ``deck_id`` before the lookup ever resolves."""
+        from sqlalchemy.exc import DatabaseError
+
+        from src.data.repositories.deck import DeckRepository
+
+        client_stub(PushOutcome(outcome="displayed", clients=1))
+        oversized_id = "x" * 5000
+
+        async def boom(self, deck_id: str):
+            raise DatabaseError("select", {}, Exception("disk I/O error"))
+
+        monkeypatch.setattr(DeckRepository, "get_deck", boom)
+
+        result = await set_active_deck(session, deck_id=oversized_id)
+
+        assert result.status == "error"
+        assert len(result.model_dump_json()) < 400, result.model_dump_json()
+
+    async def test_a_displayed_result_stays_compact_for_an_oversized_deck_name(
+        self, session, client_stub
+    ):
+        """``deck.name`` is unbounded in storage — ``create_deck`` only refuses a blank one."""
+        client_stub(PushOutcome(outcome="displayed", clients=1))
+        created = await create_deck(session, name="B" * 5000)
+
+        result = await set_active_deck(session, deck_id=created.deck.id)
+
+        assert result.status == "displayed"
         assert len(result.model_dump_json()) < 400, result.model_dump_json()
 
     async def test_nothing_about_the_deck_s_contents_is_echoed(self, session, client_stub):

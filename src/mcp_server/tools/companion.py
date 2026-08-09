@@ -34,15 +34,26 @@ from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
 
 logger = logging.getLogger(__name__)
 
-_DECK_ID_ECHO_LIMIT = 100
-"""Bounds the ``deck_id`` echoed back on a miss — a *display* bound, distinct from
-``ActiveDeckRequest``'s 256-char *storage* bound (``contracts.py``), because a miss echoes the id
-twice (the ``deck_id`` field and the ``message`` sentence): 256 chars doubled would already blow the
-~200-token budget on its own. All 40 ids in the shipped database are 36-character uuids (measured
-2026-08-01, same measurement ``_MAX_DECK_ID_LENGTH`` cites); 100 is roughly 3x that, wide enough for
-a future id scheme, narrow enough that a caller-supplied id beyond it — which can never match a real
-deck anyway — cannot make a ``deck_not_found`` result blow the CM-1 budget (AC 5).
+_ECHO_LIMIT = 48
+"""Bounds any caller- or database-sourced string echoed into a result — a *display* bound, distinct
+from ``ActiveDeckRequest``'s 256-char *storage* bound on ``deck_id`` (``contracts.py``). It covers
+two different unbounded sources: the tool's own ``deck_id`` parameter, which nothing validates
+before the database lookup (unlike the wire's own request body); and ``deck.name``, which
+``create_deck`` only refuses when blank and never caps in length. A result can echo one of these
+twice (a miss puts ``deck_id`` in both the field and the message sentence; a success does the same
+for ``deck_name``), and the ``database_not_initialized`` path pairs one echo with
+``DATABASE_NOT_INITIALIZED_MESSAGE`` (225 chars on its own) — so even the wire's own 256-char cap
+on ``deck_id`` would blow the ~200-token budget doubled, and this needs a smaller number than that.
+All 40 ids in the shipped database are 36-character uuids (measured 2026-08-01, the same measurement
+``_MAX_DECK_ID_LENGTH`` cites); 48 is headroom above that without threatening the budget in the
+message that already carries the most fixed text (measured: 378 of the 400-char test convention
+used throughout this file, itself half of AC 5's ~200-token/~800-character estimate).
 """
+
+
+def _truncate_for_echo(value: str) -> str:
+    """Bound a caller- or database-sourced string before it is echoed into a result (CM-1, AC 5)."""
+    return value if len(value) <= _ECHO_LIMIT else value[:_ECHO_LIMIT] + "…"
 
 
 class SetActiveDeckResult(BaseModel):
@@ -61,8 +72,12 @@ class SetActiveDeckResult(BaseModel):
             companion refused the request itself), ``backend_error`` (the companion is there and
             the change did not land), ``database_not_initialized`` or ``error``.
         deck_id: The deck asked for, echoed on every status so a caller can pair result to request.
+            Before the deck is found, this is the caller's own argument, bounded to
+            :data:`_ECHO_LIMIT` (nothing validates it beforehand); once found it is ``deck.id``,
+            already bounded by the wire's own cap.
         deck_name: The deck's name, when the deck was found — lets the agent confirm by name rather
-            than by uuid.
+            than by uuid. Bounded to :data:`_ECHO_LIMIT`; ``create_deck`` refuses a blank name but
+            never caps its length.
         clients: How many connected browsers received the change, when the companion said. ``None``
             on every status that never reached a receipt, which is deliberately distinguishable
             from ``0``: "nobody told us" and "nobody was watching" are different facts.
@@ -129,7 +144,7 @@ async def set_active_deck(session: AsyncSession, *, deck_id: str) -> SetActiveDe
     if not await is_database_initialized(session):
         return SetActiveDeckResult(
             status="database_not_initialized",
-            deck_id=deck_id,
+            deck_id=_truncate_for_echo(deck_id),
             message=DATABASE_NOT_INITIALIZED_MESSAGE,
         )
 
@@ -140,14 +155,12 @@ async def set_active_deck(session: AsyncSession, *, deck_id: str) -> SetActiveDe
         logger.exception("companion_set_active_deck failed reading deck_id=%s", deck_id)
         return SetActiveDeckResult(
             status="error",
-            deck_id=deck_id,
+            deck_id=_truncate_for_echo(deck_id),
             message="A database error occurred looking up the deck.",
         )
 
     if deck is None:
-        shown_id = (
-            deck_id if len(deck_id) <= _DECK_ID_ECHO_LIMIT else deck_id[:_DECK_ID_ECHO_LIMIT] + "…"
-        )
+        shown_id = _truncate_for_echo(deck_id)
         return SetActiveDeckResult(
             status="deck_not_found",
             deck_id=shown_id,
@@ -162,20 +175,21 @@ async def set_active_deck(session: AsyncSession, *, deck_id: str) -> SetActiveDe
     # `async with session_factory()` still exits cleanly.
     await session.close()
 
+    shown_name = _truncate_for_echo(deck.name)
     outcome = await _client_set_active_deck(ActiveDeckRequest(deck_id=deck.id))
     if outcome.outcome == "displayed":
         tabs = "tab" if outcome.clients == 1 else "tabs"
         return SetActiveDeckResult(
             status="displayed",
             deck_id=deck.id,
-            deck_name=deck.name,
+            deck_name=shown_name,
             clients=outcome.clients,
-            message=f"The companion is now showing '{deck.name}' in {outcome.clients} {tabs}.",
+            message=f"The companion is now showing '{shown_name}' in {outcome.clients} {tabs}.",
         )
     return SetActiveDeckResult(
         status=outcome.outcome,
         deck_id=deck.id,
-        deck_name=deck.name,
+        deck_name=shown_name,
         clients=outcome.clients,
         message=_MESSAGES[outcome.outcome],
     )
