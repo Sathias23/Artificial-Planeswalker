@@ -1,5 +1,20 @@
 # Deferred Work
 
+## Deferred from: code review of c6-3-the-glass-follows-the-agents-active-deck-choice (2026-08-09)
+
+> Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
+> `feat/companion-c6` diff (tests-only: `ui/src/App.test.tsx` +3 tests). Entries below are coverage
+> gaps not required by any AC and pre-existing behaviour out of this story's bounds — real, but not
+> caused by this change.
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-3-the-glass-follows-the-agents-active-deck-choice.md`
+  summary: "The new AC-4 test (404 clears to no-active-deck) only exercises the `deck_not_found` refusal reason from a mounted App receiving a live `active_deck_changed` envelope. A mid-session re-drive that 404s or refuses with a different reason — e.g. `database_not_initialized`, whose `RETRIES_QUIETLY` entry is `true` (opposite of `no-active-deck`'s `false`) — is untested end to end; only its store-level mapping is pinned (`deck.test.ts:311`) and its `RETRIES_QUIETLY` entry (`states.ts:262-272`). AC 4 is worded specifically around the 404/`deck_not_found` case, so this is out of the story's literal scope, not a regression it introduced."
+  evidence: 'Edge Case Hunter; confirmed by reading `ui/src/components/StatePanel/states.ts:262-272` (RETRIES_QUIETLY mapping) and `ui/src/state/deck.test.ts:311` (store-level refusal-reason coverage) — no App-level test drives a live push through a non-`deck_not_found` refusal reason.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-3-the-glass-follows-the-agents-active-deck-choice.md`
+  summary: "The Q2 none-interlude test (a pin that outlives a no-active-deck interlude, self-heals on the next deck) asserts pin release and healing but includes no request-log sweep for stray fetches of the abandoned deck during the interlude — unlike Task 1's switch test, which explicitly sweeps the whole log (the c6-2 Greptile lesson: grep for the whole pattern, not just the cited line). Not required by AC 2's wording, which Task 1's test already proves; this is optional hardening the story applied asymmetrically across its own three new tests."
+  evidence: 'Blind Hunter + Edge Case Hunter, independently; `ui/src/App.test.tsx:2978-3030` — no `pathsSince`/`detailReadsOf`/`activeDeckReads` assertion anywhere in the test.'
+
 ## Deferred from: code review of c6-2-companion-set-active-deck-the-agent-chooses-what-the-glass-shows (2026-08-09)
 
 > Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
@@ -107,7 +122,7 @@
 
 - source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
   summary: "agentEventOf only validates the `kind` discriminant, not `id`/`ts`/`payload` — a frame like {\"kind\":\"deck_changed\"} with no id/ts/payload passes through typed as a full AgentEvent. Not exercised today (system-event kinds are dispatched by kind alone; the four agent-view kinds are dropped unread), becomes actionable when Epic 6 builds the agent views and reads those fields."
-  evidence: 'Blind Hunter + Edge Case Hunter, independently; ui/src/api/client.ts:701-716.'
+  evidence: 'Blind Hunter + Edge Case Hunter, independently; ui/src/api/client.ts:701-716. NOT TRIGGERED BY c6-3 (checked 2026-08-09): that story is Epic 6''s first frontend story, but it reads no payload field at all — by ruling, the `active_deck_changed` handler ignores both the kind and `payload.deck_id` and re-drives the boot, which asks `GET /api/active-deck` first (connection.ts:96-108). Its tests drive frames through `push()` with a payload present and assert only surface and request-log outcomes, so nothing here is exercised or closed. STAYS OPEN for the first story that actually reads those fields — c6-4 onwards, when the agent views land.'
 
 - source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
   summary: "The equivalence between the agent's outbound POST /agent/events body shape and the WebSocket frame the browser actually receives is asserted only in a comment (ws.py broadcasts the ingested event verbatim), with no cross-language contract test pinning it."
@@ -5458,6 +5473,10 @@ consequences for the ledger are here.
   repaired, as predicted: the event now delivers the correction, so the one wasted request per cold
   open against a deleted deck is self-correcting the moment the agent sets another deck — which the
   agent's own `PUT` now announces on the wire.
+  **FIRING PROOF, 2026-08-09 (c6-3):** the closure was asserted from the code; it is now measured.
+  Neutering `onSystemEvent` to a no-op — this entry's regression, verbatim — reddens 7 App-level
+  tests (c6-3's 3 new switch tests plus the 4 shipped socket-event tests), collected count validated
+  at 1,871. Nothing outside the event path moved.
 
 - **dw:5221-5237 — the Vite dev proxy rewrites `Host` but not `Origin` (Medium).**
   **CLOSED by fix (a) of the three the entry enumerated** (Q7). The `/ws` entry rewrites `Origin` to

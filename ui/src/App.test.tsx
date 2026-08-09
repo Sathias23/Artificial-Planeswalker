@@ -23,11 +23,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
 import { sentenceOf } from './components/Footer/copy'
+import { resetDeckMemory } from './containers/CardDetail/deckMemory'
 import { EMPTY_DECK_LINE } from './containers/CardGrid/copy'
 import { CONNECTION_WORDS, pillText } from './containers/ConnectionPill/copy'
 import { MAX_ATTEMPTS_PER_CARD, hydrateCard, resetCardCache, useCardStore } from './state/cards'
 import { resetDeckState, useDeckStore } from './state/deck'
 import { resetFormatCheckState } from './state/formatCheck'
+import { resetInspection, useInspectionStore } from './state/inspection'
 import { DISCONNECTED_AFTER_MS, SOCKET_BASE_MS } from './state/socket'
 import { INITIAL_SYSTEM_STATE, useSystemStore } from './state/systemState'
 
@@ -2739,5 +2741,291 @@ describe('the connection pill reports the real loop (c5-7)', () => {
     const footerLinks = within(screen.getByRole('contentinfo')).getAllByRole('link')
     expect(footerLinks).toHaveLength(2)
     expect(focusables.indexOf(pill() as HTMLElement)).toBe(focusables.indexOf(footerLinks[0]) - 1)
+  })
+})
+
+/**
+ * The glass follows the agent's active-deck choice (story c6-3).
+ *
+ * ================= WHY THIS BLOCK IS TESTS AND NOTHING ELSE =============================
+ *
+ * The runtime path this story is named for ALREADY SHIPPED — at c4-2 (the boot), c4-5 (the
+ * inspection release) and c5-6 (the socket and its one system-event action) — and the C5 retro
+ * says so in writing (item J2: *"C5's `connection.ts` already re-drives the deck boot on
+ * `active_deck_changed`"*). So what c6-3 owes is PROOF, not plumbing, and Q1 was ruled that way
+ * before a line was written: a tests-only diff, runtime code only if a test exposes a real defect.
+ * None did.
+ *
+ * The block above at `switches decks on active_deck_changed` already pins **none → deck**, which
+ * is AC 1; it is cited rather than duplicated. The four gaps left open, and closed here:
+ *
+ *   1. **deck A → deck B** at App level. The shipped test only ever went from no-deck to a deck,
+ *      so nothing asserted what happens to the deck being LEFT.
+ *   2. **The pin release across an envelope-driven switch.** `CardDetail.test.tsx:646` drives the
+ *      `boards` prop directly — no envelope, no App, no socket — so the release had never been
+ *      observed as a consequence of a frame arriving on the wire.
+ *   3. **The 404-after-switch, from a mounted App.** `deck.test.ts:260` drives the boot's readers
+ *      directly; this walks the whole path to a rendered panel.
+ *   4. **The none-interlude stale pin** — found while writing this story, and ruled ACCEPTED rather
+ *      than fixed (Q2, 2026-08-09). See the third test for what that means and why.
+ *
+ * ================= AC 3 IS STRUCTURAL, AND THE TEST IS A REQUEST LOG ====================
+ *
+ * *"It must not treat `active_deck_changed` as `deck_changed`"* is satisfied by REQUEST ORDER, not
+ * by a branch: `connection.ts:96-108` reads neither the kind nor the payload, and the boot it
+ * re-drives asks `GET /api/active-deck` **first**. So the id of the deck being left is never
+ * interpolated into anything, and the way to assert that is to audit every path asked since the
+ * envelope — which is what {@link pathsSince} is for. There is deliberately no `deck_changed`
+ * branch to test; adding one would be building c7-3's story.
+ *
+ * ================= WHAT THESE TESTS CANNOT SEE =========================================
+ *
+ * The real WebSocket. `FakeSocket` is the transport and nothing else, so a defect in the wire
+ * itself — a frame that never arrives — is invisible here; c5-8's one real-socket test owns that
+ * (AD-10) and is push-shaped and untouched. AC 5 ("several tabs, every tab switches") is likewise
+ * not testable from one jsdom: all-tabs delivery is `ws.py` fan-out, tested at c5-4, and a
+ * two-instance mount here would fake the very fan-out it claimed to prove (Q5). What each tab does
+ * on receipt is exactly what this block pins.
+ */
+describe('the glass follows the agent’s active-deck choice (c6-3, AC 2, AC 3, AC 4)', () => {
+  const NO_DECK = 'No deck on the glass.'
+  const SKIP_LINK = 'Skip past the deck grid'
+  const CARD_DETAIL = 'Card detail'
+  const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
+
+  /**
+   * Deck B — ✅ **VERIFIED REAL** against the live database at story time: id, name, format and
+   * both counts are `Arabella Mobilize (Boros) v2 - owned` as `list_decks` reports it, and the two
+   * cards below are real rows of that real deck at their real quantities and real costs.
+   *
+   * A SECOND deck is the whole point: every fixture in this file until now has been one deck, so
+   * "switches to the new deck" and "does not refetch the old one" were both unassertable. Built
+   * through `deckDetail`'s existing overrides rather than as a second literal body, so there is
+   * still exactly one place that knows the shape of a deck-detail response.
+   */
+  const ARABELLA_DECK_ID = '45d80726-0f7b-460a-97fc-d0b457215d6d'
+  const ARABELLA_NAME = 'Arabella Mobilize (Boros) v2 - owned'
+
+  const arabellaDetail = () =>
+    deckDetail({
+      id: ARABELLA_DECK_ID,
+      name: ARABELLA_NAME,
+      format: 'standard',
+      mainboard_count: 60,
+      distinct_cards: 18,
+      cards: [
+        deckCard('Arabella, Abandoned Doll', 'Legendary Artifact Creature — Toy', 4, '{R}{W}', 2),
+        deckCard('Mountain', 'Basic Land — Mountain', 6),
+      ],
+    })
+
+  /**
+   * Every path asked since a marker index, so ONE envelope's traffic can be audited on its own.
+   *
+   * A marker rather than a fresh `answering()` because re-stubbing mid-test would throw away the
+   * boot's own history, and the claim AC 3 makes is about what the switch did — not about what the
+   * whole test did.
+   */
+  const pathsSince = (fetchMock: ReturnType<typeof answering>, from: number) =>
+    fetchMock.mock.calls.slice(from).map(([input]) => String(input))
+
+  /**
+   * Deck-DETAIL reads of ONE id. Exact equality, not `startsWith`: `/api/deck/{id}/format-check`
+   * shares the prefix, and a switch legitimately fires one of those for the NEW deck (`App.tsx`'s
+   * `[deckId, emptyDeck]` effect). Counting by prefix would fold the two together and make every
+   * assertion below either flaky or vacuous.
+   */
+  const detailReadsOf = (paths: readonly string[], deckId: string) =>
+    paths.filter((path) => path === `/api/deck/${deckId}`).length
+
+  const activeDeckReads = (paths: readonly string[]) =>
+    paths.filter((path) => path === '/api/active-deck').length
+
+  const tiles = () => [...document.querySelectorAll<HTMLElement>('.card-tile')]
+  const detailName = () => document.querySelector('.card-detail-name')?.textContent ?? null
+  const unpinControl = () => document.querySelector('.card-detail-unpin')
+
+  beforeEach(() => {
+    // ⚠️ THE FILE'S OWN `beforeEach` DOES NOT COVER THESE TWO, and both are module-scope state
+    // that a previous test leaves behind: the inspection slice (a live `pinnedId`) and
+    // `deckMemory`'s `lastBoards`. Every existing test in this file survives that because a
+    // completed boot releases a stale pin on its way in — which is precisely the mechanism these
+    // tests are trying to OBSERVE, so inheriting it would make them assert their own premise.
+    // Reset here rather than in the shared block: this is the only describe that depends on
+    // starting from a genuine cold open, and widening the shared block would re-baseline 69 files
+    // for one story's benefit.
+    resetInspection()
+    resetDeckMemory()
+  })
+
+  // ==================== AC 2 + AC 3 — THE SWITCH, AND THE DECK IT LEAVES ================
+  it('switches deck → deck, releases the old deck’s pin, and never asks for the deck it left (AC 2, AC 3)', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks(ATRAXA_NAME, ARABELLA_NAME))
+
+    render(<App />)
+    await settle()
+    await connect()
+    expect(screen.getByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeVisible()
+
+    // PIN THE SECOND TILE, NOT THE FIRST, and that choice is what makes the release observable at
+    // all. `Llanowar Elves` is ALREADY deck A's cold-open target, so a pin on it would agree with
+    // the default target — and the assertion after the switch could not tell a released pin from a
+    // surviving one. `Forest` disagrees with the default, so it can only still be showing if the
+    // release failed. The click is the real pin gesture (c4-5), not a `setState`.
+    act(() => {
+      tiles()[1].click()
+    })
+    await settle()
+    expect(detailName()).toBe('Forest')
+    expect(unpinControl()).not.toBeNull()
+
+    // The agent switches decks. The payload names deck B, and the app pointedly does not read it.
+    const marker = fetchMock.mock.calls.length
+    booting(activeDeck(ARABELLA_DECK_ID), arabellaDetail())
+    await push('active_deck_changed', { deck_id: ARABELLA_DECK_ID })
+    await settle()
+
+    expect(screen.getByRole('heading', { level: 1, name: ARABELLA_NAME })).toBeVisible()
+    expect(screen.queryByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeNull()
+
+    // AC 3, MADE MECHANICAL. One envelope buys exactly one active-deck read and exactly one read
+    // of the deck being switched TO — and zero reads of the deck being switched FROM, which is the
+    // conflation `contracts.py:902-905` warns about ("refetches the deck it is leaving instead of
+    // the one it is switching to") shown to be unavailable here.
+    const switchPaths = pathsSince(fetchMock, marker)
+    expect(activeDeckReads(switchPaths)).toBe(1)
+    expect(detailReadsOf(switchPaths, ARABELLA_DECK_ID)).toBe(1)
+    expect(detailReadsOf(switchPaths, ATRAXA_DECK_ID)).toBe(0)
+
+    // …AND THE WHOLE LOG SWEPT FOR THE OLD ID, WHICH IS c6-2's GREPTILE LESSON APPLIED. That
+    // review patched an unbounded echo on the one branch the finding cited and left three siblings
+    // open; Greptile found them after the merge. The AC here names the deck read, so asserting only
+    // that one path would repeat the mistake in miniature: the format check and the hydration sweep
+    // are deck-scoped requests too. Nothing asked since the envelope may name deck A at all.
+    expect(switchPaths.filter((path) => path.includes(ATRAXA_DECK_ID))).toEqual([])
+
+    // THE RELEASE, MADE VISIBLE (AC 2). The pin is gone — no unpin control, because it renders only
+    // while pinned — and the panel has landed on deck B's OWN cold-open card rather than sitting
+    // empty (UX-DR20: "never empty while a deck is loaded"). `Arabella, Abandoned Doll` is that
+    // card because `Legendary Artifact Creature — Toy` groups as **Creature**, which leads
+    // `TYPE_GROUPS`, so `Artifact` never gets a look in.
+    expect(unpinControl()).toBeNull()
+    expect(detailName()).toBe('Arabella, Abandoned Doll')
+    expect(useInspectionStore.getState().pinnedId).toBeNull()
+
+    // One socket throughout. A switch is a re-drive of the boot, never a reconnect.
+    expect(sockets).toHaveLength(1)
+  })
+
+  // ==================== AC 4 — THE DECK THE AGENT CHOSE IS ALREADY GONE =================
+  it('clears to the no-active-deck state when the deck the agent chose 404s (AC 4)', async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks(ATRAXA_NAME, ARABELLA_NAME))
+
+    render(<App />)
+    await settle()
+    await connect()
+    expect(screen.getByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeVisible()
+    expect(screen.getByRole('button', { name: SKIP_LINK })).toBeVisible()
+
+    // The agent set a deck that no longer exists — deleted between its `PUT` and this read. The
+    // 404 reaches the client as a TOKEN and never as a status code (AD-16):
+    // `{kind:'error', reason:'deck_not_found'}` maps through `PANEL_FOR_REASON` to
+    // `'no-active-deck'`, and `stateForPanel` turns that into `{status:'none'}`.
+    const marker = fetchMock.mock.calls.length
+    booting(activeDeck(ARABELLA_DECK_ID), refusal('deck_not_found', 404))
+    await push('active_deck_changed', { deck_id: ARABELLA_DECK_ID })
+    await settle()
+
+    const panel = screen.getByRole('region', { name: NO_DECK })
+    expect(panel).toBeVisible()
+    // A STATE, NOT AN ERROR (FR-11) — the distinction the whole token mapping exists to make.
+    expect(screen.queryByRole('region', { name: 'The companion hit a bug.' })).toBeNull()
+    // The deck that WAS on the glass is gone from both columns, not left stale beside the panel.
+    expect(screen.queryByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeNull()
+    expect(screen.queryByRole('region', { name: CARD_DETAIL })).toBeNull()
+    // …and the skip link is withdrawn with the grid it existed to skip (UX-DR31). Its ABSENCE is
+    // the cheap half of that rule, asserted here because this path reaches it; the full keyboard
+    // floor stays Epic 4's suite.
+    expect(screen.queryByRole('button', { name: SKIP_LINK })).toBeNull()
+    // The panel says what IS available, from `system.decks` — names only, non-clickable.
+    expect(within(panel).getByText(ARABELLA_NAME)).toBeVisible()
+
+    // NO RETRY STORM, WHICH IS THE OTHER HALF OF THE STATE BEING A STATE.
+    // `RETRIES_QUIETLY['no-active-deck']` is `false`: the boot lands on `'none'` and stops, because
+    // recovery here is the agent's next set arriving on the socket — not a poll grinding against a
+    // deck that will never come back. A full minute of a mounted, idle tab buys zero requests on
+    // either boot route.
+    const afterClear = fetchMock.mock.calls.length
+    await advance(60_000)
+    const idlePaths = pathsSince(fetchMock, afterClear)
+    expect(detailReadsOf(idlePaths, ARABELLA_DECK_ID)).toBe(0)
+    expect(activeDeckReads(idlePaths)).toBe(0)
+    // NON-VACUITY FOR THE TWO ZEROES ABOVE: a torn-down app makes no requests either, so "quiet"
+    // and "dead" are the same measurement without this. The panel is still on the glass and the
+    // socket is still the one this test opened — quiet because it is settled, not because it left.
+    expect(screen.getByRole('region', { name: NO_DECK })).toBeVisible()
+    expect(sockets).toHaveLength(1)
+    expect(sockets[0].closed).toBe(0)
+
+    // The clear cost exactly what the switch costs: one active-deck read, one deck read, no more.
+    const clearPaths = pathsSince(fetchMock, marker)
+    expect(activeDeckReads(clearPaths)).toBe(1)
+    expect(detailReadsOf(clearPaths, ARABELLA_DECK_ID)).toBe(1)
+  })
+
+  // ==================== Q2 — THE PIN THAT OUTLIVES ITS DECK, ACCEPTED AND PINNED ========
+  it('heals a pin that outlived a no-active-deck interlude instead of showing it on the next deck (AC 2, Q2)', async () => {
+    // ⚠️ THIS TEST DOCUMENTS A LATENT STATE RATHER THAN A FIX, BY RULING (Q2, Brad 2026-08-09).
+    //
+    // The release lives in `CardDetail`'s `[boards]` effect, and that effect only runs while a deck
+    // surface is MOUNTED. So on the path below — pinned deck, then a fall to a state panel — the
+    // panel unmounts without clearing and the slice keeps a `pinnedId` for a deck that is no longer
+    // on the glass. Ruled accepted rather than fixed, and the two reasons are both asserted here:
+    // while the state exists it is INVISIBLE (there is no right column to render it in), and it
+    // SELF-HEALS at the exact moment it could first matter (the next deck's boards arrive and the
+    // shipped release fires before anything stale is settled-visible). A fix would need a second
+    // release site — a panel-fall effect — for zero user-visible gain, and a second store-writer
+    // path for the governance suites to scrutinise.
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    answering(decks(ATRAXA_NAME, ARABELLA_NAME))
+
+    render(<App />)
+    await settle()
+    await connect()
+
+    act(() => {
+      tiles()[1].click()
+    })
+    await settle()
+    expect(detailName()).toBe('Forest')
+
+    // Deck A is deleted out from under the pin. The re-drive's active-deck read still names it —
+    // the backend will keep reporting a dead id, and the client does not PUT to correct it
+    // (`deck.ts:251-258`, accepted residue) — so the deck read 404s and the surface falls.
+    booting(activeDeck(ATRAXA_DECK_ID), refusal('deck_not_found', 404))
+    await push('active_deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+
+    expect(screen.getByRole('region', { name: NO_DECK })).toBeVisible()
+    // THE LATENT STATE, ASSERTED RATHER THAN DENIED — this is the honest half of "accept and pin".
+    expect(useInspectionStore.getState().pinnedId).toBe('id-Forest')
+    // …and INVISIBLE while it exists, which is the reason it is acceptable. There is no panel.
+    expect(screen.queryByRole('region', { name: CARD_DETAIL })).toBeNull()
+
+    // Now the agent picks a real deck. The interlude is where a naive implementation would carry
+    // `Forest` onto a deck that has never contained one.
+    booting(activeDeck(ARABELLA_DECK_ID), arabellaDetail())
+    await push('active_deck_changed', { deck_id: ARABELLA_DECK_ID })
+    await settle()
+
+    expect(screen.getByRole('heading', { level: 1, name: ARABELLA_NAME })).toBeVisible()
+    // SELF-HEALED. `replacesRememberedDeck` compares the boards REFERENCE, which `deck.ts` mints
+    // once per completed boot — so it is still holding deck A's from before the interlude and the
+    // release fires on deck B's arrival, one deck later than the pin was set.
+    expect(useInspectionStore.getState().pinnedId).toBeNull()
+    expect(unpinControl()).toBeNull()
+    expect(detailName()).toBe('Arabella, Abandoned Doll')
   })
 })
