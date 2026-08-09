@@ -307,7 +307,7 @@
 #   epic-c1..10 → _bmad-output/planning-artifacts/epics-companion-app.md          (c-prefixed, numbering UNCHANGED)
 
 generated: 2026-06-20
-last_updated: '2026-08-09 (EPIC C5 SHIPPED TO MASTER — integration PR #61 merged at `2acea84`, no Greptile per the standing rule; next: C6 prep R1/R2/R3/R5, then c6-1.)'
+last_updated: '2026-08-09 (C6 PREP UNDERWAY. R1 Windows CI lane SHIPPED TO MASTER via PR #62 at `4cf4bd6` — green first run, 1 passed in 7.20s cold; two carried follow-ups opened as R1-a firing proof and R1-b branch protection. R4''s premise corrected in place — the flake was never integration-marked. Umbrella `feat/companion-c6` cut off master at `37eb1bd`. Next: R2 prose sweep / R3 class→token guard / R5 vitest harness, then c6-1.)'
 #                Previously — C5 RETRO run and recorded in epic-c5-retro-2026-08-09.md (Block J later ruled not-run and carried to the C6 checklist; R9 ruled deliberate-split).
 #                Previously — Story c5-8 MERGED via PR #60 at `057a6d9`; Epic 5 complete (c5-1..c5-8 done); next: the C5 retro.
 #                Previously — Story c4-1 DONE — three-layer review applied 10 patches (1 High: a summary seeded mid-flight was clobbered by a settling refusal), ledgered 2 deferrals, dismissed 6; 808 -> 816 frontend, all gates green, bundle byte-identical after patches (the whole readCard path is tree-shaken until c4-2 imports it). Next: PR into feat/companion-c4, then c4-2.
