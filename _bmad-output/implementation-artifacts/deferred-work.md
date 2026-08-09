@@ -1,5 +1,11 @@
 # Deferred Work
 
+## Deferred from: R3 declined (2026-08-09)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-r3-derived-class-token-guard.md`
+  summary: "THE SWAP ROW IS THE UNGUARDED CASE THAT MATTERS, and the story that builds it is the only one that can close it. DESIGN.md:283-284 gives it `out-tint: '{colors.negative}'` and `in-tint: '{colors.positive}'` — red means 'cut this card', green means 'add this card'. Transposing them is semantically INVERTED (the UI confidently recommends the opposite of the truth), invisible to jsdom (which applies no CSS), and invisible to a name-matching guard (the classes are named by role, not by tone). One source-read assertion in that story — out binds negative, in binds positive — is the whole fix."
+  evidence: 'Found during R3''s review 2026-08-09, and it is why R3 was declined: R3 covered class names ending in a tone (Badge, StatChip only) and would never have seen this. Precedent for the cost: c5-7 probe P15 pointed the connection dot at the wrong status token and all 1,866 tests passed. R3''s own plant re-measured it — `.badge-positive` repointed to var(--negative) gave 1 failed / 1,872 passed. Not homed on a prep item by ruling; home is the swap-row story itself.'
+
 ## Deferred from: code review of R1 (Windows integration CI lane) — 2026-08-09
 
 > Two-layer adversarial review (Blind Hunter, Edge Case Hunter) of the `chore/c6-prep-r1-windows-ci-lane`
