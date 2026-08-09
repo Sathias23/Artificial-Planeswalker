@@ -684,3 +684,6 @@ widening it into the file's own `beforeEach` is in the comment beside it.
   refusal reason, not a mid-session refusal with different retry semantics (e.g.
   `database_not_initialized`); (2) the Q2 none-interlude test omits the request-log sweep Task 1's
   switch test applies. No code changed; suite counts unmoved from the IMPLEMENTED entry above.
+- 2026-08-09 — Story MERGED via PR #65 into `feat/companion-c6` at `fa5f963`. No Greptile findings
+  surfaced post-merge (unlike c6-2, which had a 4-branch echo gap Greptile caught). Next: c6-4
+  (`companion_show_suggestions`, the agent's first push).
