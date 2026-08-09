@@ -24,9 +24,9 @@ Three design rules are load-bearing:
   directory may be on another volume.
 * **A parse failure is *app not running*, not an error.** :func:`read_discovery` returns ``None``
   for an absent, unreadable, truncated, non-JSON or wrong-shaped file, and never raises. AD-15
-  accepts that a crashed process leaves a stale file behind; for c6-1's client the ordinary,
-  expected case is that there is no usable file at all, so a rejected read logs at DEBUG rather
-  than warning on every push.
+  accepts that a crashed process leaves a stale file behind; for
+  :func:`~src.companion.client.push_event`, the ordinary, expected case is that there is no usable
+  file at all, so a rejected read logs at DEBUG rather than warning on every push.
 * **The token is a secret and must never be logged.** It is minted fresh per process
   (:func:`mint_token`), reaches exactly two places — this file and ``app.state`` — and
   :attr:`DiscoveryRecord.token` carries ``repr=False`` so a stray ``logger.info("%s", record)`` or
@@ -102,8 +102,9 @@ def mint_token() -> str:
     """Mint a fresh agent credential for this process.
 
     Called once per process by the lifespan, so two starts never share a token and a restarted
-    backend invalidates the one a tool was holding — which is exactly the case c6-1's retry-once
-    absorbs. 32 bytes of ``secrets`` entropy, rendered as 43 URL-safe characters.
+    backend invalidates the one a tool was holding — which is exactly the case
+    :func:`~src.companion.client.push_event`'s retry-once absorbs, by coming back here for the
+    freshly published record. 32 bytes of ``secrets`` entropy, rendered as 43 URL-safe characters.
 
     Returns:
         A new high-entropy token. Never log it.
@@ -189,8 +190,8 @@ def read_discovery() -> DiscoveryRecord | None:
     It is deliberately **not** ``except Exception``: a ``MemoryError`` during a read is not "app
     not running".
 
-    Rejections log at DEBUG, not WARNING — for c6-1's client the expected case is that no file
-    exists, and a warning per push would be noise in the user's terminal.
+    Rejections log at DEBUG, not WARNING — for :func:`~src.companion.client.push_event` the
+    expected case is that no file exists, and a warning per push would be noise in the terminal.
 
     Returns:
         The published record, or ``None`` if there is no usable one.

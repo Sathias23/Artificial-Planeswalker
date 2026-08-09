@@ -1,5 +1,27 @@
 # Deferred Work
 
+## Deferred from: code review of c6-1 (2026-08-09)
+
+> Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
+> `feat/companion-c6-1-leaf-client` diff. Entries below are coverage gaps not required by any AC and
+> pre-existing behaviour out of this story's bounds — real, but not caused by this change.
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`
+  summary: "c6-2's two concrete needs against this module's machinery, moved here from docstring prose per Task 7's R2 rule (review finding, decision-needed, ruled by Brad 2026-08-09: trim to pointers): (1) a tool-level `deck_not_found` outcome layered above client.py's closed five-token PushOutcomeToken set — the client cannot observe it, so it belongs at the MCP tool layer, not in PushOutcomeToken. (2) `_send()` is already generic over method and path specifically so c6-2's `PUT /api/active-deck` push can reuse it — same Authorization header, same PROBE_TIMEOUT-based timeouts, same trust_env=False net — rather than a duplicated implementation."
+  evidence: 'Acceptance Auditor: PushOutcomeToken and _send''s docstrings in src/companion/client.py named c6-2''s specific endpoint/outcome, which the story''s own Task 7 forbids ("mint no new forward-looking cross-module prose ... c6-2+''s needs get a dw: ledger line, not a docstring paragraph") and which the diff''s own Completion Notes had incorrectly claimed compliance with. Trimmed from client.py and re-homed here in the same review pass.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`
+  summary: "No test pins the 401-vs-403 boundary at the push layer. `_outcome_for` folds every status outside {200,400,403,413} into `backend_error`, including 401 — the one code most easily confused with the retry-triggering 403. A regression or misconfigured proxy answering 401 would silently become a non-retried `backend_error` with nothing pinning that as intended."
+  evidence: 'Blind Hunter. `src/companion/client.py:384-400` (`_outcome_for`) — the sole "unexpected status" test uses 418, not 401.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`
+  summary: "No test covers a backend restart landing in the narrower window between the /health probe and the POST within a single attempt — only the between-attempts race (via on_post) is exercised. AD-4's 'verify before you send' principle is satisfied per-attempt, but the gap between live_instance() returning and _send() reading record.token inside one attempt is an inherent TOCTOU window of any verify-then-act pattern and isn't practically closable without a redesign."
+  evidence: 'Blind Hunter. `src/companion/client.py:403-424` (`_attempt`).'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`
+  summary: "EventIngestReceipt has no extra=\"forbid\" (src/companion/contracts.py:1313-1349), so unexpected wire fields alongside a valid `clients` are silently ignored rather than rejected — inconsistent with PushOutcome's own extra=\"forbid\" tightness. Pre-existing (c5-5), untouched by c6-1, and contracts.py is out of this story's bounds."
+  evidence: 'Blind Hunter, confirmed by reading the model: `clients: int = Field(ge=0)` with no `model_config` overriding pydantic v2''s default extra="ignore".'
+
 ## Deferred from: R3 declined (2026-08-09)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-r3-derived-class-token-guard.md`

@@ -333,8 +333,8 @@ deliberate (Q4, Brad 2026-08-01):
 
 _BEARER_SCHEME = "bearer"
 """The auth-scheme half of ``Authorization: Bearer <token>``, matched case-insensitively per
-RFC 9110 §11.1. Standard spelling, so c6-1 sends what every HTTP client already knows how to
-send."""
+RFC 9110 §11.1. Standard spelling, so the leaf client sends what every HTTP client already knows
+how to send (``src.companion.client._send`` builds the header, and nothing else does)."""
 
 
 def presented_credential(header_value: str | None) -> str | None:
@@ -446,8 +446,8 @@ async def require_agent_token(request: Request) -> None:
     caller guessed nearly right, park a near-miss credential in a file. *How* the credential failed
     — never sent, sent but unparseable, or parsed and wrong — is safe and genuinely diagnostic: it
     separates "the tool never sent one" from "the tool's header is malformed" from "the tool sent a
-    stale one", which are three different c6-1 debugging sessions — so that one word is logged and
-    no more.
+    stale one", which are three different leaf-client debugging sessions — so that one word is
+    logged and no more.
 
     Args:
         request: The request being served; the header and the app are both read from it.
@@ -471,8 +471,8 @@ async def require_agent_token(request: Request) -> None:
         return
     # Three words, still no values: "invalid" (a bearer credential that failed the comparison),
     # "malformed" (a header that did not parse to one — wrong scheme, empty credential), "no"
-    # (no header at all). Collapsing "malformed" into "no" mislabels exactly the c6-1 case the
-    # docstring promises to serve: a client with a header-construction bug *is* presenting
+    # (no header at all). Collapsing "malformed" into "no" mislabels exactly the leaf-client case
+    # the docstring promises to serve: a client with a header-construction bug *is* presenting
     # something (c3-4 review).
     logger.warning(
         "Refusing %s %s: %s agent credential",

@@ -27,10 +27,15 @@ The cost is a long function, paid down with phase comments rather than with spli
 stall were both ruled acceptable residuals at c5-4; if a real socket ever surfaces them here, the
 honest move is to record it, not to repair it from a test.
 
-**It is not c6-1.** The FR-12 retry in phase 7 is hand-rolled *inside this function* on purpose:
-the leaf client's push half — a POST helper with the retry-once shape and an outcome vocabulary —
-is the next story's, and building it here would be building it twice. Grep-verified at Task 0:
-nothing under ``src/mcp_server/`` does discovery-retry today.
+**It does not use** :func:`~src.companion.client.push_event`. The FR-12 retry in phase 9 stays
+hand-rolled *inside this function* on purpose, and c6-1 shipping the real helper did not change
+that (Q3, Brad 2026-08-09): what this file pins is the **wire contract**, and it can only pin it
+independently of the client if it does not go through the client. Wired up, a client bug and a
+backend bug would fail the same assertion and this test would stop being the second opinion it
+exists to be. The shipped helper — ``client.push_event``, with the retry-once and the closed
+outcome vocabulary — is unit-tested against real loopback listeners in
+``tests/unit/companion/test_client.py``; the sequence below is the shape it had to implement,
+proven here against a really restarted process.
 
 **CI runs it on Windows.** ``.github/workflows/ci.yml``'s ``companion-integration`` job runs this
 directory on ``windows-latest`` on every push and pull request. The ``quality`` jobs are ubuntu and
@@ -290,7 +295,8 @@ async def test_the_real_channel_end_to_end(backends, live_data_dir):
 
     # ==== PHASE 2: identity, through the shipped leaf (AC 4) ================================
     # `live_instance()` reads the discovery file, probes `/health` and compares the echoed
-    # instance_id — the one-implementation-both-callers path AD-3 requires and c6-1 will build on.
+    # instance_id — the one-implementation-both-callers path AD-3 requires, and the same call
+    # `client.push_event` makes before every send, retry included.
     # A hand-rolled probe here would be a second implementation of the question this app already
     # answers, and it would be the copy that drifted.
     live = await client.live_instance()
@@ -404,9 +410,10 @@ async def test_the_real_channel_end_to_end(backends, live_data_dir):
         # otherwise would make this test flake on a passing run.
 
         # ==== PHASE 9: FR-12 — stale token, 403, re-read, retry once, 200 (AC 9) ===========
-        # Hand-rolled here on purpose: this sequence is c6-1's to build as a leaf-client helper,
-        # and writing it as one now would be writing it twice. What is proven is the SHAPE the
-        # helper will have to implement, against a real restarted process.
+        # Hand-rolled here on purpose, and deliberately NOT switched to `client.push_event` when
+        # that shipped (Q3, Brad 2026-08-09): routing this through the client would make one bug
+        # able to hide another. What is proven is the SHAPE the helper implements, against a real
+        # restarted process, by a path that shares no code with it.
         new_base_url = f"http://127.0.0.1:{record_two.port}"
         stale_envelope = {
             "kind": "active_deck_changed",

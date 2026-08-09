@@ -308,11 +308,11 @@ def run(port: int | None = None) -> None:
     # carries an em dash too, which is why this stays the very first thing run() does.
     if isinstance(sys.stdout, io.TextIOWrapper):
         sys.stdout.reconfigure(errors="replace")
-    # asyncio.run here, before uvicorn exists: the probe is async because c6-1's tools are, and one
-    # shared implementation beats a sync mirror of a network call (AD-8, Decide-once #2). uvicorn
-    # creates its own loop inside _serve later, and two consecutive asyncio.run calls on one thread
-    # are legal — but this must never move below _serve or inside a coroutine, because calling
-    # asyncio.run from within a running loop raises.
+    # asyncio.run here, before uvicorn exists: the probe is async because the leaf client is, and
+    # one shared implementation beats a sync mirror of a network call (AD-8, Decide-once #2).
+    # uvicorn creates its own loop inside _serve later, and two consecutive asyncio.run calls on
+    # one thread are legal — but this must never move below _serve or inside a coroutine, because
+    # calling asyncio.run from within a running loop raises.
     live = asyncio.run(client.live_instance())
     if live is not None:
         print(

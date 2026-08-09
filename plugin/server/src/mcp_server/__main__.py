@@ -214,7 +214,7 @@ def _run_companion(args: Sequence[str]) -> int:
     # (the port fallback, the discovery-write warnings, the reclaim notice). It must happen before
     # run() is called, because the earliest of those records is emitted inside run() before uvicorn
     # exists. INFO rather than DEBUG: read_discovery and probe_health log their ordinary
-    # "nothing there" outcomes at DEBUG, which would become per-push chatter from c6-1 onward.
+    # "nothing there" outcomes at DEBUG, which would become per-push chatter once tools push.
     # stderr rather than stdout: the deliberate user-facing lines are already printed to stdout by
     # run(), and uvicorn's access log lands there too.
     logging.basicConfig(
