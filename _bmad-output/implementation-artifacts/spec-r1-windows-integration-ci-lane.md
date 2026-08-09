@@ -136,7 +136,7 @@ ACs whose evidence only exists in a CI run are recorded as pending rather than c
 
 | AC | Status | Evidence |
 |----|--------|----------|
-| Job on windows-latest, collects exactly 1, passes | **Partly verified** | `yaml.safe_load` confirms three jobs and `companion-integration: windows-latest`; `--collect-only -q` = `1 test collected`; the test passes locally on win32 in 3.85 s. The CI-run half is pending the PR. |
+| Job on windows-latest, collects exactly 1, passes | **VERIFIED in CI** | PR #62, run 31290864008: the job ran on `windows-latest`, logged `collected 1 item` and `1 passed in 7.20s`, job total 33 s. All five checks green on the same run. |
 | No network beyond loopback, no DB/model/secret | **Verified** | Passing run in an isolated `tmp_path` data dir; the test's httpx client sets `trust_env=False` and every URL is literal `127.0.0.1`. |
 | Firing proof — planted break red on Windows, green on ubuntu | **PENDING — requires the PR** | Cannot be produced without a push. Procedure and revert are in Verification → Manual checks. **This AC is not satisfied and must not be reported as such until both run URLs exist.** |
 | Renamed/emptied directory goes red, not vacuously green | **Verified** | Measured, not assumed: `--ignore` of the test file → exit **5**; a non-existent directory path → exit **4**. Both non-zero. |
