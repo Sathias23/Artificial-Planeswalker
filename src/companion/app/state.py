@@ -9,9 +9,9 @@ discovery file.
 
 **Why the state lives here and not in the MCP server.** The spine's inherited-constraints table and
 PRD CM-3 both rule that the *backend* owns the active deck. The MCP tools are stateless and
-self-contained (project-context D5): ``companion_set_active_deck`` (c6-2) calls the HTTP endpoint
-and keeps nothing, so two agent sessions talking to one companion see one active deck rather than
-two disagreeing ones. ``tests/unit/companion/test_routes_active_deck.py`` asserts the MCP side
+self-contained (project-context D5): ``companion_set_active_deck`` calls the HTTP endpoint and keeps
+nothing, so two agent sessions talking to one companion see one active deck rather than two
+disagreeing ones. ``tests/unit/companion/test_routes_active_deck.py`` asserts the MCP side
 stays clean rather than trusting this paragraph.
 
 **Why this module rather than a bare ``app.state.active_deck_id``.** The Structural Seed names it:

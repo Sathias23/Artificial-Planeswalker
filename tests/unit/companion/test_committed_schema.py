@@ -227,11 +227,17 @@ class TestTheComponentSet:
         # not get is a reusable named type. Recorded rather than corrected: naming them would mean
         # converting two contract aliases to enums to satisfy a schema-shape preference, which is
         # not this story's call.
+        # THIRTY-ONE as of c6-2, which adds `ActiveDeckSetReceipt` — the `PUT /api/active-deck`
+        # response model, split off from `ActiveDeck` so the write can report the delivered client
+        # count the read has no use for (Q1, Brad 2026-08-09). It is the second component the
+        # *browser* never sees: the SPA reads only the token-free `GET` (AD-5), so this shape exists
+        # in the generated TypeScript for completeness rather than for a caller.
         assert set(schema["components"]["schemas"]) == {
             "ActiveDeck",
             "ActiveDeckChangedEvent",
             "ActiveDeckChangedPayload",
             "ActiveDeckRequest",
+            "ActiveDeckSetReceipt",
             "Card",
             "CardFace",
             "CardSummary",

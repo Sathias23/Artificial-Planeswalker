@@ -1,4 +1,4 @@
-"""The leaf client, both halves: ``GET /health`` identity (c1-8) and the ``POST`` push (c6-1).
+"""The leaf client: ``GET /health`` identity (c1-8), the ``POST`` push (c6-1), the ``PUT`` (c6-2).
 
 Every case here runs against a **real loopback listener**, never a mocked transport. That is c1-3's
 ruling restated for a different reason: the failures this client exists to absorb — a connect that
@@ -11,11 +11,14 @@ ways: an HTTP stub that answers (any status, any bytes), a bare listening socket
 TCP handshake and then says nothing (``ReadTimeout``), and a port with nothing on it at all
 (``ConnectTimeout`` under a short deadline). Each is one row of AC 4's matrix.
 
-The HTTP stub answers ``GET`` and ``POST`` from **separate scripts**, which c6-1 needs and c1-8 did
-not: one push makes both requests against the same stub — a ``/health`` probe and then the event
-POST — so a single canned response could not express "identity is fine, the credential is not".
-The POST script is a queue whose **last entry repeats forever**, so ``[403, 200]`` is the retry
-case and ``[403]`` alone is the terminal one, and neither can pass by the stub simply running out.
+The HTTP stub answers ``GET``, ``POST`` and ``PUT`` from **three separate scripts**, which c6-1
+needed and c1-8 did not: one call makes two requests against the same stub — a ``/health`` probe and
+then the authenticated leg — so a single canned response could not express "identity is fine, the
+credential is not". Each script is a queue whose **last entry repeats forever**, so ``[403, 200]``
+is the retry case and ``[403]`` alone is the terminal one, and neither can pass by the stub simply
+running out. c6-2 added the third script rather than sharing the POST's, because the two verbs
+answer **different 200 bodies** — a shared queue would let an active-deck test pass while the client
+parsed an event receipt.
 
 Discovery files are planted with ``Path.write_text(json.dumps(...))`` and never through
 ``write_discovery`` — a fixture built by the code under test proves nothing (c1-6's rule, restated
@@ -42,6 +45,7 @@ from src.companion import client, discovery
 from src.companion.contracts import (
     ActiveDeckChangedEvent,
     ActiveDeckChangedPayload,
+    ActiveDeckRequest,
     HealthResponse,
 )
 
@@ -56,14 +60,14 @@ loaded CI runner is not margin worth flaking over (review finding, c1-8). Produc
 """
 
 HANGUP = 0
-"""A scripted ``POST`` answer meaning *accept the request and close without replying*.
+"""A scripted answer meaning *accept the request and close without replying*.
 
-Not a status the stub sends — a status no server sends. It is how the push leg is failed at
+Not a status the stub sends — a status no server sends. It is how a body-carrying leg is failed at
 transport level over a real socket, on a port whose ``/health`` probe succeeded moments earlier.
 """
 
 DRIP = -1
-"""A scripted ``POST`` answer meaning *reply with headers, then never finish the body*."""
+"""A scripted answer meaning *reply with headers, then never finish the body*."""
 
 
 @dataclass(frozen=True)
@@ -129,14 +133,34 @@ class _StubHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802 — the name BaseHTTPRequestHandler dispatches to
         """Record the request, fire the stub's hook, then answer per the next scripted entry."""
         stub = self.server
+        self._answer_from_script(stub.on_post, len(stub.posts), stub.next_post_response)
+
+    # PUT joins POST at c6-2 for the identical reason, and the harness's absence was the story's
+    # first named landmine: `BaseHTTPRequestHandler` answers an unimplemented method with **501**,
+    # so before this existed every active-deck test would have seen `backend_error` and proved
+    # nothing at all — a matrix that passes for the wrong reason on every row.
+    def do_PUT(self) -> None:  # noqa: N802 — the name BaseHTTPRequestHandler dispatches to
+        """Record the request, fire the stub's hook, then answer per the next scripted entry."""
+        stub = self.server
+        self._answer_from_script(stub.on_put, len(stub.puts), stub.next_put_response)
+
+    def _answer_from_script(self, hook, sent_before, next_response) -> None:
+        """Record, fire *hook* with the 1-based count, and reply with the next scripted entry.
+
+        Args:
+            hook: The stub's mid-request callback for this method, or ``None``.
+            sent_before: How many requests of this method the stub had recorded before this one —
+                read *before* :meth:`_record` runs, so the hook is handed a 1-based count.
+            next_response: The stub's script reader for this method.
+        """
         self._record()
-        if stub.on_post is not None:
-            stub.on_post(len(stub.posts))
-        status, body = stub.next_post_response()
+        if hook is not None:
+            hook(sent_before + 1)
+        status, body = next_response()
         if status == HANGUP:
             # Nothing is written and the socket is closed: httpx sees an empty reply and raises
-            # RemoteProtocolError. The only way to fail the *push* leg at transport level while
-            # the *probe* leg against this same port succeeded a moment earlier.
+            # RemoteProtocolError. The only way to fail the *authenticated* leg at transport level
+            # while the *probe* leg against this same port succeeded a moment earlier.
             self.close_connection = True
             return
         if status == DRIP:
@@ -184,6 +208,8 @@ class _StubServer(ThreadingHTTPServer):
         content_type: str,
         post_script: Sequence[tuple[int, bytes]] | None = None,
         on_post: Callable[[int], None] | None = None,
+        put_script: Sequence[tuple[int, bytes]] | None = None,
+        on_put: Callable[[int], None] | None = None,
     ) -> None:
         """Bind loopback on a kernel-assigned port and arm the canned responses.
 
@@ -197,12 +223,19 @@ class _StubServer(ThreadingHTTPServer):
                 before it is answered. The retry cases use it to restart the backend's identity
                 the way a real restart does — *while the client is mid-call* — because a token
                 re-planted before or after the call would not be re-read by anything.
+            put_script: The ``PUT`` answers, in order; the last entry repeats forever. Defaults to
+                the active-deck receipt for one delivered client. **A separate script from the
+                POST's, not a shared one**: the two verbs answer different 200 bodies, and a shared
+                queue would let a test pass while the client parsed the wrong receipt.
+            on_put: Called with the 1-based ``PUT`` count, on the same terms as ``on_post``.
         """
         self.status = status
         self.body = body
         self.content_type = content_type
         self.on_post = on_post
+        self.on_put = on_put
         self.post_script = list(post_script or [(200, b'{"clients": 1}')])
+        self.put_script = list(put_script or [(200, b'{"deck_id": "deck-1", "clients": 1}')])
         self.requests: list[_RecordedRequest] = []
         # ThreadingHTTPServer serves each request on its own thread. The client under test is
         # sequential, so this lock is not load-bearing today — it is here so that a future
@@ -225,6 +258,17 @@ class _StubServer(ThreadingHTTPServer):
                 return self.post_script.pop(0)
             return self.post_script[0]
 
+    def next_put_response(self) -> tuple[int, bytes]:
+        """Return the next scripted ``PUT`` answer, repeating the last one once exhausted.
+
+        Returns:
+            The status and body bytes to reply with.
+        """
+        with self._lock:
+            if len(self.put_script) > 1:
+                return self.put_script.pop(0)
+            return self.put_script[0]
+
     @property
     def port(self) -> int:
         """Return the ephemeral port the kernel assigned."""
@@ -238,6 +282,15 @@ class _StubServer(ThreadingHTTPServer):
             The recorded requests whose request line begins with ``POST``.
         """
         return [request for request in self.requests if request.request_line.startswith("POST ")]
+
+    @property
+    def puts(self) -> list[_RecordedRequest]:
+        """Return only the ``PUT`` requests received, in order.
+
+        Returns:
+            The recorded requests whose request line begins with ``PUT``.
+        """
+        return [request for request in self.requests if request.request_line.startswith("PUT ")]
 
 
 class StubFleet:
@@ -261,6 +314,8 @@ class StubFleet:
         content_type: str = "application/json",
         post_script: Sequence[tuple[int, bytes]] | None = None,
         on_post: Callable[[int], None] | None = None,
+        put_script: Sequence[tuple[int, bytes]] | None = None,
+        on_put: Callable[[int], None] | None = None,
     ) -> _StubServer:
         """Start a stub on an ephemeral loopback port.
 
@@ -270,9 +325,12 @@ class StubFleet:
             content_type: Its ``Content-Type`` header on a ``GET``.
             post_script: The ``POST`` answers, in order; the last entry repeats forever.
             on_post: Called with the 1-based ``POST`` count, mid-request.
+            put_script: The ``PUT`` answers, in order; the last entry repeats forever.
+            on_put: Called with the 1-based ``PUT`` count, mid-request.
 
         Returns:
-            The running :class:`_StubServer`; read ``.port``, ``.requests`` and ``.posts`` from it.
+            The running :class:`_StubServer`; read ``.port``, ``.requests``, ``.posts`` and
+            ``.puts`` from it.
         """
         stub = _StubServer(
             status=status,
@@ -280,6 +338,8 @@ class StubFleet:
             content_type=content_type,
             post_script=post_script,
             on_post=on_post,
+            put_script=put_script,
+            on_put=on_put,
         )
         # poll_interval, not the 0.5 s default: shutdown() blocks until serve_forever's loop next
         # comes round, so the default would add half a second to *every* teardown in this module.
@@ -518,6 +578,10 @@ class TestExportedSurface:
     def test_the_events_path_is_the_endpoint_c5_5_serves(self):
         """c6-1 AC 2: the one place the push URL's path is spelled."""
         assert client.EVENTS_PATH == "/agent/events"
+
+    def test_the_active_deck_path_is_the_endpoint_c3_4_serves(self):
+        """c6-2 AC 2: the one place the display-control URL's path is spelled."""
+        assert client.ACTIVE_DECK_PATH == "/api/active-deck"
 
     def test_the_whole_push_has_a_deadline_covering_both_attempts(self):
         """c6-1 Q4: one cap over probe + post + re-probe + retry, not per leg.
@@ -891,12 +955,24 @@ class TestPushEvent:
         assert outcome == client.PushOutcome(outcome="backend_error", clients=None)
         assert len(stub.posts) == 1
 
-    async def test_an_unexpected_status_is_backend_error(self, stub_server):
-        """The mapping is a closed switch with a default, not a list of known codes."""
-        stub = stub_server(body=health_bytes("inst-alpha"), post_script=[(418, b"{}")])
+    @pytest.mark.parametrize("status", [401, 418])
+    async def test_an_unexpected_status_is_backend_error_unretried(self, stub_server, status):
+        """The mapping is a closed switch with a default, not a list of known codes.
+
+        **401 is the row this parametrization was widened for** (``deferred-work.md``, c6-1's
+        block, closed at c6-2). It is the status most easily confused with the retry-triggering
+        403, and nothing pinned it as *not* retried — the sole unexpected-status row used 418. The
+        shipped backend structurally cannot answer 401 on this gate (c3-4: the raise path cannot
+        attach the ``WWW-Authenticate`` header a 401 requires), so one arriving means something
+        that is not this backend answered, and the retry budget must not be spent on it.
+        """
+        stub = stub_server(body=health_bytes("inst-alpha"), post_script=[(status, b"{}")])
         plant_discovery(port=stub.port, instance_id="inst-alpha")
 
-        assert await client.push_event(an_event()) == client.PushOutcome(outcome="backend_error")
+        outcome = await client.push_event(an_event())
+
+        assert outcome == client.PushOutcome(outcome="backend_error")
+        assert len(stub.posts) == 1, f"{status} is not a stale credential and buys no retry"
 
     @pytest.mark.parametrize(
         "body",
@@ -1214,3 +1290,444 @@ class TestPushNeverRaisesAndNeverLeaksTheToken:
             "a backend that is restarting or absent is the ordinary state; warning about it "
             "trains the user to ignore warnings"
         )
+
+
+def a_request(deck_id: str = "deck-alpha") -> ActiveDeckRequest:
+    """Build one concrete, already-valid ``PUT /api/active-deck`` body.
+
+    A *concrete instance* rather than a dict, for :func:`an_event`'s reason restated by c6-1 Q5:
+    the verb accepts what the caller already holds and re-validates nothing, because the backend's
+    answer is the authoritative one.
+
+    Args:
+        deck_id: The deck to display.
+
+    Returns:
+        A valid request.
+    """
+    return ActiveDeckRequest(deck_id=deck_id)
+
+
+def receipt_bytes(clients: int, deck_id: str = "deck-alpha") -> bytes:
+    """Serialise a well-formed ``PUT /api/active-deck`` receipt.
+
+    Args:
+        clients: The delivered count the backend claims.
+        deck_id: The id the backend echoes.
+
+    Returns:
+        The JSON bytes a real companion would return.
+    """
+    return json.dumps({"deck_id": deck_id, "clients": clients}).encode()
+
+
+class TestSetActiveDeck:
+    """c6-2 AC 2, 4: one control call, one token, and the request that carried it.
+
+    Every assertion pairs **the outcome token with the number of PUTs that left the client**, for
+    :class:`TestPushEvent`'s reason: a test that asserts only the token cannot see a client that
+    sent the request twice to get it.
+    """
+
+    async def test_a_delivered_set_is_displayed_with_its_count(self, stub_server):
+        """AC 2: the ordinary success — the receipt's delivered count, surfaced as a sibling."""
+        stub = stub_server(body=health_bytes("inst-alpha"), put_script=[(200, receipt_bytes(3))])
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        outcome = await client.set_active_deck(a_request())
+
+        assert outcome == client.PushOutcome(outcome="displayed", clients=3)
+        assert len(stub.puts) == 1
+
+    async def test_the_request_goes_to_the_active_deck_path_as_a_put(self, stub_server):
+        """AC 2: the URL and the method the c3-4 route serves, and nothing else.
+
+        The method matters as much as the path here: the same path answers a credential-free
+        ``GET`` that belongs to the browser (AD-5), so a client that dialled the right URL with the
+        wrong verb would read the display instead of setting it.
+        """
+        stub = stub_server(body=health_bytes("inst-alpha"))
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        await client.set_active_deck(a_request())
+
+        assert stub.puts[0].request_line == "PUT /api/active-deck HTTP/1.1"
+        assert f"host: 127.0.0.1:{stub.port}" in stub.puts[0].headers.lower()
+
+    async def test_the_request_carries_the_recorded_token_as_a_bearer_credential(self, stub_server):
+        """AC 2: the same gate the push presents to, in the same RFC 9110 spelling."""
+        stub = stub_server(body=health_bytes("inst-alpha"))
+        plant_discovery(port=stub.port, instance_id="inst-alpha", token="tok-live-alpha")
+
+        await client.set_active_deck(a_request())
+
+        assert "Authorization: Bearer tok-live-alpha" in stub.puts[0].headers
+
+    async def test_the_body_is_the_serialised_request_and_declares_json(self, stub_server):
+        """AC 2: the deck id goes out as its own JSON, not re-validated and not re-shaped."""
+        stub = stub_server(body=health_bytes("inst-alpha"))
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+        request = a_request("deck-77")
+
+        await client.set_active_deck(request)
+
+        put = stub.puts[0]
+        assert "content-type: application/json" in put.headers.lower()
+        assert json.loads(put.body.decode()) == {"deck_id": "deck-77"}
+
+    async def test_zero_clients_is_no_clients_connected_not_a_failure(self, stub_server):
+        """AC 2: the deck really is set; nobody is watching. A success, and never a retry.
+
+        The single PUT is what proves it did not retry — and re-sending would be worse here than on
+        the push, because the backend broadcasts on **every** set including a same-id rewrite, so a
+        retry would fan out a second identical change notification.
+        """
+        stub = stub_server(body=health_bytes("inst-alpha"), put_script=[(200, receipt_bytes(0))])
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        outcome = await client.set_active_deck(a_request())
+
+        assert outcome == client.PushOutcome(outcome="no_clients_connected", clients=0)
+        assert len(stub.puts) == 1, "storing it with nobody watching is a success, not a retry"
+
+    @pytest.mark.parametrize("status", [400, 413])
+    async def test_both_rejection_statuses_fold_into_payload_rejected(self, stub_server, status):
+        """c5-5 Q7's fold, restated for this verb: a field cap answers 400, the byte cap 413."""
+        stub = stub_server(
+            body=health_bytes("inst-alpha"),
+            put_script=[(status, b'{"reason": "payload_too_large"}')],
+        )
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        outcome = await client.set_active_deck(a_request())
+
+        assert outcome == client.PushOutcome(outcome="payload_rejected", clients=None)
+        assert len(stub.puts) == 1
+
+    @pytest.mark.parametrize("status", [401, 418, 500])
+    async def test_every_other_status_is_backend_error_unretried(self, stub_server, status):
+        """The mapping is a closed switch with a default, not a list of known codes.
+
+        **401 is the row that earns its place** (``deferred-work.md``, c6-1's block, closed here).
+        It is the code most easily confused with the retry-triggering 403, and the shipped backend
+        structurally cannot answer it on this gate — c3-4's raise path cannot attach the
+        ``WWW-Authenticate`` header a 401 requires — so a 401 arriving means something that is not
+        this backend answered, and spending the retry budget on it would be wrong. The single PUT
+        below is what pins that.
+        """
+        stub = stub_server(
+            body=health_bytes("inst-alpha"), put_script=[(status, b'{"reason": "forbidden"}')]
+        )
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        outcome = await client.set_active_deck(a_request())
+
+        assert outcome == client.PushOutcome(outcome="backend_error", clients=None)
+        assert len(stub.puts) == 1, f"{status} is not a stale credential and buys no second attempt"
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            pytest.param(b"<html>not the companion</html>", id="html"),
+            pytest.param(b'{"deck_id": "deck-alpha"}', id="no-count"),
+            pytest.param(b'{"clients": 1}', id="event-receipt-instead"),
+            pytest.param(b'{"deck_id": "deck-alpha", "clients": -1}', id="negative-count"),
+            pytest.param(b"\xff\xfe\x00not json", id="undecodable"),
+        ],
+    )
+    async def test_a_malformed_success_body_is_backend_error(self, stub_server, body):
+        """A ``200`` whose body is not **this route's** receipt is not a change anyone can report.
+
+        Two rows carry the story. ``negative-count``: ``clients: -1`` parses as JSON and would sail
+        through a hand-rolled ``body["clients"] >= 1`` check as *nobody was listening*; the shipped
+        model's ``ge=0`` is what makes it red. ``event-receipt-instead``: the push's receipt shape
+        arriving here must NOT parse — it is the wrong contract, and accepting it is precisely the
+        failure a shared 200-parser would have introduced silently.
+        """
+        stub = stub_server(body=health_bytes("inst-alpha"), put_script=[(200, body)])
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        outcome = await client.set_active_deck(a_request())
+
+        assert outcome == client.PushOutcome(outcome="backend_error", clients=None)
+
+    async def test_a_proxy_environment_is_ignored_for_the_control_call_too(
+        self, stub_server, monkeypatch
+    ):
+        """``trust_env=False`` on this leg is load-bearing for both of its reasons.
+
+        A proxy would misroute the loopback dial, and ``.netrc`` could attach a second
+        ``Authorization`` header to a request that already carries the right one.
+        """
+        monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:9")
+        monkeypatch.setenv("ALL_PROXY", "http://127.0.0.1:9")
+        stub = stub_server(body=health_bytes("inst-alpha"))
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        outcome = await client.set_active_deck(a_request())
+
+        assert outcome.outcome == "displayed"
+        assert len(stub.puts) == 1, "the request must reach the companion, not the proxy"
+
+
+class TestSetActiveDeckIdentityGate:
+    """c6-2 AC 4 + AD-4: identity is proven before the token moves, or nothing moves at all."""
+
+    async def test_no_discovery_file_is_app_not_running_without_touching_the_network(
+        self, stub_server
+    ):
+        stub = stub_server(body=health_bytes("inst-alpha"))
+        assert not discovery.discovery_path().exists()
+
+        outcome = await client.set_active_deck(a_request())
+
+        assert outcome == client.PushOutcome(outcome="app_not_running", clients=None)
+        assert stub.requests == []
+
+    async def test_a_corrupt_discovery_file_is_app_not_running_never_an_error(self, stub_server):
+        stub = stub_server(body=health_bytes("inst-alpha"))
+        discovery.discovery_path().write_text('{"port": 5123, "tok', encoding="utf-8")
+
+        outcome = await client.set_active_deck(a_request())
+
+        assert outcome == client.PushOutcome(outcome="app_not_running", clients=None)
+        assert stub.requests == []
+
+    async def test_a_foreign_identity_is_app_not_running_and_no_token_is_sent(self, stub_server):
+        """The mechanism test for this verb's gate: delete the ``live_instance`` call and this reds.
+
+        Zero PUTs and no token in any recorded byte — AD-4's whole point, on the leg that would
+        otherwise hand a credential to whatever inherited the port.
+        """
+        token = "s3cret-token-do-not-send-me"
+        stub = stub_server(body=health_bytes("some-other-process"))
+        plant_discovery(port=stub.port, instance_id="inst-alpha", token=token)
+
+        outcome = await client.set_active_deck(a_request())
+
+        assert outcome == client.PushOutcome(outcome="app_not_running", clients=None)
+        assert stub.requests, "the port was dialled, or this proves nothing"
+        assert stub.puts == [], "identity failed; nothing may be sent"
+        for request in stub.requests:
+            assert token not in request.as_text()
+            assert "authorization" not in request.headers.lower()
+
+    async def test_a_dead_port_is_app_not_running(self, sockets):
+        plant_discovery(port=sockets.dead(), instance_id="inst-alpha")
+
+        outcome = await client.set_active_deck(a_request(), timeout=FAST)
+
+        assert outcome == client.PushOutcome(outcome="app_not_running", clients=None)
+
+    async def test_a_silent_listener_is_app_not_running(self, sockets):
+        plant_discovery(port=sockets.silent(), instance_id="inst-alpha")
+
+        outcome = await client.set_active_deck(a_request(), timeout=FAST)
+
+        assert outcome == client.PushOutcome(outcome="app_not_running", clients=None)
+
+
+class TestSetActiveDeckRetriesOnceOnAForbiddenToken:
+    """c6-2 AC 4 (FR-12): a restarted backend is picked up transparently, exactly once.
+
+    The stub restarts its identity *mid-call* through ``on_put``, for c6-1's reason: a token
+    re-planted before the call is read on attempt one and proves nothing, and one planted after it
+    is never read at all.
+    """
+
+    async def test_a_refused_token_is_re_read_and_the_set_succeeds(self, stub_server):
+        """The headline — 403, re-read, retry, displayed — with the tokens discriminated.
+
+        c5-8 F5: proving the file was re-read is vacuous unless the retry carries the token the
+        re-read found; a client reusing the refused record would pass a presence-only check.
+        """
+
+        def restart(put_count: int) -> None:
+            if put_count == 1:
+                plant_discovery(port=stub.port, instance_id="inst-alpha", token="tok-restarted")
+
+        stub = stub_server(
+            body=health_bytes("inst-alpha"),
+            put_script=[(403, b'{"reason": "forbidden"}'), (200, receipt_bytes(1))],
+            on_put=restart,
+        )
+        plant_discovery(port=stub.port, instance_id="inst-alpha", token="tok-stale")
+
+        outcome = await client.set_active_deck(a_request())
+
+        assert outcome == client.PushOutcome(outcome="displayed", clients=1)
+        assert len(stub.puts) == 2
+        assert "Authorization: Bearer tok-stale" in stub.puts[0].headers
+        assert "Authorization: Bearer tok-restarted" in stub.puts[1].headers, (
+            "the retry must carry the token the re-read found, not the one that was refused"
+        )
+
+    async def test_the_retry_re_proves_identity_before_sending_the_new_token(self, stub_server):
+        """AD-4's verify-before-you-send has no once-per-call exemption (c6-1 Q2)."""
+
+        def restart(put_count: int) -> None:
+            if put_count == 1:
+                plant_discovery(port=stub.port, instance_id="inst-alpha", token="tok-restarted")
+
+        stub = stub_server(
+            body=health_bytes("inst-alpha"),
+            put_script=[(403, b'{"reason": "forbidden"}'), (200, receipt_bytes(1))],
+            on_put=restart,
+        )
+        plant_discovery(port=stub.port, instance_id="inst-alpha", token="tok-stale")
+
+        await client.set_active_deck(a_request())
+
+        methods = [request.request_line.split(" ", 1)[0] for request in stub.requests]
+        assert methods == ["GET", "PUT", "GET", "PUT"]
+
+    async def test_a_second_refusal_is_backend_error_and_the_retry_is_spent(self, stub_server):
+        """Exactly two PUTs, ever. The script refuses forever; the client stops anyway."""
+        stub = stub_server(
+            body=health_bytes("inst-alpha"), put_script=[(403, b'{"reason": "forbidden"}')]
+        )
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        outcome = await client.set_active_deck(a_request())
+
+        assert outcome == client.PushOutcome(outcome="backend_error", clients=None)
+        assert len(stub.puts) == 2, (
+            "the stub keeps refusing, so a third PUT would mean the client is retrying on a "
+            "budget it has already spent"
+        )
+
+    async def test_a_backend_that_vanished_before_the_retry_is_app_not_running(self, stub_server):
+        """c6-1 Q2's ruling: nothing broke — the app went away between the refusal and the retry."""
+
+        def wipe(put_count: int) -> None:
+            if put_count == 1:
+                discovery.discovery_path().unlink()
+
+        stub = stub_server(
+            body=health_bytes("inst-alpha"),
+            put_script=[(403, b'{"reason": "forbidden"}')],
+            on_put=wipe,
+        )
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        outcome = await client.set_active_deck(a_request())
+
+        assert outcome == client.PushOutcome(outcome="app_not_running", clients=None)
+        assert len(stub.puts) == 1, "there was nothing left to retry against"
+
+    async def test_the_retry_is_spent_on_403_alone_not_on_a_server_error(self, stub_server):
+        """A 500 is not an invalidated credential and buys no second attempt."""
+        stub = stub_server(
+            body=health_bytes("inst-alpha"),
+            put_script=[(500, b'{"reason": "internal_error"}'), (200, receipt_bytes(1))],
+        )
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        outcome = await client.set_active_deck(a_request())
+
+        assert outcome == client.PushOutcome(outcome="backend_error", clients=None)
+        assert len(stub.puts) == 1, "a 500 is not a stale token; retrying it re-sends the change"
+
+
+class TestSetActiveDeckNeverRaisesAndNeverLeaksTheToken:
+    """c6-2 AC 4: every failure is a token, and the credential is in exactly one place."""
+
+    async def test_a_backend_that_hangs_up_is_backend_error(self, stub_server):
+        """``backend_error``, not ``app_not_running``: ``/health`` answered a moment earlier."""
+        stub = stub_server(body=health_bytes("inst-alpha"), put_script=[(HANGUP, b"")])
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        outcome = await client.set_active_deck(a_request(), timeout=FAST)
+
+        assert outcome == client.PushOutcome(outcome="backend_error", clients=None)
+        assert len(stub.puts) == 1
+
+    async def test_a_drip_feeding_backend_is_cut_off_by_the_whole_call_deadline(
+        self, stub_server, monkeypatch
+    ):
+        """httpx's ``read`` caps gaps between chunks; only the total cap ends a drip."""
+        monkeypatch.setattr(client, "_PUSH_TOTAL_SECONDS", 0.8)
+        stub = stub_server(body=health_bytes("inst-alpha"), put_script=[(DRIP, b"")])
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+        started = time.monotonic()
+
+        outcome = await client.set_active_deck(a_request())
+
+        assert outcome == client.PushOutcome(outcome="backend_error", clients=None)
+        assert time.monotonic() - started < 5.0, (
+            "every chunk beat the read deadline, so only the whole-call cap can have ended this"
+        )
+
+    async def test_a_memory_error_is_not_an_outcome_token(self, stub_server, monkeypatch):
+        """The net is ``(TimeoutError, httpx.HTTPError, ValueError)``, never ``Exception``."""
+        stub = stub_server(body=health_bytes("inst-alpha"))
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        def explode(*args, **kwargs):
+            raise MemoryError("out of memory mid-call")
+
+        monkeypatch.setattr(client.ActiveDeckSetReceipt, "model_validate_json", explode)
+
+        with pytest.raises(MemoryError):
+            await client.set_active_deck(a_request())
+
+    @pytest.mark.parametrize(
+        "put_script",
+        [
+            pytest.param([(200, receipt_bytes(1))], id="displayed"),
+            pytest.param([(403, b'{"reason": "forbidden"}')], id="refused-twice"),
+            pytest.param([(413, b'{"reason": "payload_too_large"}')], id="rejected"),
+            pytest.param([(500, b'{"reason": "internal_error"}')], id="server-error"),
+            pytest.param([(200, b"<html>nope</html>")], id="malformed-success"),
+        ],
+    )
+    async def test_the_token_never_reaches_a_log_line_on_any_path(
+        self, stub_server, caplog, put_script
+    ):
+        """CM-1: the credential belongs in one header and nowhere else, at any level."""
+        token = "planted-token-3xAmPl3"
+        stub = stub_server(body=health_bytes("inst-alpha"), put_script=put_script)
+        plant_discovery(port=stub.port, instance_id="inst-alpha", token=token)
+
+        with caplog.at_level(logging.DEBUG, logger=client.__name__):
+            await client.set_active_deck(a_request())
+
+        assert stub.puts, "nothing was sent, so this proves nothing about what was logged"
+        for record in caplog.records:
+            assert token not in record.getMessage()
+            assert token not in str(record.args)
+
+    async def test_the_deck_id_never_reaches_a_log_line_either(self, stub_server, caplog):
+        """The id is caller-supplied text of unbounded length, on ``ws.py``'s stated terms.
+
+        Not a credential, but not log material either: it is echoed into a terminal a user is
+        reading, and this module's rejection logs are the tempting place to "just print what we
+        sent". The push has no equivalent row because its body never reaches a log line either —
+        this one exists because the id is the *whole* body here and therefore the tempting one.
+        """
+        stub = stub_server(
+            body=health_bytes("inst-alpha"), put_script=[(500, b'{"reason": "internal_error"}')]
+        )
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        with caplog.at_level(logging.DEBUG, logger=client.__name__):
+            await client.set_active_deck(a_request("deck-that-must-not-be-logged"))
+
+        assert stub.puts, "nothing was sent, so this proves nothing about what was logged"
+        for record in caplog.records:
+            assert "deck-that-must-not-be-logged" not in record.getMessage()
+            assert "deck-that-must-not-be-logged" not in str(record.args)
+
+    async def test_a_rejection_logs_at_debug_not_warning(self, stub_server, caplog):
+        """A backend that is restarting or absent is ordinary; warnings train the user to ignore."""
+        stub = stub_server(
+            body=health_bytes("inst-alpha"), put_script=[(500, b'{"reason": "internal_error"}')]
+        )
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        with caplog.at_level(logging.DEBUG, logger=client.__name__):
+            await client.set_active_deck(a_request())
+
+        messages = [record.getMessage() for record in caplog.records]
+        assert any("500" in message for message in messages), messages
+        assert not [record for record in caplog.records if record.levelno >= logging.INFO]

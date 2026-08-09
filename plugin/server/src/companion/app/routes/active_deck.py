@@ -35,8 +35,10 @@ returns a delivery count rather than raising, so a ``PUT`` that stored successfu
 whether zero, one or twenty tabs were listening (NFR-04's fire-and-forget). Refused credentials and
 failed stores never reach the call at all — it sits on the success path, after the write.
 
-Both bodies are unwrapped (AD-16) and both are the **same model**, so the "none" state is a value
-rather than a second shape.
+Both bodies are unwrapped (AD-16), and both declare ``deck_id`` identically, so the "none" state is
+a value rather than a second shape. The models themselves are two, not one, since c6-2: the write
+answers :class:`~src.companion.contracts.ActiveDeckSetReceipt` — the read's shape plus the delivered
+client count, which the ``GET``'s audience has no use for and the agent's cannot do without.
 """
 
 from fastapi import APIRouter, Request
@@ -45,7 +47,7 @@ from src.companion.app.errors import error_responses
 from src.companion.app.security import AgentToken
 from src.companion.app.state import ActiveDeckSlot, active_deck
 from src.companion.app.ws import broadcast_active_deck_changed
-from src.companion.contracts import ActiveDeck, ActiveDeckRequest
+from src.companion.contracts import ActiveDeck, ActiveDeckRequest, ActiveDeckSetReceipt
 
 router = APIRouter(prefix="/api")
 
@@ -106,21 +108,22 @@ async def read_active_deck(request: Request) -> ActiveDeck:
 # answer it say so.
 @router.put(
     "/active-deck",
-    response_model=ActiveDeck,
+    response_model=ActiveDeckSetReceipt,
     responses=error_responses("forbidden", "payload_too_large"),
 )
 async def set_active_deck(
     request: Request, body: ActiveDeckRequest, _credential: AgentToken
-) -> ActiveDeck:
-    """Set which deck the companion displays, and echo back what was stored.
+) -> ActiveDeckSetReceipt:
+    """Set which deck the companion displays, and report what was stored and who saw it.
 
     **This endpoint is for the agent, not the browser.** It requires a credential the browser does
     not have and must never be given, so a page has nothing to call here; a request that presents
     no valid credential is refused and the active deck is left untouched.
 
     Idempotent, which is why the verb is ``PUT``: setting the same deck twice is the same state.
-    Answers ``200`` with the stored value rather than ``204``, so one shape serves the read, the
-    write and the change notification a later story broadcasts.
+    Answers ``200`` with the stored value rather than ``204``, and beside it the number of connected
+    browsers the change actually reached — so a caller can distinguish *switched, and a tab is
+    watching* from *switched, and nobody is looking*.
 
     **The deck is not checked for existence.** Any non-blank id is accepted and stored verbatim,
     including one that names no deck. Validating it belongs to the caller that has database access
@@ -142,11 +145,19 @@ async def set_active_deck(
             endpoint would put it in a local variable one careless f-string away from a log line.
 
     Returns:
-        The active deck as it now stands, in the same shape the ``GET`` answers with.
+        The active deck as it now stands, plus the delivered client count.
 
-        **The "one shape serves the read, the write and the change notification" claim above was
-        checked against the shipped notification at c5-4, and review found the correction itself
-        needed correcting (2026-08-08).** The broadcast does not carry an
+        **The write's shape diverged from the read's at c6-2** (Q1, Brad 2026-08-09). c3-4 answered
+        this operation with :class:`~src.companion.contracts.ActiveDeck` under a "one shape serves
+        the read, the write and the change notification" ruling; what broke it is that the *agent*
+        asks a question the browser never does — **did anyone see it?** — and the answer was already
+        in hand and being discarded. ``deck_id`` is declared exactly as the read declares it, so the
+        divergence is one added field and nothing else. The read is untouched, which is the half
+        AD-5 cares about: the SPA never calls this operation.
+
+        **The claim that shape was also the change notification's was checked against the shipped
+        notification at c5-4, and review found the correction itself needed correcting
+        (2026-08-08).** The broadcast does not carry an
         :class:`~src.companion.contracts.ActiveDeck`; it carries an
         :class:`~src.companion.contracts.ActiveDeckChangedEvent` whose ``payload`` is an
         :class:`~src.companion.contracts.ActiveDeckChangedPayload`. Those are two different classes
@@ -173,7 +184,10 @@ async def set_active_deck(
     # finding, 2026-08-08). `broadcast_active_deck_changed` never raises (AC 18) — a client that
     # cannot be written to is that client's problem, and this mutation already succeeded.
     deck_id = slot.deck_id
-    await broadcast_active_deck_changed(request.app, deck_id)
+    # The fan-out has always returned its delivered count; until c6-2 this route discarded it.
+    # Capturing it is the whole of the wire change — no second broadcast, no registry sample, and
+    # no new failure mode: the helper still cannot raise, so a count is always in hand.
+    delivered = await broadcast_active_deck_changed(request.app, deck_id)
     # Answered from the captured value, not a fresh slot read: "echo back what was stored" stays
     # true even if a second `PUT` rewrites the slot while this one's broadcast is still in flight.
-    return ActiveDeck(deck_id=deck_id)
+    return ActiveDeckSetReceipt(deck_id=deck_id, clients=delivered)

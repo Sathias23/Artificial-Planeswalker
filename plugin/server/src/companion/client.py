@@ -1,12 +1,13 @@
 """Talking *to* the companion backend from outside it — identity, then the push (AD-3, AD-4, AD-8).
 
 This is the whole leaf client named in the spine's Structural Seed
-(``client.py # LEAF — /health + /agent/events, notifier``), in the two halves it was always meant
-to have. c1-8 landed the **``/health`` half**: finding out whether a companion is genuinely live on
-the discovered port, and refusing to believe anything else. c6-1 landed the **``POST /agent/events``
-half**: :func:`push_event`, its retry-once, and the closed outcome vocabulary every companion MCP
-tool reports through — and it reuses the probe below before *every* send rather than duplicating it,
-including before the retry.
+(``client.py # LEAF — /health + /agent/events, notifier``). c1-8 landed the **``/health`` half**:
+finding out whether a companion is genuinely live on the discovered port, and refusing to believe
+anything else. c6-1 landed the **``POST /agent/events`` half**: :func:`push_event`, its retry-once,
+and the closed outcome vocabulary every companion MCP tool reports through. c6-2 added a sibling
+verb on the same gate — :func:`set_active_deck`, ``PUT /api/active-deck`` — sharing the probe and
+the retry-once shape rather than duplicating them. Every send, on either verb, reuses the probe
+below before it goes out, including before the retry.
 
 **Why the probe exists at all (AD-4).** The discovery file says *where* the companion is, but a
 file outlives the process that wrote it: AD-15 accepts that a crash leaves a stale entry behind,
@@ -43,12 +44,19 @@ is why the probe lives here rather than as a private helper inside the runner.
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from typing import Literal, get_args
 
 import httpx
 from pydantic import BaseModel, ConfigDict
 
-from src.companion.contracts import AgentEvent, EventIngestReceipt, HealthResponse
+from src.companion.contracts import (
+    ActiveDeckRequest,
+    ActiveDeckSetReceipt,
+    AgentEvent,
+    EventIngestReceipt,
+    HealthResponse,
+)
 from src.companion.discovery import DiscoveryRecord, read_discovery
 
 logger = logging.getLogger(__name__)
@@ -67,6 +75,13 @@ HEALTH_PATH = "/health"
 
 EVENTS_PATH = "/agent/events"
 """The token-authenticated ingest endpoint c5-5 serves (FR-06)."""
+
+ACTIVE_DECK_PATH = "/api/active-deck"
+"""The token-authenticated display-control endpoint c3-4 serves (FR-07).
+
+The same string names a **credential-free** ``GET`` on that route, which this module never calls:
+the read is the browser's (AD-5), and the only reason the leaf knows this path is the ``PUT``.
+"""
 
 PROBE_TIMEOUT = httpx.Timeout(connect=1.0, read=2.0, write=2.0, pool=2.0)
 """The measured connect/read split explained in the module docstring.
@@ -87,12 +102,16 @@ a sanctioned widening of AC 4's net — the ``TimeoutError`` it raises is folded
 """
 
 _PUSH_TOTAL_SECONDS = 10.0
-"""The deadline on a whole :func:`push_event` call — probe, post, re-probe and retry together.
+"""The deadline on a whole authenticated call — probe, request, re-probe and retry together.
 
-The push has a second exposure the probe does not: :data:`PROBE_TIMEOUT`'s ``read`` still caps only
-the gap between chunks, and now there are up to *four* legs behind that gap. One cap over all of
-them is what makes "this call returns" a property of the function rather than a sum of four
-independent hopes.
+Named for the push it was measured against, and shared unchanged by every verb that goes through
+:func:`_once_then_retry`: each has exactly the same two-attempt shape, so a second constant would
+need its own pin and would buy nothing but a second thing to keep in step.
+
+An authenticated call has a second exposure the probe does not: :data:`PROBE_TIMEOUT`'s ``read``
+still caps only the gap between chunks, and now there are up to *four* legs behind that gap. One
+cap over all of them is what makes "this call returns" a property of the function rather than a sum
+of four independent hopes.
 
 Ten seconds, not five, because it has to clear **two whole attempts**: a deadline that could fire
 mid-retry would cut off the very transparency FR-12's retry exists to provide, turning a healthy
@@ -108,7 +127,13 @@ PushOutcomeToken = Literal[
     "payload_rejected",
     "backend_error",
 ]
-"""Everything a companion MCP tool may report about a push, and nothing else (AD-8).
+"""Everything this client can report about one authenticated call, and nothing else (AD-8).
+
+Written for the push and unchanged by the verbs that joined it: every one of them proves identity,
+sends one authenticated request, and learns the same five things from the answer. A verb whose
+*caller* can distinguish more than five outcomes layers those above this set rather than widening
+it — ``deck_not_found`` is the shipped example, and it lives in the MCP tool because the deck lookup
+that produces it happens before this client is ever called.
 
 **Five tokens, closed, and none of them carries a number or a phrase.** A caller switches on these;
 a human reads the tool's own wording built *from* them. That split is the same convention the MCP
@@ -317,9 +342,10 @@ async def _send(
 
     Generic over method and path rather than hard-wired to the push, so that a sibling verb against
     the same gate — same header, timeouts and net — can reuse this implementation instead of
-    duplicating it (see ``deferred-work.md`` for the concrete case). It stays private — the public
-    surface of this module is :func:`push_event`, and a story that needs another verb adds another
-    named function rather than exporting this one (Q1, Brad 2026-08-09).
+    duplicating it: c6-2's :func:`set_active_deck` (``PUT /api/active-deck``) is the first such
+    reuse. It stays private — the public surface of this module is :func:`push_event` and
+    :func:`set_active_deck`, and a story that needs another verb adds another named function rather
+    than exporting this one (Q1, Brad 2026-08-09).
 
     **The token is read here and nowhere else**, is placed in exactly one header, and appears in no
     log line at any level. There is no error branch that echoes the request.
@@ -425,6 +451,47 @@ async def _attempt(body: str, *, timeout: httpx.Timeout | None) -> PushOutcome |
     return _outcome_for(response)
 
 
+async def _once_then_retry(
+    attempt: Callable[[], Awaitable[PushOutcome | None]], *, what: str
+) -> PushOutcome:
+    """Run *attempt*, and if the credential was refused, run it once more — then stop.
+
+    The retry budget, the whole-call deadline and the terminal token in one place, so every
+    authenticated verb spends them identically. An ``attempt`` returning ``None`` means *the backend
+    refused the credential and a retry could help*; anything else is the answer.
+
+    **The retry is exactly one, and it is spent on a refused credential alone** (FR-12). The
+    backend mints a fresh token every start, so a companion restarted mid-session refuses the token
+    a tool holds. That is the single case where trying again is a correction, not a duplicate. A
+    second refusal is ``backend_error``: the credential is not merely stale, and a client that kept
+    retrying would re-send indefinitely against a backend that keeps saying no. **At most two
+    authenticated requests ever leave a call through here.**
+
+    Args:
+        attempt: One whole prove-then-send cycle, called with no arguments so the verb closes over
+            its own body, path and timeout.
+        what: The verb's name for the log line, e.g. ``"push"``. Never a payload and never a
+            credential — this module logs neither.
+
+    Returns:
+        Exactly one :class:`PushOutcome`.
+    """
+    try:
+        async with asyncio.timeout(_PUSH_TOTAL_SECONDS):
+            first = await attempt()
+            if first is not None:
+                return first
+            logger.debug("The companion refused the credential; re-reading discovery and retrying")
+            second = await attempt()
+            if second is not None:
+                return second
+            logger.debug("The freshly read credential was refused too; not retrying again")
+            return PushOutcome(outcome="backend_error")
+    except TimeoutError:
+        logger.debug("The %s did not complete within %.1fs", what, _PUSH_TOTAL_SECONDS)
+        return PushOutcome(outcome="backend_error")
+
+
 async def push_event(event: AgentEvent, *, timeout: httpx.Timeout | None = None) -> PushOutcome:
     """Push one event to the companion's glass, and report the single thing that happened (AD-8).
 
@@ -444,7 +511,8 @@ async def push_event(event: AgentEvent, *, timeout: httpx.Timeout | None = None)
     **The retry, and why it is exactly one** (FR-12). The backend mints a fresh token every start,
     so a companion restarted mid-session refuses the token a tool is holding with a ``403``. That is
     the single case where trying again is not a duplicate but a correction, and the whole cycle is
-    re-run — file, probe, identity — before the newly read token is sent. A second ``403`` is
+    re-run — file, probe, identity — before the newly read token is sent (:func:`_once_then_retry`
+    owns that budget, and every authenticated verb spends it identically). A second ``403`` is
     ``backend_error``: the credential is not merely stale, and a client that kept retrying would
     re-send the payload indefinitely against a backend that keeps saying no. **At most two POSTs
     ever leave this function.** If the re-read finds nothing live, the honest answer is
@@ -473,17 +541,121 @@ async def push_event(event: AgentEvent, *, timeout: httpx.Timeout | None = None)
         ('displayed', 2)
     """
     body = event.model_dump_json()
-    try:
-        async with asyncio.timeout(_PUSH_TOTAL_SECONDS):
-            first = await _attempt(body, timeout=timeout)
-            if first is not None:
-                return first
-            logger.debug("The companion refused the credential; re-reading discovery and retrying")
-            second = await _attempt(body, timeout=timeout)
-            if second is not None:
-                return second
-            logger.debug("The freshly read credential was refused too; not retrying again")
+    return await _once_then_retry(lambda: _attempt(body, timeout=timeout), what="push")
+
+
+def _active_deck_outcome_for(response: httpx.Response) -> PushOutcome | None:
+    """Turn one answered ``PUT /api/active-deck`` into its token — or into the decision to retry.
+
+    A deliberate sibling of :func:`_outcome_for` rather than a widening of it. The two functions
+    agree on every status **and disagree on the one thing that matters**: what a ``200`` body is.
+    This route answers :class:`~src.companion.contracts.ActiveDeckSetReceipt`; the push answers
+    :class:`~src.companion.contracts.EventIngestReceipt`. Parsing either body with the other model
+    is invisible at type level — both calls type-check, both return a receipt — and would turn every
+    successful call into a ``backend_error``. Two named functions make the pairing something a
+    reader can see at the call site instead of a parameter someone can pass wrongly.
+
+    Everything else is the push's mapping, restated because it is the *client's* mapping and not the
+    push's: statuses only and never the ``reason`` string; ``400`` and ``413`` folded into one token
+    (Q7, Brad 2026-08-08); ``403`` unresolved because the retry budget is the caller's to spend.
+    ``401`` is not special — it folds into ``backend_error`` unretried, because the shipped backend
+    structurally cannot answer it on this gate (c3-4: the raise path cannot attach the
+    ``WWW-Authenticate`` header a ``401`` requires), so one arriving means something that is not
+    this backend answered.
+
+    **There is no** ``deck_not_found`` **here, and there cannot be** (AD-16). This route has no
+    database and no ``404``: a ``PUT`` naming a deck that does not exist *succeeds*. The tool above
+    this client is the party that can observe that, and it is where the token lives.
+
+    Args:
+        response: The answer to a request that completed.
+
+    Returns:
+        The outcome, or ``None`` for a ``403`` — the one status this function does not resolve.
+    """
+    status = response.status_code
+    if status == 403:
+        return None
+    if status == 200:
+        try:
+            receipt = ActiveDeckSetReceipt.model_validate_json(response.content)
+        except ValueError as exc:
+            logger.debug("The backend answered 200 with no usable receipt (%s)", type(exc).__name__)
             return PushOutcome(outcome="backend_error")
-    except TimeoutError:
-        logger.debug("The push did not complete within %.1fs", _PUSH_TOTAL_SECONDS)
+        if receipt.clients >= 1:
+            return PushOutcome(outcome="displayed", clients=receipt.clients)
+        return PushOutcome(outcome="no_clients_connected", clients=receipt.clients)
+    if status in (400, 413):
+        logger.debug("The backend refused the active-deck request with %d", status)
+        return PushOutcome(outcome="payload_rejected")
+    logger.debug("The backend answered %d, which is no outcome this client knows", status)
+    return PushOutcome(outcome="backend_error")
+
+
+async def _active_deck_attempt(body: str, *, timeout: httpx.Timeout | None) -> PushOutcome | None:
+    """Run one whole prove-then-send cycle: discovery, ``/health``, identity, then the ``PUT``.
+
+    Identity is re-proven on **every** attempt, including the retry, for :func:`_attempt`'s reason:
+    AD-4's rule has no once-per-call exemption, and the retry sends a *different* token to a port
+    the operating system was free to reassign in the meantime.
+
+    Args:
+        body: The serialised request.
+        timeout: Forwarded to both legs.
+
+    Returns:
+        The outcome, or ``None`` if the backend refused the credential and a retry could help.
+    """
+    record = await live_instance(timeout=timeout)
+    if record is None:
+        return PushOutcome(outcome="app_not_running")
+    response = await _send(record, method="PUT", path=ACTIVE_DECK_PATH, body=body, timeout=timeout)
+    if response is None:
         return PushOutcome(outcome="backend_error")
+    return _active_deck_outcome_for(response)
+
+
+async def set_active_deck(
+    request: ActiveDeckRequest, *, timeout: httpx.Timeout | None = None
+) -> PushOutcome:
+    """Tell the companion which deck to display, and report the single thing that happened (FR-07).
+
+    The one public way anything outside this module reaches ``PUT /api/active-deck``. It is a
+    **control** call rather than a push — it changes what the glass is pointed at instead of adding
+    something to it — but from this client's side the shape is identical to :func:`push_event`'s:
+    prove identity, send one authenticated request, report one of the five tokens, and **never break
+    an agent turn** with an exception (FR-12). Same net, same ``MemoryError`` carve-out.
+
+    ``displayed`` here means *the change reached at least one open tab*, and
+    ``no_clients_connected`` means the backend stored it with nobody watching — a success on the
+    wire, and the thing an agent should say out loud rather than retry. The backend broadcasts on
+    **every** set, including one that writes the same id again (a duplicate costs one idempotent
+    refetch), so this function must not dedupe.
+
+    **The deck is not checked for existence anywhere on this path**, and that is the ruling rather
+    than an omission (AD-16): the route has no database, so there is no ``404`` to observe. A caller
+    that can report ``deck_not_found`` is a caller with database access — the MCP tool — and it does
+    that lookup *before* calling this function.
+
+    Args:
+        request: A concrete, already-valid
+            :class:`~src.companion.contracts.ActiveDeckRequest`. Taken already-built and **never
+            re-validated**, mirroring :func:`push_event`'s concrete-envelope rule: the caller has by
+            construction handed over something valid, and the backend's answer is authoritative
+            about everything else.
+        timeout: Override the per-request deadline for both legs. Exists so a test can drive the
+            dead-port and never-answers cases in milliseconds; production callers pass nothing and
+            get :data:`PROBE_TIMEOUT`. It does **not** override :data:`_PUSH_TOTAL_SECONDS`.
+
+    Returns:
+        Exactly one :class:`PushOutcome`.
+
+    Example:
+        >>> outcome = await set_active_deck(ActiveDeckRequest(deck_id="d-1"))  # doctest: +SKIP
+        >>> outcome.outcome, outcome.clients  # doctest: +SKIP
+        ('displayed', 1)
+    """
+    body = request.model_dump_json()
+    return await _once_then_retry(
+        lambda: _active_deck_attempt(body, timeout=timeout), what="active-deck set"
+    )

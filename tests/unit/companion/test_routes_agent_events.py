@@ -667,8 +667,10 @@ class TestOneMechanismForBothBodyEndpoints:
         assert response.json() == {"reason": "payload_too_large"}
 
     async def test_an_ordinary_put_is_untouched(self, lifespan_client):
-        # The paired acceptance, and the don't-break guard: c3-4's endpoint must behave
-        # byte-identically except for the now-real 413.
+        # The paired acceptance, and the don't-break guard: an under-cap body must still pass the
+        # middleware through to c3-4's endpoint untouched. The response shape gained `clients` at
+        # c6-2 — that is the route's own change, not the cap's; what this asserts about the cap is
+        # the 200 beside the 413 above.
         app = build_app()
         async with lifespan_client(app) as client:
             response = await client.put(
@@ -678,7 +680,7 @@ class TestOneMechanismForBothBodyEndpoints:
             )
 
         assert response.status_code == 200
-        assert response.json() == {"deck_id": "deck-alpha-first-set"}
+        assert response.json() == {"deck_id": "deck-alpha-first-set", "clients": 0}
 
     async def test_a_body_less_get_is_unaffected(self, lifespan_client):
         # The middleware wraps `receive` on every http scope; a route that never reads a body must

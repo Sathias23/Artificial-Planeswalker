@@ -7,7 +7,10 @@ assembled plugin must expose:
 * Whatever file ``pyproject [project].readme`` points at must ship — ``uv run`` builds the
   server package, and hatchling hard-fails ("Readme file does not exist") without it.
 * A missing ``SERVER_FILES`` entry aborts cleanly (exit 1), not with a raw traceback.
-* The server registers the full 17-tool surface (AC1) — a presence-only build check can't see this.
+* The server registers its full tool surface (AC1) — a presence-only build check can't see this.
+  The count is deliberately not repeated here: it lives once, as the exact name set in
+  ``test_server_registers_expected_tools`` below. Stating it twice is how this line came to say
+  "17" while the set below held 19.
 * The Codex manifests (``.codex-plugin/plugin.json`` + ``codex-mcp.json``) keep their schema:
   snake_case ``mcp_servers`` wrapper, ``cwd`` anchor, and no ``${CLAUDE_PLUGIN_ROOT}`` leakage
   (Codex does no variable substitution — openai/codex#19372).
@@ -131,7 +134,12 @@ def test_ignore_excludes_caches_and_cruft() -> None:
 
 
 async def test_server_registers_expected_tools() -> None:
-    """AC1 guard: the server registers exactly the 19 expected tools."""
+    """AC1 guard: the server registers exactly the tools named below and no others.
+
+    Set equality, so an addition and a silent removal both fail and name themselves. c6-2 adds
+    ``companion_set_active_deck`` — the first tool that talks to the companion backend rather than
+    to the database alone.
+    """
     server = build_server()
     async with create_connected_server_and_client_session(server) as client:
         result = await client.list_tools()
@@ -148,6 +156,7 @@ async def test_server_registers_expected_tools() -> None:
         "import_decklist",
         "remove_card_from_deck",
         "view_deck",
+        "companion_set_active_deck",
         "analyze_mana_curve",
         "detect_synergies",
         "validate_deck",

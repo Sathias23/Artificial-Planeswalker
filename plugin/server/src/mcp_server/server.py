@@ -25,6 +25,13 @@ The read-only ``view_deck`` tool renders a saved deck to a self-contained HTML p
 best-effort opens it in the host's default browser (a local-bundle side effect; the file
 path is always returned, so a headless host degrades gracefully).
 
+``companion_set_active_deck`` is the first tool that talks to something other than the local data
+files: it validates the deck against the database here and then calls the companion backend's
+``PUT /api/active-deck`` through the leaf client (``src/companion/client.py``). The leaf is
+importable from this package by design (AD-3) — it reaches only ``httpx`` and ``pydantic``, so a
+stdio session never transitively loads a web framework. Like every other tool it never raises: a
+companion that is closed, restarting or wedged is a ``status``, not an exception (FR-12).
+
 Registration is transport-agnostic: the transport string is selected only at the
 entry point (``src/mcp_server/__main__.py``), never here (AC2 / D7).
 """
@@ -44,6 +51,8 @@ from src.mcp_server.tools.build_search_index import build_search_index as _build
 from src.mcp_server.tools.card_lookup import CardLookupResult, lookup_card
 from src.mcp_server.tools.card_search import CardSearchResult
 from src.mcp_server.tools.card_search import search_cards as _search_cards_helper
+from src.mcp_server.tools.companion import SetActiveDeckResult
+from src.mcp_server.tools.companion import set_active_deck as _set_active_deck_helper
 from src.mcp_server.tools.compare_deck_power import CompareDeckPowerResult
 from src.mcp_server.tools.compare_deck_power import (
     compare_deck_power as _compare_deck_power_helper,
@@ -403,6 +412,33 @@ def build_server(
         """
         async with session_factory() as session:
             return await _view_deck_helper(session, deck_id=deck_id, open_browser=open_browser)
+
+    @mcp.tool()
+    async def companion_set_active_deck(deck_id: str) -> SetActiveDeckResult:
+        """Show a saved deck in the companion app's live browser view.
+
+        Use this when the user says which deck they want to look at, or when the
+        conversation moves to a different deck — the companion follows the
+        conversation instead of the user switching it by hand. It changes only what
+        is displayed: nothing about the deck is modified. Get the ``deck_id`` from
+        ``create_deck`` or ``list_decks``.
+
+        The companion app has to be running; if it is not, this reports that and
+        nothing else happens. Stateless — pass ``deck_id`` every call.
+
+        Args:
+            deck_id: The deck id to display.
+
+        Returns:
+            A result whose ``status`` is ``displayed`` (showing now — ``clients``
+            counts the browser tabs that updated), ``no_clients_connected`` (set, but
+            no tab is open to see it), ``deck_not_found`` (no such deck; the
+            companion was not contacted), ``app_not_running`` (the companion isn't
+            running), ``payload_rejected``, ``backend_error``,
+            ``database_not_initialized``, or ``error``.
+        """
+        async with session_factory() as session:
+            return await _set_active_deck_helper(session, deck_id=deck_id)
 
     @mcp.tool()
     async def analyze_mana_curve(deck_id: str) -> ManaCurveResult:
