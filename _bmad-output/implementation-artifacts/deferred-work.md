@@ -1,5 +1,63 @@
 # Deferred Work
 
+## Deferred from: code review of R1 (Windows integration CI lane) — 2026-08-09
+
+> Two-layer adversarial review (Blind Hunter, Edge Case Hunter) of the `chore/c6-prep-r1-windows-ci-lane`
+> diff. The factual errors the review found in the new workflow comments were patched in-branch; the
+> entries below are the findings NOT caused by this change, or deliberately out of its scope.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-r1-windows-integration-ci-lane.md`
+  summary: "The C5 retro and this ledger both state that a bare `-m integration` sweeps in the twice-sighted test_list_decks_with_strategy_field flake. MEASURED FALSE 2026-08-09: tests/integration/data/test_deck_repository.py carries no marker anywhere, so the flake is in the `not integration` set and already runs in both ubuntu `quality` jobs on every push. R4's stated premise (\"a bare `-m integration` red says something — today it sweeps in the flake\") inherits the error and should be re-derived before R4 is actioned."
+  evidence: 'Blind Hunter, verified independently: `grep -c integration tests/integration/data/test_deck_repository.py` returns 0; the flake is at :320. The claim originated at deferred-work.md:5728 and propagated into the retro, the R1 spec, and (until patched) a shipped ci.yml comment — a worked example of the very failure mode R2 exists to fix.'
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-r1-windows-integration-ci-lane.md`
+  summary: "_BOOT_DEADLINE = 30.0 in test_live_backend.py was calibrated on the maintainer's warm dev box and has never been measured on a cold windows-latest runner. Every companion boot imports the full MCP tool tree plus fastembed/onnxruntime (src/mcp_server/__main__.py:39 -> tools/find_similar.py:35 -> src/search/embedder.py:10), measured at ~2.8 s warm locally; a cold Defender-scanning runner plus backend_two's ~2 s dead-port probe could plausibly approach the deadline. If the new lane flakes, this is the first thing to measure — do NOT reflexively tighten or loosen the constant."
+  evidence: 'Both reviewers, independently. Confirmed locally: importing src.mcp_server.__main__ pulls fastembed, onnxruntime and sqlite_vec into sys.modules. No model is DOWNLOADED (that needs TextEmbedding() instantiation), so the job stays "no model, no secrets"; the cost is import and DLL scanning, not a fetch. Deliberately not pre-emptively changed — the R1 spec forbids touching the test timeouts, and the honest measurement only exists after the first CI runs.'
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-r1-windows-integration-ci-lane.md`
+  summary: "The new lane's vacuity floor covers only a vanished path (exit 4) or an empty one (exit 5). A @pytest.mark.skip on the test, the walk being gutted while the file remains, or unrelated files landing in tests/integration/companion/ all leave the job GREEN with zero real-socket coverage. A `--collect-only` count assertion in the workflow step would close this and is neither the ci.yml source-reading guard ruled out at the C5 retro nor R4's marker work — it was simply never considered."
+  evidence: 'Both reviewers. Edge Case Hunter notes the same file already carries explicit non-vacuity guards on the SPA-bundle and generated-types steps (ci.yml:166-174, :206-217), written on the reasoning that "it would go red" was insufficient THERE — so the new job is inconsistent with its own file. The overclaiming comment was patched in-branch; the missing guard is the open question.'
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-r1-windows-integration-ci-lane.md`
+  summary: "Adding the job does not make it a gate: until `companion-integration` is added to branch protection as a required check, a red lane does not block a merge, and R1's stated purpose (a test with no automated home rots silently) is only half delivered. This is a GitHub settings change with no repo-tree representation, so nothing in the tree can track it."
+  evidence: 'Blind Hunter. The R1 spec defers it to Brad by ruling ("that is Brad''s call after the lane is green") but records it nowhere durable — ledgering it here so the follow-up survives the branch.'
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-r1-windows-integration-ci-lane.md`
+  summary: "Every PR — including docs-only ones — now pays a windows-latest runner (billed at 2x minutes) to install onnxruntime/fastembed/numpy from scratch in order to run a ~4 s test. The C5 retro authorised the lane on the \"the file runs in ~4-5 s\" framing; the dependency install is the actual cost and was not in that reasoning. A `paths-ignore` filter or a narrower dependency install would cut it."
+  evidence: 'Blind Hunter. The repo is public so Actions minutes are free, which is why this is a note rather than a defect — but the retro''s cost premise was measured on the wrong thing and should be re-stated honestly if the lane is ever questioned.'
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-r1-windows-integration-ci-lane.md`
+  summary: "src/companion/app/singleton.py:58-59 states that both `mypy src/` and `mypy src/ --platform linux` are mandatory, while ci.yml:67-68 runs `--platform win32` and the comment above it records why `--platform linux` was explicitly REJECTED as a no-op on an ubuntu runner. The generated mirror plugin/server/src/companion/app/singleton.py repeats the stale sentence. Pre-existing; natural R2 sweep material."
+  evidence: 'Blind Hunter. Not caused by the R1 change — the contradiction predates it — but it is the same class of falsified cross-module prose R2 owns, and the mirror means the fix is a two-site edit plus a plugin rebuild.'
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-r1-windows-integration-ci-lane.md`
+  summary: "test_live_backend.py phase 2 calls client.live_instance() exactly once against a 1 s connect / 2 s read / 5 s total budget (src/companion/client.py), with probe_health swallowing every cause — unlike _await_record, it does not poll. On a loaded runner one slow first request fails the whole test with the uninformative message \"live_instance() found nothing\". Also, websockets.connect is not given proxy=None, so an HTTP_PROXY/ALL_PROXY set without no_proxy would route the handshakes off-box (the httpx sibling already sets trust_env=False)."
+  evidence: 'Edge Case Hunter. Both are pre-existing properties of the c5-8 test rather than anything R1 changed — but R1 is what moves this test onto shared CI hardware where a slow first request and a proxied environment are both more likely than on the maintainer''s box.'
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-r1-windows-integration-ci-lane.md`
+  summary: "Job topology is now asserted in prose in five uncounted places (ci.yml's header, ci.yml's job comment, ui/README.md, ui/tests/fonts.test.ts, both .gitattributes files) with no drift check, in a repo that drift-checks plugin/, the SPA bundle and generated types. A second Windows job or a fourth job silently falsifies several at once — the same N-way prose-sync obligation R2 was created for, now with CI topology as its subject."
+  evidence: 'Edge Case Hunter, and directly demonstrated by this very change: the R1 sweep had to touch six prose sites across four directories to keep one fact true, and the first attempt missed three of them.'
+
+## Deferred from: C6-prep scope split (2026-08-09)
+
+> The C6-prep intent named four action items (R1, R2, R3, R5). Split to a single goal — **R1**,
+> the Windows integration CI lane — because each of the four is an independently reviewable and
+> mergeable deliverable. The three below are NOT new findings: each is already an open `epic: c5`
+> action item in `sprint-status.yaml` with a ruling recorded at its own entry in this file. These
+> rows exist only so the split is traceable; the action item stays the record of truth.
+
+- source_spec: none
+  summary: 'R2 — the standalone prose-sync sweep: cross-module rulings get ONE canonical home (this ledger), the 5+ Q3/AD-5 narration sites become one-line pointers, scripts/dump_openapi.py''s changelog paragraphs are deleted, and dw:5197''s twice-confirmed test_committed_schema.py docstring sentence is absorbed. Standing rule rides with it: no new forward-looking cross-module prose in docstrings.'
+  evidence: 'Split from the C6-prep intent 2026-08-09 (Brad chose R1 first). Independently shippable: touches docstrings and one deleted paragraph only, zero behaviour change, reviewable alone. Ruled at the C5 retro — see the dw:5244 and dw:5252 regions and epic-c5 action item R2.'
+
+- source_spec: none
+  summary: 'R3 — one repo-wide derived class→token source-reading guard covering every status-semantic binding (Badge tones, ManaPip colours, deck-row live tint, connection-pill dot), generalising c5-7 probe P15''s fix. Existing per-component guards are kept, not deleted. Owed BEFORE Epic 6''s first view story adds more surfaces of the same shape.'
+  evidence: 'Split from the C6-prep intent 2026-08-09 (Brad chose R1 first). Independently shippable: a new derived guard, natural home ui/tests/token-usage.test.ts, merges alone. Sequencing affinity only with R5 (R5''s harness is what would plant against this guard) — not a dependency. Ruled at the C5 retro — see the dw:5617 region and epic-c5 action item R3.'
+
+- source_spec: none
+  summary: 'R5 — the vitest half of the probe harness (re-keyed from C4 item 4): full `npm test` with a validated collected-test count before a run is scored, native uppercase-drive path, vitest crash-signature refusal, do-nothing negative controls. Owed BEFORE Epic 6''s first frontend story.'
+  evidence: 'Split from the C6-prep intent 2026-08-09 (Brad chose R1 first). Independently shippable: a new harness capability with its own negative controls; the Python half already ships at scripts/probe_harness.py. Three of the five recorded harness lies are frontend-specific and c5-7 ran fifteen frontend plants by hand — that is the measured cost of leaving it. Ruled at the C5 retro — see the dw:5115 region and epic-c5 action item R5.'
+
 ## Deferred from: code review of c5-6-client-reconnection, Group 3 (2026-08-08)
 
 > UI shell/API/dev-proxy diff (App.tsx, api/client.ts, api/schema.ts, components/StatePanel/states.ts,

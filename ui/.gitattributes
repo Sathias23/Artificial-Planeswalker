@@ -18,8 +18,9 @@
 # The FONT FAMILY, not just the one member that ships today (story c2-5). Only .woff2 is
 # committed; .woff, .ttf and .otf are listed because the cost of listing them is nothing and the
 # cost of a later story adding a fallback subset without remembering this line is a corruption
-# that CI cannot see — CI is ubuntu, where core.autocrlf is off. spa.py already registers a
-# media type for .woff for the same reason.
+# the font tests cannot see — they run in the ubuntu `frontend` job, where core.autocrlf is off.
+# (CI's one Windows job, `companion-integration`, runs backend tests and never loads a font.)
+# spa.py already registers a media type for .woff for the same reason.
 *.png binary
 *.woff2 binary
 *.woff binary

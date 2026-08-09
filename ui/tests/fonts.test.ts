@@ -79,11 +79,12 @@ describe('the committed font binary (AC 2, AC 3)', () => {
   })
 
   it('is declared binary to git, so a Windows checkout cannot normalise it', () => {
-    // The assertion that protects a machine this suite never runs on. CI is ubuntu, where
-    // core.autocrlf is off and the corruption is unreachable; the maintainer's Windows box has
-    // it `true`. Asking git what attributes RESOLVE for the path tests the outcome rather than
-    // the spelling of any one .gitattributes line, so moving the rule between files is safe
-    // and deleting it is not.
+    // The assertion that protects a machine this suite never runs on. This suite runs in the
+    // ubuntu `frontend` job, where core.autocrlf is off and the corruption is unreachable; the
+    // maintainer's Windows box has it `true`. (CI does have one Windows job —
+    // `companion-integration` — but it runs backend tests and never loads a font.) Asking git
+    // what attributes RESOLVE for the path tests the outcome rather than the spelling of any one
+    // .gitattributes line, so moving the rule between files is safe and deleting it is not.
     const attributes = git('check-attr', 'text', 'diff', '--', FONT_FILE)
     expect(attributes).toContain('text: unset')
     expect(attributes).toContain('diff: unset')
