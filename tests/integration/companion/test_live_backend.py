@@ -391,11 +391,10 @@ async def test_the_real_channel_end_to_end(backends, live_data_dir):
             "the restarted backend reused the previous process's token; FR-12's whole premise is "
             "that a restart invalidates it"
         )
-        # Also proves the OS handed backend_two a genuinely different socket, not just a
-        # different record for the same one: the `http` client above is shared across the
-        # restart, and a reused port would mean its pooled connection to the dead backend_one
-        # could be replayed against backend_two instead of a fresh connection being opened.
-        assert record_two.port != record_one.port
+        # NOT asserted: record_two.port != record_one.port. The OS can legally reissue the same
+        # ephemeral port to backend_two once backend_one's listening socket is closed (Greptile
+        # P2, caught on this story's PR) — that is a healthy restart, not a defect, and asserting
+        # otherwise would make this test flake on a passing run.
 
         # ==== PHASE 9: FR-12 — stale token, 403, re-read, retry once, 200 (AC 9) ===========
         # Hand-rolled here on purpose: this sequence is c6-1's to build as a leaf-client helper,

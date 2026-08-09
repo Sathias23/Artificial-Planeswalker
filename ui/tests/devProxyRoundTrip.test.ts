@@ -107,6 +107,13 @@ async function startStubBackend(): Promise<StubBackend> {
  * The base sits well clear of Vite's own 5173 default so a developer's running dev server is not
  * the thing being collided with on every local run; a genuine collision is still resolved by the
  * retry rather than by this number being lucky.
+ *
+ * **The counter tracks the requested port, not the bound one — `reserveVitePortPastActual` closes
+ * that gap (Greptile P1, caught on c5-8's PR).** If a retry ever moves a server onto a HIGHER port
+ * than it was asked for, the next call here would otherwise hand out a port a still-live server
+ * already holds; that collision resolves via ANOTHER retry, but the resulting real port can land
+ * exactly on an earlier server's, which is a duplicate origin `recordOrigin()` correctly treats as
+ * a failure. Every caller must re-seed the counter past whatever Vite actually bound.
  */
 const VITE_PORT_BASE = 5310
 let nextVitePort = VITE_PORT_BASE
@@ -115,6 +122,11 @@ function distinctVitePort(): number {
   const port = nextVitePort
   nextVitePort += 1
   return port
+}
+
+/** Re-seeds the counter past a port Vite actually bound, so a retry can never be handed out again. */
+function reserveVitePortPastActual(boundPort: number): void {
+  nextVitePort = Math.max(nextVitePort, boundPort + 1)
 }
 
 /**
@@ -177,6 +189,7 @@ async function startViteProxying(
   await vite.listen()
 
   const address = vite.httpServer!.address() as AddressInfo
+  reserveVitePortPastActual(address.port)
   return { origin: recordOrigin(`http://127.0.0.1:${address.port}`) }
 }
 
@@ -219,6 +232,7 @@ async function startViteProxyingWithoutOriginRewrite(targetPort: number): Promis
   await vite.listen()
 
   const address = vite.httpServer!.address() as AddressInfo
+  reserveVitePortPastActual(address.port)
   return { origin: recordOrigin(`http://127.0.0.1:${address.port}`) }
 }
 
