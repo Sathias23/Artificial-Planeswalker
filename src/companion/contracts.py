@@ -101,7 +101,7 @@ precedent: an agent-facing rejection has no business interrupting a human readin
 it worth the eight-site ripple rather than reusing ``invalid_request``: AD-8 requires the agent-side
 client to **re-read the discovery file and retry exactly once** on an auth rejection, and to do no
 such thing on a malformed request. Both answering ``400 invalid_request`` would make that rule
-unimplementable — c6-1 would retry the wrong failure or fail to retry the right one — and this epic
+unimplementable — the client would retry the wrong failure or fail to retry the right one — and this
 is where the wire is settled, before Epic 5 freezes the union.
 
 ``no_image_data`` and ``image_fetch_failed`` are c3-5's pair (Q2, Brad 2026-08-01), and they are
