@@ -635,14 +635,15 @@ numbers become 207 / 79 / 103.0 with 102 left after the skip link. The suite's p
 from the DOM; the 40-deck sweep was not re-run. The flag is carried on **c8-6**, which actions or
 re-accepts it.)*
 
-⚠️ **Coverage-map defect, recorded rather than resolved**: this file's own **UX-DR coverage**
-table (under the *FR Coverage Map* section, below — cited by name rather than line number, after the
-first written form of this note minted `:698-702` in the very commit that added the ~45 lines
-that moved it; c4-11 code review, 2026-08-07) gives UX-DR40 to **Epic 4
-and Epic 8**, and UX-DR46 to **Epic 4 and Epic 5**, with two different verbs for the revisit flag
-(Epic 4 *"states the cost … and carries a flag"*; c8-6 *"consciously actions or re-accepts"* it).
-The two verbs are complementary, not contradictory — Epic 4 builds the floor, Epic 5 extends it to
-the connection pill, Epic 8 decides whether the floor is enough to release on.
+✅ **Coverage-map double-assignments RESOLVED as deliberate splits — Brad's ruling at the C5
+retro (2026-08-09, action item R9).** The defect first recorded here (c4-11 code review,
+2026-08-07) was that UX-DR40 appears under **Epic 4 and Epic 8**, and UX-DR46 under **Epic 4 and
+Epic 5**, unexplained. The ruling makes the explanation the record: the assignments are
+complementary slices, now annotated in the UX-DR coverage table itself — Epic 4 builds the focus
+floor (UX-DR46) and states the Tab-order cost (UX-DR40); Epic 5 extends 46 to connection-state
+changes and the pill; Epic 8 (c8-6) decides at release whether 40's floor is enough. Both halves
+of 46 shipped with tests in their own epics (Epic 4's deck-view focus ACs; c5-6/c5-7's
+focus-survives-reconnect and pill-arrival assertions).
 
 **Accessibility floor** (acceptance criteria, not polish)
 
@@ -770,8 +771,8 @@ epic consumes or completes it, that is noted as a contributor — the owner stil
 | Epic | UX-DRs |
 |---|---|
 | Epic 2 | 1, 2, 3, 5, 6, 7 (tokens, font, numerals, spacing, contrast, brand rules), 8 (layout shell), 9–13 (presentation-only primitives), 30 (state panel), 32 (footer), 33 (copy). **Mechanism only:** 4 (card-radius token defined here, enforced in Epic 4), 42 (reduced-motion mechanism here, per-motion inventory completed in Epics 4 and 6), 47 (lint rule here, applied in every later epic) |
-| Epic 4 | 4 (card geometry enforced), 14–22 (card tile, DFC flip, quantity badge, curve, colour distribution, deck row, detail panel, format check, placeholder), 31 (skip link), 36 (placeholder-then-fill), 39–41 (interaction primitives, Tab order, contrast), 44–48 (semantics, live regions, focus, hit targets, alt text). *(35 — refetch — belongs wholly to Epic 7, where `deck_changed` originates)* |
-| Epic 5 | 29 (connection pill behaviour), 46 (focus never dropped) |
+| Epic 4 | 4 (card geometry enforced), 14–22 (card tile, DFC flip, quantity badge, curve, colour distribution, deck row, detail panel, format check, placeholder), 31 (skip link), 36 (placeholder-then-fill), 39–41 (interaction primitives, Tab order, contrast), 44–48 (semantics, live regions, focus, hit targets, alt text). *(35 — refetch — belongs wholly to Epic 7, where `deck_changed` originates. 40 and 46 are deliberate splits, ruled at the C5 retro: this epic builds the focus FLOOR (46) and states the Tab-order cost (40); Epic 5 owns 46's connection-state half, c8-6 owns 40's release-gate revisit)* |
+| Epic 5 | 29 (connection pill behaviour), 46 (focus never dropped **across connection-state changes and the pill's arrival** — extends Epic 4's floor; deliberate split, ruled at the C5 retro) |
 | Epic 6 | 23–24 (agent view shell, suggestion row), 28 (nav pills), 34 (push arrival), 37–38 (view/left-column interaction, overlay depth), 43 (motion never sole signal), 45 (live regions) |
 | Epic 7 | 16 (quantity flash), 35 (refetch), 43, 45 (coalesced announcement) |
 | Epic 8 | 49 (SC-5 gate), 40 (Tab-order revisit flag) |
@@ -2790,7 +2791,7 @@ So that I can evaluate six cards by looking at them.
 
 **Given** a payload exceeding a cap
 **When** the tool posts it
-**Then** the backend returns 422, the tool returns `payload_rejected`, and the agent presents the content in chat as usual — nothing is lost (AD-7, FR-12)
+**Then** the backend returns 413 `payload_too_large`, the tool returns `payload_rejected`, and the agent presents the content in chat as usual — nothing is lost (AD-7 as amended by the c1-4 review ruling; FR-12) <!-- amended at the C5 retro 2026-08-09: 5.5 and 6.1 were corrected to 413 at c5-5, this AC had been missed; field-cap breaches remain 400 per c5-5 Q7 -->
 
 **Given** an empty suggestions payload
 **When** it is posted

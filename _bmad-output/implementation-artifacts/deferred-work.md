@@ -5105,6 +5105,12 @@ engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries cha
   shape, or should the family key on *use* rather than on *presence* of a literal?" should be
   decided — with two collisions on the record instead of one. (Severity: Low, and narrower than the
   alternative that was declined.)
+  **RULED at the C5 retro (2026-08-09), ENTRY CLOSED:** the family stays PRESENCE-KEYED with narrow
+  per-file exemptions — c5-1's `_LIMIT_FAMILY_EXEMPT` shape (one file, one family, held by three
+  tests with firing proofs) is the standing remedy. A use-keyed redesign was declined as costing
+  more than the two collisions did: both collisions were caught at zero escape cost, and the
+  exemption's blind spot (a future deck-size rule written inside `contracts.py`) is stated where it
+  lives. A THIRD collision reopens the question. Recorded as epic-c5 action item R10.
 
 - **The probe harness exists for pytest and does not exist for `ui/`.** C4 retro action item 4 was
   homed on c5-1 by name and is **discharged only on the Python side** (Q11, Brad 2026-08-07):
@@ -5121,6 +5127,10 @@ engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries cha
   specific to the frontend toolchain and cannot occur in a Python-only story, which is why this was
   scoped rather than built whole. **Home: the first C5 story that touches `ui/` and plants a
   frontend guard** — realistically **c5-6** or the first Epic 6 view story. (Severity: Low.)
+  **RE-HOMED at the C5 retro (2026-08-09) to epic-c5 action item R5 (C6 prep, before Epic 6's
+  first frontend story):** c5-6 scope-declined it (Q9) and c5-7 ran FIFTEEN frontend plants by
+  hand — the epic's own measurement of what the missing half costs. The C4 sprint-status item is
+  closed as re-keyed; this entry stays the description of record until R5 pays it.
 
 - **Two artefact amendments are owed and are recorded here so they are not rediscovered
   (AC 26).** Neither is c5-1's to make — both live in planning artifacts this story does not own —
@@ -5249,12 +5259,21 @@ engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries cha
   the corrections added more forward-looking prose about c5-3/c5-5/c5-6 in the same breath. Each
   future story inherits an N-way prose-sync obligation nothing tests. **Home: C5 retro** — decide
   a single canonical home for cross-module rulings and let the other sites point at it.
+  **RULED at the C5 retro (2026-08-09), RE-HOMED to epic-c5 action item R2 (C6 prep, standalone
+  sweep):** the canonical home for a cross-module ruling is THIS LEDGER (the entry that records the
+  ruling); every shipped prose site becomes a one-line pointer at it. Standing rule adopted with the
+  sweep: no new forward-looking cross-module prose in docstrings — c5-4's "do not widen it" order
+  generalised.
 - **`scripts/dump_openapi.py`'s docstring is becoming a dated changelog.** c5-2 added two more
   paragraphs of measurement narrative plus an italicised correction of the script's own prior
   (false since c3-8) truncation claim. None of it affects behaviour, nothing tests it, and it has
   already contradicted itself once. The falsification-correction *content* is valuable; a dump
   script's docstring is the wrong ledger. **Home: C5 retro** — pick the right ledger and move the
   narrative there.
+  **RULED at the C5 retro (2026-08-09), RE-HOMED to epic-c5 action item R2 (same sweep):** the
+  right ledger is this file plus the story records, both of which already carry the narrative —
+  so the sweep DELETES the docstring's changelog paragraphs rather than moving them, leaving a
+  current-behaviour statement and one pointer.
 
 ## Deferred from: c5-3-authenticated-websocket-upgrade-with-host-and-origin-validation (2026-08-08)
 
@@ -5477,6 +5496,11 @@ consequences for the ledger are here.
   post-prose Python run (`assert 'Control' is None`), and passed on an immediate clean re-run at the
   expected 2,770 / 1 skipped. Not chased, per the Dev Notes' instruction; recorded as a second
   sighting after c5-5's. **Home: C5 retro.** (Severity: low — two sightings now, not one.)
+  **RULED at the C5 retro (2026-08-09), RE-HOMED to epic-c5 action item R4 (C6 prep):** one
+  BOUNDED reproduction attempt (repeat-run the file, both alone and inside the full suite); if it
+  does not reproduce, annotate the test with the two sighting dates and monitor — a third sighting
+  escalates to a real investigation. Coupled with the `-m integration` marker split below, which
+  makes the question answerable.
 
 - **An intermittent vitest "unhandled error" that costs ONE test file its collection.** Seen
   **twice** during this story's verification: 66/67 files with 1,807/1,812 tests, and 66/67 with
@@ -5633,6 +5657,11 @@ here by name; all three are closed below. All six of the story's open questions 
   live tint are the same shape. **Home: C5 retro** — worth a decision about whether a derived
   class→token guard is wanted repo-wide, rather than one per component that remembers.
   (Severity: low — one instance found and closed; the class of hole is open.)
+  **RULED at the C5 retro (2026-08-09): YES — RE-HOMED to epic-c5 action item R3 (C6 prep or the
+  first C6 UI story):** generalise `shell.test.ts`'s dot guard into ONE derived source-reading
+  check binding every status-semantic class to its token (`Badge` tones, `ManaPip` colours, the
+  deck row's live tint, the pill dot), before Epic 6's agent views add more surfaces of exactly
+  this shape. Per-component guards that already exist are kept, not deleted.
 
 ## Deferred from: code review of c5-7-connection-pill (2026-08-08)
 
@@ -5674,6 +5703,11 @@ recommended: the fourth story running with a clean pre-code sweep.
   local run will ever notice it break. **Home: C5 retro**, as a decision about whether a Windows
   integration lane is worth its minutes (the whole file runs in ~4 s). (Severity: medium — not a
   defect today, but the only test covering the process boundary has no automated home.)
+  **RULED at the C5 retro (2026-08-09): YES — RE-HOMED to epic-c5 action item R1 (C6 prep):** add
+  a Windows lane to `ci.yml` running `uv run pytest tests/integration/companion/` (scoped, so the
+  flake and the live Scryfall tests stay out of it). AD-2 makes Windows the platform of record and
+  the test IS the platform-of-record evidence; ~4 s of test against the only process-boundary
+  coverage is the cheapest insurance on the docket.
 
 - **The `-m integration` scope trap, recorded so the next person does not rediscover it.** A bare
   `uv run pytest -m integration` collects `test_list_decks_with_strategy_field` (the twice-sighted
@@ -5681,6 +5715,10 @@ recommended: the fourth story running with a clean pre-code sweep.
   a red run says nothing about the companion. Every local run in this story was scoped
   `tests/integration/companion/`. Worth a marker or a scoped alias eventually. **Home: C5 retro.**
   (Severity: low.)
+  **RULED at the C5 retro (2026-08-09), RE-HOMED to epic-c5 action item R4 (C6 prep, with the
+  flake item):** the companion real-socket test gets its own marker so `-m integration` splits
+  into things that mean something; the CI lane from R1 selects by path, so the marker serves
+  local runs.
 
 - **Seven falsification probes were run against real backends, and all seven went RED** — the
   story's own Dev Notes demanded at least one (*"a real-socket test that cannot fail is worse than
@@ -5696,3 +5734,45 @@ recommended: the fourth story running with a clean pre-code sweep.
   **F2 — the explicit `Origin`.** Dropping `origin=` from the first upgrade got a real 403 from a
   real handshake. `security.py`'s fail-closed Origin rule had been asserted in-process since c5-3;
   this is the first time it has been observed over a socket. (Severity: none — all seven RED.)
+
+## Dispositions from: the C5 retrospective (2026-08-09)
+
+All seven entries homed on this retro were ruled; each ruling is recorded inline at its entry
+(grep `RULED at the C5 retro`). Summary, with the sprint-status action item that owns each:
+
+1. **Windows integration CI lane** (`dw:5668` region) — **YES**, scoped
+   `tests/integration/companion/` lane in `ci.yml` → **R1**.
+2. **AD-1 limit-literal family shape** (`dw:5104` region) — **presence-keyed stands**, per-file
+   exemption is the standing remedy, third collision reopens → **R10, CLOSED by ruling**.
+3. **Q3/AD-5 N-way prose-sync** (`dw:5244` region) — canonical home is THIS LEDGER; prose sites
+   become one-line pointers; no new forward-looking cross-module prose in docstrings → **R2**.
+4. **`dump_openapi.py` docstring-as-changelog** (`dw:5252` region) — delete the changelog
+   paragraphs (content already lives here and in story records) → **R2** (same sweep).
+5. **`test_list_decks_with_strategy_field` flake, two sightings** (`dw:5476` region) — one bounded
+   reproduction attempt; annotate-and-monitor if it holds green; third sighting escalates → **R4**.
+6. **`-m integration` scope trap** (`dw:5678` region) — companion marker/scoped alias → **R4**.
+7. **Repo-wide class→token guard** (`dw:5617` region) — **YES**, one derived source-reading guard
+   before Epic 6's first view story → **R3**.
+
+Also executed or re-homed at this retro, beyond the seven:
+
+- **The vitest probe-harness half** (`dw:5115` region) — re-homed to **R5** (C6 prep); the C4
+  sprint-status item closes as re-keyed, Python half shipped at c5-1.
+- **Story 6.4's stale 422** — `epics-companion-app.md`'s 6.4 cap-breach AC amended in-retro to
+  413 `payload_too_large`, matching the shipped, tested contract (c1-4 ruling; 5.5 and 6.1 were
+  amended at c5-5, 6.4 had been missed). The AD-6/AD-7 spine amendments stay homed on Epic 8.
+- **UX-DR46 double-assignment** (Epics 4 AND 5 in the coverage map) — needs an owner decision,
+  not a mechanical edit → **R9**.
+- **C4 items 5 and 7** (DESIGN.md citation guard; plugin-mirror check from `ui/`) — re-homed to
+  **R6** and **R7** respectively; both C4 rows close as re-keyed. R6 carries a termination clause:
+  not done by the C6 retro → formally decline and demote the guard to a declared
+  string-proximity check.
+- **Standing-agreement amendment** — "review-added mechanisms re-enter review" widens to include
+  review-added TEST ASSERTIONS (c5-8's Greptile P2 was in an assertion its own review added; ruled
+  NOT a retroactive violation, the rule as written scoped to mechanisms) → **R8**.
+- **Named, not actioned:** the ~26-entry `unowned` cluster of `src/logic`/`src/data` questions
+  from the c3 era (`:2400`–`:3410` band) that no companion story can legitimately own. Candidate
+  for a between-epic ledger closing pass; deliberately NOT given a C6-prep home to keep the prep
+  list honest. Also standing: `dw:5197`'s twice-confirmed one-sentence fix
+  (`test_committed_schema.py` module docstring) remains unowned and cheap — fair game for R2's
+  sweep to absorb.
