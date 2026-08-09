@@ -26,9 +26,11 @@ src/companion/app/static/** -text
 # is measurably not enough. Measured on this machine: with only the src/ rule, a fresh clone
 # under core.autocrlf=true writes src/.../index.html at 1093 bytes (LF, attribute honoured) and
 # plugin/.../index.html at 1119 bytes (CRLF, no attribute) — 26 line endings apart, so the
-# byte-identity test fails and the plugin drift check reports drift on an untouched tree. CI is
-# ubuntu, where autocrlf is off, so CI could never have caught it: the failure is Windows-only
-# and fresh-clone-only.
+# byte-identity test fails and the plugin drift check reports drift on an untouched tree. The job
+# that runs the plugin drift check is ubuntu, where autocrlf is off, so it could never have caught
+# it: the failure is Windows-only and fresh-clone-only. (CI does now check this repo out onto a
+# Windows runner — the `companion-integration` job — but that job runs only the companion
+# integration test and performs no drift check, so it does not close this gap either.)
 #
 # This is still path-scoped. AC 5's actual concern — that a repo-wide pattern would renormalise
 # every tracked file, which is why c2-1 declined to create this file — is untouched.

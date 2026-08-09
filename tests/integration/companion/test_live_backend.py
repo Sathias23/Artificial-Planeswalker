@@ -32,11 +32,18 @@ the leaf client's push half — a POST helper with the retry-once shape and an o
 is the next story's, and building it here would be building it twice. Grep-verified at Task 0:
 nothing under ``src/mcp_server/`` does discovery-retry today.
 
-**CI never runs it.** ``.github/workflows/ci.yml`` runs ``-m "not integration"`` on ubuntu, so the
-"passes on Windows" acceptance criterion is discharged by a local run recorded in the story's Dev
-Agent Record — which is what AD-2 means by making Windows the platform of record. Local runs are
-scoped to this directory: a bare ``-m integration`` also collects the twice-sighted
-``test_list_decks_with_strategy_field`` flake and the live Scryfall contract tests.
+**CI runs it on Windows.** ``.github/workflows/ci.yml``'s ``companion-integration`` job runs this
+directory on ``windows-latest`` on every push and pull request. The ``quality`` jobs are ubuntu and
+run ``-m "not integration"``, so they still deselect this test; that job is the only one that
+executes it. Windows because the two facts below are Windows facts, and because it is the
+maintainer's development platform — **not** because of "AD-2", a label this file used to attach to
+the claim. AD-2 is *"the MCP server is the only writer"*; no AD names a platform of record.
+
+Both CI and local runs are scoped **by path** rather than by marker, because ``-m integration``
+also selects the live-network Scryfall contract tests and several tests that instantiate the real
+fastembed model. It does **not** select the twice-sighted ``test_list_decks_with_strategy_field``
+flake, which this file previously claimed: that test carries no marker at all and already runs in
+the ``quality`` jobs (measured 2026-08-09).
 
 ================= THE TWO WINDOWS FACTS THIS FILE IS SHAPED AROUND ========================
 

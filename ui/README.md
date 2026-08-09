@@ -401,7 +401,8 @@ in `public/` would land unhashed at the bundle root and be revalidated on every 
   identical in a browser — both show `system-ui`. `tests/fonts.test.ts` asserts the `wOF2`
   signature, the exact byte length, and that `git check-attr` resolves the file as binary, so
   a `core.autocrlf=true` checkout on Windows cannot normalise it. That last one protects a
-  machine CI never runs on.
+  machine the `frontend` job never runs on — it is ubuntu, and the only Windows job in CI
+  (`companion-integration`) runs backend tests and never loads a font.
 - **The licence ships with the font.** `src/assets/fonts/LICENSE-OFL-1.1.txt`, as OFL-1.1
   requires, and the copyright line is in `fonts.css`. **c2-10's footer does not name the
   typeface**, and that is correct rather than an omission: OFL-1.1 requires the licence to

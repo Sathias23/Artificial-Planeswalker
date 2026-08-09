@@ -13,11 +13,13 @@ single small JSON document — and checks that the fields the importer depends o
 usable. It does **not** download a bulk file: the point is an early warning, not a rehearsal, and
 the smallest bulk file is tens of megabytes.
 
-**Where it runs.** Marked ``integration``, because CI's push-triggered job runs
+**Where it runs.** Marked ``integration``, because the push-triggered ``quality`` jobs run
 ``pytest -m "not integration"`` and a network dependency there would trade a real failure mode for
-a flaky one. A third-party contract changes on the vendor's release schedule, not on ours, so a
-push trigger is the wrong axis entirely — the scheduled ``live-contract`` workflow is what makes
-this fire. Run it by hand with::
+a flaky one. (CI's one integration-running job, ``companion-integration``, is scoped by path to
+``tests/integration/companion/`` and so never collects this file — which is what keeps that job's
+"no network beyond loopback" property true.) A third-party contract changes on the vendor's
+release schedule, not on ours, so a push trigger is the wrong axis entirely — the scheduled
+``live-contract`` workflow is what makes this fire. Run it by hand with::
 
     uv run pytest tests/integration/data/test_scryfall_live_contract.py -m integration
 """

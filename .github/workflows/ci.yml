@@ -1,11 +1,21 @@
 name: CI
 
-# Quality gates for the public repo: mirrors the local pre-commit / CONTRIBUTING
-# checks (ruff lint, ruff format, mypy --strict, pytest) on a Python 3.12/3.13 matrix,
-# plus the frontend gate for ui/ (eslint + stylelint, prettier, tsc -b, vitest, vite build).
-# Runs on pushes to master and on every pull request. No DB, model or secrets are
-# required and pytest is scoped to "not integration"; the `frontend` job is the one
-# exception to "no network" — it downloads ui/ dependencies from the npm registry.
+# Quality gates for the public repo. Three jobs, each with its own scope:
+#
+#   `quality`               — the local pre-commit / CONTRIBUTING checks (ruff lint, ruff format,
+#                             mypy --strict on both platforms, pytest) on a Python 3.12/3.13
+#                             ubuntu matrix, plus the plugin/ drift check. Its pytest run is
+#                             scoped to "not integration".
+#   `frontend`              — the ui/ gate (eslint + stylelint, prettier, tsc -b, vitest, vite
+#                             build) plus the SPA-bundle and generated-types drift checks.
+#   `companion-integration` — the one companion real-socket test, on Windows. Scoped by path to
+#                             tests/integration/companion/, so it runs the integration-marked test
+#                             the `quality` jobs deselect. See the job's own comment for why.
+#
+# Runs on pushes to master and on every pull request. No DB, model or secrets are required by any
+# job. Every job installs its dependencies from a package registry; beyond that, `frontend` is the
+# only one that reaches the network for anything, and `companion-integration`'s TEST step talks to
+# 127.0.0.1 and nothing else.
 
 on:
   push:
@@ -212,3 +222,65 @@ jobs:
             git --no-pager diff -- ui/src/api/
             exit 1
           fi
+
+  # AD-10 requires exactly one integration-marked test that boots a real backend on an ephemeral
+  # port and drives the real channel, on the principle that "seams that only fail in a real process
+  # get exercised in a real process". This job is that test's only automated home. No other test
+  # boots a real server PROCESS or performs a real WebSocket handshake — the rest of the companion
+  # suite drives the ASGI app in-process via httpx.ASGITransport. (Narrower than "no other test
+  # opens a socket", which is false: tests/unit/companion/test_server.py and test_client.py bind
+  # real loopback sockets to test bind/fallback behaviour.)
+  #
+  # Deliberately NOT folded into the `quality` matrix. That job runs `-m "not integration"`, which
+  # deselects this test by definition, so it would have to change scope; and adding an OS axis to
+  # it would re-run the whole ~2,770-test unit suite on the slowest and costliest runner class to
+  # reach one test. (NOT because an OS axis would find nothing — it would: test_singleton.py takes
+  # a real msvcrt branch on Windows that CI has only ever type-checked, never executed. That is a
+  # genuine gap, and it is not this job's to close.)
+  #
+  # Windows because this seam is hardest there — `terminate()` is a hard kill, an un-waited child
+  # keeps the port and cards.db open, and `localhost` resolves ::1 against an IPv4-only bind — and
+  # because it is the maintainer's development platform, which is where the test was written and
+  # measured. (Do NOT re-attach the "AD-2" label some prose still carries: AD-2 is "the MCP server
+  # is the only writer". No AD names a platform of record.)
+  #
+  # One Python, no matrix: the subject is the process boundary, which does not vary across 3.12 and
+  # 3.13. 3.12 is the floor declared by `requires-python = ">=3.12"` (pyproject.toml).
+  #
+  # Scoped BY PATH, never by `-m integration`. That marker selects the live-network Scryfall
+  # contract tests AND several tests that instantiate the real fastembed model (tests/integration/
+  # search/, tests/integration/mcp_server/test_semantic_search_tool.py) — a marker run would need
+  # network and would download a model, which is what the "no model, no secrets" claim above rests
+  # on. (It does NOT select the twice-sighted test_list_decks_with_strategy_field flake: that test
+  # carries no marker and already runs in the `quality` jobs. The C5 retro and deferred-work.md
+  # both state otherwise; measured 2026-08-09, they are wrong, and R4's premise inherits the error.)
+  #
+  # Vacuity: a renamed or deleted path exits 4, an empty one exits 5 — both non-zero, so the job
+  # cannot pass on nothing. That covers the path disappearing and NOT the test being skipped,
+  # gutted, or joined by unrelated files, none of which any check here would see.
+  #
+  # Closes epic-c5 action item R1. Needs no DB, model or secret: the backend's engine is lazy
+  # (c1-6), so a boot that never queries never opens cards.db.
+  companion-integration:
+    name: companion real-socket test (windows, py3.12)
+    runs-on: windows-latest
+    # A wedged socket or an undead child would otherwise burn the 6-hour default, and because
+    # `cancel-in-progress` is false for master, an occupied concurrency group queues every later
+    # master run behind it. Matches live-contract.yml's precedent; generous against a ~4 s test.
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Sync dependencies (locked)
+        run: uv sync --locked
+
+      - name: Pytest (companion integration only)
+        run: uv run pytest tests/integration/companion/
