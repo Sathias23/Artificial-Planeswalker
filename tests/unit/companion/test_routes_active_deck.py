@@ -151,9 +151,11 @@ class TestTheWriteNeedsTheCredential:
             )
 
         assert response.status_code == 200
-        # Answers 200 echoing the stored value rather than 204 (Q3 part 4): one shape serves the
-        # read, the write, and (since c5-4) the change notification it broadcasts.
-        assert response.json() == {"deck_id": _FIRST_DECK}
+        # Answers 200 echoing the stored value rather than 204 (Q3 part 4). The write's shape
+        # DIVERGED from the read's at c6-2 (Q1, Brad 2026-08-09): the receipt adds the delivered
+        # client count so the agent-side verb can distinguish "switched, and a tab is watching"
+        # from "switched, and nobody is looking". Zero here because no client is registered.
+        assert response.json() == {"deck_id": _FIRST_DECK, "clients": 0}
 
     async def test_the_set_deck_is_then_readable(self, lifespan_client):
         """AC 4 as a **sequence through the wire** — never by reading the holder."""
@@ -551,7 +553,7 @@ class TestAMalformedBody:
             )
 
         assert response.status_code == 200
-        assert response.json() == {"deck_id": boundary}
+        assert response.json() == {"deck_id": boundary, "clients": 0}
 
     async def test_a_malformed_body_without_a_credential_is_still_forbidden(self, lifespan_client):
         """Ordering, stated as a contract rather than left to be discovered.
@@ -676,8 +678,21 @@ class TestTheCommittedSchema:
         # a `security` block here and a `securitySchemes` component alongside.
         assert "security" not in schema["paths"][_PATH]["put"]
 
-    def test_both_operations_answer_the_same_shape(self, schema):
-        """Q3's one-shape ruling, in the artifact: no union, no ``X | None`` response model."""
+    def test_the_two_operations_answer_two_shapes_and_why(self, schema):
+        """c6-2 Q1 (Brad 2026-08-09) **supersedes c3-4's Q3 one-shape ruling for the write.**
+
+        c3-4 answered the ``PUT`` with :class:`~src.companion.contracts.ActiveDeck` so that "one
+        shape serves the read, the write and the change notification". Two of those three still
+        hold — the ``GET`` and (by field name and nullability, never by validation) the broadcast
+        payload. The write diverged because the *agent* asks a question the browser never does:
+        **did anyone see it?** The delivered count already existed —
+        ``broadcast_active_deck_changed`` returns it and this route used to discard it — and the
+        alternative was an MCP tool that could never distinguish "switched" from "switched, with
+        no tab open".
+
+        The read is untouched, which is the half that matters for AD-5: the SPA's shape did not
+        move, and the SPA never calls the token-gated write.
+        """
         get_ref = schema["paths"][_PATH]["get"]["responses"]["200"]["content"]["application/json"][
             "schema"
         ]["$ref"]
@@ -685,7 +700,33 @@ class TestTheCommittedSchema:
             "schema"
         ]["$ref"]
 
-        assert get_ref == put_ref == "#/components/schemas/ActiveDeck"
+        assert get_ref == "#/components/schemas/ActiveDeck"
+        assert put_ref == "#/components/schemas/ActiveDeckSetReceipt"
+
+    def test_the_receipt_is_the_read_shape_plus_a_non_negative_count(self, schema):
+        """The divergence is **purely additive**, and the ``ge=0`` is the leaf client's net.
+
+        ``deck_id`` keeps the read model's exact declaration — same name, same nullability — so the
+        one thing that changed between the two operations is the added count. (There is still no
+        clearing verb, so the write cannot in fact answer ``null`` today; the shape says ``null``
+        for the same reason :class:`~src.companion.contracts.ActiveDeck` does, and a reader that
+        handles the read handles this.)
+
+        ``minimum: 0`` is c6-1's lesson made structural: ``{"clients": -1}`` sails through a
+        hand-rolled ``body["clients"] >= 1`` read and is quietly reported as *nobody was listening*.
+        That bound is what makes the client parse it as a ``backend_error`` instead — and the
+        receipt is closed (``additionalProperties: false``) so a stray field is a parse failure
+        rather than a silently ignored one.
+        """
+        receipt = schema["components"]["schemas"]["ActiveDeckSetReceipt"]
+        read_model = schema["components"]["schemas"]["ActiveDeck"]
+
+        assert set(receipt["required"]) == {"deck_id", "clients"}
+        assert receipt["properties"]["deck_id"] == read_model["properties"]["deck_id"]
+        assert {"type": "null"} in receipt["properties"]["deck_id"]["anyOf"]
+        assert receipt["properties"]["clients"]["type"] == "integer"
+        assert receipt["properties"]["clients"]["minimum"] == 0
+        assert receipt["additionalProperties"] is False
 
     def test_the_response_model_admits_null_and_the_request_model_does_not(self, schema):
         response_field = schema["components"]["schemas"]["ActiveDeck"]["properties"]["deck_id"]
@@ -954,7 +995,7 @@ class TestThePutBroadcasts:
                 _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer(agent_token(app))
             )
 
-        assert response.json() == {"deck_id": "rewritten-by-the-slot"}
+        assert response.json() == {"deck_id": "rewritten-by-the-slot", "clients": 1}
         event = TypeAdapter(AgentEvent).validate_json(connection.sent[0])
         assert event.payload.deck_id == "rewritten-by-the-slot", (
             "the broadcast read the request body; it must read what was stored"
@@ -981,6 +1022,29 @@ class TestThePutBroadcasts:
         first, second = (adapter.validate_json(text) for text in connection.sent)
         assert first.payload.deck_id == second.payload.deck_id == _FIRST_DECK
         assert first.id != second.id, "two distinct events, so a client can tell them apart"
+
+    async def test_the_receipt_reports_the_count_the_fan_out_returned(self, lifespan_client):
+        """c6-2 Q1: the number the route used to discard is the number it now answers with.
+
+        Two registered clients rather than one, so a receipt hard-coding ``1`` — or reporting
+        ``connected_count`` instead of the fan-out's return — is distinguishable from one that
+        actually threads the value through. The paired zero row lives in
+        :meth:`TestTheWriteNeedsTheCredential.test_a_valid_credential_stores_the_deck_and_echoes_it`,
+        so this cannot pass by always answering the registry's size either.
+        """
+        app = build_app()
+        async with lifespan_client(app) as client:
+            registry = connection_registry(app)
+            first, second = FakeConnection(), FakeConnection()
+            registry.add(first)
+            registry.add(second)
+
+            response = await client.put(
+                _PATH, json={"deck_id": _FIRST_DECK}, headers=_bearer(agent_token(app))
+            )
+
+        assert response.json() == {"deck_id": _FIRST_DECK, "clients": 2}
+        assert len(first.sent) == len(second.sent) == 1, "both really received it"
 
     async def test_a_refused_credential_broadcasts_nothing(self, lifespan_client):
         """AC 18: the call sits after the store, on the success path only."""
@@ -1038,7 +1102,9 @@ class TestThePutBroadcasts:
             stored = await client.get(_PATH)
 
         assert response.status_code == 200
-        assert response.json() == {"deck_id": _FIRST_DECK}
+        # `clients: 0` and a `200` together: the count is *delivered*, so the tab that could not be
+        # written to is absent from it — and its absence still costs the mutation nothing.
+        assert response.json() == {"deck_id": _FIRST_DECK, "clients": 0}
         assert stored.json() == {"deck_id": _FIRST_DECK}
         assert registry.connected_count == 0, "and the dead client was dropped on the way past"
 

@@ -1,5 +1,15 @@
 # Deferred Work
 
+## Deferred from: code review of c6-2-companion-set-active-deck-the-agent-chooses-what-the-glass-shows (2026-08-09)
+
+> Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
+> `feat/companion-c6-2-set-active-deck` diff. Entry below is a coverage gap pre-existing across the
+> MCP tool suite and out of this story's bounds — real, but not caused by this change.
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-2-companion-set-active-deck-the-agent-chooses-what-the-glass-shows.md`
+  summary: "`companion_set_active_deck`'s `deck_id` parameter is passed to `DeckRepository.get_deck()` without `.strip()`, so a deck id with stray leading/trailing whitespace reports `deck_not_found` even when the trimmed id exists. `deck_analysis.py` (`analyze_mana_curve`, `detect_synergies`, the swap-suggestion helper) and `deck_management.py` (`delete_deck`, the rename/tag helper) all strip; `view_deck.py` — the skeleton this story was explicitly told to copy — does not. The inconsistency is project-wide, not introduced by c6-2."
+  evidence: 'Edge Case Hunter, confirmed by reading every MCP tool helper: `src/mcp_server/tools/companion.py:128` has no `.strip()`; `src/mcp_server/tools/view_deck.py:56-78` likewise has none; `deck_analysis.py:147,223,310` and `deck_management.py:379,487` do call it.'
+
 ## Deferred from: code review of c6-1 (2026-08-09)
 
 > Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
@@ -9,10 +19,12 @@
 - source_spec: `_bmad-output/implementation-artifacts/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`
   summary: "c6-2's two concrete needs against this module's machinery, moved here from docstring prose per Task 7's R2 rule (review finding, decision-needed, ruled by Brad 2026-08-09: trim to pointers): (1) a tool-level `deck_not_found` outcome layered above client.py's closed five-token PushOutcomeToken set — the client cannot observe it, so it belongs at the MCP tool layer, not in PushOutcomeToken. (2) `_send()` is already generic over method and path specifically so c6-2's `PUT /api/active-deck` push can reuse it — same Authorization header, same PROBE_TIMEOUT-based timeouts, same trust_env=False net — rather than a duplicated implementation."
   evidence: 'Acceptance Auditor: PushOutcomeToken and _send''s docstrings in src/companion/client.py named c6-2''s specific endpoint/outcome, which the story''s own Task 7 forbids ("mint no new forward-looking cross-module prose ... c6-2+''s needs get a dw: ledger line, not a docstring paragraph") and which the diff''s own Completion Notes had incorrectly claimed compliance with. Trimmed from client.py and re-homed here in the same review pass.'
+  resolution: '**CLOSED by c6-2 (2026-08-09).** Both needs met as ledgered. (1) `deck_not_found` is a `status` on `SetActiveDeckResult` in `src/mcp_server/tools/companion.py`, returned from the database read before any HTTP; `PushOutcomeToken` is still exactly five and `TestOutcomeVocabulary` still pins that by set equality. (2) `_send()` was reused verbatim — `method="PUT", path=ACTIVE_DECK_PATH` — with no change to its signature or body. What the ledger did NOT predict, and what the story found: `_outcome_for` could not be reused, because a `PUT /api/active-deck` 200 is an `ActiveDeckSetReceipt` and not an `EventIngestReceipt`. `_active_deck_outcome_for` is its sibling, and the `event-receipt-instead` row in `test_client.py` pins that the wrong receipt shape does not parse.'
 
 - source_spec: `_bmad-output/implementation-artifacts/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`
   summary: "No test pins the 401-vs-403 boundary at the push layer. `_outcome_for` folds every status outside {200,400,403,413} into `backend_error`, including 401 — the one code most easily confused with the retry-triggering 403. A regression or misconfigured proxy answering 401 would silently become a non-retried `backend_error` with nothing pinning that as intended."
   evidence: 'Blind Hunter. `src/companion/client.py:384-400` (`_outcome_for`) — the sole "unexpected status" test uses 418, not 401.'
+  resolution: '**CLOSED by c6-2 (2026-08-09, Q5 ruled yes by Brad).** A 401 row now sits in the unexpected-status parametrization of **both** matrices: `TestPushEvent::test_an_unexpected_status_is_backend_error_unretried` (widened from a single 418 case) and `TestSetActiveDeck::test_every_other_status_is_backend_error_unretried`. Each pins 401 → `backend_error` **and** a request count of exactly one, so "not retried" is asserted rather than assumed.'
 
 - source_spec: `_bmad-output/implementation-artifacts/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`
   summary: "No test covers a backend restart landing in the narrower window between the /health probe and the POST within a single attempt — only the between-attempts race (via on_post) is exercised. AD-4's 'verify before you send' principle is satisfied per-attempt, but the gap between live_instance() returning and _send() reading record.token inside one attempt is an inherent TOCTOU window of any verify-then-act pattern and isn't practically closable without a redesign."
@@ -2795,9 +2807,13 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   no-active-deck" is a **client-side** transition (`EXPERIENCE.md:120` — the refetch 404s and the
   SPA clears to the panel), and a restart clears the slot anyway. Building an unused verb now would
   freeze a wire shape with no consumer. **Home: unowned** — whichever story first has a *caller*
-  that needs it, most plausibly c6-2 if the tool ever grows a "stop displaying" mode. **The shape
-  it should take if wanted**: a `DELETE /api/active-deck`, not a nullable request field — the
-  request model staying non-null is what keeps `PUT` unambiguous. (Severity: Low.)
+  that needs it. **The shape it should take if wanted**: a `DELETE /api/active-deck`, not a nullable
+  request field — the request model staying non-null is what keeps `PUT` unambiguous.
+  (Severity: Low.)
+  **c6-2 did NOT trigger it (2026-08-09).** The entry named this story as the most plausible
+  candidate; it shipped `companion_set_active_deck` with no "stop displaying" mode because nothing
+  asked for one, and touching `ActiveDeckRequest` was explicitly out of scope. The entry stays open
+  and unowned, one candidate poorer.
 
 - ~~**Nothing broadcasts the change.**~~ **✅ CLOSED by c5-4 (2026-08-08).** `PUT /api/active-deck`
   now awaits `ws.broadcast_active_deck_changed(request.app, slot.deck_id)` after the store and
