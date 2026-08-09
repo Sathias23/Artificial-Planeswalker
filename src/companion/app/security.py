@@ -201,10 +201,17 @@ def origin_is_allowed(origin: str | None, port: int | None) -> bool:
 
     Returns:
         ``True`` only for an exact match. A missing header rejects (Q4, Brad 2026-08-08): browsers
-        always send ``Origin`` on a WebSocket handshake, c5-8's real client sets it explicitly, and
-        the fail-closed shape is the one :func:`host_is_allowed` and :func:`agent_token_is_valid`
-        already share. A missing port rejects for the same reason it does there — an envelope that
-        cannot be evaluated is a reason to refuse.
+        always send ``Origin`` on a WebSocket handshake, and the fail-closed shape is the one
+        :func:`host_is_allowed` and :func:`agent_token_is_valid` already share. A missing port
+        rejects for the same reason it does there — an envelope that cannot be evaluated is a
+        reason to refuse.
+
+        **The prediction this paragraph used to make was kept, and measured** (c5-8, 2026-08-09).
+        It read "c5-8's real client sets it explicitly"; that client now exists —
+        ``tests/integration/companion/test_live_backend.py`` passes ``origin=`` to
+        ``websockets.connect``, which sends no ``Origin`` of its own because it is not a browsing
+        context. A falsification probe removed that argument and the real handshake came back
+        refused 403, so this rule is load-bearing over a socket rather than only in-process.
 
     Example:
         >>> origin_is_allowed("HTTP://LOCALHOST:8765", 8765)

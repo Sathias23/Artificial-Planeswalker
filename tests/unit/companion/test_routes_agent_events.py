@@ -19,7 +19,11 @@ epic AC asks for 413 on "any cap", and this story ruled a deviation rather than 
 pydantic error internals per route — see the story record. Both arms are proved here, side by side,
 so the deviation is visible rather than implied.
 
-The one real-socket proof is c5-8's. Nothing here is integration-marked.
+The one real-socket proof is c5-8's, and it shipped on 2026-08-09:
+``tests/integration/companion/test_live_backend.py`` drives this route over a real port with a real
+``Authorization: Bearer`` header from a real ``companion.json``, and walks the FR-12 restart case
+(stale token → 403 → re-read → retry → 200) that no in-process test can stage. Nothing here is
+integration-marked, and nothing here should become so.
 """
 
 import ast

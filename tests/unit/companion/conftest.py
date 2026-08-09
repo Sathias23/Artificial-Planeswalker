@@ -317,7 +317,10 @@ async def open_socket(app, *, ticket, path="/ws", origin=_OMIT, host=_OMIT):
 
     **Still not a real socket.** There is no server, no port and no TCP anywhere — this drives the
     same in-process ASGI callable ``drive_handshake`` does. AD-10 homes the one genuine
-    browser-to-backend proof on **c5-8**, and this file must not grow one.
+    end-to-end proof on **c5-8**, which shipped it at
+    ``tests/integration/companion/test_live_backend.py`` (2026-08-09) — and this file still must
+    not grow one. The rule reads the same after the story as before it: the one real socket lives
+    over there, deselected by ``-m "not integration"``, and everything here stays in-process.
 
     Args:
         app: A companion application whose lifespan is already running.
