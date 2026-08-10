@@ -518,10 +518,13 @@ describe('pin, release, and the one announcement (AC 19–AC 23)', () => {
     })
     expect(useInspectionStore.getState().pinnedId).toBeNull()
 
-    // THE HALF THIS STORY CANNOT TEST, DECLARED RATHER THAN FAKED (AC 37): UX-DR39 layers Esc —
-    // an open agent view closes first, then a pin. No overlay exists until c6-5, so there is
-    // nothing here to be layered against. The contract c6-5 relies on (it registers its own
-    // handler and calls `stopPropagation`) is written into CardDetail.tsx's header instead.
+    // THE HALF THIS SUITE STILL DOES NOT TEST, AND NO LONGER CANNOT (AC 37). UX-DR39 layers Esc
+    // — an open agent view closes first, then a pin — and this file said "no overlay exists
+    // until c6-5, so there is nothing here to be layered against" until c6-5 built one. The
+    // layering now has real coverage, deliberately NOT here: `AgentView.test.tsx` owns the phase
+    // mechanism and `App.test.tsx`'s c6-5 block owns the end-to-end keystroke, because both need
+    // the overlay mounted and this file renders `CardDetail` alone. What this suite still proves
+    // is its own half — the bubble listener releases the pin when nothing is above it.
   })
 
   it('lets the pin outlive the panel, and stops listening when it does (AC 5, Q6)', () => {

@@ -1543,6 +1543,32 @@ describe('the containers are a declared category with a posture of its own', () 
    * thought to ban is precisely the one that would get through.
    */
   const CONTAINERS: { file: string; imports: string[] }[] = [
+    // c6-5's agent view — the app's FIRST modal, first focus trap and first `role="dialog"`,
+    // and a container for three reasons at once, any ONE of which would fail `posture.test.ts`
+    // next door: it holds hooks (`useId`, `useState`, three `useEffect`s and three refs), it
+    // attaches handlers, and it registers a listener on `document`. It composes NO primitive —
+    // deliberately, and the temptation is real: `Panel`'s header is structurally identical to
+    // this shell's, but `Panel` is presentation-only by guard (a `<section aria-label>` with no
+    // `role`, no `aria-modal`, no refs and no hooks) and this needs all four. The visual kinship
+    // comes from sharing tokens, not markup. `../focusHome` is the third caller of the hand-off
+    // c4-11 extracted, and it reaches NO state module at all: the store is `App.tsx`'s to read,
+    // and the three dismissal gestures call an `onClose` prop rather than a verb — which is what
+    // keeps this shell content-agnostic enough for c6-7 to fill and c6-8 to extend.
+    {
+      file: 'src/containers/AgentView/AgentView.tsx',
+      imports: ['../focusHome', './AgentView.css', './copy', 'react'],
+    },
+    // c6-5's copy module — the TENTH under `src/containers/` and the thirteenth in the app,
+    // both counted from `git ls-files` rather than from the entry above (the running "Nth in the
+    // app" ordinals in this list disagree with each other across c4-8, c4-10 and c4-12, and
+    // adding a fourth guess would deepen that rather than settle it — noted for review, and
+    // deliberately not repaired here, since renumbering five other stories' comments is not this
+    // story's diff). Two chrome strings, the "AGENT VIEW" kicker and
+    // the "Close · esc" pill label, both transcribed from DESIGN.md's shell row. `imports: []`
+    // for `CardDetail/copy.ts`'s measured reason: `tests/` is the `nodenext` project and `src/`
+    // the `bundler` one, so a `ui/tests` file may import an app module only if that module has no
+    // relative imports of its own — and `App.test.tsx` imports this one.
+    { file: 'src/containers/AgentView/copy.ts', imports: [] },
     // c4-4's grid. It holds NO state — a container may, it need not — and it is here because it
     // composes a container and reads the derivation in `src/state/`, either of which
     // `posture.test.ts` would fail under `src/components/`. `../../state/deckGroups` is a
@@ -2035,7 +2061,7 @@ describe('the containers are a declared category with a posture of its own', () 
     // beside the things they feed (the words in `copy.ts` because they are copy; the dot classes
     // in the component because they are CSS identity). A third module here would be the same
     // decision written twice.
-    expect(CONTAINERS).toHaveLength(27)
+    expect(CONTAINERS).toHaveLength(29)
     for (const { file } of CONTAINERS) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }

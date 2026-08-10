@@ -23,9 +23,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
 import { sentenceOf } from './components/Footer/copy'
+import { CLOSE_PILL_LABEL } from './containers/AgentView/copy'
 import { resetDeckMemory } from './containers/CardDetail/deckMemory'
 import { EMPTY_DECK_LINE } from './containers/CardGrid/copy'
 import { CONNECTION_WORDS, pillText } from './containers/ConnectionPill/copy'
+import { closeAgentView, openAgentView, resetAgentView, useAgentViewStore } from './state/agentView'
 import { MAX_ATTEMPTS_PER_CARD, hydrateCard, resetCardCache, useCardStore } from './state/cards'
 import { resetDeckState, useDeckStore } from './state/deck'
 import { resetFormatCheckState } from './state/formatCheck'
@@ -3027,5 +3029,152 @@ describe('the glass follows the agent’s active-deck choice (c6-3, AC 2, AC 3, 
     expect(useInspectionStore.getState().pinnedId).toBeNull()
     expect(unpinControl()).toBeNull()
     expect(detailName()).toBe('Arabella, Abandoned Doll')
+  })
+})
+
+// =====================================================================================
+// c6-5 — THE AGENT VIEW REACHES THE OVERLAY SLOT, AND ESC LAYERS OVER THE PIN
+// =====================================================================================
+
+describe('the agent view fills the shell’s overlay slot (c6-5, AC 4, AC 5, AC 6)', () => {
+  const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
+  const overlay = () => document.querySelector('.app-shell-overlay')
+  const tiles = () => [...document.querySelectorAll<HTMLElement>('.card-tile')]
+  const unpinControl = () => document.querySelector('.card-detail-unpin')
+  const SUGGESTIONS = { title: 'Suggestions', count: 2 }
+
+  /** Esc, delivered where a browser delivers it: at the focused element, bubbling. */
+  const escape = () =>
+    act(() => {
+      document.activeElement!.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      )
+    })
+
+  const bootedDeck = async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    answering(decks(ATRAXA_NAME))
+    render(<App />)
+    await settle()
+    await connect()
+  }
+
+  beforeEach(() => {
+    // ⚠️ THE FILE'S OWN `beforeEach` COVERS NONE OF THESE THREE, and all three are module-scope
+    // state a previous test leaves behind. c6-3 nested the first two for its own reasons; the
+    // agent-view slice joins them for a sharper one — its whole contract is that closing a view
+    // does NOT clear it, so a view left retained by one test is exactly the premise the next one
+    // is trying to establish for itself.
+    resetInspection()
+    resetDeckMemory()
+    resetAgentView()
+  })
+
+  it('renders NOTHING in the slot while the store is closed (AC 9’s click-swallower)', async () => {
+    // `App` passes an ABSENT `overlay`, so `filled()` refuses to mount the wrapper at all. Not a
+    // hidden element, not an empty one: no element. A full-window fixed layer containing nothing
+    // is what `AppShell.tsx:134-139` warns presents as "the app stopped responding to clicks".
+    await bootedDeck()
+
+    expect(overlay()).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('mounts the view when the store opens, and unmounts it when the store closes', async () => {
+    await bootedDeck()
+
+    act(() => openAgentView(SUGGESTIONS))
+    expect(overlay()).not.toBeNull()
+    expect(screen.getByRole('dialog')).toHaveAccessibleName(SUGGESTIONS.title)
+
+    act(() => closeAgentView())
+    expect(overlay()).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('re-opens the SAME view after dismissal, with no second push (AC 5, UX-DR34)', async () => {
+    // UX-DR34 end to end: the content outlives the dismissal, so the view is re-openable for the
+    // rest of the session. c6-8's nav pills are what will re-open it from the glass.
+    await bootedDeck()
+
+    act(() => openAgentView(SUGGESTIONS))
+    act(() => closeAgentView())
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    const retained = useAgentViewStore.getState().content
+    expect(retained).toEqual(SUGGESTIONS)
+
+    act(() => openAgentView(retained!))
+    expect(screen.getByRole('dialog')).toHaveAccessibleName(SUGGESTIONS.title)
+  })
+
+  it('closes on the close pill and hands focus back to the tile that opened it (AC 4)', async () => {
+    await bootedDeck()
+
+    // A real element of the real app holds focus when the view opens — not a fixture button.
+    const tile = tiles()[1]
+    act(() => tile.focus())
+    act(() => openAgentView(SUGGESTIONS))
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { level: 2, name: SUGGESTIONS.title }),
+    )
+
+    act(() => {
+      screen.getByRole('button', { name: CLOSE_PILL_LABEL }).click()
+    })
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(tile)
+    expect(document.activeElement).not.toBe(document.body)
+  })
+
+  // ==================== THE TEST THREE SHIPPED COMMENTS HAVE PROMISED SINCE c4-5 ========
+  it('ESC CLOSES THE VIEW AND LEAVES THE PIN (UX-DR39, EXPERIENCE.md:141, Flow 1 :188)', async () => {
+    // `CardDetail.tsx:99-101`, `inspection.ts:65-67` and `CardDetail.test.tsx:521-524` all said
+    // *"no overlay exists yet, so this story cannot test the layering"*. This is that test, over
+    // BOTH real document listeners at once: CardDetail's bubble-phase pin release and the agent
+    // view's capture-phase dismissal, in one app, on one keystroke.
+    await bootedDeck()
+
+    // A REAL pin, set by the real gesture (a click on a tile), not by a `setState`.
+    act(() => {
+      tiles()[1].click()
+    })
+    await settle()
+    const pinned = useInspectionStore.getState().pinnedId
+    expect(pinned).not.toBeNull()
+    expect(unpinControl()).not.toBeNull()
+
+    act(() => openAgentView(SUGGESTIONS))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    escape()
+
+    expect(screen.queryByRole('dialog'), 'the topmost thing closed').toBeNull()
+    expect(
+      useInspectionStore.getState().pinnedId,
+      'the pin survived the same Esc — UX-DR39 closes the TOPMOST thing, one per keystroke',
+    ).toBe(pinned)
+    expect(unpinControl()).not.toBeNull()
+  })
+
+  it('releases the pin on the NEXT Esc, once the view is gone (non-vacuity)', async () => {
+    // Without this, the assertion above would pass just as well against a pin that Esc could
+    // never release at all — and the layering claim would be about a dead listener. Two
+    // keystrokes, two dismissals, in the order UX-DR39 specifies.
+    await bootedDeck()
+
+    act(() => {
+      tiles()[1].click()
+    })
+    await settle()
+    act(() => openAgentView(SUGGESTIONS))
+
+    escape()
+    expect(useInspectionStore.getState().pinnedId).not.toBeNull()
+
+    escape()
+    expect(useInspectionStore.getState().pinnedId).toBeNull()
+    expect(unpinControl()).toBeNull()
   })
 })

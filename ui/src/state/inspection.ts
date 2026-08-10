@@ -62,9 +62,13 @@
  * and leaves the pin alone even when focus sits outside the overlay's subtree. (An
  * element-scoped handler could not hold this contract: a `keydown` targeting `<body>` never
  * passes through the overlay, so nothing scoped to it could pre-empt the document listener —
- * found at review, 2026-08-05.) No overlay exists yet, so *this story cannot test the layering*
- * — the untestable half is stated plainly here rather than covered by an assertion that would
- * pass vacuously.
+ * found at review, 2026-08-05.)
+ *
+ * **c6-5 BUILT THE OVERLAY, AND THE LAYERING IS COVERED.** This read *"no overlay exists yet, so
+ * this story cannot test the layering"* until then. `AgentView.tsx` holds the capture half, and
+ * `App.test.tsx`'s c6-5 block asserts one Esc closing a view while a real pin survives it —
+ * over both live document listeners, in one app. The contract sentence above is unchanged;
+ * what changed is that it is now enforced rather than only declared.
  *
  * ================= WHAT THIS MODULE DELIBERATELY DOES NOT DO ===========================
  *

@@ -5,6 +5,7 @@ import { AppShell } from './components/AppShell/AppShell'
 import { DeckBadges } from './components/DeckBadges/DeckBadges'
 import { Footer } from './components/Footer/Footer'
 import { StatePanel } from './components/StatePanel/StatePanel'
+import { AgentView } from './containers/AgentView/AgentView'
 import { CardDetail } from './containers/CardDetail/CardDetail'
 import { CardGrid } from './containers/CardGrid/CardGrid'
 import { ColourDistribution } from './containers/ColourDistribution/ColourDistribution'
@@ -13,6 +14,7 @@ import { DeckList } from './containers/DeckList/DeckList'
 import { FormatCheck } from './containers/FormatCheck/FormatCheck'
 import { ManaCurve } from './containers/ManaCurve/ManaCurve'
 import { SkipLink } from './containers/SkipLink/SkipLink'
+import { closeAgentView, useOpenAgentView } from './state/agentView'
 import { hydrateDeckCards } from './state/cards'
 import { useAgentConnection } from './state/connection'
 import { surfaceOf, useDeckState } from './state/deck'
@@ -158,13 +160,22 @@ import { useSystemState } from './state/systemState'
  * landmark by role and by text, and `ui/README.md` records the rule where the next surface's
  * author will read it.
  *
- * That holds through Epic 6 without amendment: c6-5's agent view is an OVERLAY rendered inside
- * the shell (`AppShell`'s `overlay` slot), not a route that replaces it, so the footer survives
- * it by construction rather than by anyone remembering.
+ * That holds through Epic 6 without amendment, and c6-5 is where it stopped being a prediction:
+ * the agent view is an OVERLAY rendered inside the shell (`AppShell`'s `overlay` slot, wired at
+ * the foot of this file), not a route that replaces it, so the footer survives it by
+ * construction rather than by anyone remembering.
  */
 export default function App() {
   const system = useSystemState()
   const surface = surfaceOf(useDeckState(), system)
+  // THE AGENT VIEW (c6-5). A CONTENT object or `null`, never a boolean: the store's own
+  // selector resolves "is one showing, and what is it" once, so this file cannot disagree with
+  // it (`agentView.ts`'s `openViewOf`). Nothing WRITES that store in production yet — c6-6 is
+  // the story that turns a `suggestions` push into an open view — so the running app is
+  // unchanged by this story and the slot is exercised by tests alone. Wiring it here rather
+  // than in c6-6 is Brad's Q1 ruling (2026-08-10): it is what lets the Esc-layering contract
+  // that `CardDetail.tsx:89-101` has declared untestable since c4-5 finally be tested.
+  const agentView = useOpenAgentView()
   // THE SOCKET, MOUNTED ONCE (c5-6, AC 1). Third in declaration order, behind the poll and the
   // boot, and returning nothing: what it produces is `system.connection`, which `surfaceOf` two
   // lines up already reads. `App` is its ONE consumer for the reason `useSystemState` and
@@ -579,6 +590,25 @@ export default function App() {
          have handed it the one answer it must not use. */
       connectionPill={<ConnectionPill />}
       footer={<Footer />}
+      /* ABSENT WHEN CLOSED, AND THAT IS AC 9 RATHER THAN A STYLE CHOICE.
+         `AppShell.tsx:134-139` warns that a slot filled with an always-mounted transparent
+         element is a click-swallower presenting as *"the app stopped responding to clicks"*,
+         and `filled()` is what gates the wrapper — so this passes `undefined`, not `false`,
+         not `null` and not an element that returns nothing.
+
+         `AppShell.tsx` is NOT edited. The TENTH application of c2-9's displacement ruling,
+         and the last slot the shell had left open: `AppShell.test.tsx` still asserts the
+         overlay's conditional behaviour against the component's own props, and the only
+         remaining placeholder is `nav`'s, which stays on the glass until c6-8.
+
+         The three dismissal gestures inside the view all call `closeAgentView`, the verb that
+         writes `status` and provably not `content` — so closing here is what UX-DR34 means by
+         *"the view remains re-openable for the rest of the session"* (AC 5). */
+      overlay={
+        agentView === null ? undefined : (
+          <AgentView title={agentView.title} count={agentView.count} onClose={closeAgentView} />
+        )
+      }
     />
   )
 }

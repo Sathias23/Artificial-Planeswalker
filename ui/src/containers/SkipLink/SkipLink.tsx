@@ -83,9 +83,10 @@ import { SKIP_LINK_LABEL } from './copy'
  * UX-DR45 authorises. The claim this component actually makes is the one above: it announces
  * nothing.)
  *
- * **No key listener of any kind.** Esc is `CardDetail`'s single document-BUBBLE listener, and the
- * document CAPTURE phase stays reserved for c6-5's agent view (`CardDetail.tsx:88-101`). This
- * component adds no second document-level listener in either phase.
+ * **No key listener of any kind.** Esc is `CardDetail`'s document-BUBBLE listener and the agent
+ * view's document-CAPTURE one — the two the keyboard floor admits since c6-5 filled the
+ * reservation this line used to describe (`CardDetail.tsx:88-101`). This component adds no third
+ * document-level listener in either phase.
  *
  * **No store read, no derivation.** Whether it renders at all is `App.tsx`'s call, off the one
  * `surfaceOf` answer — `deck.ts:388-390` warns explicitly against a third re-derivation.
