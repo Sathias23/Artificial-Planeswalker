@@ -2494,6 +2494,22 @@ describe('the reduced-motion mechanism (AC 11, AC 13)', () => {
       // cover the front at every setting. See tokens.css for the two `visibility` rules that
       // replace it.
     ).toEqual([
+      //
+      // MOVED BY c6-5 (2026-08-10), AND THE FIFTH ENTRY IS EPIC 6's FIRST. The agent view enters
+      // as a fade plus an 8px rise (`DESIGN.md:471`), and only the rise appears here: the fade is
+      // expressed entirely through `--motion-bloom`, so zeroing that token already makes it
+      // instant and it is MECHANICAL in c4-4's sense. The rise is a transform, which a zeroed
+      // duration makes instant rather than absent, so it earns a registration in tokens.css and
+      // therefore an entry here.
+      //
+      // The selector is the STATE ATTRIBUTE rather than `.agent-view`, and that is this guard's
+      // own reader deciding the implementation rather than the other way round: a `@keyframes`
+      // bloom would present to `blocksIn` as two rules named `from` and `to`, and the
+      // registration that would then be demanded — `from { transform: none !important }` — is
+      // ignored inside keyframes by specification, so the gate would have forced an override
+      // that parses cleanly and does nothing. A transition out of `[data-entering='true']` is
+      // the shape that can be honestly registered. Both files record the reasoning at the rule.
+      ".agent-view[data-entering='true'] :: transform",
       '.card-tile-frame:hover :: transform',
       // `:has(:focus-visible)`, frame-wide, since review 2026-08-06: the first spelling read
       // `:has(.card-tile:focus-visible)`, which dropped the pop the moment a keyboard reader

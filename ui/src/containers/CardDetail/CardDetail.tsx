@@ -96,9 +96,16 @@ import { ORACLE_SCROLLER_LABEL, PANEL_TITLE, UNPIN_LABEL, pinnedAnnouncement } f
  * on `<body>` or a grid tile rather than inside the overlay's subtree — which is exactly where
  * an element-scoped handler would fail: a `keydown` targeting `<body>` never passes through the
  * overlay, so a `stopPropagation()` on the overlay's own root could not pre-empt this listener
- * (found at review, 2026-08-05 — the first written form of this contract had that hole). No
- * overlay exists yet, so **this story cannot test the layering** — that half is declared rather
- * than covered.
+ * (found at review, 2026-08-05 — the first written form of this contract had that hole).
+ *
+ * **THE OVERLAY LANDED AT c6-5 AND THE LAYERING IS NOW TESTED.** This read *"no overlay exists
+ * yet, so this story cannot test the layering — that half is declared rather than covered"* for
+ * five stories. `AgentView.tsx` registers the capture listener the contract above describes, and
+ * the layering is asserted in two places: `AgentView.test.tsx` proves the phase mechanism
+ * against a stand-in bubble listener, and `App.test.tsx`'s c6-5 block proves the real thing —
+ * one Esc, a real pin set by a real click, both document listeners live, the view closing and
+ * the pin surviving. Nothing about the contract itself changed; only the sentence about what
+ * could be covered.
  *
  * ================= WHAT THIS PANEL DELIBERATELY DOES NOT DO ============================
  *
@@ -414,7 +421,10 @@ export function CardDetail({ boards }: CardDetailProps) {
        and a ring drawn on a wrapper with no radius would be a square outline around a
        `--radius-lg` panel. So the wrapper matches the panel's own radius and the ring is a
        box-shadow on it — see CardDetailChrome.css. */
-    /* `id` — THE SKIP LINK'S TARGET HANDLE (c4-11, AC 1, AC 5). The only DOM id in `ui/src`, and
+    /* `id` — THE SKIP LINK'S TARGET HANDLE (c4-11, AC 1, AC 5). The only AUTHORED DOM id in
+       `ui/src` (c6-5's agent view mints its heading's from `useId()`, which is the distinction
+       `focusHome.ts:49-59` draws: an id two modules in different directories must agree on is
+       written down, an id minted and consumed inside one tree is not), and
        it is on the FRAME rather than the `<h2>` because `Panel` is a primitive a consumer may not
        restyle and may not call a hook, so it cannot produce an id from `useId` and takes no prop
        for one. The frame is the outermost thing this component owns, so the link resolves

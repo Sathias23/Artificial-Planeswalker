@@ -105,6 +105,26 @@ const STORES: { store: string; owner: string; why: string }[] = [
     owner: 'src/state/formatCheck.ts',
     why: "the active deck's format check — the SIXTH slice, and the first since c4-2 whose input is the wire again (story c4-10, Q5). It is a store BESIDE the deck rather than a field on it, and the reason is the same one that made `DeckState` a union under a key: `boards`'s reference identity IS the deck's identity, read that way by `deckMemory.ts` and by `CardDetail`'s effect, so a report landing inside the `'deck'` arm would read as a deck REPLACEMENT and release the user's pin. Putting the request in `createDeckBoot` was rejected for a second reason as well — it would make one panel's data a first-paint dependency of the whole deck view, for a duplicated `get_deck_with_cards` on the backend. `loadFormatCheck` is the one writer and `clearFormatCheck` is its production twin (NOT a test hook, unlike `resetDeckState`): `App.tsx` calls it when there is no deck, which is what stops a legality verdict outliving the deck it describes. Staleness is a generation counter rather than a `live` boolean, for `createDeckBoot`'s argument verbatim — a deck switched mid-flight must not let the old deck's report land on the new deck's panel. The container that renders it calls no `setState` and reaches the network nowhere; `App.tsx` decides WHEN to read and this module is what reads.",
   },
+  {
+    store: 'useAgentViewStore',
+    owner: 'src/state/agentView.ts',
+    why:
+      'whether an agent view is on the glass and what it is showing — the SEVENTH slice, ' +
+      "and the first whose TWO fields sit on opposite sides of c4-5's narrowing (story " +
+      'c6-5, AC 5, AC 6). The content is server-derived (an agent view exists because the ' +
+      'agent pushed one, and from c6-6 the writer is a WebSocket message — the spine ' +
+      "sentence's own second input, nothing narrowed); the open/closed status is a person, " +
+      'because Esc, the close pill and a scrim click are three gestures and no request can ' +
+      'answer whether somebody is still reading. They live in ONE slice because AC 5 is a ' +
+      'statement about their relationship — *"dismissal never clears content"* (UX-DR34) — ' +
+      'which split across two stores would have no address. `openAgentView` and ' +
+      '`closeAgentView` are the writers and `resetAgentView` is their test-only twin, the ' +
+      '`resetFaces` precedent; it is also the ONLY function that ever writes `content` back ' +
+      'to `null`, which is what keeps UX-DR34 true of every production path. `content` is a ' +
+      "SCALAR rather than a stack, so UX-DR38's permanently-one-level overlay is " +
+      'unrepresentable-by-type rather than a rule anybody has to obey. The container that ' +
+      'renders it touches no `setState`, which is what the scan below actually asserts.',
+  },
 ]
 
 /** Whether one module's source writes the named store, by any spelling. See the header. */

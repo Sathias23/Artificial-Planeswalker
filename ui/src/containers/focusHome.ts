@@ -43,11 +43,26 @@
  * without showing it would satisfy WCAG 2.4.1 and fail the reader.
  *
  * **No focus trap, no return-focus contract.** `CardDetail` *"neither stacks nor traps"*
- * (UX-DR38); this moves focus once and forgets.
+ * (UX-DR38); this moves focus once and forgets. c6-5's agent view is the app's only modal and
+ * builds both of those FOR ITSELF, in `AgentView.tsx`, without changing anything here — it
+ * calls this helper for the two hand-offs that are hand-offs (focus to its heading on open, and
+ * the `<h1>` fallback when the element it remembered has left the document) and keeps its trap
+ * and its restore ref private. The ordinary restore is a plain `.focus()` rather than this
+ * function, deliberately: the remembered element HAD focus, so it is already focusable, and
+ * writing `tabIndex = -1` onto a native control would evict a real Tab stop until its next blur.
  */
 
 /**
- * The `id` on `CardDetail`'s frame — the skip link's target, and the only DOM id in `ui/src`.
+ * The `id` on `CardDetail`'s frame — the skip link's target, and the only AUTHORED DOM id in
+ * `ui/src`.
+ *
+ * *"The only DOM id"* until c6-5, which gives the agent view's `<h2>` one for `aria-labelledby`
+ * — from `useId()` rather than from a constant, which is the distinction this line now draws
+ * rather than a hole in it. The two cases are genuinely different: that id is minted and
+ * consumed inside ONE element tree and cannot collide with anything, while this one is a
+ * handle two modules in different directories have to agree on, which is exactly why it is
+ * written down. A second hand-written id would be a second thing to keep unique; a `useId` is
+ * not.
  *
  * A shared constant rather than two string literals, because the element that CARRIES it and the
  * code that LOOKS IT UP live in different directories, and a typo in either would fail silently:

@@ -1,5 +1,44 @@
 # Deferred Work
 
+## Deferred from: c6-5-agent-view-shell-with-focus-management-and-dismissal (2026-08-10)
+
+> Observations recorded during implementation of the agent view shell, before the three-layer
+> review. Neither is caused by this story's code; both were found by it.
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+  summary: "**A SECOND, DISTINCT WINDOWS TEST FLAKE: an intermittent vitest worker-fork crash with no test attached.** Twice in roughly a dozen full `npm test` runs, the suite ended `Unhandled Error — [vitest-pool]: Worker forks emitted error / Worker exited unexpectedly`, with one test FILE silently dropped (`70 passed (71)`, `1929 passed (1934)` — five tests never run and never reported as failures). It is NOT the known cold-start `lint-gates.test.ts` timeout (Landmine 12, recorded at c6-2, c6-3 and again at this story's baseline): that one reports a named failing test with a ~125 s setup, while this reports no test at all. It did not reproduce in seven consecutive runs afterwards, and every clean run collected exactly 1,934. **Why it matters more than its frequency suggests: the failure mode is a suite that silently gets SMALLER.** A run that drops a file exits non-zero today, but the count is what a reader scores, and 1,929 reads as green to anyone not comparing it against 1,934 — which is precisely why this repo validates the collected count before scoring a run. Unowned; recorded so the next person to see it has the shape and does not re-derive it."
+  evidence: 'Observed 2026-08-10 during c6-5 implementation: once on the planted-red run (alongside its 5 genuine failures) and once on a clean gate run at 19:11:54. Seven consecutive full runs immediately after were 1,934/1,934 with no error. Windows 11, vitest 4.1.10, forks pool.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+  summary: "**The running \"Nth copy module in the app\" ordinals in `shell.test.ts`'s CONTAINERS list contradict each other, and have since Epic 4.** c4-8's entry says its copy module is \"the tenth in the app\", c4-10's says \"the twelfth\", c4-11's also says \"the twelfth\", and c4-12's says \"the SIXTH in this tree\" where c4-10's already claimed sixth. They are prose ordinals with no gate behind them, so nothing has ever objected. c6-5 declined to add a fifth guess: its entry states the two counts that are checkable from `git ls-files` (tenth under `src/containers/`, thirteenth in the app) and names the inconsistency in place. Repairing five other stories' comments was out of this story's diff. **Home: unowned** — a one-line sweep for whoever next adds a copy module, or a decision to drop the app-wide ordinal entirely, which is what makes the tree-local one honest."
+  evidence: '`ui/tests/shell.test.ts` — CONTAINERS entries for `CardGrid/copy.ts`, `ManaCurve/copy.ts`, `FormatCheck/copy.ts`, `SkipLink/copy.ts`. `git ls-files "ui/src/**/copy.ts"` returns 13 modules, 10 of them under `src/containers/`.'
+
+## Deferred from: code review of c6-5-agent-view-shell-with-focus-management-and-dismissal (2026-08-10)
+
+> Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
+> `feat/companion-c6-5-agent-view-shell` diff. Entries below are real but not caused by this
+> change's reachable behaviour, or are pre-existing drift this diff only inherits.
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+  summary: "`FOCUSABLE_SELECTOR` (the focus trap's boundary query) doesn't exclude natively-focusable elements carrying `tabindex=\"-1\"` — only the catch-all `[tabindex]` branch excludes programmatically-detached elements; `button:not([disabled])` etc. admit a roving-tabindex control unconditionally. Unreachable today (no such content exists inside the shell — it renders an arbitrary fixture child in tests, nothing production-real yet), but c6-7's suggestion rows are a plausible place for a roving-tabindex composite control to appear, and if one does, the trap's wrap logic would silently treat it as a real boundary stop the browser's own Tab sequence skips."
+  evidence: 'Blind Hunter; `ui/src/containers/AgentView/AgentView.tsx:85-92`.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+  summary: "The document-capture Esc listener's `event.stopPropagation()` suppresses Escape for React's own synthetic event delegation app-wide while a view is open, not only for `CardDetail`'s document-bubble listener — React 17+ delegates its own listeners (including any `onKeyDown`/`onKeyDownCapture` prop anywhere in the tree) at the root DOM container, which sits below `document` in the capture path, so a capture-phase `stopPropagation()` at `document` prevents the event from ever reaching it. No `onKeyDown`/`onKeyDownCapture` prop exists anywhere in `ui/src` today, so there is zero live impact, but future content mounted inside an open agent view (c6-7 rows, c6-8 pills) should not add an Escape-consuming `onKeyDown` and expect it to fire while a view is open."
+  evidence: 'Blind Hunter; `ui/src/containers/AgentView/AgentView.tsx:237-252`; confirmed no `onKeyDown`/`onKeyDownCapture` usage exists elsewhere in `ui/src` via repo-wide grep.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+  summary: "`AgentViewContent.title` (the store's content shape) has no non-empty guard. An empty-string title would render an `<h2>` with no visible text, and since `aria-labelledby` points at that heading, the dialog's accessible name would resolve to nothing — failing the basic requirement that every `role=\"dialog\"` have a discernible name. Not reachable until c6-6 wires a real `suggestions` push into `openAgentView`; c6-6 should validate or fall back to a non-empty title at the point content is constructed."
+  evidence: 'Blind Hunter; `ui/src/state/agentView.ts:62-71`.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+  summary: "Restates and confirms the ordinal-drift item already logged in this file's `c6-5-agent-view-shell...` dev-time section above (c4-8/c4-10/c4-12's \"Nth copy module\" comments disagreeing) — surfaced independently by the code review's Blind Hunter layer as well. No new information; cross-referenced here so the review record doesn't read as having missed it."
+  evidence: 'Blind Hunter; `ui/tests/shell.test.ts:1562`. See the dev-time entry above for the full history and the four disagreeing sites (c4-8, c4-10, c4-11, c4-12).'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+  summary: "Residual focus-trap-escape gap after the scrim `preventDefault()` patch (Brad's ruling, 2026-08-10, on the review's trap-escape decision item): non-interactive content INSIDE the panel — the kicker text, the summary count, any body prose — still has no `mousedown` guard, so clicking it blurs focus to `<body>` exactly as the scrim used to, and a forward Tab can still fall through the trap's forward-Tab branch (`active === last` only, no `!inTrap` catch-all) into native tab order. The heavier fix (a document-level `focusin` recovery listener, WAI-ARIA APG pattern) was declined for this story in favour of the minimal scrim-only patch."
+  evidence: 'Edge Case Hunter + Blind Hunter (independently, merged in review); `ui/src/containers/AgentView/AgentView.tsx:294-353`.'
+
 ## Deferred from: code review of c6-4-companion-show-suggestions-the-agents-first-push (2026-08-10)
 
 > Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
@@ -1469,6 +1508,13 @@ the gate-output rule rather than left as "we meant to".
   stated in the guard file's own header. When reviewing c6-5's agent view in particular, check
   the composed result rather than assuming the confinement guard did. (Severity: Low — the
   static half covers the shape every story is actually likely to write.)
+  **STILL OPEN AT c6-5 (2026-08-10) — this is review guidance, not a task, and c6-5 is the story
+  it was aimed at.** The agent view shipped declaring no `position: fixed` and no `z-index` at
+  all (the slot owns both; `AgentView.css`'s header records the reading), so the confinement
+  guard has nothing to miss on the value level — but that is exactly the claim this entry says a
+  static reader cannot settle, and the composed result has been seen by NO human eye: Block J
+  (eyes-on-pixels) remains ruled NOT RUN until the C6 manual checklist. Carried into c6-5's PR
+  description rather than closed.
 
 - **`z-index: 20` is a geometry literal that the AC 18 documentation guard does not cover.**
   The guard is derived from the code — every `\d+px` literal in every tracked stylesheet under
@@ -4771,6 +4817,20 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   `tests/keyboard-floor.test.ts`, which asserts the listener SET (one, named by file and event) and
   the PHASE (no `true` / `capture: true` argument), each with a non-vacuity anchor. **Recorded
   rather than quietly fixed**, per the epic's standing rule. (Severity: Medium — now closed.)
+  **FULFILLED AT c6-5 (2026-08-10), AND THE GUARD FIRED FOR REAL.** The reservation this entry
+  describes now holds a real listener: `AgentView.tsx` registers the capture-phase Esc that closes
+  the view and calls `stopPropagation()`. The guard was rewritten from "no capture anywhere" into
+  an ENUMERATED two-row table — each listener named by file and event WITH the phase UX-DR39 gives
+  it — which is strictly stronger than what it replaced, because it now also catches the agent
+  view's own listener being demoted to bubble or CardDetail's being promoted to capture. Its
+  non-vacuity anchor gained a third assertion: the capture listener's source must contain
+  `stopPropagation()`. **The firing proof is this story's planted red**: removing that one call —
+  the exact regression this entry was written about — turned five tests red across three files
+  (the two layering tests in `AgentView.test.tsx`, the end-to-end pair in `App.test.tsx`, and this
+  guard's own non-vacuity anchor), with the collected count validated at 1,934 before and after.
+  Note for the record that the story predicted this guard would stay GREEN under the plant, on the
+  grounds that it reads source for a listener's existence rather than its body; the added
+  assertion is why it did not.
 
 - **`tests/keyboard-floor.test.ts` cannot see specificity, and says so.** It asks whether a
   `:focus-visible` rule EXISTS for a focusable element's class, not whether a later selector

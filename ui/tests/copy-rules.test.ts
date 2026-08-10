@@ -333,6 +333,24 @@ const COPY_MODULES: Map<string, string> = new Map([
       'string in this app most likely to reach for an apology. The DECK NAME is data — it arrives ' +
       'from the wire through the deck slice and is deliberately not in this module.',
   ],
+  [
+    'src/containers/AgentView/copy.ts',
+    'the agent view shell’s two chrome strings (story c6-5): the "AGENT VIEW" accent KICKER ' +
+      'and the "Close · esc" PILL LABEL. Both are transcribed from DESIGN.md rather than ' +
+      'authored — the shell’s own component row (:471) names the kicker and the pill in ' +
+      'those words — so this module quotes an artefact the way the state-panel copy quotes ' +
+      'EXPERIENCE.md, and the pin that holds it is AgentView.test.tsx asserting the exact ' +
+      'bytes rather than a second verbatim gate: DESIGN.md carries these inside a component ' +
+      'anatomy row rather than in a copy table, so there is no artefact ROW to join against ' +
+      'the way tests/copy.test.ts joins the six state-panel bodies. The pill label is the ' +
+      'app’s only accessible name containing a KEY name, and that is UX-DR23 asking the ' +
+      'shell to teach its Esc dismissal rather than leave it to be discovered. The separator ' +
+      'is U+00B7 MIDDLE DOT with spaces around it, asserted by codepoint, because "looks ' +
+      'like a dot" is exactly the class of difference an eye scanning a diff waves through. ' +
+      'The view’s TITLE and its summary COUNT are DATA — they arrive as props from the ' +
+      'store, and from c6-6 from a pushed envelope — and are deliberately not in this ' +
+      'module.',
+  ],
 ])
 
 /**
