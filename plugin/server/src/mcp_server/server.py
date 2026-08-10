@@ -41,6 +41,7 @@ from typing import Literal
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.companion.contracts import SuggestionsPayload
 from src.data.database import create_engine, create_session_factory
 from src.mcp_server.tools.assess_deck_power import AssessDeckPowerResult
 from src.mcp_server.tools.assess_deck_power import (
@@ -51,8 +52,9 @@ from src.mcp_server.tools.build_search_index import build_search_index as _build
 from src.mcp_server.tools.card_lookup import CardLookupResult, lookup_card
 from src.mcp_server.tools.card_search import CardSearchResult
 from src.mcp_server.tools.card_search import search_cards as _search_cards_helper
-from src.mcp_server.tools.companion import SetActiveDeckResult
+from src.mcp_server.tools.companion import SetActiveDeckResult, ShowSuggestionsResult
 from src.mcp_server.tools.companion import set_active_deck as _set_active_deck_helper
+from src.mcp_server.tools.companion import show_suggestions as _show_suggestions_helper
 from src.mcp_server.tools.compare_deck_power import CompareDeckPowerResult
 from src.mcp_server.tools.compare_deck_power import (
     compare_deck_power as _compare_deck_power_helper,
@@ -439,6 +441,54 @@ def build_server(
         """
         async with session_factory() as session:
             return await _set_active_deck_helper(session, deck_id=deck_id)
+
+    @mcp.tool()
+    async def companion_show_suggestions(payload: SuggestionsPayload) -> ShowSuggestionsResult:
+        """Show a list of suggested cards in the companion app's live browser view.
+
+        Use this when you have card suggestions for the user — cards to add,
+        consider, or look at — so they can see the actual cards instead of
+        reading a list of names. Send the suggestions here **and** give your
+        normal answer in the conversation as you always would; this adds a
+        visual channel, it does not replace the reply.
+
+        Name each card by its Scryfall printing id, which ``lookup_card_by_name``
+        or any of this server's search tools returns as the card's ``id``. A
+        card name in ``card_id`` will not render. An empty ``items`` list is a
+        legitimate push meaning "I looked and found nothing" — send it rather
+        than skipping the call.
+
+        The companion app has to be running; if it is not, this reports that,
+        nothing is sent, and your written answer still stands on its own.
+        Stateless and cumulative in nothing — each call carries its whole
+        payload, and the companion shows what the latest call sent.
+
+        Args:
+            payload: The suggestions to display. ``payload.items`` is a list of
+                at most 60 suggestions, shown in the order you send them, each
+                with ``card_id`` (the Scryfall printing id, required),
+                ``reason`` (one short line saying why, required, up to 200
+                characters), ``category`` (an optional short badge such as
+                "Curve" or "Removal" — a label on the row, not a heading that
+                groups anything, up to 80 characters), and ``confidence``
+                (optional, one of ``low``, ``medium``, ``high``).
+                ``payload.title`` is an optional header for the list, up to 80
+                characters; omit it to let the companion use its own.
+
+        Returns:
+            A result whose ``status`` is ``displayed`` (delivered to at least
+            one connected browser tab now — ``clients`` counts how many;
+            whether that tab currently renders suggestions on screen is its
+            own concern, not this tool's), ``no_clients_connected`` (the
+            companion took it but no tab is open to see it — do not send it
+            again), ``app_not_running`` (the companion isn't running, and
+            nothing was sent), ``payload_rejected`` (the companion refused the
+            suggestions themselves), or ``backend_error`` (the companion is
+            running and the push did not land). ``items_pushed`` reports how
+            many suggestions the call attempted to push, on every status —
+            including the ones where nothing actually reached the wire.
+        """
+        return await _show_suggestions_helper(payload=payload)
 
     @mcp.tool()
     async def analyze_mana_curve(deck_id: str) -> ManaCurveResult:
