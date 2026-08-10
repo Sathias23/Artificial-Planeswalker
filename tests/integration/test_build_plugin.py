@@ -138,7 +138,8 @@ async def test_server_registers_expected_tools() -> None:
 
     Set equality, so an addition and a silent removal both fail and name themselves. c6-2 adds
     ``companion_set_active_deck`` — the first tool that talks to the companion backend rather than
-    to the database alone.
+    to the database alone — and c6-4 adds ``companion_show_suggestions``, the first that talks to it
+    without touching the database at all.
     """
     server = build_server()
     async with create_connected_server_and_client_session(server) as client:
@@ -157,6 +158,7 @@ async def test_server_registers_expected_tools() -> None:
         "remove_card_from_deck",
         "view_deck",
         "companion_set_active_deck",
+        "companion_show_suggestions",
         "analyze_mana_curve",
         "detect_synergies",
         "validate_deck",
@@ -167,3 +169,31 @@ async def test_server_registers_expected_tools() -> None:
         "initialize_database",
         "build_search_index",
     }
+
+
+async def test_companion_show_suggestions_publishes_its_payload_shape_to_the_agent() -> None:
+    """c6-4 AC1, mechanised: the published schema *is* the affordance the tool exists for.
+
+    OQ-2 chose per-kind tools over one generic ``companion_display`` because a per-tool schema and
+    docstring tell an agent more than a generic one can, and c6-4's Q1 made the contract model the
+    tool's argument so FastMCP hands over the whole nested shape — the item fields and their caps —
+    rather than an opaque ``object``. Nothing else in the suite would notice if that stopped being
+    true: a "simplification" to a loose ``dict`` argument keeps every helper test green while
+    silently reducing the agent's view of the payload to nothing.
+    """
+    server = build_server()
+    async with create_connected_server_and_client_session(server) as client:
+        tools = (await client.list_tools()).tools
+
+    tool = next(candidate for candidate in tools if candidate.name == "companion_show_suggestions")
+    schema = json.dumps(tool.inputSchema)
+
+    assert "SuggestionItem" in schema, "the item shape must reach the agent, not just 'an object'"
+    for field in ("card_id", "reason", "category", "confidence", "title"):
+        assert field in schema, f"{field} is part of the payload the agent has to fill in"
+    assert "maxItems" in schema, "the 60-item cap is part of the affordance, not a surprise"
+    assert "maxLength" in schema, "so are the per-field length caps"
+    assert tool.description is not None
+    assert "Scryfall" in tool.description, (
+        "FR-13: the docstring is the description, and it has to say ids rather than card names"
+    )

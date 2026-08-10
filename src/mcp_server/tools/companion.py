@@ -1,8 +1,16 @@
-"""The companion control tools — what the agent tells the glass to do (FR-07, AD-8, AD-16).
+"""The companion tools — what the agent tells the glass to do (FR-07, FR-08, AD-8, AD-16).
 
-The MCP side of the companion feature: a tool here validates against the database, delegates the
-wire work to the leaf client (:mod:`src.companion.client`), and turns the client's closed outcome
-vocabulary into the ``status`` convention every other tool in this package already uses.
+The MCP side of the companion feature: a tool here delegates the wire work to the leaf client
+(:mod:`src.companion.client`) and turns the client's closed outcome vocabulary into the ``status``
+convention every other tool in this package already uses.
+
+**Two shapes live here, and the difference is the database.** A *control* tool tells the companion
+to change what it is showing out of data the companion can fetch for itself, so it validates its
+argument against the database first — :func:`set_active_deck` is the one. A *push* tool carries the
+content itself and validates nothing against the corpus (AD-7: card ids are deliberately not
+checked), so it holds no session at all — :func:`show_suggestions` is the one. That is why only the
+first carries ``deck_not_found`` / ``database_not_initialized`` / ``error``: the second has no
+database to be wrong about, and its ``status`` set is the client's five tokens verbatim (AD-8).
 
 **Why the deck lookup lives here and not in the backend.** ``PUT /api/active-deck`` has no database
 and no ``404`` — it stores whatever it is given, deliberately (AD-16). The party that can tell an
@@ -20,14 +28,17 @@ or uvicorn. ``tests/unit/companion/test_import_boundary.py`` enforces the differ
 """
 
 import logging
+from datetime import UTC, datetime
 from typing import Literal
+from uuid import uuid4
 
 from pydantic import BaseModel
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.companion.client import push_event as _client_push_event
 from src.companion.client import set_active_deck as _client_set_active_deck
-from src.companion.contracts import ActiveDeckRequest
+from src.companion.contracts import ActiveDeckRequest, SuggestionsEvent, SuggestionsPayload
 from src.data.database import is_database_initialized
 from src.data.repositories.deck import DeckRepository
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
@@ -192,4 +203,132 @@ async def set_active_deck(session: AsyncSession, *, deck_id: str) -> SetActiveDe
         deck_name=shown_name,
         clients=outcome.clients,
         message=_MESSAGES[outcome.outcome],
+    )
+
+
+class ShowSuggestionsResult(BaseModel):
+    """Structured result of ``companion_show_suggestions``.
+
+    The ``status`` values are the leaf client's five wire outcomes and **nothing else**, which is
+    the difference between a push tool and the control tool above. ``set_active_deck`` layers three
+    more because it reads the deck table before it sends; this one reads nothing — card ids are
+    deliberately unvalidated (AD-7) and deck existence is the control tool's business (AD-16) — so
+    there is no database to report a fourth kind of failure about. AD-8's set, verbatim.
+
+    **Counts, never contents.** Both numeric fields are facts *about* the push rather than pieces of
+    it, which is what lets the result confirm scope without repeating a single card id or reason
+    back into the conversation the agent is already holding them in (CM-1, AC 5).
+
+    Attributes:
+        status: ``displayed`` (the companion delivered the push to at least one connected browser),
+            ``no_clients_connected`` (the companion took it and no tab was listening — a success on
+            the wire, not a failure, and never something to re-send), ``app_not_running`` (no
+            companion could be proven live; no credential left the process), ``payload_rejected``
+            (the companion refused the envelope itself), or ``backend_error`` (the companion is
+            there and the push did not land).
+        clients: How many connected browsers received the push, when the companion said. ``None`` on
+            every status that never reached a receipt, which is deliberately distinguishable from
+            ``0``: "nobody told us" and "nobody was watching" are different facts.
+        items_pushed: How many suggestions the envelope carried. Reported on **every** status,
+            including the ones that never reached the wire, because it describes what was attempted
+            rather than what arrived. Zero is a legitimate value, not an error (AD-7).
+        message: One short human-facing sentence. Never echoes the payload (CM-1).
+    """
+
+    status: Literal[
+        "displayed",
+        "no_clients_connected",
+        "app_not_running",
+        "payload_rejected",
+        "backend_error",
+    ]
+    clients: int | None = None
+    items_pushed: int
+    message: str
+
+
+_PUSH_MESSAGES = {
+    "no_clients_connected": (
+        "The companion took the suggestions, but no browser tab is open to see them — open the URL "
+        "the companion printed when it started."
+    ),
+    "app_not_running": (
+        "The companion app isn't running, so the suggestions have nowhere to appear. Start it to "
+        "see them on the glass — the content is in chat regardless."
+    ),
+    "payload_rejected": (
+        "The companion refused the suggestions, so none of them were displayed. The content is in "
+        "chat regardless."
+    ),
+    "backend_error": (
+        "The companion is running but the suggestions didn't land. Try again — the content is in "
+        "chat regardless."
+    ),
+}
+"""The wording for every push outcome that is not a plain success, keyed by the client's own token.
+
+None of these tells the agent what to do about its *reply* — only what happened to the glass. The
+companion is a second channel and never a replacement for the conversational one (NG5), so a
+sentence here that said "present them in chat instead" would be describing a fallback rather than
+the normal behaviour it never stopped being.
+
+``displayed`` is absent because it is the one message that interpolates the two counts.
+"""
+
+
+async def show_suggestions(*, payload: SuggestionsPayload) -> ShowSuggestionsResult:
+    """Put a list of suggested cards on the companion's glass (FR-08, AD-8).
+
+    Mints the envelope and hands it to :func:`~src.companion.client.push_event`, and that is the
+    whole of it. There is no database read, no id resolution and no cap enforcement here: the caps
+    are the payload model's (AD-7, and FastMCP applies them at the tool boundary before this
+    function is entered), and the ids are Scryfall's, which this layer has no business second-
+    guessing. What arrives is what is sent — **order included**, because payload order is render
+    order and nothing here sorts, dedupes or trims.
+
+    **An empty ``items`` list is posted, not short-circuited.** "I looked and found nothing" is a
+    thing the agent is allowed to say on the glass (AD-7), and a helper that quietly skipped the
+    push would make the honest answer unexpressible.
+
+    The envelope's ``id`` is a fresh UUID4 per call — opaque identity and dedupe, never ordering
+    (AD-6) — and ``ts`` is timezone-aware because the wire refuses a naive one. No title is
+    injected when the payload omits one: the fallback header belongs to the reader, and a
+    tool-supplied title would make "agent-authored" false.
+
+    Never raises. Everything the discovery file, the network or the companion can do is already one
+    of the client's five tokens (FR-12), and there is no database call to convert. An unexpected
+    exception is deliberately **not** caught: that is a bug, and crashing loudly is this package's
+    convention for one.
+
+    Args:
+        payload: The suggestions to display, already validated by the contract model.
+
+    Returns:
+        A :class:`ShowSuggestionsResult`.
+    """
+    event = SuggestionsEvent(
+        kind="suggestions",
+        id=str(uuid4()),
+        ts=datetime.now(UTC),
+        payload=payload,
+    )
+    items_pushed = len(payload.items)
+    outcome = await _client_push_event(event)
+    if outcome.outcome == "displayed":
+        cards = "card" if items_pushed == 1 else "cards"
+        tabs = "tab" if outcome.clients == 1 else "tabs"
+        return ShowSuggestionsResult(
+            status="displayed",
+            clients=outcome.clients,
+            items_pushed=items_pushed,
+            message=(
+                f"The companion is showing {items_pushed} suggested {cards} "
+                f"in {outcome.clients} {tabs}."
+            ),
+        )
+    return ShowSuggestionsResult(
+        status=outcome.outcome,
+        clients=outcome.clients,
+        items_pushed=items_pushed,
+        message=_PUSH_MESSAGES[outcome.outcome],
     )

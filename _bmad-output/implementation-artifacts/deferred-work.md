@@ -1,5 +1,28 @@
 # Deferred Work
 
+## Deferred from: code review of c6-4-companion-show-suggestions-the-agents-first-push (2026-08-10)
+
+> Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
+> `feat/companion-c6-4-show-suggestions` diff. Entries below are coverage gaps and a latent
+> unguarded pattern pre-existing across the companion MCP tool suite (shared with `set_active_deck`,
+> c6-2) — real, but not caused by this change and not required by any AC.
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-4-companion-show-suggestions-the-agents-first-push.md`
+  summary: "`show_suggestions`'s `displayed` branch interpolates `outcome.clients` directly into the result message and its `tab`/`tabs` pluralization with no `None`-guard. `PushOutcome.clients: int | None` does not statically forbid a `displayed` outcome paired with `clients=None`, so a hypothetical `PushOutcome(outcome=\"displayed\")` would render as \"...in None tabs.\" Unreachable through the shipped wire today — `_outcome_for` only ever emits `displayed` paired with `receipt.clients >= 1` — and this diff faithfully mirrors the identical unguarded pattern already shipped in `set_active_deck` (c6-2), so it is not novel to this story."
+  evidence: 'Blind Hunter + Edge Case Hunter, independently; `src/mcp_server/tools/companion.py:313,320` (this story) and `src/mcp_server/tools/companion.py:192,198` (c6-2, pre-existing). No test in either tool exercises `displayed` with `clients=None` or `clients=0`.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-4-companion-show-suggestions-the-agents-first-push.md`
+  summary: "No test drives the suggestions payload through the real FastMCP `call_tool` invocation path — every delegation test in `test_companion_tool.py` calls `show_suggestions()` as a bare coroutine with an already-constructed `SuggestionsPayload`. This story's central technical claim (the repo's first BaseModel-typed `@mcp.tool()` parameter actually gets coerced from wire JSON and cap-enforced at the FastMCP boundary before the tool body runs, not just published in the schema) is verified only by a schema-shape inspection test and by citing `mcp==1.28.0`'s library source in the story's Q1 ruling — never by an executing end-to-end call through a real MCP client/server pair."
+  evidence: 'Blind Hunter; `tests/integration/mcp_server/test_companion_tool.py` (whole file) and `tests/integration/test_build_plugin.py::test_companion_show_suggestions_publishes_its_payload_shape_to_the_agent` (schema-shape only, never calls the tool).'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-4-companion-show-suggestions-the-agents-first-push.md`
+  summary: "The \"never raises\" contract, asserted in three separate docstrings (`show_suggestions`, and by convention across the companion tool module), has no test that forces `_client_push_event` to raise and confirms the exception actually propagates uncaught rather than being swallowed somewhere upstream. A gap shared with `set_active_deck` (c6-2), not unique to this diff."
+  evidence: 'Blind Hunter; `src/mcp_server/tools/companion.py:292-295` states the convention; no test in `test_companion_tool.py` makes either stub raise.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-4-companion-show-suggestions-the-agents-first-push.md`
+  summary: "`show_suggestions`'s docstring claims \"nothing here sorts, dedupes or trims\" — only the ordering half is tested (`test_payload_order_is_preserved_because_it_is_render_order`). No test drives a payload with duplicate `card_id`s to prove nothing collapses them, so a future \"helpful\" dedup added upstream would not turn any test red."
+  evidence: 'Blind Hunter; `tests/integration/mcp_server/test_companion_tool.py` — no duplicate-`card_id` test exists in `TestTheSuggestionsPushIsDelegated`.'
+
 ## Deferred from: code review of c6-3-the-glass-follows-the-agents-active-deck-choice (2026-08-09)
 
 > Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
@@ -122,7 +145,7 @@
 
 - source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
   summary: "agentEventOf only validates the `kind` discriminant, not `id`/`ts`/`payload` — a frame like {\"kind\":\"deck_changed\"} with no id/ts/payload passes through typed as a full AgentEvent. Not exercised today (system-event kinds are dispatched by kind alone; the four agent-view kinds are dropped unread), becomes actionable when Epic 6 builds the agent views and reads those fields."
-  evidence: 'Blind Hunter + Edge Case Hunter, independently; ui/src/api/client.ts:701-716. NOT TRIGGERED BY c6-3 (checked 2026-08-09): that story is Epic 6''s first frontend story, but it reads no payload field at all — by ruling, the `active_deck_changed` handler ignores both the kind and `payload.deck_id` and re-drives the boot, which asks `GET /api/active-deck` first (connection.ts:96-108). Its tests drive frames through `push()` with a payload present and assert only surface and request-log outcomes, so nothing here is exercised or closed. STAYS OPEN for the first story that actually reads those fields — c6-4 onwards, when the agent views land.'
+  evidence: 'Blind Hunter + Edge Case Hunter, independently; ui/src/api/client.ts:701-716. NOT TRIGGERED BY c6-3 (checked 2026-08-09): that story is Epic 6''s first frontend story, but it reads no payload field at all — by ruling, the `active_deck_changed` handler ignores both the kind and `payload.deck_id` and re-drives the boot, which asks `GET /api/active-deck` first (connection.ts:96-108). Its tests drive frames through `push()` with a payload present and assert only surface and request-log outcomes, so nothing here is exercised or closed. STAYS OPEN for the first story that actually reads those fields — c6-4 onwards, when the agent views land. NOT TRIGGERED BY c6-4 (checked 2026-08-10) either: that story is Python-only — an MCP push tool with no `ui/` diff at all — so `agentEventOf` is neither called nor changed by it, and the SPA still drops the `suggestions` kind unread. The trigger is c6-7, the story that renders suggestion payload fields.'
 
 - source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
   summary: "The equivalence between the agent's outbound POST /agent/events body shape and the WebSocket frame the browser actually receives is asserted only in a comment (ws.py broadcasts the ingested event verbatim), with no cross-language contract test pinning it."
@@ -2966,7 +2989,16 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   worth a human's eye: c3-6 declined for not knowing the result's shape, c3-7 because the shape was
   shared with c3-8's, and c3-8 because that sharing turned out not to be real. If c6-4 also
   declines it, the entry should be closed as "not wanted" rather than moved a fourth time.
-  (Severity: Low today; Medium at c6-4.)
+  (Severity: Low today; Medium at c6-4.) — **NOT TRIGGERED BY c6-4 (checked 2026-08-10), and the
+  home looks mis-aimed by one story.** Every re-homing above describes c6-4 as *"suggestion rows
+  beside the deck grid"*, i.e. a rendered surface. The epic split did not put that surface here:
+  c6-4 is the **push tool only** — a Python `@mcp.tool()` that mints an envelope and POSTs it —
+  and the shipped SPA deliberately drops the `suggestions` kind, so this story causes **zero image
+  requests** and cannot render one card id at all, let alone twice. The first surface matching the
+  trigger's own words is **c6-7**'s suggestions view (c6-5/6 build the shell and the open/replace
+  behaviour). Not re-homed unilaterally, because the entry says a fourth move should be a
+  deliberate close instead: **STAYS OPEN**, and whether to re-aim it at c6-7 or close it as "not
+  wanted" is a ruling for Brad, not an implementation detail of this story.
 
 - **The `DbSession` is held across the pacer's queue wait, and it works by arithmetic rather than
   by design** (Q6, Brad 2026-08-01 — accept, pin, ledger). **Measured, not assumed** (Task 0):

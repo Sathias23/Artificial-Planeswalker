@@ -1,7 +1,13 @@
-"""Integration tests for the ``companion_set_active_deck`` helper (c6-2, FR-07, AD-16).
+"""Integration tests for the companion MCP tool helpers (c6-2 control, c6-4 push).
 
-Drives :func:`src.mcp_server.tools.companion.set_active_deck` against a **real seeded session** and
-a **stubbed client verb**. That split is Q4's ruling and it is the whole point of the file: every
+Two tools, two shapes. :func:`src.mcp_server.tools.companion.set_active_deck` (FR-07, AD-16) is
+driven against a **real seeded session** and a **stubbed client verb**;
+:func:`src.mcp_server.tools.companion.show_suggestions` (FR-08, AD-7) needs no session at all —
+it validates nothing against the corpus, so the stub is the entire harness. That asymmetry is the
+contract under test as much as anything else here: a push tool that grew a database read would be
+a different tool.
+
+That split is Q4's ruling and it is the whole point of the file: every
 wire behaviour — the retry, the token, the receipt parsing, the five outcome tokens — is proven in
 ``tests/unit/companion/test_client.py`` against real loopback sockets, and re-proving any of it here
 through a second harness would duplicate the cost and halve the meaning. What belongs here is what
@@ -17,24 +23,34 @@ only this layer can be wrong about:
 * the result stays compact (CM-1).
 
 The stub is monkeypatched at **this module's** import boundary —
-``companion._client_set_active_deck`` — rather than on the leaf. Patching the leaf would also
-silence ``push_event``'s neighbours and would not prove that *this* module reaches the client
-through the name it imported.
+``companion._client_set_active_deck`` and ``companion._client_push_event`` — rather than on the
+leaf. Patching the leaf would silence both verbs at once and would not prove that *this* module
+reaches the client through the name it imported.
 
 Despite living under ``tests/integration/``, these run in the ordinary ``-m "not integration"`` set:
 a directory is not a marker (AD-10), and nothing here touches a socket.
 """
 
 from pathlib import Path
+from typing import get_args
 
 import pytest
 
-from src.companion.client import PushOutcome
-from src.companion.contracts import ActiveDeckRequest
+from src.companion.client import PUSH_OUTCOMES, PushOutcome
+from src.companion.contracts import (
+    ActiveDeckRequest,
+    AgentEvent,
+    SuggestionItem,
+    SuggestionsPayload,
+)
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
 from src.mcp_server.tools import companion
-from src.mcp_server.tools.companion import set_active_deck
+from src.mcp_server.tools.companion import (
+    ShowSuggestionsResult,
+    set_active_deck,
+    show_suggestions,
+)
 from src.mcp_server.tools.deck_management import create_deck
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
 
@@ -42,6 +58,28 @@ _MISSING_DECK = "deck-not-in-database-00000"
 """Short enough to stay under ``_ECHO_LIMIT`` (48) unmangled, so ``deck_id == _MISSING_DECK``
 assertions pin an exact match rather than a truncated one; the oversized-id case has its own
 test."""
+
+_SENTINEL_CARD_ID = "9f3c2b1a-sentinel-card-id-0000-000000000001"
+_SENTINEL_REASON = "Sentinel rationale: patches the two-drop hole this deck keeps stumbling into."
+_SENTINEL_TITLE = "Sentinel header for the suggested cards"
+"""Three distinctive strings planted in a payload so a result that echoed any part of it would say
+so by name. Chosen to be unmistakable: none of them can appear in a result by coincidence."""
+
+
+def _payload(*, title: str | None = _SENTINEL_TITLE, items: int = 2) -> SuggestionsPayload:
+    """A payload carrying the sentinels, with *items* suggestions in a deliberate order."""
+    return SuggestionsPayload(
+        title=title,
+        items=[
+            SuggestionItem(
+                card_id=f"{_SENTINEL_CARD_ID}-{index}",
+                reason=f"{_SENTINEL_REASON} ({index})",
+                category="Curve" if index == 0 else None,
+                confidence="high" if index == 0 else None,
+            )
+            for index in range(items)
+        ],
+    )
 
 
 def _card(card_id: str, name: str) -> CardModel:
@@ -102,6 +140,35 @@ def client_stub(monkeypatch):
     def install(outcome: PushOutcome) -> _ClientStub:
         stub = _ClientStub(outcome)
         monkeypatch.setattr(companion, "_client_set_active_deck", stub)
+        return stub
+
+    return install
+
+
+class _PushStub:
+    """Stands in for ``push_event``, recording every envelope it was handed.
+
+    The envelopes rather than a call count, for the same reason as above: "nothing was pushed" and
+    "the wrong thing was pushed" are different failures, and this is the only place in the suite
+    that can tell them apart for this tool.
+    """
+
+    def __init__(self, outcome: PushOutcome) -> None:
+        self.outcome = outcome
+        self.events: list[AgentEvent] = []
+
+    async def __call__(self, event: AgentEvent, **kwargs: object) -> PushOutcome:
+        self.events.append(event)
+        return self.outcome
+
+
+@pytest.fixture
+def push_stub(monkeypatch):
+    """Yield a factory that installs a :class:`_PushStub` answering a chosen outcome."""
+
+    def install(outcome: PushOutcome) -> _PushStub:
+        stub = _PushStub(outcome)
+        monkeypatch.setattr(companion, "_client_push_event", stub)
         return stub
 
     return install
@@ -403,3 +470,212 @@ class TestTheResultIsCompact:
             "clients",
             "message",
         }
+
+
+class TestTheSuggestionsPushIsDelegated:
+    """AC 2: the payload becomes one envelope, and the envelope reaches the leaf unchanged."""
+
+    async def test_one_suggestions_envelope_carries_the_payload_through_untouched(self, push_stub):
+        """The whole of this tool's job, and the only thing only this layer can get wrong.
+
+        The comparison is against a **freshly built equal payload** rather than against the
+        argument object, so an implementation that posted a different payload fails even though the
+        argument it was handed is still sitting in the caller's hands, unmodified.
+        """
+        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
+
+        result = await show_suggestions(payload=_payload())
+
+        assert len(stub.events) == 1, "one call is one push; nothing at this layer retries"
+        event = stub.events[0]
+        assert event.kind == "suggestions"
+        assert event.payload == _payload(), "the payload crosses to the leaf untouched"
+        assert result.status == "displayed"
+        assert result.items_pushed == 2
+
+    async def test_payload_order_is_preserved_because_it_is_render_order(self, push_stub):
+        """Nothing here sorts, dedupes or reorders — the agent's order is the screen's order."""
+        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
+        payload = _payload(items=3)
+
+        await show_suggestions(payload=payload)
+
+        assert [item.card_id for item in stub.events[0].payload.items] == [
+            item.card_id for item in payload.items
+        ]
+
+    async def test_the_envelope_timestamp_is_timezone_aware(self, push_stub):
+        """A naive ``ts`` is refused on the live wire (``AwareDatetime``) and is invisible here.
+
+        Nothing else in this file touches a socket, so a helper that used ``utcnow()`` would pass
+        every other assertion in the class and turn into ``payload_rejected`` in production. This
+        is the assertion that stands in for the wire.
+        """
+        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
+
+        await show_suggestions(payload=_payload())
+
+        assert stub.events[0].ts.tzinfo is not None
+
+    async def test_each_call_mints_its_own_opaque_event_id(self, push_stub):
+        """``id`` is identity and dedupe (AD-6): two pushes must not collide on it."""
+        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
+
+        await show_suggestions(payload=_payload())
+        await show_suggestions(payload=_payload())
+
+        first, second = (event.id for event in stub.events)
+        assert first.strip(), "a blank id is refused by the envelope and useless for dedupe"
+        assert first != second, "a reused id would let a reader collapse two distinct pushes"
+
+    async def test_no_title_is_injected_when_the_agent_did_not_write_one(self, push_stub):
+        """The fallback header belongs to the reader; a tool-supplied one is not agent-authored."""
+        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
+
+        await show_suggestions(payload=_payload(title=None))
+
+        assert stub.events[0].payload.title is None
+
+
+class TestEveryPushOutcomeBecomesTheStatusOfTheSameName:
+    """AC 2/6: AD-8's five tokens, 1:1, with the count carried and never invented."""
+
+    def test_the_result_vocabulary_is_the_client_s_five_and_nothing_more(self):
+        """A push tool has no database to be wrong about, so it layers no status above the wire.
+
+        Set equality against the client's own tuple, so widening either side without the other
+        fails here rather than in a review comment (AD-8, AD-16).
+        """
+        annotation = ShowSuggestionsResult.model_fields["status"].annotation
+        assert set(get_args(annotation)) == set(PUSH_OUTCOMES)
+
+    @pytest.mark.parametrize(
+        ("outcome", "clients"),
+        [
+            pytest.param("displayed", 2, id="displayed"),
+            pytest.param("no_clients_connected", 0, id="no-clients"),
+            pytest.param("app_not_running", None, id="app-not-running"),
+            pytest.param("payload_rejected", None, id="payload-rejected"),
+            pytest.param("backend_error", None, id="backend-error"),
+        ],
+    )
+    async def test_the_token_and_the_count_both_pass_through(self, push_stub, outcome, clients):
+        """All five in one parametrization: a tool that swallowed the fifth would look correct in
+        any single-row test. ``0`` and ``None`` are distinguished deliberately — ``0`` is a wire
+        success (nobody watching), ``None`` is "the backend never told us"."""
+        push_stub(PushOutcome(outcome=outcome, clients=clients))
+
+        result = await show_suggestions(payload=_payload())
+
+        assert result.status == outcome
+        assert result.clients == clients
+        assert result.items_pushed == 2
+        assert result.message, "every status carries a sentence a human can read"
+
+    async def test_no_clients_connected_is_pushed_once_and_never_re_sent(self, push_stub):
+        """c5-5's ruling: the backend will not re-send, so a retry duplicates at the first tab."""
+        stub = push_stub(PushOutcome(outcome="no_clients_connected", clients=0))
+
+        result = await show_suggestions(payload=_payload())
+
+        assert result.status == "no_clients_connected"
+        assert result.clients == 0
+        assert len(stub.events) == 1, "a success with nobody watching is still one push"
+
+    async def test_no_status_leaks_a_raw_outcome_token_into_the_message(self, push_stub):
+        """The token is for a caller to switch on; the sentence is for a person to read."""
+        for outcome in PUSH_OUTCOMES:
+            push_stub(PushOutcome(outcome=outcome, clients=1 if outcome == "displayed" else None))
+
+            result = await show_suggestions(payload=_payload())
+
+            assert outcome not in result.message
+            assert "companion" in result.message.lower()
+
+
+class TestAnEmptySuggestionsPayloadIsStillPushed:
+    """AC 4: "I looked and found nothing" is expressible, so it must reach the wire."""
+
+    async def test_an_empty_payload_is_posted_rather_than_short_circuited(self, push_stub):
+        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
+
+        result = await show_suggestions(payload=_payload(items=0))
+
+        assert len(stub.events) == 1, "AD-7: an empty push is a legal push, not a skipped one"
+        assert stub.events[0].payload.items == []
+        assert result.status == "displayed"
+        assert result.items_pushed == 0
+
+    async def test_it_is_not_passing_because_every_payload_is_pushed_empty(self, push_stub):
+        """The non-vacuity pairing: the same stub, both sizes, and the counts told apart."""
+        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
+
+        empty = await show_suggestions(payload=_payload(items=0))
+        filled = await show_suggestions(payload=_payload(items=2))
+
+        assert [len(event.payload.items) for event in stub.events] == [0, 2], (
+            "the envelope carries whatever the caller sent, empty and non-empty alike"
+        )
+        assert (empty.items_pushed, filled.items_pushed) == (0, 2)
+
+
+class TestTheSuggestionsResultIsCompact:
+    """AC 5: under roughly 200 tokens, and echoing not one word of the payload."""
+
+    @pytest.mark.parametrize("outcome", PUSH_OUTCOMES)
+    async def test_the_serialised_result_stays_well_inside_the_budget(self, push_stub, outcome):
+        """Every branch, not the happy one: the 400-character bound and its rationale are the same
+        ones documented for the control tool above, and a push result has more reason to grow —
+        the thing it is reporting on is a list."""
+        push_stub(PushOutcome(outcome=outcome, clients=2 if outcome == "displayed" else None))
+
+        result = await show_suggestions(payload=_payload(items=60))
+
+        assert len(result.model_dump_json()) < 400, result.model_dump_json()
+
+    @pytest.mark.parametrize("outcome", PUSH_OUTCOMES)
+    async def test_not_one_planted_string_comes_back_out(self, push_stub, outcome):
+        """The guard that stays behind: the agent already holds this content, so a result that
+        repeated it would cost the conversation twice for nothing (CM-1)."""
+        push_stub(PushOutcome(outcome=outcome, clients=2 if outcome == "displayed" else None))
+
+        result = await show_suggestions(payload=_payload())
+
+        dumped = result.model_dump_json()
+        for sentinel in (_SENTINEL_CARD_ID, _SENTINEL_REASON, _SENTINEL_TITLE, "Curve"):
+            assert sentinel not in dumped, f"{sentinel!r} was echoed back into the result"
+
+    async def test_the_result_carries_counts_and_nothing_else(self, push_stub):
+        push_stub(PushOutcome(outcome="displayed", clients=1))
+
+        result = await show_suggestions(payload=_payload())
+
+        assert set(result.model_dump()) == {"status", "clients", "items_pushed", "message"}
+
+
+class TestTheAppBeingClosedIsReportedAndNothingMore:
+    """AC 6: the companion is a second channel, never a condition on the first (NG5, SC-3)."""
+
+    async def test_a_closed_app_is_named_as_such(self, push_stub):
+        push_stub(PushOutcome(outcome="app_not_running"))
+
+        result = await show_suggestions(payload=_payload())
+
+        assert result.status == "app_not_running"
+        assert result.clients is None
+        assert "isn't running" in result.message
+        assert result.items_pushed == 2, "what was attempted is reported even when nothing was sent"
+
+    @pytest.mark.parametrize("outcome", PUSH_OUTCOMES)
+    async def test_no_message_tells_the_agent_to_change_its_written_answer(
+        self, push_stub, outcome
+    ):
+        """The glass is additive. A sentence here that offered chat as a *fallback* would imply the
+        normal reply had been conditional on the push succeeding, which it never was."""
+        push_stub(PushOutcome(outcome=outcome, clients=1 if outcome == "displayed" else None))
+
+        result = await show_suggestions(payload=_payload())
+
+        lowered = result.message.lower()
+        for directive in ("instead", "skip", "no need to", "don't"):
+            assert directive not in lowered, f"the message steers the reply with {directive!r}"

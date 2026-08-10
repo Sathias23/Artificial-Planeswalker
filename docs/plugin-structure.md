@@ -18,7 +18,7 @@
 
 | Piece | Source | Role in the plugin |
 |-------|--------|--------------------|
-| MCP server | `src/` + `pyproject.toml` + `uv.lock` | Exposes the 16 tools (`lookup_card_by_name`, `analyze_mana_curve`, …) |
+| MCP server | `src/` + `pyproject.toml` + `uv.lock` | Exposes the 21 tools (`lookup_card_by_name`, `analyze_mana_curve`, …) |
 | `magic-deckbuilding` skill | `.claude/skills/magic-deckbuilding/SKILL.md` | Orchestrator: full "improve my deck" loop |
 | `mana-curve-analysis` skill | `.claude/skills/mana-curve-analysis/SKILL.md` | Deep dive: curve / land count |
 | `synergy-discovery` skill | `.claude/skills/synergy-discovery/SKILL.md` | Deep dive: interactions / combos |
@@ -184,6 +184,6 @@ skills, or the pyproject metadata change. CI rebuilds it and fails on drift.
 /plugin install artificial-planeswalker@artificial-planeswalker
 ```
 
-After install, the user gets all 16 MCP tools **and** the four skills
+After install, the user gets all 21 MCP tools **and** the four skills
 (`magic-deckbuilding` and friends) auto-loaded — the coaching layer a bare MCP server
 config can't provide.
