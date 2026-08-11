@@ -286,10 +286,10 @@ export type SuggestionsEvent = Extract<AgentEvent, { kind: 'suggestions' }>
 /**
  * One suggested card: `{card_id, reason, category?, confidence?}` (AD-7).
  *
- * **Consumers: `AgentViewContent` in `src/state/agentView.ts`** (story c6-6, which RETAINS the
- * items so c6-7 can render rows and c6-8 can re-open a view against current card data) — added
- * here under this file's standing rule that an alias lands in the commit that gives it a
- * consumer.
+ * **Consumers: `AgentViewContent` in `src/state/agentView.ts`** (story c6-6, which RETAINED the
+ * items so that c6-7 could render rows — it does, in `SuggestionsView.tsx` — and so that c6-8
+ * can re-open a view against current card data) — added here under this file's standing rule
+ * that an alias lands in the commit that gives it a consumer.
  *
  * Reached through `Schemas` rather than through {@link SuggestionsEvent}'s payload, because it is
  * a named model on the Python side and the generator emits it as one. `SuggestionsPayload` is

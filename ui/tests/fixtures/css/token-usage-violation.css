@@ -9,7 +9,9 @@
 /* UX-DR6: --accent-dim on --surface-overlay is 2.70:1, below the 3:1 non-text floor. The
    named substitute is --accent (5.5:1). This is the exact pairing c6-7's suggestion rows,
    c9-1's swap rows and c9-2's tier rows are most likely to reach for, because DESIGN.md
-   gives all three an overlay background. */
+   gives all three an overlay background. c6-7 shipped and reached for --accent instead, via
+   --shadow-suggestion-row-live; this fixture stays the NEGATIVE control for the guard rather
+   than a description of any shipped file. */
 .suggestion-row {
   background: var(--surface-overlay);
   border-color: var(--accent-dim);

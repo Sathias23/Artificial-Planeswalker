@@ -501,10 +501,19 @@ describe('every interactive element is a real control with a real hit box (AC 20
     // Well clear BY MEASURED GEOMETRY, each with its eye-check on record: the tile is card-sized,
     // the flip control's hit box is 32×32 (c4-6), the deck row spans the panel at ≥34px, the
     // unpin control measured 61×30 (c4-5), and the oracle scroller is a multi-line text block.
+    // `suggestion-row` joins at c6-7, and it is the most clearly-clear member of the group: the
+    // row is a two-line grid — a head line on `--type-body-strong` (14px at 1.5 = a 21px line
+    // box) over a reason on `--type-body` (another 21px), separated by `--space-2` and wrapped in
+    // `--space-2` of block padding, so it is ~66px tall before the thumbnail is considered. The
+    // thumbnail spans that whole height at 63:88 and the row spans the view's width, so BOTH axes
+    // are clear by an order of magnitude on the short one. This is a derived-geometry claim like
+    // the deck row's above; the pixels are the C6 manual checklist's (c8-6), as they are for
+    // every other member.
     const WELL_CLEAR = [
       'card-tile',
       'flip-control',
       'deck-row',
+      'suggestion-row',
       'card-detail-unpin',
       'card-detail-oracle',
     ]

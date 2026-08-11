@@ -104,6 +104,22 @@ interface DesignFrontmatter {
      * `toBeDefined()` anchor rather than compare `undefined` to `undefined`.
      */
     'deck-row': Record<string, string>
+    /**
+     * Added by story c6-7 (Q2). The suggestion row's block — home to the fifth per-component
+     * composite (`live-rule`) and to the `padding`, `gap` and `height` that story's amendment
+     * added, because the block carried four values and the component description below the
+     * frontmatter already promised all four of these. Typed for the reason the three above are:
+     * the block vanishing from DESIGN.md must fail at the `toBeDefined()` anchor rather than
+     * compare `undefined` to `undefined`.
+     */
+    'suggestion-row': Record<string, string>
+    /**
+     * The empty-DECK line (c4-12) and the empty-PUSH line (c6-7) — two names for one kind of
+     * thing, which is why the tests below compare them to each other rather than each to a
+     * retyped constant. The second block discharges `deferred-work.md:22`.
+     */
+    'empty-deck-line': Record<string, string>
+    'empty-push-line': Record<string, string>
   }
 }
 
@@ -279,6 +295,12 @@ const expectedNames = [
   // frontmatter block and is hand-listed like the three above. It is the first of the four that
   // is an INSET shadow — asserted below against the artefact, byte-for-byte, exactly as they are.
   '--shadow-deck-row-live',
+  // Story c6-7 (Q2). The suggestion row's live rule — the fifth hand-listed composite, filed
+  // under `components.suggestion-row` in an amendment this story made to DESIGN.md before
+  // writing the stylesheet that cites it. Identical in VALUE to the deck row's rule above and
+  // deliberately not the same token: the two live under two independently-amendable artefact
+  // blocks, and sharing a name would let an amendment to one silently move the other.
+  '--shadow-suggestion-row-live',
 ]
 
 // ---------------------------------------------------------------------------------------
@@ -317,8 +339,11 @@ describe('the token layer is DESIGN.md (AC 1)', () => {
     // accepted. Its sibling is `declaredTokens.size` in tests/token-usage.test.ts; both move
     // together or the pair is wrong. 68 until story c4-7, which added `--shadow-deck-row-live`
     // (Q6) — the deck row's inset live rule, which stylelint's box-shadow allowed-list forbids
-    // inline exactly as it forbids the three composites above.
-    expect(expectedNames).toHaveLength(69)
+    // inline exactly as it forbids the three composites above. 69 until story c6-7, which added
+    // `--shadow-suggestion-row-live` (Q2) — the same inset marker one surface over, at the one
+    // place in the app where `--accent-dim` would actually fail its floor rather than merely
+    // be weak.
+    expect(expectedNames).toHaveLength(70)
   })
 
   it('ships all 26 colours at exactly the DESIGN.md value', () => {
@@ -527,6 +552,88 @@ describe('the token layer is DESIGN.md (AC 1)', () => {
     expect(tokens['--shadow-deck-row-live']).toContain('var(--accent)')
     expect(tokens['--shadow-deck-row-live']).not.toContain('var(--accent-dim)')
     expect(row['live-rule']).not.toContain('accent-dim')
+  })
+
+  it("ships the suggestion row's LIVE RULE at DESIGN.md's amended value (c6-7, Q2, AC 3)", () => {
+    // THE ARTEFACT WAS AMENDED IN THIS COMMIT, and this test is what makes the amendment
+    // load-bearing rather than decorative — the mechanism c4-7's price-track test established.
+    // `components.suggestion-row` carried four values and none of them was a marker, a padding
+    // or a gap, while the component description below the frontmatter already promised a `live`
+    // marker in `{colors.accent}`. The row is also on this file's own no-visual-precedent list,
+    // so there were no mock pixels to read the missing values off.
+    const row = design.components['suggestion-row']
+    expect(
+      row['live-rule'],
+      "DESIGN.md's components.suggestion-row has no live-rule — was the c6-7 amendment reverted?",
+    ).toBeDefined()
+    expect(normalise(tokens['--shadow-suggestion-row-live'])).toBe(normalise(row['live-rule']))
+    // Inset, for the deck row's reason: a `border-left` shifts every column 2px sideways on
+    // becoming live and a cursor sweeping the list reads that as a shimmer.
+    expect(tokens['--shadow-suggestion-row-live']).toContain('inset')
+
+    // THE BAN, AT THE ONE SURFACE WHERE IT IS A REAL FAILURE RATHER THAN A WEAKNESS (AC 3).
+    // This row's resting background is `surface-overlay`, where `accent-dim` measures 2.70:1 —
+    // under the 3:1 non-text floor — and DESIGN.md's Contrast table names suggestion rows in
+    // that ban explicitly. Pinned on BOTH sides, token and artefact, so neither can drift back.
+    expect(tokens['--shadow-suggestion-row-live']).toContain('var(--accent)')
+    expect(tokens['--shadow-suggestion-row-live']).not.toContain('var(--accent-dim)')
+    expect(row['live-rule']).not.toContain('accent-dim')
+    expect(
+      row.background,
+      'the ban above is only meaningful while this row actually sits on the overlay surface',
+    ).toBe('{colors.surface-overlay}')
+
+    // THE REST OF THE AMENDMENT, pinned because `SuggestionsView.css` cites these by name and a
+    // citation to a value that has silently vanished is worse than no citation at all.
+    expect(row.padding, 'components.suggestion-row.padding — added by c6-7 (Q2)').toBe(
+      '{spacing.2} {spacing.3}',
+    )
+    // Two-value, matching `padding` above: `{spacing.3}` is the column gap (thumbnail to text),
+    // `{spacing.2}` is the row gap (head line to reason line) — corrected by code review
+    // (2026-08-11) from a single-value citation that named only the column half.
+    expect(row.gap, 'components.suggestion-row.gap — added by c6-7 (Q2)').toBe(
+      '{spacing.2} {spacing.3}',
+    )
+    // Content-driven, and that is the decision rather than a missing number: a fixed row height
+    // would either crop the 63:88 thumbnail that spans the row or fix its width by arithmetic
+    // done in a stylesheet. It carries no px, which is why the stylesheet needs none.
+    expect(row.height, 'components.suggestion-row.height — added by c6-7 (Q2)').toContain(
+      'content-driven',
+    )
+    expect(row.height).not.toMatch(/\d+px/)
+  })
+
+  it('carries a treatment for the empty PUSH line, not only the empty DECK line (c6-7, Q2)', () => {
+    // ADDED IN THIS COMMIT, discharging `deferred-work.md:22` at the story the ledger homed it
+    // on by name. c6-6 shipped the empty-push state against `empty-deck-line`'s values, CITED,
+    // and declined to amend an artefact nobody had asked it to amend; this story amends the
+    // suggestion-row block anyway, so the sibling's block is one entry of the same amendment.
+    const line = design.components['empty-push-line']
+    expect(
+      line,
+      'DESIGN.md has no components.empty-push-line — was the c6-7 amendment reverted? (deferred-work.md:22)',
+    ).toBeDefined()
+
+    // THE SIBLING TEST, and it is the point: these two states are the same kind of thing — one
+    // calm sentence standing in for absent content inside a surface that supplies its own
+    // padding — so a divergence in type role or colour between them is a defect, not a choice.
+    const deckLine = design.components['empty-deck-line']
+    expect(line.type).toBe(deckLine.type)
+    expect(line.foreground).toBe(deckLine.foreground)
+    expect(line.type).toBe('{typography.body}')
+    expect(line.foreground).toBe('{colors.text-secondary}')
+
+    // IT SPENDS NO LENGTH OF ITS OWN. No px anywhere in the block, and no min-height: reserving
+    // list-sized space for content that is deliberately absent is what makes an empty state
+    // read as a loading failure.
+    expect(JSON.stringify(line)).not.toMatch(/\d+px/)
+    expect(Object.keys(line).sort()).toEqual(['container', 'foreground', 'type'])
+
+    // THE CONTAINER CITES THE BODY'S OWN INSET, NOT THE SHELL'S (code review, 2026-08-11): the
+    // two are different tokens — `{components.agent-view.inset}` is `{spacing.6}`, the shell's
+    // distance from the window edge, while `.agent-view-body`'s actual padding is `{spacing.4}`.
+    // A citation naming the wrong one is exactly the drift this suite exists to catch.
+    expect(line.container).toBe('the agent view body — {spacing.4} is the whole of its inset')
   })
 
   it('has no price track left in the deck row, and the artefact says why (c4-7, Q1, AC 12)', () => {

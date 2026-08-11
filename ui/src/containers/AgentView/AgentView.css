@@ -26,8 +26,11 @@
    Tiles and rows inside an agent view sit on `surface-overlay`, where `--accent-dim` measures
    2.70:1 and fails the 3:1 non-text floor — the same correction already made for
    `card-tile.live-ring` and `card-detail.pinned-ring`. The repo-wide `findAccentDimOnOverlay`
-   guard covers this stylesheet the day it is added; the tile-level assertion lands with c6-7's
-   rows, which is where the first tile inside a view exists (Brad's Q7 ruling, 2026-08-10). The
+   guard covers this stylesheet the day it is added; the row-level assertion LANDED with c6-7's
+   rows, which is where the first card inside a view exists (Brad's Q7 ruling, 2026-08-10). It
+   is in `tests/token-usage.test.ts` beside the guard whose declared blind spot it covers — not
+   in the component suite, because jsdom evaluates no stylesheet — and it asserts that
+   `SuggestionsView.css` spends no `--accent-dim` in any spelling. The
    shell itself sits on `surface-panel` (DESIGN.md:365), where `accent-dim` measures 3.05:1 and
    PASSES — DESIGN.md permits it as a border on well/base/panel by name (`:390`, `:493`) — so the
    close pill's hover border ships as the shipped `{components.nav-pill.hover-border}` token,

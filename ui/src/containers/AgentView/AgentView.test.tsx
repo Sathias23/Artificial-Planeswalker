@@ -97,8 +97,9 @@ function Harness({
               shell's own only focusable is the close pill, so with an inert body the pill is
               both ends of the trap at once and "wrapping to the first" is indistinguishable
               from doing nothing at all. With these, the two ends are DIFFERENT elements and a
-              handler that no-opped would fail. They are also c6-7's real shape: a suggestion
-              row carries controls. */}
+              handler that no-opped would fail. They are also c6-7's real shape, confirmed by
+              that story: each suggestion row IS a single `<button>`, so a view of six rows puts
+              six focusables in the trap between the close pill's two ends. */}
           <button type="button" data-testid="body-first">
             body first
           </button>
@@ -155,8 +156,9 @@ describe('the chrome is the shell DESIGN.md specifies (AC 1)', () => {
   })
 
   it('renders an arbitrary child and knows nothing about it (content-agnostic)', () => {
-    // The claim that makes c6-7 able to add suggestion rows without editing this component:
-    // the body renders what it is handed. Nothing in the shell mentions a suggestion.
+    // The claim that made c6-7 able to add suggestion rows without editing this component —
+    // and it held: that story's diff touches neither `AgentView.tsx` nor `AgentView.css`. The
+    // body renders what it is handed, and nothing in the shell mentions a suggestion.
     render(<Harness />)
     expect(screen.getByTestId('fixture')).toBeInTheDocument()
     expect(document.querySelector('.agent-view-body')).toContainElement(
@@ -446,8 +448,10 @@ describe('Tab cycles within the view (AC 2, UX-DR44)', () => {
   })
 
   it('leaves every other key alone', () => {
-    // The trap is a Tab handler and nothing else — an over-eager one would eat the arrow keys
-    // a c6-7 list may want.
+    // The trap is a Tab handler and nothing else — an over-eager one would eat keys a list may
+    // want. c6-7's rows shipped with NO `onKeyDown` at all (UX-DR40 rules out a roving-tabindex
+    // composite, and `deferred-work.md:49` records that a row handler would never see Escape
+    // anyway), so nothing in a suggestions view competes for a key today.
     render(<Harness />)
     const dialog = screen.getByRole('dialog')
     const heading = screen.getByRole('heading', { level: 2, name: TITLE })

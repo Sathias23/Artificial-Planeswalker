@@ -1,40 +1,313 @@
-/* ==== THE SUGGESTIONS VIEW'S BODY (story c6-6, AC 4; c6-7 adds the rows) ================
+/* ==== THE SUGGESTIONS VIEW'S BODY (stories c6-6 and c6-7) ===============================
 
-   ONE RULE, AND THE SHORTEST STYLESHEET IN THE APP. That is the whole of what Q1's ruling
-   leaves to draw: a non-empty push renders nothing until c6-7, so the empty-push line is the
-   only thing this file has an opinion about.
+   c6-6 shipped the empty-push line and declared the artefact gap it was writing against; c6-7
+   filled that gap and then wrote the rows. Both halves are here, and the ORDER those two things
+   happened in is the point: `DESIGN.md`'s `components.suggestion-row` block carried four values
+   and none of them was a padding, a gap, a row height or a live marker, while the component
+   description below its frontmatter already promised all of them. The block was amended FIRST,
+   in this story's own commit, and every value below cites the amended artefact — the other
+   order produces either a red `shell.test.ts` px-citation guard or an invented citation
+   (c4-12's ruling, applied to the second surface that hit it).
 
-   THE TREATMENT IS `components.empty-deck-line`'s, APPLIED TO ITS SIBLING STATE, AND THE
-   ARTEFACT GAP IS DECLARED RATHER THAN FILLED. `DESIGN.md` carries a block for the empty-DECK
-   line — `type: '{typography.body}'`, `foreground: '{colors.text-secondary}'`, and the note that
-   it *"spends no length of its own"* because its container's padding is already its inset — and
-   carries NO block for the empty PUSH. The two are the same kind of thing: one calm sentence
-   standing in for absent content inside a surface that has its own padding (`.agent-view-body`
-   supplies `--space-4` here, exactly as the untitled grid `Panel` does there). So the shipped
-   values are that block's, cited, and the absence of a block of this state's own is recorded in
-   `deferred-work.md` as an artefact gap for the story that renders the rest of this view —
-   rather than being papered over by inventing a second set of values here. c4-12 amended
-   `DESIGN.md` because an ACCEPTANCE CRITERION of its own required the artefact to specify the
-   treatment; this story has no such AC, and amending an artefact nobody asked to be amended is
-   not a diff a story gets to make quietly.
+   The empty line's own block — `components.empty-push-line` — was added in the same amendment,
+   which discharges the ledger entry (`deferred-work.md:22`) that homed it on this story BY NAME.
+   c6-6 shipped this line against the empty-DECK block's values, cited, and correctly declined to
+   amend an artefact nobody had asked it to amend; the sibling block is one entry of the
+   amendment this story was making anyway.
 
-   NO `px` LITERAL AT ALL, therefore nothing for `shell.test.ts`'s DESIGN.md-proximity gate to
-   check — the same resolution `CardGrid.css:42-64` reached, for the same reason: there is no
-   length to cite. Adding an inset here, or a `min-height` reserving list-sized space for content
-   that is deliberately absent, would both be values invented to fill a gap, and the second would
-   make the state read as a LOADING FAILURE rather than an honest "nothing to show".
+   NO `px` LITERAL ANYWHERE IN THIS FILE, which is what the amendment's shape bought: the row's
+   padding and gap are scale tokens, and its HEIGHT is content-driven — two text lines plus that
+   padding, with the thumbnail spanning the row and its width following from 63:88. A fixed row
+   height would have had to either crop the card or compute a thumbnail width in a stylesheet.
 
-   `margin: 0` is the UA reset, not a spacing decision: a `<p>` carries a 1em block margin that
-   would push the sentence off the body's own inset.
+   ==== THE CARD_SHAPED SPLIT, AND WHY THIS FILE IS DELIBERATELY NOT IN THAT MAP ==========
+
+   `token-usage.test.ts:896` runs a two-way rule: a LISTED file may not round itself with a
+   chrome radius, and an UNLISTED one may not spend `--radius-card`. This file spends
+   `--radius-md` on the row — `components.suggestion-row.radius`, `{rounded.md}` — so it stays
+   UNLISTED, and it therefore must never touch the card radius or the 63:88 ratio. It does not:
+   the thumbnail's geometry arrives entirely through the global `card-shape` class
+   (`card-geometry.css`, the ONE declaration of the card shape) and through `CardPlaceholder`'s
+   own listed stylesheet. What this file spends on that slot is POSITION and HEIGHT, which are
+   the row's business — the shape stays the card's.
+
+   That is blind spot #4 in the guard's own header ("a card-drawing stylesheet that never joins
+   the map") answered in the open rather than left for a reader to wonder about: nothing here
+   draws a card, it only says where one goes.
+
+   ==== THE ACCENT-DIM BLIND SPOT IS THIS EXACT FILE, AND THE ANSWER IS TO SPEND NONE ======
+
+   `token-usage.test.ts:170-174` declares that `findAccentDimOnOverlay` is per-RULE, so a parent
+   setting `--surface-overlay` while a CHILD file sets an `--accent-dim` border is not caught —
+   and it names *"the NORMAL shape of c6-7's suggestion rows"* as the case. This file spends
+   `--accent-dim` NOWHERE, in any spelling: the row's live marker is `--accent` (5.5:1 on this
+   surface) through `--shadow-suggestion-row-live`, and `--accent-dim` would be 2.70:1 and fail
+   the 3:1 non-text floor outright. `AgentView.css:29` promised the tile-level assertion would
+   land with this stylesheet; it is in `SuggestionsView.test.tsx`.
 
    NO NESTING ANYWHERE, for `AgentView.css`'s reason — `token-usage.test.ts`'s CSS reader matches
    innermost brace pairs, so a declaration inside a nesting parent is invisible to the contrast,
    token and motion guards, and `findNestedRules` fails the build on any nesting rather than
    leaving that blind spot reachable.
+
+   THIS FILE SPENDS NO OUTER MARGIN. `.agent-view-body` already supplies the view's inset and
+   says so in its own header; a margin here would be a second opinion about the same edge.
    ==================================================================== */
 
+/* `margin: 0` is the UA reset, not a spacing decision: a `<p>` carries a 1em block margin that
+   would push the sentence off the body's own inset. DESIGN.md `components.empty-push-line`:
+   `type: '{typography.body}'`, `foreground: '{colors.text-secondary}'`, and it "spends no length
+   of its own". */
 .suggestions-view-empty {
   margin: 0;
   color: var(--text-secondary);
   font: var(--type-body);
+}
+
+/* The list reset, local rather than global for the reason `DeckList.css` gives about its own: a
+   `ul` is the correct semantics (UX-DR44) and a bulleted column of suggestions is not the
+   correct presentation. The gap between rows is `{spacing.2}` from the spacing scale's
+   "internal clusters" band — the rows are a stack of siblings, not a composition needing a
+   value of its own. */
+.suggestions-view-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+/* THE ROW (AC 1). DESIGN.md `components.suggestion-row`, amended by this story:
+   `background: '{colors.surface-overlay}'`, `border: '1px solid {colors.border-hairline}'`,
+   `radius: '{rounded.md}'`, `padding: '{spacing.2} {spacing.3}'`, `gap: '{spacing.3}'`, and a
+   `height` that is content-driven by specification.
+
+   A GRID OF TWO COLUMNS AND TWO ROWS, with the thumbnail spanning both text lines — which is
+   what "full row height — art-forward" means once the height comes from the content. The text
+   column is `minmax(0, 1fr)` and never a bare `1fr` (`shell.test.ts:960`): `1fr` means
+   `minmax(auto, 1fr)`, which floors the track at MIN-CONTENT, so one unbreakable 200-character
+   reason would widen the column past its share.
+
+   A `<button>` RESET, in the manner `CardTile.css` established and `DeckList.css` repeated: the
+   UA's own background, border, padding and centred font all fight the grid. `text-align: start`
+   because a button centres its text and every column here reads left-to-right. `width: 100%` so
+   the row fills the list rather than shrink-wrapping its longest reason.
+
+   NO `align-items`, deliberately — grid's default is `stretch`, and the thumbnail stretching to
+   the row's full height is the entire layout model above.
+
+   `1px` — DESIGN.md, `components.suggestion-row.border`: `'1px solid {colors.border-hairline}'`.
+   It is the only px literal in this file, and every other length here is a scale token. */
+.suggestion-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2) var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-overlay);
+  text-align: start;
+
+  /* MECHANICAL REDUCED-MOTION, which is why there is no rule in tokens.css for this row.
+     Both properties are expressed entirely through a duration TOKEN, so zeroing `--motion-pulse`
+     in the reduced-motion block makes the tint instant — UX-DR42's named fallback for exactly
+     this motion. Nothing here transforms, scales, rotates or translates, so there is nothing a
+     zeroed duration would merely make FASTER, and the shipped-motion inventory needs no new
+     entry. (The tile's hover pop is deliberately not copied: it would need one.) */
+  transition:
+    background-color var(--motion-pulse) var(--ease-out),
+    box-shadow var(--motion-pulse) var(--ease-out);
+}
+
+/* HOVER, THEN LIVE, AT EQUAL SPECIFICITY SO THE LATER WINS BY ORDER.
+   Both selectors are (0,2,0), which is the whole of `no-descending-specificity`'s requirement
+   and why `.suggestion-row.is-live` is written rather than a descendant form.
+
+   A hover state is needed even though hovering a row normally MAKES it live, and the case that
+   needs it is the pinned one: while another card is pinned, `targetIdOf` returns the pin, so a
+   hovered row is not live and would otherwise give no feedback at all. It is also the ONLY
+   feedback an unknown-card row can ever give, since the store refuses to make it live.
+
+   `--border-strong` rather than a new surface: this row's resting background is already
+   `--surface-overlay`, the top of the ramp, and DESIGN.md's own rule is "one step per layer;
+   never skip two" with no fifth surface above it — so the hover speaks in the BORDER, which the
+   ramp leaves free. */
+.suggestion-row:hover {
+  border-color: var(--border-strong);
+}
+
+/* THE FOCUS RING (UX-DR40, UX-DR46).
+   `:focus-visible`, never `:focus` — the shipped idiom, and a mouse click should not leave a
+   ring behind it. `outline` rather than a box-shadow composite, because unlike a card tile this
+   row sits on a KNOWN surface: there is no arbitrary artwork behind it, so the two-band
+   `--shadow-focus-ring-over-art` treatment buys nothing. `outline: none` appears nowhere in this
+   file in any of its four spellings. */
+.suggestion-row:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* THE LIVE ROW — THE CARD CURRENTLY UNDER INSPECTION (AC 3, UX-DR24, UX-DR6).
+   DESIGN.md `components.suggestion-row`: `live-background: '{colors.accent-glow}'` and
+   `live-rule: 'inset 2px 0 0 {colors.accent}'`, both added by this story's amendment.
+
+   `--accent`, NEVER `--accent-dim`, and on this surface that is a hard failure rather than a
+   weakness: the row's own background is `--surface-overlay`, where `accent-dim` measures
+   **2.70:1** and misses the 3:1 non-text floor, while `accent` measures 5.5:1. DESIGN.md's
+   Contrast table names suggestion rows in that ban by name. The guard next door cannot see this
+   composition (its background is set here and its marker comes from a token), which is exactly
+   why the ban is restated at the rule.
+
+   The rule is a TOKEN because it cannot be anything else: .stylelintrc.json's box-shadow
+   allowed-list admits `none` or a comma-list of var(--shadow-…) / var(--glow), so
+   `inset 2px 0 0 …` cannot be written here at all. It is an INSET shadow rather than a
+   `border-left` because a border would shift every column 2px sideways on becoming live, and a
+   cursor sweeping the list would read that as a shimmer. */
+.suggestion-row.is-live {
+  background-color: var(--accent-glow);
+  box-shadow: var(--shadow-suggestion-row-live);
+}
+
+/* THE THUMBNAIL SLOT (AC 1, AC 7, UX-DR36).
+   It spans both text rows — "full row height" — and takes its WIDTH from its child's 63:88,
+   which is the whole reason the row height is content-driven rather than a number.
+
+   `display: flex` with the default `align-items: stretch` is what hands the child that height;
+   the child then derives its own width from the aspect ratio `card-shape` gives it. NO
+   `aspect-ratio` and NO `border-radius` are written here — see the header: this file is not in
+   `CARD_SHAPED` and must never draw a card, only place one.
+
+   `position: relative` is the containing block for the image below, which lies over the well
+   rather than replacing it. */
+.suggestion-row-thumb {
+  position: relative;
+  display: flex;
+  grid-row: 1 / span 2;
+  grid-column: 1;
+}
+
+/* THE PICTURE, OVER THE WELL (UX-DR36, AD-11).
+   Absolutely positioned so the well beneath keeps the slot's size for the whole of the image's
+   life — the layout is settled before the first byte arrives and never moves again.
+
+   `object-fit: cover` and the arithmetic rather than a habit, inherited from `CardTile.css`:
+   Scryfall's `normal` render is 488 × 680 (0.71765) against the frame's 63 : 88 (0.71591), a
+   0.24% difference — `contain` would letterbox a hairline of frame inside the rounded corners.
+
+   THE FADE IS MECHANICALLY REDUCED-MOTION-SAFE: one property, one duration token. Zeroing
+   `--motion-pulse` makes the picture appear instantly, which is UX-DR42's registered fallback
+   for image fade-in and needs no second declaration. `data-loaded` is a data attribute rather
+   than a second class because the state is a boolean the component already holds, and it reads
+   the same in a DOM inspector as in the test that asserts it. */
+.suggestion-row-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--motion-pulse) var(--ease-out);
+}
+
+.suggestion-row-image[data-loaded='true'] {
+  opacity: 1;
+}
+
+/* THE HEAD LINE (AC 1): badge · name · cost · confidence.
+   `baseline` alignment so the badge, the name and the confidence sit on one optical line despite
+   three different type roles; `{spacing.2}` between them, from the scale's "internal clusters"
+   band. `flex-wrap` is deliberately absent — the reason line below is where a row's length is
+   spent, and a head that wrapped would change the row's height as data arrived.
+
+   `font` + `min-height: 1lh` (code review, 2026-08-11: Greptile P1). Every child here renders
+   NOTHING when its data is absent — `Badge` returns `null` for a blank category, an unhydrated
+   name is `''`, `ManaCost` renders nothing for a `null` cost, confidence is absent by default —
+   so a maximally malformed or not-yet-hydrated item leaves this flex container with zero
+   children that have any content, and an empty flex item with no padding collapses to 0px tall.
+   The `font` role establishes this element's OWN line-height so `1lh` has something to measure;
+   it changes nothing visually, since every child that has content already carries its own `font`
+   role that overrides it. */
+.suggestion-row-head {
+  display: flex;
+  grid-row: 1;
+  grid-column: 2;
+  gap: var(--space-2);
+  align-items: baseline;
+  min-width: 0;
+  font: var(--type-body-strong);
+  min-height: 1lh;
+}
+
+/* THE NAME (AC 1). DESIGN.md: "name in `{typography.body-strong}`". `body-strong` travels alone
+   — it has no companion declaration, unlike micro and numeric.
+
+   It ellipsizes rather than wrapping, for the row-height reason above: `min-width: 0` is what
+   lets a flex item shrink below its content at all. */
+.suggestion-row-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font: var(--type-body-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* THE COST (AC 1). No colour and no type role of its own: `ManaCost` renders pips, which carry
+   their own data-ink tokens, and an empty cost renders nothing at all. `flex-shrink: 0` keeps
+   the pips whole while the name is the thing that gives way. */
+.suggestion-row-cost {
+  display: flex;
+  flex-shrink: 0;
+}
+
+/* THE CONFIDENCE (AC 1). DESIGN.md: "optional confidence in `{typography.micro}`
+   `{colors.text-tertiary}` right-aligned".
+
+   BOTH MICRO COMPANIONS IN THIS ONE BLOCK — `findRoleWithoutCompanions` fails a split by name,
+   and the reason is real: `--type-micro` is a `font` shorthand, which resets nothing about
+   letter-spacing or case, so the role alone renders 10px text that is neither tracked nor
+   uppercased. The uppercasing is what turns the wire's `high` into the chrome token the design
+   asks for, which is also why no copy module is owed for the word.
+
+   `text-tertiary` on `surface-overlay` is 4.8:1 — passing, and the TIGHTEST pair in the system.
+   Nothing here may darken it. `margin-inline-start: auto` is the right-alignment: it pushes the
+   slot to the row's end without a fourth grid track that would sit empty on most rows. */
+.suggestion-row-confidence {
+  flex-shrink: 0;
+  margin-inline-start: auto;
+  color: var(--text-tertiary);
+  font: var(--type-micro);
+  letter-spacing: var(--tracking-micro);
+  text-transform: uppercase;
+}
+
+/* THE REASON (AC 1, AC 4). DESIGN.md: "a one-line reason in `{typography.body}`
+   `{colors.text-secondary}` beneath".
+
+   ONE LINE, ENFORCED (the artefact says "one-line", and `contracts.py` caps `reason` at 200
+   characters — which is longer than most rows are wide). Ellipsis rather than wrap, so a long
+   reason costs the row no extra height and the thumbnail's derived width stays stable across
+   the list.
+
+   THE TRUNCATION IS FINAL, DELIBERATELY (code review, 2026-08-11). This comment previously
+   claimed the row is "one hover away from the detail panel" for the full sentence — false:
+   `CardDetail.tsx` shows the CARD's own fields (name, cost, type line, oracle text), never a
+   suggestion item's `reason`, so nothing currently recovers a truncated reason. The 200-char cap
+   is the agent's own budget for staying legible at one line; a reason that overruns it is
+   accepted as the agent's problem to write shorter, not this row's problem to make readable. */
+.suggestion-row-reason {
+  grid-row: 2;
+  grid-column: 2;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font: var(--type-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  /* Same collapse as the head line above (Greptile P1): a malformed item with no `reason` at
+     all renders this span empty, and an empty grid item with no padding is 0px tall. */
+  min-height: 1lh;
 }
