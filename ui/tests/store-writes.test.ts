@@ -112,7 +112,8 @@ const STORES: { store: string; owner: string; why: string }[] = [
       'whether an agent view is on the glass and what it is showing — the SEVENTH slice, ' +
       "and the first whose TWO fields sit on opposite sides of c4-5's narrowing (story " +
       'c6-5, AC 5, AC 6). The content is server-derived (an agent view exists because the ' +
-      'agent pushed one, and from c6-6 the writer is a WebSocket message — the spine ' +
+      'agent pushed one, and since c6-6 the writer IS a WebSocket message, through ' +
+      '`openSuggestionsPush` — the spine ' +
       "sentence's own second input, nothing narrowed); the open/closed status is a person, " +
       'because Esc, the close pill and a scrim click are three gestures and no request can ' +
       'answer whether somebody is still reading. They live in ONE slice because AC 5 is a ' +

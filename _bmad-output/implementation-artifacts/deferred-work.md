@@ -1,5 +1,27 @@
 # Deferred Work
 
+## Deferred from: c6-6-a-push-opens-its-view-and-a-repeat-push-replaces-it-in-place (2026-08-11)
+
+> Observations recorded during implementation, before the three-layer review. Both are ARTEFACT
+> gaps rather than code defects: the story shipped the artefact's own words and its own values
+> and declared what the artefact does not say, rather than inventing the missing half.
+>
+> **Inherited entries reconciled by this story** (each annotated in place, above): the
+> dialog-accessible-name guard (`AgentViewContent.title`) is **CLOSED**; `agentEventOf`'s
+> kind-only narrowing is **PARTIALLY TRIGGERED** — the payload SHAPE is now defended at the
+> builder by Brad's Q6 ruling, item-field validation stays c6-7's; and the permanently-open
+> copy-guard entry is **HONOURED AND STAYS OPEN** (c4-12's disposition recorded that *"c6-6 still
+> owes it"* — the reading was performed and is recorded in this story's Debug Log, which is the
+> deliverable; the entry never closes, by its own terms).
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-6-a-push-opens-its-view-and-a-repeat-push-replaces-it-in-place.md`
+  summary: "**The empty-push line is ungrammatical once its placeholder is filled, and the artefact is what says so.** `EXPERIENCE.md`'s Voice and Tone row writes *\"The agent sent an empty {kind}. Nothing to show — ask it for another pass.\"* — a template — and the story's own task list rules the substitution to be the WIRE kind. That renders *\"The agent sent an empty suggestions.\"*, which reads wrong, and gets worse for Epic 9's kinds: *\"an empty tier_list\"*, *\"an empty groups\"*. c6-6 shipped the artefact's bytes verbatim rather than inventing a per-kind display noun (\"suggestions list\", \"tier list\"), because authoring copy no artefact carries — one story before the second kind that would need it — is exactly what the copy guard's registration rule exists to prevent, and a runtime-assembled user-facing string is residue 3 of `copy-rules.test.ts`'s own header. **Home: the story that adds the SECOND view kind** (c6-8 for kind switching, or Epic 9's first view), which is the first point at which the decision has two data points instead of one. The repair is either a per-kind display-noun table registered in `COPY_MODULES`, or an `EXPERIENCE.md` amendment rewording the sentence so no article precedes the placeholder."
+  evidence: '`ui/src/containers/SuggestionsView/copy.ts` (the residue is declared in the module itself); `EXPERIENCE.md:71`; the byte-for-byte pin in `ui/tests/empty-push-copy.test.ts` asserts the placeholder SURVIVES, so the day someone hard-codes a kind that gate fires.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-6-a-push-opens-its-view-and-a-repeat-push-replaces-it-in-place.md`
+  summary: "**`DESIGN.md` specifies a treatment for the empty-DECK line and none for the empty-PUSH line, which are the same kind of thing.** `components.empty-deck-line` carries `type: '{typography.body}'`, `foreground: '{colors.text-secondary}'` and the note that it *\"spends no length of its own\"* because its container's padding is already its inset. Nothing equivalent exists for the empty push, and the two states are structurally identical: one calm sentence standing in for absent content inside a surface that supplies its own padding. c6-6 shipped the empty-deck block's values, CITED in `SuggestionsView.css`, and did not amend the artefact — c4-12 amended `DESIGN.md` because an acceptance criterion of its own (AC 26) required the artefact to specify the treatment, and c6-6 has no such AC. Amending an artefact nobody asked to be amended is not a diff a story makes quietly. **Home: c6-7**, which renders the rest of this view and therefore has to put real values in front of a `DESIGN.md` that describes none of them — at which point the empty line's block is one line of the same amendment."
+  evidence: '`ui/src/containers/SuggestionsView/SuggestionsView.css` (the gap is declared in the stylesheet header); `DESIGN.md`, `components.empty-deck-line`; `ui/src/containers/CardGrid/CardGrid.css:42-64` for the shape the amendment took at c4-12.'
+
 ## Deferred from: c6-5-agent-view-shell-with-focus-management-and-dismissal (2026-08-10)
 
 > Observations recorded during implementation of the agent view shell, before the three-layer
@@ -29,7 +51,7 @@
 
 - source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
   summary: "`AgentViewContent.title` (the store's content shape) has no non-empty guard. An empty-string title would render an `<h2>` with no visible text, and since `aria-labelledby` points at that heading, the dialog's accessible name would resolve to nothing — failing the basic requirement that every `role=\"dialog\"` have a discernible name. Not reachable until c6-6 wires a real `suggestions` push into `openAgentView`; c6-6 should validate or fall back to a non-empty title at the point content is constructed."
-  evidence: 'Blind Hunter; `ui/src/state/agentView.ts:62-71`.'
+  evidence: 'Blind Hunter; `ui/src/state/agentView.ts:62-71`. **CLOSED BY c6-6 (2026-08-11), at exactly the point this entry asked for.** `suggestionsViewOf` — the builder that turns an envelope into content — trims `payload.title` and falls back to `SUGGESTIONS_VIEW_TITLE` (the word "Suggestions") when the result is absent, null or empty, so no code path can construct content with a blank title. `.trim()` rather than a truthiness check, because a title of three spaces renders nothing while passing a non-empty-string check. The fallback word is a Q7 ruling (Brad, 2026-08-11) and is registered in `COPY_MODULES` as authored copy. Pinned two ways: an `it.each` over absent/null/empty/whitespace-only in `ui/src/state/agentView.test.ts`, and an end-to-end `toHaveAccessibleName` assertion in `ui/src/App.test.tsx` driven through the real socket — the second is the one that checks the property this entry is actually about, since the accessible name is computed by the DOM rather than by the store.'
 
 - source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
   summary: "Restates and confirms the ordinal-drift item already logged in this file's `c6-5-agent-view-shell...` dev-time section above (c4-8/c4-10/c4-12's \"Nth copy module\" comments disagreeing) — surfaced independently by the code review's Blind Hunter layer as well. No new information; cross-referenced here so the review record doesn't read as having missed it."
@@ -184,7 +206,7 @@
 
 - source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
   summary: "agentEventOf only validates the `kind` discriminant, not `id`/`ts`/`payload` — a frame like {\"kind\":\"deck_changed\"} with no id/ts/payload passes through typed as a full AgentEvent. Not exercised today (system-event kinds are dispatched by kind alone; the four agent-view kinds are dropped unread), becomes actionable when Epic 6 builds the agent views and reads those fields."
-  evidence: 'Blind Hunter + Edge Case Hunter, independently; ui/src/api/client.ts:701-716. NOT TRIGGERED BY c6-3 (checked 2026-08-09): that story is Epic 6''s first frontend story, but it reads no payload field at all — by ruling, the `active_deck_changed` handler ignores both the kind and `payload.deck_id` and re-drives the boot, which asks `GET /api/active-deck` first (connection.ts:96-108). Its tests drive frames through `push()` with a payload present and assert only surface and request-log outcomes, so nothing here is exercised or closed. STAYS OPEN for the first story that actually reads those fields — c6-4 onwards, when the agent views land. NOT TRIGGERED BY c6-4 (checked 2026-08-10) either: that story is Python-only — an MCP push tool with no `ui/` diff at all — so `agentEventOf` is neither called nor changed by it, and the SPA still drops the `suggestions` kind unread. The trigger is c6-7, the story that renders suggestion payload fields.'
+  evidence: 'Blind Hunter + Edge Case Hunter, independently; ui/src/api/client.ts:701-716. NOT TRIGGERED BY c6-3 (checked 2026-08-09): that story is Epic 6''s first frontend story, but it reads no payload field at all — by ruling, the `active_deck_changed` handler ignores both the kind and `payload.deck_id` and re-drives the boot, which asks `GET /api/active-deck` first (connection.ts:96-108). Its tests drive frames through `push()` with a payload present and assert only surface and request-log outcomes, so nothing here is exercised or closed. STAYS OPEN for the first story that actually reads those fields — c6-4 onwards, when the agent views land. NOT TRIGGERED BY c6-4 (checked 2026-08-10) either: that story is Python-only — an MCP push tool with no `ui/` diff at all — so `agentEventOf` is neither called nor changed by it, and the SPA still drops the `suggestions` kind unread. The trigger is c6-7, the story that renders suggestion payload fields. **PARTIALLY TRIGGERED BY c6-6 (2026-08-11), and the ruling is recorded rather than the entry closed.** c6-6 is the first code in the app to READ an agent-view payload: `suggestionsViewOf` reads `payload.title` and `payload.items`. Brad ruled Q6 as recommended — **`agentEventOf` stays kind-only** (its documented register; widening a shipped, pinned narrower is a bigger change than this story needs) and the defence lives at the builder, which is TOTAL: `event.payload?.items ?? []` and a trimmed-title fallback construct a valid empty view for a bare `{"kind":"suggestions"}` frame. That is mandatory independent of the malformed-frame case, because `SuggestionsPayload.title` and `.items` are both OPTIONAL in the generated types even for honest wires. Pinned by three builder rows in `ui/src/state/agentView.test.ts` (absent payload / absent items / blank title) and one end-to-end test in `ui/src/App.test.tsx` that serialises a frame with no `payload` key at all and asserts the view opens empty with the socket still open. **What remains open is the half c6-6 does not reach: no ITEM field is validated** — a `card_id` that is not a string, or a missing `reason`, still passes through untouched, because this story renders no row. That stays c6-7''s, at the row that renders it (FR-13/AD-7: one bad entry degrades to the placeholder, the push never fails wholesale).'
 
 - source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
   summary: "The equivalence between the agent's outbound POST /agent/events body shape and the WebSocket frame the browser actually receives is asserted only in a comment (ws.py broadcasts the ingested event verbatim), with no cross-language contract test pinning it."
@@ -6016,3 +6038,25 @@ Also executed or re-homed at this retro, beyond the seven:
   list honest. Also standing: `dw:5197`'s twice-confirmed one-sentence fix
   (`test_committed_schema.py` module docstring) remains unowned and cheap — fair game for R2's
   sweep to absorb.
+
+## Deferred from: code review of c6-6-a-push-opens-its-view-and-a-repeat-push-replaces-it-in-place (2026-08-11)
+
+- **`id`/`ts` on the `suggestions` envelope are trusted without validation.**
+  `suggestionsViewOf` (`ui/src/state/agentView.ts:229-230`) copies `event.id`/`event.ts` straight
+  through with no presence check, since `agentEventOf` (`client.ts:701-716`) validates only
+  `kind`. Two distinct malformed pushes both missing `id` would make
+  `AgentView.tsx:312`'s `showingPushRef.current === pushId` comparison treat them as the same
+  push, skipping the replace effect's re-focus/live-region/crossfade — the store still
+  overwrites `content` unconditionally, so visible text updates via ordinary reconciliation with
+  no accessible announcement for that specific malformed case. Consequence of the kind-only
+  `agentEventOf` narrower design, which c6-6's Q6 ruling scoped to defending
+  `payload`/`title`/`items` only; `id`/`ts` validation was out of that story's ruled scope, and
+  the same trust already applies uniformly to the shipped `deck_changed`/`active_deck_changed`
+  kinds. Requires a backend contract violation to trigger — not reachable from the shipped
+  companion server today.
+- **`AgentView.test.tsx`'s ARM 3 fixtures hand-roll `StatePanel` markup instead of importing it.**
+  The new focus-restore tests (`ui/src/containers/AgentView/AgentView.test.tsx:81-82`) construct
+  a `<section className="state-panel">`/`<h2 className="state-panel-headline">` fragment by hand
+  rather than rendering the real `StatePanel` component. If `StatePanel.tsx`'s role, label, or
+  headline class ever changes, these tests would keep passing against a fixture that no longer
+  matches production. Test-quality only, no functional impact.

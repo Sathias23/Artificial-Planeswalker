@@ -77,7 +77,7 @@ import {
   type AgentSocketHandlers,
   type SessionOutcome,
 } from '../api/client'
-import type { AgentEvent } from '../api/schema'
+import type { AgentEvent, SuggestionsEvent } from '../api/schema'
 
 /**
  * The first retry lands this long after a drop.
@@ -206,6 +206,23 @@ export interface AgentSocketOptions {
    * visible. See `connection.ts` for what each one does.
    */
   readonly onSystemEvent: (kind: SystemEventKind) => void
+  /**
+   * A `suggestions` push arrived (story c6-6, AC 1). The caller opens its view
+   * (`connection.ts` → `openSuggestionsPush`).
+   *
+   * **It carries the WHOLE EVENT, and that is the difference from
+   * {@link AgentSocketOptions.onSystemEvent} one line up.** The system kinds report a
+   * discriminant because the payload is deliberately never read — *"something changed, refetch"*
+   * — and this one reports the envelope because the payload IS the content: the title, the items
+   * and the `id` that makes a repeat push identifiable are all in it, and an `id`-only callback
+   * would force the caller to hold a second copy of the frame to look them up in.
+   *
+   * The three remaining agent-view kinds (`swaps`, `tier_list`, `groups`) are still dropped at
+   * the switch — their views are **Epic 9** — so this is not `onViewEvent(kind, payload)` yet.
+   * c6-8 owns kind-switching, and widening this signature before a second view exists would be a
+   * shape invented for a caller nobody has written.
+   */
+  readonly onSuggestions: (event: SuggestionsEvent) => void
   /** Injected so tests need no `fetch` stub; production passes nothing. */
   readonly mint?: () => Promise<SessionOutcome>
   /**
@@ -297,6 +314,7 @@ export const createAgentSocket = ({
   onStatus,
   onReconnected,
   onSystemEvent,
+  onSuggestions,
   mint = readSessionTicket,
   open = openAgentSocket,
   initialStatus = 'reconnecting',
@@ -408,12 +426,18 @@ export const createAgentSocket = ({
       case 'deck_changed':
         onSystemEvent(event.kind)
         return
-      // THE FOUR AGENT-VIEW KINDS ARE RECEIVED AND DELIBERATELY DROPPED, WITH A HOME (AC 11).
-      // Not an error and not a crash: **Epic 6** builds the four views these carry, and until it
-      // does, a push is a well-formed message about a surface that does not exist yet. Dropping
-      // it is the honest behaviour — the alternative, treating a valid frame as malformed, would
-      // make the agent's pushes look like a wire fault in whatever c6-x is debugging.
+      // THE FIRST AGENT VIEW WITH SOMEWHERE TO GO (story c6-6, AC 1). The whole event, not its
+      // kind — the payload IS the content. `connection.ts` turns it into an open view; this
+      // module still knows nothing about a store.
       case 'suggestions':
+        onSuggestions(event)
+        return
+      // THE THREE REMAINING AGENT-VIEW KINDS ARE RECEIVED AND DELIBERATELY DROPPED, WITH A HOME
+      // (AC 11). Not an error and not a crash: **Epic 9** builds the swaps, tier-list and groups
+      // views these carry (P1), and until it does, a push is a well-formed message about a
+      // surface that does not exist yet. Dropping it is the honest behaviour — the alternative,
+      // treating a valid frame as malformed, would make the agent's pushes look like a wire
+      // fault in whatever story is being debugged.
       case 'swaps':
       case 'tier_list':
       case 'groups':

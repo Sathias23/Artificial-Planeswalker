@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
+import { Fragment, type ReactNode, useEffect, useId, useRef, useState } from 'react'
 
 import { focusHome } from '../focusHome'
 import { AGENT_VIEW_KICKER, CLOSE_PILL_LABEL } from './copy'
@@ -10,11 +10,17 @@ import './AgentView.css'
  *
  * ================= IT IS A SHELL, AND IT KNOWS NOTHING ABOUT SUGGESTIONS ===============
  *
- * Every agent view in Epic 6 lives inside this component, so it takes a `title`, a `count` and
- * `children` and nothing else: no envelope, no wire type, no `kind`. c6-7 renders suggestion
- * rows INTO it and c6-8 adds nav pills BESIDE it, and neither has to edit this file to do so —
- * which is the property that makes "content-agnostic" a testable claim rather than a hope
- * (`AgentView.test.tsx` mounts it over an arbitrary fixture child).
+ * Every agent view in Epic 6 lives inside this component, so it takes a `title`, a `count`, a
+ * `pushId` and `children` and nothing else: no envelope, no wire type, no `kind`. c6-7 renders
+ * suggestion rows INTO it and c6-8 adds nav pills BESIDE it, and neither has to edit this file
+ * to do so — which is the property that makes "content-agnostic" a testable claim rather than a
+ * hope (`AgentView.test.tsx` mounts it over an arbitrary fixture child).
+ *
+ * `pushId` joined that list at **c6-6** and is the one prop worth defending, because it looks
+ * like the envelope leaking in. It is not: it is an OPAQUE STRING this component never parses,
+ * compares to a literal or shows to anybody. All the shell knows is that a different one means a
+ * different push — which is exactly the amount of knowledge the replace contract needs, and
+ * strictly less than knowing what a suggestion is.
  *
  * It is a CONTAINER rather than a component: `src/components/` is closed by a set-equality
  * guard (`shell.test.ts:1257`) and `ui/README.md:567-571` homes c6-5..c6-8 here. It also does
@@ -47,6 +53,22 @@ import './AgentView.css'
  * would be a second place UX-DR34 had to be obeyed.
  */
 export interface AgentViewProps {
+  /**
+   * WHICH PUSH IS SHOWING — the envelope's opaque `id`, and the whole of how this shell knows a
+   * REPLACE from a re-render (story c6-6, AC 2).
+   *
+   * A `title` change cannot serve: the common case is an agent that omits `payload.title`, so
+   * two consecutive pushes carry the same fallback word and are byte-identical in every prop a
+   * reader could compare. The wire's own identity field is the only honest discriminator, and
+   * `types.d.ts:1049-1051` says exactly what it is for — *"identity and de-duplication"*.
+   *
+   * ⚠️ ONE CONSEQUENCE, STATED RATHER THAN LEFT TO BE FOUND: `id` exists for de-duplication, so
+   * a frame REPEATING an id already showing does not re-key the effect below — no re-focus, no
+   * announcement, no crossfade. That is the correct reading of AD-6 rather than a gap: the wire
+   * has said this is the same push, and re-announcing it would be the app disagreeing with the
+   * only authority on the question.
+   */
+  readonly pushId: string
   /** The heading, and the dialog's accessible name (`aria-labelledby` → the `h2`). */
   readonly title: string
   /**
@@ -99,7 +121,7 @@ const focusablesIn = (root: HTMLElement | null): HTMLElement[] =>
           !element.hasAttribute('hidden') && element.getAttribute('aria-hidden') !== 'true',
       )
 
-export function AgentView({ title, count, onClose, children }: AgentViewProps) {
+export function AgentView({ pushId, title, count, onClose, children }: AgentViewProps) {
   /**
    * The heading's `id`, for `aria-labelledby`.
    *
@@ -205,13 +227,29 @@ export function AgentView({ title, count, onClose, children }: AgentViewProps) {
       // ARM 2 — something else already took focus. `SkipLink.tsx:110-112`'s guard verbatim:
       // overriding that would be this component reversing a decision it did not make.
       if (document.activeElement !== null && document.activeElement !== document.body) return
-      // ARM 3 — the remembered element is GONE (Brad's Q5 ruling, 2026-08-10). A row that was
-      // re-rendered away, or a control that only exists on a surface that has since changed.
-      // The `<h1>` deck name is the shared fallback for every disconnected-restore case until
-      // c6-6 refines the state-panel arm; `AppShell.test.tsx:66` pins that there is exactly one
-      // `h1` in the document, which is what makes a document-wide query precise here.
+      // ARM 3 — the remembered element is GONE (Brad's Q5 rulings, 2026-08-10 and 2026-08-11).
+      // A row that was re-rendered away, or a control that only exists on a surface that has
+      // since changed. There are two destinations and the order between them is the ruling:
+      //
+      //   - A STATE PANEL, if one is showing. EXPERIENCE.md:122 — *"a state panel takes the left
+      //     column while an agent view is open … on close, the user lands on the state panel"*.
+      //     That is the deck being lost, or the database going away, UNDER an open view: the
+      //     grid the remembered control lived on is gone with it, which is exactly why this arm
+      //     is running. `StatePanel.tsx:115-126` renders one `<h2 class="state-panel-headline">`
+      //     per panel and the app shows at most one panel at a time.
+      //   - The `<h1>` deck name otherwise, as since c6-5. `AppShell.test.tsx:66` pins that
+      //     there is exactly one `h1` in the document, which is what makes a document-wide query
+      //     precise here.
+      //
+      // ⚠️ THIS ARM ONLY RUNS FOR A DISCONNECTED TARGET, AND THAT IS THE WHOLE OF WHY IT DOES
+      // NOT CONTRADICT UX-DR46. A restore target that is still connected wins at the bottom of
+      // this function even with a state panel on screen — *"focus returns to the element focused
+      // before the view took it"* is not overridden by a panel appearing behind the view. The
+      // rejected alternative (always land on the panel headline when one is showing) would have
+      // been exactly that override. "Lands on the state panel" is then the visual truth plus
+      // this fallback, rather than a focus decision taken away from the reader.
       if (!target.isConnected) {
-        focusHome(document.querySelector('h1'))
+        focusHome(document.querySelector('.state-panel-headline') ?? document.querySelector('h1'))
         return
       }
       // The ordinary path. `.focus()` and deliberately NOT `focusHome`: this element was
@@ -221,6 +259,73 @@ export function AgentView({ title, count, onClose, children }: AgentViewProps) {
       target.focus()
     }
   }, [])
+
+  /**
+   * A SECOND PUSH ARRIVED WHILE THIS VIEW WAS OPEN (story c6-6, AC 2, FR-08, UX-DR34/45/46).
+   *
+   * ==== WHY THIS IS AN EFFECT AND NOT A `key` ON `<AgentView>` ============================
+   * The c6-5 review recorded that a content swap reconciles as a prop update, so the mount-only
+   * effects above do not re-fire, and called the missing mechanics *"owed to c6-6"*. The owed
+   * mechanics are the RE-FIRES. A `key={pushId}` in `App.tsx` would be wrong three ways, all
+   * load-bearing:
+   *
+   *   1. It plays the WRONG ANIMATION. A remount re-runs the entry bloom — 480 ms, fade plus an
+   *      8px rise. AC 2 specifies a crossfade over the GLIDE duration, opacity only: a different
+   *      motion with its own line in UX-DR42's inventory.
+   *   2. It CORRUPTS THE RETURN-FOCUS CONTRACT. The mount effect captures `document.activeElement`
+   *      as the restore target, and at replace time focus is INSIDE this view — usually on the
+   *      heading, because the line below just put it there. A remount would capture the heading,
+   *      and c6-5's AC 4 (*"focus returns to the element focused before the view took it"*) would
+   *      silently return focus to this view's own corpse.
+   *   3. It RUNS THE RESTORE CLEANUP MID-OPEN — the unmount handler firing, and trying to restore
+   *      focus, while the view is conceptually still open.
+   *
+   * So the shell stays mounted and this effect supplies what a remount would have: the focus
+   * hand-off, a real mutation of the live region, and the crossfade. It touches
+   * `restoreTargetRef` NOWHERE, which is point 2 made structural rather than remembered.
+   *
+   * ==== THE MOUNT RUN IS SKIPPED, AND THE REF IS WHY ======================================
+   * Initialised to the FIRST `pushId`, so the effect's mount invocation compares equal and
+   * returns having done nothing: opening from closed is a real mount, and the effects above
+   * already own it (capture, focus, bloom). React StrictMode's second mount invocation compares
+   * equal too, for the same reason — which a `didMount` boolean flipped on the first run would
+   * not have survived.
+   */
+  const showingPushRef = useRef(pushId)
+  /**
+   * THE CROSSFADE'S STARTING STATE — the bloom's attribute-flip pattern, for the bloom's reason.
+   *
+   * `AgentView.css` transitions `opacity` on the title and the body over `--motion-glide`; this
+   * attribute is what supplies the value to transition FROM. Expressed as a transition out of a
+   * state attribute rather than as `@keyframes`, because `token-usage.test.ts`'s CSS reader
+   * matches innermost brace pairs and would read a keyframes block as two rules named `from` and
+   * `to` (see the `entering` state above, which learned this first).
+   *
+   * OPACITY ONLY, AND THAT IS A CONSTRAINT RATHER THAN A CHOICE. A rise or a slide would make
+   * this a `MOTION_PROPERTIES` member and demand a reduced-motion registration in `tokens.css`;
+   * opacity over a TOKENISED duration self-neutralises instead, because the reduced-motion block
+   * zeroes `--motion-glide` (`tokens.css:323`). That is UX-DR42's *"instant content swap"*
+   * satisfied mechanically, which is why the inventory line for this story needs no new entry.
+   */
+  const [replacing, setReplacing] = useState(false)
+  useEffect(() => {
+    if (showingPushRef.current === pushId) return
+    showingPushRef.current = pushId
+
+    // AC 2, focus half: *"focus moves to the heading, whose live region announces the new push"*.
+    // The same hand-off the mount uses, so a replaced view and a freshly-opened one leave focus
+    // in the same place — and `focusHome`'s once-blur cleanup means the heading still never
+    // becomes a Tab stop of its own.
+    focusHome(headingRef.current)
+
+    // The flip is in a FRAME CALLBACK for the bloom's reason: two style changes inside one frame
+    // are coalesced and the transition never runs. Nothing waits on it either way — the content
+    // is already committed and interactive, and EXPERIENCE.md:165 keeps presentation out of every
+    // latency budget (c6-9 measures the budget this is excluded from).
+    setReplacing(true)
+    const frame = requestAnimationFrame(() => setReplacing(false))
+    return () => cancelAnimationFrame(frame)
+  }, [pushId])
 
   // ESC CLOSES THE VIEW, AND THE PIN SURVIVES (AC 4, UX-DR39, EXPERIENCE.md:141).
   //
@@ -392,6 +497,7 @@ export function AgentView({ title, count, onClose, children }: AgentViewProps) {
         aria-modal="true"
         aria-labelledby={headingId}
         data-entering={entering ? 'true' : 'false'}
+        data-replacing={replacing ? 'true' : 'false'}
       >
         <header className="agent-view-header">
           <p className="agent-view-kicker">{AGENT_VIEW_KICKER}</p>
@@ -400,9 +506,27 @@ export function AgentView({ title, count, onClose, children }: AgentViewProps) {
               connection pill's). Nothing announces on FIRST open: no announcement is specified
               anywhere for it, and focus moving here is the open-time signal (AC 3). What the
               region is for is c6-6's replacement — one view swapped for another under a reader
-              who is already inside it. */}
+              who is already inside it — and that is now wired.
+
+              THE KEYED FRAGMENT IS THE ANNOUNCEMENT, AND IT IS NOT A TIDINESS PROBLEM (Q4's
+              ruling, 2026-08-11). A live region announces on DOM MUTATION; re-rendering the same
+              string mutates nothing, and the COMMON case is exactly that — an agent that omits
+              `payload.title` gets the fallback word, so two consecutive pushes carry
+              byte-identical text. Keying on `pushId` makes React drop the old text node and
+              insert a new one on every replace, so "announces the new push" is true for every
+              push rather than only for the ones that happen to be renamed.
+
+              The key is on a FRAGMENT and not on the `<h2>`: keying the heading itself would
+              remount the live region, the `aria-labelledby` target and `headingRef`'s node all
+              at once — a brand-new region is not a mutation of an existing one, and the ref the
+              focus effects hold would point at a detached element.
+
+              WHAT THIS CANNOT PROVE, DECLARED: whether a screen reader DE-DUPLICATES two
+              identical announcements is unobservable in jsdom, which has no accessibility tree
+              and no speech. The mutation is asserted (`AgentView.test.tsx`, with a
+              `MutationObserver`); the utterance is homed on the C6 manual checklist. */}
           <h2 ref={headingRef} className="agent-view-title" id={headingId} aria-live="polite">
-            {title}
+            <Fragment key={pushId}>{title}</Fragment>
           </h2>
           {counted ? <p className="agent-view-count">{count}</p> : null}
           <button type="button" className="agent-view-close" onClick={onClose}>

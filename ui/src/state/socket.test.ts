@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RETRIES_QUIETLY } from '../components/StatePanel/states'
 import type { StateKey } from '../components/StatePanel/copy'
 import type { AgentSocketHandlers, SessionOutcome } from '../api/client'
-import type { AgentEvent } from '../api/schema'
+import type { AgentEvent, SuggestionsEvent } from '../api/schema'
 import {
   createAgentSocket,
   DISCONNECTED_AFTER_MS,
@@ -79,6 +79,9 @@ const driving = (...outcomes: SessionOutcome[]) => {
 
   const statuses: ConnectionStatus[] = []
   const events: SystemEventKind[] = []
+  // The WHOLE event, not its kind — what the callback carries is what the assertions can check,
+  // and "was the payload delivered" is the claim c6-6's dispatch arm exists to make.
+  const pushes: SuggestionsEvent[] = []
   let reconnects = 0
 
   const socket = createAgentSocket({
@@ -87,6 +90,7 @@ const driving = (...outcomes: SessionOutcome[]) => {
       reconnects += 1
     },
     onSystemEvent: (kind) => events.push(kind),
+    onSuggestions: (event) => pushes.push(event),
     mint,
     open,
   })
@@ -97,6 +101,7 @@ const driving = (...outcomes: SessionOutcome[]) => {
     sockets,
     statuses,
     events,
+    pushes,
     reconnects: () => reconnects,
     /** The socket the loop most recently opened. */
     latest: () => sockets[sockets.length - 1],
@@ -260,6 +265,7 @@ describe('the generation counter survives every await and every callback (AC 4)'
       onStatus: () => undefined,
       onReconnected: () => undefined,
       onSystemEvent: () => undefined,
+      onSuggestions: () => undefined,
       mint: () => new Promise<SessionOutcome>((resolve) => (release = resolve)),
       open: (ticket) => {
         sockets.push({ ticket })
@@ -285,6 +291,7 @@ describe('the generation counter survives every await and every callback (AC 4)'
       onStatus: () => undefined,
       onReconnected: () => undefined,
       onSystemEvent: () => undefined,
+      onSuggestions: () => undefined,
       mint: () => new Promise<SessionOutcome>((resolve) => answers.push(resolve)),
       open: (ticket) => {
         sockets.push({ ticket })
@@ -636,17 +643,46 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     socket.stop()
   })
 
-  it('receives and DROPS the four agent-view kinds, without treating them as faults', async () => {
-    const { socket, events, statuses, latest } = await open()
+  it('DELIVERS a `suggestions` push, with its payload, to the view callback (c6-6, AC 1)', async () => {
+    const { socket, pushes, events, statuses, latest } = await open()
 
-    for (const kind of ['suggestions', 'swaps', 'tier_list', 'groups'] as const) {
+    const push: SuggestionsEvent = {
+      kind: 'suggestions',
+      id: 'push-1',
+      ts: '2026-08-11T09:15:00Z',
+      payload: { title: 'Resilience options', items: [{ card_id: 'c-1', reason: 'Curve.' }] },
+    }
+    latest().handlers.onMessage(push)
+
+    // THE WHOLE ENVELOPE, not the kind. This is the assertion that separates the view arm from
+    // the system arm above it: `onSystemEvent` gets a discriminant because the payload is
+    // deliberately never read, and this one gets the frame because the payload is the content.
+    // A dispatch that called the callback with `event.kind` — or with a rebuilt object — passes
+    // a "was it called" check and fails this one.
+    expect(pushes).toEqual([push])
+    expect(pushes[0].payload.items).toEqual([{ card_id: 'c-1', reason: 'Curve.' }])
+    // The system callback is NOT the one that fired, and the connection was never disturbed.
+    expect(events).toEqual([])
+    expect(statuses).toEqual(['live'])
+    expect(latest().closed).toBe(0)
+
+    socket.stop()
+  })
+
+  it('receives and DROPS the three remaining agent-view kinds, without treating them as faults', async () => {
+    const { socket, events, pushes, statuses, latest } = await open()
+
+    for (const kind of ['swaps', 'tier_list', 'groups'] as const) {
       latest().handlers.onMessage(frame(kind))
     }
 
-    // Epic 6 builds the views these carry. Until it does, a push is a well-formed message about a
-    // surface that does not exist yet — and treating a VALID frame as malformed would make the
-    // agent's pushes look like a wire fault to whoever debugs c6-x.
+    // **Epic 9** builds the views these three carry (P1). Until it does, a push is a well-formed
+    // message about a surface that does not exist yet — and treating a VALID frame as malformed
+    // would make the agent's pushes look like a wire fault to whoever debugs that story.
     expect(events).toEqual([])
+    // Nor do they leak into c6-6's arm, which is the new way this could go wrong: a `default`
+    // that fell through to `onSuggestions` would open a suggestions view for a tier list.
+    expect(pushes).toEqual([])
     expect(statuses).toEqual(['live'])
     expect(latest().closed).toBe(0)
 
@@ -682,6 +718,7 @@ describe('the loop survives a socket factory that fails outright', () => {
       onStatus: (status) => statuses.push(status),
       onReconnected: () => undefined,
       onSystemEvent: () => undefined,
+      onSuggestions: () => undefined,
       mint: () => {
         mintedAt.push(Date.now())
         return Promise.resolve(TICKET)

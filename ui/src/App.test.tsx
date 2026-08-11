@@ -27,7 +27,14 @@ import { CLOSE_PILL_LABEL } from './containers/AgentView/copy'
 import { resetDeckMemory } from './containers/CardDetail/deckMemory'
 import { EMPTY_DECK_LINE } from './containers/CardGrid/copy'
 import { CONNECTION_WORDS, pillText } from './containers/ConnectionPill/copy'
-import { closeAgentView, openAgentView, resetAgentView, useAgentViewStore } from './state/agentView'
+import { emptyPushLine } from './containers/SuggestionsView/copy'
+import {
+  SUGGESTIONS_VIEW_TITLE,
+  closeAgentView,
+  openAgentView,
+  resetAgentView,
+  useAgentViewStore,
+} from './state/agentView'
 import { MAX_ATTEMPTS_PER_CARD, hydrateCard, resetCardCache, useCardStore } from './state/cards'
 import { resetDeckState, useDeckStore } from './state/deck'
 import { resetFormatCheckState } from './state/formatCheck'
@@ -119,11 +126,18 @@ const connect = () => driveSocket(() => socket().onopen?.())
 /** The socket drops — a restart, a refused handshake, a lost process. All one thing on the wire. */
 const drop = () => driveSocket(() => socket().onclose?.())
 
-/** One agent frame arrives, exactly as the backend serialises it. */
-const push = (kind: string, payload: Record<string, unknown> = {}) =>
+/**
+ * One agent frame arrives, exactly as the backend serialises it.
+ *
+ * `id` became a parameter at c6-6, because that is the story where the envelope's identity stops
+ * being inert: it is the REPLACE KEY, so two suggestions pushes that share the default
+ * `id-suggestions` are the same push by the wire's own de-duplication rule and the view is
+ * correct not to re-announce. Every existing caller keeps the default and its behaviour.
+ */
+const push = (kind: string, payload: Record<string, unknown> = {}, id = `id-${kind}`) =>
   driveSocket(() =>
     socket().onmessage?.({
-      data: JSON.stringify({ kind, id: `id-${kind}`, ts: '2026-08-08T00:00:00Z', payload }),
+      data: JSON.stringify({ kind, id, ts: '2026-08-08T00:00:00Z', payload }),
     }),
   )
 
@@ -2469,7 +2483,7 @@ describe('the page reconnects on its own (c5-6)', () => {
     expect(sockets).toHaveLength(1)
   })
 
-  it('refetches on deck_changed, and ignores the four agent-view kinds (AC 11)', async () => {
+  it('refetches on deck_changed, and ignores the three Epic-9 view kinds (AC 11)', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     const fetchMock = answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -2478,10 +2492,15 @@ describe('the page reconnects on its own (c5-6)', () => {
     await connect()
     const before = callsTo(fetchMock, '/api/active-deck')
 
-    for (const kind of ['suggestions', 'swaps', 'tier_list', 'groups']) await push(kind)
-    // Epic 6 builds the views these carry. Received, dropped, and not a fault.
+    // `suggestions` LEFT this list at c6-6, which gave it a view to open — see this file's own
+    // c6-6 describe for what it does now. **Epic 9** builds the three that remain (P1), and
+    // until it does they are received, dropped, and not a fault.
+    for (const kind of ['swaps', 'tier_list', 'groups']) await push(kind)
     expect(callsTo(fetchMock, '/api/active-deck') - before).toBe(0)
     expect(sockets[0].closed).toBe(0)
+    // Nor do they open anything: a dropped kind that reached the view arm would put a dialog on
+    // the glass with a suggestions view's chrome and a tier list's payload.
+    expect(screen.queryByRole('dialog')).toBeNull()
 
     await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
     expect(callsTo(fetchMock, '/api/active-deck') - before).toBe(1)
@@ -3041,7 +3060,18 @@ describe('the agent view fills the shell’s overlay slot (c6-5, AC 4, AC 5, AC 
   const overlay = () => document.querySelector('.app-shell-overlay')
   const tiles = () => [...document.querySelectorAll<HTMLElement>('.card-tile')]
   const unpinControl = () => document.querySelector('.card-detail-unpin')
-  const SUGGESTIONS = { title: 'Suggestions', count: 2 }
+  // c6-6 gave `AgentViewContent` the four fields the two stories after it read — the envelope
+  // `id` (the replace key), `ts` (c6-8's pill time), the `kind` and the items themselves — so
+  // this fixture is a whole one. These tests still exercise the STORE-driven path (c6-5's
+  // claim); the socket-driven path is c6-6's own describe further down.
+  const SUGGESTIONS = {
+    id: 'push-c6-5',
+    ts: '2026-08-11T09:15:00Z',
+    kind: 'suggestions',
+    title: 'Suggestions',
+    count: 2,
+    items: [],
+  } as const
 
   /** Esc, delivered where a browser delivers it: at the focused element, bubbling. */
   const escape = () =>
@@ -3176,5 +3206,281 @@ describe('the agent view fills the shell’s overlay slot (c6-5, AC 4, AC 5, AC 
     escape()
     expect(useInspectionStore.getState().pinnedId).toBeNull()
     expect(unpinControl()).toBeNull()
+  })
+})
+
+// =====================================================================================
+// c6-6 — A PUSH OPENS ITS VIEW, AND A REPEAT PUSH REPLACES IT IN PLACE
+// =====================================================================================
+
+describe('a suggestions push opens its view, end to end (c6-6, AC 1, AC 2, AC 4, AC 5, AC 6)', () => {
+  const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
+  const SKIP = 'Skip past the deck grid'
+  const dialog = () => screen.queryByRole('dialog')
+  // Queried by CLASS rather than by role: a state panel's headline is an `<h2>` too, and half
+  // these tests deliberately put one on the glass behind the view.
+  const viewTitle = () => document.querySelector<HTMLElement>('.agent-view-title')
+  const viewCount = () => document.querySelector('.agent-view-count')
+  const emptyLine = () => document.querySelector('.suggestions-view-empty')
+
+  const ITEMS = [
+    { card_id: 'c-1', reason: 'Fills the two-drop gap.' },
+    { card_id: 'c-2', reason: 'Second body for the same slot.' },
+  ]
+
+  const bootedDeck = async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks(ATRAXA_NAME))
+    render(<App />)
+    await settle()
+    await connect()
+    return fetchMock
+  }
+
+  /**
+   * A push, plus the frame the entry bloom needs in order to settle.
+   *
+   * This file runs on FAKE timers, so `requestAnimationFrame` does not fire on its own — and
+   * `driveSocket`'s `advanceTimersByTimeAsync(0)` is not enough for it. Without this, every
+   * dialog in this describe would sit permanently in `data-entering='true'` and the
+   * "the bloom did not replay" assertion below would be unable to tell a settled view from a
+   * remounted one.
+   */
+  const pushSettled = async (payload: Record<string, unknown>, id?: string) => {
+    await push('suggestions', payload, id)
+    await advance(20)
+  }
+
+  beforeEach(() => {
+    // c6-3's discipline: the file's shared block covers none of these three, and all three are
+    // module-scope state a previous test leaves behind. The agent-view slice matters most here —
+    // its whole contract is that closing does NOT clear, so a view retained by an earlier test
+    // is exactly the premise these tests establish for themselves.
+    resetInspection()
+    resetDeckMemory()
+    resetAgentView()
+  })
+
+  it('opens the view with NO click — the frame is the whole gesture (AC 1, UX-DR34)', async () => {
+    await bootedDeck()
+    expect(dialog()).toBeNull()
+
+    await push('suggestions', { title: 'Resilience options', items: ITEMS })
+
+    // The 2026-07-25 arrival ruling, driven through the real socket seam: `client.ts` narrows the
+    // frame, `socket.ts` dispatches it, `connection.ts` calls the verb, the store opens and `App`
+    // fills the overlay slot. Nothing in this test writes a store.
+    expect(dialog()).not.toBeNull()
+    expect(dialog()).toHaveAccessibleName('Resilience options')
+    expect(viewCount()).toHaveTextContent('2')
+    expect(document.activeElement).toBe(viewTitle())
+  })
+
+  it('falls back to the authored title when the agent names nothing (Q7, dw:30-32)', async () => {
+    await bootedDeck()
+
+    await push('suggestions', { items: ITEMS })
+
+    // `aria-labelledby` points at the heading, so a blank title would be a `role="dialog"` with
+    // no discernible name at all — the ledger entry this closes, asserted where the accessible
+    // name is actually computed rather than at the constant.
+    expect(dialog()).toHaveAccessibleName(SUGGESTIONS_VIEW_TITLE)
+  })
+
+  it('renders the artefact’s line for an EMPTY push rather than rejecting it (AC 4)', async () => {
+    await bootedDeck()
+
+    await push('suggestions', { title: 'Nothing found', items: [] })
+
+    expect(dialog()).not.toBeNull()
+    expect(emptyLine()).not.toBeNull()
+    expect(emptyLine()).toHaveTextContent(emptyPushLine('suggestions'))
+    // `0` is a REAL count and renders — "0 suggestions" and "a view that does not count things"
+    // are different sentences, and this is the first.
+    expect(viewCount()).toHaveTextContent('0')
+  })
+
+  it('survives a frame with NO PAYLOAD AT ALL — the narrower validates only `kind`', async () => {
+    // `agentEventOf` checks the discriminant and nothing else, so this frame reaches the builder
+    // typed as a full event. A `TypeError` on that path is an uncaught exception inside a socket
+    // message handler: the socket stays open and the push is silently lost. Serialised by hand
+    // here so the absence is a genuinely absent KEY rather than an explicit `undefined`.
+    await bootedDeck()
+
+    await driveSocket(() =>
+      socket().onmessage?.({
+        data: JSON.stringify({ kind: 'suggestions', id: 'bare', ts: '2026-08-08T00:00:00Z' }),
+      }),
+    )
+
+    expect(dialog()).not.toBeNull()
+    expect(emptyLine()).not.toBeNull()
+    expect(sockets[0].closed).toBe(0)
+  })
+
+  it('REPLACES in place on a second push — same dialog node, new content (AC 2)', async () => {
+    await bootedDeck()
+    await pushSettled({ title: 'First look', items: ITEMS }, 'push-1')
+    const before = screen.getByRole('dialog')
+    // Focus is moved somewhere real inside the view first, so "focus is on the heading" below is
+    // a MOVE rather than the open-time hand-off's leftover.
+    act(() => screen.getByRole('button', { name: CLOSE_PILL_LABEL }).focus())
+
+    await push('suggestions', { title: 'Second look', items: [ITEMS[0]] }, 'push-2')
+
+    // NODE IDENTITY is the load-bearing half of "in place": a `key` on `<AgentView>` would
+    // satisfy every content assertion here and fail this one.
+    expect(screen.getByRole('dialog')).toBe(before)
+    expect(dialog()).toHaveAccessibleName('Second look')
+    expect(viewCount()).toHaveTextContent('1')
+    expect(document.activeElement).toBe(viewTitle())
+    // The entry bloom did NOT replay — the crossfade is a different motion with its own token.
+    expect(before).toHaveAttribute('data-entering', 'false')
+  })
+
+  it('RE-OPENS a view dismissed earlier, as a fresh mount (SC-1 — never swallowed)', async () => {
+    await bootedDeck()
+    await push('suggestions', { title: 'First look', items: ITEMS }, 'push-1')
+
+    act(() => screen.getByRole('button', { name: CLOSE_PILL_LABEL }).click())
+    expect(dialog()).toBeNull()
+    // The content survived the dismissal — UX-DR34, and the premise of the re-open below.
+    expect(useAgentViewStore.getState().content).not.toBeNull()
+
+    await push('suggestions', { title: 'Second look', items: [] }, 'push-2')
+
+    expect(dialog()).not.toBeNull()
+    expect(dialog()).toHaveAccessibleName('Second look')
+    // A MOUNT, not a replace: the overlay was absent, so the bloom runs exactly as it does for
+    // the first push of the session.
+    expect(dialog()).toHaveAttribute('data-entering', 'true')
+  })
+
+  it('stays open and stays VALID when the deck is lost behind it (AC 5, UX-DR37)', async () => {
+    // *"Agent content is about cards, not about the deck's presence, so a lost deck does not
+    // invalidate a tier list."* True by construction — nothing in the overlay path reads deck
+    // state — so this pins the COMPOSED behaviour rather than describing the construction.
+    await bootedDeck()
+    await push('suggestions', { title: 'Resilience options', items: ITEMS })
+    expect(dialog()).not.toBeNull()
+
+    // `booting()` and NOT a second `answering()`: the deck-detail route is answered from the
+    // module-level fixture this helper writes, so re-stubbing the poll would leave the refetch
+    // still succeeding and the panel would never appear.
+    booting(activeDeck(ATRAXA_DECK_ID), refusal('deck_not_found', 404))
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+
+    // The panel really did take the left column — without this the survival below would be an
+    // assertion about a page where nothing happened.
+    expect(document.querySelector('.state-panel')).not.toBeNull()
+    expect(document.querySelector('.card-tile')).toBeNull()
+    // …and the view is untouched: still mounted, still named, still counting its own push.
+    expect(dialog()).not.toBeNull()
+    expect(dialog()).toHaveAccessibleName('Resilience options')
+    expect(viewCount()).toHaveTextContent('2')
+  })
+
+  it('lands the reader on the state panel when the view closes over one (AC 5)', async () => {
+    // EXPERIENCE.md:122's second clause. The remembered restore target is a card tile the panel
+    // replaced, so the disconnected-restore arm is what runs — and Q5's ruling sends it to the
+    // panel's headline rather than to the deck `<h1>`, which is no longer on the glass.
+    await bootedDeck()
+    act(() => {
+      document.querySelectorAll<HTMLElement>('.card-tile')[1].focus()
+    })
+    const opener = document.activeElement
+    expect(opener).not.toBe(document.body)
+
+    await push('suggestions', { title: 'Resilience options', items: ITEMS })
+    booting(activeDeck(ATRAXA_DECK_ID), refusal('database_unavailable', 503))
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    expect(opener?.isConnected).toBe(false)
+
+    act(() => screen.getByRole('button', { name: CLOSE_PILL_LABEL }).click())
+
+    expect(document.activeElement).toBe(document.querySelector('.state-panel-headline'))
+    expect(document.activeElement).not.toBe(document.body)
+  })
+
+  it('withdraws the skip link and the grid’s Tab stops behind that panel (AC 5)', async () => {
+    // The already-shipped withdrawals (c4-11's link, and the grid's stops vanishing with the
+    // grid), pinned in the COMPOSED state this story creates — a panel behind an OPEN view. No
+    // module was changed to make these true; what is new is that they are now asserted together
+    // with a dialog on the glass, which is the arrangement AC 5 describes.
+    await bootedDeck()
+    await push('suggestions', { title: 'Resilience options', items: ITEMS })
+
+    booting(activeDeck(ATRAXA_DECK_ID), refusal('database_unavailable', 503))
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+
+    expect(document.querySelector('.state-panel')).not.toBeNull()
+    expect(dialog()).not.toBeNull()
+    expect(screen.queryByRole('button', { name: SKIP })).toBeNull()
+    expect(document.querySelectorAll('.card-tile')).toHaveLength(0)
+  })
+
+  it('updates the NON-MOTION signals on a replace — heading, count, live region (AC 6)', async () => {
+    // UX-DR43: *"motion is never the sole signal"*. The three signals this story owns are the
+    // heading text, the count beside it, and a real mutation of the `aria-live` region. The nav
+    // pill's unread marker and its timestamp are structurally c6-8's — the pill does not exist
+    // yet, and the composition reference carries no timestamp in the view header — so what is
+    // asserted for that half is that the store RETAINS the envelope's `ts` for c6-8 to render.
+    await bootedDeck()
+    await push('suggestions', { title: 'First look', items: ITEMS }, 'push-1')
+
+    const region = viewTitle()!
+    expect(region).toHaveAttribute('aria-live', 'polite')
+    const records: MutationRecord[] = []
+    const observer = new MutationObserver((list) => records.push(...list))
+    observer.observe(region, { childList: true, characterData: true, subtree: true })
+    try {
+      await push('suggestions', { title: 'Second look', items: [ITEMS[0]] }, 'push-2')
+    } finally {
+      observer.disconnect()
+    }
+
+    expect(records.length).toBeGreaterThan(0)
+    expect(region).toHaveTextContent('Second look')
+    expect(viewCount()).toHaveTextContent('1')
+    // The retained ordering key, unrendered by this story and read by the next one.
+    expect(useAgentViewStore.getState().content?.ts).toBe('2026-08-08T00:00:00Z')
+  })
+
+  it('announces a replace whose title is BYTE-IDENTICAL to the one showing (Q4)', async () => {
+    // FOUND BY A PLANT (2026-08-11): removing the heading's `key` left the test above green,
+    // because two DIFFERENT titles mutate the region whatever mechanism is used. The claim that
+    // actually needs an end-to-end pin is the common case — an agent that omits `payload.title`
+    // twice, so both pushes carry the same fallback word and a plain re-render mutates nothing.
+    await bootedDeck()
+    await push('suggestions', { items: ITEMS }, 'push-1')
+
+    const region = viewTitle()!
+    expect(region).toHaveTextContent(SUGGESTIONS_VIEW_TITLE)
+    const records: MutationRecord[] = []
+    const observer = new MutationObserver((list) => records.push(...list))
+    observer.observe(region, { childList: true, characterData: true, subtree: true })
+    try {
+      await push('suggestions', { items: [ITEMS[0]] }, 'push-2')
+    } finally {
+      observer.disconnect()
+    }
+
+    expect(records.length).toBeGreaterThan(0)
+    expect(region).toHaveTextContent(SUGGESTIONS_VIEW_TITLE)
+    // The push really was a different one — without this the mutation could be about nothing.
+    expect(viewCount()).toHaveTextContent('1')
+  })
+
+  it('costs the app NO request — a push is content, not a staleness signal', async () => {
+    // The property that separates this callback from the two system kinds beside it in the
+    // dispatch switch. `deck_changed` means "ask again"; a push means "here it is", and an
+    // implementation that re-drove the boot on one would double every push's cost forever.
+    const fetchMock = await bootedDeck()
+    const before = fetchMock.mock.calls.length
+
+    await push('suggestions', { title: 'Resilience options', items: ITEMS })
+
+    expect(fetchMock.mock.calls.length).toBe(before)
+    expect(sockets).toHaveLength(1)
   })
 })

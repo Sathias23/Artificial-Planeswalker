@@ -124,8 +124,9 @@ const shippedModules = execFileSync('git', ['ls-files', 'src/*.ts', 'src/*.tsx']
  * Where user-facing copy may live -> why that module is a copy owner.
  *
  * A later story with a sentence in it — c2-10's attribution, c4-3's "Unknown card", c4-12's
- * empty-deck line, c6-6's empty push — ADDS AN ENTRY HERE with its reason, rather than
- * inventing a second mechanism. That is decide-once ruling #1 of story c2-9.
+ * empty-deck line, c6-6's empty push (which took the invitation this line held open for it, and
+ * a second entry beside it for the fallback view title) — ADDS AN ENTRY HERE with its reason,
+ * rather than inventing a second mechanism. That is decide-once ruling #1 of story c2-9.
  */
 const COPY_MODULES: Map<string, string> = new Map([
   [
@@ -348,8 +349,53 @@ const COPY_MODULES: Map<string, string> = new Map([
       'is U+00B7 MIDDLE DOT with spaces around it, asserted by codepoint, because "looks ' +
       'like a dot" is exactly the class of difference an eye scanning a diff waves through. ' +
       'The view’s TITLE and its summary COUNT are DATA — they arrive as props from the ' +
-      'store, and from c6-6 from a pushed envelope — and are deliberately not in this ' +
-      'module.',
+      'store, and since c6-6 from a pushed envelope — and are deliberately not in this ' +
+      'module. The one exception c6-6 makes to that sentence is registered separately below: ' +
+      'the word a view is called when the agent supplies NO title is authored copy, and it ' +
+      'lives in the state layer beside the builder that applies it, not here.',
+  ],
+  [
+    'src/state/agentView.ts',
+    'the fallback view TITLE (story c6-6, Q7): "Suggestions", the word the app calls a ' +
+      'suggestions view when the pushed `payload.title` is absent, null or blank. THE FIRST ' +
+      'ENTRY IN THIS MAP UNDER `src/state/`, and the placement is the decision worth stating. ' +
+      'A wire-supplied title is DATA and stays data; this is what the app says when nobody ' +
+      'named the view, which makes it authored copy with the same claim on this Map as any ' +
+      'panel title. It is not in `src/containers/AgentView/copy.ts` — the obvious home — for ' +
+      'two reasons pointing the same way: `deferred-work.md`’s dialog-accessible-name entry ' +
+      'asks for the non-blank guard "at the point content is constructed", which is ' +
+      '`suggestionsViewOf` in this module, and a store may not import a container; and c6-8’s ' +
+      'nav pill needs the same word for the same kind, so a constant owned by any single ' +
+      'container would be the wrong address for its second reader (decide-once ruling #1 of ' +
+      'story c2-9, applied across a layer boundary rather than within one). It is CAPITALISED ' +
+      'AS A NAME rather than assembled from the wire kind — the rejected alternative — because ' +
+      'a runtime-assembled user-facing string is residue 3 of this file’s own header. The ' +
+      'module holds NOTHING ELSE of this kind: the pushed title, the count, the items, their ' +
+      'reasons and the envelope’s `id`/`ts` are all DATA off the wire.',
+  ],
+  [
+    'src/containers/SuggestionsView/copy.ts',
+    'the empty-push line (story c6-6, AC 4): "The agent sent an empty {kind}. Nothing to show ' +
+      '— ask it for another pass.", the ONE authored sentence a push carrying no items puts on ' +
+      'the glass, rendered in place of the rows inside the agent view’s body. Like the ' +
+      'empty-deck line it is TRANSCRIBED rather than authored — EXPERIENCE.md’s Voice and Tone ' +
+      'table carries it, em dash U+2014 and trailing period included — and ' +
+      'tests/empty-push-copy.test.ts compares the shipped constant against that table cell ' +
+      'byte-for-byte, which is copy gated against whatever wrote it. It is the FIRST entry in ' +
+      'this Map whose artefact string is a TEMPLATE: the row writes "{kind}", so the constant ' +
+      'ships the placeholder and a one-line builder substitutes the envelope’s own kind — a ' +
+      'closed wire literal, never user data, which is the whole of c6-4’s echo-hygiene rule ' +
+      'applied here. ONE RESIDUE IS DECLARED RATHER THAN REPAIRED: substituting the wire kind ' +
+      'into an article-carrying template reads "an empty suggestions", which is ungrammatical ' +
+      'and worse for Epic 9’s "tier_list" — inventing a per-kind display noun would be ' +
+      'authoring copy no artefact carries, so it is carried on the ledger for the story that ' +
+      'adds the second view kind. Shipping the artefact’s own words is ALSO the disposition of ' +
+      'the permanently-open copy-guard entry whose text names this story: "a reviewer of ' +
+      'c2-10, c4-3, c4-12 and c6-6 must READ the copy", and c4-12’s disposition recorded that ' +
+      '"c6-6 still owes it" — the story’s Debug Log records the reading having been performed. ' +
+      'The module holds NOTHING ELSE: the view’s title and count are the shell’s props, the ' +
+      'card names and reasons a non-empty push carries are DATA, and the line is not announced ' +
+      '— the heading’s live region is the view’s one announcement.',
   ],
 ])
 

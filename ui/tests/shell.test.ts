@@ -1569,6 +1569,30 @@ describe('the containers are a declared category with a posture of its own', () 
     // the `bundler` one, so a `ui/tests` file may import an app module only if that module has no
     // relative imports of its own — and `App.test.tsx` imports this one.
     { file: 'src/containers/AgentView/copy.ts', imports: [] },
+    // c6-6's view BODY — the first module to render anything a push carries, and deliberately
+    // half of one: Brad's Q1 ruling ships the empty-push state real and renders NOTHING for a
+    // non-empty push, because the rows are c6-7's. It is named for the VIEW rather than for the
+    // state so that c6-7 extends this file instead of creating one; the empty branch is already
+    // the right branch and the rows go where the `null` is. `../../state/agentView` is a
+    // TYPE-only import (`AgentViewContent`) and it reaches the STATE layer rather than
+    // `src/api/` on purpose: translating the envelope is the store's job, and a body that took a
+    // `SuggestionsPayload` would be a second reader of the wire with a second opinion about
+    // absent fields. It holds no hook, no ref and no handler TODAY — it is in this tree rather
+    // than under `src/components/` because c6-7's rows need all three, and moving a module with
+    // a stylesheet and a copy owner between the trees later is a bigger diff than starting in
+    // the right one.
+    {
+      file: 'src/containers/SuggestionsView/SuggestionsView.tsx',
+      imports: ['../../state/agentView', './SuggestionsView.css', './copy'],
+    },
+    // c6-6's copy module. One TEMPLATE — the artefact's row writes `{kind}` — plus the
+    // placeholder it names and the one-line builder that fills it. `imports: []` for
+    // `CardDetail/copy.ts`'s measured reason: `tests/` is the `nodenext` project and `src/` the
+    // `bundler` one, so a `ui/tests` file may import an app module only if that module has no
+    // relative imports of its own, and `tests/empty-push-copy.test.ts` imports this one. That
+    // constraint is also why the builder takes a plain `string` rather than the store's kind
+    // union — a type-only import would still be an import.
+    { file: 'src/containers/SuggestionsView/copy.ts', imports: [] },
     // c4-4's grid. It holds NO state — a container may, it need not — and it is here because it
     // composes a container and reads the derivation in `src/state/`, either of which
     // `posture.test.ts` would fail under `src/components/`. `../../state/deckGroups` is a
@@ -2061,7 +2085,13 @@ describe('the containers are a declared category with a posture of its own', () 
     // beside the things they feed (the words in `copy.ts` because they are copy; the dot classes
     // in the component because they are CSS identity). A third module here would be the same
     // decision written twice.
-    expect(CONTAINERS).toHaveLength(29)
+    // 29 at c6-5, which adds the agent view shell and its copy module.
+    // 31 at c6-6, which adds the suggestions view's BODY and its copy module — and only those
+    // two. The shell it rides inside already existed, the store it reads already existed, and
+    // the story's other half (the socket dispatch, the builder, the replace effect) all landed
+    // in modules this list already covers. A story that "wires a push to a view" growing the
+    // container tree by exactly one component and its words is the shape it should have.
+    expect(CONTAINERS).toHaveLength(31)
     for (const { file } of CONTAINERS) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }

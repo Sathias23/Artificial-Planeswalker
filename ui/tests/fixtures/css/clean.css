@@ -73,7 +73,15 @@
 }
 
 /* Comma-separated LISTS are legal too. Closing the comma evasion must not close the legal
-   multi-animation form with it — c6-6's push-replace crossfade composes two. */
+   multi-animation form with it.
+
+   ⚠️ THE STORY THIS CITED DID NOT USE IT (corrected at c6-6, 2026-08-11). The line read
+   "c6-6's push-replace crossfade composes two"; the shipped crossfade is a TRANSITION on
+   `opacity` driven by a `[data-replacing]` attribute, not an `animation` at all — the same
+   attribute-flip pattern c6-5's bloom uses, and for the same reason (the guard's CSS reader
+   would read a `@keyframes` block as two rules named `from` and `to`). The fixture stays,
+   because the form it exercises is still legal and the comma evasion still has to be closed
+   without closing it; what is removed is a claim about a diff that never happened. */
 .plays-two-animations-once {
   animation:
     bloom var(--motion-bloom) var(--ease-glide),

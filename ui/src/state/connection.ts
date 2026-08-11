@@ -40,6 +40,14 @@
  *        object, so `App.tsx`'s sweep effect fires on it and `hydrateDeckCards` re-asks the ids
  *        that are now re-armed. One trigger, one mechanism, no second sweep.
  *
+ * 3b. **a `suggestions` push** (story c6-6) → the agent view opens, with no click anywhere in
+ *    it (UX-DR34, the confirmed 2026-07-25 arrival ruling). This is the FOURTH signal and the
+ *    first that is not about staleness at all: nothing is refetched, nothing is re-driven, and
+ *    the frame's payload is READ rather than used as a trigger — which is the exact opposite of
+ *    the deck path two paragraphs down, and the reason the two are described separately here.
+ *    The call is a one-liner into `agentView.ts`'s exported verb, `redriveDeckBoot`'s shape
+ *    exactly, so this module still holds no `setState` and still names no store.
+ *
  * 3. **a system event** (`deck_changed` / `active_deck_changed`) → the deck boot **always**, and
  *    the poll **only if it had stopped** (`restartPollIfStopped`). The asymmetry is the ruling:
  *    the deck may have changed, so the boot always runs; but the poll is already working unless
@@ -59,6 +67,7 @@
 
 import { useEffect } from 'react'
 
+import { openSuggestionsPush } from './agentView'
 import { redriveDeckBoot } from './deck'
 import { resetCardAttempts } from './cards'
 import { createAgentSocket } from './socket'
@@ -106,6 +115,13 @@ export const useAgentConnection = (): void => {
         redriveDeckBoot()
         restartPollIfStopped()
       },
+      // THE PUSH, AND THE WHOLE OF WHAT THIS SEAM DOES WITH IT (c6-6, AC 1). Passed straight
+      // through: the verb is what builds content out of the envelope, and it is total about
+      // every payload the wire admits, so there is no shape to check here and no branch on
+      // whether a view is already open — opening over an open view REPLACES, which is the only
+      // thing the scalar store can do. Deliberately NOT `(event) => openSuggestionsPush(event)`:
+      // the reference IS the handler, exactly as `applyConnection` is above.
+      onSuggestions: openSuggestionsPush,
     })
     socket.start()
     return () => socket.stop()
