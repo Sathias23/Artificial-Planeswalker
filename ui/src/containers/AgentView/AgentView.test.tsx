@@ -55,12 +55,21 @@ const TITLE = 'Suggestions for Atraxa Counter Cabinet'
 function Harness({
   open = true,
   decoy = true,
+  panel = false,
+  pushId = 'push-1',
   title = TITLE,
   count = 3,
   onClose = () => {},
 }: {
   open?: boolean
   decoy?: boolean
+  /**
+   * A state panel occupying the left column behind the view — `StatePanel.tsx:115-126`'s
+   * headline element, which is the only part of it ARM 3 queries for (c6-6, AC 5).
+   */
+  panel?: boolean
+  /** Which push is showing. A CHANGE of this while `open` stays true is a replace (c6-6). */
+  pushId?: string
   title?: string
   count?: number | null
   onClose?: () => void
@@ -68,6 +77,11 @@ function Harness({
   return (
     <>
       <h1>Atraxa Counter Cabinet</h1>
+      {panel ? (
+        <section className="state-panel" role="region" aria-label="No active deck">
+          <h2 className="state-panel-headline">No active deck</h2>
+        </section>
+      ) : null}
       <button type="button" data-testid="outside-a">
         outside a
       </button>
@@ -77,7 +91,7 @@ function Harness({
         </button>
       ) : null}
       {open ? (
-        <AgentView title={title} count={count} onClose={onClose}>
+        <AgentView pushId={pushId} title={title} count={count} onClose={onClose}>
           <p data-testid="fixture">an arbitrary child</p>
           {/* TWO FOCUSABLE CHILDREN, and they are what make the trap tests non-vacuous. The
               shell's own only focusable is the close pill, so with an inert body the pill is
@@ -303,8 +317,9 @@ describe('focus returns where it came from on close (AC 4, UX-DR39, UX-DR46)', (
 
   it('ARM 3 — falls back to the h1 when the remembered element is GONE (Q5)', () => {
     // A control that only existed on a surface that has since changed. Brad's Q5 ruling makes
-    // the `<h1>` deck name the shared destination for every disconnected-restore case until
-    // c6-6 refines the state-panel arm — and never `document.body`, which is AC 4's own words.
+    // the `<h1>` deck name the destination when NO state panel is showing — and never
+    // `document.body`, which is AC 4's own words. c6-6 added the panel arm above it; this is
+    // the no-panel half of the same ruling.
     const { rerender } = render(<Harness open={false} />)
     act(() => screen.getByTestId('outside-decoy').focus())
     rerender(<Harness open decoy />)
@@ -315,6 +330,46 @@ describe('focus returns where it came from on close (AC 4, UX-DR39, UX-DR46)', (
 
     expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1 }))
     expect(document.activeElement).not.toBe(document.body)
+  })
+
+  it('ARM 3 — prefers the STATE PANEL’s headline when one is showing (c6-6, AC 5, Q5)', () => {
+    // EXPERIENCE.md:122 — *"on close, the user lands on the state panel"*. The remembered
+    // control is gone precisely BECAUSE the panel replaced the surface it lived on, so this is
+    // the ordinary shape of that sentence rather than an edge case.
+    const { rerender } = render(<Harness open={false} />)
+    act(() => screen.getByTestId('outside-decoy').focus())
+    rerender(<Harness open decoy />)
+
+    // The deck is lost while the view is open: the remembered control leaves and a state panel
+    // takes the left column. The view itself is untouched — agent content is about cards, not
+    // about the deck's presence (UX-DR37).
+    rerender(<Harness open decoy={false} panel />)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    rerender(<Harness open={false} decoy={false} panel />)
+
+    expect(document.activeElement).toBe(document.querySelector('.state-panel-headline'))
+    // NON-VACUITY, and the assertion that separates this arm from the one above it: the `<h1>`
+    // is still in the document and still the arm's fallback, so landing on the panel is a
+    // PREFERENCE that fired rather than the h1 having gone missing.
+    expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
+    expect(document.activeElement).not.toBe(screen.getByRole('heading', { level: 1 }))
+  })
+
+  it('does NOT override a CONNECTED restore target just because a panel is showing (UX-DR46)', () => {
+    // The boundary of the ruling, and the alternative Brad rejected. *"Focus returns to the
+    // element focused before the view took it"* is not overridden by a panel appearing behind
+    // the view — the panel arm is a FALLBACK for a target that no longer exists, and a rule
+    // that always chose the panel would be this component reversing a decision it did not make.
+    const { rerender } = render(<Harness open={false} panel />)
+    const opener = screen.getByTestId('outside-a')
+    act(() => opener.focus())
+
+    rerender(<Harness open panel />)
+    rerender(<Harness open={false} panel />)
+
+    expect(document.activeElement).toBe(opener)
+    expect(document.activeElement).not.toBe(document.querySelector('.state-panel-headline'))
   })
 
   it('ARM 4 — holds nothing when nothing was focused, and grabs nothing on the way out', () => {
@@ -611,5 +666,191 @@ describe('Esc closes the view and NOTHING ELSE — the layering (UX-DR39, EXPERI
     }
 
     expect(pinRelease).toHaveBeenCalledTimes(1)
+  })
+})
+
+// =====================================================================================
+// c6-6 — A SECOND PUSH REPLACES THE CONTENT IN PLACE
+// =====================================================================================
+
+describe('a replace re-fires what a remount would have, and nothing it must not (c6-6, AC 2)', () => {
+  // Fake timers for the entry-animation block's reason, and one more of this block's own: the
+  // crossfade's attribute lives for exactly one frame, so both ends of it are only observable
+  // with the clock under test control.
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  /** Open, settle the bloom, and leave focus wherever the mount effects put it. */
+  const openedAndSettled = (props: Parameters<typeof Harness>[0] = {}) => {
+    const view = render(<Harness {...props} />)
+    act(() => {
+      vi.advanceTimersByTime(20)
+    })
+    return view
+  }
+
+  const heading = () => screen.getByRole('heading', { level: 2 })
+
+  it('moves focus BACK to the heading when a new push arrives (UX-DR45, UX-DR46)', () => {
+    const { rerender } = openedAndSettled()
+    // Focus is put somewhere real inside the view first, so "focus is on the heading" afterwards
+    // is a MOVE rather than the mount effect's leftover. Without this the assertion would pass
+    // over a component that does nothing on replace at all.
+    act(() => screen.getByTestId('body-last').focus())
+    expect(document.activeElement).toBe(screen.getByTestId('body-last'))
+
+    rerender(<Harness pushId="push-2" title="A second look" />)
+
+    expect(document.activeElement).toBe(heading())
+  })
+
+  it('does NOT re-fire on a re-render that is not a new push', () => {
+    // The other half of the claim above: the effect is keyed on identity, not on rendering. A
+    // dependency-less effect would drag focus back to the heading on every parent render and
+    // make the view impossible to interact with.
+    const { rerender } = openedAndSettled()
+    act(() => screen.getByTestId('body-last').focus())
+
+    rerender(<Harness pushId="push-1" title="A retitled same push" />)
+
+    expect(document.activeElement).toBe(screen.getByTestId('body-last'))
+  })
+
+  it('does NOT re-fire for a REPEAT of the id already showing (AD-6 de-duplication)', () => {
+    // `id` is the wire's de-duplication field, so a frame repeating one is the wire saying "you
+    // already have this". Re-announcing it would be the app disagreeing with the only authority
+    // on the question. Stated in the effect's own comment rather than left to be discovered.
+    const { rerender } = openedAndSettled({ pushId: 'push-9' })
+    act(() => screen.getByTestId('body-first').focus())
+
+    rerender(<Harness pushId="push-9" />)
+
+    expect(document.activeElement).toBe(screen.getByTestId('body-first'))
+  })
+
+  it('does NOT re-run the entry bloom — the crossfade is a different motion', () => {
+    // A `key` on `<AgentView>` would remount and replay the 480 ms fade-plus-rise. AC 2 asks for
+    // a 240 ms opacity crossfade, which is the reason `App.tsx` carries no key and this
+    // assertion is what would fail if one were added.
+    const { rerender } = openedAndSettled()
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-entering', 'false')
+
+    rerender(<Harness pushId="push-2" />)
+
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-entering', 'false')
+  })
+
+  it('flips the crossfade attribute on, and off again on the next frame', () => {
+    const { rerender } = openedAndSettled()
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-replacing', 'false')
+
+    rerender(<Harness pushId="push-2" />)
+    // The starting state the transition comes FROM — `AgentView.css` hangs `opacity: 0` on this
+    // exact attribute value for the title and the body. A swap that settled inside its own
+    // commit would paint the rest state immediately and cross-fade nothing.
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-replacing', 'true')
+
+    act(() => {
+      vi.advanceTimersByTime(20)
+    })
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-replacing', 'false')
+  })
+
+  it('MUTATES the live region even when the new title is byte-identical (Q4)', async () => {
+    // THE ASSERTION THIS WHOLE MECHANISM EXISTS FOR. `aria-live` announces on DOM MUTATION, and
+    // re-rendering the same string is not one — while the COMMON case is exactly that, because
+    // an agent that omits `payload.title` gets the same fallback word twice. A `MutationObserver`
+    // is the only thing in jsdom that can tell "React re-rendered" from "the DOM changed".
+    const { rerender } = openedAndSettled({ title: 'Suggestions' })
+    const region = heading()
+    expect(region).toHaveAttribute('aria-live', 'polite')
+
+    const records: MutationRecord[] = []
+    const observer = new MutationObserver((list) => records.push(...list))
+    observer.observe(region, { childList: true, characterData: true, subtree: true })
+    try {
+      rerender(<Harness pushId="push-2" title="Suggestions" />)
+      await act(async () => {})
+    } finally {
+      observer.disconnect()
+    }
+
+    expect(records.length).toBeGreaterThan(0)
+    // …and the region still says the right thing afterwards. A mutation that emptied the heading
+    // would satisfy the count above and destroy the dialog's accessible name.
+    expect(region).toHaveTextContent('Suggestions')
+  })
+
+  it('does not mutate the live region when nothing was pushed (non-vacuity)', async () => {
+    // The counterweight: without it, the observer above could be recording React's ordinary
+    // re-render churn rather than the keyed replacement, and the claim would be about nothing.
+    const { rerender } = openedAndSettled({ title: 'Suggestions' })
+    const region = heading()
+
+    const records: MutationRecord[] = []
+    const observer = new MutationObserver((list) => records.push(...list))
+    observer.observe(region, { childList: true, characterData: true, subtree: true })
+    try {
+      rerender(<Harness pushId="push-1" title="Suggestions" />)
+      await act(async () => {})
+    } finally {
+      observer.disconnect()
+    }
+
+    expect(records).toEqual([])
+  })
+
+  it('renders the NEW content — the header really is the second push’s', () => {
+    const { rerender } = openedAndSettled()
+
+    rerender(<Harness pushId="push-2" title="A second look" count={7} />)
+
+    expect(screen.getByRole('heading', { level: 2, name: 'A second look' })).toBeInTheDocument()
+    expect(screen.getByText('7')).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('A second look')
+  })
+
+  it('keeps the SAME dialog element across the replace — in place is in place', () => {
+    // Node identity, not appearance. A remount would satisfy every content assertion above and
+    // fail this one, which is what makes it the load-bearing half of "in place".
+    const { rerender } = openedAndSettled()
+    const before = screen.getByRole('dialog')
+
+    rerender(<Harness pushId="push-2" title="A second look" />)
+
+    expect(screen.getByRole('dialog')).toBe(before)
+  })
+
+  it('leaves the RESTORE TARGET untouched, so closing after a replace still returns focus', () => {
+    // Landmine 4, as an assertion. At replace time focus is inside the view, so a mechanism that
+    // re-captured `document.activeElement` would remember the heading — and closing would return
+    // focus to the view's own corpse while every other test here stayed green.
+    const { rerender } = render(<Harness open={false} />)
+    act(() => screen.getByTestId('outside-a').focus())
+    const opener = screen.getByTestId('outside-a')
+
+    rerender(<Harness open />)
+    act(() => {
+      vi.advanceTimersByTime(20)
+    })
+    rerender(<Harness open pushId="push-2" title="A second look" />)
+    expect(document.activeElement).toBe(heading())
+
+    rerender(<Harness open={false} pushId="push-2" />)
+
+    expect(document.activeElement).toBe(opener)
+  })
+
+  it('treats a push arriving while CLOSED as an open — bloom and all', () => {
+    // The third arrival case. The overlay is absent while the store is closed, so this is a real
+    // mount and the mount-only effects own it; the replace effect's ref is initialised to the
+    // new id and its mount run does nothing.
+    const { rerender } = render(<Harness open={false} />)
+    act(() => screen.getByTestId('outside-a').focus())
+
+    rerender(<Harness open pushId="push-2" title="A second look" />)
+
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-entering', 'true')
+    expect(document.activeElement).toBe(heading())
   })
 })

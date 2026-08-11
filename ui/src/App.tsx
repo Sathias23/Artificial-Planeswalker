@@ -6,6 +6,7 @@ import { DeckBadges } from './components/DeckBadges/DeckBadges'
 import { Footer } from './components/Footer/Footer'
 import { StatePanel } from './components/StatePanel/StatePanel'
 import { AgentView } from './containers/AgentView/AgentView'
+import { SuggestionsView } from './containers/SuggestionsView/SuggestionsView'
 import { CardDetail } from './containers/CardDetail/CardDetail'
 import { CardGrid } from './containers/CardGrid/CardGrid'
 import { ColourDistribution } from './containers/ColourDistribution/ColourDistribution'
@@ -168,13 +169,13 @@ import { useSystemState } from './state/systemState'
 export default function App() {
   const system = useSystemState()
   const surface = surfaceOf(useDeckState(), system)
-  // THE AGENT VIEW (c6-5). A CONTENT object or `null`, never a boolean: the store's own
-  // selector resolves "is one showing, and what is it" once, so this file cannot disagree with
-  // it (`agentView.ts`'s `openViewOf`). Nothing WRITES that store in production yet — c6-6 is
-  // the story that turns a `suggestions` push into an open view — so the running app is
-  // unchanged by this story and the slot is exercised by tests alone. Wiring it here rather
-  // than in c6-6 is Brad's Q1 ruling (2026-08-10): it is what lets the Esc-layering contract
-  // that `CardDetail.tsx:89-101` has declared untestable since c4-5 finally be tested.
+  // THE AGENT VIEW (c6-5, wired to the wire at c6-6). A CONTENT object or `null`, never a
+  // boolean: the store's own selector resolves "is one showing, and what is it" once, so this
+  // file cannot disagree with it (`agentView.ts`'s `openViewOf`). Since c6-6 the writer is a
+  // `suggestions` frame off the socket (`connection.ts` → `openSuggestionsPush`), so this slot
+  // is now live in the running app rather than exercised by tests alone. Wiring it at c6-5
+  // rather than here was Brad's Q1 ruling (2026-08-10): it is what let the Esc-layering
+  // contract `CardDetail.tsx:89-101` had declared untestable since c4-5 be tested a story early.
   const agentView = useOpenAgentView()
   // THE SOCKET, MOUNTED ONCE (c5-6, AC 1). Third in declaration order, behind the poll and the
   // boot, and returning nothing: what it produces is `system.connection`, which `surfaceOf` two
@@ -606,7 +607,25 @@ export default function App() {
          *"the view remains re-openable for the rest of the session"* (AC 5). */
       overlay={
         agentView === null ? undefined : (
-          <AgentView title={agentView.title} count={agentView.count} onClose={closeAgentView} />
+          /* NO `key` ON THIS ELEMENT, AND THAT IS c6-6's LOAD-BEARING ABSENCE. A second push
+             while the view is open must REPLACE THE CONTENT IN PLACE (AC 2), which is a prop
+             update on a shell that stays mounted; a `key={agentView.id}` would remount it and
+             thereby replay the entry bloom instead of the crossfade, re-capture the return-focus
+             target while focus sits inside the view, and run the restore cleanup mid-open. The
+             re-fires a remount would have supplied are an effect keyed on `pushId` inside the
+             shell — see `AgentView.tsx`'s replace effect for all three reasons at length. */
+          <AgentView
+            pushId={agentView.id}
+            title={agentView.title}
+            count={agentView.count}
+            onClose={closeAgentView}
+          >
+            {/* THE BODY, AND THE SHELL STAYS CONTENT-AGNOSTIC (c6-6, AC 4). The shell takes
+                `children` and asks nothing about them, so the kind-specific view rides inside
+                rather than being branched on in there. Today there is one kind with a body;
+                c6-8 is where a second one makes this a switch. */}
+            <SuggestionsView kind={agentView.kind} items={agentView.items} />
+          </AgentView>
         )
       }
     />

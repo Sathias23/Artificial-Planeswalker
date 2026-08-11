@@ -120,11 +120,16 @@
 }
 
 /* The dialog's accessible name (`aria-labelledby` points here). `margin: 0` because a UA `h2`
-   margin would break the baseline row above. */
+   margin would break the baseline row above.
+
+   The `transition` is the PUSH-REPLACE CROSSFADE's (story c6-6, AC 2, FR-08) — see the
+   `[data-replacing]` rule at the FOOT of this file for the starting state, for why it is opacity
+   alone, and for why it lives down there. */
 .agent-view-title {
   margin: 0;
   font: var(--type-heading);
   color: var(--text-primary);
+  transition: opacity var(--motion-glide) var(--ease-glide);
 }
 
 .agent-view-count {
@@ -194,4 +199,34 @@
   min-height: 0;
   padding: 0 var(--space-4) var(--space-4);
   overflow-y: auto;
+  transition: opacity var(--motion-glide) var(--ease-glide);
+}
+
+/* THE CROSSFADE'S STARTING STATE (story c6-6, AC 2 — *"replaced in place with a brief crossfade
+   over the glide duration"*; `DESIGN.md:122` `glide: 240ms`; `EXPERIENCE.md:90` names the token
+   by name). Its mechanism is the bloom's: an attribute flipped on for a single frame, so the
+   browser paints the transparent state before the opaque one arrives.
+
+   ⚠️ IT IS LAST IN THE FILE FOR A LINT REASON WORTH KNOWING, not for tidiness. stylelint's
+   `no-descending-specificity` fails a low-specificity selector that appears AFTER a
+   higher-specificity one targeting the same element — so this rule has to follow both
+   `.agent-view-title` and `.agent-view-body`, and the two of them are pages apart in the header
+   order this file otherwise reads in. The comment travels with the rule rather than being left
+   beside the transitions it explains.
+
+   OPACITY AND NOTHING ELSE, DELIBERATELY. A rise or a slide would put this rule in
+   `token-usage.test.ts`'s `MOTION_PROPERTIES` set (`transform`/`scale`/`rotate`/`translate`) and
+   demand its own registration in `tokens.css`'s reduced-motion block. Opacity over a TOKENISED
+   duration needs none: the reduced-motion block zeroes `--motion-glide` (`tokens.css:323`), so
+   the swap becomes instant with no second declaration to keep in step — which is why the
+   inventory line this story already has (*"Push-replace crossfade -> instant content swap
+   (c6-6)"*, `tokens.css:294`) is FULFILLED by this rule rather than amended by it. c4-4 drew the
+   mechanical/registered distinction for its image fade-in; this is the same side of it.
+
+   THE TITLE AND THE BODY, NOT `.agent-view`: those two are the content that CHANGES. Fading the
+   whole panel would fade its chrome — the kicker and the close pill — for a swap that leaves
+   both exactly where they were. */
+.agent-view[data-replacing='true'] .agent-view-title,
+.agent-view[data-replacing='true'] .agent-view-body {
+  opacity: 0;
 }

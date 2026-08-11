@@ -1,0 +1,40 @@
+/* ==== THE SUGGESTIONS VIEW'S BODY (story c6-6, AC 4; c6-7 adds the rows) ================
+
+   ONE RULE, AND THE SHORTEST STYLESHEET IN THE APP. That is the whole of what Q1's ruling
+   leaves to draw: a non-empty push renders nothing until c6-7, so the empty-push line is the
+   only thing this file has an opinion about.
+
+   THE TREATMENT IS `components.empty-deck-line`'s, APPLIED TO ITS SIBLING STATE, AND THE
+   ARTEFACT GAP IS DECLARED RATHER THAN FILLED. `DESIGN.md` carries a block for the empty-DECK
+   line — `type: '{typography.body}'`, `foreground: '{colors.text-secondary}'`, and the note that
+   it *"spends no length of its own"* because its container's padding is already its inset — and
+   carries NO block for the empty PUSH. The two are the same kind of thing: one calm sentence
+   standing in for absent content inside a surface that has its own padding (`.agent-view-body`
+   supplies `--space-4` here, exactly as the untitled grid `Panel` does there). So the shipped
+   values are that block's, cited, and the absence of a block of this state's own is recorded in
+   `deferred-work.md` as an artefact gap for the story that renders the rest of this view —
+   rather than being papered over by inventing a second set of values here. c4-12 amended
+   `DESIGN.md` because an ACCEPTANCE CRITERION of its own required the artefact to specify the
+   treatment; this story has no such AC, and amending an artefact nobody asked to be amended is
+   not a diff a story gets to make quietly.
+
+   NO `px` LITERAL AT ALL, therefore nothing for `shell.test.ts`'s DESIGN.md-proximity gate to
+   check — the same resolution `CardGrid.css:42-64` reached, for the same reason: there is no
+   length to cite. Adding an inset here, or a `min-height` reserving list-sized space for content
+   that is deliberately absent, would both be values invented to fill a gap, and the second would
+   make the state read as a LOADING FAILURE rather than an honest "nothing to show".
+
+   `margin: 0` is the UA reset, not a spacing decision: a `<p>` carries a 1em block margin that
+   would push the sentence off the body's own inset.
+
+   NO NESTING ANYWHERE, for `AgentView.css`'s reason — `token-usage.test.ts`'s CSS reader matches
+   innermost brace pairs, so a declaration inside a nesting parent is invisible to the contrast,
+   token and motion guards, and `findNestedRules` fails the build on any nesting rather than
+   leaving that blind spot reachable.
+   ==================================================================== */
+
+.suggestions-view-empty {
+  margin: 0;
+  color: var(--text-secondary);
+  font: var(--type-body);
+}
