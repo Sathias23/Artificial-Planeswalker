@@ -171,7 +171,10 @@ const referencedTokensIn = (text: string): string[] =>
  * container the overlay background and the row its own border. Deciding it statically needs
  * the render tree, which lives in TSX and is chosen at runtime. **Review owns that half**, the
  * same split surfaces.ts declares for the surface ramp. It is also in ui/README.md, so a
- * reviewer of c6-7 knows to look rather than assuming the gate did.
+ * reviewer of c6-7 knows to look rather than assuming the gate did. **That review happened
+ * (2026-08-11) and its answer is checked in**: `SuggestionsView.css` spends no `--accent-dim` at
+ * all, and the two tests further down assert exactly that over the file's bytes — which is the
+ * only mechanical purchase available on a case this guard cannot decide.
  */
 const findAccentDimOnOverlay = (blocks: Block[]): string[] =>
   blocks
@@ -1168,8 +1171,10 @@ describe('token usage across the shipped stylesheets', () => {
     // story gives both a consumer. Sibling pin: `expectedNames` in tests/tokens.test.ts, which
     // is the one that checks the VALUE against DESIGN.md. Both move together or the pair is
     // wrong — and c4-4's probe (j) is the proof that moving only one goes red. 68 until story
-    // c4-7's `--shadow-deck-row-live` (Q6), the deck row's inset live rule.
-    expect(declaredTokens.size).toBe(69)
+    // c4-7's `--shadow-deck-row-live` (Q6), the deck row's inset live rule. 69 until story
+    // c6-7's `--shadow-suggestion-row-live` (Q2), the same marker on the one surface where
+    // `--accent-dim` genuinely fails its floor rather than merely being weak.
+    expect(declaredTokens.size).toBe(70)
   })
 
   it('never puts --accent-dim on --surface-overlay (AC 10, UX-DR6)', () => {
@@ -1178,6 +1183,62 @@ describe('token usage across the shipped stylesheets', () => {
 
   it('never puts --accent-dim in a stylesheet that paints --surface-overlay (c2-7 AC 14)', () => {
     expect(findAccentDimInOverlayFile(shippedStylesheets)).toEqual([])
+  })
+
+  // ==================== THE ASSERTION `AgentView.css:29` PROMISED WOULD LAND AT c6-7 ======
+  //
+  // That header says the repo-wide guard *"covers this stylesheet the day it is added; the
+  // tile-level assertion lands with c6-7's rows, which is where the first tile inside a view
+  // exists"* (Brad's Q7 ruling, 2026-08-10). This is it, and it is HERE rather than in the
+  // component suite for the reason this file's own blind-spot note gives: the composition it
+  // worries about — a parent painting `--surface-overlay` while a CHILD file sets an accent-dim
+  // border — is *"the NORMAL shape of c6-7's suggestion rows"* and no guard can decide it
+  // statically. jsdom evaluates no stylesheet at all, so the component suite could not assert it
+  // either. What CAN be asserted is that the file spends none of the token in any spelling, over
+  // the same bytes the guards above read — and that is what this does, named, so a later edit
+  // that introduces one is caught by a test that says why.
+  //
+  // Note what it still does NOT close: whether `--accent` at 5.5:1 is legible over the row's own
+  // `--accent-glow` tint is a PIXEL question, and the row is on DESIGN.md's no-visual-precedent
+  // list. That is the C6 manual checklist's (c8-6).
+  const SUGGESTION_ROW_CSS = 'src/containers/SuggestionsView/SuggestionsView.css'
+
+  it('spends no --accent-dim in the suggestion row, the guard’s own named blind spot (c6-7)', () => {
+    const css = stripComments(sourceOf(SUGGESTION_ROW_CSS))
+
+    // NON-VACUITY FIRST: this is the right file, it really does paint the overlay surface, and it
+    // really does spend the accent family — otherwise "contains no accent-dim" would pass on an
+    // empty read or a path typo, which is this suite's own recorded failure mode.
+    expect(shippedStylesheets).toContain(SUGGESTION_ROW_CSS)
+    expect(css).toContain('.suggestion-row')
+    expect(css).toContain('var(--surface-overlay)')
+    expect(css).toContain('var(--accent-glow)')
+    expect(css).toContain('var(--shadow-suggestion-row-live)')
+
+    expect(
+      css,
+      'accent-dim measures 2.70:1 on surface-overlay — under the 3:1 non-text floor (UX-DR6)',
+    ).not.toMatch(/accent-dim/)
+  })
+
+  it('draws no card in the suggestion row — the CARD_SHAPED split, stated (c6-7)', () => {
+    // Blind spot #4 in this guard's own header is *"a card-drawing stylesheet that never joins
+    // CARD_SHAPED"*, and c6-7's row stylesheet is exactly the file that could become one: it
+    // holds a card thumbnail and rounds ITSELF with `--radius-md`. It stays unlisted, so it must
+    // draw no card — the thumbnail's geometry arrives through the global `card-shape` class and
+    // `CardPlaceholder`'s own listed stylesheet, and this file only says where the card goes.
+    // DECLARATIONS ONLY, and that is blind spot #5 applied rather than tripped over: this file's
+    // header EXPLAINS the split in prose, naming both `--radius-card` and `aspect-ratio` as the
+    // things it deliberately does not spend. A raw-source read would fire on the explanation —
+    // and the guard's own note says the repair is never to delete the prose.
+    const css = stripComments(sourceOf(SUGGESTION_ROW_CSS))
+
+    expect(CARD_SHAPED.has(SUGGESTION_ROW_CSS)).toBe(false)
+    expect(css).not.toMatch(/--radius-card/)
+    expect(css).not.toMatch(/aspect-ratio/)
+    // …while it DOES spend the chrome radius the artefact gives the row, which is what makes the
+    // two absences above a decision rather than an empty file.
+    expect(css).toContain('var(--radius-md)')
   })
 
   it('declares tokens in exactly one file (AC 2)', () => {

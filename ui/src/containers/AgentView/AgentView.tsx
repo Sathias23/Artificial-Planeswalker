@@ -11,10 +11,11 @@ import './AgentView.css'
  * ================= IT IS A SHELL, AND IT KNOWS NOTHING ABOUT SUGGESTIONS ===============
  *
  * Every agent view in Epic 6 lives inside this component, so it takes a `title`, a `count`, a
- * `pushId` and `children` and nothing else: no envelope, no wire type, no `kind`. c6-7 renders
- * suggestion rows INTO it and c6-8 adds nav pills BESIDE it, and neither has to edit this file
- * to do so — which is the property that makes "content-agnostic" a testable claim rather than a
- * hope (`AgentView.test.tsx` mounts it over an arbitrary fixture child).
+ * `pushId` and `children` and nothing else: no envelope, no wire type, no `kind`. c6-7 rendered
+ * suggestion rows INTO it — with **no edit to this file or its stylesheet**, which is the
+ * prediction discharged rather than restated — and c6-8 adds nav pills BESIDE it. That is the
+ * property that makes "content-agnostic" a testable claim rather than a hope
+ * (`AgentView.test.tsx` mounts it over an arbitrary fixture child).
  *
  * `pushId` joined that list at **c6-6** and is the one prop worth defending, because it looks
  * like the envelope leaking in. It is not: it is an OPAQUE STRING this component never parses,

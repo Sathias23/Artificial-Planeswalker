@@ -36,7 +36,9 @@
  * panel still shows that card. A module-level store satisfies that for free. A React context
  * scoped under the left column would not, and neither would state held by `CardDetail`, because
  * **c6-5**'s agent view is rendered in `AppShell`'s `overlay` slot — a different subtree that
- * mounts and unmounts. Recorded here so c6-7 inherits it rather than re-deciding it.
+ * mounts and unmounts. Recorded here so c6-7 inherits it rather than re-deciding it — and it
+ * did: that story added no code for the survival at all, and pinned the behaviour end to end
+ * instead (`App.test.tsx`, "ESC CLOSES THE VIEW AND THE PIN SET FROM A ROW SURVIVES").
  *
  * ================= THE API IS LOCATION-AGNOSTIC, ON PURPOSE (Q8, AC 4) =================
  *

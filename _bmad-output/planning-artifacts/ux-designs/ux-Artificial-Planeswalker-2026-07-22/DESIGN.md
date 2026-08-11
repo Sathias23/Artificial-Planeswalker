@@ -292,10 +292,50 @@ components:
     letter-size: 44px
     letter-weight: '500'
   suggestion-row:
+    # AMENDED 2026-08-11 (story c6-7, Q2). This block carried four values — background, border,
+    # radius, thumb-radius — and nothing about SPACING, ROW HEIGHT or the LIVE MARKER's form,
+    # while the component description below already promised all three ("full row height",
+    # "`live` marks the row with `{colors.accent}`"). The row is also on this file's own
+    # no-visual-precedent list (see the Composition reference note), so there are no mock pixels
+    # to read the missing values off either. That made "the suggestions view matches DESIGN.md"
+    # UNSATISFIABLE rather than merely unchecked, in the same way c4-12 found the empty-deck line
+    # unsatisfiable: `ui/tests/shell.test.ts` requires every `px` literal in a component
+    # stylesheet to carry a DESIGN.md citation within a sentence of the value, and there was
+    # nothing here to cite. The treatment is therefore ruled and written HERE FIRST and
+    # `SuggestionsView.css` written against it — the other order produces either a red guard or
+    # an invented citation.
+    #
+    # EVERY VALUE COMES FROM THE SPACING SCALE, and the row height comes from NONE of them. The
+    # thumbnail is a full card face at 63:88 spanning the row's height (the description's
+    # "art-forward"), so a fixed row height would either crop the card or fix the thumbnail's
+    # width by arithmetic done in a stylesheet. Instead the row is CONTENT-DRIVEN — two text
+    # lines (name/badge/cost/confidence, then the reason) plus the padding below — and the
+    # thumbnail's width follows from that height through its own aspect ratio. Nothing here
+    # spends a px, which is the same resolution `empty-deck-line` reached for the same reason.
     background: '{colors.surface-overlay}'
     border: '1px solid {colors.border-hairline}'
     radius: '{rounded.md}'
     thumb-radius: '{rounded.card}'
+    padding: '{spacing.2} {spacing.3}'
+    # TWO-VALUE, MATCHING THE GRID IT SPACES: `{spacing.3}` is the column gap (thumbnail to
+    # text), `{spacing.2}` is the row gap (head line to reason line) — the same pair the
+    # `.suggestion-row-head`/`.suggestions-view-rows` clusters already use for "internal cluster"
+    # spacing (code review, 2026-08-11 — the single-value citation shipped here matched only the
+    # column half; corrected to name both).
+    gap: '{spacing.2} {spacing.3}'
+    height: 'content-driven — two text lines plus padding; the thumbnail spans it at {components.card-tile.aspect} and its width follows'
+    # THE LIVE MARKER, AT THE OVERLAY-LEGAL TONE. Same shape as `components.deck-row`'s pair —
+    # a flat tint plus a 2px inset rule down the leading edge — because it marks the same thing
+    # (the card currently under inspection) and a second visual language for one meaning is
+    # drift. It is an INSET shadow rather than a `border-left` for that component's reason: a
+    # border shifts every column 2px sideways on becoming live, and a cursor sweeping a list
+    # turns that into a shimmer.
+    # `{colors.accent}` and NEVER `{colors.accent-dim}`: this row's own background is
+    # `{colors.surface-overlay}`, where accent-dim measures 2.70:1 and fails the 3:1 non-text
+    # floor — the ban the Contrast table names this component in, and which the description
+    # below already carries in bold.
+    live-background: '{colors.accent-glow}'
+    live-rule: 'inset 2px 0 0 {colors.accent}'
   connection-pill:
     background: '{colors.surface-panel}'
     border: '1px solid {colors.border-hairline}'
@@ -327,6 +367,37 @@ components:
     type: '{typography.body}'
     foreground: '{colors.text-secondary}'
     container: 'the untitled card-grid Panel — {components.panel.body-padding} is the whole of its inset'
+  empty-push-line:
+    # ADDED 2026-08-11 (story c6-7, Q2), and it is `empty-deck-line`'s sibling in every respect
+    # that matters. c6-6 shipped this state — the sentence a push with zero items shows in place
+    # of its rows — against the empty-DECK block's values, cited, because the two are the same
+    # kind of thing: one calm sentence standing in for absent content inside a surface that
+    # already supplies its own padding. That story had no acceptance criterion asking for an
+    # artefact amendment and correctly declined to make one quietly, recording the gap instead
+    # (`deferred-work.md:22`, homed on this story by name). This story amends the block above it
+    # anyway, so the sibling's own block is one entry of the same amendment rather than a
+    # separate act.
+    #
+    # IT SPENDS NO LENGTH OF ITS OWN, for the identical reason: the line is the agent view
+    # body's only child in this state, and that body already spends `{spacing.4}` around
+    # whatever it holds — note this is the BODY's inset, not `{components.agent-view.inset}`,
+    # which is the shell's own inset from the window edge. No min-height either; reserving
+    # list-sized space for content that is deliberately absent is what makes an empty state
+    # read as a loading failure.
+    #
+    # IT REPLACES THE `<ul>` rather than sitting inside it (the c4-12 semantics, unchanged): a
+    # `<p>` inside a `<ul>` is invalid against UX-DR44's mandated list semantics, and an empty
+    # list left beside the sentence announces "list, 0 items" before the sentence explaining
+    # why. The words themselves are EXPERIENCE.md's Voice-and-Tone row and are transcribed by
+    # the copy module, never authored here.
+    type: '{typography.body}'
+    foreground: '{colors.text-secondary}'
+    # `{spacing.4}`, NOT `{components.agent-view.inset}` (`{spacing.6}`) — the shell's inset from
+    # the window edge is a different value from the BODY's own padding, exactly as the note two
+    # comments up says. Corrected by code review (2026-08-11): this field cited the shell's
+    # token where the body's own (`.agent-view-body`'s `padding: 0 var(--space-4) var(--space-4)`)
+    # was meant.
+    container: 'the agent view body — {spacing.4} is the whole of its inset'
   card-placeholder:
     background: '{colors.surface-overlay}'
     border: '1px solid {colors.border-strong}'
@@ -471,7 +542,7 @@ Tonal layering (the surface ramp) does the everyday hierarchy work. Borders are 
 - **Agent view** (the shell) — full-window overlay: `{components.agent-view.scrim}` with `{components.agent-view.backdrop}`, inset `{components.agent-view.inset}`, containing a `{components.agent-view.background}` shell at `{components.agent-view.radius}` with `{components.agent-view.shadow}`. Header row: "AGENT VIEW" kicker in `{typography.micro}` `{colors.accent}`, title in `{typography.heading}`, a summary count in `{typography.body}` `{colors.text-tertiary}`, and a "Close · esc" nav pill right-aligned. Enters over `{components.agent-view.enter}` as a fade + 8px rise. Body scrolls.
 - **Swap row** — out-card and in-card tiles side by side joined by a `{components.swap-row.arrow}` glyph, on `{components.swap-row.background}` at `{components.swap-row.radius}`. "Out · N copies" in `{typography.micro}` `{components.swap-row.out-tint}` above the out tile; "In · N copies" in `{components.swap-row.in-tint}` above the in tile. Tints appear on the labels only — **never on the art**. Rationale in `{typography.body}` `{colors.text-secondary}` right of the pair, with `StatChip`s for price/curve/confidence beneath.
 - **Tier row** — a `{components.tier-row.chip-width}` chip on `{components.tier-row.chip-background}` carrying the tier letter at `{components.tier-row.letter-size}` / `{components.tier-row.letter-weight}` with the tier name in `{typography.micro}` `{colors.text-tertiary}` beneath, then a note in `{typography.body}` `{colors.text-secondary}` and a thumbnail row. Tier letters use `accent-bright` (S) · `accent` (A) · `text-primary` (B) · `text-secondary` (C) · `text-tertiary` (D). At 44px the letters are large text, so all five clear the floor comfortably; the letter is also always accompanied by its name in text, so color is never the sole carrier of rank. Empty tiers are skipped, not rendered as empty shells.
-- **Suggestion row** — card thumbnail at `{components.suggestion-row.thumb-radius}` (full row height — art-forward) left, then an action `Badge`, name in `{typography.body-strong}`, mana cost, optional confidence in `{typography.micro}` `{colors.text-tertiary}` right-aligned, and a one-line reason in `{typography.body}` `{colors.text-secondary}` beneath. `live` marks the row with `{colors.accent}` — **not `accent-dim`**, which fails 3:1 on this surface.
+- **Suggestion row** — card thumbnail at `{components.suggestion-row.thumb-radius}` (full row height — art-forward) left, then a `Badge`, name in `{typography.body-strong}`, mana cost, optional confidence in `{typography.micro}` `{colors.text-tertiary}` right-aligned, and a one-line reason in `{typography.body}` `{colors.text-secondary}` beneath, at `{components.suggestion-row.padding}` and `{components.suggestion-row.gap}`. `live` marks the row with `{colors.accent}` — **not `accent-dim`**, which fails 3:1 on this surface — as `{components.suggestion-row.live-background}` plus `{components.suggestion-row.live-rule}`. **The badge is the item's `category`, and "action" was struck 2026-08-11 (story c6-7, Q1)**: this line read *"an action `Badge`"*, and there is **no `action` field on the wire** — `SuggestionItem` is `{card_id, reason, category?, confidence?}` and `contracts.py` says of `category` that it *"renders inside a badge"*, capped at 80 characters, *"capped at what a badge can hold"*. An "action" badge would therefore have had to be an authored word ("ADD") standing for a decision no tool sends, on a surface `EXPERIENCE.md` calls read-only glass. The badge takes the **neutral** tone — the only tone that invents nothing, since no mapping from free-text categories to the four semantic tones exists — and **no badge renders at all when `category` is absent**. EXPERIENCE.md's component row carried the same doubled claim ("action badge … optional category chip") and is annotated in the same commit; its own IA row (`:39`) already said only *"card + one-line reason + optional category"*.
 - **Group section** — title in `{typography.heading}` with card count in `{typography.numeric}` `{colors.text-tertiary}`, description in `{typography.body}` `{colors.text-secondary}` capped at ~900px measure, then a wrapped tile row.
 
 ### System presence & states

@@ -1569,21 +1569,46 @@ describe('the containers are a declared category with a posture of its own', () 
     // the `bundler` one, so a `ui/tests` file may import an app module only if that module has no
     // relative imports of its own — and `App.test.tsx` imports this one.
     { file: 'src/containers/AgentView/copy.ts', imports: [] },
-    // c6-6's view BODY — the first module to render anything a push carries, and deliberately
-    // half of one: Brad's Q1 ruling ships the empty-push state real and renders NOTHING for a
-    // non-empty push, because the rows are c6-7's. It is named for the VIEW rather than for the
-    // state so that c6-7 extends this file instead of creating one; the empty branch is already
-    // the right branch and the rows go where the `null` is. `../../state/agentView` is a
-    // TYPE-only import (`AgentViewContent`) and it reaches the STATE layer rather than
-    // `src/api/` on purpose: translating the envelope is the store's job, and a body that took a
-    // `SuggestionsPayload` would be a second reader of the wire with a second opinion about
-    // absent fields. It holds no hook, no ref and no handler TODAY — it is in this tree rather
-    // than under `src/components/` because c6-7's rows need all three, and moving a module with
-    // a stylesheet and a copy owner between the trees later is a bigger diff than starting in
-    // the right one.
+    // c6-6's view BODY, FILLED BY c6-7 — the first module to render anything a push carries.
+    // c6-6 shipped the empty-push state real and returned `null` for a non-empty one because the
+    // rows were the next story's; it was named for the VIEW rather than for the state precisely
+    // so that c6-7 could extend this file instead of creating a second one, and that prediction
+    // is what this entry now records as fact. `../../state/agentView` is still a TYPE-only
+    // import (`AgentViewContent`) and it still reaches the STATE layer rather than `src/api/`:
+    // translating the envelope is the store's job, and a body that took a `SuggestionsPayload`
+    // would be a second reader of the wire with a second opinion about absent fields.
+    //
+    // THE IMPORT SET GREW BY EIGHT AND EVERY ONE OF THEM IS A CONTRACT THIS SURFACE INHERITS
+    // rather than a convenience: three primitives it composes (`Badge`, `CardPlaceholder`,
+    // `ManaCost` — none of them re-implemented, which is the whole reason `src/components/` is a
+    // closed set), the card cache (`../../state/cards` — this is the FIRST consumer that must
+    // hydrate its OWN ids, because suggested cards are not in the deck and no sweep will ever
+    // reach them; AD-12 names agent views as the reason that cache is shared), the faces store
+    // (Q5 — flip state is honoured so a printing shows the same face everywhere, while the flip
+    // CONTROL is not rendered in a row), the inspection slice (the five verbs unrenamed, which
+    // is what `inspection.ts:163` wrote them location-agnostic FOR), and the two image modules
+    // `../CardTile/imageUrl` + `../useCardArt` — reached ACROSS containers exactly as c4-5's
+    // detail panel reaches them, which is the extraction those two files exist for. `react` is
+    // here for the hydration effect. It holds hooks, handlers and a ref, so `posture.test.ts`
+    // would fail it under `src/components/` three times over — which is what c6-6's header said
+    // when it put the module in this tree a story early.
     {
       file: 'src/containers/SuggestionsView/SuggestionsView.tsx',
-      imports: ['../../state/agentView', './SuggestionsView.css', './copy'],
+      imports: [
+        '../../components/Badge/Badge',
+        '../../components/CardPlaceholder/CardPlaceholder',
+        '../../components/ManaCost/ManaCost',
+        '../../state/agentView',
+        '../../state/cards',
+        '../../state/faces',
+        '../../state/inspection',
+        '../CardTile/imageUrl',
+        '../frontFaceCost',
+        '../useCardArt',
+        './SuggestionsView.css',
+        './copy',
+        'react',
+      ],
     },
     // c6-6's copy module. One TEMPLATE — the artefact's row writes `{kind}` — plus the
     // placeholder it names and the one-line builder that fills it. `imports: []` for

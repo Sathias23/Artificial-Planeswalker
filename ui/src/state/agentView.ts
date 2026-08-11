@@ -49,8 +49,11 @@
  *   it in a ref, the way `SkipLink` holds `heldFocus`.
  * - **It validates no ITEM.** {@link suggestionsViewOf} is total about the payload's SHAPE —
  *   an absent payload, absent items and a blank title all construct a valid view — and says
- *   nothing about whether a `card_id` resolves. That is c6-7's, at the row that renders it
- *   (FR-13/AD-7: one bad entry degrades, the push never fails wholesale).
+ *   nothing about whether a `card_id` resolves. That was c6-7's, and c6-7 did it AT THE ROW
+ *   rather than here: `SuggestionsView.tsx` types every item field `unknown` and gates it with
+ *   `typeof` before use, so a non-string `card_id` or a missing `reason` degrades that entry
+ *   alone (FR-13/AD-7: one bad entry degrades, the push never fails wholesale). This store is
+ *   deliberately unchanged by that story — `deferred-work.md:209` is closed at the row.
  */
 
 import { create } from 'zustand'
@@ -121,8 +124,9 @@ export interface AgentViewContent {
    */
   readonly count: number | null
   /**
-   * The pushed rows, retained unrendered by this story. c6-7 draws them; c6-8 re-hydrates them
-   * against current card data on re-open. Empty is legal and is not an error
+   * The pushed rows, retained unrendered by THIS story and drawn by c6-7's `SuggestionsView`,
+   * which also hydrates each unique `card_id` itself (nothing seeds an agent-supplied id).
+   * c6-8 re-hydrates them against current card data on re-open. Empty is legal and is not an error
    * (`types.d.ts:1103-1105`: *"the view skips an empty push rather than rejecting it, so 'I
    * looked and found nothing' is expressible"*).
    */

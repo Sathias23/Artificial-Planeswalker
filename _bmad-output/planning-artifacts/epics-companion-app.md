@@ -469,6 +469,10 @@ UX-DR24: **Suggestion row** (P0) — full-row-height thumbnail left, then action
 body-strong, mana cost, optional confidence right-aligned, and a one-line reason beneath. `live`
 marks the row with `accent` (not `accent-dim`). Unknown-ID entries render the unknown placeholder
 in the thumbnail slot **and still render their reason text**.
+<!-- corrected at c6-7 code review 2026-08-11: "action badge" is the item's `category` badge —
+there is no `action` field on the wire (`SuggestionItem = {card_id, reason, category?,
+confidence?}`); DESIGN.md:474 and EXPERIENCE.md:91 were annotated at c6-7, this row was missed
+by that story's ripple sweep -->
 
 UX-DR25: **Swap row** (P1) — out/in tiles side by side joined by an accent arrow glyph, "Out · N
 copies" / "In · N copies" labels tinted negative/positive — **tints on the labels only, never on
@@ -2892,7 +2896,7 @@ So that I can judge them by looking rather than by reading a list of names.
 
 **Given** a suggestions payload
 **When** the view renders
-**Then** each row shows a full-row-height card thumbnail at the card radius on the left, then an action badge, the card name in body-strong, the mana cost, an optional confidence in micro right-aligned, and the one-line reason beneath in body `text-secondary` (UX-DR24)
+**Then** each row shows a full-row-height card thumbnail at the card radius on the left, then an action badge, the card name in body-strong, the mana cost, an optional confidence in micro right-aligned, and the one-line reason beneath in body `text-secondary` (UX-DR24) <!-- corrected at c6-7 code review 2026-08-11: "action badge" is the item's `category` badge, the only badge-bearing field on the wire — see the UX-DR24 correction above -->
 
 **Given** a row is hovered, focused or clicked
 **When** the inspection contract applies

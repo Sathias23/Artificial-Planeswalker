@@ -276,6 +276,39 @@
      measurements beside the rule that composites them (corrected at the c4-7 review: this
      comment previously claimed the overlay surface and the detail panel's 5.5:1/2.70:1 pair). */
   --shadow-deck-row-live: inset 2px 0 0 var(--accent);
+
+  /* THE SUGGESTION ROW'S LIVE RULE (story c6-7, Q2, UX-DR24).
+     69 -> 70, and the pins moved in the same commit: `expectedNames` + `toHaveLength` in
+     tests/tokens.test.ts, and `declaredTokens.size` in tests/token-usage.test.ts.
+
+     `components.suggestion-row.live-rule`, byte-for-byte, from the amendment story c6-7 made to
+     DESIGN.md before writing a line of the stylesheet that cites it. Same shape as the deck
+     row's rule above and for the same reasons — an INSET shadow so becoming live costs no
+     layout, and the row's live TINT is a plain `--accent-glow` background needing no token of
+     its own because a single colour is not a composite.
+
+     IT IS ITS OWN TOKEN RATHER THAN A SECOND CONSUMER OF `--shadow-deck-row-live`, and that is
+     Q2's ruling rather than an oversight. The two values are identical TODAY, and they are
+     identical by coincidence of two components landing on the same marker shape, not by a
+     shared rule: DESIGN.md files them under two different `components.*` blocks, each
+     independently amendable, and this layer's contract is that a token IS its artefact entry
+     (`tests/tokens.test.ts` asserts each one byte-for-byte against the block it comes from).
+     A suggestion row borrowing the deck row's name would make the day someone amends
+     `components.deck-row` silently amend a surface in an agent view, with no test able to see
+     it — the artefacts would still agree with themselves and the pixels would have moved.
+
+     `var(--accent)`, and NEVER `--accent-dim`. Unlike the deck row — which sits on
+     `--surface-panel`, where accent-dim is merely weak at 3.05:1 — this row's own resting
+     background IS `--surface-overlay`, the one surface where accent-dim measures 2.70:1 and
+     FAILS the 3:1 non-text floor outright. DESIGN.md's Contrast table names suggestion rows in
+     that ban by name, and `token-usage.test.ts:170-174` records that its `findAccentDimOnOverlay`
+     guard cannot catch this composition (the background is set by the row's rule, the marker by
+     a token) — so the ban is kept here, at the value, where a reader can see it.
+
+     IT IS A TOKEN BECAUSE IT CANNOT BE ANYTHING ELSE: .stylelintrc.json's box-shadow
+     allowed-list admits `none` or a comma-list of var(--shadow-…) / var(--glow) AND NOTHING
+     ELSE, so `inset 2px 0 0 …` cannot be written in SuggestionsView.css at all. */
+  --shadow-suggestion-row-live: inset 2px 0 0 var(--accent);
 }
 
 /* ==== THE REDUCED-MOTION REGISTRATION POINT ============================================

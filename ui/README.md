@@ -331,7 +331,11 @@ Things worth knowing before writing a stylesheet against it:
   a child setting the dim border is **not caught** — and that is the normal shape of c6-7's
   suggestion rows and c9-1's swap rows, because DESIGN.md gives the container the overlay.
   Deciding it needs the render tree, which lives in TSX. **Review owns that half**; when you
-  review a row component, check it rather than assuming the gate did.
+  review a row component, check it rather than assuming the gate did. c6-7 shipped the first of
+  those rows and answered it the only way that is checkable — by spending **no** `--accent-dim`
+  in `SuggestionsView.css` at all, which `token-usage.test.ts` now asserts over that file's
+  bytes by name. Whether `--accent` reads well over the row's own `--accent-glow` tint is still
+  a pixel question, and it belongs to the C6 manual checklist.
 - **Do not use native CSS nesting.** The block reader in `tests/token-usage.test.ts` matches
   innermost braces, so a declaration in a nesting parent is invisible to every guard there —
   including the contrast one. Rather than grow a real CSS parser three stories early, nesting
@@ -608,7 +612,9 @@ the open.
 #### Tinting a surface from a semantic token
 
 The mechanism c6-7's suggestion rows, c9-1's swap rows and c9-2's tier rows reuse rather than
-each inventing one. DESIGN.md asks a tone to "tint background and border from its own semantic
+each inventing one. (c6-7 shipped its badge in the **neutral** tone — the item's `category` is
+free text and no mapping from those to the four semantic tones exists — so the semantic-tint
+path below still has no shipped consumer.) DESIGN.md asks a tone to "tint background and border from its own semantic
 token — never from hard-coded RGB", and **every obvious spelling of that is banned**:
 `rgba(95,212,160,0.12)` by `function-disallowed-list`, and `color-mix(in srgb, var(--positive)
 12%, transparent)` by the **same rule** (measured). There is no translucent `--positive-wash`

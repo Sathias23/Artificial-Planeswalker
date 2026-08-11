@@ -18,7 +18,10 @@
  * vitest project in vite.config.ts; nothing needs setting up per file.
  */
 
-import { act, cleanup, render, screen, within } from '@testing-library/react'
+// `fireEvent` joins at c6-7: the suggestion rows are the first content in this file whose
+// contract is a POINTER one (hover sets the detail target, click pins), and `element.click()` —
+// this file's idiom for the tile and pill tests — dispatches no `mouseenter` at all.
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
@@ -3471,16 +3474,244 @@ describe('a suggestions push opens its view, end to end (c6-6, AC 1, AC 2, AC 4,
     expect(viewCount()).toHaveTextContent('1')
   })
 
-  it('costs the app NO request — a push is content, not a staleness signal', async () => {
+  it('re-drives NO boot route — a push is content, not a staleness signal', async () => {
     // The property that separates this callback from the two system kinds beside it in the
     // dispatch switch. `deck_changed` means "ask again"; a push means "here it is", and an
     // implementation that re-drove the boot on one would double every push's cost forever.
+    //
+    // AMENDED BY c6-7, AND THE CLAIM IS SHARPENED RATHER THAN RELAXED. This read
+    // `fetchMock.mock.calls.length` unchanged — "costs the app NO request" — which was true only
+    // while a push rendered nothing. c6-7's rows hydrate their own ids (AC 7): a suggested card
+    // is not in the deck, so nothing seeded it and the deck sweep will never reach it, and one
+    // `GET /api/cards/{id}` per UNIQUE id is what this story exists to spend. Counting total
+    // calls would have made that legitimate cost look like the regression this test guards
+    // against, so the boot routes are now counted BY NAME — which is what the test always meant.
     const fetchMock = await bootedDeck()
-    const before = fetchMock.mock.calls.length
+    const boots = () =>
+      deckDetailCalls(fetchMock) +
+      formatCheckCalls(fetchMock) +
+      callsTo(fetchMock, '/api/active-deck') +
+      callsTo(fetchMock, '/api/decks')
+    const before = boots()
+    const cardsBefore = callsTo(fetchMock, '/api/cards/')
 
     await push('suggestions', { title: 'Resilience options', items: ITEMS })
 
-    expect(fetchMock.mock.calls.length).toBe(before)
+    expect(boots(), 'a push re-drove a boot route').toBe(before)
+    // …and the hydration really happened, so the assertion above is not passing because the view
+    // rendered nothing at all: two items, two distinct ids, two reads.
+    expect(callsTo(fetchMock, '/api/cards/') - cardsBefore).toBe(ITEMS.length)
     expect(sockets).toHaveLength(1)
+  })
+})
+
+// =====================================================================================
+// c6-7 — THE SUGGESTION ROWS, INSIDE THE REAL VIEW, ON THE REAL INSPECTION CONTRACT
+// =====================================================================================
+
+describe('a pushed suggestion is a card you can look at (c6-7, AC 2, AC 4, AC 7)', () => {
+  const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
+  const unpinControl = () => document.querySelector('.card-detail-unpin')
+  const detailName = () => document.querySelector('.card-detail-name')
+  const rows = () => [...document.querySelectorAll<HTMLButtonElement>('.suggestion-row')]
+  /**
+   * The PIN announcement's region, by name.
+   *
+   * `document.querySelector('[aria-live]')` would be wrong here and quietly so: the app ships
+   * exactly three live regions — this one, the connection pill's, and the agent view's own
+   * heading — and while a view is open the heading is one of them. A DOM-order query would pick
+   * whichever happened to come first.
+   */
+  const pinRegion = () => document.querySelector('.card-detail-announcement')
+
+  /**
+   * Two suggestions whose ids the card route can actually answer.
+   *
+   * The fixture route answers `/api/cards/{id}` by slicing `id-` off the path and echoing the
+   * REST as the card's name, so an id shaped `id-{name}` is what makes a hydrated row carry a
+   * name a test can read. That is the same convention the deck fixtures use.
+   */
+  const ITEMS = [
+    { card_id: 'id-Llanowar Elves', reason: 'Fills the one-drop ramp slot.', category: 'ramp' },
+    { card_id: 'id-Birds of Paradise', reason: 'Fixes all five colours.', confidence: 'high' },
+  ]
+
+  const bootedDeck = async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks(ATRAXA_NAME))
+    render(<App />)
+    await settle()
+    await connect()
+    return fetchMock
+  }
+
+  const pushRows = async (items: unknown[] = ITEMS, id = 'push-c6-7') => {
+    await push('suggestions', { title: 'Resilience options', items }, id)
+    // The hydration effect fires on commit and its answers land a microtask later; without this
+    // the rows are all still on their silent wells and every name assertion below reads ''.
+    await settle()
+    await advance(20)
+  }
+
+  /** Esc, delivered where a browser delivers it: at the focused element, bubbling. */
+  const escape = () =>
+    act(() => {
+      document.activeElement!.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      )
+    })
+
+  beforeEach(() => {
+    resetInspection()
+    resetDeckMemory()
+    resetAgentView()
+  })
+
+  it('renders the rows INSIDE the dialog, hydrated from the card route (AC 7)', async () => {
+    const fetchMock = await bootedDeck()
+    await pushRows()
+
+    const dialog = screen.getByRole('dialog')
+    expect(rows()).toHaveLength(2)
+    // Inside the dialog rather than merely on the page — the rows are the view's content, and
+    // the shell needed no editing to hold them (`AgentView.test.tsx:158`'s claim, end to end).
+    for (const row of rows()) expect(dialog).toContainElement(row)
+    expect(rows()[0]).toHaveTextContent('Llanowar Elves')
+    expect(rows()[0]).toHaveTextContent(ITEMS[0].reason)
+
+    // ONE READ PER UNIQUE ID, over the real client and the real route (AD-12): these ids are in
+    // no deck, so nothing seeded them and the deck sweep will never reach them.
+    expect(callsTo(fetchMock, '/api/cards/id-Llanowar%20Elves')).toBe(1)
+    expect(callsTo(fetchMock, '/api/cards/id-Birds%20of%20Paradise')).toBe(1)
+  })
+
+  it('hovering a row shows that card in the DETAIL PANEL, announcing nothing (UX-DR45)', async () => {
+    await bootedDeck()
+    await pushRows()
+
+    fireEvent.mouseEnter(rows()[1])
+    await settle()
+
+    // The panel behind the view follows the row — the inspection contract is location-agnostic
+    // and this is the first surface outside the deck to spend it.
+    expect(detailName()).toHaveTextContent('Birds of Paradise')
+    // A TRANSIENT TARGET MUST NOT ANNOUNCE (UX-DR45). Sweeping six rows would otherwise queue six
+    // interruptions for a screen-reader user who is only moving a cursor.
+    expect(pinRegion()).toBeEmptyDOMElement()
+  })
+
+  it('clicking a row pins it and announces ONCE, from the shipped region (AC 2)', async () => {
+    await bootedDeck()
+    await pushRows()
+
+    fireEvent.click(rows()[0])
+    await settle()
+
+    expect(useInspectionStore.getState().pinnedId).toBe('id-Llanowar Elves')
+    expect(unpinControl()).not.toBeNull()
+    // THE SHIPPED REGION, not a second one. The rows add NO `aria-live` of their own — a second
+    // region inside the dialog would announce the same arrival twice — so this is `CardDetail`'s
+    // polite region carrying the pin, exactly as it does for a tile or a deck row. Asserted as
+    // "none inside the list" rather than as a count of the whole document: the app ships three
+    // live regions and the agent view's own heading is one of them.
+    expect(document.querySelectorAll('.suggestions-view-rows [aria-live]')).toHaveLength(0)
+    expect(pinRegion()).toHaveTextContent('Pinned — Llanowar Elves')
+  })
+
+  // ==================== UJ-1 STEP 6, WHICH FINALLY EXISTS END TO END ====================
+  it('ESC CLOSES THE VIEW AND THE PIN SET FROM A ROW SURVIVES (AC 2, UJ-1 step 6)', async () => {
+    // `EXPERIENCE.md:188`: *"dismissing a suggestion view leaves that card in the detail panel"*.
+    // c6-5 pinned the Esc LAYERING with a pin set from a tile, because no row existed to set one
+    // from; this is the same layering with the gesture the flow actually describes.
+    //
+    // Nothing implements the survival: `closeAgentView()` writes `status` and touches nothing in
+    // the inspection slice, which is module-level state that outlives the dialog's unmount
+    // (`inspection.ts:32-39` — *"Recorded here so c6-7 inherits it rather than re-deciding it"*).
+    // This test is what turns that inheritance into a claim with a tripwire.
+    await bootedDeck()
+    await pushRows()
+
+    fireEvent.click(rows()[0])
+    await settle()
+    expect(useInspectionStore.getState().pinnedId).toBe('id-Llanowar Elves')
+
+    escape()
+
+    expect(screen.queryByRole('dialog'), 'the topmost thing closed').toBeNull()
+    // ONE Esc RELEASES ONE THING (UX-DR39). The pin is still held, and the panel is still showing
+    // the suggested card — which is a card that is NOT in the open deck, the case that makes this
+    // flow worth having.
+    expect(useInspectionStore.getState().pinnedId).toBe('id-Llanowar Elves')
+    expect(unpinControl()).not.toBeNull()
+    expect(detailName()).toHaveTextContent('Llanowar Elves')
+
+    // …and the SECOND Esc releases the pin, which is the layering c6-5 established holding with a
+    // row-set pin rather than a tile-set one.
+    escape()
+    expect(useInspectionStore.getState().pinnedId).toBeNull()
+  })
+
+  it('degrades ONE unknown id and leaves its neighbours drawing art (AC 4, FR-13)', async () => {
+    // End to end, over the real refusal: the route answers `card_not_found` for this id, the
+    // cache records `placeholder: 'unknown-card'`, and the row draws the placeholder while its
+    // REASON still renders. c6-6's structurally-deferred AC 3, discharged where its subject is.
+    const fetchMock = await bootedDeck()
+    const answer = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation((input?: unknown) =>
+      String(input) === '/api/cards/ghost'
+        ? Promise.resolve(refusal('card_not_found', 404))
+        : answer(input),
+    )
+
+    await pushRows([
+      { card_id: 'ghost', reason: 'A card the corpus has never heard of.' },
+      ITEMS[0],
+    ])
+
+    expect(rows()).toHaveLength(2)
+    expect(rows()[0].querySelector('.card-placeholder')).toHaveTextContent('Unknown card')
+    expect(rows()[0]).toHaveTextContent('A card the corpus has never heard of.')
+    // THE NEIGHBOUR IS UNHARMED — one dead entry is one dead thumbnail, never a failed push.
+    expect(rows()[1].querySelector('.suggestion-row-image')).toHaveAttribute(
+      'src',
+      '/api/card-image/id-Llanowar%20Elves',
+    )
+    expect(rows()[1]).toHaveTextContent('Llanowar Elves')
+    // …and the unknown row refuses inspection, through the store, with the view still open.
+    fireEvent.click(rows()[0])
+    expect(useInspectionStore.getState().pinnedId).toBeNull()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('re-hydrates on a REPLACE, so the second push’s rows are not silent wells', async () => {
+    // c6-6 replaces in place against a MOUNTED shell: the same component instance receives the
+    // new items. A mount-only hydration effect would leave every id of the second push unfetched.
+    const fetchMock = await bootedDeck()
+    await pushRows([ITEMS[0]], 'push-1')
+    expect(callsTo(fetchMock, '/api/cards/id-Llanowar%20Elves')).toBe(1)
+
+    await pushRows([ITEMS[1]], 'push-2')
+
+    expect(callsTo(fetchMock, '/api/cards/id-Birds%20of%20Paradise')).toBe(1)
+    expect(rows()).toHaveLength(1)
+    expect(rows()[0]).toHaveTextContent('Birds of Paradise')
+  })
+
+  it('survives a push whose items are malformed, with the socket still open (AD-7)', async () => {
+    // The wholesale-failure case FR-13 bans: a `TypeError` in a row is React unmounting the whole
+    // dialog around it, and the connection is what would look broken afterwards.
+    await bootedDeck()
+    await pushRows([
+      { card_id: 42, reason: 'A number id.' },
+      { card_id: 'id-Forest' },
+      { reason: 'No id at all.' },
+    ])
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(rows()).toHaveLength(3)
+    // The connection is what would LOOK broken after a render crash: the fake socket counts its
+    // own closes, and one that was never closed is one the app is still holding.
+    expect(sockets).toHaveLength(1)
+    expect(sockets[0].closed).toBe(0)
   })
 })
