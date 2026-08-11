@@ -1221,6 +1221,25 @@ describe('token usage across the shipped stylesheets', () => {
     ).not.toMatch(/accent-dim/)
   })
 
+  it('floors the two text rows at one line each, so a malformed item cannot collapse the thumbnail (Greptile P1, 2026-08-11)', () => {
+    // jsdom evaluates no layout, so nothing in the component suite can prove a row does NOT
+    // shrink to a sliver — this is a SOURCE read, the same shape as the accent-dim test above.
+    // Every child of `.suggestion-row-head` renders NOTHING for absent data (`Badge` returns
+    // `null`, an unhydrated name is `''`, `ManaCost` renders nothing for a `null` cost, confidence
+    // is absent by default), and `.suggestion-row-reason` is a bare empty span for a missing
+    // `reason` — so a maximally malformed or not-yet-hydrated item leaves both grid rows with zero
+    // content, and an empty flex/grid item with no padding is 0px tall. The thumbnail spans both
+    // rows (`grid-row: 1 / span 2`), so a collapsed pair collapses it too.
+    const css = stripComments(sourceOf(SUGGESTION_ROW_CSS))
+
+    expect(css).toContain('.suggestion-row-head')
+    expect(css).toContain('.suggestion-row-reason')
+    expect(
+      (css.match(/min-height:\s*1lh/g) ?? []).length,
+      "both text rows need the floor — one is not enough to protect the thumbnail's span",
+    ).toBe(2)
+  })
+
   it('draws no card in the suggestion row — the CARD_SHAPED split, stated (c6-7)', () => {
     // Blind spot #4 in this guard's own header is *"a card-drawing stylesheet that never joins
     // CARD_SHAPED"*, and c6-7's row stylesheet is exactly the file that could become one: it

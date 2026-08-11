@@ -219,7 +219,16 @@
    `baseline` alignment so the badge, the name and the confidence sit on one optical line despite
    three different type roles; `{spacing.2}` between them, from the scale's "internal clusters"
    band. `flex-wrap` is deliberately absent — the reason line below is where a row's length is
-   spent, and a head that wrapped would change the row's height as data arrived. */
+   spent, and a head that wrapped would change the row's height as data arrived.
+
+   `font` + `min-height: 1lh` (code review, 2026-08-11: Greptile P1). Every child here renders
+   NOTHING when its data is absent — `Badge` returns `null` for a blank category, an unhydrated
+   name is `''`, `ManaCost` renders nothing for a `null` cost, confidence is absent by default —
+   so a maximally malformed or not-yet-hydrated item leaves this flex container with zero
+   children that have any content, and an empty flex item with no padding collapses to 0px tall.
+   The `font` role establishes this element's OWN line-height so `1lh` has something to measure;
+   it changes nothing visually, since every child that has content already carries its own `font`
+   role that overrides it. */
 .suggestion-row-head {
   display: flex;
   grid-row: 1;
@@ -227,6 +236,8 @@
   gap: var(--space-2);
   align-items: baseline;
   min-width: 0;
+  font: var(--type-body-strong);
+  min-height: 1lh;
 }
 
 /* THE NAME (AC 1). DESIGN.md: "name in `{typography.body-strong}`". `body-strong` travels alone
@@ -295,4 +306,8 @@
   font: var(--type-body);
   text-overflow: ellipsis;
   white-space: nowrap;
+
+  /* Same collapse as the head line above (Greptile P1): a malformed item with no `reason` at
+     all renders this span empty, and an empty grid item with no padding is 0px tall. */
+  min-height: 1lh;
 }

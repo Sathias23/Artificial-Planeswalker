@@ -654,6 +654,48 @@ describe('the inspection contract, verb for verb (AC 2, AC 3, UX-DR14, UX-DR20)'
     expect(document.activeElement).toBe(rowAt(container, 0))
     expect(document.activeElement).not.toBe(document.body)
   })
+
+  it('releases a stale hover, focus AND pin when the entry resolves to unknown (Greptile P1)', () => {
+    // `inspectable()` only refuses an id it ALREADY knows is dead — it has no opinion about one
+    // that is ABOUT TO become dead. A suggestion id starts life `undefined`, which IS
+    // inspectable (deliberately, for deck cards' cold-open hover), so a real interaction in the
+    // window before hydration settles can set every one of the three targets on a card that is
+    // moments from resolving to `unknown`. jsdom's near-synchronous promises never expose this
+    // ordering on their own — this test forces it with `seedUnknown` after the targets are set.
+    const { container } = render(<SuggestionsView kind="suggestions" items={[ITEM]} />)
+    const row = rowAt(container, 0)
+
+    fireEvent.mouseEnter(row)
+    fireEvent.focus(row)
+    fireEvent.click(row)
+    expect(useInspectionStore.getState().hoveredId).toBe('c-1')
+    expect(useInspectionStore.getState().focusedId).toBe('c-1')
+    expect(useInspectionStore.getState().pinnedId).toBe('c-1')
+    expect(row).toHaveClass('is-live')
+
+    act(() => seedUnknown('c-1'))
+
+    expect(useInspectionStore.getState().hoveredId).toBeNull()
+    expect(useInspectionStore.getState().focusedId).toBeNull()
+    expect(useInspectionStore.getState().pinnedId).toBeNull()
+    expect(rowAt(container, 0)).not.toHaveClass('is-live')
+  })
+
+  it('only releases the id that actually went unknown, never a sibling row’s target', () => {
+    // The non-vacuity half: a keyed release that fired unconditionally would be indistinguishable
+    // from this test's assertions unless a SECOND, still-good row is in play to prove it was left
+    // alone.
+    seedHydrated('c-2')
+    const { container } = render(<SuggestionsView kind="suggestions" items={[ITEM, OTHER]} />)
+
+    fireEvent.click(rowAt(container, 1))
+    expect(useInspectionStore.getState().pinnedId).toBe('c-2')
+
+    act(() => seedUnknown('c-1'))
+
+    expect(useInspectionStore.getState().pinnedId).toBe('c-2')
+    expect(rowAt(container, 1)).toHaveClass('is-live')
+  })
 })
 
 describe('hydration is this view’s own (AC 7, AD-12)', () => {

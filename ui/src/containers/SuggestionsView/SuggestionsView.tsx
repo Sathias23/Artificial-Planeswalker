@@ -9,10 +9,12 @@ import { useFaceIndex } from '../../state/faces'
 import {
   clearFocused,
   clearHovered,
+  clearPin,
   setFocused,
   setHovered,
   togglePin,
   useIsLiveTarget,
+  usePinnedId,
 } from '../../state/inspection'
 import { cardImageUrl } from '../CardTile/imageUrl'
 import { frontFaceCost, frontFaceName } from '../frontFaceCost'
@@ -251,6 +253,25 @@ function SuggestionRow({ item }: { item: UntrustedItem }) {
   // `<img src="/api/card-image/">` request for one render.
   const unknown = isUnknownCard(entry) || cardId === ''
   const reason = reasonOf(item)
+  const pinnedId = usePinnedId()
+
+  // RELEASE A STALE TARGET THE MOMENT HYDRATION SETTLES TO UNKNOWN (code review, 2026-08-11:
+  // Greptile P1). `inspectable()` treats an in-flight (`undefined`/`loading`) entry as
+  // inspectable — deliberate for deck cards (c4-1: refusing on absence would refuse every card
+  // on a cold open, before any hydration had run) — but a suggestion id can settle to a
+  // TERMINAL `unknown`, which UX-DR22 says can never be inspected. A real click or hover in the
+  // window before that settle lands (real network latency; not reachable in jsdom's near-
+  // synchronous promise resolution) races past that guard and leaves a stale hover, focus or
+  // pin pointed at a card that just became un-inspectable. This effect is the release valve:
+  // once THIS row's own entry is unknown, drop whichever of its own transients or pin it is
+  // still holding — `clearHovered`/`clearFocused` are already keyed no-ops otherwise, and the
+  // pin is only released when it is THIS card's, never another row's.
+  useEffect(() => {
+    if (!unknown) return
+    clearHovered(cardId)
+    clearFocused(cardId)
+    if (pinnedId === cardId) clearPin()
+  }, [unknown, cardId, pinnedId])
 
   return (
     <button
