@@ -1004,7 +1004,7 @@ action_items:
   - epic: c6
     action: "R6 — add `companion-integration` to branch protection as a required check (CARRIED from C5 R1-b, a two-minute GitHub settings change with no repo-tree representation). Executed with the C6 integration PR. Note: with C5 R1-a declined, the lane's recorded claim is 'runs the process-boundary test', and a required check is what keeps a red one from merging silently."
     owner: "Brad (with the integration PR)"
-    status: open
+    status: done  # DONE 2026-08-13 (Brad, just after PR #72 merged) — master's FIRST branch protection rule. Verified via API: required check = 'companion real-socket test (windows, py3.12)' (the check-run display name; the job id companion-integration is not what protection matches on), strict=false, enforce_admins=false (admin bypass retained so direct doc-commits to master keep working), no PR-review requirement (solo workflow). Scope note, accepted: story PRs target the epic umbrella, so the rule guards integration PRs and direct pushes — exactly R1-b's stated purpose. Like its parent item, this lives only in GitHub settings; nothing in the tree can drift-check it.
   - epic: c6
     action: "R7 — prose-sync sweep (CARRIED from C5 R2, standalone, scope unchanged): one canonical ledger home per cross-module ruling; convert the 5+ Q3/AD-5 narration sites (state.py, security.py x2, main.py, test_routes_active_deck.py) to one-line pointers; delete scripts/dump_openapi.py's changelog paragraphs; absorb dw:5197's test_committed_schema.py docstring fix. TERMINATION CLAUSE: not done by the C7 retro -> formally decline."
     owner: "Brad (C7 prep, standalone)"
