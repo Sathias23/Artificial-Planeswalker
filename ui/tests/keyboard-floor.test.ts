@@ -395,7 +395,9 @@ describe('the ring’s spelling does not drift (AC 17, AC 18)', () => {
     // leaves the drift this guard exists to catch fully covered: `outline`, `outline-color` and
     // `box-shadow` are the only ways a ring reaches the screen, and `--accent-bright` in any of
     // them is still red. Narrowing rather than exempting the class, because an exemption list
-    // would have to grow again at c6-8's nav pills, which carry the identical spec.
+    // had to grow again at c6-8's nav pills, which carry the identical spec — and did: see
+    // `.agent-views-nav-pill:focus-visible` in that stylesheet, whose accent-bright is a TEXT
+    // colour and whose outline is the plain ring, exactly as this narrowing anticipated.
     const RING_PROPERTIES = /^(outline|outline-color|box-shadow)$/i
     for (const rule of focusRules) {
       const ringDeclarations = rule.body.split(';').filter((declaration) => {
@@ -491,12 +493,17 @@ describe('every interactive element is a real control with a real hit box (AC 20
     // `agent-view-close` joins at c6-5 for the connection pill's reason exactly: it is a nav
     // pill on `--type-label` (11px at 1.3 — a 14px line box), so it is UNDER the floor on its
     // own geometry however much padding it carries, and it declares both minimums explicitly.
-    // c6-8's nav pills share the spec and will land in this group too.
+    // `agent-views-nav-pill` joins at c6-8, and it is the prediction two lines up landing
+    // exactly as written: it IS the nav pill, on the same `--type-label` (11px at 1.3 — a 14px
+    // line box) as the close pill it shares a DESIGN.md block with, so it is under the floor on
+    // its own geometry however much padding it carries, and it declares both minimums in the
+    // same rule. Four members of this group now, and every one of them is a pill.
     const DECLARES_MIN = [
       'footer-attribution-link',
       'skip-link',
       'connection-pill',
       'agent-view-close',
+      'agent-views-nav-pill',
     ]
     // Well clear BY MEASURED GEOMETRY, each with its eye-check on record: the tile is card-sized,
     // the flip control's hit box is 32×32 (c4-6), the deck row spans the panel at ≥34px, the

@@ -261,12 +261,51 @@ components:
     background: '{colors.surface-panel}'
     border: '1px solid {colors.border-strong}'
     radius: '{rounded.pill}'
-    padding: '7px 14px'
+    # AMENDED 2026-08-12 (story c6-8, Task 1). This read `'7px 14px'`. Neither number is on the
+    # 4/8/12/16/24/32/48 spacing scale, and the Layout & Spacing section below names the mock's
+    # "18/14/9/7px one-offs" as drift rather than spec — BOTH numbers are inside that enumerated
+    # list — so stylelint's allowed-list refuses them outright: a BUILD FAILURE, not a preference.
+    # `{spacing.2} {spacing.3}` (8px / 12px) is the nearest scale pair on both axes, and it is
+    # ALREADY SHIPPED on this very component: Brad's c6-5 Q4 ruling (2026-08-10) put exactly
+    # these values on the "Close · esc" control (`AgentView.css:164`), which the component
+    # description below declares to be this same pill — *"the agent-view controls in the header,
+    # and the 'Close · esc' control inside a view"*. That ruling recorded the amendment as owed
+    # and this is it; c6-8's header pills ship the identical rule, so one spec now has one value.
+    # The same repair is shipped three times over with its citation inline:
+    # `components.legality-row.padding` above ('9px 2px' → 8/4), Panel.css:63-69 ('10px 14px' →
+    # 8/12, the same pair) and Badge.css:52-54 ('2px 9px' → 4/8). No token is added — both
+    # values resolve to existing scale tokens.
+    padding: '{spacing.2} {spacing.3}'
     foreground: '{colors.text-secondary}'
-    hover-border: '{colors.accent-dim}'
-    hover-foreground: '{colors.accent-bright}'
-    hover-glow: '{components.elevation.glow}'
+    # THE QUIET STATE, added 2026-08-12 (story c6-8, AC 1, Q2). EXPERIENCE.md:73 promises a
+    # state this block had no value for: a pill whose kind has received no push this session
+    # renders *"disabled-quiet (`text-tertiary`, no hover glow)"*. It is the BASE pill with one
+    # colour swapped — no separate background, border or radius, and deliberately NO hover rule
+    # rather than a neutralised one, because the element ships `disabled` and a hover treatment
+    # on it would be a promise the pointer cannot keep. `{colors.text-tertiary}` measures 5.43:1
+    # on `{colors.surface-panel}` — the pair `components.legality-row`'s detail line already
+    # banks on — so quiet is de-emphasised without dropping below the 4.5:1 text floor.
+    quiet-foreground: '{colors.text-tertiary}'
+    # THE LAST PUSH'S TIME, added 2026-08-12 (story c6-8, AC 2, Q4). UX-DR28 puts the push time
+    # on the pill, and four artefacts say "shows the last push's time" while none specifies a
+    # rendering. Neither value is a new opinion: `{typography.micro}` is the Type section's own
+    # role for timestamps (*"kicker labels, stat-chip labels, timestamps, footer attribution"*)
+    # and `{colors.text-tertiary}` is the Colors section's (*"de-emphasized numerics, axis
+    # labels, captions and timestamps"*) — this is the artefact's existing doctrine read onto
+    # this component. The time is ABSOLUTE and STATIC (local hour + minute), updated only when a
+    # new push replaces it, which is UX-DR43's wording; a self-updating relative clock would be
+    # a render loop and an update surface nothing specs.
+    time-type: '{typography.micro}'
+    time-foreground: '{colors.text-tertiary}'
     unread-dot: '{colors.accent}'
+    # GEOMETRY FOR THE DOT ABOVE, added 2026-08-12 (story c6-8, AC 3, Q6). The block gave the
+    # dot a colour and no size. 8px cites the other IN-PILL dot in the system — the connection
+    # pill's (UX-DR29) — rather than the Panel live dot's 6px, because a dot inside a pill
+    # beside label text is the same optical problem in both places. Static: no arrival pulse or
+    # glow ("glows are moments, not steady states" below), which would also cost a
+    # motion-inventory entry this story does not own. The dot never carries the state alone —
+    # UX-DR29's rule — so the pill's accessible name says "unread" in words as well.
+    unread-dot-size: 8px
   agent-view:
     scrim: '{colors.scrim}'
     backdrop: 'blur(16px)'
@@ -519,7 +558,7 @@ Tonal layering (the surface ramp) does the everyday hierarchy work. Borders are 
 - **Panel** — the universal container. `{components.panel.background}` (or `{components.panel.background-overlay}` at `level="overlay"`) inside `{components.panel.border}` at `{components.panel.radius}`. Optional header: title in `{typography.label}` `{colors.text-secondary}`, an optional count in `{typography.numeric}` `{colors.text-tertiary}`, badges right-aligned. `live` swaps the title to `{colors.accent}`, adds a 6px accent dot, and raises elevation to `{components.elevation.shadow-raise}`. Rest elevation is `{components.elevation.shadow-rest}` — **both via token**.
 - **Badge** — pill, `{typography.label}`, 5 tones: neutral (`surface-overlay` / `text-secondary` / `border-strong`), accent, positive, negative, caution. Semantic tones tint background and border from their own semantic token — never from hard-coded RGB, which breaks every non-Voltglass theme.
 - **StatChip** — label in `{typography.micro}` `{colors.text-tertiary}` over a 17px `{typography.numeric}` value in `{colors.text-primary}`, on `{components.stat-chip.background}`. Optional delta in `{typography.micro}`, tinted `{colors.positive}` / `{colors.negative}` by sign.
-- **Agent views nav** (the nav pill) — the agent-view controls in the header, and the "Close · esc" control inside a view. `{components.nav-pill.padding}` at `{rounded.pill}`, `{typography.label}`. Hover/focus: border to `{components.nav-pill.hover-border}`, text to `{components.nav-pill.hover-foreground}`, plus `{components.nav-pill.hover-glow}`. A pill whose view has an unread push carries a `{components.nav-pill.unread-dot}` — the accent's meaning is "the agent put something here", so an unread push is exactly what it marks.
+- **Agent views nav** (the nav pill) — the agent-view controls in the header, and the "Close · esc" control inside a view. `{components.nav-pill.padding}` at `{rounded.pill}`, `{typography.label}`. Hover/focus: border to `{components.nav-pill.hover-border}`, text to `{components.nav-pill.hover-foreground}`, plus `{components.nav-pill.hover-glow}`. A pill whose view has an unread push carries a `{components.nav-pill.unread-dot}` at `{components.nav-pill.unread-dot-size}` — the accent's meaning is "the agent put something here", so an unread push is exactly what it marks. **Three states, added 2026-08-12 (story c6-8), because the block above carried a hover treatment and an unread dot and the header nav needs the other three-quarters of the component to exist:** a pill whose kind has received no push this session is **quiet** — `{components.nav-pill.quiet-foreground}`, no hover rule at all, and not focusable (it ships `disabled`, so the cold-open Tab order contains no pill at all, which is UX-DR40's enumeration read literally); a pill whose kind HAS received one is active and carries **the last push's time** after its label in `{components.nav-pill.time-type}` `{components.nav-pill.time-foreground}`, absolute and static; and the unread dot is presentational (`aria-hidden`) with the word "unread" in the button's accessible name beside it, because UX-DR29 already ruled that the dot never carries the state alone and UX-DR45 does not license this pill to announce. The quiet pill's copy is EXPERIENCE.md:73's, byte-for-byte, and it reaches assistive technology as a programmatic description as well as a pointer tooltip — UX-DR39 bans hover-only disclosure of unique information, and the connection pill was already repaired once for exactly this shape (see EXPERIENCE.md's amended nav-pill row).
 - **Skip link** — "Skip past the deck grid": visually hidden until it receives keyboard focus; on focus it appears at the window's top-left as a `{components.skip-link.radius}` chip on `{components.skip-link.background}` with `{components.skip-link.border}`, text in `{typography.body-strong}` `{components.skip-link.foreground}`, carrying the standard `{components.focus-ring}`. It exists because the card grid puts a long run of Tab stops between the header nav and everything in the right column — **measured 2026-08-07 on the largest real deck (Atraxa Counter Cabinet v2, 99 tiles): 205 stops from the top of the document to the footer, of which the link skips 102.0 on average** (amended 2026-08-07, story c4-12, Q13; this read *"100+ Tab stops"* while EXPERIENCE.md already carried c4-11's measured figures, so the two peer artefacts disagreed about the same number). Behavior in EXPERIENCE.md.
 - **Footer attribution** — one quiet line, full width, `{components.footer-attribution.background}` above `{components.footer-attribution.border-top}`, `{typography.micro}` in `{components.footer-attribution.foreground}` (`text-secondary`, 9.3:1 — this text is legally load-bearing and gets a passing tier, not a muted one): "Card data and imagery courtesy of Scryfall. Unofficial Fan Content permitted under the Wizards of the Coast Fan Content Policy. Not approved/endorsed by Wizards." Links persistently underlined (identifiable at rest, not hover-only); hover brightens to `{colors.text-primary}`; each link's hit area ≥ 24px tall. Visible without scrolling, and never louder than this. **Required on every surface — this is a condition of public release, not a design choice.**
 

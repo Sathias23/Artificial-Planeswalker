@@ -141,9 +141,14 @@ describe('an empty push renders the artefact’s line (c6-6 AC 4, UX-DR33, AD-7)
   it('takes the kind from its PROP rather than assuming one', () => {
     // Non-vacuity for the assertion above, and the property c6-8 depends on when a second kind
     // gets a view: a hard-coded `'suggestions'` passes every test above and renders the wrong
-    // noun the day a tier list is empty. The cast is what lets this file ask the question a
-    // story early — the prop's type is deliberately narrow until c6-8 widens it.
-    render(<SuggestionsView kind={'tier_list' as 'suggestions'} items={[]} />)
+    // noun the day a tier list is empty.
+    //
+    // ✅ THE CAST IS GONE AT c6-8, which is this comment's own prediction discharged. It read
+    // *"the prop's type is deliberately narrow until c6-8 widens it"*, and that story widened
+    // `AgentViewContent['kind']` to the full four-kind view enum so the nav could be generic
+    // over the closed contract. `'tier_list'` is now simply a legal value of a legal type, and
+    // the question this file asked a story early can be asked plainly.
+    render(<SuggestionsView kind="tier_list" items={[]} />)
 
     expect(screen.getByText(emptyPushLine('tier_list'))).toBeInTheDocument()
   })

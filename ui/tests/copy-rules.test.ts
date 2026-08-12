@@ -356,8 +356,14 @@ const COPY_MODULES: Map<string, string> = new Map([
   ],
   [
     'src/state/agentView.ts',
-    'the fallback view TITLE (story c6-6, Q7): "Suggestions", the word the app calls a ' +
-      'suggestions view when the pushed `payload.title` is absent, null or blank. THE FIRST ' +
+    'the app’s WORD FOR EACH KIND OF AGENT VIEW — `AGENT_VIEW_LABELS`, four strings: ' +
+      '"Suggestions" / "Swaps" / "Tier list" / "Card groups" (story c6-8, Task 2), which serve ' +
+      'as BOTH the nav pill’s label and the fallback title a view is called when the pushed ' +
+      '`payload.title` is absent, null or blank (story c6-6, Q7 — the entry this one grew ' +
+      'from, and `SUGGESTIONS_VIEW_TITLE` is now read off the table rather than declared ' +
+      'beside it, so the two spellings cannot drift). Sentence case as stored; ' +
+      '`{typography.label}` uppercases at render, which is a STYLE and not a spelling — the ' +
+      'string a screen reader speaks is the one in this table. THE FIRST ' +
       'ENTRY IN THIS MAP UNDER `src/state/`, and the placement is the decision worth stating. ' +
       'A wire-supplied title is DATA and stays data; this is what the app says when nobody ' +
       'named the view, which makes it authored copy with the same claim on this Map as any ' +
@@ -367,11 +373,36 @@ const COPY_MODULES: Map<string, string> = new Map([
       '`suggestionsViewOf` in this module, and a store may not import a container; and c6-8’s ' +
       'nav pill needs the same word for the same kind, so a constant owned by any single ' +
       'container would be the wrong address for its second reader (decide-once ruling #1 of ' +
-      'story c2-9, applied across a layer boundary rather than within one). It is CAPITALISED ' +
-      'AS A NAME rather than assembled from the wire kind — the rejected alternative — because ' +
-      'a runtime-assembled user-facing string is residue 3 of this file’s own header. The ' +
+      'story c2-9, applied across a layer boundary rather than within one) — and c6-8 IS that ' +
+      'second reader, so the table is that prediction discharged rather than restated, with ' +
+      'Epic 9’s three view stories the third, fourth and fifth readers already named. They are ' +
+      'CAPITALISED AS NAMES rather than assembled from the wire kind — the rejected ' +
+      'alternative — because a runtime-assembled user-facing string is residue 3 of this ' +
+      'file’s own header, and because "Card groups" is not derivable from `groups` by any rule ' +
+      'at all. The table is `satisfies Record<AgentViewKind, string>`, so a fifth kind on the ' +
+      'Python side fails typecheck here naming the kind with no word yet. The ' +
       'module holds NOTHING ELSE of this kind: the pushed title, the count, the items, their ' +
       'reasons and the envelope’s `id`/`ts` are all DATA off the wire.',
+  ],
+  [
+    'src/containers/AgentViewsNav/copy.ts',
+    'the agent-views nav’s three strings (story c6-8; Q2, Q5, Q6). ONE IS TRANSCRIBED: the ' +
+      'quiet pill’s "Your agent hasn’t sent this yet." is EXPERIENCE.md:73’s, byte for byte, ' +
+      'and `tests/agent-views-nav-copy.test.ts` gates it against that row rather than against ' +
+      'a retyped literal — which matters more than usual here, because the artefact’s ' +
+      'apostrophe is the ASCII U+0027 and not the typographic U+2019 a reader of the rendered ' +
+      'Markdown would assume. TWO ARE AUTHORED, on c5-7’s precedent for copy with no artefact ' +
+      'until its story writes one, and both were written into EXPERIENCE.md’s nav-pill row in ' +
+      'the same commit so the gate has a row to read: the group’s visible kicker "Agent views" ' +
+      '(Q5 — the group has no `<nav>` landmark, so this is what names it, for everyone rather ' +
+      'than for ARIA only), and the word "unread" (Q6), which sits visually-hidden inside an ' +
+      'unread pill’s accessible name so the accent dot never carries that state in colour ' +
+      'alone (UX-DR29, WCAG 1.4.1). WHAT IS DELIBERATELY NOT HERE: the four PILL LABELS. They ' +
+      'are `AGENT_VIEW_LABELS` in `src/state/agentView.ts` — see that entry above — because a ' +
+      'kind’s word has one owner, and a second copy of those four strings in this file is ' +
+      'exactly the drift that ruling was made to prevent. The formatted push TIME is not copy ' +
+      'either: it is wire data through `Intl.DateTimeFormat`, and a locale render has no bytes ' +
+      'to gate.',
   ],
   [
     'src/containers/SuggestionsView/copy.ts',

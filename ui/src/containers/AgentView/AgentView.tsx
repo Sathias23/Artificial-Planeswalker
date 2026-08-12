@@ -13,7 +13,7 @@ import './AgentView.css'
  * Every agent view in Epic 6 lives inside this component, so it takes a `title`, a `count`, a
  * `pushId` and `children` and nothing else: no envelope, no wire type, no `kind`. c6-7 rendered
  * suggestion rows INTO it — with **no edit to this file or its stylesheet**, which is the
- * prediction discharged rather than restated — and c6-8 adds nav pills BESIDE it. That is the
+ * prediction discharged rather than restated — and c6-8 added nav pills BESIDE it, in `containers/AgentViewsNav`. That is the
  * property that makes "content-agnostic" a testable claim rather than a hope
  * (`AgentView.test.tsx` mounts it over an arbitrary fixture child).
  *

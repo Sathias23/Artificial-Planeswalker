@@ -218,9 +218,14 @@ export interface AgentSocketOptions {
    * would force the caller to hold a second copy of the frame to look them up in.
    *
    * The three remaining agent-view kinds (`swaps`, `tier_list`, `groups`) are still dropped at
-   * the switch — their views are **Epic 9** — so this is not `onViewEvent(kind, payload)` yet.
-   * c6-8 owns kind-switching, and widening this signature before a second view exists would be a
-   * shape invented for a caller nobody has written.
+   * the switch — their views are **Epic 9** — so this is not `onViewEvent(kind, payload)`, and
+   * c6-8 deliberately left it that way (Q1, Brad 2026-08-12). That story built kind-switching
+   * and went fully four-kind generic in the STORE and the NAV, and still did not widen this
+   * signature: Epic 9's preamble rules that a kind must not become *acceptable* before something
+   * can display it, because a push the UI silently cannot draw breaks
+   * never-silently-swallowed from the other side. So the shape stays the one with a caller, and
+   * `socket.test.ts:675`'s three-kinds-dropped pin stays true. Each Epic 9 view story widens
+   * this alongside the view that can receive it.
    */
   readonly onSuggestions: (event: SuggestionsEvent) => void
   /** Injected so tests need no `fetch` stub; production passes nothing. */

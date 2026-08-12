@@ -1553,7 +1553,7 @@ describe('the containers are a declared category with a posture of its own', () 
     // comes from sharing tokens, not markup. `../focusHome` is the third caller of the hand-off
     // c4-11 extracted, and it reaches NO state module at all: the store is `App.tsx`'s to read,
     // and the three dismissal gestures call an `onClose` prop rather than a verb — which is what
-    // keeps this shell content-agnostic enough for c6-7 to fill and c6-8 to extend.
+    // kept this shell content-agnostic enough for c6-7 to fill and c6-8 to extend — both did.
     {
       file: 'src/containers/AgentView/AgentView.tsx',
       imports: ['../focusHome', './AgentView.css', './copy', 'react'],
@@ -1618,6 +1618,40 @@ describe('the containers are a declared category with a posture of its own', () 
     // constraint is also why the builder takes a plain `string` rather than the store's kind
     // union — a type-only import would still be an import.
     { file: 'src/containers/SuggestionsView/copy.ts', imports: [] },
+    // c6-8's agent-views nav — the header pills. It reads the agent-view store through TWO
+    // per-kind selector hooks and calls one verb on it, which is the whole of its state
+    // coupling; `../../api/schema` is a TYPE-only import for the kind union (the rule below
+    // reads the specifier, so it is listed either way), and it is reached rather than re-spelled
+    // because `schema.ts` is the only home for a wire-derived alias. `react` is here for
+    // `useId`, which generates the `aria-describedby` target on a quiet pill. It calls hooks and
+    // reads a store, so `posture.test.ts` would fail it under `src/components/` twice over.
+    {
+      file: 'src/containers/AgentViewsNav/AgentViewsNav.tsx',
+      imports: [
+        '../../api/schema',
+        '../../state/agentView',
+        './AgentViewsNav.css',
+        './copy',
+        './pushTime',
+        'react',
+      ],
+    },
+    // c6-8's time formatter, and it is a module of its own for a MECHANICAL reason rather than a
+    // conceptual one: `react-refresh/only-export-components` fails a `.tsx` that exports anything
+    // but components, and the formatter must be exported because its callers' tests cannot assert
+    // its bytes (jsdom inherits the host TZ and ICU build, so a literal `'14:32'` expectation is a
+    // machine-dependent test — they compute expectations through the function instead).
+    // `frontFaceCost.ts` and `deckMemory.ts` are the shipped precedents for a one-idea module
+    // extracted from a container. `imports: []` — it reaches nothing, not even the kind union.
+    { file: 'src/containers/AgentViewsNav/pushTime.ts', imports: [] },
+    // c6-8's copy module. THREE strings and deliberately not seven: the four PILL LABELS are
+    // `AGENT_VIEW_LABELS` in `src/state/agentView.ts`, because c6-6's review ruled that the word
+    // for a kind has one owner in the state layer — a view's fallback title and its nav pill's
+    // label are the same word. What is here is what belongs to this container alone: the group's
+    // kicker, the quiet pill's sentence and the word beside the unread dot. `imports: []` for
+    // `CardDetail/copy.ts`'s measured reason, and `tests/agent-views-nav-copy.test.ts` is the
+    // importer that makes the constraint load-bearing.
+    { file: 'src/containers/AgentViewsNav/copy.ts', imports: [] },
     // c4-4's grid. It holds NO state — a container may, it need not — and it is here because it
     // composes a container and reads the derivation in `src/state/`, either of which
     // `posture.test.ts` would fail under `src/components/`. `../../state/deckGroups` is a
@@ -2116,7 +2150,13 @@ describe('the containers are a declared category with a posture of its own', () 
     // the story's other half (the socket dispatch, the builder, the replace effect) all landed
     // in modules this list already covers. A story that "wires a push to a view" growing the
     // container tree by exactly one component and its words is the shape it should have.
-    expect(CONTAINERS).toHaveLength(31)
+    // 34 at c6-8, which adds the agent-views nav, its copy module and its time formatter. The
+    // third is an extraction forced by a LINT RULE rather than by a concept — see its entry —
+    // and it is worth the count moving by three rather than hiding a second export inside the
+    // component file. The store extension the story needed (per-kind retention, unread flags,
+    // the pill vocabulary) landed in `src/state/agentView.ts`, a module this list does not cover
+    // and does not need to; the header slot it fills was cut at c2-6.
+    expect(CONTAINERS).toHaveLength(34)
     for (const { file } of CONTAINERS) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }

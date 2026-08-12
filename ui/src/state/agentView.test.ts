@@ -3,12 +3,15 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import type { SuggestionsEvent } from '../api/schema'
 import {
+  AGENT_VIEW_LABELS,
+  type AgentViewContent,
   INITIAL_AGENT_VIEW,
   SUGGESTIONS_VIEW_TITLE,
   closeAgentView,
   openAgentView,
   openSuggestionsPush,
   openViewOf,
+  reopenAgentView,
   resetAgentView,
   suggestionsViewOf,
   useAgentViewStore,
@@ -92,9 +95,19 @@ describe('the session starts with nothing to show', () => {
 })
 
 describe('opening shows the pushed content (AC 6)', () => {
-  it('writes status and content in one go, so no render sees open-with-stale-content', () => {
+  it('writes the WHOLE slice in one go, so no render sees open-with-stale-content', () => {
+    // Kept as a whole-state `toEqual` at c6-8 rather than relaxed to `toMatchObject`, and that
+    // is the point of it: this is the one assertion in the file that fails when the slice grows
+    // a field, which is exactly the notice a reader wants when a story extends a store. It grew
+    // by two here — `retained` and `unread` — and both are written in the SAME `setState` as
+    // `status` and `content`, which is the claim this test has always made.
     openAgentView(SUGGESTIONS)
-    expect(useAgentViewStore.getState()).toEqual({ status: 'open', content: SUGGESTIONS })
+    expect(useAgentViewStore.getState()).toEqual({
+      status: 'open',
+      content: SUGGESTIONS,
+      retained: { suggestions: SUGGESTIONS },
+      unread: {},
+    })
   })
 
   it('resolves the slot to the content the caller passed', () => {
@@ -297,5 +310,239 @@ describe('the test-only reset is the one thing that forgets (non-vacuity)', () =
 
     expect(useAgentViewStore.getState()).toEqual(INITIAL_AGENT_VIEW)
     expect(useAgentViewStore.getState().content).toBeNull()
+  })
+})
+
+// =========================================================================================
+// STORY c6-8 — per-kind retention, the unread state machine, and re-open
+// =========================================================================================
+
+/**
+ * A view of any kind, including the three the socket still refuses to deliver.
+ *
+ * **The synthetic second kind is this story's central honesty, not a shortcut.** Q1 ruled that
+ * the nav, the store and the vocabulary go fully four-kind generic while the SOCKET keeps
+ * dropping `swaps`/`tier_list`/`groups` at its dispatch switch — because Epic 9 pairs each tool
+ * with its view precisely so a push never arrives that the UI cannot display, and accepting one
+ * early would recreate that bug from the other side. So AC 5's displacement cannot be reached
+ * from production code until Story 9.1 ships, and it is proven HERE, at the seam that owns it,
+ * with a second kind constructed by hand. That is the c6-6 AC-3 structural-deferral precedent:
+ * the mechanism is built and tested in the story that owns it, and its first production
+ * traversal belongs to the story whose own acceptance criterion already banks on it.
+ *
+ * No cast is needed for the kind itself — `AgentViewContent['kind']` widened to the real
+ * four-member union in this story, so `'swaps'` is a legal value of a legal type. What is
+ * synthetic is only that nothing on the wire can currently produce one.
+ */
+const viewOf = (kind: AgentViewContent['kind'], id = `push-${kind}`): AgentViewContent => ({
+  id,
+  ts: '2026-08-12T14:32:00Z',
+  kind,
+  title: AGENT_VIEW_LABELS[kind],
+  count: 0,
+  items: [],
+})
+
+describe('the pill vocabulary is one table with one owner (c6-8, Task 2)', () => {
+  it('names all four kinds, in the enum’s order', () => {
+    // The order is load-bearing: `AgentViewsNav` derives the pill order from this table's keys
+    // rather than authoring it a second time (Q3), so a reordering here reorders the header.
+    expect(Object.keys(AGENT_VIEW_LABELS)).toEqual(['suggestions', 'swaps', 'tier_list', 'groups'])
+  })
+
+  it('is where the fallback title now comes from — one word, one owner', () => {
+    // c6-6's review kept `SUGGESTIONS_VIEW_TITLE` in this module explicitly AS the c6-8
+    // precedent. This is that precedent honoured rather than a second copy of the word.
+    expect(SUGGESTIONS_VIEW_TITLE).toBe(AGENT_VIEW_LABELS.suggestions)
+    expect(suggestionsViewOf(frame({}))).toMatchObject({ title: AGENT_VIEW_LABELS.suggestions })
+  })
+
+  it('holds four DISTINCT words (non-vacuity)', () => {
+    // A collapsed table — a copy-paste, a widened type erasing the literals — would make the
+    // assertion above and the nav's order assertion pass for the wrong reason.
+    expect(new Set(Object.values(AGENT_VIEW_LABELS)).size).toBe(4)
+  })
+})
+
+describe('a push is retained under its own kind (c6-8, AC 4)', () => {
+  it('files the content in `retained` beside `content`, as the SAME object', () => {
+    openAgentView(SUGGESTIONS)
+
+    expect(useAgentViewStore.getState().retained.suggestions).toBe(SUGGESTIONS)
+    // The same reference, not a copy — which is what makes AC 4's "the same content" an
+    // identity rather than a deep comparison, and what makes it impossible for the map and the
+    // glass to disagree.
+    expect(useAgentViewStore.getState().content).toBe(SUGGESTIONS)
+  })
+
+  it('retains nothing for a kind that has not pushed (non-vacuity)', () => {
+    openAgentView(SUGGESTIONS)
+
+    expect(useAgentViewStore.getState().retained.swaps).toBeUndefined()
+    expect(useAgentViewStore.getState().retained.tier_list).toBeUndefined()
+    expect(useAgentViewStore.getState().retained.groups).toBeUndefined()
+  })
+
+  it('keeps ONE view per kind — the newest replaces the older (c6-6’s replace, from the map)', () => {
+    openAgentView(SUGGESTIONS)
+    openAgentView(TIERS)
+
+    expect(useAgentViewStore.getState().retained.suggestions).toBe(TIERS)
+    expect(Object.keys(useAgentViewStore.getState().retained)).toEqual(['suggestions'])
+  })
+
+  it('accumulates kinds and never drops one, including across a dismissal', () => {
+    openAgentView(SUGGESTIONS)
+    openAgentView(viewOf('swaps'))
+    closeAgentView()
+
+    // "Re-openable for the rest of the session" (UX-DR34) is exactly this map not shrinking —
+    // including across a dismissal, the gesture most likely to be given a tidy-up.
+    expect(Object.keys(useAgentViewStore.getState().retained).sort()).toEqual([
+      'suggestions',
+      'swaps',
+    ])
+  })
+
+  it('writes a NEW map object, so a subscriber re-renders', () => {
+    openAgentView(SUGGESTIONS)
+    const first = useAgentViewStore.getState().retained
+    openAgentView(viewOf('swaps'))
+
+    // zustand compares slices by reference; a map mutated in place would leave every pill
+    // showing its previous state with no test noticing.
+    expect(useAgentViewStore.getState().retained).not.toBe(first)
+  })
+})
+
+describe('unread has exactly one setter, and it is displacement (c6-8, AC 5)', () => {
+  it('marks NOTHING unread on the first push of a session', () => {
+    openAgentView(SUGGESTIONS)
+
+    expect(useAgentViewStore.getState().unread).toEqual({})
+  })
+
+  it('marks the DISPLACED kind unread when a different kind arrives over an open view', () => {
+    openAgentView(SUGGESTIONS)
+    openAgentView(viewOf('swaps'))
+
+    // AC 5, and the whole of "a push is never silently swallowed": the suggestions view is no
+    // longer on the glass, and the person is told where it went.
+    expect(useAgentViewStore.getState().unread).toEqual({ suggestions: true })
+    expect(openViewNow()).toMatchObject({ kind: 'swaps' })
+    // …and the displaced view is still there to go back to.
+    expect(useAgentViewStore.getState().retained.suggestions).toBe(SUGGESTIONS)
+  })
+
+  it('does NOT mark the same kind unread — c6-6’s replace-in-place is untouched', () => {
+    openAgentView(SUGGESTIONS)
+    openAgentView(TIERS)
+
+    // Otherwise a pill would say "you haven't seen this" about the thing being looked at.
+    expect(useAgentViewStore.getState().unread).toEqual({})
+  })
+
+  it('does NOT mark a CLOSED kind unread — dismissal is Brad’s act (UX-DR34)', () => {
+    openAgentView(SUGGESTIONS)
+    closeAgentView()
+    openAgentView(viewOf('swaps'))
+
+    // The `status === 'open'` half of the displacement test, and the half most likely to be
+    // dropped as redundant. It is not: a push arriving while nothing is on the glass displaces
+    // nothing, because the previous view was already dismissed on purpose.
+    expect(useAgentViewStore.getState().unread).toEqual({})
+  })
+
+  it('closing a view never sets unread, and never clears retention', () => {
+    openAgentView(SUGGESTIONS)
+    closeAgentView()
+
+    expect(useAgentViewStore.getState().unread).toEqual({})
+    expect(useAgentViewStore.getState().retained.suggestions).toBe(SUGGESTIONS)
+  })
+
+  it('clears the flag when that kind is opened again — and the flag MOVES', () => {
+    openAgentView(SUGGESTIONS)
+    openAgentView(viewOf('swaps'))
+    expect(useAgentViewStore.getState().unread).toEqual({ suggestions: true })
+
+    openAgentView(SUGGESTIONS)
+
+    // Opened by a push here; `reopenAgentView` routes through the same verb, so the clear is one
+    // behaviour with two entrances. `swaps` is now the displaced one — the flag moved rather
+    // than merely vanishing, which is the stronger claim.
+    expect(useAgentViewStore.getState().unread).toEqual({ swaps: true })
+  })
+
+  it('writes a NEW unread object, so a subscriber re-renders', () => {
+    openAgentView(SUGGESTIONS)
+    const first = useAgentViewStore.getState().unread
+    openAgentView(viewOf('swaps'))
+
+    expect(useAgentViewStore.getState().unread).not.toBe(first)
+  })
+})
+
+describe('reopenAgentView puts a retained view back (c6-8, AC 4)', () => {
+  it('re-opens the retained content, by identity, asking nothing of the agent', () => {
+    openAgentView(SUGGESTIONS)
+    closeAgentView()
+    reopenAgentView('suggestions')
+
+    expect(openViewNow()).toBe(SUGGESTIONS)
+  })
+
+  it('clears that kind’s unread flag', () => {
+    openAgentView(SUGGESTIONS)
+    openAgentView(viewOf('swaps'))
+    closeAgentView()
+    reopenAgentView('suggestions')
+
+    expect(useAgentViewStore.getState().unread.suggestions).toBeUndefined()
+  })
+
+  it('is a NO-OP for a kind that has never pushed', () => {
+    reopenAgentView('tier_list')
+
+    expect(useAgentViewStore.getState()).toEqual(INITIAL_AGENT_VIEW)
+  })
+
+  it('is a no-op even with another kind retained (the positive twin)', () => {
+    // Without this, the assertion above would also pass for a `reopenAgentView` that opened
+    // whatever happened to be in the map regardless of the kind asked for.
+    openAgentView(SUGGESTIONS)
+    closeAgentView()
+    reopenAgentView('groups')
+
+    expect(useAgentViewStore.getState().status).toBe('closed')
+    expect(openViewNow()).toBeNull()
+  })
+})
+
+describe('the c6-8 fields did not reshape the c6-5 ones (UX-DR38, Landmine 15)', () => {
+  it('keeps `content` a scalar — the map is bookkeeping, not a second open view', () => {
+    openAgentView(SUGGESTIONS)
+    openAgentView(viewOf('swaps'))
+
+    // Two kinds retained, ONE on the glass. If `retained` ever became a second open-view
+    // mechanism, this is where it would show first.
+    expect(Object.keys(useAgentViewStore.getState().retained)).toHaveLength(2)
+    expect(openViewNow()).toMatchObject({ kind: 'swaps' })
+    expect(openViewOf(useAgentViewStore.getState())).toBe(
+      useAgentViewStore.getState().retained.swaps,
+    )
+  })
+
+  it('starts empty, and the test-only reset really empties both maps', () => {
+    expect(INITIAL_AGENT_VIEW.retained).toEqual({})
+    expect(INITIAL_AGENT_VIEW.unread).toEqual({})
+
+    openAgentView(SUGGESTIONS)
+    openAgentView(viewOf('swaps'))
+    resetAgentView()
+
+    // The counterweight to every retention assertion above: if `resetAgentView` did not clear
+    // these, they would all be passing on a store nothing had ever emptied.
+    expect(useAgentViewStore.getState()).toEqual(INITIAL_AGENT_VIEW)
   })
 })
