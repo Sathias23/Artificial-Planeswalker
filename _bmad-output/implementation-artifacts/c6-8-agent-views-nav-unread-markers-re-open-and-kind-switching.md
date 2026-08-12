@@ -923,3 +923,8 @@ region; no motion.
   absent-`ts` case, distinct from the already-covered unparseable-`ts` case). Frontend
   **2,122/75 → 2,123/75**; Python/tokens unmoved; lint/typecheck/format clean; both static
   mirrors rebuilt and sha256-verified identical.
+- 2026-08-12 — **MERGED via PR #70 into `feat/companion-c6` at `980db80`.** Greptile: **5/5,
+  zero findings** — no post-merge catch, matching the Acceptance Auditor's zero findings during
+  the three-layer review (a first for both layers on the same story, this epic). Suite at merge:
+  frontend **2,123/75**, Python **2,907/1/55 unmoved**, tokens **70 unmoved**. Next: c6-9 (the
+  250 ms budget measurement) or the C6 retro, whichever Brad calls.
