@@ -141,6 +141,41 @@ _APP_PACKAGE = "src.companion.app"
 # `companion` branch, so a stdio MCP session still never imports FastAPI — AD-3's stated target.
 _APP_IMPORT_EXEMPT = frozenset({"src/mcp_server/__main__.py"})
 
+# ---------------------------------------------------------------------------------------------
+# SC-3 (c6-9): the *leaf* half of the sweep.
+#
+# TestLeafAppGuard proves src/mcp_server never imports the companion APP — the transitive-FastAPI
+# half of AD-3. Nothing proved the complement: that the other nineteen tools never grew a companion
+# *leaf* dependency. A tool that quietly imported ``src.companion.client`` would pass every guard
+# above while making SC-3 — *"every agent workflow that existed before this feature completes with
+# the companion app closed"* — a promise nothing checks. It would not even fail loudly: the client
+# never raises (client.py:123-129), so the tool would just get slower and, in a later refactor,
+# start branching on an outcome token no pre-companion workflow should know about.
+#
+# The allow-list is a dict rather than a frozenset so each site carries its own reason inline; an
+# entry with no live reference fails the staleness pin below, so it cannot rot into a blanket
+# exemption for a file that no longer needs one.
+# ---------------------------------------------------------------------------------------------
+
+_COMPANION_PACKAGE = "src.companion"
+
+_COMPANION_REFERENCE_ALLOWED: dict[str, str] = {
+    # The two companion tools themselves — the leaf client and the contracts they push (FR-07/08).
+    "src/mcp_server/tools/companion.py": "the companion tools' own module",
+    # Registers both tools; types companion_show_suggestions against contracts.SuggestionsPayload.
+    "src/mcp_server/server.py": "registers the two tools and types one against the payload model",
+    # AD-14's dispatcher. Its app import is function-local and already exempted by name above
+    # (_APP_IMPORT_EXEMPT); this list exempts the same file from the leaf sweep, for the same
+    # reason: a bare `artificial-planeswalker` invocation never enters the `companion` branch.
+    "src/mcp_server/__main__.py": "AD-14's subcommand dispatcher, function-local by AD-3",
+}
+
+_SC3_RULE = (
+    "only the companion tool module, the server that registers it and AD-14's dispatcher may "
+    "reference src.companion — every other MCP tool must keep working with the companion app "
+    "closed (SC-3)"
+)
+
 _Role = Literal["mcp_server", "leaf", "outside_app"]
 
 
@@ -469,6 +504,39 @@ def find_import_violations(
     return violations
 
 
+def _is_companion_import(dotted: str) -> bool:
+    """Return True when *dotted* refers to ``src.companion`` or anything under it."""
+    return dotted == _COMPANION_PACKAGE or dotted.startswith(f"{_COMPANION_PACKAGE}.")
+
+
+def find_companion_reference_violations(
+    path: Path, *, rel_path: str | None = None
+) -> list[Violation]:
+    """Return every companion import in a module SC-3 does not allow one in.
+
+    Unlike :func:`find_import_violations`'s ``outside_app`` role, this fires on **function-local**
+    imports too. A deferred import is still a dependency: the tool that runs it reaches the
+    companion at call time, which is precisely the coupling SC-3 forbids. The three sites that may
+    hold one are named in :data:`_COMPANION_REFERENCE_ALLOWED`, with their reasons.
+
+    Args:
+        path: Path to the source file to inspect.
+        rel_path: Repo-relative path to report, to derive the package from, and to match against
+            the allow-list. Defaults to the file name, which is enough for synthetic sources.
+
+    Returns:
+        A list of violations, each naming the file path, offending symbol and line number.
+    """
+    rel = rel_path or path.name
+    if rel in _COMPANION_REFERENCE_ALLOWED:
+        return []
+    return [
+        Violation(rel, imported.line, imported.dotted, _SC3_RULE)
+        for imported in imported_names(_parse(path), package_for(rel))
+        if _is_companion_import(imported.dotted)
+    ]
+
+
 def _render(violations: Iterable[Violation]) -> str:
     """Render violations one per line for an assertion message."""
     return "\n".join(f"  {violation}" for violation in violations)
@@ -571,6 +639,52 @@ class TestLeafAppGuard:
         ]
         assert not violations, (
             f"AD-3: src.companion.app must stay unimported outside itself:\n{_render(violations)}"
+        )
+
+
+class TestNoPreExistingToolDependsOnTheCompanion:
+    """SC-3 (c6-9): the companion stays a leaf of the tool catalogue, not a dependency of it."""
+
+    def test_only_the_three_named_sites_reference_the_companion(self) -> None:
+        files = collect_python_files(_MCP_SERVER_DIR)
+        relatives = [repo_relative(file) for file in files]
+        # Non-vacuity: the sweep is only meaningful if it actually visited tools that have no
+        # business knowing the companion exists. Naming two of them pins that the scan path is
+        # the tool package and not, say, an empty directory that would pass forever.
+        for expected in ("src/mcp_server/tools/deck_management.py", "src/mcp_server/server.py"):
+            assert expected in relatives, (
+                f"The SC-3 sweep did not visit {expected} — the scan path is wrong."
+            )
+        violations = [
+            violation
+            for file, rel in zip(files, relatives, strict=True)
+            for violation in find_companion_reference_violations(file, rel_path=rel)
+        ]
+        assert not violations, (
+            "A tool that predates the companion now reaches it — SC-3 requires every "
+            f"pre-companion workflow to complete with the app closed:\n{_render(violations)}"
+        )
+
+    def test_every_allowed_site_still_needs_its_exemption(self) -> None:
+        """The staleness pin, and the sweep's positive twin.
+
+        Without it the allow-list is unfalsifiable: a file could be renamed, or stop importing the
+        companion entirely, and its blanket exemption would sit there ready to excuse a future
+        import nobody argued for.
+        """
+        stale = []
+        for rel in _COMPANION_REFERENCE_ALLOWED:
+            path = REPO_ROOT / rel
+            assert path.exists(), (
+                f"_COMPANION_REFERENCE_ALLOWED names {rel!r}, which does not exist — typo, or a "
+                "moved file whose exemption moved with it?"
+            )
+            imports = imported_names(_parse(path), package_for(rel))
+            if not any(_is_companion_import(name.dotted) for name in imports):
+                stale.append(rel)
+        assert not stale, (
+            f"Exempted file(s) that no longer reference src.companion: {sorted(stale)} — remove "
+            "the entry rather than leaving a standing permission nothing uses."
         )
 
 
@@ -961,6 +1075,123 @@ class TestLeafAppGuardDetectsViolations:
             _write_source(tmp_path, source), role=role, rel_path=rel
         )
         assert not violations, _render(violations)
+
+
+_SRC_TOOL_IMPORTS_CLIENT = """\
+from src.companion.client import push_event
+"""
+
+_SRC_TOOL_IMPORTS_PACKAGE = """\
+from src import companion
+"""
+
+# THREE dots, not two. `src/mcp_server/tools/` is two packages deep, so `..` lands on
+# `src.mcp_server` and only `...` reaches `src`. Written with two at first: the guard resolved it
+# to `src.mcp_server.companion.contracts` and correctly reported nothing, which is the resolver
+# behaving and the fixture being wrong.
+_SRC_TOOL_IMPORTS_CONTRACTS_RELATIVE = """\
+from ...companion.contracts import SuggestionsPayload
+"""
+
+_SRC_TOOL_FUNCTION_LOCAL_CLIENT = """\
+def go(deck_id):
+    from src.companion.client import set_active_deck
+
+    return set_active_deck(deck_id)
+"""
+
+_SC3_VIOLATION_CASES = [
+    pytest.param(
+        _SRC_TOOL_IMPORTS_CLIENT,
+        "src/mcp_server/tools/deck_management.py",
+        1,
+        "src.companion.client.push_event",
+        id="tool-imports-the-leaf-client",
+    ),
+    pytest.param(
+        _SRC_TOOL_IMPORTS_PACKAGE,
+        "src/mcp_server/tools/card_lookup.py",
+        1,
+        "src.companion",
+        id="tool-imports-the-package-itself",
+    ),
+    pytest.param(
+        _SRC_TOOL_IMPORTS_CONTRACTS_RELATIVE,
+        "src/mcp_server/tools/view_deck.py",
+        1,
+        "src.companion.contracts.SuggestionsPayload",
+        id="tool-imports-the-leaf-relatively",
+    ),
+    pytest.param(
+        _SRC_TOOL_FUNCTION_LOCAL_CLIENT,
+        "src/mcp_server/tools/deck_analysis.py",
+        2,
+        "src.companion.client.set_active_deck",
+        id="a-deferred-import-is-still-a-dependency",
+    ),
+]
+
+_SRC_TOOL_ORDINARY_IMPORTS = """\
+from src.data.repositories import DeckRepository
+from src.logic import deck_analysis
+"""
+
+_SC3_CLEAN_CASES = [
+    pytest.param(
+        _SRC_TOOL_ORDINARY_IMPORTS,
+        "src/mcp_server/tools/deck_management.py",
+        id="a-tool-that-touches-only-the-domain-core",
+    ),
+    pytest.param(
+        _SRC_TOOL_IMPORTS_CLIENT,
+        "src/mcp_server/tools/companion.py",
+        id="the-companion-tool-module-is-allowed",
+    ),
+    pytest.param(
+        _SRC_TOOL_FUNCTION_LOCAL_CLIENT,
+        "src/mcp_server/__main__.py",
+        id="the-dispatcher-is-allowed",
+    ),
+]
+
+
+class TestSC3SweepDetectsViolations:
+    """The sweep is proven to fire, and proven not to fire on the three sites that may hold one."""
+
+    @pytest.mark.parametrize(("source", "rel", "line", "symbol"), _SC3_VIOLATION_CASES)
+    def test_a_companion_import_outside_the_allow_list_is_reported(
+        self, tmp_path, source, rel, line, symbol
+    ):
+        violations = find_companion_reference_violations(
+            _write_source(tmp_path, source), rel_path=rel
+        )
+
+        assert len(violations) == 1, f"expected exactly one violation, got {_render(violations)}"
+        message = str(violations[0])
+        assert f"{rel}:{line}" in message, message
+        assert symbol in message, message
+        assert "SC-3" in message, message
+
+    @pytest.mark.parametrize(("source", "rel"), _SC3_CLEAN_CASES)
+    def test_a_permitted_form_is_not_reported(self, tmp_path, source, rel):
+        violations = find_companion_reference_violations(
+            _write_source(tmp_path, source), rel_path=rel
+        )
+        assert not violations, _render(violations)
+
+    def test_the_existing_app_guard_would_not_have_caught_it(self, tmp_path) -> None:
+        """The sweep's whole justification, made mechanical rather than asserted in prose.
+
+        The shipped AD-3 guard checks the *app* half. Handed a tool importing the leaf client it
+        returns nothing — which is correct for its own rule, and exactly the gap SC-3 leaves open.
+        """
+        rel = "src/mcp_server/tools/deck_management.py"
+        source = _write_source(tmp_path, _SRC_TOOL_IMPORTS_CLIENT)
+
+        assert find_import_violations(source, role="mcp_server", rel_path=rel) == []
+        assert find_companion_reference_violations(source, rel_path=rel), (
+            "The new sweep must see what the shipped leaf/app guard structurally cannot."
+        )
 
 
 class TestScanCannotPassVacuously:

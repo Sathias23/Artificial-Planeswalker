@@ -6180,3 +6180,37 @@ Also executed or re-homed at this retro, beyond the seven:
   rather than rendering the real `StatePanel` component. If `StatePanel.tsx`'s role, label, or
   headline class ever changes, these tests would keep passing against a fixture that no longer
   matches production. Test-quality only, no functional impact.
+
+## Deferred from: code review of c6-9-degradation-with-the-app-closed-and-the-250-ms-push-budget (2026-08-12)
+
+- **The pre-existing `outside_app` role only flags module-level companion-app imports.**
+  `find_import_violations`'s `outside_app` role (`tests/unit/companion/test_import_boundary.py:491`,
+  `elif imported.module_level:`) only fires on module-level `src.companion.app` imports — a
+  function-local `import src.companion.app` anywhere outside `src/mcp_server` and the app package
+  itself would pass silently. c6-9's own new SC-3 sweep makes exactly this "a deferred import is
+  still a dependency" argument for firing on function-local imports too, but the untouched
+  app-side guard keeps the identical blind spot. Pre-existing, unmodified by c6-9.
+- **`_COMPANION_REFERENCE_ALLOWED` exempts whole files, not specific import sites.**
+  (`tests/unit/companion/test_import_boundary.py:162-172`) The three-site allow-list is keyed by
+  filename, so nothing constrains which `src.companion` symbols `server.py`/`companion.py` may
+  import later — a future unrelated companion import landing in an already-exempted file would
+  sail through undetected. Matches the granularity of the pre-existing `_APP_IMPORT_EXEMPT`
+  idiom it sits beside; tightening to import-site-level tracking would be a larger redesign.
+- **`_seeded_card_ids` reads `decks[0]` from an ordering that is not strictly guaranteed.**
+  (`scripts/cdp_harness.py:498-515`) `GET /api/decks`'s own docstring says its ordering is
+  "newest first… not a strict guarantee" under ties. A repeated `push` harness run against the
+  same data dir could silently draw ids from a different deck than a prior run, with nothing in
+  the output recording which deck was actually used. Harness usability only — does not affect
+  this story's recorded 15/21/36 ms figures (a single deck, not re-created between runs).
+- **`--card-ids` silently defeats the warm arm's cache-priming premise.**
+  (`scripts/cdp_harness.py:946`) Passing fabricated or non-existent ids together with
+  `--arm warm` bypasses `_seeded_card_ids`'s real-Scryfall-id guarantee with no validation or
+  warning, turning a "warm" run into a placeholder-only run indistinguishable from "blocked".
+  Not exercised by this story's own measurement (real deck ids throughout) — a future-run
+  footgun only.
+- **Image-warmth counters are a single point sample, unlike the polled `layout_ms`.**
+  (`scripts/cdp_harness.py:660-672`) `images_requested`/`images_from_network`/`images_painted`
+  are read once after a fixed `--image-settle` sleep (default 2.5 s), while `layout_ms` polls
+  via `_await_surfaces` until ready or timeout. A slow machine or network could still have
+  images in flight at sample time, silently under-counting the warmth metrics. Does not affect
+  the reported budget verdict (`layout_ms`) — only the supplementary network/painted counts.
