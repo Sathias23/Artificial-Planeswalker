@@ -31,7 +31,10 @@ import { resetDeckMemory } from './containers/CardDetail/deckMemory'
 import { EMPTY_DECK_LINE } from './containers/CardGrid/copy'
 import { CONNECTION_WORDS, pillText } from './containers/ConnectionPill/copy'
 import { emptyPushLine } from './containers/SuggestionsView/copy'
+import { NAV_GROUP_LABEL, UNREAD_WORD } from './containers/AgentViewsNav/copy'
 import {
+  AGENT_VIEW_LABELS,
+  type AgentViewContent,
   SUGGESTIONS_VIEW_TITLE,
   closeAgentView,
   openAgentView,
@@ -853,11 +856,28 @@ describe('a cold open finds the deck and puts it on the glass (AC 1, FR-07)', ()
     //      invisible to a check that only ever looked for the keys someone had thought of. That is
     //      this epic's coverage-that-reads-as-coverage theme, in a COUNT rather than a guard.
     //
-    // So: F1's real remaining count on a rendered deck view is ONE, and it is `c6-8`. Both halves
-    // are asserted below rather than left in prose, so the next story inherits a fact.
+    // So: F1's real remaining count on a rendered deck view was ONE, and it was `c6-8`.
+    //
+    // ✅ AND AT c6-8 IT IS ZERO — the first time since c2-6 that no story key renders anywhere in
+    // this app. `App.tsx` now passes `nav={<AgentViewsNav />}`, so `AppShell.tsx:200`'s
+    // `slot(nav, 'Agent-view nav pills land here — c6-8.')` placeholder is displaced by real
+    // pills. The shell was NOT edited — the string is still in that file, and
+    // `AppShell.test.tsx` still asserts it against the component's own props — which is the
+    // eleventh and last application of c2-9's displacement ruling. This assertion INVERTED
+    // rather than being deleted, exactly as the comment above it was written to be rewritten:
+    // the fact the next reader needs is that the count is zero and that something checks it.
+    //
+    // The F1 GATE itself is still c8-5's and is deliberately not built here. This is a count on
+    // one rendered surface, not a repo-wide guard — and the lesson from the correction above
+    // stands: a check that only looks for keys someone thought of is not a gate. `deferred-
+    // work.md`'s F1 entry carries that distinction.
     expect(document.body.textContent).not.toContain('c4-10')
     expect(document.body.textContent).not.toContain('c4-11')
-    expect(document.body.textContent).toContain('c6-8')
+    expect(document.body.textContent).not.toContain('c6-8')
+    // Non-vacuity for all three: this assertion reads a body that really has text in it, and the
+    // pills that displaced the last key are really on the glass.
+    expect(document.body.textContent?.length ?? 0).toBeGreaterThan(200)
+    expect(screen.getByText('Agent views')).toBeTruthy()
     const formatCheckRegion = screen.getByRole('region', { name: 'Format check' })
     expect(formatCheckRegion).toBeVisible()
 
@@ -1723,8 +1743,31 @@ describe('the corridor numbers of §A are pinned in the suite (c4-11, AC 31, AC 
     ),
   ]
 
+  /**
+   * Every real Tab stop in the document, in document order.
+   *
+   * ⚠️ `:not(:disabled)` ADDED AT c6-8, AND IT IS A REPAIR RATHER THAN AN ACCOMMODATION. Until
+   * this story the app contained no disabled control at all, so `'a[href], button, [tabindex]'`
+   * and *"the Tab order"* were the same set by accident. c6-8's quiet nav pills are the first
+   * disabled elements to ship, and they are disabled precisely BECAUSE UX-DR40 says their stop
+   * *"never exists"* — so counting them here would have recorded four Tab stops that a keyboard
+   * user can never reach, in the very suite whose job is to measure the corridor a keyboard user
+   * walks. The pins below would have gone 209 → 213 and 7 → 11 while the real corridor did not
+   * move by one stop.
+   *
+   * This is `deferred-work.md:45`'s shape — a focusable-element selector that models the markup
+   * rather than the focus behaviour — showing up in a TEST HELPER rather than in the focus trap
+   * it was filed against. The trap's own selector (`AgentView.tsx:108-115`) already excludes
+   * disabled elements; this one had no reason to until now.
+   *
+   * The counts below are therefore UNCHANGED by c6-8, and that is the honest measurement rather
+   * than a pin nudged to fit: the quiet pills add zero Tab stops, which is what the story's own
+   * spec required them to do.
+   */
   const focusablesNow = () => [
-    ...document.querySelectorAll<HTMLElement>('a[href], button, [tabindex]'),
+    ...document.querySelectorAll<HTMLElement>(
+      'a[href]:not(:disabled), button:not(:disabled), [tabindex]:not(:disabled)',
+    ),
   ]
 
   it('pins 206 = 99 tiles + 6 flips + 1 oracle + 99 rows + 1 pill on Atraxa, and the flip adjacency', async () => {
@@ -1965,10 +2008,16 @@ describe('the empty deck (story c4-12, AC 1, AC 3-5, AC 7-10, AC 14)', () => {
       expect(document.body.textContent, `${key} is on the glass`).not.toContain(key)
     }
 
-    // …and the ONE key that IS still on the glass, everywhere, since c2-6: `c6-8`, in the shell's
-    // agent-view nav placeholder. c4-11 corrected the record that named `c4-11` here. COUNTED
-    // rather than merely present, because "not zero" would survive a second key arriving.
-    expect(document.body.textContent?.match(/c6-8/g)).toHaveLength(1)
+    // …and the key that WAS on the glass everywhere since c2-6 — `c6-8`, in the shell's
+    // agent-view nav placeholder — is gone at c6-8, which passed `nav` and displaced it. c4-11
+    // corrected the record that named `c4-11` here; this story inverts what that correction
+    // measured. Still COUNTED rather than merely absent, because `toHaveLength(0)` on a real
+    // match array and a `null` from a body that never rendered are different facts, and the
+    // count is the one that keeps meaning something if a later story reintroduces a key.
+    expect(document.body.textContent?.match(/c6-8/g) ?? []).toHaveLength(0)
+    // The positive twin, on this same empty-deck fixture: the pills exist here too. The nav is
+    // not gated on a loaded deck, so the placeholder cannot come back on an empty surface.
+    expect(screen.getByRole('button', { name: /^Suggestions/ })).toBeTruthy()
   })
 
   it('hides all three analysis panels — and only ONE of them by this story gate (AC 7-9)', async () => {
@@ -3064,7 +3113,8 @@ describe('the agent view fills the shell’s overlay slot (c6-5, AC 4, AC 5, AC 
   const tiles = () => [...document.querySelectorAll<HTMLElement>('.card-tile')]
   const unpinControl = () => document.querySelector('.card-detail-unpin')
   // c6-6 gave `AgentViewContent` the four fields the two stories after it read — the envelope
-  // `id` (the replace key), `ts` (c6-8's pill time), the `kind` and the items themselves — so
+  // `id` (the replace key), `ts` (the nav pill's time, rendered since c6-8), the `kind` and the
+  // items themselves — so
   // this fixture is a whole one. These tests still exercise the STORE-driven path (c6-5's
   // claim); the socket-driven path is c6-6's own describe further down.
   const SUGGESTIONS = {
@@ -3127,7 +3177,8 @@ describe('the agent view fills the shell’s overlay slot (c6-5, AC 4, AC 5, AC 
 
   it('re-opens the SAME view after dismissal, with no second push (AC 5, UX-DR34)', async () => {
     // UX-DR34 end to end: the content outlives the dismissal, so the view is re-openable for the
-    // rest of the session. c6-8's nav pills are what will re-open it from the glass.
+    // rest of the session. c6-8's nav pills are what re-open it from the glass, and the c6-8
+    // describe at the foot of this file walks that whole loop.
     await bootedDeck()
 
     act(() => openAgentView(SUGGESTIONS))
@@ -3425,9 +3476,10 @@ describe('a suggestions push opens its view, end to end (c6-6, AC 1, AC 2, AC 4,
   it('updates the NON-MOTION signals on a replace — heading, count, live region (AC 6)', async () => {
     // UX-DR43: *"motion is never the sole signal"*. The three signals this story owns are the
     // heading text, the count beside it, and a real mutation of the `aria-live` region. The nav
-    // pill's unread marker and its timestamp are structurally c6-8's — the pill does not exist
+    // pill's unread marker and its timestamp were structurally c6-8's — the pill did not exist
     // yet, and the composition reference carries no timestamp in the view header — so what is
-    // asserted for that half is that the store RETAINS the envelope's `ts` for c6-8 to render.
+    // asserted for that half is that the store RETAINS the envelope's `ts`, which c6-8 now
+    // renders — see that story's describe at the foot of this file for the rendered assertion.
     await bootedDeck()
     await push('suggestions', { title: 'First look', items: ITEMS }, 'push-1')
 
@@ -3713,5 +3765,317 @@ describe('a pushed suggestion is a card you can look at (c6-7, AC 2, AC 4, AC 7)
     // own closes, and one that was never closed is one the app is still holding.
     expect(sockets).toHaveLength(1)
     expect(sockets[0].closed).toBe(0)
+  })
+})
+
+// =====================================================================================
+// c6-8 — THE NAV PILLS: UNREAD MARKERS, RE-OPEN, AND KIND SWITCHING
+// =====================================================================================
+
+describe('the agent-views nav puts a dismissed view one click away (c6-8)', () => {
+  const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
+  const rows = () => [...document.querySelectorAll<HTMLButtonElement>('.suggestion-row')]
+  const pills = () => [...document.querySelectorAll<HTMLButtonElement>('.agent-views-nav-pill')]
+  const pill = (kind: keyof typeof AGENT_VIEW_LABELS) =>
+    screen.getByRole<HTMLButtonElement>('button', {
+      name: new RegExp(`^${AGENT_VIEW_LABELS[kind]}`),
+    })
+
+  const ITEMS = [
+    { card_id: 'id-Llanowar Elves', reason: 'Fills the one-drop ramp slot.' },
+    { card_id: 'id-Birds of Paradise', reason: 'Fixes all five colours.' },
+  ]
+
+  const bootedDeck = async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks(ATRAXA_NAME))
+    render(<App />)
+    await settle()
+    await connect()
+    return fetchMock
+  }
+
+  const pushRows = async (items: unknown[] = ITEMS, id = 'push-c6-8') => {
+    await push('suggestions', { title: 'Resilience options', items }, id)
+    await settle()
+    await advance(20)
+  }
+
+  /** Every path requested since a marker — the c6-3 describe's idiom, scoped to this one. */
+  const pathsSince = (fetchMock: ReturnType<typeof answering>, from: number) =>
+    fetchMock.mock.calls.slice(from).map(([input]) => String(input))
+
+  /** Esc, delivered where a browser delivers it: at the focused element, bubbling. */
+  const escape = () =>
+    act(() => {
+      document.activeElement!.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      )
+    })
+
+  beforeEach(() => {
+    resetInspection()
+    resetDeckMemory()
+    resetAgentView()
+  })
+
+  // ==================== COLD OPEN (AC 1, AC 6, UX-DR40) ==============================
+  it('renders four quiet pills that are NOT Tab stops (AC 1, UX-DR40)', async () => {
+    await bootedDeck()
+
+    expect(pills()).toHaveLength(4)
+    expect(screen.getByText(NAV_GROUP_LABEL)).toBeVisible()
+    // UX-DR40's enumeration says of this stop: *"this stop never exists"* until a kind has
+    // pushed. `disabled` is what makes that literally true rather than approximately.
+    for (const p of pills()) expect(p.disabled).toBe(true)
+    // …and the placeholder they displaced is gone from the glass with them (the F1 inversion,
+    // asserted a third time here because this is the surface a person actually looks at).
+    expect(document.body.textContent).not.toContain('Agent-view nav pills land here')
+  })
+
+  // ==================== A PUSH ACTIVATES ITS PILL (AC 2) =============================
+  it('activates exactly the pushed kind’s pill, with the envelope’s time (AC 2)', async () => {
+    await bootedDeck()
+    await pushRows()
+
+    expect(pill('suggestions').disabled).toBe(false)
+    // The non-vacuity control: three pills did NOT change, so "activates" is a claim about one
+    // pill rather than about the nav re-rendering.
+    expect(pill('swaps').disabled).toBe(true)
+    expect(pill('tier_list').disabled).toBe(true)
+    expect(pill('groups').disabled).toBe(true)
+
+    // The time comes from the ENVELOPE (`push()` sends `ts: '2026-08-08T00:00:00Z'`), which is
+    // the field c6-6 retained for this story and nothing rendered until now. Compared against
+    // the store's own `ts` rather than a literal clock reading — jsdom inherits the host TZ.
+    const time = pill('suggestions').querySelector('time')!
+    expect(time.getAttribute('datetime')).toBe(useAgentViewStore.getState().content!.ts)
+    expect(time.textContent).toBeTruthy()
+  })
+
+  it('does not mark the pushed kind unread — a push is read on arrival (AC 3)', async () => {
+    await bootedDeck()
+    await pushRows()
+
+    expect(pill('suggestions').textContent).not.toContain(UNREAD_WORD)
+    expect(document.querySelectorAll('.agent-views-nav-dot')).toHaveLength(0)
+  })
+
+  it('leaves the pill active and UNREAD-FREE after a dismissal (AC 3, UX-DR34)', async () => {
+    // Dismissal is Brad's own act. A pill that grew a dot when he closed the view would be
+    // telling him he has not seen the thing he just closed.
+    await bootedDeck()
+    await pushRows()
+    escape()
+    await settle()
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(pill('suggestions').disabled).toBe(false)
+    expect(document.querySelectorAll('.agent-views-nav-dot')).toHaveLength(0)
+  })
+
+  // ==================== THE FLAGSHIP: THE WHOLE AC-4 LOOP ============================
+  it('re-opens the dismissed view with the same content, re-hydrated, and returns focus (AC 4)', async () => {
+    // Flow 3 of `EXPERIENCE.md:207-212`, end to end: push → dismiss → pill → the view is back →
+    // close → focus is where it started. Every step below was built by a different story; what
+    // this story added is the pill in the middle, and what this test proves is that the four
+    // shipped mechanisms it leans on all still fire on the re-open path.
+    const fetchMock = await bootedDeck()
+    await pushRows()
+    expect(rows()).toHaveLength(2)
+
+    escape()
+    await settle()
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    const marker = fetchMock.mock.calls.length
+    const target = pill('suggestions')
+    // FOCUSED, THEN CLICKED — and the `focus()` is modelling the browser rather than helping the
+    // test. Both real paths to this click put focus on the pill first: the keyboard one by
+    // definition (Tab, then Enter), and the pointer one because a browser focuses a `<button>`
+    // on mousedown. jsdom's `HTMLElement.click()` dispatches the event WITHOUT doing that, so
+    // omitting this line would model an interaction no user can perform — and would then measure
+    // the return-focus contract against `<body>`, which is the one element it must never restore
+    // to. This is the jsdom gap `AgentView.test.tsx` covers on its own mount; here it is the
+    // composed path.
+    act(() => {
+      target.focus()
+      target.click()
+    })
+    await settle()
+    await advance(20)
+
+    // 1. THE VIEW IS BACK, with the same rows and the same title.
+    expect(screen.getByRole('dialog')).toBeVisible()
+    expect(rows()).toHaveLength(2)
+    expect(rows()[0]).toHaveTextContent('Llanowar Elves')
+    expect(screen.getByRole('heading', { level: 2, name: /Resilience options/ })).toBeVisible()
+
+    // 2. NOTHING WAS RE-REQUESTED FROM THE AGENT. The only traffic a re-open may generate is
+    //    re-hydration of card data; there is no second push and no request that would ask for
+    //    one. Asserted as an ENUMERATION of what was called rather than as a count, so a
+    //    surprise request names itself.
+    for (const path of pathsSince(fetchMock, marker)) {
+      expect(path, `${path} was re-requested on a pill re-open`).toMatch(/^\/api\/cards\//)
+    }
+    // …and the socket was never touched: the same one connection, never closed, no frame sent.
+    expect(sockets).toHaveLength(1)
+    expect(sockets[0].closed).toBe(0)
+
+    // 3. THE MOUNT EFFECTS RE-FIRED. Re-opening is a real mount (`App.tsx` renders the overlay
+    //    only while a view is open), so the shell's focus-to-heading runs again with no code of
+    //    this story's own.
+    // By NAME, not by level: the page's panels carry level-2 headings too, so a bare
+    // `getByRole('heading', { level: 2 })` finds several and fails on the ambiguity.
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { level: 2, name: /Resilience options/ }),
+    )
+
+    // 4. CLOSING RETURNS FOCUS TO THE PILL. Also free: the mount effect captured
+    //    `document.activeElement`, which was the pill that had just been clicked.
+    escape()
+    await settle()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(target)
+  })
+
+  it('re-hydrates against CURRENT card data rather than replaying a snapshot (AC 4)', async () => {
+    // AC 4's *"re-hydrated against current card data"*, proved the way this harness can prove
+    // it: the cache is emptied between the dismissal and the re-open, and the re-open ASKS THE
+    // WORLD AGAIN for every id rather than redrawing what it had. That is the property that
+    // makes retaining ITEMS (ids and reasons) rather than rendered rows the right call, and it
+    // is the same property that makes a stale id degrade — `hydrateCard`'s terminal `unknown`
+    // is what a re-ask returns for a card that has since gone away, and `SuggestionsView` routes
+    // that into the shipped unknown-card placeholder without this story touching either.
+    //
+    // The DEGRADATION half is not asserted here, and the reason is worth recording rather than
+    // leaving as a gap: this file's card route answers `/api/cards/{id}` by echoing the id back
+    // as a name, unconditionally, so "the card is gone now" is not expressible in it. The
+    // unknown-card rendering is covered where the route can be controlled —
+    // `SuggestionsView.test.tsx` drives the cache directly — and what belongs HERE is the
+    // re-ask, which is the part only a composed re-open can show.
+    const fetchMock = await bootedDeck()
+    await pushRows()
+    expect(rows()[0]).toHaveTextContent('Llanowar Elves')
+
+    escape()
+    await settle()
+
+    // The world moves on: nothing this app remembers about any card survives.
+    act(() => {
+      resetCardCache()
+    })
+    const marker = fetchMock.mock.calls.length
+
+    act(() => {
+      pill('suggestions').click()
+    })
+    await settle()
+    await advance(20)
+
+    // BOTH ids were re-requested — the hydration effect is keyed on `items` and re-ran on the
+    // fresh mount, against a cache that no longer had the answers.
+    const paths = pathsSince(fetchMock, marker)
+    expect(paths).toContain('/api/cards/id-Llanowar%20Elves')
+    expect(paths).toContain('/api/cards/id-Birds%20of%20Paradise')
+    // …and the rows came back, so the re-ask is a REFRESH rather than a reset.
+    expect(rows()).toHaveLength(2)
+    expect(rows()[0]).toHaveTextContent('Llanowar Elves')
+  })
+
+  // ==================== AC 5 — KIND SWITCHING, AT THE STORE SEAM =====================
+  it('switches the view and marks the displaced pill unread when another kind arrives (AC 5)', async () => {
+    // ⚠️ DRIVEN AT THE STORE SEAM, NOT THROUGH THE SOCKET, AND THAT IS Q1's RULING SHOWING.
+    // The dispatch switch still DROPS `swaps`/`tier_list`/`groups` (`socket.test.ts:675` pins
+    // it) because Epic 9 pairs each tool with its view so that a push never arrives the UI
+    // cannot display. So this traversal is unreachable from the wire until Story 9.1 — whose own
+    // acceptance criterion banks on the mechanism existing — and it is proven here with a
+    // synthetic second kind. The c6-6 AC-3 structural-deferral precedent.
+    await bootedDeck()
+    await pushRows()
+    expect(screen.getByRole('dialog')).toBeVisible()
+
+    const swaps: AgentViewContent = {
+      id: 'push-swaps',
+      ts: '2026-08-12T14:32:00Z',
+      kind: 'swaps',
+      title: 'Swap candidates',
+      count: 0,
+      items: [],
+    }
+    act(() => {
+      openAgentView(swaps)
+    })
+    await settle()
+
+    // The view SWITCHED — the heading is the new kind's, and the suggestion rows are gone
+    // because the overlay body is kind-keyed and `swaps` has no view until Epic 9.
+    expect(screen.getByRole('heading', { level: 2, name: /Swap candidates/ })).toBeVisible()
+    expect(rows()).toHaveLength(0)
+    // …the dialog is still a dialog, with its heading and its close control: an unbuilt body is
+    // an empty view, never a broken one.
+    expect(screen.getByRole('dialog')).toBeVisible()
+    expect(screen.getByRole('button', { name: CLOSE_PILL_LABEL })).toBeVisible()
+
+    // THE DISPLACED PILL IS UNREAD — *"a push is never silently swallowed"*.
+    expect(pill('suggestions').textContent).toContain(UNREAD_WORD)
+    expect(document.querySelectorAll('.agent-views-nav-dot')).toHaveLength(1)
+    // …and the pill that is ON the glass is not, which is the non-vacuity twin.
+    expect(pill('swaps').textContent).not.toContain(UNREAD_WORD)
+
+    // AND THE DISPLACED VIEW IS RECOVERABLE, WITH ITS ROWS. This is the half that makes the
+    // unread marker a promise rather than a notice.
+    escape()
+    await settle()
+    act(() => {
+      pill('suggestions').click()
+    })
+    await settle()
+    await advance(20)
+
+    expect(rows()).toHaveLength(2)
+    expect(pill('suggestions').textContent).not.toContain(UNREAD_WORD)
+  })
+
+  // ==================== AC 6 — WHERE THE PILLS SIT IN THE TAB ORDER ==================
+  it('puts an active pill in the header nav, ahead of the card grid (AC 6, UX-DR40)', async () => {
+    await bootedDeck()
+    await pushRows()
+    escape()
+    await settle()
+
+    const focusables = [
+      ...document.querySelectorAll<HTMLElement>(
+        'a[href]:not(:disabled), button:not(:disabled), [tabindex]:not(:disabled)',
+      ),
+    ]
+    const at = (el: Element | null) => focusables.indexOf(el as HTMLElement)
+    const skip = screen.getByRole('button', { name: 'Skip past the deck grid' })
+    const firstTile = document.querySelector('.card-tile')
+
+    expect(at(skip)).toBe(0)
+    expect(firstTile).not.toBeNull()
+    // The nav sits in the header, which the shell renders before `<main>` — so the pill is
+    // after the skip link and before the first tile. Asserted as an ORDER rather than as an
+    // index, because the tile count is another story's number.
+    expect(at(pill('suggestions'))).toBeGreaterThan(at(skip))
+    expect(at(pill('suggestions'))).toBeLessThan(at(firstTile))
+    // Exactly ONE pill is in the corridor: the other three are quiet and therefore not stops.
+    expect(focusables.filter((el) => el.classList.contains('agent-views-nav-pill'))).toHaveLength(1)
+  })
+
+  it('adds no Tab stop at all before anything has pushed (UX-DR40, "this stop never exists")', async () => {
+    // The cold-open twin of the assertion above, and the reason the corridor pins elsewhere in
+    // this file did not move by four when this story shipped.
+    await bootedDeck()
+
+    const focusables = [
+      ...document.querySelectorAll<HTMLElement>(
+        'a[href]:not(:disabled), button:not(:disabled), [tabindex]:not(:disabled)',
+      ),
+    ]
+    expect(focusables.filter((el) => el.classList.contains('agent-views-nav-pill'))).toHaveLength(0)
+    // Non-vacuity: the pills ARE rendered, they are simply not stops.
+    expect(pills()).toHaveLength(4)
   })
 })

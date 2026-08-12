@@ -142,8 +142,10 @@
 }
 
 /* THE CLOSE PILL — DESIGN.md's nav pill (`:451`: *"the agent-view controls in the header, and
-   the 'Close · esc' control inside a view"*), so whatever this rule settles is also c6-8's
-   spec. A real `<button>`, which is what makes Enter and Space work with no `onKeyDown` of its
+   the 'Close · esc' control inside a view"*), so whatever this rule settled is also c6-8's
+   spec — and c6-8 shipped it: `AgentViewsNav.css`'s `.agent-views-nav-pill` is this rule with a
+   quiet state, a timestamp and an unread dot added, and that story's Task 1 finally wrote the
+   padding ruling below back into the DESIGN.md block it came from. A real `<button>`, which is what makes Enter and Space work with no `onKeyDown` of its
    own (`SkipLink.tsx:133-136`'s reasoning, and the same absence asserted).
 
    PADDING IS `--space-2 --space-3` (8px 12px) AND NOT THE SPEC'S `7px 14px` — Brad's Q4
