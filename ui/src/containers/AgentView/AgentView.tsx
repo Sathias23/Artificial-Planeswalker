@@ -322,7 +322,8 @@ export function AgentView({ pushId, title, count, onClose, children }: AgentView
     // The flip is in a FRAME CALLBACK for the bloom's reason: two style changes inside one frame
     // are coalesced and the transition never runs. Nothing waits on it either way — the content
     // is already committed and interactive, and EXPERIENCE.md:165 keeps presentation out of every
-    // latency budget (c6-9 measures the budget this is excluded from).
+    // latency budget — c6-9 measured that budget with this excluded, and its observed figures live
+    // in that story's Dev Agent Record.
     setReplacing(true)
     const frame = requestAnimationFrame(() => setReplacing(false))
     return () => cancelAnimationFrame(frame)
