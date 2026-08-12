@@ -264,6 +264,65 @@ export type AgentEvent =
 export type AgentEventKind = AgentEvent['kind']
 
 /**
+ * The four kinds that are a VIEW — `'suggestions' | 'swaps' | 'tier_list' | 'groups'`.
+ *
+ * **Consumer: `src/state/agentView.ts` and `containers/AgentViewsNav`** (story c6-8), whose
+ * whole design is *"generic over the closed `kind` enum"* — Story 9.1's own acceptance criterion
+ * banks on the Swaps pill becoming active with no nav work, which is only true if the nav is
+ * written against this union rather than against the kinds that happen to have a view today.
+ *
+ * `Exclude` over the SYSTEM kinds rather than a fresh list of the four, and the direction
+ * matters: a fifth agent-view kind added on the Python side arrives here through the generator
+ * and the nav grows a pill without an edit, which is the property Story 9.1 is relying on. A
+ * hand-written `'suggestions' | 'swaps' | 'tier_list' | 'groups'` would compile forever and grow
+ * never — {@link AgentEventKind}'s own docstring one line up makes the same argument.
+ *
+ * The two excluded literals are spelled here rather than imported from `socket.ts`'s
+ * `SystemEventKind`, which is the identical `Extract` over the identical union: `src/api/` is
+ * below `src/state/` and may not import upward. Two spellings of one pair, in the two files that
+ * each own one side of the partition — and both are DERIVED, so a kind renamed on the Python
+ * side breaks the `Extract`/`Exclude` loudly instead of silently dropping a member. The wire-name
+ * ban is about re-declaring backend *shapes* (`SwapsPayload`, `TierListEvent`); a discriminant
+ * literal in a derivation is what `socket.ts:179` already ships.
+ */
+export type AgentViewKind = Exclude<AgentEventKind, 'deck_changed' | 'active_deck_changed'>
+
+/**
+ * One `suggestions` frame — the envelope, narrowed to the member `kind: 'suggestions'` selects.
+ *
+ * **Consumer: `suggestionsViewOf` in `src/state/agentView.ts`** (story c6-6), which is the first
+ * code in the app to read an agent-view payload at all.
+ *
+ * `Extract` over {@link AgentEvent} rather than `Schemas['SuggestionsEvent']`, and the difference
+ * is not cosmetic: the union is what the dispatch switch narrows, so extracting from it is the
+ * one spelling that cannot disagree with the thing being narrowed. Indexing `components.schemas`
+ * would name a second declaration of the same shape and let the two drift the day the route's
+ * union stops including it.
+ *
+ * ⚠️ `payload` is REQUIRED in this type and OPTIONAL on the wire in practice: `agentEventOf`
+ * (`client.ts:701-716`) validates the `kind` discriminant and nothing else, so a frame of
+ * `{"kind":"suggestions"}` reaches a consumer typed as a full event. The builder that reads this
+ * shape is total for exactly that reason — see its docstring, and `deferred-work.md`'s
+ * kind-only entry.
+ */
+export type SuggestionsEvent = Extract<AgentEvent, { kind: 'suggestions' }>
+
+/**
+ * One suggested card: `{card_id, reason, category?, confidence?}` (AD-7).
+ *
+ * **Consumers: `AgentViewContent` in `src/state/agentView.ts`** (story c6-6, which RETAINED the
+ * items so that c6-7 could render rows — it does, in `SuggestionsView.tsx` — and so that c6-8
+ * could re-open a view against current card data, which it does, from the nav pills) — added here under this file's standing rule
+ * that an alias lands in the commit that gives it a consumer.
+ *
+ * Reached through `Schemas` rather than through {@link SuggestionsEvent}'s payload, because it is
+ * a named model on the Python side and the generator emits it as one. `SuggestionsPayload` is
+ * deliberately NOT aliased: nothing outside the builder ever holds a payload — the builder takes
+ * an envelope and returns store content — so an alias for it would have no consumer.
+ */
+export type SuggestionItem = Schemas['SuggestionItem']
+
+/**
  * The closed set of reason tokens (AD-16), as a TypeScript string union.
  *
  * Derived from `ErrorResponse` rather than re-listed, so a token added or removed on the Python

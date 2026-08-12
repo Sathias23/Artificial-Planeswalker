@@ -230,15 +230,16 @@ export interface paths {
         get: operations["read_active_deck_api_active_deck_get"];
         /**
          * Set Active Deck
-         * @description Set which deck the companion displays, and echo back what was stored.
+         * @description Set which deck the companion displays, and report what was stored and who saw it.
          *
          *     **This endpoint is for the agent, not the browser.** It requires a credential the browser does
          *     not have and must never be given, so a page has nothing to call here; a request that presents
          *     no valid credential is refused and the active deck is left untouched.
          *
          *     Idempotent, which is why the verb is ``PUT``: setting the same deck twice is the same state.
-         *     Answers ``200`` with the stored value rather than ``204``, so one shape serves the read, the
-         *     write and the change notification a later story broadcasts.
+         *     Answers ``200`` with the stored value rather than ``204``, and beside it the number of connected
+         *     browsers the change actually reached — so a caller can distinguish *switched, and a tab is
+         *     watching* from *switched, and nobody is looking*.
          *
          *     **The deck is not checked for existence.** Any non-blank id is accepted and stored verbatim,
          *     including one that names no deck. Validating it belongs to the caller that has database access
@@ -319,8 +320,10 @@ export interface components {
          *
          *     ``null`` is the answer, not the absence of one. The active deck is a resource that always
          *     exists and whose value may be "no deck", so asking on a cold open answers ``200`` with
-         *     ``deck_id: null`` — never ``404``, and never a different shape. **The same model answers both
-         *     operations**, so a reader has one shape to render and a writer has one shape to assert on.
+         *     ``deck_id: null`` — never ``404``, and never a different shape. **This is the read's model.**
+         *     The write answers ``ActiveDeckSetReceipt``, which declares this same ``deck_id`` and adds the
+         *     delivered client count — so a reader still has one shape to render, and a writer asserts on
+         *     that one plus a number the browser never asks for.
          *
          *     The value lives in the companion's memory and **dies with the process**: after a restart this
          *     reports ``null`` again, whatever was displayed before. That is specified behaviour rather than a
@@ -408,6 +411,31 @@ export interface components {
         ActiveDeckRequest: {
             /** Deck Id */
             deck_id: string;
+        };
+        /**
+         * ActiveDeckSetReceipt
+         * @description The body of ``PUT /api/active-deck`` — what was stored, and how many tabs saw it (FR-07).
+         *
+         *     ``ActiveDeck`` with one field added, and that is the whole difference: the id echoes back
+         *     exactly as the read reports it, and beside it sits the number of connected browsers the change
+         *     actually reached. **The read has no use for that number and does not carry it** — a page
+         *     rendering the active deck is the audience, not the fan-out — so the two operations answer two
+         *     shapes rather than one.
+         *
+         *     The count is what makes an agent's report honest. Setting the deck succeeds whether or not
+         *     anybody is looking, so without it the only truthful thing a caller could say is "it is set";
+         *     with it, "switched — and no tab is open, so nothing changed on screen" is available instead.
+         *
+         *     **Zero is a success, not a failure**, on exactly the terms ``EventIngestReceipt`` states: a
+         *     companion with no tab open is the ordinary state, the value was stored regardless, and
+         *     re-sending would change nothing. Nothing about the request is echoed beyond the id the caller
+         *     is entitled to see confirmed (CM-1).
+         */
+        ActiveDeckSetReceipt: {
+            /** Deck Id */
+            deck_id: string | null;
+            /** Clients */
+            clients: number;
         };
         /**
          * Card
@@ -1669,7 +1697,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ActiveDeck"];
+                    "application/json": components["schemas"]["ActiveDeckSetReceipt"];
                 };
             };
             /** @description reason: invalid_request */

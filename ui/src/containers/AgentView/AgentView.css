@@ -1,0 +1,237 @@
+/* ==== THE AGENT VIEW SHELL (story c6-5, DESIGN.md `components.agent-view`, UX-DR23) =====
+
+   THIS STYLESHEET DECLARES NO `position: fixed` AND NO `z-index`, AND BOTH ABSENCES ARE THE
+   POINT. `AppShell.css:223-271` owns the full-window layer — `position: fixed; inset:
+   var(--space-gutter); z-index: 20` — and it has owned it since c2-1, with the reasoning
+   recorded there addressed to this story by name. `shell.test.ts:952-957` fails the suite on a
+   SECOND full-window fixed layer anywhere in `src/`, because a component quietly declaring its
+   own is how UX-DR38's "exactly one level deep" stops being true without any value-level rule
+   objecting. The slot positions; this fills it.
+
+   That has one consequence worth stating plainly, because it is the reading of an ambiguous
+   line rather than a free choice. AC 1 says *"a full-window scrim … inset 32px"*, and those two
+   cannot both describe one box. The shipped slot resolves it: `.app-shell-overlay` IS the
+   32px-inset box, so the scrim below is that box and not the whole window, and the outer 32px
+   frame of the window stays unblurred. `AppShell.css:240-245` chose that deliberately — *"the
+   overlay's whole contract is that its inset coincides with the shell's own frame"* — and
+   `DESIGN.md`'s own component row reads the same way: *"scrim with backdrop, inset {spacing.6},
+   containing a shell"*, where the thing inset is the scrim and the shell is inside it.
+
+   NO NESTING ANYWHERE. `token-usage.test.ts`'s CSS reader matches innermost brace pairs, so a
+   declaration in a nesting parent is invisible to the contrast, token and motion guards;
+   `findNestedRules` fails the build on any nesting rather than leaving that blind spot
+   reachable (Brad's ruling 2026-07-27). Selectors are written out in full.
+
+   `accent-dim` ON `surface-overlay` IS BANNED (AC 8, UX-DR6), AND THAT IS NOT THIS SURFACE.
+   Tiles and rows inside an agent view sit on `surface-overlay`, where `--accent-dim` measures
+   2.70:1 and fails the 3:1 non-text floor — the same correction already made for
+   `card-tile.live-ring` and `card-detail.pinned-ring`. The repo-wide `findAccentDimOnOverlay`
+   guard covers this stylesheet the day it is added; the row-level assertion LANDED with c6-7's
+   rows, which is where the first card inside a view exists (Brad's Q7 ruling, 2026-08-10). It
+   is in `tests/token-usage.test.ts` beside the guard whose declared blind spot it covers — not
+   in the component suite, because jsdom evaluates no stylesheet — and it asserts that
+   `SuggestionsView.css` spends no `--accent-dim` in any spelling. The
+   shell itself sits on `surface-panel` (DESIGN.md:365), where `accent-dim` measures 3.05:1 and
+   PASSES — DESIGN.md permits it as a border on well/base/panel by name (`:390`, `:493`) — so the
+   close pill's hover border ships as the shipped `{components.nav-pill.hover-border}` token,
+   corrected at code review after an earlier draft misapplied AC 8's overlay-only ban here.
+   ==================================================================== */
+
+/* THE SCRIM. It fills the slot rather than sizing itself: `height: 100%` against the box the
+   slot already established, which is the whole of "the shell fills, the slot positions".
+
+   16px — DESIGN.md, `components.agent-view.backdrop`: `'blur(16px)'`, written there as a
+   literal string because no token exists for a blur radius and one token would be a token
+   family of one. */
+.agent-view-scrim {
+  display: flex;
+  height: 100%;
+  background: var(--scrim);
+  backdrop-filter: blur(16px);
+}
+
+/* THE PANEL. `margin: auto` centres it in the scrim on both axes, which is what leaves scrim
+   VISIBLE around it — and a visible scrim is what makes AC 4's "a click on the scrim outside
+   the shell" a gesture a person can actually perform rather than a handler with no target.
+
+   `max-height: 100%` and not `height`, so a short view is a short panel: the body below is the
+   scroll container, and a panel stretched to the full slot would put its header at the top of
+   the window with its content floating in the middle of an empty box.
+
+   1px — DESIGN.md, `components.agent-view.border`: `'1px solid {colors.border-hairline}'`.
+
+   8px — DESIGN.md:471, the shell's prose row: the view *"enters over
+   {components.agent-view.enter} as a fade + 8px rise"*. The rise is prose rather than a token
+   because it is one distance used once; the DURATION and EASING beside it are both tokens. */
+.agent-view {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: 100%;
+  margin: auto;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-raise);
+  transition:
+    opacity var(--motion-bloom) var(--ease-glide),
+    transform var(--motion-bloom) var(--ease-glide);
+}
+
+/* THE BLOOM'S STARTING STATE — see `AgentView.tsx`'s `entering` state for why the entry is a
+   transition out of an attribute rather than a `@keyframes` animation (the guard's CSS reader
+   would read a keyframes block as two rules named `from` and `to`, and the reduced-motion
+   registration for those is unwriteable).
+
+   This selector is the ONE entry this story adds to `token-usage.test.ts`'s enumerated
+   shipped-motion pin, and `tokens.css`'s reduced-motion block neutralises it by this exact
+   text: with the offset zeroed the view has nothing to rise FROM, which is UX-DR42's named
+   fallback — *"appears in place"* — rather than the same motion arriving faster. The opacity
+   half needs no registration: it is expressed entirely through `--motion-bloom`, so zeroing
+   that token already makes it instant (c4-4 drew this mechanical/registered distinction for
+   its image fade-in, and this is the same side of it).
+
+   8px — DESIGN.md:471, quoted at the rule above. */
+.agent-view[data-entering='true'] {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+/* THE HEADER ROW. `align-items: baseline` so the kicker, the title and the count sit on one
+   line of type regardless of their three different sizes; the pill is pushed to the right by
+   its own `margin-inline-start: auto` rather than by a spacer element. It does NOT scroll —
+   the body below is the only scroll container (AC 1). */
+.agent-view-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+/* `text-transform` and `letter-spacing` are DECLARED rather than inherited from the role: the
+   `font` shorthand can carry neither, so `font: var(--type-micro)` written alone would render
+   10px lowercase text at the browser's default tracking. `token-usage.test.ts:484-520` derives
+   both companions — the tracking from the token names, the uppercase from DESIGN.md's own
+   `textTransform:` key — and requires them in this same rule block. */
+.agent-view-kicker {
+  margin: 0;
+  font: var(--type-micro);
+  color: var(--accent);
+  letter-spacing: var(--tracking-micro);
+  text-transform: uppercase;
+}
+
+/* The dialog's accessible name (`aria-labelledby` points here). `margin: 0` because a UA `h2`
+   margin would break the baseline row above.
+
+   The `transition` is the PUSH-REPLACE CROSSFADE's (story c6-6, AC 2, FR-08) — see the
+   `[data-replacing]` rule at the FOOT of this file for the starting state, for why it is opacity
+   alone, and for why it lives down there. */
+.agent-view-title {
+  margin: 0;
+  font: var(--type-heading);
+  color: var(--text-primary);
+  transition: opacity var(--motion-glide) var(--ease-glide);
+}
+
+.agent-view-count {
+  margin: 0;
+  font: var(--type-body);
+  color: var(--text-tertiary);
+}
+
+/* THE CLOSE PILL — DESIGN.md's nav pill (`:451`: *"the agent-view controls in the header, and
+   the 'Close · esc' control inside a view"*), so whatever this rule settled is also c6-8's
+   spec — and c6-8 shipped it: `AgentViewsNav.css`'s `.agent-views-nav-pill` is this rule with a
+   quiet state, a timestamp and an unread dot added, and that story's Task 1 finally wrote the
+   padding ruling below back into the DESIGN.md block it came from. A real `<button>`, which is what makes Enter and Space work with no `onKeyDown` of its
+   own (`SkipLink.tsx:133-136`'s reasoning, and the same absence asserted).
+
+   PADDING IS `--space-2 --space-3` (8px 12px) AND NOT THE SPEC'S `7px 14px` — Brad's Q4
+   ruling, 2026-08-10, recorded as a DESIGN.md amendment beside the nav-pill block. Neither 7
+   nor 14 is on the 4/8/12/16/24/32/48 scale, so the spec's literal is a stylelint build
+   failure rather than a value anybody could ship; the same repair is already shipped twice
+   with its citation inline (`Panel.css:63-69`, `'10px 14px'` → 8/12, and `Badge.css:52-54`,
+   `'2px 9px'` → 4/8). 12px horizontal also matches c5-7's ConnectionPill, which faced this
+   call first and snapped to `var(--space-1) var(--space-3)`.
+
+   24px — DESIGN.md's global rule (`:462`), *"a >= 24x24px hit area"*, restated for this element
+   by name in `EXPERIENCE.md:156` (*"nav pills, the close pill, footer links, deck rows, the
+   connection pill"*). BOTH axes, because a text-sized box on an 11px line is under the floor on
+   its own — `ConnectionPill.css:86-93` and `Footer.css:91-97`'s idiom. */
+.agent-view-close {
+  min-width: 24px;
+  min-height: 24px;
+  margin-inline-start: auto;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-panel);
+  color: var(--text-secondary);
+  font: var(--type-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+/* Hover and focus share one rule because DESIGN.md gives them one spec — the nav pill's
+   `hover-border` / `hover-foreground` / `hover-glow`, with no separate focus treatment.
+
+   `{components.nav-pill.hover-border}` = `accent-dim`, shipped as written: this pill sits on
+   `--surface-panel` (see the header above), where `accent-dim` measures 3.05:1 and passes the
+   3:1 non-text floor — AC 8/UX-DR6's ban is scoped to `surface-overlay`, which is a different
+   surface than this control ships on. */
+.agent-view-close:hover,
+.agent-view-close:focus-visible {
+  border-color: var(--accent-dim);
+  color: var(--accent-bright);
+  box-shadow: var(--glow);
+}
+
+/* The known-surface focus ring: this control sits on `--surface-panel`, not on arbitrary card
+   art, so it takes the plain ring rather than the tile's two-layer one. `outline` is never
+   `none` in any of its four spellings — stylelint bans all four. */
+.agent-view-close:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* THE ONE SCROLL CONTAINER (AC 1 — *"the body scrolls while the shell does not"*). `min-height:
+   0` is what makes that true rather than aspirational: a flex item's default `min-height: auto`
+   refuses to shrink below its content, so without it a long body would grow the panel past
+   `max-height: 100%` and the WINDOW would scroll instead of this box. */
+.agent-view-body {
+  min-height: 0;
+  padding: 0 var(--space-4) var(--space-4);
+  overflow-y: auto;
+  transition: opacity var(--motion-glide) var(--ease-glide);
+}
+
+/* THE CROSSFADE'S STARTING STATE (story c6-6, AC 2 — *"replaced in place with a brief crossfade
+   over the glide duration"*; `DESIGN.md:122` `glide: 240ms`; `EXPERIENCE.md:90` names the token
+   by name). Its mechanism is the bloom's: an attribute flipped on for a single frame, so the
+   browser paints the transparent state before the opaque one arrives.
+
+   ⚠️ IT IS LAST IN THE FILE FOR A LINT REASON WORTH KNOWING, not for tidiness. stylelint's
+   `no-descending-specificity` fails a low-specificity selector that appears AFTER a
+   higher-specificity one targeting the same element — so this rule has to follow both
+   `.agent-view-title` and `.agent-view-body`, and the two of them are pages apart in the header
+   order this file otherwise reads in. The comment travels with the rule rather than being left
+   beside the transitions it explains.
+
+   OPACITY AND NOTHING ELSE, DELIBERATELY. A rise or a slide would put this rule in
+   `token-usage.test.ts`'s `MOTION_PROPERTIES` set (`transform`/`scale`/`rotate`/`translate`) and
+   demand its own registration in `tokens.css`'s reduced-motion block. Opacity over a TOKENISED
+   duration needs none: the reduced-motion block zeroes `--motion-glide` (`tokens.css:323`), so
+   the swap becomes instant with no second declaration to keep in step — which is why the
+   inventory line this story already has (*"Push-replace crossfade -> instant content swap
+   (c6-6)"*, `tokens.css:294`) is FULFILLED by this rule rather than amended by it. c4-4 drew the
+   mechanical/registered distinction for its image fade-in; this is the same side of it.
+
+   THE TITLE AND THE BODY, NOT `.agent-view`: those two are the content that CHANGES. Fading the
+   whole panel would fade its chrome — the kicker and the close pill — for a swap that leaves
+   both exactly where they were. */
+.agent-view[data-replacing='true'] .agent-view-title,
+.agent-view[data-replacing='true'] .agent-view-body {
+  opacity: 0;
+}

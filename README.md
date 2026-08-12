@@ -25,6 +25,7 @@ your client supplies the model, the server supplies fast, accurate MTG data and 
 | **Deck management** | `create_deck`, `list_decks`, `load_deck`, `delete_deck`, `add_card_to_deck`, `remove_card_from_deck`, `view_deck`, `import_decklist` (bulk Arena import) |
 | **Deck analysis** | `analyze_mana_curve`, `detect_synergies`, `validate_deck` |
 | **Deck power assessment** *(experimental)* | `assess_deck_power`, `compare_deck_power` |
+| **Companion app** *(in development)* | `companion_set_active_deck` — puts a saved deck on the companion's live browser view; `companion_show_suggestions` — puts a list of suggested cards on the same view, as cards rather than as text. Both report `app_not_running` when the companion isn't up |
 | **First-run setup** | `initialize_database`, `build_search_index` |
 
 Four companion **skills** layer expert reasoning on top of the tools —
@@ -87,7 +88,7 @@ The launch command is the same everywhere — only the config file differs.
 <details>
 <summary><b>Claude Code</b> (plugin — tools + skills, two commands)</summary>
 
-Install the plugin from this repo's built-in marketplace to get all 19 tools **and** the four
+Install the plugin from this repo's built-in marketplace to get all 21 tools **and** the four
 deckbuilding skills in any project — no clone required:
 
 ```
@@ -118,7 +119,7 @@ codex plugin marketplace add Sathias23/Artificial-Planeswalker
 ```
 
 Open the `/plugins` browser inside Codex and install **artificial-planeswalker** — that gives
-you the 19 tools *and* the four deckbuilding skills. If Codex also auto-surfaces this repo's
+you the 21 tools *and* the four deckbuilding skills. If Codex also auto-surfaces this repo's
 *Claude Code* marketplace, skip it — that variant's config only works inside Claude Code
 (see [openai/codex#19372](https://github.com/openai/codex/issues/19372)).
 
@@ -168,7 +169,7 @@ No card data ships with the repo, so on first use ask the assistant to run the
 **`build_search_index`** if you want semantic search. Until then the card/deck tools reply with a
 `database_not_initialized` hint instead of an error. When a new set releases, ask the assistant to
 run `initialize_database` with `update=true` to pull in the new cards (then re-run
-`build_search_index` to index them). Desktop loads the 19 tools; the four skills are a Claude Code
+`build_search_index` to index them). Desktop loads the 21 tools; the four skills are a Claude Code
 plugin feature.
 </details>
 

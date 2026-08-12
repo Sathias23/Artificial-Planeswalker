@@ -276,6 +276,39 @@
      measurements beside the rule that composites them (corrected at the c4-7 review: this
      comment previously claimed the overlay surface and the detail panel's 5.5:1/2.70:1 pair). */
   --shadow-deck-row-live: inset 2px 0 0 var(--accent);
+
+  /* THE SUGGESTION ROW'S LIVE RULE (story c6-7, Q2, UX-DR24).
+     69 -> 70, and the pins moved in the same commit: `expectedNames` + `toHaveLength` in
+     tests/tokens.test.ts, and `declaredTokens.size` in tests/token-usage.test.ts.
+
+     `components.suggestion-row.live-rule`, byte-for-byte, from the amendment story c6-7 made to
+     DESIGN.md before writing a line of the stylesheet that cites it. Same shape as the deck
+     row's rule above and for the same reasons — an INSET shadow so becoming live costs no
+     layout, and the row's live TINT is a plain `--accent-glow` background needing no token of
+     its own because a single colour is not a composite.
+
+     IT IS ITS OWN TOKEN RATHER THAN A SECOND CONSUMER OF `--shadow-deck-row-live`, and that is
+     Q2's ruling rather than an oversight. The two values are identical TODAY, and they are
+     identical by coincidence of two components landing on the same marker shape, not by a
+     shared rule: DESIGN.md files them under two different `components.*` blocks, each
+     independently amendable, and this layer's contract is that a token IS its artefact entry
+     (`tests/tokens.test.ts` asserts each one byte-for-byte against the block it comes from).
+     A suggestion row borrowing the deck row's name would make the day someone amends
+     `components.deck-row` silently amend a surface in an agent view, with no test able to see
+     it — the artefacts would still agree with themselves and the pixels would have moved.
+
+     `var(--accent)`, and NEVER `--accent-dim`. Unlike the deck row — which sits on
+     `--surface-panel`, where accent-dim is merely weak at 3.05:1 — this row's own resting
+     background IS `--surface-overlay`, the one surface where accent-dim measures 2.70:1 and
+     FAILS the 3:1 non-text floor outright. DESIGN.md's Contrast table names suggestion rows in
+     that ban by name, and `token-usage.test.ts:170-174` records that its `findAccentDimOnOverlay`
+     guard cannot catch this composition (the background is set by the row's rule, the marker by
+     a token) — so the ban is kept here, at the value, where a reader can see it.
+
+     IT IS A TOKEN BECAUSE IT CANNOT BE ANYTHING ELSE: .stylelintrc.json's box-shadow
+     allowed-list admits `none` or a comma-list of var(--shadow-…) / var(--glow) AND NOTHING
+     ELSE, so `inset 2px 0 0 …` cannot be written in SuggestionsView.css at all. */
+  --shadow-suggestion-row-live: inset 2px 0 0 var(--accent);
 }
 
 /* ==== THE REDUCED-MOTION REGISTRATION POINT ============================================
@@ -431,4 +464,35 @@
      NOT move for this story, because that pin is keyed on `transform` declarations and this
      story adds none. A later story that gives a deck row a transform inherits both halves — the
      rule here and the pin there. */
+
+  /* ---- c6-5, THE AGENT-VIEW BLOOM — THE FIRST REGISTRATION EPIC 6 OWES --------------
+     UX-DR42's inventory row for this motion is at the top of this block and has been reserved
+     BY NAME since c4-4: "Agent-view bloom (fade + 8px rise) -> appears in place (c6-5)". This
+     is the story that fills it, and it needs a rule rather than a statement — the distinction
+     c4-4 drew for its two motions and c4-7 landed on the other side of.
+
+     THE FADE IS MECHANICAL. `.agent-view` transitions `opacity` over `var(--motion-bloom)`, so
+     zeroing that token at the top of this block already makes it instant. Nothing is written
+     for it here, because a second declaration would suggest the mechanism does not work.
+
+     THE RISE IS NOT. The view enters from `transform: translateY(8px)`, and a zeroed duration
+     makes that INSTANT rather than ABSENT: the panel would still jump 8px the moment it
+     mounted, arriving faster — precisely the vestibular motion UX-DR42 asks to remove. So the
+     starting offset is switched off HERE, explicitly, and what remains is a view that is
+     already where it belongs on its first frame. That is the named fallback, exactly: it
+     APPEARS IN PLACE.
+
+     WHY THE SELECTOR IS THE ATTRIBUTE AND NOT `.agent-view` ITSELF. The entry is a transition
+     out of a state attribute rather than a `@keyframes` animation, and the choice was forced
+     rather than preferred: the CSS reader behind this block's own gate
+     (`token-usage.test.ts:88-97`) matches innermost brace pairs, so a keyframes block presents
+     as two rules named `from` and `to` — and the registration the enumerated pin would then
+     demand, `from { transform: none !important }`, is CSS that does nothing at all
+     (`!important` is ignored inside keyframes by specification). An accessibility override
+     that parses cleanly and does nothing is the exact failure mode the `!important` note above
+     was measured to avoid, so the shape that CAN be registered is the shape that ships.
+     `AgentView.css` carries the same reasoning beside the rule it neutralises. */
+  .agent-view[data-entering='true'] {
+    transform: none !important;
+  }
 }

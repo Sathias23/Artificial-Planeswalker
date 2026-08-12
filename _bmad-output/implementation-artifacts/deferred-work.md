@@ -1,5 +1,219 @@
 # Deferred Work
 
+## Deferred from: code review of c6-7-suggestions-view (2026-08-11)
+
+> Findings from the bmad-code-review three-layer pass (Blind Hunter, Edge Case Hunter,
+> Acceptance Auditor) against the uncommitted c6-7 diff, deferred rather than patched — either
+> low observed harm today, or needing UX input rather than a mechanical fix.
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-7-suggestions-view.md`
+  summary: "Screen-reader users hear the row's badge, name, mana cost and confidence as one
+  run-on phrase with no separating punctuation or labeling, since all four are sibling `<span>`s
+  inside the same `<button>` as the reason line — e.g. 'ramp Llanowar Elves high Fills the
+  one-drop ramp slot.' Unlike the story's other pixel-only claims, which were explicitly carried
+  to the C6 manual checklist, this AX-tree structure question is testable in principle (via an
+  accessible-name/description assertion) but was not raised as an open question anywhere the
+  review found. Needs UX input on how the four pieces should group or be labeled for assistive
+  tech before a fix is unambiguous."
+  evidence: 'bmad-code-review Blind Hunter, 2026-08-11; `ui/src/containers/SuggestionsView/SuggestionsView.tsx` (`SuggestionRow`'"'"'s head line, badge/name/cost/confidence spans).'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-7-suggestions-view.md`
+  summary: "`renderableOf`'s own docstring names a fourth hydration tier as \"the interesting
+  one\": a suggested card that happens to already be in the open deck, pre-seeded via
+  `seedCardSummaries`, painting a name and mana cost at first frame with nothing in flight. No
+  test in `SuggestionsView.test.tsx` exercises that tier for the head line — the one seed that
+  populates `entry.summary` without hydrating is asserted only for placeholder text and
+  inspectability, never for `.suggestion-row-name`/`.suggestion-row-cost` actually rendering.
+  Test-coverage gap, not a runtime defect."
+  evidence: 'bmad-code-review Blind Hunter, 2026-08-11; `ui/src/containers/SuggestionsView/SuggestionsView.tsx` (`renderableOf`'"'"'s docstring); `ui/src/containers/SuggestionsView/SuggestionsView.test.tsx`.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-7-suggestions-view.md`
+  summary: "Every item whose `card_id` is present but not a string (`42`, `{id:'c-1'}`, etc.)
+  maps through `cardIdOf` to the same `''` value, so several distinct malformed suggestions in
+  one push share one `CardEntry`, one flip-index entry, and would share one hover/focus/pin
+  target if `inspectable()` ever admitted `''`. Harmless today — the inspection store refuses
+  `''` uniformly, so none of them can be hovered, focused or pinned — but nothing in the design
+  distinguishes N different malformed rows from each other should that refusal ever narrow."
+  evidence: 'bmad-code-review Edge Case Hunter, 2026-08-11; `ui/src/containers/SuggestionsView/SuggestionsView.tsx` (`cardIdOf`).'
+
+## Deferred from: c6-8-agent-views-nav-unread-markers-re-open-and-kind-switching (2026-08-12)
+
+> Observations recorded during implementation, before the three-layer review. One is an ARTEFACT
+> contradiction the story repaired in CODE and could not repair in the artefacts it does not own;
+> the other extends a standing declaration to a new surface.
+>
+> **Inherited entries reconciled by this story** (each annotated in place): the
+> `FOCUSABLE_SELECTOR` gap is **NOT TRIGGERED in the trap — and was found LIVE in a second copy
+> of the same shape**, `App.test.tsx`'s corridor helper, which counted disabled buttons as Tab
+> stops and is now repaired; the Esc `stopPropagation` starvation is **HEEDED AND NOT TRIGGERED**
+> (the pills ship no `onKeyDown`, and a behavioural test pins the absence); the `{kind}` article
+> grammar entry is **RE-HOMED TO STORY 9.1** by Brad's Q7, with c6-8's vocabulary table recorded
+> as its first data point; and the C3-retro **F1 count is DISPLACED to zero** — the gate itself
+> stays c8-5's.
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-8-agent-views-nav-unread-markers-re-open-and-kind-switching.md`
+  summary: "**The artefacts describe the quiet nav pill's copy as a \"tooltip\", singular, and that is a contradiction the system has already repaired once in the other direction.** UX-DR28 and AC 1 require the pill be NOT focusable and carry a tooltip; UX-DR39 bans hover-only disclosure of unique information and requires focus parity — and a non-focusable element cannot disclose on focus, so the two rules cannot both be satisfied by a `title` alone. The identical shape was caught on the connection pill by the 2026-07-22 accessibility review and repaired by amending UX-DR29 to focusable + `aria-describedby`; the nav pill never got that amendment. **c6-8 repaired it in code** under Brad's Q2 ruling — the pill stays `disabled` (UX-DR28 and UX-DR40's cold-open enumeration are explicit and load-bearing) and the sentence ships as BOTH a `title` and a visually-hidden `aria-describedby` target, so the information is in the accessibility tree and never hover-only in substance. EXPERIENCE.md's nav-pill row was amended in the same commit to record the mechanism and the reason. **What remains is the residue this story cannot fix from inside a story:** UX-DR28 itself, and the epic's AC 1, still say \"tooltip\" as though a pointer affordance were the whole requirement, so the next reader of those rules meets the contradiction again with no pointer to its resolution. **Home: Story 8.3's PRD reconciliation**, which is where peer-artefact disagreements of exactly this shape are collected — the repair is to amend UX-DR28 the way UX-DR29 was amended, naming the dual mechanism, rather than to change any code."
+  evidence: '`review-accessibility.md:32` (the connection-pill repair this mirrors); UX-DR28 (`epics-companion-app.md:492`), UX-DR39 (`:585`), UX-DR29; the shipped dual mechanism in `ui/src/containers/AgentViewsNav/AgentViewsNav.tsx` and its reasoning in that directory''s `copy.ts`; the amended nav-pill row in `EXPERIENCE.md`, gated by `ui/tests/agent-views-nav-copy.test.ts` (which asserts the row still carries both the UX-DR39 clause and the "programmatic description" wording, so the reason cannot be quietly dropped).'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-8-agent-views-nav-unread-markers-re-open-and-kind-switching.md`
+  summary: "**The header nav pills join the app's unviewed-pixels surface, extending c6-7's declaration to a component that is on EVERY screen rather than inside an overlay.** jsdom evaluates no stylesheet, resolves no layout and renders no tooltip, so every visual claim this story makes is asserted as SOURCE: that the quiet pill is `text-tertiary` and not an opacity dim, that the dot is 8px `--accent`, that both type roles ship with their companion declarations, that the hover arm excludes `:disabled`, that the pill declares 24px on both axes. Five specific things remain unchecked by anything. (1) Whether four uppercase `--type-label` pills plus a kicker plus the identity block and badges actually FIT the header at 1100px — the row wraps by design, and nobody has seen whether it does. (2) Whether the quiet `text-tertiary` reads as *\"nothing here yet\"* rather than as *\"broken\"* when three of the four pills are quiet, which is the ordinary production state until Epic 9. (3) Whether the 8px accent dot is findable at a glance beside 11px uppercase text — the connection pill's dot sits beside 14px body text, which is the sibling it cites. (4) Whether the `--type-micro` timestamp after a `--type-label` name reads as one control or as two. (5) Whether the browser renders a `title` tooltip on a `disabled` button at all, which varies by engine and is the pointer half of Q2's dual mechanism (the accessibility-tree half is asserted). **Home: the C6 manual checklist (c8-6)**, which already carries C5's un-run Block J and c6-7's rows."
+  evidence: 'The "WHAT THIS SUITE CANNOT CARRY" header in `ui/src/containers/AgentViewsNav/AgentViewsNav.test.tsx`; P15 (the jsdom class-vs-token hole) from `epic-c5-retro-2026-08-09.md`; R11 (Block J ruled NOT RUN); the c6-7 entry below, which this one extends rather than duplicates — that surface is inside an overlay the user opens, this one is on the glass permanently.'
+
+## Deferred from: c6-7-suggestions-view (2026-08-11)
+
+> Observations recorded during implementation of the suggestion rows, before the three-layer
+> review. One is a BOUNDARY question ruled to belong to the story that builds the machinery it
+> concerns (Brad's Q7); the other is a residue this story declares rather than repairs.
+>
+> **Inherited entries reconciled by this story** (each annotated in place, below): the
+> empty-push-line `DESIGN.md` block is **CLOSED**; `agentEventOf`'s item half is **CLOSED** at
+> the row, which is where the entry said it belonged; the `FOCUSABLE_SELECTOR` roving-tabindex
+> gap and the Esc `stopPropagation` starvation are both **NOT TRIGGERED** (the rows carry no
+> `tabindex` and no `onKeyDown`, and the second was heeded by name); and the image in-flight
+> coalescing entry is **CLOSED as "not wanted"** by Brad's ruling, which is the deliberate close
+> its own terms asked for after three declines and one mis-homing.
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-7-suggestions-view.md`
+  summary: "**A pinned suggestion is usually a card that is NOT in the open deck, and Epic 7's eviction rule was written as though every pin were.** UX-DR35 says a pinned target *\"that no longer exists in the deck falls back to transient\"* — written for deck cards, before any surface could pin a non-deck one. Read literally against c6-7's rows, the next `deck_changed` refetch would evict every pinned suggestion the moment the deck's card list changed, which reads as a bug against this story's own AC 2 (*\"a pinned target survives closing the view\"*) and against UJ-1 step 6: the user pins a suggested card precisely BECAUSE it is not in the deck yet. Nothing evicts today — refetch coalescing is Epic 7's and unbuilt — so there is no live defect and this story writes no code for it. **Home: Epic 7's refetch story**, which is where the decision has the eviction machinery in front of it: rule either that eviction applies only to pins whose card was in the DEPARTING deck's list, or that a pin on a non-deck card always survives. c6-7's `App.test.tsx` pin-survives-close test stands as the regression tripwire in the meantime."
+  evidence: 'Recorded at story creation and confirmed during implementation; UX-DR35; `EXPERIENCE.md:188` (UJ-1 step 6); `ui/src/state/inspection.ts` (nothing in the slice reads the deck); `ui/src/App.test.tsx`, "ESC CLOSES THE VIEW AND THE PIN SET FROM A ROW SURVIVES". Brad ruled Q7 as recommended (2026-08-11): file the boundary note, write no code here. **Citation corrected by code review (2026-08-11):** the named App test covers only the PIN-SURVIVES-CLOSE half of AC 2 — it never drives a `deck_changed` event, so it is not itself a tripwire for the eviction question this entry is about. The "nothing evicts today" claim rests on Epic 7''s refetch/eviction machinery being unbuilt (confirmed by `inspection.ts` reading no deck state), not on any shipped test exercising that path — Epic 7''s refetch story is still the one that owes a real regression test for whichever way it rules.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-7-suggestions-view.md`
+  summary: "**The suggestion row is the app's first surface whose pixels no human has seen, and the guards that cover it are all source reads.** `DESIGN.md:444` lists the Suggestion row among the components *\"specified here without a visual precedent\"* — there are no composition-reference pixels to compare against — and Block J of the C5 manual checklist was RULED NOT RUN by Brad, so the whole agent-view surface has shipped unviewed. jsdom evaluates no stylesheet, resolves no layout and loads no images, so every visual claim this story makes is asserted as SOURCE: that the stylesheet spends no `--accent-dim`, no `--radius-card` and no `aspect-ratio`; that the type roles ship with their companion declarations; that the one `px` literal carries its citation. Four specific things remain unchecked by anything: whether `--accent` at 5.5:1 reads as a live marker over the row's own `--accent-glow` tint; whether the content-driven row height produces a thumbnail of a sensible WIDTH at the view's real measure (the height derives from two text lines, and the width from 63:88, so a tighter line height makes a narrower card); whether a 200-character reason ellipsizes at a useful point; and whether the badge, name, pips and confidence sit on one optical line given three different type roles. **Home: the C6 manual checklist (c8-6)**, carrying C5's Block J with it."
+  evidence: '`DESIGN.md:444` (no-visual-precedent list) and the amended `components.suggestion-row`; `epic-c5-retro-2026-08-09.md` (R11, Block J ruled NOT RUN); the "WHAT THIS SUITE CANNOT CARRY" header in `ui/src/containers/SuggestionsView/SuggestionsView.test.tsx`; P15 (the jsdom class-vs-token hole) from the same retro.'
+
+## Deferred from: c6-6-a-push-opens-its-view-and-a-repeat-push-replaces-it-in-place (2026-08-11)
+
+> Observations recorded during implementation, before the three-layer review. Both are ARTEFACT
+> gaps rather than code defects: the story shipped the artefact's own words and its own values
+> and declared what the artefact does not say, rather than inventing the missing half.
+>
+> **Inherited entries reconciled by this story** (each annotated in place, above): the
+> dialog-accessible-name guard (`AgentViewContent.title`) is **CLOSED**; `agentEventOf`'s
+> kind-only narrowing is **PARTIALLY TRIGGERED** — the payload SHAPE is now defended at the
+> builder by Brad's Q6 ruling, item-field validation stays c6-7's; and the permanently-open
+> copy-guard entry is **HONOURED AND STAYS OPEN** (c4-12's disposition recorded that *"c6-6 still
+> owes it"* — the reading was performed and is recorded in this story's Debug Log, which is the
+> deliverable; the entry never closes, by its own terms).
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-6-a-push-opens-its-view-and-a-repeat-push-replaces-it-in-place.md`
+  summary: "**The empty-push line is ungrammatical once its placeholder is filled, and the artefact is what says so.** `EXPERIENCE.md`'s Voice and Tone row writes *\"The agent sent an empty {kind}. Nothing to show — ask it for another pass.\"* — a template — and the story's own task list rules the substitution to be the WIRE kind. That renders *\"The agent sent an empty suggestions.\"*, which reads wrong, and gets worse for Epic 9's kinds: *\"an empty tier_list\"*, *\"an empty groups\"*. c6-6 shipped the artefact's bytes verbatim rather than inventing a per-kind display noun (\"suggestions list\", \"tier list\"), because authoring copy no artefact carries — one story before the second kind that would need it — is exactly what the copy guard's registration rule exists to prevent, and a runtime-assembled user-facing string is residue 3 of `copy-rules.test.ts`'s own header. **Home: the story that adds the SECOND view kind** (c6-8 for kind switching, or Epic 9's first view), which is the first point at which the decision has two data points instead of one. The repair is either a per-kind display-noun table registered in `COPY_MODULES`, or an `EXPERIENCE.md` amendment rewording the sentence so no article precedes the placeholder."
+  evidence: '`ui/src/containers/SuggestionsView/copy.ts` (the residue is declared in the module itself); `EXPERIENCE.md:71`; the byte-for-byte pin in `ui/tests/empty-push-copy.test.ts` asserts the placeholder SURVIVES, so the day someone hard-codes a kind that gate fires. **RE-HOMED TO STORY 9.1 BY c6-8 (Brad''s Q7, 2026-08-12), with this story''s contribution recorded rather than the entry closed.** This entry named "c6-8 for kind switching" as one of two candidate homes, and c6-8 did build kind switching — but under Q1 it added no second RENDERABLE kind: the socket still drops `swaps`/`tier_list`/`groups`, so the only kind that can reach the empty-push line is still `suggestions`, and the sentence it renders is the one already shipped. Rewording byte-gated Voice-and-Tone copy in a story whose only reachable kind renders the current sentence anyway is an amendment nobody''s acceptance criterion asks for — the exact move this entry''s own history warns against. What c6-8 DID contribute is **the first of the entry''s two repair shapes, in part**: `AGENT_VIEW_LABELS` in `src/state/agentView.ts` is a per-kind display-noun table, registered in `COPY_MODULES`, covering all four kinds ("Suggestions" / "Swaps" / "Tier list" / "Card groups"). It is not yet the repair, because those are NAV LABELS and the empty-push line needs a noun that reads after an article — "an empty Tier list" is better than "an empty tier_list" and still not right, and "a Card groups" is worse. So Story 9.1 inherits a real data point and a decided home for whatever noun it needs: either extend that table with a second per-kind form, or amend `EXPERIENCE.md:71` so no article precedes the placeholder. **Home: Story 9.1** (Epic 9''s first view), which is the first story with a second reachable kind in front of it.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-6-a-push-opens-its-view-and-a-repeat-push-replaces-it-in-place.md`
+  summary: "**`DESIGN.md` specifies a treatment for the empty-DECK line and none for the empty-PUSH line, which are the same kind of thing.** `components.empty-deck-line` carries `type: '{typography.body}'`, `foreground: '{colors.text-secondary}'` and the note that it *\"spends no length of its own\"* because its container's padding is already its inset. Nothing equivalent exists for the empty push, and the two states are structurally identical: one calm sentence standing in for absent content inside a surface that supplies its own padding. c6-6 shipped the empty-deck block's values, CITED in `SuggestionsView.css`, and did not amend the artefact — c4-12 amended `DESIGN.md` because an acceptance criterion of its own (AC 26) required the artefact to specify the treatment, and c6-6 has no such AC. Amending an artefact nobody asked to be amended is not a diff a story makes quietly. **Home: c6-7**, which renders the rest of this view and therefore has to put real values in front of a `DESIGN.md` that describes none of them — at which point the empty line's block is one line of the same amendment. **CLOSED BY c6-7 (2026-08-11), exactly as predicted.** That story amended `components.suggestion-row` first (Brad's Q2 ruling — the block carried four values and no padding, gap, row height or live marker, while the component description below the frontmatter already promised all of them), and `components.empty-push-line` was one entry of the same amendment: `type: '{typography.body}'`, `foreground: '{colors.text-secondary}'`, and a `container` note recording that the agent view body's own `{spacing.4}` is the whole of its inset. Pinned in `ui/tests/tokens.test.ts` by a SIBLING comparison against `empty-deck-line` rather than against retyped constants, so the day one of the two is amended and the other is not, the test names it."
+  evidence: '`ui/src/containers/SuggestionsView/SuggestionsView.css` (the gap is declared in the stylesheet header); `DESIGN.md`, `components.empty-deck-line`; `ui/src/containers/CardGrid/CardGrid.css:42-64` for the shape the amendment took at c4-12.'
+
+## Deferred from: c6-5-agent-view-shell-with-focus-management-and-dismissal (2026-08-10)
+
+> Observations recorded during implementation of the agent view shell, before the three-layer
+> review. Neither is caused by this story's code; both were found by it.
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+  summary: "**A SECOND, DISTINCT WINDOWS TEST FLAKE: an intermittent vitest worker-fork crash with no test attached.** Twice in roughly a dozen full `npm test` runs, the suite ended `Unhandled Error — [vitest-pool]: Worker forks emitted error / Worker exited unexpectedly`, with one test FILE silently dropped (`70 passed (71)`, `1929 passed (1934)` — five tests never run and never reported as failures). It is NOT the known cold-start `lint-gates.test.ts` timeout (Landmine 12, recorded at c6-2, c6-3 and again at this story's baseline): that one reports a named failing test with a ~125 s setup, while this reports no test at all. It did not reproduce in seven consecutive runs afterwards, and every clean run collected exactly 1,934. **Why it matters more than its frequency suggests: the failure mode is a suite that silently gets SMALLER.** A run that drops a file exits non-zero today, but the count is what a reader scores, and 1,929 reads as green to anyone not comparing it against 1,934 — which is precisely why this repo validates the collected count before scoring a run. Unowned; recorded so the next person to see it has the shape and does not re-derive it."
+  evidence: 'Observed 2026-08-10 during c6-5 implementation: once on the planted-red run (alongside its 5 genuine failures) and once on a clean gate run at 19:11:54. Seven consecutive full runs immediately after were 1,934/1,934 with no error. Windows 11, vitest 4.1.10, forks pool.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+  summary: "**The running \"Nth copy module in the app\" ordinals in `shell.test.ts`'s CONTAINERS list contradict each other, and have since Epic 4.** c4-8's entry says its copy module is \"the tenth in the app\", c4-10's says \"the twelfth\", c4-11's also says \"the twelfth\", and c4-12's says \"the SIXTH in this tree\" where c4-10's already claimed sixth. They are prose ordinals with no gate behind them, so nothing has ever objected. c6-5 declined to add a fifth guess: its entry states the two counts that are checkable from `git ls-files` (tenth under `src/containers/`, thirteenth in the app) and names the inconsistency in place. Repairing five other stories' comments was out of this story's diff. **Home: unowned** — a one-line sweep for whoever next adds a copy module, or a decision to drop the app-wide ordinal entirely, which is what makes the tree-local one honest."
+  evidence: '`ui/tests/shell.test.ts` — CONTAINERS entries for `CardGrid/copy.ts`, `ManaCurve/copy.ts`, `FormatCheck/copy.ts`, `SkipLink/copy.ts`. `git ls-files "ui/src/**/copy.ts"` returns 13 modules, 10 of them under `src/containers/`.'
+
+## Deferred from: code review of c6-5-agent-view-shell-with-focus-management-and-dismissal (2026-08-10)
+
+> Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
+> `feat/companion-c6-5-agent-view-shell` diff. Entries below are real but not caused by this
+> change's reachable behaviour, or are pre-existing drift this diff only inherits.
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+  summary: "`FOCUSABLE_SELECTOR` (the focus trap's boundary query) doesn't exclude natively-focusable elements carrying `tabindex=\"-1\"` — only the catch-all `[tabindex]` branch excludes programmatically-detached elements; `button:not([disabled])` etc. admit a roving-tabindex control unconditionally. Unreachable today (no such content exists inside the shell — it renders an arbitrary fixture child in tests, nothing production-real yet), but c6-7's suggestion rows are a plausible place for a roving-tabindex composite control to appear, and if one does, the trap's wrap logic would silently treat it as a real boundary stop the browser's own Tab sequence skips."
+  evidence: 'Blind Hunter; `ui/src/containers/AgentView/AgentView.tsx:85-92`. **NOT TRIGGERED BY c6-7 (checked 2026-08-11), and the named risk did not materialise.** That story is the one this entry predicted — it mounts the first production-real content inside the shell — and its rows carry NO `tabindex` in any spelling: each row is a plain `<button>` in document order, which UX-DR40 requires ("nothing in the app carries one") and which the unit suite asserts by name. A view of six suggestions therefore puts six ordinary focusables between the close pill''s two ends, which is exactly the shape the trap was written against. STAYS OPEN for the first story that ships a roving-tabindex composite; c6-8''s nav pills sit OUTSIDE the shell and are not it. **NOT TRIGGERED BY c6-8 either (checked 2026-08-12) — but that story found this entry''s EXACT SHAPE in a second place, and it was live rather than hypothetical.** The pills carry no `tabindex` (quiet ones ship `disabled`, which is what keeps UX-DR40''s "nothing carries a tabindex" true), so the trap is untouched. However `App.test.tsx`''s corridor helper selected `''a[href], button, [tabindex]''` — a selector that models the MARKUP rather than the focus behaviour, which is this entry''s whole subject — and it counted four disabled buttons as Tab stops, which would have moved the pinned corridor numbers 209 -> 213 and 7 -> 11 while the real corridor did not move at all. Until c6-8 the app contained no disabled control, so that selector and "the Tab order" had been the same set by accident. Repaired in that story (`:not(:disabled)` on all three branches, with the reasoning in the helper''s docstring). The lesson generalises and is the reason this annotation is here rather than in the story record alone: **a focusable-element selector is a model of focus behaviour, and every copy of one in this repo is a place this entry can come true.** There are two — the trap''s and the corridor helper''s.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+  summary: "The document-capture Esc listener's `event.stopPropagation()` suppresses Escape for React's own synthetic event delegation app-wide while a view is open, not only for `CardDetail`'s document-bubble listener — React 17+ delegates its own listeners (including any `onKeyDown`/`onKeyDownCapture` prop anywhere in the tree) at the root DOM container, which sits below `document` in the capture path, so a capture-phase `stopPropagation()` at `document` prevents the event from ever reaching it. No `onKeyDown`/`onKeyDownCapture` prop exists anywhere in `ui/src` today, so there is zero live impact, but future content mounted inside an open agent view (c6-7 rows, c6-8 pills) should not add an Escape-consuming `onKeyDown` and expect it to fire while a view is open."
+  evidence: 'Blind Hunter; `ui/src/containers/AgentView/AgentView.tsx:237-252`; confirmed no `onKeyDown`/`onKeyDownCapture` usage exists elsewhere in `ui/src` via repo-wide grep. **NOT TRIGGERED BY c6-7 (checked 2026-08-11), and the warning was heeded rather than merely survived.** This entry names "c6-7 rows" as future content that should not add an Escape-consuming `onKeyDown`; those rows shipped with no keyboard handler at all, because they are real `<button>`s and Enter/Space are already the browser''s own click (UX-DR39). The component header records this entry by number as one of the two reasons. The repo-wide grep still returns nothing. **HEEDED AND NOT TRIGGERED BY c6-8 (checked 2026-08-12), which is the other story this entry names by name.** The nav pills ship no `onKeyDown` in any spelling: they are real `<button>`s, so Enter and Space are the browser''s own click (UX-DR39), and the component header records this entry as one of three reasons the absence is deliberate. The pills are in fact dead to keyboard handlers three times over while a view is open — this starvation, the scrim covering the header, and the focus trap holding Tab inside the dialog — which is why a pill click can only ever start from a closed view. A behavioural test pins the absence rather than a comment claiming it: a synthetic `keydown` of Enter on a pill changes nothing, while a click on the same pill opens the view. The repo-wide grep still returns nothing. STAYS OPEN for Epic 9''s views.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+  summary: "`AgentViewContent.title` (the store's content shape) has no non-empty guard. An empty-string title would render an `<h2>` with no visible text, and since `aria-labelledby` points at that heading, the dialog's accessible name would resolve to nothing — failing the basic requirement that every `role=\"dialog\"` have a discernible name. Not reachable until c6-6 wires a real `suggestions` push into `openAgentView`; c6-6 should validate or fall back to a non-empty title at the point content is constructed."
+  evidence: 'Blind Hunter; `ui/src/state/agentView.ts:62-71`. **CLOSED BY c6-6 (2026-08-11), at exactly the point this entry asked for.** `suggestionsViewOf` — the builder that turns an envelope into content — trims `payload.title` and falls back to `SUGGESTIONS_VIEW_TITLE` (the word "Suggestions") when the result is absent, null or empty, so no code path can construct content with a blank title. `.trim()` rather than a truthiness check, because a title of three spaces renders nothing while passing a non-empty-string check. The fallback word is a Q7 ruling (Brad, 2026-08-11) and is registered in `COPY_MODULES` as authored copy. Pinned two ways: an `it.each` over absent/null/empty/whitespace-only in `ui/src/state/agentView.test.ts`, and an end-to-end `toHaveAccessibleName` assertion in `ui/src/App.test.tsx` driven through the real socket — the second is the one that checks the property this entry is actually about, since the accessible name is computed by the DOM rather than by the store.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+  summary: "Restates and confirms the ordinal-drift item already logged in this file's `c6-5-agent-view-shell...` dev-time section above (c4-8/c4-10/c4-12's \"Nth copy module\" comments disagreeing) — surfaced independently by the code review's Blind Hunter layer as well. No new information; cross-referenced here so the review record doesn't read as having missed it."
+  evidence: 'Blind Hunter; `ui/tests/shell.test.ts:1562`. See the dev-time entry above for the full history and the four disagreeing sites (c4-8, c4-10, c4-11, c4-12).'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+  summary: "Residual focus-trap-escape gap after the scrim `preventDefault()` patch (Brad's ruling, 2026-08-10, on the review's trap-escape decision item): non-interactive content INSIDE the panel — the kicker text, the summary count, any body prose — still has no `mousedown` guard, so clicking it blurs focus to `<body>` exactly as the scrim used to, and a forward Tab can still fall through the trap's forward-Tab branch (`active === last` only, no `!inTrap` catch-all) into native tab order. The heavier fix (a document-level `focusin` recovery listener, WAI-ARIA APG pattern) was declined for this story in favour of the minimal scrim-only patch."
+  evidence: 'Edge Case Hunter + Blind Hunter (independently, merged in review); `ui/src/containers/AgentView/AgentView.tsx:294-353`.'
+
+## Deferred from: code review of c6-4-companion-show-suggestions-the-agents-first-push (2026-08-10)
+
+> Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
+> `feat/companion-c6-4-show-suggestions` diff. Entries below are coverage gaps and a latent
+> unguarded pattern pre-existing across the companion MCP tool suite (shared with `set_active_deck`,
+> c6-2) — real, but not caused by this change and not required by any AC.
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-4-companion-show-suggestions-the-agents-first-push.md`
+  summary: "`show_suggestions`'s `displayed` branch interpolates `outcome.clients` directly into the result message and its `tab`/`tabs` pluralization with no `None`-guard. `PushOutcome.clients: int | None` does not statically forbid a `displayed` outcome paired with `clients=None`, so a hypothetical `PushOutcome(outcome=\"displayed\")` would render as \"...in None tabs.\" Unreachable through the shipped wire today — `_outcome_for` only ever emits `displayed` paired with `receipt.clients >= 1` — and this diff faithfully mirrors the identical unguarded pattern already shipped in `set_active_deck` (c6-2), so it is not novel to this story."
+  evidence: 'Blind Hunter + Edge Case Hunter, independently; `src/mcp_server/tools/companion.py:313,320` (this story) and `src/mcp_server/tools/companion.py:192,198` (c6-2, pre-existing). No test in either tool exercises `displayed` with `clients=None` or `clients=0`.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-4-companion-show-suggestions-the-agents-first-push.md`
+  summary: "No test drives the suggestions payload through the real FastMCP `call_tool` invocation path — every delegation test in `test_companion_tool.py` calls `show_suggestions()` as a bare coroutine with an already-constructed `SuggestionsPayload`. This story's central technical claim (the repo's first BaseModel-typed `@mcp.tool()` parameter actually gets coerced from wire JSON and cap-enforced at the FastMCP boundary before the tool body runs, not just published in the schema) is verified only by a schema-shape inspection test and by citing `mcp==1.28.0`'s library source in the story's Q1 ruling — never by an executing end-to-end call through a real MCP client/server pair."
+  evidence: 'Blind Hunter; `tests/integration/mcp_server/test_companion_tool.py` (whole file) and `tests/integration/test_build_plugin.py::test_companion_show_suggestions_publishes_its_payload_shape_to_the_agent` (schema-shape only, never calls the tool).'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-4-companion-show-suggestions-the-agents-first-push.md`
+  summary: "The \"never raises\" contract, asserted in three separate docstrings (`show_suggestions`, and by convention across the companion tool module), has no test that forces `_client_push_event` to raise and confirms the exception actually propagates uncaught rather than being swallowed somewhere upstream. A gap shared with `set_active_deck` (c6-2), not unique to this diff."
+  evidence: 'Blind Hunter; `src/mcp_server/tools/companion.py:292-295` states the convention; no test in `test_companion_tool.py` makes either stub raise.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-4-companion-show-suggestions-the-agents-first-push.md`
+  summary: "`show_suggestions`'s docstring claims \"nothing here sorts, dedupes or trims\" — only the ordering half is tested (`test_payload_order_is_preserved_because_it_is_render_order`). No test drives a payload with duplicate `card_id`s to prove nothing collapses them, so a future \"helpful\" dedup added upstream would not turn any test red."
+  evidence: 'Blind Hunter; `tests/integration/mcp_server/test_companion_tool.py` — no duplicate-`card_id` test exists in `TestTheSuggestionsPushIsDelegated`.'
+
+## Deferred from: code review of c6-3-the-glass-follows-the-agents-active-deck-choice (2026-08-09)
+
+> Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
+> `feat/companion-c6` diff (tests-only: `ui/src/App.test.tsx` +3 tests). Entries below are coverage
+> gaps not required by any AC and pre-existing behaviour out of this story's bounds — real, but not
+> caused by this change.
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-3-the-glass-follows-the-agents-active-deck-choice.md`
+  summary: "The new AC-4 test (404 clears to no-active-deck) only exercises the `deck_not_found` refusal reason from a mounted App receiving a live `active_deck_changed` envelope. A mid-session re-drive that 404s or refuses with a different reason — e.g. `database_not_initialized`, whose `RETRIES_QUIETLY` entry is `true` (opposite of `no-active-deck`'s `false`) — is untested end to end; only its store-level mapping is pinned (`deck.test.ts:311`) and its `RETRIES_QUIETLY` entry (`states.ts:262-272`). AC 4 is worded specifically around the 404/`deck_not_found` case, so this is out of the story's literal scope, not a regression it introduced."
+  evidence: 'Edge Case Hunter; confirmed by reading `ui/src/components/StatePanel/states.ts:262-272` (RETRIES_QUIETLY mapping) and `ui/src/state/deck.test.ts:311` (store-level refusal-reason coverage) — no App-level test drives a live push through a non-`deck_not_found` refusal reason.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-3-the-glass-follows-the-agents-active-deck-choice.md`
+  summary: "The Q2 none-interlude test (a pin that outlives a no-active-deck interlude, self-heals on the next deck) asserts pin release and healing but includes no request-log sweep for stray fetches of the abandoned deck during the interlude — unlike Task 1's switch test, which explicitly sweeps the whole log (the c6-2 Greptile lesson: grep for the whole pattern, not just the cited line). Not required by AC 2's wording, which Task 1's test already proves; this is optional hardening the story applied asymmetrically across its own three new tests."
+  evidence: 'Blind Hunter + Edge Case Hunter, independently; `ui/src/App.test.tsx:2978-3030` — no `pathsSince`/`detailReadsOf`/`activeDeckReads` assertion anywhere in the test.'
+
+## Deferred from: code review of c6-2-companion-set-active-deck-the-agent-chooses-what-the-glass-shows (2026-08-09)
+
+> Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
+> `feat/companion-c6-2-set-active-deck` diff. Entry below is a coverage gap pre-existing across the
+> MCP tool suite and out of this story's bounds — real, but not caused by this change.
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-2-companion-set-active-deck-the-agent-chooses-what-the-glass-shows.md`
+  summary: "`companion_set_active_deck`'s `deck_id` parameter is passed to `DeckRepository.get_deck()` without `.strip()`, so a deck id with stray leading/trailing whitespace reports `deck_not_found` even when the trimmed id exists. `deck_analysis.py` (`analyze_mana_curve`, `detect_synergies`, the swap-suggestion helper) and `deck_management.py` (`delete_deck`, the rename/tag helper) all strip; `view_deck.py` — the skeleton this story was explicitly told to copy — does not. The inconsistency is project-wide, not introduced by c6-2."
+  evidence: 'Edge Case Hunter, confirmed by reading every MCP tool helper: `src/mcp_server/tools/companion.py:128` has no `.strip()`; `src/mcp_server/tools/view_deck.py:56-78` likewise has none; `deck_analysis.py:147,223,310` and `deck_management.py:379,487` do call it.'
+
+## Deferred from: code review of c6-1 (2026-08-09)
+
+> Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
+> `feat/companion-c6-1-leaf-client` diff. Entries below are coverage gaps not required by any AC and
+> pre-existing behaviour out of this story's bounds — real, but not caused by this change.
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`
+  summary: "c6-2's two concrete needs against this module's machinery, moved here from docstring prose per Task 7's R2 rule (review finding, decision-needed, ruled by Brad 2026-08-09: trim to pointers): (1) a tool-level `deck_not_found` outcome layered above client.py's closed five-token PushOutcomeToken set — the client cannot observe it, so it belongs at the MCP tool layer, not in PushOutcomeToken. (2) `_send()` is already generic over method and path specifically so c6-2's `PUT /api/active-deck` push can reuse it — same Authorization header, same PROBE_TIMEOUT-based timeouts, same trust_env=False net — rather than a duplicated implementation."
+  evidence: 'Acceptance Auditor: PushOutcomeToken and _send''s docstrings in src/companion/client.py named c6-2''s specific endpoint/outcome, which the story''s own Task 7 forbids ("mint no new forward-looking cross-module prose ... c6-2+''s needs get a dw: ledger line, not a docstring paragraph") and which the diff''s own Completion Notes had incorrectly claimed compliance with. Trimmed from client.py and re-homed here in the same review pass.'
+  resolution: '**CLOSED by c6-2 (2026-08-09).** Both needs met as ledgered. (1) `deck_not_found` is a `status` on `SetActiveDeckResult` in `src/mcp_server/tools/companion.py`, returned from the database read before any HTTP; `PushOutcomeToken` is still exactly five and `TestOutcomeVocabulary` still pins that by set equality. (2) `_send()` was reused verbatim — `method="PUT", path=ACTIVE_DECK_PATH` — with no change to its signature or body. What the ledger did NOT predict, and what the story found: `_outcome_for` could not be reused, because a `PUT /api/active-deck` 200 is an `ActiveDeckSetReceipt` and not an `EventIngestReceipt`. `_active_deck_outcome_for` is its sibling, and the `event-receipt-instead` row in `test_client.py` pins that the wrong receipt shape does not parse.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`
+  summary: "No test pins the 401-vs-403 boundary at the push layer. `_outcome_for` folds every status outside {200,400,403,413} into `backend_error`, including 401 — the one code most easily confused with the retry-triggering 403. A regression or misconfigured proxy answering 401 would silently become a non-retried `backend_error` with nothing pinning that as intended."
+  evidence: 'Blind Hunter. `src/companion/client.py:384-400` (`_outcome_for`) — the sole "unexpected status" test uses 418, not 401.'
+  resolution: '**CLOSED by c6-2 (2026-08-09, Q5 ruled yes by Brad).** A 401 row now sits in the unexpected-status parametrization of **both** matrices: `TestPushEvent::test_an_unexpected_status_is_backend_error_unretried` (widened from a single 418 case) and `TestSetActiveDeck::test_every_other_status_is_backend_error_unretried`. Each pins 401 → `backend_error` **and** a request count of exactly one, so "not retried" is asserted rather than assumed.'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`
+  summary: "No test covers a backend restart landing in the narrower window between the /health probe and the POST within a single attempt — only the between-attempts race (via on_post) is exercised. AD-4's 'verify before you send' principle is satisfied per-attempt, but the gap between live_instance() returning and _send() reading record.token inside one attempt is an inherent TOCTOU window of any verify-then-act pattern and isn't practically closable without a redesign."
+  evidence: 'Blind Hunter. `src/companion/client.py:403-424` (`_attempt`).'
+
+- source_spec: `_bmad-output/implementation-artifacts/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`
+  summary: "EventIngestReceipt has no extra=\"forbid\" (src/companion/contracts.py:1313-1349), so unexpected wire fields alongside a valid `clients` are silently ignored rather than rejected — inconsistent with PushOutcome's own extra=\"forbid\" tightness. Pre-existing (c5-5), untouched by c6-1, and contracts.py is out of this story's bounds."
+  evidence: 'Blind Hunter, confirmed by reading the model: `clients: int = Field(ge=0)` with no `model_config` overriding pydantic v2''s default extra="ignore".'
+
 ## Deferred from: R3 declined (2026-08-09)
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-r3-derived-class-token-guard.md`
@@ -73,7 +287,7 @@
 
 - source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
   summary: "agentEventOf only validates the `kind` discriminant, not `id`/`ts`/`payload` — a frame like {\"kind\":\"deck_changed\"} with no id/ts/payload passes through typed as a full AgentEvent. Not exercised today (system-event kinds are dispatched by kind alone; the four agent-view kinds are dropped unread), becomes actionable when Epic 6 builds the agent views and reads those fields."
-  evidence: 'Blind Hunter + Edge Case Hunter, independently; ui/src/api/client.ts:701-716.'
+  evidence: 'Blind Hunter + Edge Case Hunter, independently; ui/src/api/client.ts:701-716. NOT TRIGGERED BY c6-3 (checked 2026-08-09): that story is Epic 6''s first frontend story, but it reads no payload field at all — by ruling, the `active_deck_changed` handler ignores both the kind and `payload.deck_id` and re-drives the boot, which asks `GET /api/active-deck` first (connection.ts:96-108). Its tests drive frames through `push()` with a payload present and assert only surface and request-log outcomes, so nothing here is exercised or closed. STAYS OPEN for the first story that actually reads those fields — c6-4 onwards, when the agent views land. NOT TRIGGERED BY c6-4 (checked 2026-08-10) either: that story is Python-only — an MCP push tool with no `ui/` diff at all — so `agentEventOf` is neither called nor changed by it, and the SPA still drops the `suggestions` kind unread. The trigger is c6-7, the story that renders suggestion payload fields. **PARTIALLY TRIGGERED BY c6-6 (2026-08-11), and the ruling is recorded rather than the entry closed.** c6-6 is the first code in the app to READ an agent-view payload: `suggestionsViewOf` reads `payload.title` and `payload.items`. Brad ruled Q6 as recommended — **`agentEventOf` stays kind-only** (its documented register; widening a shipped, pinned narrower is a bigger change than this story needs) and the defence lives at the builder, which is TOTAL: `event.payload?.items ?? []` and a trimmed-title fallback construct a valid empty view for a bare `{"kind":"suggestions"}` frame. That is mandatory independent of the malformed-frame case, because `SuggestionsPayload.title` and `.items` are both OPTIONAL in the generated types even for honest wires. Pinned by three builder rows in `ui/src/state/agentView.test.ts` (absent payload / absent items / blank title) and one end-to-end test in `ui/src/App.test.tsx` that serialises a frame with no `payload` key at all and asserts the view opens empty with the socket still open. **What remains open is the half c6-6 does not reach: no ITEM field is validated** — a `card_id` that is not a string, or a missing `reason`, still passes through untouched, because this story renders no row. That stays c6-7''s, at the row that renders it (FR-13/AD-7: one bad entry degrades to the placeholder, the push never fails wholesale). **CLOSED BY c6-7 (2026-08-11), at exactly the point this entry names.** `SuggestionsView.tsx` types the row''s prop as `UntrustedItem` — every field of the store''s item type remapped to `unknown` — so the compiler REQUIRES a gate rather than calling one redundant, which is what stops a later tidy-up deleting it on the strength of the generated types. Four readers, four gates: a non-string `card_id` becomes `''''` (the app''s own value for "an id it cannot render": `hydrateCard` refuses it terminally with `placeholder: ''unknown-card''` and issues NO request, so a malformed item lands on AC 4''s degradation through shipped machinery rather than a new refusal invented at the row); a missing or non-string `reason` renders an empty line with the row otherwise normal (the element is unconditional, because dropping it would change the row height and therefore the derived width of the thumbnail beside it); a non-string `category` renders no badge; and `confidence` is checked for MEMBERSHIP of the three wire tokens rather than merely for being a string, because that slot is a chrome token in a 10px uppercase role. Pinned by four unit rows and one App-level row, all of which assert the NEIGHBOURS still render. `agentEventOf` remains kind-only — the c6-6 ruling stands, and this entry is now closed on both halves.'
 
 - source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
   summary: "The equivalence between the agent's outbound POST /agent/events body shape and the WebSocket frame the browser actually receives is asserted only in a comment (ws.py broadcasts the ingested event verbatim), with no cross-language contract test pinning it."
@@ -1397,6 +1611,13 @@ the gate-output rule rather than left as "we meant to".
   stated in the guard file's own header. When reviewing c6-5's agent view in particular, check
   the composed result rather than assuming the confinement guard did. (Severity: Low — the
   static half covers the shape every story is actually likely to write.)
+  **STILL OPEN AT c6-5 (2026-08-10) — this is review guidance, not a task, and c6-5 is the story
+  it was aimed at.** The agent view shipped declaring no `position: fixed` and no `z-index` at
+  all (the slot owns both; `AgentView.css`'s header records the reading), so the confinement
+  guard has nothing to miss on the value level — but that is exactly the claim this entry says a
+  static reader cannot settle, and the composed result has been seen by NO human eye: Block J
+  (eyes-on-pixels) remains ruled NOT RUN until the C6 manual checklist. Carried into c6-5's PR
+  description rather than closed.
 
 - **`z-index: 20` is a geometry literal that the AC 18 documentation guard does not cover.**
   The guard is derived from the code — every `\d+px` literal in every tracked stylesheet under
@@ -2773,9 +2994,13 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   no-active-deck" is a **client-side** transition (`EXPERIENCE.md:120` — the refetch 404s and the
   SPA clears to the panel), and a restart clears the slot anyway. Building an unused verb now would
   freeze a wire shape with no consumer. **Home: unowned** — whichever story first has a *caller*
-  that needs it, most plausibly c6-2 if the tool ever grows a "stop displaying" mode. **The shape
-  it should take if wanted**: a `DELETE /api/active-deck`, not a nullable request field — the
-  request model staying non-null is what keeps `PUT` unambiguous. (Severity: Low.)
+  that needs it. **The shape it should take if wanted**: a `DELETE /api/active-deck`, not a nullable
+  request field — the request model staying non-null is what keeps `PUT` unambiguous.
+  (Severity: Low.)
+  **c6-2 did NOT trigger it (2026-08-09).** The entry named this story as the most plausible
+  candidate; it shipped `companion_set_active_deck` with no "stop displaying" mode because nothing
+  asked for one, and touching `ActiveDeckRequest` was explicitly out of scope. The entry stays open
+  and unowned, one candidate poorer.
 
 - ~~**Nothing broadcasts the change.**~~ **✅ CLOSED by c5-4 (2026-08-08).** `PUT /api/active-deck`
   now awaits `ws.broadcast_active_deck_changed(request.app, slot.deck_id)` after the store and
@@ -2913,7 +3138,42 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   worth a human's eye: c3-6 declined for not knowing the result's shape, c3-7 because the shape was
   shared with c3-8's, and c3-8 because that sharing turned out not to be real. If c6-4 also
   declines it, the entry should be closed as "not wanted" rather than moved a fourth time.
-  (Severity: Low today; Medium at c6-4.)
+  (Severity: Low today; Medium at c6-4.) — **NOT TRIGGERED BY c6-4 (checked 2026-08-10), and the
+  home looks mis-aimed by one story.** Every re-homing above describes c6-4 as *"suggestion rows
+  beside the deck grid"*, i.e. a rendered surface. The epic split did not put that surface here:
+  c6-4 is the **push tool only** — a Python `@mcp.tool()` that mints an envelope and POSTs it —
+  and the shipped SPA deliberately drops the `suggestions` kind, so this story causes **zero image
+  requests** and cannot render one card id at all, let alone twice. The first surface matching the
+  trigger's own words is **c6-7**'s suggestions view (c6-5/6 build the shell and the open/replace
+  behaviour). Not re-homed unilaterally, because the entry says a fourth move should be a
+  deliberate close instead: **STAYS OPEN**, and whether to re-aim it at c6-7 or close it as "not
+  wanted" is a ruling for Brad, not an implementation detail of this story.
+  **CLOSED AS "NOT WANTED" — Brad's ruling at c6-7 (2026-08-11), as recommended.** The entry
+  asked for a deliberate close rather than a fifth move, and c6-7 is the surface its own trigger
+  words named, so this is the decision made where it was owed rather than deferred again. Three
+  things settle it. **The harm is a log line**: with a cold backend cache, two *concurrent*
+  fetches of one key make the Windows loser's `os.replace` raise `PermissionError` — observed
+  live at c3-7 — and the request still succeeds, so nothing reaches the glass. **The single-tab
+  trigger is impossible by construction**: `companion_show_suggestions` de-duplicates item ids
+  (c6-4), and c6-7's view hydrates and draws one request per UNIQUE id, so one tab asks for each
+  picture once; only two tabs racing a cold cache can collide at all. **The cost is a backend
+  single-flight `Future` with cancelled-leader and exception-fan-out semantics plus its own test
+  matrix**, in a story that is otherwise frontend-only and whose Python suite is pinned unmoved.
+  Three previous owners (c3-6, c3-7, c3-8) each declined it on the same reasoning. If a future
+  story makes concurrent same-key fetches ORDINARY rather than incidental — a warm-cache
+  prefetch sweep, or a multi-tab session that is designed for rather than tolerated — it should
+  be raised fresh against that story's own evidence, not reopened from here.
+  **Annotated by code review (2026-08-11), ruling not reopened.** "The single-tab trigger is
+  impossible by construction" is true of requests originating from `companion_show_suggestions`
+  alone, but misses one narrower case this story's own code names: `renderableOf`'s docstring
+  in `SuggestionsView.tsx` calls out "a suggested card that happens to be IN the open deck" as a
+  reachable render tier — for that card, the DECK's own image sweep and THIS VIEW's hydration
+  effect could both address the same `card_id` in the same tab, which is the same concurrent-
+  same-key shape as the two-tab case. The closure still holds: the residual harm at this
+  trigger is the identical benign log line (a `PermissionError` on the losing `os.replace`, with
+  the request still succeeding), so the cost/benefit that declined a single-flight `Future` for
+  the two-tab case declines it here too. Flagged for whichever future story is the one that
+  finally reopens this ledger entry, so the fuller trigger surface is on record.
 
 - **The `DbSession` is held across the pacer's queue wait, and it works by arithmetic rather than
   by design** (Q6, Brad 2026-08-01 — accept, pin, ledger). **Measured, not assumed** (Task 0):
@@ -4678,6 +4938,19 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   halves are now asserted in `App.test.tsx`. The gate itself stays **c8-5's**; the remaining key is
   displaced by **c6-8**. (Severity: Low.)
 
+  ✅ **DISPLACED 2026-08-12 by c6-8, and the rendered count is now ZERO** — the first time since
+  c2-6 that no story-key-shaped string renders anywhere in the app. `App.tsx` passes
+  `nav={<AgentViewsNav />}`, so the shell's placeholder is displaced rather than deleted:
+  `AppShell.tsx` was not edited, the string is still in that file, and `AppShell.test.tsx` still
+  asserts it against the component's own props. That is the eleventh and last application of
+  c2-9's displacement ruling — the shell now has no unfilled slot. Both `App.test.tsx`
+  assertions INVERTED rather than being removed (a presence became an absence, and a count of one
+  became a count of zero), each with a positive twin proving the pills that displaced the string
+  are really on the glass. **The GATE is still c8-5's and this does not discharge it**: a count on
+  two rendered fixtures is not a repo-wide guard, and the correction recorded immediately above —
+  a count that only checked the keys someone thought of — is exactly why that distinction is
+  worth keeping. What c6-8 removes is the last known key, not the possibility of a new one.
+
 - **A SECOND DOCUMENT-LEVEL KEY LISTENER WAS UNGUARDED, AND THE PROBE FOUND IT.** The contract —
   one `keydown` on `document`, in the **bubble** phase, with **capture reserved for c6-5's agent
   view** — is written in `CardDetail.tsx:88-101`, in UX-DR39, in `EXPERIENCE.md` and in this story's
@@ -4686,6 +4959,20 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   `tests/keyboard-floor.test.ts`, which asserts the listener SET (one, named by file and event) and
   the PHASE (no `true` / `capture: true` argument), each with a non-vacuity anchor. **Recorded
   rather than quietly fixed**, per the epic's standing rule. (Severity: Medium — now closed.)
+  **FULFILLED AT c6-5 (2026-08-10), AND THE GUARD FIRED FOR REAL.** The reservation this entry
+  describes now holds a real listener: `AgentView.tsx` registers the capture-phase Esc that closes
+  the view and calls `stopPropagation()`. The guard was rewritten from "no capture anywhere" into
+  an ENUMERATED two-row table — each listener named by file and event WITH the phase UX-DR39 gives
+  it — which is strictly stronger than what it replaced, because it now also catches the agent
+  view's own listener being demoted to bubble or CardDetail's being promoted to capture. Its
+  non-vacuity anchor gained a third assertion: the capture listener's source must contain
+  `stopPropagation()`. **The firing proof is this story's planted red**: removing that one call —
+  the exact regression this entry was written about — turned five tests red across three files
+  (the two layering tests in `AgentView.test.tsx`, the end-to-end pair in `App.test.tsx`, and this
+  guard's own non-vacuity anchor), with the collected count validated at 1,934 before and after.
+  Note for the record that the story predicted this guard would stay GREEN under the plant, on the
+  grounds that it reads source for a listener's existence rather than its body; the added
+  assertion is why it did not.
 
 - **`tests/keyboard-floor.test.ts` cannot see specificity, and says so.** It asks whether a
   `:focus-visible` rule EXISTS for a focusable element's class, not whether a later selector
@@ -5420,6 +5707,10 @@ consequences for the ledger are here.
   repaired, as predicted: the event now delivers the correction, so the one wasted request per cold
   open against a deleted deck is self-correcting the moment the agent sets another deck — which the
   agent's own `PUT` now announces on the wire.
+  **FIRING PROOF, 2026-08-09 (c6-3):** the closure was asserted from the code; it is now measured.
+  Neutering `onSystemEvent` to a no-op — this entry's regression, verbatim — reddens 7 App-level
+  tests (c6-3's 3 new switch tests plus the 4 shipped socket-event tests), collected count validated
+  at 1,871. Nothing outside the event path moved.
 
 - **dw:5221-5237 — the Vite dev proxy rewrites `Host` but not `Origin` (Medium).**
   **CLOSED by fix (a) of the three the entry enumerated** (Q7). The `/ws` entry rewrites `Origin` to
@@ -5867,3 +6158,59 @@ Also executed or re-homed at this retro, beyond the seven:
   list honest. Also standing: `dw:5197`'s twice-confirmed one-sentence fix
   (`test_committed_schema.py` module docstring) remains unowned and cheap — fair game for R2's
   sweep to absorb.
+
+## Deferred from: code review of c6-6-a-push-opens-its-view-and-a-repeat-push-replaces-it-in-place (2026-08-11)
+
+- **`id`/`ts` on the `suggestions` envelope are trusted without validation.**
+  `suggestionsViewOf` (`ui/src/state/agentView.ts:229-230`) copies `event.id`/`event.ts` straight
+  through with no presence check, since `agentEventOf` (`client.ts:701-716`) validates only
+  `kind`. Two distinct malformed pushes both missing `id` would make
+  `AgentView.tsx:312`'s `showingPushRef.current === pushId` comparison treat them as the same
+  push, skipping the replace effect's re-focus/live-region/crossfade — the store still
+  overwrites `content` unconditionally, so visible text updates via ordinary reconciliation with
+  no accessible announcement for that specific malformed case. Consequence of the kind-only
+  `agentEventOf` narrower design, which c6-6's Q6 ruling scoped to defending
+  `payload`/`title`/`items` only; `id`/`ts` validation was out of that story's ruled scope, and
+  the same trust already applies uniformly to the shipped `deck_changed`/`active_deck_changed`
+  kinds. Requires a backend contract violation to trigger — not reachable from the shipped
+  companion server today.
+- **`AgentView.test.tsx`'s ARM 3 fixtures hand-roll `StatePanel` markup instead of importing it.**
+  The new focus-restore tests (`ui/src/containers/AgentView/AgentView.test.tsx:81-82`) construct
+  a `<section className="state-panel">`/`<h2 className="state-panel-headline">` fragment by hand
+  rather than rendering the real `StatePanel` component. If `StatePanel.tsx`'s role, label, or
+  headline class ever changes, these tests would keep passing against a fixture that no longer
+  matches production. Test-quality only, no functional impact.
+
+## Deferred from: code review of c6-9-degradation-with-the-app-closed-and-the-250-ms-push-budget (2026-08-12)
+
+- **The pre-existing `outside_app` role only flags module-level companion-app imports.**
+  `find_import_violations`'s `outside_app` role (`tests/unit/companion/test_import_boundary.py:491`,
+  `elif imported.module_level:`) only fires on module-level `src.companion.app` imports — a
+  function-local `import src.companion.app` anywhere outside `src/mcp_server` and the app package
+  itself would pass silently. c6-9's own new SC-3 sweep makes exactly this "a deferred import is
+  still a dependency" argument for firing on function-local imports too, but the untouched
+  app-side guard keeps the identical blind spot. Pre-existing, unmodified by c6-9.
+- **`_COMPANION_REFERENCE_ALLOWED` exempts whole files, not specific import sites.**
+  (`tests/unit/companion/test_import_boundary.py:162-172`) The three-site allow-list is keyed by
+  filename, so nothing constrains which `src.companion` symbols `server.py`/`companion.py` may
+  import later — a future unrelated companion import landing in an already-exempted file would
+  sail through undetected. Matches the granularity of the pre-existing `_APP_IMPORT_EXEMPT`
+  idiom it sits beside; tightening to import-site-level tracking would be a larger redesign.
+- **`_seeded_card_ids` reads `decks[0]` from an ordering that is not strictly guaranteed.**
+  (`scripts/cdp_harness.py:498-515`) `GET /api/decks`'s own docstring says its ordering is
+  "newest first… not a strict guarantee" under ties. A repeated `push` harness run against the
+  same data dir could silently draw ids from a different deck than a prior run, with nothing in
+  the output recording which deck was actually used. Harness usability only — does not affect
+  this story's recorded 15/21/36 ms figures (a single deck, not re-created between runs).
+- **`--card-ids` silently defeats the warm arm's cache-priming premise.**
+  (`scripts/cdp_harness.py:946`) Passing fabricated or non-existent ids together with
+  `--arm warm` bypasses `_seeded_card_ids`'s real-Scryfall-id guarantee with no validation or
+  warning, turning a "warm" run into a placeholder-only run indistinguishable from "blocked".
+  Not exercised by this story's own measurement (real deck ids throughout) — a future-run
+  footgun only.
+- **Image-warmth counters are a single point sample, unlike the polled `layout_ms`.**
+  (`scripts/cdp_harness.py:660-672`) `images_requested`/`images_from_network`/`images_painted`
+  are read once after a fixed `--image-settle` sleep (default 2.5 s), while `layout_ms` polls
+  via `_await_surfaces` until ready or timeout. A slow machine or network could still have
+  images in flight at sample time, silently under-counting the warmth metrics. Does not affect
+  the reported budget verdict (`layout_ms`) — only the supplementary network/painted counts.

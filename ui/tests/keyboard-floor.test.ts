@@ -381,13 +381,66 @@ describe('the ring’s spelling does not drift (AC 17, AC 18)', () => {
     // screen distinguishes them and no eye-check ever could. `DESIGN.md:31` and `:332` disagree
     // about which one the ring is; `tokens.css:113-115` settles it, because `--focus-ring` exists
     // for precisely this. A guard keyed on token IDENTITY sees a difference a human cannot.
+    //
+    // ==== NARROWED TO THE RING'S OWN PROPERTIES (c6-5, 2026-08-10) ======================
+    // This read the WHOLE rule body until c6-5, which was the same claim while no `:focus-visible`
+    // rule declared anything but a ring. The agent view's close pill is DESIGN.md's nav pill
+    // (`:451`), whose spec gives hover AND focus the same three changes — border to
+    // `{nav-pill.hover-border}`, TEXT to `{nav-pill.hover-foreground}` (which is `accent-bright`)
+    // and `{nav-pill.hover-glow}`. A body-wide ban made that spec unshippable: the foreground of
+    // a focused control is not a ring, and there is no other token for "the pill's text is lit".
+    //
+    // So the ban is keyed on the properties that actually DRAW an indicator. That is what the
+    // test's own name, message and Q6 rationale have always said — *"in every RING"* — and it
+    // leaves the drift this guard exists to catch fully covered: `outline`, `outline-color` and
+    // `box-shadow` are the only ways a ring reaches the screen, and `--accent-bright` in any of
+    // them is still red. Narrowing rather than exempting the class, because an exemption list
+    // had to grow again at c6-8's nav pills, which carry the identical spec — and did: see
+    // `.agent-views-nav-pill:focus-visible` in that stylesheet, whose accent-bright is a TEXT
+    // colour and whose outline is the plain ring, exactly as this narrowing anticipated.
+    const RING_PROPERTIES = /^(outline|outline-color|box-shadow)$/i
     for (const rule of focusRules) {
+      const ringDeclarations = rule.body.split(';').filter((declaration) => {
+        const colon = declaration.indexOf(':')
+        return colon !== -1 && RING_PROPERTIES.test(declaration.slice(0, colon).trim())
+      })
       expect(
-        rule.body.includes('--accent-bright'),
+        ringDeclarations.some((declaration) => declaration.includes('--accent-bright')),
         `${rule.file} — \`${rule.selector}\` draws its ring from --accent-bright; ` +
           `--focus-ring is the token for a focus indicator and carries the same value`,
       ).toBe(false)
     }
+  })
+
+  it('would still catch a ring drawn from --accent-bright — the firing half', () => {
+    // The narrowing above is only safe if the narrowed guard still fires, so the proof is fed
+    // inline rather than by breaking a real stylesheet. Both ring spellings are planted, and the
+    // `color:` declaration that the narrowing deliberately admits is planted beside them so the
+    // difference between the two is asserted rather than described.
+    const ringsIn = (body: string) =>
+      body.split(';').filter((declaration) => {
+        const colon = declaration.indexOf(':')
+        return (
+          colon !== -1 &&
+          /^(outline|outline-color|box-shadow)$/i.test(declaration.slice(0, colon).trim())
+        )
+      })
+
+    expect(
+      ringsIn('outline: 2px solid var(--accent-bright);').some((d) =>
+        d.includes('--accent-bright'),
+      ),
+    ).toBe(true)
+    expect(
+      ringsIn('box-shadow: 0 0 0 2px var(--accent-bright);').some((d) =>
+        d.includes('--accent-bright'),
+      ),
+    ).toBe(true)
+    expect(
+      ringsIn(
+        'color: var(--accent-bright); outline: var(--focus-ring-width) solid var(--focus-ring);',
+      ).some((d) => d.includes('--accent-bright')),
+    ).toBe(false)
   })
 
   it('keeps --focus-ring-offset UNUSED on the two over-art elements (AC 17)', () => {
@@ -437,14 +490,37 @@ describe('every interactive element is a real control with a real hit box (AC 20
     // `connection-pill` joins at c5-7 and it is the clearest member of the group: its tallest
     // text is `--type-body`'s 14px at 1.5 (a 21px line box) beside a `--type-micro` word, so the
     // pill is UNDER the floor on its own geometry and declares both minimums explicitly.
-    const DECLARES_MIN = ['footer-attribution-link', 'skip-link', 'connection-pill']
+    // `agent-view-close` joins at c6-5 for the connection pill's reason exactly: it is a nav
+    // pill on `--type-label` (11px at 1.3 — a 14px line box), so it is UNDER the floor on its
+    // own geometry however much padding it carries, and it declares both minimums explicitly.
+    // `agent-views-nav-pill` joins at c6-8, and it is the prediction two lines up landing
+    // exactly as written: it IS the nav pill, on the same `--type-label` (11px at 1.3 — a 14px
+    // line box) as the close pill it shares a DESIGN.md block with, so it is under the floor on
+    // its own geometry however much padding it carries, and it declares both minimums in the
+    // same rule. Four members of this group now, and every one of them is a pill.
+    const DECLARES_MIN = [
+      'footer-attribution-link',
+      'skip-link',
+      'connection-pill',
+      'agent-view-close',
+      'agent-views-nav-pill',
+    ]
     // Well clear BY MEASURED GEOMETRY, each with its eye-check on record: the tile is card-sized,
     // the flip control's hit box is 32×32 (c4-6), the deck row spans the panel at ≥34px, the
     // unpin control measured 61×30 (c4-5), and the oracle scroller is a multi-line text block.
+    // `suggestion-row` joins at c6-7, and it is the most clearly-clear member of the group: the
+    // row is a two-line grid — a head line on `--type-body-strong` (14px at 1.5 = a 21px line
+    // box) over a reason on `--type-body` (another 21px), separated by `--space-2` and wrapped in
+    // `--space-2` of block padding, so it is ~66px tall before the thumbnail is considered. The
+    // thumbnail spans that whole height at 63:88 and the row spans the view's width, so BOTH axes
+    // are clear by an order of magnitude on the short one. This is a derived-geometry claim like
+    // the deck row's above; the pixels are the C6 manual checklist's (c8-6), as they are for
+    // every other member.
     const WELL_CLEAR = [
       'card-tile',
       'flip-control',
       'deck-row',
+      'suggestion-row',
       'card-detail-unpin',
       'card-detail-oracle',
     ]
@@ -515,14 +591,23 @@ describe('the document keyboard layering is one listener, in the bubble phase (A
    * than quietly fixed, per this epic's standing rule.
    *
    * What the contract is: `CardDetail` registers ONE `keydown` on `document`, in the **bubble**
-   * phase, to release a pin on Esc. **The capture phase is RESERVED for c6-5's agent view**, which
-   * must close first (UX-DR39: *"Esc closes the topmost thing"*). Capture at the document runs
-   * before this bubble listener for EVERY target, which is what makes the layering hold even when
-   * focus sits on `<body>` — an element-scoped handler could not manage that, and the first
-   * written form of the contract had exactly that hole (found at review 2026-08-05).
+   * phase, to release a pin on Esc, and the agent view registers ONE in the **capture** phase,
+   * which closes the view and calls `stopPropagation()` so the pin survives (UX-DR39: *"Esc
+   * closes the topmost thing"*). Capture at the document runs before the bubble listener for
+   * EVERY target, which is what makes the layering hold even when focus sits on `<body>` — an
+   * element-scoped handler could not manage that, and the first written form of the contract had
+   * exactly that hole (found at review 2026-08-05).
    *
-   * A second listener anywhere breaks it in one of two ways: in capture it pre-empts the agent
-   * view before that story exists to defend itself, and in bubble it makes the ordering between
+   * **THE RESERVATION IS NOW FILLED (c6-5, 2026-08-10).** This guard shipped asserting that NO
+   * listener anywhere used the capture phase, holding it empty for the agent view that did not
+   * yet exist. That view now exists, so the rule becomes what it was always going to become: an
+   * ENUMERATED table of who owns which phase, below. The change is deliberately not a relaxation
+   * — "no capture anywhere" is replaced by "exactly these two listeners, each in exactly this
+   * phase", which is strictly more than the old rule asserted, and a third listener in either
+   * phase is still red.
+   *
+   * A listener outside that table breaks the contract in one of two ways: a second capture one
+   * races the agent view for the same Esc, and a second bubble one makes the ordering between
    * two same-phase listeners depend on module import order.
    */
   /**
@@ -599,37 +684,76 @@ describe('the document keyboard layering is one listener, in the bubble phase (A
       }))
     })
 
-  it('registers exactly ONE document key listener, and names its owner', () => {
+  /**
+   * WHO OWNS WHICH PHASE. In the order the scan finds them, which is `git ls-files` order.
+   *
+   * Enumerated rather than derived, exactly like `token-usage.test.ts`'s shipped-motion pin and
+   * for the same reason: a story that adds, removes or RE-PHASES a document key listener moves
+   * this table on purpose, in the same commit, and a story that does it by accident goes red.
+   * There is no rule that could derive "the agent view captures and the detail panel bubbles" —
+   * that is UX-DR39's layering, which lives in prose and in this list.
+   */
+  const DOCUMENT_KEY_LISTENERS: { entry: string; capture: boolean }[] = [
+    // c6-5. Closes the view and calls `stopPropagation()`, so this Esc never reaches the bubble
+    // listener below and the pin survives (EXPERIENCE.md:141, Flow 1 :188). Registered only
+    // while a view is open — an always-mounted capture listener would swallow Esc for the pin
+    // when nothing is showing, which inverts UX-DR39 rather than implementing it.
+    { entry: 'src/containers/AgentView/AgentView.tsx:document.keydown', capture: true },
+    // c4-5. Releases the pin, in the bubble phase, so the capture listener above always wins.
+    { entry: 'src/containers/CardDetail/CardDetail.tsx:document.keydown', capture: false },
+  ]
+
+  it('registers exactly these document key listeners, and names their owners', () => {
     expect(
       keyListeners.map((l) => `${l.file}:${l.receiver}.${l.event}`),
-      'the document keyboard layering admits exactly one listener — CardDetail’s Esc, on ' +
-        '`document`, in the bubble phase. A second one (on document OR window) breaks UX-DR39’s ' +
-        '"Esc closes the topmost thing" ordering before c6-5 exists to defend it.',
-    ).toEqual(['src/containers/CardDetail/CardDetail.tsx:document.keydown'])
+      'the document keyboard layering admits exactly two listeners — the agent view’s Esc in ' +
+        'CAPTURE and CardDetail’s in BUBBLE. A third one (on document OR window) breaks ' +
+        'UX-DR39’s "Esc closes the topmost thing" ordering, and a second one in the same phase ' +
+        'makes it depend on module import order.',
+    ).toEqual(DOCUMENT_KEY_LISTENERS.map((l) => l.entry))
   })
 
-  it('leaves the CAPTURE phase reserved for c6-5’s agent view', () => {
+  it('registers each listener in the phase UX-DR39 gives it', () => {
     // The THIRD argument decides the phase: `true` or `{ capture: true }` is capture, anything
     // else is bubble. Asserted on that argument ALONE — isolated by a top-level-comma split so an
     // inline handler whose BODY contains `true` (`(e) => setOpen(true)`) cannot false-positive,
     // and a third argument hiding behind an arrow's `)` cannot escape.
+    //
+    // BOTH DIRECTIONS, which is what makes this stronger than the "no capture anywhere" rule it
+    // replaces: the agent view's listener must BE capture (a bubble one would race CardDetail's
+    // by import order and release the pin on the same Esc that closes the view), and
+    // CardDetail's must NOT be (a capture one would pre-empt the view it is supposed to lose to).
     for (const listener of keyListeners) {
+      const entry = `${listener.file}:${listener.receiver}.${listener.event}`
+      const declared = DOCUMENT_KEY_LISTENERS.find((l) => l.entry === entry)
       const phaseArg = topLevelArgs(listener.rest)[1] ?? ''
       expect(
         /\btrue\b|capture\s*:\s*true/.test(phaseArg),
-        `${listener.file} registers a ${listener.receiver} ${listener.event} listener in the ` +
-          `CAPTURE phase, which CardDetail.tsx:88-101 reserves for c6-5's agent view`,
-      ).toBe(false)
+        `${entry} is registered in the ${declared?.capture ? 'BUBBLE' : 'CAPTURE'} phase; ` +
+          `UX-DR39 gives it ${declared?.capture ? 'CAPTURE' : 'BUBBLE'} (CardDetail.tsx:88-101)`,
+      ).toBe(declared?.capture ?? false)
     }
   })
 
-  it('is genuinely reading the listener it names (non-vacuity)', () => {
+  it('is genuinely reading the listeners it names (non-vacuity)', () => {
     // Without this, a regex that stopped matching would report an EMPTY list — and the phase rule
-    // above would pass by looping over nothing. The one shipped listener is asserted to be found
-    // AND to be the Esc handler it claims to be.
-    expect(keyListeners).toHaveLength(1)
-    const owner = withoutComments(sourceOf('src/containers/CardDetail/CardDetail.tsx'))
-    expect(owner).toContain("event.key !== 'Escape'")
+    // above would pass by looping over nothing. Both shipped listeners are asserted to be found
+    // AND to be the Esc handlers they claim to be.
+    expect(keyListeners).toHaveLength(DOCUMENT_KEY_LISTENERS.length)
+    for (const file of [
+      'src/containers/AgentView/AgentView.tsx',
+      'src/containers/CardDetail/CardDetail.tsx',
+    ]) {
+      expect(withoutComments(sourceOf(file))).toContain("event.key !== 'Escape'")
+    }
+    // The half the phase loop cannot see: the agent view's listener is only useful if it STOPS
+    // the event, and a capture listener that forgot to would close the view and release the pin
+    // on one keystroke — the exact regression dw:4766-4773 was written about.
+    expect(
+      withoutComments(sourceOf('src/containers/AgentView/AgentView.tsx')),
+      'the capture-phase listener must call stopPropagation(), or one Esc closes the view AND ' +
+        'releases the pin (UX-DR39, dw:4766-4773)',
+    ).toContain('event.stopPropagation()')
   })
 })
 

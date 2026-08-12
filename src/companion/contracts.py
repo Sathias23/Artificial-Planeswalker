@@ -101,7 +101,7 @@ precedent: an agent-facing rejection has no business interrupting a human readin
 it worth the eight-site ripple rather than reusing ``invalid_request``: AD-8 requires the agent-side
 client to **re-read the discovery file and retry exactly once** on an auth rejection, and to do no
 such thing on a malformed request. Both answering ``400 invalid_request`` would make that rule
-unimplementable — c6-1 would retry the wrong failure or fail to retry the right one — and this epic
+unimplementable — the client would retry the wrong failure or fail to retry the right one — and this
 is where the wire is settled, before Epic 5 freezes the union.
 
 ``no_image_data`` and ``image_fetch_failed`` are c3-5's pair (Q2, Brad 2026-08-01), and they are
@@ -217,8 +217,10 @@ class ActiveDeck(BaseModel):
 
     ``null`` is the answer, not the absence of one. The active deck is a resource that always
     exists and whose value may be "no deck", so asking on a cold open answers ``200`` with
-    ``deck_id: null`` — never ``404``, and never a different shape. **The same model answers both
-    operations**, so a reader has one shape to render and a writer has one shape to assert on.
+    ``deck_id: null`` — never ``404``, and never a different shape. **This is the read's model.**
+    The write answers ``ActiveDeckSetReceipt``, which declares this same ``deck_id`` and adds the
+    delivered client count — so a reader still has one shape to render, and a writer asserts on
+    that one plus a number the browser never asks for.
 
     The value lives in the companion's memory and **dies with the process**: after a restart this
     reports ``null`` again, whatever was displayed before. That is specified behaviour rather than a
@@ -288,6 +290,55 @@ class ActiveDeckRequest(BaseModel):
         if not value.strip():
             raise ValueError("deck_id must not be blank")
         return value
+
+
+# WIRE-VISIBLE, IN FULL. The prose before `Attributes:` becomes the schema description (Q9, c3-9).
+class ActiveDeckSetReceipt(BaseModel):
+    """The body of ``PUT /api/active-deck`` — what was stored, and how many tabs saw it (FR-07).
+
+    ``ActiveDeck`` with one field added, and that is the whole difference: the id echoes back
+    exactly as the read reports it, and beside it sits the number of connected browsers the change
+    actually reached. **The read has no use for that number and does not carry it** — a page
+    rendering the active deck is the audience, not the fan-out — so the two operations answer two
+    shapes rather than one.
+
+    The count is what makes an agent's report honest. Setting the deck succeeds whether or not
+    anybody is looking, so without it the only truthful thing a caller could say is "it is set";
+    with it, "switched — and no tab is open, so nothing changed on screen" is available instead.
+
+    **Zero is a success, not a failure**, on exactly the terms ``EventIngestReceipt`` states: a
+    companion with no tab open is the ordinary state, the value was stored regardless, and
+    re-sending would change nothing. Nothing about the request is echoed beyond the id the caller
+    is entitled to see confirmed (CM-1).
+
+    Attributes:
+        deck_id: The deck now being displayed, byte-identical to what was stored. Declared exactly
+            as :attr:`ActiveDeck.deck_id` is — same nullability — so a reader that handles the read
+            handles this. There is still no clearing verb, so the write cannot answer ``null``
+            today; the shape admits it for the same reason the read's does.
+        clients: How many connected browsers received the change notification, never negative.
+
+            **Delivered, not registered**, and read from the same fan-out
+            :class:`EventIngestReceipt` counts — see that model for why the alternative
+            (sampling the registry around the broadcast) can over-report a tab that vanished
+            mid-write. It is a count at the moment of the fan-out and not a live gauge.
+
+    Example:
+        >>> ActiveDeckSetReceipt(deck_id="deck-1", clients=0).model_dump()
+        {'deck_id': 'deck-1', 'clients': 0}
+    """
+
+    # `extra="forbid"`, unlike `EventIngestReceipt`, which `deferred-work.md` records as the
+    # looser sibling this one deliberately does not copy. Both are parsed by the leaf client from a
+    # backend shipped in the SAME installed package — there is no version skew to be forward
+    # compatible with — so an unexpected field means the two halves disagree about the contract,
+    # and a `backend_error` is the honest report of that. (Contrast `HealthResponse`, which stays
+    # open on purpose: it is read *before* identity is proven, from something that may not be this
+    # application at all.) This comment sits below the docstring, so it costs no regeneration.
+    model_config = ConfigDict(extra="forbid")
+
+    deck_id: str | None
+    clients: int = Field(ge=0)
 
 
 class SessionTicket(BaseModel):

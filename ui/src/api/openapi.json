@@ -469,7 +469,7 @@
       },
       "put": {
         "summary": "Set Active Deck",
-        "description": "Set which deck the companion displays, and echo back what was stored.\n\n**This endpoint is for the agent, not the browser.** It requires a credential the browser does\nnot have and must never be given, so a page has nothing to call here; a request that presents\nno valid credential is refused and the active deck is left untouched.\n\nIdempotent, which is why the verb is ``PUT``: setting the same deck twice is the same state.\nAnswers ``200`` with the stored value rather than ``204``, so one shape serves the read, the\nwrite and the change notification a later story broadcasts.\n\n**The deck is not checked for existence.** Any non-blank id is accepted and stored verbatim,\nincluding one that names no deck. Validating it belongs to the caller that has database access\nand can report the failure meaningfully; a client that then fetches the deck gets the ordinary\nnot-found answer.",
+        "description": "Set which deck the companion displays, and report what was stored and who saw it.\n\n**This endpoint is for the agent, not the browser.** It requires a credential the browser does\nnot have and must never be given, so a page has nothing to call here; a request that presents\nno valid credential is refused and the active deck is left untouched.\n\nIdempotent, which is why the verb is ``PUT``: setting the same deck twice is the same state.\nAnswers ``200`` with the stored value rather than ``204``, and beside it the number of connected\nbrowsers the change actually reached — so a caller can distinguish *switched, and a tab is\nwatching* from *switched, and nobody is looking*.\n\n**The deck is not checked for existence.** Any non-blank id is accepted and stored verbatim,\nincluding one that names no deck. Validating it belongs to the caller that has database access\nand can report the failure meaningfully; a client that then fetches the deck gets the ordinary\nnot-found answer.",
         "operationId": "set_active_deck_api_active_deck_put",
         "requestBody": {
           "content": {
@@ -487,7 +487,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ActiveDeck"
+                  "$ref": "#/components/schemas/ActiveDeckSetReceipt"
                 }
               }
             }
@@ -696,7 +696,7 @@
           "deck_id"
         ],
         "title": "ActiveDeck",
-        "description": "Which deck the companion is currently displaying, or ``null`` for none (FR-07).\n\n``null`` is the answer, not the absence of one. The active deck is a resource that always\nexists and whose value may be \"no deck\", so asking on a cold open answers ``200`` with\n``deck_id: null`` — never ``404``, and never a different shape. **The same model answers both\noperations**, so a reader has one shape to render and a writer has one shape to assert on.\n\nThe value lives in the companion's memory and **dies with the process**: after a restart this\nreports ``null`` again, whatever was displayed before. That is specified behaviour rather than a\nlimitation — the agent sets the deck, so a fresh backend genuinely has no deck to show until it\nis told (FR-07, CM-3).\n\nA non-null ``deck_id`` is **not a promise that the deck still exists.** Nothing validates it on\nthe way in — that is the MCP tool's job, since it is the party with database access and the one\nthat must tell the agent (AD-16) — and a deck can be deleted after being set. A reader that\nfetches the deck and gets ``deck_not_found`` is seeing the ordinary case, not a broken\ninvariant."
+        "description": "Which deck the companion is currently displaying, or ``null`` for none (FR-07).\n\n``null`` is the answer, not the absence of one. The active deck is a resource that always\nexists and whose value may be \"no deck\", so asking on a cold open answers ``200`` with\n``deck_id: null`` — never ``404``, and never a different shape. **This is the read's model.**\nThe write answers ``ActiveDeckSetReceipt``, which declares this same ``deck_id`` and adds the\ndelivered client count — so a reader still has one shape to render, and a writer asserts on\nthat one plus a number the browser never asks for.\n\nThe value lives in the companion's memory and **dies with the process**: after a restart this\nreports ``null`` again, whatever was displayed before. That is specified behaviour rather than a\nlimitation — the agent sets the deck, so a fresh backend genuinely has no deck to show until it\nis told (FR-07, CM-3).\n\nA non-null ``deck_id`` is **not a promise that the deck still exists.** Nothing validates it on\nthe way in — that is the MCP tool's job, since it is the party with database access and the one\nthat must tell the agent (AD-16) — and a deck can be deleted after being set. A reader that\nfetches the deck and gets ``deck_not_found`` is seeing the ordinary case, not a broken\ninvariant."
       },
       "ActiveDeckChangedEvent": {
         "properties": {
@@ -777,6 +777,34 @@
         ],
         "title": "ActiveDeckRequest",
         "description": "The body of ``PUT /api/active-deck`` — the deck to display (FR-07).\n\nCarries the deck id and nothing else — **enforced**, not aspirational: an unknown field is\nrefused (``extra=\"forbid\"``), because silently dropping it would answer ``200`` to an agent\nwhose mental model of this body is wrong and leave nothing to correct it (c3-4 review, Brad\n2026-08-01). The id must be a non-empty string, and *non-empty means non-blank*: a\nwhitespace-only id is refused with the same reasoning as ``\"\"`` — the alternative is storing a\nvalue that would be reported as the active deck forever while resolving to no deck at all, just\nspelled with characters ``min_length`` cannot see (same review). Beyond non-blankness and an\nupper length bound nothing about the id is constrained — a deck id has **no declared shape** in\nthis system (Q4), so an id that names no deck is accepted here and simply not found later.\n\nThere is deliberately **no way to clear the active deck** over the wire: the field is required\nand does not accept ``null``. Nothing in the feature asks for one — a deleted deck is a\n*client-side* transition (the refetch 404s), and a restart clears the slot anyway — so the verb\nis not built until something needs it."
+      },
+      "ActiveDeckSetReceipt": {
+        "properties": {
+          "deck_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deck Id"
+          },
+          "clients": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Clients"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "deck_id",
+          "clients"
+        ],
+        "title": "ActiveDeckSetReceipt",
+        "description": "The body of ``PUT /api/active-deck`` — what was stored, and how many tabs saw it (FR-07).\n\n``ActiveDeck`` with one field added, and that is the whole difference: the id echoes back\nexactly as the read reports it, and beside it sits the number of connected browsers the change\nactually reached. **The read has no use for that number and does not carry it** — a page\nrendering the active deck is the audience, not the fan-out — so the two operations answer two\nshapes rather than one.\n\nThe count is what makes an agent's report honest. Setting the deck succeeds whether or not\nanybody is looking, so without it the only truthful thing a caller could say is \"it is set\";\nwith it, \"switched — and no tab is open, so nothing changed on screen\" is available instead.\n\n**Zero is a success, not a failure**, on exactly the terms ``EventIngestReceipt`` states: a\ncompanion with no tab open is the ordinary state, the value was stored regardless, and\nre-sending would change nothing. Nothing about the request is echoed beyond the id the caller\nis entitled to see confirmed (CM-1)."
       },
       "Card": {
         "properties": {

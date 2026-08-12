@@ -124,8 +124,9 @@ const shippedModules = execFileSync('git', ['ls-files', 'src/*.ts', 'src/*.tsx']
  * Where user-facing copy may live -> why that module is a copy owner.
  *
  * A later story with a sentence in it — c2-10's attribution, c4-3's "Unknown card", c4-12's
- * empty-deck line, c6-6's empty push — ADDS AN ENTRY HERE with its reason, rather than
- * inventing a second mechanism. That is decide-once ruling #1 of story c2-9.
+ * empty-deck line, c6-6's empty push (which took the invitation this line held open for it, and
+ * a second entry beside it for the fallback view title) — ADDS AN ENTRY HERE with its reason,
+ * rather than inventing a second mechanism. That is decide-once ruling #1 of story c2-9.
  */
 const COPY_MODULES: Map<string, string> = new Map([
   [
@@ -332,6 +333,100 @@ const COPY_MODULES: Map<string, string> = new Map([
       'about a process rather than blaming anyone, which is UX-DR33’s rule applied to the one ' +
       'string in this app most likely to reach for an apology. The DECK NAME is data — it arrives ' +
       'from the wire through the deck slice and is deliberately not in this module.',
+  ],
+  [
+    'src/containers/AgentView/copy.ts',
+    'the agent view shell’s two chrome strings (story c6-5): the "AGENT VIEW" accent KICKER ' +
+      'and the "Close · esc" PILL LABEL. Both are transcribed from DESIGN.md rather than ' +
+      'authored — the shell’s own component row (:471) names the kicker and the pill in ' +
+      'those words — so this module quotes an artefact the way the state-panel copy quotes ' +
+      'EXPERIENCE.md, and the pin that holds it is AgentView.test.tsx asserting the exact ' +
+      'bytes rather than a second verbatim gate: DESIGN.md carries these inside a component ' +
+      'anatomy row rather than in a copy table, so there is no artefact ROW to join against ' +
+      'the way tests/copy.test.ts joins the six state-panel bodies. The pill label is the ' +
+      'app’s only accessible name containing a KEY name, and that is UX-DR23 asking the ' +
+      'shell to teach its Esc dismissal rather than leave it to be discovered. The separator ' +
+      'is U+00B7 MIDDLE DOT with spaces around it, asserted by codepoint, because "looks ' +
+      'like a dot" is exactly the class of difference an eye scanning a diff waves through. ' +
+      'The view’s TITLE and its summary COUNT are DATA — they arrive as props from the ' +
+      'store, and since c6-6 from a pushed envelope — and are deliberately not in this ' +
+      'module. The one exception c6-6 makes to that sentence is registered separately below: ' +
+      'the word a view is called when the agent supplies NO title is authored copy, and it ' +
+      'lives in the state layer beside the builder that applies it, not here.',
+  ],
+  [
+    'src/state/agentView.ts',
+    'the app’s WORD FOR EACH KIND OF AGENT VIEW — `AGENT_VIEW_LABELS`, four strings: ' +
+      '"Suggestions" / "Swaps" / "Tier list" / "Card groups" (story c6-8, Task 2), which serve ' +
+      'as BOTH the nav pill’s label and the fallback title a view is called when the pushed ' +
+      '`payload.title` is absent, null or blank (story c6-6, Q7 — the entry this one grew ' +
+      'from, and `SUGGESTIONS_VIEW_TITLE` is now read off the table rather than declared ' +
+      'beside it, so the two spellings cannot drift). Sentence case as stored; ' +
+      '`{typography.label}` uppercases at render, which is a STYLE and not a spelling — the ' +
+      'string a screen reader speaks is the one in this table. THE FIRST ' +
+      'ENTRY IN THIS MAP UNDER `src/state/`, and the placement is the decision worth stating. ' +
+      'A wire-supplied title is DATA and stays data; this is what the app says when nobody ' +
+      'named the view, which makes it authored copy with the same claim on this Map as any ' +
+      'panel title. It is not in `src/containers/AgentView/copy.ts` — the obvious home — for ' +
+      'two reasons pointing the same way: `deferred-work.md`’s dialog-accessible-name entry ' +
+      'asks for the non-blank guard "at the point content is constructed", which is ' +
+      '`suggestionsViewOf` in this module, and a store may not import a container; and c6-8’s ' +
+      'nav pill needs the same word for the same kind, so a constant owned by any single ' +
+      'container would be the wrong address for its second reader (decide-once ruling #1 of ' +
+      'story c2-9, applied across a layer boundary rather than within one) — and c6-8 IS that ' +
+      'second reader, so the table is that prediction discharged rather than restated, with ' +
+      'Epic 9’s three view stories the third, fourth and fifth readers already named. They are ' +
+      'CAPITALISED AS NAMES rather than assembled from the wire kind — the rejected ' +
+      'alternative — because a runtime-assembled user-facing string is residue 3 of this ' +
+      'file’s own header, and because "Card groups" is not derivable from `groups` by any rule ' +
+      'at all. The table is `satisfies Record<AgentViewKind, string>`, so a fifth kind on the ' +
+      'Python side fails typecheck here naming the kind with no word yet. The ' +
+      'module holds NOTHING ELSE of this kind: the pushed title, the count, the items, their ' +
+      'reasons and the envelope’s `id`/`ts` are all DATA off the wire.',
+  ],
+  [
+    'src/containers/AgentViewsNav/copy.ts',
+    'the agent-views nav’s three strings (story c6-8; Q2, Q5, Q6). ONE IS TRANSCRIBED: the ' +
+      'quiet pill’s "Your agent hasn’t sent this yet." is EXPERIENCE.md:73’s, byte for byte, ' +
+      'and `tests/agent-views-nav-copy.test.ts` gates it against that row rather than against ' +
+      'a retyped literal — which matters more than usual here, because the artefact’s ' +
+      'apostrophe is the ASCII U+0027 and not the typographic U+2019 a reader of the rendered ' +
+      'Markdown would assume. TWO ARE AUTHORED, on c5-7’s precedent for copy with no artefact ' +
+      'until its story writes one, and both were written into EXPERIENCE.md’s nav-pill row in ' +
+      'the same commit so the gate has a row to read: the group’s visible kicker "Agent views" ' +
+      '(Q5 — the group has no `<nav>` landmark, so this is what names it, for everyone rather ' +
+      'than for ARIA only), and the word "unread" (Q6), which sits visually-hidden inside an ' +
+      'unread pill’s accessible name so the accent dot never carries that state in colour ' +
+      'alone (UX-DR29, WCAG 1.4.1). WHAT IS DELIBERATELY NOT HERE: the four PILL LABELS. They ' +
+      'are `AGENT_VIEW_LABELS` in `src/state/agentView.ts` — see that entry above — because a ' +
+      'kind’s word has one owner, and a second copy of those four strings in this file is ' +
+      'exactly the drift that ruling was made to prevent. The formatted push TIME is not copy ' +
+      'either: it is wire data through `Intl.DateTimeFormat`, and a locale render has no bytes ' +
+      'to gate.',
+  ],
+  [
+    'src/containers/SuggestionsView/copy.ts',
+    'the empty-push line (story c6-6, AC 4): "The agent sent an empty {kind}. Nothing to show ' +
+      '— ask it for another pass.", the ONE authored sentence a push carrying no items puts on ' +
+      'the glass, rendered in place of the rows inside the agent view’s body. Like the ' +
+      'empty-deck line it is TRANSCRIBED rather than authored — EXPERIENCE.md’s Voice and Tone ' +
+      'table carries it, em dash U+2014 and trailing period included — and ' +
+      'tests/empty-push-copy.test.ts compares the shipped constant against that table cell ' +
+      'byte-for-byte, which is copy gated against whatever wrote it. It is the FIRST entry in ' +
+      'this Map whose artefact string is a TEMPLATE: the row writes "{kind}", so the constant ' +
+      'ships the placeholder and a one-line builder substitutes the envelope’s own kind — a ' +
+      'closed wire literal, never user data, which is the whole of c6-4’s echo-hygiene rule ' +
+      'applied here. ONE RESIDUE IS DECLARED RATHER THAN REPAIRED: substituting the wire kind ' +
+      'into an article-carrying template reads "an empty suggestions", which is ungrammatical ' +
+      'and worse for Epic 9’s "tier_list" — inventing a per-kind display noun would be ' +
+      'authoring copy no artefact carries, so it is carried on the ledger for the story that ' +
+      'adds the second view kind. Shipping the artefact’s own words is ALSO the disposition of ' +
+      'the permanently-open copy-guard entry whose text names this story: "a reviewer of ' +
+      'c2-10, c4-3, c4-12 and c6-6 must READ the copy", and c4-12’s disposition recorded that ' +
+      '"c6-6 still owes it" — the story’s Debug Log records the reading having been performed. ' +
+      'The module holds NOTHING ELSE: the view’s title and count are the shell’s props, the ' +
+      'card names and reasons a non-empty push carries are DATA, and the line is not announced ' +
+      '— the heading’s live region is the view’s one announcement.',
   ],
 ])
 

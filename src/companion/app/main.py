@@ -131,8 +131,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     The agent token is minted beside it and for the same reason — a constructed-but-never-started
     app holds no credential — and it is minted **fresh per process**, so two starts never share one
-    and a restarted backend invalidates the token a tool was holding (c6-1's retry-once absorbs
-    exactly that). It reaches only two places: ``app.state`` and the discovery file (AD-5).
+    and a restarted backend invalidates the token a tool was holding
+    (:func:`~src.companion.client.push_event`'s retry-once absorbs exactly that). It reaches only
+    two places: ``app.state`` and the discovery file (AD-5).
 
     The :class:`~src.companion.app.deps.Database` holder is created beside them, and for the same
     reason it is safe to do so: like the identity mint it is an inert in-process object that cannot

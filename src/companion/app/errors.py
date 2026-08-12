@@ -433,8 +433,8 @@ async def http_exception_handler(request: Request, exc: Exception) -> Response:
     a refinement: Starlette derives it from the first partially-matching route alone, which
     under-reports the moment a path is served by more than one (see :func:`supported_methods` for
     the measurement). Forwarded unchanged, ``POST /api/active-deck`` would answer ``Allow: GET`` and
-    tell c6-1 that the endpoint it exists to call does not accept writes. Every other header on the
-    exception is passed through untouched.
+    tell the leaf client that the endpoint it calls does not accept writes. Every other header on
+    the exception is passed through untouched.
 
     Registered against **Starlette's** ``HTTPException``, which ``fastapi.HTTPException``
     subclasses, so one registration covers both and overrides FastAPI's own default handler.

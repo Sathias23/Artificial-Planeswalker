@@ -1,0 +1,192 @@
+/* The agent-views nav (story c6-8) — `DESIGN.md`'s `components.nav-pill` block, in the place
+   that block is named for.
+
+   THIS RULE AND `AgentView.css:164-195` ARE ONE SPEC WITH TWO CALL SITES, and that is the
+   artefact's own claim rather than a convenience: `DESIGN.md:522` writes the nav pill as *"the
+   agent-view controls in the header, AND the 'Close · esc' control inside a view"*, and the
+   close pill's comment says outright that *"whatever this rule settles is also c6-8's spec"*.
+   So the values here are read off that rule, not re-derived — including Brad's c6-5 Q4 padding
+   ruling, which this story's Task 1 finally wrote back into the frontmatter (the block read
+   `'7px 14px'`, two numbers the spacing scale names as drift and stylelint refuses outright).
+
+   WHAT THIS FILE ADDS THAT THE CLOSE PILL HAD NO USE FOR: the quiet state (AC 1), the push
+   timestamp (AC 2), the unread dot (AC 3) and the group's kicker. All four were amended into the
+   frontmatter in the same commit as this file, so the citation below each is a real line in
+   DESIGN.md rather than a reference to a value that lives only here.
+
+   NO TRANSITION ANYWHERE IN THIS FILE, and that is a decision. The close pill — the same spec —
+   ships none; DESIGN.md specs none; and a pill that faded its border on hover would be motion
+   this app has to inventory (UX-DR42) for an effect nobody asked for. The unread dot likewise
+   arrives statically: *"glows are moments, not steady states"* (`DESIGN.md:503`), and an arrival
+   pulse would be a moment nothing specs. The reduced-motion fallback is therefore vacuously
+   satisfied here rather than mechanically — there is nothing to neutralise. */
+
+/* The group's name (Q5). `--type-micro` with BOTH its companions in this block — the type-role
+   gate fails a role whose `letter-spacing` and `text-transform` are split across rules, by name.
+   `text-tertiary` is the Colors section's tier for kicker labels, and it is the same tier the
+   pills' timestamps take, which is what makes the two read as one quiet register beside the
+   active pills. */
+.agent-views-nav-kicker {
+  font: var(--type-micro);
+  letter-spacing: var(--tracking-micro);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/* The pill row. `--space-2` (8px) is the mock's gap between pills, and it is the scale value the
+   mock's own 8px already sits on — no drift to repair here.
+
+   `flex-wrap: wrap` because the header is a fluid row and four pills plus a kicker plus the
+   identity block have no width guarantee at a narrow window; wrapping is the honest failure mode
+   for a group that must stay reachable, and the shell's `min-width: 0` on `.app-shell-nav`
+   already allows it. */
+.agent-views-nav-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* THE PILL. Base = `components.nav-pill`'s background / border / radius / padding / foreground,
+   which is `.agent-view-close`'s rule with the close pill's `margin-inline-start: auto` dropped
+   (that was the close pill's placement inside a view header, never part of the pill spec).
+
+   The hairline is `1px` because DESIGN.md's block writes the border as `'1px solid
+   {colors.border-strong}'` — the same hairline every chrome edge in the system takes.
+
+   `inline-flex` with a `--space-1` gap, which the close pill did not need: this pill has up to
+   four children — label, time, dot, and the visually-hidden word — where that one had a single
+   text node. 4px is the scale's smallest step and it keeps the time reading as part of the pill
+   rather than as a second control.
+
+   `--type-label` WITH `letter-spacing` and `text-transform` in the SAME block (the type-role
+   companion gate, again). The uppercase is why `AGENT_VIEW_LABELS` stores sentence case: the
+   casing is a style, and the string a screen reader speaks is the stored one.
+
+   24px on BOTH axes — `DESIGN.md:462`'s global hit-area rule, restated for this element by name
+   in `EXPERIENCE.md:156` (*"nav pills, the close pill, footer links, deck rows, the connection
+   pill"*). Declared rather than claimed-well-clear, for `.agent-view-close`'s reason exactly: an
+   11px label on a 1.3 line box is a 14px line box, so the pill is UNDER the floor on its own
+   geometry however much padding it carries. This class joins `keyboard-floor.test.ts`'s
+   `DECLARES_MIN` list, which named c6-8's pills in advance. */
+.agent-views-nav-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 24px;
+  min-height: 24px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-panel);
+  color: var(--text-secondary);
+  font: var(--type-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+/* THE QUIET STATE (AC 1) — `components.nav-pill.quiet-foreground`, amended into DESIGN.md by
+   this story's Task 1 from `EXPERIENCE.md:73`'s *"disabled-quiet (`text-tertiary`, no hover
+   glow)"*.
+
+   ONE DECLARATION, and everything else about quiet is an ABSENCE that the markup makes real.
+   The element ships `disabled`, so: it is not focusable (no `:focus-visible` rule can match, and
+   the cold-open Tab order contains no pill at all — UX-DR40's *"this stop never exists"*); it
+   fires no click; and the hover rule below excludes it by selector, so there is no glow to
+   neutralise here. A quiet pill that dimmed itself with `opacity` instead was rejected — opacity
+   would take the border and the text down together to an unmeasurable pair, where this keeps the
+   border at full strength and moves only the text tier.
+
+   `text-tertiary` on `surface-panel` measures 5.43:1 — the pair `components.legality-row`'s
+   detail line already banks on — so quiet is de-emphasised and still well clear of the 4.5:1
+   text floor. Quiet is a state, not a disabled-looking failure.
+
+   `cursor: not-allowed` is deliberately NOT set: the pointer's default over a disabled button is
+   already the honest signal, and `not-allowed` reads as *"you did something wrong"* about a pill
+   whose only fault is that the agent has not used it yet. */
+.agent-views-nav-pill:disabled {
+  color: var(--text-tertiary);
+}
+
+/* The known-surface focus ring: this control sits on `--surface-panel`, not on card art, so it
+   takes the plain outline rather than the tile's two-layer composite — exactly one of the app's
+   two focus treatments, which is what `keyboard-floor.test.ts` requires of every focusable.
+   `outline` is never `none` in any of its four spellings; stylelint bans all four.
+
+   It sits ABOVE the accent rule rather than below it, unlike `.agent-view-close`'s pair, for a
+   mechanical reason: this pill's hover arm must exclude the disabled state, which makes that
+   selector one pseudo-class more specific than this one, and `no-descending-specificity` then
+   requires the lighter selectors first. The close pill has no disabled state and so never faced
+   the ordering. */
+.agent-views-nav-pill:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* Hover and focus share one rule because DESIGN.md gives them one spec — `hover-border` /
+   `hover-foreground` / `hover-glow`, with no separate focus treatment.
+
+   `accent-dim` is shipped as written: this pill sits on `--surface-panel`, where it measures
+   3.05:1 and clears the 3:1 non-text floor. UX-DR6's ban on `accent-dim` is scoped to
+   `surface-overlay`, a different surface than this control ships on — the c6-5 ruling, applied
+   to the other half of the same spec.
+
+   `accent-bright` as a TEXT colour only. `keyboard-floor.test.ts:397-398` was narrowed at c6-5
+   *specifically so this rule could ship*, and the narrowing kept the ban where it belongs:
+   accent-bright inside `outline`, `outline-color` or `box-shadow` is still red. The glow here is
+   `var(--glow)`, the composite token, which is not that.
+
+   `:enabled` on the hover arm and not on the focus arm, which is exact rather than sloppy: a
+   disabled button still matches `:hover` in every browser, so without it a quiet pill would
+   light its border and glow under the pointer — the one thing `EXPERIENCE.md:73` says it must
+   not do. A disabled button can never match `:focus-visible` at all, so the focus arm needs no
+   such guard and carrying one would imply a state that cannot exist. */
+.agent-views-nav-pill:focus-visible,
+.agent-views-nav-pill:enabled:hover {
+  border-color: var(--accent-dim);
+  color: var(--accent-bright);
+  box-shadow: var(--glow);
+}
+
+/* THE LAST PUSH'S TIME (AC 2) — `components.nav-pill.time-type` / `.time-foreground`.
+
+   `--type-micro` with BOTH companions in this block (the gate, a third time). It stays
+   `text-tertiary` even while the pill's label goes `accent-bright` on hover, which is the point:
+   the time is metadata about the pill, not part of the control's name, and DESIGN.md files
+   timestamps under text-tertiary everywhere else in the system.
+
+   `font-variant-numeric` is NOT set here. `--type-numeric` is the tabular role and this is not a
+   column of figures — a single time inside a pill has nothing to align with, and `{typography.
+   numeric}` may never be applied via `font:` alone anyway (it carries its features separately). */
+.agent-views-nav-time {
+  font: var(--type-micro);
+  letter-spacing: var(--tracking-micro);
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/* THE UNREAD DOT (AC 3) — `components.nav-pill.unread-dot` at `.unread-dot-size`.
+
+   `8px` on both axes is DESIGN.md's `components.nav-pill.unread-dot-size`, amended into the
+   block by this story's Task 1. It cites the connection pill (UX-DR29) — the other in-pill dot
+   in the system — rather than the Panel's live dot, which is 6px but sits beside a panel title
+   instead of inside a control; Q6 took the closer sibling.
+
+   `flex-shrink: 0` because a dot that squashed to an ellipse under a narrow header would be a
+   different symbol. The radius is `--radius-pill` rather than a bare `50%`: on a square box the
+   two render identically, and the token is what the stylelint family gate requires of every
+   radius — `ConnectionPill.css:139` made the same call on the same shape, which is the sibling
+   this dot is citing anyway.
+
+   STATIC. No pulse, no arrival glow: `DESIGN.md:503`'s *"glows are moments, not steady states"*,
+   and an arrival moment would cost a motion-inventory entry this story does not own. The dot is
+   `aria-hidden` in the markup and the word "unread" sits beside it in the accessible name —
+   UX-DR29's rule that the dot never carries the state alone, which is also what keeps this from
+   being a colour-only distinction (WCAG 1.4.1). */
+.agent-views-nav-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}

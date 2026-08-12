@@ -302,8 +302,10 @@ describe('AppShell overlay slot (AC 7, AC 9)', () => {
   })
 
   it('renders the overlay when given one, so the slot is proven to WORK', () => {
-    // Proven to work rather than proven to be absent — a slot only ever tested empty is a
-    // slot nobody has shown c6-5 can use.
+    // Proven to work rather than proven to be absent — a slot only ever tested empty is a slot
+    // nobody has shown c6-5 can use. c6-5 has since used it (`App.tsx` passes the agent view
+    // here), and this stays a PROP-level test of the shell's own contract: the component is
+    // handed an arbitrary node, exactly as `AppShell.tsx` is never edited to know what one is.
     const { container } = render(<AppShell overlay={<p>agent view</p>} />)
 
     expect(overlayIn(container)).not.toBeNull()

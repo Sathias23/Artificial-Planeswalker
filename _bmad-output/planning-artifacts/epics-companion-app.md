@@ -469,6 +469,10 @@ UX-DR24: **Suggestion row** (P0) — full-row-height thumbnail left, then action
 body-strong, mana cost, optional confidence right-aligned, and a one-line reason beneath. `live`
 marks the row with `accent` (not `accent-dim`). Unknown-ID entries render the unknown placeholder
 in the thumbnail slot **and still render their reason text**.
+<!-- corrected at c6-7 code review 2026-08-11: "action badge" is the item's `category` badge —
+there is no `action` field on the wire (`SuggestionItem = {card_id, reason, category?,
+confidence?}`); DESIGN.md:474 and EXPERIENCE.md:91 were annotated at c6-7, this row was missed
+by that story's ripple sweep -->
 
 UX-DR25: **Swap row** (P1) — out/in tiles side by side joined by an accent arrow glyph, "Out · N
 copies" / "In · N copies" labels tinted negative/positive — **tints on the labels only, never on
@@ -590,17 +594,20 @@ UX-DR40: **Tab order** is document order (nothing in the app carries a `tabindex
 c4-11 the enumeration below is the order the **shipped DOM actually produces**. Unbuilt stops are
 marked as such rather than listed as if they existed:
 
-> skip link → *(header nav pills — **c6-8**, Epic 6; and UX-DR28 makes a pill non-focusable until
-> its kind has received a push, so on a cold-open session this stop never exists)* → card tiles in
+> skip link → **header nav pills (c6-8 — SHIPPED 2026-08-12; one stop per kind that has
+> received a push this session, and NO stop at all for a kind that has not, because UX-DR28's
+> quiet pill ships `disabled` — so on a cold-open session this stop genuinely does not exist,
+> and on a session where only `suggestions` has pushed there is exactly one)** → card tiles in
 > visual order, **each DFC's flip control immediately after its own tile** → **card detail: the
 > unpin control (while pinned), the panel's own flip control (when the target is flippable), the
 > oracle scroller** → deck-row list → **connection pill (c5-7 — SHIPPED 2026-08-08)** → footer
 > links; inside an open agent view, Tab is trapped.
 
 **What changed and why (c4-11 Q2).** The previous enumeration was wrong in both directions. It
-named three stops that **cannot exist** — the nav pills and the connection pill are backlog, and
-`AppShell.tsx:117` still renders a placeholder where the pills go — and it **omitted four that
-already ship**: the card detail panel's unpin control (c4-5), its own copy of the flip control
+named three stops that **could not exist at the time** — the nav pills and the connection pill
+were backlog, and `AppShell.tsx` still rendered a placeholder where the pills go (both have since
+shipped: c5-7 on 2026-08-08 and c6-8 on 2026-08-12, and the placeholder is displaced) — and it
+**omitted four that already ship**: the card detail panel's unpin control (c4-5), its own copy of the flip control
 (c4-6), the oracle scroller (c4-11) and the skip link's target heading while it holds
 `tabindex="-1"`. `CardDetail.tsx:117-124` predicted the first omission by name and assigned the
 correction here: *"c4-11 must add it to the enumeration rather than rediscover it."*
@@ -623,6 +630,19 @@ The rejected alternative is recorded because it is the one a later reader would 
 in-flow last child of the LEFT column renders bottom-left with no fixed positioning at all, and
 puts the pill *before the entire right column* in Tab order — contradicting this enumeration,
 c10-1's wording, and (on any surface where the left column is a state panel) AC 1 as well.
+
+**The nav pills' stop is CONDITIONAL, and c6-8 measured what that costs (2026-08-12).** A quiet
+pill ships the `disabled` attribute rather than `tabindex="-1"` — the latter would be a second
+named exception to *"nothing in the app carries a `tabindex`"*, which is this rule's own opening
+clause — so a kind that has never pushed contributes no Tab stop at all, and the corridor counts
+elsewhere in this document are unchanged by the story that added four buttons to the header.
+That was verified rather than assumed, and the verification found a real defect **in the
+measuring instrument**: `App.test.tsx`'s corridor helper selected `'a[href], button, [tabindex]'`,
+which matches a disabled button, so the pins would have moved 209 → 213 and 7 → 11 while the real
+corridor did not move by one stop. Until c6-8 the app contained no disabled control at all, so
+that selector and *"the Tab order"* had been the same set by accident. The helper now excludes
+`:disabled`; the pins are unchanged; and this is `deferred-work.md:45`'s focusable-selector gap
+appearing in a test helper rather than in the focus trap it was filed against.
 
 *(Arrow-key grid navigation is explicitly deferred out of MVP — gate H3 — with the skip link as
 sole mitigation and a **revisit-before-public-release flag**, since the Fan Content Policy links
@@ -2892,7 +2912,7 @@ So that I can judge them by looking rather than by reading a list of names.
 
 **Given** a suggestions payload
 **When** the view renders
-**Then** each row shows a full-row-height card thumbnail at the card radius on the left, then an action badge, the card name in body-strong, the mana cost, an optional confidence in micro right-aligned, and the one-line reason beneath in body `text-secondary` (UX-DR24)
+**Then** each row shows a full-row-height card thumbnail at the card radius on the left, then an action badge, the card name in body-strong, the mana cost, an optional confidence in micro right-aligned, and the one-line reason beneath in body `text-secondary` (UX-DR24) <!-- corrected at c6-7 code review 2026-08-11: "action badge" is the item's `category` badge, the only badge-bearing field on the wire — see the UX-DR24 correction above -->
 
 **Given** a row is hovered, focused or clicked
 **When** the inspection contract applies

@@ -331,7 +331,11 @@ Things worth knowing before writing a stylesheet against it:
   a child setting the dim border is **not caught** — and that is the normal shape of c6-7's
   suggestion rows and c9-1's swap rows, because DESIGN.md gives the container the overlay.
   Deciding it needs the render tree, which lives in TSX. **Review owns that half**; when you
-  review a row component, check it rather than assuming the gate did.
+  review a row component, check it rather than assuming the gate did. c6-7 shipped the first of
+  those rows and answered it the only way that is checkable — by spending **no** `--accent-dim`
+  in `SuggestionsView.css` at all, which `token-usage.test.ts` now asserts over that file's
+  bytes by name. Whether `--accent` reads well over the row's own `--accent-glow` tint is still
+  a pixel question, and it belongs to the C6 manual checklist.
 - **Do not use native CSS nesting.** The block reader in `tests/token-usage.test.ts` matches
   innermost braces, so a declaration in a nesting parent is invisible to every guard there —
   including the contrast one. Rather than grow a real CSS parser three stories early, nesting
@@ -570,7 +574,12 @@ Set by story **c4-4**, and it is a decide-once ruling roughly fifteen later comp
 inherit: **c4-5**, **c4-6**, **c4-7**, **c4-10**, **c4-11**, **c5-7**, **c6-5**…**c6-8** and
 **c9-1**…**c9-3** all land here rather than in `src/components/`. Every c4 story on that list has
 landed, and **c5-7** joined them on 2026-08-08 — its connection pill is the first Epic 5 member,
-and it qualifies on both counts at once (it subscribes to two slices AND it takes focus).
+and it qualifies on both counts at once (it subscribes to two slices AND it takes focus). The
+Epic 6 members all landed too: **c6-5** (the view shell), **c6-6**/**c6-7** (`SuggestionsView`)
+and **c6-8** (`AgentViewsNav`) — the last of which qualifies the same way the connection pill
+does, two store subscriptions per pill and a real focusable button, which is why a row of four
+header pills is a container rather than the primitive an earlier note called it. Only the three
+**c9-*** entries are still forward-looking.
 
 **`src/components/` is CLOSED, and a component that holds state cannot join it.** That is
 structural, not stylistic: `tests/shell.test.ts:1257` asserts SET EQUALITY between
@@ -608,7 +617,9 @@ the open.
 #### Tinting a surface from a semantic token
 
 The mechanism c6-7's suggestion rows, c9-1's swap rows and c9-2's tier rows reuse rather than
-each inventing one. DESIGN.md asks a tone to "tint background and border from its own semantic
+each inventing one. (c6-7 shipped its badge in the **neutral** tone — the item's `category` is
+free text and no mapping from those to the four semantic tones exists — so the semantic-tint
+path below still has no shipped consumer.) DESIGN.md asks a tone to "tint background and border from its own semantic
 token — never from hard-coded RGB", and **every obvious spelling of that is banned**:
 `rgba(95,212,160,0.12)` by `function-disallowed-list`, and `color-mix(in srgb, var(--positive)
 12%, transparent)` by the **same rule** (measured). There is no translucent `--positive-wash`
@@ -1348,10 +1359,14 @@ doubling, capped at 30 s (`POLL_BASE_MS`, `POLL_MULTIPLIER`, `POLL_CEILING_MS`).
 The application shell landed in **c2-6**, so the token layer now has a real consumer and
 `src/App.css` is gone with the placeholder it styled. What the shell deliberately does _not_
 build is every region it holds open, each of which renders a placeholder line naming its owner
-until that story lands. **Three of the five have now landed and their placeholders are
-displaced** — card detail (**c4-5**), the deck list (**c4-7**) and the format check (**c4-10**) —
-leaving the agent-view nav pills (**c6-8**, the one story key still on the glass on every surface,
-including a fully loaded deck) and the agent view that drops into the overlay slot (**c6-5**). **The `h1` carries the deck name as of c4-2** — it carried the product name
+until that story lands. **ALL FIVE HAVE NOW LANDED AND EVERY PLACEHOLDER IS
+DISPLACED** — card detail (**c4-5**), the deck list (**c4-7**), the format check (**c4-10**), the
+agent view that drops into the overlay slot (**c6-5**) and, last, the agent-view nav pills
+(**c6-8**). That fifth one was for a long time _the one story key still on the glass on every
+surface_, including a fully loaded deck; since c6-8 passed `nav`, the count of rendered story
+keys is **zero** for the first time since c2-6. The placeholders themselves all still live in
+`AppShell.tsx`, un-deleted and still asserted against the component's own props — displacement,
+eleven times, never deletion. **The `h1` carries the deck name as of c4-2** — it carried the product name
 provisionally until then, which meant the kicker and the heading said the same words (C3 retro
 F2); nothing about the element, its level or its position moved, and `filled()`'s fallback still
 fires when there is no deck, which is what keeps a fresh install from being heading-less.
@@ -1457,7 +1472,11 @@ record to rounding). All three clear 4.5:1 with headroom. The unmeasured half �
 the four alternate themes — is re-homed unchanged.
 
 The header badge slot is **filled** as of c4-2, and **c4-10 declined to add a legality pill beside
-it** (see the corrected bullet above). The one remaining primitive is the nav pill (**c6-8**).
+it** (see the corrected bullet above). The last remaining primitive was the nav pill, and **c6-8
+shipped it** — as a container (`AgentViewsNav`) rather than a primitive, because it subscribes to
+the agent-view store per kind and takes focus, which is the c4-4 ruling applied in the direction
+it is usually applied. Its rule is `AgentView.css`'s close pill with three states added, since
+`DESIGN.md:522` declares those two controls to be one component.
 
 #### Colour is never the sole carrier — the CVD question, measured at c4-3
 
@@ -1494,7 +1513,10 @@ delta all landed in **c2-7**, so `findUnpairedNumericRole` is no longer a guard 
 guard; **c4-8**'s curve counts are the latest, and they arrived on 2026-08-06. (This line read
 _"c6-8's curve axis is next"_ until that story: a typo, and one worth recording rather than
 silently fixing — there is no curve anywhere in Epic 6, so the sentence pointed a reader at a
-story that could never satisfy it. Note also that c4-8's **axis labels** are `--type-micro`, not
+story that could never satisfy it. **Re-checked at c6-8 and left exactly as it is**: that story's
+ripple sweep found this site and `token-usage.test.ts:400`'s twin, confirmed both mean **c4-8**,
+and dispositioned them as typos to leave standing rather than claims to fulfil — c6-8 ships no
+numeric role at all, and its pill timestamp is `--type-micro`. Note also that c4-8's **axis labels** are `--type-micro`, not
 the numeric role: DESIGN.md:407 puts counts in `{typography.numeric}` and axis labels in
 `{typography.micro}`, so it is the counts above the bars that this guard covers.)
 

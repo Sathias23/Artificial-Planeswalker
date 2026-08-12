@@ -2,7 +2,10 @@
 
    ==== THE TONE-TINT MECHANISM (AC 8, Q2) — THE DECIDE-ONCE RULING ====================
    c6-7's suggestion rows, c9-1's swap rows and c9-2's tier rows all need "tint a surface from
-   a semantic token", so this is written once, here, and recorded in ui/README.md.
+   a semantic token", so this is written once, here, and recorded in ui/README.md. c6-7 shipped
+   and took the NEUTRAL tone (its badge carries the item's free-text `category`, and no mapping
+   from those to the four semantic tones exists), so the first real consumer of the mechanism
+   below is still ahead — which is why the tone loop's per-tone tests remain its only cover.
 
    THE PROBLEM. DESIGN.md says a semantic tone "tints background and border from its own
    semantic token — never from hard-coded RGB". The mock's spelling of that is
@@ -101,8 +104,9 @@
    positive, negative, caution."
 
    NOT --accent-dim, ANYWHERE IN THIS FILE (AC 14, UX-DR6). Badges appear on
-   `--surface-overlay` inside agent views — c6-7's suggestion rows, c9-1's swap rows, c9-2's
-   tier rows — where `--accent-dim` is 2.70:1 and fails the 3:1 non-text floor. The
+   `--surface-overlay` inside agent views — c6-7's suggestion rows SHIPPED that pairing at
+   2026-08-11, and c9-1's swap rows and c9-2's tier rows are still to come — where
+   `--accent-dim` is 2.70:1 and fails the 3:1 non-text floor. The
    `findAccentDimOnOverlay` guard is SAME-BLOCK only, and a badge whose CONTAINER supplies the
    overlay background is precisely the cross-block case that guard declares it cannot see. So
    the fix is to not write the token here at all rather than to trust the gate. The mock uses

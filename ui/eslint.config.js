@@ -131,8 +131,11 @@ export default tseslint.config(
       // name costs no dependency and says exactly what it means.
       //
       // Escape hatch, deliberately narrow: none. A genuinely dynamic value (a computed bar
-      // height in c4-8, a grid template in c6-6) sets a CSS CUSTOM PROPERTY through the style
-      // attribute's own typing — but that is still this attribute, so a story needing it
+      // height in c4-8; "a grid template in c6-6" was predicted here and DID NOT HAPPEN —
+      // that story expresses its crossfade through a `[data-replacing]` attribute and a
+      // duration token, and sets no inline style at all, corrected 2026-08-11) sets a CSS
+      // CUSTOM PROPERTY through the style attribute's own typing — but that is still this
+      // attribute, so a story needing it
       // changes this rule and says why, in the open, rather than discovering the gate does
       // not apply to it. (Brad's ruling 2026-07-27.)
       //

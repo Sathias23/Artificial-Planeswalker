@@ -5,6 +5,9 @@ import { AppShell } from './components/AppShell/AppShell'
 import { DeckBadges } from './components/DeckBadges/DeckBadges'
 import { Footer } from './components/Footer/Footer'
 import { StatePanel } from './components/StatePanel/StatePanel'
+import { AgentView } from './containers/AgentView/AgentView'
+import { AgentViewsNav } from './containers/AgentViewsNav/AgentViewsNav'
+import { SuggestionsView } from './containers/SuggestionsView/SuggestionsView'
 import { CardDetail } from './containers/CardDetail/CardDetail'
 import { CardGrid } from './containers/CardGrid/CardGrid'
 import { ColourDistribution } from './containers/ColourDistribution/ColourDistribution'
@@ -13,6 +16,7 @@ import { DeckList } from './containers/DeckList/DeckList'
 import { FormatCheck } from './containers/FormatCheck/FormatCheck'
 import { ManaCurve } from './containers/ManaCurve/ManaCurve'
 import { SkipLink } from './containers/SkipLink/SkipLink'
+import { closeAgentView, useOpenAgentView } from './state/agentView'
 import { hydrateDeckCards } from './state/cards'
 import { useAgentConnection } from './state/connection'
 import { surfaceOf, useDeckState } from './state/deck'
@@ -158,13 +162,22 @@ import { useSystemState } from './state/systemState'
  * landmark by role and by text, and `ui/README.md` records the rule where the next surface's
  * author will read it.
  *
- * That holds through Epic 6 without amendment: c6-5's agent view is an OVERLAY rendered inside
- * the shell (`AppShell`'s `overlay` slot), not a route that replaces it, so the footer survives
- * it by construction rather than by anyone remembering.
+ * That holds through Epic 6 without amendment, and c6-5 is where it stopped being a prediction:
+ * the agent view is an OVERLAY rendered inside the shell (`AppShell`'s `overlay` slot, wired at
+ * the foot of this file), not a route that replaces it, so the footer survives it by
+ * construction rather than by anyone remembering.
  */
 export default function App() {
   const system = useSystemState()
   const surface = surfaceOf(useDeckState(), system)
+  // THE AGENT VIEW (c6-5, wired to the wire at c6-6). A CONTENT object or `null`, never a
+  // boolean: the store's own selector resolves "is one showing, and what is it" once, so this
+  // file cannot disagree with it (`agentView.ts`'s `openViewOf`). Since c6-6 the writer is a
+  // `suggestions` frame off the socket (`connection.ts` → `openSuggestionsPush`), so this slot
+  // is now live in the running app rather than exercised by tests alone. Wiring it at c6-5
+  // rather than here was Brad's Q1 ruling (2026-08-10): it is what let the Esc-layering
+  // contract `CardDetail.tsx:89-101` had declared untestable since c4-5 be tested a story early.
+  const agentView = useOpenAgentView()
   // THE SOCKET, MOUNTED ONCE (c5-6, AC 1). Third in declaration order, behind the poll and the
   // boot, and returning nothing: what it produces is `system.connection`, which `surfaceOf` two
   // lines up already reads. `App` is its ONE consumer for the reason `useSystemState` and
@@ -511,11 +524,16 @@ export default function App() {
          ⚠️ CORRECTED AT c4-11 (Q14). This line named the remaining key as **`c4-11`, in the
          skip-link work** — and so did c4-9's record and `App.test.tsx`'s two comments. All three
          were wrong in the same direction, and the skip link renders no story key at all. The key
-         that actually remains is **`c6-8`**: `AppShell.tsx:117` renders `slot(nav, 'Agent-view nav
-         pills land here — c6-8.')` and this file never passes `nav`, so that string is on the
-         glass on EVERY surface, including a fully loaded deck. It has been there since c2-6 and
-         was missed because every F1 assertion below names a `c4-*` key and none looks for a `c6-*`
-         one — a count that only ever checked the keys someone thought of. Asserted now.
+         that actually remained was **`c6-8`**: `AppShell.tsx:200` renders `slot(nav, 'Agent-view
+         nav pills land here — c6-8.')` and this file did not pass `nav`, so that string was on
+         the glass on EVERY surface, including a fully loaded deck. It had been there since c2-6
+         and was missed because every F1 assertion below names a `c4-*` key and none looked for a
+         `c6-*` one — a count that only ever checked the keys someone thought of.
+
+         ✅ AND CLOSED AT c6-8, which passes `nav` (see the slot below): the count is now ZERO on
+         every surface, asserted as an absence where it used to be asserted as a presence. The
+         GATE is still c8-5's — a count on two rendered fixtures is not a repo-wide guard, and
+         the correction above is exactly why that distinction is worth keeping.
 
          `.app-shell-column`'s existing `gap: var(--space-panel-gap)` stacks it 24px beneath the
          deck list with no shell edit, exactly as the deck list stacked beneath the detail panel.
@@ -578,7 +596,69 @@ export default function App() {
          pill must still know a deck is loaded (`deck.ts:481-486`). Passing either from here would
          have handed it the one answer it must not use. */
       connectionPill={<ConnectionPill />}
+      /* THE LAST SLOT THE SHELL HAD OPEN, FILLED (c6-8). The ELEVENTH application of c2-9's
+         displacement ruling and the one that finishes the set: `AppShell.tsx` is NOT edited, its
+         `slot(nav, 'Agent-view nav pills land here — c6-8.')` placeholder stays exactly where it
+         is, and `AppShell.test.tsx` still asserts it against the component's own props. What
+         changes is that nothing renders it any more — the F1 count of story keys on a rendered
+         app goes to ZERO for the first time since c2-6, which `App.test.tsx` now asserts as an
+         absence where it used to assert the presence.
+
+         PROPS-FREE, like `ConnectionPill` beside it: the nav reads the agent-view store itself.
+         Handing it `agentView` from here would give the root an opinion about which pill is
+         active, and the root's job in this file is where things go, not what they say. */
+      nav={<AgentViewsNav />}
       footer={<Footer />}
+      /* ABSENT WHEN CLOSED, AND THAT IS AC 9 RATHER THAN A STYLE CHOICE.
+         `AppShell.tsx:134-139` warns that a slot filled with an always-mounted transparent
+         element is a click-swallower presenting as *"the app stopped responding to clicks"*,
+         and `filled()` is what gates the wrapper — so this passes `undefined`, not `false`,
+         not `null` and not an element that returns nothing.
+
+         `AppShell.tsx` is NOT edited. The TENTH application of c2-9's displacement ruling,
+         and the last slot the shell had left open: `AppShell.test.tsx` still asserts the
+         overlay's conditional behaviour against the component's own props, and the only
+         remaining placeholder was `nav`'s, and c6-8 filled that slot too (see it above) — so
+         the shell now has no unfilled slot and no placeholder renders anywhere.
+
+         The three dismissal gestures inside the view all call `closeAgentView`, the verb that
+         writes `status` and provably not `content` — so closing here is what UX-DR34 means by
+         *"the view remains re-openable for the rest of the session"* (AC 5). */
+      overlay={
+        agentView === null ? undefined : (
+          /* NO `key` ON THIS ELEMENT, AND THAT IS c6-6's LOAD-BEARING ABSENCE. A second push
+             while the view is open must REPLACE THE CONTENT IN PLACE (AC 2), which is a prop
+             update on a shell that stays mounted; a `key={agentView.id}` would remount it and
+             thereby replay the entry bloom instead of the crossfade, re-capture the return-focus
+             target while focus sits inside the view, and run the restore cleanup mid-open. The
+             re-fires a remount would have supplied are an effect keyed on `pushId` inside the
+             shell — see `AgentView.tsx`'s replace effect for all three reasons at length. */
+          <AgentView
+            pushId={agentView.id}
+            title={agentView.title}
+            count={agentView.count}
+            onClose={closeAgentView}
+          >
+            {/* THE BODY, AND THE SHELL STAYS CONTENT-AGNOSTIC (c6-6, AC 4). The shell takes
+                `children` and asks nothing about them, so the kind-specific view rides inside
+                rather than being branched on in there.
+
+                KIND-KEYED SINCE c6-8, WITH ONE ARM — and the one arm is the honest shape rather
+                than an unfinished one. `content.kind` widened to the full four-kind view enum in
+                that story so the NAV could be generic over the closed contract (Story 9.1 banks
+                on it); the SOCKET did not widen, and still drops `swaps`/`tier_list`/`groups` at
+                its dispatch switch, because Epic 9 pairs each tool with its view precisely so a
+                push never arrives that the UI cannot display. So `suggestions` is not merely the
+                only arm written, it is the only arm REACHABLE, and `null` is what the other three
+                would render if the dispatch were widened ahead of them — nothing on the glass
+                under a shell that still announces its heading, which is a strictly better failure
+                than a crash. Each Epic 9 view story replaces one `null` with its container. */}
+            {agentView.kind !== 'suggestions' ? null : (
+              <SuggestionsView kind={agentView.kind} items={agentView.items} />
+            )}
+          </AgentView>
+        )
+      }
     />
   )
 }

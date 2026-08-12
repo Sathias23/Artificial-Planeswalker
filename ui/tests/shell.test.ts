@@ -1543,6 +1543,115 @@ describe('the containers are a declared category with a posture of its own', () 
    * thought to ban is precisely the one that would get through.
    */
   const CONTAINERS: { file: string; imports: string[] }[] = [
+    // c6-5's agent view — the app's FIRST modal, first focus trap and first `role="dialog"`,
+    // and a container for three reasons at once, any ONE of which would fail `posture.test.ts`
+    // next door: it holds hooks (`useId`, `useState`, three `useEffect`s and three refs), it
+    // attaches handlers, and it registers a listener on `document`. It composes NO primitive —
+    // deliberately, and the temptation is real: `Panel`'s header is structurally identical to
+    // this shell's, but `Panel` is presentation-only by guard (a `<section aria-label>` with no
+    // `role`, no `aria-modal`, no refs and no hooks) and this needs all four. The visual kinship
+    // comes from sharing tokens, not markup. `../focusHome` is the third caller of the hand-off
+    // c4-11 extracted, and it reaches NO state module at all: the store is `App.tsx`'s to read,
+    // and the three dismissal gestures call an `onClose` prop rather than a verb — which is what
+    // kept this shell content-agnostic enough for c6-7 to fill and c6-8 to extend — both did.
+    {
+      file: 'src/containers/AgentView/AgentView.tsx',
+      imports: ['../focusHome', './AgentView.css', './copy', 'react'],
+    },
+    // c6-5's copy module — the TENTH under `src/containers/` and the thirteenth in the app,
+    // both counted from `git ls-files` rather than from the entry above (the running "Nth in the
+    // app" ordinals in this list disagree with each other across c4-8, c4-10 and c4-12, and
+    // adding a fourth guess would deepen that rather than settle it — noted for review, and
+    // deliberately not repaired here, since renumbering five other stories' comments is not this
+    // story's diff). Two chrome strings, the "AGENT VIEW" kicker and
+    // the "Close · esc" pill label, both transcribed from DESIGN.md's shell row. `imports: []`
+    // for `CardDetail/copy.ts`'s measured reason: `tests/` is the `nodenext` project and `src/`
+    // the `bundler` one, so a `ui/tests` file may import an app module only if that module has no
+    // relative imports of its own — and `App.test.tsx` imports this one.
+    { file: 'src/containers/AgentView/copy.ts', imports: [] },
+    // c6-6's view BODY, FILLED BY c6-7 — the first module to render anything a push carries.
+    // c6-6 shipped the empty-push state real and returned `null` for a non-empty one because the
+    // rows were the next story's; it was named for the VIEW rather than for the state precisely
+    // so that c6-7 could extend this file instead of creating a second one, and that prediction
+    // is what this entry now records as fact. `../../state/agentView` is still a TYPE-only
+    // import (`AgentViewContent`) and it still reaches the STATE layer rather than `src/api/`:
+    // translating the envelope is the store's job, and a body that took a `SuggestionsPayload`
+    // would be a second reader of the wire with a second opinion about absent fields.
+    //
+    // THE IMPORT SET GREW BY EIGHT AND EVERY ONE OF THEM IS A CONTRACT THIS SURFACE INHERITS
+    // rather than a convenience: three primitives it composes (`Badge`, `CardPlaceholder`,
+    // `ManaCost` — none of them re-implemented, which is the whole reason `src/components/` is a
+    // closed set), the card cache (`../../state/cards` — this is the FIRST consumer that must
+    // hydrate its OWN ids, because suggested cards are not in the deck and no sweep will ever
+    // reach them; AD-12 names agent views as the reason that cache is shared), the faces store
+    // (Q5 — flip state is honoured so a printing shows the same face everywhere, while the flip
+    // CONTROL is not rendered in a row), the inspection slice (the five verbs unrenamed, which
+    // is what `inspection.ts:163` wrote them location-agnostic FOR), and the two image modules
+    // `../CardTile/imageUrl` + `../useCardArt` — reached ACROSS containers exactly as c4-5's
+    // detail panel reaches them, which is the extraction those two files exist for. `react` is
+    // here for the hydration effect. It holds hooks, handlers and a ref, so `posture.test.ts`
+    // would fail it under `src/components/` three times over — which is what c6-6's header said
+    // when it put the module in this tree a story early.
+    {
+      file: 'src/containers/SuggestionsView/SuggestionsView.tsx',
+      imports: [
+        '../../components/Badge/Badge',
+        '../../components/CardPlaceholder/CardPlaceholder',
+        '../../components/ManaCost/ManaCost',
+        '../../state/agentView',
+        '../../state/cards',
+        '../../state/faces',
+        '../../state/inspection',
+        '../CardTile/imageUrl',
+        '../frontFaceCost',
+        '../useCardArt',
+        './SuggestionsView.css',
+        './copy',
+        'react',
+      ],
+    },
+    // c6-6's copy module. One TEMPLATE — the artefact's row writes `{kind}` — plus the
+    // placeholder it names and the one-line builder that fills it. `imports: []` for
+    // `CardDetail/copy.ts`'s measured reason: `tests/` is the `nodenext` project and `src/` the
+    // `bundler` one, so a `ui/tests` file may import an app module only if that module has no
+    // relative imports of its own, and `tests/empty-push-copy.test.ts` imports this one. That
+    // constraint is also why the builder takes a plain `string` rather than the store's kind
+    // union — a type-only import would still be an import.
+    { file: 'src/containers/SuggestionsView/copy.ts', imports: [] },
+    // c6-8's agent-views nav — the header pills. It reads the agent-view store through TWO
+    // per-kind selector hooks and calls one verb on it, which is the whole of its state
+    // coupling; `../../api/schema` is a TYPE-only import for the kind union (the rule below
+    // reads the specifier, so it is listed either way), and it is reached rather than re-spelled
+    // because `schema.ts` is the only home for a wire-derived alias. `react` is here for
+    // `useId`, which generates the `aria-describedby` target on a quiet pill. It calls hooks and
+    // reads a store, so `posture.test.ts` would fail it under `src/components/` twice over.
+    {
+      file: 'src/containers/AgentViewsNav/AgentViewsNav.tsx',
+      imports: [
+        '../../api/schema',
+        '../../state/agentView',
+        './AgentViewsNav.css',
+        './copy',
+        './pushTime',
+        'react',
+      ],
+    },
+    // c6-8's time formatter, and it is a module of its own for a MECHANICAL reason rather than a
+    // conceptual one: `react-refresh/only-export-components` fails a `.tsx` that exports anything
+    // but components, and the formatter must be exported because its callers' tests cannot assert
+    // its bytes (jsdom inherits the host TZ and ICU build, so a literal `'14:32'` expectation is a
+    // machine-dependent test — they compute expectations through the function instead).
+    // `frontFaceCost.ts` and `deckMemory.ts` are the shipped precedents for a one-idea module
+    // extracted from a container. `imports: []` — it reaches nothing, not even the kind union.
+    { file: 'src/containers/AgentViewsNav/pushTime.ts', imports: [] },
+    // c6-8's copy module. THREE strings and deliberately not seven: the four PILL LABELS are
+    // `AGENT_VIEW_LABELS` in `src/state/agentView.ts`, because c6-6's review ruled that the word
+    // for a kind has one owner in the state layer — a view's fallback title and its nav pill's
+    // label are the same word. What is here is what belongs to this container alone: the group's
+    // kicker, the quiet pill's sentence and the word beside the unread dot. `imports: []` for
+    // `CardDetail/copy.ts`'s measured reason, and `tests/agent-views-nav-copy.test.ts` is the
+    // importer that makes the constraint load-bearing.
+    { file: 'src/containers/AgentViewsNav/copy.ts', imports: [] },
     // c4-4's grid. It holds NO state — a container may, it need not — and it is here because it
     // composes a container and reads the derivation in `src/state/`, either of which
     // `posture.test.ts` would fail under `src/components/`. `../../state/deckGroups` is a
@@ -2035,7 +2144,19 @@ describe('the containers are a declared category with a posture of its own', () 
     // beside the things they feed (the words in `copy.ts` because they are copy; the dot classes
     // in the component because they are CSS identity). A third module here would be the same
     // decision written twice.
-    expect(CONTAINERS).toHaveLength(27)
+    // 29 at c6-5, which adds the agent view shell and its copy module.
+    // 31 at c6-6, which adds the suggestions view's BODY and its copy module — and only those
+    // two. The shell it rides inside already existed, the store it reads already existed, and
+    // the story's other half (the socket dispatch, the builder, the replace effect) all landed
+    // in modules this list already covers. A story that "wires a push to a view" growing the
+    // container tree by exactly one component and its words is the shape it should have.
+    // 34 at c6-8, which adds the agent-views nav, its copy module and its time formatter. The
+    // third is an extraction forced by a LINT RULE rather than by a concept — see its entry —
+    // and it is worth the count moving by three rather than hiding a second export inside the
+    // component file. The store extension the story needed (per-kind retention, unread flags,
+    // the pill vocabulary) landed in `src/state/agentView.ts`, a module this list does not cover
+    // and does not need to; the header slot it fills was cut at c2-6.
+    expect(CONTAINERS).toHaveLength(34)
     for (const { file } of CONTAINERS) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }

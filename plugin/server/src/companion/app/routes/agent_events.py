@@ -85,7 +85,7 @@ async def ingest_event(
             here deliberately**: this section is truncated out of the generated TypeScript and
             ``/docs`` (``main._DOCSTRING_SECTIONS``), and a browser-facing document is the wrong
             place to teach a page where a credential it must never hold is kept (AD-5). The
-            audience that needs the spelling is c6-1, reading this source.
+            audience that needs the spelling is ``src.companion.client._send``, reading this source.
 
             Injects nothing — the parameter exists so FastAPI solves the dependency, and it is
             underscore-prefixed because the value is deliberately useless. Handing the token to the
