@@ -105,6 +105,25 @@
 
 Derived from what every C6 test deliberately isolated away (jsdom without stylesheets/layout/sequential focus, `FakeSocket` transports, headless timing harnesses, no screen reader) plus Block J carried wholesale from C5 (R11). **J6 is on its fourth home; running it here closes that chain.** Recommended run: before the integration PR (D9).
 
+> **RUN RECORD — 2026-08-13 (Brad, post-merge against master `c3ac8be`, per the timing override).**
+> Real data dir, two real browser tabs, real backend process cycles, pushes driven through the shipped
+> leaf client (`src.companion.client` — discovery → health → identity → authenticated PUT/POST).
+> **OBSERVED, all as expected: J1, J2, J3, J7, J8, K1, K2, K4, K6, K7.** Highlights: the two-tab
+> broadcast switch (`displayed`, clients: 2, both tabs, no refresh); the full pill colour walk incl.
+> two-gate exhaustion displacement and recovery from the 30 s backoff ceiling with a fresh-minted
+> ticket; the bloom + 240 ms crossfade replace-in-place; the unknown-card row degrading alone with its
+> reason intact; **the disabled-pill `title` tooltip FIRES in Chromium** — the c6-8-ledgered risk did
+> not materialise (its dw entry can be closed on this observation); the empty-push copy ruled **fine**
+> as shipped ("an empty suggestions" tolerable; noun stays homed at 9.1). Bonus observations: the
+> discovery-corpse reclaim ran live after a hard kill (the c5-8 F5 mechanism in production), and a
+> backend restart correctly lands on no-active-deck (in-memory slot, honest state) with agent-view
+> content retained client-side.
+> **NOT RUN — Brad's ruling ("done enough"), 2026-08-13: K3 (keyboard-only walk), K5 (screen-reader
+> pass — the row run-on defer keeps its home), J4 (sub-1100 px floor), J5 (dev proxy — daily C7 dev
+> use will cover it), J6 (`internal-error` first render).** All five carry to **c8-6, the checklist's
+> own terminal backstop**. J6 is hereby carried a FOURTH time (Block I → C5 → C6 → c8-6) — this note
+> is the explicit ruling the Block-I precedent requires.
+
 | # | Item | What no automated test can see |
 |---|---|---|
 | J1 | Full reconnect walk: kill backend → pill walks Connected → Reconnecting → Backend gone → restart → recovers with no refresh | The whole loop ran on fake timers and injected sockets |
