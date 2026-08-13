@@ -6214,3 +6214,22 @@ Also executed or re-homed at this retro, beyond the seven:
   via `_await_surfaces` until ready or timeout. A slow machine or network could still have
   images in flight at sample time, silently under-counting the warmth metrics. Does not affect
   the reported budget verdict (`layout_ms`) — only the supplementary network/painted counts.
+
+## Deferred from: code review of spec-c6-r2-vitest-probe-harness (2026-08-13)
+
+> Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Verification Gap) of the
+> `chore/c7-prep-r2-vitest-probe-harness` diff. The entry below is real but is blocked by the
+> spec's own "no git operations" boundary, so it needs a design ruling rather than a patch.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-c6-r2-vitest-probe-harness.md`
+  summary: Nothing binds an `--expect-total` to the tree that produced it, so a baseline from a
+    stale checkout, another branch, or last week's control run scores a planted run as valid
+    whenever both trees happen to collect the same count.
+  evidence: '`--control` deliberately commits no count constant (spec Never clause: "No committed
+    expected-count constant that stories must bump"), and the same clause forbids git operations,
+    so the harness cannot stamp the count with a HEAD or a working-tree hash. The binding is
+    therefore workflow proximity only — run the control, plant, score — which is exactly the
+    "the tree under test is not the tree the baseline describes" failure the collected-count check
+    exists to catch. The spec Design Notes claim "the baseline can never drift from the tree it
+    describes" was softened in review to match. Closing this needs a ruling on whether the harness
+    may shell out to `git rev-parse HEAD`.'
