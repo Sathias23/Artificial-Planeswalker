@@ -7,7 +7,11 @@ anything else. c6-1 landed the **``POST /agent/events`` half**: :func:`push_even
 and the closed outcome vocabulary every companion MCP tool reports through. c6-2 added a sibling
 verb on the same gate — :func:`set_active_deck`, ``PUT /api/active-deck`` — sharing the probe and
 the retry-once shape rather than duplicating them. Every send, on either verb, reuses the probe
-below before it goes out, including before the retry.
+below before it goes out, including before the retry. c7-1 adds the third verb on the same gate,
+:func:`notify_deck_changed` — the one shared notifier AD-9 requires, POSTing to the same
+``/agent/events`` route :func:`push_event` already uses, but under a **~1 s** whole-call budget
+instead of :func:`push_event`'s ~10 s, and swallowing every exception rather than letting an
+unexpected one through: the mutation tool that calls it must never fail because a notification did.
 
 **Why the probe exists at all (AD-4).** The discovery file says *where* the companion is, but a
 file outlives the process that wrote it: AD-15 accepts that a crash leaves a stale entry behind,
@@ -45,7 +49,9 @@ is why the probe lives here rather than as a private helper inside the runner.
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Literal, get_args
+from uuid import uuid4
 
 import httpx
 from pydantic import BaseModel, ConfigDict
@@ -54,6 +60,8 @@ from src.companion.contracts import (
     ActiveDeckRequest,
     ActiveDeckSetReceipt,
     AgentEvent,
+    DeckChangedEvent,
+    DeckChangedPayload,
     EventIngestReceipt,
     HealthResponse,
 )
@@ -118,6 +126,19 @@ mid-retry would cut off the very transparency FR-12's retry exists to provide, t
 restart into a ``backend_error``. AD-9's ~1 s responsiveness bound governs c7's notifier — the
 thing a *user* waits on — not this path, where the caller is an agent turn that has already
 committed to a network round trip. (Q4, Brad 2026-08-09.)
+"""
+
+_NOTIFY_TOTAL_SECONDS = 1.0
+"""The whole-call deadline for :func:`notify_deck_changed` — AD-9's ~1 s bound, spent (Q4 above).
+
+Ten times tighter than :data:`_PUSH_TOTAL_SECONDS`, and deliberately its own constant rather than a
+parameter a caller can widen: this budget caps the latency a deck-mutation tool pays for telling the
+glass a deck changed, and AD-9 draws that line at roughly one second, not ten. The notifier still
+gets the same two-attempt shape as every other verb through :func:`_once_then_retry` — probe, send,
+and on a refused credential, re-probe and retry once — all of it inside this one second rather than
+ten, because losing the retry to a tight budget is an acceptable trade here: the caller never sees
+the difference between a budget expiry and any other ``backend_error``, and never waits to find out
+which happened.
 """
 
 PushOutcomeToken = Literal[
@@ -343,9 +364,9 @@ async def _send(
     Generic over method and path rather than hard-wired to the push, so that a sibling verb against
     the same gate — same header, timeouts and net — can reuse this implementation instead of
     duplicating it: c6-2's :func:`set_active_deck` (``PUT /api/active-deck``) is the first such
-    reuse. It stays private — the public surface of this module is :func:`push_event` and
-    :func:`set_active_deck`, and a story that needs another verb adds another named function rather
-    than exporting this one (Q1, Brad 2026-08-09).
+    reuse. It stays private — the public surface of this module is :func:`push_event`,
+    :func:`set_active_deck` and c7-1's :func:`notify_deck_changed`, and a story that needs another
+    verb adds another named function rather than exporting this one (Q1, Brad 2026-08-09).
 
     **The token is read here and nowhere else**, is placed in exactly one header, and appears in no
     log line at any level. There is no error branch that echoes the request.
@@ -452,7 +473,10 @@ async def _attempt(body: str, *, timeout: httpx.Timeout | None) -> PushOutcome |
 
 
 async def _once_then_retry(
-    attempt: Callable[[], Awaitable[PushOutcome | None]], *, what: str
+    attempt: Callable[[], Awaitable[PushOutcome | None]],
+    *,
+    what: str,
+    budget: float | None = None,
 ) -> PushOutcome:
     """Run *attempt*, and if the credential was refused, run it once more — then stop.
 
@@ -472,12 +496,21 @@ async def _once_then_retry(
             its own body, path and timeout.
         what: The verb's name for the log line, e.g. ``"push"``. Never a payload and never a
             credential — this module logs neither.
+        budget: The whole-call deadline in seconds, covering both attempts together. ``None`` reads
+            :data:`_PUSH_TOTAL_SECONDS` **at call time** rather than defaulting to it directly, so
+            every existing call site is unchanged and a test that shrinks the module attribute
+            through ``monkeypatch`` (there is no argument to pass it through) still takes effect —
+            an ordinary parameter default is bound once, at import time, and would not see that
+            change. c7-1's :func:`notify_deck_changed` is the first caller to pass its own, tighter
+            :data:`_NOTIFY_TOTAL_SECONDS` (AD-9).
 
     Returns:
         Exactly one :class:`PushOutcome`.
     """
+    if budget is None:
+        budget = _PUSH_TOTAL_SECONDS
     try:
-        async with asyncio.timeout(_PUSH_TOTAL_SECONDS):
+        async with asyncio.timeout(budget):
             first = await attempt()
             if first is not None:
                 return first
@@ -488,7 +521,7 @@ async def _once_then_retry(
             logger.debug("The freshly read credential was refused too; not retrying again")
             return PushOutcome(outcome="backend_error")
     except TimeoutError:
-        logger.debug("The %s did not complete within %.1fs", what, _PUSH_TOTAL_SECONDS)
+        logger.debug("The %s did not complete within %.1fs", what, budget)
         return PushOutcome(outcome="backend_error")
 
 
@@ -542,6 +575,84 @@ async def push_event(event: AgentEvent, *, timeout: httpx.Timeout | None = None)
     """
     body = event.model_dump_json()
     return await _once_then_retry(lambda: _attempt(body, timeout=timeout), what="push")
+
+
+async def notify_deck_changed(
+    deck_id: str | None = None, *, timeout: httpx.Timeout | None = None
+) -> PushOutcome:
+    """Tell the companion a deck's contents changed, and never let the caller find out how (AD-9).
+
+    The one shared notifier c7-1 exists to build: every deck-mutation tool funnels through this
+    single function rather than growing its own emit path, so "did the glass hear about this
+    change" has exactly one answer to reason about. It mints the ``deck_changed`` envelope itself —
+    the caller supplies only the id — POSTs it through the same ``/agent/events`` route
+    :func:`push_event` already uses (this is a system signal on the same wire, not a new endpoint),
+    and reports one of the five tokens :func:`push_event` reports, on the identical closed
+    vocabulary (AD-8): a caller that wants to debug-log the outcome in c7-2 reads the same
+    :class:`PushOutcome` shape it already knows.
+
+    **Bounded await, never a detached task** (AD-9's whole point). This function is awaited by a
+    mutation tool *after* its transaction commits, and the notification must never outlive that
+    call or run loose after it: ``asyncio.create_task``, ``ensure_future``, ``TaskGroup`` and
+    ``gather`` are all banned on this path (a task that outlives the tool call can be torn down
+    before it runs, silently losing the event — precisely what a detached task would risk), and
+    ``test_ws.py``'s ``test_the_push_path_creates_no_task`` sweeps every module under
+    ``src/companion`` for exactly those four names. The bound is
+    :data:`_NOTIFY_TOTAL_SECONDS` — **~1 s**, not :func:`push_event`'s ~10 s — because AD-9 draws
+    the line at what a *user* waits on: a mutation tool's response is held up by this await, so the
+    deadline has to be short enough that a wedged or absent companion never becomes the reason an
+    agent turn feels slow. The same two-attempt shape (probe, send, and on a refused credential,
+    re-probe and retry once) runs through :func:`_once_then_retry` inside that one second, sharing
+    :func:`_attempt` — and therefore the same identity gate and the same ``/agent/events`` POST —
+    with :func:`push_event` rather than duplicating either.
+
+    **Every exception is caught, and none of them propagates** — the one deliberate divergence from
+    :func:`push_event` and :func:`set_active_deck`, both of which let a genuine bug (a
+    ``MemoryError`` mid-call, say) through rather than mask it. Those two are called from an agent
+    turn that has already committed to round-tripping the network and can afford to surface a real
+    bug loudly; this one is called from *inside* a deck-mutation tool's success path, where a defect
+    in the notifier must never turn an otherwise-successful add, remove or import into a failure the
+    agent reports as broken. The outer ``except Exception`` below is that promise kept: logged at
+    WARNING with ``exc_info`` (the unexpected case), never at the cost of raising. Every *expected*
+    absence — no companion running, nobody listening, a refused credential, a blown budget — is
+    already one of the five tokens by the time it reaches here, logged at DEBUG by the functions
+    this one delegates to; nothing about that logging changes.
+
+    Args:
+        deck_id: The deck that changed, or ``None`` meaning "refetch whatever is active" — the
+            payload's own nullable contract (:class:`~src.companion.contracts.DeckChangedPayload`),
+            reused unchanged. c7-2 is where a real deck id is threaded through; c7-1 wires no
+            caller.
+        timeout: Override the per-request deadline for both legs, on :func:`push_event`'s terms.
+            Production callers pass nothing and get :data:`PROBE_TIMEOUT`. It does **not** override
+            :data:`_NOTIFY_TOTAL_SECONDS`, which production callers must not be able to opt out of.
+
+    Returns:
+        Exactly one :class:`PushOutcome`. Never raises.
+
+    Example:
+        >>> outcome = await notify_deck_changed("076ac3ed")  # doctest: +SKIP
+        >>> outcome.outcome  # doctest: +SKIP
+        'displayed'
+    """
+    try:
+        event = DeckChangedEvent(
+            kind="deck_changed",
+            id=str(uuid4()),
+            ts=datetime.now(UTC),
+            payload=DeckChangedPayload(deck_id=deck_id),
+        )
+        body = event.model_dump_json()
+        return await _once_then_retry(
+            lambda: _attempt(body, timeout=timeout),
+            what="notify",
+            budget=_NOTIFY_TOTAL_SECONDS,
+        )
+    except Exception as exc:  # noqa: BLE001 -- AD-9: a notifier bug must never fail the mutation
+        logger.warning(
+            "notify_deck_changed failed unexpectedly (%s)", type(exc).__name__, exc_info=True
+        )
+        return PushOutcome(outcome="backend_error")
 
 
 def _active_deck_outcome_for(response: httpx.Response) -> PushOutcome | None:

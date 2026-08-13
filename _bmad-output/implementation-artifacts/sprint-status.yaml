@@ -319,7 +319,8 @@
 #   epic-c1..10 → _bmad-output/planning-artifacts/epics-companion-app.md          (c-prefixed, numbering UNCHANGED)
 
 generated: 2026-06-20
-last_updated: '2026-08-13 (C7 prep underway — c6 R1/R6/R8 closed and R2 the vitest probe harness MERGED to master at 1f939a9 via PR #73; R3/R4/R5/R7/R9/R10 still open.)'
+last_updated: '2026-08-13 (c7-1 shared-notifier implemented on feat/companion-c7-1-shared-notifier off umbrella feat/companion-c7; status review, awaiting Brad''s three-layer review + PR.)'
+#                Previously — 2026-08-13 (c7-1 shared-notifier spec approved, implementation in-progress; epic-c7 lifted from backlog.)
 #                Previously — 2026-08-13 (Epic C6 RETRO run and recorded in epic-c6-retro-2026-08-13.md; epic-c6 done, SC-1 + SC-3 closed, 10 action items appended.)
 #                Previously — 2026-08-12 (Story c6-9 MERGED via PR #71 into feat/companion-c6 at `d4f908e`. Greptile 5/5, zero findings. Epic C6''s last story — C6 is now feature-complete. Next: the C6 retrospective.)
 #                Previously — 2026-08-12 (Story c6-9 CODE-REVIEWED (bmad-code-review) -> done. 0 decision-needed, 1 patch, 5 defer, 12 dismissed. Full detail in the story record — per the C5 retro''s R4, this field is a date plus one clause.)
@@ -678,8 +679,8 @@ development_status:
   # FR-11, FR-12 (notifier swallow) · NFR-04 (refetch coalescing) · AD-9 · depends on c6 · closes SC-2
   # NOTE: AD-9 — "fire-and-forget" means a bounded-timeout await (~1 s), NOT a detached task.
   # asyncio.create_task is BANNED on this path. Emission is always after commit, never inside the txn.
-  epic-c7: backlog
-  c7-1-one-shared-notifier-with-a-bounded-await-and-no-detached-tasks: backlog
+  epic-c7: in-progress
+  c7-1-one-shared-notifier-with-a-bounded-await-and-no-detached-tasks: review
   c7-2-every-deck-mutation-tool-emits-after-its-transaction-commits: backlog
   c7-3-the-glass-refetches-on-deck-changed-coalesced-and-latest-wins: backlog
   c7-4-refetch-never-tears-down-whats-on-screen: backlog

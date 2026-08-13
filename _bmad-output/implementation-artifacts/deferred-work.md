@@ -6233,3 +6233,32 @@ Also executed or re-homed at this retro, beyond the seven:
     exists to catch. The spec Design Notes claim "the baseline can never drift from the tree it
     describes" was softened in review to match. Closing this needs a ruling on whether the harness
     may shell out to `git rev-parse HEAD`.'
+
+## Deferred from: code review of c7-1-one-shared-notifier-with-a-bounded-await-and-no-detached-tasks (2026-08-13)
+
+> Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Verification Gap) of the
+> `feat/companion-c7-1-shared-notifier` diff. Both entries below are pre-existing, not caused by
+> this story's own code — surfaced incidentally by the review.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-c7-1-shared-notifier.md`
+  summary: Two `tests/integration/data/test_deck_repository.py` tests
+    (`test_update_deck_strategy`, `test_list_decks_with_strategy_field`) fail inside the full suite
+    even on a clean tree, and were never formally tracked anywhere outside the story's own Task 0
+    firing-proof prose.
+  evidence: The story's Firing proof section (spec `## Spec Change Log` -> `### Firing proof
+    (Task 0)`) shows both tests RED in the pre-plant baseline run and again, identically, after
+    revert (`--expect-green`) — proving they are unrelated to `src/companion/client.py` (that file
+    touches no data-layer code) and reproduce independent of any planted violation. Both pass in
+    isolation per the same section. Flagged there as "for Brad, out of this story's scope" but
+    never entered here, so nothing tracks it once the story record stops being read.
+- source_spec: `_bmad-output/implementation-artifacts/spec-c7-1-shared-notifier.md`
+  summary: The detached-task ban (`test_ws.py::test_the_push_path_creates_no_task`, mirrored
+    locally in this story as `test_no_detached_task_identifier_appears_in_client_py`) flags any AST
+    `Name`/`Attribute` node matching `create_task`/`ensure_future`/`TaskGroup`/`gather` anywhere in
+    `src/companion/*.py`, not only `asyncio.<name>(...)` call sites.
+  evidence: A future unrelated identifier in that package — a local variable, parameter, or a
+    same-named method on an unrelated object (e.g. a dict/itertools-style `.gather()` helper) —
+    would fail this guard with no detached task actually present. The pattern predates this story
+    (the package-wide sweep in `test_ws.py` already existed; c7-1 only added a local mirror of it
+    in `test_client.py` for `client.py` specifically), so narrowing it is a design change to an
+    inherited guard, not something this story's own diff should do unilaterally.
