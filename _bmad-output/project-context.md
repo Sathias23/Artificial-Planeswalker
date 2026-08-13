@@ -6,7 +6,7 @@ sections_completed:
   ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'quality_rules', 'workflow_rules', 'anti_patterns']
 existing_patterns_found: 14
 status: 'complete'
-rule_count: 56
+rule_count: 57
 optimized_for_llm: true
 ---
 
@@ -157,6 +157,23 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **`tests.*` is exempt from `mypy --strict`** — but still follow naming/ruff rules.
 - **RAG regression guard:** semantic-search work must include a small `query → expected card in
   top-K` sanity eval (the quantized embedding model can silently degrade recall).
+- **Firing proofs run through a committed harness, never a hand-typed command.** A new guard is not
+  proven until a planted violation is shown RED through the FULL suite. The recorded failure mode is
+  a claim that is *true of the command that was run and false of the suite* — a single-file run
+  presented as a full one, a `-k`/`-t` filter that excluded the guard, a collected count nobody
+  looked at. Both harnesses own their own argv, so there is no narrowing argument to get wrong; the
+  caller supplies only the expectation.
+  - Python: `uv run python -m scripts.probe_harness --expect-red '<node id>'` (or `--expect-green`).
+  - Frontend: `uv run python -m scripts.vitest_probe_harness --control` **first**, which prints the
+    `--expect-total N` to score the planted run with — then
+    `… --expect-total N --expect-red '<substring>'`. Run the control **warm** (one prior `npm test`);
+    a cold run trips the eslint-shellout timeout and the control will refuse rather than hand out a
+    baseline.
+  - **Stage the tree before you plant.** An unstaged `git checkout` revert once deleted a whole
+    component. Revert with `git diff --exit-code <file>` as the check.
+  - Paste the harness's **proof line** into the story record. A run that is not evidence (crash
+    signature, shrunken collection, wrong resolved root) prints nothing pasteable on purpose — do
+    not hand-transcribe counts around it.
 - **`legacy/` tests are excluded from the active suite** once the restructure lands — don't add
   new coverage there.
 - Coverage available via `uv run pytest --cov=src` (no hard threshold enforced).
@@ -255,4 +272,4 @@ _This file contains critical rules and patterns that AI agents must follow when 
   restructure lands, or Phase 2/3 begins).
 - Review periodically; remove rules that become obvious or stale.
 
-Last Updated: 2026-06-20
+Last Updated: 2026-08-13 (firing-proof harness rule added — Testing Rules; c6 R2)
