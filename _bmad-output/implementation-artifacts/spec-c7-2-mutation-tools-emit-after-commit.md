@@ -2,7 +2,7 @@
 title: 'c7-2: Every deck-mutation tool emits after its transaction commits'
 type: 'feature'
 created: '2026-08-13'
-status: 'review'
+status: 'in-review'
 review_loop_iteration: 0
 baseline_revision: 'e5826d058b99fbca1b22a358d1e77da9a22217ca'
 followup_review_recommended: false
@@ -80,6 +80,23 @@ All three `--expect-red` ids fired (the enumeration guard named the unwired wrap
 full suite (-m 'not integration'): 3019 collected, 0 failed, exit 0
 ```
 
+**Firing proof, review patches (2026-08-13, second entry).** The review added two guards (emit-outside-the-session-block; the hardened derivation resolving relative imports, module-object attribute delegation, and a recursive sweep incl. `__init__.py`, plus the server.py direct-write pin). Plants, staged tree first: (i) `create_deck`'s emit moved back *inside* its `async with` block; (ii) a temporary `src/mcp_server/tools/merge_tool.py` whose only path to a repository write is a **relative** from-import of `add_card_to_deck` — the delegation shape the pre-patch resolver could not see — plus an unwired `merge_tool` wrapper registered in server.py:
+
+```
+full suite (-m 'not integration'): 3021 collected, 3 failed, 0 errored, exit 1
+  RED    tests/integration/mcp_server/test_deck_changed_wiring.py::TestEveryMutationToolIsWiredAndNoOtherToolIs::test_the_derived_mutating_tools_are_exactly_the_five_wired_ones
+  RED    tests/integration/mcp_server/test_deck_changed_wiring.py::TestEveryMutationToolIsWiredAndNoOtherToolIs::test_no_emit_reference_sits_inside_a_session_block
+  RED    tests/integration/test_build_plugin.py::test_server_registers_expected_tools
+```
+
+Both `--expect-red` ids fired; the derivation guard's failure message named the plant (`wire (or unwire) the difference: ['merge_tool']`), and the third red is the tool-catalogue set-equality guard seeing the planted tool — an expected side effect confirming the plant registered a real tool. Revert: `git restore src/mcp_server/server.py` + delete the temp module, `git diff --exit-code` → clean (worktree == staged tree). Green run after revert:
+
+```
+full suite (-m 'not integration'): 3021 collected, 0 failed, exit 0
+```
+
+(Collected count 3019 → 3021: the two review-patch guard tests.)
+
 **Acceptance Criteria:**
 - Given an in-process server with a stubbed notifier, when each of the five tools persists a change, then exactly one emit carries that deck's id, observed after the commit is visible (delete: after the row is gone).
 - Given any no-write outcome on any of the five tools, when the tool returns, then zero emits occurred.
@@ -98,6 +115,7 @@ full suite (-m 'not integration'): 3019 collected, 0 failed, exit 0
 - `deck_id=None` from a result passes through unchanged — the contract reads it as "refetch whatever is active"; do not invent a guard.
 - Known full-suite flake (pre-existing, recorded in c7-1): `tests/integration/data/test_deck_repository.py::test_update_deck_strategy` / `::test_list_decks_with_strategy_field` — not this story's regression if they appear in harness output.
 - Branch process: story branch `feat/companion-c7-2-mutation-tools-emit` off umbrella `feat/companion-c7`; PR targets the umbrella.
+- Verb-list/tool-surface reconciliation (review patch 3, 2026-08-13): the epic's requirement names the verb "update" among the emitting mutations, but **no update-shaped MCP tool exists today** — `update_deck`, `update_card_quantity`, `update_deck_color_identity`, and `merge_decks` all exist on the repository layer with zero references anywhere in `src/mcp_server`. The five wired tools therefore cover the entire current mutation surface, and the derivation guard (which seeds from the pinned repository write-method vocabulary, those four names included) is what forces wiring the day an update-shaped tool appears: its helper would reference a pinned write method, join the derived set, and fail the enumeration guard by name until its wrapper emits.
 
 ## Verification
 

@@ -25,16 +25,23 @@ reaches the notifier through the name it imported. What is proven:
 
 **The enumeration half** is the guard the epic asked for: a future mutation tool cannot be
 forgotten silently. It *derives* the set of mutating tools rather than trusting a hand-kept list —
-sweeping ``src/mcp_server/tools/*.py`` for references to the pinned deck-write repository methods
-(``_REPO_WRITE_METHODS``, imported from ``test_import_boundary.py`` where
-``TestRepositorySurfaceIsPinned`` cross-checks it against the live repositories), resolving import
-aliases (``deck_import``'s ``_add_card_to_deck`` is the case that demands it), and mapping through
-``server.py``'s own import aliases to the wrappers that call them. That derived set must equal the
-five wired tool names; a sixth deck-write surface fails here **by name** until it is wired. Two
-sibling guards pin the wiring's shape: only the five wrappers reference the emit path, and every
-reference in ``server.py`` sits under a plain ``await`` — the local half of the detached-task ban
-(``create_task``/``ensure_future``/``TaskGroup``/``gather``), which ``test_ws.py`` enforces for
-``src/companion`` and this file enforces for the new sites without extending that package sweep.
+sweeping every module under ``src/mcp_server/tools/`` (recursively, ``__init__.py`` included) for
+references to the pinned deck-write repository methods (``_REPO_WRITE_METHODS``, imported from
+``test_import_boundary.py`` where ``TestRepositorySurfaceIsPinned`` cross-checks it against the
+live repositories), then closing over delegation in every call shape a repo module can legally
+write: from-imported names (aliased, absolute or **relative** — ``deck_import``'s
+``_add_card_to_deck`` is the absolute-alias case that demands resolution, and the project's import
+convention permits the relative twin), same-module names, and attribute calls through
+module-object bindings (``import ... as dm; dm.helper(...)``). The derived set, mapped through
+``server.py``'s own imports to the wrappers that call them, must equal the five wired tool names;
+a sixth deck-write surface fails here **by name** until it is wired. Sibling guards pin the
+wiring's shape: server.py itself never touches a repository write method (the inline-mutation
+bypass), only the five wrappers reference the emit path, no emit reference sits inside an ``async
+with`` session block (the connection-held-across-HTTP hazard ``companion.py:181-186`` documents),
+and every reference in ``server.py`` sits under a plain ``await`` — the local half of the
+detached-task ban (``create_task``/``ensure_future``/``TaskGroup``/``gather``), which
+``test_ws.py`` enforces for ``src/companion`` and this file enforces for the new sites without
+extending that package sweep.
 
 Despite living under ``tests/integration/``, these run in the ordinary ``-m "not integration"``
 set: a directory is not a marker (AD-10), and nothing here opens a socket — the degradation test
@@ -56,7 +63,12 @@ from src.data.models.card import CardModel
 from src.data.repositories.deck import DeckRepository
 from src.mcp_server import server as server_module
 from src.mcp_server.server import build_server
-from tests.unit.companion.test_import_boundary import _REPO_WRITE_METHODS
+from tests.unit.companion.test_import_boundary import (
+    _REPO_WRITE_METHODS,
+    package_for,
+    repo_relative,
+    resolve_import,
+)
 
 # ---------------------------------------------------------------------------------------------
 # Repository layout — resolved from __file__, never from the runner's working directory.
@@ -480,37 +492,126 @@ def _names_used(fn: ast.AST) -> set[str]:
     return {n.id for n in ast.walk(fn) if isinstance(n, ast.Name)}
 
 
-def _sibling_tool_imports(tree: ast.Module) -> dict[str, tuple[str, str]]:
-    """Map each locally bound name to the ``(module_stem, original_name)`` it imports.
+def _tool_modules() -> dict[str, tuple[Path, ast.Module]]:
+    """Parse every module under the tools package — recursively, ``__init__.py`` included.
 
-    Covers ``from src.mcp_server.tools.X import y as z`` — the alias form ``deck_import`` uses for
-    ``add_card_to_deck``, which is exactly the indirection that would let a delegating tool hide
-    from a name-equality sweep.
+    Keyed by the module's dotted path relative to the package (``deck_management``; ``sub.mod``
+    for a future subpackage; ``__init__`` for a package initializer), so a helper hiding in an
+    initializer or a future subpackage is swept like any other module.
     """
-    imports: dict[str, tuple[str, str]] = {}
+    files = sorted(_TOOLS_DIR.rglob("*.py"))
+    assert files, f"no tool modules found under {_TOOLS_DIR} — the sweep would pass vacuously"
+    modules: dict[str, tuple[Path, ast.Module]] = {}
+    for path in files:
+        parts = path.relative_to(_TOOLS_DIR).with_suffix("").parts
+        modules[".".join(parts)] = (path, _parse(path))
+    return modules
+
+
+def _module_key_for(base: str) -> str | None:
+    """Turn an absolute dotted import target into a tools-package module key, or ``None``."""
+    if base == _TOOLS_PACKAGE:
+        return "__init__"
+    if base.startswith(f"{_TOOLS_PACKAGE}."):
+        return base[len(_TOOLS_PACKAGE) + 1 :]
+    return None
+
+
+def _imported_name_edges(path: Path, tree: ast.Module) -> dict[str, tuple[str, str]]:
+    """Map each name a file from-imports out of the tools package to its ``(module_key, name)``.
+
+    Covers ``from src.mcp_server.tools.X import y [as z]`` — the alias form ``deck_import`` uses
+    for ``add_card_to_deck`` — **and its relative twin** ``from .X import y``, which the repo's
+    import convention explicitly permits within a package. Relative levels are resolved through
+    the importing file's own package (``resolve_import``, shared with the AD-2/AD-3 guards), so a
+    delegation cannot hide behind a leading dot.
+    """
+    package = package_for(repo_relative(path))
+    edges: dict[str, tuple[str, str]] = {}
     for node in ast.walk(tree):
-        if (
-            isinstance(node, ast.ImportFrom)
-            and node.module
-            and node.module.startswith(f"{_TOOLS_PACKAGE}.")
-        ):
-            stem = node.module.rsplit(".", 1)[-1]
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        key = _module_key_for(resolve_import(node.module, node.level, package))
+        if key is None:
+            continue
+        for alias in node.names:
+            edges[alias.asname or alias.name] = (key, alias.name)
+    return edges
+
+
+def _module_bindings(path: Path, tree: ast.Module) -> dict[str, str]:
+    """Map each module-object binding of a tools module to its module key.
+
+    Covers ``import src.mcp_server.tools.X [as y]`` and ``from src.mcp_server.tools import X``
+    (absolute or relative): delegation then looks like ``y.helper(...)`` — an *attribute* call
+    the name-edge map structurally cannot see, so the closure needs this second map.
+    """
+    package = package_for(repo_relative(path))
+    bindings: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
             for alias in node.names:
-                imports[alias.asname or alias.name] = (stem, alias.name)
-    return imports
+                key = _module_key_for(alias.name)
+                if key is not None:
+                    # Without an asname the usable binding is the full dotted chain, which is
+                    # exactly what an attribute reference unparses to.
+                    bindings[alias.asname or alias.name] = key
+        elif isinstance(node, ast.ImportFrom):
+            key = _module_key_for(resolve_import(node.module, node.level, package))
+            if key is None:
+                continue
+            for alias in node.names:
+                # `from ..tools import deck_management [as dm]` binds a *submodule* object;
+                # non-module names bound this way resolve to no module key and simply miss.
+                sub = alias.name if key == "__init__" else f"{key}.{alias.name}"
+                bindings[alias.asname or alias.name] = sub
+    return bindings
 
 
-def _mutating_helpers(modules: dict[str, ast.Module]) -> set[tuple[str, str]]:
-    """Derive every ``(module_stem, function)`` in the tools package that can write deck tables.
+def _edge_hits(target: tuple[str, str], mutating: set[tuple[str, str]]) -> bool:
+    """True when *target* names a mutating function — directly or via a package initializer."""
+    key, name = target
+    return (key, name) in mutating or (f"{key}.__init__", name) in mutating
+
+
+def _delegates_to_mutating(
+    fn: ast.AST,
+    *,
+    module_key: str | None,
+    local_functions: set[str],
+    name_edges: dict[str, tuple[str, str]],
+    module_bindings: dict[str, str],
+    mutating: set[tuple[str, str]],
+) -> bool:
+    """True when *fn* reaches a mutating function through any of the three call shapes.
+
+    The shapes: a from-imported name (aliased, absolute or relative); a same-module name; an
+    attribute call through a module-object binding (``dm.add_card_to_deck(...)``).
+    """
+    for name in _names_used(fn):
+        if name in name_edges and _edge_hits(name_edges[name], mutating):
+            return True
+        if module_key is not None and name in local_functions and (module_key, name) in mutating:
+            return True
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Attribute):
+            prefix, _, attr = ast.unparse(node).rpartition(".")
+            if prefix in module_bindings and _edge_hits((module_bindings[prefix], attr), mutating):
+                return True
+    return False
+
+
+def _mutating_helpers(modules: dict[str, tuple[Path, ast.Module]]) -> set[tuple[str, str]]:
+    """Derive every ``(module_key, function)`` in the tools package that can write deck tables.
 
     Seed: functions holding an attribute reference to a pinned repository write method. Closure:
-    functions that call a mutating function — through a sibling-module import (aliased or not) or
-    a same-module name — join the set, to a fixpoint. A future helper that writes through three
-    layers of delegation is still found, as long as each hop is an ordinary call.
+    functions that reach a mutating function through any shape :func:`_delegates_to_mutating`
+    resolves join the set, to a fixpoint — a future helper that writes through three layers of
+    delegation is still found, as long as each hop is an ordinary call.
     """
     mutating = {
-        (stem, fn.name)
-        for stem, tree in modules.items()
+        (key, fn.name)
+        for key, (_, tree) in modules.items()
         for fn in _functions(tree)
         if any(
             isinstance(node, ast.Attribute) and node.attr in _REPO_WRITE_METHODS
@@ -520,29 +621,24 @@ def _mutating_helpers(modules: dict[str, ast.Module]) -> set[tuple[str, str]]:
     changed = True
     while changed:
         changed = False
-        for stem, tree in modules.items():
-            imports = _sibling_tool_imports(tree)
+        for key, (path, tree) in modules.items():
+            name_edges = _imported_name_edges(path, tree)
+            bindings = _module_bindings(path, tree)
             local = {fn.name for fn in _functions(tree)}
             for fn in _functions(tree):
-                if (stem, fn.name) in mutating:
+                if (key, fn.name) in mutating:
                     continue
-                used = _names_used(fn)
-                delegates = any(
-                    imports[name] in mutating for name in used if name in imports
-                ) or any(
-                    (stem, name) in mutating for name in used if name in local and name != fn.name
-                )
-                if delegates:
-                    mutating.add((stem, fn.name))
+                if _delegates_to_mutating(
+                    fn,
+                    module_key=key,
+                    local_functions=local,
+                    name_edges=name_edges,
+                    module_bindings=bindings,
+                    mutating=mutating,
+                ):
+                    mutating.add((key, fn.name))
                     changed = True
     return mutating
-
-
-def _tool_modules() -> dict[str, ast.Module]:
-    """Parse every module in the tools package, keyed by stem. Asserts the sweep is non-vacuous."""
-    files = sorted(p for p in _TOOLS_DIR.glob("*.py") if p.name != "__init__.py")
-    assert files, f"no tool modules found under {_TOOLS_DIR} — the sweep would pass vacuously"
-    return {p.stem: _parse(p) for p in files}
 
 
 def _server_wrappers(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
@@ -571,7 +667,12 @@ class TestEveryMutationToolIsWiredAndNoOtherToolIs:
         first failing that pin.
         """
         assert _REPO_WRITE_METHODS, "the pinned write vocabulary is empty — nothing to derive from"
-        mutating = _mutating_helpers(_tool_modules())
+        modules = _tool_modules()
+        assert "__init__" in modules, (
+            "the recursive sweep no longer sees the package initializer — a helper could hide "
+            "in tools/__init__.py unseen"
+        )
+        mutating = _mutating_helpers(modules)
 
         # Non-vacuity, both derivation legs: the direct-reference seed found the plain writers,
         # and the fixpoint resolved the aliased cross-module delegation that demands it.
@@ -582,15 +683,77 @@ class TestEveryMutationToolIsWiredAndNoOtherToolIs:
         )
 
         tree = _parse(_SERVER_PATH)
-        aliases = _sibling_tool_imports(tree)
+        name_edges = _imported_name_edges(_SERVER_PATH, tree)
+        bindings = _module_bindings(_SERVER_PATH, tree)
         wired = {
             wrapper.name
             for wrapper in _server_wrappers(tree)
-            if any(aliases.get(name) in mutating for name in _names_used(wrapper))
+            if _delegates_to_mutating(
+                wrapper,
+                module_key=None,
+                local_functions=set(),
+                name_edges=name_edges,
+                module_bindings=bindings,
+                mutating=mutating,
+            )
         }
         assert wired == set(_MUTATION_TOOLS), (
             "the tools that reach a deck-write repository method and the five wired emitters "
             f"disagree — wire (or unwire) the difference: {sorted(wired ^ set(_MUTATION_TOOLS))}"
+        )
+
+    def test_server_py_reaches_no_repository_write_method_directly(self):
+        """The inline-mutation hole, closed cheaply: server.py itself never touches a writer.
+
+        The derivation sweeps the tools package, so a mutation coded directly in ``server.py``
+        against a repository would bypass it entirely — and would be a sixth write surface with
+        no helper for the enumeration to find. This pin makes that shape fail by name: any
+        attribute reference to a pinned write method inside ``server.py`` is a breach, whatever
+        the receiver.
+        """
+        assert _REPO_WRITE_METHODS, "the pinned write vocabulary is empty — nothing to pin against"
+        offenders = [
+            f"server.py:{node.lineno} — {ast.unparse(node)}"
+            for node in ast.walk(_parse(_SERVER_PATH))
+            if isinstance(node, ast.Attribute) and node.attr in _REPO_WRITE_METHODS
+        ]
+        assert not offenders, (
+            "server.py references a repository write method directly — deck writes belong in a "
+            f"tools helper, where the enumeration guard can see them: {offenders}"
+        )
+
+    def test_no_emit_reference_sits_inside_a_session_block(self):
+        """The Always-constraint "emit outside the session block, never inside it", structural.
+
+        The after-commit observers cannot catch this regression — the repositories commit
+        internally, so the row is visible to a second session either way. What an inline emit
+        *does* cost is a pooled connection held open across the up-to-~1 s notify window, the
+        exact hazard ``companion.py:181-186`` documents and the wrapper restructure exists to
+        avoid structurally. So the guard is structural too: within a mutation wrapper, no
+        emit-path name may sit anywhere under an ``async with`` block.
+        """
+        wrappers = _server_wrappers(_parse(_SERVER_PATH))
+        mutating_wrappers = [w for w in wrappers if w.name in _MUTATION_TOOLS]
+        assert {w.name for w in mutating_wrappers} == set(_MUTATION_TOOLS), (
+            "the wrapper scan no longer finds all five mutation tools — the scan shape is wrong"
+        )
+
+        offenders = []
+        for wrapper in mutating_wrappers:
+            session_blocks = [n for n in ast.walk(wrapper) if isinstance(n, ast.AsyncWith)]
+            assert session_blocks, (
+                f"{wrapper.name} holds no async-with block at all — the wrapper shape changed "
+                "and this guard can no longer see the session boundary; rewrite it, don't skip it"
+            )
+            for block in session_blocks:
+                offenders.extend(
+                    f"{wrapper.name}:{node.lineno} — {node.id} inside the session block"
+                    for node in ast.walk(block)
+                    if isinstance(node, ast.Name) and node.id in _EMIT_NAMES
+                )
+        assert not offenders, (
+            "emit reference(s) inside an `async with` session block — the emit must run after "
+            f"the block exits, with the pooled connection released: {offenders}"
         )
 
     def test_exactly_the_five_mutating_wrappers_reference_the_emit_path(self):
