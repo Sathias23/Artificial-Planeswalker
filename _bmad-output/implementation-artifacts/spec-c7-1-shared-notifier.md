@@ -2,7 +2,7 @@
 title: 'c7-1: One shared notifier with a bounded await and no detached tasks'
 type: 'feature'
 created: '2026-08-13'
-status: 'review'
+status: 'done'
 review_loop_iteration: 0
 baseline_commit: 'e39278879c98fc088b61610437ac81ad579de70b'
 context:
@@ -112,3 +112,43 @@ full suite (-m 'not integration'): 3002 collected, 2 failed, 0 errored, exit 1
 ```
 
 Only the pre-existing, unrelated flake remains — every c7-1 test is green.
+
+## Suggested Review Order
+
+**The notifier itself**
+
+- Entry point — the new public function AD-9 exists to add: bounded await, catch-all, delegates to the existing attempt path.
+  [`client.py:580`](../../src/companion/client.py#L580)
+
+- The tightened, dedicated deadline — ten times shorter than the push's, and its own constant rather than a widenable parameter.
+  [`client.py:131`](../../src/companion/client.py#L131)
+
+**Reused plumbing, minimally extended**
+
+- `_once_then_retry` gains a `budget` kwarg read at call time (not bound at import), so every existing call site and its monkeypatch tests stay unchanged.
+  [`client.py:475`](../../src/companion/client.py#L475)
+
+**Test coverage — the I/O matrix**
+
+- The new test class proving the I/O matrix: happy path, null deck id, app-closed, no-clients, slow-budget, stale-token retry, never-raises, token-never-logged, and the detached-task ban.
+  [`test_client.py:1304`](../../tests/unit/companion/test_client.py#L1304)
+
+- Happy path — asserts the actual POSTed bytes round-trip through `DeckChangedEvent`, not just the returned outcome.
+  [`test_client.py:1312`](../../tests/unit/companion/test_client.py#L1312)
+
+- The ~1 s budget is exercised with a real elapsed-time assertion, not just a mocked timeout.
+  [`test_client.py:1367`](../../tests/unit/companion/test_client.py#L1367)
+
+- Never-raises — the one deliberate divergence from `push_event`, proven by injecting a `MemoryError` deep in the response path.
+  [`test_client.py:1412`](../../tests/unit/companion/test_client.py#L1412)
+
+- Belt-and-braces local pin mirroring `test_ws.py`'s package-wide detached-task sweep for this file specifically.
+  [`test_client.py:1460`](../../tests/unit/companion/test_client.py#L1460)
+
+- Constant pinned so AD-9's ~1 s bound cannot silently widen toward the push's ~10 s.
+  [`test_client.py:599`](../../tests/unit/companion/test_client.py#L599)
+
+**Plugin mirror**
+
+- Verbatim mirror of the src change, rebuilt via `scripts/build_plugin.py` and gated by `test_build_plugin.py`.
+  [`plugin/server/src/companion/client.py:580`](../../plugin/server/src/companion/client.py#L580)

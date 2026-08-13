@@ -578,7 +578,7 @@ async def push_event(event: AgentEvent, *, timeout: httpx.Timeout | None = None)
 
 
 async def notify_deck_changed(
-    deck_id: str | None = None, *, timeout: httpx.Timeout = PROBE_TIMEOUT
+    deck_id: str | None = None, *, timeout: httpx.Timeout | None = None
 ) -> PushOutcome:
     """Tell the companion a deck's contents changed, and never let the caller find out how (AD-9).
 
