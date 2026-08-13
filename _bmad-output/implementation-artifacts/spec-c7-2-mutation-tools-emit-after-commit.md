@@ -2,10 +2,10 @@
 title: 'c7-2: Every deck-mutation tool emits after its transaction commits'
 type: 'feature'
 created: '2026-08-13'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 baseline_revision: 'e5826d058b99fbca1b22a358d1e77da9a22217ca'
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-c7-context.md'
 warnings: ['oversized']
@@ -108,6 +108,17 @@ full suite (-m 'not integration'): 3021 collected, 0 failed, exit 0
 
 ## Review Triage Log
 
+### 2026-08-13 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 3: (high 0, medium 2, low 1)
+- defer: 0
+- reject: 17: (high 0, medium 1, low 16)
+- addressed_findings:
+  - `[medium]` `[patch]` The "emit outside the session block" Always-constraint had no test — a refactor moving the emit back inside the `async with` passed everything (the repos commit internally, so the after-commit observers see the row either way). Added `test_no_emit_reference_sits_inside_a_session_block`: no emit-path name may be a descendant of an `ast.AsyncWith` in a mutation wrapper, with non-vacuity asserts. Proven red via a planted inline emit.
+  - `[medium]` `[patch]` The enumeration guard's import resolver only understood absolute `from src.mcp_server.tools.X import y` — relative imports (permitted by repo convention within a package), plain `import` forms, module-attribute delegation, `__init__.py`, and subpackages all escaped the "can't be forgotten" promise; nothing pinned server.py against inline repository writes either. Hardened the resolver (relative-import resolution shared with `test_import_boundary.py`, module-binding attribute edges, recursive module sweep) and added `test_server_py_reaches_no_repository_write_method_directly`. Proven red via a planted relative-import delegating tool, named by the guard.
+  - `[low]` `[patch]` The epic's verb list names "update" but no update-shaped MCP tool exists; the record resolved that tension silently. Added a Design Notes bullet making the reconciliation explicit (four repository update/merge write methods have zero `src/mcp_server` references; the derivation guard forces wiring the day such a tool appears).
+
 ## Design Notes
 
 - Wrapper-level (not helper-level) emit is load-bearing: helpers would need two new SC-3 allow-list entries plus edits to fixtures that use `deck_management.py` as a *violation* case (`test_import_boundary.py:1104,:1188`), and `import_decklist`'s per-line delegation to `add_card_to_deck` would fire N emits for one import. The wrapper is the one place that sees exactly one call per tool invocation and is already companion-privileged.
@@ -124,3 +135,26 @@ full suite (-m 'not integration'): 3021 collected, 0 failed, exit 0
 - `uv run python -m scripts.probe_harness --expect-red '<planted node id>'` then `--expect-green` after revert -- expected: proof lines pasted above.
 - `uv run ruff check . && uv run ruff format --check . && uv run mypy src/` -- expected: clean.
 - `uv run python scripts/build_plugin.py && git status --porcelain plugin/` -- expected: mirror rebuilt, diff committed.
+
+## Auto Run Result
+
+Status: done
+
+**Summary.** All five deck-mutation MCP tools (`create_deck`, `delete_deck`, `add_card_to_deck`, `import_decklist`, `remove_card_from_deck`) now emit `deck_changed` through c7-1's shared notifier after their session block exits — commit landed, pooled connection released — and only when the result proves a persisted write (`status == "ok"`; `imported_lines > 0` for import, one emit per call, never per line). The notify outcome is debug-logged and never touches the tool's own result. A derivation-based enumeration guard makes any future deck-write tool fail by name until wired.
+
+**Files changed** (commits `1995cc9` feat + `e7aede8` review fix, on `feat/companion-c7-2-mutation-tools-emit` off umbrella `feat/companion-c7`):
+- `src/mcp_server/server.py` — module logger, leaf-notifier import, `_emit_deck_changed` helper, five wrappers rewired (capture result → exit session block → conditional emit → return).
+- `plugin/server/src/mcp_server/server.py` — rebuilt verbatim mirror.
+- `tests/integration/mcp_server/test_deck_changed_wiring.py` — new, 19 tests: behavioural matrix (exactly-one-emit, after-commit observer proofs, no-write silence, outcome-token indifference, real-client closed-companion degradation) + five AST guards (derived-writers==wired-emitters, only-the-five-reference-the-emit-path, await-only, emit-outside-session-block, no-inline-repo-writes-in-server.py).
+- This spec file — record, firing proofs, triage log.
+
+**Review findings breakdown.** 20 post-dedup findings across four layers (blind hunter, edge-case hunter, verification-gap, intent-alignment): 3 patched (2 medium — missing placement guard, resolver under-approximation; 1 low — verb-list reconciliation note), 0 deferred, 17 rejected (contrived evasion scenarios, defense-in-depth against c7-1's tested never-raises contract, crash-path lost events the epic's best-effort delivery model explicitly accepts, already-tracked flake noise, cosmetics). No intent gaps, no bad-spec loopbacks.
+
+**Follow-up review recommendation: true** — patched severities: 0 high, 2 medium, 1 low → score 3×2 + 1 = 7 ≥ 5.
+
+**Verification performed.** Firing proofs through the committed harness, both passes: feature plants (emit deleted / emit wrapped in `create_task`) → 3 expected reds fired, revert → green; patch plants (emit moved inside the session block / relative-import delegating unwired tool) → both new guards red naming their plants, revert → full suite green (`3021 collected, 0 failed, exit 0`). Post-patch re-verification: `pytest tests/integration/mcp_server tests/unit/companion` → 1767 passed, 1 skipped; wiring file 19/19; `ruff check` + `ruff format --check` + `mypy src/` clean; plugin mirror rebuild produces no diff; import-boundary and active-deck sweeps pass with zero allow-list changes.
+
+**Residual risks.**
+- Pre-existing full-suite flake pair (`test_deck_repository.py::test_update_deck_strategy` / `::test_list_decks_with_strategy_field`) still surfaces intermittently in harness runs; unrelated to this story, tracked as C7 prep item R3.
+- Pre-existing tests that drive mutations through the in-process client now traverse the real notifier; on a machine with no companion discovery file this is a cheap `app_not_running`, but a dev machine running the suite with the companion open would send real `deck_changed` events and pay up to ~1 s per mutation test. Suite-wide `PLANESWALKER_DATA_DIR` isolation was deliberately left out of scope.
+- The enumeration guard's detection surface ends at the repo's conventions: a mutation written via raw session DML, or in a module outside `src/mcp_server`, is invisible to it (the SC-3 allow-list and layer-boundary tests are the backstop).
