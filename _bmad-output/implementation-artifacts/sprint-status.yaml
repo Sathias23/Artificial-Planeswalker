@@ -319,7 +319,8 @@
 #   epic-c1..10 → _bmad-output/planning-artifacts/epics-companion-app.md          (c-prefixed, numbering UNCHANGED)
 
 generated: 2026-06-20
-last_updated: '2026-08-13 (c7-1 shared-notifier implemented on feat/companion-c7-1-shared-notifier off umbrella feat/companion-c7; status review, awaiting Brad''s three-layer review + PR.)'
+last_updated: '2026-08-13 (Story c7-1 MERGED via PR #74 into `feat/companion-c7` at `72bf5fc`. Three-layer review found 1 patch (notify_deck_changed''s timeout default aligned with sibling verbs) + 2 defer, no decisions needed. Next: c7-2.)'
+#                Previously — 2026-08-13 (c7-1 shared-notifier implemented on feat/companion-c7-1-shared-notifier off umbrella feat/companion-c7; status review, awaiting Brad''s three-layer review + PR.)
 #                Previously — 2026-08-13 (c7-1 shared-notifier spec approved, implementation in-progress; epic-c7 lifted from backlog.)
 #                Previously — 2026-08-13 (Epic C6 RETRO run and recorded in epic-c6-retro-2026-08-13.md; epic-c6 done, SC-1 + SC-3 closed, 10 action items appended.)
 #                Previously — 2026-08-12 (Story c6-9 MERGED via PR #71 into feat/companion-c6 at `d4f908e`. Greptile 5/5, zero findings. Epic C6''s last story — C6 is now feature-complete. Next: the C6 retrospective.)
@@ -680,7 +681,7 @@ development_status:
   # NOTE: AD-9 — "fire-and-forget" means a bounded-timeout await (~1 s), NOT a detached task.
   # asyncio.create_task is BANNED on this path. Emission is always after commit, never inside the txn.
   epic-c7: in-progress
-  c7-1-one-shared-notifier-with-a-bounded-await-and-no-detached-tasks: review
+  c7-1-one-shared-notifier-with-a-bounded-await-and-no-detached-tasks: done
   c7-2-every-deck-mutation-tool-emits-after-its-transaction-commits: backlog
   c7-3-the-glass-refetches-on-deck-changed-coalesced-and-latest-wins: backlog
   c7-4-refetch-never-tears-down-whats-on-screen: backlog
