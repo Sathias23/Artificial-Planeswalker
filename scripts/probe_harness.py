@@ -16,11 +16,10 @@ visible in the proof line itself rather than in nobody's memory.
 
 **What this cannot see.** It proves a node id was reported failing by a full run; it does not read
 the assertion, so it cannot tell a guard that fired for the planted reason from one that fired for
-an unrelated one — that judgement stays with the author, and R2 asks for a sentence of it. It also
-cannot see the frontend: ``vitest`` and ``tsc -b`` are a separate toolchain, and three of the five
-recorded failure modes (a lowercase-drive working directory, ``shell=True`` on Windows, an
-unparseable TSX file) are specific to it. A story that touches ``ui/`` needs the other half; the
-ledger homes it forward by name.
+an unrelated one — that judgement stays with the author. It also cannot see the frontend:
+``vitest`` and ``tsc -b`` are a separate toolchain, and three of the five recorded failure modes (a
+lowercase-drive working directory, ``shell=True`` on Windows, an unparseable TSX file) are specific
+to it. A story that touches ``ui/`` uses :mod:`scripts.vitest_probe_harness`, the other half.
 
 Usage:
     uv run python -m scripts.probe_harness
