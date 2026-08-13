@@ -25,6 +25,7 @@ Discovery files are planted with ``Path.write_text(json.dumps(...))`` and never 
 by c1-7 AC 15).
 """
 
+import ast
 import json
 import logging
 import socket
@@ -46,6 +47,7 @@ from src.companion.contracts import (
     ActiveDeckChangedEvent,
     ActiveDeckChangedPayload,
     ActiveDeckRequest,
+    DeckChangedEvent,
     HealthResponse,
 )
 
@@ -592,6 +594,13 @@ class TestExportedSurface:
         assert client._PUSH_TOTAL_SECONDS == 10.0
         assert client._PUSH_TOTAL_SECONDS >= 2 * client._PROBE_TOTAL_SECONDS, (
             "the push deadline must fit both attempts, or FR-12's retry can never complete"
+        )
+
+    def test_the_notify_budget_is_ad_9s_one_second_not_the_pushs_ten(self):
+        """c7-1 AC: AD-9's ~1 s responsiveness bound, pinned so it cannot silently widen."""
+        assert client._NOTIFY_TOTAL_SECONDS == 1.0
+        assert client._NOTIFY_TOTAL_SECONDS < client._PUSH_TOTAL_SECONDS, (
+            "the notifier is what a user waits on; it must stay far tighter than the push budget"
         )
 
 
@@ -1290,6 +1299,181 @@ class TestPushNeverRaisesAndNeverLeaksTheToken:
             "a backend that is restarting or absent is the ordinary state; warning about it "
             "trains the user to ignore warnings"
         )
+
+
+class TestNotifyDeckChanged:
+    """c7-1: the one shared notifier — a ~1 s bounded await, no detached task, and never a raise.
+
+    Reuses :func:`push_event`'s stub, discovery and log-capture patterns throughout: the notifier
+    shares the identity gate, the retry-once shape and the outcome vocabulary with the push, and
+    the tests below prove that reuse rather than re-deriving it.
+    """
+
+    async def test_a_delivered_notification_posts_a_schema_valid_deck_changed_envelope(
+        self, stub_server
+    ):
+        """Happy path: backend live, clients connected."""
+        stub = stub_server(body=health_bytes("inst-alpha"), post_script=[(200, b'{"clients": 2}')])
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        outcome = await client.notify_deck_changed("deck-77")
+
+        assert outcome == client.PushOutcome(outcome="displayed", clients=2)
+        assert len(stub.posts) == 1
+        assert stub.posts[0].request_line == "POST /agent/events HTTP/1.1"
+        sent = DeckChangedEvent.model_validate_json(stub.posts[0].body)
+        assert sent.kind == "deck_changed"
+        assert sent.payload.deck_id == "deck-77"
+
+    async def test_a_null_deck_id_is_a_valid_envelope_meaning_whatever_is_active(self, stub_server):
+        """Null deck id: a valid envelope; ``None`` payload means refetch whatever is active."""
+        stub = stub_server(body=health_bytes("inst-alpha"))
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        outcome = await client.notify_deck_changed()
+
+        assert outcome.outcome == "displayed"
+        sent = DeckChangedEvent.model_validate_json(stub.posts[0].body)
+        assert sent.payload.deck_id is None
+
+    async def test_no_discovery_file_is_app_not_running_cheap_and_does_not_raise(self, stub_server):
+        """App closed: no discovery file — cheap, no raise."""
+        stub = stub_server(body=health_bytes("inst-alpha"))
+        assert not discovery.discovery_path().exists()
+
+        outcome = await client.notify_deck_changed("deck-1")
+
+        assert outcome == client.PushOutcome(outcome="app_not_running", clients=None)
+        assert stub.requests == []
+
+    async def test_a_dead_port_is_app_not_running(self, sockets):
+        """App closed: a dead port, the ordinary post-crash state."""
+        plant_discovery(port=sockets.dead(), instance_id="inst-alpha")
+
+        outcome = await client.notify_deck_changed("deck-1", timeout=FAST)
+
+        assert outcome == client.PushOutcome(outcome="app_not_running", clients=None)
+
+    async def test_zero_clients_is_no_clients_connected_a_successful_emit(self, stub_server):
+        """Nobody listening: receipt clients=0 is still a successful emit, not a failure."""
+        stub = stub_server(body=health_bytes("inst-alpha"), post_script=[(200, b'{"clients": 0}')])
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        outcome = await client.notify_deck_changed("deck-1")
+
+        assert outcome == client.PushOutcome(outcome="no_clients_connected", clients=0)
+        assert len(stub.posts) == 1
+
+    async def test_a_slow_backend_is_cut_off_by_the_one_second_notify_budget(
+        self, stub_server, caplog
+    ):
+        """Slow backend: server accepts then drips — returns in ~1s, never the push's 10s."""
+        stub = stub_server(body=health_bytes("inst-alpha"), post_script=[(DRIP, b"")])
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+        started = time.monotonic()
+
+        with caplog.at_level(logging.DEBUG, logger=client.__name__):
+            outcome = await client.notify_deck_changed("deck-1")
+
+        elapsed = time.monotonic() - started
+        assert outcome == client.PushOutcome(outcome="backend_error", clients=None)
+        assert elapsed < 3.0, (
+            f"the notify budget is _NOTIFY_TOTAL_SECONDS (~1s), not the push's ~10s; "
+            f"took {elapsed:.2f}s"
+        )
+        assert elapsed > 0.5, "a real ~1s budget expiry, not an unrelated fast failure"
+        messages = [record.getMessage() for record in caplog.records]
+        assert any("notify" in message and "did not complete" in message for message in messages), (
+            messages
+        )
+
+    async def test_a_refused_token_is_re_read_and_retried_once_inside_the_budget(self, stub_server):
+        """Stale token: first POST refused, re-discover and retry once, inside the budget."""
+
+        def restart(post_count: int) -> None:
+            if post_count == 1:
+                plant_discovery(port=stub.port, instance_id="inst-alpha", token="tok-restarted")
+
+        stub = stub_server(
+            body=health_bytes("inst-alpha"),
+            post_script=[(403, b'{"reason": "forbidden"}'), (200, b'{"clients": 1}')],
+            on_post=restart,
+        )
+        plant_discovery(port=stub.port, instance_id="inst-alpha", token="tok-stale")
+
+        outcome = await client.notify_deck_changed("deck-1")
+
+        assert outcome == client.PushOutcome(outcome="displayed", clients=1)
+        assert len(stub.posts) == 2
+        assert "Authorization: Bearer tok-restarted" in stub.posts[1].headers, (
+            "the retry must carry the token the re-read found"
+        )
+
+    async def test_an_unexpected_exception_is_caught_and_reported_never_raised(
+        self, stub_server, monkeypatch, caplog
+    ):
+        """Unexpected bug: any exception on the path is caught, WARNING + exc_info, never raised.
+
+        The one deliberate divergence from :func:`push_event`, which lets exactly this kind of bug
+        through rather than mask it: a defect here must never fail the mutation tool that called it.
+        """
+        stub = stub_server(body=health_bytes("inst-alpha"))
+        plant_discovery(port=stub.port, instance_id="inst-alpha")
+
+        def explode(*args, **kwargs):
+            raise MemoryError("out of memory mid-notify")
+
+        monkeypatch.setattr(client.EventIngestReceipt, "model_validate_json", explode)
+
+        with caplog.at_level(logging.DEBUG, logger=client.__name__):
+            outcome = await client.notify_deck_changed("deck-1")  # must not raise
+
+        assert outcome == client.PushOutcome(outcome="backend_error", clients=None)
+        warnings = [record for record in caplog.records if record.levelno == logging.WARNING]
+        assert warnings, "the unexpected exception must be logged at WARNING"
+        assert any(record.exc_info for record in warnings), "exc_info must be attached"
+
+    @pytest.mark.parametrize(
+        "post_script",
+        [
+            pytest.param([(200, b'{"clients": 1}')], id="delivered"),
+            pytest.param([(403, b'{"reason": "forbidden"}')], id="refused-twice"),
+            pytest.param([(500, b'{"reason": "internal_error"}')], id="server-error"),
+        ],
+    )
+    async def test_the_token_never_reaches_a_log_line_on_any_path(
+        self, stub_server, caplog, post_script
+    ):
+        """CM-1: the credential belongs in one header and nowhere else, at any level."""
+        token = "planted-token-3xAmPl3"
+        stub = stub_server(body=health_bytes("inst-alpha"), post_script=post_script)
+        plant_discovery(port=stub.port, instance_id="inst-alpha", token=token)
+
+        with caplog.at_level(logging.DEBUG, logger=client.__name__):
+            await client.notify_deck_changed("deck-1")
+
+        assert stub.posts, "nothing was posted, so this proves nothing about what was logged"
+        for record in caplog.records:
+            assert token not in record.getMessage()
+            assert token not in str(record.args)
+
+    def test_no_detached_task_identifier_appears_in_client_py(self):
+        """AC 13 (AD-9), pinned locally as well as by ``test_ws.py``'s package-wide sweep.
+
+        That sweep already covers this file (it walks every module under ``src/companion``), so
+        this is a belt-and-braces local pin — the notifier's own test module should not depend on
+        a guard that lives, and could be edited, elsewhere.
+        """
+        tree = ast.parse(Path(client.__file__).read_text(encoding="utf-8"))
+        found: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name):
+                found.add(node.id)
+            elif isinstance(node, ast.Attribute):
+                found.add(node.attr)
+
+        banned = found & {"create_task", "ensure_future", "TaskGroup", "gather"}
+        assert banned == set(), f"detached-execution identifiers found in client.py: {banned}"
 
 
 def a_request(deck_id: str = "deck-alpha") -> ActiveDeckRequest:
