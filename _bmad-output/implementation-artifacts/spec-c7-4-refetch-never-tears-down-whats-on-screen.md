@@ -2,8 +2,9 @@
 title: 'c7-4: Refetch never tears down what''s on screen'
 type: 'feature'
 created: '2026-08-15'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
+followup_review_recommended: true
 baseline_revision: 'f0fe419ebc9c52c696dbca1dea6fa7aeba21f3eb'
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-c7-context.md'
@@ -97,7 +98,13 @@ deferred: []
 
 ## Review Triage Log
 
-- **2026-08-15, review pass 1 — 8 findings triaged as patches, all applied.** Test total moved 2182 → 2183 (one new test; the rest strengthen or relocate existing ones).
+### 2026-08-15 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 8: (high 0, medium 1, low 7)
+- defer: 0
+- reject: 12: (high 0, medium 0, low 12)
+- addressed_findings: the 8 patches below, all applied in this pass and committed as `f446f21`; test total moved 2182 → 2183 (one new test; the rest strengthen or relocate existing ones). Rejected as noise: artifacts-missing-from-diff (the review diff deliberately excluded the generated bundle mirrors; drift verified zero separately); the `--motion-glide`-zeroing premise (already pinned by token-usage's "zeroes all four duration tokens"); the withhold/release helper duplication and bare `release!` diagnostics (file convention; the opaque-failure scenario is preempted by earlier assertions); the 8-microtask flush (c7-3 rejected the same); an App-level reconnect-marker test (composing halves each pinned — store-level re-drive flag + App-level gate — redundant composition coverage); spec-hygiene notes on empty log sections and the `oversized` warning (workflow-designed structure); the cross-instance `stop()` flag clobber (unreachable through the one production module boot); a second-withheld-read resolver queue (scenario absent from every test using the helper); the duplicate `deck.test.ts` harness (block-scoped harnesses are the file's convention); and the intent-alignment auditor's descriptive notes — veil-vs-animated-shimmer (the intent's own constraints select the persistent non-looping treatment: UX-DR42 bans pulses/loops at any setting while UX-DR35 requires the treatment to span the whole in-flight window; on-pixel look goes to the epic's manual checklist), CSS-source-surface reduced-motion assertions (the repo's established jsdom-cannot-evaluate-media-queries convention), eviction-at-every-boards-replacement and marker-beyond-the-AC-letter (both entailed by the R9/DR-35 rulings and argued in Design Notes), and the observation that interpretations sharper than the epic text are ratified inside the spec (the workflow's design).
   1. (medium) `inspection.test.ts`: COMMANDER-board membership row added, in the sideboard row's shape — `boardsOf` files a `commander: true` card only in `boards.commander`, so the predicate's commander arm was deletable with the whole suite green. Evicts on departure, survives present→present.
   2. (low) `deck.ts`: `useDeckUpdating` had been inserted between `useDeckState`'s docstring and its declaration; moved above the docstring so each doc sits on its own declaration.
   3. (low) `App.test.tsx`: c7-4 section banners re-numbered to the spec's AC list — pin-survives is AC 3, membership eviction is AC 4 (AC 2 is reduced motion, which lives in `tests/updating-marker.test.ts`).
@@ -127,3 +134,33 @@ deferred: []
 - `uv run python -m scripts.vitest_probe_harness --control` (warm), then per-plant `--expect-total N --expect-red '<substring>'`, revert, `--expect-green` -- expected: both plants RED on the named tests, reverts clean, final green; proof lines pasted into Tasks.
 - `cd ui && npm run build && git status --porcelain -- src/companion/app/static/ plugin/` -- expected: rebuilt bundle + `plugin/` mirror committed, zero residual drift.
 - `uv run pytest -m "not integration"` -- expected: green (R3's fix is merged; no backend file is touched by this story).
+
+## Auto Run Result
+
+Status: done
+
+**Summary.** The glass now shows that it is updating and stops tearing down what the user was holding. A `updating` flag on the deck slice tracks every in-flight read sequence (the c7-3 single-request refetch AND a full re-drive behind a still-settled deck, e.g. reconnect), set in `start()`/`refetch()` and cleared through generation-guarded `try/finally` on every terminal path including drops, aborts, and `stop()`. `App` gates it on `deck !== null` and `AppShell` renders it as `data-updating` on the header identity block — a non-animated opacity veil (no keyframes, no transform, no loop, no new token) — plus a hidden `aria-hidden` "Updating…" span that the `tokens.css` reduced-motion block reveals in place of the veil (UX-DR42). The R9 membership-transition rule replaces `deckMemory`'s reference-comparison pin eviction: `rememberBoards` hands back the departing boards and `evictDepartedPin(previous, next)` clears a pin only when its card was in the departing decklist AND is absent from the new one — so a pin on a card still in the deck survives every same-deck refetch (the behavior change), a pinned suggestion survives every refetch (the c6-7 Q7 debt), and eviction falls back to the first card the grid draws. The owed DFC end-to-end test proves a back face survives the refetch re-render (`faces.ts` untouched — survival by construction).
+
+**Files changed** (commits `4dc0c75` feat + `f446f21` review patches, on `feat/companion-c7-4-no-teardown` off umbrella `feat/companion-c7`):
+- `ui/src/state/deck.ts` — `updating` sibling key + `applyUpdating`/`clearUpdatingFor`, try/finally clears around both runners, `useDeckUpdating` selector (doc placement fixed in the patch pass).
+- `ui/src/App.tsx` — `updating={deck !== null && deckUpdating}` gate above the measured effect blocks (not reordered).
+- `ui/src/components/AppShell/AppShell.tsx` + `.css` — `updating` prop → `data-updating` + aria-hidden "Updating…" span (U+2026); opacity-veil shimmer via `--motion-glide`; caller-contract docstring.
+- `ui/src/styles/tokens.css` — reduced-motion swap rules (veil neutralized, text revealed) in the one media block; DR-42 inventory attribution corrected c7-5→c7-4.
+- `ui/src/state/inspection.ts` — `inDeckList` (all three boards, by `card_id`) + `evictDepartedPin` verb.
+- `ui/src/containers/CardDetail/deckMemory.ts` + `CardDetail.tsx` — `replacesRememberedDeck` → `rememberBoards` (departing boards returned); boards effect rewired (membership eviction + status-quo transient clear); `DeckList.tsx` header prose updated.
+- Tests: `ui/src/state/deck.test.ts` (flag lifecycle), `ui/src/state/inspection.test.ts` (eviction truth table incl. sideboard + commander rows), `ui/src/containers/CardDetail/CardDetail.test.tsx` (seam), `ui/src/App.test.tsx` (c7-4 describe: marker in-flight/drop-clear, pin survives/evicts/suggestion survives, DFC back face, never-blank refetch case; heal-test premise rewritten), `ui/src/components/AppShell/AppShell.test.tsx`, new `ui/tests/updating-marker.test.ts` (CSS-source halves, total display census).
+- Guard-suite prose: `ui/tests/store-writes.test.ts` (eviction verb named in the inspection why-row), `ui/tests/copy-rules.test.ts` (AppShell reason + ellipsis ruling recorded at both sites).
+- `src/companion/app/static/` + `plugin/` — rebuilt committed mirrors (`assets/index-DauY_QvM.js`), zero drift.
+- This spec file — record, firing proofs, triage log.
+
+**Review findings breakdown.** Four layers (blind hunter, edge-case hunter, verification-gap, intent-alignment), post-dedup: 8 patched (1 medium — the untested commander arm of `inDeckList`, deletable with the whole suite green; 7 low), 0 deferred, 12 rejected (false diff-filtering artifacts, already-guarded premises, test-diagnostic gold-plating, unreachable-by-construction scenarios, coverage redundancy, file conventions, and the auditor's descriptive notes). No intent gaps, no bad-spec loopbacks.
+
+**Follow-up review recommendation: true** — patched severities: 0 high, 1 medium, 7 low → score 3×1 + 7 = 10 ≥ 5.
+
+**Verification performed.** Firing proofs through the committed vitest harness: control at 2182; plant (a) membership eviction reverted to unconditional `clearPin()` → 3 expected REDs (both App pin-survival tests + the CardDetail seam test); plant (b) `applyUpdating(true)` removed from `refetch()` → 8 expected REDs (both App marker tests + six flag-lifecycle tests); both reverts proven by `git diff --exit-code`; green-certified at 2182 and re-certified at 2183 after the patch pass. Full gate independently re-run by the orchestrator at both checkpoints: eslint + stylelint (no-loop gates), prettier, `tsc -b` clean; `npm test` 76 files / 2183 tests, 0 failed; SPA rebuild + `plugin/` mirror with zero residual drift; `uv run pytest -m "not integration"` 3020 passed, 1 skipped — the R3 deck-repository flake family did not fire on any run (its master fix is merged into this branch at `f0fe419`). Matrix test audit: all 11 rows covered by tests that ran in the green suite.
+
+**Residual risks.**
+- The veil's on-pixel look (opacity 0.55 dim + eased transition) and the real reduced-motion swap are asserted at the CSS-source surface only (jsdom evaluates no media queries — repo convention); both belong on the epic's manual-testing checklist for an eye-check.
+- The R9 rule now also governs deck SWITCHES (a pin on a card present in both decks survives the switch) — entailed by "no pin-time classification", argued in Design Notes, but a behavior no epic AC explicitly legislates; flag for Brad's review.
+- A pin evicted at the exact moment its card returns in a later refetch re-pins nothing (by design — eviction is final until the user re-pins).
+- `AppShell` renders the marker for any caller that passes `updating`; the no-marker-without-a-deck invariant lives at App's gate (documented contract, one caller today).
