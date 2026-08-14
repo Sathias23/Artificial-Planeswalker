@@ -24,6 +24,7 @@ import { INITIAL_CARD_CACHE, resetCardCache, useCardStore } from './cards'
 import {
   INITIAL_DECK_STATE,
   createDeckBoot,
+  driveDeckChanged,
   resetDeckState,
   surfaceOf,
   useDeckStore,
@@ -462,6 +463,309 @@ describe('the deck payload seeds the card cache, for ZERO requests (AC 17)', () 
     )
 
     expect(useCardStore.getState()).toEqual(INITIAL_CARD_CACHE)
+  })
+})
+
+/**
+ * The `deck_changed` refetch: one request, coalesced by supersession, latest-wins (story c7-3).
+ *
+ * Store-level, on injected readers — this file's declared split. Unlike the harness at the top,
+ * `onUpdate` here writes the REAL store, because `driveDeckChanged`'s decision table reads
+ * `useDeckStore.getState()` and a test driving its own array would assert a table over state the
+ * table never saw (the exact vacuity probe (d) recorded). What a refetch looks like on a real
+ * screen — derived panels recomputing, the format check re-asking — is `App.test.tsx`'s, from one
+ * mount; what is pinned HERE is the request discipline: which reader fires, with which id, whose
+ * signal aborts, and which response is allowed to settle.
+ */
+describe('the deck_changed refetch is one request, coalesced, latest-wins (c7-3)', () => {
+  /** One captured `readDetail` call: the id asked for, and the abort handle it was handed. */
+  interface DetailCall {
+    readonly deckId: string
+    readonly signal: AbortSignal | undefined
+    resolve: (outcome: DeckOutcome) => void
+  }
+
+  /**
+   * A boot on injected readers whose `onUpdate` writes the real store, with every detail read
+   * captured and MANUALLY resolvable — the shape the burst rows need, and the settled rows just
+   * resolve immediately.
+   */
+  const buildBoot = (activeId: string | null = ATRAXA_DECK_ID) => {
+    const detailCalls: DetailCall[] = []
+    const settles: DeckState[] = []
+    const readActive = vi.fn(() =>
+      Promise.resolve<ActiveDeckOutcome>({ kind: 'active-deck', deckId: activeId }),
+    )
+    const boot = createDeckBoot({
+      onUpdate: (state) => {
+        settles.push(state)
+        useDeckStore.setState({ deck: state })
+      },
+      readActive,
+      readDetail: (deckId, signal) =>
+        new Promise<DeckOutcome>((resolve) => {
+          detailCalls.push({ deckId, signal, resolve })
+        }),
+    })
+    return { boot, readActive, detailCalls, settles }
+  }
+
+  /** Flush the microtask chain a resolved reader continues on. */
+  const flush = async (): Promise<void> => {
+    for (let i = 0; i < 8; i += 1) await Promise.resolve()
+  }
+
+  /** Boot to a settled `'deck'`, which is the decision table's quiet starting row. */
+  const settled = async (harness: ReturnType<typeof buildBoot>, deck = detail()) => {
+    harness.boot.start()
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(1))
+    harness.detailCalls[0].resolve({ kind: 'deck', deck })
+    await vi.waitFor(() => expect(useDeckStore.getState().deck.status).toBe('deck'))
+  }
+
+  it('refetches ONLY the deck read on a matching event — the active-deck route is never asked', async () => {
+    const harness = buildBoot()
+    await settled(harness)
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
+    harness.detailCalls[1].resolve({ kind: 'deck', deck: detail({ name: 'After the edit' }) })
+    await flush()
+
+    // The matrix's first row, as a request log: one `GET /api/deck/{id}`, zero
+    // `GET /api/active-deck` beyond the boot's own — the whole point of the story's one-request
+    // shape against the old two-request re-drive.
+    expect(harness.readActive).toHaveBeenCalledTimes(1)
+    expect(harness.detailCalls[1].deckId).toBe(ATRAXA_DECK_ID)
+    const after = useDeckStore.getState().deck
+    expect(after.status === 'deck' && after.detail.name).toBe('After the edit')
+  })
+
+  it('treats a deck-agnostic (null) id as "refetch whatever is active"', async () => {
+    const harness = buildBoot()
+    await settled(harness)
+
+    driveDeckChanged(harness.boot, null)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
+
+    // The folded null refetches the SETTLED id — the only id the client holds as truth.
+    expect(harness.detailCalls[1].deckId).toBe(ATRAXA_DECK_ID)
+    expect(harness.readActive).toHaveBeenCalledTimes(1)
+  })
+
+  it('does NOTHING on a different deck’s event — not even the refetch', async () => {
+    const harness = buildBoot()
+    await settled(harness)
+    const before = useDeckStore.getState().deck
+
+    driveDeckChanged(harness.boot, 'a-deck-this-tab-is-not-showing')
+    await flush()
+
+    // Zero requests of either kind since the boot: the deck on the glass was not edited, and
+    // the poll-restart half of the ruling lives in `connection.ts`, outside this table.
+    expect(harness.detailCalls).toHaveLength(1)
+    expect(harness.readActive).toHaveBeenCalledTimes(1)
+    expect(useDeckStore.getState().deck).toBe(before)
+  })
+
+  it('coalesces a burst by supersession: each newer event aborts the prior request', async () => {
+    const harness = buildBoot()
+    await settled(harness)
+    const settlesBefore = harness.settles.length
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    driveDeckChanged(harness.boot, null)
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(4))
+
+    // ≤1 in flight, structurally: the first two refetch requests were ABORTED the moment their
+    // successor started (UX-DR35's "a newer event cancels and restarts"), and the last one is
+    // still live. The boot's own request (index 0) was never touched.
+    expect(harness.detailCalls[1].signal?.aborted).toBe(true)
+    expect(harness.detailCalls[2].signal?.aborted).toBe(true)
+    expect(harness.detailCalls[3].signal?.aborted).toBe(false)
+
+    // Every response now lands, oldest first. Only the LAST is allowed to settle.
+    harness.detailCalls[1].resolve({ kind: 'deck', deck: detail({ name: 'First — stale' }) })
+    harness.detailCalls[2].resolve({ kind: 'deck', deck: detail({ name: 'Second — stale' }) })
+    harness.detailCalls[3].resolve({ kind: 'deck', deck: detail({ name: 'Third — wins' }) })
+    await flush()
+
+    const after = useDeckStore.getState().deck
+    expect(after.status === 'deck' && after.detail.name).toBe('Third — wins')
+    // EXACTLY one settle for the whole burst — the coalescing claim as a count, and the claim
+    // c7-5's announce-once banks on ("the coalescing machinery is the debounce").
+    expect(harness.settles.length - settlesBefore).toBe(1)
+  })
+
+  it('discards an out-of-order response: the OLDER one resolving later cannot win', async () => {
+    const harness = buildBoot()
+    await settled(harness)
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(3))
+
+    // The NEWER request answers first and settles; the OLDER limps in afterwards — the abort
+    // cannot un-send a response already in flight, so the generation guard is what stops it.
+    harness.detailCalls[2].resolve({ kind: 'deck', deck: detail({ name: 'Newest — wins' }) })
+    await flush()
+    harness.detailCalls[1].resolve({ kind: 'deck', deck: detail({ name: 'Oldest — must lose' }) })
+    await flush()
+
+    const after = useDeckStore.getState().deck
+    expect(after.status === 'deck' && after.detail.name).toBe('Newest — wins')
+  })
+
+  it('aborts an in-flight refetch on stop(), and its response can never settle', async () => {
+    // `stop()`'s c7-3 duty, found untested by review: deleting `abortRefetch()` from `stop()`
+    // stayed green, because every abort assertion until this one was about refetch-supersedes-
+    // refetch. The generation bump already silences the settle — the abort is what stops a
+    // stopped world PAYING for a request nobody can use.
+    const harness = buildBoot()
+    await settled(harness)
+    const settlesBefore = harness.settles.length
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
+    expect(harness.detailCalls[1].signal?.aborted).toBe(false)
+
+    harness.boot.stop()
+    expect(harness.detailCalls[1].signal?.aborted).toBe(true)
+
+    // …and the response limping in anyway settles nothing: `live` is false and the generation
+    // moved, so the stale write dies at the shared guard.
+    harness.detailCalls[1].resolve({ kind: 'deck', deck: detail({ name: 'Post-stop — stale' }) })
+    await flush()
+    expect(harness.settles.length - settlesBefore).toBe(0)
+  })
+
+  it('clears to no-active-deck when the refetch 404s — the one legislated teardown', async () => {
+    const harness = buildBoot()
+    await settled(harness)
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
+    harness.detailCalls[1].resolve({ kind: 'error', reason: 'deck_not_found' })
+    await flush()
+
+    // UX-DR35: "a 404 clears to no-active-deck" — through the boot's own shared mapping
+    // (`PANEL_FOR_REASON.deck_not_found`), so this is a consumption, not a second copy.
+    expect(useDeckStore.getState().deck).toEqual({ status: 'none' })
+  })
+
+  it.each<[string, DeckOutcome]>([
+    ['a 503 database_unavailable', { kind: 'error', reason: 'database_unavailable' }],
+    ['a 500 internal_error', { kind: 'error', reason: 'internal_error' }],
+    // The boot's Q5 override folds THIS token to 'none'; on a refetch of an id that just
+    // resolved it is a blip, and dropping it is the row that stops the override leaking here.
+    ['a 400 invalid_request', { kind: 'error', reason: 'invalid_request' }],
+    ['an unreachable backend', { kind: 'unreachable' }],
+    [
+      'a 200 with a malformed row',
+      {
+        kind: 'deck',
+        deck: {
+          ...detail(),
+          cards: [{ card_id: 'id-broken', quantity: 1 } as unknown as DeckCardSummary],
+        },
+      },
+    ],
+  ])('DROPS %s and leaves the loaded deck untouched (never-teardown)', async (_label, outcome) => {
+    const harness = buildBoot()
+    await settled(harness)
+    const before = useDeckStore.getState().deck
+    const settlesBefore = harness.settles.length
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
+    harness.detailCalls[1].resolve(outcome)
+    await flush()
+
+    // The boot maps every one of these to a panel or a clear, because a cold open has nothing
+    // on the glass to protect. A refetch has, so the DECK STORE is untouched: same state, by
+    // reference, and zero settles — staleness accepted, recovery owned by the next event, the
+    // reconnect re-drive or the poll edge. (The malformed-200 row's card CACHE is deliberately
+    // not asserted clean: seeding runs before the derivation throws, and the validly-shaped
+    // summaries it may retain are additive and harmless — `deck.ts`'s catch says why.)
+    expect(useDeckStore.getState().deck).toBe(before)
+    expect(harness.settles.length - settlesBefore).toBe(0)
+  })
+
+  it('folds a mid-boot event into a fresh FULL re-drive — never a refetch against a departing id', async () => {
+    // Its own harness rather than `buildBoot`: the mid-boot window only exists while the
+    // active-deck answer is WITHHELD, so this reader must be manually resolvable too.
+    const detailCalls: DetailCall[] = []
+    const activeResolvers: ((outcome: ActiveDeckOutcome) => void)[] = []
+    const readActive = vi.fn(
+      () => new Promise<ActiveDeckOutcome>((resolve) => activeResolvers.push(resolve)),
+    )
+    const boot = createDeckBoot({
+      onUpdate: (state) => useDeckStore.setState({ deck: state }),
+      readActive,
+      readDetail: (deckId, signal) =>
+        new Promise<DeckOutcome>((resolve) => {
+          detailCalls.push({ deckId, signal, resolve })
+        }),
+    })
+
+    boot.start()
+    await vi.waitFor(() => expect(activeResolvers).toHaveLength(1))
+    activeResolvers[0]({ kind: 'active-deck', deckId: ATRAXA_DECK_ID })
+    await vi.waitFor(() => expect(detailCalls).toHaveLength(1))
+    detailCalls[0].resolve({ kind: 'deck', deck: detail() })
+    await vi.waitFor(() => expect(useDeckStore.getState().deck.status).toBe('deck'))
+
+    // A re-drive is in flight (reconnect, poll edge — any caller of stop()/start()): the store
+    // still shows the old deck, but the settled id is no longer current truth.
+    boot.stop()
+    boot.start()
+    await vi.waitFor(() => expect(readActive).toHaveBeenCalledTimes(2))
+    expect(useDeckStore.getState().deck.status).toBe('deck')
+
+    driveDeckChanged(boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(readActive).toHaveBeenCalledTimes(3))
+
+    // The fold is a full boot — active-deck FIRST (the server referees, c6-3 ruling #1's
+    // principle) — and no single-deck read was issued against the possibly-departing id: the
+    // only detail call so far is still the settled boot's own.
+    expect(detailCalls).toHaveLength(1)
+
+    // …and the folded re-drive OWNS the store now. It answers a DIFFERENT deck — the exact
+    // supersession race the fold exists to win: a single-deck refetch here would have re-read
+    // the departing deck and beaten the re-drive to the store.
+    activeResolvers[2]({ kind: 'active-deck', deckId: 'the-newly-activated-deck' })
+    await vi.waitFor(() => expect(detailCalls).toHaveLength(2))
+    expect(detailCalls[1].deckId).toBe('the-newly-activated-deck')
+  })
+
+  it('re-drives the full boot from a settled none state — the no-deck row', async () => {
+    const harness = buildBoot(null)
+    harness.boot.start()
+    await vi.waitFor(() => expect(useDeckStore.getState().deck).toEqual({ status: 'none' }))
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.readActive).toHaveBeenCalledTimes(2))
+
+    // Today's behaviour, kept: the full two-request sequence, which is also what recovers the
+    // unreachable-blip and 404-residue windows the module header describes.
+    expect(harness.detailCalls).toHaveLength(0)
+  })
+
+  it('refuses a bare refetch() before the sequence settles — the boot cannot be misused into a stuck boot', async () => {
+    const harness = buildBoot()
+    harness.boot.start()
+    await vi.waitFor(() => expect(harness.readActive).toHaveBeenCalledTimes(1))
+
+    // Called DIRECTLY, past the decision table — the gate this pins is the boot's own: an
+    // ungated refetch would bump the generation out from under the in-flight sequence, and a
+    // dropped outcome would then strand the slice at 'booting' forever with no panel.
+    harness.boot.refetch(ATRAXA_DECK_ID)
+    await flush()
+
+    expect(harness.detailCalls).toHaveLength(1)
+    harness.detailCalls[0].resolve({ kind: 'deck', deck: detail() })
+    await vi.waitFor(() => expect(useDeckStore.getState().deck.status).toBe('deck'))
   })
 })
 

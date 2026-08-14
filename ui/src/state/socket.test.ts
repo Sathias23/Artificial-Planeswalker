@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RETRIES_QUIETLY } from '../components/StatePanel/states'
 import type { StateKey } from '../components/StatePanel/copy'
 import type { AgentSocketHandlers, SessionOutcome } from '../api/client'
-import type { AgentEvent, SuggestionsEvent } from '../api/schema'
+import type { AgentEvent, SuggestionsEvent, SystemEvent } from '../api/schema'
 import {
   createAgentSocket,
   DISCONNECTED_AFTER_MS,
@@ -29,7 +29,6 @@ import {
   SOCKET_CEILING_MS,
   SOCKET_MULTIPLIER,
   type ConnectionStatus,
-  type SystemEventKind,
 } from './socket'
 
 const TICKET: SessionOutcome = { kind: 'ticket', ticket: 'a-ticket' }
@@ -78,7 +77,11 @@ const driving = (...outcomes: SessionOutcome[]) => {
   }
 
   const statuses: ConnectionStatus[] = []
-  const events: SystemEventKind[] = []
+  // The WHOLE event since c7-3, exactly as `pushes` below always was: the callback carries the
+  // envelope so `connection.ts` can read `deck_changed`'s `deck_id`, and what it carries is what
+  // these assertions can check — a dispatch that rebuilt the frame, or fell back to the bare
+  // kind, passes a "was it called" check and fails the identity assertions in the switch block.
+  const events: SystemEvent[] = []
   // The WHOLE event, not its kind — what the callback carries is what the assertions can check,
   // and "was the payload delivered" is the claim c6-6's dispatch arm exists to make.
   const pushes: SuggestionsEvent[] = []
@@ -89,7 +92,7 @@ const driving = (...outcomes: SessionOutcome[]) => {
     onReconnected: () => {
       reconnects += 1
     },
-    onSystemEvent: (kind) => events.push(kind),
+    onSystemEvent: (event) => events.push(event),
     onSuggestions: (event) => pushes.push(event),
     mint,
     open,
@@ -360,7 +363,7 @@ describe('the generation counter survives every await and every callback (AC 4)'
     // …and the CURRENT socket's frame is still delivered, so this is a generation check rather
     // than a dispatch that stopped working.
     latest().handlers.onMessage(frame('deck_changed'))
-    expect(events).toEqual(['deck_changed'])
+    expect(events.map((event) => event.kind)).toEqual(['deck_changed'])
 
     socket.stop()
   })
@@ -612,15 +615,28 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     return driver
   }
 
-  it('reports the two system kinds, separately', async () => {
+  it('reports the two system kinds, separately, each carrying its WHOLE envelope (c7-3)', async () => {
     const { socket, events, latest } = await open()
 
-    latest().handlers.onMessage(frame('active_deck_changed'))
-    latest().handlers.onMessage(frame('deck_changed'))
+    const activeChanged = frame('active_deck_changed')
+    const deckChanged: AgentEvent = {
+      kind: 'deck_changed',
+      id: 'id-deck_changed',
+      ts: '2026-08-08T00:00:00Z',
+      payload: { deck_id: 'the-edited-deck' },
+    }
+    latest().handlers.onMessage(activeChanged)
+    latest().handlers.onMessage(deckChanged)
 
     // Kept apart on the way through, because `contracts.py:902-905` is emphatic that conflating
     // them is the interesting bug — a client that does refetches the deck it is LEAVING.
-    expect(events).toEqual(['active_deck_changed', 'deck_changed'])
+    expect(events.map((event) => event.kind)).toEqual(['active_deck_changed', 'deck_changed'])
+    // THE ENVELOPE, VERBATIM — c7-3's widening, asserted the way the suggestions arm below
+    // asserts its own: the caller reads `deck_changed`'s `deck_id` out of what arrives here, so
+    // a dispatch that handed over the bare kind, or a rebuilt object with the payload dropped,
+    // must fail THIS line and not merely a was-it-called check.
+    expect(events).toEqual([activeChanged, deckChanged])
+    expect(events[1].kind === 'deck_changed' && events[1].payload.deck_id).toBe('the-edited-deck')
 
     socket.stop()
   })
@@ -635,7 +651,11 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     latest().handlers.onMessage(frame('active_deck_changed'))
     latest().handlers.onMessage(frame('active_deck_changed'))
 
-    expect(events).toEqual(['active_deck_changed', 'active_deck_changed', 'active_deck_changed'])
+    expect(events.map((event) => event.kind)).toEqual([
+      'active_deck_changed',
+      'active_deck_changed',
+      'active_deck_changed',
+    ])
     // …and the connection was never disturbed by any of it.
     expect(statuses).toEqual(['live'])
     expect(latest().closed).toBe(0)
@@ -704,7 +724,7 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
 
     // …and a good frame after two bad ones is still delivered, so "ignored" is not "stopped".
     latest().handlers.onMessage(frame('deck_changed'))
-    expect(events).toEqual(['deck_changed'])
+    expect(events.map((event) => event.kind)).toEqual(['deck_changed'])
 
     socket.stop()
   })
