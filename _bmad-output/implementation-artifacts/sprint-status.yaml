@@ -319,7 +319,7 @@
 #   epic-c1..10 → _bmad-output/planning-artifacts/epics-companion-app.md          (c-prefixed, numbering UNCHANGED)
 
 generated: 2026-06-20
-last_updated: '2026-08-14 (C6 R9 RULED: UX-DR35 pin eviction is a membership transition — evict only when the pinned card was in the departing list and absent from the new one; pinned suggestions survive; DR text + Story 7.4 ACs amended. Next: c7-3.)'
+last_updated: '2026-08-14 (c7-3 merged via PR #76, Greptile 5/5. Next: c7-4.)'
 #                Previously — 2026-08-14 (Story c7-2 MERGED via PR #75 into `feat/companion-c7` at `dc04bd2`; first story built via bmad-build-auto; Greptile 4/5, its one P1 dismissed with a recorded ruling on the inline thread. Next: R9 UX-DR35 ruling, then c7-3.)
 #                Previously — 2026-08-13 (Story c7-1 MERGED via PR #74 into `feat/companion-c7` at `72bf5fc`. Three-layer review found 1 patch (notify_deck_changed's timeout default aligned with sibling verbs) + 2 defer, no decisions needed. Next: c7-2.)
 #                Previously — 2026-08-13 (c7-1 shared-notifier implemented on feat/companion-c7-1-shared-notifier off umbrella feat/companion-c7; status review, awaiting Brad''s three-layer review + PR.)
@@ -685,7 +685,7 @@ development_status:
   epic-c7: in-progress
   c7-1-one-shared-notifier-with-a-bounded-await-and-no-detached-tasks: done
   c7-2-every-deck-mutation-tool-emits-after-its-transaction-commits: done  # PR #75 MERGED 2026-08-14 at dc04bd2. bmad-build-auto run: 4-layer review, 3 patches (emit-placement guard, resolver hardening, "update"-verb reconciliation note), 17 rejects, 0 gaps. Greptile 4/5 — one P1 (commit-then-refresh-fails suppresses the emit) dismissed with recorded ruling (r3782233939). Spec: spec-c7-2-mutation-tools-emit-after-commit.md (followup_review_recommended: true).
-  c7-3-the-glass-refetches-on-deck-changed-coalesced-and-latest-wins: backlog
+  c7-3-the-glass-refetches-on-deck-changed-coalesced-and-latest-wins: done  # PR #76 MERGED 2026-08-14 at 1019955. bmad-build-auto run: 4-layer review, 10 patches (1 medium: unasserted caller-signal abort wiring; 9 low), 8 rejects, 0 gaps. Greptile 5/5, nothing dismissed. First story to run firing proofs via vitest_probe_harness (R2 loose end closed); green-certified at 2150 tests. New policy: non-404 refetch refusal drops (deck stays; UX-DR35). Format check re-keyed on detail identity (c4-10 Q7 overturn). Spec: spec-c7-3-glass-refetches-coalesced-latest-wins.md (followup_review_recommended: true).
   c7-4-refetch-never-tears-down-whats-on-screen: backlog
   c7-5-the-change-is-announced-once-and-motion-is-never-the-only-signal: backlog
   c7-6-deck-deletion-and-agent-views-during-a-refetch: backlog
