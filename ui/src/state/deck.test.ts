@@ -617,6 +617,29 @@ describe('the deck_changed refetch is one request, coalesced, latest-wins (c7-3)
     expect(after.status === 'deck' && after.detail.name).toBe('Newest — wins')
   })
 
+  it('aborts an in-flight refetch on stop(), and its response can never settle', async () => {
+    // `stop()`'s c7-3 duty, found untested by review: deleting `abortRefetch()` from `stop()`
+    // stayed green, because every abort assertion until this one was about refetch-supersedes-
+    // refetch. The generation bump already silences the settle — the abort is what stops a
+    // stopped world PAYING for a request nobody can use.
+    const harness = buildBoot()
+    await settled(harness)
+    const settlesBefore = harness.settles.length
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
+    expect(harness.detailCalls[1].signal?.aborted).toBe(false)
+
+    harness.boot.stop()
+    expect(harness.detailCalls[1].signal?.aborted).toBe(true)
+
+    // …and the response limping in anyway settles nothing: `live` is false and the generation
+    // moved, so the stale write dies at the shared guard.
+    harness.detailCalls[1].resolve({ kind: 'deck', deck: detail({ name: 'Post-stop — stale' }) })
+    await flush()
+    expect(harness.settles.length - settlesBefore).toBe(0)
+  })
+
   it('clears to no-active-deck when the refetch 404s — the one legislated teardown', async () => {
     const harness = buildBoot()
     await settled(harness)
@@ -660,9 +683,11 @@ describe('the deck_changed refetch is one request, coalesced, latest-wins (c7-3)
     await flush()
 
     // The boot maps every one of these to a panel or a clear, because a cold open has nothing
-    // on the glass to protect. A refetch has, so the outcome is dropped WHOLE: same state, by
+    // on the glass to protect. A refetch has, so the DECK STORE is untouched: same state, by
     // reference, and zero settles — staleness accepted, recovery owned by the next event, the
-    // reconnect re-drive or the poll edge.
+    // reconnect re-drive or the poll edge. (The malformed-200 row's card CACHE is deliberately
+    // not asserted clean: seeding runs before the derivation throws, and the validly-shaped
+    // summaries it may retain are additive and harmless — `deck.ts`'s catch says why.)
     expect(useDeckStore.getState().deck).toBe(before)
     expect(harness.settles.length - settlesBefore).toBe(0)
   })

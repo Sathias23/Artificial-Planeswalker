@@ -166,18 +166,12 @@ export const DISCONNECTED_MIN_FAILURES = 4
  */
 export type ConnectionStatus = 'live' | 'reconnecting' | 'down'
 
-/**
- * The two wire kinds that mean *something the app is showing has changed* — the system half of
- * AD-6's six-kind vocabulary, as opposed to the four agent-view kinds.
- *
- * Spelled as a union of the wire's own discriminants rather than translated into local names, so
- * that a reader of {@link AgentSocketOptions.onSystemEvent} can find the contract by searching
- * for the string the backend sends. Since c7-3 it is DERIVED from `schema.ts`'s {@link SystemEvent}
- * union — the envelope pair the callback now carries — so the kind set and the event set are one
- * declaration and cannot drift; it remains a subset of `AgentEvent['kind']` by construction, and
- * the `switch` in {@link createAgentSocket} would not type-check if a member here were not a kind.
- */
-export type SystemEventKind = SystemEvent['kind']
+// `SystemEventKind` used to live here — the kind-only union {@link AgentSocketOptions.onSystemEvent}
+// carried before c7-3 widened the callback to the whole envelope. It is GONE rather than kept
+// exported: its one external consumer was `socket.test.ts`'s harness, `schema.ts`'s `SystemEvent`
+// now owns the pair (both spellings of the system/view partition live in that file, both derived),
+// and an exported alias with no consumer is exactly the drift surface the alias-lands-with-its-
+// consumer rule exists to prevent. A caller wanting the kinds writes `SystemEvent['kind']`.
 
 export interface AgentSocketOptions {
   /**

@@ -498,7 +498,14 @@ export const createDeckBoot = ({
       settle({ status: 'deck', detail: detail.deck, boards: boardsOfDeck(detail.deck) })
     } catch {
       // A malformed row inside a 200: the boot settles a panel because a cold open has nothing
-      // else to show; a refetch DROPS, because the deck already on the glass parsed (UX-DR35).
+      // else to show; a refetch leaves the DECK STORE untouched, because the deck already on
+      // the glass parsed (UX-DR35). Stated precisely rather than as "dropped whole" (review
+      // correction): `seedCardSummaries` runs BEFORE the derivation that throws, so the card
+      // cache may retain whatever validly-shaped summaries the payload carried. That residue
+      // is additive summary-tier data keyed by card id — the same rows a later successful
+      // refetch would seed — so it is harmless, and unwinding a cache shared with the agent
+      // views to cosmetically purify a dropped outcome would be a second mechanism for zero
+      // observable gain.
     }
   }
 
@@ -678,6 +685,16 @@ export const redriveDeckBoot = (): void => {
  *      one and strands the glass on the old deck. Re-driving also keeps the recovery windows the
  *      full boot already heals (the unreachable blip, the 404 residue) healing exactly as they
  *      did before this story.
+ *   4. **A STOPPED boot that once settled** — `live` false, `sequenceSettled` still true, the
+ *      store still `'deck'` — passes rows 1's gates and the event then dies silently at
+ *      `refetch()`'s own `!live` no-op: neither a refetch nor a re-drive (the `stop()`ped state
+ *      swallows `start()`-less drives by design). Recorded for totality because this function is
+ *      exported; UNREACHABLE through the production seam, because {@link refetchOnDeckChanged}
+ *      requires the MOUNTED boot, the mounting effect starts it in the same breath, and the only
+ *      `stop()` without a following `start()` is the unmount cleanup — which clears the slot
+ *      before this verb could see the stopped instance. A test driving an explicit stopped boot
+ *      observes a silent no-op, which is also the only honest answer for a boot whose owner
+ *      said stop.
  *
  * The mismatch check reads the settled `detail.id` and NOTHING else: there is no stored
  * `activeDeckId` anywhere in the client, and inventing one would be a second source of truth

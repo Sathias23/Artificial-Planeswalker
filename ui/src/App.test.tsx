@@ -3157,9 +3157,29 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)'
     return fetchMock
   }
 
+  beforeEach(() => {
+    // The file's own `beforeEach` does not reset the agent-view slice (its docstring says so),
+    // and the overlay-composition test below OPENS a view: without this, that view would still
+    // be `'open'` when a later file-order test mounts a fresh App — the exact leak the c6-5
+    // describe's reset exists to stop. Symmetric protection, both directions.
+    resetAgentView()
+  })
+
+  /** The Creatures group header's count — DeckList's per-group quantity (the grid draws none). */
+  const creatureGroupCount = () =>
+    screen
+      .getByRole('heading', { level: 2, name: 'Creatures' })
+      .parentElement?.querySelector('.group-header-count')?.textContent
+
   // ==================== AC 1 — THE MATCHING REFETCH, ONE REQUEST, EVERYTHING RECOMPUTES
   it('refetches with ONE deck read on a matching event, and the glass recomputes from the new list (AC 1)', async () => {
     const fetchMock = await bootedDeck()
+    // The BEFORE state of every derived surface asserted after the refetch, so each "it moved"
+    // claim below is a movement rather than a value that might always have been true: one
+    // creature in its group, an empty two-drop bucket, a single green pip.
+    expect(creatureGroupCount()).toBe('1')
+    expect(screen.getByRole('img', { name: '2 drops: 0 cards' })).toBeInTheDocument()
+    expect(screen.getByText('1 pip')).toBeVisible()
     const marker = fetchMock.mock.calls.length
 
     // The agent added a creature: the SAME deck now answers with one more card and a bigger
@@ -3189,11 +3209,21 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)'
       'AC 1: exactly one GET /api/deck/{id} per handled event',
     ).toBe(1)
 
-    // The new decklist is live everywhere the old one was: the grid tile and the deck list row
-    // both name the new card (one query, two homes — `getAllByText` is what proves BOTH derived
-    // surfaces recomputed), and the header badge carries the recount.
+    // The new decklist is live everywhere the old one was — the AC names five derived surfaces
+    // and each is observed MOVING, not merely present. The grid tile and the deck list row both
+    // name the new card (one query, two homes — `getAllByText` is what proves BOTH recomputed);
+    // the header badge carries the recount:
     expect(screen.getAllByText('Grizzly Bears').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('101')).toBeVisible()
+    // …the type-group count moved 1 → 2 (UX-DR43 names this count the non-motion signal that a
+    // deck changed — the flash c7-5 adds is garnish beside it):
+    expect(creatureGroupCount()).toBe('2')
+    // …the two-drop curve bucket moved 0 → 1 (Grizzly Bears is the fixture's only MV 2 card):
+    expect(screen.getByRole('img', { name: '2 drops: 1 card' })).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: '2 drops: 0 cards' })).toBeNull()
+    // …and the colour distribution moved 1 → 2 green pips ({G} + {1}{G}):
+    expect(screen.getByText('2 pips')).toBeVisible()
+    expect(screen.queryByText('1 pip')).toBeNull()
     // The hydration sweep re-fired off the new detail — the new id was fetched exactly once…
     expect(
       callsTo(fetchMock, '/api/cards/id-Grizzly%20Bears'),
@@ -3237,6 +3267,33 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)'
       activeDeckReads(paths),
       'AC 1: none of them re-drives the boot — the settled detail.id is the client-side truth',
     ).toBe(0)
+    // FOUR settles, FOUR format-check re-asks — the amended c4-10 pin at a count where the old
+    // and new rules genuinely diverge: "one request per deck id per mount" would have said 1
+    // here, and "one per settled detail" says 4. (Sequential frames, so no coalescing folds
+    // them: each push's refetch settles before the next frame arrives.)
+    expect(
+      formatChecksOf(paths),
+      'one format-check re-ask per settled refetch (amended c4-10 pin)',
+    ).toBe(4)
+  })
+
+  it('trims a padded deck_id before the match — whitespace must not read as a different deck (AC 1)', async () => {
+    // The review's asymmetry finding: a BLANK id folded to null while a PADDED copy of the
+    // settled id passed through raw, failed the verbatim `detail.id` comparison, and was
+    // silently a "different deck" — a missed refresh with no recovery signal. The fold now
+    // trims, so padding is spelling, not identity.
+    const fetchMock = await bootedDeck()
+    const marker = fetchMock.mock.calls.length
+
+    await push('deck_changed', { deck_id: `  ${ATRAXA_DECK_ID} ` })
+    await settle()
+
+    const paths = pathsSince(fetchMock, marker)
+    expect(
+      detailReadsOf(paths, ATRAXA_DECK_ID),
+      'AC 1: a padded copy of the settled id is the SAME deck — one refetch',
+    ).toBe(1)
+    expect(activeDeckReads(paths), 'AC 1: …a refetch, not a re-drive').toBe(0)
   })
 
   // ==================== AC 2 — A DIFFERENT DECK'S EVENT ================================
@@ -3343,6 +3400,34 @@ describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)'
     ).toBe(1)
     // (The refused-state sibling of this row is pinned by the c5-6 block's "recovers the
     // stalled panel" test, which drives deck_changed from a 503 panel — cited, not duplicated.)
+  })
+
+  // ==================== AC 4 — THE DROP COMPOSES WITH AN OPEN AGENT VIEW ===============
+  it('drops a 503 refetch behind an OPEN agent view: the view stays, the deck stays behind it (AC 4)', async () => {
+    // The scenario the two amended c6-6 layering tests used to reach by accident — a 503
+    // arriving on `deck_changed` while a view is open — re-covered under the NEW policy
+    // (review finding: amending them to the 404-clear deleted it entirely). The drop must
+    // compose with the overlay: no teardown behind the dialog, no panel sliding under it, the
+    // view itself untouched. c7-6 expands this family for the refetches that DO change state.
+    const fetchMock = await bootedDeck()
+    await push('suggestions', { title: 'Resilience options', items: [] })
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Resilience options')
+
+    const marker = fetchMock.mock.calls.length
+    booting(activeDeck(ATRAXA_DECK_ID), refusal('database_unavailable', 503))
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+
+    // The view is still open and still itself…
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Resilience options')
+    // …the deck is still on the glass behind it, and no state panel replaced it…
+    expect(screen.getByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeVisible()
+    expect(screen.queryByRole('region', { name: 'Card database is updating.' })).toBeNull()
+    // …and the refusal really was fetched and dropped (non-vacuity for all three lines above).
+    expect(
+      detailReadsOf(pathsSince(fetchMock, marker), ATRAXA_DECK_ID),
+      'AC 4: the refusal was read once and dropped — not skipped, not re-driven',
+    ).toBe(1)
   })
 })
 

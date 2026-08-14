@@ -277,13 +277,14 @@ export type AgentEventKind = AgentEvent['kind']
  * hand-written `'suggestions' | 'swaps' | 'tier_list' | 'groups'` would compile forever and grow
  * never — {@link AgentEventKind}'s own docstring one line up makes the same argument.
  *
- * The two excluded literals are spelled here rather than imported from `socket.ts`'s
- * `SystemEventKind`, which is the identical `Extract` over the identical union: `src/api/` is
- * below `src/state/` and may not import upward. Two spellings of one pair, in the two files that
- * each own one side of the partition — and both are DERIVED, so a kind renamed on the Python
- * side breaks the `Extract`/`Exclude` loudly instead of silently dropping a member. The wire-name
- * ban is about re-declaring backend *shapes* (`SwapsPayload`, `TierListEvent`); a discriminant
- * literal in a derivation is what `socket.ts:179` already ships.
+ * The two excluded literals are spelled here rather than imported from `src/state/`: `src/api/`
+ * is below it and may not import upward. Since c7-3 this file also owns the OTHER side of the
+ * partition — {@link SystemEvent}, whose `Extract` pair names the same two literals — so both
+ * spellings of the pair now live in THIS file, one per direction of the split, and `socket.ts`
+ * derives from `SystemEvent` rather than re-spelling anything. Both spellings are DERIVED, so a
+ * kind renamed on the Python side breaks the `Extract`/`Exclude` loudly instead of silently
+ * dropping a member. The wire-name ban is about re-declaring backend *shapes* (`SwapsPayload`,
+ * `TierListEvent`); a discriminant literal in a derivation is what both spellings are.
  */
 export type AgentViewKind = Exclude<AgentEventKind, 'deck_changed' | 'active_deck_changed'>
 

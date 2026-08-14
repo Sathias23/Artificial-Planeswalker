@@ -135,8 +135,15 @@ export const useAgentConnection = (): void => {
         // The poll restart stays OUTSIDE the branch: the deck list may refresh regardless of
         // which deck changed, including on a different-deck event whose deck path does nothing.
         if (event.kind === 'deck_changed') {
+          // TRIMMED, not merely blank-checked (review finding): the id is compared verbatim
+          // against the settled `detail.id` in `deck.ts`, so a PADDED copy of the right id
+          // passed through raw would fail the match and read as a different deck — a silently
+          // missed refresh with no recovery signal. The same trim-both-locks reasoning as
+          // `createDeckBoot`'s blank-id gate: a fold weaker than the comparison it feeds is
+          // the exact second-lock weakness that review closed there.
           const raw: unknown = event.payload?.deck_id
-          refetchOnDeckChanged(typeof raw === 'string' && raw.trim() !== '' ? raw : null)
+          const deckId = typeof raw === 'string' ? raw.trim() : ''
+          refetchOnDeckChanged(deckId === '' ? null : deckId)
         } else {
           redriveDeckBoot()
         }
