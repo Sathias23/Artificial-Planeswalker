@@ -68,10 +68,11 @@ import { frontFaceCost, frontFaceName } from '../frontFaceCost'
  * ================= WHAT THIS PANEL DELIBERATELY DOES NOT DO ============================
  *
  * **It re-derives no inspection state (AC 28).** No `targetIdOf` of its own, no local "current
- * card", and — emphatically — **no second `deckMemory`**. `replacesRememberedDeck` is a
- * module-scope singleton: a second caller would race `CardDetail`'s effect so that exactly one of
- * the two never sees the transition. The deck-transition clear is INHERITED, for free, from the
- * panel above this one. Its accepted cost is on the record: a same-deck edit releases a pin.
+ * card", and — emphatically — **no second `deckMemory`**. `rememberBoards` is a module-scope
+ * singleton: a second caller would race `CardDetail`'s effect so that exactly one of the two
+ * never sees the transition. The deck-transition clear is INHERITED, for free, from the panel
+ * above this one. (Its once-accepted cost — a same-deck edit releasing a pin — was removed at
+ * c7-4, which made the eviction a membership transition.)
  *
  * **It is not a live region and adds no `aria-live` (AC 30).** Rows are 24-30px tall rather than
  * 246, so a cursor crossing this panel generates transient target changes an order of magnitude

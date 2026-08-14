@@ -289,6 +289,49 @@ export const clearPin = (): void => {
   useInspectionStore.setState({ pinnedId: null })
 }
 
+/**
+ * Whether a card is in a deck's LIST — all three boards, by `card_id` (story c7-4, R9).
+ *
+ * The sideboard is deliberately included, and the asymmetry with {@link coldOpenTargetOf} is the
+ * point rather than a drift: a sideboard card is pinnable (`DeckList` renders it a focusable
+ * row) and is "in the deck's list" in R9's words, so its DEPARTURE is the rule working — while
+ * the fall-back target stays what the grid draws, which excludes the sideboard. `deckIsEmpty`
+ * (`deckGroups.ts`) is the all-three-boards precedent.
+ */
+const inDeckList = (boards: DeckBoards, cardId: string): boolean =>
+  boards.commander.some((card) => card.card_id === cardId) ||
+  boards.sideboard.some((card) => card.card_id === cardId) ||
+  boards.mainboard.some((group) => group.cards.some((card) => card.card_id === cardId))
+
+/**
+ * The R9 membership-transition eviction (story c7-4, ruling 2026-08-14): at a boards
+ * replacement, release the pin ONLY if its card was in the departing decklist AND is absent
+ * from the new one. Everything else survives — a card in both lists (the same-deck refetch
+ * this story exists for), a card in neither (a pinned suggestion, the c6-7 debt row: it falls
+ * out of the rule with no special-casing), and a first-ever boards (`previous === null`, no
+ * departing deck to have been a member of).
+ *
+ * The rule reads only the TWO DECKLISTS, at replacement time — no pin-time classification of
+ * what a pin points at, which is R9's own boundary. The fall-back needs no code here:
+ * {@link clearPin} alone IS the fall-back to transient resolution, because `defaultId` is
+ * re-set to `coldOpenTargetOf(next)` by the same boards effect that calls this.
+ *
+ * It takes both boards as ARGUMENTS, exactly as {@link coldOpenTargetOf} does: this module
+ * holds no deck (see the header), and the one caller that has both — `CardDetail`'s boards
+ * effect, via `deckMemory`'s departing-boards return — passes them in.
+ *
+ * Args:
+ *   previous: The departing deck's boards, or `null` when there is no departing deck (a cold
+ *     open, or a remount of the same reference). `null` never evicts.
+ *   next: The boards now on the glass.
+ */
+export const evictDepartedPin = (previous: DeckBoards | null, next: DeckBoards): void => {
+  if (previous === null) return
+  const { pinnedId } = useInspectionStore.getState()
+  if (pinnedId === null) return
+  if (inDeckList(previous, pinnedId) && !inDeckList(next, pinnedId)) clearPin()
+}
+
 /** Record the cold-open target for the deck now on the glass. `null` for a deck with no cards. */
 export const setDefaultTarget = (cardId: string | null): void => {
   useInspectionStore.setState({ defaultId: cardId })

@@ -19,7 +19,7 @@ import { SkipLink } from './containers/SkipLink/SkipLink'
 import { closeAgentView, useOpenAgentView } from './state/agentView'
 import { hydrateDeckCards } from './state/cards'
 import { useAgentConnection } from './state/connection'
-import { surfaceOf, useDeckState } from './state/deck'
+import { surfaceOf, useDeckState, useDeckUpdating } from './state/deck'
 import { deckIsEmpty } from './state/deckGroups'
 import { clearFormatCheck, loadFormatCheck } from './state/formatCheck'
 import { useSystemState } from './state/systemState'
@@ -197,6 +197,11 @@ export default function App() {
   // them changes neither, and this comment exists so the next reader can see that was checked
   // rather than assumed.
   useAgentConnection()
+  // THE UPDATING FLAG (c7-4, UX-DR35, UX-DR42). A hook call above the two measured effect
+  // blocks, exactly as `useAgentConnection` was added — the blocks below are NOT moved and
+  // their relative order is unchanged (see the ⚠️ note above them). A primitive subscription,
+  // so this file re-renders on the flag flipping and on nothing else the deck slice writes.
+  const deckUpdating = useDeckUpdating()
   // The one narrowing of the one rule. Not a second precedence decision: `surfaceOf` has already
   // said which of the two is true, and this line only gives the deck arm a name so that the
   // three slots below can read its fields without repeating the discriminant check.
@@ -448,6 +453,14 @@ export default function App() {
     <AppShell
       skipLink={hasCards ? <SkipLink /> : undefined}
       deckName={deck?.detail.name}
+      /* THE UPDATING MARKER'S GATE (c7-4). `deck !== null && deckUpdating`, and both halves are
+         load-bearing: the flag alone is also true during a COLD boot (the store cannot know what
+         is on the glass), and it is `deck !== null` — `surfaceOf`'s own answer, not a second
+         derivation — that keeps a cold open, a state panel and the booting frame unmarked. The
+         marker therefore covers exactly the windows UX-DR35 describes: a c7-3 single-request
+         refetch AND a full re-drive behind a still-settled deck (EXPERIENCE.md names reconnect
+         explicitly), because both raise the flag while the deck stays rendered beneath them. */
+      updating={deck !== null && deckUpdating}
       badges={
         deck === null ? undefined : (
           <DeckBadges

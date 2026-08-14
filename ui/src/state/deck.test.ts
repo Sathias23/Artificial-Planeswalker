@@ -769,6 +769,177 @@ describe('the deck_changed refetch is one request, coalesced, latest-wins (c7-3)
   })
 })
 
+/**
+ * The `updating` flag: true for exactly the in-flight window, cleared on EVERY terminal path
+ * (story c7-4). Store-level, on the same manually-resolvable harness shape the c7-3 suite uses,
+ * because the flag's whole content is "while a request is in flight" and only a withheld reader
+ * can hold that window open. What the flag LOOKS like — the header marker, and its invisibility
+ * on a cold boot behind `App`'s `deck !== null` gate — is `App.test.tsx`'s, from a real mount.
+ */
+describe('the updating flag mirrors the refetch lifecycle (c7-4)', () => {
+  interface DetailCall {
+    readonly deckId: string
+    readonly signal: AbortSignal | undefined
+    resolve: (outcome: DeckOutcome) => void
+  }
+
+  const buildBoot = (activeId: string | null = ATRAXA_DECK_ID) => {
+    const detailCalls: DetailCall[] = []
+    const readActive = vi.fn(() =>
+      Promise.resolve<ActiveDeckOutcome>({ kind: 'active-deck', deckId: activeId }),
+    )
+    const boot = createDeckBoot({
+      onUpdate: (state) => useDeckStore.setState({ deck: state }),
+      readActive,
+      readDetail: (deckId, signal) =>
+        new Promise<DeckOutcome>((resolve) => {
+          detailCalls.push({ deckId, signal, resolve })
+        }),
+    })
+    return { boot, readActive, detailCalls }
+  }
+
+  const updating = () => useDeckStore.getState().updating
+
+  const settled = async (harness: ReturnType<typeof buildBoot>) => {
+    harness.boot.start()
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(1))
+    harness.detailCalls[0].resolve({ kind: 'deck', deck: detail() })
+    await vi.waitFor(() => expect(useDeckStore.getState().deck.status).toBe('deck'))
+    await vi.waitFor(() => expect(updating()).toBe(false))
+  }
+
+  it('is false at rest, true from start() until the boot settles', async () => {
+    expect(updating()).toBe(false)
+
+    const harness = buildBoot()
+    harness.boot.start()
+    // TRUE for the whole two-request window — a cold boot raises it too; the App layer's
+    // `deck !== null` gate is what keeps the cold open unmarked, and App.test.tsx pins that.
+    expect(updating()).toBe(true)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(1))
+    expect(updating()).toBe(true)
+
+    harness.detailCalls[0].resolve({ kind: 'deck', deck: detail() })
+    await vi.waitFor(() => expect(updating()).toBe(false))
+    expect(useDeckStore.getState().deck.status).toBe('deck')
+  })
+
+  it('is true while a refetch is in flight and clears on its settle', async () => {
+    const harness = buildBoot()
+    await settled(harness)
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    expect(updating()).toBe(true)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
+
+    harness.detailCalls[1].resolve({ kind: 'deck', deck: detail({ name: 'After the edit' }) })
+    await vi.waitFor(() => expect(updating()).toBe(false))
+  })
+
+  it('clears on the 404-clear — the marker does not outlive the deck it marked', async () => {
+    const harness = buildBoot()
+    await settled(harness)
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
+    harness.detailCalls[1].resolve({ kind: 'error', reason: 'deck_not_found' })
+
+    await vi.waitFor(() => expect(updating()).toBe(false))
+    expect(useDeckStore.getState().deck).toEqual({ status: 'none' })
+  })
+
+  it.each<[string, DeckOutcome]>([
+    ['a dropped 503 refusal', { kind: 'error', reason: 'database_unavailable' }],
+    ['an unreachable backend', { kind: 'unreachable' }],
+    [
+      'a malformed row in a 200',
+      {
+        kind: 'deck',
+        deck: {
+          ...detail(),
+          cards: [{ card_id: 'id-broken', quantity: 1 } as unknown as DeckCardSummary],
+        },
+      },
+    ],
+  ])(
+    'clears on %s, though nothing settles — settleFor alone could not carry this',
+    async (_label, outcome) => {
+      // The reason the clear is a `finally` and not a settle side-effect: every one of these
+      // outcomes is DROPPED (the deck stays, no settle fires), and every one still ends the
+      // in-flight window the marker describes.
+      const harness = buildBoot()
+      await settled(harness)
+      const before = useDeckStore.getState().deck
+
+      driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+      await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
+      expect(updating()).toBe(true)
+      harness.detailCalls[1].resolve(outcome)
+
+      await vi.waitFor(() => expect(updating()).toBe(false))
+      expect(useDeckStore.getState().deck).toBe(before)
+    },
+  )
+
+  it('clears with the abort on stop(), and the late response cannot re-clear a successor', async () => {
+    const harness = buildBoot()
+    await settled(harness)
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
+    expect(updating()).toBe(true)
+
+    harness.boot.stop()
+    // Synchronous with the abort: a stopped world pays for nothing and marks nothing.
+    expect(updating()).toBe(false)
+    expect(harness.detailCalls[1].signal?.aborted).toBe(true)
+
+    harness.detailCalls[1].resolve({ kind: 'deck', deck: detail({ name: 'Post-stop — stale' }) })
+    await Promise.resolve()
+    expect(updating()).toBe(false)
+  })
+
+  it("leaves the successor's flag TRUE when a superseded run exits — the generation guard", async () => {
+    const harness = buildBoot()
+    await settled(harness)
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(3))
+    expect(harness.detailCalls[1].signal?.aborted).toBe(true)
+
+    // The SUPERSEDED request answers first. Its runner's exit runs the shared clear — and must
+    // skip it, because the generation moved: an unguarded clear here would blank the marker
+    // while the successor's request is still honestly in flight.
+    harness.detailCalls[1].resolve({ kind: 'error', reason: 'database_unavailable' })
+    for (let i = 0; i < 8; i += 1) await Promise.resolve()
+    expect(updating()).toBe(true)
+
+    harness.detailCalls[2].resolve({ kind: 'deck', deck: detail({ name: 'Second — wins' }) })
+    await vi.waitFor(() => expect(updating()).toBe(false))
+  })
+
+  it('marks a full re-drive behind a still-settled deck — the reconnect window', async () => {
+    // EXPERIENCE.md names reconnect explicitly: the re-drive is a two-request sequence behind a
+    // deck that STAYS on the glass (the store keeps `'deck'` until the new settle), so the App
+    // gate `deck !== null && updating` shows the marker for this window too, with no second
+    // mechanism — the same flag, raised by `start()` instead of `refetch()`.
+    const harness = buildBoot()
+    await settled(harness)
+
+    harness.boot.stop()
+    expect(updating()).toBe(false)
+    harness.boot.start()
+    expect(updating()).toBe(true)
+    expect(useDeckStore.getState().deck.status).toBe('deck')
+
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
+    harness.detailCalls[1].resolve({ kind: 'deck', deck: detail({ name: 'Re-driven' }) })
+    await vi.waitFor(() => expect(updating()).toBe(false))
+  })
+})
+
 describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
   /**
    * A system slice for one panel. `connection` defaults to `'live'` — "the socket is not what

@@ -84,11 +84,44 @@
   gap: var(--space-5);
 }
 
+/* The updating veil's TRANSITION lives on the block at rest, so the dim eases IN when
+   `data-updating` lands and eases OUT when it clears — a transition on the attribute state
+   alone would snap in one direction. Duration and easing are tokens; under reduced motion the
+   zeroed `--motion-glide` makes the ease instant and the tokens.css media block replaces the
+   veil itself with the static "Updating…" line (c7-4, UX-DR42). */
 .app-shell-identity {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
   min-width: 0;
+  transition: opacity var(--motion-glide) var(--ease-glide);
+}
+
+/* THE REFETCH SHIMMER, AS A NON-ANIMATED VEIL (c7-4, UX-DR35, UX-DR42). The identity block
+   dims for exactly as long as the re-read is in flight and recovers on its settle — an honest
+   persistent signal with NOTHING that loops or pulses (stylelint bans `infinite`/`alternate`
+   and pins iteration counts at 1 repo-wide), no `@keyframes` (whose rules the reduced-motion
+   CSS reader cannot neutralise — AgentView.css carries that argument), and no `transform`
+   (token-usage's 5-entry shipped-motion pin does not move). 0.55 is a geometry-style literal
+   by necessity: opacity has no token family (the AC 18 note at the top of this file), and it
+   is chosen to read as "muted, still legible" over `--bg` — the kicker and h1 keep their own
+   colour tokens underneath it. */
+.app-shell-identity[data-updating='true'] {
+  opacity: 0.55;
+}
+
+/* The static reduced-motion text (c7-4, UX-DR42): HIDDEN at every setting by default — the
+   ONLY rule that shows it lives in tokens.css's reduced-motion block, which is the single
+   registration point every motion fallback uses. The micro companions are declared beside the
+   role token because the `font` shorthand carries neither tracking nor transform —
+   `.app-shell-kicker` above is the pattern, with `--text-secondary` (not tertiary): the AC
+   names the passing tier for a line that is the whole signal when motion is off. */
+.app-shell-updating {
+  display: none;
+  font: var(--type-micro);
+  letter-spacing: var(--tracking-micro);
+  color: var(--text-secondary);
+  text-transform: uppercase;
 }
 
 .app-shell-kicker {
