@@ -2,7 +2,7 @@
 title: 'c7-4: Refetch never tears down what''s on screen'
 type: 'feature'
 created: '2026-08-15'
-status: 'review'
+status: 'in-review'
 review_loop_iteration: 0
 baseline_revision: 'f0fe419ebc9c52c696dbca1dea6fa7aeba21f3eb'
 context:
@@ -69,7 +69,7 @@ deferred: []
 - [x] Task 0: baseline -- `cd ui && npm test` (warm) then `uv run python -m scripts.vitest_probe_harness --control`; record the `--expect-total` baseline here. **Pre-story tree: 75 files / 2150 tests (the one red on the cold run was the known C6 R5 cold-eslint timeout flake; warm reruns green). Post-implementation control: `vitest: 76 files / 2182 tests, 0 failed, exit 0` → `--expect-total 2182`.**
 - [x] `ui/src/state/deck.ts` -- `updating` sibling key on `DeckSlice` (merge write keeps it non-clobbered), `applyUpdating` writer, set points in `start()`/`refetch()` (after its gate + bump), clears via `try/finally` wrappers (`run`/`refetchRun` around the renamed sequences) through generation-guarded `clearUpdatingFor`, unguarded clear in `stop()` beside the abort; `useDeckUpdating` selector hook beside `useDeckState`.
 - [x] `ui/src/state/deck.test.ts` -- new describe "the updating flag mirrors the refetch lifecycle (c7-4)": false at rest; true mid-boot and mid-refetch; cleared on settle/404/each dropped outcome (503, unreachable, malformed row)/`stop()`; superseded run's exit leaves the successor's flag true; re-drive behind a settled deck raises it while the deck stays `'deck'`. (Cold-boot invisibility at the App layer is pinned in App.test.tsx.)
-- [x] `ui/src/state/inspection.ts` + `ui/src/state/inspection.test.ts` -- `inDeckList` membership predicate (all three boards, by `card_id`) + `evictDepartedPin(previous, next)` verb (`previous: DeckBoards | null`, null never evicts); unit table: present→absent evicts + falls back to default resolution, absent→absent survives (pinned suggestion), present→present survives, `previous === null` never evicts, sideboard-membership row both directions, no-pin no-op.
+- [x] `ui/src/state/inspection.ts` + `ui/src/state/inspection.test.ts` -- `inDeckList` membership predicate (all three boards, by `card_id`) + `evictDepartedPin(previous, next)` verb (`previous: DeckBoards | null`, null never evicts); unit table: present→absent evicts + falls back to default resolution, absent→absent survives (pinned suggestion), present→present survives, `previous === null` never evicts, sideboard-membership row both directions, **commander-board row both directions (review patch 1 — the predicate's third live arm was deletable green without it)**, and a no-pin no-op made non-vacuous (review patch 4: hover/focus/default set first and asserted untouched).
 - [x] `ui/src/containers/CardDetail/deckMemory.ts` + `CardDetail.tsx` + `CardDetail.test.tsx` -- `replacesRememberedDeck(boards): boolean` → `rememberBoards(boards): DeckBoards | null`; boards effect rewired (`evictDepartedPin` + status-quo transient clear, `setDefaultTarget` unconditional); the two existing transition tests adapted (comments; outcomes unchanged) plus a new same-deck-new-reference pin-survives test at the seam; deckMemory header rewritten (accepted cost removed); the DeckList.tsx header sentence naming the old API updated.
 - [x] `ui/src/components/AppShell/AppShell.tsx` + `AppShell.css` + `ui/src/App.tsx` + `ui/src/styles/tokens.css` -- `updating` prop → `data-updating` on `.app-shell-identity` + conditional aria-hidden "Updating…" span (`display:none` default; micro/tracking/uppercase/`--text-secondary` companions); shimmer = non-animated veil (`opacity: 0.55`, `transition: opacity var(--motion-glide) var(--ease-glide)` — no keyframes/animation/transform, no new token); reduced-motion swap rules (veil→1 `!important`, text→block) in the tokens media block only; :334 attribution corrected c7-5→c7-4; App gates `updating={deck !== null && deckUpdating}` above the two measured effect blocks (not reordered); `COPY_MODULES` reason extended with the ellipsis ruling.
 - [x] `ui/src/components/AppShell/AppShell.test.tsx` -- new describe: attribute + span rendering, U+2026 by codepoint, aria-hidden/no-role/no-live (StatePanel mirror), one-h1/one-banner/zero-region censuses while marked, nothing rendered at rest or for `updating={false}`. CSS-source halves live in new `ui/tests/updating-marker.test.ts` (node project — the guard suites themselves carry only the two declared prose amendments).
@@ -81,6 +81,7 @@ deferred: []
   - plant (b) `applyUpdating(true)` removed from `refetch()`: `vitest: 76 files / 2182 tests, 8 failed, exit 1` — RED both App-level marker tests and six deck.test.ts flag-lifecycle tests (in-flight, 404-clear via drop rows, three dropped outcomes, stop(), superseded-run guard)
   - after reverts: `vitest: 76 files / 2182 tests, 0 failed, exit 0` (`--expect-green`)
 - [x] Artifacts -- `cd ui && npm run build` (emits to `src/companion/app/static/`); `uv run python -m scripts.build_plugin` (mirrors into `plugin/`); both committed with the story; `git status --porcelain` on the two paths clean after commit. `uv run pytest -m "not integration"`: 3020 passed, 1 skipped.
+- [x] Review pass 1 patches (8) applied -- see the Review Triage Log. **Verification re-run at the new total: lint + format:check clean; harness `--expect-total 2183 --expect-green` → `vitest: 76 files / 2183 tests, 0 failed, exit 0`; build + plugin rebuild with ZERO residual drift (the source deltas are comments/tests only, bundle hash unchanged); pytest 3020 passed, 1 skipped.**
 
 **Acceptance Criteria:**
 - Given a settled deck and a refetch (or a re-drive behind it) in flight, when the header renders, then it carries the updating marker and the populated view is otherwise untouched — never a blank or skeleton teardown — and the marker clears on every terminal outcome including drops, aborts, and `stop()`.
@@ -95,6 +96,17 @@ deferred: []
 ## Spec Change Log
 
 ## Review Triage Log
+
+- **2026-08-15, review pass 1 — 8 findings triaged as patches, all applied.** Test total moved 2182 → 2183 (one new test; the rest strengthen or relocate existing ones).
+  1. (medium) `inspection.test.ts`: COMMANDER-board membership row added, in the sideboard row's shape — `boardsOf` files a `commander: true` card only in `boards.commander`, so the predicate's commander arm was deletable with the whole suite green. Evicts on departure, survives present→present.
+  2. (low) `deck.ts`: `useDeckUpdating` had been inserted between `useDeckState`'s docstring and its declaration; moved above the docstring so each doc sits on its own declaration.
+  3. (low) `App.test.tsx`: c7-4 section banners re-numbered to the spec's AC list — pin-survives is AC 3, membership eviction is AC 4 (AC 2 is reduced motion, which lives in `tests/updating-marker.test.ts`).
+  4. (low) `inspection.test.ts`: the no-pin no-op test made non-vacuous — hover/focus/default targets set before the evicting call and asserted untouched, so an implementation that cleared more than the pin now fails.
+  5. (low) `App.test.tsx`: the DFC assertion is scoped to the Pathway's OWN tile, by accessible name via `getAllByRole('button', …)` + find (the caption is the tile button's name through `aria-labelledby` and sits OUTSIDE the button, so a `textContent` scan of `.card-tile` finds nothing — the first fix attempt measured exactly that; the deck-list row shares the name, hence getAll + the faces filter).
+  6. (low) `tests/updating-marker.test.ts`: the display census is now TOTAL — every block whose selector names `.app-shell-updating` is collected and the only `display` across all of them must be `none`; a first-match read would have missed a later duplicate reveal block.
+  7. (low) `tests/copy-rules.test.ts`: the c5-7 ellipsis ruling's own site (the ConnectionPill entry) now records the c7-4 carve-out — the ban is about STEADY states promising endless motion; "Updating…" is the recorded exception because its window provably ends — so both places describing ellipsis policy agree.
+  8. (low) `AppShell.tsx`: the `updating` prop docstring states the caller contract — the presentation-only shell renders what it is told and deliberately doesn't second-guess; "no marker without a loaded deck" lives at the one call site (`App.tsx`'s `deck !== null && deckUpdating`), and a second caller inherits the obligation.
+  - Verification re-run after the patches: lint + format:check clean; `vitest: 76 files / 2183 tests, 0 failed, exit 0` (harness `--expect-total 2183 --expect-green`); UI build + plugin rebuild with zero residual drift; `pytest -m "not integration"` 3020 passed, 1 skipped.
 
 ## Design Notes
 

@@ -807,6 +807,15 @@ export const refetchOnDeckChanged = (deckId: string | null): void => {
 }
 
 /**
+ * Whether the boot is re-reading the deck right now — the header's updating marker (c7-4).
+ *
+ * A primitive selector beside {@link useDeckState}, `useInspectionTargetId`'s shape: the one
+ * consumer (`App`, which gates it on a loaded deck) re-renders only when the flag flips, never
+ * on the deck writes the other hook already carries.
+ */
+export const useDeckUpdating = (): boolean => useDeckStore((slice) => slice.updating)
+
+/**
  * Subscribe to the deck state, and boot it once for as long as the caller is mounted.
  *
  * **`App` is the ONE consumer**, which is `useSystemState`'s rule and holds here for a sharper
@@ -839,15 +848,6 @@ export const refetchOnDeckChanged = (deckId: string | null): void => {
  * Returns:
  *   The current `DeckState`. Re-renders the caller whenever the boot changes it.
  */
-/**
- * Whether the boot is re-reading the deck right now — the header's updating marker (c7-4).
- *
- * A primitive selector beside {@link useDeckState}, `useInspectionTargetId`'s shape: the one
- * consumer (`App`, which gates it on a loaded deck) re-renders only when the flag flips, never
- * on the deck writes the other hook already carries.
- */
-export const useDeckUpdating = (): boolean => useDeckStore((slice) => slice.updating)
-
 export const useDeckState = (): DeckState => {
   useEffect(() => {
     const boot = createDeckBoot({ onUpdate: applyDeckState })

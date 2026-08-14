@@ -339,9 +339,43 @@ describe('pin eviction is a membership transition, not a deck lookup (c7-4, R9)'
     expect(useInspectionStore.getState().pinnedId).toBe('id-Pithing Needle')
   })
 
-  it('does nothing at all while no pin is held', () => {
-    evictDepartedPin(deckWith('Forest'), deckWith('Ponder'))
+  it('counts the COMMANDER board as membership — a pinned commander evicts when it leaves', () => {
+    // The third board, in the sideboard row's exact shape, because it is the predicate's third
+    // LIVE arm: `boardsOf` files a `commander: true` card ONLY in `boards.commander`, never in a
+    // mainboard group — so without this row the commander arm could be deleted with the whole
+    // suite green, silently keeping a departed commander's pin alive.
+    togglePin('id-Atraxa, Praetors’ Voice')
+    const departing = boardsOf([
+      row('Atraxa, Praetors’ Voice', 'Legendary Creature — Phyrexian Angel Horror', {
+        commander: true,
+      }),
+      row('Ponder', 'Sorcery'),
+    ])
+
+    evictDepartedPin(departing, deckWith('Ponder'))
     expect(useInspectionStore.getState().pinnedId).toBeNull()
+
+    // …and STAYING in the commander slot is membership too: no eviction on present → present.
+    togglePin('id-Atraxa, Praetors’ Voice')
+    evictDepartedPin(departing, departing)
+    expect(useInspectionStore.getState().pinnedId).toBe('id-Atraxa, Praetors’ Voice')
+  })
+
+  it('touches NOTHING while no pin is held — not the transients, not the default', () => {
+    // Non-vacuous on purpose: with `pinnedId` already null, an unconditional `clearPin()` and
+    // the guarded no-op are indistinguishable by a pin assertion alone. The other four slots
+    // are what tell a verb that evicts a pin from one that clears more than it was asked to.
+    setDefaultTarget('id-Ponder')
+    setHovered('id-Opt')
+    setFocused('id-Forest')
+
+    evictDepartedPin(deckWith('Forest'), deckWith('Ponder'))
+
+    const state = useInspectionStore.getState()
+    expect(state.pinnedId).toBeNull()
+    expect(state.hoveredId).toBe('id-Opt')
+    expect(state.focusedId).toBe('id-Forest')
+    expect(state.defaultId).toBe('id-Ponder')
   })
 })
 

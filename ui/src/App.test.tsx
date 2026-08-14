@@ -3623,7 +3623,7 @@ describe('refetch never tears down what’s on screen (c7-4)', () => {
     expect(screen.queryByRole('region', { name: 'Card database is updating.' })).toBeNull()
   })
 
-  // ==================== AC 2 — THE PIN SURVIVES A SAME-DECK REFETCH ====================
+  // ==================== AC 3 — THE PIN SURVIVES A SAME-DECK REFETCH ====================
   it('keeps a pinned card pinned through a refetch that still lists it — the behaviour change', async () => {
     await bootedDeck()
 
@@ -3661,7 +3661,7 @@ describe('refetch never tears down what’s on screen (c7-4)', () => {
     expect(detailName()).toHaveTextContent('Forest')
   })
 
-  // ==================== AC 3 — MEMBERSHIP EVICTION, AND THE FALL-BACK ==================
+  // ==================== AC 4 — MEMBERSHIP EVICTION, AND THE FALL-BACK ==================
   it('evicts a pin whose card left the list, falling back to the first card the grid draws', async () => {
     await bootedDeck()
     act(() => {
@@ -3767,11 +3767,18 @@ describe('refetch never tears down what’s on screen (c7-4)', () => {
     act(() => {
       flip!.click()
     })
-    // `[data-flipped]`, the CardTile.test.tsx idiom: every tile renders `.card-faces`, and only
-    // a FLIPPABLE one carries the attribute — the refetch below reorders the groups so a
-    // non-flippable tile becomes the document's first `.card-faces`, and a bare selector would
-    // read that one and report the attribute missing about the wrong element.
-    const flipped = () => document.querySelector('.card-faces[data-flipped]')
+    // Scoped to the PATHWAY'S OWN TILE, located by ACCESSIBLE NAME — the caption is the tile
+    // button's name via `aria-labelledby` (it sits OUTSIDE the button, so a textContent scan of
+    // `.card-tile` finds nothing), and a DFC's caption reads the combined printing name. A bare
+    // `.card-faces[data-flipped]` would take whichever flippable tile comes first in document
+    // order — the refetch below reorders the groups — and a stale attribute on the wrong tile
+    // could pass it. `getAllByRole` + find, because the DECK LIST row is a button named the
+    // same card; only the tile button contains the stacked faces.
+    const flipped = () =>
+      screen
+        .getAllByRole('button', { name: /Clearwater Pathway/ })
+        .map((button) => button.querySelector('.card-faces[data-flipped]'))
+        .find((faces) => faces !== null) ?? null
     expect(flipped()?.getAttribute('data-flipped')).toBe('true')
 
     // The agent edits the deck; the refetch re-renders the grid over new boards.

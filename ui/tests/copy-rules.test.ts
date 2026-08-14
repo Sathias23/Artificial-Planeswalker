@@ -339,7 +339,11 @@ const COPY_MODULES: Map<string, string> = new Map([
       'story is what writes it, the artefact and the constant land together. TWO VOICE DECISIONS ' +
       'ARE LOAD-BEARING AND THE MODULE ARGUES BOTH: there is no ellipsis after "Reconnecting", ' +
       'because a trailing "…" promises the animation tokens.css:305-312 bans repo-wide while ' +
-      'naming this very component as the reason the ban exists; and "Backend gone" states a fact ' +
+      'naming this very component as the reason the ban exists — a ruling about STEADY states, ' +
+      'not a flat character ban: c7-4\'s "Updating…" is the recorded exception (see the AppShell ' +
+      'entry above), legal because it marks a bounded in-flight window whose flag is cleared on ' +
+      "every terminal path, where the pill's states persist indefinitely and an ellipsis there " +
+      'would promise motion that never ends; and "Backend gone" states a fact ' +
       'about a process rather than blaming anyone, which is UX-DR33’s rule applied to the one ' +
       'string in this app most likely to reach for an apology. The DECK NAME is data — it arrives ' +
       'from the wire through the deck slice and is deliberately not in this module.',

@@ -135,12 +135,20 @@ describe('the static "Updating…" text replaces the veil under reduced motion (
       /\.app-shell-identity\[data-updating='true'\]\s+\.app-shell-updating\s*\{\s*display\s*:\s*block\s*;\s*\}/,
     )
 
-    // …and ONLY there: the component stylesheet's single `display` for the text is the `none`
-    // above (no second, unconditional reveal), and tokens.css names the marker nowhere outside
-    // its media block — the "reduced-motion handled ONLY in the tokens block" constraint as a
-    // check rather than a comment.
-    const displays = [...blockFor(shellCss, '.app-shell-updating')!.body.matchAll(/display\s*:/g)]
-    expect(displays).toHaveLength(1)
+    // …and ONLY there — a TOTAL census, not a first-match read: EVERY block in the component
+    // stylesheet whose selector names the marker is collected, and across all of them the only
+    // `display` declared is the `none` above. A first-block read (`blockFor`) would let a later
+    // duplicate `.app-shell-updating { display: block }` reveal the text unconditionally and
+    // still pass. tokens.css then names the marker nowhere outside its media block — the
+    // "reduced-motion handled ONLY in the tokens block" constraint as a check, not a comment.
+    const markerBlocks = blocksIn(shellCss).filter((block) =>
+      block.selector.includes('.app-shell-updating'),
+    )
+    expect(markerBlocks.length).toBeGreaterThan(0)
+    const displays = markerBlocks.flatMap((block) =>
+      [...block.body.matchAll(/display\s*:\s*([a-z-]+)/g)].map((m) => m[1]),
+    )
+    expect(displays).toEqual(['none'])
     const outsideMedia = stripComments(tokensCss).replace(reduced!, '')
     expect(outsideMedia).not.toContain('app-shell-updating')
   })

@@ -94,6 +94,14 @@ export interface AppShellProps {
    * live-region inventory — an in-flight murmur here would be a fourth announcement mechanism.
    * The `<h1>` itself is untouched (focus-restore target; "exactly one h1" is pinned), so the
    * marker is a sibling and an attribute, never a wrapper.
+   *
+   * ==== THE CALLER'S CONTRACT: GATE THIS ON A LOADED DECK ================================
+   * This component renders whatever it is told — pass `updating` with no `deckName` and it will
+   * happily mark a deckless header as updating. That is deliberate, not an oversight: the shell
+   * is presentation-only (AC 16) and holds no store to second-guess a caller with, so the
+   * invariant "no marker unless a deck is on the glass" lives at the ONE call site — `App.tsx`
+   * passes `deck !== null && deckUpdating`, reading `surfaceOf`'s own answer. A second caller
+   * inherits that obligation, not a safety net here.
    */
   updating?: boolean
   /** Format and size badges, header right. c2-7 supplies Badge; c4-2 and c4-10 fill them. */
