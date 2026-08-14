@@ -138,7 +138,17 @@ const COPY_MODULES: Map<string, string> = new Map([
     'src/components/AppShell/AppShell.tsx',
     'the placeholder line for each empty region, each naming the story that replaces it, plus ' +
       'the product kicker and the h1 fallback (story c2-1, AC 21). Every one of these is copy ' +
-      'with a scheduled death.',
+      'with a scheduled death. And one permanent resident since c7-4: the "Updating…" line the ' +
+      'reduced-motion swap shows while a refetch is in flight — authored, spelled with U+2026 ' +
+      'because the epic AC and the UX-DR42 inventory both write it verbatim (UX-DR33: ship ' +
+      'specified copy as specified), and asserted by codepoint in AppShell.test.tsx on the ' +
+      'U+00B7 precedent. That trailing ellipsis does NOT contradict the c5-7 ruling that ' +
+      'banned one after "Reconnecting": the pill names a STEADY state, where "…" promises the ' +
+      'looping animation tokens.css bans repo-wide, while "Updating…" marks a bounded ' +
+      'in-flight window that provably ends — the flag that shows it is cleared on every ' +
+      'terminal path, drops and aborts included. Recorded here so the two rulings stay one ' +
+      'coherent precedent: a trailing ellipsis is legal exactly when the state it decorates ' +
+      'is guaranteed to finish.',
   ],
   [
     'src/components/Footer/copy.ts',

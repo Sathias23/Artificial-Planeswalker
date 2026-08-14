@@ -84,6 +84,18 @@ export interface AppShellProps {
    * not move, which is the whole point of it being a prop.
    */
   deckName?: ReactNode
+  /**
+   * Whether the deck on the glass is being re-read right now (c7-4, UX-DR35, UX-DR42).
+   *
+   * True puts `data-updating` on the identity block — the CSS hook for the header's updating
+   * veil — and renders a hidden static "Updating…" line beneath the `h1`, which the reduced-
+   * motion block in `tokens.css` swaps in for the veil. The span is `aria-hidden` with no role
+   * and no live region: announcing the CHANGE is c7-5's, on completion, through the pinned
+   * live-region inventory — an in-flight murmur here would be a fourth announcement mechanism.
+   * The `<h1>` itself is untouched (focus-restore target; "exactly one h1" is pinned), so the
+   * marker is a sibling and an attribute, never a wrapper.
+   */
+  updating?: boolean
   /** Format and size badges, header right. c2-7 supplies Badge; c4-2 and c4-10 fill them. */
   badges?: ReactNode
   /** The agent-view nav pills, header far right. c6-8. */
@@ -152,6 +164,7 @@ const slot = (content: ReactNode, placeholder: string): ReactNode =>
 export function AppShell({
   skipLink,
   deckName,
+  updating,
   badges,
   nav,
   left,
@@ -173,7 +186,10 @@ export function AppShell({
           when empty — see the prop's docstring. */}
       {skipLink}
       <header className="app-shell-header">
-        <div className="app-shell-identity">
+        {/* `data-updating` on the IDENTITY BLOCK, not the header — the `.agent-view[data-entering]`
+            idiom: state travels as an attribute and the stylesheet decides what it looks like
+            (c7-4). Present only while true, so the resting DOM carries no vestigial attribute. */}
+        <div className="app-shell-identity" data-updating={updating ? 'true' : undefined}>
           {/* The product kicker, per DESIGN.md's "product kicker + deck name (left)". Until
               c4-2 lands a deck name in the h1 below, the two carry the same string — that is
               Q3's accepted consequence of never leaving the page heading-less, not an
@@ -185,6 +201,19 @@ export function AppShell({
           <h1 className="app-shell-deck-name">
             {filled(deckName) ? deckName : 'Artificial Planeswalker'}
           </h1>
+          {/* The reduced-motion fallback's text (c7-4, UX-DR42): hidden by default, shown only by
+              `tokens.css`'s media block while the veil is neutralised. A `<span>` — never a
+              `<header>`/`<section>` (banner and region censuses are pinned) — with
+              `aria-hidden="true"`, no role and no `aria-live`: the marker is visual state, and the
+              announcement inventory is c7-5's. "Updating…" is authored copy (this file is in
+              COPY_MODULES), spelled with U+2026 per the epic AC and the DR-42 inventory verbatim —
+              the c5-7 ellipsis ban does not apply, because this names a bounded in-flight window
+              that provably ends, not a steady state promising banned animation. */}
+          {updating ? (
+            <span className="app-shell-updating" aria-hidden="true">
+              Updating…
+            </span>
+          ) : null}
         </div>
         <div className="app-shell-badges">
           {/* Names the FILLERS (c4-2, c4-10) as well as the primitive's supplier (c2-7). AC 21

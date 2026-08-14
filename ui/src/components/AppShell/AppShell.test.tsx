@@ -207,6 +207,62 @@ describe('AppShell header (AC 15, AC 15b, Q3)', () => {
   })
 })
 
+describe('AppShell updating marker (c7-4, UX-DR35, UX-DR42)', () => {
+  it('marks the identity block and renders the hidden static text while updating', () => {
+    const { container } = render(<AppShell deckName="Atraxa Counter Cabinet v2 (owned)" updating />)
+
+    // The attribute is the CSS hook (the `.agent-view[data-entering]` idiom) and it sits on the
+    // identity block, never on a landmark: what the veil looks like is the stylesheet's business
+    // and jsdom applies none — tests/updating-marker.test.ts reads that half from source.
+    expect(container.querySelector('.app-shell-identity')?.getAttribute('data-updating')).toBe(
+      'true',
+    )
+
+    const text = container.querySelector('.app-shell-updating')
+    expect(text?.tagName).toBe('SPAN')
+    expect(text?.textContent).toBe('Updating…')
+    // The ellipsis is U+2026 HORIZONTAL ELLIPSIS, asserted by CODEPOINT (the U+00B7 middle-dot
+    // precedent): the epic AC and the UX-DR42 inventory spell the string verbatim, and "looks
+    // like three dots" is exactly the class of difference an eye scanning a diff waves through.
+    expect(text?.textContent?.codePointAt('Updating'.length)).toBe(0x2026)
+  })
+
+  it('contributes no announcement, role or live region — the pinned inventory is untouched', () => {
+    // The StatePanel.test.tsx mirror (landmine 17): asserted over the whole subtree, so a
+    // helpful `aria-live` anywhere near the marker fails too. Announcing the change is c7-5's,
+    // once, on completion — an in-flight murmur here would be a second mechanism.
+    const { container } = render(<AppShell deckName="Atraxa Counter Cabinet v2 (owned)" updating />)
+
+    expect(container.querySelector('.app-shell-updating')?.getAttribute('aria-hidden')).toBe('true')
+    expect(container.querySelector('.app-shell-updating')?.hasAttribute('role')).toBe(false)
+    expect(container.querySelectorAll('[aria-live]')).toHaveLength(0)
+    expect(container.querySelectorAll('[role="alert"], [role="status"]')).toHaveLength(0)
+  })
+
+  it('holds every pinned census while marked: one h1, one banner, zero regions', () => {
+    // The h1 is the focus-restore target and "exactly one h1" is pinned — the marker is a
+    // SIBLING and an attribute, never a wrapper, and this is the assertion that keeps it so.
+    render(<AppShell deckName="Atraxa Counter Cabinet v2 (owned)" updating />)
+
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getAllByRole('banner')).toHaveLength(1)
+    expect(screen.queryAllByRole('region')).toHaveLength(0)
+  })
+
+  it('carries neither the attribute nor the text at rest — false and absent alike', () => {
+    // `data-updating={undefined}` renders NO attribute, so the resting DOM is byte-identical to
+    // the pre-c7-4 shell — no vestigial state for a stylesheet or a census to trip over.
+    for (const updating of [undefined, false]) {
+      const { container, unmount } = render(
+        <AppShell deckName="Atraxa Counter Cabinet v2 (owned)" updating={updating} />,
+      )
+      expect(container.querySelector('[data-updating]')).toBeNull()
+      expect(container.querySelector('.app-shell-updating')).toBeNull()
+      unmount()
+    }
+  })
+})
+
 describe('AppShell placeholder copy (AC 21)', () => {
   it('names the owner story of every region it is holding open', () => {
     render(<AppShell />)
