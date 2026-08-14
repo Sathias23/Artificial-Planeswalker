@@ -58,7 +58,7 @@ baseline_commit: 'e39278879c98fc088b61610437ac81ad579de70b'
 
 - 30× loop, before: **22/30 runs red**. After: **0/30**, every run `56 passed` — same test count, nothing dropped or skipped.
 - Full gate: `uv run pytest -m "not integration"` → **2988 passed, 1 skipped**; `ruff check` + `ruff format --check` + `mypy src/` → all clean.
-- `git diff master --stat` → one file, `tests/integration/data/test_deck_repository.py`. Ordering contract untouched, so no consumer changed.
+- `git diff master --stat` → two files: `tests/integration/data/test_deck_repository.py` and this spec record. `git diff master --name-only -- src ui plugin` → **empty**: no production file changed, so the ordering contract is untouched and no consumer moved.
 
 Firing proofs, all through `scripts/probe_harness` against the FULL suite (tree staged before each plant, `git diff --exit-code` after each revert):
 
@@ -82,7 +82,7 @@ full suite (-m 'not integration'): 2989 collected, 0 failed, exit 0
 - Given the fixed suite, when `uv run pytest -m "not integration"` runs, then it is green and the collected test count is unchanged from master (no test deleted or silently skipped).
 - Given `update_deck` is regressed so it no longer stamps `updated_at`, when `scripts/probe_harness --expect-red` names `test_update_deck_name`, then the harness reports it red through a full-suite run — proving the rewritten assertion still fires.
 - Given `test_list_decks_with_strategy_field` is regressed so one deck's strategy is wrong, when the probe harness names it, then it reports red — proving identity-addressing did not weaken the test.
-- Given the change, when `git diff master --stat` is inspected, then only `tests/integration/data/test_deck_repository.py` appears — `list_decks`' observable ordering is unchanged, so no consumer (MCP `list_decks`, companion `/api/decks`, `skills/*/SKILL.md`) is affected.
+- Given the change, when `git diff master --name-only -- src ui plugin` is run, then it outputs nothing — no production file changed, so `list_decks`' observable ordering is unchanged and no consumer (MCP `list_decks`, companion `/api/decks`, `skills/*/SKILL.md`) is affected. (The branch's full changeset is two files: the test file and this spec record.)
 - Given the fixed file, when `uv run ruff check . && uv run ruff format --check . && uv run mypy src/` runs, then all three are clean and pre-commit passes without `--no-verify`.
 
 ## Design Notes
@@ -119,4 +119,4 @@ An explicit assignment beats the column's `onupdate` (verified), so this pin sur
 - `uv run pytest -m "not integration" -q` -- expected: green, collected count matching master's.
 - `uv run python -m scripts.probe_harness --expect-red 'tests/integration/data/test_deck_repository.py::test_update_deck_name'` (with the `updated_at` stamp removed from `update_deck`, tree staged first) -- expected: harness proof line reporting it red; then `git diff --exit-code src/data/repositories/deck.py` to confirm the revert.
 - `uv run ruff check . && uv run ruff format --check . && uv run mypy src/` -- expected: all clean.
-- `git diff master --stat` -- expected: exactly one file, `tests/integration/data/test_deck_repository.py`.
+- `git diff master --name-only -- src ui plugin` -- expected: no output at all (the production tree is untouched). `git diff master --stat` for the record: two files, the test file and this spec.
