@@ -2,10 +2,10 @@
 title: 'c7-3: The glass refetches on deck_changed, coalesced and latest-wins'
 type: 'feature'
 created: '2026-08-14'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 baseline_revision: 'f068932610bba3bbb0ea81688f4606799c55d2c7'
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-c7-context.md'
 warnings: ['oversized']
@@ -94,7 +94,13 @@ deferred: []
 
 ## Review Triage Log
 
-**2026-08-14 — review pass, ten findings triaged as patches, all applied:**
+### 2026-08-14 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 10: (high 0, medium 1, low 9)
+- defer: 0
+- reject: 8: (high 0, medium 0, low 8)
+- addressed_findings: the ten patches below, all applied in this pass (finding 1 is the medium — the caller-signal abort wiring in `client.ts` was asserted nowhere, so reverting the merge to timeout-only passed the whole suite; the rest are low). Rejected as noise: a dedicated store-level `'refused'`-row test (the row shares one guard branch with `'none'` and is pinned at the App surface), firing-proof plants for every new test beyond the two recorded load-bearing guards, the block-scoped helper duplication (file convention), the hard-coded 8-turn `flush()` drain, AC 2's permissive "may refresh" read, reconnect-satisfied-by-citation, the Code Map's unrealized `:2515`-count prediction, and the auditor's descriptive note that the extra-intent behaviors are legislated from the spec contract rather than the story text (that is the workflow's design).
 
 1. `client.test.ts`: caller-signal wiring was unasserted (timeout-only revert stayed green) → new abort-reaches-fetch test against a hanging, signal-honouring fetch stub. Probed: the exact revert now fails three tests.
 2. `client.test.ts`: `mergedSignal`'s manual-fallback arm was dead code under node 24 / jsdom 29 → three tests stubbing `AbortSignal` without `any` (caller-side abort, timeout-side abort via a controllable clock, caller already aborted at merge time), following the existing floor-miss stub precedent.
@@ -124,3 +130,32 @@ deferred: []
 - `uv run python -m scripts.vitest_probe_harness --control` then per-plant `--expect-total N --expect-red '<substring>'`, revert, `--expect-green` -- RUN 2026-08-14: proof lines pasted above (both plants caught, both reverts proven clean, final green; re-certified at 2150 after the review pass).
 - `cd ui && npm run build && git status --porcelain -- src/companion/app/static/ plugin/` -- RUN 2026-08-14, re-run after the review-triage patches (the `connection.ts` trim is a runtime change): bundle rebuilt (`assets/index-BX1aGZ4J.js`), `plugin/` re-assembled via `scripts.build_plugin` (v0.4.0), both committed.
 - `uv run pytest -m "not integration"` -- RUN 2026-08-14: `1 failed, 3019 passed, 1 skipped, 55 deselected` — the one failure is `tests/integration/data/test_deck_repository.py::test_list_decks_with_strategy_field`, the pre-existing flake pair member this spec's Design Notes record as not this story's regression. No backend file was touched by this story.
+
+## Auto Run Result
+
+Status: done
+
+**Summary.** The glass now reads `deck_changed`'s payload: a matching (or deck-agnostic — null/absent/blank, all trimmed) event on a settled deck refetches only `GET /api/deck/{id}` through a coalesced, abort-on-supersede, generation-guarded single-request path (one in flight, last response wins, out-of-order discarded); a different deck's event leaves the active deck alone while the stopped-poll restart still runs; any unsettled/`'none'`/`'refused'` window folds into the authoritative full re-drive (server-refereed, killing the departing-deck supersession race). Refetch failure policy is new and deliberate: `deck_not_found` clears to no-active-deck (UX-DR35's one legislated teardown), every other refusal drops and the loaded deck stays on screen. The format check re-keys on detail identity (the ledgered c4-10 Q7 overturn), so it refreshes once per settled detail. Reconnect refetch was already shipped by c5-6 and is cited, not rebuilt.
+
+**Files changed** (commits `7d333b5` feat + `9cd2fe9` review patches, on `feat/companion-c7-3-coalesced-refetch` off umbrella `feat/companion-c7`):
+- `ui/src/state/socket.ts` — `onSystemEvent` widened to carry the typed `SystemEvent` envelope; `SystemEventKind` removed (kinds now come from `SystemEvent['kind']`).
+- `ui/src/api/schema.ts` — `DeckChangedEvent`/`ActiveDeckChangedEvent`/`SystemEvent` aliases; stale cross-citation rewritten.
+- `ui/src/api/client.ts` — optional caller `AbortSignal` threaded through `request()` → `readDeck`, merged with the read timeout (`AbortSignal.any` with a guarded manual fallback).
+- `ui/src/state/connection.ts` — the kind branch c6-3 reserved: total, trimmed `deck_id` fold → `refetchOnDeckChanged`; doctrine header rewritten.
+- `ui/src/state/deck.ts` — boot grows `refetch(deckId)`/`settled()` sharing generation/settle/seeding, own `AbortController` aborted on every supersede (including `stop()`); `driveDeckChanged` decision table + `refetchOnDeckChanged` entry verb.
+- `ui/src/App.tsx` + `ui/src/state/formatCheck.ts` — format-check effect re-keyed on detail identity; headers re-argued.
+- Tests: `ui/src/state/deck.test.ts` (11 new), `ui/src/App.test.tsx` (c7-3 describe + padded-id, 503-behind-view, five-surfaces-move; two pinned counts amended; two c6-6 layering fixtures re-routed through the 404-clear), `ui/src/state/socket.test.ts` (widened dispatch), `ui/src/api/client.test.ts` (4 new abort/merge tests).
+- `src/companion/app/static/` + `plugin/` — rebuilt committed mirrors (`assets/index-BX1aGZ4J.js`).
+- This spec file — record, firing proofs, triage log.
+
+**Review findings breakdown.** Four layers (blind hunter, edge-case hunter, verification-gap, intent-alignment), 18 post-dedup findings: 10 patched (1 medium — the unasserted caller-signal abort wiring, whose exact revert now fails three tests; 9 low), 0 deferred, 8 rejected (unreachable-by-construction scenarios, coverage redundancy, process gold-plating beyond the recorded plant standard, style, permissive-AC readings). No intent gaps, no bad-spec loopbacks.
+
+**Follow-up review recommendation: true** — patched severities: 0 high, 1 medium, 9 low → score 3×1 + 9 = 12 ≥ 5.
+
+**Verification performed.** Firing proofs through the committed vitest harness (first story to adopt it — R2 loose end closed): warm control at 2123 pre-implementation; plants (a) mismatch guard deleted and (b) stale-generation guard removed → 2 expected REDs each, reverts proven by `git diff --exit-code`, green-certified at 2143 and re-certified at 2150 after the review pass. Full frontend gate independently re-run by the orchestrator: eslint+stylelint, prettier, `tsc -b` clean; `npm test` 75 files / 2150 tests, 0 failed; SPA rebuild produces zero drift against the committed bundle and `plugin/` mirror. Backend `uv run pytest -m "not integration"`: green except the pre-existing strategy-field flake family in `test_deck_repository.py` (members rotate nondeterministically across runs; zero backend files touched — tracked as C7 prep item R3).
+
+**Residual risks.**
+- The strategy-field flake family (R3) fired on several verification runs, including a new member (`test_update_deck_name`) — it is loud on this machine and worth R3's attention before it erodes trust in harness output.
+- A same-deck refetch releases a user's pin via `deckMemory`'s boards-identity comparison — pre-existing behavior deliberately left to c7-4, which owns the R9-amended membership-transition eviction rule (its pinned-suggestion-survives AC is the regression test owed).
+- The non-404-drop policy accepts silent staleness when a refetch fails while the deck stays on screen; recovery relies on the next event, reconnect re-drive, or poll edge (accepted until FR-16).
+- `AbortSignal.any`'s manual fallback is now tested, but real browsers in the floor gap (Chrome 107–115, Firefox 104–123, Safari 16–17.3) exercise it for real; the merge is small and covered, the risk is residual browser skew only.
