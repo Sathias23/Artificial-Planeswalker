@@ -562,8 +562,14 @@ UX-DR35: **Deck refetch behavior** — on `deck_changed` matching the active dec
 reconnect, refetch. **During refetch the current deck stays on screen with a subtle header shimmer
 — never a blank or a skeleton teardown of a populated view.** Coalesce to one in-flight request;
 a newer event cancels and restarts; last response wins; out-of-order responses discarded. A 404
-clears to no-active-deck. A pinned target that survives stays pinned; one that no longer exists
-falls back to transient with the first card of the first group.
+clears to no-active-deck. A pinned target that survives stays pinned. **Pin eviction is a
+membership transition, not a deck lookup (Brad's ruling, 2026-08-14 — C6 R9, closing the c6-7 Q7
+boundary note):** a pin is evicted — falling back to transient with the first card of the first
+group — only when its card **was in the departing deck's list and is absent from the new one**. A
+pin on a card that was never in the deck (a pinned suggestion, c6-7) survives every refetch as a
+natural consequence, no pin-time classification or special-casing; the rule reads only the old and
+new decklists at refetch completion. The original "no longer exists in the deck" wording predated
+any surface that could pin a non-deck card and would have evicted every pinned suggestion.
 
 UX-DR36: **Placeholder-then-fill imagery** — render layout immediately with cached art where
 available and silent wells elsewhere; images fade in over 100 ms as they arrive. **Layout never
@@ -3144,9 +3150,13 @@ So that an update never blanks the thing I was looking at.
 **When** the view updates
 **Then** it **stays pinned** (UX-DR35)
 
-**Given** a pinned target that no longer exists in the deck
+**Given** a pinned target whose card was in the departing deck's list and is absent from the new one
 **When** the view updates
-**Then** inspection falls back to transient, targeting the first card of the first type group (UX-DR35)
+**Then** inspection falls back to transient, targeting the first card of the first type group (UX-DR35 as amended by the R9 ruling: eviction is a membership transition, never a bare "not in deck" lookup)
+
+**Given** a pinned card that was never in the deck (a pinned suggestion, c6-7)
+**When** a `deck_changed` refetch completes
+**Then** the pin **survives** (UX-DR35 R9 ruling, 2026-08-14 — this AC is the real regression test the c6-7 Q7 boundary note is owed; the App.test.tsx pin-survives-close test covers only the close half)
 
 **Given** a double-faced card showing its back face
 **When** the refetch re-renders the grid

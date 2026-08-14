@@ -319,7 +319,8 @@
 #   epic-c1..10 → _bmad-output/planning-artifacts/epics-companion-app.md          (c-prefixed, numbering UNCHANGED)
 
 generated: 2026-06-20
-last_updated: '2026-08-14 (Story c7-2 MERGED via PR #75 into `feat/companion-c7` at `dc04bd2`; first story built via bmad-build-auto; Greptile 4/5, its one P1 dismissed with a recorded ruling on the inline thread. Next: R9 UX-DR35 ruling, then c7-3.)'
+last_updated: '2026-08-14 (C6 R9 RULED: UX-DR35 pin eviction is a membership transition — evict only when the pinned card was in the departing list and absent from the new one; pinned suggestions survive; DR text + Story 7.4 ACs amended. Next: c7-3.)'
+#                Previously — 2026-08-14 (Story c7-2 MERGED via PR #75 into `feat/companion-c7` at `dc04bd2`; first story built via bmad-build-auto; Greptile 4/5, its one P1 dismissed with a recorded ruling on the inline thread. Next: R9 UX-DR35 ruling, then c7-3.)
 #                Previously — 2026-08-13 (Story c7-1 MERGED via PR #74 into `feat/companion-c7` at `72bf5fc`. Three-layer review found 1 patch (notify_deck_changed's timeout default aligned with sibling verbs) + 2 defer, no decisions needed. Next: c7-2.)
 #                Previously — 2026-08-13 (c7-1 shared-notifier implemented on feat/companion-c7-1-shared-notifier off umbrella feat/companion-c7; status review, awaiting Brad''s three-layer review + PR.)
 #                Previously — 2026-08-13 (c7-1 shared-notifier spec approved, implementation in-progress; epic-c7 lifted from backlog.)
@@ -1019,7 +1020,7 @@ action_items:
   - epic: c6
     action: "R9 — rule UX-DR35's pin-eviction question BEFORE c7-3/c7-4 story context (the c6-7 Q7 boundary note, filed in deferred-work.md with its tripwire citation corrected at c6-7's review): as written, a deck_changed refetch would evict every pinned suggestion — decide whether agent-view pins survive a refetch before the refetch story is contexted."
     owner: "Brad (before c7-3)"
-    status: open
+    status: done  # RULED 2026-08-14 (Brad): eviction is a MEMBERSHIP TRANSITION — evict only a pin whose card was in the departing deck's list and is absent from the new one; a pin on a never-in-deck card (every pinned suggestion) survives statelessly, no pin-time classification. UX-DR35 amended in epics-companion-app.md (DR text + Story 7.4 ACs, incl. the new suggestion-pin-survives AC = the owed regression test); ledger entry annotated, closes when c7-4 ships that AC's test.
   - epic: c6
     action: "R10 — execute C5 R6's demotion: amend the DESIGN.md citation guard's declaration (ui/tests/shell.test.ts) to state it is a STRING-PROXIMITY check that never resolves anchors, so it stops reading as more than it is. One comment edit; no behaviour change; the ~60 stale DESIGN.md:NNN anchors stay as-is by the decline."
     owner: "Brad (C7 prep)"
