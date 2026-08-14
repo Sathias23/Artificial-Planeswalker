@@ -12,6 +12,17 @@ from src.data.models.deck import DeckModel
 from src.data.repositories.deck import DeckRepository
 from src.data.schemas.deck import Deck, DeckCard
 
+# The wall clock is too coarse to separate two repository calls: datetime.now(UTC) advances in
+# ~593 us steps on the maintainer's Windows box, while a create/update round-trip against the
+# in-memory database takes far less than that. Consecutive calls therefore land on the *identical*
+# timestamp most of the time (measured: 85/200 for create->update, and 3 rapid creates share one
+# created_at in 96% of runs). Any test that needs two timestamps to differ pins the earlier one
+# explicitly rather than racing the clock for it.
+#
+# Naive on purpose: `decks.created_at` / `decks.updated_at` are DateTime columns without a
+# timezone, so values read back from the database are naive and a tz-aware pin would not compare.
+_OLD_TIMESTAMP = datetime(2020, 1, 1, 12, 0, 0)
+
 
 async def _set_created_at(session: AsyncSession, deck_id: str, value: datetime) -> None:
     """Force a deck's created_at to an explicit value (creation timing is wall-clock
@@ -19,6 +30,20 @@ async def _set_created_at(session: AsyncSession, deck_id: str, value: datetime) 
     model = await session.get(DeckModel, deck_id)
     assert model is not None
     model.created_at = value
+    await session.commit()
+
+
+async def _set_updated_at(session: AsyncSession, deck_id: str, value: datetime) -> None:
+    """Force a deck's updated_at to an explicit value.
+
+    Lets a test assert that a write *advanced* updated_at as a strict inequality against a
+    known-old pin, instead of against a creation timestamp the clock may not have moved past.
+    An explicitly assigned value takes precedence over the column's `onupdate` default, so the
+    pin survives this commit and only the operation under test overwrites it.
+    """
+    model = await session.get(DeckModel, deck_id)
+    assert model is not None
+    model.updated_at = value
     await session.commit()
 
 
@@ -175,10 +200,10 @@ async def test_get_deck_nonexistent(deck_repo: DeckRepository) -> None:
     assert deck is None
 
 
-async def test_update_deck_name(deck_repo: DeckRepository) -> None:
+async def test_update_deck_name(deck_repo: DeckRepository, session: AsyncSession) -> None:
     """Test updating a deck's name."""
     deck = await deck_repo.create_deck(name="Old Name", format="standard")
-    original_updated_at = deck.updated_at
+    await _set_updated_at(session, deck.id, _OLD_TIMESTAMP)
 
     updated_deck = await deck_repo.update_deck(deck_id=deck.id, name="New Name")
 
@@ -186,7 +211,7 @@ async def test_update_deck_name(deck_repo: DeckRepository) -> None:
     assert updated_deck.name == "New Name"
     assert updated_deck.format == "standard"
     # updated_at should change
-    assert updated_deck.updated_at > original_updated_at
+    assert updated_deck.updated_at > _OLD_TIMESTAMP
 
 
 async def test_update_deck_nonexistent(deck_repo: DeckRepository) -> None:
@@ -196,10 +221,10 @@ async def test_update_deck_nonexistent(deck_repo: DeckRepository) -> None:
     assert result is None
 
 
-async def test_update_deck_strategy(deck_repo: DeckRepository) -> None:
+async def test_update_deck_strategy(deck_repo: DeckRepository, session: AsyncSession) -> None:
     """Test updating a deck's strategy."""
     deck = await deck_repo.create_deck(name="Test Deck", format="standard", strategy="Old strategy")
-    original_updated_at = deck.updated_at
+    await _set_updated_at(session, deck.id, _OLD_TIMESTAMP)
 
     updated_deck = await deck_repo.update_deck(deck_id=deck.id, strategy="New control strategy")
 
@@ -207,7 +232,7 @@ async def test_update_deck_strategy(deck_repo: DeckRepository) -> None:
     assert updated_deck.name == "Test Deck"  # Name unchanged
     assert updated_deck.strategy == "New control strategy"
     # updated_at should change
-    assert updated_deck.updated_at > original_updated_at
+    assert updated_deck.updated_at > _OLD_TIMESTAMP
 
 
 async def test_update_deck_clear_strategy(deck_repo: DeckRepository) -> None:
@@ -318,19 +343,32 @@ async def test_list_decks_filtered_by_format(deck_repo: DeckRepository) -> None:
 
 
 async def test_list_decks_with_strategy_field(deck_repo: DeckRepository) -> None:
-    """Test list_decks includes strategy field for all decks."""
+    """Test list_decks carries each deck's strategy, including None for decks without one.
+
+    Decks are matched by id rather than by position. These three are created back-to-back and
+    so normally share a created_at, and under a tie list_decks falls back to ordering by id — a
+    UUID, and therefore arbitrary. That is the documented contract, not a defect (see the
+    /api/decks docstring in src/companion/app/routes/decks.py), so reading this result
+    positionally would assert a guarantee the repository declines to make. Ordering has its own
+    deterministic coverage in test_list_decks and
+    test_list_decks_orders_deterministically_on_created_at_tie.
+    """
     # Create decks with and without strategy
-    await deck_repo.create_deck(name="Aggro Deck", format="standard", strategy="Fast aggro")
-    await deck_repo.create_deck(name="Control Deck", format="standard", strategy="Control")
-    await deck_repo.create_deck(name="No Strategy Deck", format="standard")
+    aggro = await deck_repo.create_deck(name="Aggro Deck", format="standard", strategy="Fast aggro")
+    control = await deck_repo.create_deck(
+        name="Control Deck", format="standard", strategy="Control"
+    )
+    plain = await deck_repo.create_deck(name="No Strategy Deck", format="standard")
 
     decks = await deck_repo.list_decks()
 
     assert len(decks) == 3
-    # Verify strategy field is present in all decks (newest first ordering)
-    assert decks[0].strategy is None  # Newest first (No Strategy Deck)
-    assert decks[1].strategy == "Control"  # Second newest (Control Deck)
-    assert decks[2].strategy == "Fast aggro"  # Oldest (Aggro Deck)
+    # Every deck carries back exactly the strategy it was created with.
+    assert {deck.id: deck.strategy for deck in decks} == {
+        aggro.id: "Fast aggro",
+        control.id: "Control",
+        plain.id: None,
+    }
 
 
 # ===== Card Management Tests =====
@@ -1076,11 +1114,11 @@ async def test_merge_with_empty_target(
 
 
 async def test_merge_updates_timestamp(
-    deck_repo: DeckRepository, test_cards: list[CardModel]
+    deck_repo: DeckRepository, session: AsyncSession, test_cards: list[CardModel]
 ) -> None:
     """Test merge updates target deck's updated_at timestamp."""
     target = await deck_repo.create_deck(name="Target Deck", format="standard")
-    original_updated_at = target.updated_at
+    await _set_updated_at(session, target.id, _OLD_TIMESTAMP)
 
     source = await deck_repo.create_deck(name="Source Deck", format="standard")
     await deck_repo.add_card_to_deck(
@@ -1092,7 +1130,7 @@ async def test_merge_updates_timestamp(
     merged = await deck_repo.merge_decks(target.id, source.id, MergeStrategy.COMBINE)
 
     assert merged is not None
-    assert merged.updated_at > original_updated_at
+    assert merged.updated_at > _OLD_TIMESTAMP
 
 
 async def test_merge_string_strategy(
