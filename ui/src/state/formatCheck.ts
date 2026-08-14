@@ -23,19 +23,25 @@
  * A sixth store is the honest shape: a value with its own lifetime, its own single writer and its
  * own reset, sitting BESIDE the deck rather than inside it. `store-writes.test.ts` moves 5 → 6.
  *
- * ================= ONE READ PER DECK ID PER MOUNT, AND NO REFETCH (Q7, AC 10, AC 11) ====
+ * ================= ONE READ PER SETTLED DETAIL — c7-3 AMENDED Q7's RULING ===============
  *
- * `App.tsx` drives {@link loadFormatCheck} from an effect keyed on the **deck id string** — not on
- * the `DeckDetail` object, whose identity changes on every boot. That distinction is what keeps
- * c4-2's per-mount request count honest through the poll-recovery re-drive: re-booting the SAME
- * deck re-writes `detail` and must not re-ask this route. The count that assertion now pins is
- * **three** requests per mount for a deck view — active-deck, deck detail, format check — still a
- * number, and still red if any of them repeats.
+ * `App.tsx` drives {@link loadFormatCheck} from an effect keyed on the **`DeckDetail` object's
+ * identity** — overturning, at c7-3 and by ledger (this header named that story from the day it
+ * shipped; `deferred-work.md` carried the stale-forever entry), the c4-10 Q7 ruling that keyed
+ * it on the deck id STRING. The old ruling was request-thrift from before any staleness signal
+ * existed: an id string cannot say "the decklist changed", so the panel went stale forever after
+ * any agent edit. `deck.ts` now settles a fresh `detail` exactly once per completed boot AND
+ * once per coalesced `deck_changed` refetch, which makes detail identity precisely the staleness
+ * signal this route lacked. The amended pin is still a COUNT — one format-check request per
+ * settled detail, asserted in `App.test.tsx` — so a render, a poll transition or a socket status
+ * change still issue nothing; what changed is that a re-boot or a refetch of the same deck now
+ * honestly re-asks a route whose answer may have changed. (Side effect, priced: reconnect and
+ * duplicate-`active_deck_changed` re-drives re-ask the ~5 ms route once each.)
  *
- * **There is no refetch, and no timer.** A check that goes stale after the agent adds a card is
- * exactly what UJ-1 closes, and `deck_changed` is **c7-3's** — half-building a refetch here would
- * be a second coalescing rule to reconcile with that one later. `epics-companion-app.md:698` puts
- * UX-DR35's refetch wholly in Epic 7.
+ * **There is still no refetch IN THIS MODULE, and no timer.** The refetch trigger is the deck
+ * slice's, the debounce is c7-3's supersede-and-restart coalescing (one settle per burst, so one
+ * re-ask here), and this module remains one read per call with its generation guard unchanged.
+ * Half-building a trigger here would be the second coalescing rule Q7 warned about.
  *
  * **And no retry.** `readFormatCheck` issues one request; nothing here asks again. The c3-2 trap
  * (a backend with no database answers `database_not_initialized` to an id that can never succeed)

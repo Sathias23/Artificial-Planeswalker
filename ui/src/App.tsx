@@ -202,12 +202,17 @@ export default function App() {
   // three slots below can read its fields without repeating the discriminant check.
   const deck = surface.kind === 'deck' ? surface : null
   const detail = deck?.detail ?? null
-  // THE DECK'S ID, AS A STRING, AND THAT IS THE WHOLE OF THE FORMAT CHECK'S DEPENDENCY (c4-10 Q5,
-  // Q7, AC 10). `detail` is a fresh OBJECT on every boot — the poll-recovery re-drive re-writes it
-  // with the same deck in it — so keying the effect below on `detail` would re-request this route
-  // on a re-boot and quietly break c4-2's per-mount request count. A string identity is what makes
-  // "one format-check request per deck id per mount" structurally true rather than carefully true.
-  const deckId = detail?.id ?? null
+  // THE FORMAT CHECK NOW KEYS ON `detail` ITSELF, AND THAT IS c7-3 OVERTURNING c4-10's Q7 RULING
+  // ON PURPOSE (ledgered: deferred-work's stale-forever entry named this story; the formatCheck
+  // header names it too). The comment that used to live here argued the opposite — key on the id
+  // STRING, because `detail` is a fresh object on every boot and an object key would re-request
+  // on a re-boot of the same deck. Both halves of that argument were true, and the second has
+  // now changed sides: `detail`'s identity changes exactly when a settled boot OR a settled
+  // c7-3 refetch writes the store, which is exactly the staleness signal the panel lacked —
+  // "one request per deck id" was request-thrift from before any freshness signal existed, and
+  // it is precisely what left the panel stale forever after an agent edit. The amended pin is
+  // still a count: ONE format-check request per settled detail (App.test.tsx pins it), so a
+  // render, a poll transition or a socket status change still issue nothing.
 
   // THE EMPTY DECK, READ ONCE (c4-12, Q1, AC 1, AC 7, AC 9, AC 10, AC 12).
   //
@@ -329,8 +334,11 @@ export default function App() {
   // verdict about a deck that is no longer on the glass. `clearFormatCheck` also bumps the
   // slice's generation, so a read in flight when the deck goes away writes nothing.
   //
-  // ONE REQUEST PER DECK ID PER MOUNT, and no refetch (Q7): `deck_changed` is **c7-3's**, and
-  // half-building a refetch here would be a second coalescing rule to reconcile with that one.
+  // ONE REQUEST PER SETTLED DETAIL (c7-3, amending c4-10's Q7): `deck_changed`'s coalesced
+  // refetch settles a new `detail`, and this effect re-asks the 5 ms route once per settle — the
+  // panel finally refreshes with the deck it describes. The coalescing itself lives in `deck.ts`
+  // (a burst of events yields ONE settle, so it yields one re-ask here); building any second
+  // rule in this file would be exactly the reconciliation problem Q7 deferred.
   //
   // THE CLEANUP IS THE TEARDOWN HALF OF THE CITED PRECEDENT (c4-10 review): `createDeckBoot`
   // pairs `start()` with `stop()` on cleanup, and this effect's first draft omitted its half —
@@ -356,13 +364,13 @@ export default function App() {
   // and `routes/decks.py` names the failure mode in its own comment. That is what the panel would
   // have said to someone who has not added a card yet.
   //
-  // `emptyDeck` is in the deps rather than folded into `deckId`, so a deck that gains its first
-  // card while the tab is open WOULD ask then — today the only shipped path that rewrites
-  // `detail` mid-session is the poll-recovery re-drive (c4-2), so the edge is real only in that
-  // corner until c7-3's `deck_changed` refetch lands; the dep is the forward contract, not a live
-  // feature (code-review correction, 2026-08-07). It is a BOOLEAN, so the poll-recovery re-drive
-  // (which rewrites `detail` with the same deck in it) still recomputes to the same value and
-  // issues nothing.
+  // `emptyDeck` stays in the deps beside `detail`, and c7-3 is the story that made its edge
+  // live: a deck that gains its first card while the tab is open now refetches on the
+  // `deck_changed` frame, `detail` settles anew, `emptyDeck` flips false, and THIS effect asks
+  // for the first time — the forward contract the 2026-08-07 code-review correction recorded,
+  // discharged. (With `detail` itself now a dep, `emptyDeck` is technically derivable from it —
+  // it stays listed because the lint contract wants every read value named, and because the
+  // early-return arm below reads it first.)
   //
   // ⚠️ EVERY PATH THROUGH THIS EFFECT CLEARS, and the empty/null arm clears EAGERLY ON ENTRY
   // rather than registering a cleanup — only the load arm returns `clearFormatCheck` (an arm that
@@ -392,13 +400,13 @@ export default function App() {
   // ⚠️ DO NOT REORDER EITHER BLOCK WITHOUT RE-MEASURING. That is the whole reason both comments
   // now name the other's queue position.
   useEffect(() => {
-    if (deckId === null || emptyDeck) {
+    if (detail === null || emptyDeck) {
       clearFormatCheck()
       return
     }
-    void loadFormatCheck(deckId)
+    void loadFormatCheck(detail.id)
     return clearFormatCheck
-  }, [deckId, emptyDeck])
+  }, [detail, emptyDeck])
 
   // THE SKIP LINK'S PRESENCE CONDITION (c4-11, AC 4, Q3), AND IT IS ONE TEST COVERING THREE CASES.
   //

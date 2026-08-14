@@ -738,6 +738,32 @@ interface Received {
 }
 
 /**
+ * One signal that aborts when EITHER input does — or the one input that exists, or nothing.
+ *
+ * The zero- and one-input arms are not a convenience: `AbortSignal.timeout` is itself guarded
+ * (see `request`), so the timeout half is genuinely optional, and most readers pass no caller
+ * signal at all. Only the both-present case needs a merge, and `AbortSignal.any` is the
+ * platform's own spelling of it; the manual fallback exists for the browser-floor reason given
+ * at the call site and does the same thing with a fresh controller.
+ */
+const mergedSignal = (
+  timeout: AbortSignal | undefined,
+  caller: AbortSignal | undefined,
+): AbortSignal | undefined => {
+  if (timeout === undefined) return caller
+  if (caller === undefined) return timeout
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any([timeout, caller])
+  const controller = new AbortController()
+  const follow = (signal: AbortSignal): void => {
+    if (signal.aborted) controller.abort(signal.reason)
+    else signal.addEventListener('abort', () => controller.abort(signal.reason), { once: true })
+  }
+  follow(timeout)
+  follow(caller)
+  return controller.signal
+}
+
+/**
  * Issue one request and read its body, or report that nothing arrived.
  *
  * **The one `fetch` in `ui/src`, and the reason both readers share it rather than each spelling
@@ -758,11 +784,17 @@ interface Received {
  *
  * Args:
  *   path: The request path.
+ *   callerSignal: An abort handle the CALLER holds, merged with the timeout below so either can
+ *     end the request (story c7-3). The one consumer is `readDeck`'s refetch path — the deck
+ *     slice aborts a superseded refetch so a burst of `deck_changed` frames costs at most one
+ *     request in flight. An abort is a `fetch` rejection, so it lands in the same `null` as a
+ *     timeout or a lost backend: the caller's own generation guard is what tells the discarded
+ *     outcome apart, and this function stays total either way.
  *
  * Returns:
  *   What arrived, or `null` if nothing did. Never rejects.
  */
-const request = async (path: string): Promise<Received | null> => {
+const request = async (path: string, callerSignal?: AbortSignal): Promise<Received | null> => {
   // The clock, where the runtime can build one. `AbortSignal.timeout` is inside the bundle's
   // own browser floor (no `build.target` in vite.config.ts, so Vite's default
   // `baseline-widely-available` — Chrome/Edge 107+, Firefox 104+, Safari 16+ — every one of
@@ -773,8 +805,16 @@ const request = async (path: string): Promise<Received | null> => {
   // forever against a healthy backend it never contacts. An out-of-floor browser degrades to
   // NO timeout instead (the wedge risk returns, on a browser the bundle does not target); it
   // never masquerades as a lost backend.
-  const signal =
+  const timeoutSignal =
     typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(READ_TIMEOUT_MS) : undefined
+  // The merge stays INSIDE this one door (c7-3): every reader keeps exactly one spelling of
+  // "timeout plus caller", rather than each thereof growing its own. `AbortSignal.any` is
+  // verified present on the repo's node 20.19 floor and current jsdom (both checked at
+  // implement time, 2026-08-14); it is guarded anyway because it postdates `AbortSignal.timeout`
+  // in browsers (Chrome 116, Firefox 124, Safari 17.4) and this module's posture — see the
+  // paragraph above — is that a floor miss degrades, never throws inside the `try`. The manual
+  // arm mirrors the pair into a fresh controller and is behaviourally identical.
+  const signal = mergedSignal(timeoutSignal, callerSignal)
 
   let response: Response
   try {
@@ -886,16 +926,26 @@ export const readActiveDeck = async (): Promise<ActiveDeckOutcome> => {
  * this request exactly once per mount, `src/state/deck.ts` proves that with a request count, and
  * the bound that would otherwise be needed is replaced by there being no "again" at all.
  *
+ * **One request may now be ABANDONED, which is still not a retry** (story c7-3). The refetch
+ * path hands in a signal so a superseded read can be aborted mid-flight — a burst of
+ * `deck_changed` frames costs at most one request in flight rather than N racing. The abort is
+ * a `fetch` rejection inside `request`, so it surfaces here as the same total
+ * `{ kind: 'unreachable' }` every lost response maps to; the caller's generation guard is what
+ * discards it, and this reader still never throws.
+ *
  * Args:
  *   deckId: The deck id, as the agent set it. Encoded into the path by {@link deckPath}; not
  *     validated here, because there IS no shape to validate against — c3-1 Q4 ruled that a deck
  *     id has no declared shape, and the route's own answer is the authority.
+ *   signal: An optional abort handle, merged with the read timeout inside `request` — the one
+ *     door keeps the one spelling of that merge. **The boot passes nothing**; only the
+ *     `deck_changed` refetch holds a controller to pass.
  *
  * Returns:
  *   A `DeckOutcome`. Never rejects — a rejection is `{ kind: 'unreachable' }`.
  */
-export const readDeck = async (deckId: string): Promise<DeckOutcome> => {
-  const received = await request(deckPath(deckId))
+export const readDeck = async (deckId: string, signal?: AbortSignal): Promise<DeckOutcome> => {
+  const received = await request(deckPath(deckId), signal)
   if (received === null) return { kind: 'unreachable' }
 
   if (!received.ok) return { kind: 'error', reason: reasonOf(received.body) }

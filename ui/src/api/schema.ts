@@ -308,6 +308,49 @@ export type AgentViewKind = Exclude<AgentEventKind, 'deck_changed' | 'active_dec
 export type SuggestionsEvent = Extract<AgentEvent, { kind: 'suggestions' }>
 
 /**
+ * One `deck_changed` frame — the envelope, narrowed to the member `kind: 'deck_changed'` selects.
+ *
+ * **Consumers: the dispatch seam (`src/state/socket.ts` → `connection.ts`)**, which as of story
+ * c7-3 reads `payload.deck_id` to decide between a single-deck refetch and a full boot re-drive —
+ * the branch c6-3's ruling #2 reserved for that story.
+ *
+ * `Extract` over {@link AgentEvent} rather than `Schemas['DeckChangedEvent']`, for
+ * {@link SuggestionsEvent}'s reason verbatim: the union is what the dispatch switch narrows, so
+ * extracting from it is the one spelling that cannot disagree with the thing being narrowed.
+ *
+ * ⚠️ `payload` is REQUIRED in this type and OPTIONAL on the wire in practice — the exact caveat
+ * {@link SuggestionsEvent} carries: `agentEventOf` (`client.ts:701-716`) validates the `kind`
+ * discriminant and nothing else, so a frame of `{"kind":"deck_changed"}` reaches a consumer typed
+ * as a full event. And `deck_id` is nullable BY DESIGN even on a well-formed wire
+ * (`types.d.ts:642-646`: a deck-agnostic emission is a committed later phase). So the one read of
+ * `payload.deck_id` must be total twice over — absent payload, and absent/null/blank id — and
+ * `connection.ts` folds all of those to `null`, "refetch whatever is active".
+ */
+export type DeckChangedEvent = Extract<AgentEvent, { kind: 'deck_changed' }>
+
+/**
+ * One `active_deck_changed` frame — the other system kind, aliased beside its sibling so the
+ * dispatch seam can carry BOTH as one typed union (story c7-3).
+ *
+ * Its payload's `deck_id` is deliberately never read — `connection.ts` re-drives the full boot,
+ * which asks `GET /api/active-deck` first, so the client can never refetch the deck it is leaving
+ * (`contracts.py:902-905`). The alias exists so that {@link SystemEvent} is a derivation rather
+ * than a hand-written pair.
+ */
+export type ActiveDeckChangedEvent = Extract<AgentEvent, { kind: 'active_deck_changed' }>
+
+/**
+ * The two system frames as one union — what `socket.ts`'s widened `onSystemEvent` carries
+ * (story c7-3).
+ *
+ * The two members stay distinct types with distinct discriminants, so the consumer that branches
+ * on `kind` narrows to the right payload in one step — conflating them is the bug
+ * `contracts.py:902-905` warns about, and the union keeps it unrepresentable: there is no way to
+ * read a `deck_id` here without first saying which kind's `deck_id` is meant.
+ */
+export type SystemEvent = DeckChangedEvent | ActiveDeckChangedEvent
+
+/**
  * One suggested card: `{card_id, reason, category?, confidence?}` (AD-7).
  *
  * **Consumers: `AgentViewContent` in `src/state/agentView.ts`** (story c6-6, which RETAINED the

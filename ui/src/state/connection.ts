@@ -48,27 +48,40 @@
  *    The call is a one-liner into `agentView.ts`'s exported verb, `redriveDeckBoot`'s shape
  *    exactly, so this module still holds no `setState` and still names no store.
  *
- * 3. **a system event** (`deck_changed` / `active_deck_changed`) → the deck boot **always**, and
- *    the poll **only if it had stopped** (`restartPollIfStopped`). The asymmetry is the ruling:
- *    the deck may have changed, so the boot always runs; but the poll is already working unless
- *    `RETRIES_QUIETLY` said its panel does not retry, and restarting a working poll would be a
- *    second polling mechanism racing the first.
+ * 3. **a system event** (`deck_changed` / `active_deck_changed`) → the deck store's own verb for
+ *    that kind — **the two kinds finally act differently here (c7-3)**, in the branch c6-3's
+ *    ruling #2 reserved for exactly this story — and the poll **only if it had stopped**
+ *    (`restartPollIfStopped`), for BOTH kinds and both `deck_changed` branches alike. The poll
+ *    asymmetry is unchanged and still the ruling: the deck may have changed, so the deck path
+ *    always runs; but the poll is already working unless `RETRIES_QUIETLY` said its panel does
+ *    not retry, and restarting a working poll would be a second polling mechanism racing the
+ *    first.
  *
  * ================= WHAT A REFETCH IS, AND WHAT IT IS NOT (NFR-04, AC 10) ================
  *
- * *"Something changed, refetch."* No diffs, no patches, no payload reading on the deck path — the
- * `deck_changed` payload's `deck_id` is deliberately never read here, and neither is
- * `active_deck_changed`'s. Both mean *ask again*, and the app already has one correct way to ask:
- * `createDeckBoot`, which reads which deck is active FIRST. That is also the whole reason the two
- * kinds exist separately on the wire — `contracts.py:902-905` warns that a client conflating them
- * *"refetches the deck it is leaving instead of the one it is switching to"* — and re-driving the
- * boot rather than re-reading the current deck id is what makes that mistake unavailable here.
+ * *"Something changed, refetch."* No diffs, no patches — that half of the doctrine stands
+ * untouched. The OTHER half of what this header used to say — *"the `deck_changed` payload's
+ * `deck_id` is deliberately never read here"* — is OVERTURNED by c7-3, deliberately and by
+ * ledger (c6-3 ruling #2 reserved the branch; `deferred-work.md` named this story): the id is
+ * now read, TOTALLY (missing payload, missing key, `null` and a blank string all fold to `null`,
+ * "refetch whatever is active"), and handed to `deck.ts`'s `refetchOnDeckChanged`, which
+ * refetches only `GET /api/deck/{id}` when the event matches the SETTLED deck — one request per
+ * edit instead of two, coalesced latest-wins in the store's own machinery.
+ *
+ * What did NOT move is the part `contracts.py:902-905` warns about: `active_deck_changed`'s
+ * payload is still never read, because *which deck am I looking at* has exactly one correct
+ * answer and it is the server's — the full boot asks `GET /api/active-deck` FIRST, so the client
+ * structurally cannot refetch the deck it is leaving. And `deck.ts` re-asserts the same humility
+ * on the edited-deck path: any window where the settled deck id is not current truth (mid-boot,
+ * `'none'`, `'refused'`) falls back to that same full re-drive rather than adjudicating ids
+ * client-side. This module still decides nothing about ids — it folds one field and picks a
+ * verb; every comparison lives in the deck slice beside the state it compares against.
  */
 
 import { useEffect } from 'react'
 
 import { openSuggestionsPush } from './agentView'
-import { redriveDeckBoot } from './deck'
+import { redriveDeckBoot, refetchOnDeckChanged } from './deck'
 import { resetCardAttempts } from './cards'
 import { createAgentSocket } from './socket'
 import { applyConnection, restartPoll, restartPollIfStopped } from './systemState'
@@ -102,17 +115,31 @@ export const useAgentConnection = (): void => {
         resetCardAttempts()
         redriveDeckBoot()
       },
-      onSystemEvent: () => {
-        // The KIND is deliberately unread, and that is a ruling rather than laziness. The two
-        // system kinds carry different MEANINGS — "the deck you are showing was edited" against
-        // "which deck you are looking at changed" — and the reason the wire keeps them apart is
-        // that a client acting on the payload must not refetch the deck it is leaving. This
-        // client does not act on a payload at all: it re-drives the boot, which asks
-        // `GET /api/active-deck` FIRST and therefore fetches whichever deck is active NOW. That
-        // is the correct response to both, arrived at structurally rather than by a branch that
-        // happens to agree. `socket.ts` still reports them separately, so the day one of them
-        // needs a different action there is a parameter here to switch on.
-        redriveDeckBoot()
+      onSystemEvent: (event) => {
+        // THE BRANCH c6-3's RULING #2 RESERVED, taken at c7-3. The two system kinds carry
+        // different MEANINGS — "the deck you are showing was edited" against "which deck you
+        // are looking at changed" — and they now get different verbs:
+        //
+        //   - `active_deck_changed` re-drives the boot, payload unread, exactly as before: the
+        //     boot asks `GET /api/active-deck` FIRST, so the client structurally cannot refetch
+        //     the deck it is leaving (`contracts.py:902-905`).
+        //   - `deck_changed` hands its `deck_id` — READ TOTALLY, the one payload read this
+        //     module makes: `agentEventOf` validates only `kind`, so a payload-less frame, a
+        //     missing key, `null`, a non-string and a blank all arrive here, and every one of
+        //     them folds to `null`, "refetch whatever is active" — to the deck slice's own
+        //     verb, which refetches the single deck when the event matches the settled one and
+        //     falls back to the full re-drive in every window where the settled id is not
+        //     current truth. The COMPARISON lives there, beside the state it reads; this module
+        //     still holds no `setState`, names no store and decides nothing about ids.
+        //
+        // The poll restart stays OUTSIDE the branch: the deck list may refresh regardless of
+        // which deck changed, including on a different-deck event whose deck path does nothing.
+        if (event.kind === 'deck_changed') {
+          const raw: unknown = event.payload?.deck_id
+          refetchOnDeckChanged(typeof raw === 'string' && raw.trim() !== '' ? raw : null)
+        } else {
+          redriveDeckBoot()
+        }
         restartPollIfStopped()
       },
       // THE PUSH, AND THE WHOLE OF WHAT THIS SEAM DOES WITH IT (c6-6, AC 1). Passed straight
