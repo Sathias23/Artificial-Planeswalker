@@ -66,4 +66,28 @@
      two differently-weighted shapes in the same grid. */
   font: var(--type-numeric);
   font-variant-numeric: var(--type-numeric-features);
+
+  /* THE FADE-OUT HALF OF THE ONE-SHOT GLOW (c7-5, UX-DR16). The transition lives on the badge AT
+     REST so it carries the glow's DEPARTURE: the flashed rule below suspends it for the frame the
+     glow appears in, and when `data-flashed` drops, THIS declaration eases `box-shadow` from
+     `var(--glow)` back to nothing over `--motion-glide`. Instant-on, eased-off — the shape ruled
+     twice already (c6-5, c7-4): no `@keyframes` (their `from`/`to` rules cannot be neutralised by
+     the reduced-motion reader, and `!important` is spec-ignored inside keyframes), no `animation`
+     (which invites the loop stylelint bans), no transform (the 5-entry shipped-motion pin in
+     token-usage.test.ts must not move). Entirely token-expressed, so zeroing `--motion-glide`
+     makes the fade instant — and because an INSTANT glow is still a glow, the tokens.css media
+     block additionally omits it outright (`box-shadow: none !important` on the flashed selector),
+     which is the c4-4 hover-pop distinction between a mechanism and a registration.
+     tests/quantity-glow.test.ts asserts both halves from source. */
+  transition: box-shadow var(--motion-glide) var(--ease-glide);
+}
+
+/* THE FLASH ITSELF: instant-on. `transition: none` is load-bearing, not tidy — a fade-IN reversed
+   after one rAF frame would never reach full glow, so the flashed frame must PAINT the glow whole
+   and let the base rule above fade it out on exit. `var(--glow)` is the ONLY legal spelling of an
+   inline glow (stylelint's box-shadow allowed-list admits `none` or var(--shadow-…)/var(--glow)
+   compositions and nothing else), and no new token is spent (the 70-pin holds). */
+.card-tile-quantity[data-flashed='true'] {
+  box-shadow: var(--glow);
+  transition: none;
 }

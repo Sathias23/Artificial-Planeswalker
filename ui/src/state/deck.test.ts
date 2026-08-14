@@ -940,6 +940,184 @@ describe('the updating flag mirrors the refetch lifecycle (c7-4)', () => {
   })
 })
 
+/**
+ * The `refetchSettles` counter: +1 on a refetch SUCCESS and on nothing else in the world
+ * (story c7-5, UX-DR45). Store-level, on the manually-resolvable harness shape the c7-3 and
+ * c7-4 suites use, because the counter's whole content is "which terminal path was taken" and
+ * only a withheld reader can hold the paths apart. What the counter DRIVES — the polite
+ * `deck-announcement` region, its computed count and its keyed-Fragment re-announce — is
+ * `App.test.tsx`'s, from a real mount.
+ */
+describe('the refetch-settle counter moves only on a refetch success (c7-5)', () => {
+  interface DetailCall {
+    readonly deckId: string
+    readonly signal: AbortSignal | undefined
+    resolve: (outcome: DeckOutcome) => void
+  }
+
+  const buildBoot = (activeId: string | null = ATRAXA_DECK_ID) => {
+    const detailCalls: DetailCall[] = []
+    const readActive = vi.fn(() =>
+      Promise.resolve<ActiveDeckOutcome>({ kind: 'active-deck', deckId: activeId }),
+    )
+    const boot = createDeckBoot({
+      onUpdate: (state) => useDeckStore.setState({ deck: state }),
+      readActive,
+      readDetail: (deckId, signal) =>
+        new Promise<DeckOutcome>((resolve) => {
+          detailCalls.push({ deckId, signal, resolve })
+        }),
+    })
+    return { boot, readActive, detailCalls }
+  }
+
+  const settles = () => useDeckStore.getState().refetchSettles
+
+  const flush = async (): Promise<void> => {
+    for (let i = 0; i < 8; i += 1) await Promise.resolve()
+  }
+
+  const settled = async (harness: ReturnType<typeof buildBoot>) => {
+    harness.boot.start()
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(1))
+    harness.detailCalls[0].resolve({ kind: 'deck', deck: detail() })
+    await vi.waitFor(() => expect(useDeckStore.getState().deck.status).toBe('deck'))
+  }
+
+  it('is 0 at rest and 0 through a BOOT settle — the boot arm has no counterpart', async () => {
+    expect(settles()).toBe(0)
+    const harness = buildBoot()
+    await settled(harness)
+    // The boot settled a deck (the same write a refetch performs) and the counter did not move:
+    // cold boots, switches and reconnect re-drives all settle through this arm, silently.
+    expect(settles()).toBe(0)
+  })
+
+  it('increments by exactly ONE on a refetch success', async () => {
+    const harness = buildBoot()
+    await settled(harness)
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
+    expect(settles()).toBe(0) // not during flight — the announcement is on COMPLETION
+    harness.detailCalls[1].resolve({ kind: 'deck', deck: detail({ name: 'After the edit' }) })
+    await flush()
+
+    expect(settles()).toBe(1)
+  })
+
+  it('stays put on the 404-clear — a deletion is not an update', async () => {
+    const harness = buildBoot()
+    await settled(harness)
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
+    harness.detailCalls[1].resolve({ kind: 'error', reason: 'deck_not_found' })
+    await flush()
+
+    // The clear SETTLES (it is the one legislated teardown) and still counts nothing:
+    // announcing "Deck updated" about a deck that was deleted would lie, and the deletion UX
+    // is c7-6's whole subject.
+    expect(useDeckStore.getState().deck).toEqual({ status: 'none' })
+    expect(settles()).toBe(0)
+  })
+
+  it.each<[string, DeckOutcome]>([
+    ['a dropped 503 refusal', { kind: 'error', reason: 'database_unavailable' }],
+    ['a dropped 500', { kind: 'error', reason: 'internal_error' }],
+    ['a dropped 400 invalid_request', { kind: 'error', reason: 'invalid_request' }],
+    ['an unreachable backend', { kind: 'unreachable' }],
+    [
+      'a malformed row in a 200',
+      {
+        kind: 'deck',
+        deck: {
+          ...detail(),
+          cards: [{ card_id: 'id-broken', quantity: 1 } as unknown as DeckCardSummary],
+        },
+      },
+    ],
+  ])('stays put on %s — announcing a dropped outcome would lie', async (_label, outcome) => {
+    const harness = buildBoot()
+    await settled(harness)
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
+    harness.detailCalls[1].resolve(outcome)
+    await flush()
+
+    // This is the row that rules out the `updating` falling edge as the trigger: every one of
+    // these ENDS the in-flight window (c7-4's suite proves the flag clears) and none of them
+    // completed anything worth a sentence.
+    expect(settles()).toBe(0)
+  })
+
+  it('counts a BURST as exactly one — the supersession is the coalescing', async () => {
+    const harness = buildBoot()
+    await settled(harness)
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(4))
+
+    // Every response lands, oldest first — the two superseded ones die at the shared guard, so
+    // only the survivor settles AND counts. The settle-count pin at `:594-598` is the same
+    // claim about the store write; this is it about the announcement's trigger.
+    harness.detailCalls[1].resolve({ kind: 'deck', deck: detail({ name: 'First — stale' }) })
+    harness.detailCalls[2].resolve({ kind: 'deck', deck: detail({ name: 'Second — stale' }) })
+    harness.detailCalls[3].resolve({ kind: 'deck', deck: detail({ name: 'Third — wins' }) })
+    await flush()
+
+    expect(settles()).toBe(1)
+  })
+
+  it("adds nothing for a superseded refetch's LATE success — the out-of-order response", async () => {
+    const harness = buildBoot()
+    await settled(harness)
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(3))
+
+    // The NEWER answers first and counts; the OLDER limps in as a full success afterwards and
+    // must add nothing — its increment sits behind the same generation check as its settle.
+    harness.detailCalls[2].resolve({ kind: 'deck', deck: detail({ name: 'Newest — wins' }) })
+    await flush()
+    expect(settles()).toBe(1)
+    harness.detailCalls[1].resolve({ kind: 'deck', deck: detail({ name: 'Oldest — must lose' }) })
+    await flush()
+
+    expect(settles()).toBe(1)
+  })
+
+  it('adds nothing after stop() — a stopped world announces nothing', async () => {
+    const harness = buildBoot()
+    await settled(harness)
+
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
+    harness.boot.stop()
+    harness.detailCalls[1].resolve({ kind: 'deck', deck: detail({ name: 'Post-stop — stale' }) })
+    await flush()
+
+    expect(settles()).toBe(0)
+  })
+
+  it('resets to 0 with the rest of the slice — resetDeckState covers it', async () => {
+    const harness = buildBoot()
+    await settled(harness)
+    driveDeckChanged(harness.boot, ATRAXA_DECK_ID)
+    await vi.waitFor(() => expect(harness.detailCalls).toHaveLength(2))
+    harness.detailCalls[1].resolve({ kind: 'deck', deck: detail() })
+    await flush()
+    expect(settles()).toBe(1)
+
+    resetDeckState()
+    expect(settles()).toBe(0)
+  })
+})
+
 describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
   /**
    * A system slice for one panel. `connection` defaults to `'live'` — "the socket is not what

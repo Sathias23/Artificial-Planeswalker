@@ -186,11 +186,26 @@ export interface DeckSlice {
    * raises this flag) draws nothing: there is no deck on the glass to mark as updating.
    */
   readonly updating: boolean
+  /**
+   * How many coalesced refetches have settled SUCCESSFULLY (story c7-5, UX-DR45) — the
+   * announce-once signal, as store truth. Monotonic; incremented in exactly ONE place, the
+   * success arm of {@link refetchSequence}, synchronously with its settle — so it can never move
+   * on a boot settle, the 404-clear, a dropped outcome, a superseded response or a `stop()`.
+   *
+   * A COUNTER rather than the `updating` falling edge or `detail` identity, deliberately: the
+   * falling edge fires on every terminal path including drops (announcing a dropped 503 would
+   * lie), and `detail`'s identity changes on boot settles and deck switches too (announcing a
+   * switch contradicts UX-DR45's refetch-only wording). And a counter rather than a boolean,
+   * because two refetches ending at the same total must still announce twice — the
+   * `DeckAnnouncer` keys its DOM mutation on this value.
+   */
+  readonly refetchSettles: number
 }
 
 export const useDeckStore = create<DeckSlice>(() => ({
   deck: INITIAL_DECK_STATE,
   updating: false,
+  refetchSettles: 0,
 }))
 
 /** The ONE writer (AD-12, AC 18). Every input to this slice goes through here. */
@@ -204,6 +219,16 @@ const applyDeckState = (deck: DeckState): void => useDeckStore.setState({ deck }
 const applyUpdating = (updating: boolean): void => useDeckStore.setState({ updating })
 
 /**
+ * The settle counter's writer — the third sibling through the AD-12 door (c7-5), `applyUpdating`'s
+ * shape exactly. It takes the NEXT value rather than incrementing internally so that
+ * {@link resetDeckState} and the one increment site share one writer; guarding which settles may
+ * count is the increment site's (it sits synchronously beside `refetchSequence`'s own generation
+ * check, so no second guard exists here to drift from the first).
+ */
+const applyRefetchSettles = (refetchSettles: number): void =>
+  useDeckStore.setState({ refetchSettles })
+
+/**
  * Forget the deck. **For tests** — the module holds no other lifetime to reset.
  *
  * Still not a production `deck_changed` handler, even now that one exists (c7-3): that handler
@@ -213,6 +238,7 @@ const applyUpdating = (updating: boolean): void => useDeckStore.setState({ updat
 export const resetDeckState = (): void => {
   applyDeckState(INITIAL_DECK_STATE)
   applyUpdating(false)
+  applyRefetchSettles(0)
 }
 
 /**
@@ -547,6 +573,14 @@ export const createDeckBoot = ({
       // re-rendered by the settle below reads a cache that is already warm with the new rows.
       seedCardSummaries(detail.deck.cards)
       settle({ status: 'deck', detail: detail.deck, boards: boardsOfDeck(detail.deck) })
+      // THE ANNOUNCE-ONCE SIGNAL (c7-5, UX-DR45): incremented HERE and nowhere else — beside the
+      // one settle that means "a coalesced refetch completed with a new deck". Synchronous with
+      // the generation check above (no await between), so the `:537` guard already covers it and
+      // a superseded run's late response can no more bump this than it can write the store. It
+      // sits AFTER the settle so a throw in `boardsOfDeck` (evaluated as the settle's argument)
+      // skips both together, and the boot's own success arm deliberately has no counterpart:
+      // cold boots, switches and reconnect re-drives all settle there, silently.
+      applyRefetchSettles(useDeckStore.getState().refetchSettles + 1)
     } catch {
       // A malformed row inside a 200: the boot settles a panel because a cold open has nothing
       // else to show; a refetch leaves the DECK STORE untouched, because the deck already on
@@ -814,6 +848,15 @@ export const refetchOnDeckChanged = (deckId: string | null): void => {
  * on the deck writes the other hook already carries.
  */
 export const useDeckUpdating = (): boolean => useDeckStore((slice) => slice.updating)
+
+/**
+ * How many coalesced refetches have settled successfully — the `DeckAnnouncer`'s trigger (c7-5).
+ *
+ * A primitive selector beside {@link useDeckUpdating}, for the same re-render economy: the one
+ * consumer re-renders when the counter advances — once per settled refetch, by construction —
+ * and never on the deck writes, the updating flag, or anything else this slice carries.
+ */
+export const useDeckRefetchSettles = (): number => useDeckStore((slice) => slice.refetchSettles)
 
 /**
  * Subscribe to the deck state, and boot it once for as long as the caller is mounted.

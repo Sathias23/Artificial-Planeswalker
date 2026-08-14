@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useEffect, useId, useState } from 'react'
 
 import { CardPlaceholder } from '../../components/CardPlaceholder/CardPlaceholder'
 import { useFaceIndex } from '../../state/faces'
@@ -152,9 +152,12 @@ import './QuantityBadge.css'
  *
  * ================= WHAT THIS TILE DELIBERATELY DOES NOT DO =============================
  *
- * No `deck_changed` refetch, no shimmer, no quantity glow, and **no live region of its own** —
- * Epic 5 and c7-5; the pin announcement is the DETAIL PANEL's single polite region (c4-5 AC 23),
- * because ninety-nine tiles each owning one is ninety-nine ways to say the same sentence. And
+ * No `deck_changed` refetch, no shimmer, and **no live region of its own** — Epic 5 and c7-5;
+ * the pin announcement is the DETAIL PANEL's single polite region (c4-5 AC 23), because
+ * ninety-nine tiles each owning one is ninety-nine ways to say the same sentence. (The quantity
+ * GLOW this list used to defer landed at c7-5 — the per-tile one-shot flash below — and it is
+ * garnish, never a signal: the accessible carriers are the group-header counts and c7-5's
+ * coalesced `deck-announcement` region, both outside this component.) And
  * **no hydration** — the tile still fetches nothing; whoever decides a full record is needed
  * calls `hydrateCard`, and from c4-6 that is `App.tsx`'s after-commit deck sweep as well as the
  * panel.
@@ -295,6 +298,39 @@ export function CardTile({ cardId, name, cost, typeLine, quantity }: CardTilePro
   // drops a real zero. The threshold here is `> 1`, which is neither — a single copy gets no
   // badge because "1" on ninety-eight of ninety-nine tiles is noise, not information.
   const copies = Number.isFinite(quantity) ? (quantity as number) : 1
+
+  // THE ONE-SHOT ACCENT GLOW ON A CHANGED QUANTITY (c7-5, UX-DR16). Per-tile state, which is the
+  // ruled shape this component's header defends for its art states and for the same measured
+  // reason: lifting a seen-quantity map into a store would be a write `store-writes.test.ts`
+  // bans and would re-render all ~99 tiles on the one sweep the epic wants cheap.
+  //
+  // THE CHANGE IS DETECTED AT RENDER TIME, NOT IN AN EFFECT — `ConnectionPill.tsx:86-109`'s
+  // idiom, for its documented reason (`react-hooks/set-state-in-effect` rejects the effect
+  // spelling, and an effect's setState is a second commit). `seen` initialises from the MOUNT
+  // prop, so a freshly mounted tile never flashes: a new card's appearance is itself the signal,
+  // and a grid remount must not light ninety-nine badges at once. A re-render with the same
+  // quantity leaves `seen` equal and flashes nothing.
+  const [flash, setFlash] = useState<{ readonly seen: number; readonly flashed: boolean }>({
+    seen: copies,
+    flashed: false,
+  })
+  if (flash.seen !== copies) setFlash({ seen: copies, flashed: true })
+
+  // THE FLIP-OFF IS IN A FRAME CALLBACK — `AgentView.tsx:143-175`'s data-entering idiom, and the
+  // same correctness point: the browser must PAINT the flashed state before the attribute drops,
+  // or the two writes coalesce into one frame and no transition runs. `data-flashed` lands
+  // instantly (the flashed rule carries `transition: none`), one real frame passes, the
+  // attribute drops, and the badge's base transition fades `var(--glow)` out over
+  // `--motion-glide`. Instant-on, eased-off, no keyframes, no loop — and under reduced motion
+  // the tokens.css media block omits the glow entirely, so this state machine runs and shows
+  // nothing, which is the fallback UX-DR42's inventory names.
+  useEffect(() => {
+    if (!flash.flashed) return
+    const frame = requestAnimationFrame(() =>
+      setFlash((state) => (state.flashed ? { seen: state.seen, flashed: false } : state)),
+    )
+    return () => cancelAnimationFrame(frame)
+  }, [flash.flashed])
 
   const captioned = art !== 'failed' && caption !== null
   const badgeId = `${captionId}-n`
@@ -470,14 +506,24 @@ export function CardTile({ cardId, name, cost, typeLine, quantity }: CardTilePro
 
              IT IS NAMED RATHER THAN HIDDEN (Q6). UX-DR16 delegates the accessible quantity
              signal to "the group-header count and the coalesced live-region announcement", and
-             this story ships NEITHER — no group headers in the grid (Q5), no live region until
-             c7-5 — so delegating anyway would leave the count visual-only. Its id joins
+             c4-4 shipped NEITHER — no group headers in the grid (Q5), no live region until
+             c7-5 — so delegating then would have left the count visual-only. c7-5 RE-CHECKED
+             this with both delegated carriers finally shipped (c4-7's group-header counts and
+             the `deck-announcement` region), and the answer is KEEP: the badge stays in
+             `aria-labelledby`, because removing it now would change every named-tile assertion
+             and the name a reader knows this control by, for zero user gain. Its id joins
              `aria-labelledby` above, which also fixes the reading ORDER: name first, then
              count, rather than the DOM order a name-from-contents would have imposed. No
-             authored string is involved, so no COPY_MODULES entry is owed. */
+             authored string is involved, so no COPY_MODULES entry is owed.
+
+             `data-flashed` is the one-shot glow's state attribute (c7-5, UX-DR16): present for
+             exactly one frame after a quantity CHANGE — see the flash state above — and absent
+             otherwise, so QuantityBadge.css's flashed rule is entered and left rather than
+             animated. The attribute is presentation only; nothing accessible hangs on it. */
             <span
               id={badgeId}
               className="card-tile-quantity"
+              data-flashed={flash.flashed ? 'true' : undefined}
             >{`${MULTIPLICATION_SIGN}${copies}`}</span>
           ) : null}
         </button>

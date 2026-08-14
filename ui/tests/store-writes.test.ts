@@ -83,7 +83,7 @@ const STORES: { store: string; owner: string; why: string }[] = [
   {
     store: 'useDeckStore',
     owner: 'src/state/deck.ts',
-    why: 'the two boot reads are the only inputs to the deck (story c4-2, AD-12). Epic 5 adds `deck_changed` as the second input, into this same module.',
+    why: 'the two boot reads are the only inputs to the deck (story c4-2, AD-12). Epic 5 adds `deck_changed` as the second input, into this same module — whose c7-5 `refetchSettles` counter (the announce-once signal) is written by `applyRefetchSettles`, the third sibling writer beside `applyDeckState` and `applyUpdating`, incremented only against the refetch success settle.',
   },
   {
     store: 'useCardStore',

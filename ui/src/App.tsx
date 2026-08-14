@@ -12,6 +12,7 @@ import { CardDetail } from './containers/CardDetail/CardDetail'
 import { CardGrid } from './containers/CardGrid/CardGrid'
 import { ColourDistribution } from './containers/ColourDistribution/ColourDistribution'
 import { ConnectionPill } from './containers/ConnectionPill/ConnectionPill'
+import { DeckAnnouncer } from './containers/DeckAnnouncer/DeckAnnouncer'
 import { DeckList } from './containers/DeckList/DeckList'
 import { FormatCheck } from './containers/FormatCheck/FormatCheck'
 import { ManaCurve } from './containers/ManaCurve/ManaCurve'
@@ -615,8 +616,23 @@ export default function App() {
          deck slice through their own hooks — deliberately NOT off `surface` or `deck` in this
          file, because `surfaceOf` returns a PANEL surface in exactly the `'down'` state where the
          pill must still know a deck is loaded (`deck.ts:481-486`). Passing either from here would
-         have handed it the one answer it must not use. */
-      connectionPill={<ConnectionPill />}
+         have handed it the one answer it must not use.
+
+         AND THE DECK ANNOUNCER RIDES BESIDE IT (c7-5, UX-DR45) — a fragment in the SAME slot, so
+         `AppShell.tsx` is not edited and no new prop exists: the announcer is one visually-hidden
+         polite `<p>`, which adds no landmark (the banner census holds at 3) and no Tab stop (the
+         corridor pins hold). Props-free like its sibling, for the sibling's reason: it reads the
+         refetch-settle counter and the header counts from the deck slice itself, and the root
+         keeps no opinion about what it says. It renders on EVERY surface exactly as the pill
+         does — an empty region on a cold open or a state panel costs nothing and announces
+         nothing (the mount-silence sentinel), and gating it on a loaded deck here would tear the
+         region out of the accessibility tree mid-session for no user gain. */
+      connectionPill={
+        <>
+          <ConnectionPill />
+          <DeckAnnouncer />
+        </>
+      }
       /* THE LAST SLOT THE SHELL HAD OPEN, FILLED (c6-8). The ELEVENTH application of c2-9's
          displacement ruling and the one that finishes the set: `AppShell.tsx` is NOT edited, its
          `slot(nav, 'Agent-view nav pills land here — c6-8.')` placeholder stays exactly where it
