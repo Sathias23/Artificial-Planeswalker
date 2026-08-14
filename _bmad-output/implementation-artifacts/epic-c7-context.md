@@ -1,49 +1,49 @@
 # Epic c7 Context: The Deck Updates Itself
 
-<!-- Compiled from planning artifacts. Edit freely. Regenerate with compile-epic-context if planning docs change. -->
+<!-- Generated from planning artifacts. Regenerate with compile-epic-context if planning docs change. -->
 
 ## Goal
 
-Brad tells the agent to add a card and the glass changes by itself: the card appears in its type group, the mana curve grows, the colour spread shifts, and a screen reader hears about it exactly once — he never touches the browser. This is the climax of the primary user journey (agent drives, app shows) and closes the success criterion "agent-driven deck edits appear in the deck view without user action." The mechanism is deliberately simple: every deck-mutation tool emits a `deck_changed` event through one shared notifier after its transaction commits, and the UI's freshness model is "something changed, refetch" — no diffs, no patches.
+Close the live-update loop: Brad tells the agent to add a card and the glass changes by itself — the card appears in its type group, the mana curve grows, the colour spread shifts, and a screen reader hears about it exactly once — with no action in the browser. Every state change travels agent → MCP tool → SQLite → notification → browser refetch. This is the climax of the primary user journey and closes success criterion SC-2 (agent mutation visible on the glass within roughly a second).
 
 ## Stories
 
-- Story c7-1: One shared notifier, with a bounded await and no detached tasks
-- Story c7-2: Every deck-mutation tool emits after its transaction commits
-- Story c7-3: The glass refetches on `deck_changed`, coalesced and latest-wins
-- Story c7-4: Refetch never tears down what's on screen
-- Story c7-5: The change is announced once, and motion is never the only signal
-- Story c7-6: Deck deletion, and agent views during a refetch
-- Story c7-7: The loop closes — UJ-1 end to end
+- Story 7.1: One shared notifier, with a bounded await and no detached tasks
+- Story 7.2: Every deck-mutation tool emits after its transaction commits
+- Story 7.3: The glass refetches on `deck_changed`, coalesced and latest-wins
+- Story 7.4: Refetch never tears down what's on screen
+- Story 7.5: The change is announced once, and motion is never the only signal
+- Story 7.6: Deck deletion, and agent views during a refetch
+- Story 7.7: The loop closes — UJ-1 end to end
 
 ## Requirements & Constraints
 
-- Existing deck-mutation tools (add, remove, update, create, import — and **deletion counts**) emit `deck_changed` after persisting. The event carries the deck ID; the UI refetches when it matches the active deck and may refresh the deck list regardless. A refetch that 404s (deck deleted) clears to the no-active-deck state.
-- Event delivery is fire-and-forget; a notification failure must never affect the mutation's own result, and no error surfaces in the UI. The resulting staleness window (until the out-of-band poller ships in a later phase) is **accepted behaviour** — no staleness warning is shown.
-- Resilience model: the UI reconnects its WebSocket with backoff and refetches the active deck on reconnect, since events may have been missed while disconnected.
-- End-to-end target: with the app open and an active deck, an agent mutation is visible on the glass within roughly a second of committing, with zero browser interaction.
+- Every deck-mutation tool (add, remove, update, create, import — and **deletion, which counts as a mutation**) emits a `deck_changed` event after persisting. The event carries the deck ID; the UI refetches when it matches the active deck and may refresh the deck list regardless. A refetch that 404s (deck deleted) clears to the no-active-deck state.
+- A failed-and-rolled-back mutation emits nothing.
+- Notification failure never damages the mutation: the tool's own result is completely unaffected, no error surfaces, and the resulting staleness window is **accepted** (no staleness warning in the UI) until out-of-band change detection ships in a later phase.
+- Freshness model is "something changed, refetch" — no diffs, no patches. On WebSocket reconnect the client refetches the active deck, since events may have been missed.
+- End-to-end acceptance: with the app open, an agent-side add commits and within ~1 second the card appears in its type group, its curve bar grows, the colour distribution shifts, and its quantity badge flashes — Brad performs no browser action, and nothing on the glass ever mutates the deck (the backend stays read-only).
 
 ## Technical Decisions
 
-- **One shared notifier lives in the companion leaf** (importing only `pydantic`, `httpx`, `src.paths`, and leaf siblings). No mutation tool grows its own emit path. The MCP server may import the leaf but never `src.companion.app.*` — the CI import-boundary tests must still pass after every tool is wired up.
-- **"Fire-and-forget" means a bounded-timeout `await` of roughly 1 second, never a detached task.** `asyncio.create_task` is banned on the notification path (a task outliving its tool call can be torn down before it runs, silently losing the event), and a test asserts the ban. The timeout caps the latency cost a notification can add to a mutation.
-- The notifier catches and logs **every** exception (`%`-style lazy logging args, per project convention); nothing propagates to the caller.
-- Emission happens **after the transaction commits, never inside it**; a rolled-back mutation emits nothing — the view can never show something the database doesn't have.
-- The event is a `deck_changed` envelope carrying the deck ID, under the closed envelope contract (`{kind, id, ts, payload}` discriminated union) already established by the channel epic. Payloads reference by ID only; the UI re-hydrates via its existing REST endpoints and single card-hydration cache.
-- Refetch concurrency: **one in-flight `GET /api/deck/{id}` at a time; a newer event cancels and restarts it; last response wins; out-of-order responses are discarded.** The coalescing machinery doubles as the announcement debounce.
-- An enumeration test covers the full set of mutation tools so a future tool can't be forgotten.
+- **One shared notifier**, living in the companion **leaf** (imports only `pydantic`, `httpx`, `src.paths`, and leaf siblings). Exactly one — no mutation tool grows its own emit path. The MCP server may import the leaf but never `src.companion.app.*`; the existing CI import-boundary and read-only boundary tests must keep passing.
+- "Fire-and-forget" means a **bounded-timeout `await` (~1 s), not a detached task** — `asyncio.create_task` is banned on the notification path (a task outliving its tool call can be torn down before it runs and the event is silently lost). A test asserts the ban. The timeout caps the mutation's latency cost.
+- The notifier is called **after the transaction commits, never inside it**. All exceptions are caught and logged (`%`-style lazy logging args); nothing propagates to the caller.
+- The event is a `deck_changed` envelope carrying the deck ID, under the established wire contract: `{kind, id, ts, payload}` with `kind` a closed enum; `id` is opaque identity, ordering comes from `ts`.
+- A test **enumerates the full set of mutation tools** and asserts every one emits, so none is forgotten as tools are added.
+- Refetch machinery: coalesce to **one in-flight request**; a newer event cancels and restarts it; **last response wins**; out-of-order responses discarded. On completion the grid, deck list, type-group counts, mana curve, and colour distribution all recompute from the new decklist.
 
 ## UX & Interaction Patterns
 
-- **During a refetch the current deck stays on screen** with a subtle shimmer on the deck header — never a blank screen, never a skeleton teardown of a populated view. Blank screens are never shown after first paint.
-- On refetch completion, all derived views recompute from the new decklist: grid, type-grouped deck list, group-header counts, mana curve, colour distribution.
-- **Pin and flip state survive**: a pinned inspection target that still exists stays pinned; one that no longer exists falls back to transient inspection of the first card of the first type group. DFC flip state is keyed by Scryfall printing UUID, so a card showing its back face still shows it after re-render.
-- **One announcement per coalesced refetch**, on completion, via a polite live region: "Deck updated — 62 cards." A burst of events yields exactly one announcement.
-- **Motion is never the sole signal.** The changed-quantity badge glow flashes once and is garnish; the accessible signals are the updated group-header count and the live-region announcement. Under `prefers-reduced-motion`: glow omitted entirely, shimmer becomes static "Updating…" micro text in `text-secondary`, curve bars jump instantly.
-- **Deck deletion**: the triggered refetch 404s and the app clears to the no-active-deck state panel, listing remaining decks (non-clickable — the agent drives). The skip link and grid Tab stops are withdrawn while the grid is gone.
-- **An open agent view is untouched by a refetch** completing behind it, and **no announcement fires from behind a modal**. If the active deck is deleted while a view is open, the view stays open and valid (agent content is about cards, not deck presence); closing it lands on the no-active-deck panel.
+- **During a refetch the current deck stays on screen** with a subtle shimmer on the deck header — never a blank screen or a skeleton teardown of a populated view. Under `prefers-reduced-motion` the shimmer becomes static "Updating…" micro text. A blank screen is never shown after first paint.
+- **Pin eviction is a membership transition, not a deck lookup** (ruling 2026-08-14, amending the refetch rule): a pinned inspection target is evicted — falling back to transient on the first card of the first type group — only when its card **was in the departing deck's list AND is absent from the new one**. A pin on a card that was never in the deck (e.g. a pinned suggestion) **survives every refetch** as a natural consequence; the rule reads only the old and new decklists at refetch completion, with no pin-time classification.
+- DFC flip state is keyed by Scryfall printing UUID and **survives `deck_changed` re-renders** — a card showing its back face still shows it after refetch.
+- **Announce once**: a polite live region announces exactly once per coalesced refetch, on completion ("Deck updated — 62 cards"); the coalescing machinery is the debounce. A changed quantity flashes the accent glow once, but the glow is garnish — the accessible signals are the group-header count and the announcement. Under reduced motion the glow is omitted and curve bars jump instantly. Motion is never the sole carrier of information.
+- **Deck deletion**: refetch 404 → clear to the no-active-deck state panel, which lists remaining decks (non-clickable), in the calm specified voice. When the grid is gone, the skip link and grid Tab stops are withdrawn.
+- **An open agent view is untouched** by a refetch completing behind it, and no announcement fires from behind a modal. If the active deck is deleted while a view is open, the view stays open and valid; on close the user lands on the no-active-deck panel.
 
 ## Cross-Story Dependencies
 
-- Depends on Epics c4, c5, c6: the deck view and derived panels (c4) are what refetches repaint; the WebSocket channel and envelope contract (c5) carry `deck_changed`; the agent views (c6) must exist for c7-6's view-survives-refetch behaviour.
-- Within the epic: c7-1 (notifier) precedes c7-2 (wiring every tool); c7-3 (refetch/coalescing) underpins c7-4 (non-teardown rendering) and c7-5 (its coalescing is the announcement debounce); c7-7 is the end-to-end capstone walking the full journey — deck loads within 1 s, suggestions bloom within 250 ms, a pin survives dismissing the view, the deck updates by itself, and an audit confirms nothing in the browser ever mutated the deck (every change travels agent → MCP tool → SQLite → notification → browser refetch).
+- 7.2 consumes 7.1's notifier; 7.4, 7.5, and 7.6 all build on 7.3's coalesced refetch; 7.7 is the end-to-end walk of the whole epic (full journey: deck loads within 1 s, suggestions render within 250 ms, a pin survives dismissing the view, the deck updates by itself).
+- Epic-level: depends on the deck view (Epic 4), the realtime channel and envelope contract (Epic 5), and the agent views (Epic 6) — Story 7.6's "agent view survives a refetch behind it" needs those views to exist.
+- The pinned-suggestion-survives AC in Story 7.4 is the regression test owed from the earlier suggestions work; the existing pin-survives-close test covers only the view-close half.
