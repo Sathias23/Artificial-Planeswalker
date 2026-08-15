@@ -51,9 +51,12 @@ interface PanelBaseProps {
 /**
  * `live`: the agent has just changed something here (UX-DR9): the title swaps to `--accent`, a
  * 6px accent dot appears, and elevation rises to `--shadow-raise`. Purely a rendered state —
- * ANIMATING the transition into it belongs to c7-5, which already owns "the change is
- * announced once, and motion is never the only signal" together with its reduced-motion
- * fallback. Nothing here transitions (AC 18).
+ * and it STAYS one. This comment used to hand the transition ANIMATION to c7-5; that story
+ * measured the hand-off and RE-HOMED it (ruling recorded in its spec's deferred list): `live`
+ * has NO production producer — only `Panel.test.tsx` and `CardGrid`'s bare `<Panel>` mount this
+ * component, and neither sets it — so animating a transition nothing enters is unverifiable at
+ * any surface. The story that first SETS `live` owns the animation, together with its
+ * reduced-motion registration in tokens.css's media block. Nothing here transitions (AC 18).
  *
  * **`live` REQUIRES a `title`, IN THE TYPE** (c2-9 Q6, Brad's ruling 2026-07-29; encoded by the
  * review of the same day — the ruling lived only in comments, and `{ live: true }` with no

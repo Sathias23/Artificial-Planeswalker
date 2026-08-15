@@ -442,6 +442,20 @@ const COPY_MODULES: Map<string, string> = new Map([
       'card names and reasons a non-empty push carries are DATA, and the line is not announced ' +
       '— the heading’s live region is the view’s one announcement.',
   ],
+  [
+    'src/containers/DeckAnnouncer/copy.ts',
+    'the deck-refetch announcement (story c7-5, UX-DR45): "Deck updated — {N} card(s)", the one ' +
+      'sentence the coalesced-refetch live region ever speaks — exactly once per settled ' +
+      'refetch, on completion. TRANSCRIBED rather than authored: EXPERIENCE.md’s live-region row ' +
+      'and the epic’s Story 7.5 AC both carry the worked example "Deck updated — 62 cards", ' +
+      'spaced em dash U+2014 included, and tests/deck-announcement-copy.test.ts gates the ' +
+      'shipped builder against both artefacts — copy is gated against whatever wrote it. The ' +
+      'singular "1 card" is INVENTED on ManaCurve/copy.ts’s recorded precedent (no artefact ' +
+      'states a one-card form) and the module says so in the open. The COUNT is data — ' +
+      'mainboard_count + sideboard_count off the wire, summed in the builder so the announced ' +
+      'number and the group-header counts can never disagree (deckGroups.ts’s conservation ' +
+      'identity) — and the deck’s NAME is deliberately not in the sentence.',
+  ],
 ])
 
 /**

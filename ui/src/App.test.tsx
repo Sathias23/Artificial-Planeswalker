@@ -2125,17 +2125,19 @@ describe('the empty deck (story c4-12, AC 1, AC 3-5, AC 7-10, AC 14)', () => {
     // doing the same job. Counted across the whole document, and every survivor is IDENTIFIED —
     // the point of the pin is that a new region has to be declared here, not that the number is 1.
     //
-    // ⚠️ THE COUNT MOVED TO TWO AT c5-7, AND THE PIN WAS UPDATED RATHER THAN WEAKENED (AC 11).
-    // UX-DR45's inventory authorises exactly three polite regions for this app — the connection
-    // pill, the agent-view heading and the pin announcement — so a second one arriving is the
-    // inventory being filled, not the rule being broken. The honest form of that is an EXHAUSTIVE
-    // list: `>= 1` would have let a genuinely undeclared third region through, which is the whole
-    // failure this assertion exists to catch. The agent-view heading is Epic 6's and is absent.
+    // ⚠️ THE COUNT MOVED TO TWO AT c5-7, AND TO THREE AT c7-5 — THE PIN UPDATED RATHER THAN
+    // WEAKENED BOTH TIMES (AC 11). UX-DR45's inventory authorises the app's polite regions by
+    // name — the connection pill, the pin announcement, the agent-view heading, and the
+    // deck-refetch announcement its own live-region row legislates ("Deck refetches announce
+    // once per coalesced refetch") — so each arrival is the inventory being filled, not the rule
+    // being broken. The honest form of that is an EXHAUSTIVE list: `>= 1` would have let a
+    // genuinely undeclared region through, which is the whole failure this assertion exists to
+    // catch. The agent-view heading is Epic 6's and is absent while no view is open.
     const live = [...document.querySelectorAll('[aria-live]')]
-    expect(live).toHaveLength(2)
+    expect(live).toHaveLength(3)
     for (const region of live) expect(region.getAttribute('aria-live')).toBe('polite')
 
-    // EACH ONE NAMED. Identified by their own classes, NOT by an ancestor lookup: both
+    // EACH ONE NAMED. Identified by their own classes, NOT by an ancestor lookup: all three
     // announcement elements sit deliberately OUTSIDE the thing they describe — that placement is
     // the whole of the H4/C1 gate fix for the detail panel, and the same reason keeps the pill's
     // region outside the pill's `<button>` — so a `closest()` lookup correctly returns null and
@@ -2143,10 +2145,12 @@ describe('the empty deck (story c4-12, AC 1, AC 3-5, AC 7-10, AC 14)', () => {
     const classes = live.map((region) => region.className)
     expect(classes.some((c) => c.includes('card-detail-announcement'))).toBe(true)
     expect(classes.some((c) => c.includes('connection-pill-announcement'))).toBe(true)
+    expect(classes.some((c) => c.includes('deck-announcement'))).toBe(true)
 
-    // BOTH EMPTY AT REST. There is no card to pin on an empty deck, and the connection has not
+    // ALL EMPTY AT REST. There is no card to pin on an empty deck, the connection has not
     // transitioned since mount — the pill's region is silent on the initial render by design
-    // (c5-7 Q4), which is what stops every cold open announcing "Reconnecting".
+    // (c5-7 Q4), which is what stops every cold open announcing "Reconnecting" — and no refetch
+    // has settled, so the deck announcement's mount-silence sentinel holds it empty too (c7-5).
     for (const region of live) expect(region.textContent).toBe('')
   })
 })
@@ -3573,13 +3577,16 @@ describe('refetch never tears down what’s on screen (c7-4)', () => {
     expect(screen.getByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeVisible()
     expect(tiles().length).toBeGreaterThan(0)
     expect(document.querySelector('.state-panel')).toBeNull()
-    // THE LIVE-REGION CENSUS, UNCHANGED MID-FLIGHT (AC 7): still exactly the loaded deck's two
-    // polite regions, neither of them carrying the marker's text — announcements are c7-5's,
-    // once, on completion. The exhaustive count is what catches a helpful `aria-live` sneaking
-    // in on the marker; the census test above pins the same pair at rest.
+    // THE LIVE-REGION CENSUS, UNCHANGED MID-FLIGHT (AC 7): still exactly the loaded deck's
+    // three polite regions — c7-5's `deck-announcement` included — none of them carrying the
+    // marker's text, and the announcement region still EMPTY, because it speaks once on
+    // COMPLETION and this window is held open before the settle. The exhaustive count is what
+    // catches a helpful `aria-live` sneaking in on the marker; the census test above pins the
+    // same trio at rest.
     const live = [...document.querySelectorAll('[aria-live]')]
-    expect(live).toHaveLength(2)
+    expect(live).toHaveLength(3)
     for (const region of live) expect(region.textContent).not.toContain('Updating')
+    expect(document.querySelector('.deck-announcement')?.textContent).toBe('')
 
     release(
       deckDetail({
@@ -3794,6 +3801,318 @@ describe('refetch never tears down what’s on screen (c7-4)', () => {
     expect(screen.getAllByText('Grizzly Bears').length).toBeGreaterThanOrEqual(2)
     expect(flipped()?.getAttribute('data-flipped')).toBe('true')
     expect(document.querySelector('.flip-control')).not.toBeNull()
+  })
+})
+
+// =====================================================================================
+// c7-5 — THE CHANGE IS ANNOUNCED ONCE, AND MOTION IS NEVER THE ONLY SIGNAL
+// =====================================================================================
+
+/**
+ * The deck-refetch announcement, end to end (story c7-5, UX-DR45).
+ *
+ * The counter's LIFECYCLE — +1 on refetch success only, untouched through boots, drops, aborts,
+ * supersession and stop() — is `deck.test.ts`'s, on manually-resolvable readers. What only THIS
+ * file can pin is the c6-2 lesson's half: that the counter actually reaches a mounted
+ * `DeckAnnouncer` beside the pill, that the region speaks the COMPUTED main+side sum from the
+ * real payload, that it is empty mid-flight (the window held open the honest way, behind the
+ * real `fetch` seam), and that the silent paths stay silent on the glass. The same-text
+ * re-announce is proven the way c6-6 proved the heading's: a `MutationObserver` on the region,
+ * because "announces" IS "mutates" to a live region and jsdom has no speech.
+ */
+describe('the refetch announces once, politely, on completion (c7-5)', () => {
+  const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
+  const region = () => document.querySelector('.deck-announcement')
+  const settleCount = () => useDeckStore.getState().refetchSettles
+
+  /** `bootedDeck`/`withholdDeckRead`, re-declared from the c7-3/c7-4 blocks — block-scoped. */
+  const bootedDeck = async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks(ATRAXA_NAME))
+    render(<App />)
+    await settle()
+    await connect()
+    expect(screen.getByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeVisible()
+    return fetchMock
+  }
+
+  const withholdDeckRead = (fetchMock: ReturnType<typeof answering>) => {
+    const answer = fetchMock.getMockImplementation()!
+    let release: ((response: Response) => void) | null = null
+    fetchMock.mockImplementation((input?: unknown) =>
+      String(input) === `/api/deck/${ATRAXA_DECK_ID}`
+        ? new Promise<Response>((resolve) => {
+            release = resolve
+          })
+        : answer(input),
+    )
+    return (response: Response) => release!(response)
+  }
+
+  /** The edited deck most tests below settle: 101 mainboard + 1 sideboard = 102 on the glass. */
+  const editedDeck = () =>
+    deckDetail({
+      mainboard_count: 101,
+      sideboard_count: 1,
+      distinct_cards: 3,
+      cards: [
+        deckCard('Llanowar Elves', 'Creature — Elf Druid', 1, '{G}', 1),
+        deckCard('Grizzly Bears', 'Creature — Bear', 1, '{1}{G}', 2),
+        deckCard('Forest', 'Basic Land — Forest', 10),
+      ],
+    })
+
+  beforeEach(() => {
+    // The overlay test below opens a view; symmetric protection, the c7-3 block's reasoning.
+    resetAgentView()
+  })
+
+  // ==================== AC 1 — ONCE, ON COMPLETION, WITH THE COMPUTED SUM ==============
+  it('announces "Deck updated — {N} cards" once on the settle — and NOT during flight', async () => {
+    const fetchMock = await bootedDeck()
+    // SILENT THROUGH THE COLD BOOT: the boot settle is not the refetch arm, so the region is
+    // empty and the counter unmoved — the cold-boot row of the matrix, on the glass.
+    expect(region()).not.toBeNull()
+    expect(region()!.getAttribute('aria-live')).toBe('polite')
+    expect(region()!.textContent).toBe('')
+    expect(settleCount()).toBe(0)
+
+    const release = withholdDeckRead(fetchMock)
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    // MID-FLIGHT: the marker is up (c7-4's block pins that) and the announcement is NOT — it
+    // speaks on completion, never on departure.
+    expect(region()!.textContent).toBe('')
+
+    release(editedDeck())
+    await settle()
+
+    // THE COMPUTED SUM (UX-DR45, Design Notes): mainboard_count 101 + sideboard_count 1 — all
+    // cards on the glass, which by the conservation identity equals the sum of every
+    // group-header count. Not "62": the count is the payload's, never the copy's.
+    expect(region()!.textContent).toBe('Deck updated — 102 cards')
+    expect(settleCount()).toBe(1)
+  })
+
+  it('announces the singular for a deck of exactly one card', async () => {
+    const fetchMock = await bootedDeck()
+    const release = withholdDeckRead(fetchMock)
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    release(
+      deckDetail({
+        mainboard_count: 1,
+        sideboard_count: 0,
+        distinct_cards: 1,
+        cards: [deckCard('Llanowar Elves', 'Creature — Elf Druid', 1, '{G}', 1)],
+      }),
+    )
+    await settle()
+
+    expect(region()!.textContent).toBe('Deck updated — 1 card')
+  })
+
+  // ==================== AC 1 — A BURST IS ONE ANNOUNCEMENT =============================
+  it('coalesces a burst of deck_changed frames into exactly ONE announcement', async () => {
+    // The store-level pin (`deck.test.ts`: one settle per burst) walked on the glass: three
+    // frames while the read is withheld hold ONE request open at a time (each new frame
+    // supersedes the last), and only the survivor's release settles — so the counter moves by
+    // exactly one and the region speaks exactly once. jsdom answers `fetch` on the next
+    // microtask, so the withheld read is the only honest way to make frames overlap here.
+    const fetchMock = await bootedDeck()
+    const release = withholdDeckRead(fetchMock)
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    expect(region()!.textContent).toBe('')
+
+    // `release` resolves the LAST request's promise — the two superseded ones were aborted and
+    // their promises abandoned, which is the supersession doing the coalescing.
+    release(editedDeck())
+    await settle()
+
+    expect(settleCount()).toBe(1)
+    expect(region()!.textContent).toBe('Deck updated — 102 cards')
+  })
+
+  // ==================== AC 3 — SAME TEXT, SECOND ANNOUNCEMENT ==========================
+  it('re-announces a second refetch ending at the SAME total — the keyed Fragment mutates', async () => {
+    // c6-6's Q4 lesson, one region over: a live region speaks on DOM MUTATION, re-rendering
+    // identical text mutates nothing, and two sequential refetches ending at the same N are the
+    // COMMON case (any edit that does not change the total — a swap, a rename). The keyed
+    // Fragment drops and re-inserts the text node per counter tick; the observer is the proof,
+    // because jsdom has no speech to assert.
+    const fetchMock = await bootedDeck()
+    booting(activeDeck(ATRAXA_DECK_ID), editedDeck())
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+    expect(region()!.textContent).toBe('Deck updated — 102 cards')
+
+    booting(activeDeck(ATRAXA_DECK_ID), editedDeck())
+    const records: MutationRecord[] = []
+    const observer = new MutationObserver((list) => records.push(...list))
+    observer.observe(region()!, { childList: true, characterData: true, subtree: true })
+    try {
+      await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+      await settle()
+    } finally {
+      observer.disconnect()
+    }
+
+    expect(settleCount()).toBe(2)
+    expect(records.length).toBeGreaterThan(0)
+    expect(region()!.textContent).toBe('Deck updated — 102 cards')
+    // The fetchMock really served both refetches — the second settle was a settle, not a rerun
+    // of the first (non-vacuity for the observer above).
+    expect(
+      fetchMock.mock.calls.filter(([input]) => String(input) === `/api/deck/${ATRAXA_DECK_ID}`)
+        .length,
+    ).toBeGreaterThanOrEqual(2)
+  })
+
+  // ==================== AC 2 — THE SILENT PATHS STAY SILENT, AND STALE TEXT CLEARS =====
+  it('empties the announcement on a deck switch — the re-drive lands silently on the new deck', async () => {
+    await bootedDeck()
+
+    // ANNOUNCE FIRST, so the assertions below are about CLEARING rather than about a region
+    // that never spoke (review pass 1, finding 2 — the original never-announced shape could
+    // not catch text outliving its deck).
+    booting(activeDeck(ATRAXA_DECK_ID), editedDeck())
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+    expect(region()!.textContent).toBe('Deck updated — 102 cards')
+    expect(settleCount()).toBe(1)
+
+    // The agent switches decks; the re-drive settles through the BOOT arm (`:2540`'s
+    // precedent), which has no counter increment — the c6-3 recorded gap resolved as "switches
+    // are silent", structurally. The new deck is DISTINCTLY named (review pass 1, finding 6):
+    // the heading assertion proves the switch actually LANDED, where the old same-name fixture
+    // could not tell "old deck kept" from "new deck rendered".
+    booting(activeDeck('deck-b'), deckDetail({ id: 'deck-b', name: 'Arabella, Abandoned Doll' }))
+    await push('active_deck_changed', { deck_id: 'deck-b' })
+    await settle()
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Arabella, Abandoned Doll' }),
+    ).toBeVisible()
+    // Silent AND emptied: no new announcement fired (the counter did not move), and the old
+    // sentence — about a deck no longer on the glass — is gone from the region rather than
+    // standing beside the new deck's heading.
+    expect(region()!.textContent).toBe('')
+    expect(settleCount()).toBe(1)
+  })
+
+  it('keeps the sentence through a dropped refusal, and EMPTIES it on the 404-clear', async () => {
+    await bootedDeck()
+
+    // From the never-announced state, a dropped 503 announces nothing — the original silence
+    // claim, kept.
+    booting(activeDeck(ATRAXA_DECK_ID), refusal('database_unavailable', 503))
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+    expect(screen.getByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeVisible()
+    expect(region()!.textContent).toBe('')
+    expect(settleCount()).toBe(0)
+
+    // Announce, so the clearing half below is observable at all (review pass 1, finding 2).
+    booting(activeDeck(ATRAXA_DECK_ID), editedDeck())
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+    expect(region()!.textContent).toBe('Deck updated — 102 cards')
+    expect(settleCount()).toBe(1)
+
+    // A dropped 503 AFTER an announcement leaves the sentence STANDING: the deck it describes
+    // is still on the glass, so the text is not stale — staleness is about the DECK departing,
+    // never about a request failing behind it.
+    booting(activeDeck(ATRAXA_DECK_ID), refusal('database_unavailable', 503))
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+    expect(region()!.textContent).toBe('Deck updated — 102 cards')
+    expect(settleCount()).toBe(1)
+
+    // The legislated 404-clear: the glass clears to no-active-deck, no NEW announcement fires
+    // (the deletion UX and its words are c7-6's; "Deck updated" about a deleted deck would
+    // lie), and the OLD sentence is EMPTIED — it described a deck that is gone.
+    booting(activeDeck(ATRAXA_DECK_ID), refusal('deck_not_found', 404))
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+    expect(screen.getByRole('region', { name: 'No deck on the glass.' })).toBeVisible()
+    expect(region()!.textContent).toBe('')
+    expect(settleCount()).toBe(1)
+  })
+
+  // ==================== UX-DR16 — THE FLASH, THROUGH THE REAL REFETCH PATH =============
+  it('flashes exactly the CHANGED tile’s badge through a real refetch, and clears it a frame later', async () => {
+    // The only assertion anywhere that the flash survives CardGrid's card_id-keyed instance
+    // persistence across a settle (review pass 1, finding 1): the settle re-renders the SAME
+    // CardTile instance with a new `quantity` prop, and a grid-keying refactor that remounted
+    // tiles would kill UX-DR16 with every unit test still green — the c6-2 wiring lesson.
+    // Fake timers stand in for rAF (this file's own beforeEach), and `settle()` advances 0 ms,
+    // so the flashed frame is observable before `advance` runs it.
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({
+        cards: [
+          deckCard('Grizzly Bears', 'Creature — Bear', 2, '{1}{G}', 2),
+          deckCard('Forest', 'Basic Land — Forest', 10),
+        ],
+      }),
+    )
+    answering(decks(ATRAXA_NAME))
+    render(<App />)
+    await settle()
+    await connect()
+
+    // Scoped to the TILE by accessible name (the c7-4 DFC lesson): the deck list renders a row
+    // button named for the same card, so a bare `.card-tile-quantity` query would take
+    // whichever element document order happened to offer.
+    const badgeOf = (name: RegExp) =>
+      screen
+        .getAllByRole('button', { name })
+        .map((button) => button.querySelector('.card-tile-quantity'))
+        .find((badge) => badge !== null) ?? null
+    expect(badgeOf(/Grizzly Bears/)!.textContent).toBe('×2')
+    expect(badgeOf(/Grizzly Bears/)!.getAttribute('data-flashed')).toBeNull()
+
+    // The agent adds a copy: the same deck answers with Bears 2 -> 3 and Forest untouched.
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({
+        cards: [
+          deckCard('Grizzly Bears', 'Creature — Bear', 3, '{1}{G}', 2),
+          deckCard('Forest', 'Basic Land — Forest', 10),
+        ],
+      }),
+    )
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+
+    // THE FLASHED FRAME: the changed tile's badge carries the attribute with the new count
+    // already painted, and the unchanged tile never gains it.
+    expect(badgeOf(/Grizzly Bears/)!.textContent).toBe('×3')
+    expect(badgeOf(/Grizzly Bears/)!.getAttribute('data-flashed')).toBe('true')
+    expect(badgeOf(/Forest/)!.getAttribute('data-flashed')).toBeNull()
+
+    // …and one frame later it is gone — the one-shot, on the real path.
+    await advance(20)
+    expect(badgeOf(/Grizzly Bears/)!.getAttribute('data-flashed')).toBeNull()
+    expect(badgeOf(/Forest/)!.getAttribute('data-flashed')).toBeNull()
+  })
+
+  // ==================== TODAY'S BEHAVIOUR BEHIND A VIEW — OBSERVED, NOT PINNED =========
+  it('announces on a completion behind an open agent view — suppression is c7-6, not here', async () => {
+    // The c6-6 view-behind family must not be contradicted: today the region announces on
+    // completion REGARDLESS of an open view, and c7-6's AC ("no announcement fires from behind
+    // a modal") is the story that gates it. This test asserts today's truth so c7-6 has a red
+    // test to flip, and deliberately does NOT assert silence anywhere near a modal.
+    await bootedDeck()
+    await push('suggestions', { title: 'Resilience options', items: [] })
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Resilience options')
+
+    booting(activeDeck(ATRAXA_DECK_ID), editedDeck())
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('Resilience options')
+    expect(region()!.textContent).toBe('Deck updated — 102 cards')
   })
 })
 
