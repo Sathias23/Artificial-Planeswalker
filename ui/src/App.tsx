@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 import { AnalysisRow } from './components/AnalysisRow/AnalysisRow'
 import { AppShell } from './components/AppShell/AppShell'
@@ -17,6 +17,11 @@ import { DeckList } from './containers/DeckList/DeckList'
 import { FormatCheck } from './containers/FormatCheck/FormatCheck'
 import { ManaCurve } from './containers/ManaCurve/ManaCurve'
 import { SkipLink } from './containers/SkipLink/SkipLink'
+// The app's ONE focus hand-off (c4-5/c4-11, `AC 6`: one focus home, one implementation). c7-6
+// adds this file as its FOURTH caller — see the surface-transition rescue below — which is a
+// caller, not a copy: nothing here re-implements the `tabIndex = -1` / focus / remove-on-blur
+// dance, and `keyboard-floor.test.ts:787` still finds exactly one module that writes `.tabIndex`.
+import { focusHome } from './containers/focusHome'
 import { closeAgentView, useOpenAgentView } from './state/agentView'
 import { hydrateDeckCards } from './state/cards'
 import { useAgentConnection } from './state/connection'
@@ -413,6 +418,69 @@ export default function App() {
     void loadFormatCheck(detail.id)
     return clearFormatCheck
   }, [detail, emptyDeck])
+
+  /**
+   * What `surface.kind` was on the previous commit — the surface transition's only input.
+   *
+   * A ref rather than state, for `SkipLink`'s reason one level up: nothing renders differently,
+   * and a `setState` here would be a second render pass per surface change for no visible
+   * effect. It is written INSIDE the effect below and never during render (`react-hooks/refs` is
+   * an error, and `AgentView.tsx:200-206` is the shipped precedent for the same discipline).
+   */
+  const previousSurfaceKind = useRef(surface.kind)
+
+  // ==== THE SURFACE TRANSITION'S FOCUS RESCUE (c7-6, epic AC 9, UX-DR46) ================
+  //
+  // ⚠️ APPENDED BELOW THE TWO MEASURED EFFECT BLOCKS, WHICH ARE NOT MOVED. Their relative order
+  // is worth ~180 ms of the six-surface layout (see both comments above); this block issues no
+  // request at all, so it cannot displace either one in the queue, and it is last so that it
+  // cannot be mistaken for a reordering of them.
+  //
+  // ==== THE HALF `SkipLink` LEDGERED, AND WHY IT LANDS HERE RATHER THAN THERE ===========
+  // `SkipLink.tsx:62-76` closed its own withdrawal hand-off and ledgered the rest by name: *"a
+  // tile or a deck row holding focus when the deck is deleted or refetched to `no-active-deck`
+  // has the identical problem"*. React unmounting the focused node drops focus to `<body>`,
+  // which restarts Tab from the top of the document — the failure `CardDetail`'s unpin control
+  // found first, at the scale of ONE control, and this is the same failure at the scale of a
+  // whole surface.
+  //
+  // ONE EFFECT, NOT FIVE COPIES OF THE `SkipLink` IDIOM. That component samples `heldFocus` on
+  // the way in because at ITS scale `activeElement === body` in a cleanup is ambiguous — the
+  // link may have died with focus, or focus may have been somewhere else entirely. At the
+  // SURFACE scale it is not ambiguous: the grid, the analysis row and the whole right column all
+  // hang off the same `kind === 'deck'` gate, so they depart in ONE commit, and anything OUTSIDE
+  // that gate which held focus (the header, the nav pills, the connection pill, the footer
+  // links) still holds it afterwards. Focus falling to `<body>` across a deck → panel transition
+  // therefore means the node that had it was in the departing surface. That covers the tile, its
+  // flip control, the deck row, the oracle scroller and the unpin control in one place — five
+  // focusables that would otherwise need five copies of the ref idiom, each with its own blur
+  // bookkeeping to get wrong.
+  //
+  // BOTH GUARDS ARE LOAD-BEARING, and the second is `SkipLink.tsx:112-116`'s ruling applied at
+  // this scale: if anything else has ALREADY taken focus — most importantly an open agent view,
+  // whose heading holds it while the deck 404-clears behind the dialog — moving it again would
+  // be this effect overriding a decision it did not make. That is what keeps the "deletion
+  // behind an open view" walk landing on the view's own restore path (`AgentView.tsx:222-261`)
+  // rather than being yanked to the panel underneath while the reader is still reading.
+  //
+  // THE TARGET IS `AgentView.tsx:253` VERBATIM — the state panel's headline if one is showing,
+  // the `<h1>` otherwise. Not a second destination rule: the panel is what replaced the surface
+  // the focus came from, and `AppShell.test.tsx:66` pins exactly one `h1` for the fallback. The
+  // `??` arm is unreachable through this transition today (every non-`deck` surface renders a
+  // `StatePanel`) and is kept because it costs one expression to be right if that ever changes.
+  //
+  // THE ACCEPTED RESIDUE, recorded rather than guarded against: if focus was already on `<body>`
+  // because nothing had ever been focused, this still moves it to the headline. That is the
+  // standard SPA answer to replaced content, it is what ARM 3 of the agent view's restore
+  // already does, and the alternative — a `heldFocus`-style sample of every focusable in the
+  // departing surface — would be the five copies this effect exists to avoid.
+  useEffect(() => {
+    const departed = previousSurfaceKind.current
+    previousSurfaceKind.current = surface.kind
+    if (departed !== 'deck' || surface.kind === 'deck') return
+    if (document.activeElement !== null && document.activeElement !== document.body) return
+    focusHome(document.querySelector('.state-panel-headline') ?? document.querySelector('h1'))
+  }, [surface.kind])
 
   // THE SKIP LINK'S PRESENCE CONDITION (c4-11, AC 4, Q3), AND IT IS ONE TEST COVERING THREE CASES.
   //

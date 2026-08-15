@@ -470,6 +470,29 @@ export const openViewOf = (state: AgentViewState): AgentViewContent | null =>
 export const useOpenAgentView = (): AgentViewContent | null => useAgentViewStore(openViewOf)
 
 /**
+ * **Is a view on the glass right now** — a BOOLEAN, and the distinction from
+ * {@link useOpenAgentView} beside it is the whole reason this exists (story c7-6).
+ *
+ * `DeckAnnouncer` needs one bit: *"is something modal covering the deck"*, so that a coalesced
+ * refetch settling behind an open view is dropped rather than spoken over a person reading a
+ * dialog about something else. Reading that bit through `useOpenAgentView` would subscribe the
+ * announcer to the CONTENT OBJECT — a fresh reference on every push, carrying items, title and
+ * count — and break the *"NARROWED TO PRIMITIVES, one field per subscription"* discipline that
+ * component's own selectors are written under. A primitive compares by value, so a second
+ * `suggestions` push while a view is already open re-renders the announcer not at all.
+ *
+ * **`status` alone is a sound reading of "a view is showing".** All four writers move it —
+ * {@link openAgentView} to `'open'`, {@link reopenAgentView} and {@link openSuggestionsPush}
+ * through it, {@link closeAgentView} to `'closed'` — and `status: 'open'` beside a null
+ * `content` is unreachable: `openAgentView` writes both in ONE `setState`, which is the
+ * invariant {@link openViewOf} already leans on for its own narrowing. So this hook and that
+ * one can never disagree about whether something is showing; they disagree only about how much
+ * of it a subscriber has to look at.
+ */
+export const useAgentViewIsOpen = (): boolean =>
+  useAgentViewStore((state) => state.status === 'open')
+
+/**
  * Whether this kind has ever pushed this session (c6-8, AC 1/AC 2) — the pill's quiet-vs-active
  * signal, kept independent of whether that push's `ts` happened to be well-formed.
  *
