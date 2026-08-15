@@ -145,6 +145,24 @@ deferred:
 
 - **Review round 1 (2026-08-15): 19 patches, 18 applied, 1 partially dismissed.** Three of them found things that were genuinely wrong rather than merely unpolished, and all three are recorded above with the plant that reddens them: `ui/index.html` was outside the read-only-glass sweep while rule 4 exists precisely for it (a real `<form>` passed the guard); the `refetch` data-dir gate let `<real>/copy` through and let an exported `PLANESWALKER_DATA_DIR` disarm the platform-default check; and `refetch` never re-checked that the repaint it timed was push-driven, so a dropped socket would have been reported as an SC-2 figure for the reconnect path. AC 2's beat-2 and beat-5 latency clauses moved from citation to observation, and beat 2 came back with an outlier that is recorded rather than re-run away. P4's causal claim about the comment stripper was dismissed with a measurement (the walker copies string spans, it does not delete them), while its actual ask — real-file anchors in both directions plus a JSX-apostrophe case — was implemented.
 
+- **Greptile round 1 (PR #81), one valid finding, fixed.** *Primer mutation lacks cleanup*
+  (`cdp_harness.py:1484-1495`): the review pass had already been told to make the undo failure-safe
+  and **fixed only the measured-run loop, leaving the primer's `_undo` bare** — so a primer that
+  raised after its `add_card_to_deck` committed would leave the card in the copied deck, and the
+  next invocation would refuse to start with "already on the glass". The loop's own comment
+  describes exactly that failure; the one mutation that runs before the loop was not covered by it.
+  This is the recorded *"the patch fixed one of the branches, grep for the whole pattern"* class,
+  and the harness's own word for the primer — "discarded" — hid it, because that describes its
+  FIGURE and not its write. Fix: the primer's `measure_refetch` + print now sit in a `try` with
+  `_undo` in the `finally`, and the `frames` wiring check reads `primer` after it. Not unit-testable
+  (the primer needs Chrome and a booted companion), so it is verified end to end instead:
+  `refetch --runs 2` over a fresh copy → `152 / 157 / 162 ms`, `1 deck_changed frame(s)` per run,
+  and the copy read back at **99 `deck_cards` rows with zero rows anywhere for the added card**.
+  Ruff and its own 26 unit rows green. Note in passing: `mypy scripts/cdp_harness.py` reports two
+  errors (`held_names` needs an annotation; one untyped call) — **both pre-date this story's edits**,
+  and `scripts/` is outside pre-commit's `^src/` mypy scope, so they are recorded here rather than
+  fixed under a Greptile round.
+
 ## Review Triage Log
 
 ### 2026-08-15 — Review pass

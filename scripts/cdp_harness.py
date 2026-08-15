@@ -1481,18 +1481,27 @@ def cmd_refetch(args: argparse.Namespace) -> int:
         # THE PRIMER, AND IT IS DISCARDED. Its only job is to pay this process's one-time costs --
         # the first SQLAlchemy statement compile and the first `httpx.AsyncClient` build -- which
         # would otherwise be charged to run 1 as if they were the app's latency.
-        primer = measure_refetch(
-            browser,
-            agent=agent,
-            deck_id=deck_id,
-            card_id=card_id,
-            card_name=card_name,
-            run=0,
-            settle=args.settle,
-        )
-        figure = "no figure" if primer["layout_ms"] is None else f"{primer['layout_ms']:.0f} ms"
-        print(f"  prime (discarded): {figure}")
-        _undo(agent, browser, deck_id=deck_id, card_id=card_id, card_name=card_name, args=args)
+        #
+        # ITS UNDO IS IN A `finally` FOR THE SAME REASON THE MEASURED RUNS' IS, and it was not:
+        # the first version guarded the loop and left this one bare, so a primer that raised after
+        # its add committed left the card in the deck -- the exact operator-visible failure the
+        # loop's comment below describes, reached through the one mutation that runs before any
+        # of them. (Greptile, PR #81.) The primer mutates the copy exactly as a measured run does;
+        # "discarded" describes its FIGURE, not its write.
+        try:
+            primer = measure_refetch(
+                browser,
+                agent=agent,
+                deck_id=deck_id,
+                card_id=card_id,
+                card_name=card_name,
+                run=0,
+                settle=args.settle,
+            )
+            figure = "no figure" if primer["layout_ms"] is None else f"{primer['layout_ms']:.0f} ms"
+            print(f"  prime (discarded): {figure}")
+        finally:
+            _undo(agent, browser, deck_id=deck_id, card_id=card_id, card_name=card_name, args=args)
         # The primer doubles as the WIRING CHECK for the frame counter: if the document-start
         # WebSocket wrap failed, no run can ever be valid, and the operator should hear that now
         # rather than after five INVALID lines and five mutations of the copy.
