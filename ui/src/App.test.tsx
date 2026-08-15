@@ -4570,6 +4570,37 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
     expect(headline()?.hasAttribute('tabindex')).toBe(false)
   })
 
+  it('declines while a view is open even when focus already fell to BODY (AC 3, Greptile PR #80)', async () => {
+    // THE HOLE THE FIRST GREPTILE PASS FOUND: the rescue's body-focus inference — "focus on
+    // `<body>` across a deck → panel transition means the departing surface held it" — is only
+    // sound when no modal is open. A real pointer click on the dialog's NON-focusable content
+    // blurs to `<body>` (jsdom does not model that blur, so this test arranges it by hand), and
+    // a rescue firing then would park keyboard and AT focus on the panel headline BEHIND the
+    // still-open dialog. With a view open the rescue must always decline; the reader is not
+    // stranded, because the view's own restore arm lands the close on the headline.
+    const fetchMock = await bootedDeck()
+    act(() => {
+      document.querySelectorAll<HTMLElement>('.card-tile')[1].focus()
+    })
+    await push('suggestions', { title: 'Resilience options', items: [] })
+    expect(document.activeElement).toBe(document.querySelector('.agent-view-title'))
+    act(() => (document.activeElement as HTMLElement).blur())
+    expect(document.activeElement).toBe(document.body)
+
+    await deleteActiveDeck(fetchMock, 'Boros Aggro')
+
+    // The rescue DECLINED: focus is exactly where the blur left it — on `<body>`, the view's
+    // pre-existing condition — and NOT parked on the headline behind the dialog.
+    expect(dialog()).toHaveAccessibleName('Resilience options')
+    expect(document.activeElement).toBe(document.body)
+    expect(headline()?.hasAttribute('tabindex')).toBe(false)
+
+    // …and on close the reader lands on the panel headline through ARM 3 (the tile opener died
+    // with the deck), so declining stranded nobody.
+    act(() => screen.getByRole('button', { name: CLOSE_PILL_LABEL }).click())
+    expect(document.activeElement).toBe(headline())
+  })
+
   // ==================== AC 4 — THE TAB ORDER ACROSS THE TRANSITION =====================
   it('withdraws the skip link and every grid stop from the Tab order after the deletion (AC 4)', async () => {
     // The corridor, walked ACROSS the transition this story owns rather than on either side of

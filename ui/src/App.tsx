@@ -456,12 +456,15 @@ export default function App() {
   // focusables that would otherwise need five copies of the ref idiom, each with its own blur
   // bookkeeping to get wrong.
   //
-  // BOTH GUARDS ARE LOAD-BEARING, and the second is `SkipLink.tsx:112-116`'s ruling applied at
-  // this scale: if anything else has ALREADY taken focus — most importantly an open agent view,
-  // whose heading holds it while the deck 404-clears behind the dialog — moving it again would
-  // be this effect overriding a decision it did not make. That is what keeps the "deletion
-  // behind an open view" walk landing on the view's own restore path (`AgentView.tsx:222-261`)
-  // rather than being yanked to the panel underneath while the reader is still reading.
+  // ALL THREE GUARDS ARE LOAD-BEARING. The focus guard is `SkipLink.tsx:112-116`'s ruling
+  // applied at this scale: if anything else has ALREADY taken focus, moving it again would be
+  // this effect overriding a decision it did not make. The view guard exists because an open
+  // agent view makes that focus reading unreliable — its heading usually holds focus, but a
+  // pointer click on the dialog's non-focusable content blurs to `<body>` (a browser behaviour
+  // jsdom does not model), and rescuing then would park focus BEHIND the modal. Together they
+  // keep the "deletion behind an open view" walk landing on the view's own restore path
+  // (`AgentView.tsx:222-261`) rather than being yanked to the panel underneath while the reader
+  // is still reading.
   //
   // THE TARGET IS `AgentView.tsx:253` VERBATIM — the state panel's headline if one is showing,
   // the `<h1>` otherwise. Not a second destination rule: the panel is what replaced the surface
@@ -478,9 +481,19 @@ export default function App() {
     const departed = previousSurfaceKind.current
     previousSurfaceKind.current = surface.kind
     if (departed !== 'deck' || surface.kind === 'deck') return
+    // THE THIRD GUARD (Greptile, PR #80): an OPEN AGENT VIEW makes body-focus unreadable. The
+    // inference below — "focus on `<body>` across a deck → panel transition means the departing
+    // surface held it" — assumed the view always holds focus while open, and it usually does
+    // (its title takes focus on open). But a real pointer click on the dialog's NON-focusable
+    // content blurs to `<body>` — jsdom never models this, which is why no test caught it — and
+    // rescuing then would park keyboard and AT focus on the panel headline BEHIND the still-open
+    // modal. With a view open the rescue always declines: focus inside the view is ARM 3's to
+    // restore on close, and body-focus beside an open dialog is the view's pre-existing
+    // condition, not this transition's.
+    if (agentView !== null) return
     if (document.activeElement !== null && document.activeElement !== document.body) return
     focusHome(document.querySelector('.state-panel-headline') ?? document.querySelector('h1'))
-  }, [surface.kind])
+  }, [surface.kind, agentView])
 
   // THE SKIP LINK'S PRESENCE CONDITION (c4-11, AC 4, Q3), AND IT IS ONE TEST COVERING THREE CASES.
   //

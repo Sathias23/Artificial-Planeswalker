@@ -174,6 +174,20 @@ context:
   one source patch is comment-only). One cold full-suite run errored on the shape of R5's
   ledgered cold-eslint timeout (104 s setup) — a SEVENTH sighting for that item; two warm re-runs
   and the harness control were fully green.
+- **2026-08-15 — Greptile round 1 (PR #80), one valid finding, fixed.** *Focus escapes behind
+  open modal*: the rescue's body-focus inference assumed an open view always holds focus, but a
+  real pointer click on the dialog's NON-focusable content blurs to `<body>` — a browser
+  behaviour jsdom does not model, which is why all four review layers and every existing decline
+  row missed it — and the rescue would then park keyboard/AT focus on the panel headline BEHIND
+  the still-open dialog. Fix: a THIRD guard, `if (agentView !== null) return` (the subscription
+  App already held), so with a view open the rescue always declines and ARM 3 owns the close
+  landing. New test arranges the blur by hand and asserts decline + no headline residue + close
+  still landing on the headline. Suite 2255 → **2256**; plant (d) (view-open guard removed) →
+  exactly that test RED through the harness; revert clean; `--expect-total 2256 --expect-green`
+  → 0 failed. This is a RUNTIME change: bundle rebuilt (`index-DJ7dGud2.js`), both mirrors
+  committed. Note the fix also narrows the accepted residue: focus-never-anywhere + view open at
+  the transition now declines rather than moving to the headline — correct, since ARM 3 covers
+  the close.
 - **Residue found while walking the Tab order (recorded, not fixed).** After the rescue fires, the
   panel headline carries `tabindex="-1"` until it blurs, so the corridor helper's
   `'a[href], button, [tabindex]'` selector counts it — the helper models the MARKUP rather than the
