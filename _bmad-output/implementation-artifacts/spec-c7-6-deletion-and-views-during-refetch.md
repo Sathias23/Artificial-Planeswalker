@@ -2,7 +2,7 @@
 title: 'c7-6: Deck deletion, and agent views during a refetch'
 type: 'feature'
 created: '2026-08-15'
-status: 'review'
+status: 'done'
 review_loop_iteration: 0
 baseline_revision: '8165f49c146170713c30d3e3e9bc51a9c80cd74e'
 baseline_commit: '8165f49c146170713c30d3e3e9bc51a9c80cd74e'
@@ -134,6 +134,16 @@ context:
 - Given an agent view is open when the active deck is deleted, when the view is closed, then it stayed open and valid throughout and the reader lands on the no-active-deck panel's headline.
 - Given the guard suites (shell, keyboard-floor, store-writes, posture, tokens, token-usage, copy-rules, wire-contract), when the suite runs, then all pass with only the declared import-pin and prose amendments, and both live-region censuses stay at their current shapes.
 
+### Review Findings
+
+- [x] [Review][Patch] Stray `</content>` closing tag committed at the end of this spec file — no opening tag exists; templating leftover, delete the line [spec-c7-6-deletion-and-views-during-refetch.md:179] — APPLIED
+- [x] [Review][Patch] AC 3's decline arm names "header … or nav pill" but no test focuses either — only a footer link and the connection pill are exercised; add a c6-8 reopen-pill (and/or header-element) decline row [ui/src/App.test.tsx, c7-6 describe] — APPLIED (nav-pill decline row; plant (c) proof below)
+- [x] [Review][Patch] AC 3 names the flip control (and the App.tsx rescue comment claims the oracle scroller + unpin control) but no test focuses any of them across the transition — tile and deck row are the only rescue rows; add a flip-control row [ui/src/App.test.tsx, c7-6 describe] — APPLIED (Pathway-hydration arrangement from the c7-4 back-face test; plant (b) re-proof below)
+- [x] [Review][Patch] The AC 4 Tab-order test exercises the rescue only through the accepted-residue path (nothing is ever focused, so the rescue fires via focus-already-on-body), and its `withTabIndex` assertion + plant (b)'s third RED pin that residue — name the coupling in the test comment or focus a tile first [ui/src/App.test.tsx, 'withdraws the skip link…' test] — APPLIED (comment names the coupling and the repair if the residue is ever guarded)
+- [x] [Review][Patch] The epic-context Goal rewrite dropped the traceable `SC-2` identifier and shortened "Scryfall printing UUID" to "printing UUID" — restore both hooks [_bmad-output/implementation-artifacts/epic-c7-context.md:6-13,80] — APPLIED
+- [x] [Review][Patch] DeckAnnouncer's new docstring claims "the App censuses pin [the region] empty behind a modal" — neither census (at-rest, mid-flight) asserts a behind-a-modal shape; the c7-6 tests do. Reword the citation [ui/src/containers/DeckAnnouncer/DeckAnnouncer.tsx, AND NOW IT IS SILENT section] — APPLIED (comment-only; rebuilt bundle byte-identical, zero drift)
+- [x] [Review][Defer] The mirror transition can still drop focus to `<body>`: after the rescue (or AgentView ARM 3) parks focus on `.state-panel-headline`, a panel → deck transition (agent creates/activates a deck; reconnect restores one) unmounts the StatePanel and the focused headline dies with it — the rescue early-returns when the ARRIVING surface is `deck` [ui/src/App.tsx:895] — deferred, pre-existing (reachable via ARM 3 before c7-6; this story widens reachability); same failure class at the opposite edge, ledgered in deferred-work.md the way SkipLink.tsx ledgered this story's half
+
 ## Spec Change Log
 
 - **2026-08-15 — implementation, no Intent change.** Everything in the frozen block held; the Code
@@ -147,6 +157,23 @@ context:
   - The `DeckAnnouncer` had no test home, so `DeckAnnouncer.test.tsx` is new. `CONTAINERS` stays at
     36 because `coversExactly` filters `.test.tsx` — and the same guard then requires such a file
     to import from vitest, which it does.
+- **2026-08-15 — four-layer code review (blind-hunter, edge-case-hunter, verification-gap,
+  acceptance-auditor), no Intent change.** 0 decision-needed, 6 patches (all low, all applied),
+  1 defer (medium, ledgered), 15 dismissed. Verification-gap found NO gap; acceptance-auditor's
+  verdict: faithful, every Always/Never constraint verified against the repo. The defer — found
+  independently by two layers — is the panel → deck MIRROR transition dropping focus to `<body>`
+  (the rescue early-returns when the arriving surface is `deck`; pre-existing via AgentView ARM 3,
+  reachability widened by this story), ledgered in deferred-work.md. The review patches added two
+  tests (flip-control rescue row, nav-pill decline row): **suite is now 79 files / 2255 tests**,
+  control re-run green at 2255, and both new tests carry their own firing proofs —
+  plant (b) re-run (`focusHome(...)` call removed): 4 failed, the new flip-control row RED beside
+  the original three; plant (c), new (decline guard removed, rescue fires unconditionally):
+  4 failed — both decline rows, the nav-pill row, and the AC 5 behind-a-view walk all RED.
+  Both plants reverted byte-for-byte (`git diff --exit-code`), final `--expect-total 2255
+  --expect-green` → 0 failed, exit 0. Rebuilt bundle + plugin: byte-identical, zero drift (the
+  one source patch is comment-only). One cold full-suite run errored on the shape of R5's
+  ledgered cold-eslint timeout (104 s setup) — a SEVENTH sighting for that item; two warm re-runs
+  and the harness control were fully green.
 - **Residue found while walking the Tab order (recorded, not fixed).** After the rescue fires, the
   panel headline carries `tabindex="-1"` until it blurs, so the corridor helper's
   `'a[href], button, [tabindex]'` selector counts it — the helper models the MARKUP rather than the
@@ -176,4 +203,3 @@ context:
 
 **Manual checks (if no CLI):**
 - Real screen-reader silence behind an open agent view, and the real focus landing after a deletion, are perceptual residue jsdom cannot prove — add both to the epic's manual-testing checklist.
-</content>

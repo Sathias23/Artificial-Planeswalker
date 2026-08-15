@@ -9,8 +9,8 @@ itself — the card appears in its type group, the mana curve grows, the colour 
 quantity badge flashes, and a screen reader hears about it exactly once. He performs no action in
 the browser. Every deck-mutation tool gains a single shared way to say "something changed" after it
 commits; the UI turns that signal into a coalesced refetch that never tears down what's on screen.
-This is the climax of the primary user journey and closes the success criterion that agent-driven
-deck edits appear in the deck view without user action.
+This is the climax of the primary user journey and closes success criterion SC-2: agent-driven
+deck edits appear in the deck view without user action, within roughly a second.
 
 ## Stories
 
@@ -77,7 +77,7 @@ deck edits appear in the deck view without user action.
   consequence, with no pin-time classification and no special-casing: the rule reads only the old
   and new decklists at refetch completion. A pinned target that still exists stays pinned.
 - **Flip state survives.** A double-faced card showing its back face is still showing its back face
-  after the grid re-renders; flip state is keyed by printing UUID.
+  after the grid re-renders; flip state is keyed by Scryfall printing UUID.
 - **Announced exactly once.** A polite live region announces "Deck updated — {N} cards" once per
   coalesced refetch, on completion — the refetch-coalescing machinery *is* the debounce, so a burst
   of events yields one announcement. Nothing announces from behind an open agent view.

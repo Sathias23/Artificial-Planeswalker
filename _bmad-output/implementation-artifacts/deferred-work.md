@@ -6273,3 +6273,9 @@ Also executed or re-homed at this retro, beyond the seven:
     (the package-wide sweep in `test_ws.py` already existed; c7-1 only added a local mirror of it
     in `test_client.py` for `client.py` specifically), so narrowing it is a design change to an
     inherited guard, not something this story's own diff should do unilaterally.
+
+## Deferred from: code review of spec-c7-6-deletion-and-views-during-refetch.md (2026-08-15)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-c7-6-deletion-and-views-during-refetch.md`
+  summary: The panel → deck mirror transition can still drop focus to `<body>` — c7-6's rescue covers only deck → panel.
+  evidence: After the c7-6 rescue (or AgentView ARM 3's close-restore) parks focus on `.state-panel-headline`, a subsequent panel → deck transition — the agent creating or activating a deck, or reconnect restoring a loaded deck displaced by the `'down'` panel (`deck.ts:731`) — unmounts the StatePanel and the focused headline dies with it, dropping focus to `<body>` with no rescue firing (`App.tsx:895` early-returns when the arriving surface is `deck`). Pre-existing failure class (ARM 3 could park focus there before c7-6) but c7-6 widens its reachability; no test in the repo covers focus across a panel → deck transition. Same failure class as the half SkipLink.tsx ledgered for c7-6, at the opposite edge. Found by edge-case-hunter + verification-gap, independently.
