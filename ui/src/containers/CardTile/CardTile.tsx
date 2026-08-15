@@ -324,13 +324,20 @@ export function CardTile({ cardId, name, cost, typeLine, quantity }: CardTilePro
   // `--motion-glide`. Instant-on, eased-off, no keyframes, no loop — and under reduced motion
   // the tokens.css media block omits the glow entirely, so this state machine runs and shows
   // nothing, which is the fallback UX-DR42's inventory names.
+  //
+  // KEYED ON THE WHOLE FLASH OBJECT, not the boolean (review pass 1, finding 3): each detected
+  // change stores a FRESH object, so a second change landing while a flash is still pending
+  // re-runs this effect — the cleanup cancels the first change's frame and a new one is armed
+  // from the second change. On the boolean alone (`true` → `true`, no re-run), the FIRST
+  // change's rAF would clear the SECOND change's flash early instead of giving it its own
+  // full frame.
   useEffect(() => {
     if (!flash.flashed) return
     const frame = requestAnimationFrame(() =>
       setFlash((state) => (state.flashed ? { seen: state.seen, flashed: false } : state)),
     )
     return () => cancelAnimationFrame(frame)
-  }, [flash.flashed])
+  }, [flash])
 
   const captioned = art !== 'failed' && caption !== null
   const badgeId = `${captionId}-n`

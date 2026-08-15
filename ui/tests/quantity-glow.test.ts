@@ -128,7 +128,8 @@ describe('the glow is instant-on, fade-off, expressed only through tokens (c7-5)
   it('omits the glow under reduced motion — inside the tokens media block, and only there', () => {
     // The registration half of UX-DR42's "glow omitted" row, in the single registration point.
     // RAW `!important`, because tokens.css is @imported first and the two selectors tie at
-    // (0,3,0) — without it the override would parse cleanly and do nothing (the c4-4 measured
+    // (0,2,0) — one class + one attribute, the count tokens.css's own comment carries — and
+    // without it the override would parse cleanly and do nothing (the c4-4 measured
     // cascade no-op, refused here the way token-usage refuses unimportant transform
     // registrations).
     expect(reduced).toMatch(

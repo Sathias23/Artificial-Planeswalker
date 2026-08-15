@@ -3968,26 +3968,43 @@ describe('the refetch announces once, politely, on completion (c7-5)', () => {
     ).toBeGreaterThanOrEqual(2)
   })
 
-  // ==================== AC 2 — THE SILENT PATHS STAY SILENT ============================
-  it('stays silent on a deck switch — active_deck_changed re-drives the boot, not the refetch', async () => {
+  // ==================== AC 2 — THE SILENT PATHS STAY SILENT, AND STALE TEXT CLEARS =====
+  it('empties the announcement on a deck switch — the re-drive lands silently on the new deck', async () => {
     await bootedDeck()
 
-    // The agent switches decks; the re-drive settles through the BOOT arm (`:2540`'s precedent),
-    // which has no counter increment — the c6-3 recorded gap resolved as "switches are silent",
-    // structurally.
-    booting(activeDeck('deck-b'), editedDeck())
+    // ANNOUNCE FIRST, so the assertions below are about CLEARING rather than about a region
+    // that never spoke (review pass 1, finding 2 — the original never-announced shape could
+    // not catch text outliving its deck).
+    booting(activeDeck(ATRAXA_DECK_ID), editedDeck())
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+    expect(region()!.textContent).toBe('Deck updated — 102 cards')
+    expect(settleCount()).toBe(1)
+
+    // The agent switches decks; the re-drive settles through the BOOT arm (`:2540`'s
+    // precedent), which has no counter increment — the c6-3 recorded gap resolved as "switches
+    // are silent", structurally. The new deck is DISTINCTLY named (review pass 1, finding 6):
+    // the heading assertion proves the switch actually LANDED, where the old same-name fixture
+    // could not tell "old deck kept" from "new deck rendered".
+    booting(activeDeck('deck-b'), deckDetail({ id: 'deck-b', name: 'Arabella, Abandoned Doll' }))
     await push('active_deck_changed', { deck_id: 'deck-b' })
     await settle()
 
-    expect(screen.getByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeVisible()
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Arabella, Abandoned Doll' }),
+    ).toBeVisible()
+    // Silent AND emptied: no new announcement fired (the counter did not move), and the old
+    // sentence — about a deck no longer on the glass — is gone from the region rather than
+    // standing beside the new deck's heading.
     expect(region()!.textContent).toBe('')
-    expect(settleCount()).toBe(0)
+    expect(settleCount()).toBe(1)
   })
 
-  it('stays silent on the 404-clear and on a dropped refusal alike', async () => {
+  it('keeps the sentence through a dropped refusal, and EMPTIES it on the 404-clear', async () => {
     await bootedDeck()
 
-    // The dropped 503 first: deck stays, counter still, region empty.
+    // From the never-announced state, a dropped 503 announces nothing — the original silence
+    // claim, kept.
     booting(activeDeck(ATRAXA_DECK_ID), refusal('database_unavailable', 503))
     await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
     await settle()
@@ -3995,15 +4012,89 @@ describe('the refetch announces once, politely, on completion (c7-5)', () => {
     expect(region()!.textContent).toBe('')
     expect(settleCount()).toBe(0)
 
-    // Then the legislated 404-clear: the glass clears to no-active-deck and STILL announces
-    // nothing — the deletion UX (and any words for it) is c7-6's, and "Deck updated" about a
-    // deck that was deleted would be a lie.
+    // Announce, so the clearing half below is observable at all (review pass 1, finding 2).
+    booting(activeDeck(ATRAXA_DECK_ID), editedDeck())
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+    expect(region()!.textContent).toBe('Deck updated — 102 cards')
+    expect(settleCount()).toBe(1)
+
+    // A dropped 503 AFTER an announcement leaves the sentence STANDING: the deck it describes
+    // is still on the glass, so the text is not stale — staleness is about the DECK departing,
+    // never about a request failing behind it.
+    booting(activeDeck(ATRAXA_DECK_ID), refusal('database_unavailable', 503))
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+    expect(region()!.textContent).toBe('Deck updated — 102 cards')
+    expect(settleCount()).toBe(1)
+
+    // The legislated 404-clear: the glass clears to no-active-deck, no NEW announcement fires
+    // (the deletion UX and its words are c7-6's; "Deck updated" about a deleted deck would
+    // lie), and the OLD sentence is EMPTIED — it described a deck that is gone.
     booting(activeDeck(ATRAXA_DECK_ID), refusal('deck_not_found', 404))
     await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
     await settle()
     expect(screen.getByRole('region', { name: 'No deck on the glass.' })).toBeVisible()
     expect(region()!.textContent).toBe('')
-    expect(settleCount()).toBe(0)
+    expect(settleCount()).toBe(1)
+  })
+
+  // ==================== UX-DR16 — THE FLASH, THROUGH THE REAL REFETCH PATH =============
+  it('flashes exactly the CHANGED tile’s badge through a real refetch, and clears it a frame later', async () => {
+    // The only assertion anywhere that the flash survives CardGrid's card_id-keyed instance
+    // persistence across a settle (review pass 1, finding 1): the settle re-renders the SAME
+    // CardTile instance with a new `quantity` prop, and a grid-keying refactor that remounted
+    // tiles would kill UX-DR16 with every unit test still green — the c6-2 wiring lesson.
+    // Fake timers stand in for rAF (this file's own beforeEach), and `settle()` advances 0 ms,
+    // so the flashed frame is observable before `advance` runs it.
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({
+        cards: [
+          deckCard('Grizzly Bears', 'Creature — Bear', 2, '{1}{G}', 2),
+          deckCard('Forest', 'Basic Land — Forest', 10),
+        ],
+      }),
+    )
+    answering(decks(ATRAXA_NAME))
+    render(<App />)
+    await settle()
+    await connect()
+
+    // Scoped to the TILE by accessible name (the c7-4 DFC lesson): the deck list renders a row
+    // button named for the same card, so a bare `.card-tile-quantity` query would take
+    // whichever element document order happened to offer.
+    const badgeOf = (name: RegExp) =>
+      screen
+        .getAllByRole('button', { name })
+        .map((button) => button.querySelector('.card-tile-quantity'))
+        .find((badge) => badge !== null) ?? null
+    expect(badgeOf(/Grizzly Bears/)!.textContent).toBe('×2')
+    expect(badgeOf(/Grizzly Bears/)!.getAttribute('data-flashed')).toBeNull()
+
+    // The agent adds a copy: the same deck answers with Bears 2 -> 3 and Forest untouched.
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({
+        cards: [
+          deckCard('Grizzly Bears', 'Creature — Bear', 3, '{1}{G}', 2),
+          deckCard('Forest', 'Basic Land — Forest', 10),
+        ],
+      }),
+    )
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+
+    // THE FLASHED FRAME: the changed tile's badge carries the attribute with the new count
+    // already painted, and the unchanged tile never gains it.
+    expect(badgeOf(/Grizzly Bears/)!.textContent).toBe('×3')
+    expect(badgeOf(/Grizzly Bears/)!.getAttribute('data-flashed')).toBe('true')
+    expect(badgeOf(/Forest/)!.getAttribute('data-flashed')).toBeNull()
+
+    // …and one frame later it is gone — the one-shot, on the real path.
+    await advance(20)
+    expect(badgeOf(/Grizzly Bears/)!.getAttribute('data-flashed')).toBeNull()
+    expect(badgeOf(/Forest/)!.getAttribute('data-flashed')).toBeNull()
   })
 
   // ==================== TODAY'S BEHAVIOUR BEHIND A VIEW — OBSERVED, NOT PINNED =========

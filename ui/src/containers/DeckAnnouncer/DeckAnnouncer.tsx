@@ -4,7 +4,9 @@ import { useDeckRefetchSettles, useDeckStore } from '../../state/deck'
 import { deckUpdatedAnnouncement } from './copy'
 
 /**
- * The deck-refetch announcement region — UX-DR45's third and last polite channel (story c7-5).
+ * The deck-refetch announcement region — UX-DR45's deck-refetch channel (story c7-5): the app's
+ * third polite region at rest, and the fourth while an agent view is open (its live heading
+ * mounts with the view — the census comments in `App.test.tsx` carry the same inventory).
  *
  * A c7-3 coalesced refetch completes silently for a screen-reader user: the card appears, its
  * group count moves and its curve bar grows, and nothing says so. This container is the fix —
@@ -69,19 +71,37 @@ export function DeckAnnouncer() {
     state.deck.status === 'deck' ? state.deck.detail.sideboard_count : null,
   )
 
+  // Which deck the sentence is ABOUT — the third narrowed read, and the clearing rule's whole
+  // input: a settled id while a deck is on the glass, `null` behind every panel.
+  const deckId = useDeckStore((state) =>
+    state.deck.status === 'deck' ? state.deck.detail.id : null,
+  )
+
   const [announced, setAnnounced] = useState<{
     readonly seen: number | null
+    /** The id of the deck the current `text` describes, or `null` while the region is empty. */
+    readonly about: string | null
     readonly text: string
-  }>({ seen: null, text: '' })
+  }>({ seen: null, about: null, text: '' })
 
   if (announced.seen !== settles) {
+    const speaks = announced.seen !== null && mainboardCount !== null && sideboardCount !== null
     setAnnounced({
       seen: settles,
-      text:
-        announced.seen === null || mainboardCount === null || sideboardCount === null
-          ? ''
-          : deckUpdatedAnnouncement(mainboardCount, sideboardCount),
+      about: speaks ? deckId : null,
+      text: speaks ? deckUpdatedAnnouncement(mainboardCount, sideboardCount) : '',
     })
+  } else if (announced.text !== '' && deckId !== announced.about) {
+    // THE SENTENCE MUST NOT OUTLIVE THE DECK IT DESCRIBES. After the 404-clear the glass shows
+    // "there is no active deck" and after a switch it shows a different deck — a region still
+    // asserting "Deck updated — 102 cards" beside either is a stale claim about a departed
+    // deck. So the text is EMPTIED at render time the moment the settled id stops matching the
+    // id the sentence was about. CardDetail's pin region is the precedent (releasing a pin
+    // empties it), NOT the pill (whose text is a current-state reading that never goes stale).
+    // Emptying announces nothing: a live region speaks on content ARRIVING, and both silence
+    // tests announce first and then assert the region emptied. Converges in one pass — after
+    // the clear `text === ''` and this branch cannot re-enter.
+    setAnnounced({ seen: announced.seen, about: null, text: '' })
   }
 
   // EMPTY AT REST AND EMPTY MID-FLIGHT: the text is written only when a settle lands, so the

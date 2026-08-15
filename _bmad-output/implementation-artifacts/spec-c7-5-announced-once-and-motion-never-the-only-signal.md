@@ -2,8 +2,8 @@
 title: 'c7-5: The change is announced once, and motion is never the only signal'
 type: 'feature'
 created: '2026-08-15'
-status: 'review'
-review_loop_iteration: 0
+status: 'in-review'
+review_loop_iteration: 1
 followup_review_recommended: false
 baseline_revision: '9f10b2491bdad11e0b586d1fe0732f4b4e149cef'
 context:
@@ -62,7 +62,7 @@ deferred:
 - `ui/src/state/deck.ts` -- sole `useDeckStore` writer. Add `refetchSettles: number` to `DeckSlice` :174-189 (initial 0) + sibling writer beside `applyUpdating` :204; increment in `refetchSequence`'s success arm only, adjacent to `settle(...)` :548-549 (the `:537` guard is synchronous with it — no await between). `resetDeckState` :213 must reset it. Do NOT touch `settleFor` :410-416, the boot arm :486, the 404-clear :541, or any dropped path. New primitive selector `useDeckRefetchSettles` beside `useDeckUpdating` :816. Routing evidence: `driveDeckChanged` :780-789 (row 3 sends unsettled/none/refused to re-drive → silent), `redriveDeckBoot` :730-734 (switch + reconnect → boot arm → silent), `connection.ts:137-149` (`deck_changed` vs `active_deck_changed` verbs).
 - `ui/src/containers/DeckAnnouncer/DeckAnnouncer.tsx` + `copy.ts` -- NEW props-free container (ConnectionPill's posture: reads its store itself, `App.tsx:628` rationale). Render-time `{seen, text}` state adjustment with `seen: null` mount-silence sentinel (`ConnectionPill.tsx:86-109` is the template — `useEffect`+`setState` is rejected by `react-hooks/set-state-in-effect`); announce when the counter advances AND `deck.status === 'deck'`. Render `<p className="visually-hidden deck-announcement" aria-live="polite"><Fragment key={counter}>{text}</Fragment></p>` (keyed-Fragment re-announce: `AgentView.tsx:506-532`). `copy.ts` exports the template builder; em dash precedent `ConnectionPill/copy.ts:67-72` (`DECK_SEPARATOR`), pluralization precedent `ManaCurve/copy.ts:109-111`.
 - `ui/src/App.tsx` -- mount point: `connectionPill={<><ConnectionPill /><DeckAnnouncer /></>}` at :619 (no new AppShell prop; a visually-hidden `<p>` adds no landmark, banner census 3 holds). Do not reorder the measured effect blocks :194-198.
-- `ui/src/containers/CardTile/CardTile.tsx` -- per-tile flash state (per-tile state is the ruled shape, header :49-60; lifting would re-render 99 tiles). Track `seen` quantity initialized from the mount prop (no mount flash); on render-time change detection set flash + update seen; layout effect + `requestAnimationFrame` drops it (`AgentView.tsx:143-175` data-entering idiom). Attribute `data-flashed='true'` on the badge span :478-481. Amend the Q6 comment :467-477 (carriers now exist; naming KEPT — record the ruling). Badge renders only when `copies > 1` :297.
+- `ui/src/containers/CardTile/CardTile.tsx` -- per-tile flash state (per-tile state is the ruled shape, header :49-60; lifting would re-render 99 tiles). Track `seen` quantity initialized from the mount prop (no mount flash); on render-time change detection set flash + update seen; a plain `useEffect` + `requestAnimationFrame` drops it (`AgentView.tsx:143-175` data-entering idiom — its `useEffect`, exactly; after-paint is the right ordering for the flashed frame; corrected from "layout effect" at review pass 1, finding 7). Attribute `data-flashed='true'` on the badge span :478-481. Amend the Q6 comment :467-477 (carriers now exist; naming KEPT — record the ruling). Badge renders only when `copies > 1` :297.
 - `ui/src/containers/CardTile/QuantityBadge.css` -- glow rules: base gains `transition: box-shadow var(--motion-glide) var(--ease-glide)`; `[data-flashed='true']` sets `box-shadow: var(--glow); transition: none` (instant-on, fade-off = the flash). File is deliberately NOT in `CARD_SHAPED` (header :3-13). `var(--glow)` is the ONLY legal inline glow (stylelint box-shadow allowed-list; `--glow` composite at `tokens.css:196`).
 - `ui/src/styles/tokens.css` -- reduced-motion media block :352-524 (the ONLY home): add `.card-tile-quantity[data-flashed='true'] { box-shadow: none !important; }` — the c7-5 inventory row at :333 already exists verbatim (owner list asserted at `token-usage.test.ts:2661`). No new token (70-pin: `tokens.test.ts:346`, `token-usage.test.ts:1177`); no transform (5-entry pin :2576-2602 unchanged); block structural assertions :2404-2456 must keep passing.
 - `ui/src/App.test.tsx` -- BOTH censuses move 2→3 naming `deck-announcement`: at-rest :2105-2151 and mid-flight :3576-3582 (its "not.toContain('Updating')" and empty-mid-flight shape extend to the new region). New c7-5 describe hosted on the c7-3/c7-4 harnesses: `bootedDeck()` :3194-3202 / :3511-3519, `push('deck_changed', …)`, `withholdDeckRead` :3525-3536 (empty mid-flight, text on release), fixture counts from `deckDetail()` (assert the computed main+side sum, e.g. mainboard_count 101 case :3584-3595). Switch-silent test drives `push('active_deck_changed', …)` (:2540-2560 precedent). The c6-6 view-behind tests :4107+ must not be contradicted (announcement MAY fire behind a view — do not pin silence).
@@ -97,12 +97,25 @@ deferred:
 - Given two sequential refetches ending at the same total, when the second completes, then the announcement fires again (DOM mutation via keyed Fragment).
 - Given a tile whose `quantity` prop changed across a refetch re-render, when it re-renders, then its badge carries `data-flashed` for one frame and the accent glow fades out over `--motion-glide` — and a tile with unchanged quantity, a freshly mounted tile, and a DeckList row never flash.
 - Given `prefers-reduced-motion: reduce`, when a quantity changes, then the glow is omitted entirely (CSS-source-asserted `box-shadow: none !important` inside the tokens media block) and the curve bars' instant jump stays covered by the existing four-token-zeroing pin.
-- Given the accessibility tree at rest and mid-refetch, when the censuses run, then exactly three polite regions exist (`card-detail-announcement`, `connection-pill-announcement`, `deck-announcement`), all empty at rest and mid-flight, with banner census (3), h1 census, and zero-region shell census unchanged.
+- Given the accessibility tree at rest and mid-refetch, when the censuses run, then exactly three polite regions exist (`card-detail-announcement`, `connection-pill-announcement`, `deck-announcement`), all empty at rest; mid-flight, no region carries the marker text and the `deck-announcement` region stays empty (the pill's region may legitimately speak a connection transition during a refetch — tightened at review pass 1, finding 8), with banner census (3), h1 census, and zero-region shell census unchanged.
 - Given the guard suites (store-writes, shell, posture, tokens, token-usage, lint-gates, copy-rules, wire-contract, updating-marker), when the suite runs, then all pass with only the declared prose amendments (store-writes why-row, copy-rules registration) and no token-count or transform-pin movement.
 
 ## Spec Change Log
 
 ## Review Triage Log
+
+**Pass 1 (2026-08-15) — four-layer review, 8 findings survived triage, all applied in one commit:**
+
+1. (medium) App-level flash-through-refetch test added — the only assertion that the flash survives CardGrid's card_id-keyed instance persistence across a settle; badge lookup scoped by accessible name (c7-4 DFC lesson).
+2. (low) `DeckAnnouncer` now tracks WHICH deck the sentence is about (`about` in the sentinel) and empties the region at render time when the settled id departs (404-clear, switch) — CardDetail's pin-region precedent. Both silence tests strengthened to announce first, then assert the emptied region; a dropped 503 after an announcement deliberately leaves the sentence standing (the deck it describes is still on the glass).
+3. (low) CardTile's clear effect re-keyed from `flash.flashed` to the whole `flash` object so a second change while a flash is pending cancels the stale rAF and re-arms; unit test added.
+4. (low) `quantity-glow.test.ts` specificity comment corrected (0,3,0) → (0,2,0), agreeing with tokens.css.
+5. (low) `DeckAnnouncer` docstring harmonised with the census inventory: third polite region at rest, fourth while an agent view is open.
+6. (low) Switch-silence test's deck-b fixture given a distinct id + name so the heading assertion proves the switch landed.
+7. (low) Code Map corrected: the flash clear is a plain `useEffect` + rAF (the AgentView idiom actually cited), not a layout effect.
+8. (low) AC 6 tightened: all regions empty at rest; mid-flight no region carries the marker text and the deck-announcement region stays empty (the pill may legitimately announce a connection transition mid-refetch).
+
+Patch-pass verification (2026-08-15): lint + format:check + `tsc -b` clean; `vitest: 78 files / 2228 tests, 0 failed, exit 0` (harness `--expect-total 2228 --expect-green`, exit 0 — +2 tests over the story's 2226: the flash-through-refetch case and the re-arm case); `npm run build` + `build_plugin` rebuilt and committed with zero residual drift; `pytest -m "not integration"` green (3020 passed, 1 skipped).
 
 ## Design Notes
 

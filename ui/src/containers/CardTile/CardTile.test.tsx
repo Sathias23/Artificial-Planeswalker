@@ -943,6 +943,26 @@ describe('the quantity badge flashes ONCE on a changed quantity, and only then (
     expect(badge()!.getAttribute('data-flashed')).toBeNull()
   })
 
+  it('re-arms the one-shot when a SECOND change lands while a flash is pending', () => {
+    // Review pass 1, finding 3: with the clear keyed on the flashed BOOLEAN, a second change
+    // while a flash was pending never re-ran the effect, so the FIRST change's rAF cleared the
+    // SECOND change's flash instead of giving it a frame of its own. The effect is keyed on the
+    // whole flash object now — each change is a fresh object, the cleanup cancels the stale
+    // frame, and a new one is armed from the second change.
+    const view = render(<CardTile {...BLACK_LOTUS} quantity={4} />)
+    view.rerender(<CardTile {...BLACK_LOTUS} quantity={5} />)
+    expect(badge()!.getAttribute('data-flashed')).toBe('true')
+
+    // The second change lands BEFORE any frame has run: the flash must survive it whole…
+    view.rerender(<CardTile {...BLACK_LOTUS} quantity={6} />)
+    expect(badge()!.getAttribute('data-flashed')).toBe('true')
+    expect(badge()!.textContent).toBe('×6')
+
+    // …until one frame after the SECOND change, and then clear exactly once.
+    frame()
+    expect(badge()!.getAttribute('data-flashed')).toBeNull()
+  })
+
   it('mounts the badge FLASHED when 1 -> 2 crosses the render threshold — and clears it', () => {
     // The badge renders only for `copies > 1`, so a 1 -> 2 change is a change the seen-sentinel
     // observed on a tile whose badge did not exist yet: the badge's first appearance IS the
