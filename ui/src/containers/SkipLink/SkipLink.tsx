@@ -59,7 +59,7 @@ import { SKIP_LINK_LABEL } from './copy'
  * control. **There is one focus home and one implementation of it** (AC 6); this file adds a
  * caller, not a copy.
  *
- * ================= WITHDRAWAL, AND THE HALF THIS STORY CANNOT FIX (Q4, AC 9) ============
+ * ================= WITHDRAWAL, AND THE HALF THIS FILE OWNS (Q4, AC 9) ===================
  *
  * AC 3 requires this link to be **withdrawn** when a state panel takes the left column, and AC 9
  * bans focus ever being dropped to `document.body`. Those two can contradict each other: React
@@ -69,11 +69,19 @@ import { SKIP_LINK_LABEL } from './copy'
  * **The half this file owns is closed below**: if this link holds focus when it unmounts, focus is
  * handed to the `<h1>` deck name, which survives every surface change.
  *
- * **The half it does not own is stated rather than silently left open**: a *tile* or a *deck row*
- * holding focus when the deck is deleted or refetched to `no-active-deck` has the identical
- * problem, and the repair is a focus hand-off at that transition — which needs `deck_changed`,
- * an Epic 7 signal, in the story that renders the transition. Ledgered with **c7-6** named. This
- * story therefore does **not** claim the epic's AC 9 is fully covered.
+ * ✅ **AND THE HALF IT DOES NOT OWN IS NOW CLOSED TOO, AT c7-6.** This paragraph used to ledger
+ * it open: a *tile* or a *deck row* holding focus when the deck is deleted or refetched to
+ * `no-active-deck` has the identical problem, and the repair needed `deck_changed` — an Epic 7
+ * signal — in the story that renders the transition. That story shipped the repair as ONE
+ * surface-transition effect in `App.tsx` (search for *"THE SURFACE TRANSITION'S FOCUS RESCUE"*):
+ * when the surface leaves `kind === 'deck'` and focus has fallen to `<body>`, it is handed to
+ * `.state-panel-headline`, through this same `focusHome`.
+ *
+ * **Nothing in this file changed for it, and that is the point of the split.** The rescue lives
+ * at the surface because that is the scale at which `activeElement === body` is UNAMBIGUOUS —
+ * the whole deck surface departs in one commit, so anything outside it that held focus still
+ * holds it. At THIS element's scale it stays ambiguous, which is why the `heldFocus` sample
+ * below is still required rather than superseded.
  *
  * ================= WHAT IT DELIBERATELY DOES NOT DO ====================================
  *

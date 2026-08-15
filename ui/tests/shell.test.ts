@@ -2051,9 +2051,18 @@ describe('the containers are a declared category with a posture of its own', () 
     // UX-DR45's deck-refetch channel, the app's third — and no visible chrome at all, which is
     // why there is no stylesheet import: `.visually-hidden` is the shared utility and
     // `.deck-announcement` is an identity class the censuses name, not a styled one.
+    //
+    // ⚠️ `../../state/agentView` JOINED AT c7-6, AND IT IS THE ONE IMPORT WORTH ARGUING ABOUT.
+    // UX-DR45's *"nothing announces from behind an open agent view"* needs one bit of overlay
+    // state here, and the component's own header spent c7-5 declaring it deliberately did not
+    // read any. What makes the addition safe rather than a widening is WHICH export it takes:
+    // `useAgentViewIsOpen`, a boolean, and NOT `useOpenAgentView`, whose content object would
+    // resubscribe this region to every push's items and title. The import list cannot see that
+    // distinction — the announcer's docstring and `agentView.ts`'s selector pair carry it — so
+    // it is written here for the reader who arrives at this line first.
     {
       file: 'src/containers/DeckAnnouncer/DeckAnnouncer.tsx',
-      imports: ['../../state/deck', './copy', 'react'],
+      imports: ['../../state/agentView', '../../state/deck', './copy', 'react'],
     },
     // c7-5's copy module — `imports: []` for the settled TS2835 reason: `ui/tests` is the
     // `nodenext` project and `src/` the `bundler` one, and

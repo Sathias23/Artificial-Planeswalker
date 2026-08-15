@@ -14,6 +14,7 @@ import {
   reopenAgentView,
   resetAgentView,
   suggestionsViewOf,
+  useAgentViewIsOpen,
   useAgentViewStore,
   useOpenAgentView,
 } from './agentView'
@@ -544,5 +545,84 @@ describe('the c6-8 fields did not reshape the c6-5 ones (UX-DR38, Landmine 15)',
     // The counterweight to every retention assertion above: if `resetAgentView` did not clear
     // these, they would all be passing on a store nothing had ever emptied.
     expect(useAgentViewStore.getState()).toEqual(INITIAL_AGENT_VIEW)
+  })
+})
+
+// =========================================================================================
+// STORY c7-6 — the one bit the deck announcer reads
+// =========================================================================================
+
+/**
+ * `useAgentViewIsOpen`, walked across every writer that can move `status` (story c7-6).
+ *
+ * The consumer is `DeckAnnouncer`, whose gate is *"is a modal covering the deck"* and nothing
+ * else — so what this block owes is the LIFECYCLE of the boolean rather than a second reading of
+ * the content: false before anything pushes, true after each of the three open paths, false
+ * again after the one close path. `useOpenAgentView` beside it already has its own coverage
+ * above; the pair's whole reason to both exist is the last test here.
+ */
+describe('the announcer’s open/closed bit (c7-6)', () => {
+  it('is FALSE before anything has pushed — the mount state of every session', () => {
+    const { result } = renderHook(() => useAgentViewIsOpen())
+    expect(result.current).toBe(false)
+  })
+
+  it('is TRUE after a direct open', () => {
+    openAgentView(SUGGESTIONS)
+    const { result } = renderHook(() => useAgentViewIsOpen())
+    expect(result.current).toBe(true)
+  })
+
+  it('is TRUE after a push off the socket — the production writer', () => {
+    // `openSuggestionsPush` is the one verb `connection.ts` calls, so this is the path a real
+    // agent frame takes to the bit the announcer reads. Asserted separately from the direct open
+    // above because a gate that only worked for hand-written opens would suppress nothing in the
+    // running app.
+    openSuggestionsPush(frame({ title: 'Resilience options', items: [ITEM] }))
+    const { result } = renderHook(() => useAgentViewIsOpen())
+    expect(result.current).toBe(true)
+  })
+
+  it('is TRUE after a re-open from a nav pill', () => {
+    openAgentView(SUGGESTIONS)
+    closeAgentView()
+    reopenAgentView('suggestions')
+    const { result } = renderHook(() => useAgentViewIsOpen())
+    expect(result.current).toBe(true)
+  })
+
+  it('is FALSE after dismissal — even though the content is still retained', () => {
+    // THE ASYMMETRY THAT MATTERS TO THE ANNOUNCER. `closeAgentView` writes `status` and nothing
+    // else (UX-DR34), so `content` and `retained` both survive the dismissal — and a bit derived
+    // from either of those would still read "open" here and go on suppressing announcements for
+    // the rest of the session. Reading `status` is what makes the suppression end when the view
+    // leaves the glass.
+    openAgentView(SUGGESTIONS)
+    closeAgentView()
+
+    const { result } = renderHook(() => useAgentViewIsOpen())
+    expect(result.current).toBe(false)
+    expect(useAgentViewStore.getState().content).toBe(SUGGESTIONS)
+    expect(useAgentViewStore.getState().retained.suggestions).toBe(SUGGESTIONS)
+  })
+
+  it('is a PRIMITIVE, which is why it exists beside `useOpenAgentView` (Design Notes)', () => {
+    // The pair is not a duplication: this one answers with a boolean, its sibling with the
+    // content object. `DeckAnnouncer` subscribes to primitives only, one field per subscription,
+    // so that a second push while a view is open cannot re-render a region whose sentence has
+    // nothing to do with agent content. A selector returning the object would re-render it on
+    // every push — and the two must never disagree about whether something is showing, which is
+    // the second half of this assertion.
+    openAgentView(SUGGESTIONS)
+    const { result: isOpen } = renderHook(() => useAgentViewIsOpen())
+    const { result: content } = renderHook(() => useOpenAgentView())
+
+    expect(typeof isOpen.current).toBe('boolean')
+    expect(isOpen.current).toBe(content.current !== null)
+
+    closeAgentView()
+    const { result: closedIsOpen } = renderHook(() => useAgentViewIsOpen())
+    const { result: closedContent } = renderHook(() => useOpenAgentView())
+    expect(closedIsOpen.current).toBe(closedContent.current !== null)
   })
 })

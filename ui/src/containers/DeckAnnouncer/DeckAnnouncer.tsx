@@ -1,5 +1,6 @@
 import { Fragment, useState } from 'react'
 
+import { useAgentViewIsOpen } from '../../state/agentView'
 import { useDeckRefetchSettles, useDeckStore } from '../../state/deck'
 import { deckUpdatedAnnouncement } from './copy'
 
@@ -49,14 +50,35 @@ import { deckUpdatedAnnouncement } from './copy'
  * every completion rather than only for the ones that changed the number. The region itself is
  * never keyed: a brand-new region is not a mutation of an existing one.
  *
+ * ================= AND NOW IT IS SILENT BEHIND A MODAL (c7-6) ==========================
+ *
+ * ✅ **CLOSED.** This paragraph used to read *"No suppression behind a modal — c7-6 owns 'no
+ * announcement fires from behind a modal', and the gate would need agent-view state this
+ * component deliberately does not read"*. c7-6 is the story, and the deliberate blindness is
+ * over: {@link useAgentViewIsOpen} is a fifth PRIMITIVE subscription — one boolean, not
+ * `useOpenAgentView`'s content object, which would have resubscribed this component to every
+ * push's items and broken the narrowing discipline above.
+ *
+ * **The settle is CONSUMED, not deferred**, and that is the one thing to preserve when editing
+ * the two lines below: `seen` advances to `settles` on a suppressed settle exactly as it does
+ * on a spoken one, so what the gate drops is the SENTENCE, never the observation. Announcing on
+ * close would speak a count whose moment has passed, at the moment the reader is returning from
+ * a dialog about something else — and it would put text into a region the c7-6 App tests pin
+ * empty behind a modal (the drop/resume walk and the flipped c7-5 row; the two App live-region
+ * CENSUSES pin shapes at rest and mid-flight, not this). The next real refetch is the next real
+ * announcement.
+ *
+ * The clearing branch below is deliberately NOT gated: a deck that departs while a view is open
+ * must still empty a standing sentence, because that sentence's claim is false the instant its
+ * deck is gone whether or not anyone is looking at a dialog.
+ *
  * ================= WHAT THIS DELIBERATELY DOES NOT DO ==================================
  *
- * No suppression behind a modal — c7-6 owns "no announcement fires from behind a modal", and the
- * gate would need agent-view state this component deliberately does not read; today the region
- * announces on completion regardless of an open view. No format-check announcement (deferred,
- * spec frontmatter: it would be a SECOND per-refetch announcement with no ruled copy). No
- * timers and no debounce — the c7-3 supersession IS the coalescing, pinned at the store level
- * as one settle per burst, which arrives here as one counter tick per burst.
+ * No format-check announcement (deferred, and as of c7-6 the ledger entry is UNOWNED pending a
+ * UX ruling: it would be a SECOND per-refetch announcement with no ruled copy, so no story may
+ * home it here without that ruling). No timers and no debounce — the c7-3 supersession IS the
+ * coalescing, pinned at the store level as one settle per burst, which arrives here as one
+ * counter tick per burst.
  */
 export function DeckAnnouncer() {
   const settles = useDeckRefetchSettles()
@@ -77,6 +99,11 @@ export function DeckAnnouncer() {
     state.deck.status === 'deck' ? state.deck.detail.id : null,
   )
 
+  // THE MODAL GATE'S ONE INPUT (c7-6). A boolean off the agent-view slice — the fifth primitive
+  // subscription and the only one that is not a deck field. UX-DR45: *"Nothing announces from
+  // behind an open agent view."*
+  const viewOpen = useAgentViewIsOpen()
+
   const [announced, setAnnounced] = useState<{
     readonly seen: number | null
     /** The id of the deck the current `text` describes, or `null` while the region is empty. */
@@ -85,7 +112,13 @@ export function DeckAnnouncer() {
   }>({ seen: null, about: null, text: '' })
 
   if (announced.seen !== settles) {
-    const speaks = announced.seen !== null && mainboardCount !== null && sideboardCount !== null
+    // `&& !viewOpen` is c7-6's WHOLE mechanism, and it is one term in one expression on purpose:
+    // suppression that lived anywhere else (a second `useState`, an early return, a store field)
+    // would be a second place for "did this settle announce" to be decided. Note what it does
+    // NOT touch — `seen: settles` below is unchanged, which is what makes a suppressed settle a
+    // DROP rather than a queued announcement waiting for the view to close.
+    const speaks =
+      announced.seen !== null && mainboardCount !== null && sideboardCount !== null && !viewOpen
     setAnnounced({
       seen: settles,
       about: speaks ? deckId : null,

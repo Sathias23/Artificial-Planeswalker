@@ -4097,12 +4097,19 @@ describe('the refetch announces once, politely, on completion (c7-5)', () => {
     expect(badgeOf(/Forest/)!.getAttribute('data-flashed')).toBeNull()
   })
 
-  // ==================== TODAY'S BEHAVIOUR BEHIND A VIEW — OBSERVED, NOT PINNED =========
-  it('announces on a completion behind an open agent view — suppression is c7-6, not here', async () => {
-    // The c6-6 view-behind family must not be contradicted: today the region announces on
-    // completion REGARDLESS of an open view, and c7-6's AC ("no announcement fires from behind
-    // a modal") is the story that gates it. This test asserts today's truth so c7-6 has a red
-    // test to flip, and deliberately does NOT assert silence anywhere near a modal.
+  // ==================== FLIPPED AT c7-6 — THE MODAL GATE ==============================
+  it('stays SILENT on a completion behind an open agent view (flipped at c7-6)', async () => {
+    // ⚠️ THIS TEST'S CLAIM WAS REVERSED BY c7-6, DELIBERATELY AND AS PLANNED. It shipped at c7-5
+    // named *"announces on a completion behind an open agent view — suppression is c7-6, not
+    // here"*, asserting today's un-gated behaviour precisely so that the story owning UX-DR45's
+    // *"nothing announces from behind an open agent view"* would have a red test to flip rather
+    // than a silent gap to discover. It is flipped here, in place, so the reversal is visible in
+    // one diff instead of appearing as a deletion in one file and a new test in another.
+    //
+    // The c7-6 describe below owns the rest of the family — that the settle is CONSUMED, that
+    // the next one with the view closed announces, and that the deck behind the dialog really
+    // did update. What this row keeps is its original job: the c6-6 view-behind family's
+    // announcement half, asserted where the announcement tests live.
     await bootedDeck()
     await push('suggestions', { title: 'Resilience options', items: [] })
     expect(screen.getByRole('dialog')).toHaveAccessibleName('Resilience options')
@@ -4112,7 +4119,534 @@ describe('the refetch announces once, politely, on completion (c7-5)', () => {
     await settle()
 
     expect(screen.getByRole('dialog')).toHaveAccessibleName('Resilience options')
+    // NON-VACUITY: the refetch really settled — the counter moved and the deck behind the
+    // dialog carries the new total — so the silence below is a SUPPRESSION and not a refetch
+    // that never happened.
+    expect(settleCount()).toBe(1)
+    expect(screen.getByText('101')).toBeVisible()
+    expect(region()!.textContent).toBe('')
+  })
+})
+
+// =====================================================================================
+// c7-6 — DECK DELETION, AND AGENT VIEWS DURING A REFETCH
+// =====================================================================================
+
+/**
+ * The deletion walk and the modal gate, composed (story c7-6, UX-DR45, UX-DR37, epic AC 9).
+ *
+ * Three of this story's claims were already true of shipped code when it opened — the 404 clears
+ * to `no-active-deck`, the panel lists remaining decks non-clickably, an open view survives the
+ * deck dying behind it — and the finding is that NOBODY HAD WALKED THEM TOGETHER. The unit
+ * halves live elsewhere and stay there: `DeckAnnouncer.test.tsx` drives the gate on injected
+ * store writes, `agentView.test.ts` walks the selector across its four writers,
+ * `StatePanel.test.tsx` proves the list is non-interactive by role, and `deck.test.ts` owns the
+ * 404's place in the refetch table. What only THIS file can pin is the composition: a real frame
+ * through the real socket, the fold, the refetch's 404, the surface transition, the restarted
+ * poll's answer, and what the Tab order and the keyboard focus look like on the other side.
+ *
+ * The two NEW mechanisms this story ships are one expression and one effect — `DeckAnnouncer`'s
+ * `&& !viewOpen`, and `App.tsx`'s surface-transition focus rescue — and every test below that
+ * covers one of them says which, so a firing proof has a named row to redden.
+ */
+describe('deck deletion, and agent views during a refetch (c7-6)', () => {
+  const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
+  const NO_DECK = 'No deck on the glass.'
+  const SKIP = 'Skip past the deck grid'
+  const region = () => document.querySelector('.deck-announcement')
+  const settleCount = () => useDeckStore.getState().refetchSettles
+  const headline = () => document.querySelector('.state-panel-headline')
+  const dialog = () => screen.queryByRole('dialog')
+
+  /** `bootedDeck`, re-declared from the c7-3/c7-4/c7-5 blocks — their consts are block-scoped. */
+  const bootedDeck = async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks(ATRAXA_NAME))
+    render(<App />)
+    await settle()
+    await connect()
+    expect(screen.getByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeVisible()
+    return fetchMock
+  }
+
+  /** The edited deck the suppression rows settle: 101 mainboard + 1 sideboard = 102 on the glass. */
+  const editedDeck = () =>
+    deckDetail({
+      mainboard_count: 101,
+      sideboard_count: 1,
+      distinct_cards: 3,
+      cards: [
+        deckCard('Llanowar Elves', 'Creature — Elf Druid', 1, '{G}', 1),
+        deckCard('Grizzly Bears', 'Creature — Bear', 1, '{1}{G}', 2),
+        deckCard('Forest', 'Basic Land — Forest', 10),
+      ],
+    })
+
+  /**
+   * Re-point the POLL at a new deck list without re-stubbing `fetch`.
+   *
+   * `withholdDeckRead`'s idiom (c7-4), one route over: wrap the live mock and intercept one path.
+   * A second `answering()` call would install a fresh `vi.fn`, which loses the call log every
+   * request-count assertion in this block reads — and the deletion walk's whole point is that the
+   * SAME mount sees the list change under it.
+   */
+  const repolling = (fetchMock: ReturnType<typeof answering>, ...names: string[]) => {
+    const answer = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation((input?: unknown) =>
+      String(input) === '/api/decks' ? Promise.resolve(decks(...names)) : answer(input),
+    )
+  }
+
+  /**
+   * The agent deletes the active deck: the backend's row is gone, the emit lands, the refetch
+   * 404s, and the restarted poll answers with whatever is left.
+   *
+   * ⚠️ `activeDeck(ATRAXA_DECK_ID)` STAYS POINTING AT THE DELETED ID ON PURPOSE. A slot holding a
+   * deleted deck id is RULED-LEGITIMATE backend state (`state.py:95-99`), whose answer is exactly
+   * the `deck_not_found` path this walk takes — so the fixture models the real post-deletion
+   * backend rather than a tidier one that also cleared the slot.
+   */
+  const deleteActiveDeck = async (
+    fetchMock: ReturnType<typeof answering>,
+    ...remaining: string[]
+  ) => {
+    repolling(fetchMock, ...remaining)
+    booting(activeDeck(ATRAXA_DECK_ID), refusal('deck_not_found', 404))
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+  }
+
+  /** `focusablesNow`, re-declared from the corridor block — its consts are block-scoped too. */
+  const focusablesNow = () => [
+    ...document.querySelectorAll<HTMLElement>(
+      'a[href]:not(:disabled), button:not(:disabled), [tabindex]:not(:disabled)',
+    ),
+  ]
+
+  beforeEach(() => {
+    // Every slice this block's tests reach that the file's shared block does not reset: the
+    // agent-view slice above all, whose whole contract is that closing does not clear.
+    resetInspection()
+    resetDeckMemory()
+    resetAgentView()
+  })
+
+  // ==================== AC 2 — THE DELETION WALK, END TO END ===========================
+  it('clears to the no-active-deck panel listing exactly the REMAINING decks (AC 2)', async () => {
+    // THE WALK NOBODY HAD TAKEN. `:3379` proves the 404 clears and its own comment says c7-6 owes
+    // the deck-list assertion it does not make; this is that assertion, plus the two ends the
+    // clear sits between — the deleted deck really was on the glass first, and the panel's list
+    // really is the poll's SECOND answer rather than its first.
+    const fetchMock = await bootedDeck()
+    expect(document.querySelectorAll('.card-tile').length).toBeGreaterThan(0)
+    const marker = fetchMock.mock.calls.length
+
+    await deleteActiveDeck(fetchMock, 'Boros Aggro', 'Mono-Blue Tempo')
+
+    // THE SURFACE: the deck heading is gone and the panel took the left column.
+    const panel = screen.getByRole('region', { name: NO_DECK })
+    expect(panel).toBeVisible()
+    expect(screen.queryByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeNull()
+    expect(document.querySelector('.card-tile')).toBeNull()
+    // …and it is the no-deck panel specifically, not the bug panel: `deck_not_found` is in the
+    // closed reason set, so nothing degrades to `unknown`.
+    expect(screen.queryByRole('region', { name: 'The companion hit a bug.' })).toBeNull()
+
+    // THE LIST: exactly the survivors, the deleted name absent, and nothing in it activatable.
+    // Scoped to the panel, because the deck names would otherwise be searched for across a
+    // document that (before the clear) rendered one of them in a heading and 99 deck rows.
+    expect(within(panel).getByText('Boros Aggro')).toBeVisible()
+    expect(within(panel).getByText('Mono-Blue Tempo')).toBeVisible()
+    expect(within(panel).queryByText(ATRAXA_NAME)).toBeNull()
+    expect(screen.queryByText(ATRAXA_NAME)).toBeNull()
+    expect(within(panel).queryAllByRole('link')).toEqual([])
+    expect(within(panel).queryAllByRole('button')).toEqual([])
+
+    // THE REQUESTS: one deck read (the 404), no boot re-drive, and the poll restarted exactly
+    // once to fetch the list the panel is showing. Without the last of these the list assertions
+    // above could be passing on a fixture that never answered again.
+    const paths = fetchMock.mock.calls.slice(marker).map(([input]) => String(input))
+    expect(
+      paths.filter((path) => path === `/api/deck/${ATRAXA_DECK_ID}`),
+      'AC 2: the clear cost the one refetch request',
+    ).toHaveLength(1)
+    expect(paths.filter((path) => path === '/api/active-deck')).toHaveLength(0)
+    expect(
+      paths.filter((path) => path === '/api/decks'),
+      'AC 2: the stopped poll restarted, which is what re-lists the remaining decks',
+    ).toHaveLength(1)
+
+    // AND NOTHING WAS ANNOUNCED. A 404 never increments the counter, so "Deck updated — N cards"
+    // about a deck that has just been deleted is unreachable rather than merely unwritten.
+    expect(settleCount()).toBe(0)
+    expect(region()!.textContent).toBe('')
+  })
+
+  it('renders the headline and NO list when the LAST deck is the one deleted (AC 2)', async () => {
+    // `StatePanel.tsx:133`'s `filled()` arm, reached through the deletion path rather than
+    // through a prop: an empty list renders no `<ul>` at all, so the panel does not show an
+    // empty box under its sentence.
+    const fetchMock = await bootedDeck()
+
+    await deleteActiveDeck(fetchMock)
+
+    const panel = screen.getByRole('region', { name: NO_DECK })
+    expect(within(panel).getByRole('heading', { level: 2, name: NO_DECK })).toBeVisible()
+    expect(panel.querySelector('.state-panel-decks')).toBeNull()
+    expect(within(panel).queryAllByRole('listitem')).toEqual([])
+  })
+
+  // ==================== AC 1 — THE MODAL GATE, COMPOSED ================================
+  it('drops the announcement for a refetch settling behind an open view, and resumes after it closes (AC 1)', async () => {
+    // THE `&& !viewOpen` EXPRESSION, end to end and in BOTH directions — the drop, and the proof
+    // that it was a drop rather than a queue. A deferred announcement would fire the instant the
+    // dialog closed, speaking a count whose moment had passed at the exact moment the reader is
+    // re-orienting; a dropped one leaves the region empty until the NEXT real refetch.
+    const fetchMock = await bootedDeck()
+    await push('suggestions', { title: 'Resilience options', items: [] })
+    expect(dialog()).toHaveAccessibleName('Resilience options')
+
+    booting(activeDeck(ATRAXA_DECK_ID), editedDeck())
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+
+    // SILENT — and every other thing that settle was supposed to do still happened: the counter
+    // advanced (the store's contract is untouched by the UI's decision not to speak), the deck
+    // behind the dialog recomputed, and the view itself is byte-for-byte what it was.
+    expect(region()!.textContent).toBe('')
+    expect(settleCount()).toBe(1)
+    expect(screen.getAllByText('Grizzly Bears').length).toBeGreaterThanOrEqual(2)
+    expect(dialog()).toHaveAccessibleName('Resilience options')
+
+    // CLOSING ANNOUNCES NOTHING. The observer is the proof, because "announces" IS "mutates" to a
+    // live region and jsdom has no speech — an empty region that gained and lost a text node
+    // would read as silent to `textContent` and as speech to a screen reader.
+    const records: MutationRecord[] = []
+    const observer = new MutationObserver((list) => records.push(...list))
+    observer.observe(region()!, { childList: true, characterData: true, subtree: true })
+    try {
+      act(() => screen.getByRole('button', { name: CLOSE_PILL_LABEL }).click())
+      await settle()
+    } finally {
+      observer.disconnect()
+    }
+    expect(dialog()).toBeNull()
+    expect(records).toEqual([])
+    expect(region()!.textContent).toBe('')
+
+    // AND THE NEXT ONE SPEAKS. Same deck, a third card added, view closed: the gate is per
+    // settle rather than latched, and the sentence is about THIS refetch's counts.
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({ mainboard_count: 103, sideboard_count: 1, distinct_cards: 3 }),
+    )
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+
+    expect(settleCount()).toBe(2)
+    expect(region()!.textContent).toBe('Deck updated — 104 cards')
+    // Non-vacuity for the whole test: both refetches were really served.
+    expect(
+      fetchMock.mock.calls.filter(([input]) => String(input) === `/api/deck/${ATRAXA_DECK_ID}`)
+        .length,
+    ).toBeGreaterThanOrEqual(2)
+  })
+
+  it('does not re-announce a STANDING sentence when a view opens over it', async () => {
+    // The third silence row of the matrix, and the one a `textContent` assertion alone cannot
+    // make: opening a view is not a settle, so nothing recomputes and the text node is not
+    // touched. A live region speaks on MUTATION, so an unchanged node announces nothing — but a
+    // component that re-created the node on every render would announce on every render.
+    await bootedDeck()
+    booting(activeDeck(ATRAXA_DECK_ID), editedDeck())
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
     expect(region()!.textContent).toBe('Deck updated — 102 cards')
+
+    const records: MutationRecord[] = []
+    const observer = new MutationObserver((list) => records.push(...list))
+    observer.observe(region()!, { childList: true, characterData: true, subtree: true })
+    try {
+      await push('suggestions', { title: 'Resilience options', items: [] })
+    } finally {
+      observer.disconnect()
+    }
+
+    expect(dialog()).toHaveAccessibleName('Resilience options')
+    expect(records).toEqual([])
+    expect(region()!.textContent).toBe('Deck updated — 102 cards')
+  })
+
+  it('announces nothing for a 503 dropped behind an open view either (AC 1)', async () => {
+    // The dropped-refusal row. `:3454` already pins that the deck and the view both survive a 503
+    // behind a dialog; what it does not say is what the ANNOUNCER did, and the answer must be
+    // "nothing" for a reason that is NOT the modal gate — a dropped refetch never settles, so the
+    // counter never moves. Asserted here so a future gate change cannot make this row pass for
+    // the wrong reason.
+    const fetchMock = await bootedDeck()
+    await push('suggestions', { title: 'Resilience options', items: [] })
+
+    const marker = fetchMock.mock.calls.length
+    booting(activeDeck(ATRAXA_DECK_ID), refusal('database_unavailable', 503))
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+
+    expect(screen.getByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeVisible()
+    expect(dialog()).toHaveAccessibleName('Resilience options')
+    expect(settleCount()).toBe(0)
+    expect(region()!.textContent).toBe('')
+    expect(
+      fetchMock.mock.calls
+        .slice(marker)
+        .map(([input]) => String(input))
+        .filter((path) => path === `/api/deck/${ATRAXA_DECK_ID}`),
+      'the refusal was really read and then dropped — not skipped',
+    ).toHaveLength(1)
+  })
+
+  // ==================== AC 5 — DELETION BEHIND AN OPEN VIEW ============================
+  it('keeps a view open and valid through the deletion, and lands the reader on the panel (AC 5)', async () => {
+    // The composed row: `:4426` proves the view survives and `:4450` proves the close lands on
+    // the headline, each from its own setup. This walks the whole thing once — deletion, the
+    // remaining-decks panel behind the dialog, silence, then the close — because the thing a user
+    // does is all of it in one sitting, and the three assertions have never been made together.
+    const fetchMock = await bootedDeck()
+    act(() => {
+      document.querySelectorAll<HTMLElement>('.card-tile')[1].focus()
+    })
+    const opener = document.activeElement
+    expect(opener).not.toBe(document.body)
+
+    await push('suggestions', { title: 'Resilience options', items: [{ card_id: 'c-1' }] })
+    expect(dialog()).toHaveAccessibleName('Resilience options')
+    // Focus is INSIDE the view, which is what makes the focus rescue decline below — the second
+    // guard, exercised by the arrangement rather than by a contrived one.
+    expect(document.activeElement).toBe(document.querySelector('.agent-view-title'))
+
+    await deleteActiveDeck(fetchMock, 'Boros Aggro')
+
+    // The panel is behind the dialog, listing the survivor…
+    const panel = screen.getByRole('region', { name: NO_DECK })
+    expect(within(panel).getByText('Boros Aggro')).toBeVisible()
+    // …the view is untouched and still valid (its content is about cards, not about the deck)…
+    expect(dialog()).toHaveAccessibleName('Resilience options')
+    expect(document.querySelector('.agent-view-count')).toHaveTextContent('1')
+    // …nothing was announced, and the focus rescue DECLINED because the view held focus…
+    expect(region()!.textContent).toBe('')
+    expect(document.activeElement).toBe(document.querySelector('.agent-view-title'))
+    expect(opener?.isConnected).toBe(false)
+
+    // …and on close the reader lands on the panel's headline, through the view's own
+    // disconnected-restore arm rather than through this story's rescue.
+    act(() => screen.getByRole('button', { name: CLOSE_PILL_LABEL }).click())
+    expect(document.activeElement).toBe(headline())
+    expect(document.activeElement).not.toBe(document.body)
+  })
+
+  // ==================== AC 3 — THE SURFACE-TRANSITION FOCUS RESCUE =====================
+  it('hands focus from a TILE to the panel headline when the deck is deleted under it (AC 3)', async () => {
+    // THE LEDGERED HALF OF THE EPIC'S NO-FOCUS-TO-BODY RULE, closed. `SkipLink.tsx` named this
+    // story by hand: React unmounting the focused node drops focus to `<body>`, which restarts
+    // Tab from the very top of the document — for a keyboard user mid-deck that is the whole
+    // 206-stop corridor again, with no announcement that anything moved.
+    const fetchMock = await bootedDeck()
+    act(() => {
+      document.querySelectorAll<HTMLElement>('.card-tile')[1].focus()
+    })
+    const tile = document.activeElement
+    expect(tile).not.toBe(document.body)
+
+    await deleteActiveDeck(fetchMock, 'Boros Aggro')
+
+    expect(tile?.isConnected).toBe(false)
+    expect(document.activeElement).toBe(headline())
+    expect(document.activeElement).not.toBe(document.body)
+    // The hand-off is `focusHome`'s, so the heading is focusable WITHOUT becoming a Tab stop —
+    // a positive or zero tabindex here would insert a stop into a corridor this story is
+    // supposed to be shortening.
+    expect(headline()?.getAttribute('tabindex')).toBe('-1')
+  })
+
+  it('hands focus from a DECK ROW the same way — the whole surface departs at once (AC 3)', async () => {
+    // The second of the five departing focusables, and the one that proves this is a SURFACE
+    // rule rather than a grid rule: the deck row lives in the right column, which hangs off the
+    // same `kind === 'deck'` gate as the grid. One effect covers both.
+    const fetchMock = await bootedDeck()
+    act(() => {
+      document.querySelector<HTMLElement>('.deck-row')!.focus()
+    })
+    const row = document.activeElement
+    expect(row).not.toBe(document.body)
+    expect((row as HTMLElement).classList.contains('deck-row')).toBe(true)
+
+    await deleteActiveDeck(fetchMock, 'Boros Aggro')
+
+    expect(row?.isConnected).toBe(false)
+    expect(document.activeElement).toBe(headline())
+  })
+
+  it('hands focus from a FLIP CONTROL the same way — the third focusable AC 3 names (AC 3)', async () => {
+    // The one departing focusable the AC names that the tile and deck-row rows do not stand in
+    // for, because it does not exist at mount: a flip control GROWS when the hydration sweep
+    // answers a two-faced record (`card_faces` lives only in the full card), so this row boots a
+    // Pathway deck and waits for the sweep — the c7-4 back-face test's exact arrangement.
+    const PATHWAY = 'Clearwater Pathway // Murkwater Pathway'
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({
+        cards: [deckCard(PATHWAY, 'Land // Land'), deckCard('Forest', 'Basic Land — Forest', 10)],
+      }),
+    )
+    const fetchMock = answering(decks(ATRAXA_NAME))
+    render(<App />)
+    await settle()
+    await connect()
+    await advance(20)
+    const flip = document.querySelector<HTMLElement>('.flip-control')
+    expect(flip, 'no flip control — the Pathway did not hydrate as a DFC').not.toBeNull()
+    act(() => flip!.focus())
+    expect(document.activeElement).toBe(flip)
+
+    await deleteActiveDeck(fetchMock, 'Boros Aggro')
+
+    expect(flip!.isConnected).toBe(false)
+    expect(document.activeElement).toBe(headline())
+  })
+
+  it('DECLINES when something outside the deck surface holds focus (AC 3)', async () => {
+    // `SkipLink.tsx:112-116`'s ruling at the surface's scale: moving focus that something else
+    // already holds would be this effect reversing a decision it did not make. The footer link
+    // and the connection pill both survive the transition — they are rendered outside the
+    // `kind === 'deck'` gate — so a rescue that fired unconditionally would YANK the reader out
+    // of the footer while they were in it.
+    const fetchMock = await bootedDeck()
+    const footerLink = within(screen.getByRole('contentinfo')).getAllByRole('link')[0]
+    act(() => footerLink.focus())
+    expect(document.activeElement).toBe(footerLink)
+
+    await deleteActiveDeck(fetchMock, 'Boros Aggro')
+
+    expect(screen.getByRole('region', { name: NO_DECK })).toBeVisible()
+    expect(document.activeElement).toBe(footerLink)
+    expect(document.activeElement).not.toBe(headline())
+    // The declined hand-off left NO residue on the headline either — `focusHome` was not called,
+    // so the heading is exactly what it is at rest.
+    expect(headline()?.hasAttribute('tabindex')).toBe(false)
+  })
+
+  it('declines for the connection pill too — the other survivor outside the gate (AC 3)', async () => {
+    const fetchMock = await bootedDeck()
+    const pill = document.querySelector<HTMLElement>('.connection-pill')!
+    act(() => pill.focus())
+    expect(document.activeElement).toBe(pill)
+
+    await deleteActiveDeck(fetchMock, 'Boros Aggro')
+
+    expect(document.activeElement).toBe(pill)
+    expect(pill.isConnected).toBe(true)
+  })
+
+  it('declines for an agent-views NAV PILL too — the header survivor the matrix names (AC 3)', async () => {
+    // The matrix's decline row reads "Header/footer/nav pill focused", and the c6-8 reopen pill
+    // is a DIFFERENT element from the connection pill above: it lives in the header's nav, it
+    // only exists once a kind has pushed, and it is exactly where a keyboard user is standing
+    // when they are about to re-open a view. It survives the transition — the header renders
+    // outside the `kind === 'deck'` gate — so the rescue must leave it alone.
+    const fetchMock = await bootedDeck()
+    await push('suggestions', { title: 'Resilience options', items: [] })
+    act(() => screen.getByRole('button', { name: CLOSE_PILL_LABEL }).click())
+    expect(dialog()).toBeNull()
+    const navPill = document.querySelector<HTMLElement>('.agent-views-nav-pill')
+    expect(navPill, 'no nav pill — the push did not register a retained kind').not.toBeNull()
+    act(() => navPill!.focus())
+    expect(document.activeElement).toBe(navPill)
+
+    await deleteActiveDeck(fetchMock, 'Boros Aggro')
+
+    expect(screen.getByRole('region', { name: NO_DECK })).toBeVisible()
+    expect(document.activeElement).toBe(navPill)
+    expect(navPill!.isConnected).toBe(true)
+    // No residue on the headline: the rescue declined, so `focusHome` never ran.
+    expect(headline()?.hasAttribute('tabindex')).toBe(false)
+  })
+
+  it('declines while a view is open even when focus already fell to BODY (AC 3, Greptile PR #80)', async () => {
+    // THE HOLE THE FIRST GREPTILE PASS FOUND: the rescue's body-focus inference — "focus on
+    // `<body>` across a deck → panel transition means the departing surface held it" — is only
+    // sound when no modal is open. A real pointer click on the dialog's NON-focusable content
+    // blurs to `<body>` (jsdom does not model that blur, so this test arranges it by hand), and
+    // a rescue firing then would park keyboard and AT focus on the panel headline BEHIND the
+    // still-open dialog. With a view open the rescue must always decline; the reader is not
+    // stranded, because the view's own restore arm lands the close on the headline.
+    const fetchMock = await bootedDeck()
+    act(() => {
+      document.querySelectorAll<HTMLElement>('.card-tile')[1].focus()
+    })
+    await push('suggestions', { title: 'Resilience options', items: [] })
+    expect(document.activeElement).toBe(document.querySelector('.agent-view-title'))
+    act(() => (document.activeElement as HTMLElement).blur())
+    expect(document.activeElement).toBe(document.body)
+
+    await deleteActiveDeck(fetchMock, 'Boros Aggro')
+
+    // The rescue DECLINED: focus is exactly where the blur left it — on `<body>`, the view's
+    // pre-existing condition — and NOT parked on the headline behind the dialog.
+    expect(dialog()).toHaveAccessibleName('Resilience options')
+    expect(document.activeElement).toBe(document.body)
+    expect(headline()?.hasAttribute('tabindex')).toBe(false)
+
+    // …and on close the reader lands on the panel headline through ARM 3 (the tile opener died
+    // with the deck), so declining stranded nobody.
+    act(() => screen.getByRole('button', { name: CLOSE_PILL_LABEL }).click())
+    expect(document.activeElement).toBe(headline())
+  })
+
+  // ==================== AC 4 — THE TAB ORDER ACROSS THE TRANSITION =====================
+  it('withdraws the skip link and every grid stop from the Tab order after the deletion (AC 4)', async () => {
+    // The corridor, walked ACROSS the transition this story owns rather than on either side of
+    // it. The loaded-deck pins (`:1815-1830`) are untouched and stay where they are; what is new
+    // is the before/after over one mount, which is the only shape that can catch a stop that
+    // survives its own surface.
+    const fetchMock = await bootedDeck()
+    const before = focusablesNow()
+    expect(screen.getByRole('button', { name: SKIP })).toBeVisible()
+    expect(before.filter((el) => el.classList.contains('card-tile')).length).toBeGreaterThan(0)
+
+    await deleteActiveDeck(fetchMock, 'Boros Aggro')
+
+    const after = focusablesNow()
+    expect(screen.queryByRole('button', { name: SKIP })).toBeNull()
+    expect(after.filter((el) => el.classList.contains('card-tile'))).toEqual([])
+    expect(after.filter((el) => el.classList.contains('flip-control'))).toEqual([])
+    expect(after.filter((el) => el.classList.contains('deck-row'))).toEqual([])
+    expect(document.querySelectorAll('.card-tile, .flip-control, .deck-row')).toHaveLength(0)
+    expect(after.length).toBeLessThan(before.length)
+
+    // WHAT SURVIVES, NAMED: the pill and the two footer links, still in that order, still last.
+    // A withdrawal test that only counted absences would pass on a document that lost everything.
+    const footerLinks = within(screen.getByRole('contentinfo')).getAllByRole('link')
+    expect(footerLinks).toHaveLength(2)
+    expect(after.indexOf(footerLinks[1])).toBe(after.length - 1)
+    expect(after.indexOf(document.querySelector('.connection-pill') as HTMLElement)).toBe(
+      after.length - 3,
+    )
+
+    // ⚠️ THE ONE `[tabindex]` THE PANEL NOW CARRIES IS THE RESCUE'S, AND IT IS NOT A TAB STOP.
+    // This helper's selector models the MARKUP rather than the focus behaviour (its own docstring
+    // says so, citing `deferred-work.md:45`), so a `tabindex="-1"` shows up in the list above
+    // while being unreachable by Tab. It is asserted by VALUE rather than filtered out, because
+    // the day that attribute is written as `0` this test is where it should fail.
+    //
+    // ⚠️ AND THE RESCUE FIRED HERE THROUGH THE ACCEPTED RESIDUE, DELIBERATELY LEFT SO (review,
+    // 2026-08-15). Nothing in this test ever focuses anything, so `activeElement` is `<body>`
+    // throughout and the rescue fires via the residue path the App.tsx Design Notes record —
+    // "if focus was already on `<body>`, this still moves it to the headline". These two
+    // assertions therefore pin that residue as well as the rescue: if the residue is ever
+    // guarded against (a `heldFocus`-style sample), THIS test is the one that breaks, and the
+    // fix is to focus a tile in the arrange step, not to weaken the assertions.
+    const withTabIndex = after.filter((el) => el.hasAttribute('tabindex'))
+    expect(withTabIndex).toEqual([headline()])
+    expect(withTabIndex[0].getAttribute('tabindex')).toBe('-1')
   })
 })
 
