@@ -2,9 +2,9 @@
 title: 'c7-5: The change is announced once, and motion is never the only signal'
 type: 'feature'
 created: '2026-08-15'
-status: 'in-review'
-review_loop_iteration: 1
-followup_review_recommended: false
+status: 'done'
+review_loop_iteration: 0
+followup_review_recommended: true
 baseline_revision: '9f10b2491bdad11e0b586d1fe0732f4b4e149cef'
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-c7-context.md'
@@ -104,7 +104,13 @@ deferred:
 
 ## Review Triage Log
 
-**Pass 1 (2026-08-15) — four-layer review, 8 findings survived triage, all applied in one commit:**
+### 2026-08-15 — Review pass
+- intent_gap: 0
+- bad_spec: 0
+- patch: 8: (high 0, medium 1, low 7)
+- defer: 0
+- reject: 14: (high 0, medium 0, low 14)
+- addressed_findings: the 8 patches below (four layers: blind hunter, edge-case hunter, verification-gap, intent-alignment; post-dedup), all applied and committed as `a98ee7d`; test total moved 2226 → 2228. Rejected as noise: the announcer "reset announces stale text" claim (misread — the guard's `settles > seen` conjunction sets `''` on a decrease); the counter-advances-by-two-between-renders scenario (structurally one refetch in flight; sequential settles are separated by network round-trips); the App-level reconnect-silence and mid-boot-supersession counter tests (redundant composition — the shared re-drive/generation mechanisms are each pinned; the same argument c7-4 recorded); the announcer remount-silence test (unreachable — one production mount, the slot renders on every surface); artifacts-missing-from-diff (deliberate review-diff exclusion; drift verified zero and the commit inspected); NaN/negative copy-input guards (typed wire; DeckBadges renders the same counts raw); the hidden-tab rAF fallback timer (consequence benign — nothing is seen while hidden, the clear fires on the next painted frame; a timeout is a timer the repo avoids); the undefined→finite quantity flash (unreachable through CardGrid, which always passes wire numbers); the withhold/release helper triplication and bare `release!` diagnostics (block-scoped harnesses are the file's convention — c7-4 rejected the same); empty spec bookkeeping sections (workflow-designed structure); and the intent-alignment auditor's descriptive notes (perceptual residue — AT speech, painted pixels, evaluated media queries — is the repo's established jsdom boundary, delegated to the epic's manual checklist; AC 4 "motion never the sole carrier" is a review property satisfied by the shipped group-header counts + announcement).
 
 1. (medium) App-level flash-through-refetch test added — the only assertion that the flash survives CardGrid's card_id-keyed instance persistence across a settle; badge lookup scoped by accessible name (c7-4 DFC lesson).
 2. (low) `DeckAnnouncer` now tracks WHICH deck the sentence is about (`about` in the sentinel) and empties the region at render time when the settled id departs (404-clear, switch) — CardDetail's pin-region precedent. Both silence tests strengthened to announce first, then assert the emptied region; a dropped 503 after an announcement deliberately leaves the sentence standing (the deck it describes is still on the glass).
@@ -135,3 +141,33 @@ Patch-pass verification (2026-08-15): lint + format:check + `tsc -b` clean; `vit
 - `uv run python -m scripts.vitest_probe_harness --control` (warm), then per-plant `--expect-total N --expect-red '<substring>'`, revert, `--expect-green` -- expected: both plants RED on named tests, reverts clean, final green; proof lines pasted into Tasks.
 - `cd ui && npm run build && git status --porcelain -- src/companion/app/static/ plugin/` -- expected: rebuilt bundle + `plugin/` mirror committed, zero residual drift.
 - `uv run pytest -m "not integration"` -- expected: green (no backend file touched).
+
+## Auto Run Result
+
+Status: done
+
+**Summary.** The glass finally speaks: a `refetchSettles` counter beside c7-4's `updating` flag — incremented only in `refetchSequence`'s success arm, so cold boots, deck switches, reconnect re-drives, the 404-clear and every dropped outcome are silent by construction — drives a new props-free `DeckAnnouncer` riding the connectionPill slot as a fragment. One polite visually-hidden `deck-announcement` region announces exactly once per coalesced refetch, on completion: "Deck updated — {N} card(s)" with N = mainboard + sideboard (equal to the sum of every group-header count by the conservation identity), keyed-Fragment re-announce on identical text, mount-silence sentinel, and (review patch 2) the sentence empties when the deck it describes leaves the glass. The quantity badge gets UX-DR16's one-shot glow: per-tile seen-quantity detection flips `data-flashed` for one rAF frame, `var(--glow)` paints instantly (`transition: none` on the flashed state) and the base transition fades it out over `--motion-glide` — no keyframes, no transform, no new token. Under reduced motion the glow is omitted entirely (`box-shadow: none !important` in the tokens media block); curve bars stay on their existing mechanical zeroing, pinned by citation. Both App live-region censuses moved 2→3 and stayed exhaustive. The c6-3 open question (announce on a deck switch?) is resolved structurally: switches re-drive the boot and are silent.
+
+**Files changed** (commits `134cd48` feat + `a98ee7d` review patches, on `feat/companion-c7-5-announce-once` off umbrella `feat/companion-c7`):
+- `ui/src/state/deck.ts` — `refetchSettles` sibling key + writer, success-arm increment, reset, `useDeckRefetchSettles` selector.
+- `ui/src/containers/DeckAnnouncer/DeckAnnouncer.tsx` + `copy.ts` — NEW: the polite region, mount-silence + deck-identity sentinel, keyed Fragment; UX-DR45 template with the invented-in-the-open singular.
+- `ui/src/App.tsx` — announcer mounted beside `<ConnectionPill />` in the existing slot (no AppShell edit, no landmark change).
+- `ui/src/containers/CardTile/CardTile.tsx` + `QuantityBadge.css` — per-tile flash state (re-armed per change, prior rAF cancelled), `data-flashed` on the badge; instant-on/fade-off glow rules; Q6 naming comment amended (KEEP recorded).
+- `ui/src/styles/tokens.css` — reduced-motion `box-shadow: none !important` registration for the flashed badge (inventory row :333 already named c7-5).
+- `ui/src/components/Panel/Panel.tsx` — prose amendment re-homing the `live` animation to its first producer (frontmatter deferred).
+- Tests: `ui/src/App.test.tsx` (both censuses 2→3; c7-5 describe: announce-once/computed-sum/singular/burst/same-text-MutationObserver/switch/404+drop silence with post-announcement emptying/behind-a-view observed for c7-6/flash-through-real-refetch), `ui/src/state/deck.test.ts` (counter lifecycle), `ui/src/containers/CardTile/CardTile.test.tsx` (flash one-shot, re-arm, mount/threshold rows), new `ui/tests/quantity-glow.test.ts` (CSS-source halves + ManaCurve citation), new `ui/tests/deck-announcement-copy.test.ts` (byte-level gate against both artefacts).
+- Guard-suite amendments: `ui/tests/copy-rules.test.ts` (COPY_MODULES registration), `ui/tests/store-writes.test.ts` (why-prose), `ui/tests/shell.test.ts` (CONTAINERS 34→36).
+- `src/companion/app/static/` + `plugin/` — rebuilt committed mirrors (`assets/index-DpbZ6wJA.js`), zero drift.
+- This spec file — record, firing proofs, triage log.
+
+**Review findings breakdown.** Four layers, post-dedup: 8 patched (1 medium — the flash never verified through the real refetch path / tile-instance persistence unpinned; 7 low), 0 deferred from review, 14 rejected (see triage log). No intent gaps, no bad-spec loopbacks.
+
+**Follow-up review recommendation: true** — patched severities: 0 high, 1 medium, 7 low → score 3×1 + 7 = 10 ≥ 5.
+
+**Verification performed.** Firing proofs through the committed vitest harness: control at 2183 (pre-story); plant (a) success-arm counter increment removed → 9 expected REDs (5 App announce tests + 4 counter tests); plant (b) flash trigger neutered → 2 expected REDs; both reverts proven; green-certified at 2226 and re-certified at 2228 after the patch pass (`vitest: 78 files / 2228 tests, 0 failed, exit 0`, harness exit 0). Full gate independently re-run by the orchestrator at both checkpoints: eslint + stylelint + prettier + `tsc -b` clean; `npm test` 78 files / 2228 tests green; SPA rebuild + `plugin/` mirror with zero residual drift; `uv run pytest -m "not integration"` 3020 passed, 1 skipped. Matrix test audit: all 14 rows covered by tests that ran in the green suite (the reconnect-re-drive row via the shared re-drive mechanism pins).
+
+**Residual risks.**
+- The glow's on-pixel look (instant `var(--glow)`, 240 ms eased fade) and the real reduced-motion omission are asserted at the CSS-source surface only (jsdom applies no stylesheets, evaluates no media queries — repo convention); real-frame paint ordering of the one-rAF flash and actual screen-reader speech are likewise perceptual residue. All belong on the epic's manual-testing checklist for an eye/ear check.
+- The count semantics (mainboard + sideboard) and the singular "1 card" are extensions beyond the epic's worked example, chosen with recorded rationale — flag for Brad's review.
+- "Exactly three live regions" prose in `AgentView.tsx:506`, the c6-7 App.test comment, and `AgentViewsNav` comment/copy now reads one short of the four-channel inventory — undeclared prose amendments deliberately left untouched (AC 7 allows only the declared ones); a candidate for the next prose sweep (R7).
+- The announcement fires behind an open agent view today — observed by a test written so c7-6 has a red test to flip when it builds the suppression its AC legislates.
