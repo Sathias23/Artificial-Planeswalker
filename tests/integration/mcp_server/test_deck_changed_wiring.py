@@ -21,7 +21,17 @@ reaches the notifier through the name it imported. What is proven:
   outcome never becomes a status, a field or a changed message;
 * with no companion anywhere (``PLANESWALKER_DATA_DIR`` repointed at an empty directory, the
   **real** client on the path), a mutation still returns ``ok`` — the notifier degrades to a
-  cheap ``app_not_running`` that the tool result never mentions.
+  cheap ``app_not_running`` that the tool result never mentions;
+* **and, since c7-7, the same promise against a real backend that really fails.** Every failure row
+  above stubs either the notifier or the whole companion away, so until this story *no test anywhere
+  had driven a mutation tool through a genuine HTTP failure*: a live loopback listener whose
+  ``/health`` is valid — so the identity gate passes and the credential really leaves the process —
+  and whose ``POST /agent/events`` answers ``500``, plus a wedged listener that accepts the
+  connection and never answers, paying c7-1's real ~1 s bound. What those two rows add over a
+  stubbed ``PushOutcome`` is the **non-vacuity that separates "swallowed" from "never attempted"**:
+  the stub records the POST it received, so the emit is proven to have genuinely happened and
+  genuinely failed, and the wedged row's elapsed time proves the budget was really paid rather than
+  short-circuited.
 
 **The enumeration half** is the guard the epic asked for: a future mutation tool cannot be
 forgotten silently. It *derives* the set of mutating tools rather than trusting a hand-kept list —
@@ -44,11 +54,22 @@ detached-task ban (``create_task``/``ensure_future``/``TaskGroup``/``gather``), 
 extending that package sweep.
 
 Despite living under ``tests/integration/``, these run in the ordinary ``-m "not integration"``
-set: a directory is not a marker (AD-10), and nothing here opens a socket — the degradation test
-finds no discovery file before any HTTP could begin.
+set: a directory is not a marker (AD-10).
+
+**They boot no server process** — which is the property AD-10 actually constrains, and the reason
+this file stays unmarked. Until c7-7 the stronger sentence was also true ("nothing here opens a
+socket"), and c7-7's two real-HTTP-failure rows end that: they bind loopback listeners on ephemeral
+ports *inside the test process* and really speak HTTP to them. That is not a widening of AD-10 and
+needs no marker — ``tests/unit/companion/test_client.py`` has done exactly this for the whole
+client suite since c1-8, in the ordinary set, for the ruled reason that the failures a client
+absorbs live in the transport and a mocked one would prove only that a mock was called. What
+remains true, and is what AD-10 is about, is that **no test outside
+``tests/integration/companion/test_live_backend.py`` starts a companion**.
 """
 
 import ast
+import json
+import time
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from pathlib import Path
 
@@ -63,6 +84,19 @@ from src.data.models.card import CardModel
 from src.data.repositories.deck import DeckRepository
 from src.mcp_server import server as server_module
 from src.mcp_server.server import build_server
+
+# The loopback toolkit, imported rather than rebuilt (c7-7). `test_client.py` owns the only real
+# HTTP stubs in the repo — an ephemeral-port server with per-verb answer scripts and a request log,
+# and a bare listening socket that never answers — and rebuilding either here would be a second
+# implementation of a thing whose whole value is that it is the real transport. The cross-test
+# import precedent is this file's own: `_REPO_WRITE_METHODS` below comes from
+# `test_import_boundary.py` on exactly the same terms.
+from tests.unit.companion.test_client import (
+    StubFleet,
+    _Sockets,
+    health_bytes,
+    plant_discovery,
+)
 from tests.unit.companion.test_import_boundary import (
     _REPO_WRITE_METHODS,
     package_for,
@@ -469,6 +503,213 @@ class TestAClosedCompanionCostsTheMutationNothing:
         assert sc["status"] == "ok"
         assert "companion" not in sc["message"].lower(), (
             "the mutation's own message must not surface the notification's fate"
+        )
+
+
+@pytest.fixture
+def stub_server():
+    """Yield :meth:`StubFleet.start` and tear down every loopback stub it handed out.
+
+    A four-line fixture over an imported helper, exactly as ``test_client.py`` and
+    ``test_server.py`` each keep their own: the fixture cannot simply be imported, because a
+    module-level ``stub_server`` binding and a test parameter of the same name are a redefinition
+    (ruff F811). One implementation, one more fixture.
+    """
+    fleet = StubFleet()
+    yield fleet.start
+    fleet.close_all()
+
+
+@pytest.fixture
+def sockets():
+    """Yield the raw-socket helper (a port that accepts and never answers) and close what it opens.
+
+    A leaked listener on Windows surfaces as a failure in some *later* test, which is why teardown
+    is the fixture's job rather than each test's.
+    """
+    helper = _Sockets()
+    yield helper
+    helper.close_all()
+
+
+async def _add_twice_across_a_planted_failure(session, plant) -> tuple[object, object, str, float]:
+    """Add the same card to the same deck twice: once with no companion, once against *plant*'s.
+
+    The comparison this file's byte-identical claim needs, made on **one** deck rather than two:
+    ``DeckCardResult`` carries the deck id, so two different decks would differ for a reason that
+    has nothing to do with the notifier. The card is added, removed, and added again — the removal
+    is what makes the second add a real write rather than an ``exists``.
+
+    The first add runs while ``read_discovery()`` finds nothing, so it is the **no-companion
+    baseline** the story's AC names. *Then* the discovery record is planted, so the second add is
+    the only call that reaches a backend at all.
+
+    Args:
+        session: A connected in-process MCP client session.
+        plant: Called between the two adds; writes the discovery record pointing at the failure.
+
+    Returns:
+        ``(baseline_result, failing_result, deck_id, failing_elapsed_seconds)``.
+    """
+    created = await session.call_tool("create_deck", {"name": "Half A Loop"})
+    assert created.structuredContent["status"] == "ok"
+    deck_id = created.structuredContent["deck"]["id"]
+
+    baseline = await session.call_tool(
+        "add_card_to_deck", {"deck_id": deck_id, "card_id": "card-bolt"}
+    )
+    assert baseline.structuredContent["status"] == "ok", "the baseline leg must be a real write"
+    removed = await session.call_tool(
+        "remove_card_from_deck", {"deck_id": deck_id, "card_id": "card-bolt"}
+    )
+    assert removed.structuredContent["status"] == "ok"
+
+    plant()
+    started = time.monotonic()
+    failing = await session.call_tool(
+        "add_card_to_deck", {"deck_id": deck_id, "card_id": "card-bolt"}
+    )
+    return baseline, failing, deck_id, time.monotonic() - started
+
+
+class TestARealHttpFailureCostsTheMutationNothing:
+    """The failure rows with a **real backend on the wire**, not a stubbed outcome (c7-7, AC 3).
+
+    Every other failure row in this file replaces something: ``TestANotifyOutcomeNeverTouchesThe
+    Result`` hands the wrapper a fabricated :class:`PushOutcome`, and
+    ``TestAClosedCompanionCostsTheMutationNothing`` deletes the companion entirely. Both are worth
+    having and neither can fail the way production fails — with the identity gate **passed**, the
+    credential **sent**, and the backend answering something the client has to absorb. These two
+    rows are that case: a live loopback listener, a real POST over a real socket, and a mutation
+    that must come back byte-identical to the baseline anyway.
+    """
+
+    @pytest.fixture(autouse=True)
+    def isolated_data_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        """Point the real client at an empty data dir, and prove it starts empty.
+
+        The proof matters as much as the isolation: a discovery record left by a companion the
+        developer actually has running would make the baseline leg talk to it, and both rows would
+        then be measuring a live backend instead of the failure they name.
+        """
+        data_dir = tmp_path / "companion-data"
+        data_dir.mkdir()
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(data_dir))
+        assert not (data_dir / COMPANION_FILENAME).exists()
+        assert read_discovery() is None, (
+            "something published a discovery record into the isolated data dir — the baseline leg "
+            "would be talking to a real companion"
+        )
+        return data_dir
+
+    async def test_a_real_500_after_the_commit_leaves_the_result_byte_identical(
+        self, deck_db, stub_server
+    ):
+        """``/health`` is valid, the POST answers 500 — and the tool never notices.
+
+        The stub's ``GET`` answers a well-formed health body echoing the instance id the planted
+        record claims, so ``live_instance()`` matches and the client genuinely sends the token
+        (AD-4's "verify before you send"). Only then does the POST fail. That ordering is the whole
+        point: a failure planted *before* the identity gate would be a second spelling of
+        ``app_not_running`` and would never exercise the swallow at all.
+        """
+        stub = stub_server(
+            status=200,
+            body=health_bytes("live-but-broken"),
+            post_script=[(500, b'{"detail": "the backend fell over"}')],
+        )
+
+        server = build_server(session_factory=deck_db)
+        async with create_connected_server_and_client_session(server) as session:
+            baseline, failing, deck_id, _ = await _add_twice_across_a_planted_failure(
+                session,
+                lambda: plant_discovery(port=stub.port, instance_id="live-but-broken"),
+            )
+
+        # Nothing raised (we are past the call), nothing failed, and nothing about the answer moved.
+        assert failing.isError is False
+        assert failing.structuredContent == baseline.structuredContent, (
+            "a real 500 from a real backend altered the mutation's own structured result"
+        )
+        assert "companion" not in failing.structuredContent["message"].lower()
+
+        # THE MUTATION PERSISTED — read back through a *separate* session, so this is storage
+        # answering rather than the result object repeating itself.
+        async with deck_db() as observing:
+            deck = await DeckRepository(observing).get_deck_with_cards(deck_id)
+        assert deck is not None
+        assert [entry.card_id for entry in deck.deck_cards] == ["card-bolt"]
+
+        # THE NON-VACUITY: the POST was really sent. Without this the row is indistinguishable from
+        # one where the emit never happened — which is the failure mode a swallow makes silent.
+        assert len(stub.posts) == 1, (
+            f"expected exactly one POST (a 500 is terminal — FR-12's retry is spent on a refused "
+            f"CREDENTIAL alone), got {len(stub.posts)}"
+        )
+        assert stub.posts[0].request_line.startswith("POST /agent/events "), stub.posts[0]
+        body = json.loads(stub.posts[0].body)
+        assert body["kind"] == "deck_changed"
+        assert body["payload"]["deck_id"] == deck_id, (
+            "the emit that failed was still the right one — a swallowed wrong event would look "
+            "identical from the tool's side"
+        )
+        # …and the probe really ran first, which is what makes this a post-identity-gate failure.
+        assert any(request.request_line.startswith("GET /health ") for request in stub.requests)
+
+    async def test_a_wedged_backend_pays_the_bound_and_the_mutation_still_returns_ok(
+        self, deck_db, sockets
+    ):
+        """A listener that answers and then never finishes: the mutation waits ~1 s, then shrugs.
+
+        This is AD-9's ~1 s bound as a **measured** fact rather than a constant read out of the
+        source, and it is the one row in this file whose evidence is an elapsed time.
+
+        ⚠️ **The socket is ``drip()``, and ``silent()`` was tried first and rejected — measured.**
+        A silent listener (accepts into the kernel's backlog, never calls ``accept()``) is the
+        obvious spelling of "wedged", and it cannot tell the notify budget from the *absence* of
+        one: ``PROBE_TIMEOUT``'s own ``read=2.0`` ends that exchange, so dropping
+        ``_NOTIFY_TOTAL_SECONDS`` moves the call from ~1 s to ~2 s and any ceiling loose enough not
+        to flake is loose enough to miss it. The firing probe for this row proved exactly that —
+        the planted regression stayed green. ``drip()`` answers headers and then feeds body bytes
+        every 20 ms forever, so **no per-read deadline can ever fire** and only a whole-operation
+        deadline can end it: ~1 s with the notify budget, ~5 s
+        (``client._PROBE_TOTAL_SECONDS``) without. A five-fold separation instead of a two-fold
+        one, which is what makes the ceiling below both safe and meaningful.
+        """
+        port = sockets.drip()
+
+        server = build_server(session_factory=deck_db)
+        async with create_connected_server_and_client_session(server) as session:
+            baseline, failing, deck_id, elapsed = await _add_twice_across_a_planted_failure(
+                session, lambda: plant_discovery(port=port, instance_id="wedged")
+            )
+
+        assert failing.isError is False
+        assert failing.structuredContent == baseline.structuredContent, (
+            "a wedged backend altered the mutation's own structured result"
+        )
+
+        async with deck_db() as observing:
+            deck = await DeckRepository(observing).get_deck_with_cards(deck_id)
+        assert deck is not None
+        assert [entry.card_id for entry in deck.deck_cards] == ["card-bolt"]
+
+        # THE BOUND, FROM BOTH SIDES, and the two numbers tell three outcomes apart:
+        #   * below the floor -> the client never really dialled (a short-circuit, and the row
+        #     would be proving nothing about the swallow);
+        #   * inside the window -> `_NOTIFY_TOTAL_SECONDS` (1.0 s) ended it, which is the claim;
+        #   * above the ceiling -> the notify budget was bypassed and `_PROBE_TOTAL_SECONDS`
+        #     (5.0 s) is what stopped the wait — the exact regression AD-9 forbids, since a
+        #     mutation tool's answer is held up by this await.
+        # 3 s rather than 1.1 s so a loaded CI runner's scheduling jitter can never flake the row,
+        # and still two full seconds clear of the 5 s regression.
+        assert elapsed >= 0.9, (
+            f"the mutation returned in {elapsed:.3f}s — too fast to have dialled the wedged port "
+            "at all, so this row proves nothing about the swallow"
+        )
+        assert elapsed < 3.0, (
+            f"the mutation took {elapsed:.3f}s; AD-9's ~1 s notify bound did not apply and the "
+            "5 s probe deadline is what ended it"
         )
 
 

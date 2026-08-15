@@ -618,6 +618,27 @@ async def notify_deck_changed(
     already one of the five tokens by the time it reaches here, logged at DEBUG by the functions
     this one delegates to; nothing about that logging changes.
 
+    **What the swallow costs, named rather than left implicit (c7-7).** The ruling is AD-9
+    (``ARCHITECTURE-SPINE.md:211``), and it is written into the **two** sites that actually swallow:
+    here, and :func:`src.mcp_server.server._emit_deck_changed`, which awaits this function and
+    discards its outcome. The two are deliberate copies of one rule rather than one prose home and a
+    pointer, because a reader debugging a stale deck view arrives at whichever of them they are
+    standing in — but they are copies, so **an amendment starts at the spine and changes both**.
+    Every token but
+    ``displayed`` means the mutation committed and the glass did not hear about it, so the deck view
+    is **stale until the next event or a WebSocket reconnect**. That window is **accepted behaviour
+    until FR-16**, not a defect this function may close: out-of-band change detection is a later
+    phase, and until it ships the UI deliberately shows **no staleness warning** — no banner, no
+    dimmed header, no "may be out of date" token in the closed ``reason`` set. ``EXPERIENCE.md``'s
+    Flow 1 failure path states the same promise from the user's side (*"the deck view is stale
+    until the next event or reconnect; no error surfaces"*). So the correct behaviour on a failed
+    notify is exactly what happens below — log it and return a token nobody acts on. Do not add a
+    retry beyond :func:`_once_then_retry`'s single re-probe, a persistent queue, or any surfacing
+    path; each would trade AD-9's "the mutation never pays for the companion" for a window FR-16 is
+    scheduled to close properly. The reconnect refetch (``ui/src/state/connection.ts`` — the
+    FRONTEND tree, not this package's ``src/``) is what actually heals a missed event today, and it
+    is the only healer this design has.
+
     Args:
         deck_id: The deck that changed, or ``None`` meaning "refetch whatever is active" — the
             payload's own nullable contract (:class:`~src.companion.contracts.DeckChangedPayload`),

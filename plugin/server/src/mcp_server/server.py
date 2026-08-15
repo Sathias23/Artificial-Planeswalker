@@ -113,6 +113,21 @@ async def _emit_deck_changed(deck_id: str | None) -> None:
 
     The outcome never alters the tool's own result: the notifier never raises (AD-9), and all this
     function does with the :class:`~src.companion.client.PushOutcome` is debug-log it.
+
+    **The accepted staleness window, stated where it is created (c7-7).** The ruling is AD-9
+    (``ARCHITECTURE-SPINE.md:211``), and its twin copy lives on
+    :func:`src.companion.client.notify_deck_changed`, the function this one awaits — same rule,
+    stated at both sites that swallow so a reader arrives at it from either. **An amendment starts
+    at the spine and changes both.** When this emit does
+    not land — the companion is closed, the POST is refused, the backend answers 500, the one-second
+    budget expires — the database has already changed and the glass has not heard about it. The deck
+    view is then **stale until the next event or a WebSocket reconnect**, and *that is expected
+    behaviour, not a defect to repair here*: out-of-band change detection is a later phase (FR-16),
+    and until it ships the UI shows **no staleness warning of any kind** — the silence is
+    deliberate, ruled at AD-9 and written into ``EXPERIENCE.md``'s Flow 1 failure path (*"the deck
+    view is stale until the next event or reconnect; no error surfaces"*). Nothing in this function
+    may grow a retry loop, a queue, a status field or a user-visible warning to close that window;
+    the mutation's own result stays byte-identical to the no-companion baseline either way.
     """
     outcome = await _notify_deck_changed(deck_id)
     logger.debug(
