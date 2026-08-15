@@ -63,8 +63,10 @@ import { deckUpdatedAnnouncement } from './copy'
  * the two lines below: `seen` advances to `settles` on a suppressed settle exactly as it does
  * on a spoken one, so what the gate drops is the SENTENCE, never the observation. Announcing on
  * close would speak a count whose moment has passed, at the moment the reader is returning from
- * a dialog about something else — and it would put text into a region the App censuses pin
- * empty behind a modal. The next real refetch is the next real announcement.
+ * a dialog about something else — and it would put text into a region the c7-6 App tests pin
+ * empty behind a modal (the drop/resume walk and the flipped c7-5 row; the two App live-region
+ * CENSUSES pin shapes at rest and mid-flight, not this). The next real refetch is the next real
+ * announcement.
  *
  * The clearing branch below is deliberately NOT gated: a deck that departs while a view is open
  * must still empty a standing sentence, because that sentence's claim is false the instant its

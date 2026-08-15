@@ -4485,6 +4485,34 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
     expect(document.activeElement).toBe(headline())
   })
 
+  it('hands focus from a FLIP CONTROL the same way — the third focusable AC 3 names (AC 3)', async () => {
+    // The one departing focusable the AC names that the tile and deck-row rows do not stand in
+    // for, because it does not exist at mount: a flip control GROWS when the hydration sweep
+    // answers a two-faced record (`card_faces` lives only in the full card), so this row boots a
+    // Pathway deck and waits for the sweep — the c7-4 back-face test's exact arrangement.
+    const PATHWAY = 'Clearwater Pathway // Murkwater Pathway'
+    booting(
+      activeDeck(ATRAXA_DECK_ID),
+      deckDetail({
+        cards: [deckCard(PATHWAY, 'Land // Land'), deckCard('Forest', 'Basic Land — Forest', 10)],
+      }),
+    )
+    const fetchMock = answering(decks(ATRAXA_NAME))
+    render(<App />)
+    await settle()
+    await connect()
+    await advance(20)
+    const flip = document.querySelector<HTMLElement>('.flip-control')
+    expect(flip, 'no flip control — the Pathway did not hydrate as a DFC').not.toBeNull()
+    act(() => flip!.focus())
+    expect(document.activeElement).toBe(flip)
+
+    await deleteActiveDeck(fetchMock, 'Boros Aggro')
+
+    expect(flip!.isConnected).toBe(false)
+    expect(document.activeElement).toBe(headline())
+  })
+
   it('DECLINES when something outside the deck surface holds focus (AC 3)', async () => {
     // `SkipLink.tsx:112-116`'s ruling at the surface's scale: moving focus that something else
     // already holds would be this effect reversing a decision it did not make. The footer link
@@ -4516,6 +4544,30 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
 
     expect(document.activeElement).toBe(pill)
     expect(pill.isConnected).toBe(true)
+  })
+
+  it('declines for an agent-views NAV PILL too — the header survivor the matrix names (AC 3)', async () => {
+    // The matrix's decline row reads "Header/footer/nav pill focused", and the c6-8 reopen pill
+    // is a DIFFERENT element from the connection pill above: it lives in the header's nav, it
+    // only exists once a kind has pushed, and it is exactly where a keyboard user is standing
+    // when they are about to re-open a view. It survives the transition — the header renders
+    // outside the `kind === 'deck'` gate — so the rescue must leave it alone.
+    const fetchMock = await bootedDeck()
+    await push('suggestions', { title: 'Resilience options', items: [] })
+    act(() => screen.getByRole('button', { name: CLOSE_PILL_LABEL }).click())
+    expect(dialog()).toBeNull()
+    const navPill = document.querySelector<HTMLElement>('.agent-views-nav-pill')
+    expect(navPill, 'no nav pill — the push did not register a retained kind').not.toBeNull()
+    act(() => navPill!.focus())
+    expect(document.activeElement).toBe(navPill)
+
+    await deleteActiveDeck(fetchMock, 'Boros Aggro')
+
+    expect(screen.getByRole('region', { name: NO_DECK })).toBeVisible()
+    expect(document.activeElement).toBe(navPill)
+    expect(navPill!.isConnected).toBe(true)
+    // No residue on the headline: the rescue declined, so `focusHome` never ran.
+    expect(headline()?.hasAttribute('tabindex')).toBe(false)
   })
 
   // ==================== AC 4 — THE TAB ORDER ACROSS THE TRANSITION =====================
@@ -4553,6 +4605,14 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
     // says so, citing `deferred-work.md:45`), so a `tabindex="-1"` shows up in the list above
     // while being unreachable by Tab. It is asserted by VALUE rather than filtered out, because
     // the day that attribute is written as `0` this test is where it should fail.
+    //
+    // ⚠️ AND THE RESCUE FIRED HERE THROUGH THE ACCEPTED RESIDUE, DELIBERATELY LEFT SO (review,
+    // 2026-08-15). Nothing in this test ever focuses anything, so `activeElement` is `<body>`
+    // throughout and the rescue fires via the residue path the App.tsx Design Notes record —
+    // "if focus was already on `<body>`, this still moves it to the headline". These two
+    // assertions therefore pin that residue as well as the rescue: if the residue is ever
+    // guarded against (a `heldFocus`-style sample), THIS test is the one that breaks, and the
+    // fix is to focus a tile in the arrange step, not to weaken the assertions.
     const withTabIndex = after.filter((el) => el.hasAttribute('tabindex'))
     expect(withTabIndex).toEqual([headline()])
     expect(withTabIndex[0].getAttribute('tabindex')).toBe('-1')
