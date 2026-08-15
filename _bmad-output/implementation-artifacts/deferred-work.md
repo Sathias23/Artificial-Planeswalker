@@ -4787,6 +4787,17 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   sees a red pill appear while a screen-reader user is told nothing. **Home: c7-5**, which already
   owns *"the change is announced once, and motion is never the only signal"* together with its
   reduced-motion fallback. (Severity: Low today — unreachable; Medium the day the refetch lands.)
+  **STILL OPEN after c7-5 (PR #79, merged 2026-08-15 at `dac0bdc`) — the home was declined, with
+  reason.** c7-3 has since wired `deck_changed`, so this is now reachable, not hypothetical: the
+  check is a separate async request keyed on detail identity (`App.tsx:342-346`) and settles
+  *after* the deck does. c7-5 built the one announcement UX-DR45 licenses — *"Deck updated — N
+  cards"* — and announcing a check flip would be a **second** per-refetch announcement arriving
+  later, in direct tension with that story's own announce-once AC; no artefact specifies its copy
+  or its region, and c7-5 had no mandate to invent either. **This needs a human UX ruling before
+  any story can home it** — roughly: (a) fold the verdict into the single announcement (blocks it
+  on the slower request), (b) license a second, separately-worded region for legality only, or
+  (c) rule the pill's own appearance sufficient and close this. Until then it is **unowned**, not
+  c7-6's. (Severity: Medium — now reachable.)
 
 - **The header legality pill was predicted twice and does not exist** (Q4b). `ui/README.md:1344`
   and `:1396` both asserted that c4-10 would add a `standard legal` pill beside the header's format
