@@ -61,7 +61,7 @@ describe('the deck announcement is the artefacts’ own sentence (UX-DR45)', () 
     // and turn the file into tautologies — the failure mode every guard review here has found.
     expect(epic.length).toBeGreaterThan(1000)
     expect(experience.length).toBeGreaterThan(1000)
-    expect(epic).toContain('Story 7.5')
+    expect(epic).toContain('Story 14.5')
     expect(experience).toContain('once per coalesced refetch')
   })
 

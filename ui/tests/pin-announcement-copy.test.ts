@@ -98,7 +98,7 @@ describe('the pin announcement is the epic’s own template (AC 23, UX-DR45)', (
     // reviews have found in every guard they looked at.
     expect(epic.length).toBeGreaterThan(1000)
     expect(experience.length).toBeGreaterThan(1000)
-    expect(epic).toContain('Story 4.5: Persistent card detail panel')
+    expect(epic).toContain('Story 11.5: Persistent card detail panel')
     expect(experience).toContain('The card detail panel = `role="region"` labeled "Card detail"')
   })
 
