@@ -1,0 +1,87 @@
+[
+  {
+    "surfaces": {
+      "header": 38.5,
+      "grid": 108.90000003576279,
+      "curve": 108.90000003576279,
+      "colour": 108.90000003576279,
+      "deck-list": 108.90000003576279,
+      "format-check": 419.80000001192093
+    },
+    "missing": [],
+    "observer_error": null,
+    "layout_ms": 419.80000001192093,
+    "requests_total": 214,
+    "card_reads": 99,
+    "format_check_queue_position": 107,
+    "format_check_start_ms": 103.60000002384186
+  },
+  {
+    "surfaces": {
+      "header": 37.90000003576279,
+      "grid": 92,
+      "curve": 92,
+      "colour": 92,
+      "deck-list": 92,
+      "format-check": 516.9000000357628
+    },
+    "missing": [],
+    "observer_error": null,
+    "layout_ms": 516.9000000357628,
+    "requests_total": 214,
+    "card_reads": 99,
+    "format_check_queue_position": 107,
+    "format_check_start_ms": 86.5
+  },
+  {
+    "surfaces": {
+      "header": 37.30000001192093,
+      "grid": 88,
+      "curve": 88,
+      "colour": 88,
+      "deck-list": 88,
+      "format-check": 421.10000002384186
+    },
+    "missing": [],
+    "observer_error": null,
+    "layout_ms": 421.10000002384186,
+    "requests_total": 214,
+    "card_reads": 99,
+    "format_check_queue_position": 107,
+    "format_check_start_ms": 83.10000002384186
+  },
+  {
+    "surfaces": {
+      "header": 36,
+      "grid": 87.5,
+      "curve": 87.5,
+      "colour": 87.5,
+      "deck-list": 87.5,
+      "format-check": 409.19999998807907
+    },
+    "missing": [],
+    "observer_error": null,
+    "layout_ms": 409.19999998807907,
+    "requests_total": 214,
+    "card_reads": 99,
+    "format_check_queue_position": 107,
+    "format_check_start_ms": 82.19999998807907
+  },
+  {
+    "surfaces": {
+      "header": 37.30000001192093,
+      "grid": 89.30000001192093,
+      "curve": 89.30000001192093,
+      "colour": 89.30000001192093,
+      "deck-list": 89.30000001192093,
+      "format-check": 377.5999999642372
+    },
+    "missing": [],
+    "observer_error": null,
+    "layout_ms": 377.5999999642372,
+    "requests_total": 214,
+    "card_reads": 99,
+    "format_check_queue_position": 107,
+    "format_check_start_ms": 84
+  }
+]
