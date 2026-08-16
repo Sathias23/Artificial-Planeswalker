@@ -36,11 +36,13 @@ Registration is transport-agnostic: the transport string is selected only at the
 entry point (``src/mcp_server/__main__.py``), never here (AC2 / D7).
 """
 
+import logging
 from typing import Literal
 
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.companion.client import notify_deck_changed as _notify_deck_changed
 from src.companion.contracts import SuggestionsPayload
 from src.data.database import create_engine, create_session_factory
 from src.mcp_server.tools.assess_deck_power import AssessDeckPowerResult
@@ -94,6 +96,46 @@ from src.mcp_server.tools.semantic_search import semantic_search_cards as _seman
 from src.mcp_server.tools.view_deck import ViewDeckResult
 from src.mcp_server.tools.view_deck import view_deck as _view_deck_helper
 from src.search import ConnectionFactory, Embedder, get_embedder
+
+logger = logging.getLogger(__name__)
+
+
+async def _emit_deck_changed(deck_id: str | None) -> None:
+    """Tell the companion a deck's contents changed — after the commit, never inside it (c7-2).
+
+    The one wire between the five deck-mutation tools and c7-1's shared notifier
+    (:func:`src.companion.client.notify_deck_changed`). Each mutation wrapper awaits this *after*
+    its ``async with session_factory()`` block has exited — every commit has landed and the pooled
+    connection is released before the up-to-~1 s notify window opens — and only when its result
+    proves a write actually happened. A plain bounded await, deliberately never a detached task
+    (``create_task``/``ensure_future``/``TaskGroup``/``gather`` are banned on this path — a task
+    outliving the tool call can be torn down before it runs, silently losing the event).
+
+    The outcome never alters the tool's own result: the notifier never raises (AD-9), and all this
+    function does with the :class:`~src.companion.client.PushOutcome` is debug-log it.
+
+    **The accepted staleness window, stated where it is created (c7-7).** The ruling is AD-9
+    (``ARCHITECTURE-SPINE.md:211``), and its twin copy lives on
+    :func:`src.companion.client.notify_deck_changed`, the function this one awaits — same rule,
+    stated at both sites that swallow so a reader arrives at it from either. **An amendment starts
+    at the spine and changes both.** When this emit does
+    not land — the companion is closed, the POST is refused, the backend answers 500, the one-second
+    budget expires — the database has already changed and the glass has not heard about it. The deck
+    view is then **stale until the next event or a WebSocket reconnect**, and *that is expected
+    behaviour, not a defect to repair here*: out-of-band change detection is a later phase (FR-16),
+    and until it ships the UI shows **no staleness warning of any kind** — the silence is
+    deliberate, ruled at AD-9 and written into ``EXPERIENCE.md``'s Flow 1 failure path (*"the deck
+    view is stale until the next event or reconnect; no error surfaces"*). Nothing in this function
+    may grow a retry loop, a queue, a status field or a user-visible warning to close that window;
+    the mutation's own result stays byte-identical to the no-companion baseline either way.
+    """
+    outcome = await _notify_deck_changed(deck_id)
+    logger.debug(
+        "deck_changed emit for deck_id=%s -> %s (clients=%s)",
+        deck_id,
+        outcome.outcome,
+        outcome.clients,
+    )
 
 
 def build_server(
@@ -252,9 +294,12 @@ def build_server(
             A result whose ``status`` is ``ok`` (``deck`` populated) or ``invalid``.
         """
         async with session_factory() as session:
-            return await _create_deck_helper(
+            result = await _create_deck_helper(
                 session, name=name, format=format, strategy=strategy, tags=tags
             )
+        if result.status == "ok" and result.deck is not None:
+            await _emit_deck_changed(result.deck.id)
+        return result
 
     @mcp.tool()
     async def load_deck(deck_id: str) -> DeckResult:
@@ -287,7 +332,10 @@ def build_server(
             A result whose ``status`` is ``ok`` (deleted) or ``not_found``.
         """
         async with session_factory() as session:
-            return await _delete_deck_helper(session, deck_id=deck_id)
+            result = await _delete_deck_helper(session, deck_id=deck_id)
+        if result.status == "ok":
+            await _emit_deck_changed(result.deck_id)
+        return result
 
     @mcp.tool()
     async def add_card_to_deck(
@@ -321,7 +369,7 @@ def build_server(
             ``deck_not_found``/``card_not_found``/``ambiguous``/``invalid``).
         """
         async with session_factory() as session:
-            return await _add_card_to_deck_helper(
+            result = await _add_card_to_deck_helper(
                 session,
                 deck_id=deck_id,
                 card_id=card_id,
@@ -330,6 +378,9 @@ def build_server(
                 sideboard=sideboard,
                 commander=commander,
             )
+        if result.status == "ok":
+            await _emit_deck_changed(result.deck_id)
+        return result
 
     @mcp.tool()
     async def import_decklist(deck_id: str, arena_export: str) -> DeckImportResult:
@@ -354,9 +405,14 @@ def build_server(
             A structured summary with imported line/copy totals and per-line outcomes.
         """
         async with session_factory() as session:
-            return await _import_decklist_helper(
+            result = await _import_decklist_helper(
                 session, deck_id=deck_id, arena_export=arena_export
             )
+        # One emit per tool call, not per imported line — the helper's per-line delegation to
+        # add_card_to_deck commits N times, and the glass needs to hear "changed" exactly once.
+        if result.imported_lines > 0:
+            await _emit_deck_changed(result.deck_id)
+        return result
 
     @mcp.tool()
     async def remove_card_from_deck(
@@ -382,13 +438,16 @@ def build_server(
             ``deck_not_found``/``card_not_found``/``ambiguous``/``invalid``).
         """
         async with session_factory() as session:
-            return await _remove_card_from_deck_helper(
+            result = await _remove_card_from_deck_helper(
                 session,
                 deck_id=deck_id,
                 card_id=card_id,
                 name=name,
                 sideboard=sideboard,
             )
+        if result.status == "ok":
+            await _emit_deck_changed(result.deck_id)
+        return result
 
     @mcp.tool()
     async def view_deck(deck_id: str, open_browser: bool = True) -> ViewDeckResult:

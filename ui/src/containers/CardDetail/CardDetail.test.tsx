@@ -646,7 +646,7 @@ describe('pin, release, and the one announcement (AC 19–AC 23)', () => {
   })
 })
 
-describe('the deck transition is where an inspection dies (review 2026-08-05)', () => {
+describe('the deck transition is where an inspection dies (review 2026-08-05, amended c7-4)', () => {
   it('clears a pin and a stale hover when the deck is REPLACED', () => {
     // FR-22 deck loads are live: the agent calls `load_deck` and the glass follows with no
     // refresh. Without this clearing, a pin from deck A outranks deck B's cold-open target
@@ -654,6 +654,11 @@ describe('the deck transition is where an inspection dies (review 2026-08-05)', 
     // tile, and only a manual Esc recovers. The stale-HOVER twin is the same defect without
     // even a control to notice it by: a hovered tile unmounted by the reload fires no
     // `mouseleave`, so `hoveredId` would keep pointing at the removed card.
+    //
+    // SURVIVES THE c7-4 RULE CHANGE UNCHANGED, and honestly: eviction is now the R9 membership
+    // transition rather than the retired reference comparison, and ATRAXA genuinely satisfies
+    // it — in the departing deck's list, absent from deck B's. The transients' unconditional
+    // clear on replacement is status quo no ruling overturned.
     seedSummary(ATRAXA)
     seedSummary('id-Elves', { name: 'Llanowar Elves', type_line: 'Creature — Elf Druid' })
     const view = render(<CardDetail boards={oneCardDeck} />)
@@ -675,8 +680,11 @@ describe('the deck transition is where an inspection dies (review 2026-08-05)', 
   it('does NOT clear across a remount of the SAME deck — the pin still outlives the panel', () => {
     // The other half, and the reason the deck memory is module-scope rather than a ref: the
     // panel unmounts on every surface flip (a backend hiccup puts a state panel on the glass),
-    // and FR-17's pin must survive the round trip. Identity is the `boards` reference, which
-    // `deck.ts` derives once per deck write — a remount of the same deck clears nothing.
+    // and FR-17's pin must survive the round trip. `rememberBoards` keys the TRANSITION on the
+    // `boards` reference, which `deck.ts` derives once per deck write — a remount of the same
+    // reference returns no departing boards, so nothing clears. This is also the non-vacuity
+    // twin of the eviction test above: it is what proves the clear there fired for the
+    // membership transition and not for the mere act of re-rendering.
     seedSummary(ATRAXA)
     const first = render(<CardDetail boards={oneCardDeck} />)
     act(() => togglePin(ATRAXA))
@@ -684,6 +692,26 @@ describe('the deck transition is where an inspection dies (review 2026-08-05)', 
 
     render(<CardDetail boards={oneCardDeck} />)
     expect(useInspectionStore.getState().pinnedId).toBe(ATRAXA)
+    expect(screen.getByText('Atraxa, Praetors’ Voice')).toBeVisible()
+  })
+
+  it('keeps a pin across a SAME-DECK refetch — new boards reference, card in both lists (c7-4)', () => {
+    // THE BEHAVIOUR CHANGE AT ITS SEAM. Before c7-4 every c7-3 settle minted a new `boards`
+    // reference and the reference-comparison eviction released the pin — the R9-closed defect.
+    // Under the membership rule the pinned card is in BOTH lists, so the pin survives; the
+    // TRANSIENTS still die (ephemeral by contract, stale by construction on any replacement).
+    seedSummary(ATRAXA)
+    seedSummary('id-Elves', { name: 'Llanowar Elves', type_line: 'Creature — Elf Druid' })
+    const view = render(<CardDetail boards={oneCardDeck} />)
+    act(() => togglePin(ATRAXA))
+    act(() => setHovered(ATRAXA))
+
+    // The refetched deck: a NEW derivation (new reference) that still contains the pinned card.
+    const refetched = boardsOf([row(ATRAXA), row('id-Elves', { name: 'Llanowar Elves' })])
+    view.rerender(<CardDetail boards={refetched} />)
+
+    expect(useInspectionStore.getState().pinnedId).toBe(ATRAXA)
+    expect(useInspectionStore.getState().hoveredId).toBeNull()
     expect(screen.getByText('Atraxa, Praetors’ Voice')).toBeVisible()
   })
 })

@@ -332,7 +332,7 @@
      Accent glow fade                    -> glow omitted; count text + live region
                                             carry the signal                        (c7-5)
      Refetch header shimmer              -> static "Updating…" in --type-micro
-                                            / --text-secondary                      (c7-5)
+                                            / --text-secondary                      (c7-4)
      DFC flip 3D Y-rotation              -> instant face swap                       (c4-6)
      Detail-panel content swap           -> instant, no crossfade (it changes on
                                             every hover)                            (c4-5)
@@ -494,5 +494,52 @@
      `AgentView.css` carries the same reasoning beside the rule it neutralises. */
   .agent-view[data-entering='true'] {
     transform: none !important;
+  }
+
+  /* ---- c7-4, THE REFETCH HEADER SHIMMER — THE FIRST REGISTRATION THAT SWAPS A SIGNAL IN
+     RATHER THAN MERELY SWITCHING ONE OFF -----------------------------------------------
+     UX-DR42's inventory row is at the top of this block: "Refetch header shimmer -> static
+     'Updating…' in --type-micro / --text-secondary (c7-4)". The shimmer ships as a NON-ANIMATED
+     veil (AppShell.css dims `.app-shell-identity` to 0.55 while `data-updating` is set, easing
+     over `--motion-glide`) — no keyframes, no transform, nothing looping — so the EASE is
+     already mechanical: zeroing `--motion-glide` above makes the dim instant.
+
+     But an instant dim is still the shimmer, and UX-DR42's fallback is a REPLACEMENT: the veil
+     goes, the words arrive. Two rules, and both halves live HERE because this block is the
+     single registration point (Decide-once #3):
+
+       The first restores the identity block to full strength. `!important` for the c4-4 hover
+       pop's measured reason, verbatim: this file is @imported first, the two selectors tie at
+       (0,2,0), and without it this override would parse cleanly and do nothing.
+
+       The second shows the static line AppShell.css ships `display: none` at every other
+       setting. No `!important` needed: three simple selectors beat that rule's one. */
+  .app-shell-identity[data-updating='true'] {
+    opacity: 1 !important;
+  }
+
+  .app-shell-identity[data-updating='true'] .app-shell-updating {
+    display: block;
+  }
+
+  /* ---- c7-5, THE QUANTITY-BADGE ACCENT GLOW — OMITTED, NOT MERELY INSTANT --------------
+     UX-DR42's inventory row is at the top of this block: "Accent glow fade -> glow omitted;
+     count text + live region carry the signal (c7-5)". The glow ships as a transition out of a
+     state attribute (QuantityBadge.css: the flashed rule paints `var(--glow)` instantly, the
+     base rule fades it out over `--motion-glide`) — no keyframes, no transform, nothing looping
+     — so the FADE is already mechanical: zeroing `--motion-glide` above makes it instant.
+
+     But an instant glow that never fades is a PERSISTENT glow — the opposite of "omitted", and
+     the exact trap this block's header describes: duration-zeroing neutralises motion, not
+     appearance. So the glow is switched off HERE, explicitly, on the flashed selector. The
+     signal survives its absence by design: the group-header count and c7-5's coalesced
+     `deck-announcement` region are the carriers, and the glow was only ever garnish (UX-DR16).
+
+     `!important` for the c4-4 hover pop's measured reason, verbatim: this file is @imported
+     first, the two selectors tie at (0,2,0), and without it this override would parse cleanly
+     and do nothing. The enumerated shipped-motion pin does NOT move — that pin is keyed on
+     transform-family declarations and this story adds none. */
+  .card-tile-quantity[data-flashed='true'] {
+    box-shadow: none !important;
   }
 }

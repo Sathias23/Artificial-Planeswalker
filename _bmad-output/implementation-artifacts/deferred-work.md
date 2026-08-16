@@ -1,5 +1,11 @@
 # Deferred Work
 
+> **Epic renumbering (2026-08-16):** the companion epics, formerly `c1`..`c10`, are now
+> **Epics 8..17** (c1=8, c2=9, c3=10, c4=11, c5=12, c6=13, c7=14, c8=15, c9=16, c10=17),
+> continuing the project's integer sequence (BMAD v6.11 requires integer epics). Historical
+> `cN-M` story ids in prose, filenames, PR titles and branch names are unchanged records of
+> merged work. See `sprint-change-proposal-2026-08-16.md`.
+
 ## Deferred from: code review of c6-7-suggestions-view (2026-08-11)
 
 > Findings from the bmad-code-review three-layer pass (Blind Hunter, Edge Case Hunter,
@@ -49,14 +55,14 @@
 > (the pills ship no `onKeyDown`, and a behavioural test pins the absence); the `{kind}` article
 > grammar entry is **RE-HOMED TO STORY 9.1** by Brad's Q7, with c6-8's vocabulary table recorded
 > as its first data point; and the C3-retro **F1 count is DISPLACED to zero** — the gate itself
-> stays c8-5's.
+> stays 15-5's.
 
 - source_spec: `_bmad-output/implementation-artifacts/c6-8-agent-views-nav-unread-markers-re-open-and-kind-switching.md`
   summary: "**The artefacts describe the quiet nav pill's copy as a \"tooltip\", singular, and that is a contradiction the system has already repaired once in the other direction.** UX-DR28 and AC 1 require the pill be NOT focusable and carry a tooltip; UX-DR39 bans hover-only disclosure of unique information and requires focus parity — and a non-focusable element cannot disclose on focus, so the two rules cannot both be satisfied by a `title` alone. The identical shape was caught on the connection pill by the 2026-07-22 accessibility review and repaired by amending UX-DR29 to focusable + `aria-describedby`; the nav pill never got that amendment. **c6-8 repaired it in code** under Brad's Q2 ruling — the pill stays `disabled` (UX-DR28 and UX-DR40's cold-open enumeration are explicit and load-bearing) and the sentence ships as BOTH a `title` and a visually-hidden `aria-describedby` target, so the information is in the accessibility tree and never hover-only in substance. EXPERIENCE.md's nav-pill row was amended in the same commit to record the mechanism and the reason. **What remains is the residue this story cannot fix from inside a story:** UX-DR28 itself, and the epic's AC 1, still say \"tooltip\" as though a pointer affordance were the whole requirement, so the next reader of those rules meets the contradiction again with no pointer to its resolution. **Home: Story 8.3's PRD reconciliation**, which is where peer-artefact disagreements of exactly this shape are collected — the repair is to amend UX-DR28 the way UX-DR29 was amended, naming the dual mechanism, rather than to change any code."
   evidence: '`review-accessibility.md:32` (the connection-pill repair this mirrors); UX-DR28 (`epics-companion-app.md:492`), UX-DR39 (`:585`), UX-DR29; the shipped dual mechanism in `ui/src/containers/AgentViewsNav/AgentViewsNav.tsx` and its reasoning in that directory''s `copy.ts`; the amended nav-pill row in `EXPERIENCE.md`, gated by `ui/tests/agent-views-nav-copy.test.ts` (which asserts the row still carries both the UX-DR39 clause and the "programmatic description" wording, so the reason cannot be quietly dropped).'
 
 - source_spec: `_bmad-output/implementation-artifacts/c6-8-agent-views-nav-unread-markers-re-open-and-kind-switching.md`
-  summary: "**The header nav pills join the app's unviewed-pixels surface, extending c6-7's declaration to a component that is on EVERY screen rather than inside an overlay.** jsdom evaluates no stylesheet, resolves no layout and renders no tooltip, so every visual claim this story makes is asserted as SOURCE: that the quiet pill is `text-tertiary` and not an opacity dim, that the dot is 8px `--accent`, that both type roles ship with their companion declarations, that the hover arm excludes `:disabled`, that the pill declares 24px on both axes. Five specific things remain unchecked by anything. (1) Whether four uppercase `--type-label` pills plus a kicker plus the identity block and badges actually FIT the header at 1100px — the row wraps by design, and nobody has seen whether it does. (2) Whether the quiet `text-tertiary` reads as *\"nothing here yet\"* rather than as *\"broken\"* when three of the four pills are quiet, which is the ordinary production state until Epic 9. (3) Whether the 8px accent dot is findable at a glance beside 11px uppercase text — the connection pill's dot sits beside 14px body text, which is the sibling it cites. (4) Whether the `--type-micro` timestamp after a `--type-label` name reads as one control or as two. (5) Whether the browser renders a `title` tooltip on a `disabled` button at all, which varies by engine and is the pointer half of Q2's dual mechanism (the accessibility-tree half is asserted). **Home: the C6 manual checklist (c8-6)**, which already carries C5's un-run Block J and c6-7's rows."
+  summary: "**The header nav pills join the app's unviewed-pixels surface, extending c6-7's declaration to a component that is on EVERY screen rather than inside an overlay.** jsdom evaluates no stylesheet, resolves no layout and renders no tooltip, so every visual claim this story makes is asserted as SOURCE: that the quiet pill is `text-tertiary` and not an opacity dim, that the dot is 8px `--accent`, that both type roles ship with their companion declarations, that the hover arm excludes `:disabled`, that the pill declares 24px on both axes. Five specific things remain unchecked by anything. (1) Whether four uppercase `--type-label` pills plus a kicker plus the identity block and badges actually FIT the header at 1100px — the row wraps by design, and nobody has seen whether it does. (2) Whether the quiet `text-tertiary` reads as *\"nothing here yet\"* rather than as *\"broken\"* when three of the four pills are quiet, which is the ordinary production state until Epic 9. (3) Whether the 8px accent dot is findable at a glance beside 11px uppercase text — the connection pill's dot sits beside 14px body text, which is the sibling it cites. (4) Whether the `--type-micro` timestamp after a `--type-label` name reads as one control or as two. (5) Whether the browser renders a `title` tooltip on a `disabled` button at all, which varies by engine and is the pointer half of Q2's dual mechanism (the accessibility-tree half is asserted). **Home: the C6 manual checklist (15-6)**, which already carries C5's un-run Block J and c6-7's rows."
   evidence: 'The "WHAT THIS SUITE CANNOT CARRY" header in `ui/src/containers/AgentViewsNav/AgentViewsNav.test.tsx`; P15 (the jsdom class-vs-token hole) from `epic-c5-retro-2026-08-09.md`; R11 (Block J ruled NOT RUN); the c6-7 entry below, which this one extends rather than duplicates — that surface is inside an overlay the user opens, this one is on the glass permanently.'
 
 ## Deferred from: c6-7-suggestions-view (2026-08-11)
@@ -74,11 +80,11 @@
 > its own terms asked for after three declines and one mis-homing.
 
 - source_spec: `_bmad-output/implementation-artifacts/c6-7-suggestions-view.md`
-  summary: "**A pinned suggestion is usually a card that is NOT in the open deck, and Epic 7's eviction rule was written as though every pin were.** UX-DR35 says a pinned target *\"that no longer exists in the deck falls back to transient\"* — written for deck cards, before any surface could pin a non-deck one. Read literally against c6-7's rows, the next `deck_changed` refetch would evict every pinned suggestion the moment the deck's card list changed, which reads as a bug against this story's own AC 2 (*\"a pinned target survives closing the view\"*) and against UJ-1 step 6: the user pins a suggested card precisely BECAUSE it is not in the deck yet. Nothing evicts today — refetch coalescing is Epic 7's and unbuilt — so there is no live defect and this story writes no code for it. **Home: Epic 7's refetch story**, which is where the decision has the eviction machinery in front of it: rule either that eviction applies only to pins whose card was in the DEPARTING deck's list, or that a pin on a non-deck card always survives. c6-7's `App.test.tsx` pin-survives-close test stands as the regression tripwire in the meantime."
+  summary: "**A pinned suggestion is usually a card that is NOT in the open deck, and Epic 7's eviction rule was written as though every pin were.** UX-DR35 says a pinned target *\"that no longer exists in the deck falls back to transient\"* — written for deck cards, before any surface could pin a non-deck one. Read literally against c6-7's rows, the next `deck_changed` refetch would evict every pinned suggestion the moment the deck's card list changed, which reads as a bug against this story's own AC 2 (*\"a pinned target survives closing the view\"*) and against UJ-1 step 6: the user pins a suggested card precisely BECAUSE it is not in the deck yet. Nothing evicts today — refetch coalescing is Epic 7's and unbuilt — so there is no live defect and this story writes no code for it. **Home: Epic 7's refetch story**, which is where the decision has the eviction machinery in front of it: rule either that eviction applies only to pins whose card was in the DEPARTING deck's list, or that a pin on a non-deck card always survives. c6-7's `App.test.tsx` pin-survives-close test stands as the regression tripwire in the meantime. **RULED (Brad, 2026-08-14 — C6 R9): the FIRST option, eviction is a membership transition.** A pin is evicted only when its card was in the DEPARTING deck's list and is absent from the new one — a pin on a card that was never in the deck (every pinned suggestion) survives as a natural consequence, statelessly, with no pin-time classification (the second option's grandfathering edge: a suggestion pinned, then added to the deck, then removed, would have survived a removal it shouldn't). UX-DR35's wording amended in `epics-companion-app.md` at the DR itself and at Story 7.4's ACs, which also gained the suggestion-pin-survives AC — the real regression test this entry was owed. **Home discharged to c7-4's ACs; entry CLOSES when that AC's test ships.** **CLOSED 2026-08-15: c7-4 shipped the test (PR #78, merged at `0bfaf57`) — `App.test.tsx` \"keeps a pinned SUGGESTION — a card in neither list — through a completed refetch\" drives a real `deck_changed` refetch against a pin on `id-Birds of Paradise` (verified absent from every deck fixture), plus the `inspection.test.ts` absent→absent truth-table row; the R9 membership rule itself ships as `evictDepartedPin` and the pin-survival half is firing-proof-planted (unconditional `clearPin()` → 3 RED).**"
   evidence: 'Recorded at story creation and confirmed during implementation; UX-DR35; `EXPERIENCE.md:188` (UJ-1 step 6); `ui/src/state/inspection.ts` (nothing in the slice reads the deck); `ui/src/App.test.tsx`, "ESC CLOSES THE VIEW AND THE PIN SET FROM A ROW SURVIVES". Brad ruled Q7 as recommended (2026-08-11): file the boundary note, write no code here. **Citation corrected by code review (2026-08-11):** the named App test covers only the PIN-SURVIVES-CLOSE half of AC 2 — it never drives a `deck_changed` event, so it is not itself a tripwire for the eviction question this entry is about. The "nothing evicts today" claim rests on Epic 7''s refetch/eviction machinery being unbuilt (confirmed by `inspection.ts` reading no deck state), not on any shipped test exercising that path — Epic 7''s refetch story is still the one that owes a real regression test for whichever way it rules.'
 
 - source_spec: `_bmad-output/implementation-artifacts/c6-7-suggestions-view.md`
-  summary: "**The suggestion row is the app's first surface whose pixels no human has seen, and the guards that cover it are all source reads.** `DESIGN.md:444` lists the Suggestion row among the components *\"specified here without a visual precedent\"* — there are no composition-reference pixels to compare against — and Block J of the C5 manual checklist was RULED NOT RUN by Brad, so the whole agent-view surface has shipped unviewed. jsdom evaluates no stylesheet, resolves no layout and loads no images, so every visual claim this story makes is asserted as SOURCE: that the stylesheet spends no `--accent-dim`, no `--radius-card` and no `aspect-ratio`; that the type roles ship with their companion declarations; that the one `px` literal carries its citation. Four specific things remain unchecked by anything: whether `--accent` at 5.5:1 reads as a live marker over the row's own `--accent-glow` tint; whether the content-driven row height produces a thumbnail of a sensible WIDTH at the view's real measure (the height derives from two text lines, and the width from 63:88, so a tighter line height makes a narrower card); whether a 200-character reason ellipsizes at a useful point; and whether the badge, name, pips and confidence sit on one optical line given three different type roles. **Home: the C6 manual checklist (c8-6)**, carrying C5's Block J with it."
+  summary: "**The suggestion row is the app's first surface whose pixels no human has seen, and the guards that cover it are all source reads.** `DESIGN.md:444` lists the Suggestion row among the components *\"specified here without a visual precedent\"* — there are no composition-reference pixels to compare against — and Block J of the C5 manual checklist was RULED NOT RUN by Brad, so the whole agent-view surface has shipped unviewed. jsdom evaluates no stylesheet, resolves no layout and loads no images, so every visual claim this story makes is asserted as SOURCE: that the stylesheet spends no `--accent-dim`, no `--radius-card` and no `aspect-ratio`; that the type roles ship with their companion declarations; that the one `px` literal carries its citation. Four specific things remain unchecked by anything: whether `--accent` at 5.5:1 reads as a live marker over the row's own `--accent-glow` tint; whether the content-driven row height produces a thumbnail of a sensible WIDTH at the view's real measure (the height derives from two text lines, and the width from 63:88, so a tighter line height makes a narrower card); whether a 200-character reason ellipsizes at a useful point; and whether the badge, name, pips and confidence sit on one optical line given three different type roles. **Home: the C6 manual checklist (15-6)**, carrying C5's Block J with it."
   evidence: '`DESIGN.md:444` (no-visual-precedent list) and the amended `components.suggestion-row`; `epic-c5-retro-2026-08-09.md` (R11, Block J ruled NOT RUN); the "WHAT THIS SUITE CANNOT CARRY" header in `ui/src/containers/SuggestionsView/SuggestionsView.test.tsx`; P15 (the jsdom class-vs-token hole) from the same retro.'
 
 ## Deferred from: c6-6-a-push-opens-its-view-and-a-repeat-push-replaces-it-in-place (2026-08-11)
@@ -1026,7 +1032,7 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   file (the response is still a correct `503 database_not_initialized`, via the empty-file probe).
   Includes the narrower exists→connect TOCTOU window on first creation. AC 3's no-plant guarantee
   is scoped to before-first-engine by design; a per-request re-stat would restore it at all times
-  but is machinery with no failing user story behind it. Natural revisit point is c10-3 (latency
+  but is machinery with no failing user story behind it. Natural revisit point is 17-3 (latency
   work touches the same per-request path). (Source: Edge Case Hunter; Severity: Low.)
 - **A durably corrupt `cards.db` is classified transient forever** — ~~a UX ruling for c2-9 to
   make with the state designs in hand~~. **RULED AND HALF-SHIPPED, c2-9 (Q5, Brad 2026-07-29.)**
@@ -1269,7 +1275,7 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   detached child without also signalling the driver); `CTRL_BREAK_EVENT` is the proxy the story
   specifies. **Check during manual testing:** what an interactive Ctrl-C in a real terminal
   yields. Deliberately not "fixed" by trapping the signal, which would be new behaviour outside
-  c1-9's ACs; if the exit status matters, c8-4's documentation story is where the observed
+  c1-9's ACs; if the exit status matters, 15-4's documentation story is where the observed
   behaviour gets written down. (Source: story c1-9 live check 3 / Completion Notes deviation 3;
   Severity: Low — Decide-once #5's exit vocabulary is about statuses *we* mint, and AD-15 rules
   out any supervisor that would read this one.)
@@ -1291,7 +1297,7 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   harness, **not** user-visible behaviour — the console-control path that imposed it is not the
   one a foreground Ctrl-C takes. On the real path `main()` does return and its value survives:
   Decide-once #5's exit vocabulary (0 = intent satisfied) holds end to end, with no signal
-  trapping and no code change. c8-4 documents `0`. Every other condition the AC named also held:
+  trapping and no code change. 15-4 documents `0`. Every other condition the AC named also held:
   no traceback, graceful uvicorn shutdown, the lifespan retraction removed `companion.json`, and
   `companion.lock` was retained at 0 bytes for the kernel to release.
 - **`test_entry_point.py`'s autouse `isolated_data_dir` fixture also re-points the two
@@ -1341,7 +1347,7 @@ the gate-output rule rather than left as "we meant to".
   `[planeswalker] companion running at http://127.0.0.1:9125`, published
   `companion.json` for port 9125, and answered `GET /health` there with
   `{"status":"ok","instance_id":"9be64dcd-…"}` — while 8765 refused connections. So a real shell
-  environment variable under the new name does reach `resolve_preferred_port`. **c8-4 may now
+  environment variable under the new name does reach `resolve_preferred_port`. **15-4 may now
   describe `COMPANION_PORT` as hand-verified.**
 
   *Originally recorded as:* ruling R4 renamed `PLANESWALKER_COMPANION_PORT` → `COMPANION_PORT`
@@ -1352,7 +1358,7 @@ the gate-output rule rather than left as "we meant to".
   `resolve_preferred_port`" unconfirmed.
 
   **Still not hand-run:** the other half of that checklist block, `--port` beating the env var.
-  That precedence has unit coverage and was not exercised live here, so c8-4 should describe the
+  That precedence has unit coverage and was not exercised live here, so 15-4 should describe the
   *variable* as hand-verified but not the *precedence*. (Severity: Low.)
 
 - **FR-22's fresh-install start has no live confirmation** — the checklist block pointing
@@ -1394,7 +1400,7 @@ the gate-output rule rather than left as "we meant to".
   `eslint ^9` pin lift and carry a patched `minimatch` with it — the same exit condition already
   recorded against the pin in `ui/package.json`.
 
-  **Natural home: c8-5** (plugin distribution parity) or c8-4, whichever first has to make a
+  **Natural home: 15-5** (plugin distribution parity) or 15-4, whichever first has to make a
   statement about what the release contains. Re-check with `npm audit` then; if jsx-a11y has shipped
   an `^10` peer by that point this closes itself. Recorded so that the first person to run
   `npm audit` finds a decision rather than a surprise. (Severity: Low — dev-only, no runtime
@@ -1405,7 +1411,7 @@ the gate-output rule rather than left as "we meant to".
   `engines: ^20.19.0 || >=22.12.0` and `stylelint@17` declares `>=20.19.0`, so a literal Node 20.0
   cannot build `ui/`. `>=20.19.0` is the honest form of the same requirement and is what shipped;
   CI's `node-version: 20` resolves to the latest 20.x, which satisfies it. **This is a copy fix for
-  c8-4** (release documentation), not a scope change — nothing needs rebuilding, the prose needs to
+  15-4** (release documentation), not a scope change — nothing needs rebuilding, the prose needs to
   stop saying "20". (Severity: Low.)
 
 - **A third load-bearing version pin exists that no planning document predicts:
@@ -1415,7 +1421,7 @@ the gate-output rule rather than left as "we meant to".
   6.10.0 is additionally deprecated upstream as an incorrect minor release. 6.9.1 is the last
   release declaring `>=14`. Unlike the other two pins, npm does **not** fail on this — `engines` is
   advisory by default, so an unpinned bump would install cleanly and then break only on the Node 20
-  CI job. The reason is recorded in `ui/package.json` beside the dependency. **Relevant to c8-4**
+  CI job. The reason is recorded in `ui/package.json` beside the dependency. **Relevant to 15-4**
   (which documents the Node floor) and to whoever eventually proposes raising it: lifting this pin
   is a Node-floor decision (AC 2 / AC 15), not a dependency bump. (Severity: Low — pinned and
   documented; recorded because the Spine's stack table now lags reality by two entries, `eslint ^9`
@@ -1999,7 +2005,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   MCP tool already pays, the deck count is single digits on a real machine, and NFR-05's budget
   is the deck *view*, not the deck list. Adding a count-only query in c3-1 would have been a
   second read path over one shape, which is exactly what AD-1 exists to prevent.
-  **Home: c10-3** (latency hardening). If it is fixed there, the fix belongs in the repository —
+  **Home: 17-3** (latency hardening). If it is fixed there, the fix belongs in the repository —
   an aggregate query behind the same method — so both shells inherit it. (Severity: Low now;
   scales with deck count and deck size.)
 
@@ -2160,8 +2166,8 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   engine. Combined with the `list_decks` over-fetch above, a `GET /api/decks` over a large
   collection blocks a concurrent `initialize_database` writer — which is exactly the concurrency
   FR-22 presumes ("a database created while the backend runs is picked up with no restart").
-  ~~**Home: c3-9** (which owns the fresh-install/coming-alive transition) or **c10-3** (latency
-  hardening), whichever reaches it first.~~ **MEASURED AND RE-HOMED ON c10-3, c3-9 (Q7,
+  ~~**Home: c3-9** (which owns the fresh-install/coming-alive transition) or **17-3** (latency
+  hardening), whichever reaches it first.~~ **MEASURED AND RE-HOMED ON 17-3, c3-9 (Q7,
   2026-08-02)** — a re-home with a number attached, which is worth more than a fix without one.
   Measured against a real running companion serving `GET /api/decks` (~0.16-0.31 s per request,
   the over-fetch above), with a writer taking `BEGIN IMMEDIATE` five times, quiet and then under
@@ -2191,7 +2197,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   four continuously — so a writer meets an in-flight read for a small fraction of wall-clock, and
   the wait it inherits is one read. Adding a WAL pragma to the companion's engine is still the
   right eventual fix (NFR-02 calls for WAL reads and it would make the fresh-install case match the
-  post-index case), but it is latency hardening rather than an FR-22 failure. **Home: c10-3**, with
+  post-index case), but it is latency hardening rather than an FR-22 failure. **Home: 17-3**, with
   the numbers above. (Severity: Low-Medium -> **Low**, measured.)
 
 - **The `Attributes:` sections in the four wire-facing schemas hold prose, not attributes, and
@@ -3222,11 +3228,11 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   250 ms budget while images are queued; **that endpoint does not exist until c5-1/c5-5**. c3-6
   proves the property against `/health` — five interleaved probes completing while every image
   fetch is parked upstream, with the *count* asserted so a serialised loop fails it — and records
-  the substitution rather than passing it off as the same test. The literal AC is **c10-3's**,
+  the substitution rather than passing it off as the same test. The literal AC is **17-3's**,
   whose own AC (`:3580-3582`) already says exactly that. Likewise the **real-bytes and
   real-latency** half of the cold-deck observation: c3-6 asserts ~9.8 s of modelled start offsets
   on an injected clock and states the 12 MB as arithmetic on a measured 124 KB average; measuring
-  actual bytes over an actual network is **c10-3's** (`:3588-3590`). **Home: c10-3** (both).
+  actual bytes over an actual network is **17-3's** (`:3588-3590`). **Home: 17-3** (both).
   (Severity: Low — deliberate scope, both named in the epic already.)
 
 - **No ceiling on how long a request may queue, and no wire vocabulary for one** (Q4, Brad
@@ -3433,13 +3439,13 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
 
 - **The cache is unbounded: no eviction, no size accounting, no TTL, no index** (AD-11, epic
   :1768-1770 — deliberate in MVP, and no hook was built for a future one on c3-4's ruling). What
-  c8-2 inherits is a **measured footprint rather than a guess**: this user's whole 40-deck library
+  15-2 inherits is a **measured footprint rather than a guess**: this user's whole 40-deck library
   is **1,061 distinct card ids**, and a single deck resolves to **67–99** of them; at one size and
   the epic's ~124 KB average that is roughly **130 MB** for the entire library, ~12 MB per deck.
-  The 130 MB is *arithmetic over an average*, not a byte measurement — see the next entry. c8-2
+  The 130 MB is *arithmetic over an average*, not a byte measurement — see the next entry. 15-2
   owns the documented location, the removal command and the uninstall notes; the cache root is
   `src.paths.data_dir()/image_cache` and it is safe to delete wholesale at any time, because every
-  entry is reconstructible by refetching and nothing indexes it. **Home: c8-2.** (Severity: Low —
+  entry is reconstructible by refetching and nothing indexes it. **Home: 15-2.** (Severity: Low —
   a disclosure and stewardship gap, not a defect.)
 
 - ~~**The ~124 KB average tile size is arithmetic, never measured.**~~ **MEASURED AT THE C3
@@ -3461,13 +3467,13 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   `min(1/spacing, concurrency/latency)` = `min(1/0.1, 4/0.099)` = `min(10, 40.6)`, so **the spacing
   turnstile binds with 4× headroom on the semaphore** — exactly the regime the constants were
   chosen for. The `png`-vs-`small` variance this entry raises is untouched and remains real.
-  **Home: c10-3** for the per-size profile; the grid-size figures above are now facts, not
+  **Home: 17-3** for the per-size profile; the grid-size figures above are now facts, not
   estimates. (Severity: Low → **resolved for `normal`**.)
 
 - **A cache entry is never revalidated, so a corrected artwork is served indefinitely.** The key is
   id + size + face and AD-11 **accepts** that; a data refresh that changes a card's `image_uris`
   hits the existing entry. Today the only remedy is deleting the cache directory, which nothing
-  documents (see the c8-2 entry above) and no tool offers. The shape that would fix it without
+  documents (see the 15-2 entry above) and no tool offers. The shape that would fix it without
   reopening the key is a **generation stamp** — a cache subdirectory named for the database's own
   refresh marker — which costs nothing at read time and invalidates wholesale. Not built, because
   nothing in MVP knows when a refresh happened and inventing a marker for one consumer is the
@@ -3608,11 +3614,11 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   cleans its temp file on every in-process failure, but a process kill or power cut between
   `mkstemp` and `os.replace` strands `<name>.<rand>.tmp` in the card's shard directory
   permanently: `_read_cached` never matches the suffix (invisible, so it costs nothing but
-  bytes), no startup or periodic sweep exists, and the c8-2 stewardship entry above covers cache
+  bytes), no startup or periodic sweep exists, and the 15-2 stewardship entry above covers cache
   *content*, not write debris. A `rglob("*.tmp")` sweep at startup was declined: it walks a
   potentially 38k-directory tree on every launch to reclaim litter produced only by crashes
-  mid-write. The wholesale remedy is c8-2's documented `image_cache/` deletion, which removes
-  debris and content alike. **Home: c8-2**, as one sentence in its stewardship notes. (Severity:
+  mid-write. The wholesale remedy is 15-2's documented `image_cache/` deletion, which removes
+  debris and content alike. **Home: 15-2**, as one sentence in its stewardship notes. (Severity:
   Low.)
 
 - **A transient startup `OSError` disables the cache for the whole process, with one WARNING at
@@ -3623,13 +3629,13 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   announced only by a log line hours before anyone notices slowness. No retry, no re-attempt on
   first write. Declined here because a retry policy is a design decision c3-8's failure
   signalling is better placed to make consistently. ~~**Home: c3-8.**~~ **c3-8 TOOK THE OTHER
-  ENTRY AND RE-HOMED THIS ONE ON c8-2, 2026-08-02 (Q4, Brad), and the reason is honest rather than
+  ENTRY AND RE-HOMED THIS ONE ON 15-2, 2026-08-02 (Q4, Brad), and the reason is honest rather than
   tidy.** Of the two "failure posture over time" entries homed here, c3-8 took the unwritable-root
   one (below — it closed) and declined this one, because **retrying the root means deciding
   *when*** — at the first write? on a timer? after N requests? — which is a lifecycle question
   nothing in this feature measures and which c3-8 had no requirement to answer. Taking it would
   also have made `DiskCache` mutable in a way it is not, on top of the write-disable state that
-  entry did add. **Home: c8-2**, which owns cache stewardship (epic `:3185-3212`) and is where a
+  entry did add. **Home: 15-2**, which owns cache stewardship (epic `:3185-3212`) and is where a
   lifecycle policy belongs beside the documented location and the removal command. (Severity: Low —
   unchanged; requests are unharmed either way.)
 
@@ -3649,7 +3655,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   **one success resets the count**, so failures spread across a session cannot accumulate into a
   disabled cache; and the state is **per-instance**, never a module global. AC 9 is untouched — the
   picture is served either way and no reason token was added. The `deferred-work` pairing this
-  belonged to is now split: this one closed, the transient-startup one re-homed on c8-2 above.
+  belonged to is now split: this one closed, the transient-startup one re-homed on 15-2 above.
 
 - **A third image format in the corpus would be served and never cached, silently degrading CM-2
   feature-wide — and the trigger that changes this is a measurement, not an argument.**
@@ -3704,7 +3710,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   backoff bounds every paint *after* that one, which is what `EXPERIENCE.md`'s "no request storms"
   means here. Closing it would need something that fails a *whole host* fast rather than a key at
   a time — a circuit breaker over `ALLOWED_IMAGE_HOSTS`, which is a fourth mechanism and a
-  different shape from anything AD-11 asks for. **Home: c10-3**, which owns real-latency profiling
+  different shape from anything AD-11 asks for. **Home: 17-3**, which owns real-latency profiling
   and is the first story positioned to say whether 124 s is a real user experience or an artefact
   of an unrealistic failure mode. (Severity: Low today — it needs a CDN that is *unreachable*
   rather than merely slow; Medium if c4-4's manual testing finds it.)
@@ -3780,7 +3786,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   cache's writes for the process — the "consecutive" reset only protects failures separated by
   successes, and Q4 declined any re-enable path. Accepted at review (Brad, 2026-08-02): the
   consequence is only lost caching, images are still served, and the docstring now states the
-  exposure honestly. Any re-enable/recovery mechanism is cache stewardship. **Home: c8-2.**
+  exposure honestly. Any re-enable/recovery mechanism is cache stewardship. **Home: 15-2.**
   (Severity: Low.)
 
 - **The backoff 502 answers without a `Retry-After` header the server could supply.** The route
@@ -3846,7 +3852,7 @@ either has an owner story or is declared inside the file it constrains.
   answers would show "Card database still updating. Check your agent session — if no import is
   running…" during an import that is running. The importer's batch size was not measured here, and
   the Q7 measurement above says lock waits are ~0.2 s worst case under four saturating readers, so
-  this is a narrow window rather than a likely one. **Home: c10-3**, beside the lock work.
+  this is a narrow window rather than a likely one. **Home: 17-3**, beside the lock work.
   (Severity: Low, unmeasured.)
 
 - **`ui/tests/posture.test.ts`'s identifier layer is defeated by a computed global assembled from
@@ -4039,14 +4045,14 @@ either has an owner story or is declared inside the file it constrains.
    and confirmed on a real screen: the kicker reads `ARTIFICIAL PLANESWALKER` and the `h1` reads
    `Atraxa Counter Cabinet v2 (owned)`. `AppShell.tsx` was not edited; the swap is a prop.
 9. **C3 retro action item 4 — a gate banning story-key-shaped strings from rendered text**
-   (`/\bc\d+-\d+\b/`), owner *"Sathias (c8-5, or earlier if a C4 story is nearer)"*. **DECLINED;
-   stays c8-5 (Q8), and the reason is now measured rather than predicted.** c4-2 REMOVES two of
+   (`/\bc\d+-\d+\b/`), owner *"Sathias (15-5, or earlier if a C4 story is nearer)"*. **DECLINED;
+   stays 15-5 (Q8), and the reason is now measured rather than predicted.** c4-2 REMOVES two of
    the offending strings from the deck view (the `h1`'s product name and the badge placeholder
    naming `c2-7 / c4-2 / c4-10`) and **leaves six on screen**, counted off the real render:
    `c4-4`, `c4-8`, `c4-9` in the left column and `c4-5`, `c4-7`, `c4-10` in the right, plus
    `c6-8` in the nav. Every one of them is CORRECT today, so a gate built here ships either
    disabled or with an allowlist — and an allowlisted ban is the "enumerate members" anti-pattern
-   this epic has now violated three times. **Home: c8-5, unchanged.**
+   this epic has now violated three times. **Home: 15-5, unchanged.**
 10. **C3 retro carried manual-testing items A3/A4** (*"c4-2 renders four of the five panels for
     real; A3–A6 are its acceptance surface"*). **PARTIALLY PERFORMED, remainder fed forward.**
     Two of the five were rendered by a real engine here: `no-active-deck` (with the real deck list
@@ -4289,7 +4295,7 @@ lives on is given so this section is checkable rather than merely reassuring.
    is 99 requests in **0.55 s** (5.6 ms/tile) and never enters the pacer at all. The cold burst
    was not reproduced from a browser because the disk cache was already warm on this machine —
    **so the entry stands, unresolved, and `loading="lazy"` remains its one client-side lever.**
-   Re-home: **c10-3**, which owns real-latency profiling, or the C4 retrospective.
+   Re-home: **17-3**, which owns real-latency profiling, or the C4 retrospective.
 
 2. **The image route reads the whole card row to get one URL (`:2742`)** — **NOT MEASURED, and
    declined here with a reason.** This story issues the requests in bulk but has no instrument for
@@ -4357,7 +4363,7 @@ lives on is given so this section is checkable rather than merely reassuring.
 12. **C3 retro action F1 — a gate banning story-key-shaped strings from rendered UI text** —
     **ONE OF THE SIX REMOVED.** The left column's placeholder (naming `c4-4` and `c4-8`) is
     displaced by the grid, and `App.test.tsx` now asserts neither string is on a rendered deck
-    view. Five remain. **The gate itself stays c8-5's**, unchanged.
+    view. Five remain. **The gate itself stays 15-5's**, unchanged.
 
 ### New residues declared by c4-4
 
@@ -4404,9 +4410,9 @@ lives on is given so this section is checkable rather than merely reassuring.
   fast connection each tile appears the instant the pacer releases it. No spinner, no
   broken-image glyph, no stuck tile. Net: the ~10 s figure is real but largely invisible; the
   epic's "expected observation, not a defect" framing holds, and the experienced cold paint is
-  BETTER than the epic's expectation reads. What remains c10-3's is profiling (real bytes,
+  BETTER than the epic's expectation reads. What remains 17-3's is profiling (real bytes,
   real latency percentiles), and the ~124 s dead-CDN first paint remains unobserved — the CDN
-  was alive. **Home: c10-3, narrowed to profiling and the dead-CDN case.**
+  was alive. **Home: 17-3, narrowed to profiling and the dead-CDN case.**
 
 ## Deferred from: code review of c4-5-persistent-card-detail-panel-with-transient-and-pinned-inspection (2026-08-05)
 
@@ -4542,7 +4548,7 @@ that the story commit writes its own ledger).
   other side (Chrome: exactly one banner; jsdom would report three).
 - **F1 story-key strings — COUNT RECORDED.** `c4-7` displaced by its own panel (both halves
   asserted in `App.test.tsx`); **5 F1 keys remain on a rendered deck view**; the gate stays
-  c8-5's.
+  15-5's.
 - **Panel-stacking vertical budget — FED INTO Q7 AND MEASURED.** This panel adds 3,198 px beneath
   the card-detail panel; no internal scroller (Q7) — the page scrolls and every row is a Tab stop
   the browser scrolls into view.
@@ -4615,7 +4621,7 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
 - **F1: story-key-shaped strings on the rendered view (`:3456-3464`, `:3765`) — COUNT RECORDED.**
   `c4-9` is now displaced **by its own panel** rather than by a sibling's (both halves asserted
   in `App.test.tsx`). The left column has contributed its last: `c4-10` and `c4-11` remain, in
-  the right column's placeholder and the skip-link work. The gate itself stays **c8-5's**.
+  the right column's placeholder and the skip-link work. The gate itself stays **15-5's**.
 - **Panel-stacking vertical budget (advisory) — MEASURED, AND THIS ONE GROWS THE ROW RATHER THAN
   THE COLUMN.** Unlike c4-7 (+3,198 px beneath) and c4-8 (+168 px), this panel is a SIBLING: if
   its legend were taller than the curve, the row would grow and both panels with it. Measured on
@@ -4767,7 +4773,7 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   posture. **The panel also owns no timer and never retries**, so a transient failure persists
   until reload. **Fix shape**: an inline, calm "could not be checked" state inside the panel's own
   body — never a state panel, never a banner — which needs a vocabulary decision this story had no
-  mandate to make. **Home: Epic 7's refetch (c7-3), or c8-6.** (Severity: Low — measured live
+  mandate to make. **Home: Epic 7's refetch (c7-3), or 15-6.** (Severity: Low — measured live
   exposure is zero on a healthy backend, and the read is a non-event at 5.2 ms median.)
 
 - **The format check goes stale the moment the agent changes the deck** (Q7, AC 11). One read per
@@ -4787,6 +4793,17 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   sees a red pill appear while a screen-reader user is told nothing. **Home: c7-5**, which already
   owns *"the change is announced once, and motion is never the only signal"* together with its
   reduced-motion fallback. (Severity: Low today — unreachable; Medium the day the refetch lands.)
+  **STILL OPEN after c7-5 (PR #79, merged 2026-08-15 at `dac0bdc`) — the home was declined, with
+  reason.** c7-3 has since wired `deck_changed`, so this is now reachable, not hypothetical: the
+  check is a separate async request keyed on detail identity (`App.tsx:342-346`) and settles
+  *after* the deck does. c7-5 built the one announcement UX-DR45 licenses — *"Deck updated — N
+  cards"* — and announcing a check flip would be a **second** per-refetch announcement arriving
+  later, in direct tension with that story's own announce-once AC; no artefact specifies its copy
+  or its region, and c7-5 had no mandate to invent either. **This needs a human UX ruling before
+  any story can home it** — roughly: (a) fold the verdict into the single announcement (blocks it
+  on the slower request), (b) license a second, separately-worded region for legality only, or
+  (c) rule the pill's own appearance sufficient and close this. Until then it is **unowned**, not
+  c7-6's. (Severity: Medium — now reachable.)
 
 - **The header legality pill was predicted twice and does not exist** (Q4b). `ui/README.md:1344`
   and `:1396` both asserted that c4-10 would add a `standard legal` pill beside the header's format
@@ -4913,12 +4930,12 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   `validation-report-2026-07-25.md:45` already records the gap as gate H3's still-open half.
   **The alternative is costed rather than left to be re-derived**: a second link ("Skip to footer",
   or retargeting this one past the deck list) closes ~42 stops on the median deck and costs one more
-  component plus a DESIGN.md + EXPERIENCE.md amendment. **Home: c8-6**, which actions or re-accepts
+  component plus a DESIGN.md + EXPERIENCE.md amendment. **Home: 15-6**, which actions or re-accepts
   the revisit-before-public-release flag. (Severity: Medium.)
 
 - **The connection pill's DOM position is decided by nobody, and three stories each assume someone
   else did it.** UX-DR40 (before this story's rewrite) put it between the deck rows and the footer;
-  **c5-7** cites UX-DR47 and is silent on position; **c10-1** calls it *"the last stop before the
+  **c5-7** cites UX-DR47 and is silent on position; **17-1** calls it *"the last stop before the
   footer"* — while `DESIGN.md:445` places it physically **bottom-left**, in the other column from
   the deck rows. c4-11 **declined to decide it without the component** and marked it unbuilt in the
   enumeration instead. **Home: c5-7**, by name. (Severity: Low.)
@@ -4935,7 +4952,7 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   loaded deck — and has been since c2-6. It was missed because every F1 assertion names a `c4-*` key
   and none ever looked for a `c6-*` one: **a count that only checked the keys someone thought of**,
   which is this epic's coverage-that-reads-as-coverage theme in a COUNT rather than in a guard. Both
-  halves are now asserted in `App.test.tsx`. The gate itself stays **c8-5's**; the remaining key is
+  halves are now asserted in `App.test.tsx`. The gate itself stays **15-5's**; the remaining key is
   displaced by **c6-8**. (Severity: Low.)
 
   ✅ **DISPLACED 2026-08-12 by c6-8, and the rendered count is now ZERO** — the first time since
@@ -4946,7 +4963,7 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   c2-9's displacement ruling — the shell now has no unfilled slot. Both `App.test.tsx`
   assertions INVERTED rather than being removed (a presence became an absence, and a count of one
   became a count of zero), each with a positive twin proving the pills that displaced the string
-  are really on the glass. **The GATE is still c8-5's and this does not discharge it**: a count on
+  are really on the glass. **The GATE is still 15-5's and this does not discharge it**: a count on
   two rendered fixtures is not a repo-wide guard, and the correction recorded immediately above —
   a count that only checked the keys someone thought of — is exactly why that distinction is
   worth keeping. What c6-8 removes is the last known key, not the possibility of a new one.
@@ -5046,7 +5063,7 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
    `null` arms are kept distinguishable** — the state arm (`state.status !== 'report'`) lives in
    `FormatCheck.tsx` and means *no report arrived*; c4-12's arm (`emptyDeck ? null : <FormatCheck/>`)
    lives in `App.tsx` and means *the deck is empty*. Different files, different tests, so a
-   reviewer can tell a hidden panel from a failed one. **Home unchanged: c7-3 or c8-6.**
+   reviewer can tell a hidden panel from a failed one. **Home unchanged: c7-3 or 15-6.**
 
 5. **`:3965-3973` — the hydration sweep's no-re-drive window, accepted as designed.** **CITED, not
    re-opened. This story's panel is OUTSIDE it entirely**: Q3/Q4 remove the format check from the
@@ -5076,7 +5093,7 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
    **RE-MEASURED AT 42 DECKS, NOT FIXED:** `GET /api/decks` costs ~95 ms of backend CPU and repeats
    every 2 s (`poller.ts`, `POLL_BASE_MS = 2_000`). It is not on the deck surface's critical path —
    `surfaceOf` prefers the deck — but it burns one of six sockets and one core through the first
-   ~100 ms of a cold open. **Home unchanged: c10-3.**
+   ~100 ms of a cold open. **Home unchanged: 17-3.**
 
 10. **`:4236-4241`, `:4161-4169` — `EXPERIENCE.md` promises source counts and deck value;
     `StatChip` still has no surface.** **CONFIRMED STILL OPEN.** Not this story. (`ui/README.md`'s
@@ -5086,7 +5103,7 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
 11. **`:1592-1609` — 10px ALL-CAPS legal text readability. Home: Epic 8.** **NOT TOUCHED.**
 
 12. **`:4399-4409` — the skip link does not reach the footer (205 stops / 102.0 skipped). Home:
-    c8-6.** **NOT TOUCHED**, and no skip-link copy was edited. ⚠️ The corridor figure WAS corrected
+    15-6.** **NOT TOUCHED**, and no skip-link copy was edited. ⚠️ The corridor figure WAS corrected
     in `DESIGN.md`, which read *"100+ Tab stops"* while `EXPERIENCE.md` already carried c4-11's
     measured numbers — two peer artefacts disagreeing about the same measurement. The ledger entry
     itself is unchanged.
@@ -5115,7 +5132,7 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   row, so the orphans are unreachable), and it is invisible to any frontend gate. It also means
   **any census computed from `deck_cards` alone over-counts by two decks** — the story context's
   own §F distribution did, and this ledger entry is how the next census avoids it.
-  **Home: c10-3**, with the Python-side counterpart. (Severity: Low — data hygiene, not behaviour.)
+  **Home: 17-3**, with the Python-side counterpart. (Severity: Low — data hygiene, not behaviour.)
 
 - **A sideboard-only deck renders an empty grid with NO empty-deck line, and no artefact describes
   that state.** `deckIsEmpty` is sideboard-inclusive by c4-11's ruling (a deck holding a sideboard
@@ -5149,7 +5166,7 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   of headroom in every run of both cache readings, so the swap is an unrequested change to the
   cold-open path, and the swapped arm's spread is wider. **Both effect comments now name the
   other's queue position**, which is the only thing stopping the next reader reordering them by
-  accident. **Home: c10-3** (NFR-05 profiling is Phase 2), where the 180 ms is already priced.
+  accident. **Home: 17-3** (NFR-05 profiling is Phase 2), where the 180 ms is already priced.
   (Severity: Low — an available improvement, not a defect.)
 
 - **⚠️ NFR-05's OWNER CANNOT CLOSE ITS OWN GAP, AND THIS STORY IS WHERE THAT WOULD HAVE BITTEN.**
@@ -5159,7 +5176,7 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   which is Phase 2**. So the acceptance point ships in this release and the repair does not.
   **It did not bite: the measurement passes, so there is no gap to close.** Raised in the open
   anyway, because the structure is unchanged and the next measurement may not pass.
-  **Home: the C4 retro / c10-3.** (Severity: Low today, structural.)
+  **Home: the C4 retro / 17-3.** (Severity: Low today, structural.)
 
 - **~60 stale `DESIGN.md:NNN` anchors across 25 files, and the guard that looks like it checks them
   does not.** `shell.test.ts` requires the *string* `"DESIGN.md"` within a sentence of every `px`
@@ -5278,7 +5295,7 @@ Eight decisions ruled by Sathias. R1/R2/R6 are process and live in
   fine under WAL, so only wholesale file replacement is blocked.
   **This is a recovery-path defect, not an import-path one**, and it is adjacent to but distinct
   from c1-6's ledgered *"cached-engine path re-plants a zero-byte file"*.
-  **Home: c8-4** (install / first-run readiness), which owns the fresh-install experience a person
+  **Home: 15-4** (install / first-run readiness), which owns the fresh-install experience a person
   actually meets. (Severity: Medium — reachable on the public v0.4.0 today; bounded and recoverable
   by stopping the companion.)
 
@@ -5339,7 +5356,7 @@ engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries cha
   **by the panels that replace them**, so every surface where those panels do not render still
   carries every key — and the first screen a fresh install ever sees is exactly such a surface.
   This is the epic's coverage-that-reads-as-coverage class again: the assertion's scope is narrower
-  than the claim resting on it. **Home unchanged (c8-5), priority raised**, and the gate's shape is
+  than the claim resting on it. **Home unchanged (15-5), priority raised**, and the gate's shape is
   now specified by evidence: it must scan a rendered STATE-PANEL surface, not only a deck view.
 
 - ⚠️ **RE-OPENED — C3 retro finding F3 (vertical anchoring on an empty page) was homed on c4-12 and
@@ -5801,7 +5818,7 @@ consequences for the ledger are here.
   would produce a request per set. No coalescing is shipped: a debounce is a second timing mechanism
   to reconcile with the backoff, and there is no measured workload that needs one.
   **Fix shape:** if it is ever needed, coalesce in `connection.ts` (one trailing re-drive per
-  animation frame), never in `deck.ts`. **Home: c10-3 or whoever measures a real agent push rate.**
+  animation frame), never in `deck.ts`. **Home: 17-3 or whoever measures a real agent push rate.**
   (Severity: low.)
 
 - **The connection status is written on change only, and `App` subscribes to the system store
@@ -5920,7 +5937,7 @@ here by name; all three are closed below. All six of the story's open questions 
 
 - **dw:4595-4600 — the connection pill's DOM position is decided by nobody, and three stories each
   assume someone else did it.** **CLOSED by decision** (Q1, Brad 2026-08-08). The three artefacts
-  were never actually in conflict, and naming the axis is what dissolved it: UX-DR40 and c10-1 were
+  were never actually in conflict, and naming the axis is what dissolved it: UX-DR40 and 17-1 were
   describing **Tab order**, `DESIGN.md:479` was describing the **screen**. The shipped answer
   satisfies both — a new `AppShell` prop rendered as a sibling **between `</main>` and `<footer>`**,
   which makes the pill the last Tab stop before the footer links, while `ConnectionPill.css` pins it
@@ -5934,7 +5951,7 @@ here by name; all three are closed below. All six of the story's open questions 
   outcome"*. The prediction held byte for byte. Second, the rejected alternative is recorded because
   it is the one a later reader reaches for: an in-flow last child of the LEFT column renders
   bottom-left with no fixed positioning at all — and puts the pill *before the entire right column*
-  in Tab order, contradicting UX-DR40, c10-1, and (on the five surfaces where the left column is a
+  in Tab order, contradicting UX-DR40, 17-1, and (on the five surfaces where the left column is a
   state panel) AC 1 as well.
 
   `epics-companion-app.md`'s UX-DR40 enumeration and `EXPERIENCE.md`'s Tab-order cell were both
@@ -5974,7 +5991,7 @@ here by name; all three are closed below. All six of the story's open questions 
 
   Note the shape of the cost: the pill is proportionally **worst where the corridor is shortest**
   (a 1-card deck goes from 3 stops to 4), which is the opposite of where the skip link helps.
-  **Home: c8-6**, which already carries the revisit-before-public-release flag for this exact
+  **Home: 15-6**, which already carries the revisit-before-public-release flag for this exact
   corridor and is the story that actions or re-accepts it. (Severity: low — the direction and the
   magnitude are both known exactly; only the artefact text is stale.)
 
@@ -6233,3 +6250,38 @@ Also executed or re-homed at this retro, beyond the seven:
     exists to catch. The spec Design Notes claim "the baseline can never drift from the tree it
     describes" was softened in review to match. Closing this needs a ruling on whether the harness
     may shell out to `git rev-parse HEAD`.'
+
+## Deferred from: code review of c7-1-one-shared-notifier-with-a-bounded-await-and-no-detached-tasks (2026-08-13)
+
+> Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Verification Gap) of the
+> `feat/companion-c7-1-shared-notifier` diff. Both entries below are pre-existing, not caused by
+> this story's own code — surfaced incidentally by the review.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-c7-1-shared-notifier.md`
+  summary: Two `tests/integration/data/test_deck_repository.py` tests
+    (`test_update_deck_strategy`, `test_list_decks_with_strategy_field`) fail inside the full suite
+    even on a clean tree, and were never formally tracked anywhere outside the story's own Task 0
+    firing-proof prose.
+  evidence: The story's Firing proof section (spec `## Spec Change Log` -> `### Firing proof
+    (Task 0)`) shows both tests RED in the pre-plant baseline run and again, identically, after
+    revert (`--expect-green`) — proving they are unrelated to `src/companion/client.py` (that file
+    touches no data-layer code) and reproduce independent of any planted violation. Both pass in
+    isolation per the same section. Flagged there as "for Brad, out of this story's scope" but
+    never entered here, so nothing tracks it once the story record stops being read.
+- source_spec: `_bmad-output/implementation-artifacts/spec-c7-1-shared-notifier.md`
+  summary: The detached-task ban (`test_ws.py::test_the_push_path_creates_no_task`, mirrored
+    locally in this story as `test_no_detached_task_identifier_appears_in_client_py`) flags any AST
+    `Name`/`Attribute` node matching `create_task`/`ensure_future`/`TaskGroup`/`gather` anywhere in
+    `src/companion/*.py`, not only `asyncio.<name>(...)` call sites.
+  evidence: A future unrelated identifier in that package — a local variable, parameter, or a
+    same-named method on an unrelated object (e.g. a dict/itertools-style `.gather()` helper) —
+    would fail this guard with no detached task actually present. The pattern predates this story
+    (the package-wide sweep in `test_ws.py` already existed; c7-1 only added a local mirror of it
+    in `test_client.py` for `client.py` specifically), so narrowing it is a design change to an
+    inherited guard, not something this story's own diff should do unilaterally.
+
+## Deferred from: code review of spec-c7-6-deletion-and-views-during-refetch.md (2026-08-15)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-c7-6-deletion-and-views-during-refetch.md`
+  summary: The panel → deck mirror transition can still drop focus to `<body>` — c7-6's rescue covers only deck → panel.
+  evidence: After the c7-6 rescue (or AgentView ARM 3's close-restore) parks focus on `.state-panel-headline`, a subsequent panel → deck transition — the agent creating or activating a deck, or reconnect restoring a loaded deck displaced by the `'down'` panel (`deck.ts:731`) — unmounts the StatePanel and the focused headline dies with it, dropping focus to `<body>` with no rescue firing (`App.tsx:895` early-returns when the arriving surface is `deck`). Pre-existing failure class (ARM 3 could park focus there before c7-6) but c7-6 widens its reachability; no test in the repo covers focus across a panel → deck transition. Same failure class as the half SkipLink.tsx ledgered for c7-6, at the opposite edge. Found by edge-case-hunter + verification-gap, independently.

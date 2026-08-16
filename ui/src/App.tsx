@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 import { AnalysisRow } from './components/AnalysisRow/AnalysisRow'
 import { AppShell } from './components/AppShell/AppShell'
@@ -12,14 +12,20 @@ import { CardDetail } from './containers/CardDetail/CardDetail'
 import { CardGrid } from './containers/CardGrid/CardGrid'
 import { ColourDistribution } from './containers/ColourDistribution/ColourDistribution'
 import { ConnectionPill } from './containers/ConnectionPill/ConnectionPill'
+import { DeckAnnouncer } from './containers/DeckAnnouncer/DeckAnnouncer'
 import { DeckList } from './containers/DeckList/DeckList'
 import { FormatCheck } from './containers/FormatCheck/FormatCheck'
 import { ManaCurve } from './containers/ManaCurve/ManaCurve'
 import { SkipLink } from './containers/SkipLink/SkipLink'
+// The app's ONE focus hand-off (c4-5/c4-11, `AC 6`: one focus home, one implementation). c7-6
+// adds this file as its FOURTH caller — see the surface-transition rescue below — which is a
+// caller, not a copy: nothing here re-implements the `tabIndex = -1` / focus / remove-on-blur
+// dance, and `keyboard-floor.test.ts:787` still finds exactly one module that writes `.tabIndex`.
+import { focusHome } from './containers/focusHome'
 import { closeAgentView, useOpenAgentView } from './state/agentView'
 import { hydrateDeckCards } from './state/cards'
 import { useAgentConnection } from './state/connection'
-import { surfaceOf, useDeckState } from './state/deck'
+import { surfaceOf, useDeckState, useDeckUpdating } from './state/deck'
 import { deckIsEmpty } from './state/deckGroups'
 import { clearFormatCheck, loadFormatCheck } from './state/formatCheck'
 import { useSystemState } from './state/systemState'
@@ -197,17 +203,27 @@ export default function App() {
   // them changes neither, and this comment exists so the next reader can see that was checked
   // rather than assumed.
   useAgentConnection()
+  // THE UPDATING FLAG (c7-4, UX-DR35, UX-DR42). A hook call above the two measured effect
+  // blocks, exactly as `useAgentConnection` was added — the blocks below are NOT moved and
+  // their relative order is unchanged (see the ⚠️ note above them). A primitive subscription,
+  // so this file re-renders on the flag flipping and on nothing else the deck slice writes.
+  const deckUpdating = useDeckUpdating()
   // The one narrowing of the one rule. Not a second precedence decision: `surfaceOf` has already
   // said which of the two is true, and this line only gives the deck arm a name so that the
   // three slots below can read its fields without repeating the discriminant check.
   const deck = surface.kind === 'deck' ? surface : null
   const detail = deck?.detail ?? null
-  // THE DECK'S ID, AS A STRING, AND THAT IS THE WHOLE OF THE FORMAT CHECK'S DEPENDENCY (c4-10 Q5,
-  // Q7, AC 10). `detail` is a fresh OBJECT on every boot — the poll-recovery re-drive re-writes it
-  // with the same deck in it — so keying the effect below on `detail` would re-request this route
-  // on a re-boot and quietly break c4-2's per-mount request count. A string identity is what makes
-  // "one format-check request per deck id per mount" structurally true rather than carefully true.
-  const deckId = detail?.id ?? null
+  // THE FORMAT CHECK NOW KEYS ON `detail` ITSELF, AND THAT IS c7-3 OVERTURNING c4-10's Q7 RULING
+  // ON PURPOSE (ledgered: deferred-work's stale-forever entry named this story; the formatCheck
+  // header names it too). The comment that used to live here argued the opposite — key on the id
+  // STRING, because `detail` is a fresh object on every boot and an object key would re-request
+  // on a re-boot of the same deck. Both halves of that argument were true, and the second has
+  // now changed sides: `detail`'s identity changes exactly when a settled boot OR a settled
+  // c7-3 refetch writes the store, which is exactly the staleness signal the panel lacked —
+  // "one request per deck id" was request-thrift from before any freshness signal existed, and
+  // it is precisely what left the panel stale forever after an agent edit. The amended pin is
+  // still a count: ONE format-check request per settled detail (App.test.tsx pins it), so a
+  // render, a poll transition or a socket status change still issue nothing.
 
   // THE EMPTY DECK, READ ONCE (c4-12, Q1, AC 1, AC 7, AC 9, AC 10, AC 12).
   //
@@ -329,8 +345,11 @@ export default function App() {
   // verdict about a deck that is no longer on the glass. `clearFormatCheck` also bumps the
   // slice's generation, so a read in flight when the deck goes away writes nothing.
   //
-  // ONE REQUEST PER DECK ID PER MOUNT, and no refetch (Q7): `deck_changed` is **c7-3's**, and
-  // half-building a refetch here would be a second coalescing rule to reconcile with that one.
+  // ONE REQUEST PER SETTLED DETAIL (c7-3, amending c4-10's Q7): `deck_changed`'s coalesced
+  // refetch settles a new `detail`, and this effect re-asks the 5 ms route once per settle — the
+  // panel finally refreshes with the deck it describes. The coalescing itself lives in `deck.ts`
+  // (a burst of events yields ONE settle, so it yields one re-ask here); building any second
+  // rule in this file would be exactly the reconciliation problem Q7 deferred.
   //
   // THE CLEANUP IS THE TEARDOWN HALF OF THE CITED PRECEDENT (c4-10 review): `createDeckBoot`
   // pairs `start()` with `stop()` on cleanup, and this effect's first draft omitted its half —
@@ -356,13 +375,13 @@ export default function App() {
   // and `routes/decks.py` names the failure mode in its own comment. That is what the panel would
   // have said to someone who has not added a card yet.
   //
-  // `emptyDeck` is in the deps rather than folded into `deckId`, so a deck that gains its first
-  // card while the tab is open WOULD ask then — today the only shipped path that rewrites
-  // `detail` mid-session is the poll-recovery re-drive (c4-2), so the edge is real only in that
-  // corner until c7-3's `deck_changed` refetch lands; the dep is the forward contract, not a live
-  // feature (code-review correction, 2026-08-07). It is a BOOLEAN, so the poll-recovery re-drive
-  // (which rewrites `detail` with the same deck in it) still recomputes to the same value and
-  // issues nothing.
+  // `emptyDeck` stays in the deps beside `detail`, and c7-3 is the story that made its edge
+  // live: a deck that gains its first card while the tab is open now refetches on the
+  // `deck_changed` frame, `detail` settles anew, `emptyDeck` flips false, and THIS effect asks
+  // for the first time — the forward contract the 2026-08-07 code-review correction recorded,
+  // discharged. (With `detail` itself now a dep, `emptyDeck` is technically derivable from it —
+  // it stays listed because the lint contract wants every read value named, and because the
+  // early-return arm below reads it first.)
   //
   // ⚠️ EVERY PATH THROUGH THIS EFFECT CLEARS, and the empty/null arm clears EAGERLY ON ENTRY
   // rather than registering a cleanup — only the load arm returns `clearFormatCheck` (an arm that
@@ -392,13 +411,89 @@ export default function App() {
   // ⚠️ DO NOT REORDER EITHER BLOCK WITHOUT RE-MEASURING. That is the whole reason both comments
   // now name the other's queue position.
   useEffect(() => {
-    if (deckId === null || emptyDeck) {
+    if (detail === null || emptyDeck) {
       clearFormatCheck()
       return
     }
-    void loadFormatCheck(deckId)
+    void loadFormatCheck(detail.id)
     return clearFormatCheck
-  }, [deckId, emptyDeck])
+  }, [detail, emptyDeck])
+
+  /**
+   * What `surface.kind` was on the previous commit — the surface transition's only input.
+   *
+   * A ref rather than state, for `SkipLink`'s reason one level up: nothing renders differently,
+   * and a `setState` here would be a second render pass per surface change for no visible
+   * effect. It is written INSIDE the effect below and never during render (`react-hooks/refs` is
+   * an error, and `AgentView.tsx:200-206` is the shipped precedent for the same discipline).
+   */
+  const previousSurfaceKind = useRef(surface.kind)
+
+  // ==== THE SURFACE TRANSITION'S FOCUS RESCUE (c7-6, epic AC 9, UX-DR46) ================
+  //
+  // ⚠️ APPENDED BELOW THE TWO MEASURED EFFECT BLOCKS, WHICH ARE NOT MOVED. Their relative order
+  // is worth ~180 ms of the six-surface layout (see both comments above); this block issues no
+  // request at all, so it cannot displace either one in the queue, and it is last so that it
+  // cannot be mistaken for a reordering of them.
+  //
+  // ==== THE HALF `SkipLink` LEDGERED, AND WHY IT LANDS HERE RATHER THAN THERE ===========
+  // `SkipLink.tsx:62-76` closed its own withdrawal hand-off and ledgered the rest by name: *"a
+  // tile or a deck row holding focus when the deck is deleted or refetched to `no-active-deck`
+  // has the identical problem"*. React unmounting the focused node drops focus to `<body>`,
+  // which restarts Tab from the top of the document — the failure `CardDetail`'s unpin control
+  // found first, at the scale of ONE control, and this is the same failure at the scale of a
+  // whole surface.
+  //
+  // ONE EFFECT, NOT FIVE COPIES OF THE `SkipLink` IDIOM. That component samples `heldFocus` on
+  // the way in because at ITS scale `activeElement === body` in a cleanup is ambiguous — the
+  // link may have died with focus, or focus may have been somewhere else entirely. At the
+  // SURFACE scale it is not ambiguous: the grid, the analysis row and the whole right column all
+  // hang off the same `kind === 'deck'` gate, so they depart in ONE commit, and anything OUTSIDE
+  // that gate which held focus (the header, the nav pills, the connection pill, the footer
+  // links) still holds it afterwards. Focus falling to `<body>` across a deck → panel transition
+  // therefore means the node that had it was in the departing surface. That covers the tile, its
+  // flip control, the deck row, the oracle scroller and the unpin control in one place — five
+  // focusables that would otherwise need five copies of the ref idiom, each with its own blur
+  // bookkeeping to get wrong.
+  //
+  // ALL THREE GUARDS ARE LOAD-BEARING. The focus guard is `SkipLink.tsx:112-116`'s ruling
+  // applied at this scale: if anything else has ALREADY taken focus, moving it again would be
+  // this effect overriding a decision it did not make. The view guard exists because an open
+  // agent view makes that focus reading unreliable — its heading usually holds focus, but a
+  // pointer click on the dialog's non-focusable content blurs to `<body>` (a browser behaviour
+  // jsdom does not model), and rescuing then would park focus BEHIND the modal. Together they
+  // keep the "deletion behind an open view" walk landing on the view's own restore path
+  // (`AgentView.tsx:222-261`) rather than being yanked to the panel underneath while the reader
+  // is still reading.
+  //
+  // THE TARGET IS `AgentView.tsx:253` VERBATIM — the state panel's headline if one is showing,
+  // the `<h1>` otherwise. Not a second destination rule: the panel is what replaced the surface
+  // the focus came from, and `AppShell.test.tsx:66` pins exactly one `h1` for the fallback. The
+  // `??` arm is unreachable through this transition today (every non-`deck` surface renders a
+  // `StatePanel`) and is kept because it costs one expression to be right if that ever changes.
+  //
+  // THE ACCEPTED RESIDUE, recorded rather than guarded against: if focus was already on `<body>`
+  // because nothing had ever been focused, this still moves it to the headline. That is the
+  // standard SPA answer to replaced content, it is what ARM 3 of the agent view's restore
+  // already does, and the alternative — a `heldFocus`-style sample of every focusable in the
+  // departing surface — would be the five copies this effect exists to avoid.
+  useEffect(() => {
+    const departed = previousSurfaceKind.current
+    previousSurfaceKind.current = surface.kind
+    if (departed !== 'deck' || surface.kind === 'deck') return
+    // THE THIRD GUARD (Greptile, PR #80): an OPEN AGENT VIEW makes body-focus unreadable. The
+    // inference below — "focus on `<body>` across a deck → panel transition means the departing
+    // surface held it" — assumed the view always holds focus while open, and it usually does
+    // (its title takes focus on open). But a real pointer click on the dialog's NON-focusable
+    // content blurs to `<body>` — jsdom never models this, which is why no test caught it — and
+    // rescuing then would park keyboard and AT focus on the panel headline BEHIND the still-open
+    // modal. With a view open the rescue always declines: focus inside the view is ARM 3's to
+    // restore on close, and body-focus beside an open dialog is the view's pre-existing
+    // condition, not this transition's.
+    if (agentView !== null) return
+    if (document.activeElement !== null && document.activeElement !== document.body) return
+    focusHome(document.querySelector('.state-panel-headline') ?? document.querySelector('h1'))
+  }, [surface.kind, agentView])
 
   // THE SKIP LINK'S PRESENCE CONDITION (c4-11, AC 4, Q3), AND IT IS ONE TEST COVERING THREE CASES.
   //
@@ -440,6 +535,14 @@ export default function App() {
     <AppShell
       skipLink={hasCards ? <SkipLink /> : undefined}
       deckName={deck?.detail.name}
+      /* THE UPDATING MARKER'S GATE (c7-4). `deck !== null && deckUpdating`, and both halves are
+         load-bearing: the flag alone is also true during a COLD boot (the store cannot know what
+         is on the glass), and it is `deck !== null` — `surfaceOf`'s own answer, not a second
+         derivation — that keeps a cold open, a state panel and the booting frame unmarked. The
+         marker therefore covers exactly the windows UX-DR35 describes: a c7-3 single-request
+         refetch AND a full re-drive behind a still-settled deck (EXPERIENCE.md names reconnect
+         explicitly), because both raise the flag while the deck stays rendered beneath them. */
+      updating={deck !== null && deckUpdating}
       badges={
         deck === null ? undefined : (
           <DeckBadges
@@ -594,8 +697,23 @@ export default function App() {
          deck slice through their own hooks — deliberately NOT off `surface` or `deck` in this
          file, because `surfaceOf` returns a PANEL surface in exactly the `'down'` state where the
          pill must still know a deck is loaded (`deck.ts:481-486`). Passing either from here would
-         have handed it the one answer it must not use. */
-      connectionPill={<ConnectionPill />}
+         have handed it the one answer it must not use.
+
+         AND THE DECK ANNOUNCER RIDES BESIDE IT (c7-5, UX-DR45) — a fragment in the SAME slot, so
+         `AppShell.tsx` is not edited and no new prop exists: the announcer is one visually-hidden
+         polite `<p>`, which adds no landmark (the banner census holds at 3) and no Tab stop (the
+         corridor pins hold). Props-free like its sibling, for the sibling's reason: it reads the
+         refetch-settle counter and the header counts from the deck slice itself, and the root
+         keeps no opinion about what it says. It renders on EVERY surface exactly as the pill
+         does — an empty region on a cold open or a state panel costs nothing and announces
+         nothing (the mount-silence sentinel), and gating it on a loaded deck here would tear the
+         region out of the accessibility tree mid-session for no user gain. */
+      connectionPill={
+        <>
+          <ConnectionPill />
+          <DeckAnnouncer />
+        </>
+      }
       /* THE LAST SLOT THE SHELL HAD OPEN, FILLED (c6-8). The ELEVENTH application of c2-9's
          displacement ruling and the one that finishes the set: `AppShell.tsx` is NOT edited, its
          `slot(nav, 'Agent-view nav pills land here — c6-8.')` placeholder stays exactly where it

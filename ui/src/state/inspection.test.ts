@@ -10,6 +10,7 @@ import {
   clearPin,
   clearTransientTargets,
   coldOpenTargetOf,
+  evictDepartedPin,
   resetInspection,
   setDefaultTarget,
   setFocused,
@@ -274,6 +275,107 @@ describe('an unknown card cannot become the inspection target (AC 17, UX-DR22)',
     // hydration had run — the FR-13 posture inverted.
     setHovered('id-brand-new')
     expect(useInspectionStore.getState().hoveredId).toBe('id-brand-new')
+  })
+})
+
+describe('pin eviction is a membership transition, not a deck lookup (c7-4, R9)', () => {
+  // The four-row truth table of the R9 rule (ruling 2026-08-14), plus the sideboard row. The
+  // verb reads only the TWO DECKLISTS handed to it — no pin-time classification anywhere — and
+  // its caller (`CardDetail`'s boards effect, via `deckMemory`) is `CardDetail.test.tsx`'s and
+  // `App.test.tsx`'s to prove; what is pinned here is the rule itself.
+  const deckWith = (...names: string[]) => boardsOf(names.map((name) => row(name, 'Sorcery')))
+
+  it('evicts on present → absent, and the panel falls back to the default resolution', () => {
+    setDefaultTarget('id-Ponder')
+    togglePin('id-Forest')
+
+    evictDepartedPin(deckWith('Forest', 'Ponder'), deckWith('Ponder'))
+
+    expect(useInspectionStore.getState().pinnedId).toBeNull()
+    // `clearPin` alone IS the fall-back: resolution lands on the default target, which the
+    // boards effect re-sets to `coldOpenTargetOf(next)` — the first card the grid draws.
+    expect(targetIdOf(useInspectionStore.getState())).toBe('id-Ponder')
+  })
+
+  it('survives absent → absent — the pinned suggestion, with no special-casing (c6-7 debt)', () => {
+    togglePin('id-Birds of Paradise')
+
+    evictDepartedPin(deckWith('Ponder'), deckWith('Ponder', 'Opt'))
+
+    expect(useInspectionStore.getState().pinnedId).toBe('id-Birds of Paradise')
+  })
+
+  it('survives present → present — the same-deck refetch this story exists for', () => {
+    togglePin('id-Forest')
+
+    evictDepartedPin(deckWith('Forest', 'Ponder'), deckWith('Forest', 'Opt'))
+
+    expect(useInspectionStore.getState().pinnedId).toBe('id-Forest')
+  })
+
+  it('never evicts on a first boards — previous === null has no departing deck', () => {
+    togglePin('id-Forest')
+
+    evictDepartedPin(null, deckWith('Ponder'))
+
+    expect(useInspectionStore.getState().pinnedId).toBe('id-Forest')
+  })
+
+  it('counts the SIDEBOARD as membership — a sideboard pin evicts when its card leaves', () => {
+    // A sideboard card is pinnable (DeckList rows) and is "in the deck's list" in R9's words —
+    // deliberately asymmetric with `coldOpenTargetOf`, which draws only what the grid draws.
+    togglePin('id-Pithing Needle')
+    const departing = boardsOf([
+      row('Pithing Needle', 'Artifact', { sideboard: true }),
+      row('Ponder', 'Sorcery'),
+    ])
+
+    evictDepartedPin(departing, deckWith('Ponder'))
+    expect(useInspectionStore.getState().pinnedId).toBeNull()
+
+    // …and STAYING in the sideboard is membership too: no eviction on present → present.
+    togglePin('id-Pithing Needle')
+    evictDepartedPin(departing, departing)
+    expect(useInspectionStore.getState().pinnedId).toBe('id-Pithing Needle')
+  })
+
+  it('counts the COMMANDER board as membership — a pinned commander evicts when it leaves', () => {
+    // The third board, in the sideboard row's exact shape, because it is the predicate's third
+    // LIVE arm: `boardsOf` files a `commander: true` card ONLY in `boards.commander`, never in a
+    // mainboard group — so without this row the commander arm could be deleted with the whole
+    // suite green, silently keeping a departed commander's pin alive.
+    togglePin('id-Atraxa, Praetors’ Voice')
+    const departing = boardsOf([
+      row('Atraxa, Praetors’ Voice', 'Legendary Creature — Phyrexian Angel Horror', {
+        commander: true,
+      }),
+      row('Ponder', 'Sorcery'),
+    ])
+
+    evictDepartedPin(departing, deckWith('Ponder'))
+    expect(useInspectionStore.getState().pinnedId).toBeNull()
+
+    // …and STAYING in the commander slot is membership too: no eviction on present → present.
+    togglePin('id-Atraxa, Praetors’ Voice')
+    evictDepartedPin(departing, departing)
+    expect(useInspectionStore.getState().pinnedId).toBe('id-Atraxa, Praetors’ Voice')
+  })
+
+  it('touches NOTHING while no pin is held — not the transients, not the default', () => {
+    // Non-vacuous on purpose: with `pinnedId` already null, an unconditional `clearPin()` and
+    // the guarded no-op are indistinguishable by a pin assertion alone. The other four slots
+    // are what tell a verb that evicts a pin from one that clears more than it was asked to.
+    setDefaultTarget('id-Ponder')
+    setHovered('id-Opt')
+    setFocused('id-Forest')
+
+    evictDepartedPin(deckWith('Forest'), deckWith('Ponder'))
+
+    const state = useInspectionStore.getState()
+    expect(state.pinnedId).toBeNull()
+    expect(state.hoveredId).toBe('id-Opt')
+    expect(state.focusedId).toBe('id-Forest')
+    expect(state.defaultId).toBe('id-Ponder')
   })
 })
 

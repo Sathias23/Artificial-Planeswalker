@@ -11,6 +11,7 @@ import {
   clearPin,
   clearTransientTargets,
   coldOpenTargetOf,
+  evictDepartedPin,
   setDefaultTarget,
   useInspectionTargetId,
   usePinnedId,
@@ -20,7 +21,7 @@ import { FlipControl } from '../FlipControl/FlipControl'
 import { SKIP_TARGET_ID, focusHome } from '../focusHome'
 import { useCardArt } from '../useCardArt'
 import { useImagedFaceCount } from '../imagedFaces'
-import { replacesRememberedDeck } from './deckMemory'
+import { rememberBoards } from './deckMemory'
 import './CardDetail.css'
 import './CardDetailChrome.css'
 import { ORACLE_SCROLLER_LABEL, PANEL_TITLE, UNPIN_LABEL, pinnedAnnouncement } from './copy'
@@ -343,16 +344,27 @@ export function CardDetail({ boards }: CardDetailProps) {
   // identity as far as this panel is concerned — `deck.ts` derives it once at write time, so it
   // changes exactly when the deck does.
   //
-  // AND THE DECK TRANSITION IS WHERE AN INSPECTION DIES (review 2026-08-05). The slice survives
-  // this panel unmounting on purpose (Q6), which means nothing in it can know a DECK was
-  // replaced — a pin or a stale hover from the previous deck would keep outranking the new
-  // deck's cold-open target, and the panel would render a card that is not on the glass, with
-  // the live ring on no tile. So the one consumer that holds a deck clears both user targets
-  // when the deck it holds is no longer the deck it held — see ./deckMemory for why the memory
-  // is module-scope and why a remount of the SAME deck clears nothing (FR-17).
+  // AND THE DECK TRANSITION IS WHERE AN INSPECTION DIES (review 2026-08-05, amended c7-4). The
+  // slice survives this panel unmounting on purpose (Q6), which means nothing in it can know a
+  // DECK was replaced — a pin or a stale hover from the previous deck would keep outranking the
+  // new deck's cold-open target, and the panel would render a card that is not on the glass,
+  // with the live ring on no tile. So the one consumer that holds a deck runs the transition
+  // here — see ./deckMemory for why the memory is module-scope and why a remount of the SAME
+  // deck clears nothing (FR-17).
+  //
+  // THE PIN'S CLEAR IS NO LONGER UNCONDITIONAL (c7-4, R9 ruling 2026-08-14): eviction is a
+  // membership transition — the pinned card was in the DEPARTING decklist and is absent from
+  // the new one — decided by `evictDepartedPin` over the two lists and nothing else, which is
+  // what lets a pin survive the same-deck refetch every c7-3 settle produces (the retired
+  // reference-comparison released it every time) and lets a pinned SUGGESTION survive every
+  // refetch with no special-casing. The TRANSIENTS still die on every replacement: hover and
+  // focus are ephemeral by contract, stale by construction whichever deck arrives, and no
+  // ruling overturned that clear. This runs at the boards-effect seam and NOT in `deck.ts`,
+  // which may not even name the inspection store (`store-writes.test.ts`'s two-armed detector).
   useEffect(() => {
-    if (replacesRememberedDeck(boards)) {
-      clearPin()
+    const previous = rememberBoards(boards)
+    if (previous !== null) {
+      evictDepartedPin(previous, boards)
       clearTransientTargets()
     }
     setDefaultTarget(coldOpenTargetOf(boards))

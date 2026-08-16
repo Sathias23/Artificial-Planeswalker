@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { UNKNOWN_CARD_LABEL } from '../../components/CardPlaceholder/copy'
 import { resetCardCache, useCardStore } from '../../state/cards'
@@ -887,5 +887,96 @@ describe('what a screen reader gets (AC 10, AC 11, AC 20)', () => {
     expect(tile.getAttribute('aria-label')).toBeNull()
     expect(tile.getAttribute('title')).toBeNull()
     expect(tile.getAttribute('aria-description')).toBeNull()
+  })
+})
+
+describe('the quantity badge flashes ONCE on a changed quantity, and only then (c7-5, UX-DR16)', () => {
+  // Fake timers ONLY here, for the AgentView entry-animation suite's recorded reason: this is
+  // the one behaviour in this file with a FRAME in the middle of it — vitest's fake clock
+  // stands in for `requestAnimationFrame`, which is what lets both ENDS of the flash be
+  // asserted (the flashed frame a real-timer test could never catch, and the cleared state it
+  // would have to wait for).
+  //
+  // WHAT THIS CANNOT SEE, DECLARED: jsdom applies no stylesheet, so the glow itself —
+  // `var(--glow)` instant-on, the `--motion-glide` fade-out, and its reduced-motion omission —
+  // is asserted from CSS SOURCE in `tests/quantity-glow.test.ts`. What THIS file pins is the
+  // attribute contract those rules hang on: when `data-flashed` appears, and when it must not.
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  const badge = () => document.querySelector('.card-tile-quantity')
+  const frame = () =>
+    act(() => {
+      vi.advanceTimersByTime(20)
+    })
+
+  it('mounts with NO flash — the seen-sentinel initialises from the mount prop', () => {
+    // A freshly mounted tile is itself the signal (a card just appeared); flashing it too would
+    // light ~99 badges on every grid remount. The sentinel starts EQUAL to the mount quantity,
+    // so there is no change to detect.
+    render(<CardTile {...BLACK_LOTUS} quantity={4} />)
+    expect(badge()).not.toBeNull()
+    expect(badge()!.getAttribute('data-flashed')).toBeNull()
+  })
+
+  it('flashes on a quantity change, then clears after one frame — the one-shot', () => {
+    const view = render(<CardTile {...BLACK_LOTUS} quantity={4} />)
+    view.rerender(<CardTile {...BLACK_LOTUS} quantity={5} />)
+
+    // INSTANT-ON: the attribute is present in the very commit that drew the new count, so the
+    // glow paints whole (the flashed rule carries `transition: none`) rather than fading in.
+    expect(badge()!.getAttribute('data-flashed')).toBe('true')
+    expect(badge()!.textContent).toBe('×5')
+
+    // …and OFF on the next frame: the attribute drops, the base transition owns the fade-out,
+    // and nothing loops — one change, one flash.
+    frame()
+    expect(badge()!.getAttribute('data-flashed')).toBeNull()
+  })
+
+  it('does NOT flash when a re-render keeps the quantity — a refetch that changed nothing', () => {
+    // The refetch re-renders every tile over the new boards; a tile whose count is unchanged
+    // must stay quiet, or every agent edit would light the whole grid (the "quantity unchanged"
+    // matrix row).
+    const view = render(<CardTile {...BLACK_LOTUS} quantity={4} />)
+    view.rerender(<CardTile {...BLACK_LOTUS} quantity={4} />)
+    expect(badge()!.getAttribute('data-flashed')).toBeNull()
+  })
+
+  it('re-arms the one-shot when a SECOND change lands while a flash is pending', () => {
+    // Review pass 1, finding 3: with the clear keyed on the flashed BOOLEAN, a second change
+    // while a flash was pending never re-ran the effect, so the FIRST change's rAF cleared the
+    // SECOND change's flash instead of giving it a frame of its own. The effect is keyed on the
+    // whole flash object now — each change is a fresh object, the cleanup cancels the stale
+    // frame, and a new one is armed from the second change.
+    const view = render(<CardTile {...BLACK_LOTUS} quantity={4} />)
+    view.rerender(<CardTile {...BLACK_LOTUS} quantity={5} />)
+    expect(badge()!.getAttribute('data-flashed')).toBe('true')
+
+    // The second change lands BEFORE any frame has run: the flash must survive it whole…
+    view.rerender(<CardTile {...BLACK_LOTUS} quantity={6} />)
+    expect(badge()!.getAttribute('data-flashed')).toBe('true')
+    expect(badge()!.textContent).toBe('×6')
+
+    // …until one frame after the SECOND change, and then clear exactly once.
+    frame()
+    expect(badge()!.getAttribute('data-flashed')).toBeNull()
+  })
+
+  it('mounts the badge FLASHED when 1 -> 2 crosses the render threshold — and clears it', () => {
+    // The badge renders only for `copies > 1`, so a 1 -> 2 change is a change the seen-sentinel
+    // observed on a tile whose badge did not exist yet: the badge's first appearance IS the
+    // flash. (The mirror case, 2→1, unrenders the badge — nothing left to glow, asserted too.)
+    const view = render(<CardTile {...BLACK_LOTUS} quantity={1} />)
+    expect(badge()).toBeNull()
+
+    view.rerender(<CardTile {...BLACK_LOTUS} quantity={2} />)
+    expect(badge()).not.toBeNull()
+    expect(badge()!.getAttribute('data-flashed')).toBe('true')
+    frame()
+    expect(badge()!.getAttribute('data-flashed')).toBeNull()
+
+    view.rerender(<CardTile {...BLACK_LOTUS} quantity={1} />)
+    expect(badge()).toBeNull()
   })
 })

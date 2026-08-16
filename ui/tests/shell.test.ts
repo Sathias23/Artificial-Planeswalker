@@ -2044,6 +2044,31 @@ describe('the containers are a declared category with a posture of its own', () 
     // `tests/connection-pill-copy.test.ts` imports this one to gate the strings against
     // EXPERIENCE.md's row.
     { file: 'src/containers/ConnectionPill/copy.ts', imports: [] },
+    // c7-5's deck announcer — props-free like the pill it rides beside in App.tsx's
+    // connectionPill slot, and a container for the pill's own reason: it subscribes to the deck
+    // store (the refetch-settle counter and the two header counts, all primitive selectors) and
+    // holds render-time announcement state. It renders ONE visually-hidden polite region —
+    // UX-DR45's deck-refetch channel, the app's third — and no visible chrome at all, which is
+    // why there is no stylesheet import: `.visually-hidden` is the shared utility and
+    // `.deck-announcement` is an identity class the censuses name, not a styled one.
+    //
+    // ⚠️ `../../state/agentView` JOINED AT c7-6, AND IT IS THE ONE IMPORT WORTH ARGUING ABOUT.
+    // UX-DR45's *"nothing announces from behind an open agent view"* needs one bit of overlay
+    // state here, and the component's own header spent c7-5 declaring it deliberately did not
+    // read any. What makes the addition safe rather than a widening is WHICH export it takes:
+    // `useAgentViewIsOpen`, a boolean, and NOT `useOpenAgentView`, whose content object would
+    // resubscribe this region to every push's items and title. The import list cannot see that
+    // distinction — the announcer's docstring and `agentView.ts`'s selector pair carry it — so
+    // it is written here for the reader who arrives at this line first.
+    {
+      file: 'src/containers/DeckAnnouncer/DeckAnnouncer.tsx',
+      imports: ['../../state/agentView', '../../state/deck', './copy', 'react'],
+    },
+    // c7-5's copy module — `imports: []` for the settled TS2835 reason: `ui/tests` is the
+    // `nodenext` project and `src/` the `bundler` one, and
+    // tests/deck-announcement-copy.test.ts imports this module directly to gate the template
+    // against the artefacts, so the import-freedom is load-bearing rather than conventional.
+    { file: 'src/containers/DeckAnnouncer/copy.ts', imports: [] },
   ]
 
   // A WALK rather than a regex (review 2026-08-04): the first spelling was a `//`-to-newline
@@ -2156,7 +2181,9 @@ describe('the containers are a declared category with a posture of its own', () 
     // component file. The store extension the story needed (per-kind retention, unread flags,
     // the pill vocabulary) landed in `src/state/agentView.ts`, a module this list does not cover
     // and does not need to; the header slot it fills was cut at c2-6.
-    expect(CONTAINERS).toHaveLength(34)
+    // 36 at c7-5, which adds the deck announcer and its copy module — the refetch announcement
+    // UX-DR45 licensed and the App live-region censuses moved from two to three for.
+    expect(CONTAINERS).toHaveLength(36)
     for (const { file } of CONTAINERS) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }

@@ -45,11 +45,12 @@
  * ================= WHAT WRITES THIS SLICE, AND WHAT MAY NEVER (AD-12, AC 18) ===========
  *
  * The spine, verbatim: *"its state comes from exactly two inputs — REST responses and WebSocket
- * messages. Nothing else may write the store."* Today that means {@link createDeckBoot}'s two
- * REST answers and nothing else — no component setter, no `localStorage`, no URL parsing, no
- * derived value written back in. Epic 5's `deck_changed` message is the second input and it does
- * not exist yet. `tests/store-writes.test.ts` asserts the rule rather than trusting this
- * paragraph.
+ * messages. Nothing else may write the store."* Today that means {@link createDeckBoot}'s REST
+ * answers and nothing else — no component setter, no `localStorage`, no URL parsing, no derived
+ * value written back in. The WebSocket is the second input's TRIGGER, never its writer: a
+ * `deck_changed` frame drives {@link refetchOnDeckChanged} (c7-3) and the state written is still
+ * a REST response's, through this module's one writer. `tests/store-writes.test.ts` asserts the
+ * rule rather than trusting this paragraph.
  *
  * ================= WHAT THIS STORY DELIBERATELY DOES NOT DO ============================
  *
@@ -67,8 +68,11 @@
  *   blip on a boot request AFTER the poll has already stopped has no later edge to heal it, and
  *   persists until reload or c5-6's reconnect. **c5-6 has shipped that reconnect**, so the
  *   residue is closed: {@link redriveDeckBoot} re-drives this boot on every reconnect success and
- *   on every `deck_changed` / `active_deck_changed` frame, and neither is an edge this module has
- *   to detect.
+ *   on every `active_deck_changed` frame, and neither is an edge this module has to detect.
+ *   **c7-3 split `deck_changed` off that path**: a matching (or deck-agnostic) event on a
+ *   SETTLED deck now runs {@link refetchOnDeckChanged}'s single-request refetch instead of the
+ *   full re-drive — while the `'none'`/`'refused'`/unsettled windows keep the authoritative
+ *   two-request re-drive, so every recovery this bullet describes still heals identically.
  * - **No render.** The grid is **c4-4**, the placeholders **c4-3**, the detail panel **c4-5**,
  *   the deck list and its group headers **c4-7**, the curve **c4-8**, the format check **c4-10**,
  *   the empty-deck state **c4-12**. {@link DeckBoards} ships declared and unread by this story's
@@ -169,21 +173,72 @@ export const INITIAL_DECK_STATE: DeckState = { status: 'booting' }
  */
 export interface DeckSlice {
   readonly deck: DeckState
+  /**
+   * Whether the boot is re-reading the deck RIGHT NOW (story c7-4, UX-DR35, UX-DR42) — the
+   * deck-header updating treatment's one input. True from a `start()` or `refetch()` until that
+   * sequence's LAST exit, on every terminal path including the dropped ones (`settleFor` cannot
+   * carry this flag: drops never settle). A sibling KEY rather than a member of {@link DeckState},
+   * because it is lifecycle truth about the request, not about what is on the glass — and because
+   * `applyDeckState`'s merge write then leaves it alone by construction, exactly as the wrapped
+   * union above leaves ghost fields impossible.
+   *
+   * The App layer gates the marker on `deck !== null && updating`, so a cold boot (which also
+   * raises this flag) draws nothing: there is no deck on the glass to mark as updating.
+   */
+  readonly updating: boolean
+  /**
+   * How many coalesced refetches have settled SUCCESSFULLY (story c7-5, UX-DR45) — the
+   * announce-once signal, as store truth. Monotonic; incremented in exactly ONE place, the
+   * success arm of {@link refetchSequence}, synchronously with its settle — so it can never move
+   * on a boot settle, the 404-clear, a dropped outcome, a superseded response or a `stop()`.
+   *
+   * A COUNTER rather than the `updating` falling edge or `detail` identity, deliberately: the
+   * falling edge fires on every terminal path including drops (announcing a dropped 503 would
+   * lie), and `detail`'s identity changes on boot settles and deck switches too (announcing a
+   * switch contradicts UX-DR45's refetch-only wording). And a counter rather than a boolean,
+   * because two refetches ending at the same total must still announce twice — the
+   * `DeckAnnouncer` keys its DOM mutation on this value.
+   */
+  readonly refetchSettles: number
 }
 
-export const useDeckStore = create<DeckSlice>(() => ({ deck: INITIAL_DECK_STATE }))
+export const useDeckStore = create<DeckSlice>(() => ({
+  deck: INITIAL_DECK_STATE,
+  updating: false,
+  refetchSettles: 0,
+}))
 
 /** The ONE writer (AD-12, AC 18). Every input to this slice goes through here. */
 const applyDeckState = (deck: DeckState): void => useDeckStore.setState({ deck })
 
 /**
+ * The updating flag's writer — `applyDeckState`'s sibling, same module, same AD-12 door (c7-4).
+ * Generation-guarding is the CALLER's (each boot owns its own counter; this module-level writer
+ * cannot see one).
+ */
+const applyUpdating = (updating: boolean): void => useDeckStore.setState({ updating })
+
+/**
+ * The settle counter's writer — the third sibling through the AD-12 door (c7-5), `applyUpdating`'s
+ * shape exactly. It takes the NEXT value rather than incrementing internally so that
+ * {@link resetDeckState} and the one increment site share one writer; guarding which settles may
+ * count is the increment site's (it sits synchronously beside `refetchSequence`'s own generation
+ * check, so no second guard exists here to drift from the first).
+ */
+const applyRefetchSettles = (refetchSettles: number): void =>
+  useDeckStore.setState({ refetchSettles })
+
+/**
  * Forget the deck. **For tests** — the module holds no other lifetime to reset.
  *
- * Not a production `deck_changed` handler: that transition is Epic 5's and this story does not
- * have it (Q7).
+ * Still not a production `deck_changed` handler, even now that one exists (c7-3): that handler
+ * is {@link refetchOnDeckChanged}, and it REFETCHES rather than forgets — nothing on the
+ * production `deck_changed` path ever writes an empty state except the legislated 404-clear.
  */
 export const resetDeckState = (): void => {
   applyDeckState(INITIAL_DECK_STATE)
+  applyUpdating(false)
+  applyRefetchSettles(0)
 }
 
 /**
@@ -283,6 +338,37 @@ export interface DeckBoot {
   start: () => void
   /** Abandons the sequence: nothing it has in flight may write after this. Idempotent. */
   stop: () => void
+  /**
+   * Refetch ONE deck by id — the single-request half of the boot, on the boot (story c7-3).
+   *
+   * The `deck_changed` handler's request shape: one `readDetail`, no `readActive`, sharing this
+   * boot's generation counter, settle guard, refusal mapping and summary seeding — the "existing
+   * machinery extended, never a second boot implementation" clause made literal. Each call
+   * SUPERSEDES any refetch already in flight: the previous request's `AbortSignal` is aborted
+   * and the generation bump makes its response unable to settle, so a burst of calls holds at
+   * most one request in flight and exactly the LAST response wins (UX-DR35's "a newer event
+   * cancels and restarts", with no timer anywhere — the supersession IS the coalescing).
+   *
+   * A no-op unless the boot has settled ({@link DeckBoot.settled}): a refetch racing an
+   * unsettled two-request sequence would bump the generation out from under it and could strand
+   * the slice at `'booting'` if its own outcome were then dropped. The caller
+   * ({@link refetchOnDeckChanged}) routes that window to a full re-drive instead, per the
+   * mid-boot row of c7-3's decision table — this guard is the boot refusing to be misused, not
+   * a second copy of the table.
+   *
+   * Outcome mapping is deliberately NOT the boot's (see the runner): only `deck_not_found`
+   * settles (the legislated 404-clear); every other refusal, an unreachable, an abort and a
+   * malformed row are all DROPPED so the loaded deck stays on the glass (UX-DR35
+   * never-teardown; staleness accepted).
+   */
+  refetch: (deckId: string) => void
+  /**
+   * Whether the most recent `start()`'s sequence has settled — the bookkeeping
+   * {@link refetchOnDeckChanged} reads to tell "a deck is loaded and quiet" from "a re-drive is
+   * mid-flight against a possibly-departing id". False from `start()` until the sequence's one
+   * settle lands; a refetch neither requires nor clears it.
+   */
+  settled: () => boolean
 }
 
 export interface DeckBootOptions {
@@ -290,8 +376,12 @@ export interface DeckBootOptions {
   readonly onUpdate: (state: DeckState) => void
   /** Injected so tests need no global `fetch` stub, exactly as `createPoller`'s `read?:` is. */
   readonly readActive?: () => Promise<ActiveDeckOutcome>
-  /** Likewise. **Production passes neither.** */
-  readonly readDetail?: (deckId: string) => Promise<DeckOutcome>
+  /**
+   * Likewise. **Production passes neither.** The optional `signal` is the refetch's abort
+   * handle (story c7-3): the boot sequence passes none, and `readDeck` merges it with its own
+   * read timeout inside `client.ts`'s one door.
+   */
+  readonly readDetail?: (deckId: string, signal?: AbortSignal) => Promise<DeckOutcome>
 }
 
 /**
@@ -321,13 +411,53 @@ export const createDeckBoot = ({
 }: DeckBootOptions): DeckBoot => {
   let live = false
   let generation = 0
+  /**
+   * Whether the most recent `start()`'s sequence has settled (story c7-3). Cleared by `start()`,
+   * set inside {@link settleFor}'s guard — so a superseded sequence's late settle can no more
+   * flip this flag than it can write the store. `stop()` deliberately leaves it alone: the flag
+   * describes the last sequence that RAN, and the one reader (`refetch`'s gate, via
+   * {@link refetchOnDeckChanged}) always pairs it with the store's own state.
+   */
+  let sequenceSettled = false
+  /** The in-flight refetch's abort handle, or `null`. Aborted on every supersede and on stop. */
+  let refetchController: AbortController | null = null
 
-  const run = async (gen: number): Promise<void> => {
-    /** Emit only if this sequence still owns the store. The one place staleness is stopped. */
-    const settle = (state: DeckState): void => {
+  const abortRefetch = (): void => {
+    refetchController?.abort()
+    refetchController = null
+  }
+
+  /**
+   * The ONE settle guard, shared by the boot sequence and the refetch (c7-3): emit only if the
+   * caller still owns the store. Marking `sequenceSettled` here rather than at each call site is
+   * what keeps the flag inside the same guard as the write — a refetch's settle re-asserts a
+   * truth it required, and a stale sequence's settle asserts nothing.
+   */
+  const settleFor =
+    (gen: number) =>
+    (state: DeckState): void => {
       if (gen !== generation || !live) return
+      sequenceSettled = true
       onUpdate(state)
     }
+
+  /**
+   * The updating flag's clear, generation-guarded exactly as {@link settleFor} guards a write
+   * (c7-4). One helper rather than a clear at each of the runners' five-plus return paths — the
+   * runners reach it through `finally`, so no exit can miss it — and the guard is what stops a
+   * SUPERSEDED run's exit from clearing the flag its successor just raised: the successor bumped
+   * `generation` before it started, so the stale run's `gen` no longer matches. `settleFor` alone
+   * cannot carry this duty because the dropped outcomes (a 503, an unreachable, an abort, a
+   * malformed row) never settle, and every one of them still ends the in-flight window.
+   */
+  const clearUpdatingFor = (gen: number): void => {
+    if (gen !== generation) return
+    applyUpdating(false)
+  }
+
+  const runSequence = async (gen: number): Promise<void> => {
+    /** Emit only if this sequence still owns the store. The one place staleness is stopped. */
+    const settle = settleFor(gen)
 
     let active: ActiveDeckOutcome
     try {
@@ -385,17 +515,136 @@ export const createDeckBoot = ({
     }
   }
 
+  /** {@link runSequence}, with the c7-4 updating window closed on EVERY exit path. */
+  const run = async (gen: number): Promise<void> => {
+    try {
+      await runSequence(gen)
+    } finally {
+      clearUpdatingFor(gen)
+    }
+  }
+
+  /**
+   * The single-request refetch (story c7-3): re-read ONE deck, keep the glass calm about it.
+   *
+   * The boot's machinery, not a copy of it — same generation slot, same settle guard, same
+   * `seedCardSummaries`-before-settle ordering and the same malformed-row catch. What differs
+   * is the OUTCOME MAPPING, and every difference is UX-DR35 legislation rather than taste:
+   *
+   *   - `deck_not_found` settles the boot's own clearing state ({@link deckRefusalState} maps it
+   *     through `PANEL_FOR_REASON` to `{status:'none'}`) — *"a 404 clears to no-active-deck"*.
+   *   - EVERY other refusal, an `unreachable` (which is also what an abort surfaces as — the
+   *     merged signal rejects `fetch` inside the one door and `readDeck` folds it), and a
+   *     malformed row are DROPPED without a settle: the boot maps these to a panel because at
+   *     cold open there is nothing on the glass to protect, and a refetch maps them to nothing
+   *     because there is — tearing a loaded deck down to a panel on a transient blip is the
+   *     exact teardown UX-DR35 forbids. Staleness is accepted; recovery is the next event, the
+   *     reconnect re-drive, or the poll edge.
+   *
+   * The invalid_request→'none' override deliberately does NOT clear here: its Q5 justification
+   * ("the id in the path came from `PUT /api/active-deck`") holds — but its conclusion rests on
+   * the id being one the app has never resolved, and THIS id is the settled `detail.id`, which
+   * just resolved. A 400 about it mid-session reads as a blip, not a verdict, so it drops with
+   * the other refusals; only the token FR-11 legislates ever clears a loaded deck.
+   */
+  const refetchSequence = async (
+    gen: number,
+    deckId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const settle = settleFor(gen)
+
+    let detail: DeckOutcome
+    try {
+      detail = await readDetail(deckId, signal)
+    } catch {
+      detail = { kind: 'unreachable' }
+    }
+    if (gen !== generation || !live) return
+
+    if (detail.kind === 'unreachable') return
+    if (detail.kind === 'error') {
+      if (detail.reason === 'deck_not_found') settle(deckRefusalState(detail.reason))
+      return
+    }
+
+    try {
+      // The same zero-request seeding AC 17 bought the boot, for the same reason: a consumer
+      // re-rendered by the settle below reads a cache that is already warm with the new rows.
+      seedCardSummaries(detail.deck.cards)
+      settle({ status: 'deck', detail: detail.deck, boards: boardsOfDeck(detail.deck) })
+      // THE ANNOUNCE-ONCE SIGNAL (c7-5, UX-DR45): incremented HERE and nowhere else — beside the
+      // one settle that means "a coalesced refetch completed with a new deck". Synchronous with
+      // the generation check above (no await between), so the `:537` guard already covers it and
+      // a superseded run's late response can no more bump this than it can write the store. It
+      // sits AFTER the settle so a throw in `boardsOfDeck` (evaluated as the settle's argument)
+      // skips both together, and the boot's own success arm deliberately has no counterpart:
+      // cold boots, switches and reconnect re-drives all settle there, silently.
+      applyRefetchSettles(useDeckStore.getState().refetchSettles + 1)
+    } catch {
+      // A malformed row inside a 200: the boot settles a panel because a cold open has nothing
+      // else to show; a refetch leaves the DECK STORE untouched, because the deck already on
+      // the glass parsed (UX-DR35). Stated precisely rather than as "dropped whole" (review
+      // correction): `seedCardSummaries` runs BEFORE the derivation that throws, so the card
+      // cache may retain whatever validly-shaped summaries the payload carried. That residue
+      // is additive summary-tier data keyed by card id — the same rows a later successful
+      // refetch would seed — so it is harmless, and unwinding a cache shared with the agent
+      // views to cosmetically purify a dropped outcome would be a second mechanism for zero
+      // observable gain.
+    }
+  }
+
+  /** {@link refetchSequence}, with the c7-4 updating window closed on EVERY exit path. */
+  const refetchRun = async (gen: number, deckId: string, signal: AbortSignal): Promise<void> => {
+    try {
+      await refetchSequence(gen, deckId, signal)
+    } finally {
+      clearUpdatingFor(gen)
+    }
+  }
+
   return {
     start: () => {
       if (live) return
       live = true
       generation += 1
+      sequenceSettled = false
+      // Raised HERE, synchronously with the generation bump, so the header can mark the very
+      // frame the sequence begins on (c7-4). A re-drive behind a still-settled deck is the case
+      // that shows it; a cold boot raises it too and the App layer's `deck !== null` gate is
+      // what keeps the cold open unmarked.
+      applyUpdating(true)
       void run(generation)
     },
     stop: () => {
       live = false
       generation += 1
+      // A stopped boot may not leave a refetch running against a world it has abandoned — the
+      // generation bump already silences its settle; the abort stops paying for it (c7-3).
+      abortRefetch()
+      // …and the marker dies with the abort (c7-4): the bump above means the aborted run's own
+      // `finally` will SKIP its clear (gen no longer matches), so `stop()` clears directly —
+      // unguarded, because a stopped world has nothing in flight to be superseded by.
+      applyUpdating(false)
     },
+    refetch: (deckId) => {
+      // The gate the interface docstring declares: never race an unsettled sequence. Checked
+      // here as well as in the caller, because a generation bump from an ungated refetch would
+      // silence the in-flight boot and could strand the slice at `'booting'` forever.
+      if (!live || !sequenceSettled) return
+      // Supersede FIRST, then abort: the bump is what makes the aborted request's response
+      // (perhaps already resolving) fail its settle guard, so the abort is a network economy
+      // and never load-bearing for correctness.
+      generation += 1
+      abortRefetch()
+      // AFTER the gate and the bump (c7-4): an ungated set would raise the marker for an event
+      // the boot refused, and a pre-bump set would belong to the generation being superseded.
+      applyUpdating(true)
+      const controller = new AbortController()
+      refetchController = controller
+      void refetchRun(generation, deckId, controller.signal)
+    },
+    settled: () => sequenceSettled,
   }
 }
 
@@ -517,6 +766,97 @@ export const redriveDeckBoot = (): void => {
   mounted.stop()
   mounted.start()
 }
+
+/**
+ * c7-3's decision table over one `deck_changed`, driven against an explicit boot.
+ *
+ * **Exported for `deck.test.ts` alone** — the store-level suite drives it with a boot built on
+ * injected readers, exactly as it drives `createDeckBoot`; production reaches it only through
+ * {@link refetchOnDeckChanged}, which supplies the mounted instance. The table, row by row
+ * (the I/O matrix in the story spec is the authority):
+ *
+ *   1. **Settled `'deck'`, matching or deck-agnostic id** → {@link DeckBoot.refetch} of the
+ *      SETTLED `detail.id` — one `GET /api/deck/{id}`, zero `GET /api/active-deck`. The settled
+ *      id is used even on a match (they are equal by the check) because it is the only id this
+ *      client holds as truth; the event's copy was only ever a routing hint.
+ *   2. **Settled `'deck'`, a DIFFERENT deck's id** → nothing. The deck on the glass was not
+ *      edited, and refetching it anyway would be spending a request to learn nothing. (The
+ *      caller still restarts a stopped poll — the "deck list may refresh regardless" half lives
+ *      in `connection.ts`, beside both branches.)
+ *   3. **Anything else** — `'none'`, `'refused'`, `'booting'`, or a loaded deck whose RE-DRIVE
+ *      is still unsettled — → the full two-request re-drive, `redriveDeckBoot`'s own
+ *      stop()/start(). The server is the referee (c6-3 ruling #1's principle): during any window
+ *      where the settled `detail.id` is not current truth, adjudicating ids client-side is how a
+ *      single-deck refetch of a DEPARTING deck beats an in-flight re-drive to a newly-activated
+ *      one and strands the glass on the old deck. Re-driving also keeps the recovery windows the
+ *      full boot already heals (the unreachable blip, the 404 residue) healing exactly as they
+ *      did before this story.
+ *   4. **A STOPPED boot that once settled** — `live` false, `sequenceSettled` still true, the
+ *      store still `'deck'` — passes rows 1's gates and the event then dies silently at
+ *      `refetch()`'s own `!live` no-op: neither a refetch nor a re-drive (the `stop()`ped state
+ *      swallows `start()`-less drives by design). Recorded for totality because this function is
+ *      exported; UNREACHABLE through the production seam, because {@link refetchOnDeckChanged}
+ *      requires the MOUNTED boot, the mounting effect starts it in the same breath, and the only
+ *      `stop()` without a following `start()` is the unmount cleanup — which clears the slot
+ *      before this verb could see the stopped instance. A test driving an explicit stopped boot
+ *      observes a silent no-op, which is also the only honest answer for a boot whose owner
+ *      said stop.
+ *
+ * The mismatch check reads the settled `detail.id` and NOTHING else: there is no stored
+ * `activeDeckId` anywhere in the client, and inventing one would be a second source of truth
+ * free to drift from the store (story spec, Design Notes).
+ *
+ * Args:
+ *   boot: The boot to drive — production's mounted instance, or a test's own.
+ *   deckId: The event's `deck_id`, already FOLDED by the caller: `null` means the frame was
+ *     deck-agnostic (missing, null or blank id — "refetch whatever is active").
+ */
+export const driveDeckChanged = (boot: DeckBoot, deckId: string | null): void => {
+  const { deck } = useDeckStore.getState()
+  if (deck.status !== 'deck' || !boot.settled()) {
+    boot.stop()
+    boot.start()
+    return
+  }
+  if (deckId !== null && deckId !== deck.detail.id) return
+  boot.refetch(deck.detail.id)
+}
+
+/**
+ * The mounted `App`'s answer to a `deck_changed` frame — or a no-op when nothing is mounted.
+ *
+ * `redriveDeckBoot`'s shape exactly, one story on: `connection.ts` calls this with the folded
+ * `deck_id` and holds no `setState` and names no store; the store read and every write stay in
+ * this module, which `store-writes.test.ts` names as `deck_changed`'s home. The decision itself
+ * is {@link driveDeckChanged}, split out so the store-level suite can drive it without a React
+ * mount.
+ *
+ * Args:
+ *   deckId: The event's `deck_id`, folded to `null` when deck-agnostic. See
+ *     {@link driveDeckChanged}.
+ */
+export const refetchOnDeckChanged = (deckId: string | null): void => {
+  if (mounted === null) return
+  driveDeckChanged(mounted, deckId)
+}
+
+/**
+ * Whether the boot is re-reading the deck right now — the header's updating marker (c7-4).
+ *
+ * A primitive selector beside {@link useDeckState}, `useInspectionTargetId`'s shape: the one
+ * consumer (`App`, which gates it on a loaded deck) re-renders only when the flag flips, never
+ * on the deck writes the other hook already carries.
+ */
+export const useDeckUpdating = (): boolean => useDeckStore((slice) => slice.updating)
+
+/**
+ * How many coalesced refetches have settled successfully — the `DeckAnnouncer`'s trigger (c7-5).
+ *
+ * A primitive selector beside {@link useDeckUpdating}, for the same re-render economy: the one
+ * consumer re-renders when the counter advances — once per settled refetch, by construction —
+ * and never on the deck writes, the updating flag, or anything else this slice carries.
+ */
+export const useDeckRefetchSettles = (): number => useDeckStore((slice) => slice.refetchSettles)
 
 /**
  * Subscribe to the deck state, and boot it once for as long as the caller is mounted.

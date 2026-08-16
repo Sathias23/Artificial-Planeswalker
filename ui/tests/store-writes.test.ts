@@ -83,7 +83,7 @@ const STORES: { store: string; owner: string; why: string }[] = [
   {
     store: 'useDeckStore',
     owner: 'src/state/deck.ts',
-    why: 'the two boot reads are the only inputs to the deck (story c4-2, AD-12). Epic 5 adds `deck_changed` as the second input, into this same module.',
+    why: 'the two boot reads are the only inputs to the deck (story c4-2, AD-12). Epic 5 adds `deck_changed` as the second input, into this same module — whose c7-5 `refetchSettles` counter (the announce-once signal) is written by `applyRefetchSettles`, the third sibling writer beside `applyDeckState` and `applyUpdating`, incremented only against the refetch success settle.',
   },
   {
     store: 'useCardStore',
@@ -93,7 +93,7 @@ const STORES: { store: string; owner: string; why: string }[] = [
   {
     store: 'useInspectionStore',
     owner: 'src/state/inspection.ts',
-    why: 'the FIRST slice whose input is a person rather than the wire (story c4-5, Q5). The spine sentence this file exists to enforce is narrowed IN THAT MODULE\'S HEADER to "nothing outside the store writes SERVER-DERIVED state", and the narrowing is safe for exactly the reason the bans below are keyed the way they are: the slice holds four card ids chosen by a hover, a focus or a click — no deck, no card record, no wire token, and nothing that any request could answer or any response contradict. The verbs (`setHovered`/`clearHovered`, `setFocused`/`clearFocused`, `togglePin`/`clearPin`, `clearTransientTargets`, `setDefaultTarget`) are the writers; the components that call them still touch no `setState`, which is what the scan below actually asserts.',
+    why: 'the FIRST slice whose input is a person rather than the wire (story c4-5, Q5). The spine sentence this file exists to enforce is narrowed IN THAT MODULE\'S HEADER to "nothing outside the store writes SERVER-DERIVED state", and the narrowing is safe for exactly the reason the bans below are keyed the way they are: the slice holds four card ids chosen by a hover, a focus or a click — no deck, no card record, no wire token, and nothing that any request could answer or any response contradict. The verbs (`setHovered`/`clearHovered`, `setFocused`/`clearFocused`, `togglePin`/`clearPin`, `clearTransientTargets`, `setDefaultTarget`, and c7-4\'s `evictDepartedPin` — the R9 membership-transition eviction, which reads the two decklists it is HANDED as arguments and holds no deck of its own) are the writers; the components that call them still touch no `setState`, which is what the scan below actually asserts.',
   },
   {
     store: 'useFaceStore',

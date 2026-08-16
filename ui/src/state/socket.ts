@@ -77,7 +77,7 @@ import {
   type AgentSocketHandlers,
   type SessionOutcome,
 } from '../api/client'
-import type { AgentEvent, SuggestionsEvent } from '../api/schema'
+import type { AgentEvent, SuggestionsEvent, SystemEvent } from '../api/schema'
 
 /**
  * The first retry lands this long after a drop.
@@ -166,17 +166,12 @@ export const DISCONNECTED_MIN_FAILURES = 4
  */
 export type ConnectionStatus = 'live' | 'reconnecting' | 'down'
 
-/**
- * The two wire kinds that mean *something the app is showing has changed* — the system half of
- * AD-6's six-kind vocabulary, as opposed to the four agent-view kinds.
- *
- * Spelled as a union of the wire's own discriminants rather than translated into local names, so
- * that a reader of {@link AgentSocketOptions.onSystemEvent} can find the contract by searching
- * for the string the backend sends. It is a subset of `AgentEvent['kind']` and the compiler
- * checks that it is: the `switch` in {@link createAgentSocket} would not type-check if a member
- * here were not a kind.
- */
-export type SystemEventKind = Extract<AgentEvent['kind'], 'deck_changed' | 'active_deck_changed'>
+// `SystemEventKind` used to live here — the kind-only union {@link AgentSocketOptions.onSystemEvent}
+// carried before c7-3 widened the callback to the whole envelope. It is GONE rather than kept
+// exported: its one external consumer was `socket.test.ts`'s harness, `schema.ts`'s `SystemEvent`
+// now owns the pair (both spellings of the system/view partition live in that file, both derived),
+// and an exported alias with no consumer is exactly the drift surface the alias-lands-with-its-
+// consumer rule exists to prevent. A caller wanting the kinds writes `SystemEvent['kind']`.
 
 export interface AgentSocketOptions {
   /**
@@ -198,24 +193,33 @@ export interface AgentSocketOptions {
    */
   readonly onReconnected: () => void
   /**
-   * A `deck_changed` or `active_deck_changed` frame arrived. The two are reported separately even
-   * though the caller's action is currently the same, because `contracts.py:902-905` is emphatic
-   * that conflating them is the interesting bug — *"a client that conflates them refetches the
-   * deck it is leaving instead of the one it is switching to"* — and a callback that erased the
-   * difference here would make that mistake unrepresentable in the one place it must stay
-   * visible. See `connection.ts` for what each one does.
+   * A `deck_changed` or `active_deck_changed` frame arrived. The two are reported separately —
+   * as one union whose discriminant survives — because `contracts.py:902-905` is emphatic that
+   * conflating them is the interesting bug: *"a client that conflates them refetches the deck it
+   * is leaving instead of the one it is switching to"*. See `connection.ts` for what each one
+   * does.
+   *
+   * **It carries the WHOLE EVENT since c7-3**, where it used to carry the bare kind. This
+   * docstring reserved that seam in writing — *"the payload is deliberately never read"* — and
+   * c7-3 is the story that overturns exactly half of the ruling: `deck_changed`'s `deck_id` is
+   * now read (by `connection.ts`, never here) to choose between a single-deck refetch and a full
+   * re-drive, while `active_deck_changed`'s payload stays deliberately unread, because the boot
+   * asks `GET /api/active-deck` first and so can never fetch the deck being left. Carrying the
+   * envelope rather than a second `deckId` parameter keeps this module payload-blind: it hands
+   * over what arrived and holds no opinion about which fields matter — the same argument
+   * {@link AgentSocketOptions.onSuggestions} makes one entry down.
    */
-  readonly onSystemEvent: (kind: SystemEventKind) => void
+  readonly onSystemEvent: (event: SystemEvent) => void
   /**
    * A `suggestions` push arrived (story c6-6, AC 1). The caller opens its view
    * (`connection.ts` → `openSuggestionsPush`).
    *
-   * **It carries the WHOLE EVENT, and that is the difference from
-   * {@link AgentSocketOptions.onSystemEvent} one line up.** The system kinds report a
-   * discriminant because the payload is deliberately never read — *"something changed, refetch"*
-   * — and this one reports the envelope because the payload IS the content: the title, the items
-   * and the `id` that makes a repeat push identifiable are all in it, and an `id`-only callback
-   * would force the caller to hold a second copy of the frame to look them up in.
+   * **It carries the WHOLE EVENT, as {@link AgentSocketOptions.onSystemEvent} now also does —
+   * for a different reason worth keeping apart.** The system kinds carry their envelope because
+   * c7-3's refetch branch reads ONE routing field (`deck_changed`'s `deck_id`) out of it; this
+   * one carries the envelope because the payload IS the content: the title, the items and the
+   * `id` that makes a repeat push identifiable are all in it, and an `id`-only callback would
+   * force the caller to hold a second copy of the frame to look them up in.
    *
    * The three remaining agent-view kinds (`swaps`, `tier_list`, `groups`) are still dropped at
    * the switch — their views are **Epic 9** — so this is not `onViewEvent(kind, payload)`, and
@@ -427,9 +431,13 @@ export const createAgentSocket = ({
     if (event === null) return
 
     switch (event.kind) {
+      // THE WHOLE EVENT since c7-3 (the kind before it): the shared case arms narrow `event` to
+      // exactly the `SystemEvent` union, so the callback's envelope and the switch's narrowing
+      // are the same type by construction. What each kind DOES with its payload is
+      // `connection.ts`'s decision — this module still reads nothing but the discriminant.
       case 'active_deck_changed':
       case 'deck_changed':
-        onSystemEvent(event.kind)
+        onSystemEvent(event)
         return
       // THE FIRST AGENT VIEW WITH SOMEWHERE TO GO (story c6-6, AC 1). The whole event, not its
       // kind — the payload IS the content. `connection.ts` turns it into an open view; this

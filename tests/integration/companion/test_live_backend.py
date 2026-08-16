@@ -27,7 +27,7 @@ The cost is a long function, paid down with phase comments rather than with spli
 stall were both ruled acceptable residuals at c5-4; if a real socket ever surfaces them here, the
 honest move is to record it, not to repair it from a test.
 
-**It does not use** :func:`~src.companion.client.push_event`. The FR-12 retry in phase 9 stays
+**It does not use** :func:`~src.companion.client.push_event`. The FR-12 retry in phase 10 stays
 hand-rolled *inside this function* on purpose, and c6-1 shipping the real helper did not change
 that (Q3, Brad 2026-08-09): what this file pins is the **wire contract**, and it can only pin it
 independently of the client if it does not go through the client. Wired up, a client bug and a
@@ -36,6 +36,16 @@ exists to be. The shipped helper — ``client.push_event``, with the retry-once 
 outcome vocabulary — is unit-tested against real loopback listeners in
 ``tests/unit/companion/test_client.py``; the sequence below is the shape it had to implement,
 proven here against a really restarted process.
+
+**The one exception, added at c7-7, and why it is not a weakening.** Phase 8 drives real MCP
+mutation tools and therefore *does* travel through ``src.companion.client`` — deliberately, because
+its subject is a **different one**. Every other phase asks "does the wire behave?", and answering
+that independently of the client is what the paragraph above protects. Phase 8 asks "does the
+**notifier path** carry a tool's commit all the way to a browser-shaped socket?", and that path is
+made *of* the client: routing around it would leave the question unasked. The hand-rolled phases
+stay hand-rolled beside it and share none of its code, so the second opinion is intact — phases 6
+and 10 would still fail on a client bug that phase 8 hid, and phase 8 would still fail on a wiring
+bug the hand-rolled pushes cannot see.
 
 **CI runs it on Windows.** ``.github/workflows/ci.yml``'s ``companion-integration`` job runs this
 directory on ``windows-latest`` on every push and pull request. The ``quality`` jobs are ubuntu and
@@ -72,13 +82,18 @@ import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
 import websockets
+from mcp.shared.memory import create_connected_server_and_client_session
 from websockets.exceptions import InvalidStatus
 
 from src.companion import client, discovery
+from src.data.database import create_engine, create_session_factory, init_database
+from src.data.models.card import CardModel
+from src.mcp_server.server import build_server
 
 pytestmark = pytest.mark.integration
 
@@ -103,11 +118,47 @@ _HTTP_TIMEOUT = 10.0
 _RECV_DEADLINE = 10.0
 """Every await in this file carries a bound: a hung socket must fail the test, not the run."""
 
+_TOOL_DEADLINE = 30.0
+"""How long one in-process MCP tool call gets, in phase 8.
+
+Generous for the same reason :data:`_BOOT_DEADLINE` is: the first ``call_tool`` pays the session
+handshake and a cold SQLAlchemy import on top of the work, and the notify inside it is already
+capped at ~1 s by ``client._NOTIFY_TOTAL_SECONDS``. What the bound is here for is the failure mode
+where a tool never returns at all — that must end the test, not the run.
+"""
+
+
+def _loop_card() -> CardModel:
+    """One real-shaped card row, so phase 8's ``add_card_to_deck`` has something to add.
+
+    Deliberately its own tiny seed rather than a share with
+    ``tests/integration/mcp_server/test_deck_changed_wiring.py``: that module patches the notifier
+    out, and importing its fixtures here would drag its stub into the one file whose whole point is
+    that nothing is stubbed.
+    """
+    return CardModel(
+        id="card-loop-bolt",
+        name="Lightning Bolt",
+        printed_name=None,
+        oracle_id="oracle-card-loop-bolt",
+        mana_cost="{R}",
+        cmc=1.0,
+        type_line="Instant",
+        oracle_text="Deals 3 damage.",
+        rarity="common",
+        set_code="TST",
+        set_name="Test Set",
+        collector_number="1",
+        colors=["R"],
+        color_identity=["R"],
+        legalities={"standard": "legal"},
+    )
+
 
 class _Backend:
     """One real companion process, and everything needed to shut it down again.
 
-    Deliberately a small class rather than a fixture: phase 6 stops the first backend and starts a
+    Deliberately a small class rather than a fixture: phase 9 stops the first backend and starts a
     second one *inside* the test body, so the lifetime is the test's to manage. The fixture below
     owns only the guarantee that both are dead at the end.
     """
@@ -271,10 +322,10 @@ def backends(live_data_dir):
             raise ExceptionGroup("backend teardown failed", errors)
 
 
-async def test_the_real_channel_end_to_end(backends, live_data_dir):
+async def test_the_real_channel_end_to_end(backends, live_data_dir, tmp_path_factory):
     """Boot a real backend, drive the real channel, restart it, and retry through FR-12.
 
-    Nine phases, in order, against two real processes. Each phase's own comment says which
+    Ten phases, in order, against two real processes. Each phase's own comment says which
     acceptance criterion it discharges and — where it matters — which failure it is shaped to
     catch rather than merely to observe.
     """
@@ -383,13 +434,184 @@ async def test_the_real_channel_end_to_end(backends, live_data_dir):
                 close_timeout=_HTTP_TIMEOUT,
             )
             await asyncio.wait_for(fresh_socket.close(), timeout=_HTTP_TIMEOUT)
+
+            # ==== PHASE 8: THE LOOP CLOSES — a real tool's commit arrives at a real socket ===
+            # (c7-7 AC 1a). Epic C7 built every link and, until this phase, **nothing had ever
+            # watched the whole chain run**: `test_deck_changed_wiring.py` has the tool and the
+            # notifier but no companion (it patches `server._notify_deck_changed` out), and phase
+            # 6 above has the process and the socket but hand-builds its envelope. The middle —
+            # tool commits, notifier dials the running backend over loopback, backend broadcasts,
+            # browser-shaped client receives — was unproven in the repo's whole history.
+            #
+            # ⚠️ THIS PHASE GOES THROUGH `src.companion.client` ON PURPOSE, and it is the one that
+            # does. The file header's rule ("it does not use `push_event`") protects the WIRE
+            # CONTRACT's independence: phases 6 and 10 hand-roll their POSTs so that a client bug
+            # and a backend bug cannot fail the same assertion. That rule is untouched — those
+            # phases are still hand-rolled and share no code with this one. What this phase's
+            # subject is, is the **notifier path itself**, which is made of the client: routing
+            # around it would leave AC 1a's question unasked. The two subjects sit beside each
+            # other in one function and neither can hide the other's failure.
+            #
+            # It needs exactly three things this walk already owns — a booted backend, a live
+            # discovery record, and an open socket — which is why it is a phase here rather than a
+            # second `integration`-marked file. AD-10 and `ci.yml`'s path-scoped job both say
+            # "exactly one", and `ci.yml` would not object to a second file; the architecture would.
+            #
+            # The mutations run through an in-process MCP client session against a file-backed
+            # database of this phase's own, the same shape `test_deck_changed_wiring.py` uses —
+            # but with NOTHING patched. The alignment the phase needs is the NOTIFIER's discovery
+            # lookup: `live_data_dir` points `PLANESWALKER_DATA_DIR` at this process too (see the
+            # fixture), so the real `notify_deck_changed` reads the real discovery record and dials
+            # the backend that is genuinely running.
+            #
+            # The database itself therefore does NOT belong in that directory, and an earlier draft
+            # put it there — where it sat beside the live backend's own `cards.db`, in a directory
+            # a running process owns, and outlived phase 9's hard kill. Its own temp dir instead:
+            # nothing about the loop depends on where these bytes live.
+            loop_db = tmp_path_factory.mktemp("c7-7-loop") / "loop.db"
+            loop_engine = create_engine(f"sqlite+aiosqlite:///{loop_db.as_posix()}")
+            try:
+                await init_database(loop_engine)
+                loop_sessions = create_session_factory(loop_engine)
+                async with loop_sessions() as seeding:
+                    seeding.add(_loop_card())
+                    await seeding.commit()
+
+                deliveries: list[tuple[str, dict[str, Any], float, float]] = []
+
+                async def _recv_deck_changed() -> dict[str, Any]:
+                    """Read frames off the open socket until a ``deck_changed`` arrives.
+
+                    ⚠️ A BARE ``recv()`` WOULD BE A LATENT FALSE NEGATIVE, and this phase above all
+                    must be trustworthy about failure: it is the repo's only end-to-end proof of
+                    the loop, so "the loop broke" said here will be believed. One extra frame from
+                    the backend — a future heartbeat, a status kind, anything broadcast to every
+                    client — would mis-pair the whole ``deliveries`` list from that point on and
+                    every assertion below would fail while the loop worked perfectly. Filtering by
+                    kind costs three lines and removes the entire class.
+
+                    The bound is per-frame and the loop cannot spin: ``_RECV_DEADLINE`` applies to
+                    each read, so a socket that only ever delivers other kinds ends the test rather
+                    than the run.
+
+                    Returns:
+                        The first ``deck_changed`` envelope seen.
+                    """
+                    while True:
+                        frame: dict[str, Any] = json.loads(
+                            await asyncio.wait_for(socket.recv(), timeout=_RECV_DEADLINE)
+                        )
+                        if frame.get("kind") == "deck_changed":
+                            return frame
+
+                async def _call(session, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
+                    """Drive one tool and read what the socket got, timing the gap between.
+
+                    The clock stops when the frame is READ OFF THE SOCKET and starts when the TOOL
+                    RETURNS, which is the boundary SC-2 is written against ("from mutation commit
+                    to visible update"). The figure is expected to be a fraction of a millisecond,
+                    and that is the finding rather than a disappointment: the emit is an *awaited*
+                    call inside the tool (AD-9's bounded await, never a detached task), so by the
+                    time the agent has its answer the backend has already broadcast and the frame
+                    is sitting in this client's receive buffer. The whole call is timed too, so
+                    the emit's contribution to the tool's own latency is visible beside it.
+
+                    RECORDED, NOT ASSERTED AGAINST A BUDGET. A threshold here would be a timing
+                    flake on CI's shared Windows runners; the real commit->repaint budget is
+                    measured through the browser by ``scripts/cdp_harness.py refetch``.
+                    """
+                    started = time.monotonic()
+                    result = await asyncio.wait_for(
+                        session.call_tool(tool, arguments), timeout=_TOOL_DEADLINE
+                    )
+                    returned = time.monotonic()
+                    assert result.isError is False, f"{tool} failed: {result}"
+                    assert result.structuredContent is not None
+                    frame = await _recv_deck_changed()
+                    deliveries.append(
+                        (tool, frame, time.monotonic() - returned, returned - started)
+                    )
+                    structured: dict[str, Any] = result.structuredContent
+                    return structured
+
+                loop_server = build_server(session_factory=loop_sessions)
+                async with create_connected_server_and_client_session(loop_server) as agent:
+                    created = await _call(agent, "create_deck", {"name": "The Loop Closes"})
+                    assert created["status"] == "ok"
+                    loop_deck_id = created["deck"]["id"]
+
+                    added = await _call(
+                        agent,
+                        "add_card_to_deck",
+                        {"deck_id": loop_deck_id, "card_id": "card-loop-bolt", "quantity": 2},
+                    )
+                    assert added["status"] == "ok"
+
+                    # The deletion half of AC 1a. c7-6 made deletion a mutation like any other:
+                    # the socket hears the id of a deck that no longer exists, and the glass's
+                    # refetch 404s and clears. Asserted here because "the deleted deck is
+                    # announced" is precisely the case a wrapper could quietly skip.
+                    deleted = await _call(agent, "delete_deck", {"deck_id": loop_deck_id})
+                    assert deleted["status"] == "ok"
+
+                # THREE FRAMES, ONE PER TOOL CALL, EACH NAMING THE DECK THAT CHANGED.
+                #
+                # The tool names below are appended by `_call` from its own argument, so this line
+                # is a shape check on `deliveries` — it says three calls were made and each was
+                # paired with a frame, which is worth asserting and is NOT an ordering claim. The
+                # ordering claim is the `ts` assertion further down, which reads the frames.
+                assert [tool for tool, _, _, _ in deliveries] == [
+                    "create_deck",
+                    "add_card_to_deck",
+                    "delete_deck",
+                ]
+                for tool, frame, _, _ in deliveries:
+                    assert frame["kind"] == "deck_changed", (tool, frame)
+                    assert frame["payload"]["deck_id"] == loop_deck_id, (tool, frame)
+
+                # The add's envelope, against the contract rather than against its own shape: the
+                # closed `{kind, id, ts, payload}` set exactly (AD-6/AD-8 — a sixth key would be a
+                # new wire shape this epic promised not to introduce), an `id` that is a real
+                # per-event identity rather than a reused constant, and an AWARE `ts` — a naive
+                # one is refused with a 422 at ingest, which would read here as "the loop broke".
+                _, add_frame, _, _ = deliveries[1]
+                assert set(add_frame) == {"kind", "id", "ts", "payload"}, add_frame
+                assert isinstance(add_frame["id"], str) and add_frame["id"]
+                assert datetime.fromisoformat(add_frame["ts"]).tzinfo is not None
+                ids = {frame["id"] for _, frame, _, _ in deliveries}
+                assert len(ids) == 3, f"the three emits shared an envelope id: {ids}"
+
+                # THE ORDERING, READ OFF THE FRAMES. Each envelope's `ts` is stamped by the
+                # notifier at mint time, so a non-decreasing sequence is the wire's own statement
+                # that the three emits left in the order the three tools ran — a claim that can
+                # actually fail, unlike the tool-name list above.
+                stamps = [datetime.fromisoformat(frame["ts"]) for _, frame, _, _ in deliveries]
+                assert stamps == sorted(stamps), f"the emits arrived out of order: {stamps}"
+
+                # RECORDED, NOT ASSERTED (this file's "record it, not repair it" rule, applied to
+                # a measurement rather than to a defect). Printed so a CI run that is slow for a
+                # real reason leaves a number behind instead of a shrug.
+                # ASCII only in the printed line: this runs on a Windows console whose code
+                # page mangles an em dash, and a measurement nobody can read is not a record.
+                print(
+                    "c7-7 AC 1a  tool-return -> socket delivery: "
+                    + ", ".join(
+                        f"{tool} {gap * 1000:.3f} ms (whole call {call * 1000:.1f} ms)"
+                        for tool, _, gap, call in deliveries
+                    )
+                )
+            finally:
+                # Without this the aiosqlite connection keeps `c7-7-loop.db` open and `tmp_path`
+                # cleanup fails on Windows for the NEXT test — the same fact `_Backend.stop`'s
+                # `wait()` exists for.
+                await loop_engine.dispose()
         finally:
             # By hand, and before the server is stopped (AC 10). A socket closed by the process
             # dying underneath it is a different code path from an orderly close, and the orderly
             # one is what a browser tab does.
             await asyncio.wait_for(socket.close(), timeout=_HTTP_TIMEOUT)
 
-        # ==== PHASE 8: the backend restarts, and takes its token with it (AC 9) =============
+        # ==== PHASE 9: the backend restarts, and takes its token with it (AC 9) =============
         # `terminate()` is a hard kill on Windows, which is exactly what this phase wants: it
         # leaves `companion.json` behind, so the second boot has to walk c1-8's reclaim path
         # (probe the recorded port, find it dead, take the file over). Deleting the stale file
@@ -409,7 +631,7 @@ async def test_the_real_channel_end_to_end(backends, live_data_dir):
         # P2, caught on this story's PR) — that is a healthy restart, not a defect, and asserting
         # otherwise would make this test flake on a passing run.
 
-        # ==== PHASE 9: FR-12 — stale token, 403, re-read, retry once, 200 (AC 9) ===========
+        # ==== PHASE 10: FR-12 — stale token, 403, re-read, retry once, 200 (AC 9) ===========
         # Hand-rolled here on purpose, and deliberately NOT switched to `client.push_event` when
         # that shipped (Q3, Brad 2026-08-09): routing this through the client would make one bug
         # able to hide another. What is proven is the SHAPE the helper implements, against a real

@@ -138,7 +138,17 @@ const COPY_MODULES: Map<string, string> = new Map([
     'src/components/AppShell/AppShell.tsx',
     'the placeholder line for each empty region, each naming the story that replaces it, plus ' +
       'the product kicker and the h1 fallback (story c2-1, AC 21). Every one of these is copy ' +
-      'with a scheduled death.',
+      'with a scheduled death. And one permanent resident since c7-4: the "Updating…" line the ' +
+      'reduced-motion swap shows while a refetch is in flight — authored, spelled with U+2026 ' +
+      'because the epic AC and the UX-DR42 inventory both write it verbatim (UX-DR33: ship ' +
+      'specified copy as specified), and asserted by codepoint in AppShell.test.tsx on the ' +
+      'U+00B7 precedent. That trailing ellipsis does NOT contradict the c5-7 ruling that ' +
+      'banned one after "Reconnecting": the pill names a STEADY state, where "…" promises the ' +
+      'looping animation tokens.css bans repo-wide, while "Updating…" marks a bounded ' +
+      'in-flight window that provably ends — the flag that shows it is cleared on every ' +
+      'terminal path, drops and aborts included. Recorded here so the two rulings stay one ' +
+      'coherent precedent: a trailing ellipsis is legal exactly when the state it decorates ' +
+      'is guaranteed to finish.',
   ],
   [
     'src/components/Footer/copy.ts',
@@ -329,7 +339,11 @@ const COPY_MODULES: Map<string, string> = new Map([
       'story is what writes it, the artefact and the constant land together. TWO VOICE DECISIONS ' +
       'ARE LOAD-BEARING AND THE MODULE ARGUES BOTH: there is no ellipsis after "Reconnecting", ' +
       'because a trailing "…" promises the animation tokens.css:305-312 bans repo-wide while ' +
-      'naming this very component as the reason the ban exists; and "Backend gone" states a fact ' +
+      'naming this very component as the reason the ban exists — a ruling about STEADY states, ' +
+      'not a flat character ban: c7-4\'s "Updating…" is the recorded exception (see the AppShell ' +
+      'entry above), legal because it marks a bounded in-flight window whose flag is cleared on ' +
+      "every terminal path, where the pill's states persist indefinitely and an ellipsis there " +
+      'would promise motion that never ends; and "Backend gone" states a fact ' +
       'about a process rather than blaming anyone, which is UX-DR33’s rule applied to the one ' +
       'string in this app most likely to reach for an apology. The DECK NAME is data — it arrives ' +
       'from the wire through the deck slice and is deliberately not in this module.',
@@ -427,6 +441,20 @@ const COPY_MODULES: Map<string, string> = new Map([
       'The module holds NOTHING ELSE: the view’s title and count are the shell’s props, the ' +
       'card names and reasons a non-empty push carries are DATA, and the line is not announced ' +
       '— the heading’s live region is the view’s one announcement.',
+  ],
+  [
+    'src/containers/DeckAnnouncer/copy.ts',
+    'the deck-refetch announcement (story c7-5, UX-DR45): "Deck updated — {N} card(s)", the one ' +
+      'sentence the coalesced-refetch live region ever speaks — exactly once per settled ' +
+      'refetch, on completion. TRANSCRIBED rather than authored: EXPERIENCE.md’s live-region row ' +
+      'and the epic’s Story 7.5 AC both carry the worked example "Deck updated — 62 cards", ' +
+      'spaced em dash U+2014 included, and tests/deck-announcement-copy.test.ts gates the ' +
+      'shipped builder against both artefacts — copy is gated against whatever wrote it. The ' +
+      'singular "1 card" is INVENTED on ManaCurve/copy.ts’s recorded precedent (no artefact ' +
+      'states a one-card form) and the module says so in the open. The COUNT is data — ' +
+      'mainboard_count + sideboard_count off the wire, summed in the builder so the announced ' +
+      'number and the group-header counts can never disagree (deckGroups.ts’s conservation ' +
+      'identity) — and the deck’s NAME is deliberately not in the sentence.',
   ],
 ])
 

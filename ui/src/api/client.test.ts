@@ -633,6 +633,101 @@ describe('the two routes refuse in DIFFERENT vocabularies, and both stay values'
   })
 })
 
+/**
+ * The caller-signal merge (story c7-3): a superseded refetch aborts its OWN request.
+ *
+ * These are the assertions the c7-3 review found missing: reverting `request()`'s merge to
+ * timeout-only — dropping the caller's signal on the floor — passed the entire suite green,
+ * because everything upstream (`deck.ts`'s abort-on-supersede) is proven against INJECTED
+ * readers and nothing observed the wire. The fetch stubs here react to their signal the way the
+ * real `fetch` does — reject with an `AbortError` on abort, immediately when the signal arrives
+ * already aborted — because the property under test is exactly that the abort REACHES the wire.
+ */
+describe('a caller can abandon a deck read mid-flight (c7-3)', () => {
+  /** A fetch that never answers on its own and honours its signal exactly as the real one does. */
+  const hangingFetch = () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          const refuse = () => reject(new DOMException('The operation was aborted.', 'AbortError'))
+          if (init?.signal?.aborted) {
+            refuse()
+            return
+          }
+          init?.signal?.addEventListener('abort', refuse)
+        }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  it('merges the caller signal into the request: an abort reaches fetch and reads unreachable', async () => {
+    const fetchMock = hangingFetch()
+    const controller = new AbortController()
+
+    const pending = readDeck(ATRAXA_DECK_ID, controller.signal)
+    controller.abort()
+
+    // The reader settles NOW, off the abort — no response is coming, so a resolution at all is
+    // proof the caller's handle reached the wire. An abort is a discarded outcome, never a
+    // throw: the reader stays total and the caller's generation guard is what tells it apart.
+    await expect(pending).resolves.toEqual({ kind: 'unreachable' })
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true)
+  })
+
+  it('still merges where AbortSignal.any is absent — the manual fallback, caller side', async () => {
+    // The floor-miss precedent above removes the WHOLE AbortSignal API; this stub removes only
+    // `any`, which is the exact gap the fallback exists for: `any` postdates `timeout` in
+    // browsers (Chrome 116 / Firefox 124 / Safari 17.4 against 103/100/15.4), so a browser
+    // inside the bundle's floor can hold the clock and still lack the merge. Without the
+    // fallback this run would be dead code in every test — node 24 and jsdom 29 both ship
+    // `any` — which is the review's second finding.
+    const timeout = AbortSignal.timeout.bind(AbortSignal)
+    vi.stubGlobal('AbortSignal', { timeout })
+    const fetchMock = hangingFetch()
+    const controller = new AbortController()
+
+    const pending = readDeck(ATRAXA_DECK_ID, controller.signal)
+    controller.abort()
+
+    await expect(pending).resolves.toEqual({ kind: 'unreachable' })
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true)
+  })
+
+  it('propagates the TIMEOUT input through the manual fallback too — either side aborts', async () => {
+    // The other input of the merge, driven by handing `request()` a controllable "timeout": the
+    // clock firing must end the request even when the caller's signal stays quiet, or the
+    // fallback would have silently traded the wedge guard for the abort feature.
+    const clock = new AbortController()
+    vi.stubGlobal('AbortSignal', { timeout: () => clock.signal })
+    const fetchMock = hangingFetch()
+    const caller = new AbortController()
+
+    const pending = readDeck(ATRAXA_DECK_ID, caller.signal)
+    clock.abort()
+
+    await expect(pending).resolves.toEqual({ kind: 'unreachable' })
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true)
+    expect(caller.signal.aborted).toBe(false)
+  })
+
+  it('honours a caller signal ALREADY aborted at merge time (fallback arm)', async () => {
+    // The `signal.aborted` branch of the manual merge's `follow`: an `addEventListener`-only
+    // fallback would wait forever on an event that already fired — a supersession landing in
+    // the same tick as the read it kills is exactly how `deck.ts` uses this.
+    const timeout = AbortSignal.timeout.bind(AbortSignal)
+    vi.stubGlobal('AbortSignal', { timeout })
+    const fetchMock = hangingFetch()
+    const controller = new AbortController()
+    controller.abort()
+
+    await expect(readDeck(ATRAXA_DECK_ID, controller.signal)).resolves.toEqual({
+      kind: 'unreachable',
+    })
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true)
+  })
+})
+
 describe('neither boot reader retries (AC 12, Q6)', () => {
   it.each([
     ['a 503 on the deck read', () => responding('{"reason": "database_not_initialized"}', 503)],
