@@ -13,6 +13,12 @@ inputDocuments:
 
 # Artificial-Planeswalker Companion App - Epic Breakdown
 
+> **Epic renumbering (2026-08-16):** the companion epics, formerly `c1`..`c10`, are now
+> **Epics 8..17** (c1=8, c2=9, c3=10, c4=11, c5=12, c6=13, c7=14, c8=15, c9=16, c10=17),
+> continuing the project's integer sequence (BMAD v6.11 requires integer epics). Historical
+> `cN-M` story ids in prose, filenames, PR titles and branch names are unchanged records of
+> merged work. See `sprint-change-proposal-2026-08-16.md`.
+
 ## Overview
 
 This document provides the complete epic and story breakdown for the **Artificial-Planeswalker
@@ -261,7 +267,7 @@ bound to the AD that governs it.
   `payload_too_large` (413 — **moved from 422 to HTTP's native status by the c1-4 review ruling,
   Brad 2026-07-25**), **`internal_error` (500 — added by the same ruling so an unhandled backend
   bug is distinguishable from the transient `database_unavailable` retry state; its state panel is
-  homed on Story 2.9)**, **`card_not_found` (404 — added in Story 3.2 under AD-16's own rule,
+  homed on Story 9.9)**, **`card_not_found` (404 — added in Story 10.2 under AD-16's own rule,
   since FR-13's unknown-card placeholder is a UI state and therefore needs a token)**. Adding a UI
   state means adding a token here first. Deck-existence validation for
   `companion_set_active_deck` belongs to the **MCP tool**, not the backend. *(AD-16)*
@@ -271,10 +277,10 @@ mid-story):
 
 - `GET /api/deck/{id}/format-check` — the format check panel is P0 in EXPERIENCE.md but had no
   data source. Reuses the existing `src/logic` validators; a TypeScript reimplementation would be
-  the second truth AD-1 exists to prevent. *(Story 3.3)*
+  the second truth AD-1 exists to prevent. *(Story 10.3)*
 - `GET /api/active-deck` (same-origin read) and `PUT /api/active-deck` (token-authenticated write)
   — AD-16 calls `set_active_deck` "control, not a push" but names no transport, and nothing told a
-  cold-opened tab which deck was active. *(Story 3.4)*
+  cold-opened tab which deck was active. *(Story 10.4)*
 
 **Image proxy**
 
@@ -533,7 +539,7 @@ exists because the grid sits between the header and the entire right column.
 > *second* focusable row — in the very column this link jumps into — and which did not exist when
 > "100+" was written. **The link removes only the first 105 of the 206**: after using it the footer
 > is still **101 stops away**, **19 of 40** decks remain more than 50 stops from the footer and
-> **36 of 40** remain more than 20. See UX-DR40's flag; the residue is homed on **c8-6**.
+> **36 of 40** remain more than 20. See UX-DR40's flag; the residue is homed on **15-6**.
 
 UX-DR32: **Footer attribution** — one quiet full-width line, visible without scrolling on **every
 surface**: "Card data and imagery courtesy of Scryfall. Unofficial Fan Content permitted under the
@@ -620,7 +626,7 @@ correction here: *"c4-11 must add it to the enumeration rather than rediscover i
 
 **The connection pill's DOM position WAS decided by nobody, and c5-7 decided it (dw:4597, CLOSED
 2026-08-08).** Three stories each assumed someone else had fixed it — this rule put it between the
-deck rows and the footer, c5-7 cited UX-DR47 and was silent on position, and c10-1 calls it *"the
+deck rows and the footer, c5-7 cited UX-DR47 and was silent on position, and 17-1 calls it *"the
 last stop before the footer"* — while `DESIGN.md:479` places it physically **bottom-left**, in the
 other column from the deck rows. c4-11 declined to decide it without the component and re-homed it
 to **c5-7**, which built the component and ruled it (Brad, 2026-08-08):
@@ -629,13 +635,13 @@ to **c5-7**, which built the component and ruled it (Brad, 2026-08-08):
 > and immediately before the footer**, which is the enumeration above — while `ConnectionPill.css`
 > pins it visually to the **bottom-left** corner with a `position: fixed` inset that clears the
 > footer strip. Document order and visual position are therefore both satisfied, and the two
-> readings that looked contradictory were only ever about different axes: this rule and c10-1 were
+> readings that looked contradictory were only ever about different axes: this rule and 17-1 were
 > describing TAB order, `DESIGN.md` was describing the SCREEN.
 
 The rejected alternative is recorded because it is the one a later reader would reach for: an
 in-flow last child of the LEFT column renders bottom-left with no fixed positioning at all, and
 puts the pill *before the entire right column* in Tab order — contradicting this enumeration,
-c10-1's wording, and (on any surface where the left column is a state panel) AC 1 as well.
+17-1's wording, and (on any surface where the left column is a state panel) AC 1 as well.
 
 **The nav pills' stop is CONDITIONAL, and c6-8 measured what that costs (2026-08-12).** A quiet
 pill ships the `disabled` attribute rather than `tabindex="-1"` — the latter would be a second
@@ -658,17 +664,17 @@ first 105, leaving 101; 19 of 40 decks stay more than 50 stops from the footer a
 more than 20.** ⚠️ **Every one of those figures gains exactly +1 as of c5-7 and was not
 re-measured** — the connection pill is an always-present stop inside this corridor, so the sweep's
 numbers become 207 / 79 / 103.0 with 102 left after the skip link. The suite's pins were recomputed
-from the DOM; the 40-deck sweep was not re-run. The flag is carried on **c8-6**, which actions or
+from the DOM; the 40-deck sweep was not re-run. The flag is carried on **15-6**, which actions or
 re-accepts it.)*
 
 ✅ **Coverage-map double-assignments RESOLVED as deliberate splits — Brad's ruling at the C5
 retro (2026-08-09, action item R9).** The defect first recorded here (c4-11 code review,
-2026-08-07) was that UX-DR40 appears under **Epic 4 and Epic 8**, and UX-DR46 under **Epic 4 and
-Epic 5**, unexplained. The ruling makes the explanation the record: the assignments are
-complementary slices, now annotated in the UX-DR coverage table itself — Epic 4 builds the focus
-floor (UX-DR46) and states the Tab-order cost (UX-DR40); Epic 5 extends 46 to connection-state
-changes and the pill; Epic 8 (c8-6) decides at release whether 40's floor is enough. Both halves
-of 46 shipped with tests in their own epics (Epic 4's deck-view focus ACs; c5-6/c5-7's
+2026-08-07) was that UX-DR40 appears under **Epic 11 and Epic 15**, and UX-DR46 under **Epic 11 and
+Epic 12**, unexplained. The ruling makes the explanation the record: the assignments are
+complementary slices, now annotated in the UX-DR coverage table itself — Epic 11 builds the focus
+floor (UX-DR46) and states the Tab-order cost (UX-DR40); Epic 12 extends 46 to connection-state
+changes and the pill; Epic 15 (15-6) decides at release whether 40's floor is enough. Both halves
+of 46 shipped with tests in their own epics (Epic 11's deck-view focus ACs; c5-6/c5-7's
 focus-survives-reconnect and pill-arrival assertions).
 
 **Accessibility floor** (acceptance criteria, not polish)
@@ -745,7 +751,7 @@ inputs to story writing, not open questions:
 **Open UX item carried into story work**
 
 - **FR-18 session-history home is undecided** — extend the nav, or a strip inside each view's
-  header. Blocks the history story in Epic 10, not any Phase-1 work.
+  header. Blocks the history story in Epic 17, not any Phase-1 work.
 
 ### FR Coverage Map
 
@@ -754,56 +760,56 @@ epic consumes or completes it, that is noted as a contributor — the owner stil
 
 | FR | Owner | Contributors | Note |
 |---|---|---|---|
-| FR-01 | Epic 1 | — | Port, fallback, single-instance |
-| FR-02 | Epic 3 | Epic 4 | Endpoints owned by 3; consumed by 4 |
-| FR-03 | Epic 3 | Epic 4 | Hydration cache is Epic 4's |
-| FR-04 | Epic 3 | Epic 4 | Face resolution in 3; placeholder render in 4 |
-| FR-05 | Epic 4 | — | Grid + list + curve as simultaneous columns |
-| FR-06 | Epic 5 | — | `/agent/events` + WS relay + client count |
-| FR-07 | Epic 6 | Epics 2, 3 | State slot + `GET`/`PUT /api/active-deck` in 3; no-active-deck panel in 2; MCP tool + deck-existence validation in 6 |
-| FR-08 | Epic 6 | — | Tool + Suggestions view together |
-| FR-09 | Epic 9 | — | Phase 2 |
-| FR-10 | Epic 9 | — | Phase 2 |
-| FR-11 | Epic 7 | — | Notifier + refetch + announcement |
-| FR-12 | Epic 6 | Epic 7 | Outcome tokens in 6; notifier swallow in 7 |
-| FR-13 | Epic 5 | Epics 4, 6 | ID-only contract in 5; hydration in 4; degradation in 6 |
-| FR-14 | Epic 1 | — | Discovery file + `instance_id` |
-| FR-15 | Epic 10 | Epic 5 | Pill shell + reconnect in 5; status detail in 10 |
+| FR-01 | Epic 8 | — | Port, fallback, single-instance |
+| FR-02 | Epic 10 | Epic 11 | Endpoints owned by 3; consumed by 4 |
+| FR-03 | Epic 10 | Epic 11 | Hydration cache is Epic 11's |
+| FR-04 | Epic 10 | Epic 11 | Face resolution in 3; placeholder render in 4 |
+| FR-05 | Epic 11 | — | Grid + list + curve as simultaneous columns |
+| FR-06 | Epic 12 | — | `/agent/events` + WS relay + client count |
+| FR-07 | Epic 13 | Epics 2, 3 | State slot + `GET`/`PUT /api/active-deck` in 3; no-active-deck panel in 2; MCP tool + deck-existence validation in 6 |
+| FR-08 | Epic 13 | — | Tool + Suggestions view together |
+| FR-09 | Epic 16 | — | Phase 2 |
+| FR-10 | Epic 16 | — | Phase 2 |
+| FR-11 | Epic 14 | — | Notifier + refetch + announcement |
+| FR-12 | Epic 13 | Epic 14 | Outcome tokens in 6; notifier swallow in 7 |
+| FR-13 | Epic 12 | Epics 4, 6 | ID-only contract in 5; hydration in 4; degradation in 6 |
+| FR-14 | Epic 8 | — | Discovery file + `instance_id` |
+| FR-15 | Epic 17 | Epic 12 | Pill shell + reconnect in 5; status detail in 10 |
 | FR-16 | — | — | **Phase 3 — out of scope for this breakdown** |
-| FR-17 | Epic 4 | — | Persistent detail panel, not a modal |
-| FR-18 | Epic 10 | — | Phase 2; blocked on the UX residual decision |
-| FR-19 | Epic 4 | Epic 3 | Flip control + placeholders in 4; `face` param in 3 |
-| FR-20 | Epic 2 | Epic 8 | Identity + tokens in 2; SC-5 gate in 8 |
+| FR-17 | Epic 11 | — | Persistent detail panel, not a modal |
+| FR-18 | Epic 17 | — | Phase 2; blocked on the UX residual decision |
+| FR-19 | Epic 11 | Epic 10 | Flip control + placeholders in 4; `face` param in 3 |
+| FR-20 | Epic 9 | Epic 15 | Identity + tokens in 2; SC-5 gate in 8 |
 | FR-21 | — | — | **Phase 3 — out of scope for this breakdown** |
-| FR-22 | Epic 1 | Epics 2, 3 | Lazy engine + 503 token in 1; state-panel surface + copy in 2; wiring + self-transition in 3 |
-| FR-23 | Epic 9 | — | Phase 2 |
+| FR-22 | Epic 8 | Epics 2, 3 | Lazy engine + 503 token in 1; state-panel surface + copy in 2; wiring + self-transition in 3 |
+| FR-23 | Epic 16 | — | Phase 2 |
 
 **NFR coverage**
 
 | NFR | Owner | Contributors |
 |---|---|---|
-| NFR-01 | Epic 5 (ticket, Origin, token separation) | Epic 1 (bind 127.0.0.1, Host validation, CORS) |
-| NFR-02 | Epic 1 (both CI boundary tests) | Epic 3 (WAL reads) |
-| NFR-03 | Epic 2 (generation pipeline + drift check) | Epic 5 (envelope union) |
-| NFR-04 | Epic 5 (WS backoff + ticket re-mint) | Epic 7 (refetch coalescing) |
-| NFR-05 | Epic 4 (1 s deck render) | Epic 6 (250 ms push), Epic 10 (hardening) |
-| NFR-06 | Epic 2 (self-hosted font) | Epic 3 (warm cache) |
+| NFR-01 | Epic 12 (ticket, Origin, token separation) | Epic 8 (bind 127.0.0.1, Host validation, CORS) |
+| NFR-02 | Epic 8 (both CI boundary tests) | Epic 10 (WAL reads) |
+| NFR-03 | Epic 9 (generation pipeline + drift check) | Epic 12 (envelope union) |
+| NFR-04 | Epic 12 (WS backoff + ticket re-mint) | Epic 14 (refetch coalescing) |
+| NFR-05 | Epic 11 (1 s deck render) | Epic 13 (250 ms push), Epic 17 (hardening) |
+| NFR-06 | Epic 9 (self-hosted font) | Epic 10 (warm cache) |
 | NFR-07 | Epics 1 + 2 (from the first commit) | all — cross-cutting, never a story of its own |
-| NFR-08 | Epic 2 (footer attribution) | Epic 3 (rate-spacing), Epic 8 (release notice) |
-| NFR-09 | Epic 3 (location + atomic writes) | Epic 8 (README + uninstall notes) |
+| NFR-08 | Epic 9 (footer attribution) | Epic 10 (rate-spacing), Epic 15 (release notice) |
+| NFR-09 | Epic 10 (location + atomic writes) | Epic 15 (README + uninstall notes) |
 
 **UX-DR coverage**
 
 | Epic | UX-DRs |
 |---|---|
-| Epic 2 | 1, 2, 3, 5, 6, 7 (tokens, font, numerals, spacing, contrast, brand rules), 8 (layout shell), 9–13 (presentation-only primitives), 30 (state panel), 32 (footer), 33 (copy). **Mechanism only:** 4 (card-radius token defined here, enforced in Epic 4), 42 (reduced-motion mechanism here, per-motion inventory completed in Epics 4 and 6), 47 (lint rule here, applied in every later epic) |
-| Epic 4 | 4 (card geometry enforced), 14–22 (card tile, DFC flip, quantity badge, curve, colour distribution, deck row, detail panel, format check, placeholder), 31 (skip link), 36 (placeholder-then-fill), 39–41 (interaction primitives, Tab order, contrast), 44–48 (semantics, live regions, focus, hit targets, alt text). *(35 — refetch — belongs wholly to Epic 7, where `deck_changed` originates. 40 and 46 are deliberate splits, ruled at the C5 retro: this epic builds the focus FLOOR (46) and states the Tab-order cost (40); Epic 5 owns 46's connection-state half, c8-6 owns 40's release-gate revisit)* |
-| Epic 5 | 29 (connection pill behaviour), 46 (focus never dropped **across connection-state changes and the pill's arrival** — extends Epic 4's floor; deliberate split, ruled at the C5 retro) |
-| Epic 6 | 23–24 (agent view shell, suggestion row), 28 (nav pills), 34 (push arrival), 37–38 (view/left-column interaction, overlay depth), 43 (motion never sole signal), 45 (live regions) |
-| Epic 7 | 16 (quantity flash), 35 (refetch), 43, 45 (coalesced announcement) |
-| Epic 8 | 49 (SC-5 gate), 40 (Tab-order revisit flag) |
-| Epic 9 | 25–27 (swap row, tier row, group section) |
-| Epic 10 | 28–29 (nav timestamps, pill detail) |
+| Epic 9 | 1, 2, 3, 5, 6, 7 (tokens, font, numerals, spacing, contrast, brand rules), 8 (layout shell), 9–13 (presentation-only primitives), 30 (state panel), 32 (footer), 33 (copy). **Mechanism only:** 4 (card-radius token defined here, enforced in Epic 11), 42 (reduced-motion mechanism here, per-motion inventory completed in Epics 4 and 6), 47 (lint rule here, applied in every later epic) |
+| Epic 11 | 4 (card geometry enforced), 14–22 (card tile, DFC flip, quantity badge, curve, colour distribution, deck row, detail panel, format check, placeholder), 31 (skip link), 36 (placeholder-then-fill), 39–41 (interaction primitives, Tab order, contrast), 44–48 (semantics, live regions, focus, hit targets, alt text). *(35 — refetch — belongs wholly to Epic 14, where `deck_changed` originates. 40 and 46 are deliberate splits, ruled at the C5 retro: this epic builds the focus FLOOR (46) and states the Tab-order cost (40); Epic 12 owns 46's connection-state half, 15-6 owns 40's release-gate revisit)* |
+| Epic 12 | 29 (connection pill behaviour), 46 (focus never dropped **across connection-state changes and the pill's arrival** — extends Epic 11's floor; deliberate split, ruled at the C5 retro) |
+| Epic 13 | 23–24 (agent view shell, suggestion row), 28 (nav pills), 34 (push arrival), 37–38 (view/left-column interaction, overlay depth), 43 (motion never sole signal), 45 (live regions) |
+| Epic 14 | 16 (quantity flash), 35 (refetch), 43, 45 (coalesced announcement) |
+| Epic 15 | 49 (SC-5 gate), 40 (Tab-order revisit flag) |
+| Epic 16 | 25–27 (swap row, tier row, group section) |
+| Epic 17 | 28–29 (nav timestamps, pill detail) |
 
 ## Epic List
 
@@ -813,29 +819,29 @@ UI-initiated edits) is explicitly out of scope — the last needs its own brief 
 **Deviations from EPIC-SPLIT.md, stated rather than silent:**
 
 1. Its **E1 + E7** (backend skeleton, SPA foundation) become **Epics 1 + 2** — same content,
-   resequenced so that Epic 1 + Epic 2 together deliver **SC-4**, a real user outcome, instead of
+   resequenced so that Epic 8 + Epic 9 together deliver **SC-4**, a real user outcome, instead of
    two half-outcomes.
-2. The **`openapi-typescript` pipeline moves from E4 to Epic 2**, standing itself up against the
-   endpoints that exist after Epic 1 (`/health` + the typed error body). EPIC-SPLIT's own
+2. The **`openapi-typescript` pipeline moves from E4 to Epic 9**, standing itself up against the
+   endpoints that exist after Epic 8 (`/health` + the typed error body). EPIC-SPLIT's own
    "land the generation pipeline early and change it rarely" argues for this; leaving it in the
    realtime epic would make the deck view (which needs REST types) wait on the WS work.
-3. Its **E5** splits across **Epics 5 and 6** at the security/presentation seam: Epic 5 owns the
-   channel (credentials, upgrade, envelope, relay), Epic 6 owns what the agent puts through it and
+3. Its **E5** splits across **Epics 5 and 6** at the security/presentation seam: Epic 12 owns the
+   channel (credentials, upgrade, envelope, relay), Epic 13 owns what the agent puts through it and
    what the user sees.
-4. Its **E12 + E13** merge into **Epic 10** — FR-15, FR-18 and NFR-05 hardening are each too small
+4. Its **E12 + E13** merge into **Epic 17** — FR-15, FR-18 and NFR-05 hardening are each too small
    to carry an epic and all land on the same surfaces.
 
 **File-churn check — consolidation considered and rejected.** Six epics touch `ui/` (2, 4, 6, 7, 9,
 10) and three touch `src/companion/app/` (1, 3, 5), so the overlap was assessed rather than
 assumed. It is **incidental, not churn**: each epic owns distinct components within those trees —
 tokens and shell, deck view, agent views, refetch, additional push kinds, history — and the splits
-fall on genuine feedback boundaries, each closing a named success criterion (SC-4 at Epic 3, SC-5
-answerable at Epic 4, SC-1 and SC-3 at Epic 6, SC-2 at Epic 7). Consolidating the frontend into one
+fall on genuine feedback boundaries, each closing a named success criterion (SC-4 at Epic 10, SC-5
+answerable at Epic 11, SC-1 and SC-3 at Epic 13, SC-2 at Epic 14). Consolidating the frontend into one
 epic would produce a ~40-story unit with no delivery checkpoint between "the app launches" and "the
 app is finished", which is precisely the feedback loop the split exists to provide. No epic revisits
 a component another epic has already completed.
 
-### Epic 1: Launch the Companion
+### Epic 8: Launch the Companion
 
 Brad can start the companion backend from a fresh install with one command, and it behaves like a
 well-mannered local process: it claims a port (or falls back), publishes how to reach it, refuses
@@ -850,7 +856,7 @@ here, before there is any code to retrofit them against.
 **Note:** EPIC-SPLIT calls the two boundary tests the highest-leverage stories in the whole
 feature. They are what make AD-2 and AD-3 real rather than aspirational.
 
-### Epic 2: The Glass — Foundation, Identity & Honest States
+### Epic 9: The Glass — Foundation, Identity & Honest States
 
 Brad opens the URL and gets a real product: the Voltglass identity, the two-column composition,
 and a calm panel that names exactly what to do next — whether the database isn't built yet, no
@@ -858,15 +864,15 @@ deck is set, or the backend went away. Nothing here is a placeholder for a later
 system-state surfaces are the finished article.
 
 **FRs covered:** FR-20 (visual identity + token system), FR-22 (state-panel surface + copy; the
-wiring and self-transition land in Epic 3, where the 503 originates)
+wiring and self-transition land in Epic 10, where the 503 originates)
 **Also covers:** NFR-03 (generation pipeline + CI drift check), NFR-06 (self-hosted font),
 NFR-07 (eslint/prettier/vitest in CI), NFR-08 (footer attribution)
 **Governed by:** AD-12, AD-13
-**Depends on:** Epic 1
+**Depends on:** Epic 8
 **Note:** carries the greenfield `ui/` scaffold — the only new toolchain in the feature. The
 TypeScript `>=5.9,<6.1` pin is load-bearing and belongs to the scaffold story.
 
-### Epic 3: Deck Data & Card Imagery on Tap
+### Epic 10: Deck Data & Card Imagery on Tap
 
 The backend can answer everything the glass will ever ask about a deck and its art: decks, a full
 decklist, canonical card data, and card faces fetched once from Scryfall and cached on disk
@@ -874,15 +880,15 @@ forever. This is the epic that touches an external service, so it owns all the p
 failure and attribution behaviour in one place.
 
 **FRs covered:** FR-02, FR-03, FR-04, FR-22 (UI wiring + self-transition — closes **SC-4**),
-FR-07 (backend state slot + both transports; the MCP tool is Epic 6's)
+FR-07 (backend state slot + both transports; the MCP tool is Epic 13's)
 **Also covers:** NFR-02 (WAL reads), NFR-06 (warm cache), NFR-08 (rate-spacing), NFR-09 (cache
 location + atomic writes), CM-2
 **Governed by:** AD-11, AD-16
-**Depends on:** Epic 1 (independent of Epic 2)
+**Depends on:** Epic 8 (independent of Epic 9)
 **Note:** the only externally-paced work in the feature. A cold 100-card deck at ~12 MB / ~10 s to
 fully paint is an **expected observation in acceptance, not a defect**.
 
-### Epic 4: The Deck on the Glass
+### Epic 11: The Deck on the Glass
 
 Brad sees his deck as full card faces with quantity badges, reads any card in the persistent
 detail panel by moving his cursor, flips a double-faced card, and takes in the curve, colour
@@ -897,7 +903,7 @@ spread, type-grouped list and format check without a single click. This is the f
 the UX gate's H2 and carries a dozen distinct rules. The accessibility floor is acceptance
 criteria here, not polish.
 
-### Epic 5: The Agent's Channel
+### Epic 12: The Agent's Channel
 
 The pipe from agent to glass exists and is safe: two credentials that never touch, an
 authenticated WebSocket the browser holds open and re-establishes on its own, one envelope shape
@@ -907,14 +913,14 @@ watch the connection state and see the app recover from a backend restart withou
 **FRs covered:** FR-06, FR-13 (ID-only contract), FR-15 (pill shell + reconnect behaviour)
 **Also covers:** NFR-01 (ticket, Origin, token separation), NFR-03 (envelope union), NFR-04
 **Governed by:** AD-5, AD-6, AD-7 (payload shapes and caps as models, and their enforcement at the
-ingest endpoint; AD-8's tool-side vocabulary is Epic 6's), AD-10 (the single real-socket test), AD-12
-**Depends on:** Epics 3, 4 — the reconnect refetch (Story 5.6) and the connection pill's active-deck
-name (Story 5.7) both read deck state, so this epic sits after the deck view rather than beside it
+ingest endpoint; AD-8's tool-side vocabulary is Epic 13's), AD-10 (the single real-socket test), AD-12
+**Depends on:** Epics 3, 4 — the reconnect refetch (Story 12.6) and the connection pill's active-deck
+name (Story 12.7) both read deck state, so this epic sits after the deck view rather than beside it
 **Note:** `contracts.py` is the one serialisation worth respecting — every later epic reads it,
 and AD-12's drift check means a late change ripples through a committed `.d.ts` and both mirrored
 bundles. Carries the single real-socket integration test (AD-10).
 
-### Epic 6: The Agent Pushes to the Glass
+### Epic 13: The Agent Pushes to the Glass
 
 Brad asks his agent a question and the answer appears on the glass: the agent sets the active
 deck, pushes suggestions, and the view blooms open within 250 ms with art-forward rows he can read
@@ -928,7 +934,7 @@ and presents the content in chat as usual — nothing is ever lost. This closes 
 **Note:** the four UX rulings land here and are **confirmed as of 2026-07-25** — a push auto-opens
 its view, so SC-1 stands as 250 ms push-to-render and this epic's acceptance criteria are settled.
 
-### Epic 7: The Deck Updates Itself
+### Epic 14: The Deck Updates Itself
 
 Brad tells the agent to add a card and the glass changes by itself — the card appears in its type
 group, the curve grows, the colour spread shifts, and a screen reader hears it once. He never
@@ -937,12 +943,12 @@ touches the app. This is UJ-1's climax and closes **SC-2**.
 **FRs covered:** FR-11
 **Also covers:** FR-12 (emission failure swallowed), NFR-04 (coalescing, latest-wins)
 **Governed by:** AD-9
-**Depends on:** Epics 4, 5, 6 — Story 7.6's "an agent view survives a refetch behind it" needs the
+**Depends on:** Epics 4, 5, 6 — Story 14.6's "an agent view survives a refetch behind it" needs the
 agent view to exist
 **Note:** the "fire-and-forget means bounded-timeout `await`, not a detached task" rule is the
 whole point of this epic — a `create_task` that outlives its tool call silently goes stale.
 
-### Epic 8: Release Readiness
+### Epic 15: Release Readiness
 
 The companion is something Brad would put in front of strangers: `view_deck` points at its
 replacement, the docs tell you where the image cache lives and how to remove it, the PRD no longer
@@ -956,7 +962,7 @@ said yes.
 **Note:** **SC-5 is a human judgement by Brad and cannot be automated or delegated.** This epic
 also carries the three owed PRD amendments and the pre-public-release Tab-order revisit flag.
 
-### Epic 9: The Remaining Push Kinds *(Phase 2)*
+### Epic 16: The Remaining Push Kinds *(Phase 2)*
 
 The agent gains its full vocabulary: proposed swaps as out/in pairs, tier lists, and titled card
 groups with a paragraph of reasoning each — including cards the deck doesn't yet run. Deliberately
@@ -965,9 +971,9 @@ three new views, no new seam.
 
 **FRs covered:** FR-09, FR-10, FR-23
 **Governed by:** AD-6, AD-7
-**Depends on:** Epic 6
+**Depends on:** Epic 13
 
-### Epic 10: Session History, Status Detail & Performance Polish *(Phase 2)*
+### Epic 17: Session History, Status Detail & Performance Polish *(Phase 2)*
 
 Brad can revisit what the agent showed him earlier in the session, see at a glance which port and
 instance he's connected to, and the 250 ms / 1 s budgets are measured rather than assumed.
@@ -981,7 +987,7 @@ strip inside each view's header) is the UX spine's open residual.
 
 ---
 
-## Epic 1: Launch the Companion
+## Epic 8: Launch the Companion
 
 Brad can start the companion backend from a fresh install with one command, and it behaves like a
 well-mannered local process: it claims a port (or falls back), publishes how to reach it, refuses
@@ -989,7 +995,7 @@ politely if it is already running, survives a missing database, and never leaves
 file behind on a clean exit. The boundary tests that make the read-only premise structural land
 here, before there is any code to retrofit them against.
 
-### Story 1.1: Companion package skeleton with CI-enforced import boundaries
+### Story 8.1: Companion package skeleton with CI-enforced import boundaries
 
 As a developer building the companion,
 I want the read-only and leaf/app import boundaries enforced by CI before any companion code exists,
@@ -1026,7 +1032,7 @@ So that the single-writer premise is structural rather than aspirational, and no
 **Then** they require no FastAPI or uvicorn install to execute
 **And** they detect violations in modules that are never imported at runtime
 
-### Story 1.2: Side-effect-free ASGI app with a lifespan and a health endpoint
+### Story 8.2: Side-effect-free ASGI app with a lifespan and a health endpoint
 
 As a developer,
 I want `build_app()` to construct the ASGI application without touching anything outside the process,
@@ -1054,7 +1060,7 @@ So that the whole backend is testable in-process without binding a port or overw
 **Then** every resource acquired at startup is released
 **And** no exception escapes the shutdown path
 
-### Story 1.3: Port selection with ephemeral fallback and a printed launch URL
+### Story 8.3: Port selection with ephemeral fallback and a printed launch URL
 
 As Brad launching the companion,
 I want the backend to take port 8765 when it is free and quietly pick another when it is not,
@@ -1086,7 +1092,7 @@ So that a port conflict never blocks me and I always know from the terminal wher
 **When** the bind address is inspected
 **Then** it is `127.0.0.1` only, never `0.0.0.0` (NFR-01)
 
-### Story 1.4: Typed REST error contract with closed reason tokens
+### Story 8.4: Typed REST error contract with closed reason tokens
 
 As a UI developer,
 I want every non-2xx response to carry one token from a closed set,
@@ -1114,7 +1120,7 @@ So that each backend failure maps 1:1 onto a defined user-facing state instead o
 **Then** the client receives the typed error body, never a stack trace or an untyped 500 page
 **And** the exception is logged to stderr with `%`-style lazy args
 
-### Story 1.5: Localhost-only security envelope — Host validation and CORS
+### Story 8.5: Localhost-only security envelope — Host validation and CORS
 
 As Brad running the companion beside a browser,
 I want the backend to refuse requests that did not address it as localhost,
@@ -1129,7 +1135,7 @@ So that a malicious web page I happen to have open cannot reach into the app thr
 **Given** a request carrying any other `Host` value — including a rebound domain name or a mismatched port
 **When** it reaches any endpoint
 **Then** it is rejected before the route handler runs
-**And** the rejection uses the typed error body from Story 1.4 with `reason: "invalid_request"` (AD-16)
+**And** the rejection uses the typed error body from Story 8.4 with `reason: "invalid_request"` (AD-16)
 
 **Given** the bound port was chosen by ephemeral fallback
 **When** Host validation runs
@@ -1143,7 +1149,7 @@ So that a malicious web page I happen to have open cannot reach into the app thr
 **When** a later story adds the WebSocket upgrade
 **Then** the same Host check applies to the upgrade path without duplication (AD-5)
 
-### Story 1.6: Lazy database engine so a fresh install starts instead of erroring
+### Story 8.6: Lazy database engine so a fresh install starts instead of erroring
 
 As Brad on a brand-new machine,
 I want the companion to start before the card database exists,
@@ -1174,7 +1180,7 @@ So that a fresh install is a guided next step rather than a crash on first run.
 **When** the next data-backed request arrives
 **Then** it succeeds without a restart
 
-### Story 1.7: Discovery file as the sole rendezvous
+### Story 8.7: Discovery file as the sole rendezvous
 
 As a companion MCP tool,
 I want the backend to publish where it is and how to authenticate in one atomically written file,
@@ -1209,7 +1215,7 @@ So that I can find a running app without hardcoding a port and without ever read
 **When** the discovery file is written
 **Then** it records the actual bound port
 
-### Story 1.8: Single-instance enforcement with verified identity
+### Story 8.8: Single-instance enforcement with verified identity
 
 As Brad who forgot the backend was already running,
 I want a second launch to tell me so and exit,
@@ -1239,7 +1245,7 @@ So that I never end up with two instances fighting over one discovery file and a
 **When** the probe is implemented
 **Then** it lives in the leaf so both callers share one implementation (AD-3)
 
-### Story 1.9: One console script that dispatches, without disturbing the MCP server
+### Story 8.9: One console script that dispatches, without disturbing the MCP server
 
 As Brad following the README,
 I want `uv run artificial-planeswalker companion` to start the backend while the bare command still runs the MCP server,
@@ -1285,14 +1291,14 @@ autouse test fixture keeps tests contention-free
 
 ---
 
-## Epic 2: The Glass — Foundation, Identity & Honest States
+## Epic 9: The Glass — Foundation, Identity & Honest States
 
 Brad opens the URL and gets a real product: the Voltglass identity, the two-column composition,
 and a calm panel that names exactly what to do next — whether the database isn't built yet, no
 deck is set, or the backend went away. Nothing here is a placeholder for a later epic; the
 system-state surfaces are the finished article.
 
-### Story 2.1: Frontend scaffold with the full quality gate from the first commit
+### Story 9.1: Frontend scaffold with the full quality gate from the first commit
 
 As a developer,
 I want the `ui/` project created with linting, formatting, unit testing and type checking wired into CI on day one,
@@ -1342,7 +1348,7 @@ is added to the same gate
 > mypy run type-checks only its own half; today the POSIX half is covered only because CI happens
 > to run on ubuntu, and the Windows half only by Brad's local runs.*
 
-### Story 2.2: The backend serves the built SPA as a committed artifact
+### Story 9.2: The backend serves the built SPA as a committed artifact
 
 As Brad installing the plugin,
 I want the browser UI to arrive already built inside the Python package,
@@ -1373,7 +1379,7 @@ So that opening the URL shows the app with no Node toolchain anywhere on my mach
 **When** the backend starts and the URL is opened
 **Then** the app renders (SC-4)
 
-### Story 2.3: TypeScript types generated from the backend's own OpenAPI, drift-checked in CI
+### Story 9.3: TypeScript types generated from the backend's own OpenAPI, drift-checked in CI
 
 As a developer on either side of the wire,
 I want the UI's types generated from the backend's OpenAPI output and checked in CI,
@@ -1392,7 +1398,7 @@ So that a Python schema change cannot silently diverge from the TypeScript that 
 
 **Given** the pipeline
 **When** its inputs are inspected
-**Then** exactly one generator produces both the REST types and — once Epic 5 lands — the WebSocket envelope union, because `POST /agent/events` declares the envelope as its request body (AD-12)
+**Then** exactly one generator produces both the REST types and — once Epic 12 lands — the WebSocket envelope union, because `POST /agent/events` declares the envelope as its request body (AD-12)
 **And** no second generation tool and no dummy endpoint exist
 
 **Given** the UI consumes an API response
@@ -1404,7 +1410,7 @@ So that a Python schema change cannot silently diverge from the TypeScript that 
 **When** the dependency graph is inspected
 **Then** it is dev/CI only
 
-### Story 2.4: The Voltglass token layer
+### Story 9.4: The Voltglass token layer
 
 As a developer building any surface,
 I want every colour, type role, radius, space, motion and elevation value available as a named token,
@@ -1444,7 +1450,7 @@ So that the identity is enforced by construction and a hard-coded literal is a v
 **When** the token layer is authored
 **Then** it is structured so an alternate `[data-theme]` block could be added later without touching component code
 
-### Story 2.5: Self-hosted Space Grotesk with offline parity and tabular numerals
+### Story 9.5: Self-hosted Space Grotesk with offline parity and tabular numerals
 
 As Brad using the app with no network,
 I want the typeface to load from the app's own assets,
@@ -1474,7 +1480,7 @@ So that the product looks identical offline, which is its entire posture.
 **When** its weight is inspected
 **Then** it is 400 or above, and no second font family is introduced (UX-DR2)
 
-### Story 2.6: The two-column application shell
+### Story 9.6: The two-column application shell
 
 As Brad snapping the browser beside my terminal,
 I want the app laid out as a header, two columns and a pinned footer,
@@ -1501,9 +1507,9 @@ So that the deck and its analysis are both visible at once at the window sizes I
 
 **Given** an agent view will later overlay the window
 **When** the shell is built
-**Then** it reserves a full-window overlay slot inset by 32px, so Epic 6 adds the view without restructuring the shell (UX-DR8)
+**Then** it reserves a full-window overlay slot inset by 32px, so Epic 13 adds the view without restructuring the shell (UX-DR8)
 
-### Story 2.7: Presentation-only primitives — Panel, Badge, StatChip, Group header
+### Story 9.7: Presentation-only primitives — Panel, Badge, StatChip, Group header
 
 As a developer building every later surface,
 I want the four pure container and label primitives available and tokenised,
@@ -1536,7 +1542,7 @@ So that panels, badges, stat chips and group dividers look identical everywhere 
 **When** vitest runs
 **Then** unit tests cover every documented variant and state
 
-### Story 2.8: ManaPip and ManaCost with complete Scryfall cost parsing
+### Story 9.8: ManaPip and ManaCost with complete Scryfall cost parsing
 
 As Brad reading a card's cost anywhere in the app,
 I want every symbol in a mana cost rendered,
@@ -1566,7 +1572,7 @@ So that a cost is never quietly wrong — and never looks like a Wizards mana sy
 **When** their usage across the codebase is inspected
 **Then** they appear only as data ink — pips, colour bars, stacked curve segments — and never colour a button, border, background or an unstacked curve bar (UX-DR7)
 
-### Story 2.9: The shared state panel and every system-state message
+### Story 9.9: The shared state panel and every system-state message
 
 As Brad when something isn't ready,
 I want a calm panel that tells me plainly what is happening and exactly what to do next,
@@ -1605,7 +1611,7 @@ So that I am never shown an error page or left guessing at a terminal command.
 **When** its semantics are inspected
 **Then** it is `role="region"` with its headline as an `h2` (UX-DR44)
 
-### Story 2.10: Footer attribution on every surface
+### Story 9.10: Footer attribution on every surface
 
 As the maintainer publishing this app,
 I want the Scryfall and Wizards Fan Content notices visible on every screen,
@@ -1640,14 +1646,14 @@ So that the public release meets its licensing obligations rather than relying o
 
 ---
 
-## Epic 3: Deck Data & Card Imagery on Tap
+## Epic 10: Deck Data & Card Imagery on Tap
 
 The backend can answer everything the glass will ever ask about a deck and its art: decks, a full
 decklist, canonical card data, format legality, and card faces fetched once from Scryfall and
 cached on disk forever. This is the epic that touches an external service, so it owns all the
 pacing, caching, failure and attribution behaviour in one place. It closes **SC-4**.
 
-### Story 3.1: Deck list and deck detail endpoints
+### Story 10.1: Deck list and deck detail endpoints
 
 As the browser UI,
 I want to read the deck list and any full decklist over REST,
@@ -1670,18 +1676,18 @@ So that I can render a deck without knowing anything about the database schema.
 
 **Given** the handler
 **When** it obtains a session
-**Then** it uses the shared lazy engine from Story 1.6
-**And** the import-boundary test from Story 1.1 continues to pass, proving no write path was opened (AD-2, NFR-02)
+**Then** it uses the shared lazy engine from Story 8.6
+**And** the import-boundary test from Story 8.1 continues to pass, proving no write path was opened (AD-2, NFR-02)
 
 **Given** the database is missing or transiently unreadable
 **When** either endpoint is called
 **Then** it returns `503` with `database_not_initialized` or `database_unavailable` respectively (AD-16)
 
 **Given** the endpoints exist
-**When** the type-generation pipeline from Story 2.3 runs
+**When** the type-generation pipeline from Story 9.3 runs
 **Then** their schemas appear in the committed `types.d.ts` and CI's drift check covers them
 
-### Story 3.2: Card detail endpoint
+### Story 10.2: Card detail endpoint
 
 As the browser UI,
 I want canonical card data for any printing id,
@@ -1697,7 +1703,7 @@ So that I can hydrate names, costs, type lines, oracle text and prices for cards
 **Given** a well-formed uuid that is not in the local database
 **When** the endpoint is called
 **Then** the response is `404` with `reason: "card_not_found"`
-**And** the closed reason-token set from Story 1.4 is **extended** with `card_not_found`, following AD-16's own rule that a new UI state — here, the unknown-card placeholder of FR-13 — requires a token first
+**And** the closed reason-token set from Story 8.4 is **extended** with `card_not_found`, following AD-16's own rule that a new UI state — here, the unknown-card placeholder of FR-13 — requires a token first
 
 **Given** a malformed card id
 **When** the endpoint is called
@@ -1707,7 +1713,7 @@ So that I can hydrate names, costs, type lines, oracle text and prices for cards
 **When** the response is returned
 **Then** the price fields are absent or null rather than zero, so the UI can omit them rather than display a false price
 
-### Story 3.3: Format check endpoint over the existing validators
+### Story 10.3: Format check endpoint over the existing validators
 
 As Brad glancing at the right column,
 I want the app to tell me whether my deck is legal and where it isn't,
@@ -1737,7 +1743,7 @@ So that I see the same verdict the agent would give me, without asking for it.
 **When** the boundary test runs
 **Then** no write path is introduced (AD-2)
 
-### Story 3.4: The active deck — readable by the glass, settable by the agent
+### Story 10.4: The active deck — readable by the glass, settable by the agent
 
 As the browser UI on cold open,
 I want to ask which deck is active,
@@ -1757,7 +1763,7 @@ So that a fresh tab, or one that reconnected, shows the right deck instead of as
 **Given** a caller presents the agent token from the discovery file
 **When** it calls `PUT /api/active-deck` with a deck id
 **Then** the backend stores the id in memory and returns success (FR-07, AD-16)
-**And** the backend performs **no** deck-existence check — validation belongs to the MCP tool in Epic 6, which has database access and must report `deck_not_found` to the agent (AD-16)
+**And** the backend performs **no** deck-existence check — validation belongs to the MCP tool in Epic 13, which has database access and must report `deck_not_found` to the agent (AD-16)
 
 **Given** a caller presents no token or a wrong token
 **When** it calls `PUT /api/active-deck`
@@ -1771,7 +1777,7 @@ So that a fresh tab, or one that reconnected, shows the right deck instead of as
 **When** the MCP server package is inspected
 **Then** it holds no active-deck state of any kind — the MCP server stays stateless (CM-3)
 
-### Story 3.5: Card image endpoint with face resolution and a defined parameter contract
+### Story 10.5: Card image endpoint with face resolution and a defined parameter contract
 
 As the browser UI rendering a grid of card faces,
 I want one endpoint that serves any card's face at any size,
@@ -1809,7 +1815,7 @@ So that every image in the app comes from the app's own origin and never from a 
 **When** its request url is inspected
 **Then** it points at this endpoint — the SPA never contacts Scryfall directly (AD-11, UX-DR36)
 
-### Story 3.6: Paced, concurrency-capped CDN fetching at one global choke point
+### Story 10.6: Paced, concurrency-capped CDN fetching at one global choke point
 
 As a good citizen of Scryfall's infrastructure,
 I want every outbound image fetch to pass through a single pacer,
@@ -1840,7 +1846,7 @@ So that a 100-card deck load is a polite trickle rather than a request storm.
 **Then** roughly 12 MB is fetched over roughly 10 seconds
 **And** this is recorded in the test or acceptance notes as an **expected observation, not a defect** — NFR-05 excludes first-fetch image paint
 
-### Story 3.7: Sharded, atomically written disk cache
+### Story 10.7: Sharded, atomically written disk cache
 
 As Brad running this app for months,
 I want cached card art stored somewhere predictable and never half-written,
@@ -1875,7 +1881,7 @@ So that the cache survives crashes and I can find and delete it when I want to.
 **When** a cached image is requested
 **Then** it is served from disk (NFR-06)
 
-### Story 3.8: Distinguishable failure signalling and negative caching
+### Story 10.8: Distinguishable failure signalling and negative caching
 
 As the browser UI,
 I want to know the difference between "this card has no art" and "the fetch failed",
@@ -1904,7 +1910,7 @@ So that I can draw the named placeholder the design specifies instead of showing
 **When** the client receives them
 **Then** it has enough information to render the named placeholder — card name, mana pips, type line — which only the client has the data to draw (AD-11, UX-DR22)
 
-### Story 3.9: Fresh install guides instead of erroring, and comes alive on its own
+### Story 10.9: Fresh install guides instead of erroring, and comes alive on its own
 
 As Brad on a brand-new machine,
 I want the app to tell me the card database isn't built yet and then start working by itself once it is,
@@ -1936,14 +1942,14 @@ So that going from a fresh install to card art on screen never involves a config
 
 ---
 
-## Epic 4: The Deck on the Glass
+## Epic 11: The Deck on the Glass
 
 Brad sees his deck as full card faces with quantity badges, reads any card in the persistent
 detail panel by moving his cursor, flips a double-faced card, and takes in the curve, colour
 spread, type-grouped list and format check without a single click. This is the first epic where
 **SC-5** becomes answerable and the largest UX surface in the feature.
 
-### Story 4.1: A single card-hydration cache with in-flight deduping
+### Story 11.1: A single card-hydration cache with in-flight deduping
 
 As a developer building every card-rendering surface,
 I want one owner for card lookups in the store,
@@ -1977,7 +1983,7 @@ So that sweeping a cursor across a hundred tiles doesn't fire a hundred duplicat
 **When** its dependencies are inspected
 **Then** no second data-fetching or state-management library is present (AD-12)
 
-### Story 4.2: Deck state bootstrap and the type-grouped decklist
+### Story 11.2: Deck state bootstrap and the type-grouped decklist
 
 As Brad opening a tab,
 I want the app to work out which deck is active and load it,
@@ -2004,13 +2010,13 @@ So that a fresh tab shows my deck rather than assuming there isn't one.
 
 **Given** the backend returns `503 database_not_initialized` or `503 database_unavailable`
 **When** the app handles it
-**Then** it shows the matching state panel from Story 2.9 rather than a deck view (AD-16)
+**Then** it shows the matching state panel from Story 9.9 rather than a deck view (AD-16)
 
 **Given** the store holds deck state
 **When** its inputs are inspected
-**Then** they are exactly REST responses and — from Epic 5 — WebSocket messages, and nothing else writes the store (AD-12)
+**Then** they are exactly REST responses and — from Epic 12 — WebSocket messages, and nothing else writes the store (AD-12)
 
-### Story 4.3: Card placeholders — named, unknown, and loading wells
+### Story 11.3: Card placeholders — named, unknown, and loading wells
 
 As Brad looking at a card whose art hasn't arrived or doesn't exist,
 I want a deliberately designed card-shaped stand-in,
@@ -2040,7 +2046,7 @@ So that a gap in the data never reads as a broken app.
 **Then** it behaves as a normal tile under the inspection contract
 **And** the **unknown-card** variant cannot be inspected, because there is nothing to show (UX-DR22)
 
-### Story 4.4: Card tile and the card-art grid
+### Story 11.4: Card tile and the card-art grid
 
 As Brad looking at my deck,
 I want to see it as full card faces I can take in at a glance,
@@ -2092,7 +2098,7 @@ So that reading my decklist feels like looking at cards rather than at a spreads
 **When** its alt text is inspected
 **Then** it is the card name, face-specific for double-faced cards (UX-DR48)
 
-### Story 4.5: Persistent card detail panel with transient and pinned inspection
+### Story 11.5: Persistent card detail panel with transient and pinned inspection
 
 As Brad reading through my deck,
 I want the full card I'm pointing at to appear in a panel that's always there,
@@ -2134,7 +2140,7 @@ So that reading the whole deck is one continuous motion with no clicks.
 **When** the inspection target changes
 **Then** the content swap is instant with no crossfade — it changes on every hover, so it must never animate (UX-DR42)
 
-### Story 4.6: Double-faced card flip control
+### Story 11.6: Double-faced card flip control
 
 As Brad running double-faced cards,
 I want a control that flips a card to its back without opening anything,
@@ -2174,7 +2180,7 @@ So that inspecting a card and flipping it are two obviously different actions.
 **Then** the detail panel shows **that face** — its art, its name and its oracle text (UX-DR15, UX-DR20)
 **And** the detail panel carries its own copy of the flip control at the same spec, pinned to its art's top-left
 
-**Given** a `deck_changed` re-render occurs — from Epic 7 onward
+**Given** a `deck_changed` re-render occurs — from Epic 14 onward
 **When** the grid re-renders
 **Then** flip state **persists**, because a snap-back to the front face reads as a bug (UX-DR15)
 **And** the state is per-tab, in memory, and resets on a page refresh
@@ -2183,7 +2189,7 @@ So that inspecting a card and flipping it are two obviously different actions.
 **When** a card is flipped
 **Then** the face swaps instantly with no 3D rotation (UX-DR42)
 
-### Story 4.7: Deck list panel
+### Story 11.7: Deck list panel
 
 As Brad checking quantities and prices,
 I want the deck as a text list grouped by type beside the grid,
@@ -2221,7 +2227,7 @@ So that I can read it as a list without giving up the card art.
 **When** its semantics are inspected
 **Then** it is a `ul`/`li` structure and its panel title is an `h2` (UX-DR44)
 
-### Story 4.8: Mana curve panel
+### Story 11.8: Mana curve panel
 
 As Brad judging whether my deck can function,
 I want the curve rendered from the deck I'm looking at,
@@ -2259,7 +2265,7 @@ So that I can see the shape of my draws without asking the agent.
 **When** bar heights change
 **Then** they jump instantly rather than animating (UX-DR42)
 
-### Story 4.9: Colour distribution panel
+### Story 11.9: Colour distribution panel
 
 As Brad checking whether my mana base matches my spells,
 I want the deck's colour balance shown as one proportional bar with a readable legend,
@@ -2288,7 +2294,7 @@ So that I can see at a glance which colour is carrying the deck.
 **When** the panel renders
 **Then** it renders correctly rather than dividing by zero or showing an empty bar
 
-### Story 4.10: Format check panel
+### Story 11.10: Format check panel
 
 As Brad about to register a deck,
 I want the legality verdict visible in the right column,
@@ -2317,7 +2323,7 @@ So that I find out about a banned card or a copy-limit violation while I'm looki
 **When** it renders
 **Then** it uses the negative semantic token in a badge — never a red panel fill, an alert icon or an exclamation mark (UX-DR30)
 
-### Story 4.11: Keyboard floor — skip link, Tab order and focus management
+### Story 11.11: Keyboard floor — skip link, Tab order and focus management
 
 As a keyboard user,
 I want to reach everything in the app without tabbing through a hundred cards to get there,
@@ -2362,7 +2368,7 @@ So that the right column and the footer's licensing links are reachable in pract
 **When** the deferral is recorded
 **Then** the cost is stated plainly in the story notes — **measured at c4-11 over all 40 real decks: 206 sequential Tab stops max / 78 median / 102.0 mean** from the header to the first footer link (the stale "100+" this clause used to carry predated c4-7's second focusable row per card), with the skip link as sole mitigation removing only the first 105 — and it carries a revisit-before-public-release flag, since the footer's Fan Content Policy links sit behind the grid (UX-DR40)
 
-### Story 4.12: Empty deck state and the cold-open render budget
+### Story 11.12: Empty deck state and the cold-open render budget
 
 As Brad opening a deck that has nothing in it yet,
 I want the app to say so calmly and still render everything that makes sense,
@@ -2394,18 +2400,18 @@ So that an empty deck looks intentional rather than broken — and a full deck a
 
 **Given** the deck view is complete
 **When** it is compared against `DESIGN.md` and `EXPERIENCE.md`
-**Then** every panel, token and behaviour matches the contract, making **SC-5** answerable for the deck view — the formal gate is Epic 8
+**Then** every panel, token and behaviour matches the contract, making **SC-5** answerable for the deck view — the formal gate is Epic 15
 
 ---
 
-## Epic 5: The Agent's Channel
+## Epic 12: The Agent's Channel
 
 The pipe from agent to glass exists and is safe: two credentials that never touch, an
 authenticated WebSocket the browser holds open and re-establishes on its own, one envelope shape
 both halves of the codebase agree on, and a CI check that stops them ever disagreeing. Brad can
 watch the connection state and see the app recover from a backend restart without touching it.
 
-### Story 5.1: The event envelope and every per-kind payload contract
+### Story 12.1: The event envelope and every per-kind payload contract
 
 As a developer on either side of the wire,
 I want one envelope and all four payload shapes defined once, up front,
@@ -2451,14 +2457,14 @@ So that no later epic has to change a contract that ripples through a committed 
 **Then** it carries **Scryfall printing uuids only** and no names — name-to-id resolution stays with the existing MCP tools (FR-13, AD-7)
 
 **Given** all four kinds are defined now rather than incrementally
-**When** Epic 9 adds the remaining tools and views
+**When** Epic 16 adds the remaining tools and views
 **Then** it changes no contract, which is why Phase 2 is cheap (AD-6)
 
 **Given** the union is defined
-**When** Story 2.3's generator runs
+**When** Story 9.3's generator runs
 **Then** the TypeScript union is produced from the same source and drift-checked (AD-12)
 
-### Story 5.2: Same-origin session endpoint minting single-use WebSocket tickets
+### Story 12.2: Same-origin session endpoint minting single-use WebSocket tickets
 
 As the browser UI,
 I want a short-lived ticket before I open a socket,
@@ -2491,7 +2497,7 @@ So that the WebSocket upgrade is authenticated by something CORS alone cannot pr
 **When** their storage is inspected
 **Then** they live in backend memory only and are gone on restart (CM-3)
 
-### Story 5.3: Authenticated WebSocket upgrade with Host and Origin validation
+### Story 12.3: Authenticated WebSocket upgrade with Host and Origin validation
 
 As Brad with other tabs open,
 I want the companion's socket to refuse connections that didn't come from its own page,
@@ -2512,7 +2518,7 @@ So that a malicious local page cannot attach to my session and read what my agen
 **Then** the `Host` header is checked against `127.0.0.1:{port}` / `localhost:{port}` **and** the `Origin` header is checked against the app's own origin (AD-5)
 **And** both are required, because `Host` identifies what was addressed while `Origin` identifies the calling page, and the threat model is a malicious local page
 
-**Given** the Host middleware from Story 1.5
+**Given** the Host middleware from Story 8.5
 **When** the upgrade path is implemented
 **Then** it reuses that check rather than duplicating it (AD-5)
 
@@ -2520,7 +2526,7 @@ So that a malicious local page cannot attach to my session and read what my agen
 **When** its bind address is inspected
 **Then** it is `127.0.0.1` only (NFR-01)
 
-### Story 5.4: Broadcast to every connected client
+### Story 12.4: Broadcast to every connected client
 
 As Brad with the app open,
 I want anything the backend learns to reach my browser immediately,
@@ -2552,7 +2558,7 @@ So that the glass reflects what the agent just did without me refreshing.
 **When** it runs
 **Then** it succeeds silently — delivery is fire-and-forget (NFR-04)
 
-### Story 5.5: Token-authenticated event ingest that reports who is listening
+### Story 12.5: Token-authenticated event ingest that reports who is listening
 
 As a companion MCP tool,
 I want one authenticated endpoint that validates my payload and tells me how many browsers saw it,
@@ -2568,7 +2574,7 @@ So that I can report to Brad whether his content was actually displayed.
 **When** it is processed
 **Then** it is rejected and nothing is broadcast (NFR-01)
 
-**Given** a payload exceeding any cap from Story 5.1
+**Given** a payload exceeding any cap from Story 12.1
 **When** it is validated
 **Then** the response is **413** with `reason: "payload_too_large"` — **rejected, never truncated** (AD-7, AD-16; 413 per the c1-4 review ruling, was 422)
 **And** a partial render that reads as the complete answer is thereby impossible
@@ -2586,7 +2592,7 @@ So that I can report to Brad whether his content was actually displayed.
 **When** `app.openapi()` is produced
 **Then** the WebSocket types land in the OpenAPI components with no dummy endpoint and no second generator (AD-12)
 
-### Story 5.6: Client reconnection with backoff and a fresh ticket per attempt
+### Story 12.6: Client reconnection with backoff and a fresh ticket per attempt
 
 As Brad who restarted the backend mid-session,
 I want the page to reconnect on its own,
@@ -2619,7 +2625,7 @@ So that a restart is a blip rather than something I have to notice and fix.
 **When** its mechanism is inspected
 **Then** it is "something changed, refetch" — no diffs and no patches (NFR-04)
 
-### Story 5.7: Connection pill
+### Story 12.7: Connection pill
 
 As Brad glancing at the corner of the window,
 I want to know whether the app is actually connected and to what,
@@ -2652,7 +2658,7 @@ So that I can tell a quiet app from a dead one.
 **When** it is observed over time
 **Then** it never animates (UX-DR29)
 
-### Story 5.8: The one real-socket integration test
+### Story 12.8: The one real-socket integration test
 
 As a developer,
 I want exactly one test that boots a real backend on a real port,
@@ -2687,14 +2693,14 @@ So that the seams which only fail in a real process are proven in a real process
 
 ---
 
-## Epic 6: The Agent Pushes to the Glass
+## Epic 13: The Agent Pushes to the Glass
 
 Brad asks his agent a question and the answer appears on the glass: the agent sets the active
 deck, pushes suggestions, and the view blooms open within 250 ms with art-forward rows he can read
 without clicking. When the app is closed or the tab is gone, the agent says so in one calm line
 and presents the content in chat as usual — nothing is ever lost. This closes **SC-1** and **SC-3**.
 
-### Story 6.1: Leaf client with health verification, retry-once, and the closed outcome vocabulary
+### Story 13.1: Leaf client with health verification, retry-once, and the closed outcome vocabulary
 
 As a companion MCP tool,
 I want one shared client that finds the backend, proves its identity, posts, and reports a single token,
@@ -2737,7 +2743,7 @@ So that every tool fails the same way and none of them can break an agent turn.
 **When** the client parses it
 **Then** the parse failure is treated as *app not running*, never an error (AD-4)
 
-### Story 6.2: `companion_set_active_deck` — the agent chooses what the glass shows
+### Story 13.2: `companion_set_active_deck` — the agent chooses what the glass shows
 
 As Brad,
 I want to tell my agent which deck to put on the glass,
@@ -2771,7 +2777,7 @@ So that the browser follows the conversation instead of me managing it.
 **Then** it holds no active-deck state — the state lives in backend memory only (CM-3)
 **And** the import-boundary test still passes, proving no `src.companion.app` import was introduced (AD-3)
 
-### Story 6.3: The glass follows the agent's active-deck choice
+### Story 13.3: The glass follows the agent's active-deck choice
 
 As Brad watching the browser,
 I want the deck view to switch when my agent switches decks,
@@ -2799,7 +2805,7 @@ So that I never have to refresh or click to keep up with the conversation.
 **When** the envelope is broadcast
 **Then** every tab switches (UX-DR37)
 
-### Story 6.4: `companion_show_suggestions` — the agent's first push
+### Story 13.4: `companion_show_suggestions` — the agent's first push
 
 As Brad asking for card suggestions,
 I want them on the glass as cards rather than as a wall of text in my terminal,
@@ -2831,7 +2837,7 @@ So that I can evaluate six cards by looking at them.
 **When** the app is closed
 **Then** the agent presents the suggestions in chat as it always would — the companion adds a visual channel and never replaces the conversational one (NG5, SC-3)
 
-### Story 6.5: Agent view shell with focus management and dismissal
+### Story 13.5: Agent view shell with focus management and dismissal
 
 As Brad reading agent content,
 I want it presented as a full-window panel I can dismiss with Esc,
@@ -2873,7 +2879,7 @@ So that it commands attention while it's open and gets out of the way when I'm d
 **When** its live marker renders
 **Then** it uses `accent`, not `accent-dim`, because tiles here sit on `surface-overlay` where `accent-dim` fails the 3:1 floor (UX-DR6)
 
-### Story 6.6: A push opens its view, and a repeat push replaces it in place
+### Story 13.6: A push opens its view, and a repeat push replaces it in place
 
 As Brad who just asked a question,
 I want the answer to appear without me clicking anything,
@@ -2908,7 +2914,7 @@ So that the agent driving the glass is something I see rather than something I h
 **When** the announcement fires
 **Then** motion is never the sole signal — the heading, its timestamp and the nav pill's marker all update (UX-DR43)
 
-### Story 6.7: Suggestions view
+### Story 13.7: Suggestions view
 
 As Brad evaluating six suggested cards,
 I want each one shown as art with a one-line reason,
@@ -2945,7 +2951,7 @@ So that I can judge them by looking rather than by reading a list of names.
 **When** its source is inspected
 **Then** it comes from the backend image proxy, hydrated through the single card cache (AD-11, AD-12)
 
-### Story 6.8: Agent views nav — unread markers, re-open, and kind switching
+### Story 13.8: Agent views nav — unread markers, re-open, and kind switching
 
 As Brad who dismissed a view and wants it back,
 I want a pill in the header for each kind of thing my agent has sent,
@@ -2982,7 +2988,7 @@ So that nothing the agent showed me is ever more than one click away.
 **When** pushes arrive
 **Then** each tab keeps its own view state and unread markers — divergence between tabs is accepted, not solved (UX-DR37)
 
-### Story 6.9: Degradation with the app closed, and the 250 ms push budget
+### Story 13.9: Degradation with the app closed, and the 250 ms push budget
 
 As Brad running my agent with no browser open,
 I want every workflow to work exactly as it did before the companion existed,
@@ -3021,13 +3027,13 @@ So that the app is something I open when I want it, not something I have to run.
 
 ---
 
-## Epic 7: The Deck Updates Itself
+## Epic 14: The Deck Updates Itself
 
 Brad tells the agent to add a card and the glass changes by itself — the card appears in its type
 group, the curve grows, the colour spread shifts, and a screen reader hears it once. He never
 touches the app. This is UJ-1's climax and closes **SC-2**.
 
-### Story 7.1: One shared notifier, with a bounded await and no detached tasks
+### Story 14.1: One shared notifier, with a bounded await and no detached tasks
 
 As a deck-mutation tool,
 I want one place to tell the companion something changed,
@@ -3060,9 +3066,9 @@ So that a failure to notify can never damage a mutation that already succeeded �
 
 **Given** the event is emitted
 **When** its shape is inspected
-**Then** it is a `deck_changed` envelope carrying the deck id, under the contract from Story 5.1 (AD-6, FR-11)
+**Then** it is a `deck_changed` envelope carrying the deck id, under the contract from Story 12.1 (AD-6, FR-11)
 
-### Story 7.2: Every deck-mutation tool emits after its transaction commits
+### Story 14.2: Every deck-mutation tool emits after its transaction commits
 
 As Brad editing a deck through the agent,
 I want the glass told only once the change is really saved,
@@ -3095,7 +3101,7 @@ So that the view can never show something the database doesn't have.
 **When** they are enumerated in test
 **Then** every one of them emits, so none is forgotten as new tools are added
 
-### Story 7.3: The glass refetches on `deck_changed`, coalesced and latest-wins
+### Story 14.3: The glass refetches on `deck_changed`, coalesced and latest-wins
 
 As Brad watching the deck view,
 I want it to catch up with every change without piling up requests,
@@ -3129,7 +3135,7 @@ So that a burst of edits lands as one correct final state rather than a race.
 **When** the derived state updates
 **Then** the grid, deck list, type-group counts, mana curve and colour distribution all recompute from the new decklist (UX-DR17, UX-DR18)
 
-### Story 7.4: Refetch never tears down what's on screen
+### Story 14.4: Refetch never tears down what's on screen
 
 As Brad mid-read when a change lands,
 I want the deck to stay on screen while it updates,
@@ -3166,7 +3172,7 @@ So that an update never blanks the thing I was looking at.
 **When** the app is observed
 **Then** a blank screen is never shown after first paint (UX-DR36)
 
-### Story 7.5: The change is announced once, and motion is never the only signal
+### Story 14.5: The change is announced once, and motion is never the only signal
 
 As a screen-reader user,
 I want one clear statement that the deck changed,
@@ -3196,7 +3202,7 @@ So that I learn about the update without a flood of announcements or a glow I ca
 **When** they animate
 **Then** under reduced motion they jump instantly (UX-DR42)
 
-### Story 7.6: Deck deletion, and agent views during a refetch
+### Story 14.6: Deck deletion, and agent views during a refetch
 
 As Brad whose deck was just deleted,
 I want the glass to fall back cleanly,
@@ -3225,7 +3231,7 @@ So that a deleted deck leaves a calm empty state rather than a broken view.
 **When** the Tab order is walked
 **Then** the skip link and the grid's Tab stops are withdrawn (UX-DR31)
 
-### Story 7.7: The loop closes — UJ-1 end to end
+### Story 14.7: The loop closes — UJ-1 end to end
 
 As Brad,
 I want to tell my agent to add a card and watch the glass update by itself,
@@ -3253,14 +3259,14 @@ So that the product's central promise — the agent drives, the app shows — is
 
 ---
 
-## Epic 8: Release Readiness
+## Epic 15: Release Readiness
 
 The companion is something Brad would put in front of strangers: `view_deck` points at its
 replacement, the docs tell you where the image cache lives and how to remove it, the PRD no longer
 contradicts the architecture, and Brad has personally judged the thing against the UX spec and
 said yes.
 
-### Story 8.1: Deprecate `view_deck` and freeze `src/viewer`
+### Story 15.1: Deprecate `view_deck` and freeze `src/viewer`
 
 As a user of the existing tools,
 I want the old HTML deck renderer to keep working while telling me what replaced it,
@@ -3288,7 +3294,7 @@ So that nothing breaks under me and nobody invests in a component that's on its 
 **When** the deferral is recorded
 **Then** it is written into the release notes or CHANGELOG so it is not forgotten
 
-### Story 8.2: Image cache stewardship — documented location, inspection and removal
+### Story 15.2: Image cache stewardship — documented location, inspection and removal
 
 As Brad wondering what this app is doing to my disk,
 I want to know where the cached art lives and how to get rid of it,
@@ -3317,7 +3323,7 @@ So that an unbounded cache is a documented choice rather than a surprise.
 **When** the staleness is documented
 **Then** the accepted behaviour — the old entry is served, because the key is id plus size plus face — is stated rather than left to be discovered (AD-11)
 
-### Story 8.3: Reconcile the PRD with what was built
+### Story 15.3: Reconcile the PRD with what was built
 
 As the next person to read the PRD,
 I want it to describe the system that exists,
@@ -3349,7 +3355,7 @@ So that a requirement document and an architecture spine don't quietly contradic
 **When** the documents are re-read together
 **Then** no PRD statement contradicts an architecture decision
 
-### Story 8.4: Release documentation for the companion app
+### Story 15.4: Release documentation for the companion app
 
 As someone installing this for the first time,
 I want the README to tell me what the companion is, how to start it, and what it needs,
@@ -3382,7 +3388,7 @@ So that I can get from install to card art without reading the source.
 **When** they are documented
 **Then** the default port, the ephemeral fallback, the single-instance rule and the "already running" message are explained, so a port conflict is self-diagnosable
 
-### Story 8.5: Plugin distribution parity
+### Story 15.5: Plugin distribution parity
 
 As someone installing via the Claude Code plugin,
 I want the companion to arrive complete,
@@ -3411,7 +3417,7 @@ So that the plugin path isn't a second-class install missing the UI it is suppos
 **When** the plugin is built
 **Then** only product skills ship — the `bmad-*` skills do not leak into the plugin
 
-### Story 8.6: The SC-5 gate
+### Story 15.6: The SC-5 gate
 
 As Brad, the sole quality gate,
 I want to judge the finished app against the UX spec before it ships,
@@ -3450,7 +3456,7 @@ So that "looks like a deliberate product" is a decision I made rather than an as
 
 ---
 
-## Epic 9: The Remaining Push Kinds *(Phase 2)*
+## Epic 16: The Remaining Push Kinds *(Phase 2)*
 
 The agent gains its full vocabulary: proposed swaps as out/in pairs, tier lists, and titled card
 groups with a paragraph of reasoning each — including cards the deck doesn't yet run. Deliberately
@@ -3460,7 +3466,7 @@ three new views, **no new seam and no contract change**.
 Each story pairs its tool with its view. Landing a tool without its renderer would let a push
 arrive that the UI cannot display, breaking the "a push is never silently swallowed" rule mid-epic.
 
-### Story 9.1: Proposed swaps — tool and view
+### Story 16.1: Proposed swaps — tool and view
 
 As Brad weighing a change to my deck,
 I want swaps shown as the card leaving beside the card arriving,
@@ -3471,7 +3477,7 @@ So that I can judge a trade by looking at both cards rather than reading two nam
 **Given** `companion_show_swaps(payload)`
 **When** it is implemented
 **Then** it is `async def`, posts the `swaps` envelope through the existing leaf client, and returns one closed outcome token plus the client count (FR-09, AD-8)
-**And** it requires **no change** to `contracts.py`, because the `swaps` payload shape and its caps were fixed in Story 5.1 (AD-6, AD-7)
+**And** it requires **no change** to `contracts.py`, because the `swaps` payload shape and its caps were fixed in Story 12.1 (AD-6, AD-7)
 
 **Given** a swaps payload
 **When** the view renders each row
@@ -3500,9 +3506,9 @@ So that I can judge a trade by looking at both cards rather than reading two nam
 
 **Given** the Swaps nav pill
 **When** the first swaps push arrives
-**Then** the pill becomes active automatically, because the nav is generic over the closed `kind` enum from Story 5.1 (UX-DR28)
+**Then** the pill becomes active automatically, because the nav is generic over the closed `kind` enum from Story 12.1 (UX-DR28)
 
-### Story 9.2: Tier lists — tool and view
+### Story 16.2: Tier lists — tool and view
 
 As Brad ranking a pool of cards,
 I want tiers shown as labelled buckets with the cards in them,
@@ -3544,7 +3550,7 @@ So that a ranking reads at a glance and the rank never depends on colour alone.
 **When** they are used
 **Then** they follow the inspection contract, and their alt text is `alt=""` where the row already names the card in text (UX-DR26, UX-DR48)
 
-### Story 9.3: Card groups — tool and view
+### Story 16.3: Card groups — tool and view
 
 As Brad asking "show me the one-drops that carry this curve",
 I want titled groups of cards each with a paragraph of reasoning,
@@ -3584,16 +3590,16 @@ So that the agent can answer a question about an arbitrary set of cards, includi
 
 **Given** all four push kinds now exist
 **When** the nav renders
-**Then** it shows a pill per kind, each quiet until its first push, and the agent-view switching rules from Story 6.8 apply unchanged (UX-DR28, UX-DR34)
+**Then** it shows a pill per kind, each quiet until its first push, and the agent-view switching rules from Story 13.8 apply unchanged (UX-DR28, UX-DR34)
 
 ---
 
-## Epic 10: Session History, Status Detail & Performance Polish *(Phase 2)*
+## Epic 17: Session History, Status Detail & Performance Polish *(Phase 2)*
 
 Brad can revisit what the agent showed him earlier in the session, see at a glance which port and
 instance he's connected to, and the 250 ms / 1 s budgets are measured rather than assumed.
 
-### Story 10.1: Connection pill status detail
+### Story 17.1: Connection pill status detail
 
 As Brad with more than one thing running,
 I want the pill to tell me which backend instance I'm actually talking to,
@@ -3601,7 +3607,7 @@ So that I can tell a stale tab from a live one without guessing.
 
 **Acceptance Criteria:**
 
-**Given** the connection pill from Story 5.7
+**Given** the connection pill from Story 12.7
 **When** it is hovered **or receives keyboard focus**
 **Then** it reveals the port and instance id from `GET /health` in a tooltip (FR-15, UX-DR29)
 **And** focus parity is required — hover is never the only path (UX-DR39)
@@ -3622,7 +3628,7 @@ So that I can tell a stale tab from a live one without guessing.
 **When** it is reached
 **Then** it carries the standard focus ring and a hit area of at least 24×24px (UX-DR40, UX-DR47)
 
-### Story 10.2: Session history
+### Story 17.2: Session history
 
 As Brad two pushes later,
 I want to get back to something the agent showed me earlier,
@@ -3663,7 +3669,7 @@ So that dismissing a view never means losing what was in it.
 **When** it is opened
 **Then** nothing is re-requested from the agent (UX-DR28)
 
-### Story 10.3: Measure the latency budgets and close the gaps
+### Story 17.3: Measure the latency budgets and close the gaps
 
 As Brad,
 I want the performance claims verified rather than asserted,
