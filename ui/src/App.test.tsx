@@ -4651,6 +4651,380 @@ describe('deck deletion, and agent views during a refetch (c7-6)', () => {
 })
 
 // =====================================================================================
+// c7-7 — UJ-1 END TO END: THE LOOP CLOSES
+// =====================================================================================
+/**
+ * Flow 1 of `EXPERIENCE.md`, walked in ONE SITTING (story c7-7, AC 2, AC 3).
+ *
+ * ================= THE GAP THIS FILLS, MEASURED ========================================
+ *
+ * Every beat below is already covered somewhere. Measured at `a4110a8`, none of them had ever
+ * been covered *in sequence*: the deck boot is c4-2's describe, the suggestions push is c6-6's,
+ * click-to-pin and its Esc are c6-7's, the refetch's derived surfaces are c7-3's `:3223`, the
+ * pin's survival across a refetch is c7-4's, and the announcement is c7-5's. Four `describe`s and
+ * a store test, each starting from its own arrange step, none of them ever asking the question
+ * UJ-1 actually asks: **does a pin taken during a suggestions view two beats earlier still stand
+ * after the climax refetch, with the change announced exactly once across the whole run?**
+ *
+ * That is not a restatement of the parts. c7-4's pin-survival test pins a card from a TILE — a
+ * card that is *in* the deck — and R9's eviction rule reads membership, so it exercises the
+ * "still present, stays pinned" arm. The pin this walk takes is a **suggested card that was never
+ * in the deck at all**, which R9 makes survive as a *natural consequence* of the same rule rather
+ * than by any special case (the epic context: "a pin on a card that was never in the deck
+ * therefore survives every refetch"). Nothing had walked that consequence end to end, and it is
+ * precisely what step 6 of Flow 1 promises.
+ *
+ * ================= WHAT AN ACCEPTANCE WALK MAY AND MAY NOT DO ==========================
+ *
+ * It MAY re-observe: a sequence test that refused to touch anything already proven could assert
+ * nothing at all. It may NOT be the only place a behaviour is pinned — so every beat's comment
+ * names the story that owns it, and this walk deliberately does not restate `:3223`'s five
+ * derived-surface assertions verbatim. Its subject is the **sequence**; `:3223`'s is the refetch.
+ *
+ * ================= WHY EVERY TEST ID BELOW IS PURE ASCII ==============================
+ *
+ * Not a style preference: `scripts/vitest_probe_harness.py` — the harness this project *mandates*
+ * for every firing proof — prints each failing test id to a Windows console whose code page is
+ * cp1252, and dies with a `UnicodeEncodeError` on anything outside it. Measured on this very
+ * story: a plant reddened `inspection.test.ts`'s `absent → absent` row and crashed the harness
+ * mid-report. A test id containing an em dash or a curly apostrophe is therefore a row nobody can
+ * cheaply plant against later, so the names here use `-` and `:` and the prose lives in comments.
+ *
+ * ================= THE ONE AC TERM ASSERTED IN THE NEGATIVE ============================
+ *
+ * UJ-1 step 9 says *"its quantity badge flashes"*. A genuinely new card mounts a NEW tile, and
+ * `CardTile.tsx:310-317` makes a freshly mounted tile flash-free **by design** — the seen-sentinel
+ * initialises from the mount prop, so a new card's *appearance* is itself the signal and a grid
+ * remount cannot light ninety-nine badges at once. The glow belongs to the quantity-BUMP case,
+ * which `:4043` already proves through the real refetch path. So the row below asserts the new
+ * tile does **not** carry `data-flashed` and cites the ruling, rather than reading the AC as a
+ * defect it should repair.
+ */
+describe('UJ-1 end to end - the loop closes (c7-7)', () => {
+  const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
+  const rows = () => [...document.querySelectorAll<HTMLButtonElement>('.suggestion-row')]
+  const detailName = () => document.querySelector('.card-detail-name')
+  const unpinControl = () => document.querySelector('.card-detail-unpin')
+  const region = () => document.querySelector('.deck-announcement')
+  const settleCount = () => useDeckStore.getState().refetchSettles
+  const dialog = () => screen.queryByRole('dialog')
+
+  /** The Creatures group header's count — DeckList's per-group SUMMED quantity, not `cards.length`. */
+  const creatureGroupCount = () =>
+    screen
+      .getByRole('heading', { level: 2, name: 'Creatures' })
+      .parentElement?.querySelector('.group-header-count')?.textContent
+
+  /**
+   * A tile's quantity badge, scoped by accessible NAME rather than by class (the c7-4 lesson).
+   *
+   * The deck list renders a row button named for the same card, so a bare `.card-tile-quantity`
+   * query would take whichever element document order happened to offer.
+   */
+  const badgeOf = (name: RegExp) =>
+    screen
+      .queryAllByRole('button', { name })
+      .map((button) => button.querySelector('.card-tile-quantity'))
+      .find((badge) => badge !== null) ?? null
+
+  /** `bootedDeck`/`escape`, re-declared from the c7-3…c7-6 blocks — their consts are block-scoped. */
+  const bootedDeck = async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks(ATRAXA_NAME))
+    render(<App />)
+    await settle()
+    await connect()
+    return fetchMock
+  }
+
+  const escape = () =>
+    act(() => {
+      document.activeElement!.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      )
+    })
+
+  /**
+   * Two suggestions, NEITHER of them in the deck.
+   *
+   * The fixture card route answers `/api/cards/id-{name}` by echoing the rest as the card's name,
+   * so an id shaped this way is what makes a hydrated row carry a name a test can read. That the
+   * pinned one is absent from the deck is load-bearing rather than incidental — see the header.
+   */
+  const ITEMS = [
+    { card_id: 'id-Birds of Paradise', reason: 'Fixes all five colours.', category: 'ramp' },
+    { card_id: 'id-Sylvan Caryatid', reason: 'Blocks and ramps at once.', confidence: 'high' },
+  ]
+
+  /**
+   * The deck AFTER the agent's add: Grizzly Bears ×2 joins, on every derived surface at once.
+   *
+   * Quantity **2**, not 1, and that is the no-glow row's whole premise: `CardTile` draws no badge
+   * at all below two copies (`:295-299` — "1 on ninety-eight of ninety-nine tiles is noise"), so a
+   * single copy would make "the badge carries no `data-flashed`" pass by there being no badge.
+   */
+  const editedDeck = () =>
+    deckDetail({
+      mainboard_count: 102,
+      sideboard_count: 0,
+      distinct_cards: 3,
+      cards: [
+        deckCard('Llanowar Elves', 'Creature — Elf Druid', 1, '{G}', 1),
+        deckCard('Grizzly Bears', 'Creature — Bear', 2, '{1}{G}', 2),
+        deckCard('Forest', 'Basic Land — Forest', 10),
+      ],
+    })
+
+  /**
+   * Every user-shaped DOM event that reaches the document, in order, with capture on.
+   *
+   * **This is how "Brad never touched the app" becomes an assertion.** UJ-1's climax is defined by
+   * an absence — *"the deck view updates by itself… Brad never touched the app"* — and an absence
+   * is exactly what a test proves by accident.
+   *
+   * **It is a deliberate ALLOWLIST of gesture events, not an attempt at every event a browser can
+   * fire**, and saying so is the honest framing: `focus`, `blur`, `paste`, `wheel`, `drop` and a
+   * long tail besides are not listed. The list is the set of things a *person* does to this app —
+   * it has exactly one interactive gesture vocabulary (click a tile or a row, press a key, move a
+   * cursor over something), and the climax's claim is that none of those happened. Widening it to
+   * the whole DOM event surface would buy nothing the claim needs and would couple the walk to
+   * React's and jsdom's incidental focus bookkeeping.
+   *
+   * Capture is still on, and `mouseenter` is why: it does not bubble, and a capture-phase listener
+   * on `document` sees it anyway because the capture phase traverses every ancestor whether or not
+   * the event bubbles.
+   *
+   * The recorder is non-vacuous by construction: beat 6 asserts it caught the click and the Esc it
+   * really dispatched, and only then does the climax assert it caught nothing.
+   */
+  const USER_EVENT_TYPES = [
+    'click',
+    'keydown',
+    'keyup',
+    'mousedown',
+    'mouseup',
+    'mouseover',
+    'mouseenter',
+    'pointerdown',
+    'input',
+    'change',
+    'submit',
+  ] as const
+
+  let userEvents: string[] = []
+  let stopRecording: (() => void) | null = null
+
+  beforeEach(() => {
+    // ⚠️ THE FILE'S OWN `beforeEach` COVERS NONE OF THESE THREE, and all three are module-scope
+    // state a previous test leaves behind — the c6-7 block's reason, and doubly this walk's: it
+    // opens a view AND takes a pin, so a leaked one of either is the premise it is establishing.
+    resetInspection()
+    resetDeckMemory()
+    resetAgentView()
+
+    userEvents = []
+    const listener = (event: Event) => userEvents.push(event.type)
+    for (const type of USER_EVENT_TYPES) document.addEventListener(type, listener, true)
+    stopRecording = () => {
+      for (const type of USER_EVENT_TYPES) document.removeEventListener(type, listener, true)
+    }
+  })
+
+  afterEach(() => {
+    // Removed here rather than at the end of each test: an assertion that throws mid-walk would
+    // otherwise leak a document listener into every test that runs after it.
+    stopRecording?.()
+    stopRecording = null
+  })
+
+  it('walks Flow 1: deck fills, view blooms, pin survives Esc, and the climax lands untouched', async () => {
+    // ========== BEAT 2 — "the deck view fills" (owned by c4-2's boot and c6-3's active deck) ===
+    await bootedDeck()
+    expect(screen.getByRole('heading', { level: 1, name: ATRAXA_NAME })).toBeVisible()
+    expect(creatureGroupCount()).toBe('1')
+    expect(screen.getByText('100')).toBeVisible()
+    // The BEFORE state of the two surfaces the climax moves, so each "it moved" below is a
+    // movement rather than a value that might always have been true.
+    expect(screen.getByRole('img', { name: '2 drops: 0 cards' })).toBeInTheDocument()
+    expect(screen.getByText('1 pip')).toBeVisible()
+    expect(region()!.textContent).toBe('')
+    expect(settleCount()).toBe(0)
+
+    // ========== BEAT 5 — "the Suggestions view blooms open" (owned by c6-6, over the real wire) =
+    await push('suggestions', { title: 'Resilience options', items: ITEMS }, 'push-c7-7')
+    // The rows hydrate off `/api/cards/{id}` on commit and land a microtask later; without this
+    // every name assertion below reads '' (c6-7's `pushRows` idiom).
+    await settle()
+    await advance(20)
+
+    expect(dialog()).toBeInTheDocument()
+    expect(rows()).toHaveLength(2)
+    expect(rows()[0]).toHaveTextContent('Birds of Paradise')
+    expect(rows()[0]).toHaveTextContent('Fixes all five colours.')
+
+    // ========== BEAT 6 — "he clicks one to pin it, then Esc; the pinned card is still there" ====
+    // Owned by c6-7 (the row click pins and announces once) and c6-5 (Esc layers over the pin).
+    // `EXPERIENCE.md:219` is the ruling that this beat is *why* click-to-pin exists at all.
+    const beforeBeat6 = userEvents.length
+    fireEvent.click(rows()[0])
+    await settle()
+    expect(useInspectionStore.getState().pinnedId).toBe('id-Birds of Paradise')
+
+    escape()
+
+    expect(dialog(), 'ONE Esc releases ONE thing — the view, not the pin (UX-DR39)').toBeNull()
+    expect(useInspectionStore.getState().pinnedId).toBe('id-Birds of Paradise')
+    expect(unpinControl()).not.toBeNull()
+    expect(detailName()).toHaveTextContent('Birds of Paradise')
+    // THE RECORDER'S FIRING HALF, and it is asserted here rather than assumed: the climax's
+    // "nothing was dispatched" claim below is worthless unless this instrument can see a gesture.
+    const beat6 = userEvents.slice(beforeBeat6)
+    expect(beat6, 'the recorder saw the real click').toContain('click')
+    expect(beat6, 'the recorder saw the real Escape').toContain('keydown')
+
+    // ========== BEAT 9, THE CLIMAX — the agent adds a card and the glass moves by itself ========
+    // Owned by c7-3 (the coalesced refetch), c7-4 (no teardown, and R9's pin rule) and c7-5 (the
+    // announcement). From this line to the end of the test, NOTHING dispatches a user event.
+    booting(activeDeck(ATRAXA_DECK_ID), editedDeck())
+    const beforeClimax = userEvents.length
+
+    // THE ANNOUNCEMENT IS WATCHED, NOT SAMPLED. A final text equality plus `settleCount() === 1`
+    // is satisfied by an announce -> clear -> announce cycle inside one settle, which a screen
+    // reader hears as two interruptions. "Announces" IS "mutates" to a live region and jsdom has
+    // no speech, so the observer is the only instrument — c7-5 and c7-6 both use it for this.
+    const spoken: string[] = []
+    const announcements = new MutationObserver(() => spoken.push(region()!.textContent ?? ''))
+    announcements.observe(region()!, { childList: true, characterData: true, subtree: true })
+    try {
+      await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+      await settle()
+    } finally {
+      announcements.disconnect()
+    }
+
+    // …the card is in its type group and the group count rose 1 -> 3 (one Elf + two Bears)…
+    expect(screen.getAllByText('Grizzly Bears').length).toBeGreaterThanOrEqual(2)
+    expect(creatureGroupCount()).toBe('3')
+    // …the curve bar for its mana value appeared…
+    expect(screen.getByRole('img', { name: '2 drops: 2 cards' })).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: '2 drops: 0 cards' })).toBeNull()
+    // …the colour distribution shifted (pips are counted PER COPY: 1 Elf + 2 Bears = 3 green)…
+    expect(screen.getByText('3 pips')).toBeVisible()
+    expect(screen.queryByText('1 pip')).toBeNull()
+    // …the header count updated…
+    expect(screen.getByText('102')).toBeVisible()
+    // …and the change was announced EXACTLY ONCE across the whole walk — one settle, one sentence,
+    // and nothing announced from beat 5's push (a suggestions view's arrival is not a deck change).
+    expect(region()!.textContent).toBe('Deck updated — 102 cards')
+    expect(settleCount()).toBe(1)
+    // ONE SENTENCE, AND IT WAS NEVER TAKEN BACK. The observer fired (so the region really spoke
+    // rather than having always read this), every non-empty state it passed through was the SAME
+    // sentence, and once it had spoken it never returned to empty — which is what rules out the
+    // announce/clear/announce cycle the text equality above cannot see.
+    expect(
+      spoken.length,
+      'the region never mutated — nothing was announced at all',
+    ).toBeGreaterThan(0)
+    const firstSpoke = spoken.findIndex((text) => text !== '')
+    expect(firstSpoke, 'the region mutated but never carried a sentence').toBeGreaterThanOrEqual(0)
+    expect([...new Set(spoken.slice(firstSpoke))]).toEqual(['Deck updated — 102 cards'])
+
+    // THE PIN STILL STANDS, two beats after it was taken and one refetch later. R9's rule reads
+    // membership: Birds of Paradise was never in the departing deck, so it cannot have "departed"
+    // it, and no pin-time classification was needed to know that.
+    expect(useInspectionStore.getState().pinnedId).toBe('id-Birds of Paradise')
+    expect(unpinControl()).not.toBeNull()
+    expect(detailName()).toHaveTextContent('Birds of Paradise')
+
+    // AND BRAD NEVER TOUCHED THE APP. The silent half of the instrument that fired in beat 6.
+    expect(
+      userEvents.slice(beforeClimax),
+      'UJ-1 climax: the glass moved with NO user event dispatched to it after the push',
+    ).toEqual([])
+    // One socket throughout the whole flow: a refetch is a request, never a reconnect.
+    expect(sockets).toHaveLength(1)
+  })
+
+  it('stands still and says nothing when the emit is swallowed (AC 3, the accepted staleness window)', async () => {
+    // AC 3's OTHER half. The tool-side promise — byte-identical result, nothing raised, the POST
+    // genuinely attempted — is `test_deck_changed_wiring.py`'s
+    // `TestARealHttpFailureCostsTheMutationNothing`. What no test showed is the consequence *on
+    // the glass*, which is the half a user would actually experience: the database has changed,
+    // the notifier's POST failed and was swallowed (AD-9), and **no frame ever arrives**.
+    //
+    // From the browser's side a swallowed emit is indistinguishable from nothing having happened,
+    // and that indistinguishability IS the specification: `EXPERIENCE.md`'s Flow 1 failure path
+    // reads *"the deck view is stale until the next event or reconnect; no error surfaces"*, and
+    // the epic's context adds *"the UI shows no staleness warning"* until FR-16. So this row
+    // asserts an absence on every surface that could break that promise.
+    const fetchMock = await bootedDeck()
+    const before = fetchMock.mock.calls.length
+
+    // The backend WOULD now answer with the edited deck — the mutation really did land. The glass
+    // is simply never told, which is the whole scenario.
+    booting(activeDeck(ATRAXA_DECK_ID), editedDeck())
+    await advance(30_000)
+    await settle()
+
+    // THE DECK STANDS EXACTLY AS IT WAS — stale, and calmly so.
+    expect(creatureGroupCount()).toBe('1')
+    expect(screen.getByText('100')).toBeVisible()
+    expect(screen.queryByText('Grizzly Bears')).toBeNull()
+    // …and it is stale because nothing re-read it, not because a refetch landed and lost:
+    expect(
+      fetchMock.mock.calls
+        .slice(before)
+        .filter(([input]) => String(input) === `/api/deck/${ATRAXA_DECK_ID}`).length,
+      'no event, no refetch — the staleness window is exactly this',
+    ).toBe(0)
+
+    // NOTHING ANNOUNCED. A live region that spoke here would be announcing a change the user
+    // cannot see, which is worse than silence.
+    expect(region()!.textContent).toBe('')
+    expect(settleCount()).toBe(0)
+
+    // AND NO ERROR SURFACED, on any of the three surfaces that could carry one: the state-panel
+    // shell (the app's one way of replacing the deck view with a message), an assertive region,
+    // and any staleness wording at all. The third is the one FR-16 will eventually change, and
+    // pinning its ABSENCE now is what makes that a deliberate future edit rather than a drift.
+    expect(document.querySelector('.state-panel')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(document.body.textContent).not.toMatch(/stale|out of date|out-of-date|reconnect/i)
+    // One socket throughout: a swallowed emit is not a connection problem and must not look like
+    // one — a reconnect would itself trigger a refetch and close the window by accident.
+    expect(sockets).toHaveLength(1)
+    expect(sockets[0].closed).toBe(0)
+  })
+
+  it('does NOT flash the new card badge: a new tile appearing is itself the signal', async () => {
+    // UJ-1 step 9's "its quantity badge flashes" read against `CardTile.tsx:310-317`'s ruling. The
+    // quantity-BUMP glow is proven through the real refetch path at `:4043`; this is its twin, and
+    // the two together are the whole of UX-DR16 on the glass. See this describe's header for why
+    // the AC term is asserted in the negative rather than treated as a defect.
+    await bootedDeck()
+    expect(badgeOf(/Grizzly Bears/), 'the card is genuinely NEW — no tile for it yet').toBeNull()
+
+    booting(activeDeck(ATRAXA_DECK_ID), editedDeck())
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+    await settle()
+
+    // NON-VACUITY FIRST: the badge EXISTS (quantity 2 clears CardTile's `> 1` threshold), so the
+    // absence below is an absence of the attribute and not an absence of the element.
+    const badge = badgeOf(/Grizzly Bears/)
+    expect(badge).not.toBeNull()
+    expect(badge!.textContent).toBe('×2')
+    expect(
+      badge!.getAttribute('data-flashed'),
+      'a freshly mounted tile never flashes — the seen-sentinel initialises from the mount prop',
+    ).toBeNull()
+    // …and it is still absent a frame later, so this is "never flashed" rather than "the one-shot
+    // had already cleared by the time we looked".
+    await advance(20)
+    expect(badgeOf(/Grizzly Bears/)!.getAttribute('data-flashed')).toBeNull()
+  })
+})
+
+// =====================================================================================
 // c6-5 — THE AGENT VIEW REACHES THE OVERLAY SLOT, AND ESC LAYERS OVER THE PIN
 // =====================================================================================
 
