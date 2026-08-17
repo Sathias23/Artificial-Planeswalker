@@ -1267,7 +1267,7 @@ action_items:
       FIVE sightings this epic (c6-2, c6-3, c6-5, c6-8, c6-9), each costing a red
       baseline run plus a warm re-run."
     owner: "Brad (C7 prep)"
-    status: open
+    status: done  # DONE 2026-08-17, jointly with epic-14 R1 (same fix, one commit). Landed as a PROJECT-scoped `testTimeout: 180_000` on the `node` project in ui/vite.config.ts rather than the per-test timeout the item asked for. WHY THE DEPARTURE: the per-test form makes prettier reformat every `it()` in lint-gates.test.ts (367 lines of churn on a file whose provenance comments are its doctrine, and whose blame is how they are traced); the project is exactly the shell-out suites (ESLint, stylelint, a real Vite dev server), so scoping there is honest. It IS a widening — every node-project test now gets 180 s — recorded in the config comment. VERIFIED both ways with a throwaway 6 s probe: node project passes, dom project still fails at "Test timed out in 5000ms", so the `dom` default is untouched. Suite green after: ui 80 files / 2,305 tests, python 3,102 passed / 2 skipped.
   - epic: 13
     action: "R6 — add `companion-integration` to branch protection as a required check
       (CARRIED from C5 R1-b, a two-minute GitHub settings change with no repo-tree
@@ -1311,7 +1311,7 @@ action_items:
       edit; no behaviour change; the ~60 stale DESIGN.md:NNN anchors stay as-is by
       the decline."
     owner: "Brad (C7 prep)"
-    status: open
+    status: done  # DONE 2026-08-17. One comment edit at the `documented()` helper in ui/tests/shell.test.ts, no behaviour change: the declaration now opens by naming it a STRING-PROXIMITY CHECK and enumerates the three things it does NOT do — open DESIGN.md, resolve a `DESIGN.md:NNN` anchor to a line, or check the citation is true (a comment reading "999px — DESIGN.md" beside `width: 999px` passes regardless) — then states what it DOES buy: no px literal reaches a component stylesheet with no stated source beside it, and a wrong-or-rotted source is review's. C5 R6's decline is cited in place, so the ~60 stale anchors stay as-is by that decline rather than by silence. Suite green, unchanged count.
   - epic: 14
     id: "epic-c7-retro-item-1-land-c6-r5-lint-timeout"
     action: "R1 — LAND C6 R5 NOW: one-line per-test timeout on the lintBothFixtures
@@ -1323,7 +1323,7 @@ action_items:
       in C6, a seventh at c7-6, this is the eighth. Owned-but-unlanded across two
       epics; the fix is smaller than any single sighting's cost."
     owner: "Brad"
-    status: open
+    status: done  # DONE 2026-08-17, closing epic-13 R5 with it — one fix, both items, ninth sighting never happened. `testTimeout: 180_000` on the `node` project in ui/vite.config.ts, carrying the full measurement record (warm first test ~966 ms vs 4-64 ms for the rest; cold setup ~103-126 s across C6; the retro's own 53.99 s red / 8.22 s warm re-run) and naming the root cause: `eslint.config.js` sets `projectService: true`, so the FIRST ESLint call in the process builds a TypeScript program and whichever test runs first pays all of it. DEPARTURE FROM THE PRESCRIPTION, in the open: the item asked for per-test timeouts on the four watched tests; per-test triggers a prettier reformat of every `it()` in lint-gates.test.ts (367 lines) and would cost the blame on that file's provenance comments. Project scope also covers the two ESLint tests the ledger did not name, which matters because the cost belongs to whichever test is first and reordering moves it. Widening acknowledged in the config comment; `dom` keeps the 5,000 ms default. A pointer comment at the head of lint-gates.test.ts sends a reader who sees the timeout to the measurements. VERIFIED with a throwaway 6 s probe in both projects (node passes, dom fails at 5000ms), then removed.
     ref: "_bmad-output/implementation-artifacts/epic-14-retro-2026-08-16.md"
   - epic: 14
     id: "epic-c7-retro-item-2-nfr05-quiet-machine-remeasurement"
@@ -1367,7 +1367,7 @@ action_items:
       which AST-walks src/mcp_server/tools/ for repository write-method users and
       asserts wired == derived) as what keeps the list honest."
     owner: "Brad"
-    status: open
+    status: done  # DONE 2026-08-17. Both artefacts amended. epics-companion-app.md, story 14.2's first Given: "add, remove, update, create, import" -> the four tool names it actually means (`create_deck`, `add_card_to_deck`, `remove_card_from_deck`, `import_decklist`), with `delete_deck` left to the deletion Given that already follows — which is why the first list reads as four, not five. A blockquote amendment note under the story records that there is no update-deck tool and never was, that story 14.2 reconciled it at implementation time without amending the artefact, and that the final Given is discharged by the DERIVED guard in tests/integration/mcp_server/test_deck_changed_wiring.py (class docstring "derived writers == wired emitters, by name, forever"; test_the_derived_mutating_tools_are_exactly_the_five_wired_ones) — so the prose is documentation and the guard is the contract. epic-c7-context.md's "Emit after persistence" bullet: same replacement, same citation, amendment dated inline. VERIFIED against src/mcp_server/server.py: the mutating registrations are exactly those five and there is no update tool. No line anchors added in either edit — tool names and test names instead, so neither can rot the way R10's ~60 DESIGN.md:NNN anchors did. Python suite 3,102 passed / 2 skipped.
     ref: "_bmad-output/implementation-artifacts/epic-14-retro-2026-08-16.md"
   - epic: 14
     id: "epic-c7-retro-item-5-live-region-prose-says-three"
@@ -1382,7 +1382,7 @@ action_items:
       amendment recorded two lines above at :158. THIRD consecutive epic for this
       class, and precisely what C6 R7's prose sweep exists to catch."
     owner: "Brad"
-    status: open
+    status: done  # DONE 2026-08-17. Both sites corrected, and the count VERIFIED before writing it rather than taken from the item: `grep aria-live` over ui/src (excluding tests) returns exactly four production regions — ConnectionPill, CardDetail's pin announcement, DeckAnnouncer's deck-refetch announcement, and AgentView's heading — with every other hit being a comment explaining why that component is NOT live. AgentView.tsx: "exactly three" -> "exactly four", the other three named, and the correction dated in place with the reason (c7-5 added the fourth, the guard was updated then and this sentence was not). Both sites now point at App.test.tsx's live-region census as the AUTHORITY and say so, instead of asserting a number on their own word. EXPERIENCE.md's Live regions bullet: the deck-refetch region added to the enumeration in the same "artefact wrong, code right" amendment shape as the c4-12 alt-text note one bullet above, naming it as the same class, plus an explicit "four is the whole inventory — a region not named here is undeclared". Line anchors deliberately NOT reproduced (`EXPERIENCE.md:159`, `App.test.tsx:2128-2148` both dropped for section and file names) — same reasoning as R10's decline. Suite green: ui 80 files / 2,305 tests, python 3,102 passed / 2 skipped.
     ref: "_bmad-output/implementation-artifacts/epic-14-retro-2026-08-16.md"
   - epic: 14
     id: "epic-c7-retro-item-6-decide-scripts-type-coverage"

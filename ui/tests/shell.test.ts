@@ -605,6 +605,27 @@ const pxLiteralsIn = (css: string) => [
 ]
 
 /**
+ * WHAT THIS IS, STATED AT ITS REAL STRENGTH (C5 R6 demotion, executed at C6 R10, 2026-08-17).
+ *
+ * This is a STRING-PROXIMITY CHECK. It asks whether the eight characters `DESIGN.md` appear
+ * within 60 characters of the literal, in a comment. That is all it asks. It does NOT:
+ *
+ *   - open DESIGN.md, or check that the file exists;
+ *   - resolve a `DESIGN.md:NNN` anchor to a line, or check that the line says anything about
+ *     this value — the ~60 line anchors across this suite are UNVERIFIED BY ANYTHING and go
+ *     stale silently every time DESIGN.md gains a paragraph (C5 R6 weighed a resolving guard
+ *     and DECLINED it; the anchors stay as-is by that decline, and this paragraph is the
+ *     honest label that came with it);
+ *   - check that the citation is TRUE. A comment reading "452px — DESIGN.md" beside
+ *     `width: 999px` fails, because the digits do not match; a comment reading
+ *     "999px — DESIGN.md" beside `width: 999px` PASSES, whether or not DESIGN.md has ever
+ *     mentioned 999px. The value has to agree with itself, not with the artefact.
+ *
+ * So what it buys is narrow and worth being clear about: a px literal cannot be added to a
+ * component stylesheet with NO stated source beside it. It catches the unsourced value, which
+ * is the common failure. It cannot catch a wrong or rotted source — that is review's, and
+ * saying so here is what stops the next author reading a green run as more than it is.
+ *
  * PROXIMITY, not co-occurrence. The first version of this asked only whether SOME comment
  * mentioned the literal and SOME part of it said "DESIGN.md" — and the probe that deleted the
  * real citation still passed, because the file-header comment happens to contain both the

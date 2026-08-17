@@ -59,6 +59,29 @@ export default defineConfig({
           // green, and the missing coverage would be invisible. Overlap is impossible
           // because the two roots are disjoint, so widening both is free.
           include: ['tests/**/*.test.{ts,tsx}'],
+          // COLD-START HEADROOM (C6 R5 / C7 R1, landed 2026-08-17). Every suite in THIS
+          // project shells out to a real tool — ESLint, stylelint, a Vite dev server — and
+          // `eslint.config.js` sets `projectService: true`, so the first ESLint call in the
+          // process builds a TypeScript program before it lints a line. Whichever test runs
+          // first pays all of it and vitest's 5,000 ms default does not cover it cold.
+          //
+          // MEASURED, not guessed. Warm, lint-gates.test.ts's first test is ~966 ms and the
+          // rest are 4-64 ms. Cold, setup was observed at ~103-126 s across C6, and the C7
+          // retro run caught it live: `npm test` = 1 failed / 2304 passed in 53.99 s, the
+          // failure being lint-gates.test.ts's first test at "Test timed out in 5000ms", with
+          // an immediate warm re-run — no code change — green at 8.22 s. EIGHT sightings
+          // across two epics (c6-2, c6-3, c6-5, c6-8, c6-9, c7-6, and the retro run), each
+          // costing a red baseline plus a re-run. 180 s clears the worst with headroom.
+          //
+          // PROJECT-SCOPED ON PURPOSE, and it is a real widening: every node-project test now
+          // has 180 s before vitest calls it hung, not just the ESLint ones. Taken knowingly.
+          // The alternative — a per-test timeout on the six ESLint tests, which is what the
+          // ledger item literally asked for — makes prettier reformat every `it()` in the
+          // file it touches, and lint-gates.test.ts carries the provenance comments this
+          // suite's doctrine is written in; 367 lines of reformatting would cost the blame
+          // that makes them traceable. The `dom` project keeps the 5,000 ms default, which is
+          // where a genuinely hung component test would still be caught quickly.
+          testTimeout: 180_000,
         },
       },
       {
