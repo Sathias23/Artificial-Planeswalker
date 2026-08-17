@@ -2,9 +2,9 @@
 title: 'Deprecate view_deck and freeze src/viewer'
 type: 'chore'
 created: '2026-08-17'
-status: 'complete'
+status: 'in-review'
 baseline_revision: '999bacd713bdec0d1a8ca2f77f6bda9b597137d6'
-review_loop_iteration: 0
+review_loop_iteration: 1
 followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-15-context.md'
@@ -183,6 +183,65 @@ No behaviour changes anywhere.
 
 ## Review Triage Log
 
+**Iteration 1 (2026-08-17) — four-layer review: 0 intent gaps, 0 spec defects, 13 patches, all
+applied.** The three measured findings first:
+
+- **P1 (medium) — the freeze pin could not see the renderer.** `template.html` *is* the renderer:
+  `render_html` only substitutes a JSON blob into it, and its ~200 lines of inline JS
+  (`cardHtml`, `columnsHtml`, `curveHtml`) are where a deck becomes a page. The pin checked
+  presence only, so a whole new panel could land in the frozen package with no Python symbol
+  changing — while `src/viewer/__init__.py` and the CHANGELOG both told a reader "no new
+  behaviour" was enforced. `_FROZEN_DATA_FILES` is now `name -> sha256`, hashed over
+  **CRLF-normalised** bytes: the repo's `.gitattributes` scopes its `-text` rules to the SPA
+  bundle only, so a raw hash would have fired on a Windows checkout under `core.autocrlf=true`
+  and nowhere else. Verified against the real tree, not only the synthetic one.
+- **P2 (medium) — git is now the freeze pin's file authority too**, as it always was for the
+  sweep. `rglob("*")` meant a `.DS_Store`, an editor's `render.py.orig` or a stray `.pyc`
+  reported as *new capability in a frozen package* on any working copy. Split into
+  `tracked_viewer_files()` (git, real tree) and `walk_viewer_files()` (filesystem, the synthetic
+  packages in `tmp_path`, which are not git repos); `find_freeze_violations` now takes the
+  collected mapping, so it stays pure and both callers share it.
+- **P3 (medium) — the committed SPA bundle is swept.** "It is built from sources we already
+  scan" was the wrong argument: the bundle is a committed artifact that is also mirrored into
+  `plugin/` and shipped, and AC-4's subject is the UI "when its assets are inspected". The
+  `is_swept` premise that only `*.py` counts under `src/companion/` was also true-but-unpinned,
+  so a future `app/templates/deck.html` would have escaped on its suffix. One uniform rule now:
+  every tracked non-binary file. Measured: the committed bundle produces no false positive
+  (Vite strips the comments that carry the citation).
+- **P4** — `ui/vite.config.ts`, `ui/config/` and `ui/package.json` added to the pathspecs: a
+  build-time reuse (a `?raw` import, a copy plugin, an npm script) is wired there and in no file
+  under `ui/src/`. `ui/tests/` stays out, for the reason `read-only-glass.test.ts` excludes
+  itself; that is now residue 3.
+- **P5** — error containment: `utf-8-sig` (a BOM-saved companion `.py` used to raise
+  `invalid non-printable character U+FEFF`), unreadable/unparsable files reported as violations
+  rather than raising, `_resolve_import`'s deliberate `ValueError` contained at the call site,
+  `git -c core.quotePath=false ls-files -z` split on NUL, tracked-but-absent paths skipped, and
+  a git failure turned into a named `pytest.fail`.
+- **P6** — freeze-pin robustness: `__all__` compared by **membership** (a reorder no longer
+  fires with the wrong diagnosis), a computed `__all__` and `__all__ +=` / `.append` reported
+  instead of crashing `ast.literal_eval`, `AnnAssign` handled, and `public_symbols` now recurses
+  into module-level `if`/`try`/`with`/loop bodies and unpacks tuple targets.
+- **P7** — the citation exemption requires a **comment** line, closing the
+  `import … // src/viewer/view_model.py::is_land` hole that contradicted this spec's own change-log
+  entry. A new guard also pins that both real citations still sit on comment lines.
+- **P8** — reuse violations carry `_NO_REUSE_FIX`, the sweep's twin of `_FREEZE_FIX`.
+- **P9** — residue 5: the sweep sees *reference*, not *duplication*; copy-pasting the template's
+  markup into a component names none of the banned tokens.
+- **P10 / P11** — `server.py`'s module docstring no longer introduces `view_deck` as a current
+  feature, and the tool's summary line keeps its capability so a truncating client still shows an
+  agent what the tool does: *"DEPRECATED — renders a saved deck as static HTML; superseded by the
+  companion app."*
+- **P12** — `[Unreleased]` gained its compare link beside the other release definitions, and the
+  internal test path was dropped from the user-facing entry.
+- **P13** — the description assertion fails naming the missing deprecation instead of raising
+  `IndexError` on an empty description.
+
+One follow-on found while re-running the proofs, fixed in the same pass:
+`test_an_untracked_stray_is_not_a_new_capability` first asserted the *whole* tree was clean, so
+it went red alongside `test_public_surface_is_pinned` during the planted-violation probe — the
+same "two readings of one measurement" mistake recorded in the Spec Change Log. It now asserts
+only that nothing reported mentions the stray.
+
 ## Design Notes
 
 **Why the description and not `__doc__`.** AD-15's rule is "its docstring names the companion as the
@@ -229,54 +288,72 @@ second copy in `deferred-work.md` would be a second source of truth for the same
 - Read the new `view_deck` description as printed by `list_tools()`: the first line alone must tell
   an agent it is deprecated and what replaced it.
 
-## Verification Record (2026-08-17)
+## Verification Record (2026-08-17, re-run after review iteration 1)
 
 - `uv run ruff check . --fix && uv run ruff format .` — clean (`All checks passed!`).
 - `uv run mypy src/` — clean (`Success: no issues found in 94 source files`).
-- Baseline green, before any planting:
+- Baseline green, before any planting (the count rose from 3086 to 3107 with the review's new
+  guards):
 
   ```
-  full suite (-m 'not integration'): 3086 collected, 0 failed, exit 0
+  full suite (-m 'not integration'): 3107 collected, 0 failed, exit 0
   ```
 
 - **Freeze pin, fired.** Planted `def build_sideboard_panel(...)` at the end of
   `src/viewer/view_model.py`:
 
   ```
-  full suite (-m 'not integration'): 3086 collected, 1 failed, 0 errored, exit 1
+  full suite (-m 'not integration'): 3107 collected, 1 failed, 0 errored, exit 1
     RED    tests/unit/viewer/test_viewer_freeze.py::TestViewerIsFrozen::test_public_surface_is_pinned
   ```
 
   Reverted; `git diff --exit-code src/viewer/view_model.py` clean.
 
+- **Freeze pin, fired on the renderer itself (P1).** The reviewer's own scenario, run against the
+  real package rather than a synthetic one — appended
+  `<script>function sideboardPanel(){return 1}</script>` to `src/viewer/template.html`:
+
+  ```
+  src/viewer/template.html:0 — template.html content changed (sha256 2bd1e76c9518, pinned
+  679dbb94d775) (template.html IS the renderer (its inline JS builds the page), so its bytes are
+  pinned — editing it is adding behaviour to a frozen package (AD-15)); if this addition is
+  deliberate, it is the wrong package: build it in the companion. …
+  ```
+
+  Reverted; `git diff --exit-code src/viewer/template.html` clean.
+
 - **No-reuse sweep, fired.** Planted `_LEGACY_TEMPLATE = "template.html"` in
   `src/companion/app/spa.py`:
 
   ```
-  full suite (-m 'not integration'): 3086 collected, 1 failed, 0 errored, exit 1
+  full suite (-m 'not integration'): 3107 collected, 1 failed, 0 errored, exit 1
     RED    tests/unit/viewer/test_viewer_freeze.py::TestCompanionNeverReusesTheViewer::test_no_companion_source_reuses_the_viewer
   ```
 
-  Reverted; `git diff --exit-code` clean over the whole tree.
+  Reverted; `git diff --exit-code src/companion/app/spa.py` clean.
 
 - Green again after both reverts:
 
   ```
-  full suite (-m 'not integration'): 3086 collected, 0 failed, exit 0
+  full suite (-m 'not integration'): 3107 collected, 0 failed, exit 0
   ```
 
-- `uv run python -m scripts.build_plugin` — rebuilt; the four mirrored files
+- `uv run pytest -m integration` — `55 passed, 3107 deselected`.
+
+- `uv run python -m scripts.build_plugin` — rebuilt; the mirrored files
   (`plugin/server/README.md`, `plugin/server/src/mcp_server/server.py`,
   `plugin/server/src/mcp_server/tools/view_deck.py`, `plugin/server/src/viewer/__init__.py`)
   were regenerated and committed, after which a re-run leaves
   `git status --porcelain -- plugin/` empty.
 
-- **The description, as `list_tools()` prints it.** First line, verbatim:
+- **The description, as `list_tools()` prints it.** First line, verbatim (revised under P11 so a
+  client that truncates to one line still tells the agent what the tool *does*):
 
   ```
-  DEPRECATED — superseded by the companion app; prefer ``companion_set_active_deck``.
+  DEPRECATED — renders a saved deck as static HTML; superseded by the companion app.
   ```
 
-  It stands alone: deprecated, and what replaced it, before any truncation point. (FastMCP does
+  It stands alone: what it does, that it is deprecated, and what replaced it, before any
+  truncation point; `companion_set_active_deck` is named in the next paragraph. (FastMCP does
   not dedent the body — the remaining lines keep their source indentation, exactly as every other
   tool in this server already does.)

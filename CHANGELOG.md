@@ -16,8 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exactly as before, so every workflow that calls it still completes.
 - **The `src/viewer` package is frozen.** No new capability lands there — no new
   module and no new public function; new deck-view work belongs in the companion
-  app, and the companion never reuses the old renderer's HTML template. The
-  freeze is enforced in CI by `tests/unit/viewer/test_viewer_freeze.py`.
+  app, and the companion never reuses the old renderer's HTML template.
 - **Removal is deferred to the next minor release, once the companion app is
   proven.** `view_deck`, `src/viewer` and `scripts/view_deck.py` will be removed
   together at that point; until then nothing that depends on them breaks.
@@ -221,6 +220,7 @@ Initial public release.
   action: `setup.py` imports the card database into the central directory
   automatically (the semantic index is built separately, see Added).
 
+[Unreleased]: https://github.com/Sathias23/Artificial-Planeswalker/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.2.0

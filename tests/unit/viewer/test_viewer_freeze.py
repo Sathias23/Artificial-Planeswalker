@@ -3,19 +3,36 @@
 Two guards live here. Neither changes behaviour — both turn a property that currently holds
 **by coincidence** into one that holds by rule:
 
-* **Freeze pin** — the set of files under ``src/viewer/`` and the set of public symbols each
-  module exposes are pinned to what shipped. AD-15 rules the old HTML renderer *frozen, not
-  removed*: no new capability lands there, and its removal is deferred to the next minor release
-  once the companion app is proven. Adding a capability to a Python package is, in practice,
-  adding a module or a public symbol — so the pin fires on the act itself, rather than on a
-  reviewer noticing. Today the freeze is written in a docstring; a docstring stops nobody.
-* **No-reuse sweep** — no git-tracked companion source (``src/companion/**/*.py``,
-  ``ui/index.html``, ``ui/src/**``, ``ui/public/**``) may import ``src.viewer`` or name
+* **Freeze pin** — the set of git-tracked files under ``src/viewer/``, the public symbols each
+  module exposes, and the **bytes of** ``template.html`` are pinned to what shipped. AD-15 rules
+  the old HTML renderer *frozen, not removed*: no new capability lands there, and its removal is
+  deferred to the next minor release once the companion app is proven. Adding a capability to
+  this package means adding a module, adding a public symbol, or editing the template — so the
+  pin fires on the act itself, rather than on a reviewer noticing. Today the freeze is written in
+  a docstring; a docstring stops nobody.
+* **No-reuse sweep** — no git-tracked companion source may import ``src.viewer`` or name
   ``template.html`` / ``src/viewer``. AD-15's reason is that *two renderers of one deck would
   diverge*: the companion builds its deck view from the API contract, and lifting the old
   template into it would create a second, silently drifting source of truth for how a deck
   looks. Measured at ``999bacd``, no companion source reuses either — because nobody has
   written the line, not because anything forbade it.
+
+**Why the template's bytes are pinned and not merely its presence.** ``template.html`` *is* the
+renderer. ``render_html`` only substitutes a JSON blob into it; the ~200 lines of inline
+JavaScript inside it (``cardHtml``, ``columnsHtml``, ``curveHtml``) are where a deck actually
+becomes a page. A pin that checked only presence would have let a whole new panel land in the
+frozen package without a single Python symbol changing — while ``src/viewer/__init__.py`` and the
+CHANGELOG both tell a reader that "no new behaviour" is enforced. The hash is taken over
+CRLF-normalised bytes deliberately: the repo's ``.gitattributes`` scopes its ``-text`` rules to
+the SPA bundle only, so ``template.html`` is checked out with CRLF on a Windows box running
+``core.autocrlf=true``, and a raw hash would fire there and nowhere else.
+
+**What each half treats as the file authority.** git, in both — ``git ls-files``. For the sweep
+that was always true; the freeze pin used to walk the filesystem, which made a ``.DS_Store``, an
+editor's ``render.py.orig`` or a stray ``.pyc`` report as *new capability in a frozen package*
+on a working copy. The synthetic packages the firing proofs build in ``tmp_path`` are not git
+repositories, so those use :func:`walk_viewer_files` instead; the real tree only ever uses
+:func:`tracked_viewer_files`.
 
 Both guards are **pure functions with thin test callers**, and the file-level scans are
 AST/text only: nothing here imports ``src.viewer`` or a companion module, so the guards run
@@ -23,26 +40,41 @@ without FastAPI installed and see violations in files no test ever imports.
 
 **Declared residue — stated, not claimed complete.**
 
-1. The freeze pin sees *addition*: a new module, a new public function or class, a new public
-   module-level name, a changed ``__all__``. It cannot see a new behaviour grown **inside** an
-   existing function body — ``build_view_model`` sprouting a sideboard section changes no
-   symbol. That stays a reviewer's judgement, and the docstring in ``src/viewer/__init__.py``
-   is what a reviewer is pointed at.
-2. The no-reuse sweep scans **git-tracked source**. An un-``git add``ed file is invisible until
-   it is staged (git is the file authority every sweep in this repo uses, so ``node_modules``
-   and build output cannot make it pass vacuously). The generated bundle under
-   ``src/companion/app/static/`` is deliberately out of scope: it is built from exactly the
-   ``ui/`` sources this sweep already covers, so scanning it would only re-scan them.
-3. A runtime-assembled spelling defeats the sweep — ``importlib.import_module("src." + "viewer")``
+1. The freeze pin sees *addition and edit*: a new module, a new public function, class or
+   module-level name, a changed ``__all__``, or any byte of ``template.html``. What it cannot see
+   is a new behaviour grown **inside an existing Python function body** — ``build_view_model``
+   sprouting a sideboard section changes no symbol and touches no template. That stays a
+   reviewer's judgement, and the docstring in ``src/viewer/__init__.py`` is what a reviewer is
+   pointed at.
+2. The no-reuse sweep scans **git-tracked source**, and that now includes the committed SPA
+   bundle under ``src/companion/app/static/``. Correctness-by-construction was the wrong argument
+   for excluding it: the bundle is a committed artifact that is *also* mirrored into ``plugin/``
+   and shipped to users, and AC-4's subject is the companion's UI "when its assets are
+   inspected" — inspection is exactly the thing that does not take the build's word for it. An
+   un-``git add``ed file is still invisible until it is staged (git is the file authority every
+   sweep in this repo uses, so ``node_modules`` and untracked build output cannot make it pass
+   vacuously).
+3. ``ui/tests/`` is deliberately **not** swept: a guard test may legitimately discuss the banned
+   tokens, which is the same exclusion ``ui/tests/read-only-glass.test.ts`` makes for itself.
+   Colocated ``ui/src/**/*.test.ts`` files *are* swept — that is why ``_CITATION_ALLOWED`` has a
+   second entry rather than a blanket test exclusion.
+4. A runtime-assembled spelling defeats the sweep — ``importlib.import_module("src." + "viewer")``
    and ``"temp" + "late.html"`` match no pattern here, the same residue
    ``ui/tests/read-only-glass.test.ts`` and ``tests/unit/companion/test_import_boundary.py``
    declare. The answer is review, not a longer pattern: in a codebase where the ordinary
    spelling is a plain import, an assembled one is a review-visible oddity.
+5. **The sweep sees reference, not duplication.** Every rule here fires on a companion source
+   *naming* the viewer. The most natural route to AD-15's stated failure — "two renderers of one
+   entity would diverge" — is a developer copy-pasting the template's markup and inline styles
+   into a React component, which mentions none of the banned tokens and would sail through.
+   Nothing textual can close that; what can is the freeze pin above, which makes the source of
+   such a copy visibly immutable, plus review.
 """
 
 import ast
+import hashlib
 import subprocess
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -58,7 +90,7 @@ _VIEWER_PREFIX = "src/viewer"
 
 # ---------------------------------------------------------------------------------------------
 # The frozen surface (AD-15). Keys are paths relative to src/viewer/, so the same pin runs
-# against the real package and against a synthetic copy in tmp_path.
+# against the real package and against a synthetic package in tmp_path.
 # ---------------------------------------------------------------------------------------------
 
 _FROZEN_MODULES: dict[str, frozenset[str]] = {
@@ -78,11 +110,14 @@ _FROZEN_MODULES: dict[str, frozenset[str]] = {
     ),
 }
 
-# Non-Python members of the frozen package. `template.html` is the file AD-15 forbids the
-# companion from reusing; it is pinned here so it cannot be joined by a second template either.
-_FROZEN_DATA_FILES = frozenset({"template.html"})
+# Non-Python members of the frozen package, pinned by CONTENT (see the module docstring):
+# template.html is the renderer, so presence alone would leave the freeze unenforced.
+_FROZEN_DATA_FILES: dict[str, str] = {
+    "template.html": "679dbb94d7750b749824f86063512022e7bf05445b1c6d4ebbd9ae9b9f64e797",
+}
 
-# `src/viewer/__init__.py`'s __all__, verbatim and in order.
+# `src/viewer/__init__.py`'s __all__. Compared by MEMBERSHIP, not order — reordering exports
+# adds no capability, and firing on it would hand the reader the wrong diagnosis.
 _FROZEN_EXPORTS: tuple[str, ...] = (
     "build_view_model",
     "deck_viewer_path",
@@ -101,16 +136,32 @@ _FREEZE_FIX = (
     "_FROZEN_MODULES / _FROZEN_DATA_FILES in tests/unit/viewer/test_viewer_freeze.py in the same "
     "change"
 )
+_TEMPLATE_RULE = (
+    "template.html IS the renderer (its inline JS builds the page), so its bytes are pinned — "
+    "editing it is adding behaviour to a frozen package (AD-15)"
+)
 
 # ---------------------------------------------------------------------------------------------
 # The no-reuse sweep (AD-15). git is the file authority: `git ls-files` decides what is source.
 # ---------------------------------------------------------------------------------------------
 
-_COMPANION_PATHSPECS = ("src/companion", "ui/index.html", "ui/src", "ui/public")
+# ui/vite.config.ts, ui/config/ and ui/package.json are here because a BUILD-TIME reuse is wired
+# there and nowhere else: a Vite `?raw` import, a copy plugin, or an npm script that pulls
+# src/viewer/template.html into the bundle never appears in ui/src/. ui/tests/ is deliberately
+# absent (residue 3).
+_COMPANION_PATHSPECS = (
+    "src/companion",
+    "ui/index.html",
+    "ui/src",
+    "ui/public",
+    "ui/config",
+    "ui/vite.config.ts",
+    "ui/package.json",
+)
 
-# Under src/companion only *.py is companion source — the rest of that tree is the generated
-# SPA bundle (residue 2). Under ui/ everything text-shaped is swept; these suffixes are binary
-# assets that no `git ls-files` filter would otherwise exclude.
+# One rule for both halves: every tracked text-shaped file is swept, the committed SPA bundle
+# included (residue 2). Only genuinely binary assets are skipped — and an unrecognised binary is
+# REPORTED rather than skipped (see _UNREADABLE_RULE), so this list cannot silently grow holes.
 _BINARY_SUFFIXES = frozenset({".woff", ".woff2", ".ttf", ".otf", ".png", ".jpg", ".jpeg", ".ico"})
 
 _BANNED_TEXT: tuple[str, ...] = ("template.html", "src/viewer", "src.viewer")
@@ -120,17 +171,34 @@ _NO_REUSE_RULE = (
     "a companion source must never reuse the frozen viewer or its template.html (AD-15) — two "
     "renderers of one deck would diverge; the companion renders from the API contract"
 )
+_NO_REUSE_FIX = (
+    "render it from the API contract instead — the companion's own components and endpoints are "
+    "the place for deck-view work. If this is a documentation reference rather than a reuse, it "
+    "needs an argued entry in _CITATION_ALLOWED in tests/unit/viewer/test_viewer_freeze.py, and "
+    "the exemption covers only a comment line carrying the exact citation string"
+)
+_UNREADABLE_RULE = (
+    "the no-reuse sweep could not read this companion source, so it cannot be shown clean (AD-15)"
+)
+_UNREADABLE_FIX = (
+    "if this is a binary asset, add its suffix to _BINARY_SUFFIXES; if it is source, fix the "
+    "encoding or the syntax — an unreadable file must not pass as a clean one"
+)
+_UNRESOLVABLE_RULE = (
+    "the sweep cannot resolve this relative import, so it cannot prove it is not src.viewer"
+)
 
 # The one permitted mention, and it is a citation rather than a reuse: two frontend modules
 # explain their land-classification rule by pointing at the Python function that established it.
 # A TypeScript module cannot import a Python one, so a prose reference carries no coupling. The
-# exemption is keyed on this exact citation string and never excuses `template.html`, so a real
-# reuse added to either file still fires.
+# exemption is keyed on this exact citation string, applies only on a COMMENT line, and never
+# excuses `template.html` — so a real reuse added to either file still fires.
 _DOCUMENTED_CITATION = "src/viewer/view_model.py::is_land"
 _CITATION_ALLOWED: dict[str, str] = {
     "ui/src/state/deckGroups.ts": "cites the front-face land rule the old view-model established",
     "ui/src/state/deckGroups.test.ts": "the same citation, in that module's own test",
 }
+_COMMENT_STARTS = ("//", "#", "*", "/*")
 
 
 # ---------------------------------------------------------------------------------------------
@@ -161,18 +229,117 @@ class Violation:
         return f"{message}; {self.note}" if self.note else message
 
 
+@dataclass(frozen=True)
+class AllDeclaration:
+    """What a module says its ``__all__`` is, and every way it says it.
+
+    Attributes:
+        found: True when an ``__all__`` assignment exists at all.
+        names: The declared names, or None when the value is not a literal the pin can read.
+        line: 1-based line of the assignment; 0 when absent.
+        mutations: ``(line, spelling)`` for every ``__all__ +=`` / ``.append`` / ``.extend``,
+            which would widen the export surface past whatever the literal says.
+    """
+
+    found: bool
+    names: tuple[str, ...] | None
+    line: int
+    mutations: tuple[tuple[int, str], ...]
+
+
+@dataclass(frozen=True)
+class ImportScan:
+    """Every ``src.viewer`` import in a module, plus the imports the guard could not resolve.
+
+    Attributes:
+        viewer_targets: ``(line, dotted target)`` for each import of ``src.viewer``.
+        unresolvable: ``(line, spelling)`` for each relative import reaching above the
+            top-level package — real Python would raise ImportError, and the guard must say so
+            rather than quietly treat it as "not the viewer".
+    """
+
+    viewer_targets: tuple[tuple[int, str], ...]
+    unresolvable: tuple[tuple[int, str], ...]
+
+
 def _render(violations: Iterable[Violation]) -> str:
     """Render violations one per line for an assertion message."""
     return "\n".join(f"  {violation}" for violation in violations)
 
 
-def collect_viewer_files(directory: Path) -> dict[str, Path]:
+def hash_bytes(data: bytes) -> str:
+    """Return the sha256 of *data* with CRLF normalised to LF.
+
+    Normalisation is not cosmetic: ``template.html`` carries no ``.gitattributes`` rule, so a
+    Windows checkout under ``core.autocrlf=true`` rewrites every line ending and a raw hash
+    would fire there and nowhere else.
+    """
+    return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
+
+
+def content_hash(path: Path) -> str:
+    """Return the CRLF-normalised sha256 of the file at *path*."""
+    return hash_bytes(path.read_bytes())
+
+
+def _git_tracked(*pathspecs: str) -> list[str]:
+    """Return every git-tracked path matching *pathspecs*, repo-relative and POSIX.
+
+    ``-z`` with ``core.quotePath=false`` so a path containing a space, a quote or a non-ASCII
+    character comes back as raw bytes rather than a C-quoted spelling that would then miss on
+    disk. A git that cannot run is a **named** guard failure, not an opaque CalledProcessError:
+    a non-git export or a missing binary should tell the reader what the guard needed.
+    """
+    command = ["git", "-c", "core.quotePath=false", "ls-files", "-z", "--", *pathspecs]
+    try:
+        completed = subprocess.run(command, cwd=REPO_ROOT, capture_output=True, check=False)
+    except OSError as error:  # pragma: no cover - a machine with no git binary
+        pytest.fail(
+            f"The AD-15 guards use `git ls-files` as their file authority, and git could not be "
+            f"run in {REPO_ROOT}: {error}"
+        )
+    if completed.returncode != 0:
+        pytest.fail(
+            f"`{' '.join(command)}` failed with exit {completed.returncode} in {REPO_ROOT} — the "
+            f"AD-15 guards need a git working tree to know what is source. "
+            f"stderr: {completed.stderr.decode('utf-8', errors='replace').strip()}"
+        )
+    return sorted(entry for entry in completed.stdout.decode("utf-8").split("\0") if entry)
+
+
+def tracked_viewer_files() -> dict[str, Path]:
+    """Return every git-tracked file under ``src/viewer/``, keyed by package-relative path.
+
+    Returns:
+        A mapping of ``src/viewer``-relative POSIX path to absolute path. A tracked path that
+        is absent from the working tree (staged deletion, sparse checkout) is skipped rather
+        than crashing the pin.
+
+    Raises:
+        AssertionError: If git tracks nothing there — a vacuous scan is a dead guard.
+    """
+    prefix = f"{_VIEWER_PREFIX}/"
+    files = {
+        rel[len(prefix) :]: REPO_ROOT / rel
+        for rel in _git_tracked(_VIEWER_PREFIX)
+        if rel.startswith(prefix) and (REPO_ROOT / rel).is_file()
+    }
+    assert files, (
+        f"The viewer freeze scan found no git-tracked files under {_VIEWER_PREFIX} — the guard "
+        "would pass vacuously. Check the _VIEWER_PREFIX path constant."
+    )
+    return files
+
+
+def walk_viewer_files(directory: Path) -> dict[str, Path]:
     """Return every file under *directory*, keyed by its directory-relative POSIX path.
 
-    ``__pycache__`` is excluded — it is build output, not package surface.
+    The filesystem twin of :func:`tracked_viewer_files`, for the synthetic packages the firing
+    proofs build in ``tmp_path`` — those are not git repositories, so git cannot be the
+    authority there. ``__pycache__`` is excluded; it is build output, not package surface.
 
     Args:
-        directory: The viewer package directory (the real one, or a copy in ``tmp_path``).
+        directory: A synthetic viewer package.
 
     Returns:
         A mapping of directory-relative POSIX path to absolute path.
@@ -187,17 +354,35 @@ def collect_viewer_files(directory: Path) -> dict[str, Path]:
     }
     assert files, (
         f"The viewer freeze scan found no files under {directory} — the guard would pass "
-        "vacuously. Check the _VIEWER_DIR path constant."
+        "vacuously. Check the path it was handed."
     )
     return files
+
+
+def _assigned_names(target: ast.expr) -> list[str]:
+    """Return every plain name bound by an assignment *target*.
+
+    Tuple and list targets are unpacked (``A, B = _load()`` binds two module-level names);
+    attribute and subscript targets bind nothing at module scope and yield nothing.
+    """
+    if isinstance(target, ast.Name):
+        return [target.id]
+    if isinstance(target, ast.Tuple | ast.List):
+        return [name for element in target.elts for name in _assigned_names(element)]
+    if isinstance(target, ast.Starred):
+        return _assigned_names(target.value)
+    return []
 
 
 def public_symbols(source: str, *, filename: str) -> dict[str, int]:
     """Return the module-level public surface of *source*, mapped to its line number.
 
-    A module's public surface is what another module can reach: top-level functions, classes
-    and assignments whose name does not start with an underscore. Imports are excluded — a
-    re-export is pinned through ``__all__`` instead (see :func:`declared_exports`).
+    A module's public surface is what another module can reach: functions, classes and
+    assignments that execute at import time and whose name does not start with an underscore.
+    The walk descends into module-level ``if`` / ``try`` / ``with`` / loop bodies — a capability
+    added behind ``if sys.platform == "win32":`` is still a capability — but never into a
+    function or class body, whose locals and methods are not module surface. Imports are
+    excluded: a re-export is pinned through ``__all__`` instead (see :func:`declared_exports`).
 
     Args:
         source: Python source text.
@@ -206,44 +391,135 @@ def public_symbols(source: str, *, filename: str) -> dict[str, int]:
     Returns:
         A mapping of public name to the 1-based line it is defined on.
     """
-    tree = ast.parse(source, filename=filename)
     surface: dict[str, int] = {}
-    for node in tree.body:
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            if not node.name.startswith("_"):
-                surface[node.name] = node.lineno
-        elif isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and not target.id.startswith("_"):
-                    surface[target.id] = node.lineno
-        elif isinstance(node, ast.AnnAssign):
-            if isinstance(node.target, ast.Name) and not node.target.id.startswith("_"):
-                surface[node.target.id] = node.lineno
+
+    def visit(node: ast.AST) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+                if not child.name.startswith("_"):
+                    surface.setdefault(child.name, child.lineno)
+                continue  # a def's body is not module surface
+            if isinstance(child, ast.Assign):
+                for target in child.targets:
+                    for name in _assigned_names(target):
+                        if not name.startswith("_"):
+                            surface.setdefault(name, child.lineno)
+            elif isinstance(child, ast.AnnAssign):
+                for name in _assigned_names(child.target):
+                    if not name.startswith("_"):
+                        surface.setdefault(name, child.lineno)
+            visit(child)
+
+    visit(ast.parse(source, filename=filename))
     return surface
 
 
-def declared_exports(source: str, *, filename: str) -> tuple[tuple[str, ...], int]:
-    """Return the ``__all__`` declared in *source*, with the line it sits on.
+def declared_exports(source: str, *, filename: str) -> AllDeclaration:
+    """Return what *source* declares as ``__all__``, including non-literal and mutated forms.
+
+    ``__all__`` is not always a literal list. ``__all__ = _BASE + ["x"]`` cannot be read by
+    ``ast.literal_eval``, and ``__all__ += [...]`` / ``.append`` / ``.extend`` widen the surface
+    after the literal is written. Both are reported as violations by the caller rather than
+    raising out of the guard — a pin that crashes on an unusual spelling is a pin that gets
+    deleted.
 
     Args:
         source: Python source text.
         filename: Reported in any SyntaxError.
 
     Returns:
-        A ``(names, line)`` pair; ``((), 0)`` when the module declares no ``__all__``.
+        An :class:`AllDeclaration` describing the declaration and any mutation of it.
     """
     tree = ast.parse(source, filename=filename)
-    for node in tree.body:
-        targets = node.targets if isinstance(node, ast.Assign) else []
+    found = False
+    names: tuple[str, ...] | None = None
+    line = 0
+    mutations: list[tuple[int, str]] = []
+
+    for node in ast.walk(tree):
+        targets: list[ast.expr] = []
+        if isinstance(node, ast.Assign):
+            targets = list(node.targets)
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+
         if any(isinstance(target, ast.Name) and target.id == "__all__" for target in targets):
-            assert isinstance(node, ast.Assign)  # narrowed by the `targets` guard above
-            value = ast.literal_eval(node.value)
-            return tuple(str(name) for name in value), node.lineno
-    return (), 0
+            value = node.value if isinstance(node, ast.Assign | ast.AnnAssign) else None
+            found, line = True, node.lineno
+            try:
+                names = tuple(str(name) for name in ast.literal_eval(value)) if value else None
+            except (ValueError, TypeError):
+                names = None  # a computed __all__ — reported, never guessed at
+            continue
+
+        if isinstance(node, ast.AugAssign):
+            if isinstance(node.target, ast.Name) and node.target.id == "__all__":
+                mutations.append((node.lineno, "__all__ +="))
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            receiver = node.func.value
+            if isinstance(receiver, ast.Name) and receiver.id == "__all__":
+                mutations.append((node.lineno, f"__all__.{node.func.attr}(...)"))
+
+    return AllDeclaration(found=found, names=names, line=line, mutations=tuple(mutations))
 
 
-def find_freeze_violations(directory: Path) -> list[Violation]:
-    """Return every way *directory* differs from the frozen ``src/viewer`` surface (AD-15).
+def _export_violations(reported: str, source: str, rel: str) -> list[Violation]:
+    """Return every ``__all__`` breach in the frozen package initializer."""
+    declaration = declared_exports(source, filename=rel)
+    violations: list[Violation] = []
+
+    if not declaration.found:
+        return [
+            Violation(
+                reported,
+                0,
+                "__all__",
+                "the frozen package initializer no longer declares __all__",
+                note=_FREEZE_FIX,
+            )
+        ]
+    if declaration.names is None:
+        violations.append(
+            Violation(
+                reported,
+                declaration.line,
+                "__all__ (not a literal)",
+                "the freeze pin cannot read a computed __all__, so the export surface would be "
+                "unpinned",
+                note=_FREEZE_FIX,
+            )
+        )
+    elif set(declaration.names) != set(_FROZEN_EXPORTS):
+        added = sorted(set(declaration.names) - set(_FROZEN_EXPORTS))
+        removed = sorted(set(_FROZEN_EXPORTS) - set(declaration.names))
+        violations.append(
+            Violation(
+                reported,
+                declaration.line,
+                f"__all__ added={added} removed={removed}",
+                _FREEZE_RULE,
+                note=f"the frozen export list is {list(_FROZEN_EXPORTS)}; {_FREEZE_FIX}",
+            )
+        )
+
+    violations += [
+        Violation(
+            reported,
+            mutation_line,
+            spelling,
+            "__all__ is mutated after it is declared, which widens the export surface past the "
+            "pinned literal",
+            note=_FREEZE_FIX,
+        )
+        for mutation_line, spelling in declaration.mutations
+    ]
+    return violations
+
+
+def find_freeze_violations(
+    files: Mapping[str, Path], *, data_hashes: Mapping[str, str] = _FROZEN_DATA_FILES
+) -> list[Violation]:
+    """Return every way *files* differs from the frozen ``src/viewer`` surface (AD-15).
 
     Both directions are checked. An **addition** is a new capability landing in a package that
     is on its way out. A **removal** is a scheduled release action that must delete the pin's
@@ -251,20 +527,24 @@ def find_freeze_violations(directory: Path) -> list[Violation]:
     promises keeps working.
 
     Args:
-        directory: The viewer package directory to inspect.
+        files: The package's files, keyed by package-relative POSIX path — from
+            :func:`tracked_viewer_files` for the real tree, :func:`walk_viewer_files` for a
+            synthetic one.
+        data_hashes: Expected CRLF-normalised sha256 per non-Python file. Injected so a
+            synthetic package can be pinned to its own content without borrowing the real
+            template's bytes, which would re-couple the firing proofs to the real tree.
 
     Returns:
         A list of violations, each naming the file (and line, where a symbol has one).
     """
-    present = collect_viewer_files(directory)
-    expected = set(_FROZEN_MODULES) | set(_FROZEN_DATA_FILES)
+    expected = set(_FROZEN_MODULES) | set(data_hashes)
     violations: list[Violation] = []
 
-    for rel in sorted(set(present) - expected):
+    for rel in sorted(set(files) - expected):
         violations.append(
             Violation(f"{_VIEWER_PREFIX}/{rel}", 0, rel, _FREEZE_RULE, note=_FREEZE_FIX)
         )
-    for rel in sorted(expected - set(present)):
+    for rel in sorted(expected - set(files)):
         violations.append(
             Violation(
                 f"{_VIEWER_PREFIX}/{rel}",
@@ -275,8 +555,24 @@ def find_freeze_violations(directory: Path) -> list[Violation]:
             )
         )
 
+    for rel in sorted(data_hashes):
+        path = files.get(rel)
+        if path is None:
+            continue  # already reported as a missing file
+        actual = content_hash(path)
+        if actual != data_hashes[rel]:
+            violations.append(
+                Violation(
+                    f"{_VIEWER_PREFIX}/{rel}",
+                    0,
+                    f"{rel} content changed (sha256 {actual[:12]}, pinned {data_hashes[rel][:12]})",
+                    _TEMPLATE_RULE,
+                    note=_FREEZE_FIX,
+                )
+            )
+
     for rel, frozen in _FROZEN_MODULES.items():
-        path = present.get(rel)
+        path = files.get(rel)
         if path is None:
             continue  # already reported as a missing file
         reported = f"{_VIEWER_PREFIX}/{rel}"
@@ -297,17 +593,7 @@ def find_freeze_violations(directory: Path) -> list[Violation]:
                 )
             )
         if rel == "__init__.py":
-            exports, line = declared_exports(source, filename=rel)
-            if exports != _FROZEN_EXPORTS:
-                violations.append(
-                    Violation(
-                        reported,
-                        line,
-                        f"__all__ = {list(exports)}",
-                        _FREEZE_RULE,
-                        note=f"the frozen export list is {list(_FROZEN_EXPORTS)}; {_FREEZE_FIX}",
-                    )
-                )
+            violations += _export_violations(reported, source, rel)
 
     return violations
 
@@ -315,15 +601,18 @@ def find_freeze_violations(directory: Path) -> list[Violation]:
 def is_swept(rel_path: str) -> bool:
     """Return True when a git-tracked *rel_path* is companion source the sweep must read.
 
+    One rule for the whole swept set, backend and frontend alike: everything text-shaped is
+    read. The committed SPA bundle under ``src/companion/app/static/`` is included — it is a
+    shipped, mirrored artifact, and "it is built from sources we already scan" is an argument
+    inspection exists to not have to take on faith. A backend template or fixture that is not
+    ``*.py`` is therefore swept too, rather than escaping on a suffix.
+
     Args:
         rel_path: A repo-relative POSIX path as ``git ls-files`` prints it.
 
     Returns:
-        True for ``src/companion/**/*.py`` and every text-shaped file under the swept ``ui/``
-        paths; False for the generated bundle and for binary assets.
+        True for every tracked file except recognised binary assets.
     """
-    if rel_path.startswith("src/companion/"):
-        return rel_path.endswith(".py")
     return Path(rel_path).suffix.lower() not in _BINARY_SUFFIXES
 
 
@@ -331,24 +620,20 @@ def tracked_companion_sources() -> list[str]:
     """Return every git-tracked companion source path the no-reuse sweep covers.
 
     Returns:
-        A sorted list of repo-relative POSIX paths.
+        A sorted list of repo-relative POSIX paths that exist in the working tree.
 
     Raises:
         AssertionError: If the pathspecs match nothing — a vacuous sweep is a dead guard.
     """
-    completed = subprocess.run(
-        ["git", "ls-files", "--", *_COMPANION_PATHSPECS],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    swept = sorted(rel for rel in completed.stdout.splitlines() if rel and is_swept(rel))
-    assert swept, (
+    tracked = [rel for rel in _git_tracked(*_COMPANION_PATHSPECS) if is_swept(rel)]
+    assert tracked, (
         "The no-reuse sweep matched no companion sources — the guard would pass vacuously. "
         f"Check the _COMPANION_PATHSPECS constant: {list(_COMPANION_PATHSPECS)}"
     )
-    return swept
+    # A tracked path can be absent from the working tree (staged deletion, sparse checkout);
+    # skip it rather than crashing the sweep on read. The assertion above already proved the
+    # pathspecs are live, so this cannot empty the sweep silently.
+    return [rel for rel in tracked if (REPO_ROOT / rel).is_file()]
 
 
 def _resolve_import(module: str | None, level: int, package: str) -> str:
@@ -365,6 +650,7 @@ def _resolve_import(module: str | None, level: int, package: str) -> str:
     Raises:
         ValueError: If *level* reaches beyond the top-level package — real Python raises
             ImportError there, so the guard must not launder it into an allowed-looking name.
+            Callers contain this and report it; it never escapes the sweep.
     """
     if level == 0:
         return module or ""
@@ -379,35 +665,60 @@ def _resolve_import(module: str | None, level: int, package: str) -> str:
     return base
 
 
-def _viewer_imports(source: str, *, rel_path: str) -> list[tuple[int, str]]:
-    """Return every import of ``src.viewer`` in *source*, as ``(line, dotted target)`` pairs.
+def _viewer_imports(source: str, *, rel_path: str) -> ImportScan:
+    """Scan *source* for imports of ``src.viewer``, containing unresolvable relative forms.
 
-    Function-local imports count: a deferred import is still reuse at call time. Relative
-    forms are resolved, so ``from ..viewer.render import render_html`` cannot hide.
+    Function-local imports count: a deferred import is still reuse at call time. Relative forms
+    are resolved, so ``from ..viewer.render import render_html`` cannot hide.
+
+    Raises:
+        SyntaxError: If *source* is not parsable Python. The caller reports it as a violation.
     """
     package = ".".join(rel_path.split("/")[:-1])
     found: list[tuple[int, str]] = []
+    unresolvable: list[tuple[int, str]] = []
+
     for node in ast.walk(ast.parse(source, filename=rel_path)):
         if isinstance(node, ast.Import):
             found += [(node.lineno, alias.name) for alias in node.names]
         elif isinstance(node, ast.ImportFrom):
-            base = _resolve_import(node.module, node.level, package)
+            try:
+                base = _resolve_import(node.module, node.level, package)
+            except ValueError:
+                unresolvable.append((node.lineno, f"from {'.' * node.level}{node.module or ''}"))
+                continue
             for alias in node.names:
                 found.append((node.lineno, f"{base}.{alias.name}" if base else alias.name))
-    return [
-        (line, dotted)
-        for line, dotted in found
-        if dotted == _VIEWER_PACKAGE or dotted.startswith(f"{_VIEWER_PACKAGE}.")
-    ]
+
+    return ImportScan(
+        viewer_targets=tuple(
+            (line, dotted)
+            for line, dotted in found
+            if dotted == _VIEWER_PACKAGE or dotted.startswith(f"{_VIEWER_PACKAGE}.")
+        ),
+        unresolvable=tuple(unresolvable),
+    )
+
+
+def _is_comment_line(line: str) -> bool:
+    """Return True when *line* is a comment in any of the swept languages."""
+    return line.lstrip().startswith(_COMMENT_STARTS)
 
 
 def _is_documented_citation(rel_path: str, token: str, line: str) -> bool:
-    """Return True for the one permitted mention: a prose citation in an allow-listed file."""
+    """Return True for the one permitted mention: a prose citation on a comment line.
+
+    The comment requirement is load-bearing rather than decorative. Without it the exemption is
+    line-scoped, so ``import legacy from '../src/viewer/render' // src/viewer/view_model.py::
+    is_land`` would be excused — and TypeScript gets no AST pass, so nothing else would catch
+    it. Both real citation sites are comments, so the requirement costs nothing.
+    """
     return (
         token == "src/viewer"
         and rel_path in _CITATION_ALLOWED
         and _DOCUMENTED_CITATION in line
         and "template.html" not in line
+        and _is_comment_line(line)
     )
 
 
@@ -419,6 +730,10 @@ def find_reuse_violations(path: Path, *, rel_path: str) -> list[Violation]:
     forms plain text misses, such as ``from src import viewer``. A line already reported by the
     text pass is not reported twice.
 
+    Nothing here raises. A file that cannot be decoded or parsed is **reported** rather than
+    taking the whole guard down with it: one unreadable file must not be able to hide every
+    other file's verdict.
+
     Args:
         path: Path to the source file to inspect.
         rel_path: Repo-relative path to report, to derive the package from, and to match
@@ -427,23 +742,47 @@ def find_reuse_violations(path: Path, *, rel_path: str) -> list[Violation]:
     Returns:
         A list of violations, one per offending line, each naming file, line and token.
     """
-    # Bytes -> lossy decode: a font or image that slipped past the suffix filter must not crash
-    # the sweep, and a banned ASCII token would still be found in whatever did decode.
-    text = path.read_bytes().decode("utf-8", errors="replace")
+    try:
+        # utf-8-sig, not utf-8: a BOM-saved source is scanned rather than becoming an
+        # "invalid non-printable character U+FEFF" SyntaxError, the same reason the sibling
+        # guard in tests/unit/companion/test_import_boundary.py gives.
+        text = path.read_bytes().decode("utf-8-sig")
+    except OSError as error:
+        return [Violation(rel_path, 0, f"unreadable ({error})", _UNREADABLE_RULE, _UNREADABLE_FIX)]
+    except UnicodeDecodeError:
+        return [Violation(rel_path, 0, "not valid UTF-8", _UNREADABLE_RULE, _UNREADABLE_FIX)]
+
     violations: list[Violation] = []
     reported_lines: set[int] = set()
 
     for number, line in enumerate(text.splitlines(), start=1):
         for token in _BANNED_TEXT:
             if token in line and not _is_documented_citation(rel_path, token, line):
-                violations.append(Violation(rel_path, number, token, _NO_REUSE_RULE))
+                violations.append(Violation(rel_path, number, token, _NO_REUSE_RULE, _NO_REUSE_FIX))
                 reported_lines.add(number)
 
     if rel_path.endswith(".py"):
+        try:
+            scan = _viewer_imports(text, rel_path=rel_path)
+        except SyntaxError as error:
+            return [
+                *violations,
+                Violation(
+                    rel_path,
+                    error.lineno or 0,
+                    "unparsable Python",
+                    _UNREADABLE_RULE,
+                    _UNREADABLE_FIX,
+                ),
+            ]
         violations += [
-            Violation(rel_path, line, dotted, _NO_REUSE_RULE)
-            for line, dotted in _viewer_imports(text, rel_path=rel_path)
+            Violation(rel_path, line, dotted, _NO_REUSE_RULE, _NO_REUSE_FIX)
+            for line, dotted in scan.viewer_targets
             if line not in reported_lines
+        ]
+        violations += [
+            Violation(rel_path, line, spelling, _UNRESOLVABLE_RULE, _UNREADABLE_FIX)
+            for line, spelling in scan.unresolvable
         ]
 
     return violations
@@ -465,14 +804,16 @@ class TestViewerIsFrozen:
 
     def test_public_surface_is_pinned(self) -> None:
         # Non-vacuity: the pin is only meaningful if it read the real package. Naming the
-        # renderer entry point catches a scan pointed at an empty or wrong directory, which
-        # collect_viewer_files would otherwise be alone in detecting.
-        present = collect_viewer_files(_VIEWER_DIR)
-        assert "render.py" in present, (
-            f"The freeze scan did not visit src/viewer/render.py — {_VIEWER_DIR} is the wrong path."
-        )
+        # renderer entry point and the template catches a scan pointed at the wrong prefix,
+        # which tracked_viewer_files would otherwise be alone in detecting.
+        files = tracked_viewer_files()
+        for expected in ("render.py", "template.html"):
+            assert expected in files, (
+                f"The freeze scan did not visit {_VIEWER_PREFIX}/{expected} — the scan path or "
+                "the git pathspec is wrong."
+            )
 
-        violations = find_freeze_violations(_VIEWER_DIR)
+        violations = find_freeze_violations(files)
 
         assert not violations, f"The src/viewer freeze has been broken:\n{_render(violations)}"
 
@@ -482,9 +823,15 @@ class TestCompanionNeverReusesTheViewer:
 
     def test_no_companion_source_reuses_the_viewer(self) -> None:
         sources = tracked_companion_sources()
-        # Non-vacuity: name one file from each swept half, so a pathspec that stopped matching
-        # (a moved directory, a typo) fails loudly instead of sweeping an empty list forever.
-        for expected in ("src/companion/app/routes/decks.py", "ui/src/App.tsx"):
+        # Non-vacuity: name one file from each swept half — backend, frontend, the committed
+        # bundle and the build configuration — so a pathspec that stopped matching (a moved
+        # directory, a typo) fails loudly instead of sweeping a short list forever.
+        for expected in (
+            "src/companion/app/routes/decks.py",
+            "ui/src/App.tsx",
+            "src/companion/app/static/index.html",
+            "ui/vite.config.ts",
+        ):
             assert expected in sources, (
                 f"The no-reuse sweep did not visit {expected} — the pathspecs are wrong."
             )
@@ -516,6 +863,21 @@ class TestCompanionNeverReusesTheViewer:
             "entry rather than leaving a standing permission nothing uses."
         )
 
+    def test_every_real_citation_sits_on_a_comment_line(self) -> None:
+        """The exemption's precondition, measured against the real files rather than assumed:
+        if either citation ever moved onto a code line, the narrowing in
+        :func:`_is_documented_citation` would start firing and the reader should learn it here,
+        where the reason is written down."""
+        for rel in _CITATION_ALLOWED:
+            lines = (REPO_ROOT / rel).read_text(encoding="utf-8").splitlines()
+            citing = [line for line in lines if _DOCUMENTED_CITATION in line]
+            assert citing, f"{rel} no longer cites the viewer at all"
+            for line in citing:
+                assert _is_comment_line(line), (
+                    f"{rel} cites the viewer outside a comment: {line.strip()!r} — the exemption "
+                    "covers comments only, so this is a reuse-shaped mention."
+                )
+
 
 # ---------------------------------------------------------------------------------------------
 # Proving the freeze pin fires — a synthetic package in tmp_path, never a violating real file.
@@ -528,6 +890,11 @@ class TestCompanionNeverReusesTheViewer:
 # naming it?" — and cannot drift from the pin, because it *is* the pin.
 # ---------------------------------------------------------------------------------------------
 
+_SYNTHETIC_TEMPLATE = "<html><script>renderDeck(__DECK_JSON__)</script></html>\n"
+_SYNTHETIC_DATA_HASHES = {
+    rel: hash_bytes(_SYNTHETIC_TEMPLATE.encode("utf-8")) for rel in _FROZEN_DATA_FILES
+}
+
 
 def _synthetic_module(rel: str, names: Iterable[str]) -> str:
     """Return minimal source exposing exactly *names* as public callables."""
@@ -538,6 +905,11 @@ def _synthetic_module(rel: str, names: Iterable[str]) -> str:
     return body or "pass\n"
 
 
+def _synthetic_violations(directory: Path) -> list[Violation]:
+    """Run the freeze pin over a synthetic package, pinned to the synthetic template."""
+    return find_freeze_violations(walk_viewer_files(directory), data_hashes=_SYNTHETIC_DATA_HASHES)
+
+
 @pytest.fixture
 def viewer_copy(tmp_path: Path) -> Path:
     """A synthetic package in ``tmp_path`` matching the frozen surface exactly."""
@@ -546,7 +918,7 @@ def viewer_copy(tmp_path: Path) -> Path:
     for rel, names in _FROZEN_MODULES.items():
         (destination / rel).write_text(_synthetic_module(rel, names), encoding="utf-8")
     for rel in _FROZEN_DATA_FILES:
-        (destination / rel).write_text("<html>__DECK_JSON__</html>\n", encoding="utf-8")
+        (destination / rel).write_text(_SYNTHETIC_TEMPLATE, encoding="utf-8")
     return destination
 
 
@@ -555,17 +927,17 @@ class TestFreezePinDetectsViolations:
 
     def test_a_package_matching_the_pin_is_silent(self, viewer_copy: Path) -> None:
         """The silent half: a package whose surface is exactly the frozen one reports nothing."""
-        assert find_freeze_violations(viewer_copy) == []
+        assert _synthetic_violations(viewer_copy) == []
 
     def test_a_new_public_function_is_reported(self, viewer_copy: Path) -> None:
         module = viewer_copy / "view_model.py"
         planted = (
             module.read_text(encoding="utf-8")
             + '\n\ndef build_sideboard(deck):\n    """A new capability."""\n    return []\n'
-        )  # noqa: E501
+        )
         module.write_text(planted, encoding="utf-8")
 
-        violations = find_freeze_violations(viewer_copy)
+        violations = _synthetic_violations(viewer_copy)
 
         assert len(violations) == 1, _render(violations)
         message = str(violations[0])
@@ -578,7 +950,7 @@ class TestFreezePinDetectsViolations:
         planted = module.read_text(encoding="utf-8") + "\n\nclass RenderOptions:\n    pass\n"
         module.write_text(planted, encoding="utf-8")
 
-        violations = find_freeze_violations(viewer_copy)
+        violations = _synthetic_violations(viewer_copy)
 
         assert [v.symbol for v in violations] == ["RenderOptions"], _render(violations)
 
@@ -587,14 +959,41 @@ class TestFreezePinDetectsViolations:
         planted = module.read_text(encoding="utf-8") + '\n\nVIEWER_MODE = "compact"\n'
         module.write_text(planted, encoding="utf-8")
 
-        violations = find_freeze_violations(viewer_copy)
+        violations = _synthetic_violations(viewer_copy)
 
         assert [v.symbol for v in violations] == ["VIEWER_MODE"], _render(violations)
+
+    def test_a_capability_behind_a_module_level_branch_is_reported(self, viewer_copy: Path) -> None:
+        """A def nested in a module-level ``if``/``try`` executes at import and is reachable —
+        walking only ``tree.body`` would have missed it, which is a one-line way to add a
+        capability to a frozen package."""
+        module = viewer_copy / "render.py"
+        planted = (
+            module.read_text(encoding="utf-8")
+            + "\n\nimport sys\n\nif sys.version_info >= (3, 12):\n\n"
+            "    def render_compact(deck):\n        return None\n"
+        )
+        module.write_text(planted, encoding="utf-8")
+
+        violations = _synthetic_violations(viewer_copy)
+
+        assert [v.symbol for v in violations] == ["render_compact"], _render(violations)
+
+    def test_a_tuple_unpacked_public_name_is_reported(self, viewer_copy: Path) -> None:
+        """``A, B = _load()`` binds two module-level names; only walking Assign targets that are
+        bare Names would have seen neither."""
+        module = viewer_copy / "present.py"
+        planted = module.read_text(encoding="utf-8") + "\n\nWIDTH, HEIGHT = (720, 1080)\n"
+        module.write_text(planted, encoding="utf-8")
+
+        violations = _synthetic_violations(viewer_copy)
+
+        assert sorted(v.symbol for v in violations) == ["HEIGHT", "WIDTH"], _render(violations)
 
     def test_a_new_module_is_reported(self, viewer_copy: Path) -> None:
         (viewer_copy / "metrics.py").write_text("def collect():\n    return {}\n", encoding="utf-8")
 
-        violations = find_freeze_violations(viewer_copy)
+        violations = _synthetic_violations(viewer_copy)
 
         assert len(violations) == 1, _render(violations)
         assert "src/viewer/metrics.py" in str(violations[0]), str(violations[0])
@@ -605,16 +1004,42 @@ class TestFreezePinDetectsViolations:
         package.mkdir()
         (package / "__init__.py").write_text("", encoding="utf-8")
 
-        violations = find_freeze_violations(viewer_copy)
+        violations = _synthetic_violations(viewer_copy)
 
         assert [v.symbol for v in violations] == ["widgets/__init__.py"], _render(violations)
 
     def test_a_second_template_is_reported(self, viewer_copy: Path) -> None:
         (viewer_copy / "template_compact.html").write_text("<html></html>", encoding="utf-8")
 
-        violations = find_freeze_violations(viewer_copy)
+        violations = _synthetic_violations(viewer_copy)
 
         assert [v.symbol for v in violations] == ["template_compact.html"], _render(violations)
+
+    def test_an_edited_template_is_reported(self, viewer_copy: Path) -> None:
+        """The renderer's own file. A panel added to the template's inline JS changes no Python
+        symbol at all, so before the content pin this was the freeze's blind spot."""
+        template = viewer_copy / "template.html"
+        template.write_text(
+            template.read_text(encoding="utf-8")
+            + "<script>function sideboardPanel(){return 1}</script>\n",
+            encoding="utf-8",
+        )
+
+        violations = _synthetic_violations(viewer_copy)
+
+        assert len(violations) == 1, _render(violations)
+        message = str(violations[0])
+        assert "src/viewer/template.html" in message, message
+        assert "content changed" in message, message
+        assert "AD-15" in message, message
+
+    def test_a_line_ending_rewrite_is_not_reported(self, viewer_copy: Path) -> None:
+        """A CRLF checkout on Windows must not read as an edit — the pin hashes normalised
+        bytes, because template.html carries no .gitattributes rule of its own."""
+        template = viewer_copy / "template.html"
+        template.write_bytes(template.read_bytes().replace(b"\n", b"\r\n"))
+
+        assert _synthetic_violations(viewer_copy) == []
 
     def test_a_widened_all_is_reported(self, viewer_copy: Path) -> None:
         module = viewer_copy / "__init__.py"
@@ -623,16 +1048,64 @@ class TestFreezePinDetectsViolations:
         )
         module.write_text(widened, encoding="utf-8")
 
-        violations = find_freeze_violations(viewer_copy)
+        violations = _synthetic_violations(viewer_copy)
 
         assert len(violations) == 1, _render(violations)
         assert "render_compact" in str(violations[0]), str(violations[0])
+
+    def test_a_reordered_all_is_not_reported(self, viewer_copy: Path) -> None:
+        """Membership, not order: reordering exports adds no capability, and firing on it would
+        hand the reader "new deck-view capability belongs in src/companion" — a wrong
+        diagnosis is worse than none."""
+        module = viewer_copy / "__init__.py"
+        exports = ", ".join(f'"{name}"' for name in reversed(_FROZEN_EXPORTS))
+        source = module.read_text(encoding="utf-8")
+        module.write_text(
+            source[: source.index("__all__")] + f"__all__ = [{exports}]\n", encoding="utf-8"
+        )
+
+        assert _synthetic_violations(viewer_copy) == []
+
+    def test_a_computed_all_is_reported_not_crashed(self, viewer_copy: Path) -> None:
+        """``ast.literal_eval`` raises on a computed ``__all__``; the pin must report it as an
+        unpinnable export surface rather than take the suite down with a ValueError."""
+        module = viewer_copy / "__init__.py"
+        source = module.read_text(encoding="utf-8")
+        module.write_text(
+            source[: source.index("__all__")] + '__all__ = _BASE + ["render_html"]\n',
+            encoding="utf-8",
+        )
+
+        violations = _synthetic_violations(viewer_copy)
+
+        assert len(violations) == 1, _render(violations)
+        assert "not a literal" in str(violations[0]), str(violations[0])
+
+    def test_a_mutated_all_is_reported(self, viewer_copy: Path) -> None:
+        """``__all__ += [...]`` and ``__all__.append(...)`` widen the surface after the literal
+        the pin read, so the literal alone is not the whole story."""
+        module = viewer_copy / "__init__.py"
+        source = module.read_text(encoding="utf-8")
+        module.write_text(source + '__all__ += ["render_compact"]\n', encoding="utf-8")
+
+        violations = _synthetic_violations(viewer_copy)
+
+        assert [v.symbol for v in violations] == ["__all__ +="], _render(violations)
+
+    def test_an_appended_all_is_reported(self, viewer_copy: Path) -> None:
+        module = viewer_copy / "__init__.py"
+        source = module.read_text(encoding="utf-8")
+        module.write_text(source + '__all__.append("render_compact")\n', encoding="utf-8")
+
+        violations = _synthetic_violations(viewer_copy)
+
+        assert [v.symbol for v in violations] == ["__all__.append(...)"], _render(violations)
 
     def test_a_disappearing_module_is_reported_too(self, viewer_copy: Path) -> None:
         """Removal is a release action, not an edit: the pin's entry must go with the file."""
         (viewer_copy / "present.py").unlink()
 
-        violations = find_freeze_violations(viewer_copy)
+        violations = _synthetic_violations(viewer_copy)
         messages = [str(violation) for violation in violations]
 
         assert any("src/viewer/present.py" in message for message in messages), messages
@@ -643,9 +1116,35 @@ class TestFreezePinDetectsViolations:
         source = module.read_text(encoding="utf-8").replace("def is_land(", "def _is_land(")
         module.write_text(source, encoding="utf-8")
 
-        violations = find_freeze_violations(viewer_copy)
+        violations = _synthetic_violations(viewer_copy)
 
         assert [v.symbol for v in violations] == ["is_land"], _render(violations)
+
+
+class TestGitIsTheFreezePinsFileAuthority:
+    """A working copy is not a source tree: only what git tracks is package surface."""
+
+    def test_an_untracked_stray_is_not_a_new_capability(self) -> None:
+        """Measured, not argued: a ``.DS_Store`` from a Finder visit, an editor's
+        ``render.py.orig`` or a stray ``.pyc`` used to report as *new capability in a frozen
+        package* — a red guard on an untouched tree, on the maintainer's own machine."""
+        stray_name = ".viewer-freeze-probe.tmp"
+        stray = _VIEWER_DIR / stray_name
+        stray.write_bytes(b"stray working-copy file\n")
+        try:
+            files = tracked_viewer_files()
+
+            assert stray_name not in files, sorted(files)
+            # Scoped to the stray deliberately: asserting the WHOLE tree is clean here would
+            # make this test a second reading of test_public_surface_is_pinned, and it would go
+            # red alongside it whenever that pin is proven on a planted violation.
+            reported = [v for v in find_freeze_violations(files) if stray_name in str(v)]
+            assert not reported, _render(reported)
+            # The filesystem walk is what would have reported it — the two collectors really do
+            # disagree here, which is the whole reason git is the authority for the real tree.
+            assert stray_name in walk_viewer_files(_VIEWER_DIR)
+        finally:
+            stray.unlink()
 
 
 # ---------------------------------------------------------------------------------------------
@@ -689,6 +1188,12 @@ import legacy from '../../../src/viewer/template.html?raw'
 
 _SRC_TS_NAMES_THE_TEMPLATE = """\
 export const LEGACY_MARKUP_SOURCE = 'template.html'
+"""
+
+_SRC_VITE_COPIES_THE_TEMPLATE = """\
+export default defineConfig({
+  plugins: [viteStaticCopy({ targets: [{ src: '../src/viewer/template.html', dest: '.' }] })],
+})
 """
 
 _REUSE_VIOLATION_CASES = [
@@ -741,6 +1246,13 @@ _REUSE_VIOLATION_CASES = [
         "template.html",
         id="frontend-names-the-template",
     ),
+    pytest.param(
+        "<div>{{ deck.name }}</div>\n<!-- lifted from src/viewer -->\n",
+        "src/companion/app/templates/deck.html",
+        2,
+        "src/viewer",
+        id="a-backend-template-outside-static-is-swept-too",
+    ),
 ]
 
 _SRC_ORDINARY_COMPANION_MODULE = """\
@@ -765,6 +1277,10 @@ INDEX = "index.html"
 _SRC_DOCUMENTED_CITATION = """\
 // The land rule matches src/viewer/view_model.py::is_land — front face only.
 export const isLand = (typeLine: string) => typeLine.split('//')[0].includes('Land')
+"""
+
+_SRC_CITATION_ON_A_CODE_LINE = """\
+import legacy from '../../src/viewer/render' // src/viewer/view_model.py::is_land
 """
 
 _REUSE_CLEAN_CASES = [
@@ -812,6 +1328,7 @@ class TestNoReuseSweepDetectsViolations:
         assert f"{rel}:{line}" in message, message
         assert symbol in message, message
         assert "AD-15" in message, message
+        assert "_CITATION_ALLOWED" in message, "a violation must say what to do instead"
 
     @pytest.mark.parametrize(("source", "rel"), _REUSE_CLEAN_CASES)
     def test_a_permitted_form_is_not_reported(self, tmp_path: Path, source: str, rel: str) -> None:
@@ -830,6 +1347,17 @@ class TestNoReuseSweepDetectsViolations:
         assert {violation.symbol for violation in violations} == {"template.html", "src/viewer"}
         assert all(f"{rel}:1" in str(violation) for violation in violations), _render(violations)
 
+    def test_a_build_time_copy_of_the_template_is_reported(self, tmp_path: Path) -> None:
+        """The reuse ui/src/ could never have shown: a Vite copy plugin wires the old template
+        into the bundle from the build configuration."""
+        violations = find_reuse_violations(
+            _write_source(tmp_path, _SRC_VITE_COPIES_THE_TEMPLATE, name="vite.config.ts"),
+            rel_path="ui/vite.config.ts",
+        )
+
+        assert {violation.symbol for violation in violations} == {"template.html", "src/viewer"}
+        assert all("ui/vite.config.ts:2" in str(v) for v in violations), _render(violations)
+
     def test_the_citation_exemption_does_not_excuse_the_template(self, tmp_path: Path) -> None:
         """The allow-list is narrow by construction: it excuses the prose citation and nothing
         else, so an allow-listed file that starts reusing the template still fires."""
@@ -843,6 +1371,16 @@ class TestNoReuseSweepDetectsViolations:
             violations
         )
 
+    def test_the_citation_exemption_requires_a_comment_line(self, tmp_path: Path) -> None:
+        """An import with the citation appended as a trailing comment is a reuse wearing the
+        exemption's clothes. TypeScript gets no AST pass, so nothing else would catch it."""
+        violations = find_reuse_violations(
+            _write_source(tmp_path, _SRC_CITATION_ON_A_CODE_LINE, name="deckGroups.ts"),
+            rel_path="ui/src/state/deckGroups.ts",
+        )
+
+        assert [violation.symbol for violation in violations] == ["src/viewer"], _render(violations)
+
     def test_the_citation_exemption_is_per_file(self, tmp_path: Path) -> None:
         """A file nobody argued an exemption for cannot borrow one by copying the sentence."""
         violations = find_reuse_violations(
@@ -853,33 +1391,106 @@ class TestNoReuseSweepDetectsViolations:
         assert [violation.symbol for violation in violations] == ["src/viewer"], _render(violations)
 
 
+_BOM = b"\xef\xbb\xbf"
+
+
+class TestOneUnreadableFileCannotHideEveryVerdict:
+    """Containment: the sweep reports what it cannot read instead of raising through the guard."""
+
+    def test_a_bom_saved_python_source_is_scanned_not_crashed(self, tmp_path: Path) -> None:
+        """utf-8 would make this an "invalid non-printable character U+FEFF" SyntaxError out of
+        ast.parse — the exact failure the sibling guard documents utf-8-sig for."""
+        file = tmp_path / "sample.py"
+        # Spelled as bytes, never as an invisible character in this file's own source.
+        file.write_bytes(_BOM + b"import json\n")
+
+        assert find_reuse_violations(file, rel_path="src/companion/client.py") == []
+
+    def test_a_bom_saved_source_still_reports_its_reuse(self, tmp_path: Path) -> None:
+        file = tmp_path / "sample.py"
+        file.write_bytes(_BOM + b"from src.viewer import present_deck\n")
+
+        violations = find_reuse_violations(file, rel_path="src/companion/client.py")
+
+        assert [violation.symbol for violation in violations] == ["src.viewer"], _render(violations)
+
+    def test_an_undecodable_file_is_reported_not_raised(self, tmp_path: Path) -> None:
+        file = tmp_path / "asset.bin"
+        file.write_bytes(b"\x00\x01\xff\xfe wOF2 \x80")
+
+        violations = find_reuse_violations(file, rel_path="ui/public/asset.bin")
+
+        assert len(violations) == 1, _render(violations)
+        assert "not valid UTF-8" in str(violations[0]), str(violations[0])
+        assert "_BINARY_SUFFIXES" in str(violations[0]), str(violations[0])
+
+    def test_a_missing_file_is_reported_not_raised(self, tmp_path: Path) -> None:
+        violations = find_reuse_violations(tmp_path / "gone.py", rel_path="src/companion/gone.py")
+
+        assert len(violations) == 1, _render(violations)
+        assert "unreadable" in str(violations[0]), str(violations[0])
+
+    def test_unparsable_python_is_reported_not_raised(self, tmp_path: Path) -> None:
+        violations = find_reuse_violations(
+            _write_source(tmp_path, "def broken(:\n"), rel_path="src/companion/client.py"
+        )
+
+        assert [v.symbol for v in violations] == ["unparsable Python"], _render(violations)
+
+    def test_a_beyond_top_level_relative_import_is_reported_not_raised(
+        self, tmp_path: Path
+    ) -> None:
+        """_resolve_import raises by design rather than laundering the name; the sweep contains
+        that so one broken import cannot hide every other file's verdict."""
+        violations = find_reuse_violations(
+            _write_source(tmp_path, "from ......viewer import render_html\n"),
+            rel_path="src/companion/client.py",
+        )
+
+        assert len(violations) == 1, _render(violations)
+        assert "cannot resolve this relative import" in str(violations[0]), str(violations[0])
+
+
 class TestScansCannotPassVacuously:
     """An empty or mistyped scan path must fail loudly, not silently pass forever."""
 
     def test_an_empty_viewer_directory_raises(self, tmp_path: Path) -> None:
         with pytest.raises(AssertionError, match="found no files"):
-            collect_viewer_files(tmp_path)
+            walk_viewer_files(tmp_path)
 
-    def test_pycache_is_excluded_from_the_freeze_scan(self, tmp_path: Path) -> None:
+    def test_pycache_is_excluded_from_the_freeze_walk(self, tmp_path: Path) -> None:
         cache = tmp_path / "__pycache__"
         cache.mkdir()
         (cache / "render.cpython-312.pyc").write_bytes(b"")
         (tmp_path / "render.py").write_text("", encoding="utf-8")
 
-        assert list(collect_viewer_files(tmp_path)) == ["render.py"]
+        assert list(walk_viewer_files(tmp_path)) == ["render.py"]
 
-    def test_the_sweep_pathspecs_match_both_halves(self) -> None:
+    def test_the_sweep_pathspecs_match_every_half(self) -> None:
         sources = tracked_companion_sources()
-        assert any(rel.startswith("src/companion/") for rel in sources), sources
-        assert any(rel.startswith("ui/") for rel in sources), sources
+        assert any(rel.startswith("src/companion/app/") for rel in sources), sources
+        assert any(rel.startswith("ui/src/") for rel in sources), sources
+        assert any(rel.startswith("src/companion/app/static/") for rel in sources), sources
+        assert "ui/package.json" in sources, sources
+        assert any(rel.startswith("ui/config/") for rel in sources), sources
 
-    def test_the_generated_bundle_is_out_of_scope_by_rule(self) -> None:
-        """Residue 2, made mechanical: the bundle is skipped because it is built from the
-        swept ui/ sources, and this is where that decision is visible."""
-        assert not is_swept("src/companion/app/static/assets/index-DJ7dGud2.js")
-        assert not is_swept("src/companion/app/static/index.html")
+    def test_the_generated_bundle_is_swept_rather_than_trusted(self) -> None:
+        """Residue 2, made mechanical: the committed bundle is a shipped, plugin-mirrored
+        artifact, so inspection reads it rather than taking the build's word for it."""
+        assert is_swept("src/companion/app/static/assets/index-DJ7dGud2.js")
+        assert is_swept("src/companion/app/static/index.html")
         assert is_swept("src/companion/app/spa.py")
         assert is_swept("ui/index.html")
+
+    def test_a_non_python_backend_file_is_swept(self) -> None:
+        """The old "under src/companion only *.py is source" premise was true and pinned
+        nowhere; a future backend template would have escaped on its suffix."""
+        assert is_swept("src/companion/app/templates/deck.html")
+        assert is_swept("src/companion/app/fixtures/sample.json")
+
+    def test_the_guard_directory_is_not_swept(self) -> None:
+        """Residue 3: ui/tests/ discusses the banned tokens for a living."""
+        assert "ui/tests/read-only-glass.test.ts" not in tracked_companion_sources()
 
     def test_binary_assets_are_skipped(self) -> None:
         assert not is_swept("ui/src/assets/fonts/space-grotesk-latin-wght-normal.woff2")
@@ -892,11 +1503,15 @@ class TestScansCannotPassVacuously:
         assert _resolve_import("src.viewer", 0, "src.companion") == "src.viewer"
 
     def test_beyond_top_level_relative_import_raises_not_launders(self) -> None:
+        # A negative slice would otherwise resolve `from ......x` to a plausible absolute name
+        # that could dodge the ban; real Python raises ImportError, so the resolver raises too.
         with pytest.raises(ValueError, match="exceeds the depth"):
             _resolve_import("viewer", 6, "src.companion")
 
-    def test_a_binary_file_does_not_crash_the_sweep(self, tmp_path: Path) -> None:
-        file = tmp_path / "font.woff2"
-        file.write_bytes(b"\x00\x01\xff\xfe wOF2 \x80")
-
-        assert find_reuse_violations(file, rel_path="ui/src/assets/fonts/font.woff2") == []
+    def test_tracked_paths_are_read_as_raw_utf8(self) -> None:
+        """`core.quotePath=false` plus `-z`: a tracked path with a space or a non-ASCII
+        character must come back as it is on disk, not C-quoted — a quoted spelling would miss
+        on read and the file would go unswept."""
+        for rel in tracked_companion_sources():
+            assert not (rel.startswith('"') and rel.endswith('"')), rel
+            assert (REPO_ROOT / rel).is_file(), rel

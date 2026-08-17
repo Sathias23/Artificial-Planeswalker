@@ -156,6 +156,12 @@ async def test_view_deck_is_advertised_as_deprecated() -> None:
 
     assert "view_deck" in described, sorted(described)
     description = described["view_deck"]
+    # A missing or empty description must fail *naming the missing deprecation*, not raise
+    # IndexError out of splitlines()[0] — the failure a reader sees should be the finding.
+    assert description.strip(), (
+        "view_deck advertises no description at all, so it cannot be marked deprecated — "
+        "check that FastMCP is still exposing the tool's docstring."
+    )
     summary = description.splitlines()[0]
     assert "DEPRECATED" in summary, summary
     assert "companion" in summary.lower(), summary
