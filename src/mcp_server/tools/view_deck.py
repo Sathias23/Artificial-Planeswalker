@@ -1,5 +1,11 @@
 """Structured deck-viewer logic for the ``view_deck`` MCP tool.
 
+**DEPRECATED (AD-15).** The companion app supersedes this tool — ``companion_set_active_deck``
+puts a deck on a live browser view instead of writing a one-shot HTML file. Nothing here
+changes: the tool keeps working exactly as it does today for anyone not running the companion,
+and its removal is deferred to the next minor release once the companion is proven. New deck-view
+capability belongs in the companion, never here or in ``src/viewer`` (which is frozen).
+
 Loads a saved deck by id and hands it to the read-only viewer: the pure
 :func:`~src.viewer.render.render_html` renderer produces a self-contained HTML page,
 and the shared :func:`~src.viewer.present.present_deck` helper writes it to a temp

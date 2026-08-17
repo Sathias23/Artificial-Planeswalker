@@ -6,6 +6,13 @@ browser open), render-only mode, an empty deck, and the ``not_found`` guard. The
 end-to-end MCP-client wiring in test_mcp_tools.py. ``webbrowser.open`` is monkey-
 patched and the temp dir redirected to ``tmp_path`` throughout, so no real browser
 launches and nothing leaks into the system temp.
+
+The deprecation added in story 15.1 is asserted at the bottom of this file, through
+``list_tools()`` rather than through ``view_deck.__doc__`` — the description an agent
+reads is the registered tool's, and a ``__doc__`` assertion would still pass if
+registration stopped exposing it. Everything above it is behavioural coverage of a
+tool that is deprecated but **unchanged**, and it is deliberately left untouched: the
+evidence that nothing broke is that none of it needed editing.
 """
 
 import webbrowser
@@ -15,6 +22,7 @@ import pytest
 
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
+from src.mcp_server.server import build_server
 from src.mcp_server.tools.deck_management import add_card_to_deck, create_deck
 from src.mcp_server.tools.view_deck import view_deck
 from src.viewer import present
@@ -134,3 +142,21 @@ async def test_view_deck_write_failure_is_graceful(
 
     assert result.status == "error"
     assert no_browser == []  # write fails before any browser attempt
+
+
+async def test_view_deck_is_advertised_as_deprecated() -> None:
+    """AD-15: the MCP-visible description marks the tool deprecated and names its replacement.
+
+    Asserted through ``list_tools()`` — the surface an agent actually reads — and on the
+    **first line**, which is what survives any client-side truncation. ``build_server()``
+    touches no database, so this needs no fixture.
+    """
+    tools = await build_server().list_tools()
+    described = {tool.name: tool.description or "" for tool in tools}
+
+    assert "view_deck" in described, sorted(described)
+    description = described["view_deck"]
+    summary = description.splitlines()[0]
+    assert "DEPRECATED" in summary, summary
+    assert "companion" in summary.lower(), summary
+    assert "companion_set_active_deck" in description, description

@@ -451,15 +451,20 @@ def build_server(
 
     @mcp.tool()
     async def view_deck(deck_id: str, open_browser: bool = True) -> ViewDeckResult:
-        """Render a saved deck and open it in the default browser for visual review.
+        """DEPRECATED — superseded by the companion app; prefer ``companion_set_active_deck``.
 
-        Loads the deck by id, renders the read-only HTML deck viewer, writes it to a
-        temp file, and (by default) opens it in this machine's default browser — the
-        server runs locally, so the page opens on the user's own desktop. Opening is
-        best-effort: ``file_path`` is always returned, so the page is reachable even
-        when no browser can be launched (set ``open_browser=False`` to render only).
-        Read-only and stateless — pass ``deck_id`` (from ``create_deck`` /
-        ``list_decks``) every call.
+        The companion app is the live deck view now: ``companion_set_active_deck`` puts a
+        deck on a running companion window that follows the conversation, instead of
+        writing a one-shot HTML file. This tool keeps working unchanged for anyone not
+        running the companion, and nothing about it will change before it is removed.
+
+        Renders a saved deck as a static HTML page: loads the deck by id, renders the
+        read-only HTML deck viewer, writes it to a temp file, and (by default) opens it in
+        this machine's default browser — the server runs locally, so the page opens on the
+        user's own desktop. Opening is best-effort: ``file_path`` is always returned, so
+        the page is reachable even when no browser can be launched (set
+        ``open_browser=False`` to render only). Read-only and stateless — pass ``deck_id``
+        (from ``create_deck`` / ``list_decks``) every call.
 
         Args:
             deck_id: The deck id to view.

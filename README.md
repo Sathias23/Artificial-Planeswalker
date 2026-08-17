@@ -22,7 +22,7 @@ your client supplies the model, the server supplies fast, accurate MTG data and 
 |------------|-------|
 | **Card lookup & search** | `lookup_card_by_name`, `search_cards` |
 | **Semantic search** (local embeddings, no network) | `semantic_search_cards`, `find_similar_cards` |
-| **Deck management** | `create_deck`, `list_decks`, `load_deck`, `delete_deck`, `add_card_to_deck`, `remove_card_from_deck`, `view_deck`, `import_decklist` (bulk Arena import) |
+| **Deck management** | `create_deck`, `list_decks`, `load_deck`, `delete_deck`, `add_card_to_deck`, `remove_card_from_deck`, `view_deck` *(deprecated — use the companion app)*, `import_decklist` (bulk Arena import) |
 | **Deck analysis** | `analyze_mana_curve`, `detect_synergies`, `validate_deck` |
 | **Deck power assessment** *(experimental)* | `assess_deck_power`, `compare_deck_power` |
 | **Companion app** *(in development)* | `companion_set_active_deck` — puts a saved deck on the companion's live browser view; `companion_show_suggestions` — puts a list of suggested cards on the same view, as cards rather than as text. Both report `app_not_running` when the companion isn't up |
