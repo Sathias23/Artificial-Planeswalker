@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Open the read-only deck viewer for a nominated deck.
 
+**DEPRECATED (AD-15).** The companion app supersedes this viewer — run the companion and
+point it at a deck with the ``companion_set_active_deck`` tool. ``src/viewer`` is frozen (no
+new capability lands there); this script keeps working unchanged until the package is removed,
+which is deferred to the next minor release once the companion is proven.
+
 Composition root for the ``src/viewer`` feature: loads a deck from the database
 (by id or name), hands it to the pure :func:`~src.viewer.render.render_html`
 renderer, writes the result to a temp file, and opens it in the default browser.

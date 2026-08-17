@@ -23,7 +23,10 @@ un-imported database with a graceful ``database_not_initialized`` status that po
 
 The read-only ``view_deck`` tool renders a saved deck to a self-contained HTML page and
 best-effort opens it in the host's default browser (a local-bundle side effect; the file
-path is always returned, so a headless host degrades gracefully).
+path is always returned, so a headless host degrades gracefully). **It is deprecated
+(AD-15)**: the companion app superseded it, ``src/viewer`` is frozen, and its removal is
+deferred to the next minor release once the companion is proven. It still registers and
+behaves exactly as before — nothing new is built on it.
 
 ``companion_set_active_deck`` is the first tool that talks to something other than the local data
 files: it validates the deck against the database here and then calls the companion backend's
@@ -451,7 +454,12 @@ def build_server(
 
     @mcp.tool()
     async def view_deck(deck_id: str, open_browser: bool = True) -> ViewDeckResult:
-        """Render a saved deck and open it in the default browser for visual review.
+        """DEPRECATED — renders a saved deck as static HTML; superseded by the companion app.
+
+        Prefer ``companion_set_active_deck``: it puts the deck on a running companion
+        window that follows the conversation, instead of writing a one-shot HTML file.
+        This tool keeps working unchanged for anyone not running the companion, and
+        nothing about it will change before it is removed.
 
         Loads the deck by id, renders the read-only HTML deck viewer, writes it to a
         temp file, and (by default) opens it in this machine's default browser — the
