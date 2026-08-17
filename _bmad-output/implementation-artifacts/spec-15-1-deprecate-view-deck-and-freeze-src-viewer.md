@@ -2,14 +2,28 @@
 title: 'Deprecate view_deck and freeze src/viewer'
 type: 'chore'
 created: '2026-08-17'
-status: 'in-review'
+status: 'done'
 baseline_revision: '999bacd713bdec0d1a8ca2f77f6bda9b597137d6'
-review_loop_iteration: 1
-followup_review_recommended: false
+review_loop_iteration: 0
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-15-context.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      The README now deprecates `view_deck` in favour of a companion app it cannot yet tell a reader
+      how to start, so between this story and Story 15.4 the docs point at a dead end.
+    evidence: |-
+      Blind Hunter, 2026-08-17, corroborated by the intent-alignment audit. `README.md:25` marks the
+      tool "(deprecated — use the companion app)", while the same table still labels the companion
+      "(in development)" and `grep -n companion README.md` returns only lines 25, 28 and 31 — no
+      launch command, no prerequisites, no pointer to companion docs. Not fixable here: this story's
+      intent assigns the companion README section, the `uv run artificial-planeswalker companion`
+      launch string and the fresh-install narrative to Story 15.4, which is `backlog` in the same
+      epic. Story 15.4 closes it.
+    location: >-
+      README.md:25
+    severity: low
 ---
 
 <intent-contract>
@@ -183,6 +197,50 @@ No behaviour changes anywhere.
 
 ## Review Triage Log
 
+### 2026-08-17 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 13: (high 0, medium 4, low 9)
+- defer: 1: (high 0, medium 0, low 1)
+- reject: 12: (high 0, medium 0, low 12)
+- addressed_findings:
+  - `[medium]` `[patch]` P1 — the freeze pin could not see a capability added to `template.html`, the
+    file that *is* the renderer; `_FROZEN_DATA_FILES` now pins a CRLF-normalised sha256 per file.
+  - `[medium]` `[patch]` P2 — the freeze pin walked the filesystem while its sibling sweep used git,
+    so a gitignored stray reported as new capability; `git ls-files` is now the authority for both.
+  - `[medium]` `[patch]` P3 — the committed, `plugin/`-mirrored SPA bundle was excluded by rule while
+    AC-4's subject is the UI "when its assets are inspected"; every tracked non-binary file under
+    `src/companion/` is now swept, retiring the unpinned `.py`-only premise with it.
+  - `[medium]` `[patch]` P4 — `ui/vite.config.ts`, `ui/config/` and `ui/package.json` added to the
+    pathspecs: a build-time reuse of the template is wired there and nowhere under `ui/src/`.
+  - `[low]` `[patch]` P5 — error containment in the sweep (utf-8-sig, unparsable files reported not
+    raised, NUL-split `git ls-files`, absent tracked paths skipped, named failure when git is absent).
+  - `[low]` `[patch]` P6 — freeze-pin robustness (`__all__` by membership, computed/annotated/appended
+    `__all__` reported rather than crashing, symbols nested in module-level blocks now seen).
+  - `[low]` `[patch]` P7 — the citation exemption now requires a comment-only line, closing the
+    `import … // <citation>` hole this spec's own change log claimed was already closed.
+  - `[low]` `[patch]` P8 — reuse violations carry a fix note, the sweep's twin of `_FREEZE_FIX`.
+  - `[low]` `[patch]` P9 — residue extended: the sweep sees reference, not duplication.
+  - `[low]` `[patch]` P10 — `server.py`'s module docstring no longer introduces `view_deck` as a
+    current feature.
+  - `[low]` `[patch]` P11 — the description's first line keeps the tool's capability, so a truncating
+    client still tells an agent what `view_deck` does.
+  - `[low]` `[patch]` P12 — `[Unreleased]` gained its compare-link definition; the internal test path
+    left the user-facing entry.
+  - `[low]` `[patch]` P13 — the description assertion names the missing deprecation instead of raising
+    `IndexError`.
+
+Rejected as noise or as contrary to a standing project ruling (12): deduplicating the sibling guard's
+machinery (this repo's recorded ruling favours the duplication); flipping `sprint-status.yaml` (its
+entries are written at PR merge and cite the merge commit); guarding the three prose notices by test;
+resolving the bare `AD-15` token in shipped source (each site already states the rule in words); a
+second deferral home in `deferred-work.md`; a golden-HTML snapshot for AC-2 (subsumed by P1); a
+fixture path hypothetical for nested frozen modules; the `oversized` warning (already declared);
+freeze pointers in `present.py` and `docs/plugin-structure.md`; the observation that the scheduled
+removal will require editing the pin (deliberate, and `_FREEZE_FIX` instructs it); and the CHANGELOG
+naming no version number for "the next minor".
+
 **Iteration 1 (2026-08-17) — four-layer review: 0 intent gaps, 0 spec defects, 13 patches, all
 applied.** The three measured findings first:
 
@@ -257,10 +315,13 @@ was written to close. The freeze pin is an enumeration pin (the idiom
 capability is exactly adding a module or a public symbol, so the pin fires on the act itself.
 
 **Declared residue** (state it in the guard's docstring, do not claim completeness): the freeze pin
-sees module and public-symbol *addition*, not a body that grows a new behaviour inside an existing
-function — that stays a reviewer's judgement. The no-reuse sweep is a text/AST scan of **git-tracked
-source**; the generated bundle under `src/companion/app/static/` is out of scope because it is built
-from exactly the swept sources, and a runtime-assembled path string defeats it.
+sees module and public-symbol *addition* plus the pinned bytes of `template.html`, not a body that
+grows a new behaviour inside an existing Python function — that stays a reviewer's judgement. The
+no-reuse sweep is a text/AST scan of **git-tracked source**, and a runtime-assembled path string
+defeats it. *(Amended at review — the original text excused the generated bundle under
+`src/companion/app/static/` on the grounds that it is built from the swept sources. Review P3
+overturned that: the bundle is a committed, `plugin/`-mirrored artifact, and AC-4's subject is the UI
+"when its assets are inspected", so it is swept like any other tracked file.)*
 
 **One home for the deferral.** AC-5 says "release notes or CHANGELOG". Use the CHANGELOG only — a
 second copy in `deferred-work.md` would be a second source of truth for the same scheduled removal.
@@ -357,3 +418,93 @@ second copy in `deferred-work.md` would be a second source of truth for the same
   truncation point; `companion_set_active_deck` is named in the next paragraph. (FastMCP does
   not dedent the body — the remaining lines keep their source indentation, exactly as every other
   tool in this server already does.)
+
+## Auto Run Result
+
+Status: done
+Baseline: `999bacd` → `bc6196f` (two commits on `feat/companion-epic-15`, not pushed)
+
+**Summary.** AD-15's ruling is now stated where it is read and enforced where it can be broken.
+`view_deck` keeps rendering HTML byte-for-byte as before — no statement, expression or signature
+moved — while its MCP-visible description, the two composition roots and the `src/viewer` package
+docstring all name the companion app as the replacement and record that removal is deferred to the
+next minor release once the companion is proven. Two properties that previously held only because
+nobody had written the offending line are now guards: a **freeze pin** over `src/viewer`'s module
+set, per-module public surface, `__all__` and the pinned bytes of `template.html`, and a **no-reuse
+sweep** over every git-tracked companion source — backend, frontend, build config and the committed
+SPA bundle — for any reference to the frozen renderer.
+
+**Files changed** (14; `plugin/` is a generated mirror rebuilt by `scripts/build_plugin.py`):
+
+- `src/mcp_server/server.py` — the registered `view_deck` docstring (the MCP tool description) leads
+  with the deprecation while keeping the tool's capability in the summary line; the module docstring
+  no longer introduces `view_deck` as a current feature.
+- `src/mcp_server/tools/view_deck.py`, `scripts/view_deck.py` — the same pointer in their module
+  docstrings. Behaviour untouched.
+- `src/viewer/__init__.py` — the FROZEN (AD-15) notice: no new module, no new public function, no new
+  behaviour; removal scheduled for the next minor once the companion is proven.
+- `CHANGELOG.md` — a new `## [Unreleased]` → `### Deprecated` entry with its compare-link definition,
+  recording the deprecation, the freeze and the deferred removal.
+- `README.md` — the one tool-table row marked deprecated.
+- `tests/unit/viewer/test_viewer_freeze.py` (new, 57 tests) — both guards, with non-vacuity anchors,
+  firing and silent halves on generated synthetic packages, staleness pins and declared residue.
+- `tests/integration/mcp_server/test_view_deck_tool.py` — one appended test over `list_tools()`; the
+  five existing behavioural tests are byte-identical.
+- `_bmad-output/implementation-artifacts/epic-15-context.md` — compiled epic context (new).
+- `plugin/server/{README.md,src/mcp_server/server.py,src/mcp_server/tools/view_deck.py,src/viewer/__init__.py}`
+  — regenerated mirror.
+
+**Review findings.** Four layers (Blind Hunter, Edge Case Hunter, Verification Gap, Intent
+Alignment). 0 intent gaps, 0 spec defects, **13 patches applied** (4 medium, 9 low), **1 deferred**
+(low — see frontmatter), **12 rejected**. Three of the four medium findings were measured by a
+reviewer rather than argued: the freeze pin returned `[]` for a script tag appended to
+`template.html`; a `.DS_Store` in `src/viewer/` reported as new capability; and the committed SPA
+bundle — AC-4's literal "assets" — was excluded from the sweep by rule.
+
+**Follow-up review recommended: true.** Patched findings this pass: high 0, medium 4, low 9 →
+`3 × 4 + 1 × 9 = 21`, at or above the threshold of 5.
+
+**Verification** (re-run independently after the patch pass, from a clean tree):
+
+- `uv run ruff check .` — All checks passed. `ruff format --check .` — 332 files already formatted.
+- `uv run mypy src/` — Success: no issues found in 94 source files.
+- `uv run python -m scripts.probe_harness --expect-green` —
+  `full suite (-m 'not integration'): 3107 collected, 0 failed, exit 0`.
+- Freeze pin, planted public function in `src/viewer/view_model.py` —
+  `3107 collected, 1 failed, 0 errored, exit 1` /
+  `RED tests/unit/viewer/test_viewer_freeze.py::TestViewerIsFrozen::test_public_surface_is_pinned`.
+  Reverted; `git diff --exit-code` clean.
+- Freeze pin, planted `<script>function sideboardPanel(){return 1}</script>` appended to
+  `src/viewer/template.html` — the scenario a reviewer measured as *passing* before P1 —
+  `3107 collected, 1 failed, 0 errored, exit 1` / RED on the same node id. Reverted; clean.
+- No-reuse sweep, planted `_LEGACY_TEMPLATE = "template.html"` in `src/companion/app/spa.py` —
+  `3107 collected, 1 failed, 0 errored, exit 1` / `RED …::TestCompanionNeverReusesTheViewer::`
+  `test_no_companion_source_reuses_the_viewer`. Reverted; clean.
+- No-reuse sweep, planted `<!-- lifted from src/viewer/template.html -->` in the committed bundle
+  `src/companion/app/static/index.html` — the P3 surface — reported two violations at
+  `src/companion/app/static/index.html:45` with the fix note attached. Reverted; clean.
+- `uv run pytest -m integration` — 55 passed, 3107 deselected.
+- `uv run python -m scripts.build_plugin` then `git status --porcelain -- plugin/` — empty.
+- **Matrix test audit:** all seven I/O-matrix rows are covered by tests that ran and passed in the
+  green run above — the description row by `test_view_deck_is_advertised_as_deprecated`, the
+  unchanged-behaviour row by the five untouched existing tests, both guards' clean-tree and firing
+  halves by their whole-tree and synthetic cases, and the vacuity row by
+  `TestScansCannotPassVacuously`.
+
+**Residual risks.**
+
+- The freeze pin sees *names and pinned bytes*; a signature change on an existing public function
+  (`render_html(deck, *, compact=False)`) and a new behaviour grown inside an existing Python
+  function body both pass. Reviewer judgement, declared in the guard docstring.
+- The no-reuse sweep sees *reference*, not *duplication*: markup copy-pasted out of `template.html`
+  into a companion component names none of the banned tokens and passes. This is the failure AD-15
+  actually describes, so it stays a review responsibility.
+- `git ls-files` is the file authority for both halves, so an unstaged violation is invisible until
+  it is staged — the same limit `posture.test.ts` and `read-only-glass.test.ts` declare.
+- The scheduled removal will turn the freeze pin red until `_FROZEN_MODULES` / `_FROZEN_DATA_FILES`
+  are edited in the same change. Deliberate; `_FREEZE_FIX` instructs it.
+- `template.html`'s digest is taken over CRLF-normalised bytes because the repo's `.gitattributes`
+  scopes its `-text` rules to the SPA bundle only; a raw hash would have fired on a Windows checkout
+  under `core.autocrlf=true` and nowhere else. A dedicated test pins that a line-ending rewrite is
+  silent while a script tag fires.
+- Story 15.4 must close the deferred README gap before release.
