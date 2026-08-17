@@ -3076,7 +3076,7 @@ So that the view can never show something the database doesn't have.
 
 **Acceptance Criteria:**
 
-**Given** any deck-mutation tool — add, remove, update, create, import
+**Given** any deck-mutation tool — `create_deck`, `add_card_to_deck`, `remove_card_from_deck`, `import_decklist`
 **When** it succeeds
 **Then** it calls the shared notifier **after the transaction commits**, never inside it (AD-9, FR-11)
 
@@ -3100,6 +3100,19 @@ So that the view can never show something the database doesn't have.
 **Given** the full set of mutation tools
 **When** they are enumerated in test
 **Then** every one of them emits, so none is forgotten as new tools are added
+
+> **Amended 2026-08-17 (C7 retro R4) — the "update" verb.** The first Given above read "add,
+> remove, update, create, import". **There is no update-deck tool and never was.** The mutating
+> tools registered in `src/mcp_server/server.py` are exactly five — `create_deck`, `delete_deck`,
+> `add_card_to_deck`, `import_decklist`, `remove_card_from_deck` — four named in the first Given
+> and deletion carried by its own clause, which is why the count reads as four there. Story 14.2
+> recorded the reconciliation at implementation time but did not amend this artefact.
+>
+> The enumeration does not have to be trusted: the final Given above is discharged by a **derived**
+> guard in `tests/integration/mcp_server/test_deck_changed_wiring.py`, which AST-walks
+> `src/mcp_server/tools/` for users of repository write methods and asserts the wired emitters
+> equal the derived writers, by name. A sixth mutating tool that forgets to emit fails there — so
+> the list above is documentation, and the guard is the contract.
 
 ### Story 14.3: The glass refetches on `deck_changed`, coalesced and latest-wins
 

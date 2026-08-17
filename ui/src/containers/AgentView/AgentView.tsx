@@ -503,9 +503,17 @@ export function AgentView({ pushId, title, count, onClose, children }: AgentView
       >
         <header className="agent-view-header">
           <p className="agent-view-kicker">{AGENT_VIEW_KICKER}</p>
-          {/* `aria-live="polite"` on the HEADING — one of exactly three live regions in the app
-              (`EXPERIENCE.md:159`; the other two are CardDetail's pin announcement and the
-              connection pill's). Nothing announces on FIRST open: no announcement is specified
+          {/* `aria-live="polite"` on the HEADING — one of exactly four live regions in the app
+              (`EXPERIENCE.md`, Accessibility Floor → Live regions; the other three are
+              CardDetail's pin announcement, the connection pill's, and DeckAnnouncer's
+              deck-refetch announcement). THE COUNT WAS THREE UNTIL c7-5 added the fourth; the
+              guard was updated then and this sentence was not (C7 retro R5, corrected
+              2026-08-17). The authority is the guard, not this comment: `App.test.tsx`'s
+              live-region census enumerates every region visible with no view open, by class,
+              and pins the count — so a new undeclared region fails there, and a stale sentence
+              here cannot make it pass.
+
+              Nothing announces on FIRST open: no announcement is specified
               anywhere for it, and focus moving here is the open-time signal (AC 3). What the
               region is for is c6-6's replacement — one view swapped for another under a reader
               who is already inside it — and that is now wired.

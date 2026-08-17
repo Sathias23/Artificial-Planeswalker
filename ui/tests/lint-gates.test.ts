@@ -5,6 +5,12 @@
  * (the standing non-vacuity pairing agreement, promoted at the C1 retro). A test that
  * only shows a violation cannot distinguish "the rule fired" from "the config errors on
  * every file it is handed" — which is exactly how a lint gate rots without anyone noticing.
+ *
+ * IF THE FIRST TEST BELOW TIMES OUT, THAT IS THE COLD START, NOT A BUG. `eslint.config.js` sets
+ * `projectService: true`, so the first ESLint call in the process builds a TypeScript program
+ * before it lints a line; whichever ESLint test runs first pays all of it and the rest are
+ * milliseconds. Eight sightings across C6 and C7 before the timeout was raised — see
+ * `vite.config.ts`, the `node` project's `testTimeout`, which carries the measurements.
  */
 
 import { readFileSync } from 'node:fs'

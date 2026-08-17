@@ -24,9 +24,13 @@ deck edits appear in the deck view without user action, within roughly a second.
 
 ## Requirements & Constraints
 
-- **Emit after persistence.** Deck-mutation tools (add, remove, update, create, import, delete)
-  emit a `deck_changed` event carrying the deck id once the change is really saved. Deletion counts
-  as a mutation. A mutation that fails and rolls back emits nothing.
+- **Emit after persistence.** Deck-mutation tools — `create_deck`, `delete_deck`,
+  `add_card_to_deck`, `import_decklist`, `remove_card_from_deck`, and there are exactly these
+  five — emit a `deck_changed` event carrying the deck id once the change is really saved.
+  Deletion counts as a mutation. A mutation that fails and rolls back emits nothing.
+  *Amended 2026-08-17 (C7 retro R4): this line read "(add, remove, update, create, import,
+  delete)". There is no update-deck tool; the enumeration is derived and asserted by name in
+  `tests/integration/mcp_server/test_deck_changed_wiring.py`.*
 - **Notification failure is invisible.** Any failure to notify — unreachable backend, auth
   rejection, timeout, error response — is caught and logged, never propagated. The tool's own result
   is completely unaffected, and no error surfaces in the UI. The resulting staleness window is
