@@ -197,11 +197,11 @@ No behaviour changes anywhere.
 
 ## Review Triage Log
 
-### 2026-08-17 — Review pass
+### 2026-08-17 — Review pass (iteration 2 appended 2026-08-18)
 
 - intent_gap: 0
 - bad_spec: 0
-- patch: 13: (high 0, medium 4, low 9)
+- patch: 14: (high 0, medium 5, low 9)
 - defer: 1: (high 0, medium 0, low 1)
 - reject: 12: (high 0, medium 0, low 12)
 - addressed_findings:
@@ -230,6 +230,10 @@ No behaviour changes anywhere.
     left the user-facing entry.
   - `[low]` `[patch]` P13 — the description assertion names the missing deprecation instead of raising
     `IndexError`.
+  - `[medium]` `[patch]` P14 — public names bound by *import* escaped the freeze pin outside
+    `__init__.py`, so a one-line re-export added a reachable capability with the guard green;
+    `_FROZEN_IMPORTS` now pins each module's import bindings (star imports reported as unpinnable,
+    `as _x` aliases deliberately private).
 
 Rejected as noise or as contrary to a standing project ruling (12): deduplicating the sibling guard's
 machinery (this repo's recorded ruling favours the duplication); flipping `sprint-status.yaml` (its
@@ -299,6 +303,26 @@ One follow-on found while re-running the proofs, fixed in the same pass:
 it went red alongside `test_public_surface_is_pinned` during the planted-violation probe — the
 same "two readings of one measurement" mistake recorded in the Spec Change Log. It now asserts
 only that nothing reported mentions the stray.
+
+**Iteration 2 (2026-08-18) — PR #84 automated review (Greptile): 1 finding, 1 patch.**
+
+- **P14 (medium) — imported exports escaped the freeze pin.** `public_symbols()` reads `def`,
+  `class` and module-level assignment and deliberately skips imports, deferring re-exports to
+  `__all__` — but `__all__` was validated for `__init__.py` alone. A `def` was therefore never the
+  only way to put a capability on a frozen module: one line of
+  `from src.viewer.render import render_compact` in `present.py` makes
+  `viewer.present.render_compact` reachable, and the pin stayed green. `imported_symbols()` now
+  reads what each import statement *binds* — `import a.b` binds `a`, `import a.b as c` binds `c` —
+  and `_FROZEN_IMPORTS` pins that per module, with its own rule and fix note rather than folding
+  into `_FREEZE_RULE`: "you added an import" and "you wrote a new function here" want different
+  answers, and this file's standing position is that a wrong diagnosis is worse than none. A star
+  import is reported as unpinnable in its own right, for the same reason a computed `__all__` is.
+  An `as _x` alias binds privately and is invisible to the pin — the honest way to use a name
+  without offering it, and the first line of the fix note. Both the synthetic fixture and residue 1
+  were updated: the fixture is still generated from the pin's own constants, and the residue now
+  states what the private alias costs. Verified against the real tree, not only the synthetic one —
+  a planted `import os` in `src/viewer/render.py` fires `test_public_surface_is_pinned` naming
+  `render.py:1 — os`; removed, the guard is green. 64 tests in the file, 2644 in `tests/unit`.
 
 ## Design Notes
 

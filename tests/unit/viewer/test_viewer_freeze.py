@@ -4,12 +4,13 @@ Two guards live here. Neither changes behaviour — both turn a property that cu
 **by coincidence** into one that holds by rule:
 
 * **Freeze pin** — the set of git-tracked files under ``src/viewer/``, the public symbols each
-  module exposes, and the **bytes of** ``template.html`` are pinned to what shipped. AD-15 rules
-  the old HTML renderer *frozen, not removed*: no new capability lands there, and its removal is
-  deferred to the next minor release once the companion app is proven. Adding a capability to
-  this package means adding a module, adding a public symbol, or editing the template — so the
-  pin fires on the act itself, rather than on a reviewer noticing. Today the freeze is written in
-  a docstring; a docstring stops nobody.
+  module defines, the public names each module binds **by import**, and the **bytes of**
+  ``template.html`` are pinned to what shipped. AD-15 rules the old HTML renderer *frozen, not
+  removed*: no new capability lands there, and its removal is deferred to the next minor release
+  once the companion app is proven. Adding a capability to this package means adding a module,
+  adding a public symbol, re-exporting one, or editing the template — so the pin fires on the act
+  itself, rather than on a reviewer noticing. Today the freeze is written in a docstring; a
+  docstring stops nobody.
 * **No-reuse sweep** — no git-tracked companion source may import ``src.viewer`` or name
   ``template.html`` / ``src/viewer``. AD-15's reason is that *two renderers of one deck would
   diverge*: the companion builds its deck view from the API contract, and lifting the old
@@ -41,11 +42,13 @@ without FastAPI installed and see violations in files no test ever imports.
 **Declared residue — stated, not claimed complete.**
 
 1. The freeze pin sees *addition and edit*: a new module, a new public function, class or
-   module-level name, a changed ``__all__``, or any byte of ``template.html``. What it cannot see
-   is a new behaviour grown **inside an existing Python function body** — ``build_view_model``
-   sprouting a sideboard section changes no symbol and touches no template. That stays a
-   reviewer's judgement, and the docstring in ``src/viewer/__init__.py`` is what a reviewer is
-   pointed at.
+   module-level name, a new public import binding, a changed ``__all__``, or any byte of
+   ``template.html``. What it cannot see is a new behaviour grown **inside an existing Python
+   function body** — ``build_view_model`` sprouting a sideboard section changes no symbol and
+   touches no template. Nor can it see a capability written with names the module already binds,
+   or reached through a *private* alias, which is the price of leaving ``as _x`` open as the
+   honest way to use a name without offering it. Both stay a reviewer's judgement, and the
+   docstring in ``src/viewer/__init__.py`` is what a reviewer is pointed at.
 2. The no-reuse sweep scans **git-tracked source**, and that now includes the committed SPA
    bundle under ``src/companion/app/static/``. Correctness-by-construction was the wrong argument
    for excluding it: the bundle is a committed artifact that is *also* mirrored into ``plugin/``
@@ -74,7 +77,7 @@ without FastAPI installed and see violations in files no test ever imports.
 import ast
 import hashlib
 import subprocess
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -110,6 +113,21 @@ _FROZEN_MODULES: dict[str, frozenset[str]] = {
     ),
 }
 
+# The public names each module binds by IMPORT. A def is not the only way to put a capability
+# where another module can reach it: `from src.viewer.render import render_html` in present.py
+# makes `viewer.present.render_html` reachable, and one added import line is all a re-export
+# costs. public_symbols() deliberately does not see these — an import binding is a different
+# kind of surface and deserves its own diagnosis — so they are pinned here instead, and only
+# __init__.py's re-exports were pinned (through __all__) before this list existed.
+_FROZEN_IMPORTS: dict[str, frozenset[str]] = {
+    "__init__.py": frozenset(
+        {"build_view_model", "deck_viewer_path", "present_deck", "render_html"}
+    ),
+    "present.py": frozenset({"Deck", "Path", "render_html", "tempfile", "webbrowser"}),
+    "render.py": frozenset({"build_view_model", "Deck", "json", "Path"}),
+    "view_model.py": frozenset({"Any", "Card", "Deck", "DeckCard", "re"}),
+}
+
 # Non-Python members of the frozen package, pinned by CONTENT (see the module docstring):
 # template.html is the renderer, so presence alone would leave the freeze unenforced.
 _FROZEN_DATA_FILES: dict[str, str] = {
@@ -139,6 +157,22 @@ _FREEZE_FIX = (
 _TEMPLATE_RULE = (
     "template.html IS the renderer (its inline JS builds the page), so its bytes are pinned — "
     "editing it is adding behaviour to a frozen package (AD-15)"
+)
+_IMPORT_RULE = (
+    "an import binds a module-level public name, so this is reachable as an attribute of a "
+    "frozen module — a re-export is a capability the importing module now offers, and one line "
+    "is all it costs (AD-15)"
+)
+_IMPORT_FIX = (
+    "if the name is only used inside this module, import it privately (`import x as _x`, "
+    "`from m import n as _n`) and the pin stops caring. If it is deliberately re-exported, it "
+    "is the wrong package: build it in the companion. Otherwise update the module's entry in "
+    "_FROZEN_IMPORTS in tests/unit/viewer/test_viewer_freeze.py in the same change"
+)
+_STAR_IMPORT_RULE = (
+    "the freeze pin cannot read the names a star import binds, so the module's surface would be "
+    "unpinnable — a `from ... import *` in a frozen package hides every future addition upstream "
+    "makes (AD-15)"
 )
 
 # ---------------------------------------------------------------------------------------------
@@ -374,15 +408,34 @@ def _assigned_names(target: ast.expr) -> list[str]:
     return []
 
 
+def _module_scope_nodes(node: ast.AST) -> Iterator[ast.AST]:
+    """Yield every node of *node* that executes at module scope.
+
+    The walk descends into module-level ``if`` / ``try`` / ``with`` / loop bodies — a capability
+    added behind ``if sys.platform == "win32":`` is still a capability — but never into a
+    function or class body, whose locals, methods and imports are not module surface.
+
+    Args:
+        node: The tree, or any node, to walk from.
+
+    Yields:
+        Each descendant node that runs when the module is imported.
+    """
+    for child in ast.iter_child_nodes(node):
+        yield child
+        if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            continue  # a def's body is not module surface
+        yield from _module_scope_nodes(child)
+
+
 def public_symbols(source: str, *, filename: str) -> dict[str, int]:
-    """Return the module-level public surface of *source*, mapped to its line number.
+    """Return the module-level public surface *source* defines, mapped to its line number.
 
     A module's public surface is what another module can reach: functions, classes and
     assignments that execute at import time and whose name does not start with an underscore.
-    The walk descends into module-level ``if`` / ``try`` / ``with`` / loop bodies — a capability
-    added behind ``if sys.platform == "win32":`` is still a capability — but never into a
-    function or class body, whose locals and methods are not module surface. Imports are
-    excluded: a re-export is pinned through ``__all__`` instead (see :func:`declared_exports`).
+    Imports are excluded here and pinned by :func:`imported_symbols` instead — both are module
+    surface, but "a capability was written in this package" and "a capability was re-exported
+    from it" are different acts, and each gets the fix note that answers it.
 
     Args:
         source: Python source text.
@@ -392,26 +445,55 @@ def public_symbols(source: str, *, filename: str) -> dict[str, int]:
         A mapping of public name to the 1-based line it is defined on.
     """
     surface: dict[str, int] = {}
-
-    def visit(node: ast.AST) -> None:
-        for child in ast.iter_child_nodes(node):
-            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-                if not child.name.startswith("_"):
-                    surface.setdefault(child.name, child.lineno)
-                continue  # a def's body is not module surface
-            if isinstance(child, ast.Assign):
-                for target in child.targets:
-                    for name in _assigned_names(target):
-                        if not name.startswith("_"):
-                            surface.setdefault(name, child.lineno)
-            elif isinstance(child, ast.AnnAssign):
-                for name in _assigned_names(child.target):
+    for node in _module_scope_nodes(ast.parse(source, filename=filename)):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            if not node.name.startswith("_"):
+                surface.setdefault(node.name, node.lineno)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                for name in _assigned_names(target):
                     if not name.startswith("_"):
-                        surface.setdefault(name, child.lineno)
-            visit(child)
-
-    visit(ast.parse(source, filename=filename))
+                        surface.setdefault(name, node.lineno)
+        elif isinstance(node, ast.AnnAssign):
+            for name in _assigned_names(node.target):
+                if not name.startswith("_"):
+                    surface.setdefault(name, node.lineno)
     return surface
+
+
+def imported_symbols(source: str, *, filename: str) -> dict[str, int]:
+    """Return the public names *source* binds by import, mapped to their line number.
+
+    An import is an assignment with different syntax: ``from src.viewer.render import
+    render_html`` in ``present.py`` puts ``render_html`` on ``present``, where any caller can
+    reach it. Only what the statement actually *binds* counts — ``import a.b`` binds ``a``,
+    ``import a.b as c`` binds ``c``, and an ``as _x`` alias is private and therefore invisible
+    here, which is also the escape hatch for a module that needs a name without offering it.
+
+    A star import binds names this scan cannot know, so it is reported as the literal ``"*"``
+    rather than silently contributing nothing.
+
+    Args:
+        source: Python source text.
+        filename: Reported in any SyntaxError.
+
+    Returns:
+        A mapping of public bound name to the 1-based line that binds it.
+    """
+    bound: dict[str, int] = {}
+    for node in _module_scope_nodes(ast.parse(source, filename=filename)):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                # `import a.b` binds the ROOT package `a`, not `a.b`.
+                name = alias.asname or alias.name.split(".")[0]
+                if not name.startswith("_"):
+                    bound.setdefault(name, node.lineno)
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                name = alias.asname or alias.name
+                if not name.startswith("_"):
+                    bound.setdefault(name, node.lineno)
+    return bound
 
 
 def declared_exports(source: str, *, filename: str) -> AllDeclaration:
@@ -461,6 +543,44 @@ def declared_exports(source: str, *, filename: str) -> AllDeclaration:
                 mutations.append((node.lineno, f"__all__.{node.func.attr}(...)"))
 
     return AllDeclaration(found=found, names=names, line=line, mutations=tuple(mutations))
+
+
+def _import_violations(reported: str, source: str, rel: str) -> list[Violation]:
+    """Return every way *rel*'s public import bindings differ from the frozen set.
+
+    Both directions again, and for the same reason as the symbol pin: an added binding is a name
+    the frozen module now offers, and a removed one means the pin is describing a module that no
+    longer exists.
+
+    Args:
+        reported: The path to name in each violation.
+        source: The module's source text.
+        rel: The module's package-relative path — its key in :data:`_FROZEN_IMPORTS`.
+
+    Returns:
+        A list of violations, each naming the bound name and the line that binds it.
+    """
+    bound = imported_symbols(source, filename=rel)
+    frozen = _FROZEN_IMPORTS.get(rel, frozenset())
+    violations: list[Violation] = []
+
+    if "*" in bound:
+        violations.append(
+            Violation(reported, bound.pop("*"), "import *", _STAR_IMPORT_RULE, note=_IMPORT_FIX)
+        )
+    for name in sorted(set(bound) - frozen):
+        violations.append(Violation(reported, bound[name], name, _IMPORT_RULE, note=_IMPORT_FIX))
+    for name in sorted(frozen - set(bound)):
+        violations.append(
+            Violation(
+                reported,
+                0,
+                name,
+                "the freeze pin still lists this import binding, which no longer exists",
+                note=_IMPORT_FIX,
+            )
+        )
+    return violations
 
 
 def _export_violations(reported: str, source: str, rel: str) -> list[Violation]:
@@ -592,6 +712,7 @@ def find_freeze_violations(
                     note=_FREEZE_FIX,
                 )
             )
+        violations += _import_violations(reported, source, rel)
         if rel == "__init__.py":
             violations += _export_violations(reported, source, rel)
 
@@ -897,8 +1018,17 @@ _SYNTHETIC_DATA_HASHES = {
 
 
 def _synthetic_module(rel: str, names: Iterable[str]) -> str:
-    """Return minimal source exposing exactly *names* as public callables."""
-    body = "".join(f"def {name}():\n    return None\n\n\n" for name in sorted(names))
+    """Return minimal source binding exactly the pinned surface of *rel*.
+
+    *names* become public callables; the module's pinned import bindings become plain ``import``
+    statements. Nothing here is ever executed — every scan is AST-only — so binding ``Path`` with
+    ``import Path`` is a legitimate stand-in for the real ``from pathlib import Path``, and it
+    keeps the fixture generated from the pin rather than copied from ``src/viewer``.
+    """
+    body = "".join(f"import {name}\n" for name in sorted(_FROZEN_IMPORTS.get(rel, ())))
+    if body:
+        body += "\n\n"
+    body += "".join(f"def {name}():\n    return None\n\n\n" for name in sorted(names))
     if rel == "__init__.py":
         exports = ", ".join(f'"{name}"' for name in _FROZEN_EXPORTS)
         body += f"__all__ = [{exports}]\n"
@@ -970,7 +1100,9 @@ class TestFreezePinDetectsViolations:
         module = viewer_copy / "render.py"
         planted = (
             module.read_text(encoding="utf-8")
-            + "\n\nimport sys\n\nif sys.version_info >= (3, 12):\n\n"
+            # Aliased private deliberately: a bare `import sys` is itself a new public binding,
+            # which the import pin would report alongside the def and blur what this measures.
+            + "\n\nimport sys as _sys\n\nif _sys.version_info >= (3, 12):\n\n"
             "    def render_compact(deck):\n        return None\n"
         )
         module.write_text(planted, encoding="utf-8")
@@ -1100,6 +1232,98 @@ class TestFreezePinDetectsViolations:
         violations = _synthetic_violations(viewer_copy)
 
         assert [v.symbol for v in violations] == ["__all__.append(...)"], _render(violations)
+
+    def test_a_re_exported_capability_is_reported(self, viewer_copy: Path) -> None:
+        """The blind spot this pin closes: a capability can land on a frozen module without a
+        single ``def`` being written, because an import binds a public name too. One line in
+        ``present.py`` and ``viewer.present.render_compact`` is a callable the package offers."""
+        module = viewer_copy / "present.py"
+        planted = "from src.viewer.render import render_compact\n" + module.read_text(
+            encoding="utf-8"
+        )
+        module.write_text(planted, encoding="utf-8")
+
+        violations = _synthetic_violations(viewer_copy)
+
+        assert len(violations) == 1, _render(violations)
+        message = str(violations[0])
+        assert "src/viewer/present.py" in message, message
+        assert "render_compact" in message, message
+        assert "AD-15" in message, message
+
+    def test_a_new_plain_import_is_reported(self, viewer_copy: Path) -> None:
+        """``import os`` binds ``os`` on the module. Whether the reader calls that a capability
+        or housekeeping, it is a change to what a frozen module exposes, and the fix note offers
+        the private alias for the housekeeping case."""
+        module = viewer_copy / "render.py"
+        module.write_text("import os\n" + module.read_text(encoding="utf-8"), encoding="utf-8")
+
+        violations = _synthetic_violations(viewer_copy)
+
+        assert [v.symbol for v in violations] == ["os"], _render(violations)
+
+    def test_a_privately_aliased_import_is_not_reported(self, viewer_copy: Path) -> None:
+        """The escape hatch, measured: a module that needs a name without offering it says so
+        with ``as _x``, and the pin has nothing to report."""
+        module = viewer_copy / "render.py"
+        module.write_text(
+            "import os as _os\nfrom pathlib import PurePath as _PurePath\n"
+            + module.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+        assert _synthetic_violations(viewer_copy) == []
+
+    def test_a_dotted_import_is_pinned_by_its_root_binding(self, viewer_copy: Path) -> None:
+        """``import xml.etree.ElementTree`` binds ``xml`` and nothing else — pinning the dotted
+        spelling would have let the guard miss the name actually reachable on the module."""
+        module = viewer_copy / "view_model.py"
+        module.write_text(
+            "import xml.etree.ElementTree\n" + module.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+        violations = _synthetic_violations(viewer_copy)
+
+        assert [v.symbol for v in violations] == ["xml"], _render(violations)
+
+    def test_a_star_import_is_reported_as_unpinnable(self, viewer_copy: Path) -> None:
+        """A star import binds names no AST scan can enumerate, so the module's surface stops
+        being pinnable at all — reported as its own breach rather than contributing nothing."""
+        module = viewer_copy / "present.py"
+        module.write_text(
+            "from src.viewer.render import *\n" + module.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+        violations = _synthetic_violations(viewer_copy)
+
+        assert [v.symbol for v in violations] == ["import *"], _render(violations)
+        assert "unpinnable" in str(violations[0]), str(violations[0])
+
+    def test_an_import_inside_a_function_is_not_module_surface(self, viewer_copy: Path) -> None:
+        """A deferred import is a local binding: it is reachable from nowhere but that call, so
+        it is not a capability the module offers."""
+        module = viewer_copy / "render.py"
+        module.write_text(
+            module.read_text(encoding="utf-8")
+            + "\n\ndef _load():\n    import os\n\n    return os\n",
+            encoding="utf-8",
+        )
+
+        assert _synthetic_violations(viewer_copy) == []
+
+    def test_a_disappearing_import_binding_is_reported_too(self, viewer_copy: Path) -> None:
+        """Same contract as a disappearing symbol: the pin's entry goes in the same change, so a
+        stale list cannot quietly describe a module that no longer exists."""
+        module = viewer_copy / "render.py"
+        source = module.read_text(encoding="utf-8").replace("import json\n", "")
+        module.write_text(source, encoding="utf-8")
+
+        violations = _synthetic_violations(viewer_copy)
+
+        assert [v.symbol for v in violations] == ["json"], _render(violations)
+        assert "no longer exists" in str(violations[0]), str(violations[0])
 
     def test_a_disappearing_module_is_reported_too(self, viewer_copy: Path) -> None:
         """Removal is a release action, not an edit: the pin's entry must go with the file."""
