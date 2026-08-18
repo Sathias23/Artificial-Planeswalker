@@ -3445,8 +3445,17 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   The 130 MB is *arithmetic over an average*, not a byte measurement — see the next entry. 15-2
   owns the documented location, the removal command and the uninstall notes; the cache root is
   `src.paths.data_dir()/image_cache` and it is safe to delete wholesale at any time, because every
-  entry is reconstructible by refetching and nothing indexes it. **Home: 15-2.** (Severity: Low —
-  a disclosure and stewardship gap, not a defect.)
+  entry is reconstructible by refetching and nothing indexes it. ~~**Home: 15-2.**~~ **CLOSED by
+  15-2, 2026-08-18 — the disclosure half.** `README.md`'s *Where the data lives → Image cache
+  (companion app)* section now states the location, the two-character shard, the
+  `PLANESWALKER_DATA_DIR` override, copy-pasteable inspect and clear commands for bash and
+  PowerShell, the no-eviction ruling with the **measured** footprint (~90 KB per `normal` tile,
+  8.5 MB per 99-tile deck, ~95 MB for the 1,061-id library) beside the epic's ~12 MB arithmetic
+  estimate, the accepted staleness and the uninstall leftovers.
+  `tests/unit/companion/test_image_cache_docs.py` keys every load-bearing claim on the shipped
+  constants and executes the documented one-liner, so the prose cannot outlive the code. **No
+  mechanism was built and none was in scope** — see the two lifecycle entries below, which stay
+  open. (Severity: Low — a disclosure and stewardship gap, not a defect.)
 
 - ~~**The ~124 KB average tile size is arithmetic, never measured.**~~ **MEASURED AT THE C3
   RETROSPECTIVE, 2026-08-02 — and the epic's figure is a 38 % overestimate.** It was 12 MB ÷ 99
@@ -3618,8 +3627,11 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   *content*, not write debris. A `rglob("*.tmp")` sweep at startup was declined: it walks a
   potentially 38k-directory tree on every launch to reclaim litter produced only by crashes
   mid-write. The wholesale remedy is 15-2's documented `image_cache/` deletion, which removes
-  debris and content alike. **Home: 15-2**, as one sentence in its stewardship notes. (Severity:
-  Low.)
+  debris and content alike. ~~**Home: 15-2**, as one sentence in its stewardship notes.~~ **CLOSED
+  by 15-2, 2026-08-18.** The README's *Safe to delete at any time* paragraph says exactly that: the
+  wholesale delete "also removes any `*.tmp` write debris that a hard kill or a power cut stranded
+  mid-write — nothing sweeps for those, and this is the intended remedy." Still no sweep, declined
+  for the same reason as before. (Severity: Low.)
 
 - **A transient startup `OSError` disables the cache for the whole process, with one WARNING at
   boot.** Q6's ruling covers root *creation* failure by disabling the cache and running on —
@@ -3635,9 +3647,21 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   *when*** — at the first write? on a timer? after N requests? — which is a lifecycle question
   nothing in this feature measures and which c3-8 had no requirement to answer. Taking it would
   also have made `DiskCache` mutable in a way it is not, on top of the write-disable state that
-  entry did add. **Home: 15-2**, which owns cache stewardship (epic `:3185-3212`) and is where a
-  lifecycle policy belongs beside the documented location and the removal command. (Severity: Low —
-  unchanged; requests are unharmed either way.)
+  entry did add. ~~**Home: 15-2**, which owns cache stewardship (epic `:3185-3212`) and is where a
+  lifecycle policy belongs beside the documented location and the removal command.~~
+  **RE-RECORDED BY 15-2, 2026-08-18: DISCLOSED, STILL UNBUILT.** 15-2's intent was disclosure, not
+  mechanism, and it declined this a second time with the reason unchanged and honest: **retrying
+  the root still means deciding *when***, which nothing in this feature measures, and a story that
+  writes documentation is not made able to answer that by owning the entry. What it did instead is
+  tell the user: `README.md`'s *Two ways the cache switches itself off* paragraph states the
+  behaviour, that every image is still served and everything already cached is still read, and that
+  **restarting the app is the remedy** — so the failure is no longer discoverable only from a log
+  line hours before anyone notices. `DISK_CACHE_WRITE_FAILURE_LIMIT`'s docstring records the same.
+  **Home: unowned.** The forcing function is a **real report of a silently disabled cache** — a
+  user, or a log, showing the companion refetching everything from the CDN for a whole session.
+  That report is also the first measurement of *when* a retry should happen, which is the input
+  this decision has always been missing. (Severity: Low — unchanged; requests are unharmed either
+  way.)
 
 - **A root that exists but is unwritable leaves the cache "enabled" and warns on every write,
   ~99 times per cold deck paint, forever.** `build_image_cache` probes only `mkdir` of the root;
@@ -3786,8 +3810,14 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   cache's writes for the process — the "consecutive" reset only protects failures separated by
   successes, and Q4 declined any re-enable path. Accepted at review (Brad, 2026-08-02): the
   consequence is only lost caching, images are still served, and the docstring now states the
-  exposure honestly. Any re-enable/recovery mechanism is cache stewardship. **Home: 15-2.**
-  (Severity: Low.)
+  exposure honestly. Any re-enable/recovery mechanism is cache stewardship.
+  ~~**Home: 15-2.**~~ **RE-RECORDED BY 15-2, 2026-08-18: DISCLOSED, STILL UNBUILT** — the same
+  ruling, and the same reason, as the transient-startup entry it shares a question with (they are
+  one lifecycle question wearing two hats: *when* does a disabled cache try again?). 15-2
+  documented the exposure in `README.md` — five *consecutive* failed writes stop writing for the
+  process, every image is still served, restarting the app is the remedy — and built no re-enable
+  path. **Home: unowned**, with the same forcing function: a real report of a silently disabled
+  cache. (Severity: Low.)
 
 - **The backoff 502 answers without a `Retry-After` header the server could supply.** The route
   holds `retry_after` at the moment it answers a negative hit and discards it; the SPA therefore
@@ -6285,3 +6315,38 @@ Also executed or re-homed at this retro, beyond the seven:
 - source_spec: `_bmad-output/implementation-artifacts/spec-c7-6-deletion-and-views-during-refetch.md`
   summary: The panel → deck mirror transition can still drop focus to `<body>` — c7-6's rescue covers only deck → panel.
   evidence: After the c7-6 rescue (or AgentView ARM 3's close-restore) parks focus on `.state-panel-headline`, a subsequent panel → deck transition — the agent creating or activating a deck, or reconnect restoring a loaded deck displaced by the `'down'` panel (`deck.ts:731`) — unmounts the StatePanel and the focused headline dies with it, dropping focus to `<body>` with no rescue firing (`App.tsx:895` early-returns when the arriving surface is `deck`). Pre-existing failure class (ARM 3 could park focus there before c7-6) but c7-6 widens its reachability; no test in the repo covers focus across a panel → deck transition. Same failure class as the half SkipLink.tsx ledgered for c7-6, at the opposite edge. Found by edge-case-hunter + verification-gap, independently.
+
+## Deferred from: story 15-2 (image cache stewardship, 2026-08-18)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-2-image-cache-stewardship-documented-location-inspection-and-removal.md`
+  summary: The documented inspect/clear commands are verified only as far as their Python payload —
+    the surrounding shell syntax is unverified, and the PowerShell block has never been executed
+    anywhere in CI.
+  evidence: `tests/unit/companion/test_image_cache_docs.py` extracts every `python -c "..."` payload
+    from the README section and executes it in-process, proving it prints exactly
+    `images.cache_root()` under a `PLANESWALKER_DATA_DIR` override. It never runs `du`, `find`,
+    `rm -rf`, `Get-ChildItem`, `Measure-Object` or `Remove-Item`, and the runner is Linux, so the
+    PowerShell block's `$Cache = ...` capture and `Remove-Item -Recurse -Force` are reviewer
+    judgement rather than tested fact. The blast radius if the shell half is wrong is bounded by
+    the Python half being right — the path the command names is proven correct, so a syntax error
+    fails loudly rather than deleting the wrong directory — but "the documented command works on
+    Windows" is not something this repository can currently assert. The honest fix is a Windows CI
+    leg (nothing in this project has one) or a doctest-style shell harness; neither is worth
+    building for two fenced blocks. **Home: unowned.** Forcing function: a Windows user reporting
+    that a documented command errored, or this project acquiring a Windows CI runner for any other
+    reason.
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-2-image-cache-stewardship-documented-location-inspection-and-removal.md`
+  summary: The README's footprint figures (~90 KB per tile, 8.5 MB per deck, ~95 MB per library)
+    are pinned by nothing and age with the corpus.
+  evidence: Every other load-bearing claim in the new README section is keyed on a shipped symbol —
+    `images.CACHE_DIRECTORY_NAME`, `images._cache_path`, `images.cache_root`,
+    `singleton.LOCK_FILENAME`, `discovery.COMPANION_FILENAME`,
+    `images.DISK_CACHE_WRITE_FAILURE_LIMIT` — so a rename that skips the prose turns the guard red.
+    The measurements have no constant to key on: they are dated observations from the C3
+    retrospective (2026-08-02) against one deck, one rendition and one CDN encoder.
+    `test_image_cache_docs.py` asserts only that the numbers are *present and labelled measured*,
+    which is exactly as much as prose can be pinned to a measurement, and the module's docstring
+    declares the gap rather than implying coverage. They will drift silently as Scryfall re-encodes
+    art or the library grows. **Home: unowned.** Forcing function: a re-measurement (the natural
+    trigger is any future story that touches the image route's storage, or a user reporting a
+    footprint far from the documented one).

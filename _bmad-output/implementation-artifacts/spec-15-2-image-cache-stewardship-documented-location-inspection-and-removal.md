@@ -3,7 +3,7 @@ title: 'Image cache stewardship — documented location, inspection and removal'
 type: 'chore'
 created: '2026-08-18'
 baseline_revision: '6aa37f368972db9f380ded004b32a30e09488a9f'
-status: 'in-progress'
+status: 'in-review'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -224,6 +224,168 @@ the ledger — closing the documentation halves and re-recording the mechanism h
   then `git status --porcelain -- plugin/` is empty.
 
 ## Spec Change Log
+
+### Implementation record (2026-08-18)
+
+No change to the intent contract. Two additions the contract permitted but did not name, both
+docstring-only and both listed here so the diff has no unexplained lines:
+
+1. `src/companion/app/images.py`'s `DISK_CACHE_WRITE_FAILURE_LIMIT` docstring carried **two more**
+   `c8-2` references beyond the three the Code Map lists (`:401`, `:417` at baseline) — not
+   "c8-2 will document this" but "both lifecycle entries now live on c8-2". Since this story
+   declined both and re-recorded them as unbuilt, leaving those sentences would have left the
+   module pointing at a story that had already answered. They now record the outcome (disclosed in
+   the README, mechanism unbuilt, home unowned, forcing function named). The literal `99` is
+   untouched — `test_images.py::test_the_limit_carries_its_reasoning` still passes.
+2. `DiskCache`'s class docstring said the class "writes roughly 12 MB per deck viewed" and that
+   "the real-bytes measurement belongs to **c10-3**". That measurement landed at the C3
+   retrospective; both figures now read as the measured **8.5 MB**, with the ~124 KB / ~130 MB
+   arithmetic named as the 38 % overestimate it was. Same rule as the README: this project does not
+   ship a number it has already disproved.
+
+The whole `src/companion/app/images.py` diff was verified **docstrings only** mechanically, not by
+eye: `ast.parse` of the baseline and the working copy, with every docstring and bare string-literal
+statement blanked, produce **identical `ast.dump` output**. No statement, expression or signature
+moved.
+
+`## Deferred from: story 15-2` **was** appended to `deferred-work.md` — two new residues, both
+belonging to the guard rather than to the cache (the shell syntax around the documented commands is
+unverified and the PowerShell block is unexecutable on this project's Linux CI; the footprint
+figures are pinned by nothing). Nothing else in that file was restructured.
+
+### Orchestrator verification and one guard strengthening (2026-08-18)
+
+The Verification commands were re-run independently after the implementation returned, and the
+matrix audit found **one row not actually covered**, which is recorded here rather than smoothed
+over:
+
+- **Matrix row 6 ("Command block missing") was only half-guarded.** `test_both_platforms_get_a_copy_
+  pasteable_block` asserted `"```powershell" in section`, and the section carries **two** PowerShell
+  blocks (inspect and clear). Deleting the PowerShell *inspect* block therefore left the token alive
+  and the full suite stayed green — measured, not argued (`--expect-red` complained that the node
+  "was not" red). The test is now
+  `test_both_platforms_get_a_copy_pasteable_block_for_both_actions`: a `_fenced_blocks` helper
+  parses each fence as `(language, body)`, and each platform must carry both an inspect verb
+  (`du`/`find`, `Get-ChildItem`/`Measure-Object`) and a clear verb (`rm -rf`, `Remove-Item`).
+  Re-planted with the same deletion: **RED**. Guard count unchanged at 11; suite unchanged at 3125.
+
+The pre-existing environmental red was confirmed **at the baseline commit itself**, not by
+inference: a `git worktree` at `6aa37f3` runs
+`test_discovery.py::test_reader_returns_none_when_the_file_is_unreadable` and it fails there with
+the same assertion (uid 0 ignores `chmod(0o000)`).
+
+`uv run pytest -m integration` is **not clean in this container and cannot be**: 2 failed, 3 errors,
+all five the real-embedder / RAG tests, all from
+`ValueError: Could not load model BAAI/bge-small-en-v1.5 from any source` — the sandbox proxy
+answers `403` for `huggingface.co`. Nothing in this change reaches the search layer. 31 passed,
+19 skipped.
+
+### Firing proof (probe harness)
+
+Every line below is pasted from `scripts/probe_harness` stdout. The tree was staged (`git add -A`)
+before each plant and restored with `git checkout --` after it.
+
+**Baseline / green expectation**
+
+```
+full suite (-m 'not integration'): 3125 collected, 1 failed, 0 errored, exit 1
+  RED    tests/unit/companion/test_discovery.py::test_reader_returns_none_when_the_file_is_unreadable
+```
+
+That one red is **pre-existing and environmental**, not this story's: the container runs as uid 0,
+so the test's `chmod(0o000)` does not make the file unreadable to root and `read_discovery()`
+returns a record instead of `None`. Verified by `git stash -u` → the same single failure on the
+untouched baseline tree → `git stash pop`. Nothing else in the suite is red, so the suite is green
+modulo a root-user artifact that predates this change.
+
+**Plant 1 — `CACHE_DIRECTORY_NAME = "image_cache2"`, README untouched** (`--expect-red
+'…::test_the_documented_directory_is_the_shipped_directory_name'`, exit 0):
+
+```
+full suite (-m 'not integration'): 3125 collected, 14 failed, 0 errored, exit 1
+  RED    tests/unit/companion/test_discovery.py::test_reader_returns_none_when_the_file_is_unreadable
+  RED    tests/unit/companion/test_image_cache_docs.py::TestTheImageCacheSectionMatchesTheShippedCache::test_the_documented_directory_is_the_shipped_directory_name
+  RED    tests/unit/companion/test_image_cache_docs.py::TestTheImageCacheSectionMatchesTheShippedCache::test_the_documented_layout_is_the_path_the_shipped_code_builds
+  RED    tests/unit/companion/test_image_cache_docs.py::TestTheImageCacheSectionMatchesTheShippedCache::test_the_documented_command_resolves_the_shipped_cache_root
+  RED    tests/unit/companion/test_image_cache_docs.py::TestTheImageCacheSectionMatchesTheShippedCache::test_the_leftovers_list_names_every_file_an_uninstall_leaves
+  RED    tests/unit/companion/test_images.py::TestTheCachePath::test_the_path_is_the_architecture_decision_spelled_out
+  RED    tests/unit/companion/test_images.py::TestTheCacheReadAndWrite::test_the_file_lands_at_exactly_the_constructed_path
+  RED    tests/unit/companion/test_images.py::TestTheCacheReadAndWrite::test_an_ordinary_png_card_lands_as_png_on_disk
+  RED    tests/unit/companion/test_images.py::TestTheCacheReadAndWrite::test_a_rewrite_under_the_other_extension_displaces_the_stale_sibling
+  RED    tests/unit/companion/test_images.py::TestTheWriteIsAtomic::test_the_temp_file_is_uniquely_named_and_sits_beside_its_target
+  RED    tests/unit/companion/test_images.py::TestBuildingTheCache::test_the_root_is_resolved_under_the_data_directory
+  RED    tests/unit/companion/test_images.py::TestBuildingTheCache::test_building_one_creates_the_root
+  RED    tests/unit/companion/test_images.py::TestBuildingTheCache::test_a_root_that_cannot_be_created_disables_the_cache_rather_than_raising
+  RED    tests/unit/companion/test_routes_session.py::TestTheStoreIsCreatedByTheLifespan::test_nothing_is_written_to_the_data_directory_by_minting
+```
+
+The spec predicted "RED for that node id **and no other**" and that was **wrong**, so it is
+recorded rather than glossed: nine of the collateral reds are **pre-existing tests that pin the
+string `image_cache` as a literal** (`test_images.py`, `test_routes_session.py:581`) and would fire
+on any rename of that constant with or without this story. The remaining three are this guard's own
+sibling assertions — the layout example, the executed one-liner and the leftovers list all embed
+the directory name, so a rename is *supposed* to move all four. Nothing red is unexplained, and the
+named node id fired for the planted reason.
+
+Revert: `git checkout -- src/companion/app/images.py` → `git diff --exit-code
+src/companion/app/images.py` → **exit 0**.
+
+**Plant 2 — README heading renamed to `### Picture cache (companion app)`, code untouched**
+(`--expect-red '…::test_the_documented_section_exists'`, exit 0):
+
+```
+full suite (-m 'not integration'): 3125 collected, 12 failed, 0 errored, exit 1
+  RED    tests/unit/companion/test_discovery.py::test_reader_returns_none_when_the_file_is_unreadable
+  RED    …::test_the_documented_section_exists
+  RED    …::test_the_documented_directory_is_the_shipped_directory_name
+  RED    …::test_the_documented_location_follows_the_data_dir_override
+  RED    …::test_the_documented_layout_is_the_path_the_shipped_code_builds
+  RED    …::test_the_documented_command_resolves_the_shipped_cache_root
+  RED    …::test_both_platforms_get_a_copy_pasteable_block
+  RED    …::test_the_eviction_paragraph_states_the_measured_footprint
+  RED    …::test_the_staleness_paragraph_names_its_cause_and_its_remedy
+  RED    …::test_the_leftovers_list_names_every_file_an_uninstall_leaves
+  RED    …::test_the_two_cache_disable_behaviours_are_disclosed
+  RED    …::test_ordinary_prose_edits_elsewhere_in_the_readme_do_not_move_this_guard
+```
+
+(`…` = `tests/unit/companion/test_image_cache_docs.py::TestTheImageCacheSectionMatchesTheShippedCache`.)
+This is the **non-vacuity proof in full**: **all eleven** assertions in the module go red on a
+missing heading, each naming the heading it looked for. Not one of them passes over an empty scan.
+
+Revert: `git checkout -- README.md` → `git diff --exit-code README.md` → **exit 0**; the module is
+back to 11 passed.
+
+### Other verification
+
+- `uv run ruff check . --fix && uv run ruff format .` — **All checks passed / 333 files left
+  unchanged** (two E501s were introduced and fixed during the work).
+- `uv run mypy src/` — **Success: no issues found in 94 source files**.
+- `uv run python -m scripts.build_plugin` — rebuilt; `git status --porcelain -- plugin/` names
+  exactly `plugin/server/README.md` and `plugin/server/src/companion/app/images.py`, the two mirrors
+  of the two changed sources. A second run produced no further change (idempotent), and
+  `diff plugin/server/README.md README.md` is empty.
+
+### Manual checks
+
+- **The documented bash block was run verbatim on this container.** The one-liner printed
+  `/root/.local/share/artificial-planeswalker/image_cache`; after planting a synthetic 90 KB entry
+  at `81/813d0434-…/normal_0.jpg`, `du -sh` reported `104K`, `find … -type f | wc -l` reported `1`,
+  and the documented `rm -rf "$CACHE"` removed the directory. The path it named is the one
+  `images.cache_root()` resolves — which the guard also asserts, in-process, under a
+  `PLANESWALKER_DATA_DIR` override.
+- **The PowerShell block was NOT executed.** This is a Linux container with no `pwsh`; the block's
+  Python payload is byte-identical to the bash block's and is executed by the guard, but its
+  `$Cache = …` capture, `Get-ChildItem`/`Measure-Object` and `Remove-Item -Recurse -Force` are
+  unverified. Ledgered as residue in `deferred-work.md` under `## Deferred from: story 15-2`
+  rather than implied to have been run.
+- **Read as a first-time user.** The section answers, in order and without following a link: where
+  it is (`<data dir>/image_cache/`, following `PLANESWALKER_DATA_DIR`), what is inside it (the
+  shard, with a concrete example path), how big it gets (measured, with the superseded estimate
+  named), how to look at it and how to delete it (two blocks per platform), why an old picture may
+  persist and how to fix that, what an uninstall leaves behind (three files, one of them
+  deliberately), and the two ways the cache can switch itself off with the restart that fixes them.
+
 
 ## Review Triage Log
 

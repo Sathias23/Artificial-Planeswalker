@@ -80,7 +80,9 @@ removes is every paint *after* it — a reload, a second tab, a scroll back — 
   the first surface that renders one card id twice on one screen, and that is the trigger that
   flips the answer.
 * **no eviction, no size accounting, no TTL and no index on the DISK cache** — it is unbounded in
-  MVP (AD-11); the documented location and the removal command are **c8-2**'s. See
+  MVP (AD-11). The location, the inspect/clear commands and the uninstall leftovers are documented
+  in ``README.md``'s *Where the data lives → Image cache (companion app)* section, which
+  ``tests/unit/companion/test_image_cache_docs.py`` pins to the constants below. See
   :class:`DiskCache`. The negative cache's expiry and cap are **not** a precedent for adding any of
   them here: the two caches have opposite policies on purpose, because a success is durable and a
   failure is not.
@@ -370,9 +372,12 @@ CACHE_DIRECTORY_NAME = "image_cache"
 """The cache's one directory, directly under :func:`src.paths.data_dir` (AD-11, NFR-09).
 
 A **name**, never a resolved path — see :func:`cache_root` for why that distinction is
-load-bearing. The documented location, the removal command and the uninstall notes that quote it
-are **c8-2**'s (epic ``:3185-3212``); what this story owes that one is a measured footprint, which
-is recorded on :class:`DiskCache`.
+load-bearing. The documented location, the inspect/clear commands and the uninstall notes that
+quote it now ship in ``README.md``'s *Where the data lives → Image cache (companion app)* section,
+and ``tests/unit/companion/test_image_cache_docs.py`` reads that prose against **this constant**
+rather than against a literal — so renaming the value here without editing the README turns that
+guard red instead of quietly making the documentation wrong. The measured footprint that section
+quotes is recorded on :class:`DiskCache`.
 """
 
 DISK_CACHE_WRITE_FAILURE_LIMIT = 5
@@ -393,7 +398,11 @@ scanner holding the directory, a disk-full blip — is five consecutive failures
 off for the rest of the process. Accepted deliberately rather than missed: the consequence is only
 lost caching (every picture is still served, everything already cached is still read), and any
 re-enable path means deciding *when* to retry, which is the same lifecycle question that re-homed
-the startup-`OSError` entry. Both now live on **c8-2**, the cache-stewardship story. One carve-out
+the startup-`OSError` entry. Both were **disclosed rather than built** by story 15-2: ``README.md``
+now tells the user that the cache can switch its writes off, that every image is still served when
+it does, and that restarting the app is the remedy — no re-enable mechanism was added, because
+*when to retry* is still unmeasured. Both remain open in ``deferred-work.md`` with no owner; the
+forcing function is a real report of a silently disabled cache. One carve-out
 keeps the counter honest on Windows: a ``PermissionError`` whose target already holds a
 **servable** entry — readable and non-empty, proved by reading a byte the way ``_read_cached``
 will — is a lost same-key write race, and is **neither counted nor treated as a success**: only
@@ -409,9 +418,10 @@ functional with no network after warm-up"* depends on exactly those reads, so di
 cache would trade a noisy log for an offline app.
 
 The *other* entry homed here — a **transient startup** ``OSError`` disabling the cache for the whole
-process — is **declined and re-homed on c8-2** (Q4, Brad 2026-08-02). Retrying the root means
-deciding *when* to retry (at the first write? on a timer?), which is a lifecycle question nothing
-measures today, and it would make :class:`DiskCache` mutable in a way it is not.
+process — was **declined** (Q4, Brad 2026-08-02) and declined again by story 15-2, which documented
+the behaviour instead of building around it. Retrying the root means deciding *when* to retry (at
+the first write? on a timer?), which is a lifecycle question nothing measures today, and it would
+make :class:`DiskCache` mutable in a way it is not.
 """
 
 CACHE_MEDIA_TYPES: dict[str, str] = {".jpg": "image/jpeg", ".png": "image/png"}
@@ -1080,8 +1090,8 @@ class DiskCache:
     session mutators, DML constructs and schema creation, and it *explicitly permits* file I/O
     (its own clean case is named ``file-flush-in-atomic-write``, added for ``discovery.py``'s
     temp+rename). So the one test whose name promises the companion never writes stays green while
-    this class writes roughly 12 MB per deck viewed. The boundary is real and it is a different
-    boundary; nothing here opens a database write path.
+    this class writes roughly 8.5 MB per deck viewed (measured; see below). The boundary is real
+    and it is a different boundary; nothing here opens a database write path.
 
     **What it satisfies.** The epic's **CM-2** — *"an image fetched once is not fetched again
     within the cache lifetime"* — which c3-6 homed here by name and which is the only one of this
@@ -1121,11 +1131,14 @@ class DiskCache:
     **No eviction, no size accounting, no TTL, no index** (AD-11, epic ``:1768-1770``). The cache
     is unbounded in MVP and building any hook, counter, manifest or sweep for a future one is out
     of scope on c3-4's ruling: *an unused hook is a design decision made by a story that cannot
-    see the requirements.* The documented location and the removal command are **c8-2**'s (epic
-    ``:3185-3212``); what this story owes that one is a **measured footprint** rather than
-    documentation, so: this user's whole 40-deck library is **1,061 distinct card ids**, roughly
-    **130 MB** at one size — where 130 MB is arithmetic over the epic's ~124 KB average, and the
-    real-bytes measurement belongs to **c10-3**.
+    see the requirements.* The location, the inspect/clear commands, the accepted staleness and the
+    uninstall leftovers are documented in ``README.md``'s *Where the data lives → Image cache
+    (companion app)* section, guarded by ``tests/unit/companion/test_image_cache_docs.py``. The
+    footprint that section quotes is **measured** (C3 retrospective, 2026-08-02) rather than
+    arithmetic: ~**90 KB** per ``normal`` tile, **8.5 MB** for a 99-tile deck, and ~**95 MB** for
+    this user's whole 40-deck library of **1,061 distinct card ids**. The epic's ~124 KB average —
+    and the ~130 MB library figure derived from it — was a **38 % overestimate**, and appears in
+    the README only as the estimate it was.
 
     **Nothing here needs closing**, exactly like :class:`Pacer` — so
     :func:`~src.companion.app.main._shutdown` is untouched by it. Unlike the pacer, **creating one
