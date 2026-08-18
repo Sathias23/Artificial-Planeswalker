@@ -630,8 +630,9 @@ describe('the token layer is DESIGN.md (AC 1)', () => {
     expect(Object.keys(line).sort()).toEqual(['container', 'foreground', 'type'])
 
     // THE CONTAINER CITES THE BODY'S OWN INSET, NOT THE SHELL'S (code review, 2026-08-11): the
-    // two are different tokens — `{components.agent-view.inset}` is `{spacing.6}`, the shell's
-    // distance from the window edge, while `.agent-view-body`'s actual padding is `{spacing.4}`.
+    // two are different tokens — `{components.agent-view.inset}` is `{spacing.gutter}` (it read
+    // `{spacing.6}` until story 15-3 corrected it on 2026-08-18; same 32px), the shell's distance
+    // from the window edge, while `.agent-view-body`'s actual padding is `{spacing.4}`.
     // A citation naming the wrong one is exactly the drift this suite exists to catch.
     expect(line.container).toBe('the agent view body — {spacing.4} is the whole of its inset')
   })

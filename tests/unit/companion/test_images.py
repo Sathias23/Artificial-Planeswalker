@@ -546,6 +546,12 @@ class TestTheTwoConstants:
     def test_the_spacing_reproduces_the_epics_cold_deck_observation(self) -> None:
         """The epic's "roughly 12 MB over roughly 10 seconds" IS this constant (AC 10).
 
+        The TIME half, which is the half this test asserts, is unchanged and still the epic's. The
+        byte half is not: story 15.3 corrected the epic (and the spine, and its HTML projection) to
+        the measured 8.5 MB on 2026-08-18, so "12 MB" is the figure the epic FORMERLY carried. The
+        constant below is untouched by that — 9.8 s is spacing arithmetic and owes nothing to the
+        byte count.
+
         99 distinct ids on a real 100-card deck (measured: 67-99 across the 18 saved decks with
         >=90 cards, and 99 on both `Atraxa Counter Cabinet` decks) x 0.1 s spacing. The first
         start is free, so the last of 99 begins after 98 gaps.
@@ -907,9 +913,13 @@ class TestTheColdDeckPaint:
         deck paint is ~99 fetches, and this drives exactly that many through the shipped pacer on
         virtual time.
 
-        The ~12 MB half of the epic's observation is ARITHMETIC on the measured 124 KB average
+        The ~12 MB half of the epic's observation was ARITHMETIC on an assumed 124 KB average
         (12 MB / 99 tiles), not a byte measurement — the real-bytes profiling is c10-3's
-        (epic :3588-3590). It is asserted here as arithmetic and nothing more.
+        (epic :3588-3590). It is asserted here as arithmetic and nothing more. The C3
+        retrospective (2026-08-02) then measured it at 8.5 MB / ~90 KB per tile, a 38 %
+        overestimate, and story 15.3 corrected the epic to the measured figure on 2026-08-18 — so
+        the epic no longer carries "12 MB" as a claim, only as a labelled superseded estimate.
+        Nothing below changes: this test asserts the fetch COUNT and the spacing, not bytes.
 
         NFR-05 excludes first-fetch image paint from its budget, so this is an EXPECTED
         OBSERVATION rather than a defect.

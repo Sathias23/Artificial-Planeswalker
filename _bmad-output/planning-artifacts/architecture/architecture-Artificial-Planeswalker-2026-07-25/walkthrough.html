@@ -119,7 +119,7 @@ footer{border-top:1px solid var(--hair);padding-top:16px;margin-top:32px;
     <span class="badge a">16 decisions</span>
     <span class="badge">FR-01 – FR-23</span>
     <span class="badge">NFR-01 – NFR-09</span>
-    <span class="badge">2026-07-25</span>
+    <span class="badge">2026-07-25 · rev. 2026-08-18</span>
     <span class="badge">Gate passed · 10 findings fixed</span>
   </div>
 </header>
@@ -258,9 +258,12 @@ footer{border-top:1px solid var(--hair);padding-top:16px;margin-top:32px;
 
     <h3>Cold-start reality</h3>
     <div class="grid2">
-      <div class="mini"><b>~12 MB, ~10 s</b><p>A cold 100-card Commander deck at Scryfall's
+      <div class="mini"><b>~8.5 MB, ~10 s</b><p>A cold 100-card Commander deck at Scryfall's
       compliant request rate. Stated so it is expected, not discovered — NFR-05 excludes
-      first-fetch paint, so this is compliant.</p></div>
+      first-fetch paint, so this is compliant. <em>Corrected 2026-08-18 (story 15.3) to match the
+      spine line this projects: the ~12 MB it used to show was an arithmetic estimate the C3
+      retrospective disproved on 2026-08-02 by measuring 8.5 MB / 99 images ≈ 90 KB each. The
+      ~10 s is the pacer and is unchanged.</em></p></div>
       <div class="mini"><b>One choke point</b><p>Pacing lives in the backend, never the UI, and is
       async throughout. Two rate limiters would jointly exceed the guidance; a blocking one would
       eat the 250 ms push budget.</p></div>
@@ -432,7 +435,7 @@ footer{border-top:1px solid var(--hair);padding-top:16px;margin-top:32px;
   </div>
 </section>
 
-<footer>Artificial-Planeswalker · architecture spine companion-app · 2026-07-25 · Voltglass</footer>
+<footer>Artificial-Planeswalker · architecture spine companion-app · 2026-07-25, revised 2026-08-18 (story 15.3) · Voltglass</footer>
 </div>
 
 <script>
