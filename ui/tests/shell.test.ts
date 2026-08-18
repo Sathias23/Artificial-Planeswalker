@@ -942,8 +942,10 @@ describe('the overlay slot (AC 7, AC 8, AC 10)', () => {
     //
     // This shipped as a ruled deviation from AC 7's original wording (review round 1); **AC 7
     // was then amended to match, by Brad's ruling 2026-07-28**, so the two now agree and this
-    // is no longer a deviation from anything. `DESIGN.md` line 328 is the one artefact still
-    // saying `{spacing.6}` — same 32px, homed against Story 8.3 in deferred-work.md.
+    // is no longer a deviation from anything. `DESIGN.md` was the last artefact still saying
+    // `{spacing.6}` here; story 15-3 corrected all three of its sites to `{spacing.gutter}` on
+    // 2026-08-18 and closed the ledger entry, so every artefact and this assertion now name one
+    // token for one distance.
     expect(valueOf(blockFor('.app-shell-overlay')!, 'inset')).toBe('var(--space-gutter)')
   })
 

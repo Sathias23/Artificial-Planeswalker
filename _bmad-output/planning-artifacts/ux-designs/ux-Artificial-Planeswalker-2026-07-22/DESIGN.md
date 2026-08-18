@@ -2,7 +2,7 @@
 name: Artificial-Planeswalker Companion
 description: 'Dark-only, card-art-forward visual identity for the companion app — Voltglass: cool blue-violet smoked glass with one luminous periwinkle accent, game-adjacent, never imitative of WotC trade dress.'
 status: approved
-updated: 2026-07-25
+updated: 2026-08-18
 theme: voltglass
 sources:
   - _bmad-output/planning-artifacts/prds/prd-Artificial-Planeswalker-2026-07-22/prd.md
@@ -313,7 +313,13 @@ components:
     border: '1px solid {colors.border-hairline}'
     radius: '{rounded.lg}'
     shadow: '{components.elevation.shadow-raise}'
-    inset: '{spacing.6}'
+    # AMENDED 2026-08-18 (story 15.3). This read `'{spacing.6}'`. Both steps are 32px today, so
+    # nothing renders differently — but the overlay's contract is that its inset **coincides with
+    # the shell's own frame**, and the frame is `{spacing.gutter}` (shipped as `var(--space-gutter)`,
+    # `AppShell.css`). Named as a scale step, a later retune of the gutter would silently break the
+    # alignment while every assertion kept passing. Two names for one distance is the trap; this is
+    # Brad's 2026-07-28 ruling on story c2-6's AC 7, finally carried back into the artefact.
+    inset: '{spacing.gutter}'
     enter: '{components.motion.bloom} {components.motion.ease-glide}'
   swap-row:
     background: '{colors.surface-overlay}'
@@ -431,7 +437,7 @@ components:
     # the copy module, never authored here.
     type: '{typography.body}'
     foreground: '{colors.text-secondary}'
-    # `{spacing.4}`, NOT `{components.agent-view.inset}` (`{spacing.6}`) — the shell's inset from
+    # `{spacing.4}`, NOT `{components.agent-view.inset}` (`{spacing.gutter}`) — the shell's inset from
     # the window edge is a different value from the BODY's own padding, exactly as the note two
     # comments up says. Corrected by code review (2026-08-11): this field cited the shell's
     # token where the body's own (`.agent-view-body`'s `padding: 0 var(--space-4) var(--space-4)`)
@@ -531,7 +537,7 @@ The screen is a **two-column composition** under a full-width header:
 
 Panels *float*: airy separation with visible canvas between them is the theme's density philosophy, not spare padding. The card grid is `repeat(auto-fill, minmax(176px, 1fr))`; tiles hold a fixed 63:88 aspect and reflow. The app targets a window from ~1100px (below which the right column drops beneath the left) up to ~2560px (half an ultrawide). Design reference width is 1720px.
 
-Agent views take the whole window as a scrim-backed overlay inset by `{spacing.6}`.
+Agent views take the whole window as a scrim-backed overlay inset by `{spacing.gutter}` — the same token that frames the window, because the overlay's inset must coincide with the shell's own frame rather than merely equal it today. *(Amended 2026-08-18, story 15.3; this said `{spacing.6}`, which is the same 32px by coincidence.)*
 
 ## Elevation & Depth
 

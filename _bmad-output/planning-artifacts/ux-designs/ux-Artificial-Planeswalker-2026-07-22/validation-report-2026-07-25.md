@@ -5,11 +5,11 @@
 - **Run at:** 2026-07-25 (Reviewer Gate; lenses: rubric walker + accessibility)
 - **Supersedes:** `validation-report.md`, `validation-report.html`, `review-rubric.md`, `review-accessibility.md` (all 2026-07-22, against the pre-Voltglass spines)
 
-> **Reviewer's note on independence.** This gate was run by the same author who rewrote both spines on 2026-07-25. That is a real weakness of this report and it should be read with that in mind: self-review reliably finds mechanical defects and reliably misses framing errors. The findings below lean heavily on things that can be *computed* — token resolution, contrast arithmetic, name parity, reference integrity — precisely because those don't depend on the author's judgement. The four rulings in EXPERIENCE.md remain the least-tested part of the pair and are **not** validated by this gate; they need Brad.
+> **Reviewer's note on independence.** This gate was run by the same author who rewrote both spines on 2026-07-25. That is a real weakness of this report and it should be read with that in mind: self-review reliably finds mechanical defects and reliably misses framing errors. The findings below lean heavily on things that can be *computed* — token resolution, contrast arithmetic, name parity, reference integrity — precisely because those don't depend on the author's judgement. The four rulings in EXPERIENCE.md remain the least-tested part of the pair and are **not** validated by this gate; they need Brad. **They got him: Brad confirmed all four on 2026-07-25, after this gate ran — see the *UX rulings — CONFIRMED 2026-07-25* block in `epics-companion-app.md`. That confirmation is not this report's evidence, and nothing below was re-run on the strength of it.** *Stamped 2026-08-18 by story 15.3. This amendment adds what happened next; it does not revise what this gate found — the finding was true when written and is still true.*
 
 ## Gate status: **CLOSED 2026-07-25** — both spines `status: approved`
 
-All four highs and the four blocking mediums are resolved; see **Gate close** at the foot for what changed and one correction to a finding in this report. H3 is closed as an accepted, recorded deferral rather than a fix. The four EXPERIENCE.md rulings remain author-made and untested by any lens here.
+All four highs and the four blocking mediums are resolved; see **Gate close** at the foot for what changed and one correction to a finding in this report. H3 is closed as an accepted, recorded deferral rather than a fix. The four EXPERIENCE.md rulings remain author-made and untested by any lens here — **and were subsequently confirmed by Brad on 2026-07-25 (the *UX rulings — CONFIRMED 2026-07-25* block in `epics-companion-app.md`), which is a separate event from this gate and is recorded here only so a reader does not carry them forward as open.**
 
 ---
 
@@ -110,7 +110,7 @@ Seven findings were self-inflicted contradictions introduced by the 07-25 rewrit
 
 Lows at author's discretion. Then flip both files to `status: approved`.
 
-**Not validated by this gate:** the four rulings in EXPERIENCE.md (push auto-opens its view; hover-transient + click-to-pin; detail panel is non-modal; tier D). They are product decisions made by the author of both the spines and this report, and no lens here tests them. They want Brad.
+**Not validated by this gate:** the four rulings in EXPERIENCE.md (push auto-opens its view; hover-transient + click-to-pin; detail panel is non-modal; tier D). They are product decisions made by the author of both the spines and this report, and no lens here tests them. They want Brad. **Confirmed by Brad on 2026-07-25, all four accepted as specified** (the *UX rulings — CONFIRMED 2026-07-25* block in `epics-companion-app.md`); **ruling 4 additionally decided against adding an F tier.** The sentence before this one is unchanged on purpose: the rulings were settled by a product decision, not by a lens in this report, and rewriting it to imply otherwise would manufacture evidence. *Stamped 2026-08-18 by story 15.3. This amendment adds what happened next; it does not revise what this gate found — the finding was true when written and is still true.*
 
 ---
 
@@ -145,5 +145,5 @@ Brad's dispositions: H1 new FR + design · H2 new FR + design · H3 defer · H4 
 
 - **Lows L1–L9** — author's discretion, unactioned.
 - **Session history (FR-18)** — still a residual; the nav pill's last-push timestamp covers "re-open the latest of each kind", not "the last ~20 pushes".
-- **The four rulings** — unconfirmed.
+- **The four rulings** — ~~unconfirmed~~ **confirmed by Brad on 2026-07-25**, all four accepted as specified; see the *UX rulings — CONFIRMED 2026-07-25* block in `epics-companion-app.md`. Still untested by any lens in this report, which is why the entry stays on this list rather than moving to the resolved one.
 - **Upstream design-system defects** — `ManaCurve`'s dead bucket, `Panel`'s inverted elevation, `Badge`'s hard-coded RGB, the missing Voltglass typography block, `SuggestionCard`'s `accent-dim`. These live in the Claude Design project, not in these spines, and the spines now specify the corrected behavior in each case.

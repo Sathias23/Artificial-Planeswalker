@@ -89,6 +89,13 @@ requirements (full analysis in `review-edge-case-hunter.md`):
 - **Read-only open of a WAL DB** — `mode=ro` needs the `-shm` file present (or
   `immutable`, which would break FR-16); architecture picks the concrete open recipe
   (Windows-relevant; don't discover as a Story-1 bug).
+  **ANSWERED 2026-08-18 (story 15.3) — by rejecting the premise.** Architecture did not pick a
+  connection recipe: it picked a different *kind* of enforcement. Both horns of this item turned
+  out to be real (`mode=ro` does need the `-shm` sidecar; `immutable` does foreclose FR-16), so
+  AD-2 made read-only a **structural** property instead — `tests/unit/companion/test_import_boundary.py`
+  fails CI if any file under `src/companion/**` can reach a write path, and the engine in
+  `src/companion/app/deps.py` carries no read-only flag at all. NFR-02 in the PRD body was amended
+  to match; this parking entry is kept as the record of why the recipe was never chosen.
 - **Image cache integrity/staleness** — atomic temp-file writes; accepted staleness
   when a data refresh changes `image_uris` (cache keyed by id+size+face).
 - **DFC flip-state persistence** — whether flip state survives `deck_changed`
@@ -109,6 +116,10 @@ that reach back into this PRD. Recorded here; the PRD body carries only the new 
   constraints: groups carry a title and a prose rationale per group, and may reference
   cards **outside** the active deck (budget substitutes, sideboard options, answers the
   deck doesn't yet run). OQ-A's schema work must extend to cover it.
+  **DISCHARGED 2026-08-18 (story 15.3).** It did extend to cover it: story c5-1 defined all four
+  payload shapes at once rather than incrementally, and `groups` landed with the other three as
+  `{title, rationale, card_ids[]}` over a bare card reference, with the group-level title and
+  rationale this note demanded. OQ-A is recorded as resolved in the PRD body (§12).
 - **FR-19's flip control is unchanged and still required.** The Voltglass design ships
   no flip affordance, so the gate raised it as a missing design, not a missing
   requirement — FR-19 already mandates "a dedicated flip control — distinct from

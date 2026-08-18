@@ -58,7 +58,7 @@
 > stays 15-5's.
 
 - source_spec: `_bmad-output/implementation-artifacts/c6-8-agent-views-nav-unread-markers-re-open-and-kind-switching.md`
-  summary: "**The artefacts describe the quiet nav pill's copy as a \"tooltip\", singular, and that is a contradiction the system has already repaired once in the other direction.** UX-DR28 and AC 1 require the pill be NOT focusable and carry a tooltip; UX-DR39 bans hover-only disclosure of unique information and requires focus parity — and a non-focusable element cannot disclose on focus, so the two rules cannot both be satisfied by a `title` alone. The identical shape was caught on the connection pill by the 2026-07-22 accessibility review and repaired by amending UX-DR29 to focusable + `aria-describedby`; the nav pill never got that amendment. **c6-8 repaired it in code** under Brad's Q2 ruling — the pill stays `disabled` (UX-DR28 and UX-DR40's cold-open enumeration are explicit and load-bearing) and the sentence ships as BOTH a `title` and a visually-hidden `aria-describedby` target, so the information is in the accessibility tree and never hover-only in substance. EXPERIENCE.md's nav-pill row was amended in the same commit to record the mechanism and the reason. **What remains is the residue this story cannot fix from inside a story:** UX-DR28 itself, and the epic's AC 1, still say \"tooltip\" as though a pointer affordance were the whole requirement, so the next reader of those rules meets the contradiction again with no pointer to its resolution. **Home: Story 8.3's PRD reconciliation**, which is where peer-artefact disagreements of exactly this shape are collected — the repair is to amend UX-DR28 the way UX-DR29 was amended, naming the dual mechanism, rather than to change any code."
+  summary: "**The artefacts describe the quiet nav pill's copy as a \"tooltip\", singular, and that is a contradiction the system has already repaired once in the other direction.** UX-DR28 and AC 1 require the pill be NOT focusable and carry a tooltip; UX-DR39 bans hover-only disclosure of unique information and requires focus parity — and a non-focusable element cannot disclose on focus, so the two rules cannot both be satisfied by a `title` alone. The identical shape was caught on the connection pill by the 2026-07-22 accessibility review and repaired by amending UX-DR29 to focusable + `aria-describedby`; the nav pill never got that amendment. **c6-8 repaired it in code** under Brad's Q2 ruling — the pill stays `disabled` (UX-DR28 and UX-DR40's cold-open enumeration are explicit and load-bearing) and the sentence ships as BOTH a `title` and a visually-hidden `aria-describedby` target, so the information is in the accessibility tree and never hover-only in substance. EXPERIENCE.md's nav-pill row was amended in the same commit to record the mechanism and the reason. **What remains is the residue this story cannot fix from inside a story:** UX-DR28 itself, and the epic's AC 1, still say \"tooltip\" as though a pointer affordance were the whole requirement, so the next reader of those rules meets the contradiction again with no pointer to its resolution. ~~**Home: Story 8.3's PRD reconciliation**, which is where peer-artefact disagreements of exactly this shape are collected — the repair is to amend UX-DR28 the way UX-DR29 was amended, naming the dual mechanism, rather than to change any code.~~ **CLOSED by story 15-3, 2026-08-18, exactly as prescribed** (Story 8.3 was renumbered 15-3). UX-DR28 in `epics-companion-app.md` now states that the quiet pill's sentence ships as a `title` **and** a visually-hidden `aria-describedby` target, that the pill deliberately stays `disabled` because UX-DR28's own non-focusability and UX-DR40's cold-open Tab enumeration are load-bearing, and that this is the repair UX-DR29 already received for the connection pill. The epic's c6-8 AC 1 carried the same stale \"the tooltip\" and was amended in the same commit. No code changed; the rule now describes what c6-8 shipped."
   evidence: '`review-accessibility.md:32` (the connection-pill repair this mirrors); UX-DR28 (`epics-companion-app.md:492`), UX-DR39 (`:585`), UX-DR29; the shipped dual mechanism in `ui/src/containers/AgentViewsNav/AgentViewsNav.tsx` and its reasoning in that directory''s `copy.ts`; the amended nav-pill row in `EXPERIENCE.md`, gated by `ui/tests/agent-views-nav-copy.test.ts` (which asserts the row still carries both the UX-DR39 clause and the "programmatic description" wording, so the reason cannot be quietly dropped).'
 
 - source_spec: `_bmad-output/implementation-artifacts/c6-8-agent-views-nav-unread-markers-re-open-and-kind-switching.md`
@@ -1646,13 +1646,26 @@ the gate-output rule rather than left as "we meant to".
   assertion kept passing. The epic's Story 2.6 block and UX-DR8 both say plain "32px" and needed
   no change; DESIGN.md is the only artefact still naming the scale step.
 
-  Left alone deliberately — DESIGN.md is the UX artefact, not an implementation record, and
+  ~~Left alone deliberately — DESIGN.md is the UX artefact, not an implementation record, and
   nothing renders differently since both values are 32px. **Homed against Story 8.3**, which
   already owns folding implementation-surfaced corrections back into the planning artefacts (it
   carries the six spine gaps and the EXPERIENCE.md "unconfirmed" stamps). The fix is one word,
   and the reason to make it is that the next component to reach for a "window frame" distance
-  should find one name, not two. (Severity: Low — cosmetic today, a real trap only if the
-  gutter is ever retuned.)
+  should find one name, not two.~~ **CLOSED by story 15-3, 2026-08-18** (Story 8.3 was renumbered
+  15-3). **Three** sites, not the one the entry named and not the two the first pass found (review
+  2026-08-18): the frontmatter token `components.agent-view.inset` is now `'{spacing.gutter}'` with
+  the reasoning beside it; the `empty-push-line.container` comment 120 lines below it, which cites
+  the shell's token in passing, was corrected with it — a comment left naming the old token is the
+  same two-names-for-one-distance trap in miniature; and the Layout & Spacing prose reads *"inset by `{spacing.gutter}` — the same token that frames the
+  window, because the overlay's inset must coincide with the shell's own frame rather than merely
+  equal it today"*. The shipped `var(--space-gutter)` is unchanged and nothing renders differently;
+  what changed is that there is now one name for the distance. No test read either site (verified:
+  `ui/tests/tokens.test.ts` derives its inventory from the `colors`/`rounded`/`spacing` blocks and
+  hand-lists only the composite shadows, and nothing reads
+  `design.components['agent-view']`). (Severity: Low — cosmetic today, a real trap only if the
+  gutter is ever retuned.) Two `ui/tests` comments describing DESIGN.md as "the one artefact
+  still saying `{spacing.6}`" were updated in the same commit; three `ui/src` comments quoting the
+  old wording were not, and are recorded as residue under story 15-3 below.
 
 ## Deferred from: c2-7 — presentation-only primitives (2026-07-29)
 
@@ -6352,6 +6365,23 @@ Also executed or re-homed at this retro, beyond the seven:
 - source_spec: `_bmad-output/implementation-artifacts/spec-15-2-image-cache-stewardship-documented-location-inspection-and-removal.md`
   summary: The README's footprint figures (~90 KB per tile, 8.5 MB per deck, ~95 MB per library)
     are pinned by nothing and age with the corpus.
+    **PARTIALLY CLOSED by story 15-3, 2026-08-18 — the planning-artefact half only.** This entry's
+    second clause was that *"the epic (`epics-companion-app.md:294,888,1846,3329`) still carries
+    the superseded ~12 MB with no annotation"*. All four now read the measured 8.5 MB, with the
+    ~12 MB labelled as the disproved arithmetic estimate and the C3 retrospective cited once in
+    full under AD-11 and by pointer at the other three; the two acceptance criteria among them
+    (Story 10.6 and Story 15.2's own) are still well-formed Given/When/Then. **Two further sites
+    the 15-2 spec did not know about were found and corrected with them**: `ARCHITECTURE-SPINE.md`
+    (the source all four epic copies were taken from, flagged four times from `c4-12` without
+    action) and `walkthrough.html` (the HTML projection of that same spine line — a rendered
+    projection disagreeing with its source is how the figure spread in the first place).
+    `README.md` deliberately keeps ~12 MB as a labelled superseded estimate and IS gated:
+    `test_image_cache_docs.py:412` asserts the literal `12 MB` and the word `estimate` are both
+    present. **`ui/README.md` is NOT gated by anything** — that guard reads `REPO_ROOT/"README.md"`
+    and nothing else — and story 15-3 corrected two misattributions in it by hand (it credited the
+    superseded figure to the epic in the present tense, which the correction made false).
+    **What stays open is this entry's first clause, unchanged**: the measured figures are pinned by
+    nothing, in `README.md`, in `ui/README.md` or in any planning artefact.
   evidence: Every other load-bearing claim in the new README section is keyed on a shipped symbol —
     `images.CACHE_DIRECTORY_NAME`, `images._cache_path`, `images.cache_root`,
     `singleton.LOCK_FILENAME`, `discovery.COMPANION_FILENAME`,
@@ -6364,3 +6394,83 @@ Also executed or re-homed at this retro, beyond the seven:
     art or the library grows. **Home: unowned.** Forcing function: a re-measurement (the natural
     trigger is any future story that touches the image route's storage, or a user reporting a
     footprint far from the documented one).
+
+## Deferred from: story 15-3 (reconcile the PRD with what was built, 2026-08-18)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-3-reconcile-the-prd-with-what-was-built.md`
+  summary: The new drift guard gates the PRD and only the PRD. Every other artefact this story
+    amended — the addendum, the epic, the architecture spine, its HTML projection — is still gated
+    by nothing.
+  evidence: `tests/unit/companion/test_prd_reconciliation.py` keys the PRD's closed sets on
+    `get_args(contracts.ErrorReason)`, `get_args(contracts.EventKind)` and
+    `SetActiveDeckResult.status`, and its route assertion on `build_app().openapi()`, so a rename
+    or an added member reds. `grep -rln "planning-artifacts" tests/ scripts/` returns that module
+    and `test_openapi_contract.py` and nothing else; the frontend suite reads `EXPERIENCE.md`,
+    `DESIGN.md` and (for one row) `epics-companion-app.md`, but nothing reads the addendum, the
+    spine or `walkthrough.html`. This is the mechanism that let the ~12 MB figure spread from
+    `ARCHITECTURE-SPINE.md:269` into four epic sites and one HTML projection over sixteen days, and
+    it is unchanged for those files — only the PRD is now watched. Extending the guard is cheap for
+    the spine (it names shipped constants) and expensive for the epic (5,000 lines of prose with no
+    stable anchors). **Home: unowned.** Forcing function: the next figure or token that drifts in a
+    document this guard cannot see.
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-3-reconcile-the-prd-with-what-was-built.md`
+  summary: The retired-claim scan is literal, so a paraphrase of a retired claim would pass.
+  evidence: `test_the_retired_claims_are_gone` bans the strings `mode=ro` and
+    `~/.artificial-planeswalker` anywhere in the PRD, which is why the amendments describe both in
+    words ("the read-only **connection-string** recipe this row used to specify", "the
+    home-directory dotfolder this row used to name") rather than reproducing the spelling. A future
+    edit that reintroduced the *claim* under a different spelling — `file:…?immutable=1`, a per-OS
+    dotfolder path written out in full — would not be caught. FR-04's driver is the one claim
+    checked structurally instead of literally, because `layout` legitimately appears in that row.
+    The module's docstring declares this. **Home: unowned.** Forcing function: a reviewer noticing a
+    paraphrase, which is the same mechanism that found these three.
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-3-reconcile-the-prd-with-what-was-built.md`
+  summary: `docs/companion-app-feature-brief.md:104` still names the `mode=ro` recipe, deliberately
+    and by ruling.
+  evidence: Declared residue in this story's spec rather than an oversight: the feature brief is a
+    pre-PRD intake draft that the PRD supersedes, and correcting an input artefact rewrites history
+    instead of reconciling requirements. A reader who reaches it out of order will meet the
+    retired claim with no pointer to NFR-02's amendment. The cheap repair, if it is ever wanted, is
+    a one-line superseded-by banner at the top of the brief rather than an edit to the line.
+    **Home: unowned.** Forcing function: someone reading the brief as though it were current.
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-3-reconcile-the-prd-with-what-was-built.md`
+  summary: Three shipped source comments announce that this PRD amendment is owed and were not
+    discharged, because they live under `src/` and `ui/src/` — which this story's own contract
+    forbids it to touch.
+  evidence: '`src/companion/app/deps.py:36` ends *"The PRD amendment is c8-3''s"*; NFR-02 is now
+    amended, so the sentence is spent and should read as discharged rather than as an open promise.
+    `src/companion/contracts.py:365` says *"Story 8.3''s amendment list currently omits
+    ``GET /api/session``"* — that is **discharged in fact**: `/api/session` is named in NFR-01 and
+    is now covered by the route-parity assertion in
+    `tests/unit/companion/test_prd_reconciliation.py`, which compares the PRD''s documented paths
+    against the whole shipped route table, WebSocket routes included.
+    `ui/src/containers/AgentViewsNav/copy.ts:63` says the artefacts *"still describe this as
+    tooltip, singular"*; UX-DR28, the c6-8 acceptance criterion and `EXPERIENCE.md:131` were all
+    amended on 2026-08-18, so that sentence is now false. None was edited: this story ships no diff
+    under `src/`, `ui/src/` or `plugin/`, and `ui/src` in particular risks the committed SPA bundle.
+    **Home: unowned**, and cheap — three comment edits in any story that already touches those
+    files. Forcing function: a reader acting on a promise that has already been kept.'
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-3-reconcile-the-prd-with-what-was-built.md`
+  summary: Three `ui/src` comments still quote DESIGN.md as saying `{spacing.6}` for the
+    agent-view overlay inset, which it no longer does.
+  evidence: '`ui/src/components/AppShell/AppShell.css:270` (*"the 32px of UX-DR8''s inset by
+    {spacing.6}"*), `ui/src/containers/AgentView/AgentView.tsx:41` and
+    `ui/src/containers/AgentView/AgentView.css:17` (*"DESIGN.md''s own component row reads the same
+    way: scrim with backdrop, inset {spacing.6}"*) all quote the pre-15-3 wording. The two
+    equivalents under `ui/tests` were updated in this story''s commit; these three were not, for the
+    same `ui/src` prohibition as the entry above. Nothing renders differently — both tokens are 32px
+    and the CSS already uses `var(--space-gutter)` — so this is a citation that has gone stale, not
+    a defect. **Home: unowned.** Forcing function: any story that edits the agent-view shell.'
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-3-reconcile-the-prd-with-what-was-built.md`
+  summary: '"Story 8.3" is an ID COLLISION: code comments pointing there now resolve to a live,
+    unrelated story.'
+  evidence: 'This story was written as `c8-3` / "Story 8.3" and was renumbered to 15-3 (see
+    `sprint-status.yaml`). `epics-companion-app.md:1082` is a *different*, live
+    **Story 8.3: Port selection with ephemeral fallback and a printed launch URL**, so every comment
+    that says "Story 8.3''s PRD reconciliation" — `src/companion/contracts.py:365`,
+    `ui/src/containers/AgentViewsNav/copy.ts:63`, and previously two `ui/tests` comments and two
+    `deferred-work.md` entries — sends a reader to the wrong story. The `deferred-work.md` and
+    `ui/tests` occurrences were annotated with the renumbering in this story''s commit; the `src/`
+    and `ui/src/` ones could not be. This is worse than a stale pointer: it resolves, plausibly, to
+    the wrong place. **Home: unowned**, and it rides along with the entry above. Forcing function: a
+    reader following one of those pointers.'
