@@ -239,6 +239,114 @@ combo data. Until imported, deck power assessment degrades gracefully
 (`combo_data_unavailable`) instead of erroring. Combo data is provided by
 [Commander Spellbook](https://commanderspellbook.com) via their public bulk export.
 
+### Image cache (companion app)
+
+The companion app stores every card image it fetches from Scryfall on disk, so a deck you have
+already viewed repaints without touching the network. It is **one directory** inside the data
+directory described above:
+
+```
+<data dir>/image_cache/
+```
+
+The per-OS default is the one in the table under [Where the data lives](#where-the-data-lives), and
+the location follows `PLANESWALKER_DATA_DIR` — set that variable and the cache moves with everything
+else. It cannot be moved on its own: there is one data directory and the cache is inside it. Only
+the companion app reads or writes it; the MCP server never touches it.
+
+**Layout.** One file per card id + rendition + face:
+
+```
+image_cache/<first two characters of the card id>/<card id>/<size>_<face>.<ext>
+```
+
+for example `image_cache/81/813d0434-8e0f-4b0a-9c7e-1f2a3b4c5d6e/normal_0.jpg`. Card ids are
+uuids, so the two-character shard splits the corpus evenly: all 256 shards are used, at roughly
+150 cards each, instead of ~38,000 card directories side by side in one flat directory.
+
+**Inspect it.** Both blocks resolve the path through the app's own code, so they are correct on
+every OS and under a `PLANESWALKER_DATA_DIR` override — you never have to know where your data
+directory is. **Run them from the project directory** (they use `uv run`, so they need the checkout
+and its environment); if you have already deleted the checkout, use the per-OS path from the table
+above and append `image_cache`. Resolving the path creates the data directory if it does not exist
+yet, and a "no such file or directory" from `du` simply means nothing has been cached yet:
+
+```bash
+CACHE=$(uv run python -c "from src import paths; print(paths.data_dir() / 'image_cache')")
+echo "$CACHE"                     # where it is
+du -sh "$CACHE"                   # how big it is
+find "$CACHE" -type f | wc -l     # how many images
+```
+
+```powershell
+$Cache = uv run python -c "from src import paths; print(paths.data_dir() / 'image_cache')"
+$Cache
+Get-ChildItem -Recurse -File $Cache | Measure-Object -Property Length -Sum
+```
+
+**Clear it.**
+
+```bash
+CACHE=$(uv run python -c "from src import paths; print(paths.data_dir() / 'image_cache')")
+rm -rf "$CACHE"
+```
+
+```powershell
+$Cache = uv run python -c "from src import paths; print(paths.data_dir() / 'image_cache')"
+Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $Cache
+```
+
+Clearing costs nothing but bandwidth: the next time you open a deck its art is fetched again, paced
+at ten images a second, so a 100-card deck takes roughly ten seconds and needs a working connection.
+
+**Nothing is ever evicted.** There is no TTL, no size cap, no index, no cleanup pass and no setting
+that turns caching off — the cache only grows, until you delete it. **Measured** on 2026-08-02 by
+fetching a real 99-card deck through the app's own image route against the real Scryfall CDN: about
+**90 KB** per tile at the grid's `normal` size and **8.5 MB** for the whole 99-tile deck (the two
+were measured separately, so they do not divide exactly). At that rate a library of ~1,000 distinct
+printings comes to roughly **95 MB**. An earlier **arithmetic estimate** of *roughly 12 MB per
+100-card deck* circulated while the feature was being built; it assumed ~124 KB per tile, which the
+measurement put at ~90 KB — **38 % smaller per tile**, and 8.5 MB rather than 12 MB per deck. The
+measured figures are the ones to plan against, and both are quoted here so the two numbers are not
+left to disagree in silence. If an eviction policy is ever added, it will be sized against a
+measurement like this one rather than guessed.
+
+**A data refresh does not invalidate it, deliberately.** An entry is keyed on card id + size + face
+and **not** on the image URL, so re-importing card data that changes a card's `image_uris` keeps
+serving the picture already on disk. That staleness is accepted behaviour rather than an oversight:
+keying on the URL would turn every data refresh into a total cache miss for artwork that almost
+never changes. The remedy is to delete the directory with the command above. Served images are also
+stamped `immutable` for a year, so a browser tab that is already open may hold its own copy —
+reload it after clearing.
+
+**Safe to delete at any time**, running app or not: every entry is reconstructible by refetching it,
+nothing indexes the directory, and no other feature reads it. The wholesale delete also removes any
+`*.tmp` write debris that a hard kill or a power cut stranded mid-write — nothing sweeps for those,
+and this is the intended remedy.
+
+**What an uninstall leaves behind.** Deleting the checkout does not touch the data directory. Left
+there:
+
+* `image_cache/` — always, with everything it had cached.
+* `companion.lock` — always, and **deliberately**. It is a zero-byte file the app never deletes,
+  because on macOS and Linux the lock attaches to the file's inode: unlinking and recreating it
+  would let two companions each believe they hold the single-instance lock. The app leaving it
+  behind is correct, and deleting it out from under a running app is a correctness bug.
+* `companion.json` — only if the app did not exit cleanly. A clean shutdown removes it; a crash or
+  a kill leaves a stale one, which the next launch reads as "not running" rather than as an error.
+
+The same directory also holds `cards.db` and `fastembed_cache/` (the semantic index's model files),
+both typically larger than the image cache, so deleting the data directory itself — the per-OS path
+in the table above — removes everything this project ever wrote, including the three files listed
+here. That is the one step to take after deleting the checkout.
+
+**Two ways the cache switches itself off, both harmless.** If the cache directory cannot be created
+at startup — an antivirus scanner briefly holding the data directory, say — the companion logs one
+warning and runs with caching disabled for that process. And if five *consecutive* writes fail
+afterwards, it says so once and stops writing for the rest of that process. In both cases every
+image is still served and everything already cached is still read: you lose caching, never
+pictures. There is no automatic retry, by design — **restarting the app** is the remedy.
+
 ## Development
 
 ```bash
