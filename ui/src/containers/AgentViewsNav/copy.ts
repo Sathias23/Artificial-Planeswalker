@@ -59,8 +59,10 @@ export const NAV_GROUP_LABEL = 'Agent views'
  * pointer, and a visually-hidden element referenced by `aria-describedby` for the accessibility
  * tree, where a browse-mode reader meets the disabled button and is told why it is disabled.
  *
- * The residual is filed rather than hidden: the artefacts still describe this as *"tooltip"*,
- * singular, and Story 8.3's PRD reconciliation should see `deferred-work.md`'s entry for it.
+ * The residual is closed: the artefacts described this as *"tooltip"*, singular, and story 15.3
+ * amended UX-DR28 on 2026-08-18 to name this dual mechanism. (Filed here as "Story 8.3" until
+ * then — the story was `c8-3`, and `c8` renumbered to Epic 15, not Epic 8; Story 8.3 is a live,
+ * unrelated story about port selection.)
  *
  * *"Your agent"* rather than *"the agent"* — the artefact's word, and the same second-person
  * register UX-DR33's voice rules ask for everywhere else on the glass.

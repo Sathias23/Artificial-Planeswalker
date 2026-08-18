@@ -6473,4 +6473,20 @@ Also executed or re-homed at this retro, beyond the seven:
     `ui/tests` occurrences were annotated with the renumbering in this story''s commit; the `src/`
     and `ui/src/` ones could not be. This is worse than a stale pointer: it resolves, plausibly, to
     the wrong place. **Home: unowned**, and it rides along with the entry above. Forcing function: a
-    reader following one of those pointers.'
+    reader following one of those pointers.
+
+
+    **CLOSED 2026-08-18, after story 15-3 merged (PR #87).** All four live pointers were corrected
+    in a follow-up commit on `feat/companion-epic-15`: `src/companion/contracts.py` (the
+    `/api/session` note, which was also FALSE by then — 15.3 recorded that path against NFR-01 and
+    the route-parity guard now asserts it) and its AD-6 note ("owed at Epic 8" — the same
+    mis-mapping, and the spine amendment had in fact been made), `src/companion/app/deps.py` (the
+    `mode=ro` amendment, now discharged), and `ui/src/containers/AgentViewsNav/copy.ts` (UX-DR28,
+    now amended). Each rewrite names the renumbering explicitly — `c8` became **Epic 15**, not
+    Epic 8 — so a reader of the old prose can decode it rather than following it. The `ui/src`
+    prohibition that blocked this in-story did not apply once 15-3 was merged; the SPA bundle was
+    rebuilt and is byte-identical (the comment is stripped), and the plugin mirror was regenerated.
+    **Deliberately NOT rewritten:** the historical records — the c2-6, c6-8 and c1-3 story specs,
+    the C6 retro, and `sprint-status.yaml`'s dated `Previously —` lines. The 2026-08-16 renumbering
+    note rules that historical prose keeps its original ids, and editing a dated record to say
+    something it did not say is the drift this ledger exists to prevent.'

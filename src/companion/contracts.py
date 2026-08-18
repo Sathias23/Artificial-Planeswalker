@@ -362,8 +362,11 @@ class SessionTicket(BaseModel):
 
             The remaining lifetime is deliberately **not** published (c5-2, Q4, Brad 2026-08-08).
             A client mints per attempt and never inspects the TTL, so a field would be a wire
-            commitment with no consumer — and Story 8.3's amendment list currently omits
-            ``GET /api/session`` precisely because NFR-01 names the endpoint and nothing else.
+            commitment with no consumer. Story 15.3's amendment list once omitted
+            ``GET /api/session`` because NFR-01 named the endpoint and nothing else; that story
+            recorded the path against NFR-01, and its route-parity guard now asserts it both ways.
+            (Written as "Story 8.3" until 2026-08-18: this story was ``c8-3``, and ``c8`` renumbered
+            to **Epic 15**, not Epic 8 — Story 8.3 is a live, unrelated story about port selection.)
             This paragraph sits below the header on purpose: it is repo-internal reasoning, and
             ``main._DOCSTRING_SECTIONS`` truncates it off the wire. The concrete number stays out
             of the paragraphs *above* for the same reason — they ship verbatim as the schema
@@ -560,8 +563,10 @@ EventKind = Literal[
 
 **Six, not five.** AD-6 and the epic's own Contracts section both still enumerate five, naming only
 ``deck_changed``; Story 5.1's acceptance criteria add ``active_deck_changed`` with its
-justification, and being both later and more specific it wins. The spine amendment is already
-tracked as owed at Epic 8 — this is a recorded supersession, not a drift to be "restored".
+justification, and being both later and more specific it wins. **The spine amendment was made by
+story 15.3 on 2026-08-18**: ``ARCHITECTURE-SPINE.md``'s AD-6 now enumerates all six. This is a
+recorded supersession, not a drift to be "restored". (This note said the amendment was "owed at
+Epic 8" — a mis-mapping: the story was ``c8-3`` and ``c8`` renumbered to **Epic 15**.)
 
 The first four are **agent pushes**, each carrying a rendered view. The last two are **system
 signals**: no view, no items, just "something changed, refetch" (NFR-04).

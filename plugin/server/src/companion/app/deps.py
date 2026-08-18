@@ -33,7 +33,9 @@ c10-3, which owns latency hardening).
 **Why there is no ``mode=ro``.** PRD NFR-02 names it; AD-2 deliberately overrides it. ``mode=ro``
 drags in the WAL ``-shm`` Windows landmine and ``immutable`` would foreclose FR-16. Read-only is
 enforced structurally instead, by ``tests/unit/companion/test_import_boundary.py`` — nothing under
-``src/companion`` can reach a write path. The PRD amendment is c8-3's.
+``src/companion`` can reach a write path. **The PRD amendment was made by story 15.3 on
+2026-08-18** — NFR-02 now names this test as the enforcement and no longer names ``mode=ro``, and
+``tests/unit/companion/test_prd_reconciliation.py`` bans the spelling from returning.
 
 The exception→token mapping lives next door in :mod:`src.companion.app.errors`
 (:func:`~src.companion.app.errors.install_error_handling`), not here: that module is already the one
