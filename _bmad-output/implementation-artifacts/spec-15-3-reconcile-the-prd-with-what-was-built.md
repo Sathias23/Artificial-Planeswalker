@@ -485,8 +485,12 @@ carries it too but is generated and is deliberately left to recompile.
 - `uv run python -m scripts.probe_harness --expect-green` -- expected: full suite green; record the
   collected count from the proof line. **This is the `EXPERIENCE.md` safety check** — if the narrow
   edit strayed onto a parsed line, a copy guard reds here.
-- `cd ui && npm test` -- expected: green. The seventeen artefact-reading guards are frontend tests
-  and do not run under the Python harness.
+- `cd ui && npm run lint && npm run format:check && npm run typecheck && npm test` -- expected: all
+  green. The seventeen artefact-reading guards are frontend tests and do not run under the Python
+  harness. **Run all four, not just `npm test`** — CI's ui lane is these four commands in this order
+  (`.github/workflows/ci.yml:128-137`), and any edit to a markdown file under `ui/` is Prettier's
+  business: changing one table cell's width re-pads the whole table, so `npm test` passes while
+  `format:check` fails. This story shipped that exact red to CI on its first push.
 - `uv run python -m scripts.probe_harness --expect-red '<the new guard's node id>'` after
   reintroducing `mode=ro` into the PRD -- expected: RED for that node id and no other. Revert;
   check with `git diff --exit-code` on the PRD.
