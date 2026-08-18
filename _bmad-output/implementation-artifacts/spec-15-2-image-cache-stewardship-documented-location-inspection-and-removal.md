@@ -3,13 +3,59 @@ title: 'Image cache stewardship — documented location, inspection and removal'
 type: 'chore'
 created: '2026-08-18'
 baseline_revision: '6aa37f368972db9f380ded004b32a30e09488a9f'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-15-context.md'
 warnings: ['oversized']
-deferred: []
+deferred:
+  - summary: >-
+      The documented inspect/clear commands need the checkout and its environment (`uv run`), so
+      they cannot be run in the post-uninstall case the same section documents.
+    evidence: |-
+      Measured at review, 2026-08-18: `cd /tmp && uv run python -c "from src import paths; ..."`
+      fails with `ModuleNotFoundError: No module named 'src'`. The README now states the
+      precondition and points a post-uninstall reader at the per-OS path in the data-dir table
+      instead, but a first-class command that works without the checkout would need a console
+      entry point — Story 15.4 owns the console-script documentation, and no AC here asks for one.
+    location: >-
+      README.md:266
+    severity: low
+  - summary: >-
+      "Safe to delete at any time, running app or not" is the one operational claim in the section
+      with no test behind it.
+    evidence: |-
+      It holds because `_write_atomically` re-creates the shard directory
+      (`src/companion/app/images.py:1023`, `mkdir(parents=True, exist_ok=True)`), so a root deleted
+      under a live process is rebuilt on the next write. Proving it needs a delete-while-running
+      exercise against a live cache, which is a behavioural test of `DiskCache` rather than of this
+      story's prose. If that mkdir ever moves, the README claim goes stale silently.
+    location: >-
+      README.md:313
+    severity: low
+  - summary: >-
+      The PowerShell blocks are never executed by any suite, on any platform.
+    evidence: |-
+      This project's CI runs Linux and Windows lanes but no `pwsh`; the guard executes only the
+      Python payload, which is byte-identical across both blocks. `$Cache = …`, `Get-ChildItem`,
+      `Measure-Object` and `Remove-Item -Recurse -Force -ErrorAction SilentlyContinue` are
+      reviewer-verified only. Also recorded in `deferred-work.md` under `## Deferred from: story
+      15-2`.
+    location: >-
+      README.md:277
+    severity: low
+  - summary: >-
+      The measured footprint figures are pinned by nothing, in the README or in the epic.
+    evidence: |-
+      ~90 KB per tile, 8.5 MB per deck and ~95 MB per library are C3-retrospective measurements
+      with no constant to key on; the guard asserts only that they are present and labelled
+      measured. The epic (`epics-companion-app.md:294,888,1846,3329`) still carries the superseded
+      ~12 MB with no annotation — reconciling requirement documents with what was built is Story
+      15.3's scope, not this one's.
+    location: >-
+      _bmad-output/planning-artifacts/epics-companion-app.md:3329
+    severity: low
 ---
 
 <intent-contract>
@@ -389,6 +435,86 @@ back to 11 passed.
 
 ## Review Triage Log
 
+### 2026-08-18 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 19: (high 0, medium 6, low 13)
+- defer: 4: (high 0, medium 0, low 4)
+- reject: 9: (high 0, medium 0, low 9)
+- addressed_findings:
+  - `[medium]` `[patch]` P1 — **the clear command's target was never tied to the verified path.**
+    Measured by a reviewer: rewriting `rm -rf "$CACHE"` to `rm -rf ~/.cache/planeswalker-images`,
+    leaving the correct one-liner above it untouched, kept all eleven guards green — the payload
+    test still passed (the payload was right) and the block test still passed (`rm -rf` was
+    present). `test_each_clear_command_deletes_the_path_its_own_block_resolved` now captures each
+    block's assignment target and asserts the deletion argument dereferences that same name, on
+    both platforms.
+  - `[medium]` `[patch]` P2 — `_extract_section` terminated only on `## `/`### ` and ignored fenced
+    blocks, so a `#### ` sub-subsection would extend the section into prose it does not own and a
+    `### ` line inside a shell block would truncate it. Now any ATX level, fence-aware, with both
+    rules tested rather than asserted in prose, plus a duplicate-heading assertion.
+  - `[medium]` `[patch]` P3 — `_documented_one_liners` matched `python -c "…"` anywhere in the
+    section, including prose, and `_run` `exec`s what it returns. Extraction is now restricted to
+    fenced-block bodies and every payload must start with `from src import paths`, so a future
+    documented command that reached for `shutil.rmtree` could not be executed by the suite.
+  - `[medium]` `[patch]` P4 — the commands need the checkout and `uv` (`ModuleNotFoundError` when
+    run from `/tmp`), which collided with the section's own "deleting the checkout does not touch
+    the data directory". The precondition is stated, and the post-uninstall reader is pointed at
+    the per-OS path in the data-dir table and told that deleting that directory is the one step
+    that removes everything.
+  - `[medium]` `[patch]` P5 — the footprint arithmetic did not close: 8.5 MB ÷ 99 ≈ 86 KB against
+    the 90 KB quoted beside it, and "38 %" was the per-tile ratio attached to a sentence about the
+    per-deck figure. Both numbers are now stated as separate measurements, and the 38 % names the
+    comparison it is of.
+  - `[medium]` `[patch]` P6 — closing the unbounded-cache ledger entry retired the *eviction*
+    question with it: the two lifecycle entries are about the cache disabling itself, not about
+    size, so nothing owned "should this ever be bounded, now that we have a measurement". Split
+    into its own open entry with a forcing function.
+  - `[low]` `[patch]` P7 — `_NUMBER_WORDS[limit]` raised `KeyError` for a limit outside 1-6,
+    swallowing the message it exists to print; `.get` with a numeric fallback, as its sibling
+    already did.
+  - `[low]` `[patch]` P8 — `_run` was called twice on failure, so the message could disagree with
+    the value tested.
+  - `[low]` `[patch]` P9 — a flattened `_cache_path` would `IndexError` on `parts[1]` instead of
+    failing by name.
+  - `[low]` `[patch]` P10 — an unterminated fence silently dropped its block, so a missing-block
+    failure would have named the wrong cause.
+  - `[low]` `[patch]` P11 — `Remove-Item` errored on a not-yet-created cache where `rm -rf` does
+    not; `-ErrorAction SilentlyContinue`, plus a line saying "no such file" means nothing has been
+    cached yet.
+  - `[low]` `[patch]` P12 — resolving the path creates the data directory as a side effect; said
+    so rather than letting an inspect command surprise the reader.
+  - `[low]` `[patch]` P13 — "this project's entire 40-deck, 1,061-distinct-card library" is a
+    private referent in a public README; reframed as "a library of ~1,000 distinct printings".
+  - `[low]` `[patch]` P14 — the section quantified disk but never the cost of getting the bytes
+    back; clearing now states the re-fetch (~10 s for a 100-card deck, needs a connection).
+  - `[low]` `[patch]` P15 — "documented choice" was incomplete without saying there is no opt-out,
+    no size cap setting, and no way to relocate `image_cache/` on its own.
+  - `[low]` `[patch]` P16 — "the table at the top of this section" is ambiguous read from inside a
+    subsection that contains no table; now an explicit link to *Where the data lives*.
+  - `[low]` `[patch]` P17 — both ledger closures struck a mid-paragraph `Home:` line rather than
+    the entry headline, so the entries still read as open to a headline scan; matched the file's
+    own closure idiom.
+  - `[low]` `[patch]` P18 — the `epic :3185-3212` citation was dropped from
+    `CACHE_DIRECTORY_NAME`'s docstring when its forward reference was retired; restored beside the
+    README pointer so traceability survives.
+  - `[low]` `[patch]` P19 — the silent-half test hardcoded a neighbouring section's heading
+    (coupling this guard to a title it does not own) and proved extraction bounding only; it now
+    anchors on `SECTION_HEADING` and exercises all three trailing heading levels.
+
+Rejected as noise or as contrary to a standing project ruling (9): guarding the `plugin/` README
+mirror by assertion (CI rebuilds and diffs it — byte-identical by construction); re-homing the two
+lifecycle entries on a named future story (`Home: unowned` with a forcing function is this file's
+own idiom, and inventing an owner is how a ledger acquires fiction); indented fenced blocks
+(nothing in this README indents a fence, and `lstrip` would misparse a fence inside a list);
+merging inspect and clear into one block per platform (a reader still gets both commands); listing
+`cards.db-wal`/`-shm` among the leftovers (the line orients, it is not an inventory); guarding
+`rm -rf ""` when the one-liner fails (it fails safely and loudly); `uv` writing to stdout before
+the path (`uv run` diagnostics go to stderr); the empty `## Review Triage Log` heading (this entry
+fills it); and the companion row at `README.md:28` still reading "(in development)" with no pointer
+to this section — that is Story 15.1's standing deferral, closed by Story 15.4.
+
 ## Design Notes
 
 **Why the measured 8.5 MB and not the epic's 12 MB.** The epic asks for "roughly 12 MB per 100-card
@@ -443,3 +569,97 @@ documenting it here. A leftovers list that omits a file the user will find is no
   this Linux container — say so in the record rather than implying it was run.)
 - Read the section as a first-time user: it must answer "where is it, how big will it get, how do I
   look at it, how do I delete it, and what is left after I uninstall" without following a link.
+
+
+## Auto Run Result
+
+Status: done
+Baseline: `6aa37f3` → this change set, on `claude/hello-7v0acf` (`1616f71` planning, `21c9ac4`
+implementation, plus the review patch commit).
+
+**Summary.** The unbounded image cache is now a documented choice rather than a surprise.
+`README.md`'s *Where the data lives → Image cache (companion app)* section states where the cache
+is (`<data dir>/image_cache/`, following `PLANESWALKER_DATA_DIR`, movable only with the rest of the
+data directory), how it is laid out (two-character shard, `<size>_<face>.<ext>`, with a derived
+example), how to inspect and clear it on both platforms, that nothing is ever evicted and what that
+costs in measured bytes, why a data refresh keeps serving the old picture and how to force a
+refetch, what an uninstall leaves behind, and the two ways the cache switches itself off with the
+restart that fixes them. The prose is not trusted: `tests/unit/companion/test_image_cache_docs.py`
+keys every load-bearing claim on the shipped symbols, executes the README's own path one-liner
+under a data-dir override, and pins each clear command to the path its own block resolved.
+
+**Files changed** (7; `plugin/` is a generated mirror rebuilt by `scripts/build_plugin.py`):
+
+- `README.md` — the new stewardship section (97 lines) under *Where the data lives*.
+- `tests/unit/companion/test_image_cache_docs.py` (new, 13 tests) — the drift guard, with a
+  non-vacuity anchor, fence-aware bounded extraction, an executed payload restricted to fenced
+  blocks of a known shape, the clear-target binding, and declared residue.
+- `src/companion/app/images.py` — docstrings only (proved mechanically by comparing docstring-blanked
+  ASTs): five `c8-2` forward references retired in favour of the shipped README section, the
+  disproved 12 MB / 130 MB figures corrected to the measured 8.5 MB, epic traceability kept.
+- `_bmad-output/implementation-artifacts/deferred-work.md` — two entries closed in the file's own
+  headline-strike idiom, two lifecycle entries re-recorded as disclosed-but-unbuilt with a forcing
+  function, one new entry carrying the still-open eviction question, and a
+  `## Deferred from: story 15-2` section for the two new residues.
+- `_bmad-output/implementation-artifacts/spec-15-2-…md` — this record.
+- `plugin/server/README.md`, `plugin/server/src/companion/app/images.py` — regenerated mirrors.
+
+**Review findings.** Four layers (Blind Hunter, Edge Case Hunter, Verification Gap, Intent
+Alignment). **0 intent gaps, 0 spec defects, 19 patches applied** (6 medium, 13 low), **4 deferred**
+(all low — see frontmatter), **9 rejected**. Two of the six medium findings were measured by a
+reviewer rather than argued: a mis-targeted `rm -rf` beside a correct one-liner left the whole suite
+green, and the documented commands fail with `ModuleNotFoundError` when run from outside the
+checkout — the case the section's own uninstall paragraph describes.
+
+**Follow-up review recommended: true.** Patched this pass: high 0, medium 6, low 13 →
+`3 × 6 + 1 × 13 = 31`, at or above the threshold of 5.
+
+**Verification** (re-run from the patched tree):
+
+- `uv run ruff check . --fix && uv run ruff format .` — All checks passed; 333 files unchanged.
+- `uv run mypy src/` — Success: no issues found in 94 source files.
+- `uv run python -m scripts.probe_harness --expect-green` —
+  `full suite (-m 'not integration'): 3127 collected, 1 failed, 0 errored, exit 1`. The single red
+  is `test_discovery.py::test_reader_returns_none_when_the_file_is_unreadable`, **confirmed failing
+  at the baseline commit itself** in a separate `git worktree` at `6aa37f3`: this container runs as
+  uid 0, so `chmod(0o000)` does not make a file unreadable to root. Not caused by, and not fixable
+  by, this change.
+- **Firing proof 5 (the review's own finding).** `rm -rf "$CACHE"` rewritten to
+  `rm -rf ~/.cache/planeswalker-images`, the one-liner above it untouched:
+  `3127 collected, 2 failed, 0 errored, exit 1` /
+  `RED …::test_each_clear_command_deletes_the_path_its_own_block_resolved` (the other red is the
+  environmental one above). Before the patch this exact plant was **green**. Reverted;
+  `git diff --exit-code README.md` clean.
+- Earlier proofs, re-stated: constant rename → the directory guard RED; README heading rename → all
+  guards RED (non-vacuity); shard width changed → the layout guard RED; PowerShell inspect block
+  deleted → RED only after the block guard was strengthened.
+- `uv run pytest -m integration` — 31 passed, 19 skipped, 2 failed + 3 errors, all five the real
+  embedder / RAG tests failing on `Could not load model BAAI/bge-small-en-v1.5 from any source`
+  (this sandbox's proxy returns 403 for `huggingface.co`). Nothing in this change reaches the
+  search layer.
+- `uv run python -m scripts.build_plugin` — rebuilt; the two mirrors regenerate identically and a
+  re-run after commit leaves `git status --porcelain -- plugin/` empty.
+
+**Matrix test audit.** All six I/O-matrix rows are covered by tests that ran and passed in the green
+run: docs-current by the whole class, directory rename by
+`test_the_documented_directory_is_the_shipped_directory_name` (proved by plant 1), layout change by
+`test_the_documented_layout_is_the_path_the_shipped_code_builds` (plant 3), the override by
+`test_the_documented_command_resolves_the_shipped_cache_root` (behavioural, under
+`isolated_data_dir`), section removal by `test_the_documented_section_exists` (plant 2), and the
+missing-command row by `test_both_platforms_get_a_copy_pasteable_block_for_both_actions` — which is
+the row the audit found **uncovered** before the guard was strengthened, and which now fires (plant
+4).
+
+**Residual risks.**
+
+- The documented commands need the checkout and `uv`. A reader who deleted the checkout is pointed
+  at the per-OS path instead, in words the guard cannot execute.
+- The PowerShell blocks are never run by any suite; their Python payload is byte-identical to the
+  bash one and is executed, the cmdlets around it are reviewer-verified only.
+- The footprint figures have no constant to key on and age with the corpus and with Scryfall's
+  encoder; the guard asserts they are present and labelled measured, not that they are still true.
+- The epic still carries the superseded ~12 MB at four sites — Story 15.3's scope.
+- "Safe to delete at any time, running app or not" rests on `_write_atomically` re-creating the
+  shard directory; nothing exercises delete-while-running.
+- The eviction question stays open and unowned, now in its own ledger entry with a forcing function
+  rather than folded into a closed one.

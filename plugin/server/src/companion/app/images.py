@@ -373,8 +373,9 @@ CACHE_DIRECTORY_NAME = "image_cache"
 
 A **name**, never a resolved path — see :func:`cache_root` for why that distinction is
 load-bearing. The documented location, the inspect/clear commands and the uninstall notes that
-quote it now ship in ``README.md``'s *Where the data lives → Image cache (companion app)* section,
-and ``tests/unit/companion/test_image_cache_docs.py`` reads that prose against **this constant**
+quote it now ship in ``README.md``'s *Where the data lives → Image cache (companion app)* section
+(story 15-2, epic ``:3185-3212``), and ``tests/unit/companion/test_image_cache_docs.py`` reads that
+prose against **this constant**
 rather than against a literal — so renaming the value here without editing the README turns that
 guard red instead of quietly making the documentation wrong. The measured footprint that section
 quotes is recorded on :class:`DiskCache`.

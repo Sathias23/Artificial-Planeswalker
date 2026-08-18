@@ -23,11 +23,18 @@ directory is the one defect in this section that would actually cost a user some
 1. **Only the Python expression is executed.** ``du``, ``find``, ``rm -rf``, ``Get-ChildItem`` and
    ``Remove-Item`` are never run, and the PowerShell block cannot be run on the Linux CI runner at
    all. A typo in the surrounding shell syntax — a lost quote, a wrong flag — is a reviewer's
-   judgement, not this module's.
+   judgement, not this module's. What *is* pinned, after a reviewer measured the hole
+   (2026-08-18), is that each clear block deletes the variable its own verified one-liner assigned:
+   a correct payload beside an ``rm -rf`` aimed somewhere else used to pass. The ``uv run`` wrapper
+   is also stripped, so this module cannot see that the documented commands require the checkout
+   and its environment to be present — the README says so in words instead.
 2. **It reads one section, found by heading.** Prose elsewhere in ``README.md`` (or in any other
-   document) that contradicts this section is invisible here. The heading itself is the non-vacuity
-   anchor: :func:`_extract_section` fails by name rather than returning an empty string, so a
-   removed or renamed section can never let the remaining assertions pass over nothing.
+   document) that contradicts this section is invisible here, and the ``plugin/`` mirror of this
+   file is guarded by CI's rebuild-and-diff rather than by an assertion here. The heading itself is
+   the non-vacuity anchor: :func:`_extract_section` fails by name rather than returning an empty
+   string, so a removed or renamed section can never let the remaining assertions pass over
+   nothing; it is fence-aware and terminates on any ATX level, both of which are tested rather than
+   asserted in prose.
 3. **The footprint figures are pinned by nothing.** ~90 KB per tile, 8.5 MB per deck and ~95 MB per
    library are measurements from the C3 retrospective (2026-08-02) with no constant to key on; they
    age with the corpus and with Scryfall's encoder. This module asserts the numbers are *present
@@ -72,6 +79,27 @@ _NUMBER_WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}
 # so a non-greedy `[^"]*` is exact rather than approximate.
 _ONE_LINER = re.compile(r'python -c "(?P<code>[^"]+)"')
 
+_EXPECTED_PAYLOAD_PREFIX = "from src import paths"
+"""The only payload shape this module ``exec``\\ s — see :func:`_documented_one_liners`."""
+
+# Any ATX heading, at any level: `#` through `######` followed by a space. `##`/`###` alone let a
+# `#### ` sub-subsection extend this section into prose it does not own (review 2026-08-18).
+_ATX_HEADING = re.compile(r"#{1,6} ")
+
+# The shell capture the clear command deletes: `CACHE=$(…)` in bash, `$Cache = …` in PowerShell.
+# The name is captured rather than assumed so the binding test compares what the README actually
+# wrote on both lines, never a name this file expects it to have used.
+_SHELL_ASSIGNMENTS = {
+    "bash": re.compile(r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*)=\$\(.*python -c ", re.MULTILINE),
+    "powershell": re.compile(
+        r"^\$(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*=\s*.*python -c ", re.MULTILINE
+    ),
+}
+_DELETION_ARGUMENTS = {
+    "bash": re.compile(r"rm -rf\s+(?P<target>\S+)"),
+    "powershell": re.compile(r"Remove-Item[^\n]*?\s(?P<target>\$\S+)\s*$", re.MULTILINE),
+}
+
 
 def _read_readme() -> str:
     """Return README.md's text, read from the repository root rather than the working directory."""
@@ -80,11 +108,21 @@ def _read_readme() -> str:
 
 
 def _extract_section(readme: str) -> str:
-    """Return the image-cache section, from its heading to the next heading of any level.
+    """Return the image-cache section, from its heading to the next ATX heading of any level.
 
     **The non-vacuity anchor.** Every assertion in this module reads what this returns, so a
     missing or renamed heading has to fail here, loudly and by name, rather than yield an empty
     string that every substring check would then pass over.
+
+    Two bounding rules the first cut got wrong (review 2026-08-18), both of which decide *which
+    prose the whole module then reads*:
+
+    * The terminator matches **any** ATX level (:data:`_ATX_HEADING`), not only ``##``/``###``. A
+      ``#### `` sub-subsection appended after this section would otherwise be swallowed into it,
+      and every "is this string present" assertion below would start reading someone else's prose.
+    * The scan is **fence-aware**. A ``### `` line inside a fenced block is sample text, not a
+      heading; without this a documented shell comment could truncate the section mid-command and
+      the module would report a missing block that is plainly there.
 
     Args:
         readme: The full text of ``README.md``.
@@ -93,27 +131,61 @@ def _extract_section(readme: str) -> str:
         The section's lines, heading included, joined with newlines.
     """
     lines = readme.splitlines()
-    start = next((i for i, line in enumerate(lines) if line.strip() == SECTION_HEADING), None)
-    assert start is not None, (
+    starts = [i for i, line in enumerate(lines) if line.strip() == SECTION_HEADING]
+    assert starts, (
         f"README.md has no {SECTION_HEADING!r} heading. Every claim this module guards lives in "
         "that section, so its absence fails here rather than passing vacuously on an empty scan. "
         "Restore the heading in README.md, or — if the section was deliberately renamed — update "
         f"SECTION_HEADING in {Path(__file__).name} to match."
     )
-    end = next(
-        (
-            i
-            for i in range(start + 1, len(lines))
-            if lines[i].startswith("## ") or lines[i].startswith("### ")
-        ),
-        len(lines),
+    assert len(starts) == 1, (
+        f"README.md carries {len(starts)} lines reading {SECTION_HEADING!r} (at lines "
+        f"{[i + 1 for i in starts]}). This module would guard only the first, so a second copy is "
+        "an unguarded duplicate rather than a harmless one — delete it, or reword it so it is not "
+        "an exact heading match."
     )
+    start = starts[0]
+    end = len(lines)
+    in_fence = False
+    for i in range(start + 1, len(lines)):
+        if lines[i].startswith("```"):
+            in_fence = not in_fence
+            continue
+        if not in_fence and _ATX_HEADING.match(lines[i]):
+            end = i
+            break
     return "\n".join(lines[start:end])
 
 
 def _documented_one_liners(section: str) -> list[str]:
-    """Return every ``python -c`` payload the section tells a user to run."""
-    return [match.group("code") for match in _ONE_LINER.finditer(section)]
+    """Return every ``python -c`` payload the section tells a user to run, from fenced blocks only.
+
+    **Prose is not executed** (review 2026-08-18). :func:`_run` ``exec``\\ s what this returns, so
+    the extraction surface has to be the fenced blocks a reader would actually paste — never a
+    sentence that happens to contain ``python -c "…"``. Each payload is additionally required to
+    have the shape this section documents (:data:`_EXPECTED_PAYLOAD_PREFIX`), so a future command
+    that reached for ``shutil.rmtree`` could not be run by the test suite on a developer's machine
+    merely by being written down.
+
+    Args:
+        section: The extracted section text.
+
+    Returns:
+        Every ``python -c`` payload found inside a fenced block, in document order.
+    """
+    payloads = [
+        match.group("code")
+        for _language, body in _fenced_blocks(section)
+        for match in _ONE_LINER.finditer(body)
+    ]
+    for code in payloads:
+        assert code.startswith(_EXPECTED_PAYLOAD_PREFIX), (
+            f"the documented one-liner {code!r} is not the path-printing command this guard "
+            f"executes (it must start with {_EXPECTED_PAYLOAD_PREFIX!r}). This module runs what "
+            "the README tells a user to run, so a payload that does anything other than print a "
+            "path must not be executed here — verify it another way."
+        )
+    return payloads
 
 
 def _fenced_blocks(section: str) -> list[tuple[str, str]]:
@@ -141,6 +213,11 @@ def _fenced_blocks(section: str) -> list[tuple[str, str]]:
                 language = None
         elif language is not None:
             body.append(line)
+    assert language is None, (
+        "a fenced block in README's image-cache section is never closed — everything after it "
+        "reads as commentary rather than as a command, so a missing-block failure below would "
+        "name the wrong cause. Close the fence in README.md."
+    )
     return blocks
 
 
@@ -206,6 +283,12 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
             "prose did not — edit the example in README.md."
         )
 
+        assert len(built.parts) >= 3, (
+            "images._cache_path no longer builds a sharded path — it returned "
+            f"{built.as_posix()!r}, "
+            "which has no shard segment to describe. The layout changed shape; rewrite both the "
+            "prose in README.md and this assertion."
+        )
         shard_width = len(built.parts[1])
         shard_word = _NUMBER_WORDS.get(shard_width, str(shard_width))
         assert f"{shard_word}-character shard" in section, (
@@ -231,12 +314,51 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
 
         expected = str(images.cache_root())
         for code in one_liners:
-            assert _run(code) == expected, (
+            printed = _run(code)
+            assert printed == expected, (
                 f"the documented command {code!r} resolves a different directory than the app "
-                f"writes to: it printed {_run(code)!r}, images.cache_root() is {expected!r}. A "
+                f"writes to: it printed {printed!r}, images.cache_root() is {expected!r}. A "
                 "documented deletion command that points elsewhere is the one defect in this "
                 "section that costs a user data — fix README.md."
             )
+
+    def test_each_clear_command_deletes_the_path_its_own_block_resolved(self) -> None:
+        """AC 2: the ``rm -rf`` argument is the variable the *verified* one-liner assigned.
+
+        The gap this closes was measured, not argued (review 2026-08-18): with
+        ``rm -rf "$CACHE"`` rewritten to ``rm -rf ~/.cache/planeswalker-images`` and the correct
+        ``CACHE=$(uv run python -c …)`` line above it untouched, all eleven guards stayed green —
+        the payload test still passed (the payload was still right) and the block test still passed
+        (``rm -rf`` was still present). Nothing tied the verified path to the deleted one, which is
+        precisely the defect this section's own docstring calls the only one that costs a user data.
+        """
+        section = _extract_section(_read_readme())
+        blocks = _fenced_blocks(section)
+
+        for language in ("bash", "powershell"):
+            clearing = [
+                body
+                for spoken, body in blocks
+                if spoken == language and _DELETION_ARGUMENTS[language].search(body)
+            ]
+            assert clearing, f"no ```{language} block deletes anything — see the block test"
+
+            for body in clearing:
+                assignment = _SHELL_ASSIGNMENTS[language].search(body)
+                assert assignment, (
+                    f"the ```{language} clear block deletes a path it never resolved: it carries "
+                    "no `python -c` assignment of its own, so nothing in this suite verifies what "
+                    "it is about to delete. Resolve the path in the same block you delete it from."
+                )
+                target = _DELETION_ARGUMENTS[language].search(body)
+                assert target is not None  # the filter above already matched
+                deleted = target.group("target").strip('"').lstrip("$").rstrip("/")
+                assert deleted == assignment.group("name"), (
+                    f"the ```{language} clear block resolves the cache into "
+                    f"{assignment.group('name')!r} and then deletes {target.group('target')!r} — a "
+                    "verified path and an unverified deletion target. Delete the variable the "
+                    "block just resolved, in README.md."
+                )
 
     def test_both_platforms_get_a_copy_pasteable_block_for_both_actions(self) -> None:
         """AC 2: each platform gets an *inspect* block and a *clear* block, not just one block.
@@ -339,7 +461,10 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
         section = _extract_section(_read_readme())
         lowered = section.lower()
 
-        assert f"{_NUMBER_WORDS[images.DISK_CACHE_WRITE_FAILURE_LIMIT]} *consecutive*" in lowered, (
+        limit = images.DISK_CACHE_WRITE_FAILURE_LIMIT
+        # `.get`, never `[]`: raising the limit past six must fail with the message below, not with
+        # a bare KeyError from the lookup that was supposed to produce that message.
+        assert f"{_NUMBER_WORDS.get(limit, str(limit))} *consecutive*" in lowered, (
             f"DISK_CACHE_WRITE_FAILURE_LIMIT is {images.DISK_CACHE_WRITE_FAILURE_LIMIT} but the "
             "section does not say so — edit README.md, or the constant's prose moved without it"
         )
@@ -362,10 +487,11 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
         original = _read_readme()
         section = _extract_section(original)
 
+        # Anchored on the one heading this module owns, never on a neighbouring section's title —
+        # a guard that goes red when someone renames "Semantic search index" is guarding the wrong
+        # thing (review 2026-08-18).
         edited_before = original.replace(
-            "### Semantic search index\n",
-            "### Semantic search index\n\nAn unrelated prose edit somewhere above the cache.\n",
-            1,
+            SECTION_HEADING, "An unrelated prose edit above the cache.\n\n" + SECTION_HEADING, 1
         )
         assert edited_before != original, "the fixture text for this test no longer exists"
         assert _extract_section(edited_before) == section, (
@@ -373,8 +499,41 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
             "bounded at its start"
         )
 
-        edited_after = original + "\n## A brand new trailing section\n\nMore unrelated prose.\n"
-        assert _extract_section(edited_after) == section, (
-            "an edit below the section changed what the guard reads — the extraction is not "
-            "bounded at its end"
+        for trailing in (
+            "\n## A brand new trailing section\n\nMore unrelated prose.\n",
+            # Both ATX levels the first cut did not terminate on: a deeper sub-subsection and a
+            # top-level heading. Either one, unbounded, would pull foreign prose into the section
+            # and let a "the section says X" assertion pass on someone else's sentence.
+            "\n#### A trailing sub-subsection\n\nMore unrelated prose.\n",
+            "\n# A trailing top-level heading\n\nMore unrelated prose.\n",
+        ):
+            assert _extract_section(original + trailing) == section, (
+                f"the trailing block {trailing.splitlines()[1]!r} changed what the guard reads — "
+                "the extraction is not bounded at its end"
+            )
+
+    def test_a_heading_inside_a_fenced_block_does_not_truncate_the_section(self) -> None:
+        """A ``### `` line inside a fence is sample text, and the scan must read it as such.
+
+        Without fence tracking, a documented shell comment (``### step 2``) or any markdown sample
+        would end the section early, and every assertion below it would then fail with a
+        "the section does not say X" message about prose that is plainly there.
+        """
+        original = _read_readme()
+        section = _extract_section(original)
+        planted = original.replace(
+            SECTION_HEADING,
+            SECTION_HEADING + "\n\n```bash\n### this is a shell comment, not a heading\n```",
+            1,
+        )
+
+        extracted = _extract_section(planted)
+
+        assert "### this is a shell comment" in extracted, (
+            "a `###` line inside a fenced block truncated the section — the extraction is not "
+            "fence-aware, so a documented shell comment can hide the rest of the section from "
+            "every assertion in this module"
+        )
+        assert extracted.endswith(section.split("\n", 1)[1]), (
+            "the fenced sample changed where the section ends, not only what it contains"
         )

@@ -249,9 +249,10 @@ directory described above:
 <data dir>/image_cache/
 ```
 
-The per-OS default is the one in the table at the top of this section, and the location follows
-`PLANESWALKER_DATA_DIR` — set that variable and the cache moves with everything else. Only the
-companion app reads or writes it; the MCP server never touches it.
+The per-OS default is the one in the table under [Where the data lives](#where-the-data-lives), and
+the location follows `PLANESWALKER_DATA_DIR` — set that variable and the cache moves with everything
+else. It cannot be moved on its own: there is one data directory and the cache is inside it. Only
+the companion app reads or writes it; the MCP server never touches it.
 
 **Layout.** One file per card id + rendition + face:
 
@@ -265,7 +266,10 @@ uuids, so the two-character shard splits the corpus evenly: all 256 shards are u
 
 **Inspect it.** Both blocks resolve the path through the app's own code, so they are correct on
 every OS and under a `PLANESWALKER_DATA_DIR` override — you never have to know where your data
-directory is:
+directory is. **Run them from the project directory** (they use `uv run`, so they need the checkout
+and its environment); if you have already deleted the checkout, use the per-OS path from the table
+above and append `image_cache`. Resolving the path creates the data directory if it does not exist
+yet, and a "no such file or directory" from `du` simply means nothing has been cached yet:
 
 ```bash
 CACHE=$(uv run python -c "from src import paths; print(paths.data_dir() / 'image_cache')")
@@ -289,18 +293,23 @@ rm -rf "$CACHE"
 
 ```powershell
 $Cache = uv run python -c "from src import paths; print(paths.data_dir() / 'image_cache')"
-Remove-Item -Recurse -Force $Cache
+Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $Cache
 ```
 
-**Nothing is ever evicted.** There is no TTL, no size cap, no index and no cleanup pass — the cache
-only grows, until you delete it. **Measured** on 2026-08-02 by fetching a real 99-card deck through
-the app's own image route against the real Scryfall CDN: about **90 KB** per tile at the grid's
-`normal` size, **8.5 MB** for a 99-tile deck, and about **95 MB** for this project's entire 40-deck,
-1,061-distinct-card library. An earlier **arithmetic estimate** of *roughly 12 MB per 100-card deck*
-(~124 KB per tile) circulated while the feature was being built and turned out to be a 38 %
-overestimate — the measured figures are the ones to plan against, and both are quoted here so the
-two numbers are not left to disagree in silence. If an eviction policy is ever added, it will be
-sized against a measurement like this one rather than guessed.
+Clearing costs nothing but bandwidth: the next time you open a deck its art is fetched again, paced
+at ten images a second, so a 100-card deck takes roughly ten seconds and needs a working connection.
+
+**Nothing is ever evicted.** There is no TTL, no size cap, no index, no cleanup pass and no setting
+that turns caching off — the cache only grows, until you delete it. **Measured** on 2026-08-02 by
+fetching a real 99-card deck through the app's own image route against the real Scryfall CDN: about
+**90 KB** per tile at the grid's `normal` size and **8.5 MB** for the whole 99-tile deck (the two
+were measured separately, so they do not divide exactly). At that rate a library of ~1,000 distinct
+printings comes to roughly **95 MB**. An earlier **arithmetic estimate** of *roughly 12 MB per
+100-card deck* circulated while the feature was being built; it assumed ~124 KB per tile, which the
+measurement put at ~90 KB — **38 % smaller per tile**, and 8.5 MB rather than 12 MB per deck. The
+measured figures are the ones to plan against, and both are quoted here so the two numbers are not
+left to disagree in silence. If an eviction policy is ever added, it will be sized against a
+measurement like this one rather than guessed.
 
 **A data refresh does not invalidate it, deliberately.** An entry is keyed on card id + size + face
 and **not** on the image URL, so re-importing card data that changes a card's `image_uris` keeps
@@ -327,7 +336,9 @@ there:
   a kill leaves a stale one, which the next launch reads as "not running" rather than as an error.
 
 The same directory also holds `cards.db` and `fastembed_cache/` (the semantic index's model files),
-so deleting the data directory itself removes everything this project ever wrote.
+both typically larger than the image cache, so deleting the data directory itself — the per-OS path
+in the table above — removes everything this project ever wrote, including the three files listed
+here. That is the one step to take after deleting the checkout.
 
 **Two ways the cache switches itself off, both harmless.** If the cache directory cannot be created
 at startup — an antivirus scanner briefly holding the data directory, say — the companion logs one

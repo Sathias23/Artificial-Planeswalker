@@ -3437,8 +3437,9 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
 
 ## Deferred from: story c3-7 (the sharded, atomically written disk cache, 2026-08-01)
 
-- **The cache is unbounded: no eviction, no size accounting, no TTL, no index** (AD-11, epic
-  :1768-1770 — deliberate in MVP, and no hook was built for a future one on c3-4's ruling). What
+- ~~**The cache is unbounded: no eviction, no size accounting, no TTL, no index**~~ **DISCLOSED
+  BY 15-2, 2026-08-18 — the eviction question itself stays open, in its own entry below.** (AD-11,
+  epic :1768-1770 — deliberate in MVP, and no hook was built for a future one on c3-4's ruling). What
   15-2 inherits is a **measured footprint rather than a guess**: this user's whole 40-deck library
   is **1,061 distinct card ids**, and a single deck resolves to **67–99** of them; at one size and
   the epic's ~124 KB average that is roughly **130 MB** for the entire library, ~12 MB per deck.
@@ -3456,6 +3457,18 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   constants and executes the documented one-liner, so the prose cannot outlive the code. **No
   mechanism was built and none was in scope** — see the two lifecycle entries below, which stay
   open. (Severity: Low — a disclosure and stewardship gap, not a defect.)
+
+- **Whether the cache should ever be bounded is still unanswered — only the disclosure closed.**
+  Split out at 15-2's review (2026-08-18) because closing the entry above on its documentation half
+  would otherwise have retired the substantive half with it: AD-11 declined eviction *in MVP* for
+  want of a measured footprint, and that footprint now exists (~90 KB per `normal` tile, 8.5 MB per
+  99-tile deck, ~95 MB for a ~1,000-printing library). The two lifecycle entries below are about
+  the cache disabling *itself*, not about size, so neither of them inherits this question. Nothing
+  is proposed here: at ~95 MB for an entire library, a policy would cost more in complexity than
+  the disk it reclaims, and `README.md` now tells the user the one thing that actually bounds it —
+  delete the directory. **Home: unowned**; the forcing function is a real report of the cache
+  becoming inconveniently large, or a second rendition size shipping (which multiplies every figure
+  above by the number of sizes cached). (Severity: Low.)
 
 - ~~**The ~124 KB average tile size is arithmetic, never measured.**~~ **MEASURED AT THE C3
   RETROSPECTIVE, 2026-08-02 — and the epic's figure is a 38 % overestimate.** It was 12 MB ÷ 99
@@ -3619,7 +3632,8 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   c4-4-facing consequence is a `ui/README.md` blind-spot row. **Home: unowned** — the forcing
   function is an upstream that starts sending a parameter browsers act on. (Severity: Low.)
 
-- **Orphaned `.tmp` files from a hard kill accumulate with no sweep, ever.** `_write_atomically`
+- ~~**Orphaned `.tmp` files from a hard kill accumulate with no sweep, ever.**~~ **CLOSED by
+  15-2, 2026-08-18 — documented, as the entry itself asked.** `_write_atomically`
   cleans its temp file on every in-process failure, but a process kill or power cut between
   `mkstemp` and `os.replace` strands `<name>.<rand>.tmp` in the card's shard directory
   permanently: `_read_cached` never matches the suffix (invisible, so it costs nothing but
