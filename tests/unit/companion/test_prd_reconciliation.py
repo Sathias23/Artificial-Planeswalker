@@ -1,18 +1,20 @@
 """Drift guard over the companion PRD, keyed on the shipped symbols (story 15.3).
 
-Story 15.3 corrected three requirements that had become factually false, recorded six capabilities
-that shipped without ever reaching the requirements, and answered two open questions the build had
-already closed. **Correcting them is worth less than gating them.** Seven planning sites carried an
-image-cache figure the C3 retrospective disproved on 2026-08-02 and it kept spreading for sixteen
-days, across an epic file, an architecture spine and an HTML projection, because nothing could see
-it. Both ``src/companion/contracts.py`` and ``src/companion/app/deps.py`` say *in shipped
-docstrings* that a PRD amendment is owed — the code knew, and the documents drifted anyway. This
-module is the thing that can see it.
+Story 15.3 corrected three requirements that had become factually false, recorded seven
+capabilities that shipped without ever reaching the requirements (the epic's six, plus the ``/ws``
+endpoint this guard's own route-parity check surfaced), and answered two open questions the build
+had already closed. **Correcting them is worth less than gating them.** Seven planning sites
+carried an image-cache figure the C3 retrospective disproved on 2026-08-02 and it kept spreading
+for sixteen days, across an epic file, an architecture spine and an HTML projection, because
+nothing could see it. Both ``src/companion/contracts.py`` and ``src/companion/app/deps.py`` say *in
+shipped docstrings* that a PRD amendment is owed — the code knew, and the documents drifted anyway.
+This module is the thing that can see it.
 
 Every closed-set assertion reads the **imported symbol** through :func:`typing.get_args`, never a
 list retyped here: :data:`src.companion.contracts.ErrorReason`,
 :data:`src.companion.contracts.EventKind`, and ``SetActiveDeckResult``'s ``status`` literal. The
-route assertion reads ``build_app().openapi()`` rather than string literals. A rename or an added
+route assertion reads the app's **route table** rather than string literals — and deliberately not
+``app.openapi()``, which cannot see the shipped ``/ws`` endpoint at all. A rename or an added
 member therefore turns this red and names the member, instead of quietly leaving the PRD one
 generation behind. The idiom is Story 15.2's ``test_image_cache_docs.py``: extract the section by
 heading, fail on the anchor first so nothing can pass vacuously, and put both sides of the drift in
