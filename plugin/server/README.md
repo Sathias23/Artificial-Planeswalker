@@ -22,10 +22,10 @@ your client supplies the model, the server supplies fast, accurate MTG data and 
 |------------|-------|
 | **Card lookup & search** | `lookup_card_by_name`, `search_cards` |
 | **Semantic search** (local embeddings, no network) | `semantic_search_cards`, `find_similar_cards` |
-| **Deck management** | `create_deck`, `list_decks`, `load_deck`, `delete_deck`, `add_card_to_deck`, `remove_card_from_deck`, `view_deck` *(deprecated — use the companion app)*, `import_decklist` (bulk Arena import) |
+| **Deck management** | `create_deck`, `list_decks`, `load_deck`, `delete_deck`, `add_card_to_deck`, `remove_card_from_deck`, `view_deck` *(deprecated — use the [companion app](#the-companion-app))*, `import_decklist` (bulk Arena import) |
 | **Deck analysis** | `analyze_mana_curve`, `detect_synergies`, `validate_deck` |
 | **Deck power assessment** *(experimental)* | `assess_deck_power`, `compare_deck_power` |
-| **Companion app** *(in development)* | `companion_set_active_deck` — puts a saved deck on the companion's live browser view; `companion_show_suggestions` — puts a list of suggested cards on the same view, as cards rather than as text. Both report `app_not_running` when the companion isn't up |
+| **[Companion app](#the-companion-app)** | `companion_set_active_deck` — puts a saved deck on the companion's live browser view; `companion_show_suggestions` — puts a list of suggested cards on the same view, as cards rather than as text. Both report `app_not_running` when the companion isn't up |
 | **First-run setup** | `initialize_database`, `build_search_index` |
 
 Four companion **skills** layer expert reasoning on top of the tools —
@@ -53,7 +53,12 @@ releases.
 
 - **Python 3.12+**
 - **[uv](https://docs.astral.sh/uv/)** (package manager / runner)
-- ~300 MB of disk for the card database + embedding index (built from a one-time ~500 MB download on first run)
+- ~300 MB of disk for the card database + embedding index (built from a one-time ~500 MB
+  download on first run), **plus** whatever the companion's
+  [image cache](#image-cache-companion-app) grows to — a measured ~8.5 MB per 99-card deck you
+  view and ~95 MB for a full set of printings, with no eviction
+- **Nothing extra for the [companion app](#the-companion-app)** — its browser UI ships pre-built,
+  so **Node is not required** at install or at runtime (only to change the UI)
 
 ## Quick start
 
@@ -192,6 +197,186 @@ Add an MCP server with:
 Config locations: Cursor `.cursor/mcp.json` · VS Code `.vscode/mcp.json` · Windsurf Cascade MCP
 settings · Cline MCP panel · Zed `context_servers`. Any other MCP client works the same way.
 </details>
+
+## The companion app
+
+The companion is a small local web app that shows the deck your agent is working on — real card
+images, laid out as cards instead of as a wall of text. Ask your agent to put a saved deck on it
+(`companion_set_active_deck`), or to show a list of suggested cards on the same view
+(`companion_show_suggestions`), and the page updates while you watch.
+
+**It is optional, and nothing depends on it.** Every agent workflow completes with the app closed:
+the two companion tools simply report `app_not_running`, and no other tool ever looks for it. The
+companion adds a visual channel; it never replaces chat output.
+
+### Launch it
+
+```bash
+uv run artificial-planeswalker companion
+```
+
+It runs in the foreground until you interrupt it, and prints exactly one **launch line**:
+
+```
+[planeswalker] companion running at http://127.0.0.1:8765 — open this URL in your browser (Ctrl-C to stop)
+```
+
+That is the *only* launch line you will see: the app binds its own socket before handing it to
+uvicorn, which suppresses uvicorn's own startup banner — so the URL on screen is always the one that
+is actually bound. The address is printed as the literal `127.0.0.1` rather than `localhost` on
+purpose: the socket is IPv4-only, and `localhost` resolves to `::1` first on Windows and on modern
+Linux. Ctrl-C stops the app and exits `0`.
+
+**Two streams, and it matters when something looks wrong.** The lines above — the launch line, the
+fallback notice and both "already running" messages — go to **stdout**, because they are the point
+of running the command. Everything the app logs goes to **stderr** at `INFO`, uvicorn's own records
+included. A warning you have to go looking for is on stderr; the line you were told to open is on
+stdout.
+
+> **Node is never required** — not at install, not at runtime. The browser UI ships pre-built inside
+> the Python package, and `fastapi` and `uvicorn` are ordinary base dependencies, so there is no
+> extra, no dependency group and no build step between a fresh clone and a running app. The honest
+> caveat: Node *is* required to **change** the UI. That is what the `ui/` tree in
+> [Development](#development) is for, and it is a development and CI concern only.
+
+### Choosing a port
+
+The companion prefers port **8765**. Two ways to ask for a different one — pick **one**, since each
+block below is a whole launch on its own:
+
+```bash
+uv run artificial-planeswalker companion --port 9000      # or --port=9000
+```
+
+```bash
+COMPANION_PORT=9000 uv run artificial-planeswalker companion          # macOS / Linux
+```
+
+```powershell
+$env:COMPANION_PORT = 9000; uv run artificial-planeswalker companion  # Windows
+```
+
+So `--port` beats `COMPANION_PORT`, which beats the default. The rest of what the launcher accepts,
+in one list:
+
+* `--port N` and `--port=N` are both accepted. `-h` / `--help` prints the usage and exits `0`.
+* `--port 0` is legal and means "give me any free port".
+* A `COMPANION_PORT` that is not an integer, or an integer outside `0..65535`, is **ignored with a
+  logged warning** on stderr and the default is used instead — a stale environment variable must
+  never stop a launch. An out-of-range `--port` is treated the same way.
+* A `--port` that is not an integer, a `--port` with no value, and `--port` given twice are all
+  **usage errors**: you typed them in this invocation, so the launcher says what was wrong and
+  exits `2` (the only non-zero status it ever returns).
+
+**If the preferred port is taken, the launch still succeeds.** The app falls back to a
+kernel-assigned ephemeral port on *any* bind failure — not only "address already in use", because
+Windows refuses binds inside its reserved dynamic ranges with a different error entirely — and says
+so first:
+
+```
+[planeswalker] port 8765 is unavailable — falling back to an ephemeral port
+```
+
+The usual launch line follows it, naming the port the kernel actually handed out — which is why no
+example here prints one: an ephemeral port is whatever was free at the time. Read the port off that
+line. It is always the real one.
+
+### One companion at a time
+
+Starting a second companion never starts a second server and never fails. The launcher has three
+outcomes — it serves, or it prints one of the two messages below — and **every one of them exits
+`0`**. Which of the two messages you get depends on how far along the other companion is.
+
+If a companion is already up and answering, this launch tells you where it is:
+
+```
+[planeswalker] companion is already running at http://127.0.0.1:8765 — open that URL, or stop the other instance before starting a new one
+```
+
+If another launch is still inside its own startup window — it holds the single-instance lock but has
+not published its port yet — you get the other message, which deliberately names **no** URL, because
+none can be stated honestly yet:
+
+```
+[planeswalker] another companion is already starting up — wait for it to print its URL, or stop it before starting a new one
+```
+
+Either message means the companion is running, or is about to be. Nothing failed; the exit status is
+`0` and there is no error to go looking for.
+
+### How it is found, and what an unclean exit leaves
+
+A running companion publishes one small JSON file — `companion.json`, in the data directory under
+[Where the data lives](#where-the-data-lives) — naming the port it actually bound and a per-process
+token. That file is the **sole** rendezvous: the MCP tools read it to learn both where to connect
+and how to authenticate. There is no environment variable to set, no registry key and no port scan,
+which is exactly why an ephemeral fallback costs you nothing.
+
+> **If the tools say `app_not_running` while the app is plainly running**, the two processes
+> resolved *different* data directories. The discovery file is the only rendezvous, so an MCP client
+> started with a different `PLANESWALKER_DATA_DIR` than the terminal that launched the companion —
+> or with none, when your shell sets one — looks in a directory the companion never wrote to and
+> correctly concludes nothing is there. Set the variable the same way for both, or leave it unset
+> for both.
+
+* **A clean stop (Ctrl-C)** exits `0` and removes `companion.json`. It leaves `companion.lock`
+  behind **deliberately** — the reasons, and everything else an uninstall leaves in the data
+  directory, are under
+  [what an uninstall leaves behind](#image-cache-companion-app).
+* **An unclean exit** (a crash, a `kill`, the power going out) leaves `companion.json` behind
+  stale. That is the *expected* post-crash state rather than an error: a stale file reads as "app
+  not running", and the next launch reclaims it and says so in its log on stderr. There is nothing
+  to clean up by hand.
+
+### What it exposes
+
+The companion binds a **loopback IPv4 socket and nothing else**. `127.0.0.1` is a constant in the
+code rather than a setting, so there is no configuration that puts the app on your network, and the
+traffic is plain HTTP — which is exactly why it has to stay on loopback. The endpoints your agent
+uses are gated by a token minted fresh for each process and written into `companion.json`; that file
+is created `0600` on macOS and Linux, but Windows has no equivalent, so there it is readable by any
+account on the machine. Treat this as what it is: a single-user local tool, not something to leave
+running on a machine you share with people you would not hand your decks to.
+
+### First run on a fresh install
+
+A fresh install ships **no card database** — the Scryfall set is excluded by licence, so `cards.db`
+does not exist until you ask your agent to run `initialize_database`. The companion **starts
+anyway** and serves the page: a missing database is a state the UI shows, not a startup failure.
+The panel reads:
+
+> **Card database not set up yet.**
+>
+> First build takes a few minutes — this page will come alive on its own when it's ready.
+>
+> In your agent session, ask it to initialize the database (`initialize_database`).
+
+It means that literally. Readiness is re-probed on every request and never cached, so a database
+built while the companion is running is picked up with **no restart** — leave the page open and it
+will fill itself in.
+
+**Recovering from a failed first import.** The importer creates the schema *before* it downloads, so
+an import that fails partway can leave a `cards.db` with tables but no cards. The page is still
+right — it goes on saying the database is not set up — but a running companion will have opened that
+file and holds connections to it, and what happens next depends on your platform:
+
+* **Windows** refuses the delete outright: the open handle blocks removal and replacement, so you
+  find out immediately.
+* **macOS and Linux** let the delete succeed and hand you a worse outcome quietly. The companion
+  keeps the file it already opened, a re-import writes a *new* file in its place, and the app goes
+  on reading the old one — so the page never fills in, and the "no restart needed" promise above
+  does not apply to a database swapped out from under it.
+
+**Stop the companion first (Ctrl-C), then delete it or re-run the import**, and start it again
+afterwards. Nothing else is blocked: a second process *writing into* the file is fine, and only
+wholesale replacement of it is not.
+
+### Its images are cached on disk
+
+Every card image the companion fetches from Scryfall is kept in one directory inside the same data
+directory, so a deck you have already viewed repaints without touching the network. Where it is, how
+big it gets, how to inspect it and how to remove it are all in
+[Image cache (companion app)](#image-cache-companion-app) below.
 
 ## Where the data lives
 
@@ -357,13 +542,34 @@ uv run mypy src/                    # strict type-check
 uv run pre-commit install           # gate every commit
 ```
 
+**Changing the companion's UI needs Node `>=20.19.0`** — the one thing in this project that needs
+Node at all. The built SPA bundle is **committed** (that is what keeps installs Node-free), so it
+has to be rebuilt and committed with every `ui/` change or CI fails on drift:
+
+```bash
+cd ui
+npm ci                  # locked install — never npm install
+npm run lint            # eslint + stylelint
+npm run format:check    # prettier (this one re-pads markdown tables under ui/)
+npm run typecheck       # tsc -b
+npm test                # vitest
+npm run build           # writes the bundle into src/companion/app/static/
+```
+
+Commit `src/companion/app/static/` alongside your `ui/` change, then run
+`uv run python -m scripts.build_plugin` and commit `plugin/` — CI checks both mirrors for drift.
+
 ```
 src/
 ├── data/        # SQLAlchemy models, Scryfall importers, repositories, schemas
 ├── logic/       # deck validation, mana curve, synergy detection, power assessment
 ├── search/      # sqlite-vec connection + fastembed embedder (semantic search)
+├── companion/   # companion backend (FastAPI) + the committed SPA bundle it serves
+├── viewer/      # the old one-shot HTML deck renderer (deprecated, frozen)
 ├── paths.py     # central data-dir resolution
 └── mcp_server/  # FastMCP server + tool definitions (python -m src.mcp_server)
+ui/              # companion SPA source (React + Vite) — Node, dev/CI only
+plugin/          # generated Claude Code / Codex plugin tree — rebuild, never hand-edit
 tests/           # unit + integration, mirroring src/
 ```
 
@@ -376,9 +582,11 @@ for the workflow.
 
 Released under the [MIT License](LICENSE).
 
-Card data is © Wizards of the Coast, sourced from [Scryfall](https://scryfall.com/docs/api) bulk
-data under Scryfall's terms. **This project bundles no card data** — it is downloaded on first run.
-This project is not produced by, endorsed by, supported by, or affiliated with Scryfall.
+Card data and card imagery are © Wizards of the Coast, courtesy of
+[Scryfall](https://scryfall.com/docs/api) under Scryfall's terms — bulk data downloaded on first
+run, and card images fetched by the companion app when it draws them. **This project bundles no
+card data and no card images.** This project is not produced by, endorsed by, supported by, or
+affiliated with Scryfall.
 
 > Artificial Planeswalker is unofficial Fan Content permitted under the
 > [Wizards of the Coast Fan Content Policy](https://company.wizards.com/en/legal/fancontentpolicy).
@@ -387,7 +595,7 @@ This project is not produced by, endorsed by, supported by, or affiliated with S
 
 ## Acknowledgments
 
-- [Scryfall](https://scryfall.com/docs/api) — MTG card data
+- [Scryfall](https://scryfall.com/docs/api) — MTG card data and card imagery
 - [Commander Spellbook](https://commanderspellbook.com) — combo data (public bulk export)
 - [Model Context Protocol](https://modelcontextprotocol.io) & FastMCP — server framework
 - [sqlite-vec](https://github.com/asg017/sqlite-vec) & [fastembed](https://github.com/qdrant/fastembed) — local semantic search

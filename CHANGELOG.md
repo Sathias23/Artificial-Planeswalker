@@ -7,6 +7,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The companion app** — an optional local browser view of the deck your agent
+  is working on, launched with a single command:
+  `uv run artificial-planeswalker companion`. It serves a read-only page at
+  `http://127.0.0.1:8765` showing real card images laid out as cards rather
+  than as text, and the two new tools **`companion_set_active_deck`** and
+  **`companion_show_suggestions`** put a saved deck, or a list of suggested
+  cards, on that page while you watch. Nothing depends on it: every agent
+  workflow completes with the app closed, and both tools report
+  `app_not_running` when it is not up. The browser UI ships pre-built inside
+  the Python package, so **Node is required neither at install nor at
+  runtime** — there is no build step between a fresh clone and a running app.
+- **Self-diagnosable startup.** The preferred port is 8765, overridable with
+  `--port` (highest precedence) or `COMPANION_PORT`; a value outside
+  `0..65535` from either source is ignored with a warning rather than
+  refused. If the preferred port is unavailable the app falls back to a
+  kernel-assigned ephemeral port instead of failing, and the printed URL is
+  always the bound one. Exactly one companion runs at a time — a second launch
+  prints where the first one is (or, inside another launch's startup window,
+  that one is starting up) and exits `0`. A running app publishes
+  `companion.json` in the data directory as the sole rendezvous for the MCP
+  tools; a clean stop removes it, and an unclean exit leaves a stale one that
+  the next launch reclaims.
+- **A fresh install with no card database starts anyway.** The absence of
+  `cards.db` is a served UI state, not a startup failure: the page comes up and
+  directs you to ask your agent to run `initialize_database`. Readiness is
+  re-probed per request and never cached, so a database built while the app is
+  running is picked up with no restart.
+- **On-disk image cache.** Every card image the companion fetches from Scryfall
+  is stored under `<data dir>/image_cache/`, sharded two characters deep and
+  keyed by card id + size + face, so a deck already viewed repaints without
+  touching the network. Measured footprint: ~90 KB per `normal` tile, ~8.5 MB
+  for a 99-card deck, ~95 MB for a full set of printings. **Nothing evicts it** —
+  no TTL, no size cap — and it is safe to delete at any time, running app or
+  not; the README carries copy-pasteable inspect and clear commands for
+  macOS/Linux and Windows.
+- **New dependencies.** Two at runtime — `fastapi>=0.139.2` and
+  `uvicorn[standard]>=0.51.0` — both in the base dependency list, so the
+  companion needs no extra and no dependency group. One for development only:
+  `websockets>=12.0` in the `dev` group, which is **not a new package in the
+  install** (it already arrived transitively via `uvicorn[standard]`) but is now
+  declared explicitly, because `scripts/cdp_harness.py` is a committed tool and
+  a committed tool must not lean on another package's extra.
+
+### Changed
+
+- **Node is a development and CI dependency only**, floored at `>=20.19.0`, and
+  is needed solely to *change* the companion's UI. The built bundle is
+  committed to the repository and mirrored into the plugin tree, so installs
+  and releases never compile it.
+- **TypeScript is pinned `>=5.9 <6.1` rather than left as an open floor.** Two
+  measured reasons, and both are needed. Unconstrained, an open floor resolves
+  to TypeScript 7, which `typescript-eslint@8` refuses outright — it publishes a
+  peer range of `>=4.8.4 <6.1.0` — and the ESLint gate dies with it. In this
+  project npm never gets that far: with `typescript-eslint` present it
+  back-solves, and the same open floor lands on **6.0.3, not 7**. So the pin's
+  larger job is the second one — the constraint is declared here and owned,
+  rather than emerging from a transitive peer that a future bump could relax
+  silently.
+- **Scryfall attribution now names card imagery** alongside card data, in both
+  `README.md` and `NOTICE`. The app's footer has always said "Card data and
+  imagery courtesy of Scryfall" and the companion does cache images; the
+  documentation had not caught up. `NOTICE` ships in the distribution
+  (`license-files`), so this is a licensing-relevant correction rather than a
+  wording preference.
+
 ### Deprecated
 
 - **`view_deck` is deprecated**, superseded by the companion app — use
@@ -20,6 +87,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Removal is deferred to the next minor release, once the companion app is
   proven.** `view_deck`, `src/viewer` and `scripts/view_deck.py` will be removed
   together at that point; until then nothing that depends on them breaks.
+
+### Security
+
+- **The companion opens a listening socket** — the first time anything in this
+  project has. The envelope, stated plainly: it binds **loopback IPv4 only**
+  (`127.0.0.1` is a constant in the code, not a setting, so no configuration
+  exposes it to the network), it speaks plain HTTP, and its agent-only endpoints
+  are gated by a token minted per process and written to `companion.json` in the
+  data directory. That file is created `0600` on macOS and Linux; Windows has no
+  equivalent, so there any account on the machine can read it. The MCP server
+  itself is unchanged and still opens nothing.
+
+### Upgrade notes
+
+- **Nothing to migrate.** No schema change, no data-directory move, and no
+  configuration to add: the companion is optional, off unless you start it, and
+  every existing workflow completes with it closed. `view_deck` keeps working
+  exactly as before.
+- **Known limitation — a failed first import can wedge the database file.** The
+  importer creates the schema before it downloads, so an import that fails
+  partway leaves a `cards.db` with tables and no cards. That is displayed
+  correctly (the page goes on saying the database is not set up), but a running
+  companion will have opened the file, and from then on it cannot be deleted or
+  replaced until the app stops. **Stop the companion first (Ctrl-C), then delete
+  it or re-run the import.** Only wholesale replacement is blocked — a second
+  process writing *into* the file is fine — and the recovery is in the README.
 
 ## [0.4.0] - 2026-07-18
 

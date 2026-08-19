@@ -5356,6 +5356,24 @@ Eight decisions ruled by Sathias. R1/R2/R6 are process and live in
   actually meets. (Severity: Medium — reachable on the public v0.4.0 today; bounded and recoverable
   by stopping the companion.)
 
+  **CORRECTED 2026-08-19 (Greptile P2 on PR #88): "can neither delete nor replace" is TRUE ON
+  WINDOWS ONLY, and the POSIX behaviour is worse.** This entry was written from F4's Windows
+  manual-testing observation and story 15-4's README generalised it to every platform before the
+  review caught it. On macOS and Linux the unlink SUCCEEDS — the directory entry goes, while the
+  companion's pooled connections keep the old inode alive (`AsyncAdaptedQueuePool`, size 5 +
+  overflow 10, no recycle, documented at `src/companion/app/deps.py:305`). A re-import then writes
+  a NEW inode at the same path that those connections never see, and `Database.session_factory()`
+  returns its CACHED factory without re-running `_create()`'s existence check
+  (`deps.py:150-158`), so nothing notices. The per-request readiness probe cannot help: it is
+  `is_database_initialized(session)`, a query down an already-open connection, not a file check.
+  Net effect on Brad's own platform: the user follows the instruction, deletes, re-imports, and the
+  page goes on saying the database is not set up until the companion is restarted — silently
+  contradicting FR-22's "picked up with no restart". The recovery does not change (stop the app
+  first) but its RATIONALE does, and the silent variant is the one worth naming. README corrected;
+  `test_companion_docs.py::test_the_failed_import_recovery_says_stop_the_app_first` now pins both
+  platforms and the POSIX consequence so the two cannot be collapsed back into one sentence.
+  Severity unchanged at Medium; the code defect remains open and unfixed.
+
 ### R4 — the empty-deck state ships as written
 
 - ⚖️ **RULED, status quo (`:4590-4604`).** The two empty right-column panel shells stand. Adding a
@@ -6490,3 +6508,58 @@ Also executed or re-homed at this retro, beyond the seven:
     the C6 retro, and `sprint-status.yaml`'s dated `Previously —` lines. The 2026-08-16 renumbering
     note rules that historical prose keeps its original ids, and editing a dated record to say
     something it did not say is the drift this ledger exists to prevent.'
+
+## Deferred from: code review of 15-4 (2026-08-19)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-4-release-documentation-for-the-companion-app.md`
+  summary: >-
+    The single documented launch command does not work for the plugin install route, which the
+    README advertises as the one needing no clone.
+  evidence: |-
+    Blind Hunter, 2026-08-19, verified against the tree. `README.md`'s Quick start sells the Claude
+    Code plugin path as "no clone required" (`/plugin marketplace add` + `/plugin install`), and
+    `plugin/.mcp.json` runs the server as `uv run --directory ${CLAUDE_PLUGIN_ROOT}/server python -m
+    src.mcp_server`. `plugin/server/pyproject.toml:50` does ship the `artificial-planeswalker`
+    console script, but `uv run` resolves its project from the CWD — so a plugin user, who has no
+    checkout and no uv project in their shell, cannot run the documented
+    `uv run artificial-planeswalker companion`. They would need
+    `uv run --directory <CLAUDE_PLUGIN_ROOT>/server artificial-planeswalker companion`, which no
+    document states.
+    NOT 15-4's to fix, and deliberately not treated as an intent gap: Story 15.5's own acceptance
+    criterion reads "**When** the two-command install is performed **and the companion is
+    launched** **Then** the app serves and renders" — the plugin launch path belongs to 15.5 by
+    name. 15-4's frozen intent additionally constrains it to ONE documented command spelled
+    identically everywhere (epic AC, AD-14, SC-4), so documenting a second invocation here would
+    have contradicted the approved contract rather than satisfied it.
+    **Home: 15-5.** If 15-5 does not close it, the release ships a launch instruction that fails
+    for the install route the README recommends first. (Severity: Medium — reachable by any plugin
+    user on day one; bounded, since the workaround exists and only the documentation is missing.)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-4-release-documentation-for-the-companion-app.md`
+  summary: >-
+    `CHANGELOG.md` is read by no test, so AC 2's "spelled identically at every occurrence" is
+    verified for the README occurrences only.
+  evidence: |-
+    Verification Gap reviewer, 2026-08-19. `test_companion_docs.py`'s launch-command assertion
+    searches only the extracted README section; `CHANGELOG.md` carries a second occurrence of
+    `uv run artificial-planeswalker companion` that nothing reads. A grep of `tests/`, `ui/tests/`,
+    `scripts/` and `.github/` for `CHANGELOG` returns only a comment mention in
+    `tests/unit/viewer/test_viewer_freeze.py` and this module's own docstring.
+    The new guard's module docstring declares the CHANGELOG deliberately unguarded, so this is a
+    standing ruling rather than an oversight — recorded because the AC's wording claims more
+    coverage than exists. Reopening it is a design decision about whether release notes should be
+    machine-gated at all, which is retrospective work, not story work. (Severity: Low.)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-4-release-documentation-for-the-companion-app.md`
+  summary: >-
+    CI pins `node-version: 20` while the measured floor is `>=20.19.0`, so the lane's own name
+    understates what it requires.
+  evidence: |-
+    Surfaced again by the 15-4 review's Node-floor sweep, 2026-08-19. `ui/package.json:7` declares
+    `>=20.19.0`; `.github/workflows/ci.yml` requests `node-version: 20`, which resolves to the
+    latest 20.x and therefore satisfies it in practice — the pin is correct today and correct by
+    luck rather than by statement. Already ledgered at `deferred-work.md:1413`; re-confirmed here
+    rather than duplicated, since 15-4 corrected the two live stack tables
+    (`ARCHITECTURE-SPINE.md:396`, `epics-companion-app.md:333`) and this is the one remaining site
+    that states a floor of "20". `epics-companion-app.md:1330` is Story c2-1's own shipped AC and
+    was left alone by ruling. (Severity: Low.)

@@ -330,7 +330,7 @@ mid-story):
   >=0.51.0** · Vite >=8.0 · React >=19.2 · **TypeScript >=5.9,<6.1 (upper bound is load-bearing —
   `typescript-eslint` publishes a peer range of `<6.1.0`, so an open floor resolves to TS 7 and
   breaks `npm ci` and the ESLint gate)** · zustand >=5.0 · openapi-typescript >=7 (dev/CI) ·
-  Node >=20 (dev/CI only).
+  Node >=20.19.0 (dev/CI only).
 
 **PRD amendments owed** (deliverables, not observations)
 

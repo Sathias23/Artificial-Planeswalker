@@ -375,8 +375,10 @@ graph TD
 
 ## Stack
 
-Verified current 2026-07-25. Bound as `>=` floors, matching the project's existing
-`pyproject.toml` convention. Everything above FastAPI is already a project dependency.
+Verified current 2026-07-25, with one row corrected 2026-08-19: the Node floor read `>=20`, which
+was never the measured value — `ui/package.json` has declared `>=20.19.0` since story c2-1 (story
+15-4). Bound as `>=` floors, matching the project's existing `pyproject.toml` convention. Everything
+above FastAPI is already a project dependency.
 
 | Name | Version |
 | --- | --- |
@@ -393,7 +395,7 @@ Verified current 2026-07-25. Bound as `>=` floors, matching the project's existi
 | TypeScript | >=5.9,<6.1 — **upper bound is load-bearing**, see below |
 | zustand | >=5.0 |
 | openapi-typescript *(dev/CI only)* | >=7 |
-| Node *(dev/CI only — never at install or runtime)* | >=20 |
+| Node *(dev/CI only — never at install or runtime)* | >=20.19.0 |
 
 **TypeScript is the one pin, not a floor.** TypeScript 7.0 went stable 2026-07-08 (the Go-native
 compiler, ~10× faster) — but `typescript-eslint` declined TS 7 support on day one and publishes a
