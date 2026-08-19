@@ -195,7 +195,8 @@ def build(out_dir: Path) -> int:
     # is exactly how a UI-less plugin ships unnoticed: the copy would succeed, the plugin would
     # install, and opening the companion would fail at startup on a missing bundle. Same shape as
     # the src/viewer check above, which exists because that omission broke the first .mcpb build.
-    # Plugin distribution parity is c8-5's acceptance; this is the guard it relies on.
+    # Plugin distribution parity is story 15-5's acceptance; this is the guard it relies on,
+    # and tests/integration/test_build_plugin.py::TestTheBundleGuardsFire is what fires it.
     spa_index = server_dir / "src" / "companion" / "app" / "static" / "index.html"
     if not spa_index.exists():
         logger.error(
