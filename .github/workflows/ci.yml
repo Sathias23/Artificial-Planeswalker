@@ -85,6 +85,30 @@ jobs:
       # without re-running the build. The build writes LF on every OS, so this is platform-stable.
       - name: Plugin tree in sync with src/
         run: |
+          # Non-vacuity guard on the ignore axis — the same preamble the SPA and generated-types
+          # checks below carry, added here last because this step is the oldest of the three.
+          # `git status --porcelain` reports nothing at all for an untracked or gitignored path,
+          # so a drift check whose subject vanished passes loudest of all. The mirrored SPA bundle
+          # is the subject that matters: the root .gitignore has unanchored dist/, build/ and lib/
+          # patterns, and a future Vite output directory under the bundle would be ignored in BOTH
+          # copies at once — leaving this check to certify a plugin with no UI.
+          #
+          # Checked PER SUBJECT rather than over the bundle directory as a whole, the same lesson
+          # the generated-types check below learned (c2-3 review, 2026-07-27): a joint ls-files
+          # over the directory stays non-empty while index.html remains tracked and assets/ slips
+          # out of tracking — which is precisely the newly-ignored-Vite-output case above, and
+          # ships a plugin whose every page renders blank. index.html without assets/ is not the
+          # app, so each is its own subject. Checked before the rebuild, so the failure names the
+          # cause rather than an empty diff.
+          for subject in \
+            plugin/server/src/companion/app/static/index.html \
+            plugin/server/src/companion/app/static/assets/
+          do
+            if [ -z "$(git ls-files -- "$subject")" ]; then
+              echo "::error::$subject has no tracked files — never committed, or became gitignored — so the plugin drift check below cannot see it. The plugin would install with no UI."
+              exit 1
+            fi
+          done
           uv run python -m scripts.build_plugin
           if [ -n "$(git status --porcelain -- plugin/)" ]; then
             echo "::error::plugin/ is stale — run 'uv run python -m scripts.build_plugin' and commit plugin/."

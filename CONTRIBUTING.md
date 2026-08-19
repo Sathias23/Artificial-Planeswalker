@@ -40,6 +40,29 @@ Don't bypass the hooks — fix the underlying issue. If you add a runtime
 dependency that mypy needs to resolve types, add it to `.pre-commit-config.yaml`'s
 mypy `additional_dependencies` too.
 
+## Generated artifacts
+
+Three things in this repo are **committed build outputs, not sources**. None of them is
+ever hand-edited — an edit is overwritten by the next build, and CI fails on the drift
+in the meantime:
+
+| Artifact | Regenerate with | Change it by editing |
+|----------|-----------------|----------------------|
+| `src/companion/app/static/` — the companion's built SPA bundle | `cd ui && npm run build` | `ui/` |
+| `plugin/` — the assembled plugin tree, including its mirror of that bundle | `uv run python -m scripts.build_plugin` | `src/`, the four MTG skills, `pyproject.toml`, `uv.lock`, `README.md`, `LICENSE`, `NOTICE`, or `scripts/build_plugin.py` itself |
+| `ui/src/api/types.d.ts` + `ui/src/api/openapi.json` — the TypeScript types generated from the backend's own schema | `cd ui && npm run gen:api` (needs uv; `npm run gen:types` alone regenerates the types half) | the FastAPI routes and Pydantic models in `src/companion/` |
+
+The bundle is committed because the project also ships as a *cloned* plugin tree:
+compiling the SPA at install time would leave plugin users with no UI. So the bundle
+exists twice — under `src/` and mirrored into `plugin/` — and both copies are generated.
+If you change the UI, rebuild the bundle **and** rebuild `plugin/`, and commit what the
+tools emit.
+
+Run the relevant build before opening a PR if you touched `ui/`, `src/`, the skills, or
+any of the files above; CI rebuilds each artifact and fails if the committed result
+differs. A pre-commit hook rebuilds `plugin/` for you — but only if you installed the
+hooks (`setup.py` does), so if in doubt run the build and check `git status` yourself.
+
 ## Code conventions
 
 - **Typing:** full type hints (`mypy --strict`); modern 3.12 syntax (`X | None`,

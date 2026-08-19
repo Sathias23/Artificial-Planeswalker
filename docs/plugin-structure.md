@@ -19,6 +19,7 @@
 | Piece | Source | Role in the plugin |
 |-------|--------|--------------------|
 | MCP server | `src/` + `pyproject.toml` + `uv.lock` | Exposes the 21 tools (`lookup_card_by_name`, `analyze_mana_curve`, …) |
+| Companion SPA bundle | `src/companion/app/static/` | The browser UI, shipped pre-built — the plugin install arrives complete, not UI-less |
 | `magic-deckbuilding` skill | `.claude/skills/magic-deckbuilding/SKILL.md` | Orchestrator: full "improve my deck" loop |
 | `mana-curve-analysis` skill | `.claude/skills/mana-curve-analysis/SKILL.md` | Deep dive: curve / land count |
 | `synergy-discovery` skill | `.claude/skills/synergy-discovery/SKILL.md` | Deep dive: interactions / combos |
@@ -26,6 +27,18 @@
 
 The `bmad-*` skills are **dev tooling for this repo** and do *not* ship in the
 end-user plugin — only the four MTG domain skills above.
+
+The companion bundle needs no row in the build script: it rides along inside the
+verbatim `src/` copy. That is convenient and it is also exactly how a UI-less plugin
+would ship unnoticed, so the build hard-fails if the copy arrives without
+`index.html` or with an empty `assets/`.
+
+**Both copies of the bundle are generated artifacts and neither is ever hand-edited.**
+Vite writes `src/companion/app/static/` from `ui/`; `scripts/build_plugin.py` mirrors
+it into `plugin/server/src/companion/app/static/`. Fix the UI in `ui/`, rebuild, and
+commit what the tools emit — an edit made directly to either copy is overwritten by the
+next build and is caught before then by CI and by
+`tests/integration/test_build_plugin.py`.
 
 ---
 
@@ -56,6 +69,12 @@ plugin/
     ├── NOTICE                   # WotC Fan Content / Scryfall attribution
     └── src/                     # copied verbatim from this repo's src/
         ├── mcp_server/
+        ├── companion/
+        │   └── app/
+        │       └── static/      # the built SPA — committed, generated, never hand-edited
+        │           ├── index.html
+        │           ├── favicon.svg
+        │           └── assets/  # Vite's content-hashed JS / CSS / font
         ├── data/
         ├── logic/
         ├── search/
@@ -148,6 +167,12 @@ marketplace; the README says so next to the install command.
 3. **`src/viewer/` must be copied in** — `src/mcp_server/tools/view_deck.py` imports it
    at module load. This is the exact bug that broke the first packaged build
    (commit `f567062`); the build hard-fails if the copy misses it.
+4. **The companion's UI ships pre-built, so no Node toolchain is needed** — not at
+   install, not at runtime. The plugin is distributed as a *cloned tree*, so compiling
+   the SPA at install time would leave every plugin user with no UI; the bundle is
+   therefore committed and copied. Node is a development and CI concern only, for
+   changing the UI in `ui/`. Nothing in the plugin tree references it: there is no
+   `package.json`, no `node_modules` and no `ui/` directory anywhere in it.
 
 ---
 
@@ -187,3 +212,26 @@ skills, or the pyproject metadata change. CI rebuilds it and fails on drift.
 After install, the user gets all 21 MCP tools **and** the four skills
 (`magic-deckbuilding` and friends) auto-loaded — the coaching layer a bare MCP server
 config can't provide.
+
+The install also carries the **companion app**, and it does so for *both* clients — the
+bundle lives under the shared `server/`, which is the half the dual manifests do not
+differ over. The client launches the MCP server for you; the companion is a separate
+foreground process you start yourself, anchored at the installed plugin root — the same
+directory Claude Code's `${CLAUDE_PLUGIN_ROOT}/server` and Codex's `cwd: "./server"` both
+resolve to:
+
+```bash
+PLUGIN_ROOT="$HOME/.claude/plugins/cache/<marketplace>/artificial-planeswalker/<version>"
+uv run --directory "$PLUGIN_ROOT/server" artificial-planeswalker companion
+```
+
+That path is Claude Code's; a Codex install is the same shape under whatever root Codex
+uses. Either way the root is **version-keyed**, so it is machine- and version-specific —
+take it from your own install rather than from here, and expect it to move on every
+plugin update. The first launch from a given root builds a virtualenv and installs the
+server's dependencies inside it (once per root, so once per plugin version).
+
+It then prints one launch line with the URL to open. No Node is involved at any point —
+see the fourth runtime constraint above. See
+[the README's companion section](../README.md#the-companion-app) for what the app does,
+the port and discovery behaviour, and the image cache.

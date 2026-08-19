@@ -104,6 +104,30 @@ deckbuilding skills in any project — no clone required:
 On first use, ask the assistant to run **`initialize_database`** (one-time ~500 MB card download,
 a few minutes), then **`build_search_index`** for semantic search.
 
+The plugin ships [the companion app](#the-companion-app) too — its browser UI is pre-built and
+travels with the install, so there is nothing extra to fetch and no Node toolchain involved. Claude
+Code starts the MCP server for you; the companion is a separate process you start yourself, anchored
+at the installed plugin root. Find that root, then launch:
+
+```bash
+ls -d ~/.claude/plugins/cache/*/artificial-planeswalker/*/    # list the versioned install(s)
+PLUGIN_ROOT="$HOME/.claude/plugins/cache/<marketplace>/artificial-planeswalker/<version>"
+uv run --directory "$PLUGIN_ROOT/server" artificial-planeswalker companion
+```
+
+```powershell
+# Windows (PowerShell) — same shape, wherever your client installed the plugin
+Get-ChildItem -Directory -Recurse -Depth 3 "$HOME\.claude\plugins\cache" -Filter server
+$PluginRoot = "<the directory listed above, without \server>"
+uv run --directory "$PluginRoot/server" artificial-planeswalker companion
+```
+
+Claude Code installs into a **version-keyed** cache directory, so the path is specific to your
+machine *and* to the plugin version — take it from your own install rather than pasting a literal
+one, and expect it to change when you update the plugin. The first launch from a given root builds
+a virtualenv and installs the server's dependencies inside it (tens of seconds, once), and a plugin
+update to a new version repeats that in the new directory.
+
 *Developing in this repo instead?*
 [`.mcp.json`](https://github.com/Sathias23/Artificial-Planeswalker/blob/master/.mcp.json) is
 auto-detected when you open the directory — that gives you the tools (the skills come from the
@@ -127,6 +151,17 @@ Open the `/plugins` browser inside Codex and install **artificial-planeswalker**
 you the 21 tools *and* the four deckbuilding skills. If Codex also auto-surfaces this repo's
 *Claude Code* marketplace, skip it — that variant's config only works inside Claude Code
 (see [openai/codex#19372](https://github.com/openai/codex/issues/19372)).
+
+The plugin route also carries [the companion app](#the-companion-app) — it is the same tree, so
+`server/` holds the same pre-built UI and no Node toolchain is involved. Launch it anchored at
+wherever Codex installed the plugin, the same shape as the Claude Code route above:
+
+```bash
+uv run --directory "$PLUGIN_ROOT/server" artificial-planeswalker companion
+```
+
+The manual route has no plugin root: run the companion from your clone with the plain
+`uv run artificial-planeswalker companion`.
 
 **Manual route** — clone the repo, then register the server with one command:
 
@@ -238,6 +273,22 @@ stdout.
 > extra, no dependency group and no build step between a fresh clone and a running app. The honest
 > caveat: Node *is* required to **change** the UI. That is what the `ui/` tree in
 > [Development](#development) is for, and it is a development and CI concern only.
+
+**Installed via the plugin rather than a clone?** The command above assumes you are standing in a
+checkout of this repo. The plugin carries the same app — every flag, message and behaviour on this
+page applies to it unchanged — but the **invocation** is anchored at the installed plugin root
+rather than at the working directory, so add `--directory` to each command below as well:
+
+```bash
+PLUGIN_ROOT="$HOME/.claude/plugins/cache/<marketplace>/artificial-planeswalker/<version>"
+uv run --directory "$PLUGIN_ROOT/server" artificial-planeswalker companion
+```
+
+So `--port 9000` below becomes
+`uv run --directory "$PLUGIN_ROOT/server" artificial-planeswalker companion --port 9000`, and the
+`COMPANION_PORT` variants work the same way. See
+[Connect your client](#connect-your-client) for how to find that root on your machine (it is
+version-keyed, and the first launch from a new one installs the server's dependencies).
 
 ### Choosing a port
 
@@ -558,6 +609,9 @@ npm run build           # writes the bundle into src/companion/app/static/
 
 Commit `src/companion/app/static/` alongside your `ui/` change, then run
 `uv run python -m scripts.build_plugin` and commit `plugin/` — CI checks both mirrors for drift.
+There is a third generated artifact (the TypeScript types the UI compiles against); all three,
+with what regenerates each, are listed under
+[Generated artifacts](CONTRIBUTING.md#generated-artifacts) in `CONTRIBUTING.md`.
 
 ```
 src/
