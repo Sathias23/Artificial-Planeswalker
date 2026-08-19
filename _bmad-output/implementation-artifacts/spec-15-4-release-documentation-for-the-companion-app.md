@@ -2,7 +2,7 @@
 title: 'Release documentation for the companion app'
 type: 'chore'
 created: '2026-08-19'
-status: 'in-review'
+status: 'done'
 baseline_revision: '2ea1f4af4f8ce9632dd9fed1e25f2d5a9c6ad024'
 baseline_commit: '2ea1f4af4f8ce9632dd9fed1e25f2d5a9c6ad024'
 review_loop_iteration: 0
@@ -514,3 +514,80 @@ follows it naming the port actually handed out — and says why no example print
 `cd ui && npm test` → 80 files / 2305 tests, unmoved through both passes. `ruff check .` and
 `ruff format --check` clean, `mypy src/` clean on 94 files. `uv run python -m scripts.build_plugin`
 then `git status --porcelain -- plugin/` → empty. `git diff --stat` carries no `src/` or `ui/` file.
+
+## Suggested Review Order
+
+**The section itself — read this first**
+
+- The entry point: what the companion is, and that nothing depends on it.
+  [`README.md:201`](../../README.md#L201)
+
+- The one documented command, and why its printed line is the only one.
+  [`README.md:212`](../../README.md#L212)
+
+- Port precedence, the ephemeral fallback, and the full `--port` contract.
+  [`README.md:242`](../../README.md#L242)
+
+- Both "already running" messages — the pair, not one message.
+  [`README.md:284`](../../README.md#L284)
+
+- The fresh-install narrative and the F4 recovery this story documents but does not fix.
+  [`README.md:341`](../../README.md#L341)
+
+**Claims that live outside the section, and can contradict it**
+
+- Discovery, the token, and the loopback-only envelope a listening socket earns.
+  [`README.md:307`](../../README.md#L307)
+
+- The capability row that was a dead end; now a link.
+  [`README.md:28`](../../README.md#L28)
+
+- Prerequisites: Node absent by design, plus the measured cache footprint.
+  [`README.md:52`](../../README.md#L52)
+
+**Release record**
+
+- What shipped, with dependency floors sourced from `pyproject.toml`.
+  [`CHANGELOG.md:10`](../../CHANGELOG.md#L10)
+
+- The TypeScript cap carrying both halves — the refusal and the back-solve to 6.0.3.
+  [`CHANGELOG.md:55`](../../CHANGELOG.md#L55)
+
+- A listening socket added to a stdio-only tool warrants its own entry.
+  [`CHANGELOG.md:91`](../../CHANGELOG.md#L91)
+
+- Upgrade notes, this file's own convention, carrying the F4 limitation.
+  [`CHANGELOG.md:102`](../../CHANGELOG.md#L102)
+
+**Attribution**
+
+- Imagery named where only card data was claimed; both URLs byte-exact.
+  [`NOTICE:7`](../../NOTICE#L7)
+
+- The README half of the same correction.
+  [`README.md:572`](../../README.md#L572)
+
+**The guard — supporting, but it is what holds all of the above**
+
+- The section constant, and why renaming it is more than one edit.
+  [`test_companion_docs.py:101`](../tests/unit/companion/test_companion_docs.py#L101)
+
+- Fence-aware extraction that fails loudly rather than widening to EOF.
+  [`test_companion_docs.py:268`](../tests/unit/companion/test_companion_docs.py#L268)
+
+- Prose claims compared through a normaliser, not pinned to markdown formatting.
+  [`test_companion_docs.py:170`](../tests/unit/companion/test_companion_docs.py#L170)
+
+- Every assertion keyed on a shipped symbol; zero hand-typed README strings.
+  [`test_companion_docs.py:483`](../tests/unit/companion/test_companion_docs.py#L483)
+
+- The attribution coupling, added at review after its first version proved vacuous.
+  [`test_companion_docs.py:1029`](../tests/unit/companion/test_companion_docs.py#L1029)
+
+**Peripherals**
+
+- Node floor corrected to the measured `>=20.19.0`.
+  [`ARCHITECTURE-SPINE.md:396`](../planning-artifacts/architecture/architecture-Artificial-Planeswalker-2026-07-25/ARCHITECTURE-SPINE.md#L396)
+
+- The same correction in the epic's stack table.
+  [`epics-companion-app.md:333`](../planning-artifacts/epics-companion-app.md#L333)
