@@ -6534,6 +6534,20 @@ Also executed or re-homed at this retro, beyond the seven:
     **Home: 15-5.** If 15-5 does not close it, the release ships a launch instruction that fails
     for the install route the README recommends first. (Severity: Medium — reachable by any plugin
     user on day one; bounded, since the workaround exists and only the documentation is missing.)
+  resolution: '**CLOSED by 15-5 (2026-08-20, PR #89).** The anchored form the ledger predicted —
+    `uv run --directory "$PLUGIN_ROOT/server" artificial-planeswalker companion` — is documented
+    for BOTH plugin clients in `README.md` and in `docs/plugin-structure.md`, each route showing
+    how to find its own version-keyed root first (Claude Code under `~/.claude/plugins/cache`,
+    Codex under `~/.codex/plugins/cache`, POSIX and PowerShell). Not transcribed:
+    `test_build_plugin.py` derives the script and subcommand from `pyproject`''s
+    `[project.scripts]` and the dispatcher''s usage text, and asserts every anchor ends at
+    `/server` — the directory `${CLAUDE_PLUGIN_ROOT}/server` and Codex''s `cwd: "./server"` both
+    resolve to. What the ledger did NOT predict, and what the Greptile round found: documenting
+    the command is not enough if the reader cannot obtain the root. The Codex block shipped
+    `$PLUGIN_ROOT` with no way to get one, and the guard first written for it searched the whole
+    document — where the Claude Code block''s assignment vouched for the Codex block below it —
+    so it is scoped to each route''s own section. The plain `uv run artificial-planeswalker
+    companion` stays correct for the clone route and is unchanged.'
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-15-4-release-documentation-for-the-companion-app.md`
   summary: >-
