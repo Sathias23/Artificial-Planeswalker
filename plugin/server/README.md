@@ -248,14 +248,15 @@ status it ever returns). `--port 0` is legal and means "give me any free port".
 **If the preferred port is taken, the launch still succeeds.** The app falls back to a
 kernel-assigned ephemeral port on *any* bind failure — not only "address already in use", because
 Windows refuses binds inside its reserved dynamic ranges with a different error entirely — and says
-so before the launch line:
+so first:
 
 ```
 [planeswalker] port 8765 is unavailable — falling back to an ephemeral port
-[planeswalker] companion running at http://127.0.0.1:54321 — open this URL in your browser (Ctrl-C to stop)
 ```
 
-Read the port off the second line. It is always the real one.
+The usual launch line follows it, naming the port the kernel actually handed out — which is why no
+example here prints one: an ephemeral port is whatever was free at the time. Read the port off that
+line. It is always the real one.
 
 ### One companion at a time
 

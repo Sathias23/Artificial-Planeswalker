@@ -334,3 +334,97 @@ oversight, and the review pass should read them as ruled.
   and no new link definition.
 - Confirm the two attribution URLs in `NOTICE` are byte-identical to
   `ui/src/components/Footer/copy.ts:66,70` after the imagery edit.
+
+## Verification Record
+
+**Prose guard added after review.** The Matrix Test Audit found all nine I/O matrix rows uncovered:
+`test_server.py` matches the announcement strings because it is the *source-side* test of them, not a
+README reader, so `## The companion app` was gated by nothing. Closed by
+`tests/unit/companion/test_companion_docs.py` (15 tests), written to `test_image_cache_docs.py`'s
+idiom — heading-anchored, fence-aware extraction with a non-vacuity anchor, every claim keyed on a
+shipped symbol (`server.HOST`, `server.DEFAULT_PORT`, `server.PORT_ENV_VAR`, `server._MIN_PORT`,
+`server._MAX_PORT`, `discovery.COMPANION_FILENAME`, `singleton.LOCK_FILENAME`,
+`paths.database_path()`, `SetActiveDeckResult.status`) or read out of source (`server.py`'s AST for
+the four `[planeswalker]` announcements, `__main__.py`'s AST for every integer `return`,
+`pyproject.toml` for the console script and the base dependencies, `_USAGE` for the subcommand, and
+`ui/src/components/StatePanel/copy.ts` for the three fresh-install panel lines, looked up by the
+kebab spelling of the shipped `database_not_initialized` reason token). Residue is declared in the
+module docstring.
+
+**Matrix coverage.** Row 1 → `test_every_line_the_runner_prints_is_quoted_verbatim`,
+`test_the_quoted_launch_line_carries_the_shipped_host_and_default_port`,
+`test_the_documented_launch_command_is_the_installed_console_script`. Row 2 →
+`test_every_line_the_runner_prints_is_quoted_verbatim`. Rows 3-4 →
+`test_both_already_running_messages_are_documented_and_kept_apart`,
+`test_the_documented_exit_statuses_are_the_only_ones_the_dispatcher_returns`. Row 5 →
+`test_the_default_port_and_both_overrides_are_the_shipped_ones` (precedence *exercised* against
+`resolve_preferred_port`, not merely asserted) plus the exit-status test. Row 6 →
+`test_the_fresh_install_narrative_quotes_the_shipped_panel`. Row 7 →
+`test_the_failed_import_recovery_says_stop_the_app_first`. Rows 8-9 →
+`test_the_discovery_and_lock_filenames_are_the_shipped_constants`.
+
+**One deliberate divergence from `test_image_cache_docs.py`:** its extractor terminates on an ATX
+heading of *any* level, correct for a `###` section with no subsections. `## The companion app` owns
+six `###` subsections, so this extractor terminates on a heading of the section's own level or
+higher, derived from `SECTION_HEADING`. Both bounds are tested, including that the neighbouring
+`### Image cache (companion app)` stays *outside* the extraction — otherwise an assertion here could
+pass on story 15-2's prose.
+
+**Firing proofs** — full suite via `uv run python -m scripts.probe_harness`, one plant per assertion
+family, tree staged before each plant and each revert verified with `git diff --exit-code`:
+
+```
+green baseline   full suite (-m 'not integration'): 3150 collected, 0 failed, exit 0
+
+1 README launch-line port 8765 -> 8766
+                 full suite (-m 'not integration'): 3150 collected, 1 failed, 0 errored, exit 1
+  RED    test_companion_docs.py::…::test_the_quoted_launch_line_carries_the_shipped_host_and_default_port
+
+2 README drops the "another companion is already starting up" message
+                 full suite (-m 'not integration'): 3150 collected, 2 failed, 0 errored, exit 1
+  RED    test_companion_docs.py::…::test_every_line_the_runner_prints_is_quoted_verbatim
+  RED    test_companion_docs.py::…::test_both_already_running_messages_are_documented_and_kept_apart
+
+3 README recovery reworded, dropping "Stop the companion first"
+                 full suite (-m 'not integration'): 3150 collected, 1 failed, 0 errored, exit 1
+  RED    test_companion_docs.py::…::test_the_failed_import_recovery_says_stop_the_app_first
+
+4 README panel headline "Card database not set up yet." -> "Card database is not set up yet."
+                 full suite (-m 'not integration'): 3150 collected, 1 failed, 0 errored, exit 1
+  RED    test_companion_docs.py::…::test_the_fresh_install_narrative_quotes_the_shipped_panel
+
+5 README leftovers say "its lock file" instead of `companion.lock`
+                 full suite (-m 'not integration'): 3150 collected, 1 failed, 0 errored, exit 1
+  RED    test_companion_docs.py::…::test_the_discovery_and_lock_filenames_are_the_shipped_constants
+
+6 README documents exit `1` instead of `2`
+                 full suite (-m 'not integration'): 3150 collected, 1 failed, 0 errored, exit 1
+  RED    test_companion_docs.py::…::test_the_documented_exit_statuses_are_the_only_ones_the_dispatcher_returns
+
+7 README section renamed to "## The companion application" (non-vacuity anchor)
+                 full suite (-m 'not integration'): 3150 collected, 15 failed, 0 errored, exit 1
+  RED    all 15 tests in test_companion_docs.py — the guard cannot pass over a missing section
+
+8 SOURCE-side: src/companion/app/server.py `DEFAULT_PORT = 8765` -> `8766`
+                 full suite (-m 'not integration'): 3150 collected, 5 failed, 0 errored, exit 1
+  RED    test_companion_docs.py::…::test_the_quoted_launch_line_carries_the_shipped_host_and_default_port
+  RED    test_companion_docs.py::…::test_both_already_running_messages_are_documented_and_kept_apart
+  RED    test_companion_docs.py::…::test_the_default_port_and_both_overrides_are_the_shipped_ones
+  RED    test_server.py::TestPortResolution::test_defaults_when_nothing_is_configured
+  RED    test_server.py::TestNothingElseHardcodesThePort::test_only_the_runner_names_the_default_port
+```
+
+Proof 8 is the one that matters most: the README was untouched and the guard still went red, which
+is what "keyed on the shipped symbol" means. Every revert was verified clean
+(`git diff --exit-code <file>` → exit 0) and `git status --porcelain` showed no plant residue.
+
+**Invented-number correction.** The ephemeral-fallback example printed `http://127.0.0.1:54321`,
+an invented illustrative port that the Boundaries section forbids. It is **removed rather than
+sourced**: an ephemeral port is by definition whatever the kernel had free, so no literal can be
+correct. The fenced block now shows only the fallback line, and the prose says the usual launch line
+follows it naming the port actually handed out — and says why no example prints one.
+
+**Final gate results:** `uv run pytest -q` → **3203 passed, 2 skipped** (baseline 3188/2, +15 from
+the new guard, no regression). `cd ui && npm test` → 80 files / 2305 tests, unmoved. `ruff check .`
+clean, `mypy src/` clean on 94 files. `uv run python -m scripts.build_plugin` then
+`git status --porcelain -- plugin/` → empty.
