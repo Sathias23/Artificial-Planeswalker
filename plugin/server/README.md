@@ -22,7 +22,7 @@ your client supplies the model, the server supplies fast, accurate MTG data and 
 |------------|-------|
 | **Card lookup & search** | `lookup_card_by_name`, `search_cards` |
 | **Semantic search** (local embeddings, no network) | `semantic_search_cards`, `find_similar_cards` |
-| **Deck management** | `create_deck`, `list_decks`, `load_deck`, `delete_deck`, `add_card_to_deck`, `remove_card_from_deck`, `view_deck` *(deprecated — use the companion app)*, `import_decklist` (bulk Arena import) |
+| **Deck management** | `create_deck`, `list_decks`, `load_deck`, `delete_deck`, `add_card_to_deck`, `remove_card_from_deck`, `view_deck` *(deprecated — use the [companion app](#the-companion-app))*, `import_decklist` (bulk Arena import) |
 | **Deck analysis** | `analyze_mana_curve`, `detect_synergies`, `validate_deck` |
 | **Deck power assessment** *(experimental)* | `assess_deck_power`, `compare_deck_power` |
 | **[Companion app](#the-companion-app)** | `companion_set_active_deck` — puts a saved deck on the companion's live browser view; `companion_show_suggestions` — puts a list of suggested cards on the same view, as cards rather than as text. Both report `app_not_running` when the companion isn't up |
@@ -53,7 +53,10 @@ releases.
 
 - **Python 3.12+**
 - **[uv](https://docs.astral.sh/uv/)** (package manager / runner)
-- ~300 MB of disk for the card database + embedding index (built from a one-time ~500 MB download on first run)
+- ~300 MB of disk for the card database + embedding index (built from a one-time ~500 MB
+  download on first run), **plus** whatever the companion's
+  [image cache](#image-cache-companion-app) grows to — a measured ~8.5 MB per 99-card deck you
+  view and ~95 MB for a full set of printings, with no eviction
 - **Nothing extra for the [companion app](#the-companion-app)** — its browser UI ships pre-built,
   so **Node is not required** at install or at runtime (only to change the UI)
 
@@ -212,7 +215,7 @@ companion adds a visual channel; it never replaces chat output.
 uv run artificial-planeswalker companion
 ```
 
-It runs in the foreground until you interrupt it, and prints exactly one line:
+It runs in the foreground until you interrupt it, and prints exactly one **launch line**:
 
 ```
 [planeswalker] companion running at http://127.0.0.1:8765 — open this URL in your browser (Ctrl-C to stop)
@@ -224,6 +227,12 @@ is actually bound. The address is printed as the literal `127.0.0.1` rather than
 purpose: the socket is IPv4-only, and `localhost` resolves to `::1` first on Windows and on modern
 Linux. Ctrl-C stops the app and exits `0`.
 
+**Two streams, and it matters when something looks wrong.** The lines above — the launch line, the
+fallback notice and both "already running" messages — go to **stdout**, because they are the point
+of running the command. Everything the app logs goes to **stderr** at `INFO`, uvicorn's own records
+included. A warning you have to go looking for is on stderr; the line you were told to open is on
+stdout.
+
 > **Node is never required** — not at install, not at runtime. The browser UI ships pre-built inside
 > the Python package, and `fastapi` and `uvicorn` are ordinary base dependencies, so there is no
 > extra, no dependency group and no build step between a fresh clone and a running app. The honest
@@ -232,18 +241,32 @@ Linux. Ctrl-C stops the app and exits `0`.
 
 ### Choosing a port
 
-The companion prefers port **8765**. Two ways to ask for a different one, in precedence order:
+The companion prefers port **8765**. Two ways to ask for a different one — pick **one**, since each
+block below is a whole launch on its own:
 
 ```bash
-uv run artificial-planeswalker companion --port 9000     # highest precedence
-COMPANION_PORT=9000 uv run artificial-planeswalker companion
+uv run artificial-planeswalker companion --port 9000      # or --port=9000
 ```
 
-So `--port` beats `COMPANION_PORT`, which beats the default. A value outside `0..65535` from either
-source is **ignored with a logged warning** and the default is used instead — a stale environment
-variable must never stop a launch. A `--port` that is not an integer at all is a different case: you
-typed it in this invocation, so it is a usage error and the program exits `2` (the only non-zero
-status it ever returns). `--port 0` is legal and means "give me any free port".
+```bash
+COMPANION_PORT=9000 uv run artificial-planeswalker companion          # macOS / Linux
+```
+
+```powershell
+$env:COMPANION_PORT = 9000; uv run artificial-planeswalker companion  # Windows
+```
+
+So `--port` beats `COMPANION_PORT`, which beats the default. The rest of what the launcher accepts,
+in one list:
+
+* `--port N` and `--port=N` are both accepted. `-h` / `--help` prints the usage and exits `0`.
+* `--port 0` is legal and means "give me any free port".
+* A `COMPANION_PORT` that is not an integer, or an integer outside `0..65535`, is **ignored with a
+  logged warning** on stderr and the default is used instead — a stale environment variable must
+  never stop a launch. An out-of-range `--port` is treated the same way.
+* A `--port` that is not an integer, a `--port` with no value, and `--port` given twice are all
+  **usage errors**: you typed them in this invocation, so the launcher says what was wrong and
+  exits `2` (the only non-zero status it ever returns).
 
 **If the preferred port is taken, the launch still succeeds.** The app falls back to a
 kernel-assigned ephemeral port on *any* bind failure — not only "address already in use", because
@@ -260,8 +283,9 @@ line. It is always the real one.
 
 ### One companion at a time
 
-Starting a second companion never starts a second server and never fails — **all three outcomes
-exit `0`**. Which of the two messages you get depends on how far along the other one is.
+Starting a second companion never starts a second server and never fails. The launcher has three
+outcomes — it serves, or it prints one of the two messages below — and **every one of them exits
+`0`**. Which of the two messages you get depends on how far along the other companion is.
 
 If a companion is already up and answering, this launch tells you where it is:
 
@@ -288,13 +312,31 @@ token. That file is the **sole** rendezvous: the MCP tools read it to learn both
 and how to authenticate. There is no environment variable to set, no registry key and no port scan,
 which is exactly why an ephemeral fallback costs you nothing.
 
+> **If the tools say `app_not_running` while the app is plainly running**, the two processes
+> resolved *different* data directories. The discovery file is the only rendezvous, so an MCP client
+> started with a different `PLANESWALKER_DATA_DIR` than the terminal that launched the companion —
+> or with none, when your shell sets one — looks in a directory the companion never wrote to and
+> correctly concludes nothing is there. Set the variable the same way for both, or leave it unset
+> for both.
+
 * **A clean stop (Ctrl-C)** exits `0` and removes `companion.json`. It leaves `companion.lock`
   behind **deliberately** — the reasons, and everything else an uninstall leaves in the data
-  directory, are in [Image cache (companion app)](#image-cache-companion-app).
+  directory, are under
+  [what an uninstall leaves behind](#image-cache-companion-app).
 * **An unclean exit** (a crash, a `kill`, the power going out) leaves `companion.json` behind
   stale. That is the *expected* post-crash state rather than an error: a stale file reads as "app
-  not running", and the next launch reclaims it and notes so in its log. There is nothing to clean
-  up by hand.
+  not running", and the next launch reclaims it and says so in its log on stderr. There is nothing
+  to clean up by hand.
+
+### What it exposes
+
+The companion binds a **loopback IPv4 socket and nothing else**. `127.0.0.1` is a constant in the
+code rather than a setting, so there is no configuration that puts the app on your network, and the
+traffic is plain HTTP — which is exactly why it has to stay on loopback. The endpoints your agent
+uses are gated by a token minted fresh for each process and written into `companion.json`; that file
+is created `0600` on macOS and Linux, but Windows has no equivalent, so there it is readable by any
+account on the machine. Treat this as what it is: a single-user local tool, not something to leave
+running on a machine you share with people you would not hand your decks to.
 
 ### First run on a fresh install
 
@@ -491,6 +533,23 @@ uv run mypy src/                    # strict type-check
 uv run pre-commit install           # gate every commit
 ```
 
+**Changing the companion's UI needs Node `>=20.19.0`** — the one thing in this project that needs
+Node at all. The built SPA bundle is **committed** (that is what keeps installs Node-free), so it
+has to be rebuilt and committed with every `ui/` change or CI fails on drift:
+
+```bash
+cd ui
+npm ci                  # locked install — never npm install
+npm run lint            # eslint + stylelint
+npm run format:check    # prettier (this one re-pads markdown tables under ui/)
+npm run typecheck       # tsc -b
+npm test                # vitest
+npm run build           # writes the bundle into src/companion/app/static/
+```
+
+Commit `src/companion/app/static/` alongside your `ui/` change, then run
+`uv run python -m scripts.build_plugin` and commit `plugin/` — CI checks both mirrors for drift.
+
 ```
 src/
 ├── data/        # SQLAlchemy models, Scryfall importers, repositories, schemas
@@ -501,6 +560,7 @@ src/
 ├── paths.py     # central data-dir resolution
 └── mcp_server/  # FastMCP server + tool definitions (python -m src.mcp_server)
 ui/              # companion SPA source (React + Vite) — Node, dev/CI only
+plugin/          # generated Claude Code / Codex plugin tree — rebuild, never hand-edit
 tests/           # unit + integration, mirroring src/
 ```
 

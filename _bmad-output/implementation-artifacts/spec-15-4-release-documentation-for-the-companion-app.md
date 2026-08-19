@@ -2,7 +2,7 @@
 title: 'Release documentation for the companion app'
 type: 'chore'
 created: '2026-08-19'
-status: 'in-progress'
+status: 'in-review'
 baseline_revision: '2ea1f4af4f8ce9632dd9fed1e25f2d5a9c6ad024'
 baseline_commit: '2ea1f4af4f8ce9632dd9fed1e25f2d5a9c6ad024'
 review_loop_iteration: 0
@@ -281,6 +281,24 @@ the companion added landed on `master` after the `v0.4.0` tag.
 
 ## Spec Change Log
 
+- **2026-08-19 — prose guard added (review-driven, no intent change).** The Matrix Test Audit found
+  all nine I/O matrix rows uncovered: `test_server.py` matches the announcement strings because it
+  is the source-side test of them, not a README reader. Closed with
+  `tests/unit/companion/test_companion_docs.py`. The Tasks list did not name a test because the
+  Code Map's read-only survey read "exactly one test reads root `README.md`" as a *constraint* and
+  not as a gap; it was both. No frozen intent moved — the guard asserts the section the Tasks list
+  already required.
+- **2026-08-19 — the ephemeral-fallback example's invented port removed.** The first cut printed
+  `http://127.0.0.1:54321`, which "Do not invent a number" forbids. Not sourced but **deleted**: an
+  ephemeral port is whatever the kernel had free, so no literal can be correct. The fenced block now
+  carries the fallback line alone and the prose says the launch line follows it with the real port.
+- **2026-08-19 — three-layer review patch set applied.** No intent gaps and no spec deviations. Two
+  classes of change, both outside frozen intent: guard coverage (nine proven holes, each planted and
+  now red) and documentation correctness (a false "prints exactly one line", the CHANGELOG's
+  TypeScript rationale contradicting the measured result it summarises, a missing `### Upgrade
+  notes` and `### Security` block, the image cache absent from the disk requirement, and the
+  `view_deck` dead-end pointer the Intent names — still unlinked until this pass).
+
 ## Design Notes
 
 **Why the section goes where it goes.** `### Image cache (companion app)` is the densest and most
@@ -370,6 +388,11 @@ higher, derived from `SECTION_HEADING`. Both bounds are tested, including that t
 `### Image cache (companion app)` stays *outside* the extraction — otherwise an assertion here could
 pass on story 15-2's prose.
 
+**Two counts, two populations — not two baselines.** `scripts.probe_harness` owns its argv and runs
+`-m "not integration"`, so its figures (3150 → 3155) deliberately exclude the integration tests that
+`uv run pytest -q` collects (3188 → 3203 → 3208). Both grew by exactly the number of tests added, and
+neither is a regression against the other.
+
 **Firing proofs** — full suite via `uv run python -m scripts.probe_harness`, one plant per assertion
 family, tree staged before each plant and each revert verified with `git diff --exit-code`:
 
@@ -418,13 +441,76 @@ Proof 8 is the one that matters most: the README was untouched and the guard sti
 is what "keyed on the shipped symbol" means. Every revert was verified clean
 (`git diff --exit-code <file>` → exit 0) and `git status --porcelain` showed no plant residue.
 
+**Review round 1 — patch set applied 2026-08-19, with eight further firing proofs.** The review
+proved nine guard holes by planting and reverting; each is now closed and red. Two of the new
+assertions were themselves wrong on the first cut, and their own firing proofs are what said so —
+both are recorded here rather than quietly fixed:
+
+* **Proof 12 failed the first time.** The attribution check searched each file *whole*, so reverting
+  `NOTICE`'s Scryfall sentence still passed: the word survived in a section heading elsewhere in the
+  file. A credit is a sentence, not a file. Rescoped to every blank-line paragraph carrying the
+  Scryfall href, and re-proved.
+* **Proof 14 failed the first time.** Reading `ShowSuggestionsResult` alongside `SetActiveDeckResult`
+  closed the *model* half, but the claim that **both** tools report the token is made in the
+  capability table at `README.md:28` — outside the guarded section, so the plant changed nothing the
+  guard could see. The assertion now reads `## What it does` too, and re-proved red.
+
+```
+9  README fallback example: port 8765 -> 9999   (slot was a wildcard; 15 tests stayed green)
+                 3155 collected, 1 failed, exit 1
+  RED    …::test_the_quoted_fallback_line_names_the_shipped_default_port
+
+10 README capability row: ](#the-companion-app) -> a slug naming no heading
+                 3155 collected, 1 failed, exit 1
+  RED    …::test_every_in_page_link_resolves_and_this_section_is_linked_to
+
+11 README ## Requirements: "Node is not required" -> "Node 22 or newer is required"
+                 3155 collected, 1 failed, exit 1
+  RED    …::test_the_section_says_node_is_never_required_and_pyproject_agrees
+
+12 NOTICE attribution reverted to card data only  (re-run after rescoping)
+                 3155 collected, 1 failed, exit 1
+  RED    …TestTheAttributionNamesWhatTheAppActuallyUses::test_the_docs_claim_every_subject_the_footer_claims
+
+13 README attribution reverted to card data only
+                 3155 collected, 1 failed, exit 1
+  RED    …TestTheAttributionNamesWhatTheAppActuallyUses::test_the_docs_claim_every_subject_the_footer_claims
+
+14 README capability row drops `app_not_running`  (re-run after widening the assertion)
+                 3155 collected, 1 failed, exit 1
+  RED    …::test_the_section_says_the_companion_is_optional
+
+15 README: an unclosed `~~~` fence opened inside the section
+                 3155 collected, 17 failed, exit 1
+  RED    every test that reads the section — the extraction fails loudly instead of silently
+         widening to the whole file
+
+16 SOURCE-side: src/mcp_server/__main__.py gains a `sys.exit(3)` call
+                 3155 collected, 1 failed, exit 1
+  RED    …::test_the_documented_exit_statuses_are_the_only_ones_the_dispatcher_returns
+```
+
+**Two new assertions carry no firing proof, deliberately.** The panel-copy backslash rejection fires
+only on an escape sequence appearing in `ui/src/components/StatePanel/copy.ts`, and the
+precedence-probe range guard fires only if `DEFAULT_PORT` moved within two of `_MAX_PORT`. Planting
+either means editing a file this story is barred from touching for a proof of a defensive branch;
+both are stated here as unproven rather than counted as proven.
+
+**Attribution guard placement.** The subject check went into the Python guard, not
+`ui/tests/attribution.test.ts`. `ui/tests/**` sits under the spec's *Ask First* list, and the Python
+side needs no permission, touches no `ui/` file, and cannot perturb the committed bundle or
+Prettier's scope. It reads `ui/src/components/Footer/copy.ts` read-only, which is how it stays keyed
+to what the app claims rather than to what the test remembers. `git status --porcelain` confirms no
+`ui/` file changed and the bundle is byte-identical.
+
 **Invented-number correction.** The ephemeral-fallback example printed `http://127.0.0.1:54321`,
 an invented illustrative port that the Boundaries section forbids. It is **removed rather than
 sourced**: an ephemeral port is by definition whatever the kernel had free, so no literal can be
 correct. The fenced block now shows only the fallback line, and the prose says the usual launch line
 follows it naming the port actually handed out — and says why no example prints one.
 
-**Final gate results:** `uv run pytest -q` → **3203 passed, 2 skipped** (baseline 3188/2, +15 from
-the new guard, no regression). `cd ui && npm test` → 80 files / 2305 tests, unmoved. `ruff check .`
-clean, `mypy src/` clean on 94 files. `uv run python -m scripts.build_plugin` then
-`git status --porcelain -- plugin/` → empty.
+**Final gate results:** `uv run pytest -q` → **3208 passed, 2 skipped** — story baseline 3188/2,
++15 for the first guard cut and +5 for the review's new assertions, no regression at any step.
+`cd ui && npm test` → 80 files / 2305 tests, unmoved through both passes. `ruff check .` and
+`ruff format --check` clean, `mypy src/` clean on 94 files. `uv run python -m scripts.build_plugin`
+then `git status --porcelain -- plugin/` → empty. `git diff --stat` carries no `src/` or `ui/` file.
