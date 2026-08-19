@@ -153,11 +153,23 @@ you the 21 tools *and* the four deckbuilding skills. If Codex also auto-surfaces
 (see [openai/codex#19372](https://github.com/openai/codex/issues/19372)).
 
 The plugin route also carries [the companion app](#the-companion-app) — it is the same tree, so
-`server/` holds the same pre-built UI and no Node toolchain is involved. Launch it anchored at
-wherever Codex installed the plugin, the same shape as the Claude Code route above:
+`server/` holds the same pre-built UI and no Node toolchain is involved. Codex keeps its own
+version-keyed plugin cache under `~/.codex` (`%USERPROFILE%\.codex` on Windows), so find that
+root first and launch anchored at it — the same shape as the Claude Code route above, and the
+same caveat: the path is specific to your machine and to the plugin version, so read it off your
+own install rather than pasting a literal one.
 
 ```bash
+ls -d ~/.codex/plugins/cache/*/artificial-planeswalker/*/    # list the versioned install(s)
+PLUGIN_ROOT="$HOME/.codex/plugins/cache/<marketplace>/artificial-planeswalker/<version>"
 uv run --directory "$PLUGIN_ROOT/server" artificial-planeswalker companion
+```
+
+```powershell
+# Windows (PowerShell) — where the Codex-app route verified above installs
+Get-ChildItem -Directory -Recurse -Depth 3 "$HOME\.codex\plugins\cache" -Filter server
+$PluginRoot = "<the directory listed above, without \server>"
+uv run --directory "$PluginRoot/server" artificial-planeswalker companion
 ```
 
 The manual route has no plugin root: run the companion from your clone with the plain

@@ -659,6 +659,20 @@ variable is, and the two names are derived from source by the test below rather 
 """
 
 
+_SHELL_VARIABLE = re.compile(r"\$\{?(?P<name>\w+)\}?")
+"""Matches the first variable interpolated in an anchor, in bash or PowerShell spelling."""
+
+_CLIENT_SUBSTITUTED = frozenset({"CLAUDE_PLUGIN_ROOT"})
+"""Variables the client expands for the reader, so no document has to define them."""
+
+_SECTION_BOUNDARY = re.compile(r"^(?:#{1,6} |<details)", re.M)
+"""Where one install route stops and the next begins — a heading, or a collapsible client block.
+
+The install routes are ``<details>`` blocks under one heading, so headings alone would let the
+Claude Code block's ``PLUGIN_ROOT=`` vouch for the Codex block below it.
+"""
+
+
 def _documented_launch_command() -> tuple[str, str]:
     """Return the installed console script and the subcommand that runs the companion.
 
@@ -725,6 +739,34 @@ class TestThePluginInstallRouteIsDocumented:
                 "cwd: './server' both resolve to. uv would build the wrong project."
             )
 
+    @pytest.mark.parametrize("document", [_README, _PLUGIN_DOC], ids=lambda path: path.name)
+    def test_every_anchor_variable_is_defined_before_it_is_used(self, document: Path) -> None:
+        """A launch command whose root is an undefined variable is a command nobody can run.
+
+        The Claude Code route lists the versioned cache and assigns ``PLUGIN_ROOT`` from it before
+        spending it; the Codex route shipped the same ``$PLUGIN_ROOT`` with no way to obtain one
+        (review, 2026-08-20). Each client keeps its own version-keyed cache under its own home
+        directory, so the definition is searched for **within the route's own section** — a
+        document-wide search passes on exactly the bug this closes, since the Claude Code block's
+        assignment sits further up the same file and nobody reading the Codex block ever sees it.
+        """
+        text = document.read_text(encoding="utf-8")
+
+        for match in _ANCHORED_LAUNCH.finditer(text):
+            variable = _SHELL_VARIABLE.search(match.group("anchor").strip("\"'"))
+            if variable is None or variable.group("name") in _CLIENT_SUBSTITUTED:
+                continue  # A literal path, or a variable the client itself expands.
+            name = variable.group("name")
+            boundaries = [b.start() for b in _SECTION_BOUNDARY.finditer(text, 0, match.start())]
+            section = text[boundaries[-1] if boundaries else 0 : match.start()]
+            assignment = re.compile(rf"^\s*\$?{re.escape(name)}\s*=", re.M)
+            assert assignment.search(section), (
+                f"{document.name} spends ${name} in a launch command that its own section never "
+                "assigns. The reader has nothing to substitute, and the plugin cache it names is "
+                "version-keyed and client-specific, so they cannot guess it or borrow another "
+                "client's — show them how to find their own root before asking them to use it."
+            )
+
     def test_the_design_records_deep_link_into_the_readme_still_resolves(self) -> None:
         """A renamed README section must not leave the design record pointing at nothing.
 
@@ -770,8 +812,8 @@ file (c2-3 review, 2026-07-27).
 """
 
 
-def _drift_step_script() -> str:
-    """Return the shell script CI runs for the plugin drift step, read out of the workflow.
+def _step_script(name: str) -> str:
+    """Return the shell script CI runs for the workflow step called *name*.
 
     Read as text rather than through a YAML library on purpose: the only YAML reader present here
     arrives transitively via ``uvicorn[standard]``, and a committed test must not lean on another
@@ -782,6 +824,9 @@ def _drift_step_script() -> str:
     stopped carrying a ``run: |`` block fails loudly here instead of silently returning a later
     step's script and letting every assertion below pass against the wrong subject.
 
+    Args:
+        name: The step's ``- name:`` value, verbatim.
+
     Returns:
         The step's ``run:`` block, dedented to column zero.
 
@@ -790,10 +835,10 @@ def _drift_step_script() -> str:
             which would otherwise leave the executable assertions below testing an empty string.
     """
     lines = _CI_WORKFLOW.read_text(encoding="utf-8").splitlines()
-    headers = [i for i, line in enumerate(lines) if line.strip() == f"- name: {_PLUGIN_DRIFT_STEP}"]
+    headers = [i for i, line in enumerate(lines) if line.strip() == f"- name: {name}"]
     assert len(headers) == 1, (
-        f"{_CI_WORKFLOW.name} declares {len(headers)} steps named {_PLUGIN_DRIFT_STEP!r}; this "
-        "module asserts about exactly one. Say which step is the drift check."
+        f"{_CI_WORKFLOW.name} declares {len(headers)} steps named {name!r}; this module asserts "
+        "about exactly one. Say which step is the guard."
     )
     start = headers[0] + 1
     end = next(
@@ -802,8 +847,8 @@ def _drift_step_script() -> str:
     )
     opener = next((i for i in range(start, end) if lines[i].strip() == "run: |"), None)
     assert opener is not None, (
-        f"the {_PLUGIN_DRIFT_STEP!r} step no longer carries a `run: |` block scalar, so its script "
-        "cannot be read — and every assertion below would pass over nothing."
+        f"the {name!r} step no longer carries a `run: |` block scalar, so its script cannot be "
+        "read — and every assertion below would pass over nothing."
     )
     indent = len(lines[opener]) - len(lines[opener].lstrip())
     body: list[str] = []
@@ -831,7 +876,7 @@ def _drift_step_preamble() -> str:
             the guard — passing while asserting about nothing, the exact failure this whole class
             exists to rule out.
     """
-    script = _drift_step_script()
+    script = _step_script(_PLUGIN_DRIFT_STEP)
     command_lines = [
         i for i, line in enumerate(script.splitlines()) if line.strip() == _REBUILD_COMMAND
     ]
@@ -841,6 +886,42 @@ def _drift_step_preamble() -> str:
         "wrong rather than merely imprecise."
     )
     return "\n".join(script.splitlines()[: command_lines[0]])
+
+
+def _drift_step_postamble() -> str:
+    """Return the part of the drift step that runs *after* the rebuild — the ignore-axis guard.
+
+    The complement of :func:`_drift_step_preamble`, and sliced at the same single rebuild line for
+    the same reason. What lives here has to run after the build rather than before it: it asks
+    what git is *ignoring* under the freshly written mirror, and a tree that has not been written
+    yet is ignoring nothing.
+
+    Returns:
+        Everything below the ``uv run python -m scripts.build_plugin`` line, so the guard can be
+        executed without paying for a full plugin build.
+    """
+    script = _step_script(_PLUGIN_DRIFT_STEP)
+    lines = script.splitlines()
+    rebuild = next(i for i, line in enumerate(lines) if line.strip() == _REBUILD_COMMAND)
+    return "\n".join(lines[rebuild + 1 :])
+
+
+def _run_postamble(cwd: Path) -> subprocess.CompletedProcess[str]:
+    """Execute the drift step's post-rebuild guard in *cwd*, exactly as the runner would.
+
+    Args:
+        cwd: The repository the guard is asked about.
+
+    Returns:
+        The completed bash process, with stdout and stderr captured as text.
+    """
+    return subprocess.run(
+        ["bash", "-c", _drift_step_postamble()],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        timeout=_SUBPROCESS_TIMEOUT,
+    )
 
 
 def _run_preamble(cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -896,7 +977,7 @@ class TestTheDriftCheckCannotPassOnNothing:
     """
 
     def test_the_guard_names_every_subject_and_runs_before_the_rebuild(self) -> None:
-        script = _drift_step_script()
+        script = _step_script(_PLUGIN_DRIFT_STEP)
         preamble = _drift_step_preamble()
 
         assert "git ls-files" in preamble, (
@@ -983,5 +1064,101 @@ class TestTheDriftCheckCannotPassOnNothing:
         assert result.returncode == 0, (
             "the drift step's preamble fails on this repository, where the mirrored bundle IS "
             f"tracked — so the failures above prove nothing about vacuity. stderr: "
+            f"{result.stderr!r}"
+        )
+
+
+_IGNORED_QUERY = "git ls-files --others --ignored --exclude-standard"
+"""The question `git status --porcelain` cannot be asked about itself: what is git ignoring here?"""
+
+_IGNORE_GUARDED_TREES = {
+    _PLUGIN_DRIFT_STEP: f"plugin/server/src/{_BUNDLE_RELATIVE.as_posix()}/",
+    "SPA bundle in sync with ui/": f"src/{_BUNDLE_RELATIVE.as_posix()}/",
+    "Generated types in sync with the schema": "ui/src/api/",
+}
+"""Each drift-checked generated tree, against the workflow step that rebuilds and guards it."""
+
+
+class TestTheDriftChecksSeeNewlyIgnoredOutput:
+    """The ignore axis from the side a list of named subjects cannot reach (review, 2026-08-20).
+
+    Every guard above asks ``git ls-files`` whether a named subject still has tracked files. That
+    catches a subject vanishing whole, and it is the most a named subject can catch: Vite emits
+    content-hashed chunk names, so ``assets/`` cannot be enumerated ahead of time, and a
+    directory-wide ``ls-files`` stays non-empty while one freshly ignored chunk drops out of it.
+    ``git status --porcelain`` is blind to that file by construction — it reports nothing at all
+    for ignored paths — so all three drift checks would certify a tree whose ``index.html``
+    references a chunk the install never carries.
+
+    The complementary question closes it: of the files the build just wrote, is git ignoring any?
+    Asked of all three generated trees as text, then **executed** on the plugin step's — once in a
+    repository where an unanchored ``.gitignore`` pattern swallows a chunk, once in a repository
+    where nothing is ignored at all, so a green result proves the failure came from the ignored
+    file rather than from a script that cannot run.
+
+    Not executed against this repository: the postamble carries the drift check too, which would
+    make this module fail on any uncommitted work under ``plugin/``. The preamble's own
+    real-repository control above already proves the workflow's shell runs here.
+    """
+
+    @pytest.mark.parametrize("step", sorted(_IGNORE_GUARDED_TREES), ids=lambda step: step)
+    def test_every_generated_tree_is_asked_what_git_is_ignoring(self, step: str) -> None:
+        tree = _IGNORE_GUARDED_TREES[step]
+
+        assert f"{_IGNORED_QUERY} -- {tree}" in _step_script(step), (
+            f"the {step!r} step never asks git what it is ignoring under {tree}. Its `ls-files` "
+            "preamble proves the named subjects are still tracked, which a hashed chunk name can "
+            "never be, and `git status --porcelain` reports nothing for an ignored path — so a "
+            "generated file that slipped into a .gitignore match ships missing behind a green run."
+        )
+
+    @_needs_git
+    @_needs_bash
+    def test_the_guard_fails_where_a_rebuilt_chunk_is_ignored(self, tmp_path: Path) -> None:
+        """The unanchored-pattern case: a chunk exists on disk and git cannot see it.
+
+        ``dist/`` is the pattern the root .gitignore actually carries unanchored, and a future
+        Vite output directory under ``assets/`` is what it would swallow — in the source copy and
+        the mirror at once, since the mirror is a byte copy of the source. Nothing else is staged:
+        the ignored chunk alone has to fail the step, and `git status --porcelain` reports neither
+        it nor the .gitignore that hides it.
+        """
+        subprocess.run(
+            ["git", "init", "--quiet"], cwd=tmp_path, check=True, timeout=_SUBPROCESS_TIMEOUT
+        )
+        (tmp_path / ".gitignore").write_text("dist/\n", encoding="utf-8")
+        mirror = tmp_path / "plugin" / "server" / "src" / _BUNDLE_RELATIVE
+        chunk = mirror / "assets" / "dist" / "index-abc123.js"
+        chunk.parent.mkdir(parents=True, exist_ok=True)
+        chunk.write_text("//", encoding="utf-8")
+
+        result = _run_postamble(tmp_path)
+
+        assert result.returncode != 0, (
+            "the drift step exited 0 in a repository where a rebuilt chunk is gitignored. That "
+            "chunk is absent from the plugin the marketplace ships, and `git status --porcelain` "
+            f"cannot see it — the whole reason this question is asked. stdout: {result.stdout!r}"
+        )
+        assert "index-abc123.js" in result.stdout, (
+            "the guard failed, but its output never names the ignored file — leaving the reader "
+            f"to guess which chunk went missing. stdout: {result.stdout!r}"
+        )
+        assert "::error::" in result.stdout, (
+            "the guard failed without annotating the run, so the cause is buried in a log rather "
+            f"than named on the job. stdout: {result.stdout!r}"
+        )
+
+    @_needs_git
+    @_needs_bash
+    def test_the_guard_passes_where_nothing_is_ignored(self, tmp_path: Path) -> None:
+        subprocess.run(
+            ["git", "init", "--quiet"], cwd=tmp_path, check=True, timeout=_SUBPROCESS_TIMEOUT
+        )
+
+        result = _run_postamble(tmp_path)
+
+        assert result.returncode == 0, (
+            "the drift step's post-rebuild guard fails in a repository with nothing ignored and "
+            "nothing stale, so the failure above proves nothing about the ignored chunk. stderr: "
             f"{result.stderr!r}"
         )

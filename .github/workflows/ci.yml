@@ -110,6 +110,21 @@ jobs:
             fi
           done
           uv run python -m scripts.build_plugin
+          # The other half of the same vacuity, asked of the tree the rebuild just wrote. The
+          # loop above proves each subject still has SOME tracked file, which is the most a
+          # named subject can prove: Vite emits content-hashed chunk names, so no fixed list can
+          # name them one by one, and `ls-files -- assets/` stays non-empty while a single newly
+          # ignored chunk drops out (review round 2, 2026-08-20). Ask the complementary question
+          # instead — does the rebuilt bundle hold a file git is ignoring? — because that is the
+          # one question `git status --porcelain` below cannot answer about itself: it reports
+          # nothing for ignored paths, so the chunk would be missing from the shipped plugin
+          # while the drift check certified the tree whose index.html references it.
+          ignored="$(git ls-files --others --ignored --exclude-standard -- plugin/server/src/companion/app/static/)"
+          if [ -n "$ignored" ]; then
+            echo "::error::the rebuilt SPA mirror holds gitignored files (listed below), so they are absent from the plugin the marketplace ships and the drift check cannot see them. Un-ignore them, or the plugin installs against an index referencing chunks that were never committed."
+            echo "$ignored"
+            exit 1
+          fi
           if [ -n "$(git status --porcelain -- plugin/)" ]; then
             echo "::error::plugin/ is stale — run 'uv run python -m scripts.build_plugin' and commit plugin/."
             git status --porcelain -- plugin/
@@ -197,6 +212,17 @@ jobs:
             echo "::error::src/companion/app/static/ has no tracked files — the bundle is not committed (or became gitignored), so the drift check cannot see it."
             exit 1
           fi
+          # ...and the ignore axis the line above cannot see from the other side: `ls-files`
+          # answers about what IS tracked, so it stays non-empty while one freshly built chunk
+          # slips into a .gitignore match. Asked of the bundle the Build step just wrote, and
+          # asked here rather than only downstream, so the source copy fails before the mirror
+          # inherits the hole (review round 2, 2026-08-20).
+          ignored="$(git ls-files --others --ignored --exclude-standard -- src/companion/app/static/)"
+          if [ -n "$ignored" ]; then
+            echo "::error::the freshly built bundle holds gitignored files (listed below), so they are not committed and hatchling leaves them out of the wheel — the installed app serves an index referencing chunks that do not ship."
+            echo "$ignored"
+            exit 1
+          fi
           if [ -n "$(git status --porcelain -- src/companion/app/static/)" ]; then
             echo "::error::src/companion/app/static/ is stale — run 'cd ui && npm run build' and commit the bundle."
             git status --porcelain -- src/companion/app/static/
@@ -240,6 +266,16 @@ jobs:
               exit 1
             fi
           done
+          # And the ignore axis from the other side: the loop above proves both named files are
+          # tracked, this proves nothing generated into ui/src/api/ is ignored — the case a
+          # per-file list cannot grow to cover as the pipeline emits more (review round 2,
+          # 2026-08-20).
+          ignored="$(git ls-files --others --ignored --exclude-standard -- ui/src/api/)"
+          if [ -n "$ignored" ]; then
+            echo "::error::ui/src/api/ holds gitignored generated files (listed below), so the UI compiles against files that are not in the repo and the drift check cannot see them."
+            echo "$ignored"
+            exit 1
+          fi
           if [ -n "$(git status --porcelain -- ui/src/api/)" ]; then
             echo "::error::ui/src/api/ is out of sync with the committed tree (status below). If types.d.ts changed, the committed types are stale: run 'cd ui && npm run gen:types' and commit it — gen:types alone is the Node-half fix; 'npm run gen:api' (needs uv) regenerates the pair."
             git status --porcelain -- ui/src/api/
