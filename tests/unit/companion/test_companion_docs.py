@@ -800,9 +800,16 @@ class TestTheCompanionSectionMatchesTheShippedApp:
     def test_the_failed_import_recovery_says_stop_the_app_first(self) -> None:
         """Matrix row 7: F4, documented rather than fixed — so the recovery must be exact.
 
-        A partial database that a running companion has opened cannot be deleted or replaced until
-        the app stops. The order of the two steps is the whole content of the fix, so it is pinned
-        as an ordered claim rather than as two present words.
+        A partial database that a running companion has opened needs the app stopped before it can
+        be replaced. The order of the two steps is the whole content of the fix, so it is pinned as
+        an ordered claim rather than as two present words.
+
+        The platform split is pinned with it (Greptile P2, PR #88, 2026-08-19). The paragraph first
+        claimed the delete was blocked everywhere, which is true only on Windows: POSIX unlink
+        succeeds while the pooled connections keep the old inode alive
+        (``AsyncAdaptedQueuePool``, ``deps.py:305``), so a re-import lands a new file the companion
+        never reads and the page never heals. That is the *quieter* failure and the one worth
+        naming, so a future tidy-up may not collapse the two platforms back into one sentence.
         """
         section = _extract_section(_read_readme())
 
@@ -823,6 +830,19 @@ class TestTheCompanionSectionMatchesTheShippedApp:
                 f"the recovery paragraph does not name {step!r} after stopping the app; the order "
                 "is the fix, and a recovery given out of order does not work"
             )
+        before = _claim(recovery[:stop])
+        for platform in ("Windows", "macOS and Linux"):
+            assert platform in before, (
+                f"the recovery paragraph does not name {platform!r} before the fix. The two "
+                "platforms fail differently — Windows refuses the delete, POSIX allows it and "
+                "strands the companion on the old file — and a single unqualified claim is wrong "
+                "on one of them whichever way it is written"
+            )
+        assert "never fills in" in before or "never heals" in before, (
+            "the recovery paragraph names both platforms but not the POSIX consequence. The "
+            "delete succeeding is not the problem; the companion going on reading the replaced "
+            "file is, and that is the half a reader cannot discover for themselves"
+        )
 
     def test_the_section_says_the_companion_is_optional(self) -> None:
         """Story 15-4's first acceptance criterion, and the epic's standing guarantee.

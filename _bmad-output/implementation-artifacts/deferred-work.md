@@ -5356,6 +5356,24 @@ Eight decisions ruled by Sathias. R1/R2/R6 are process and live in
   actually meets. (Severity: Medium — reachable on the public v0.4.0 today; bounded and recoverable
   by stopping the companion.)
 
+  **CORRECTED 2026-08-19 (Greptile P2 on PR #88): "can neither delete nor replace" is TRUE ON
+  WINDOWS ONLY, and the POSIX behaviour is worse.** This entry was written from F4's Windows
+  manual-testing observation and story 15-4's README generalised it to every platform before the
+  review caught it. On macOS and Linux the unlink SUCCEEDS — the directory entry goes, while the
+  companion's pooled connections keep the old inode alive (`AsyncAdaptedQueuePool`, size 5 +
+  overflow 10, no recycle, documented at `src/companion/app/deps.py:305`). A re-import then writes
+  a NEW inode at the same path that those connections never see, and `Database.session_factory()`
+  returns its CACHED factory without re-running `_create()`'s existence check
+  (`deps.py:150-158`), so nothing notices. The per-request readiness probe cannot help: it is
+  `is_database_initialized(session)`, a query down an already-open connection, not a file check.
+  Net effect on Brad's own platform: the user follows the instruction, deletes, re-imports, and the
+  page goes on saying the database is not set up until the companion is restarted — silently
+  contradicting FR-22's "picked up with no restart". The recovery does not change (stop the app
+  first) but its RATIONALE does, and the silent variant is the one worth naming. README corrected;
+  `test_companion_docs.py::test_the_failed_import_recovery_says_stop_the_app_first` now pins both
+  platforms and the POSIX consequence so the two cannot be collapsed back into one sentence.
+  Severity unchanged at Medium; the code defect remains open and unfixed.
+
 ### R4 — the empty-deck state ships as written
 
 - ⚖️ **RULED, status quo (`:4590-4604`).** The two empty right-column panel shells stand. Adding a

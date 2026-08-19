@@ -358,9 +358,18 @@ will fill itself in.
 **Recovering from a failed first import.** The importer creates the schema *before* it downloads, so
 an import that fails partway can leave a `cards.db` with tables but no cards. The page is still
 right — it goes on saying the database is not set up — but a running companion will have opened that
-file, and from that moment the partial database cannot be deleted or replaced while the app is up.
-**Stop the companion first (Ctrl-C), then delete it or re-run the import.** Nothing else is blocked:
-a second process *writing into* the file is fine, and only wholesale replacement of it is not.
+file and holds connections to it, and what happens next depends on your platform:
+
+* **Windows** refuses the delete outright: the open handle blocks removal and replacement, so you
+  find out immediately.
+* **macOS and Linux** let the delete succeed and hand you a worse outcome quietly. The companion
+  keeps the file it already opened, a re-import writes a *new* file in its place, and the app goes
+  on reading the old one — so the page never fills in, and the "no restart needed" promise above
+  does not apply to a database swapped out from under it.
+
+**Stop the companion first (Ctrl-C), then delete it or re-run the import**, and start it again
+afterwards. Nothing else is blocked: a second process *writing into* the file is fine, and only
+wholesale replacement of it is not.
 
 ### Its images are cached on disk
 
