@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The companion app** — an optional local browser view of the deck your agent
+  is working on, launched with a single command:
+  `uv run artificial-planeswalker companion`. It serves a read-only page at
+  `http://127.0.0.1:8765` showing real card images laid out as cards rather
+  than as text, and the two new tools **`companion_set_active_deck`** and
+  **`companion_show_suggestions`** put a saved deck, or a list of suggested
+  cards, on that page while you watch. Nothing depends on it: every agent
+  workflow completes with the app closed, and both tools report
+  `app_not_running` when it is not up. The browser UI ships pre-built inside
+  the Python package, so **Node is required neither at install nor at
+  runtime** — there is no build step between a fresh clone and a running app.
+- **Self-diagnosable startup.** The preferred port is 8765, overridable with
+  `--port` (highest precedence) or `COMPANION_PORT`; a value outside
+  `0..65535` from either source is ignored with a warning rather than
+  refused. If the preferred port is unavailable the app falls back to a
+  kernel-assigned ephemeral port instead of failing, and the printed URL is
+  always the bound one. Exactly one companion runs at a time — a second launch
+  prints where the first one is (or, inside another launch's startup window,
+  that one is starting up) and exits `0`. A running app publishes
+  `companion.json` in the data directory as the sole rendezvous for the MCP
+  tools; a clean stop removes it, and an unclean exit leaves a stale one that
+  the next launch reclaims.
+- **A fresh install with no card database starts anyway.** The absence of
+  `cards.db` is a served UI state, not a startup failure: the page comes up and
+  directs you to ask your agent to run `initialize_database`. Readiness is
+  re-probed per request and never cached, so a database built while the app is
+  running is picked up with no restart.
+- **On-disk image cache** for card images the companion fetches from Scryfall,
+  inside the same central data directory — documented in the README with its
+  layout, its measured footprint, an inspect/clear command, and the plain
+  statement that there is no eviction.
+- **New runtime dependencies:** `fastapi>=0.139.2` and
+  `uvicorn[standard]>=0.51.0`, both in the base dependency list — the companion
+  needs no extra and no dependency group. `websockets>=12.0` joins the **dev**
+  group only, for `scripts/cdp_harness.py`, which speaks the WebSocket-only
+  DevTools protocol.
+
+### Changed
+
+- **Node is a development and CI dependency only**, floored at `>=20.19.0`, and
+  is needed solely to *change* the companion's UI. The built bundle is
+  committed to the repository and mirrored into the plugin tree, so installs
+  and releases never compile it.
+- **TypeScript is pinned `>=5.9 <6.1` rather than left as an open floor.** An
+  open floor resolves to TypeScript 7, and `typescript-eslint@8` publishes a
+  peer range of `>=4.8.4 <6.1.0` — so TypeScript 7 breaks the ESLint gate
+  outright. The cap is declared locally so the constraint is owned here and
+  visible, instead of being inherited from a transitive peer that a future bump
+  could relax silently.
+
 ### Deprecated
 
 - **`view_deck` is deprecated**, superseded by the companion app — use

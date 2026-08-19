@@ -393,7 +393,7 @@ Verified current 2026-07-25. Bound as `>=` floors, matching the project's existi
 | TypeScript | >=5.9,<6.1 — **upper bound is load-bearing**, see below |
 | zustand | >=5.0 |
 | openapi-typescript *(dev/CI only)* | >=7 |
-| Node *(dev/CI only — never at install or runtime)* | >=20 |
+| Node *(dev/CI only — never at install or runtime)* | >=20.19.0 |
 
 **TypeScript is the one pin, not a floor.** TypeScript 7.0 went stable 2026-07-08 (the Go-native
 compiler, ~10× faster) — but `typescript-eslint` declined TS 7 support on day one and publishes a
