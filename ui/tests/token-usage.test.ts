@@ -2650,6 +2650,143 @@ describe('the reduced-motion mechanism (AC 11, AC 13)', () => {
     expect(motionDeclarationsIn(scaled).filter((e) => !scaleRegistered.has(e))).toEqual([])
   })
 
+  /**
+   * THE CLASS THE TRANSFORM PIN CANNOT SEE (SC-5 gate finding M5, 2026-08-20). The pin above
+   * covers transform/scale/rotate/translate only — blind by construction to `opacity`,
+   * `height`, `background-color` and `box-shadow` transitions, which is the exact class three
+   * shipped motions (flip-control fade, suggestion-row tint, suggestion thumbnail fade)
+   * slipped through on a fully green suite. These need no `none !important` registration —
+   * every one is expressed through a duration token, so zeroing makes it instant — but
+   * UX-DR42 declares the INVENTORY exhaustive, and that is a separate obligation this guard
+   * now enforces: every shipped visual-class transition must be claimed by a named inventory
+   * row in tokens.css. `all` is tracked too, because `transition: all` would smuggle the
+   * whole class in one word.
+   */
+  const VISUAL_TRANSITION_PROPERTIES: readonly string[] = [
+    'opacity',
+    'height',
+    'background-color',
+    'box-shadow',
+  ]
+
+  /** Comma-split at depth 0 only, so `var(--motion-glide, 200ms)` stays one segment. */
+  const transitionSegmentsIn = (value: string): string[] => {
+    const segments: string[] = []
+    let depth = 0
+    let current = ''
+    for (const char of value) {
+      if (char === '(') depth++
+      if (char === ')') depth--
+      if (char === ',' && depth === 0) {
+        segments.push(current)
+        current = ''
+      } else {
+        current += char
+      }
+    }
+    segments.push(current)
+    return segments.map((s) => s.trim()).filter(Boolean)
+  }
+
+  /** Every visual-class transition in `blocks`, as `'selector :: property'` pairs. */
+  const visualTransitionDeclarationsIn = (blocks: Block[]): string[] =>
+    blocks.flatMap((block) =>
+      declarationsIn(block.body)
+        .filter(([property]) => property === 'transition' || property === 'transition-property')
+        .flatMap(([, value]) =>
+          transitionSegmentsIn(value)
+            .map((segment) => segment.split(/\s+/)[0]?.toLowerCase() ?? '')
+            .filter(
+              (property) => property === 'all' || VISUAL_TRANSITION_PROPERTIES.includes(property),
+            )
+            .flatMap((property) =>
+              block.selector.split(',').map((s) => `${normaliseSelector(s)} :: ${property}`),
+            ),
+        ),
+    )
+
+  it('keys every visual-class transition to an inventory row (SC-5 gate, M5)', () => {
+    const found = [...new Set(visualTransitionDeclarationsIn(shippedBlocks))]
+
+    // NON-VACUITY: this guard maps a list to rows, so an empty list checks nothing. Thirteen
+    // entries shipped the day it was written; zero means the reader broke, not the tree.
+    expect(
+      found.length,
+      'no stylesheet ships a visual-class transition — this guard has no subject',
+    ).toBeGreaterThan(0)
+
+    // THIS MAP IS ENUMERATED, like the transform pin above: a story that adds or removes a
+    // visual-class transition moves it on purpose — and a NEW entry owes an inventory row in
+    // tokens.css before it can be claimed here. The two rows read as classes carry the SC-5
+    // gate ruling (Brad, 2026-08-20): "Image fade-in" covers image fades as a family,
+    // "Deck-row live tint" covers the row tint+shadow family, per the no-new-row ruling
+    // recorded at SuggestionsView.css:113-118 and c6-7.
+    const INVENTORY_CLAIMS: Record<string, string> = {
+      '.app-shell-identity :: opacity': 'Refetch header shimmer',
+      '.agent-view :: opacity': 'Agent-view bloom',
+      '.agent-view-title :: opacity': 'Push-replace crossfade',
+      '.agent-view-body :: opacity': 'Push-replace crossfade',
+      '.card-tile-image :: opacity': 'Image fade-in',
+      '.suggestion-row-image :: opacity': 'Image fade-in',
+      '.card-tile-quantity :: box-shadow': 'Accent glow fade',
+      '.deck-row :: background-color': 'Deck-row live tint',
+      '.deck-row :: box-shadow': 'Deck-row live tint',
+      '.suggestion-row :: background-color': 'Deck-row live tint',
+      '.suggestion-row :: box-shadow': 'Deck-row live tint',
+      '.flip-control :: opacity': 'Flip-control chrome fade',
+      '.mana-curve-bar :: height': 'Curve-bar height',
+    }
+
+    expect(
+      [...found].sort(),
+      'the shipped visual-transition list moved — the story that moved it updates this map, and a new entry owes an inventory row first',
+    ).toEqual(Object.keys(INVENTORY_CLAIMS).sort())
+
+    for (const [entry, row] of Object.entries(INVENTORY_CLAIMS)) {
+      expect(
+        tokenFileSource,
+        `${entry} claims inventory row "${row}", which tokens.css no longer carries`,
+      ).toContain(row)
+    }
+  })
+
+  it('would catch a visual-class transition the map does not claim — the M5 probe', () => {
+    // Fed inline, like probe (e) above, so the proof survives the repair.
+    const planted = blocksIn(
+      'src/probe.css',
+      '.probe:hover { transition: opacity var(--motion-glide) ease, background-color 200ms; }',
+    )
+    expect(visualTransitionDeclarationsIn(planted)).toEqual([
+      '.probe:hover :: opacity',
+      '.probe:hover :: background-color',
+    ])
+
+    // `transition: all` cannot smuggle the class past the reader in one word.
+    expect(
+      visualTransitionDeclarationsIn(
+        blocksIn('src/probe.css', '.probe { transition: all var(--motion-glide); }'),
+      ),
+    ).toEqual(['.probe :: all'])
+
+    // A comma inside var() does not split a segment (the reader is paren-aware).
+    expect(
+      visualTransitionDeclarationsIn(
+        blocksIn(
+          'src/probe.css',
+          '.probe { transition: opacity var(--motion-glide, 200ms) ease; }',
+        ),
+      ),
+    ).toEqual(['.probe :: opacity'])
+
+    // Non-class transitions stay invisible to THIS guard — color/outline are not motion the
+    // inventory tracks, and the transform family belongs to the pin above.
+    expect(
+      visualTransitionDeclarationsIn(
+        blocksIn('src/probe.css', '.probe { transition: color var(--motion-glide); }'),
+      ),
+    ).toEqual([])
+  })
+
   it('names itself as the registration point later stories extend', () => {
     // AC 11 asks for a mechanism that is the SINGLE place later epics register their own
     // fallbacks. That is a documentation contract as much as a code one, and c4/c6/c7 will

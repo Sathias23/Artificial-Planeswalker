@@ -334,8 +334,16 @@
      Refetch header shimmer              -> static "Updating…" in --type-micro
                                             / --text-secondary                      (c7-4)
      DFC flip 3D Y-rotation              -> instant face swap                       (c4-6)
+     Flip-control chrome fade            -> instant 0.65 -> 1.0 step (duration
+                                            token zeroed)                           (c4-6)
      Detail-panel content swap           -> instant, no crossfade (it changes on
                                             every hover)                            (c4-5)
+
+   TWO ROWS READ AS CLASSES — SC-5 gate ruling (Brad, 2026-08-20, sc-5-gate-report-2026-08-20.md):
+   "Image fade-in" covers every image element's fade (the suggestion-row thumbnail included), and
+   "Deck-row live tint" covers the row-tint family (the suggestion row's tint + shadow included,
+   accepting the no-new-row ruling recorded at SuggestionsView.css and c6-7). The completeness
+   guard in token-usage.test.ts keys every shipped visual-class transition to a row above.
 
    AND, UNDER EVERY SETTING INCLUDING THIS ONE: NOTHING PULSES OR LOOPS. That is not
    registered here because it is never permitted in the first place — stylelint bans
