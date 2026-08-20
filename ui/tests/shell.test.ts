@@ -1641,6 +1641,35 @@ describe('the containers are a declared category with a posture of its own', () 
     // constraint is also why the builder takes a plain `string` rather than the store's kind
     // union — a type-only import would still be an import.
     { file: 'src/containers/SuggestionsView/copy.ts', imports: [] },
+    // 16.1's swaps view — the SECOND view body, built as `SuggestionsView.tsx`'s structural
+    // sibling and inheriting the same contracts through almost the same import set. The
+    // differences are the story: no `Badge` and no `ManaCost` (a swap row's tiles carry art and
+    // a tinted micro label, not a head line), `StatChip` instead (the artefact's chip row
+    // reduces to the confidence chip — price and curve are struck by the no-price-data ruling),
+    // and `../SuggestionsView/copy` reached ACROSS
+    // containers exactly as `../CardTile/imageUrl` is — the empty-push template is kind-generic
+    // by design, and a second copy module would be the drift `tests/empty-push-copy.test.ts`
+    // exists to prevent. It holds hooks per TILE (two cards per row is why `SwapTile` exists),
+    // handlers and the card cache's second self-hydrating consumer, so `posture.test.ts` would
+    // fail it under `src/components/` three times over. `../../state/agentView` is TYPE-only,
+    // reaching the STATE layer rather than `src/api/` — the props derive from the store union's
+    // own `swaps` arm, never from wire types.
+    {
+      file: 'src/containers/SwapsView/SwapsView.tsx',
+      imports: [
+        '../../components/CardPlaceholder/CardPlaceholder',
+        '../../components/StatChip/StatChip',
+        '../../state/agentView',
+        '../../state/cards',
+        '../../state/faces',
+        '../../state/inspection',
+        '../CardTile/imageUrl',
+        '../SuggestionsView/copy',
+        '../useCardArt',
+        './SwapsView.css',
+        'react',
+      ],
+    },
     // c6-8's agent-views nav — the header pills. It reads the agent-view store through TWO
     // per-kind selector hooks and calls one verb on it, which is the whole of its state
     // coupling; `../../api/schema` is a TYPE-only import for the kind union (the rule below
@@ -2206,7 +2235,13 @@ describe('the containers are a declared category with a posture of its own', () 
     // and does not need to; the header slot it fills was cut at c2-6.
     // 36 at c7-5, which adds the deck announcer and its copy module — the refetch announcement
     // UX-DR45 licensed and the App live-region censuses moved from two to three for.
-    expect(CONTAINERS).toHaveLength(36)
+    // 37 at 16.1, which adds the swaps view and NOTHING else — no copy module of its own (the
+    // empty-push template is shared from `SuggestionsView/copy.ts` by that template's own
+    // kind-generic design, and the out/in label words are owned by the component itself, which
+    // joins COPY_MODULES on the DeckBadges precedent) and no derivation module. A story that
+    // gives a second push kind its view growing this tree by exactly one component is the shape
+    // it should have.
+    expect(CONTAINERS).toHaveLength(37)
     for (const { file } of CONTAINERS) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }

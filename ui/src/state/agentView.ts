@@ -64,7 +64,13 @@
 
 import { create } from 'zustand'
 
-import type { AgentViewKind, SuggestionItem, SuggestionsEvent } from '../api/schema'
+import type {
+  AgentViewKind,
+  SuggestionItem,
+  SuggestionsEvent,
+  SwapItem,
+  SwapsEvent,
+} from '../api/schema'
 
 /**
  * **The app's word for each kind of agent view** — the nav pill's label, and the fallback title
@@ -132,7 +138,7 @@ export const SUGGESTIONS_VIEW_TITLE = AGENT_VIEW_LABELS.suggestions
  * *"re-hydrated against current card data"* possible without a second push — the ids and reasons are here, and the
  * ART is always re-fetched rather than retained.
  */
-export interface AgentViewContent {
+interface AgentViewContentBase {
   /**
    * The envelope's `id` — **opaque, for identity and de-duplication, and carrying NO ordering**
    * (`types.d.ts:1049-1051` is emphatic about it; producers may mint a UUID4). It is the
@@ -142,39 +148,67 @@ export interface AgentViewContent {
   readonly id: string
   /** The envelope's `ts` — the ordering key, timezone-aware. Rendered as c6-8's pill time. */
   readonly ts: string
-  /**
-   * Which view this is — **the full four-kind view enum since c6-8**, which is the widening
-   * this field's previous docstring predicted (*"c6-8 widens it when it adds the second"*).
-   *
-   * It widened for the NAV rather than for a second renderable view, and the distinction is
-   * this story's central honesty: the socket still drops `swaps`/`tier_list`/`groups` at its
-   * dispatch switch (`socket.test.ts:675` pins it, and Epic 9's own preamble is why — a kind
-   * must not become *acceptable* before something can display it). So the only kind that can
-   * reach this field from the wire today is still `'suggestions'`. What the wider type buys is
-   * that {@link AgentViewState.retained}, {@link AgentViewState.unread} and the nav are keyed
-   * by the CLOSED ENUM rather than by the kinds that happen to have a view — which is exactly
-   * what Story 9.1's acceptance criterion means by *"the Swaps pill becomes active
-   * automatically, because the nav is generic over the closed `kind` enum"*.
-   */
-  readonly kind: AgentViewKind
   /** The view's heading (`DESIGN.md:471` — title in `{typography.heading}`). */
   readonly title: string
   /**
    * The summary count beside the title, or `null` when the view has nothing to count. Nullable
    * rather than defaulting to `0`, because *"0 suggestions"* and *"a view that does not count
-   * things"* are different sentences and the header renders them differently. A suggestions
-   * push always counts — `0` is a REAL count and renders, which is the empty-push state.
+   * things"* are different sentences and the header renders them differently. A push of a
+   * counting kind always counts — `0` is a REAL count and renders, which is the empty-push state.
    */
   readonly count: number | null
-  /**
-   * The pushed rows, retained unrendered by THIS story and drawn by c6-7's `SuggestionsView`,
-   * which also hydrates each unique `card_id` itself (nothing seeds an agent-supplied id).
-   * c6-8 re-hydrates them against current card data on re-open, and does. Empty is legal and is not an error
-   * (`types.d.ts:1103-1105`: *"the view skips an empty push rather than rejecting it, so 'I
-   * looked and found nothing' is expressible"*).
-   */
-  readonly items: readonly SuggestionItem[]
 }
+
+/**
+ * What the shell draws — **a per-kind discriminated union since story 16.1**, which is the one
+ * structural change that story makes to this slice.
+ *
+ * c6-8 widened `kind` to the closed four-member enum while `items` stayed
+ * `readonly SuggestionItem[]`, which was honest exactly as long as `suggestions` was the only
+ * kind whose items anything could render. The moment a second kind carries a DIFFERENT item
+ * shape (`SwapItem` is `{out_card_id, in_card_id, rationale, …}`, nothing like a suggestion),
+ * one flat `items` type is a lie in one direction or the other. So the union now says which
+ * items belong to which kind, and every view's props derive from its own arm by narrowing
+ * (`Extract<AgentViewContent, {kind: 'swaps'}>`-style) — never from wire types, which
+ * `wire-contract.test.ts` bans outside `src/api/`.
+ *
+ * The two kinds without a view yet (`tier_list`, `groups`) carry `readonly never[]`: the socket
+ * still drops their frames (a kind must not become *acceptable* before something can display
+ * it), so no builder exists to fill those arms and the only constructible value is the empty
+ * array a synthetic test fixture uses. Their Epic-9-numbered stories widen their own arms
+ * alongside the views that render them, exactly as 16.1 widened `swaps`.
+ *
+ * Every field stays `schema.ts`-typed — `SuggestionItem`/`SwapItem` are the generated models
+ * through their aliases, never hand-written rows — which is the half of the wire rule that
+ * matters, because a hand-written item shape is precisely what would drift from the Python side
+ * unnoticed. The retention rationale of the pre-16.1 shape (why `id`, `ts` and `kind` are kept)
+ * is unchanged and lives on {@link AgentViewContentBase} and the arms.
+ */
+export type AgentViewContent =
+  | (AgentViewContentBase & {
+      readonly kind: 'suggestions'
+      /**
+       * The pushed rows, drawn by `SuggestionsView`, which also hydrates each unique `card_id`
+       * itself (nothing seeds an agent-supplied id). Empty is legal and is not an error
+       * (`types.d.ts`: *"the view skips an empty push rather than rejecting it"*).
+       */
+      readonly items: readonly SuggestionItem[]
+    })
+  | (AgentViewContentBase & {
+      readonly kind: 'swaps'
+      /** The pushed trades, drawn by `SwapsView`, which hydrates both ids of each pair itself. */
+      readonly items: readonly SwapItem[]
+    })
+  | (AgentViewContentBase & {
+      readonly kind: 'tier_list'
+      /** No view exists to render these yet — the socket still drops `tier_list` frames. */
+      readonly items: readonly never[]
+    })
+  | (AgentViewContentBase & {
+      readonly kind: 'groups'
+      /** No view exists to render these yet — the socket still drops `groups` frames. */
+      readonly items: readonly never[]
+    })
 
 /**
  * The slice. Two fields, and the whole of AC 5 is that one verb writes one of them.
@@ -408,6 +442,36 @@ export const suggestionsViewOf = (event: SuggestionsEvent): AgentViewContent => 
 }
 
 /**
+ * One `swaps` envelope → one {@link AgentViewContent}. **Total, by construction** — the
+ * structural clone of {@link suggestionsViewOf}, and every clause of that function's defence
+ * argument applies verbatim: the generated payload fields are optional for honest wires, the
+ * narrower is kind-only, a `TypeError` here would be an uncaught exception inside a socket
+ * message handler, and the blank-title fallback is the dialog's accessible name being guarded
+ * *"at the point content is constructed"*. What it does NOT check is any field of any ITEM —
+ * that is `SwapsView`'s, at the row that renders it, exactly as c6-7 homed the same duty.
+ *
+ * Args:
+ *   event: The frame, exactly as `socket.ts` narrowed it.
+ *
+ * Returns:
+ *   Content the shell can draw, for every input the wire admits.
+ */
+export const swapsViewOf = (event: SwapsEvent): AgentViewContent => {
+  const rawItems: unknown = event.payload?.items
+  const items = Array.isArray(rawItems) ? rawItems : []
+  const rawTitle: unknown = event.payload?.title
+  const title = typeof rawTitle === 'string' ? rawTitle.trim() : undefined
+  return {
+    id: event.id,
+    ts: event.ts,
+    kind: event.kind,
+    title: title === undefined || title === '' ? AGENT_VIEW_LABELS.swaps : title,
+    count: items.length,
+    items,
+  }
+}
+
+/**
  * A `suggestions` push arrived: build the content and show it (AC 1, UX-DR34).
  *
  * **The one verb `connection.ts` calls**, and the reason the composition seam needs no
@@ -422,6 +486,17 @@ export const suggestionsViewOf = (event: SuggestionsEvent): AgentViewContent => 
  */
 export const openSuggestionsPush = (event: SuggestionsEvent): void => {
   openAgentView(suggestionsViewOf(event))
+}
+
+/**
+ * A `swaps` push arrived: build the content and show it (story 16.1) — the second verb
+ * `connection.ts` calls, in {@link openSuggestionsPush}'s exact shape and for its exact
+ * reasons: no branch on whether a view is already open (opening over an open view REPLACES,
+ * which is all the scalar can do), and the composition seam still holds no `setState` and
+ * names no store.
+ */
+export const openSwapsPush = (event: SwapsEvent): void => {
+  openAgentView(swapsViewOf(event))
 }
 
 /**

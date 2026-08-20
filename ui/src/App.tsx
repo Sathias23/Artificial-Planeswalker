@@ -8,6 +8,7 @@ import { StatePanel } from './components/StatePanel/StatePanel'
 import { AgentView } from './containers/AgentView/AgentView'
 import { AgentViewsNav } from './containers/AgentViewsNav/AgentViewsNav'
 import { SuggestionsView } from './containers/SuggestionsView/SuggestionsView'
+import { SwapsView } from './containers/SwapsView/SwapsView'
 import { CardDetail } from './containers/CardDetail/CardDetail'
 import { CardGrid } from './containers/CardGrid/CardGrid'
 import { ColourDistribution } from './containers/ColourDistribution/ColourDistribution'
@@ -761,19 +762,21 @@ export default function App() {
                 `children` and asks nothing about them, so the kind-specific view rides inside
                 rather than being branched on in there.
 
-                KIND-KEYED SINCE c6-8, WITH ONE ARM — and the one arm is the honest shape rather
-                than an unfinished one. `content.kind` widened to the full four-kind view enum in
-                that story so the NAV could be generic over the closed contract (Story 9.1 banks
-                on it); the SOCKET did not widen, and still drops `swaps`/`tier_list`/`groups` at
-                its dispatch switch, because Epic 9 pairs each tool with its view precisely so a
-                push never arrives that the UI cannot display. So `suggestions` is not merely the
-                only arm written, it is the only arm REACHABLE, and `null` is what the other three
-                would render if the dispatch were widened ahead of them — nothing on the glass
-                under a shell that still announces its heading, which is a strictly better failure
-                than a crash. Each Epic 9 view story replaces one `null` with its container. */}
-            {agentView.kind !== 'suggestions' ? null : (
+                KIND-KEYED SINCE c6-8, TWO ARMS SINCE 16.1. `content.kind` widened to the full
+                four-kind view enum at c6-8 so the NAV could be generic over the closed contract,
+                and each view story since pairs its tool, its dispatch arm and its container in
+                one change — a push never arrives that the UI cannot display. `suggestions` and
+                `swaps` are the reachable arms; `tier_list` and `groups` still render `null`
+                (nothing on the glass under a shell that still announces its heading — a strictly
+                better failure than a crash) and stay UNREACHABLE from the wire, because the
+                socket still drops those two kinds at its dispatch switch. Each remaining view
+                story replaces one `null` with its container. The narrowing on `kind` is what
+                types `items` per arm now that `AgentViewContent` is a discriminated union. */}
+            {agentView.kind === 'suggestions' ? (
               <SuggestionsView kind={agentView.kind} items={agentView.items} />
-            )}
+            ) : agentView.kind === 'swaps' ? (
+              <SwapsView kind={agentView.kind} items={agentView.items} />
+            ) : null}
           </AgentView>
         )
       }

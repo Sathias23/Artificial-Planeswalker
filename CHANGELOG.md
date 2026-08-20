@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `app_not_running` when it is not up. The browser UI ships pre-built inside
   the Python package, so **Node is required neither at install nor at
   runtime** — there is no build step between a fresh clone and a running app.
+- **`companion_show_swaps`** — a third companion tool that puts proposed card
+  trades on the same page: each swap renders its out-card and in-card side by
+  side, with "Out · N copies" / "In · N copies" labels, the agent's rationale,
+  and a confidence chip. Like the other push tool it validates nothing against
+  the database, accepts an empty list as a legitimate "no trade worth
+  proposing", and reports `app_not_running` when the companion is not up.
 - **Self-diagnosable startup.** The preferred port is 8765, overridable with
   `--port` (highest precedence) or `COMPANION_PORT`; a value outside
   `0..65535` from either source is ignored with a warning rather than

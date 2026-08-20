@@ -309,6 +309,24 @@ export type AgentViewKind = Exclude<AgentEventKind, 'deck_changed' | 'active_dec
 export type SuggestionsEvent = Extract<AgentEvent, { kind: 'suggestions' }>
 
 /**
+ * One `swaps` frame — the envelope, narrowed to the member `kind: 'swaps'` selects.
+ *
+ * **Consumer: `swapsViewOf` in `src/state/agentView.ts`** (story 16.1), the second agent-view
+ * payload the app reads — added under this file's standing rule that an alias lands in the
+ * commit that gives it a consumer.
+ *
+ * `Extract` over {@link AgentEvent} rather than `Schemas['SwapsEvent']`, for
+ * {@link SuggestionsEvent}'s reason verbatim: the union is what the dispatch switch narrows, so
+ * extracting from it is the one spelling that cannot disagree with the thing being narrowed.
+ *
+ * ⚠️ `payload` is REQUIRED in this type and OPTIONAL on the wire in practice — the exact caveat
+ * {@link SuggestionsEvent} carries: `agentEventOf` (`client.ts`) validates the `kind`
+ * discriminant and nothing else, so a frame of `{"kind":"swaps"}` reaches a consumer typed as a
+ * full event. The builder that reads this shape is total for exactly that reason.
+ */
+export type SwapsEvent = Extract<AgentEvent, { kind: 'swaps' }>
+
+/**
  * One `deck_changed` frame — the envelope, narrowed to the member `kind: 'deck_changed'` selects.
  *
  * **Consumers: the dispatch seam (`src/state/socket.ts` → `connection.ts`)**, which as of story
@@ -365,6 +383,24 @@ export type SystemEvent = DeckChangedEvent | ActiveDeckChangedEvent
  * an envelope and returns store content — so an alias for it would have no consumer.
  */
 export type SuggestionItem = Schemas['SuggestionItem']
+
+/**
+ * One proposed trade: `{out_card_id, in_card_id, rationale, out_qty, in_qty, confidence?}` (AD-7).
+ *
+ * **Consumer: the `swaps` arm of `AgentViewContent` in `src/state/agentView.ts`** (story 16.1),
+ * which retains the items so `SwapsView` can render and re-hydrate them — the exact shape of
+ * {@link SuggestionItem}'s consumer one entry up, for the second view kind.
+ *
+ * Reached through `Schemas` rather than through {@link SwapsEvent}'s payload, because it is a
+ * named model on the Python side and the generator emits it as one. `SwapsPayload` is
+ * deliberately NOT aliased: nothing outside the builder ever holds a payload, so an alias for it
+ * would have no consumer.
+ *
+ * There is deliberately **no price field** — the wire itself carries none by ruling
+ * (`types.d.ts`, the `SwapItem` docstring): no price data exists anywhere in this system, so a
+ * price chip could never be populated. Render confidence, never price.
+ */
+export type SwapItem = Schemas['SwapItem']
 
 /**
  * The closed set of reason tokens (AD-16), as a TypeScript string union.
