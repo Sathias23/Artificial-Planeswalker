@@ -2688,14 +2688,71 @@ describe('the reduced-motion mechanism (AC 11, AC 13)', () => {
     return segments.map((s) => s.trim()).filter(Boolean)
   }
 
+  /** Whitespace-split at depth 0 only, so `cubic-bezier(0.4, 0, 0.2, 1)` stays one word. */
+  const wordsAtDepthZero = (segment: string): string[] => {
+    const words: string[] = []
+    let depth = 0
+    let current = ''
+    for (const char of segment) {
+      if (char === '(') depth++
+      if (char === ')') depth--
+      if (/\s/.test(char) && depth === 0) {
+        if (current) words.push(current)
+        current = ''
+      } else {
+        current += char
+      }
+    }
+    if (current) words.push(current)
+    return words
+  }
+
+  /**
+   * The transitioned property of one shorthand segment. The shorthand grammar is ORDER-FREE
+   * (`||` combinator — Greptile P2, PR #90): `transition: var(--motion-glide) opacity` is as
+   * valid as the property-first spelling, and a segment with NO property token at all means
+   * the implicit `all`. So the property is found by elimination — not by position: drop
+   * functions (var(), cubic-bezier(), steps()), times, easing keywords and `none`; the first
+   * survivor is the property; no survivor is `all`.
+   */
+  const TRANSITION_EASINGS = new Set([
+    'ease',
+    'ease-in',
+    'ease-out',
+    'ease-in-out',
+    'linear',
+    'step-start',
+    'step-end',
+  ])
+  const transitionPropertyOf = (segment: string): string => {
+    const survivors = wordsAtDepthZero(segment).filter((word) => {
+      const lower = word.toLowerCase()
+      if (lower.includes('(')) return false
+      if (/^[+-]?(\d+\.?\d*|\.\d+)(ms|s)$/.test(lower)) return false
+      if (TRANSITION_EASINGS.has(lower)) return false
+      // `none` is NOT filtered: the grammar puts it in the PROPERTY slot, so it must survive
+      // as the resolved property — `transition: none` means "nothing transitions", and a
+      // resolver that dropped the word would misread it as the implicit `all`. (Found live:
+      // QuantityBadge.css's flashed rule is exactly `transition: none`.)
+      return true
+    })
+    return survivors[0]?.toLowerCase() ?? 'all'
+  }
+
   /** Every visual-class transition in `blocks`, as `'selector :: property'` pairs. */
   const visualTransitionDeclarationsIn = (blocks: Block[]): string[] =>
     blocks.flatMap((block) =>
       declarationsIn(block.body)
         .filter(([property]) => property === 'transition' || property === 'transition-property')
-        .flatMap(([, value]) =>
+        .flatMap(([name, value]) =>
           transitionSegmentsIn(value)
-            .map((segment) => segment.split(/\s+/)[0]?.toLowerCase() ?? '')
+            .map((segment) =>
+              // `transition-property` segments ARE property names; the shorthand needs the
+              // order-free resolver.
+              name === 'transition-property'
+                ? segment.toLowerCase()
+                : transitionPropertyOf(segment),
+            )
             .filter(
               (property) => property === 'all' || VISUAL_TRANSITION_PROPERTIES.includes(property),
             )
@@ -2742,11 +2799,17 @@ describe('the reduced-motion mechanism (AC 11, AC 13)', () => {
       'the shipped visual-transition list moved — the story that moved it updates this map, and a new entry owes an inventory row first',
     ).toEqual(Object.keys(INVENTORY_CLAIMS).sort())
 
+    // A ROW, not a mention (Greptile P2, PR #90): two labels also appear in the
+    // rows-read-as-classes prose note, so a bare substring search would stay green with the
+    // actual row deleted. Every inventory row is `Label -> fallback`, arrow on the label's own
+    // line, and prose never quotes a label with its arrow — so the arrow is what makes the
+    // match a row.
+    const escapeForRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     for (const [entry, row] of Object.entries(INVENTORY_CLAIMS)) {
       expect(
-        tokenFileSource,
-        `${entry} claims inventory row "${row}", which tokens.css no longer carries`,
-      ).toContain(row)
+        new RegExp(`${escapeForRegex(row)}[^\\n]*->`).test(tokenFileSource),
+        `${entry} claims inventory row "${row}", which tokens.css no longer carries as a row (label + '->' on one line)`,
+      ).toBe(true)
     }
   })
 
@@ -2760,6 +2823,34 @@ describe('the reduced-motion mechanism (AC 11, AC 13)', () => {
       '.probe:hover :: opacity',
       '.probe:hover :: background-color',
     ])
+
+    // The ORDER-FREE spellings Greptile named (P2, PR #90): property after the duration, and
+    // the implicit-`all` segment with no property token at all. Both must resolve, not vanish.
+    expect(
+      visualTransitionDeclarationsIn(
+        blocksIn('src/probe.css', '.probe { transition: var(--motion-glide) opacity; }'),
+      ),
+    ).toEqual(['.probe :: opacity'])
+    expect(
+      visualTransitionDeclarationsIn(
+        blocksIn('src/probe.css', '.probe { transition: var(--motion-glide); }'),
+      ),
+    ).toEqual(['.probe :: all'])
+    // `transition: none` is the PROPERTY `none` — no transition — never the implicit `all`.
+    // The shipped shape that proves it matters: QuantityBadge.css's flashed rule.
+    expect(
+      visualTransitionDeclarationsIn(blocksIn('src/probe.css', '.probe { transition: none; }')),
+    ).toEqual([])
+
+    // A cubic-bezier's inner spaces do not shed words the resolver would mistake for a property.
+    expect(
+      visualTransitionDeclarationsIn(
+        blocksIn(
+          'src/probe.css',
+          '.probe { transition: opacity 200ms cubic-bezier(0.4, 0, 0.2, 1); }',
+        ),
+      ),
+    ).toEqual(['.probe :: opacity'])
 
     // `transition: all` cannot smuggle the class past the reader in one word.
     expect(
