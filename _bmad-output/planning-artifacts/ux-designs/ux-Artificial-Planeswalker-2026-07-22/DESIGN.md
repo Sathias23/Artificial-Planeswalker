@@ -2,7 +2,7 @@
 name: Artificial-Planeswalker Companion
 description: 'Dark-only, card-art-forward visual identity for the companion app — Voltglass: cool blue-violet smoked glass with one luminous periwinkle accent, game-adjacent, never imitative of WotC trade dress.'
 status: approved
-updated: 2026-07-25
+updated: 2026-08-18
 theme: voltglass
 sources:
   - _bmad-output/planning-artifacts/prds/prd-Artificial-Planeswalker-2026-07-22/prd.md
@@ -313,7 +313,13 @@ components:
     border: '1px solid {colors.border-hairline}'
     radius: '{rounded.lg}'
     shadow: '{components.elevation.shadow-raise}'
-    inset: '{spacing.6}'
+    # AMENDED 2026-08-18 (story 15.3). This read `'{spacing.6}'`. Both steps are 32px today, so
+    # nothing renders differently — but the overlay's contract is that its inset **coincides with
+    # the shell's own frame**, and the frame is `{spacing.gutter}` (shipped as `var(--space-gutter)`,
+    # `AppShell.css`). Named as a scale step, a later retune of the gutter would silently break the
+    # alignment while every assertion kept passing. Two names for one distance is the trap; this is
+    # Brad's 2026-07-28 ruling on story c2-6's AC 7, finally carried back into the artefact.
+    inset: '{spacing.gutter}'
     enter: '{components.motion.bloom} {components.motion.ease-glide}'
   swap-row:
     background: '{colors.surface-overlay}'
@@ -431,7 +437,7 @@ components:
     # the copy module, never authored here.
     type: '{typography.body}'
     foreground: '{colors.text-secondary}'
-    # `{spacing.4}`, NOT `{components.agent-view.inset}` (`{spacing.6}`) — the shell's inset from
+    # `{spacing.4}`, NOT `{components.agent-view.inset}` (`{spacing.gutter}`) — the shell's inset from
     # the window edge is a different value from the BODY's own padding, exactly as the note two
     # comments up says. Corrected by code review (2026-08-11): this field cited the shell's
     # token where the body's own (`.agent-view-body`'s `padding: 0 var(--space-4) var(--space-4)`)
@@ -531,7 +537,7 @@ The screen is a **two-column composition** under a full-width header:
 
 Panels *float*: airy separation with visible canvas between them is the theme's density philosophy, not spare padding. The card grid is `repeat(auto-fill, minmax(176px, 1fr))`; tiles hold a fixed 63:88 aspect and reflow. The app targets a window from ~1100px (below which the right column drops beneath the left) up to ~2560px (half an ultrawide). Design reference width is 1720px.
 
-Agent views take the whole window as a scrim-backed overlay inset by `{spacing.6}`.
+Agent views take the whole window as a scrim-backed overlay inset by `{spacing.gutter}` — the same token that frames the window, because the overlay's inset must coincide with the shell's own frame rather than merely equal it today. *(Amended 2026-08-18, story 15.3; this said `{spacing.6}`, which is the same 32px by coincidence.)*
 
 ## Elevation & Depth
 
@@ -561,6 +567,7 @@ Tonal layering (the surface ramp) does the everyday hierarchy work. Borders are 
 - **Agent views nav** (the nav pill) — the agent-view controls in the header, and the "Close · esc" control inside a view. `{components.nav-pill.padding}` at `{rounded.pill}`, `{typography.label}`. Hover/focus: border to `{components.nav-pill.hover-border}`, text to `{components.nav-pill.hover-foreground}`, plus `{components.nav-pill.hover-glow}`. A pill whose view has an unread push carries a `{components.nav-pill.unread-dot}` at `{components.nav-pill.unread-dot-size}` — the accent's meaning is "the agent put something here", so an unread push is exactly what it marks. **Three states, added 2026-08-12 (story c6-8), because the block above carried a hover treatment and an unread dot and the header nav needs the other three-quarters of the component to exist:** a pill whose kind has received no push this session is **quiet** — `{components.nav-pill.quiet-foreground}`, no hover rule at all, and not focusable (it ships `disabled`, so the cold-open Tab order contains no pill at all, which is UX-DR40's enumeration read literally); a pill whose kind HAS received one is active and carries **the last push's time** after its label in `{components.nav-pill.time-type}` `{components.nav-pill.time-foreground}`, absolute and static; and the unread dot is presentational (`aria-hidden`) with the word "unread" in the button's accessible name beside it, because UX-DR29 already ruled that the dot never carries the state alone and UX-DR45 does not license this pill to announce. The quiet pill's copy is EXPERIENCE.md:73's, byte-for-byte, and it reaches assistive technology as a programmatic description as well as a pointer tooltip — UX-DR39 bans hover-only disclosure of unique information, and the connection pill was already repaired once for exactly this shape (see EXPERIENCE.md's amended nav-pill row).
 - **Skip link** — "Skip past the deck grid": visually hidden until it receives keyboard focus; on focus it appears at the window's top-left as a `{components.skip-link.radius}` chip on `{components.skip-link.background}` with `{components.skip-link.border}`, text in `{typography.body-strong}` `{components.skip-link.foreground}`, carrying the standard `{components.focus-ring}`. It exists because the card grid puts a long run of Tab stops between the header nav and everything in the right column — **measured 2026-08-07 on the largest real deck (Atraxa Counter Cabinet v2, 99 tiles): 205 stops from the top of the document to the footer, of which the link skips 102.0 on average** (amended 2026-08-07, story c4-12, Q13; this read *"100+ Tab stops"* while EXPERIENCE.md already carried c4-11's measured figures, so the two peer artefacts disagreed about the same number). Behavior in EXPERIENCE.md.
 - **Footer attribution** — one quiet line, full width, `{components.footer-attribution.background}` above `{components.footer-attribution.border-top}`, `{typography.micro}` in `{components.footer-attribution.foreground}` (`text-secondary`, 9.3:1 — this text is legally load-bearing and gets a passing tier, not a muted one): "Card data and imagery courtesy of Scryfall. Unofficial Fan Content permitted under the Wizards of the Coast Fan Content Policy. Not approved/endorsed by Wizards." Links persistently underlined (identifiable at rest, not hover-only); hover brightens to `{colors.text-primary}`; each link's hit area ≥ 24px tall. Visible without scrolling, and never louder than this. **Required on every surface — this is a condition of public release, not a design choice.**
+  *(SC-5 gate ruling, Brad, 2026-08-20 — `sc-5-gate-report-2026-08-20.md` F1: an **open agent view is not a surface** for this requirement's purposes. The overlay's scrim covers the whole shell, attribution included, exactly as a modal is meant to; the requirement is judged on the surfaces proper, where the footer is structural and unconditional.)*
 
 ### Deck data
 

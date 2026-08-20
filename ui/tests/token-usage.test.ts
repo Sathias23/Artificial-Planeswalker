@@ -2650,6 +2650,304 @@ describe('the reduced-motion mechanism (AC 11, AC 13)', () => {
     expect(motionDeclarationsIn(scaled).filter((e) => !scaleRegistered.has(e))).toEqual([])
   })
 
+  /**
+   * THE CLASS THE TRANSFORM PIN CANNOT SEE (SC-5 gate finding M5, 2026-08-20). The pin above
+   * covers transform/scale/rotate/translate only — blind by construction to `opacity`,
+   * `height`, `background-color` and `box-shadow` transitions, which is the exact class three
+   * shipped motions (flip-control fade, suggestion-row tint, suggestion thumbnail fade)
+   * slipped through on a fully green suite. These need no `none !important` registration —
+   * every one is expressed through a duration token, so zeroing makes it instant — but
+   * UX-DR42 declares the INVENTORY exhaustive, and that is a separate obligation this guard
+   * now enforces: every shipped visual-class transition must be claimed by a named inventory
+   * row in tokens.css. `all` is tracked too, because `transition: all` would smuggle the
+   * whole class in one word.
+   */
+  const VISUAL_TRANSITION_PROPERTIES: readonly string[] = [
+    'opacity',
+    'height',
+    'background-color',
+    'box-shadow',
+  ]
+
+  /** Comma-split at depth 0 only, so `var(--motion-glide, 200ms)` stays one segment. */
+  const transitionSegmentsIn = (value: string): string[] => {
+    const segments: string[] = []
+    let depth = 0
+    let current = ''
+    for (const char of value) {
+      if (char === '(') depth++
+      if (char === ')') depth--
+      if (char === ',' && depth === 0) {
+        segments.push(current)
+        current = ''
+      } else {
+        current += char
+      }
+    }
+    segments.push(current)
+    return segments.map((s) => s.trim()).filter(Boolean)
+  }
+
+  /** Whitespace-split at depth 0 only, so `cubic-bezier(0.4, 0, 0.2, 1)` stays one word. */
+  const wordsAtDepthZero = (segment: string): string[] => {
+    const words: string[] = []
+    let depth = 0
+    let current = ''
+    for (const char of segment) {
+      if (char === '(') depth++
+      if (char === ')') depth--
+      if (/\s/.test(char) && depth === 0) {
+        if (current) words.push(current)
+        current = ''
+      } else {
+        current += char
+      }
+    }
+    if (current) words.push(current)
+    return words
+  }
+
+  /**
+   * The transitioned property of one shorthand segment. The shorthand grammar is ORDER-FREE
+   * (`||` combinator — Greptile P2, PR #90): `transition: var(--motion-glide) opacity` is as
+   * valid as the property-first spelling, and a segment with NO property token at all means
+   * the implicit `all`. So the property is found by elimination — not by position: drop
+   * functions (var(), cubic-bezier(), steps()), times, easing keywords and `none`; the first
+   * survivor is the property; no survivor is `all`.
+   */
+  const TRANSITION_EASINGS = new Set([
+    'ease',
+    'ease-in',
+    'ease-out',
+    'ease-in-out',
+    'linear',
+    'step-start',
+    'step-end',
+  ])
+  const transitionPropertyOf = (segment: string): string => {
+    const survivors = wordsAtDepthZero(segment).filter((word) => {
+      const lower = word.toLowerCase()
+      if (lower.includes('(')) return false
+      if (/^[+-]?(\d+\.?\d*|\.\d+)(ms|s)$/.test(lower)) return false
+      if (TRANSITION_EASINGS.has(lower)) return false
+      // `none` is NOT filtered: the grammar puts it in the PROPERTY slot, so it must survive
+      // as the resolved property — `transition: none` means "nothing transitions", and a
+      // resolver that dropped the word would misread it as the implicit `all`. (Found live:
+      // QuantityBadge.css's flashed rule is exactly `transition: none`.)
+      return true
+    })
+    return survivors[0]?.toLowerCase() ?? 'all'
+  }
+
+  /** Every visual-class transition in `blocks`, as `'selector :: property'` pairs. */
+  const visualTransitionDeclarationsIn = (blocks: Block[]): string[] =>
+    blocks.flatMap((block) =>
+      declarationsIn(block.body)
+        .filter(([property]) => property === 'transition' || property === 'transition-property')
+        .flatMap(([name, value]) =>
+          transitionSegmentsIn(value)
+            .map((segment) =>
+              // `transition-property` segments ARE property names; the shorthand needs the
+              // order-free resolver.
+              name === 'transition-property'
+                ? segment.toLowerCase()
+                : transitionPropertyOf(segment),
+            )
+            .filter(
+              (property) => property === 'all' || VISUAL_TRANSITION_PROPERTIES.includes(property),
+            )
+            .flatMap((property) =>
+              block.selector.split(',').map((s) => `${normaliseSelector(s)} :: ${property}`),
+            ),
+        ),
+    )
+
+  it('keys every visual-class transition to an inventory row (SC-5 gate, M5)', () => {
+    const found = [...new Set(visualTransitionDeclarationsIn(shippedBlocks))]
+
+    // NON-VACUITY: this guard maps a list to rows, so an empty list checks nothing. Thirteen
+    // entries shipped the day it was written; zero means the reader broke, not the tree.
+    expect(
+      found.length,
+      'no stylesheet ships a visual-class transition — this guard has no subject',
+    ).toBeGreaterThan(0)
+
+    // THIS MAP IS ENUMERATED, like the transform pin above: a story that adds or removes a
+    // visual-class transition moves it on purpose — and a NEW entry owes an inventory row in
+    // tokens.css before it can be claimed here. The two rows read as classes carry the SC-5
+    // gate ruling (Brad, 2026-08-20): "Image fade-in" covers image fades as a family,
+    // "Deck-row live tint" covers the row tint+shadow family, per the no-new-row ruling
+    // recorded at SuggestionsView.css:113-118 and c6-7.
+    const INVENTORY_CLAIMS: Record<string, string> = {
+      '.app-shell-identity :: opacity': 'Refetch header shimmer',
+      '.agent-view :: opacity': 'Agent-view bloom',
+      '.agent-view-title :: opacity': 'Push-replace crossfade',
+      '.agent-view-body :: opacity': 'Push-replace crossfade',
+      '.card-tile-image :: opacity': 'Image fade-in',
+      '.suggestion-row-image :: opacity': 'Image fade-in',
+      '.card-tile-quantity :: box-shadow': 'Accent glow fade',
+      '.deck-row :: background-color': 'Deck-row live tint',
+      '.deck-row :: box-shadow': 'Deck-row live tint',
+      '.suggestion-row :: background-color': 'Deck-row live tint',
+      '.suggestion-row :: box-shadow': 'Deck-row live tint',
+      '.flip-control :: opacity': 'Flip-control chrome fade',
+      '.mana-curve-bar :: height': 'Curve-bar height',
+    }
+
+    expect(
+      [...found].sort(),
+      'the shipped visual-transition list moved — the story that moved it updates this map, and a new entry owes an inventory row first',
+    ).toEqual(Object.keys(INVENTORY_CLAIMS).sort())
+
+    // A ROW, not a mention (Greptile P2, PR #90; re-anchored at the Epic 15 retro, 2026-08-20).
+    // The first fix keyed the match on the arrow alone, on the premise that prose never quotes
+    // a label with its arrow — false in this very file: the c4-7 and c6-5 comments quote
+    // `"Deck-row live tint -> instant (c4-7)"` and `"Agent-view bloom … -> …"` whole, so for
+    // those labels the arrow test stayed green with the actual row deleted. The real
+    // discriminator is the line start: an inventory row begins its line with the label
+    // (indentation, then label, then arrow), while every prose quote puts at least a `"` or
+    // narration before it. Anchored + multiline, a quote can no longer stand in for a row.
+    const escapeForRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    for (const [entry, row] of Object.entries(INVENTORY_CLAIMS)) {
+      expect(
+        new RegExp(`^\\s*${escapeForRegex(row)}[^\\n]*->`, 'm').test(tokenFileSource),
+        `${entry} claims inventory row "${row}", which tokens.css no longer carries as a row (label starting its own line + '->' on that line)`,
+      ).toBe(true)
+    }
+  })
+
+  it('would catch a visual-class transition the map does not claim — the M5 probe', () => {
+    // Fed inline, like probe (e) above, so the proof survives the repair.
+    const planted = blocksIn(
+      'src/probe.css',
+      '.probe:hover { transition: opacity var(--motion-glide) ease, background-color 200ms; }',
+    )
+    expect(visualTransitionDeclarationsIn(planted)).toEqual([
+      '.probe:hover :: opacity',
+      '.probe:hover :: background-color',
+    ])
+
+    // The ORDER-FREE spellings Greptile named (P2, PR #90): property after the duration, and
+    // the implicit-`all` segment with no property token at all. Both must resolve, not vanish.
+    expect(
+      visualTransitionDeclarationsIn(
+        blocksIn('src/probe.css', '.probe { transition: var(--motion-glide) opacity; }'),
+      ),
+    ).toEqual(['.probe :: opacity'])
+    expect(
+      visualTransitionDeclarationsIn(
+        blocksIn('src/probe.css', '.probe { transition: var(--motion-glide); }'),
+      ),
+    ).toEqual(['.probe :: all'])
+    // `transition: none` is the PROPERTY `none` — no transition — never the implicit `all`.
+    // The shipped shape that proves it matters: QuantityBadge.css's flashed rule.
+    expect(
+      visualTransitionDeclarationsIn(blocksIn('src/probe.css', '.probe { transition: none; }')),
+    ).toEqual([])
+
+    // A cubic-bezier's inner spaces do not shed words the resolver would mistake for a property.
+    expect(
+      visualTransitionDeclarationsIn(
+        blocksIn(
+          'src/probe.css',
+          '.probe { transition: opacity 200ms cubic-bezier(0.4, 0, 0.2, 1); }',
+        ),
+      ),
+    ).toEqual(['.probe :: opacity'])
+
+    // `transition: all` cannot smuggle the class past the reader in one word.
+    expect(
+      visualTransitionDeclarationsIn(
+        blocksIn('src/probe.css', '.probe { transition: all var(--motion-glide); }'),
+      ),
+    ).toEqual(['.probe :: all'])
+
+    // A comma inside var() does not split a segment (the reader is paren-aware).
+    expect(
+      visualTransitionDeclarationsIn(
+        blocksIn(
+          'src/probe.css',
+          '.probe { transition: opacity var(--motion-glide, 200ms) ease; }',
+        ),
+      ),
+    ).toEqual(['.probe :: opacity'])
+
+    // Non-class transitions stay invisible to THIS guard — the transform family belongs to
+    // the pin above, and anything else is the coverage guard's problem: since the Epic 15
+    // retro repair, an unlisted property no longer vanishes, it fails by name below.
+    expect(
+      visualTransitionDeclarationsIn(
+        blocksIn('src/probe.css', '.probe { transition: color var(--motion-glide); }'),
+      ),
+    ).toEqual([])
+  })
+
+  /**
+   * EVERY transitioned property, resolved segment by segment — no filter. The visual guard
+   * above keeps its enumerated map; this collector exists so that a property OUTSIDE that map
+   * is a named failure rather than a silent non-match.
+   */
+  const allTransitionPropertiesIn = (blocks: Block[]): string[] =>
+    blocks.flatMap((block) =>
+      declarationsIn(block.body)
+        .filter(([property]) => property === 'transition' || property === 'transition-property')
+        .flatMap(([name, value]) =>
+          transitionSegmentsIn(value)
+            .map((segment) =>
+              name === 'transition-property'
+                ? segment.toLowerCase()
+                : transitionPropertyOf(segment),
+            )
+            .flatMap((property) =>
+              block.selector.split(',').map((s) => `${normaliseSelector(s)} :: ${property}`),
+            ),
+        ),
+    )
+
+  it('resolves every shipped transition to a KNOWN property — unknown fails by name (M5 repair, Epic 15 retro)', () => {
+    // THE HOLE THE FIRST M5 FIX KEPT (Epic 15 retro, 2026-08-20): VISUAL_TRANSITION_PROPERTIES
+    // enumerates only the four properties that had already slipped, and the reader dropped
+    // everything else — so `transition: background` (the shorthand, one word from the shipped
+    // `background-color` tint), `max-height`, `width` or `filter` would repeat M1–M3 on a
+    // fully green suite. Inverted here: every property a shipped stylesheet transitions must
+    // be one this file KNOWS — the transform family (the pin's), the visual map (inventory-
+    // owing), `none`/`all` (each handled above), or an explicit exemption carrying a ruling.
+    // A new property therefore arrives RED and is claimed on purpose, never by absence.
+    const EXEMPT_TRANSITION_PROPERTIES = new Set<string>([
+      // Empty on purpose. `color`, `outline` and friends join here only with a recorded
+      // ruling that they are not motion the UX-DR42 inventory tracks — never by default.
+    ])
+    const known = (property: string): boolean =>
+      property === 'none' ||
+      property === 'all' ||
+      MOTION_PROPERTIES.includes(property) ||
+      VISUAL_TRANSITION_PROPERTIES.includes(property) ||
+      EXEMPT_TRANSITION_PROPERTIES.has(property)
+
+    const unknown = allTransitionPropertiesIn(shippedBlocks).filter(
+      (entry) => !known(entry.split(' :: ')[1]),
+    )
+    expect(
+      unknown,
+      'a shipped stylesheet transitions a property this guard does not know — add it to the visual map with an inventory row in tokens.css, or exempt it here with a ruling',
+    ).toEqual([])
+
+    // The probe: the exact spellings the retro named must land RED here, not vanish.
+    for (const planted of [
+      '.probe { transition: background var(--motion-glide); }',
+      '.probe { transition: max-height 200ms ease; }',
+      '.probe { transition: filter 200ms; }',
+      '.probe { transition-property: width; }',
+    ]) {
+      const properties = allTransitionPropertiesIn(blocksIn('src/probe.css', planted))
+      expect(properties.length, `probe yielded nothing for ${planted}`).toBeGreaterThan(0)
+      expect(
+        properties.some((entry) => !known(entry.split(' :: ')[1])),
+        `${planted} resolved to only known properties — the coverage guard would miss it`,
+      ).toBe(true)
+    }
+  })
+
   it('names itself as the registration point later stories extend', () => {
     // AC 11 asks for a mechanism that is the SINGLE place later epics register their own
     // fallbacks. That is a documentation contract as much as a code one, and c4/c6/c7 will

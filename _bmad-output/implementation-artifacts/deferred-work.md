@@ -58,7 +58,7 @@
 > stays 15-5's.
 
 - source_spec: `_bmad-output/implementation-artifacts/c6-8-agent-views-nav-unread-markers-re-open-and-kind-switching.md`
-  summary: "**The artefacts describe the quiet nav pill's copy as a \"tooltip\", singular, and that is a contradiction the system has already repaired once in the other direction.** UX-DR28 and AC 1 require the pill be NOT focusable and carry a tooltip; UX-DR39 bans hover-only disclosure of unique information and requires focus parity — and a non-focusable element cannot disclose on focus, so the two rules cannot both be satisfied by a `title` alone. The identical shape was caught on the connection pill by the 2026-07-22 accessibility review and repaired by amending UX-DR29 to focusable + `aria-describedby`; the nav pill never got that amendment. **c6-8 repaired it in code** under Brad's Q2 ruling — the pill stays `disabled` (UX-DR28 and UX-DR40's cold-open enumeration are explicit and load-bearing) and the sentence ships as BOTH a `title` and a visually-hidden `aria-describedby` target, so the information is in the accessibility tree and never hover-only in substance. EXPERIENCE.md's nav-pill row was amended in the same commit to record the mechanism and the reason. **What remains is the residue this story cannot fix from inside a story:** UX-DR28 itself, and the epic's AC 1, still say \"tooltip\" as though a pointer affordance were the whole requirement, so the next reader of those rules meets the contradiction again with no pointer to its resolution. **Home: Story 8.3's PRD reconciliation**, which is where peer-artefact disagreements of exactly this shape are collected — the repair is to amend UX-DR28 the way UX-DR29 was amended, naming the dual mechanism, rather than to change any code."
+  summary: "**The artefacts describe the quiet nav pill's copy as a \"tooltip\", singular, and that is a contradiction the system has already repaired once in the other direction.** UX-DR28 and AC 1 require the pill be NOT focusable and carry a tooltip; UX-DR39 bans hover-only disclosure of unique information and requires focus parity — and a non-focusable element cannot disclose on focus, so the two rules cannot both be satisfied by a `title` alone. The identical shape was caught on the connection pill by the 2026-07-22 accessibility review and repaired by amending UX-DR29 to focusable + `aria-describedby`; the nav pill never got that amendment. **c6-8 repaired it in code** under Brad's Q2 ruling — the pill stays `disabled` (UX-DR28 and UX-DR40's cold-open enumeration are explicit and load-bearing) and the sentence ships as BOTH a `title` and a visually-hidden `aria-describedby` target, so the information is in the accessibility tree and never hover-only in substance. EXPERIENCE.md's nav-pill row was amended in the same commit to record the mechanism and the reason. **What remains is the residue this story cannot fix from inside a story:** UX-DR28 itself, and the epic's AC 1, still say \"tooltip\" as though a pointer affordance were the whole requirement, so the next reader of those rules meets the contradiction again with no pointer to its resolution. ~~**Home: Story 8.3's PRD reconciliation**, which is where peer-artefact disagreements of exactly this shape are collected — the repair is to amend UX-DR28 the way UX-DR29 was amended, naming the dual mechanism, rather than to change any code.~~ **CLOSED by story 15-3, 2026-08-18, exactly as prescribed** (Story 8.3 was renumbered 15-3). UX-DR28 in `epics-companion-app.md` now states that the quiet pill's sentence ships as a `title` **and** a visually-hidden `aria-describedby` target, that the pill deliberately stays `disabled` because UX-DR28's own non-focusability and UX-DR40's cold-open Tab enumeration are load-bearing, and that this is the repair UX-DR29 already received for the connection pill. The epic's c6-8 AC 1 carried the same stale \"the tooltip\" and was amended in the same commit. No code changed; the rule now describes what c6-8 shipped."
   evidence: '`review-accessibility.md:32` (the connection-pill repair this mirrors); UX-DR28 (`epics-companion-app.md:492`), UX-DR39 (`:585`), UX-DR29; the shipped dual mechanism in `ui/src/containers/AgentViewsNav/AgentViewsNav.tsx` and its reasoning in that directory''s `copy.ts`; the amended nav-pill row in `EXPERIENCE.md`, gated by `ui/tests/agent-views-nav-copy.test.ts` (which asserts the row still carries both the UX-DR39 clause and the "programmatic description" wording, so the reason cannot be quietly dropped).'
 
 - source_spec: `_bmad-output/implementation-artifacts/c6-8-agent-views-nav-unread-markers-re-open-and-kind-switching.md`
@@ -1646,13 +1646,26 @@ the gate-output rule rather than left as "we meant to".
   assertion kept passing. The epic's Story 2.6 block and UX-DR8 both say plain "32px" and needed
   no change; DESIGN.md is the only artefact still naming the scale step.
 
-  Left alone deliberately — DESIGN.md is the UX artefact, not an implementation record, and
+  ~~Left alone deliberately — DESIGN.md is the UX artefact, not an implementation record, and
   nothing renders differently since both values are 32px. **Homed against Story 8.3**, which
   already owns folding implementation-surfaced corrections back into the planning artefacts (it
   carries the six spine gaps and the EXPERIENCE.md "unconfirmed" stamps). The fix is one word,
   and the reason to make it is that the next component to reach for a "window frame" distance
-  should find one name, not two. (Severity: Low — cosmetic today, a real trap only if the
-  gutter is ever retuned.)
+  should find one name, not two.~~ **CLOSED by story 15-3, 2026-08-18** (Story 8.3 was renumbered
+  15-3). **Three** sites, not the one the entry named and not the two the first pass found (review
+  2026-08-18): the frontmatter token `components.agent-view.inset` is now `'{spacing.gutter}'` with
+  the reasoning beside it; the `empty-push-line.container` comment 120 lines below it, which cites
+  the shell's token in passing, was corrected with it — a comment left naming the old token is the
+  same two-names-for-one-distance trap in miniature; and the Layout & Spacing prose reads *"inset by `{spacing.gutter}` — the same token that frames the
+  window, because the overlay's inset must coincide with the shell's own frame rather than merely
+  equal it today"*. The shipped `var(--space-gutter)` is unchanged and nothing renders differently;
+  what changed is that there is now one name for the distance. No test read either site (verified:
+  `ui/tests/tokens.test.ts` derives its inventory from the `colors`/`rounded`/`spacing` blocks and
+  hand-lists only the composite shadows, and nothing reads
+  `design.components['agent-view']`). (Severity: Low — cosmetic today, a real trap only if the
+  gutter is ever retuned.) Two `ui/tests` comments describing DESIGN.md as "the one artefact
+  still saying `{spacing.6}`" were updated in the same commit; three `ui/src` comments quoting the
+  old wording were not, and are recorded as residue under story 15-3 below.
 
 ## Deferred from: c2-7 — presentation-only primitives (2026-07-29)
 
@@ -3437,16 +3450,38 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
 
 ## Deferred from: story c3-7 (the sharded, atomically written disk cache, 2026-08-01)
 
-- **The cache is unbounded: no eviction, no size accounting, no TTL, no index** (AD-11, epic
-  :1768-1770 — deliberate in MVP, and no hook was built for a future one on c3-4's ruling). What
+- ~~**The cache is unbounded: no eviction, no size accounting, no TTL, no index**~~ **DISCLOSED
+  BY 15-2, 2026-08-18 — the eviction question itself stays open, in its own entry below.** (AD-11,
+  epic :1768-1770 — deliberate in MVP, and no hook was built for a future one on c3-4's ruling). What
   15-2 inherits is a **measured footprint rather than a guess**: this user's whole 40-deck library
   is **1,061 distinct card ids**, and a single deck resolves to **67–99** of them; at one size and
   the epic's ~124 KB average that is roughly **130 MB** for the entire library, ~12 MB per deck.
   The 130 MB is *arithmetic over an average*, not a byte measurement — see the next entry. 15-2
   owns the documented location, the removal command and the uninstall notes; the cache root is
   `src.paths.data_dir()/image_cache` and it is safe to delete wholesale at any time, because every
-  entry is reconstructible by refetching and nothing indexes it. **Home: 15-2.** (Severity: Low —
-  a disclosure and stewardship gap, not a defect.)
+  entry is reconstructible by refetching and nothing indexes it. ~~**Home: 15-2.**~~ **CLOSED by
+  15-2, 2026-08-18 — the disclosure half.** `README.md`'s *Where the data lives → Image cache
+  (companion app)* section now states the location, the two-character shard, the
+  `PLANESWALKER_DATA_DIR` override, copy-pasteable inspect and clear commands for bash and
+  PowerShell, the no-eviction ruling with the **measured** footprint (~90 KB per `normal` tile,
+  8.5 MB per 99-tile deck, ~95 MB for the 1,061-id library) beside the epic's ~12 MB arithmetic
+  estimate, the accepted staleness and the uninstall leftovers.
+  `tests/unit/companion/test_image_cache_docs.py` keys every load-bearing claim on the shipped
+  constants and executes the documented one-liner, so the prose cannot outlive the code. **No
+  mechanism was built and none was in scope** — see the two lifecycle entries below, which stay
+  open. (Severity: Low — a disclosure and stewardship gap, not a defect.)
+
+- **Whether the cache should ever be bounded is still unanswered — only the disclosure closed.**
+  Split out at 15-2's review (2026-08-18) because closing the entry above on its documentation half
+  would otherwise have retired the substantive half with it: AD-11 declined eviction *in MVP* for
+  want of a measured footprint, and that footprint now exists (~90 KB per `normal` tile, 8.5 MB per
+  99-tile deck, ~95 MB for a ~1,000-printing library). The two lifecycle entries below are about
+  the cache disabling *itself*, not about size, so neither of them inherits this question. Nothing
+  is proposed here: at ~95 MB for an entire library, a policy would cost more in complexity than
+  the disk it reclaims, and `README.md` now tells the user the one thing that actually bounds it —
+  delete the directory. **Home: unowned**; the forcing function is a real report of the cache
+  becoming inconveniently large, or a second rendition size shipping (which multiplies every figure
+  above by the number of sizes cached). (Severity: Low.)
 
 - ~~**The ~124 KB average tile size is arithmetic, never measured.**~~ **MEASURED AT THE C3
   RETROSPECTIVE, 2026-08-02 — and the epic's figure is a 38 % overestimate.** It was 12 MB ÷ 99
@@ -3610,7 +3645,8 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   c4-4-facing consequence is a `ui/README.md` blind-spot row. **Home: unowned** — the forcing
   function is an upstream that starts sending a parameter browsers act on. (Severity: Low.)
 
-- **Orphaned `.tmp` files from a hard kill accumulate with no sweep, ever.** `_write_atomically`
+- ~~**Orphaned `.tmp` files from a hard kill accumulate with no sweep, ever.**~~ **CLOSED by
+  15-2, 2026-08-18 — documented, as the entry itself asked.** `_write_atomically`
   cleans its temp file on every in-process failure, but a process kill or power cut between
   `mkstemp` and `os.replace` strands `<name>.<rand>.tmp` in the card's shard directory
   permanently: `_read_cached` never matches the suffix (invisible, so it costs nothing but
@@ -3618,8 +3654,11 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   *content*, not write debris. A `rglob("*.tmp")` sweep at startup was declined: it walks a
   potentially 38k-directory tree on every launch to reclaim litter produced only by crashes
   mid-write. The wholesale remedy is 15-2's documented `image_cache/` deletion, which removes
-  debris and content alike. **Home: 15-2**, as one sentence in its stewardship notes. (Severity:
-  Low.)
+  debris and content alike. ~~**Home: 15-2**, as one sentence in its stewardship notes.~~ **CLOSED
+  by 15-2, 2026-08-18.** The README's *Safe to delete at any time* paragraph says exactly that: the
+  wholesale delete "also removes any `*.tmp` write debris that a hard kill or a power cut stranded
+  mid-write — nothing sweeps for those, and this is the intended remedy." Still no sweep, declined
+  for the same reason as before. (Severity: Low.)
 
 - **A transient startup `OSError` disables the cache for the whole process, with one WARNING at
   boot.** Q6's ruling covers root *creation* failure by disabling the cache and running on —
@@ -3635,9 +3674,21 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   *when*** — at the first write? on a timer? after N requests? — which is a lifecycle question
   nothing in this feature measures and which c3-8 had no requirement to answer. Taking it would
   also have made `DiskCache` mutable in a way it is not, on top of the write-disable state that
-  entry did add. **Home: 15-2**, which owns cache stewardship (epic `:3185-3212`) and is where a
-  lifecycle policy belongs beside the documented location and the removal command. (Severity: Low —
-  unchanged; requests are unharmed either way.)
+  entry did add. ~~**Home: 15-2**, which owns cache stewardship (epic `:3185-3212`) and is where a
+  lifecycle policy belongs beside the documented location and the removal command.~~
+  **RE-RECORDED BY 15-2, 2026-08-18: DISCLOSED, STILL UNBUILT.** 15-2's intent was disclosure, not
+  mechanism, and it declined this a second time with the reason unchanged and honest: **retrying
+  the root still means deciding *when***, which nothing in this feature measures, and a story that
+  writes documentation is not made able to answer that by owning the entry. What it did instead is
+  tell the user: `README.md`'s *Two ways the cache switches itself off* paragraph states the
+  behaviour, that every image is still served and everything already cached is still read, and that
+  **restarting the app is the remedy** — so the failure is no longer discoverable only from a log
+  line hours before anyone notices. `DISK_CACHE_WRITE_FAILURE_LIMIT`'s docstring records the same.
+  **Home: unowned.** The forcing function is a **real report of a silently disabled cache** — a
+  user, or a log, showing the companion refetching everything from the CDN for a whole session.
+  That report is also the first measurement of *when* a retry should happen, which is the input
+  this decision has always been missing. (Severity: Low — unchanged; requests are unharmed either
+  way.)
 
 - **A root that exists but is unwritable leaves the cache "enabled" and warns on every write,
   ~99 times per cold deck paint, forever.** `build_image_cache` probes only `mkdir` of the root;
@@ -3786,8 +3837,14 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   cache's writes for the process — the "consecutive" reset only protects failures separated by
   successes, and Q4 declined any re-enable path. Accepted at review (Brad, 2026-08-02): the
   consequence is only lost caching, images are still served, and the docstring now states the
-  exposure honestly. Any re-enable/recovery mechanism is cache stewardship. **Home: 15-2.**
-  (Severity: Low.)
+  exposure honestly. Any re-enable/recovery mechanism is cache stewardship.
+  ~~**Home: 15-2.**~~ **RE-RECORDED BY 15-2, 2026-08-18: DISCLOSED, STILL UNBUILT** — the same
+  ruling, and the same reason, as the transient-startup entry it shares a question with (they are
+  one lifecycle question wearing two hats: *when* does a disabled cache try again?). 15-2
+  documented the exposure in `README.md` — five *consecutive* failed writes stop writing for the
+  process, every image is still served, restarting the app is the remedy — and built no re-enable
+  path. **Home: unowned**, with the same forcing function: a real report of a silently disabled
+  cache. (Severity: Low.)
 
 - **The backoff 502 answers without a `Retry-After` header the server could supply.** The route
   holds `retry_after` at the moment it answers a negative hit and discards it; the SPA therefore
@@ -5299,6 +5356,24 @@ Eight decisions ruled by Sathias. R1/R2/R6 are process and live in
   actually meets. (Severity: Medium — reachable on the public v0.4.0 today; bounded and recoverable
   by stopping the companion.)
 
+  **CORRECTED 2026-08-19 (Greptile P2 on PR #88): "can neither delete nor replace" is TRUE ON
+  WINDOWS ONLY, and the POSIX behaviour is worse.** This entry was written from F4's Windows
+  manual-testing observation and story 15-4's README generalised it to every platform before the
+  review caught it. On macOS and Linux the unlink SUCCEEDS — the directory entry goes, while the
+  companion's pooled connections keep the old inode alive (`AsyncAdaptedQueuePool`, size 5 +
+  overflow 10, no recycle, documented at `src/companion/app/deps.py:305`). A re-import then writes
+  a NEW inode at the same path that those connections never see, and `Database.session_factory()`
+  returns its CACHED factory without re-running `_create()`'s existence check
+  (`deps.py:150-158`), so nothing notices. The per-request readiness probe cannot help: it is
+  `is_database_initialized(session)`, a query down an already-open connection, not a file check.
+  Net effect on Brad's own platform: the user follows the instruction, deletes, re-imports, and the
+  page goes on saying the database is not set up until the companion is restarted — silently
+  contradicting FR-22's "picked up with no restart". The recovery does not change (stop the app
+  first) but its RATIONALE does, and the silent variant is the one worth naming. README corrected;
+  `test_companion_docs.py::test_the_failed_import_recovery_says_stop_the_app_first` now pins both
+  platforms and the POSIX consequence so the two cannot be collapsed back into one sentence.
+  Severity unchanged at Medium; the code defect remains open and unfixed.
+
 ### R4 — the empty-deck state ships as written
 
 - ⚖️ **RULED, status quo (`:4590-4604`).** The two empty right-column panel shells stand. Adding a
@@ -6285,3 +6360,287 @@ Also executed or re-homed at this retro, beyond the seven:
 - source_spec: `_bmad-output/implementation-artifacts/spec-c7-6-deletion-and-views-during-refetch.md`
   summary: The panel → deck mirror transition can still drop focus to `<body>` — c7-6's rescue covers only deck → panel.
   evidence: After the c7-6 rescue (or AgentView ARM 3's close-restore) parks focus on `.state-panel-headline`, a subsequent panel → deck transition — the agent creating or activating a deck, or reconnect restoring a loaded deck displaced by the `'down'` panel (`deck.ts:731`) — unmounts the StatePanel and the focused headline dies with it, dropping focus to `<body>` with no rescue firing (`App.tsx:895` early-returns when the arriving surface is `deck`). Pre-existing failure class (ARM 3 could park focus there before c7-6) but c7-6 widens its reachability; no test in the repo covers focus across a panel → deck transition. Same failure class as the half SkipLink.tsx ledgered for c7-6, at the opposite edge. Found by edge-case-hunter + verification-gap, independently.
+
+## Deferred from: story 15-2 (image cache stewardship, 2026-08-18)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-2-image-cache-stewardship-documented-location-inspection-and-removal.md`
+  summary: The documented inspect/clear commands are verified only as far as their Python payload —
+    the surrounding shell syntax is unverified, and the PowerShell block has never been executed
+    anywhere in CI.
+  evidence: `tests/unit/companion/test_image_cache_docs.py` extracts every `python -c "..."` payload
+    from the README section and executes it in-process, proving it prints exactly
+    `images.cache_root()` under a `PLANESWALKER_DATA_DIR` override. It never runs `du`, `find`,
+    `rm -rf`, `Get-ChildItem`, `Measure-Object` or `Remove-Item`, and the runner is Linux, so the
+    PowerShell block's `$Cache = ...` capture and `Remove-Item -Recurse -Force` are reviewer
+    judgement rather than tested fact. The blast radius if the shell half is wrong is bounded by
+    the Python half being right — the path the command names is proven correct, so a syntax error
+    fails loudly rather than deleting the wrong directory — but "the documented command works on
+    Windows" is not something this repository can currently assert. The honest fix is a Windows CI
+    leg (nothing in this project has one) or a doctest-style shell harness; neither is worth
+    building for two fenced blocks. **Home: unowned.** Forcing function: a Windows user reporting
+    that a documented command errored, or this project acquiring a Windows CI runner for any other
+    reason.
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-2-image-cache-stewardship-documented-location-inspection-and-removal.md`
+  summary: The README's footprint figures (~90 KB per tile, 8.5 MB per deck, ~95 MB per library)
+    are pinned by nothing and age with the corpus.
+    **PARTIALLY CLOSED by story 15-3, 2026-08-18 — the planning-artefact half only.** This entry's
+    second clause was that *"the epic (`epics-companion-app.md:294,888,1846,3329`) still carries
+    the superseded ~12 MB with no annotation"*. All four now read the measured 8.5 MB, with the
+    ~12 MB labelled as the disproved arithmetic estimate and the C3 retrospective cited once in
+    full under AD-11 and by pointer at the other three; the two acceptance criteria among them
+    (Story 10.6 and Story 15.2's own) are still well-formed Given/When/Then. **Two further sites
+    the 15-2 spec did not know about were found and corrected with them**: `ARCHITECTURE-SPINE.md`
+    (the source all four epic copies were taken from, flagged four times from `c4-12` without
+    action) and `walkthrough.html` (the HTML projection of that same spine line — a rendered
+    projection disagreeing with its source is how the figure spread in the first place).
+    `README.md` deliberately keeps ~12 MB as a labelled superseded estimate and IS gated:
+    `test_image_cache_docs.py:412` asserts the literal `12 MB` and the word `estimate` are both
+    present. **`ui/README.md` is NOT gated by anything** — that guard reads `REPO_ROOT/"README.md"`
+    and nothing else — and story 15-3 corrected two misattributions in it by hand (it credited the
+    superseded figure to the epic in the present tense, which the correction made false).
+    **What stays open is this entry's first clause, unchanged**: the measured figures are pinned by
+    nothing, in `README.md`, in `ui/README.md` or in any planning artefact.
+  evidence: Every other load-bearing claim in the new README section is keyed on a shipped symbol —
+    `images.CACHE_DIRECTORY_NAME`, `images._cache_path`, `images.cache_root`,
+    `singleton.LOCK_FILENAME`, `discovery.COMPANION_FILENAME`,
+    `images.DISK_CACHE_WRITE_FAILURE_LIMIT` — so a rename that skips the prose turns the guard red.
+    The measurements have no constant to key on: they are dated observations from the C3
+    retrospective (2026-08-02) against one deck, one rendition and one CDN encoder.
+    `test_image_cache_docs.py` asserts only that the numbers are *present and labelled measured*,
+    which is exactly as much as prose can be pinned to a measurement, and the module's docstring
+    declares the gap rather than implying coverage. They will drift silently as Scryfall re-encodes
+    art or the library grows. **Home: unowned.** Forcing function: a re-measurement (the natural
+    trigger is any future story that touches the image route's storage, or a user reporting a
+    footprint far from the documented one).
+
+## Deferred from: story 15-3 (reconcile the PRD with what was built, 2026-08-18)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-3-reconcile-the-prd-with-what-was-built.md`
+  summary: The new drift guard gates the PRD and only the PRD. Every other artefact this story
+    amended — the addendum, the epic, the architecture spine, its HTML projection — is still gated
+    by nothing.
+  evidence: `tests/unit/companion/test_prd_reconciliation.py` keys the PRD's closed sets on
+    `get_args(contracts.ErrorReason)`, `get_args(contracts.EventKind)` and
+    `SetActiveDeckResult.status`, and its route assertion on `build_app().openapi()`, so a rename
+    or an added member reds. `grep -rln "planning-artifacts" tests/ scripts/` returns that module
+    and `test_openapi_contract.py` and nothing else; the frontend suite reads `EXPERIENCE.md`,
+    `DESIGN.md` and (for one row) `epics-companion-app.md`, but nothing reads the addendum, the
+    spine or `walkthrough.html`. This is the mechanism that let the ~12 MB figure spread from
+    `ARCHITECTURE-SPINE.md:269` into four epic sites and one HTML projection over sixteen days, and
+    it is unchanged for those files — only the PRD is now watched. Extending the guard is cheap for
+    the spine (it names shipped constants) and expensive for the epic (5,000 lines of prose with no
+    stable anchors). **Home: unowned.** Forcing function: the next figure or token that drifts in a
+    document this guard cannot see.
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-3-reconcile-the-prd-with-what-was-built.md`
+  summary: The retired-claim scan is literal, so a paraphrase of a retired claim would pass.
+  evidence: `test_the_retired_claims_are_gone` bans the strings `mode=ro` and
+    `~/.artificial-planeswalker` anywhere in the PRD, which is why the amendments describe both in
+    words ("the read-only **connection-string** recipe this row used to specify", "the
+    home-directory dotfolder this row used to name") rather than reproducing the spelling. A future
+    edit that reintroduced the *claim* under a different spelling — `file:…?immutable=1`, a per-OS
+    dotfolder path written out in full — would not be caught. FR-04's driver is the one claim
+    checked structurally instead of literally, because `layout` legitimately appears in that row.
+    The module's docstring declares this. **Home: unowned.** Forcing function: a reviewer noticing a
+    paraphrase, which is the same mechanism that found these three.
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-3-reconcile-the-prd-with-what-was-built.md`
+  summary: `docs/companion-app-feature-brief.md:104` still names the `mode=ro` recipe, deliberately
+    and by ruling.
+  evidence: Declared residue in this story's spec rather than an oversight: the feature brief is a
+    pre-PRD intake draft that the PRD supersedes, and correcting an input artefact rewrites history
+    instead of reconciling requirements. A reader who reaches it out of order will meet the
+    retired claim with no pointer to NFR-02's amendment. The cheap repair, if it is ever wanted, is
+    a one-line superseded-by banner at the top of the brief rather than an edit to the line.
+    **Home: unowned.** Forcing function: someone reading the brief as though it were current.
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-3-reconcile-the-prd-with-what-was-built.md`
+  summary: Three shipped source comments announce that this PRD amendment is owed and were not
+    discharged, because they live under `src/` and `ui/src/` — which this story's own contract
+    forbids it to touch.
+  evidence: '`src/companion/app/deps.py:36` ends *"The PRD amendment is c8-3''s"*; NFR-02 is now
+    amended, so the sentence is spent and should read as discharged rather than as an open promise.
+    `src/companion/contracts.py:365` says *"Story 8.3''s amendment list currently omits
+    ``GET /api/session``"* — that is **discharged in fact**: `/api/session` is named in NFR-01 and
+    is now covered by the route-parity assertion in
+    `tests/unit/companion/test_prd_reconciliation.py`, which compares the PRD''s documented paths
+    against the whole shipped route table, WebSocket routes included.
+    `ui/src/containers/AgentViewsNav/copy.ts:63` says the artefacts *"still describe this as
+    tooltip, singular"*; UX-DR28, the c6-8 acceptance criterion and `EXPERIENCE.md:131` were all
+    amended on 2026-08-18, so that sentence is now false. None was edited: this story ships no diff
+    under `src/`, `ui/src/` or `plugin/`, and `ui/src` in particular risks the committed SPA bundle.
+    **Home: unowned**, and cheap — three comment edits in any story that already touches those
+    files. Forcing function: a reader acting on a promise that has already been kept.'
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-3-reconcile-the-prd-with-what-was-built.md`
+  summary: Three `ui/src` comments still quote DESIGN.md as saying `{spacing.6}` for the
+    agent-view overlay inset, which it no longer does.
+  evidence: '`ui/src/components/AppShell/AppShell.css:270` (*"the 32px of UX-DR8''s inset by
+    {spacing.6}"*), `ui/src/containers/AgentView/AgentView.tsx:41` and
+    `ui/src/containers/AgentView/AgentView.css:17` (*"DESIGN.md''s own component row reads the same
+    way: scrim with backdrop, inset {spacing.6}"*) all quote the pre-15-3 wording. The two
+    equivalents under `ui/tests` were updated in this story''s commit; these three were not, for the
+    same `ui/src` prohibition as the entry above. Nothing renders differently — both tokens are 32px
+    and the CSS already uses `var(--space-gutter)` — so this is a citation that has gone stale, not
+    a defect. **Home: unowned.** Forcing function: any story that edits the agent-view shell.'
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-3-reconcile-the-prd-with-what-was-built.md`
+  summary: '"Story 8.3" is an ID COLLISION: code comments pointing there now resolve to a live,
+    unrelated story.'
+  evidence: 'This story was written as `c8-3` / "Story 8.3" and was renumbered to 15-3 (see
+    `sprint-status.yaml`). `epics-companion-app.md:1082` is a *different*, live
+    **Story 8.3: Port selection with ephemeral fallback and a printed launch URL**, so every comment
+    that says "Story 8.3''s PRD reconciliation" — `src/companion/contracts.py:365`,
+    `ui/src/containers/AgentViewsNav/copy.ts:63`, and previously two `ui/tests` comments and two
+    `deferred-work.md` entries — sends a reader to the wrong story. The `deferred-work.md` and
+    `ui/tests` occurrences were annotated with the renumbering in this story''s commit; the `src/`
+    and `ui/src/` ones could not be. This is worse than a stale pointer: it resolves, plausibly, to
+    the wrong place. **Home: unowned**, and it rides along with the entry above. Forcing function: a
+    reader following one of those pointers.
+
+
+    **CLOSED 2026-08-18, after story 15-3 merged (PR #87).** All four live pointers were corrected
+    in a follow-up commit on `feat/companion-epic-15`: `src/companion/contracts.py` (the
+    `/api/session` note, which was also FALSE by then — 15.3 recorded that path against NFR-01 and
+    the route-parity guard now asserts it) and its AD-6 note ("owed at Epic 8" — the same
+    mis-mapping, and the spine amendment had in fact been made), `src/companion/app/deps.py` (the
+    `mode=ro` amendment, now discharged), and `ui/src/containers/AgentViewsNav/copy.ts` (UX-DR28,
+    now amended). Each rewrite names the renumbering explicitly — `c8` became **Epic 15**, not
+    Epic 8 — so a reader of the old prose can decode it rather than following it. The `ui/src`
+    prohibition that blocked this in-story did not apply once 15-3 was merged; the SPA bundle was
+    rebuilt and is byte-identical (the comment is stripped), and the plugin mirror was regenerated.
+    **Deliberately NOT rewritten:** the historical records — the c2-6, c6-8 and c1-3 story specs,
+    the C6 retro, and `sprint-status.yaml`'s dated `Previously —` lines. The 2026-08-16 renumbering
+    note rules that historical prose keeps its original ids, and editing a dated record to say
+    something it did not say is the drift this ledger exists to prevent.'
+
+## Deferred from: code review of 15-4 (2026-08-19)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-4-release-documentation-for-the-companion-app.md`
+  summary: >-
+    The single documented launch command does not work for the plugin install route, which the
+    README advertises as the one needing no clone.
+  evidence: |-
+    Blind Hunter, 2026-08-19, verified against the tree. `README.md`'s Quick start sells the Claude
+    Code plugin path as "no clone required" (`/plugin marketplace add` + `/plugin install`), and
+    `plugin/.mcp.json` runs the server as `uv run --directory ${CLAUDE_PLUGIN_ROOT}/server python -m
+    src.mcp_server`. `plugin/server/pyproject.toml:50` does ship the `artificial-planeswalker`
+    console script, but `uv run` resolves its project from the CWD — so a plugin user, who has no
+    checkout and no uv project in their shell, cannot run the documented
+    `uv run artificial-planeswalker companion`. They would need
+    `uv run --directory <CLAUDE_PLUGIN_ROOT>/server artificial-planeswalker companion`, which no
+    document states.
+    NOT 15-4's to fix, and deliberately not treated as an intent gap: Story 15.5's own acceptance
+    criterion reads "**When** the two-command install is performed **and the companion is
+    launched** **Then** the app serves and renders" — the plugin launch path belongs to 15.5 by
+    name. 15-4's frozen intent additionally constrains it to ONE documented command spelled
+    identically everywhere (epic AC, AD-14, SC-4), so documenting a second invocation here would
+    have contradicted the approved contract rather than satisfied it.
+    **Home: 15-5.** If 15-5 does not close it, the release ships a launch instruction that fails
+    for the install route the README recommends first. (Severity: Medium — reachable by any plugin
+    user on day one; bounded, since the workaround exists and only the documentation is missing.)
+  resolution: '**CLOSED by 15-5 (2026-08-20, PR #89).** The anchored form the ledger predicted —
+    `uv run --directory "$PLUGIN_ROOT/server" artificial-planeswalker companion` — is documented
+    for BOTH plugin clients in `README.md` and in `docs/plugin-structure.md`, each route showing
+    how to find its own version-keyed root first (Claude Code under `~/.claude/plugins/cache`,
+    Codex under `~/.codex/plugins/cache`, POSIX and PowerShell). Not transcribed:
+    `test_build_plugin.py` derives the script and subcommand from `pyproject`''s
+    `[project.scripts]` and the dispatcher''s usage text, and asserts every anchor ends at
+    `/server` — the directory `${CLAUDE_PLUGIN_ROOT}/server` and Codex''s `cwd: "./server"` both
+    resolve to. What the ledger did NOT predict, and what the Greptile round found: documenting
+    the command is not enough if the reader cannot obtain the root. The Codex block shipped
+    `$PLUGIN_ROOT` with no way to get one, and the guard first written for it searched the whole
+    document — where the Claude Code block''s assignment vouched for the Codex block below it —
+    so it is scoped to each route''s own section. The plain `uv run artificial-planeswalker
+    companion` stays correct for the clone route and is unchanged.'
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-4-release-documentation-for-the-companion-app.md`
+  summary: >-
+    `CHANGELOG.md` is read by no test, so AC 2's "spelled identically at every occurrence" is
+    verified for the README occurrences only.
+  evidence: |-
+    Verification Gap reviewer, 2026-08-19. `test_companion_docs.py`'s launch-command assertion
+    searches only the extracted README section; `CHANGELOG.md` carries a second occurrence of
+    `uv run artificial-planeswalker companion` that nothing reads. A grep of `tests/`, `ui/tests/`,
+    `scripts/` and `.github/` for `CHANGELOG` returns only a comment mention in
+    `tests/unit/viewer/test_viewer_freeze.py` and this module's own docstring.
+    The new guard's module docstring declares the CHANGELOG deliberately unguarded, so this is a
+    standing ruling rather than an oversight — recorded because the AC's wording claims more
+    coverage than exists. Reopening it is a design decision about whether release notes should be
+    machine-gated at all, which is retrospective work, not story work. (Severity: Low.)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-15-4-release-documentation-for-the-companion-app.md`
+  summary: >-
+    CI pins `node-version: 20` while the measured floor is `>=20.19.0`, so the lane's own name
+    understates what it requires.
+  evidence: |-
+    Surfaced again by the 15-4 review's Node-floor sweep, 2026-08-19. `ui/package.json:7` declares
+    `>=20.19.0`; `.github/workflows/ci.yml` requests `node-version: 20`, which resolves to the
+    latest 20.x and therefore satisfies it in practice — the pin is correct today and correct by
+    luck rather than by statement. Already ledgered at `deferred-work.md:1413`; re-confirmed here
+    rather than duplicated, since 15-4 corrected the two live stack tables
+    (`ARCHITECTURE-SPINE.md:396`, `epics-companion-app.md:333`) and this is the one remaining site
+    that states a floor of "20". `epics-companion-app.md:1330` is Story c2-1's own shipped AC and
+    was left alone by ruling. (Severity: Low.)
+
+## Dispositions from: the SC-5 gate (15-6, 2026-08-20)
+
+The gate ran 2026-08-20 (`sc-5-gate-report-2026-08-20.md`; ruling line Brad's, same date). Every
+item the gate inherited gets its disposition here by name — C2 retro R2's rule. The governing
+ruling is ship-and-adjust ("we can always adjust after completion"): a RE-ACCEPTED item below is
+terminal at this gate — anything real among them comes back as a bug report, not a carried gate
+item.
+
+### Actioned
+
+- **M1 — flip-control chrome fade had no inventory row** (`FlipControl.css:98`): row added to
+  `tokens.css` ("Flip-control chrome fade -> instant 0.65 -> 1.0 step", c4-6).
+- **M5 — the motion completeness guard read `transform` only**: extended in
+  `token-usage.test.ts` ("keys every visual-class transition to an inventory row") to
+  opacity/height/background-color/box-shadow + `all`, enumerated claims map, non-vacuity anchor,
+  inline probes, and a planted firing proof through `vitest_probe_harness` (control 2307; RED on
+  the named node with the M1 row removed; revert `git diff --exit-code` clean).
+- **AC 4 — the arrow-key revisit flag**: consciously RE-ACCEPTED and recorded at
+  `EXPERIENCE.md` (Interaction Primitives) + `validation-report-2026-07-25.md` H3.
+- **F1 — agent-view scrim vs footer attribution**: ruled "an open modal is not a surface";
+  ruling written into `EXPERIENCE.md` (state matrix row) and `DESIGN.md` (footer component spec).
+
+### RE-ACCEPTED, with the reason recorded
+
+- **M2 — suggestion-row live tint** and **M3 — suggestion thumbnail fade**: the existing no-row
+  rulings stand; "Deck-row live tint" and "Image fade-in" now read as classes, recorded at the
+  tokens.css registration point. **M4 — inventory row 10** stands as a prohibition satisfied by
+  absence (closes validation L7); not deleted.
+- **c4-12's conformance leftovers** — the UX-DR20 empty-panel contradiction, StatChip without a
+  surface, the 10px ALL-CAPS legal text (its 2026-07-30 "ship as written" ruling stands), the
+  `rem` basis, and the skip link not reaching the footer (the corridor numbers are on the gate
+  sheet): re-accepted under the ship-and-adjust ruling.
+- **C7 manual checklist L1–L10** and **C6 carries K3, K5, J4, J5**: re-accepted unrun — Brad's
+  repeated live exposure through the build is the recorded judgement basis; individual items
+  surface as bugs if real.
+- **Caveat A1** (caution badge as furniture on ~100% of decks) and **F2** (pill overlap below
+  1100px, mitigated by the enforced floor): re-accepted as recorded.
+- **The footer eye-checks** ("visible without scrolling", the c2-10 deferral; the c4-10 silent
+  format-check refusal family homed "c7-3 or 15-6"): re-accepted — the mechanisms are pinned in
+  source, the paint-level halves were covered by the live walk.
+
+### DECLINED, re-homed
+
+- **J6 — `internal-error` first render** (fifth home): **DECLINED and closed.** Five homes
+  without a run is the decision; it does not get a sixth. Surfaces as a bug if it ever renders
+  wrong.
+- **C3 retro D1 — agent `validate_deck` vs REST `format-check` parity**: not adopted by this
+  gate — it is a backend parity question, not a glass question. Stays in the ledger **unowned**,
+  named here so the refusal is on record.
+- **`GET /api/decks` poller cost**: untouched — **home unchanged: 17-3** (its entry already says
+  so; noted for completeness).
+
+## Deferred from: story 15-6 (the SC-5 gate, 2026-08-20)
+
+- **The 15-1 viewer freeze pin fails on a Windows CRLF checkout, and only there.**
+  `tests/unit/viewer/test_viewer_freeze.py::TestFreezePinDetectsViolations::test_a_line_ending_rewrite_is_not_reported`
+  is RED on a fresh Windows working tree (verified at the pristine umbrella tip via stash —
+  pre-existing, not introduced by 15-6): the tolerance path that is supposed to make a
+  line-ending rewrite invisible to the pin reports `src/viewer/template.html` as changed
+  (sha `554bd2d31231` vs pinned). CI never sees it — the py3.12/3.13 lanes check out LF on
+  ubuntu-latest — so the freeze pin's own tolerance test is asserting a property that is false
+  on the one platform this project develops on. Likely fix: normalize line endings inside
+  `_synthetic_violations`/the pin's hasher before comparing, or pin `.gitattributes` for
+  `src/viewer/*`. **Home: unowned** (15-1 is done; this is its residue). (Severity: Medium —
+  a red test on every local Windows full-suite run trains the reader to ignore red, the exact
+  cost C6 R5 documented.)

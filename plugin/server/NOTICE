@@ -4,17 +4,19 @@ Copyright (c) 2026 Brad Sprigg
 This software is released under the MIT License (see LICENSE).
 
 ------------------------------------------------------------------------------
-Card data attribution
+Card data and imagery attribution
 ------------------------------------------------------------------------------
 
-Magic: The Gathering card data is sourced from Scryfall
-(https://scryfall.com/docs/api) bulk data, used under Scryfall's terms.
-This project is not produced by, endorsed by, supported by, or affiliated
-with Scryfall.
+Magic: The Gathering card data and card imagery are sourced from Scryfall
+(https://scryfall.com/docs/api), used under Scryfall's terms. This project is
+not produced by, endorsed by, supported by, or affiliated with Scryfall.
 
-This project bundles NO card data. The Scryfall oracle-cards bulk dataset
-(~30k cards) is downloaded locally on first run; it is not redistributed as
-part of this repository or any release artifact.
+This project bundles NO card data and NO card images. The Scryfall default_cards
+bulk dataset is downloaded locally on first run (deduplicated to one row per
+oracle identity, ~35k cards stored), and card images
+are fetched from Scryfall on demand by the companion app and cached in the local
+data directory; neither is redistributed as part of this repository or any
+release artifact.
 
 ------------------------------------------------------------------------------
 Wizards of the Coast Fan Content Policy

@@ -7,7 +7,7 @@ paradigm: 'single-writer read model with a fire-and-forget relay — two imperat
 scope: 'The companion app (PRD 2026-07-22, addendum amended 2026-07-25; UX spine DESIGN.md + EXPERIENCE.md 2026-07-25): a long-running local FastAPI backend, a Vite/React SPA it serves, and the new companion MCP tools — layered onto the existing MCP-server codebase. Phases 1-3, FR-01..FR-23, NFR-01..NFR-09.'
 status: final
 created: '2026-07-25'
-updated: '2026-07-25'
+updated: '2026-08-18'  # story 15.3: the ~12 MB footprint and AD-6's kind count
 binds: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22, FR-23, NFR-01, NFR-02, NFR-03, NFR-04, NFR-05, NFR-06, NFR-07, NFR-08, NFR-09]
 sources:
   - '_bmad-output/planning-artifacts/prds/prd-Artificial-Planeswalker-2026-07-22/prd.md'
@@ -163,7 +163,14 @@ graph TD
   store with two switch statements — and FR-18's history with no common field to key on.
 - **Rule:** Every WebSocket message is `{kind, id, ts, payload}`. `kind` is a **closed enum**
   covering agent pushes (`suggestions | swaps | tier_list | groups`) **and** system signals
-  (`deck_changed`) alike. `id` is unique per push and **opaque** — it carries identity and dedupe,
+  (`deck_changed | active_deck_changed`) alike.
+  *(Amended 2026-08-18, story 15.3: this rule enumerated **five** kinds, naming only `deck_changed`
+  among the signals. Story 5.1 added `active_deck_changed` with its justification, and
+  `src/companion/contracts.py`'s `EventKind` docstring has said since c3-8 that "the spine
+  amendment is already tracked as owed" — the code knew and the spine did not. **Six, not five.**
+  The two signals are distinct on purpose: `active_deck_changed` says the companion is now showing
+  a different deck, `deck_changed` says the deck you are showing has been edited, and a client that
+  conflates them refetches the deck it is leaving.)* `id` is unique per push and **opaque** — it carries identity and dedupe,
   never ordering; **FR-18 history orders by `ts`**, which is `datetime.now(UTC)`. One Pydantic
   discriminated union, one generated TS union, one switch.
   This does **not** reopen OQ-2: that ruling rejected a generic `companion_display` **tool** for
@@ -266,8 +273,15 @@ graph TD
   Unknown `size` → 400; missing `face` → 404; single-faced with `face=0` → the image.
   **No eviction in MVP:**
   the cache is unbounded with a documented location and a clear command (NFR-09). Accepted
-  consequence, stated rather than discovered: a cold 100-card deck is roughly 12 MB and ~10 s to
-  fully paint — compliant, since NFR-05 excludes first-fetch paint.
+  consequence, stated rather than discovered: a cold 100-card deck is roughly **8.5 MB** and ~10 s
+  to fully paint — compliant, since NFR-05 excludes first-fetch paint.
+  *(Corrected 2026-08-18, story 15.3. This line — the source the epic's four copies and the
+  walkthrough's projection were all taken from — read **~12 MB**, an arithmetic estimate assuming
+  ~124 KB per tile. The C3 retrospective (2026-08-02) measured a real 99-card deck through the
+  app's own image route against the real Scryfall CDN: **8.5 MB / 99 images ≈ 90 KB each**, a
+  **38 % overestimate**, and ~95 MB rather than ~130 MB for the whole 1,061-printing library. The
+  ~10 s is unchanged: it is the ten-images-a-second pacer, not the byte count. `c4-12` flagged this
+  line four times without it being actioned.)*
 
 ### AD-12 — Pydantic is the single source of truth; TypeScript is generated from FastAPI's own OpenAPI and drift-checked in CI
 
@@ -361,8 +375,10 @@ graph TD
 
 ## Stack
 
-Verified current 2026-07-25. Bound as `>=` floors, matching the project's existing
-`pyproject.toml` convention. Everything above FastAPI is already a project dependency.
+Verified current 2026-07-25, with one row corrected 2026-08-19: the Node floor read `>=20`, which
+was never the measured value — `ui/package.json` has declared `>=20.19.0` since story c2-1 (story
+15-4). Bound as `>=` floors, matching the project's existing `pyproject.toml` convention. Everything
+above FastAPI is already a project dependency.
 
 | Name | Version |
 | --- | --- |
@@ -379,7 +395,7 @@ Verified current 2026-07-25. Bound as `>=` floors, matching the project's existi
 | TypeScript | >=5.9,<6.1 — **upper bound is load-bearing**, see below |
 | zustand | >=5.0 |
 | openapi-typescript *(dev/CI only)* | >=7 |
-| Node *(dev/CI only — never at install or runtime)* | >=20 |
+| Node *(dev/CI only — never at install or runtime)* | >=20.19.0 |
 
 **TypeScript is the one pin, not a floor.** TypeScript 7.0 went stable 2026-07-08 (the Go-native
 compiler, ~10× faster) — but `typescript-eslint` declined TS 7 support on day one and publishes a

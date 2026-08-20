@@ -291,8 +291,16 @@ mid-story):
   and no-image-data are signalled distinguishably so the client draws the named placeholder. Cache
   path `data_dir()/image_cache/<id[0:2]>/<id>/<size>_<face>.<ext>`, temp + rename. Failures
   negative-cached with backoff. Unknown `size` → 400; missing `face` → 404; single-faced with
-  `face=0` → the image. **No eviction in MVP**; a cold 100-card deck is ~12 MB / ~10 s to fully
+  `face=0` → the image. **No eviction in MVP**; a cold 100-card deck is **~8.5 MB** / ~10 s to fully
   paint and that is an expected observation, not a defect. *(AD-11)*
+
+  *Corrected 2026-08-18, story 15.3.* This read **~12 MB**, an arithmetic estimate assuming
+  ~124 KB per tile. The C3 retrospective (2026-08-02) measured a real 99-card deck through the
+  app's own image route against the real Scryfall CDN: **8.5 MB / 99 images ≈ 90 KB each** — a
+  **38 % overestimate**, and ~95 MB rather than ~130 MB for the whole 1,061-printing library. The
+  ~10 s is unchanged, because it comes from the ten-images-a-second pacer rather than from the byte
+  count. **This is the epic's one full statement of the correction; the other three sites point
+  here.**
 
 **Type generation & frontend distribution**
 
@@ -322,7 +330,7 @@ mid-story):
   >=0.51.0** · Vite >=8.0 · React >=19.2 · **TypeScript >=5.9,<6.1 (upper bound is load-bearing —
   `typescript-eslint` publishes a peer range of `<6.1.0`, so an open floor resolves to TS 7 and
   breaks `npm ci` and the ESLint gate)** · zustand >=5.0 · openapi-typescript >=7 (dev/CI) ·
-  Node >=20 (dev/CI only).
+  Node >=20.19.0 (dev/CI only).
 
 **PRD amendments owed** (deliverables, not observations)
 
@@ -496,9 +504,19 @@ measure + wrapped tile row. **Tiles carry no quantity badge unless the card is i
 — the badge means "copies in this deck" and "×0" would be a lie. Empty groups are skipped.
 
 UX-DR28: **Agent views nav (nav pills)** — one pill per view kind in the header. A pill is
-**quiet/disabled and not focusable** until its kind has received a push this session (tooltip:
-"Your agent hasn't sent this yet."); thereafter active, showing the last push's time, and carrying
-an **accent unread dot** until its view is opened. Click/Enter re-opens that view.
+**quiet/disabled and not focusable** until its kind has received a push this session; thereafter
+active, showing the last push's time, and carrying an **accent unread dot** until its view is
+opened. Click/Enter re-opens that view. **The quiet pill's explanation — "Your agent hasn't sent
+this yet." — ships as a `title` *and* as a visually-hidden `aria-describedby` target**, both, on
+the same disabled pill. *Amended 2026-08-18 (story 15.3), because this rule said "tooltip" alone
+and that contradicted UX-DR39's ban on hover-only disclosure of unique information: a
+non-focusable element cannot disclose on focus, so a `title` by itself puts the sentence out of
+reach of every keyboard and screen-reader user. The pill stays `disabled` — UX-DR28's own
+non-focusability and UX-DR40's cold-open Tab enumeration are load-bearing and were not traded away
+— and the dual mechanism puts the information in the accessibility tree instead. This is exactly
+the repair UX-DR29 received for the connection pill after the 2026-07-22 accessibility review; the
+nav pill was the sibling that was missed. Shipped in code by story c6-8 under Brad's Q2 ruling,
+with EXPERIENCE.md's nav-pill row amended in the same commit.*
 
 **Components — system presence & states**
 
@@ -885,8 +903,9 @@ FR-07 (backend state slot + both transports; the MCP tool is Epic 13's)
 location + atomic writes), CM-2
 **Governed by:** AD-11, AD-16
 **Depends on:** Epic 8 (independent of Epic 9)
-**Note:** the only externally-paced work in the feature. A cold 100-card deck at ~12 MB / ~10 s to
+**Note:** the only externally-paced work in the feature. A cold 100-card deck at **~8.5 MB** / ~10 s to
 fully paint is an **expected observation in acceptance, not a defect**.
+*(Corrected 2026-08-18, story 15.3 — see the note under **AD-11** above for the measurement that superseded the ~12 MB.)*
 
 ### Epic 11: The Deck on the Glass
 
@@ -1843,8 +1862,10 @@ So that a 100-card deck load is a polite trickle rather than a request storm.
 
 **Given** a cold cache and a 100-card deck
 **When** the deck is fully painted
-**Then** roughly 12 MB is fetched over roughly 10 seconds
+**Then** roughly 8.5 MB is fetched over roughly 10 seconds
 **And** this is recorded in the test or acceptance notes as an **expected observation, not a defect** — NFR-05 excludes first-fetch image paint
+
+*(Corrected 2026-08-18, story 15.3 — see the note under **AD-11** above for the measurement that superseded the ~12 MB.)*
 
 ### Story 10.7: Sharded, atomically written disk cache
 
@@ -2961,7 +2982,9 @@ So that nothing the agent showed me is ever more than one click away.
 
 **Given** a kind that has received no push this session
 **When** its pill renders
-**Then** it is quiet — `text-tertiary`, no hover glow, **not focusable** — with the tooltip "Your agent hasn't sent this yet." (UX-DR28, UX-DR33)
+**Then** it is quiet — `text-tertiary`, no hover glow, **not focusable** — and carries "Your agent hasn't sent this yet." as **both** a `title` and a visually-hidden `aria-describedby` target, so the sentence is never hover-only (UX-DR28, UX-DR33, UX-DR39)
+
+*(Corrected 2026-08-18, story 15.3: this AC said "the tooltip", singular, which UX-DR39 forbids on a non-focusable element. c6-8 shipped the dual mechanism; the rule and this criterion are now amended to describe it.)*
 
 **Given** a kind that has received a push
 **When** its pill renders
@@ -3326,7 +3349,10 @@ So that an unbounded cache is a documented choice rather than a surprise.
 
 **Given** the cache has no eviction
 **When** the documentation describes it
-**Then** it says so plainly, gives the expected footprint — roughly 12 MB per 100-card deck at one size — and records that a policy will be sized against a real footprint rather than guessed (AD-11)
+**Then** it says so plainly, gives the expected footprint — the **measured** ~8.5 MB per 100-card deck at one size, ~90 KB per `normal` tile — and records that a policy will be sized against a real footprint rather than guessed (AD-11)
+
+*(Corrected 2026-08-18, story 15.3 — see the note under **AD-11** above for the measurement that superseded the ~12 MB.)*
+Story 15.2 shipped against the measured figure and additionally labels the superseded ~12 MB in `README.md` as the disproved estimate, so the two numbers are not left to disagree in silence.
 
 **Given** the uninstall path
 **When** it is documented
