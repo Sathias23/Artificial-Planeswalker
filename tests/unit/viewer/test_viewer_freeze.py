@@ -76,6 +76,7 @@ without FastAPI installed and see violations in files no test ever imports.
 
 import ast
 import hashlib
+import re
 import subprocess
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
@@ -1167,9 +1168,14 @@ class TestFreezePinDetectsViolations:
 
     def test_a_line_ending_rewrite_is_not_reported(self, viewer_copy: Path) -> None:
         """A CRLF checkout on Windows must not read as an edit — the pin hashes normalised
-        bytes, because template.html carries no .gitattributes rule of its own."""
+        bytes, because template.html carries no .gitattributes rule of its own.
+
+        The plant must be idempotent: on an ``autocrlf=true`` checkout the copied template is
+        *already* CRLF, and a bare ``replace(b"\\n", b"\\r\\n")`` would mint ``\\r\\r\\n`` —
+        the stray ``\\r`` survives normalisation and fires the pin, turning this test red on
+        exactly the platform it exists to protect (sighted live, Epic 15 retro 2026-08-20)."""
         template = viewer_copy / "template.html"
-        template.write_bytes(template.read_bytes().replace(b"\n", b"\r\n"))
+        template.write_bytes(re.sub(rb"\r?\n", b"\r\n", template.read_bytes()))
 
         assert _synthetic_violations(viewer_copy) == []
 

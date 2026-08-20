@@ -2799,16 +2799,19 @@ describe('the reduced-motion mechanism (AC 11, AC 13)', () => {
       'the shipped visual-transition list moved — the story that moved it updates this map, and a new entry owes an inventory row first',
     ).toEqual(Object.keys(INVENTORY_CLAIMS).sort())
 
-    // A ROW, not a mention (Greptile P2, PR #90): two labels also appear in the
-    // rows-read-as-classes prose note, so a bare substring search would stay green with the
-    // actual row deleted. Every inventory row is `Label -> fallback`, arrow on the label's own
-    // line, and prose never quotes a label with its arrow — so the arrow is what makes the
-    // match a row.
+    // A ROW, not a mention (Greptile P2, PR #90; re-anchored at the Epic 15 retro, 2026-08-20).
+    // The first fix keyed the match on the arrow alone, on the premise that prose never quotes
+    // a label with its arrow — false in this very file: the c4-7 and c6-5 comments quote
+    // `"Deck-row live tint -> instant (c4-7)"` and `"Agent-view bloom … -> …"` whole, so for
+    // those labels the arrow test stayed green with the actual row deleted. The real
+    // discriminator is the line start: an inventory row begins its line with the label
+    // (indentation, then label, then arrow), while every prose quote puts at least a `"` or
+    // narration before it. Anchored + multiline, a quote can no longer stand in for a row.
     const escapeForRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     for (const [entry, row] of Object.entries(INVENTORY_CLAIMS)) {
       expect(
-        new RegExp(`${escapeForRegex(row)}[^\\n]*->`).test(tokenFileSource),
-        `${entry} claims inventory row "${row}", which tokens.css no longer carries as a row (label + '->' on one line)`,
+        new RegExp(`^\\s*${escapeForRegex(row)}[^\\n]*->`, 'm').test(tokenFileSource),
+        `${entry} claims inventory row "${row}", which tokens.css no longer carries as a row (label starting its own line + '->' on that line)`,
       ).toBe(true)
     }
   })
@@ -2869,13 +2872,80 @@ describe('the reduced-motion mechanism (AC 11, AC 13)', () => {
       ),
     ).toEqual(['.probe :: opacity'])
 
-    // Non-class transitions stay invisible to THIS guard — color/outline are not motion the
-    // inventory tracks, and the transform family belongs to the pin above.
+    // Non-class transitions stay invisible to THIS guard — the transform family belongs to
+    // the pin above, and anything else is the coverage guard's problem: since the Epic 15
+    // retro repair, an unlisted property no longer vanishes, it fails by name below.
     expect(
       visualTransitionDeclarationsIn(
         blocksIn('src/probe.css', '.probe { transition: color var(--motion-glide); }'),
       ),
     ).toEqual([])
+  })
+
+  /**
+   * EVERY transitioned property, resolved segment by segment — no filter. The visual guard
+   * above keeps its enumerated map; this collector exists so that a property OUTSIDE that map
+   * is a named failure rather than a silent non-match.
+   */
+  const allTransitionPropertiesIn = (blocks: Block[]): string[] =>
+    blocks.flatMap((block) =>
+      declarationsIn(block.body)
+        .filter(([property]) => property === 'transition' || property === 'transition-property')
+        .flatMap(([name, value]) =>
+          transitionSegmentsIn(value)
+            .map((segment) =>
+              name === 'transition-property'
+                ? segment.toLowerCase()
+                : transitionPropertyOf(segment),
+            )
+            .flatMap((property) =>
+              block.selector.split(',').map((s) => `${normaliseSelector(s)} :: ${property}`),
+            ),
+        ),
+    )
+
+  it('resolves every shipped transition to a KNOWN property — unknown fails by name (M5 repair, Epic 15 retro)', () => {
+    // THE HOLE THE FIRST M5 FIX KEPT (Epic 15 retro, 2026-08-20): VISUAL_TRANSITION_PROPERTIES
+    // enumerates only the four properties that had already slipped, and the reader dropped
+    // everything else — so `transition: background` (the shorthand, one word from the shipped
+    // `background-color` tint), `max-height`, `width` or `filter` would repeat M1–M3 on a
+    // fully green suite. Inverted here: every property a shipped stylesheet transitions must
+    // be one this file KNOWS — the transform family (the pin's), the visual map (inventory-
+    // owing), `none`/`all` (each handled above), or an explicit exemption carrying a ruling.
+    // A new property therefore arrives RED and is claimed on purpose, never by absence.
+    const EXEMPT_TRANSITION_PROPERTIES = new Set<string>([
+      // Empty on purpose. `color`, `outline` and friends join here only with a recorded
+      // ruling that they are not motion the UX-DR42 inventory tracks — never by default.
+    ])
+    const known = (property: string): boolean =>
+      property === 'none' ||
+      property === 'all' ||
+      MOTION_PROPERTIES.includes(property) ||
+      VISUAL_TRANSITION_PROPERTIES.includes(property) ||
+      EXEMPT_TRANSITION_PROPERTIES.has(property)
+
+    const unknown = allTransitionPropertiesIn(shippedBlocks).filter(
+      (entry) => !known(entry.split(' :: ')[1]),
+    )
+    expect(
+      unknown,
+      'a shipped stylesheet transitions a property this guard does not know — add it to the visual map with an inventory row in tokens.css, or exempt it here with a ruling',
+    ).toEqual([])
+
+    // The probe: the exact spellings the retro named must land RED here, not vanish.
+    for (const planted of [
+      '.probe { transition: background var(--motion-glide); }',
+      '.probe { transition: max-height 200ms ease; }',
+      '.probe { transition: filter 200ms; }',
+      '.probe { transition-property: width; }',
+    ]) {
+      const properties = allTransitionPropertiesIn(blocksIn('src/probe.css', planted))
+      expect(properties.length, `probe yielded nothing for ${planted}`).toBeGreaterThan(0)
+      expect(
+        properties.some((entry) => !known(entry.split(' :: ')[1])),
+        `${planted} resolved to only known properties — the coverage guard would miss it`,
+      ).toBe(true)
+    }
   })
 
   it('names itself as the registration point later stories extend', () => {

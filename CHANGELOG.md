@@ -40,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is stored under `<data dir>/image_cache/`, sharded two characters deep and
   keyed by card id + size + face, so a deck already viewed repaints without
   touching the network. Measured footprint: ~90 KB per `normal` tile, ~8.5 MB
-  for a 99-card deck, ~95 MB for a full set of printings. **Nothing evicts it** —
+  for a 99-card deck, ~95 MB for a ~1,000-printing library. **Nothing evicts it** —
   no TTL, no size cap — and it is safe to delete at any time, running app or
   not; the README carries copy-pasteable inspect and clear commands for
   macOS/Linux and Windows.

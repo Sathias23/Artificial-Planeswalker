@@ -79,8 +79,15 @@ _NUMBER_WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}
 # so a non-greedy `[^"]*` is exact rather than approximate.
 _ONE_LINER = re.compile(r'python -c "(?P<code>[^"]+)"')
 
-_EXPECTED_PAYLOAD_PREFIX = "from src import paths"
-"""The only payload shape this module ``exec``\\ s — see :func:`_documented_one_liners`."""
+_EXPECTED_PAYLOAD_SHAPE = re.compile(
+    r"from src import paths; print\(paths\.data_dir\(\) / '[^']+'\)"
+)
+"""The only payload shape this module ``exec``\\ s — see :func:`_documented_one_liners`.
+
+A **full** match, not a prefix (Epic 15 retro, 2026-08-20): a prefix check would let a payload
+keep the required opening and append anything after it — ``; import shutil; shutil.rmtree(…)``
+included — and still be executed on every developer machine. The whole payload must be the
+path-printing command and nothing else; anything longer is verified another way, not run."""
 
 # Any ATX heading, at any level: `#` through `######` followed by a space. `##`/`###` alone let a
 # `#### ` sub-subsection extend this section into prose it does not own (review 2026-08-18).
@@ -163,9 +170,10 @@ def _documented_one_liners(section: str) -> list[str]:
     **Prose is not executed** (review 2026-08-18). :func:`_run` ``exec``\\ s what this returns, so
     the extraction surface has to be the fenced blocks a reader would actually paste — never a
     sentence that happens to contain ``python -c "…"``. Each payload is additionally required to
-    have the shape this section documents (:data:`_EXPECTED_PAYLOAD_PREFIX`), so a future command
-    that reached for ``shutil.rmtree`` could not be run by the test suite on a developer's machine
-    merely by being written down.
+    be **exactly** the shape this section documents (:data:`_EXPECTED_PAYLOAD_SHAPE`, a full
+    match), so a future command that reached for ``shutil.rmtree`` — even one keeping the
+    documented opening and appending to it — could not be run by the test suite on a developer's
+    machine merely by being written down.
 
     Args:
         section: The extracted section text.
@@ -179,11 +187,11 @@ def _documented_one_liners(section: str) -> list[str]:
         for match in _ONE_LINER.finditer(body)
     ]
     for code in payloads:
-        assert code.startswith(_EXPECTED_PAYLOAD_PREFIX), (
+        assert _EXPECTED_PAYLOAD_SHAPE.fullmatch(code), (
             f"the documented one-liner {code!r} is not the path-printing command this guard "
-            f"executes (it must start with {_EXPECTED_PAYLOAD_PREFIX!r}). This module runs what "
-            "the README tells a user to run, so a payload that does anything other than print a "
-            "path must not be executed here — verify it another way."
+            f"executes (its whole body must match {_EXPECTED_PAYLOAD_SHAPE.pattern!r}). This "
+            "module runs what the README tells a user to run, so a payload that does anything "
+            "other than print a path must not be executed here — verify it another way."
         )
     return payloads
 

@@ -56,7 +56,7 @@ releases.
 - ~300 MB of disk for the card database + embedding index (built from a one-time ~500 MB
   download on first run), **plus** whatever the companion's
   [image cache](#image-cache-companion-app) grows to — a measured ~8.5 MB per 99-card deck you
-  view and ~95 MB for a full set of printings, with no eviction
+  view and ~95 MB for a library of ~1,000 distinct printings, with no eviction
 - **Nothing extra for the [companion app](#the-companion-app)** — its browser UI ships pre-built,
   so **Node is not required** at install or at runtime (only to change the UI)
 
@@ -509,8 +509,10 @@ image_cache/<first two characters of the card id>/<card id>/<size>_<face>.<ext>
 ```
 
 for example `image_cache/81/813d0434-8e0f-4b0a-9c7e-1f2a3b4c5d6e/normal_0.jpg`. Card ids are
-uuids, so the two-character shard splits the corpus evenly: all 256 shards are used, at roughly
-150 cards each, instead of ~38,000 card directories side by side in one flat directory.
+uuids, so the two-character shard spreads entries evenly across 256 shards instead of piling
+every card directory side by side in one flat folder. (If every one of the ~38,000 printings
+were cached that would be roughly 150 per shard; a typical ~1,000-printing library lands around
+4 per shard — the cache only ever holds what you have viewed.)
 
 **Inspect it.** Both blocks resolve the path through the app's own code, so they are correct on
 every OS and under a `PLANESWALKER_DATA_DIR` override — you never have to know where your data
@@ -554,7 +556,7 @@ fetching a real 99-card deck through the app's own image route against the real 
 were measured separately, so they do not divide exactly). At that rate a library of ~1,000 distinct
 printings comes to roughly **95 MB**. An earlier **arithmetic estimate** of *roughly 12 MB per
 100-card deck* circulated while the feature was being built; it assumed ~124 KB per tile, which the
-measurement put at ~90 KB — **38 % smaller per tile**, and 8.5 MB rather than 12 MB per deck. The
+measurement put at ~90 KB — a **38 % overestimate**, and 8.5 MB rather than 12 MB per deck. The
 measured figures are the ones to plan against, and both are quoted here so the two numbers are not
 left to disagree in silence. If an eviction policy is ever added, it will be sized against a
 measurement like this one rather than guessed.
