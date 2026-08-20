@@ -323,7 +323,7 @@
 #   epic-c1..10 → _bmad-output/planning-artifacts/epics-companion-app.md          (c-prefixed, numbering UNCHANGED)
 
 generated: 2026-06-20
-last_updated: '08-17-2026 19:32 (Retro cheap cluster CLOSED and merged to master via PR #83 at e6a7e0e, Greptile 5/5 zero findings. Five items: C7 R1 + C6 R5 (one fix — vitest node-project testTimeout 180s, project-scoped rather than the per-test form the item asked for, reasoning in the config; verified both ways with a 6s probe), C7 R4 (the "update" verb — no such tool, both artefacts amended to the five that exist, citing the derived wiring guard), C7 R5 (live regions three -> four, count re-derived from the tree, both sites now defer to App.test.tsx''s census), C6 R10 (the DESIGN.md citation guard declared as the string-proximity check it is). Open action items 12 -> 7. NOTE: the earlier count of 11 was wrong — epic-10 F1 is open and its status line carries a trailing comment that a naive parse skips. Remaining seven all need a decision or a session, not an edit: C7 R3 (manual checklist, fifth carry), R6 (scripts/ mypy, 13 errors in 4 files), R7 (format-check UX ruling), R8 (App.test.tsx split), C6 R4 (pytest marker), C6 R7 (prose sweep, TERMINATION CLAUSE already expired at the C7 retro), epic-10 F1 (story-key gate, premise corrected twice by measurement). Next: Epic 15 — Release Readiness, 6 stories, all backlog.)'
+last_updated: '08-20-2026 21:12'
 #                Previously — 2026-08-16 (Retro R2 EXECUTED: NFR-05 quiet-machine re-measure came back 378/420/517 ms EXIT 0, 5/5 under the 1,000 ms budget — F7 CLOSED via dated addendum in epic-14-retro-2026-08-16.md; ledger item epic-c7-retro-item-2-nfr05-quiet-machine-remeasurement flipped to done via sprint_status.py; no Epic 15 story opened. Residual ~15-20% drift vs c4-12's 311/363/428 recorded, not explained. Evidence: nfr05-quiet-remeasure-2026-08-16.json + spec-epic-14-r2-nfr05-quiet-machine-remeasure.md. Next: R3, the C7 manual checklist, then the integration PR to master.)
 #                Previously — 2026-08-15 (c7-6 MERGED via PR #80 at 9f4ed89, Greptile 4/5 → 5/5 — its one round-1 finding was REAL and jsdom-invisible: the focus rescue could park focus behind a still-open agent view when a pointer click on non-focusable dialog content had blurred focus to body; fixed with a third decline guard + a hand-arranged-blur test, plant (d) proof. Next: c7-7, the epic-closing UJ-1 walk. A UX ruling is still owed on the format-check pass→violation announcement, see deferred-work.md.)'
 #                Previously — 2026-08-15 (c7-6 IN PROGRESS via bmad-build. Spec spec-c7-6-deletion-and-views-during-refetch.md: three of its five ACs found already shipped (404-clear, non-clickable deck list, view-stays-valid, skip-link withdrawal); the two real gaps were the announcement firing from behind an open agent view and the focus-to-body drop when the deck surface unmounts. Backend needed nothing — delete_deck already emits after the row is gone.)
@@ -1352,7 +1352,7 @@ action_items:
       J4, J5, and J6 — now on its FIFTH home, which deserves a decision rather than
       a sixth carry."
     owner: "Brad"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-14-retro-2026-08-16.md"
   - epic: 14
     id: "epic-c7-retro-item-4-reconcile-the-update-verb"
