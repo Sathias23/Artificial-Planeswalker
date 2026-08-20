@@ -329,7 +329,7 @@
 #   epic-c1..10 → _bmad-output/planning-artifacts/epics-companion-app.md          (c-prefixed, numbering UNCHANGED)
 
 generated: 2026-06-20
-last_updated: '08-20-2026 21:30'
+last_updated: '08-20-2026 22:15'
 # 08-20-2026 21:30 — STORY 15-6 DONE: THE SC-5 GATE RAN AND CLOSED (sc-5-gate-report-2026-08-20.md). Brad walked the live app, ruled it a deliberate product ("looks good", tabs, footer), then ruled the four open forks interactively: F1 open-modal-!=-surface, arrow-key flag re-accepted at the measured 206/101, M1 row added + M2/M3 accepted + M5 completeness guard extended with a planted RED proof. Inbox dispositioned by name (J6 DECLINED on its fifth home; D1 refused, stays unowned). EPIC 15 IS 6/6 CODE-COMPLETE — the 0.5.0 release cut, withheld by 15-4/15-5 ruling, is UNBLOCKED. Next: the Epic 15 retro, the integration PR to master (no Greptile, standing rule), then the release cut.
 #                Previously — 08-20-2026 21:12
 # 08-20-2026 21:12 — EPIC 14 VERDICT -> accepted; R3 CLOSED AS WAVED (Brad's rulings, master commits 72dce34 + cfec300): F7's quiet-machine closure was the named verdict-mover; the SC-5 preliminary ruling (sc-5-preliminary-ruling-2026-08-20.md, "it looks good ... we can always adjust after completion") covers the judgement half — story 15-6 cites it instead of staging a gate, and L1-L10 items surface as bugs, not gates. Also this stamp: umbrella reconciliation — claude/hello-7v0acf (15-6 spec) and master merged into feat/companion-epic-15, the canonical Epic 15 umbrella by Brad's ruling.
@@ -731,7 +731,7 @@ development_status:
   15-4-release-documentation-for-the-companion-app: done  # MERGED via PR #88 into `feat/companion-epic-15` at `71a2ccb` (2026-08-19). Five commits: `085c9c0` the docs, `8447c26` the prose guard, `d1cdaa0` the 30-item review patch set, `5125660` the closeout, `79452cd` the Greptile P2. All five CI checks green. THE HEADLINE: the story was first COMPLETE WITH ITS OWN SUBJECT MATTER GATED BY NOTHING — 148 README lines quoting exact runtime strings with no test tying them to source. The build workflow's Matrix Test Audit caught it. `test_companion_docs.py` now carries 21 assertions and ZERO hand-typed README strings: announcements come out of `server.py`'s AST (f-string slots rendered as wildcards, then checked against HOST/DEFAULT_PORT), exit statuses out of `__main__.py`'s, panel copy out of `copy.ts` keyed on the KEBAB SPELLING of the shipped `database_not_initialized` token. Re-verified independently: DEFAULT_PORT 8765->8766 with the README UNTOUCHED reddens 3 doc tests. 17 firing proofs, all through `probe_harness`, tree staged before every plant. REVIEW was three layers, 34 findings: 0 intent gaps, 0 bad-spec loopbacks, 30 patched, 3 deferred, 3 rejected — and FOUR of the findings were proven by planting, ALL FOUR having passed the first guard cut green (a stale `port 9999` fallback, a dead anchor, a Requirements bullet claiming 'Node 22 or newer is required' against the guarded section's opposite, and a full revert of the imagery attribution). Two of the review's OWN new assertions then passed their first firing proof, were caught as vacuous, and were rescoped before landing. GREPTILE EARNED ITS KEEP ON A DOCS-ONLY PR (1 P2, valid): 'the partial database cannot be deleted or replaced' is TRUE ON WINDOWS ONLY — on POSIX the unlink succeeds while pooled connections keep the old inode, so a re-import writes a file the app never reads and the page never heals, silently contradicting FR-22. Root cause was F4's Windows-only observation generalised to every platform; README, guard and the F4 ledger entry all corrected. NO RELEASE CUT by ruling: pyproject stays 0.4.0, zero occurrences of 0.5.0 in CHANGELOG, no dated heading — 15-6's SC-5 gate has not run. Suite 3188/2 -> 3208 passed / 2 skipped; frontend 80 files / 2305 UNMOVED. DEFERRED AND RELEASE-RELEVANT: `uv run artificial-planeswalker companion` DOES NOT WORK for the plugin install route the README recommends first — uv resolves its project from the CWD and a plugin user has no checkout; homed on 15-5, whose own AC says 'and the companion is launched'. Next: 15-5.
   15-5-plugin-distribution-parity: done  # MERGED via PR #89 into `feat/companion-epic-15` at `48f5a79` (2026-08-20). Two commits: `e6ca8ee` the story, `2f2cee2` the Greptile round. All five CI checks green. Mechanises the parity claims where they can go RED: the built tree carries the bundle byte-for-byte and exactly the four product skills (set equality, no `bmad-*`, no Node artefacts); BOTH `build_plugin.py` abort paths fire, pinned by their logged hint; the committed pair is identical and `plugin/` is exactly what a fresh build emits; the mirrored bundle serves through the real SPA mount (200 + `text/javascript`, not a byte comparison standing in for one); and the CI drift step's own preamble is EXECUTED against three repositories. Documents: `docs/plugin-structure.md`, `CONTRIBUTING.md` and `README.md` now say the bundle is a generated artifact in two copies with neither hand-edited, and that the plugin install carries the companion. NO VERSION CUT by ruling — 15-6 is the release gate; both `.mcp.json` files verified unchanged since v0.4.0, not edited. Suite 3208/2 -> 3231 passed / 2 skipped. GREPTILE: 4/5 with two valid P2s, both against this story's own new guards, 5/5 and zero unresolved after one round. (1) The per-subject `ls-files` preamble can only prove a NAMED subject is still tracked, and Vite's content-hashed chunk names cannot be named — so a newly ignored chunk drops out unseen, `git status --porcelain` reporting nothing for ignored paths by construction. All three drift steps (plugin mirror, source SPA, generated types) now ask the complementary question: is git ignoring anything under the tree the build just wrote? (2) The Codex block spent `$PLUGIN_ROOT` without ever assigning it — Codex keeps its own version-keyed cache under `~/.codex`, verified against real installs — so the block now lists the install and assigns the root, bash and PowerShell. The guard written for (2) FIRST PASSED ON THE BUG (document-wide search; the Claude Code block's assignment sits above the Codex block) and is now scoped to each route's own section; caught only by mutating the README back. Closes 15-4's release-relevant deferral. Next: 15-6.
   15-6-the-sc-5-gate: done  # MERGED via PR #90 at 3d700d9 (2026-08-20), Greptile round 1: two P2s, BOTH REAL and both against the story's own new M5 guard (the 15-5 pattern repeating): (1) the transition shorthand is order-free, so the first-token reader missed reversed and implicit-all spellings — fixed by elimination, which promptly surfaced QuantityBadge's `transition: none` flashed rule and forced the none-occupies-the-property-slot correction; (2) toContain(row) matched the rows-as-classes prose note, so a deleted row stayed green — fixed structurally (label + arrow on one line), proven by planting the exact hole (row deleted, label alive in prose -> RED at 2307). Round 2 clean, zero comments. GATE RUN AND CLOSED 2026-08-20 — sc-5-gate-report-2026-08-20.md, ruling line Brad's ("SC-5 is CLOSED; the 0.5.0 release cut is unblocked"). Verdict: accepted, with rulings — open modal != a surface (F1); arrow-key flag RE-ACCEPTED at 206/101; M1 got its tokens.css inventory row, M2/M3 stand on recorded rulings, M5 guard extended (token-usage.test.ts "keys every visual-class transition to an inventory row", 13-entry claims map, planted proof: control 2307, RED on the node, revert clean). Inbox dispositioned by name in deferred-work.md §Dispositions from: the SC-5 gate — J6 DECLINED after five homes, D1 stays unowned by refusal, everything else re-accepted ship-and-adjust. Preceded by Brad's preliminary ruling from the live walk (sc-5-preliminary-ruling-2026-08-20.md).
-  epic-15-retrospective: optional
+  epic-15-retrospective: done
 
   # Epic C9: The Remaining Push Kinds  *(Phase 2)*
   # FR-09, FR-10, FR-23 · UX-DR25/26/27 · depends on c6
@@ -1461,3 +1461,61 @@ action_items:
     owner: "Brad"
     status: done
     ref: "_bmad-output/implementation-artifacts/epic-14-retro-2026-08-16.md"
+  - id: "epic-15-retro-item-84-fix-the-crlf-freeze-self-test-idempotent"
+    epic: 15
+    action: "Fix the CRLF freeze self-test: idempotent plant (re.sub rb\"\r?\n\" ->
+      b\"\r\n\") in test_viewer_freeze.py:1172 + consider .gitattributes eol rule
+      for src/viewer/template.html — suite is red today on autocrlf=true Windows checkouts"
+    owner: "Brad"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-15-retro-2026-08-20.md"
+  - id: "epic-15-retro-item-85-release-doc-accuracy-sweep-before-the-0"
+    epic: 15
+    action: "Release-doc accuracy sweep BEFORE the 0.5.0 cut: NOTICE:14 oracle-cards
+      -> default_cards (+ plugin mirror); README.md:59 + CHANGELOG.md:43 population
+      label (~1,000 distinct printings, not full set); README.md:557 38% direction;
+      README.md:513 shard arithmetic; optionally pin README Python floor to requires-python"
+    owner: "Brad"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-15-retro-2026-08-20.md"
+  - id: "epic-15-retro-item-86-repair-the-m5-guard-anchor-row-presence"
+    epic: 15
+    action: "Repair the M5 guard: anchor row-presence regex to row shape (tokens.css:454/:477
+      prose quotes falsify its premise) and invert VISUAL_TRANSITION_PROPERTIES to
+      an allowlist so unknown transitioned properties fail by name"
+    owner: "Brad"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-15-retro-2026-08-20.md"
+  - id: "epic-15-retro-item-87-local-byte-parity-for-the-plugin-mirror"
+    epic: 15
+    action: "Local byte-parity for the plugin mirror beyond the bundle: byte-compare
+      SERVER_FILES + plugin/server/src/viewer in test_build_plugin.py; optionally
+      add plugin/server/src/companion to the no-reuse sweep"
+    owner: "Brad"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-15-retro-2026-08-20.md"
+  - id: "epic-15-retro-item-88-full-shape-payload-check-in-test_image_c"
+    epic: 15
+    action: "Full-shape payload check in test_image_cache_docs.py:182 (one line) —
+      close the prefix-then-exec gap"
+    owner: "Brad"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-15-retro-2026-08-20.md"
+  - id: "epic-15-retro-item-89-markdown-guard-helper-consolidation-one"
+    epic: 15
+    action: "Markdown-guard helper consolidation: one shared tests/ helper for repo-root,
+      section extraction, fence rule (three _ATX_HEADING constants with two behaviours;
+      four scanner implementations). TERMINATION CLAUSE: not done by the Epic 16 retro
+      -> formally decline"
+    owner: "Brad"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-15-retro-2026-08-20.md"
+  - id: "epic-15-retro-item-90-cross-machine-session-hygiene-cloud-sess"
+    epic: 15
+    action: "Cross-machine session hygiene: cloud-session branches get real story
+      names before merging; story work always lands via PR (1760ef4 bypassed the per-story
+      Greptile gate); commit subjects use the dash id form (15-4) so attribution tooling
+      works"
+    owner: "Brad"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-15-retro-2026-08-20.md"
