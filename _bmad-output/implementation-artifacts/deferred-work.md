@@ -6577,3 +6577,70 @@ Also executed or re-homed at this retro, beyond the seven:
     (`ARCHITECTURE-SPINE.md:396`, `epics-companion-app.md:333`) and this is the one remaining site
     that states a floor of "20". `epics-companion-app.md:1330` is Story c2-1's own shipped AC and
     was left alone by ruling. (Severity: Low.)
+
+## Dispositions from: the SC-5 gate (15-6, 2026-08-20)
+
+The gate ran 2026-08-20 (`sc-5-gate-report-2026-08-20.md`; ruling line Brad's, same date). Every
+item the gate inherited gets its disposition here by name — C2 retro R2's rule. The governing
+ruling is ship-and-adjust ("we can always adjust after completion"): a RE-ACCEPTED item below is
+terminal at this gate — anything real among them comes back as a bug report, not a carried gate
+item.
+
+### Actioned
+
+- **M1 — flip-control chrome fade had no inventory row** (`FlipControl.css:98`): row added to
+  `tokens.css` ("Flip-control chrome fade -> instant 0.65 -> 1.0 step", c4-6).
+- **M5 — the motion completeness guard read `transform` only**: extended in
+  `token-usage.test.ts` ("keys every visual-class transition to an inventory row") to
+  opacity/height/background-color/box-shadow + `all`, enumerated claims map, non-vacuity anchor,
+  inline probes, and a planted firing proof through `vitest_probe_harness` (control 2307; RED on
+  the named node with the M1 row removed; revert `git diff --exit-code` clean).
+- **AC 4 — the arrow-key revisit flag**: consciously RE-ACCEPTED and recorded at
+  `EXPERIENCE.md` (Interaction Primitives) + `validation-report-2026-07-25.md` H3.
+- **F1 — agent-view scrim vs footer attribution**: ruled "an open modal is not a surface";
+  ruling written into `EXPERIENCE.md` (state matrix row) and `DESIGN.md` (footer component spec).
+
+### RE-ACCEPTED, with the reason recorded
+
+- **M2 — suggestion-row live tint** and **M3 — suggestion thumbnail fade**: the existing no-row
+  rulings stand; "Deck-row live tint" and "Image fade-in" now read as classes, recorded at the
+  tokens.css registration point. **M4 — inventory row 10** stands as a prohibition satisfied by
+  absence (closes validation L7); not deleted.
+- **c4-12's conformance leftovers** — the UX-DR20 empty-panel contradiction, StatChip without a
+  surface, the 10px ALL-CAPS legal text (its 2026-07-30 "ship as written" ruling stands), the
+  `rem` basis, and the skip link not reaching the footer (the corridor numbers are on the gate
+  sheet): re-accepted under the ship-and-adjust ruling.
+- **C7 manual checklist L1–L10** and **C6 carries K3, K5, J4, J5**: re-accepted unrun — Brad's
+  repeated live exposure through the build is the recorded judgement basis; individual items
+  surface as bugs if real.
+- **Caveat A1** (caution badge as furniture on ~100% of decks) and **F2** (pill overlap below
+  1100px, mitigated by the enforced floor): re-accepted as recorded.
+- **The footer eye-checks** ("visible without scrolling", the c2-10 deferral; the c4-10 silent
+  format-check refusal family homed "c7-3 or 15-6"): re-accepted — the mechanisms are pinned in
+  source, the paint-level halves were covered by the live walk.
+
+### DECLINED, re-homed
+
+- **J6 — `internal-error` first render** (fifth home): **DECLINED and closed.** Five homes
+  without a run is the decision; it does not get a sixth. Surfaces as a bug if it ever renders
+  wrong.
+- **C3 retro D1 — agent `validate_deck` vs REST `format-check` parity**: not adopted by this
+  gate — it is a backend parity question, not a glass question. Stays in the ledger **unowned**,
+  named here so the refusal is on record.
+- **`GET /api/decks` poller cost**: untouched — **home unchanged: 17-3** (its entry already says
+  so; noted for completeness).
+
+## Deferred from: story 15-6 (the SC-5 gate, 2026-08-20)
+
+- **The 15-1 viewer freeze pin fails on a Windows CRLF checkout, and only there.**
+  `tests/unit/viewer/test_viewer_freeze.py::TestFreezePinDetectsViolations::test_a_line_ending_rewrite_is_not_reported`
+  is RED on a fresh Windows working tree (verified at the pristine umbrella tip via stash —
+  pre-existing, not introduced by 15-6): the tolerance path that is supposed to make a
+  line-ending rewrite invisible to the pin reports `src/viewer/template.html` as changed
+  (sha `554bd2d31231` vs pinned). CI never sees it — the py3.12/3.13 lanes check out LF on
+  ubuntu-latest — so the freeze pin's own tolerance test is asserting a property that is false
+  on the one platform this project develops on. Likely fix: normalize line endings inside
+  `_synthetic_violations`/the pin's hasher before comparing, or pin `.gitattributes` for
+  `src/viewer/*`. **Home: unowned** (15-1 is done; this is its residue). (Severity: Medium —
+  a red test on every local Windows full-suite run trains the reader to ignore red, the exact
+  cost C6 R5 documented.)

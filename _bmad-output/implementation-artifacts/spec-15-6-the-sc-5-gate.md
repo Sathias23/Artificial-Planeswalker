@@ -2,7 +2,7 @@
 title: 'The SC-5 gate'
 type: 'chore'
 created: '2026-08-20'
-status: 'blocked'
+status: 'done'
 baseline_revision: '58372f9e9a77b9e0dc21e6ccc0663a2606acf7f7'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -486,3 +486,36 @@ parallel investigations were run against the shipped app at `58372f9` and draine
 
 **To unblock:** land 15.3, 15.4 and 15.5, then generate the gate sheet from this spec and hand it to
 Brad. No verdict is offered here, by design.
+
+---
+
+## Resumption 2026-08-20 — both arms unblocked; gate RUN and CLOSED. Status: done
+
+Both Block-If arms dissolved after the 2026-08-20 planning run: 15.3/15.4/15.5 all merged
+(PRs #87/#88/#89), and the human judgement arrived — Brad walked the live app the same day
+(`sc-5-preliminary-ruling-2026-08-20.md`) and then ruled the four open forks interactively.
+Executed per Tasks, on umbrella `feat/companion-epic-15`:
+
+- **Gate sheet**: `sc-5-gate-report-2026-08-20.md` on the pre-Epic-7 skeleton — metadata block,
+  summary table, findings with anchors, inherited inbox, standing caveats, not-blockers, review
+  sheet. All seven boxes marked from Brad's walk + interactive rulings (transcribed, not
+  inferred); the blockquote ruling line carries his name and the date. **SC-5 CLOSED; the 0.5.0
+  release cut unblocked.**
+- **Rulings**: F1 = an open modal is not a surface (written into `EXPERIENCE.md` +
+  `DESIGN.md`); arrow-key flag RE-ACCEPTED (`EXPERIENCE.md:144` + `validation-report` H3
+  mirrored); M1 row added to the tokens.css inventory; M2/M3 accepted on their recorded rulings,
+  the two rows now read as classes (noted at the registration point); M4 recorded
+  satisfied-by-absence.
+- **M5 guard**: `token-usage.test.ts` "keys every visual-class transition to an inventory row" —
+  opacity/height/background-color/box-shadow + `all`, paren-aware segment reader, 13-entry
+  enumerated claims map, non-vacuity anchor, inline probes (unclaimed transition, `all`
+  smuggling, var-comma, out-of-class invisibility). Suite 2305 → 2307.
+- **Firing proof** (committed harness): control `vitest: 80 files / 2307 tests, 0 failed` →
+  planted (M1 row removed) `RED |node| tests/token-usage.test.ts > … > keys every visual-class
+  transition to an inventory row (SC-5 gate, M5)` at `--expect-total 2307` (first planted run
+  refused on the known worker-fork crash signature; clean on re-run) → revert
+  `git diff --exit-code` clean.
+- **Ledger**: `deferred-work.md` §"Dispositions from: the SC-5 gate (15-6, 2026-08-20)" — every
+  inherited item by name (Actioned / RE-ACCEPTED / DECLINED); J6 DECLINED on its fifth home; D1
+  refused, stays unowned. `sprint-status.yaml` 15-6 → done, surgically.
+  `docs/release-readiness-review.md` resolution log appended.
