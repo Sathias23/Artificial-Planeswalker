@@ -103,3 +103,40 @@ export const pillText = (status: keyof typeof CONNECTION_WORDS, deckName: string
   deckName === null
     ? CONNECTION_WORDS[status]
     : `${CONNECTION_WORDS[status]} ${DECK_SEPARATOR} ${deckName}`
+
+/**
+ * What the tooltip says before any backend has confirmed an identity (story 17.1).
+ *
+ * "Not yet confirmed" rather than a placeholder id or a blank, because it is the true sentence:
+ * the id is read from `GET /health` on transitions to `'live'`, so before the first one lands
+ * the app genuinely does not know which process it is talking to — and UX-DR33's voice rules
+ * apply (a fact, calmly; no "Error", no "unknown", no ellipsis promising motion).
+ */
+export const INSTANCE_NOT_CONFIRMED = 'instance not yet confirmed'
+
+/**
+ * The tooltip's whole text, and therefore also the pill's accessible DESCRIPTION (story 17.1,
+ * UX-DR29, UX-DR39).
+ *
+ * ONE BUILDER, TWO CONSUMERS — the visible tooltip and the `aria-describedby` computation read
+ * the same element, so this function is what guarantees the glass and the description are one
+ * sentence, exactly as {@link pillText} does for the name and the announcement.
+ *
+ * The join is {@link DECK_SEPARATOR}'s em dash with spaces, the same authored punctuation the
+ * pill itself uses. The PORT and the INSTANCE ID are data, not copy: the port comes from
+ * `window.location` at the call site (never a configured number) and the id from the wire, shown
+ * IN FULL with its case preserved — an id is the c4-3/c4-10 lesson's clearest case yet, since a
+ * truncated or uppercased identifier stops identifying.
+ *
+ * Args:
+ *   port: The page's own port, already resolved by the caller (`443`/`80` by protocol when
+ *     `window.location.port` is empty).
+ *   instanceId: The last-confirmed backend instance id, or `null` before the first confirmation.
+ *
+ * Returns:
+ *   The tooltip's text.
+ */
+export const tooltipText = (port: string, instanceId: string | null): string =>
+  instanceId === null
+    ? `Port ${port} ${DECK_SEPARATOR} ${INSTANCE_NOT_CONFIRMED}`
+    : `Port ${port} ${DECK_SEPARATOR} instance ${instanceId}`

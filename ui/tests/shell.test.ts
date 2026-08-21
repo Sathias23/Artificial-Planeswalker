@@ -2131,9 +2131,12 @@ describe('the containers are a declared category with a posture of its own', () 
     // subscription beside `App`'s. `../../state/socket` is a TYPE import (`ConnectionStatus`),
     // which is what keeps the WebSocket module's behaviour out of this file entirely.
     //
-    // NOTE WHAT IS ABSENT: no `../../api/…` of any kind, in either form. The pill reads no wire
-    // shape and makes no request — its "is the backend there" answer arrives through the store
-    // that c5-6's loop writes, and the `/health` read that WOULD touch the network is c10-1's.
+    // NOTE WHAT IS ABSENT: no `../../api/…` of any kind, in either form — STILL, after 17.1
+    // shipped the `/health`-fed tooltip. The pill reads no wire shape and makes no request: the
+    // instance id arrives through the system store exactly as the connection status does
+    // (`identity.ts` refreshes it on transitions to `'live'`, `useInstanceId` is the selector
+    // this story grew beside `useConnection`), so the component's posture is unchanged from
+    // c5-7's. `./port` joined at 17.1 — see its own entry below.
     {
       file: 'src/containers/ConnectionPill/ConnectionPill.tsx',
       imports: [
@@ -2142,9 +2145,18 @@ describe('the containers are a declared category with a posture of its own', () 
         '../../state/systemState',
         './ConnectionPill.css',
         './copy',
+        './port',
         'react',
       ],
     },
+    // 17.1's port resolver — the NINTH application of the `react-refresh/only-export-components`
+    // split (`imageUrl.ts`'s entry states the rule). `imports: []` is the strongest statement
+    // this list can make about it: no react, no store, no wire and above all no fetch — it reads
+    // `window.location`'s two fields and names the default port the browser elided. Deliberately
+    // NOT in `copy.ts`, whose charter draws a hard "what is data and not copy" line: a port is
+    // data, and the copy module's import-freedom is load-bearing for the nodenext gate that
+    // imports it.
+    { file: 'src/containers/ConnectionPill/port.ts', imports: [] },
     // c5-7's copy module — the SEVENTH in this tree, and the first that AUTHORS its strings rather
     // than transcribing them: no artefact specified the pill's words at all (see the module's own
     // header). `imports: []` for `CardDetail/copy.ts`'s measured reason — `tests/` is the
@@ -2305,7 +2317,12 @@ describe('the containers are a declared category with a posture of its own', () 
     // 39 at 16.3, the fourth and last view body in the identical one-component shape: the
     // groups view, whose quantity badge reads the deck store through a primitive selector and
     // whose count is a bare numeral — still no copy module, still no derivation module.
-    expect(CONTAINERS).toHaveLength(39)
+    // 40 at 17.1, which adds ONE module to an existing component: the pill's port resolver,
+    // split out of `ConnectionPill.tsx` by the same lint rule that split `imageUrl.ts` and the
+    // nav's time formatter. The tooltip itself, its copy and its state all landed in files this
+    // list already covers (`ConnectionPill.tsx`, `copy.ts`) or does not need to
+    // (`src/state/identity.ts`, which the store-writes and posture gates own).
+    expect(CONTAINERS).toHaveLength(40)
     for (const { file } of CONTAINERS) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }

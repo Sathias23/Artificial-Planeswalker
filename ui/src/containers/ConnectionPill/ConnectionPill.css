@@ -99,10 +99,10 @@
   /* `font: inherit` rather than a role: the two text spans below carry the roles, and a UA button
      font here would fight them. This is not a `--type-*` application, so it owes no companions.
 
-     No `cursor: pointer` — the header's "NO HANDLER, AND THAT IS THE HONEST SHAPE" argument is
-     about the affordance, not just the ARIA attributes: a hand cursor promises a click does
-     something, and this button's only future action (c10-1's tooltip reveal) does not exist yet.
-     The UA default for a focusable `<button>` with no pointer styling is fine as-is. */
+     No `cursor: pointer` — the header's "STILL NO `onClick`" argument is about the affordance,
+     not just the ARIA attributes: a hand cursor promises a click does something, and the
+     tooltip (story 17.1) reveals on hover and focus, never on click. The UA default for a
+     focusable `<button>` with no pointer styling is fine as-is. */
   font: inherit;
 }
 
@@ -177,4 +177,62 @@
 .connection-pill-deck {
   color: var(--text-secondary);
   font: var(--type-body);
+}
+
+/* ==== THE TOOLTIP (story 17.1, UX-DR29, UX-DR39, WCAG 1.4.13) =========================
+   `position: fixed` at the pill's own `left`, anchored FLUSH above the pill's box — flush is
+   1.4.13's hoverable clause made structural: with no dead gap between the two boxes the pointer
+   can travel from pill to tooltip without a mousemove landing on neither, which is what would
+   dismiss the reveal mid-journey. The arithmetic is spacing tokens only, no geometry literal:
+   the pill's bottom edge sits at `--space-gutter + --space-6` (its own rule above) and its box
+   is ~31px tall (a 21px `--type-body` line + 2 × `--space-1` padding + 2 × 1px border), so
+   `+ --space-6 - --space-1` (another 28px) lands the tooltip's bottom edge a few pixels INSIDE
+   the pill's top — a deliberate small overlap rather than a gap, invisible while revealed
+   (both are opaque surfaces) and structurally un-droppable for the pointer. The exact
+   clearance LOOKING right is the eye-check's — jsdom resolves no layout, so no test can claim
+   it (the pill's own rule says the same of its footer clearance).
+
+   `--surface-overlay` / `--border-hairline` / `--radius-sm` / `--type-body` on
+   `--text-secondary`: the overlay surface because the tooltip floats above the pill's panel
+   surface, and body-on-secondary because the port and the instance id are DATA — an id may not
+   take `--type-micro` (uppercase transform destroys the case an identifier is identified by;
+   c4-3's lesson, third arrival at this component). No `--accent-dim` may enter this file now
+   that it paints `--surface-overlay` (`token-usage.test.ts`'s cross-block rule) — nothing here
+   spends any accent at all, which the file header already requires.
+
+   HIDDEN BY `visibility`, REVEALED BY AN INSTANT FLIP — no `animation`, no `transition`, per
+   the file-wide ban in the header. `visibility: hidden` rather than `display: none` keeps the
+   element in the describedby computation's reach and out of hit-testing at rest; once revealed
+   by the pill's `:hover`, the tooltip IS hit-testable, so its own `:hover` arm can hold it open
+   while the pointer sits on it (the 1.4.13 hoverable half). `max-width` keeps a long instance
+   id from spanning the window; `overflow-wrap` breaks the id itself rather than clipping it —
+   the id is shown IN FULL, which is the point of the tooltip. */
+.connection-pill-tooltip {
+  position: fixed;
+  bottom: calc(var(--space-gutter) + var(--space-6) + var(--space-6) - var(--space-1));
+  left: var(--space-gutter);
+  visibility: hidden;
+
+  /* The viewport arm keeps the tooltip inside a narrow window's own gutter frame — without it,
+     the 320px token arm alone can overflow the right edge on a viewport under ~352px. */
+  max-width: min(calc(var(--space-6) * 10), calc(100vw - 2 * var(--space-gutter)));
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-overlay);
+  color: var(--text-secondary);
+  font: var(--type-body);
+  overflow-wrap: anywhere;
+}
+
+/* The three reveal arms, each gated on the SUPPRESSION class Escape sets (the component owns
+   the bit; blur or mouse-leave clears it): the tooltip itself hovered — which is what lets the
+   pointer rest on it once it has travelled there — then pill hovered, then pill
+   keyboard-focused (`:focus-visible` for the ring's own reason: a mouse click must not pin the
+   tooltip open). The tooltip's own arm is listed FIRST for stylelint's ascending-specificity
+   rule; the three are one rule and the order changes nothing on the glass. */
+.connection-pill-tooltip:hover:not(.is-suppressed),
+.connection-pill:hover + .connection-pill-tooltip:not(.is-suppressed),
+.connection-pill:focus-visible + .connection-pill-tooltip:not(.is-suppressed) {
+  visibility: visible;
 }

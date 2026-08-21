@@ -718,15 +718,26 @@ describe('the document keyboard layering is one listener, in the bubble phase (A
     { entry: 'src/containers/AgentView/AgentView.tsx:document.keydown', capture: true },
     // c4-5. Releases the pin, in the bubble phase, so the capture listener above always wins.
     { entry: 'src/containers/CardDetail/CardDetail.tsx:document.keydown', capture: false },
+    // 17.1. Suppresses the pill's tooltip reveal (WCAG 1.4.13 dismissable) — at the document
+    // because a hover-only reveal holds no focus, so the key lands on `document.body` and a
+    // button handler would never hear it. BUBBLE, and sharing the phase with CardDetail's is
+    // safe HERE though it would not be in general: neither bubble listener stops propagation,
+    // and their effects are independent (one Esc may release the pin AND dismiss the tooltip —
+    // there is no order in which those two outcomes differ), so import order still decides
+    // nothing. The agent view's capture listener keeps pre-empting both, which is UX-DR39's
+    // layering: while a view is open the pill sits under the scrim anyway.
+    { entry: 'src/containers/ConnectionPill/ConnectionPill.tsx:document.keydown', capture: false },
   ]
 
   it('registers exactly these document key listeners, and names their owners', () => {
     expect(
       keyListeners.map((l) => `${l.file}:${l.receiver}.${l.event}`),
-      'the document keyboard layering admits exactly two listeners — the agent view’s Esc in ' +
-        'CAPTURE and CardDetail’s in BUBBLE. A third one (on document OR window) breaks ' +
-        'UX-DR39’s "Esc closes the topmost thing" ordering, and a second one in the same phase ' +
-        'makes it depend on module import order.',
+      'the document keyboard layering admits exactly three listeners — the agent view’s Esc in ' +
+        'CAPTURE, and CardDetail’s and the connection pill’s in BUBBLE (safe together because ' +
+        'neither stops propagation and their effects are independent — see the table). Any ' +
+        'OTHER listener (on document OR window) breaks UX-DR39’s "Esc closes the topmost ' +
+        'thing" ordering, and a same-phase listener whose effect interacts with an existing ' +
+        'one makes the outcome depend on module import order.',
     ).toEqual(DOCUMENT_KEY_LISTENERS.map((l) => l.entry))
   })
 

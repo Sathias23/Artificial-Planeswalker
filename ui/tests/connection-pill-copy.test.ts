@@ -50,7 +50,9 @@ import { describe, expect, it } from 'vitest'
 import {
   CONNECTION_WORDS,
   DECK_SEPARATOR,
+  INSTANCE_NOT_CONFIRMED,
   pillText,
+  tooltipText,
 } from '../src/containers/ConnectionPill/copy.ts'
 
 const artefact = (name: string): string =>
@@ -113,6 +115,17 @@ describe('every shipped string is quoted in EXPERIENCE.md’s row (AC 12)', () =
     expect(DECK_SEPARATOR).toBe('—')
     expect(row()).toContain(pillText('live', 'Sultai Midrange'))
   })
+
+  it('quotes the tooltip’s two forms, through the builder (story 17.1)', () => {
+    // The same worked-example discipline as the joined pill text one test up: the artefact
+    // carries BOTH shapes the builder can produce — confirmed and not-yet-confirmed — built by
+    // the shipped function, so a spacing or wording change in `tooltipText` cannot pass the
+    // gate on a bare substring. The port and the id in the examples are illustrative DATA
+    // (the row says so); the sentence around them is the authored copy under gate.
+    expect(row()).toContain(`"${tooltipText('8000', '3f9c1a7e')}"`)
+    expect(row()).toContain(`"${tooltipText('8000', null)}"`)
+    expect(tooltipText('8000', null)).toContain(INSTANCE_NOT_CONFIRMED)
+  })
 })
 
 describe('the row’s load-bearing clauses are still there to be honoured', () => {
@@ -149,6 +162,30 @@ describe('the row’s load-bearing clauses are still there to be honoured', () =
     expect(bullet).toBeDefined()
     expect(bullet).toMatch(/story c5-7/)
     expect(bullet).toMatch(/typography\.body/)
+  })
+
+  it('carries the tooltip’s load-bearing clauses in BOTH artefacts (story 17.1)', () => {
+    // The clauses a later reader is most likely to "fix": the reveal must be keyboard as well
+    // as hover (UX-DR39's hover-only ban), the wiring is aria-describedby, an identity change
+    // never announces, the identity — unlike the deck name — is retained through the bad
+    // states, and Esc dismisses (the user-facing dismissal contract lives in this row, not only
+    // in code comments). The DESIGN bullet carries the material's own rulings: "flush" is a
+    // deliberate small OVERLAP of the pill's box rather than a zero-pixel gap (WCAG 1.4.13's
+    // pointer travel — recorded so nobody "fixes" the CSS against the word or vice versa), and
+    // still nothing animates.
+    expect(row()).toMatch(/keyboard focus/i)
+    expect(row()).toMatch(/aria-describedby/)
+    expect(row()).toMatch(/never announces/i)
+    expect(row()).toMatch(/last-confirmed/i)
+    expect(row()).toMatch(/Esc dismisses/)
+
+    const bullet = DESIGN.split('\n').find((line) => line.startsWith('- **Connection pill**'))
+    expect(bullet).toMatch(/story 17\.1/)
+    expect(bullet).toMatch(/aria-describedby/)
+    expect(bullet).toMatch(/1\.4\.13/)
+    expect(bullet).toMatch(/overlap/i)
+    expect(bullet).toMatch(/Esc dismisses/)
+    expect(bullet).toMatch(/nothing on this component animates/i)
   })
 })
 
