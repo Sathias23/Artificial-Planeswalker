@@ -66,6 +66,8 @@ import { create } from 'zustand'
 
 import type {
   AgentViewKind,
+  GroupItem,
+  GroupsEvent,
   SuggestionItem,
   SuggestionsEvent,
   SwapItem,
@@ -174,11 +176,10 @@ interface AgentViewContentBase {
  * (`Extract<AgentViewContent, {kind: 'swaps'}>`-style) — never from wire types, which
  * `wire-contract.test.ts` bans outside `src/api/`.
  *
- * The one kind without a view yet (`groups`) carries `readonly never[]`: the socket still drops
- * its frames (a kind must not become *acceptable* before something can display it), so no
- * builder exists to fill that arm and the only constructible value is the empty array a
- * synthetic test fixture uses. Its own story widens its arm alongside the view that renders it,
- * exactly as 16.1 widened `swaps` and 16.2 widened `tier_list`.
+ * All four kinds now carry real item types (story 16.3 widened `groups`, the last arm, exactly
+ * as 16.1 widened `swaps` and 16.2 widened `tier_list`) — each in the same commit as the view
+ * that renders it and the dispatch arm that delivers it, so no kind is ever *acceptable*
+ * before something can display it.
  *
  * Every field stays `schema.ts`-typed — `SuggestionItem`/`SwapItem` are the generated models
  * through their aliases, never hand-written rows — which is the half of the wire rule that
@@ -212,8 +213,12 @@ export type AgentViewContent =
     })
   | (AgentViewContentBase & {
       readonly kind: 'groups'
-      /** No view exists to render these yet — the socket still drops `groups` frames. */
-      readonly items: readonly never[]
+      /**
+       * The pushed groups, drawn by `GroupsView` (story 16.3), which hydrates every unique
+       * card id across all groups itself. `count` beside this is `items.length` — payload
+       * GROUPS, raw: the view's empty-group skipping is render-only and never rewrites it.
+       */
+      readonly items: readonly GroupItem[]
     })
 
 /**
@@ -513,6 +518,44 @@ export const tierListViewOf = (event: TierListEvent): AgentViewContent => {
 }
 
 /**
+ * One `groups` envelope → one {@link AgentViewContent}. **Total, by construction** — the
+ * fourth and last structural sibling of {@link suggestionsViewOf}, and every clause of that
+ * function's defence argument applies verbatim: the generated payload fields are optional for
+ * honest wires, the narrower is kind-only, a `TypeError` here would be an uncaught exception
+ * inside a socket message handler, and the blank-title fallback is the dialog's accessible
+ * name being guarded *"at the point content is constructed"*. What it does NOT check is any
+ * field of any ITEM — a group with a blank title or missing rationale is `GroupsView`'s to
+ * degrade, at the section that renders it, exactly as c6-7 homed the same duty.
+ *
+ * The title it falls back to is the PAYLOAD-LEVEL header, distinct from each group's own
+ * `title` — the two live at different levels and a push may carry both.
+ *
+ * `count` is `items.length` — payload GROUPS, raw, matching how all three prior kinds count
+ * their own payload items. The view skips *empty* and *malformed* groups at render; that
+ * skipping is render-only and this count deliberately does not anticipate it.
+ *
+ * Args:
+ *   event: The frame, exactly as `socket.ts` narrowed it.
+ *
+ * Returns:
+ *   Content the shell can draw, for every input the wire admits.
+ */
+export const groupsViewOf = (event: GroupsEvent): AgentViewContent => {
+  const rawItems: unknown = event.payload?.items
+  const items = Array.isArray(rawItems) ? rawItems : []
+  const rawTitle: unknown = event.payload?.title
+  const title = typeof rawTitle === 'string' ? rawTitle.trim() : undefined
+  return {
+    id: event.id,
+    ts: event.ts,
+    kind: event.kind,
+    title: title === undefined || title === '' ? AGENT_VIEW_LABELS.groups : title,
+    count: items.length,
+    items,
+  }
+}
+
+/**
  * A `suggestions` push arrived: build the content and show it (AC 1, UX-DR34).
  *
  * **The one verb `connection.ts` calls**, and the reason the composition seam needs no
@@ -549,6 +592,17 @@ export const openSwapsPush = (event: SwapsEvent): void => {
  */
 export const openTierListPush = (event: TierListEvent): void => {
   openAgentView(tierListViewOf(event))
+}
+
+/**
+ * A `groups` push arrived: build the content and show it (story 16.3) — the fourth and last
+ * verb `connection.ts` calls, in {@link openSuggestionsPush}'s exact shape and for its exact
+ * reasons: no branch on whether a view is already open (opening over an open view REPLACES,
+ * which is all the scalar can do), and the composition seam still holds no `setState` and
+ * names no store.
+ */
+export const openGroupsPush = (event: GroupsEvent): void => {
+  openAgentView(groupsViewOf(event))
 }
 
 /**

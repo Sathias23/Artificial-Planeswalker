@@ -16,17 +16,20 @@
  * What it looks like on a real screen is `App.test.tsx`'s, from one mount.
  */
 
+import { renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ActiveDeckOutcome, DeckOutcome } from '../api/client'
 import type { CardSummary, DeckCardSummary, DeckDetail } from '../api/schema'
 import { INITIAL_CARD_CACHE, resetCardCache, useCardStore } from './cards'
+import { boardsOfDeck } from './deckGroups'
 import {
   INITIAL_DECK_STATE,
   createDeckBoot,
   driveDeckChanged,
   resetDeckState,
   surfaceOf,
+  useDeckCardQuantity,
   useDeckStore,
   type DeckState,
 } from './deck'
@@ -1260,4 +1263,73 @@ describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
       expect(surfaceOf(loaded, system('no-active-deck', 'live')).kind).toBe('deck')
     })
   })
+})
+
+// =========================================================================================
+// STORY 16.3 — the group tile's quantity selector
+// =========================================================================================
+
+describe('useDeckCardQuantity — the in-deck copy count, or null (16.3, EXPERIENCE.md:94)', () => {
+  /** A settled deck whose rows this describe controls — quantities chosen to be tellable apart. */
+  const settle = (cards: DeckCardSummary[]): void => {
+    const deckDetail = detail({ cards })
+    useDeckStore.setState({
+      deck: { status: 'deck', detail: deckDetail, boards: boardsOfDeck(deckDetail) },
+    })
+  }
+
+  it('answers the quantity for a card the active deck runs', () => {
+    settle([{ ...row('Llanowar Elves', 'Creature — Elf Druid'), quantity: 3 }])
+
+    const { result } = renderHook(() => useDeckCardQuantity('id-Llanowar Elves'))
+
+    expect(result.current).toBe(3)
+  })
+
+  it('answers ×1 as 1, not as an absence — the ≥1 badge gate needs the distinction', () => {
+    // The badge here means "copies in this deck", so a singleton IS informative (the deliberate
+    // divergence from CardTile's `> 1` gate, documented at the view): 1 must arrive as 1.
+    settle([row('Forest', 'Basic Land — Forest')])
+
+    const { result } = renderHook(() => useDeckCardQuantity('id-Forest'))
+
+    expect(result.current).toBe(1)
+  })
+
+  it('answers null for a card the deck does not run — never 0 ("×0 would be a lie")', () => {
+    settle([row('Forest', 'Basic Land — Forest')])
+
+    const { result } = renderHook(() => useDeckCardQuantity('id-not-in-this-deck'))
+
+    expect(result.current).toBeNull()
+  })
+
+  it('SUMS a card split across boards — one card, one total, still "copies in this deck"', () => {
+    settle([
+      { ...row('Duress', 'Sorcery'), quantity: 2 },
+      { ...row('Duress', 'Sorcery'), quantity: 1, sideboard: true },
+    ])
+
+    const { result } = renderHook(() => useDeckCardQuantity('id-Duress'))
+
+    expect(result.current).toBe(3)
+  })
+
+  // TYPED TABLE, not an inline literal — `surfaceOf`'s own deferring-table reason above.
+  const nonDeck: [string, DeckState][] = [
+    ['booting', INITIAL_DECK_STATE],
+    ['none', { status: 'none' }],
+    ['refused', { status: 'refused', reason: 'database_unavailable', panel: 'database-updating' }],
+  ]
+
+  it.each(nonDeck)(
+    'answers null while the deck state is %s — no deck, no fact to report',
+    (_label, deck) => {
+      useDeckStore.setState({ deck })
+
+      const { result } = renderHook(() => useDeckCardQuantity('id-Forest'))
+
+      expect(result.current).toBeNull()
+    },
+  )
 })

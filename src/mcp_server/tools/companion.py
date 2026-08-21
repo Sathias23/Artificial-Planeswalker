@@ -40,6 +40,8 @@ from src.companion.client import push_event as _client_push_event
 from src.companion.client import set_active_deck as _client_set_active_deck
 from src.companion.contracts import (
     ActiveDeckRequest,
+    GroupsEvent,
+    GroupsPayload,
     SuggestionsEvent,
     SuggestionsPayload,
     SwapsEvent,
@@ -275,7 +277,7 @@ def _push_messages(noun: str) -> dict[str, str]:
     success sentence varies per kind and is passed to :func:`_execute_push` by its caller.
 
     Args:
-        noun: The plural word for the pushed content — "suggestions", "swaps", "tiers".
+        noun: The plural word for the pushed content — "suggestions", "swaps", "tiers", "groups".
 
     Returns:
         The wording for every push outcome that is not a plain success, keyed by the client's own
@@ -458,7 +460,7 @@ class ShowTierListResult(BaseModel):
     :class:`ShowSwapsResult` on purpose: its ``status`` values are the leaf client's five wire
     outcomes and **nothing else** (AD-8). It reads no database — card ids are deliberately
     unvalidated (AD-7) and deck existence is the control tool's business (AD-16) — so there is no
-    fourth kind of failure to layer on top. Three distinct classes rather than one shared model
+    fourth kind of failure to layer on top. Four distinct classes rather than one shared model
     because these docstrings are wire-visible: each tool's result documents its own count noun.
 
     **Counts, never contents** (CM-1, AC 5): both numeric fields describe the push without
@@ -502,8 +504,10 @@ grain ``items_pushed`` counts.
 """
 
 
-async def _execute_push[ResultT: (ShowSuggestionsResult, ShowSwapsResult, ShowTierListResult)](
-    event: SuggestionsEvent | SwapsEvent | TierListEvent,
+async def _execute_push[
+    ResultT: (ShowSuggestionsResult, ShowSwapsResult, ShowTierListResult, ShowGroupsResult)
+](
+    event: SuggestionsEvent | SwapsEvent | TierListEvent | GroupsEvent,
     *,
     items_pushed: int,
     result_cls: type[ResultT],
@@ -512,11 +516,12 @@ async def _execute_push[ResultT: (ShowSuggestionsResult, ShowSwapsResult, ShowTi
 ) -> ResultT:
     """Hand one already-minted envelope to the leaf and fold the outcome into a result (16.2).
 
-    The shared back half of every push tool — extracted because the three helpers' bodies
-    differed in exactly five tokens (event class and kind, payload type, result class, count-noun
-    pluralizer, success sentence), and the first four arrive here as arguments while the fifth is
-    ``shown``, preformatted by the caller because ``items_pushed`` is caller-computed: what an
-    "item" is (a suggestion, a pair, a tier) is the one real semantic difference between kinds.
+    The shared back half of every push tool — extracted because the helpers' bodies (three at
+    the extraction, four since 16.3) differed in exactly five tokens (event class and kind,
+    payload type, result class, count-noun pluralizer, success sentence), and the first four
+    arrive here as arguments while the fifth is ``shown``, preformatted by the caller because
+    ``items_pushed`` is caller-computed: what an "item" is (a suggestion, a pair, a tier, a
+    group) is the one real semantic difference between kinds.
 
     Everything the pre-consolidation bodies guaranteed still holds, structurally: one call is one
     push (nothing here retries), the envelope crosses to the leaf untouched, and never raising is
@@ -527,7 +532,7 @@ async def _execute_push[ResultT: (ShowSuggestionsResult, ShowSwapsResult, ShowTi
     Args:
         event: The envelope, already minted by the caller — id, ts and payload included.
         items_pushed: How many items the caller counted in its own grain.
-        result_cls: Which of the three field-identical result models to mint.
+        result_cls: Which of the four field-identical result models to mint.
         messages: The kind's failure sentences, from :func:`_push_messages`.
         shown: The success sentence's subject — e.g. ``"2 suggested cards"``, ``"3 tiers"``.
 
@@ -598,4 +603,108 @@ async def show_tier_list(*, payload: TierListPayload) -> ShowTierListResult:
         result_cls=ShowTierListResult,
         messages=_TIER_LIST_PUSH_MESSAGES,
         shown=f"{items_pushed} {tiers}",
+    )
+
+
+class ShowGroupsResult(BaseModel):
+    """Structured result of ``companion_show_groups``.
+
+    The fourth *push* tool result, field-identical to :class:`ShowSuggestionsResult`,
+    :class:`ShowSwapsResult` and :class:`ShowTierListResult` on purpose: its ``status`` values
+    are the leaf client's five wire outcomes and **nothing else** (AD-8). It reads no database —
+    card ids are deliberately unvalidated (AD-7) and deck existence is the control tool's
+    business (AD-16) — so there is no fourth kind of failure to layer on top. Four distinct
+    classes rather than one shared model because these docstrings are wire-visible: each tool's
+    result documents its own count noun.
+
+    **Counts, never contents** (CM-1, AC 5): both numeric fields describe the push without
+    repeating one card id, group title or rationale back into the conversation the agent is
+    already holding.
+
+    Attributes:
+        status: ``displayed`` (the companion delivered the push to at least one connected
+            browser), ``no_clients_connected`` (the companion took it and no tab was listening — a
+            wire success, never something to re-send), ``app_not_running`` (no companion could be
+            proven live; no credential left the process), ``payload_rejected`` (the companion
+            refused the envelope itself), or ``backend_error`` (the companion is there and the
+            push did not land).
+        clients: How many connected browsers received the push, when the companion said. ``None``
+            on every status that never reached a receipt — distinguishable from ``0`` on purpose.
+        items_pushed: How many **groups** the envelope carried — ``len(payload.items)``, never a
+            count of the cards inside them: a group holding sixty cards is one item. Reported on
+            every status, because it describes what was attempted rather than what arrived. Zero
+            is a legitimate value, not an error (AD-7).
+        message: One short human-facing sentence. Never echoes the payload (CM-1).
+    """
+
+    status: Literal[
+        "displayed",
+        "no_clients_connected",
+        "app_not_running",
+        "payload_rejected",
+        "backend_error",
+    ]
+    clients: int | None = None
+    items_pushed: int
+    message: str
+
+
+_GROUPS_PUSH_MESSAGES = _push_messages("groups")
+"""The groups wording — :func:`_push_messages` with this tool's noun.
+
+"Groups" rather than "card groups" because the templates conjugate plural ("…have nowhere to
+appear", "…none of them were displayed"), and the groups are what the push carries — the same
+grain ``items_pushed`` counts.
+"""
+
+
+async def show_groups(*, payload: GroupsPayload) -> ShowGroupsResult:
+    """Put titled card groups on the companion's glass (FR-08, AD-8).
+
+    The push-tool shape, fourth application, on the shared path 16.2 consolidated — every
+    ruling from :func:`show_suggestions` carries over unchanged: no database read, no id
+    resolution, no cap enforcement here (the caps are the payload model's, applied by FastMCP
+    at the tool boundary), and what arrives is what is sent — **order included**, because
+    payload order is render order and nothing here sorts, dedupes or merges. A group may name
+    cards the active deck does not run; grouping is an argument about cards, not an inventory
+    of the deck.
+
+    **``items_pushed`` counts groups, never cards** — ``len(payload.items)``, the same grain
+    the payload's own cap (12) is written in. A group carrying sixty card ids is one item,
+    exactly as one tier carrying sixty is.
+
+    **An empty ``items`` list is posted, not short-circuited** (AD-7): "I looked and found no
+    grouping worth drawing" is a thing the agent is allowed to say on the glass. An empty
+    ``card_ids`` list inside a group is legal too — the view skips it.
+
+    The envelope's ``id`` is a fresh UUID4 per call — opaque identity and dedupe, never
+    ordering (AD-6) — and ``ts`` is timezone-aware because the wire refuses a naive one. No
+    title is injected when the payload omits one: the fallback header belongs to the reader
+    (``DEFAULT_TITLE_BY_KIND`` gives it "Groups"), and a tool-supplied title would make
+    "agent-authored" false.
+
+    Never raises. Everything the discovery file, the network or the companion can do is already
+    one of the client's five tokens (FR-12). An unexpected exception is deliberately **not**
+    caught: that is a bug, and crashing loudly is this package's convention for one.
+
+    Args:
+        payload: The groups to display, already validated by the contract model.
+
+    Returns:
+        A :class:`ShowGroupsResult`.
+    """
+    event = GroupsEvent(
+        kind="groups",
+        id=str(uuid4()),
+        ts=datetime.now(UTC),
+        payload=payload,
+    )
+    items_pushed = len(payload.items)
+    groups = "group" if items_pushed == 1 else "groups"
+    return await _execute_push(
+        event,
+        items_pushed=items_pushed,
+        result_cls=ShowGroupsResult,
+        messages=_GROUPS_PUSH_MESSAGES,
+        shown=f"{items_pushed} {groups}",
     )

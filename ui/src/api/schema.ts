@@ -345,6 +345,24 @@ export type SwapsEvent = Extract<AgentEvent, { kind: 'swaps' }>
 export type TierListEvent = Extract<AgentEvent, { kind: 'tier_list' }>
 
 /**
+ * One `groups` frame — the envelope, narrowed to the member `kind: 'groups'` selects.
+ *
+ * **Consumer: `groupsViewOf` in `src/state/agentView.ts`** (story 16.3), the fourth and last
+ * agent-view payload the app reads — added under this file's standing rule that an alias lands
+ * in the commit that gives it a consumer.
+ *
+ * `Extract` over {@link AgentEvent} rather than `Schemas['GroupsEvent']`, for
+ * {@link SuggestionsEvent}'s reason verbatim: the union is what the dispatch switch narrows, so
+ * extracting from it is the one spelling that cannot disagree with the thing being narrowed.
+ *
+ * ⚠️ `payload` is REQUIRED in this type and OPTIONAL on the wire in practice — the exact caveat
+ * {@link SuggestionsEvent} carries: `agentEventOf` (`client.ts`) validates the `kind`
+ * discriminant and nothing else, so a frame of `{"kind":"groups"}` reaches a consumer typed
+ * as a full event. The builder that reads this shape is total for exactly that reason.
+ */
+export type GroupsEvent = Extract<AgentEvent, { kind: 'groups' }>
+
+/**
  * One `deck_changed` frame — the envelope, narrowed to the member `kind: 'deck_changed'` selects.
  *
  * **Consumers: the dispatch seam (`src/state/socket.ts` → `connection.ts`)**, which as of story
@@ -437,6 +455,26 @@ export type SwapItem = Schemas['SwapItem']
  * — which is why the view renders the name beside the letter, always.
  */
 export type TierItem = Schemas['TierItem']
+
+/**
+ * One named group of cards: `{title, rationale, card_ids}` (AD-7).
+ *
+ * **Consumer: the `groups` arm of `AgentViewContent` in `src/state/agentView.ts`** (story
+ * 16.3), which retains the items so `GroupsView` can render and re-hydrate them — the exact
+ * shape of {@link TierItem}'s consumer one entry up, for the fourth and last view kind.
+ *
+ * Reached through `Schemas` rather than through {@link GroupsEvent}'s payload, because it is a
+ * named model on the Python side and the generator emits it as one. `GroupsPayload` is
+ * deliberately NOT aliased: nothing outside the builder ever holds a payload, so an alias for
+ * it would have no consumer.
+ *
+ * The optionality is the INVERSE of {@link TierItem}'s: `title` and `rationale` are both
+ * REQUIRED non-blank on the wire (the title is the only thing distinguishing one group from
+ * the next, and the rationale is the paragraph the group exists to carry), while `card_ids` is
+ * optional and may be empty — the view skips an empty group rather than rejecting it. The
+ * group's own `title` is distinct from the payload-level view header of the same name.
+ */
+export type GroupItem = Schemas['GroupItem']
 
 /**
  * The closed set of reason tokens (AD-16), as a TypeScript string union.

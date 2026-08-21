@@ -2585,36 +2585,13 @@ describe('the page reconnects on its own (c5-6)', () => {
     expect(sockets).toHaveLength(1)
   })
 
-  it('refetches on deck_changed, and ignores the one unbuilt view kind (AC 11)', async () => {
-    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
-    const fetchMock = answering(decks('Atraxa Counter Cabinet v2 (owned)'))
-
-    render(<App />)
-    await settle()
-    await connect()
-    const before = callsTo(fetchMock, '/api/active-deck')
-
-    // `suggestions` LEFT this list at c6-6, `swaps` at 16.1 and `tier_list` at 16.2 — each exit
-    // paired with the view that can display what the kind carries. A later Epic-16 story builds
-    // the one that remains, and until it does it is received, dropped, and not a fault.
-    for (const kind of ['groups']) await push(kind)
-    expect(callsTo(fetchMock, '/api/active-deck') - before).toBe(0)
-    expect(deckDetailCalls(fetchMock)).toBe(1)
-    expect(sockets[0].closed).toBe(0)
-    // Nor does it open anything: a dropped kind that reached the view arm would put a dialog on
-    // the glass with some other view's chrome and a groups payload.
-    expect(screen.queryByRole('dialog')).toBeNull()
-
-    // AMENDED AT c7-3 — this is the pinned count that story exists to change. The line below
-    // read `toBe(1)` against `/api/active-deck`: a settled deck's `deck_changed` used to re-drive
-    // the FULL two-request boot. It is now a SINGLE `GET /api/deck/{id}` — the coalesced refetch
-    // — so the refetch shows up on the detail route and the active-deck route stays quiet. The
-    // c7-3 describe below carries the whole decision matrix; this test keeps its original claim,
-    // which is that `deck_changed` ACTS while the three view kinds do not.
-    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
-    expect(callsTo(fetchMock, '/api/active-deck') - before).toBe(0)
-    expect(deckDetailCalls(fetchMock)).toBe(2)
-  })
+  // The drop test that lived here — "refetches on deck_changed, and ignores the one unbuilt
+  // view kind" — was DELETED at 16.3 rather than emptied: its kind list iterated `['groups']`,
+  // and with the last view wired that loop is `[]`, a test asserting nothing. `suggestions`
+  // left the list at c6-6, `swaps` at 16.1, `tier_list` at 16.2 and `groups` at 16.3 — each
+  // exit paired with the view that can display what the kind carries — and its surviving claim
+  // (`deck_changed` acts on the detail route, not the boot) lives in the c7-3 describe below.
+  // Unknown-kind/default-arm coverage lives in the malformed-frame test underneath.
 
   it('ignores a malformed frame without closing the socket or the app (AC 13)', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
@@ -5668,6 +5645,126 @@ describe('a tier-list push opens its view, end to end (16.2)', () => {
     expect(document.querySelector('.tier-list-view-empty')).toHaveTextContent(
       emptyPushLine('tier_list'),
     )
+  })
+})
+
+// =====================================================================================
+// 16.3 — A GROUPS PUSH OPENS ITS VIEW, END TO END, THROUGH THE REAL SOCKET SEAM
+// =====================================================================================
+
+describe('a groups push opens its view, end to end (16.3)', () => {
+  // 16.2's opener's shape on the fourth and last push kind, and the one test that can catch the
+  // whole chain at once: `client.ts` narrows the frame, `socket.ts` dispatches it to
+  // `onGroups` (the drop arm is GONE), `connection.ts` calls `openGroupsPush`, the store opens,
+  // and `App.tsx`'s now-total kind ternary mounts `GroupsView`. Every seam-level test stays
+  // green with the App render arm reverted — this is the composed assertion that cannot.
+  const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
+  const dialog = () => screen.queryByRole('dialog')
+  const groupsPill = () =>
+    [...document.querySelectorAll<HTMLButtonElement>('.agent-views-nav-pill')].find((p) =>
+      p.textContent?.startsWith(AGENT_VIEW_LABELS.groups),
+    )!
+
+  // One in-deck card (the booted Atraxa fixture runs `id-Llanowar Elves` ×1) and one the deck
+  // does not run — the pair EXPERIENCE.md:94's badge rule needs to be observable at all.
+  const GROUP = {
+    title: 'Ramp',
+    rationale: 'These accelerate into the six-drops a turn early.',
+    card_ids: ['id-Llanowar Elves', 'c-not-in-deck'],
+  }
+
+  const bootedDeck = async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks(ATRAXA_NAME))
+    render(<App />)
+    await settle()
+    await connect()
+    return fetchMock
+  }
+
+  beforeEach(() => {
+    resetInspection()
+    resetDeckMemory()
+    resetAgentView()
+  })
+
+  it('opens the groups view with NO click, section anatomy rendered, and the pill active', async () => {
+    const fetchMock = await bootedDeck()
+    const cardsBefore = callsTo(fetchMock, '/api/cards/')
+    const activeDeckBefore = callsTo(fetchMock, '/api/active-deck')
+    const detailBefore = deckDetailCalls(fetchMock)
+    expect(dialog()).toBeNull()
+    expect(groupsPill().disabled).toBe(true)
+
+    await push('groups', { title: 'How the deck is put together', items: [GROUP] })
+
+    // The claim the deleted drop test carried implicitly, kept explicit here: an agent-view
+    // push leaves the DECK endpoints quiet — the badge reads the deck STORE, never the wire.
+    expect(callsTo(fetchMock, '/api/active-deck')).toBe(activeDeckBefore)
+    expect(deckDetailCalls(fetchMock)).toBe(detailBefore)
+
+    // The dialog is the groups view: named by the pushed title, one section carrying the whole
+    // DESIGN.md:592 anatomy — the group's own title, the BARE NUMERAL count (no authored word),
+    // the rationale paragraph, and one thumbnail per card id.
+    expect(dialog()).not.toBeNull()
+    expect(dialog()).toHaveAccessibleName('How the deck is put together')
+    const section = document.querySelector('.group-section')
+    expect(section).not.toBeNull()
+    expect(section!.querySelector('.group-section-title')).toHaveTextContent('Ramp')
+    expect(section!.querySelector('.group-section-count')!.textContent).toBe('2')
+    expect(section).toHaveTextContent(GROUP.rationale)
+    expect(section!.querySelectorAll('.group-tile')).toHaveLength(2)
+
+    // THE BADGE RULE (EXPERIENCE.md:94): the in-deck singleton carries ×1 — the deliberate
+    // divergence from CardTile's `> 1` gate, because here in-deck-ness is the signal — and the
+    // card the deck does not run carries NO badge ("×0 would be a lie").
+    const badges = section!.querySelectorAll('.group-tile-quantity')
+    expect(badges).toHaveLength(1)
+    expect(badges[0].textContent).toBe('×1')
+    const tiles = [...section!.querySelectorAll('.group-tile')]
+    expect(tiles[0].querySelector('.group-tile-quantity')).not.toBeNull()
+    expect(tiles[1].querySelector('.group-tile-quantity')).toBeNull()
+
+    // No sibling machinery was mounted for a groups frame — the kind switch chose the arm.
+    expect(document.querySelector('.suggestion-row')).toBeNull()
+    expect(document.querySelector('.swap-row')).toBeNull()
+    expect(document.querySelector('.tier-row')).toBeNull()
+
+    // The nav half: the "Card groups" pill activates on the first push, with unread behaviour —
+    // the kind on the glass is never unread against itself.
+    expect(groupsPill().disabled).toBe(false)
+    expect(groupsPill().textContent).not.toContain('unread')
+    // …and the view hydrated its OWN ids: the off-deck id cost one read, while the in-deck id
+    // was already seeded by the deck sweep (`hydrateDeckCards`) at boot — a warm cache is a
+    // skip, which is itself the seeding contract working. One group, one cold id, one read.
+    expect(callsTo(fetchMock, '/api/cards/') - cardsBefore).toBe(1)
+  })
+
+  it('skips an empty group entirely while its neighbours render (EXPERIENCE.md:94)', async () => {
+    await bootedDeck()
+
+    await push('groups', {
+      title: 'Anatomy with a hole',
+      items: [GROUP, { title: 'Cut list', rationale: 'Nothing survived the cut.', card_ids: [] }],
+    })
+
+    // One rendered section, not two: the empty group is skipped — title and rationale included,
+    // never an empty shell — and the header's count still says 2, because the skip is
+    // render-only and the count is the payload's group count, raw.
+    expect(document.querySelectorAll('.group-section')).toHaveLength(1)
+    expect(document.querySelector('.group-section-title')).toHaveTextContent('Ramp')
+    expect(useAgentViewStore.getState().content!.count).toBe(2)
+  })
+
+  it('falls back to the table’s word when the agent names nothing, and renders an empty push', async () => {
+    await bootedDeck()
+
+    await push('groups', { items: [] })
+
+    expect(dialog()).not.toBeNull()
+    expect(dialog()).toHaveAccessibleName(AGENT_VIEW_LABELS.groups)
+    // The SHARED empty-push line, `{kind}`-substituted — no second sentence anywhere.
+    expect(document.querySelector('.groups-view-empty')).toHaveTextContent(emptyPushLine('groups'))
   })
 })
 

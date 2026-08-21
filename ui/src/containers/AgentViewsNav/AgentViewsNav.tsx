@@ -32,13 +32,15 @@ import { pushTimeLabel } from './pushTime'
  * today. It does not. A fifth kind added on the Python side reaches {@link PILL_ORDER} through
  * the generator and grows a pill here with no edit.
  *
- * **The honest consequence, in the open (Q1):** the socket still drops `swaps`/`tier_list`/
- * `groups` at its dispatch switch, deliberately — Epic 9 pairs each tool with its view precisely
- * so a push never arrives that the UI cannot display, and accepting one here would recreate that
- * bug from the other side. So in production exactly one pill can activate until Epic 9 ships,
- * and three sit quiet. Quiet is not a degraded state or a placeholder: it is UX-DR33's named
- * ninth state with its own copy, and *"your agent hasn't sent this yet"* is a true sentence
- * about a kind whose tool does not exist yet.
+ * **The honest consequence, in the open (Q1, discharged in full at 16.3):** the genericness
+ * paid off exactly as promised — `swaps` (16.1), `tier_list` (16.2) and `groups` (16.3) each
+ * shipped their tool, dispatch arm and view, and each pill became reachable from the wire with
+ * NO edit to this file, which is Q1's ruling proven three times over. All four kinds are now
+ * delivered (the socket's dispatch holds no drop arm), so every pill can activate in
+ * production. Quiet still means what UX-DR33 says and nothing less: "no push of this kind yet
+ * THIS SESSION" — not a degraded state or a placeholder, but the named ninth state with its
+ * own copy, and *"your agent hasn't sent this yet"* stays a true sentence about a session, no
+ * longer about a tool.
  *
  * ================= WHAT IT IS NOT ====================================================
  *
