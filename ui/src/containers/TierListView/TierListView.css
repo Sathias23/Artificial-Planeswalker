@@ -1,0 +1,231 @@
+/* ==== THE TIER LIST VIEW'S BODY (story 16.2) ============================================
+
+   Written against DESIGN.md's `components.tier-row` block (DESIGN.md:331-338), which shipped
+   complete: background `{colors.surface-overlay}`, chip-background `{colors.surface-well}`,
+   border `1px solid {colors.border-hairline}`, radius `{rounded.md}`, chip-width `132px`,
+   letter-size `44px`, letter-weight `'500'`. The component row (DESIGN.md:590) adds the
+   anatomy: the letter carries the five-stop ramp `accent-bright` (S) · `accent` (A) ·
+   `text-primary` (B) · `text-secondary` (C) · `text-tertiary` (D), the tier name sits beneath
+   it in `{typography.micro}` `{colors.text-tertiary}`, the note takes `{typography.body}`
+   `{colors.text-secondary}`, and the thumbnails wrap. At 44px the letters are large text, so
+   all five stops clear the contrast floor; the letter is also always accompanied by its name
+   in text, so colour is never the sole carrier of rank.
+
+   FOUR px/weight LITERALS IN THIS FILE, EVERY ONE A DESIGN.md `components.tier-row` VALUE:
+   the border's `1px` (`'1px solid {colors.border-hairline}'`, DESIGN.md:334), the chip's
+   `132px` (`chip-width: 132px`, DESIGN.md:336), the letter's `44px` (`letter-size: 44px`,
+   DESIGN.md:337) and the letter's weight `500` (`letter-weight: '500'`, DESIGN.md:338). Every
+   other value is a scale token or content-driven — the token pin does not move for this file.
+
+   NO `--type-*` ROLE VAR IN THE LETTER'S DECLARATION BLOCK: 44px/500 is not one of the type
+   roles, and pairing a role's `font` shorthand with overrides would claim a role the letter
+   does not have (the role-companion rule). The micro role beneath it travels with BOTH its
+   companions — `--tracking-micro` and the uppercase — per `findRoleWithoutCompanions`' rule.
+
+   NO NESTING ANYWHERE, for `SuggestionsView.css`'s stated reason: `token-usage.test.ts`'s CSS
+   reader matches innermost brace pairs, and a nested declaration is invisible to the contrast,
+   token and motion guards.
+
+   NO `--accent-dim` IN ANY SPELLING: the row's own background is `--surface-overlay`, the one
+   surface where accent-dim measures 2.70:1 and fails the 3:1 non-text floor (DESIGN.md:506) —
+   the ramp's A stop is `{colors.accent}` (5.5:1 as text, and large besides) for that reason.
+
+   NOT IN `CARD_SHAPED`: this file spends `--radius-md` on the row, so it must never touch
+   `--radius-card` or the 63:88 ratio. The thumbnail's geometry arrives entirely through the
+   global `card-shape` class and `CardPlaceholder`'s own listed stylesheet; what this file
+   spends on that slot is POSITION and HEIGHT, which are the row's business.
+
+   NO NEW MOTION: the crossfade lives on `.agent-view-body`, and the one transition below is the
+   image fade-in — a single property over `--motion-pulse`, whose reduced-motion fallback is
+   already registered in tokens.css's inventory (zeroing the token makes the picture instant).
+
+   THIS FILE SPENDS NO OUTER MARGIN — `.agent-view-body` supplies the view's inset. */
+
+/* The empty-push line: DESIGN.md `components.empty-push-line` — `type: '{typography.body}'`,
+   `foreground: '{colors.text-secondary}'`, and it "spends no length of its own". `margin: 0` is
+   the UA reset for a `<p>`, not a spacing decision. */
+.tier-list-view-empty {
+  margin: 0;
+  color: var(--text-secondary);
+  font: var(--type-body);
+}
+
+/* The list reset, local for `SuggestionsView.css`'s reason: a `ul` is the correct semantics
+   (UX-DR44) and a bulleted column of tiers is not the correct presentation. `{spacing.2}`
+   between rows, from the scale's "internal clusters" band. */
+.tier-list-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+/* THE ROW — DESIGN.md `components.tier-row`: `background: '{colors.surface-overlay}'`,
+   `border: '1px solid {colors.border-hairline}'` (DESIGN.md:334 — a components.tier-row
+   value), `radius: '{rounded.md}'`. Padding and gap are `{spacing.2}`/`{spacing.3}` from the
+   scale, the swap row's own pairing for the same anatomy at the same scale.
+
+   TWO COLUMNS: chip · body, the second `minmax(0, 1fr)` and never a bare `1fr`
+   (`shell.test.ts`'s min-content trap: one unbreakable 200-character note would widen the
+   column past its share). The row's HEIGHT is content-driven — whichever is taller of the chip
+   and the wrapped strip — so nothing here fixes a card's size in a number. */
+.tier-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-2) var(--space-3);
+  align-items: start;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-overlay);
+}
+
+/* THE CHIP — DESIGN.md `components.tier-row.chip-width`: `132px` (DESIGN.md:336), on
+   `components.tier-row.chip-background` `{colors.surface-well}` (the surface ramp's inset step,
+   DESIGN.md:481 lists tier chips by name). A flex COLUMN because the name sits BENEATH the
+   letter (DESIGN.md:590). The radius is `{rounded.sm}` from the scale — an inset chip inside a
+   `{rounded.md}` row, one step down, the scale's own pairing. */
+.tier-chip {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 132px;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-well);
+  text-align: center;
+}
+
+/* THE LETTER — DESIGN.md `components.tier-row.letter-size`: `44px`, and
+   `components.tier-row.letter-weight`: `500` (DESIGN.md:337-338). Deliberately NO `--type-*`
+   role var in this block (see the header): 44px/500 is the tier letter's own treatment, not a
+   type role, and the family arrives by inheritance. `line-height: 1` is a ratio, not a length —
+   the glyph box hugs the letter so the name beneath sits close. */
+.tier-chip-letter {
+  font-size: 44px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* THE RAMP (DESIGN.md:590): `accent-bright` (S) · `accent` (A) · `text-primary` (B) ·
+   `text-secondary` (C) · `text-tertiary` (D). At 44px every stop is large text and clears the
+   floor on `surface-well` comfortably; `--accent-dim` appears nowhere (DESIGN.md:506). Colour
+   never carries the rank alone — the name beneath is the accessible carrier. */
+.tier-chip-letter[data-letter='S'] {
+  color: var(--accent-bright);
+}
+
+.tier-chip-letter[data-letter='A'] {
+  color: var(--accent);
+}
+
+.tier-chip-letter[data-letter='B'] {
+  color: var(--text-primary);
+}
+
+.tier-chip-letter[data-letter='C'] {
+  color: var(--text-secondary);
+}
+
+.tier-chip-letter[data-letter='D'] {
+  color: var(--text-tertiary);
+}
+
+/* THE NAME — DESIGN.md:590: "the tier name in `{typography.micro}` `{colors.text-tertiary}`
+   beneath". The micro role travels with BOTH companions (`--tracking-micro`, uppercase) —
+   `findRoleWithoutCompanions`' rule. `overflow-wrap` so one unbroken 40-character token cannot
+   widen the 132px chip. */
+.tier-chip-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-tertiary);
+  font: var(--type-micro);
+  letter-spacing: var(--tracking-micro);
+  text-transform: uppercase;
+}
+
+/* THE BODY COLUMN — note over strip. `min-width: 0` so the grid track can actually shrink it. */
+.tier-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* THE NOTE — DESIGN.md:590: "a note in `{typography.body}` `{colors.text-secondary}`". It
+   WRAPS rather than truncating: the wire caps it at 200 characters and the artefact never says
+   "one-line" of it, so the words the agent actually said stay readable. `overflow-wrap` so one
+   unbreakable token cannot widen the column past its track. */
+.tier-row-note {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font: var(--type-body);
+}
+
+/* THE STRIP — a WRAPPING row of thumbnails (DESIGN.md:590's "thumbnail row"; the flex-wrap
+   precedents are AgentView.css:106 and ColourDistribution.css:173). `{spacing.2}` between
+   tiles, the internal-clusters band. */
+.tier-row-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* THE TILE — a `<button>` reset in the manner `SwapsView.css` established: the UA's background,
+   border, padding and centred font all fight the strip. No hover tint and no live marker,
+   deliberately: DESIGN.md's tier-row specifies neither, and an invented one would need a
+   citation this artefact cannot give. The keyboard affordance is the focus ring below; the
+   pointer feedback is the detail panel itself. */
+.tier-tile {
+  display: flex;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: start;
+}
+
+/* THE FOCUS RING (UX-DR40, UX-DR46): `:focus-visible`, never `:focus`; `outline`, because the
+   tile sits on the row's known surface and the two-band over-art treatment buys nothing.
+   `outline: none` appears nowhere in this file in any spelling. */
+.tier-tile:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* THE THUMBNAIL SLOT (UX-DR36): a fixed-shape well from the first frame. `min-height: 6lh`
+   against the row's body line-height gives the card a readable size without spending a px —
+   `SwapsView.css`'s content-derivation trick, at the same scale. The child derives its WIDTH
+   from the height through `card-shape`'s own 63:88; nothing here declares `aspect-ratio` or a
+   card radius (see the header — this file is not in CARD_SHAPED).
+
+   `position: relative` is the containing block for the image, which lies OVER the well rather
+   than replacing it, so the layout is settled before the first byte arrives. */
+.tier-tile-thumb {
+  position: relative;
+  display: flex;
+  min-height: 6lh;
+  font: var(--type-body);
+}
+
+/* THE PICTURE, OVER THE WELL (UX-DR36, AD-11) — `SuggestionsView.css`'s block verbatim:
+   `object-fit: cover` for the 0.24% render-vs-frame mismatch, and a fade that is mechanically
+   reduced-motion-safe (one property, one duration token — zeroing `--motion-pulse` is UX-DR42's
+   registered fallback for image fade-in). */
+.tier-tile-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--motion-pulse) var(--ease-out);
+}
+
+.tier-tile-image[data-loaded='true'] {
+  opacity: 1;
+}

@@ -70,6 +70,8 @@ import type {
   SuggestionsEvent,
   SwapItem,
   SwapsEvent,
+  TierItem,
+  TierListEvent,
 } from '../api/schema'
 
 /**
@@ -172,11 +174,11 @@ interface AgentViewContentBase {
  * (`Extract<AgentViewContent, {kind: 'swaps'}>`-style) — never from wire types, which
  * `wire-contract.test.ts` bans outside `src/api/`.
  *
- * The two kinds without a view yet (`tier_list`, `groups`) carry `readonly never[]`: the socket
- * still drops their frames (a kind must not become *acceptable* before something can display
- * it), so no builder exists to fill those arms and the only constructible value is the empty
- * array a synthetic test fixture uses. Their Epic-9-numbered stories widen their own arms
- * alongside the views that render them, exactly as 16.1 widened `swaps`.
+ * The one kind without a view yet (`groups`) carries `readonly never[]`: the socket still drops
+ * its frames (a kind must not become *acceptable* before something can display it), so no
+ * builder exists to fill that arm and the only constructible value is the empty array a
+ * synthetic test fixture uses. Its own story widens its arm alongside the view that renders it,
+ * exactly as 16.1 widened `swaps` and 16.2 widened `tier_list`.
  *
  * Every field stays `schema.ts`-typed — `SuggestionItem`/`SwapItem` are the generated models
  * through their aliases, never hand-written rows — which is the half of the wire rule that
@@ -201,8 +203,12 @@ export type AgentViewContent =
     })
   | (AgentViewContentBase & {
       readonly kind: 'tier_list'
-      /** No view exists to render these yet — the socket still drops `tier_list` frames. */
-      readonly items: readonly never[]
+      /**
+       * The pushed tiers, drawn by `TierListView` (story 16.2), which hydrates every unique
+       * card id across all tiers itself. `count` beside this is `items.length` — payload TIERS,
+       * raw: the view's empty-tier skipping is render-only and never rewrites the count.
+       */
+      readonly items: readonly TierItem[]
     })
   | (AgentViewContentBase & {
       readonly kind: 'groups'
@@ -472,6 +478,41 @@ export const swapsViewOf = (event: SwapsEvent): AgentViewContent => {
 }
 
 /**
+ * One `tier_list` envelope → one {@link AgentViewContent}. **Total, by construction** — the
+ * third structural sibling of {@link suggestionsViewOf}, and every clause of that function's
+ * defence argument applies verbatim: the generated payload fields are optional for honest
+ * wires, the narrower is kind-only, a `TypeError` here would be an uncaught exception inside a
+ * socket message handler, and the blank-title fallback is the dialog's accessible name being
+ * guarded *"at the point content is constructed"*. What it does NOT check is any field of any
+ * ITEM — a tier with a bad letter or missing name is `TierListView`'s to degrade, at the row
+ * that renders it, exactly as c6-7 homed the same duty.
+ *
+ * `count` is `items.length` — payload TIERS, raw, matching how both prior kinds count their own
+ * payload items. The view skips *empty* tiers at render; that skipping is render-only and this
+ * count deliberately does not anticipate it.
+ *
+ * Args:
+ *   event: The frame, exactly as `socket.ts` narrowed it.
+ *
+ * Returns:
+ *   Content the shell can draw, for every input the wire admits.
+ */
+export const tierListViewOf = (event: TierListEvent): AgentViewContent => {
+  const rawItems: unknown = event.payload?.items
+  const items = Array.isArray(rawItems) ? rawItems : []
+  const rawTitle: unknown = event.payload?.title
+  const title = typeof rawTitle === 'string' ? rawTitle.trim() : undefined
+  return {
+    id: event.id,
+    ts: event.ts,
+    kind: event.kind,
+    title: title === undefined || title === '' ? AGENT_VIEW_LABELS.tier_list : title,
+    count: items.length,
+    items,
+  }
+}
+
+/**
  * A `suggestions` push arrived: build the content and show it (AC 1, UX-DR34).
  *
  * **The one verb `connection.ts` calls**, and the reason the composition seam needs no
@@ -497,6 +538,17 @@ export const openSuggestionsPush = (event: SuggestionsEvent): void => {
  */
 export const openSwapsPush = (event: SwapsEvent): void => {
   openAgentView(swapsViewOf(event))
+}
+
+/**
+ * A `tier_list` push arrived: build the content and show it (story 16.2) — the third verb
+ * `connection.ts` calls, in {@link openSuggestionsPush}'s exact shape and for its exact
+ * reasons: no branch on whether a view is already open (opening over an open view REPLACES,
+ * which is all the scalar can do), and the composition seam still holds no `setState` and
+ * names no store.
+ */
+export const openTierListPush = (event: TierListEvent): void => {
+  openAgentView(tierListViewOf(event))
 }
 
 /**

@@ -327,6 +327,24 @@ export type SuggestionsEvent = Extract<AgentEvent, { kind: 'suggestions' }>
 export type SwapsEvent = Extract<AgentEvent, { kind: 'swaps' }>
 
 /**
+ * One `tier_list` frame — the envelope, narrowed to the member `kind: 'tier_list'` selects.
+ *
+ * **Consumer: `tierListViewOf` in `src/state/agentView.ts`** (story 16.2), the third agent-view
+ * payload the app reads — added under this file's standing rule that an alias lands in the
+ * commit that gives it a consumer.
+ *
+ * `Extract` over {@link AgentEvent} rather than `Schemas['TierListEvent']`, for
+ * {@link SuggestionsEvent}'s reason verbatim: the union is what the dispatch switch narrows, so
+ * extracting from it is the one spelling that cannot disagree with the thing being narrowed.
+ *
+ * ⚠️ `payload` is REQUIRED in this type and OPTIONAL on the wire in practice — the exact caveat
+ * {@link SuggestionsEvent} carries: `agentEventOf` (`client.ts`) validates the `kind`
+ * discriminant and nothing else, so a frame of `{"kind":"tier_list"}` reaches a consumer typed
+ * as a full event. The builder that reads this shape is total for exactly that reason.
+ */
+export type TierListEvent = Extract<AgentEvent, { kind: 'tier_list' }>
+
+/**
  * One `deck_changed` frame — the envelope, narrowed to the member `kind: 'deck_changed'` selects.
  *
  * **Consumers: the dispatch seam (`src/state/socket.ts` → `connection.ts`)**, which as of story
@@ -401,6 +419,24 @@ export type SuggestionItem = Schemas['SuggestionItem']
  * price chip could never be populated. Render confidence, never price.
  */
 export type SwapItem = Schemas['SwapItem']
+
+/**
+ * One tier: `{letter, name, note?, card_ids}` (AD-7).
+ *
+ * **Consumer: the `tier_list` arm of `AgentViewContent` in `src/state/agentView.ts`** (story
+ * 16.2), which retains the items so `TierListView` can render and re-hydrate them — the exact
+ * shape of {@link SwapItem}'s consumer one entry up, for the third view kind.
+ *
+ * Reached through `Schemas` rather than through {@link TierListEvent}'s payload, because it is a
+ * named model on the Python side and the generator emits it as one. `TierListPayload` is
+ * deliberately NOT aliased: nothing outside the builder ever holds a payload, so an alias for it
+ * would have no consumer.
+ *
+ * The `letter` is the closed five-value `S|A|B|C|D` vocabulary and `name` is its accessible
+ * carrier of rank (`types.d.ts`: colour alone must never be what tells a reader that S beats D)
+ * — which is why the view renders the name beside the letter, always.
+ */
+export type TierItem = Schemas['TierItem']
 
 /**
  * The closed set of reason tokens (AD-16), as a TypeScript string union.

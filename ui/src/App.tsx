@@ -9,6 +9,7 @@ import { AgentView } from './containers/AgentView/AgentView'
 import { AgentViewsNav } from './containers/AgentViewsNav/AgentViewsNav'
 import { SuggestionsView } from './containers/SuggestionsView/SuggestionsView'
 import { SwapsView } from './containers/SwapsView/SwapsView'
+import { TierListView } from './containers/TierListView/TierListView'
 import { CardDetail } from './containers/CardDetail/CardDetail'
 import { CardGrid } from './containers/CardGrid/CardGrid'
 import { ColourDistribution } from './containers/ColourDistribution/ColourDistribution'
@@ -762,20 +763,22 @@ export default function App() {
                 `children` and asks nothing about them, so the kind-specific view rides inside
                 rather than being branched on in there.
 
-                KIND-KEYED SINCE c6-8, TWO ARMS SINCE 16.1. `content.kind` widened to the full
+                KIND-KEYED SINCE c6-8, THREE ARMS SINCE 16.2. `content.kind` widened to the full
                 four-kind view enum at c6-8 so the NAV could be generic over the closed contract,
                 and each view story since pairs its tool, its dispatch arm and its container in
-                one change — a push never arrives that the UI cannot display. `suggestions` and
-                `swaps` are the reachable arms; `tier_list` and `groups` still render `null`
+                one change — a push never arrives that the UI cannot display. `suggestions`,
+                `swaps` and `tier_list` are the reachable arms; `groups` still renders `null`
                 (nothing on the glass under a shell that still announces its heading — a strictly
-                better failure than a crash) and stay UNREACHABLE from the wire, because the
-                socket still drops those two kinds at its dispatch switch. Each remaining view
-                story replaces one `null` with its container. The narrowing on `kind` is what
-                types `items` per arm now that `AgentViewContent` is a discriminated union. */}
+                better failure than a crash) and stays UNREACHABLE from the wire, because the
+                socket still drops that kind at its dispatch switch. The remaining view story
+                replaces the `null` with its container. The narrowing on `kind` is what types
+                `items` per arm now that `AgentViewContent` is a discriminated union. */}
             {agentView.kind === 'suggestions' ? (
               <SuggestionsView kind={agentView.kind} items={agentView.items} />
             ) : agentView.kind === 'swaps' ? (
               <SwapsView kind={agentView.kind} items={agentView.items} />
+            ) : agentView.kind === 'tier_list' ? (
+              <TierListView kind={agentView.kind} items={agentView.items} />
             ) : null}
           </AgentView>
         )

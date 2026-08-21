@@ -1670,6 +1670,34 @@ describe('the containers are a declared category with a posture of its own', () 
         'react',
       ],
     },
+    // 16.2's tier-list view — the THIRD view body, `SwapsView.tsx`'s structural sibling with
+    // the same inheritance story. The differences are the story again: no `StatChip` (a tier
+    // row carries a chip, a note and a strip — no per-item stat exists to chip), and
+    // `../frontFaceCost` joins because each tile's accessible name is the card's own front-face
+    // name in a visually hidden span (a strip tile has no label element the way a swap tile
+    // does, and a nameless button is an anonymous Tab stop). `../SuggestionsView/copy` is
+    // reached ACROSS containers for the same kind-generic-template reason, and NO copy module
+    // of its own exists — every word the view renders is wire data. It holds hooks per TILE
+    // (up to sixty cards per row is why `TierTile` exists), handlers and the card cache's third
+    // self-hydrating consumer, so `posture.test.ts` would fail it under `src/components/` three
+    // times over. `../../state/agentView` is TYPE-only, reaching the STATE layer rather than
+    // `src/api/` — the props derive from the store union's own `tier_list` arm.
+    {
+      file: 'src/containers/TierListView/TierListView.tsx',
+      imports: [
+        '../../components/CardPlaceholder/CardPlaceholder',
+        '../../state/agentView',
+        '../../state/cards',
+        '../../state/faces',
+        '../../state/inspection',
+        '../CardTile/imageUrl',
+        '../SuggestionsView/copy',
+        '../frontFaceCost',
+        '../useCardArt',
+        './TierListView.css',
+        'react',
+      ],
+    },
     // c6-8's agent-views nav — the header pills. It reads the agent-view store through TWO
     // per-kind selector hooks and calls one verb on it, which is the whole of its state
     // coupling; `../../api/schema` is a TYPE-only import for the kind union (the rule below
@@ -2241,7 +2269,11 @@ describe('the containers are a declared category with a posture of its own', () 
     // joins COPY_MODULES on the DeckBadges precedent) and no derivation module. A story that
     // gives a second push kind its view growing this tree by exactly one component is the shape
     // it should have.
-    expect(CONTAINERS).toHaveLength(37)
+    // 38 at 16.2, which adds the tier-list view and NOTHING else — the same one-component shape
+    // as 16.1, for the same reasons: the empty-push template stays shared, every rendered word
+    // is wire data (so no copy module and no COPY_MODULES entry), and no derivation module —
+    // the empty-tier skip is a render-time filter, not a derivation anything else reads.
+    expect(CONTAINERS).toHaveLength(38)
     for (const { file } of CONTAINERS) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }

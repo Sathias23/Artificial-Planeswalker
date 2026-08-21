@@ -20,7 +20,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RETRIES_QUIETLY } from '../components/StatePanel/states'
 import type { StateKey } from '../components/StatePanel/copy'
 import type { AgentSocketHandlers, SessionOutcome } from '../api/client'
-import type { AgentEvent, SuggestionsEvent, SwapsEvent, SystemEvent } from '../api/schema'
+import type {
+  AgentEvent,
+  SuggestionsEvent,
+  SwapsEvent,
+  SystemEvent,
+  TierListEvent,
+} from '../api/schema'
 import {
   createAgentSocket,
   DISCONNECTED_AFTER_MS,
@@ -88,6 +94,8 @@ const driving = (...outcomes: SessionOutcome[]) => {
   // The second push channel (16.1), recorded apart from the first so a cross-wired dispatch —
   // a swaps frame reaching `onSuggestions`, or the reverse — fails by name.
   const swapsPushes: SwapsEvent[] = []
+  // The third push channel (16.2), kept apart for the same cross-wiring reason.
+  const tierPushes: TierListEvent[] = []
   let reconnects = 0
 
   const socket = createAgentSocket({
@@ -98,6 +106,7 @@ const driving = (...outcomes: SessionOutcome[]) => {
     onSystemEvent: (event) => events.push(event),
     onSuggestions: (event) => pushes.push(event),
     onSwaps: (event) => swapsPushes.push(event),
+    onTierList: (event) => tierPushes.push(event),
     mint,
     open,
   })
@@ -110,6 +119,7 @@ const driving = (...outcomes: SessionOutcome[]) => {
     events,
     pushes,
     swapsPushes,
+    tierPushes,
     reconnects: () => reconnects,
     /** The socket the loop most recently opened. */
     latest: () => sockets[sockets.length - 1],
@@ -275,6 +285,7 @@ describe('the generation counter survives every await and every callback (AC 4)'
       onSystemEvent: () => undefined,
       onSuggestions: () => undefined,
       onSwaps: () => undefined,
+      onTierList: () => undefined,
       mint: () => new Promise<SessionOutcome>((resolve) => (release = resolve)),
       open: (ticket) => {
         sockets.push({ ticket })
@@ -302,6 +313,7 @@ describe('the generation counter survives every await and every callback (AC 4)'
       onSystemEvent: () => undefined,
       onSuggestions: () => undefined,
       onSwaps: () => undefined,
+      onTierList: () => undefined,
       mint: () => new Promise<SessionOutcome>((resolve) => answers.push(resolve)),
       open: (ticket) => {
         sockets.push({ ticket })
@@ -732,22 +744,60 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     socket.stop()
   })
 
-  it('receives and DROPS the two remaining agent-view kinds, without treating them as faults', async () => {
-    const { socket, events, pushes, swapsPushes, statuses, latest } = await open()
+  it('DELIVERS a `tier_list` push, with its payload, to its OWN view callback (16.2)', async () => {
+    // The pin this line replaces said `tier_list` is dropped — 16.2 is the story that flips it,
+    // pairing the dispatch arm with the view that can display what it carries.
+    const { socket, tierPushes, swapsPushes, pushes, events, statuses, latest } = await open()
 
-    for (const kind of ['tier_list', 'groups'] as const) {
+    const push: TierListEvent = {
+      kind: 'tier_list',
+      id: 'push-tiers-1',
+      ts: '2026-08-21T09:15:00Z',
+      payload: {
+        title: 'How the creatures rank',
+        items: [
+          {
+            letter: 'S',
+            name: 'Auto-include',
+            note: 'Never leaves the deck.',
+            card_ids: ['c-tier-1'],
+          },
+        ],
+      },
+    }
+    latest().handlers.onMessage(push)
+
+    // THE WHOLE ENVELOPE, to the tier-list callback and to no other: a dispatch that folded
+    // this into either sibling would open the wrong kind's view over a tier-list payload.
+    expect(tierPushes).toEqual([push])
+    expect(tierPushes[0].payload.items?.[0].letter).toBe('S')
+    expect(swapsPushes).toEqual([])
+    expect(pushes).toEqual([])
+    expect(events).toEqual([])
+    expect(statuses).toEqual(['live'])
+    expect(latest().closed).toBe(0)
+
+    socket.stop()
+  })
+
+  it('receives and DROPS the one remaining agent-view kind, without treating it as a fault', async () => {
+    const { socket, events, pushes, swapsPushes, tierPushes, statuses, latest } = await open()
+
+    for (const kind of ['groups'] as const) {
       latest().handlers.onMessage(frame(kind))
     }
 
-    // `swaps` LEFT this list at 16.1, which gave it a view to open — the same exit `suggestions`
-    // made at c6-6. Later Epic-16 stories build the two that remain, and until they do, a push
-    // is a well-formed message about a surface that does not exist yet — treating a VALID frame
-    // as malformed would make the agent's pushes look like a wire fault.
+    // `swaps` LEFT this list at 16.1 and `tier_list` at 16.2, each exit pairing the dispatch
+    // arm with the view that can display what it carries — the same exit `suggestions` made at
+    // c6-6. A later Epic-16 story builds the one that remains, and until it does, a push is a
+    // well-formed message about a surface that does not exist yet — treating a VALID frame as
+    // malformed would make the agent's pushes look like a wire fault.
     expect(events).toEqual([])
-    // Nor do they leak into either view arm — a `default` that fell through would open a view
+    // Nor does it leak into any view arm — a `default` that fell through would open a view
     // with the wrong kind's payload.
     expect(pushes).toEqual([])
     expect(swapsPushes).toEqual([])
+    expect(tierPushes).toEqual([])
     expect(statuses).toEqual(['live'])
     expect(latest().closed).toBe(0)
 
@@ -785,6 +835,7 @@ describe('the loop survives a socket factory that fails outright', () => {
       onSystemEvent: () => undefined,
       onSuggestions: () => undefined,
       onSwaps: () => undefined,
+      onTierList: () => undefined,
       mint: () => {
         mintedAt.push(Date.now())
         return Promise.resolve(TICKET)

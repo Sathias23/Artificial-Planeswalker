@@ -1,7 +1,7 @@
 import { renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { SuggestionsEvent, SwapsEvent } from '../api/schema'
+import type { SuggestionsEvent, SwapsEvent, TierListEvent } from '../api/schema'
 import {
   AGENT_VIEW_LABELS,
   type AgentViewContent,
@@ -11,11 +11,13 @@ import {
   openAgentView,
   openSuggestionsPush,
   openSwapsPush,
+  openTierListPush,
   openViewOf,
   reopenAgentView,
   resetAgentView,
   suggestionsViewOf,
   swapsViewOf,
+  tierListViewOf,
   useAgentViewIsOpen,
   useAgentViewStore,
   useOpenAgentView,
@@ -348,6 +350,106 @@ describe('one swaps envelope becomes one view, for every payload the wire admits
     expect(openViewNow()).toMatchObject({ kind: 'swaps' })
     expect(useAgentViewStore.getState().unread).toEqual({ suggestions: true })
     expect(useAgentViewStore.getState().retained.suggestions).toBeDefined()
+  })
+})
+
+// =========================================================================================
+// STORY 16.2 — the third builder, in the same harness
+// =========================================================================================
+
+const TIER = {
+  letter: 'S',
+  name: 'Auto-include',
+  note: 'Never leaves the deck.',
+  card_ids: ['c-tier-1', 'c-tier-2'],
+} as const
+
+/** A `tier_list` frame, cast for the fixture's reason above: the wire really can omit `payload`. */
+const tierFrame = (payload: unknown, id = 'push-t1'): TierListEvent =>
+  ({ id, ts: '2026-08-21T10:15:00Z', kind: 'tier_list', payload }) as TierListEvent
+
+describe('one tier_list envelope becomes one view, for every payload the wire admits (16.2)', () => {
+  it('carries the payload through — title, count and the items themselves', () => {
+    const content = tierListViewOf(tierFrame({ title: 'Creature ranks', items: [TIER] }, 'push-9'))
+
+    expect(content.title).toBe('Creature ranks')
+    expect(content.count).toBe(1)
+    expect(content.items).toEqual([TIER])
+    expect(content.id).toBe('push-9')
+    expect(content.kind).toBe('tier_list')
+    expect(content.ts).toBe('2026-08-21T10:15:00Z')
+  })
+
+  it('counts payload TIERS, raw — never the cards inside them, never the render-time skip', () => {
+    // The store half of the "tiers, not cards" pin the tool carries on the Python side: two
+    // tiers holding two cards each count 2, and an EMPTY tier still counts — the view skips it
+    // at render (DESIGN.md:590), but that skipping is render-only and never rewrites the count.
+    const emptyTier = { letter: 'D', name: 'Cut', card_ids: [] } as const
+    const content = tierListViewOf(tierFrame({ items: [TIER, emptyTier] }))
+
+    expect(content.count).toBe(2)
+  })
+
+  it('builds an EMPTY view rather than throwing when the payload is absent entirely', () => {
+    // `agentEventOf` validates only `kind`, so `{"kind":"tier_list"}` reaches this function
+    // typed as a full event — the same totality claim both siblings carry, on the third arm.
+    const content = tierListViewOf(tierFrame(undefined))
+
+    expect(content.items).toEqual([])
+    expect(content.count).toBe(0)
+    expect(content.title).toBe(AGENT_VIEW_LABELS.tier_list)
+  })
+
+  it.each([
+    ['absent', undefined],
+    ['null', null],
+    ['empty', ''],
+    ['whitespace only', '   '],
+  ])('falls back to the table’s word when the pushed title is %s', (_label, title) => {
+    // The dialog's accessible name guard, "at the point content is constructed" — and the
+    // fallback is the SAME word the nav pill carries, one owner for the kind's word.
+    const content = tierListViewOf(tierFrame({ title, items: [TIER] }))
+
+    expect(content.title).toBe(AGENT_VIEW_LABELS.tier_list)
+  })
+
+  it('keeps a pushed title that merely has whitespace around it, trimmed', () => {
+    const content = tierListViewOf(tierFrame({ title: '  Creature ranks  ', items: [] }))
+
+    expect(content.title).toBe('Creature ranks')
+  })
+
+  it('counts an explicitly empty list as 0 and not as “nothing to count”', () => {
+    const content = tierListViewOf(tierFrame({ items: [] }))
+
+    expect(content.count).toBe(0)
+    expect(content.count).not.toBeNull()
+  })
+
+  it('OPENS the view it builds — the third verb `connection.ts` calls', () => {
+    openTierListPush(tierFrame({ title: 'Creature ranks', items: [TIER] }, 'push-7'))
+
+    expect(useAgentViewStore.getState().status).toBe('open')
+    expect(openViewNow()).toEqual({
+      id: 'push-7',
+      ts: '2026-08-21T10:15:00Z',
+      kind: 'tier_list',
+      title: 'Creature ranks',
+      count: 1,
+      items: [TIER],
+    })
+    expect(useAgentViewStore.getState().retained.tier_list).toBe(openViewNow())
+  })
+
+  it('DISPLACES an open swaps view and marks it unread — through the wire verb', () => {
+    // 16.1 made the first production displacement traversal real; this re-proves the machine
+    // through the third verb, so a kind-switch between the two newest arms is covered too.
+    openSwapsPush(swapsFrame({ items: [SWAP] }))
+    openTierListPush(tierFrame({ items: [TIER] }))
+
+    expect(openViewNow()).toMatchObject({ kind: 'tier_list' })
+    expect(useAgentViewStore.getState().unread).toEqual({ swaps: true })
+    expect(useAgentViewStore.getState().retained.swaps).toBeDefined()
   })
 })
 
