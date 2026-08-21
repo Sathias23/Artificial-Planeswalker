@@ -536,16 +536,22 @@ function HistoryPopover({ id, onActivate }: { id: string; onActivate: (id: strin
     return () => cancelAnimationFrame(frame)
   }, [])
 
-  // THE VERTICAL CLAMP'S ANCHOR TERM (Greptile PR #97, round 2). The popover hangs below a
-  // content-sized header, so `HistoryPopover.css`'s max-height cannot know its own distance
-  // from the viewport top in CSS alone — subtracting only the gutters left the tail of the
-  // scrollport below a short window. Measured once, before paint, into a custom property (the
-  // ManaCurve/ColourDistribution channel — literal inline styles stay illegal): mount-only is
-  // sufficient for the same reason the focus effect's is, and exact behaviour under resize
-  // stays the eye-check's. jsdom's zero rect degrades the term to 0px — the CSS fallback.
+  // THE VERTICAL CLAMP'S ANCHOR TERM (Greptile PR #97, rounds 2 and 3). The popover hangs
+  // below a content-sized header, so `HistoryPopover.css`'s max-height cannot know its own
+  // distance from the viewport top in CSS alone — subtracting only the gutters left the tail
+  // of the scrollport below a short window. Measured before paint into a custom property (the
+  // ManaCurve/ColourDistribution channel — literal inline styles stay illegal), and
+  // RE-measured on window resize while open (round 3): resize is the only thing that can move
+  // the anchor mid-open — the header re-wraps with the window, and the list itself cannot
+  // change under an open popover (an arriving push closes it). Not a key listener, so the
+  // keyboard-floor census has no stake. jsdom's zero rect degrades the term to 0px — the CSS
+  // fallback — and exact geometry stays the eye-check's.
   const [viewportTop, setViewportTop] = useState(0)
   useLayoutEffect(() => {
-    setViewportTop(rootRef.current?.getBoundingClientRect().top ?? 0)
+    const measure = () => setViewportTop(rootRef.current?.getBoundingClientRect().top ?? 0)
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
   }, [])
 
   // FOCUS TO THE FIRST (NEWEST) ENTRY ON OPEN — a mount effect, and mount-only is sufficient
