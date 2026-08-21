@@ -16,7 +16,13 @@ import {
 } from '../../state/agentView'
 import './AgentViewsNav.css'
 import './HistoryPopover.css'
-import { HISTORY_LABEL, HISTORY_QUIET_TOOLTIP, NAV_GROUP_LABEL, QUIET_TOOLTIP, UNREAD_WORD } from './copy'
+import {
+  HISTORY_LABEL,
+  HISTORY_QUIET_TOOLTIP,
+  NAV_GROUP_LABEL,
+  QUIET_TOOLTIP,
+  UNREAD_WORD,
+} from './copy'
 import { pushTimeLabel } from './pushTime'
 
 /**
@@ -257,12 +263,7 @@ function AgentViewPill({ kind }: { kind: AgentViewKind }) {
  */
 function ClockGlyph() {
   return (
-    <svg
-      className="agent-views-nav-clock"
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-      focusable="false"
-    >
+    <svg className="agent-views-nav-clock" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
       <circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
       <path
         d="M8 4.75V8l2.25 1.75"
@@ -352,8 +353,7 @@ function HistoryPill() {
     // already on `<body>`. Focus resting on some other control (the entries are ordinary Tab
     // stops, so it can wander out) is a decision this close did not make and must not reverse —
     // `AgentView`'s arm-2 guard, in the non-modal shape.
-    const inWrapper =
-      active instanceof Node && (wrapperRef.current?.contains(active) ?? false)
+    const inWrapper = active instanceof Node && (wrapperRef.current?.contains(active) ?? false)
     if (pill !== null && (inWrapper || active === null || active === document.body)) pill.focus()
     setOpen(false)
   }

@@ -6345,7 +6345,12 @@ describe('the History pill puts any of the last twenty pushes one click away (17
     await pushed('suggestions', 'First look', 'p1')
     await pushed('swaps', 'Second look', 'p2')
     await pushed('tier_list', 'Third look', 'p3', [
-      { letter: 'S', name: 'Keep', note: 'Never leaves the deck.', card_ids: ['id-Llanowar Elves'] },
+      {
+        letter: 'S',
+        name: 'Keep',
+        note: 'Never leaves the deck.',
+        card_ids: ['id-Llanowar Elves'],
+      },
     ])
     await pushed('groups', 'Fourth look', 'p4')
     escape()

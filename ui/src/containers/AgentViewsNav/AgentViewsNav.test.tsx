@@ -11,7 +11,13 @@ import {
   useAgentViewStore,
 } from '../../state/agentView'
 import { AgentViewsNav } from './AgentViewsNav'
-import { HISTORY_LABEL, HISTORY_QUIET_TOOLTIP, NAV_GROUP_LABEL, QUIET_TOOLTIP, UNREAD_WORD } from './copy'
+import {
+  HISTORY_LABEL,
+  HISTORY_QUIET_TOOLTIP,
+  NAV_GROUP_LABEL,
+  QUIET_TOOLTIP,
+  UNREAD_WORD,
+} from './copy'
 import { pushTimeLabel } from './pushTime'
 
 /**
@@ -549,9 +555,9 @@ describe('the popover’s four dismissals (17.2)', () => {
     // onto an active KIND pill, a live control outside the pill+popover wrapper. Selected by
     // CLASS rather than through `pillFor`: with the popover open, the swaps HISTORY ENTRY's
     // accessible name also starts with the kind word, and the role query would find both.
-    const swapsPill = [...document.querySelectorAll<HTMLButtonElement>('.agent-views-nav-pill')].find(
-      (p) => p.textContent?.startsWith(AGENT_VIEW_LABELS.swaps),
-    )!
+    const swapsPill = [
+      ...document.querySelectorAll<HTMLButtonElement>('.agent-views-nav-pill'),
+    ].find((p) => p.textContent?.startsWith(AGENT_VIEW_LABELS.swaps))!
     act(() => {
       swapsPill.focus()
     })
