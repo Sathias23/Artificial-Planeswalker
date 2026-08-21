@@ -443,6 +443,24 @@ const COPY_MODULES: Map<string, string> = new Map([
       '— the heading’s live region is the view’s one announcement.',
   ],
   [
+    'src/containers/SwapsView/SwapsView.tsx',
+    'the swap tile’s two label templates (story 16.1): "Out · {N} copies" and "In · {N} ' +
+      'copies", the literal wording `contracts.py`’s SwapItem docstring fixes and DESIGN.md’s ' +
+      'swap-row row repeats. The words "Out", "In" and "copies" are authored — the wire carries ' +
+      'only the quantities — so the component is declared here on the DeckBadges precedent ' +
+      'rather than smuggled past the prose detector as template spans (residue 5 of this ' +
+      'file’s header, and using it deliberately would be an evasion of the guard rather than a ' +
+      'use of it). Plural always, zero included: the contract writes "N copies" literally, "0 ' +
+      'copies" is a designed case, and no artefact specifies a singular form, so none is ' +
+      'invented. The module also owns the confidence chip’s LABEL, "Confidence": DESIGN.md’s ' +
+      'swap-row names a confidence StatChip and spells no label word for it, so the word is ' +
+      'authored here, while the chip’s VALUE stays the wire token — data, not copy. The module ' +
+      'holds NOTHING ELSE authored: the empty-push line is ' +
+      '`SuggestionsView/copy.ts`’s shared template (one sentence, one owner — the reason this ' +
+      'story ships no copy.ts of its own), the rationale and confidence value a row renders are ' +
+      'DATA off the wire, and the arrow glyph is aria-hidden chrome.',
+  ],
+  [
     'src/containers/DeckAnnouncer/copy.ts',
     'the deck-refetch announcement (story c7-5, UX-DR45): "Deck updated — {N} card(s)", the one ' +
       'sentence the coalesced-refetch live region ever speaks — exactly once per settled ' +

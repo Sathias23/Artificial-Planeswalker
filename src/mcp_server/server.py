@@ -46,7 +46,7 @@ from mcp.server.fastmcp import FastMCP
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.companion.client import notify_deck_changed as _notify_deck_changed
-from src.companion.contracts import SuggestionsPayload
+from src.companion.contracts import SuggestionsPayload, SwapsPayload
 from src.data.database import create_engine, create_session_factory
 from src.mcp_server.tools.assess_deck_power import AssessDeckPowerResult
 from src.mcp_server.tools.assess_deck_power import (
@@ -57,9 +57,14 @@ from src.mcp_server.tools.build_search_index import build_search_index as _build
 from src.mcp_server.tools.card_lookup import CardLookupResult, lookup_card
 from src.mcp_server.tools.card_search import CardSearchResult
 from src.mcp_server.tools.card_search import search_cards as _search_cards_helper
-from src.mcp_server.tools.companion import SetActiveDeckResult, ShowSuggestionsResult
+from src.mcp_server.tools.companion import (
+    SetActiveDeckResult,
+    ShowSuggestionsResult,
+    ShowSwapsResult,
+)
 from src.mcp_server.tools.companion import set_active_deck as _set_active_deck_helper
 from src.mcp_server.tools.companion import show_suggestions as _show_suggestions_helper
+from src.mcp_server.tools.companion import show_swaps as _show_swaps_helper
 from src.mcp_server.tools.compare_deck_power import CompareDeckPowerResult
 from src.mcp_server.tools.compare_deck_power import (
     compare_deck_power as _compare_deck_power_helper,
@@ -556,6 +561,54 @@ def build_server(
             including the ones where nothing actually reached the wire.
         """
         return await _show_suggestions_helper(payload=payload)
+
+    @mcp.tool()
+    async def companion_show_swaps(payload: SwapsPayload) -> ShowSwapsResult:
+        """Show a list of proposed card swaps in the companion app's live browser view.
+
+        Use this when you propose trading cards out of a deck for cards into it —
+        "cut X for Y" — so the user sees both actual cards side by side instead of
+        reading a list of names. Send the swaps here **and** give your normal
+        answer in the conversation as you always would; this adds a visual
+        channel, it does not replace the reply.
+
+        Name each card by its Scryfall printing id, which ``lookup_card_by_name``
+        or any of this server's search tools returns as the card's ``id``. A card
+        name in ``out_card_id`` or ``in_card_id`` will not render. An empty
+        ``items`` list is a legitimate push meaning "I looked and found no trade
+        worth proposing" — send it rather than skipping the call.
+
+        The companion app has to be running; if it is not, this reports that,
+        nothing is sent, and your written answer still stands on its own.
+        Stateless and cumulative in nothing — each call carries its whole
+        payload, and the companion shows what the latest call sent.
+
+        Args:
+            payload: The swaps to display. ``payload.items`` is a list of at
+                most 60 swaps, shown in the order you send them, each with
+                ``out_card_id`` (the Scryfall printing id of the card leaving
+                the deck, required), ``in_card_id`` (the Scryfall printing id
+                of the card entering it, required), ``rationale`` (why the
+                trade is worth making, required, non-blank, up to 600
+                characters),
+                ``out_qty`` and ``in_qty`` (how many copies leave and enter,
+                required, zero or more — zero is legal), and ``confidence``
+                (optional, one of ``low``, ``medium``, ``high``).
+                ``payload.title`` is an optional header for the list, up to 80
+                characters; omit it to let the companion use its own.
+
+        Returns:
+            A result whose ``status`` is ``displayed`` (delivered to at least
+            one connected browser tab now — ``clients`` counts how many),
+            ``no_clients_connected`` (the companion took it but no tab is open
+            to see it — do not send it again), ``app_not_running`` (the
+            companion isn't running, and nothing was sent), ``payload_rejected``
+            (the companion refused the envelope itself), or ``backend_error``
+            (the companion is running and the push did not land).
+            ``items_pushed`` counts the swap pairs the call attempted to push,
+            on every status — including the ones where nothing reached the wire.
+        """
+        return await _show_swaps_helper(payload=payload)
 
     @mcp.tool()
     async def analyze_mana_curve(deck_id: str) -> ManaCurveResult:

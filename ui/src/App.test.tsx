@@ -2585,7 +2585,7 @@ describe('the page reconnects on its own (c5-6)', () => {
     expect(sockets).toHaveLength(1)
   })
 
-  it('refetches on deck_changed, and ignores the three Epic-9 view kinds (AC 11)', async () => {
+  it('refetches on deck_changed, and ignores the two unbuilt view kinds (AC 11)', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     const fetchMock = answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -2594,10 +2594,10 @@ describe('the page reconnects on its own (c5-6)', () => {
     await connect()
     const before = callsTo(fetchMock, '/api/active-deck')
 
-    // `suggestions` LEFT this list at c6-6, which gave it a view to open — see this file's own
-    // c6-6 describe for what it does now. **Epic 9** builds the three that remain (P1), and
-    // until it does they are received, dropped, and not a fault.
-    for (const kind of ['swaps', 'tier_list', 'groups']) await push(kind)
+    // `suggestions` LEFT this list at c6-6 and `swaps` at 16.1 — each exit paired with the view
+    // that can display what the kind carries. Later Epic-16 stories build the two that remain,
+    // and until they do they are received, dropped, and not a fault.
+    for (const kind of ['tier_list', 'groups']) await push(kind)
     expect(callsTo(fetchMock, '/api/active-deck') - before).toBe(0)
     expect(deckDetailCalls(fetchMock)).toBe(1)
     expect(sockets[0].closed).toBe(0)
@@ -5487,6 +5487,88 @@ describe('a suggestions push opens its view, end to end (c6-6, AC 1, AC 2, AC 4,
 })
 
 // =====================================================================================
+// 16.1 — A SWAPS PUSH OPENS ITS VIEW, END TO END, THROUGH THE REAL SOCKET SEAM
+// =====================================================================================
+
+describe('a swaps push opens its view, end to end (16.1)', () => {
+  // The c6-6 opener's shape on the second push kind, and the one test that can catch the whole
+  // chain at once: `client.ts` narrows the frame, `socket.ts` dispatches it to `onSwaps`,
+  // `connection.ts` calls `openSwapsPush`, the store opens, and `App.tsx`'s kind switch mounts
+  // `SwapsView`. A reviewer proved every seam-level test stays green with the App render arm
+  // reverted — this is the composed assertion that cannot.
+  const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
+  const dialog = () => screen.queryByRole('dialog')
+  const swapsPill = () =>
+    [...document.querySelectorAll<HTMLButtonElement>('.agent-views-nav-pill')].find((p) =>
+      p.textContent?.startsWith(AGENT_VIEW_LABELS.swaps),
+    )!
+
+  const TRADE = {
+    out_card_id: 'c-out',
+    in_card_id: 'c-in',
+    rationale: 'Same role, one turn earlier.',
+    out_qty: 2,
+    in_qty: 2,
+  }
+
+  const bootedDeck = async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks(ATRAXA_NAME))
+    render(<App />)
+    await settle()
+    await connect()
+    return fetchMock
+  }
+
+  beforeEach(() => {
+    resetInspection()
+    resetDeckMemory()
+    resetAgentView()
+  })
+
+  it('opens the swaps view with NO click, rows rendered, and the Swaps pill active', async () => {
+    const fetchMock = await bootedDeck()
+    const cardsBefore = callsTo(fetchMock, '/api/cards/')
+    expect(dialog()).toBeNull()
+    expect(swapsPill().disabled).toBe(true)
+
+    await push('swaps', { title: 'Cheaper removal', items: [TRADE] })
+
+    // The dialog is the swaps view: named by the pushed title, one row, the rationale on the
+    // glass, and BOTH tiles' labels carrying the contract's literal wording.
+    expect(dialog()).not.toBeNull()
+    expect(dialog()).toHaveAccessibleName('Cheaper removal')
+    const row = document.querySelector('.swap-row')
+    expect(row).not.toBeNull()
+    expect(row).toHaveTextContent(TRADE.rationale)
+    expect(
+      [...row!.querySelectorAll('.swap-tile-label')].map((label) => label.textContent),
+    ).toEqual(['Out · 2 copies', 'In · 2 copies'])
+    // No suggestions machinery was mounted for a swaps frame — the kind switch chose the arm.
+    expect(document.querySelector('.suggestion-row')).toBeNull()
+
+    // AC 2's nav half: the Swaps pill activates on the first push, with unread behaviour — the
+    // kind on the glass is never unread against itself.
+    expect(swapsPill().disabled).toBe(false)
+    expect(swapsPill().textContent).not.toContain('unread')
+    // …and BOTH ids were hydrated by the view itself (nothing seeds an agent-supplied id):
+    // one trade, two distinct ids, two reads.
+    expect(callsTo(fetchMock, '/api/cards/') - cardsBefore).toBe(2)
+  })
+
+  it('falls back to the table’s word when the agent names nothing, and renders an empty push', async () => {
+    await bootedDeck()
+
+    await push('swaps', { items: [] })
+
+    expect(dialog()).not.toBeNull()
+    expect(dialog()).toHaveAccessibleName(AGENT_VIEW_LABELS.swaps)
+    // The SHARED empty-push line, `{kind}`-substituted — no second sentence anywhere.
+    expect(document.querySelector('.swaps-view-empty')).toHaveTextContent(emptyPushLine('swaps'))
+  })
+})
+
+// =====================================================================================
 // c6-7 — THE SUGGESTION ROWS, INSIDE THE REAL VIEW, ON THE REAL INSPECTION CONTRACT
 // =====================================================================================
 
@@ -5914,12 +5996,11 @@ describe('the agent-views nav puts a dismissed view one click away (c6-8)', () =
 
   // ==================== AC 5 — KIND SWITCHING, AT THE STORE SEAM =====================
   it('switches the view and marks the displaced pill unread when another kind arrives (AC 5)', async () => {
-    // ⚠️ DRIVEN AT THE STORE SEAM, NOT THROUGH THE SOCKET, AND THAT IS Q1's RULING SHOWING.
-    // The dispatch switch still DROPS `swaps`/`tier_list`/`groups` (`socket.test.ts:675` pins
-    // it) because Epic 9 pairs each tool with its view so that a push never arrives the UI
-    // cannot display. So this traversal is unreachable from the wire until Story 9.1 — whose own
-    // acceptance criterion banks on the mechanism existing — and it is proven here with a
-    // synthetic second kind. The c6-6 AC-3 structural-deferral precedent.
+    // Driven at the store seam by c6-8, when no wire path could reach a second kind; since 16.1
+    // the `swaps` traversal IS reachable through the socket (its dispatch arm and view landed
+    // together), and `agentView.test.ts` re-proves the displacement through the production
+    // verb. This test keeps the store-seam drive so its subject stays the NAV's reaction
+    // rather than the dispatch, and the content stays synthetic (empty items) on purpose.
     await bootedDeck()
     await pushRows()
     expect(screen.getByRole('dialog')).toBeVisible()
@@ -5938,9 +6019,10 @@ describe('the agent-views nav puts a dismissed view one click away (c6-8)', () =
     await settle()
 
     // The view SWITCHED — the heading is the new kind's, and the suggestion rows are gone
-    // because the overlay body is kind-keyed and `swaps` has no view until Epic 9.
+    // because the overlay body is kind-keyed; the empty swaps content renders its empty line.
     expect(screen.getByRole('heading', { level: 2, name: /Swap candidates/ })).toBeVisible()
     expect(rows()).toHaveLength(0)
+    expect(document.querySelector('.swaps-view-empty')).toHaveTextContent(emptyPushLine('swaps'))
     // …the dialog is still a dialog, with its heading and its close control: an unbuilt body is
     // an empty view, never a broken one.
     expect(screen.getByRole('dialog')).toBeVisible()

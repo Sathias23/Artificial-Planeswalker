@@ -42,18 +42,18 @@ import { pushTimeLabel } from './pushTime'
  * only; vitest globals are OFF, so `describe`/`it`/`expect` are imported.
  */
 
-const contentOf = (
-  kind: AgentViewKind,
-  over: Partial<AgentViewContent> = {},
-): AgentViewContent => ({
-  id: `push-${kind}`,
-  ts: '2026-08-12T14:32:00+00:00',
-  kind,
-  title: AGENT_VIEW_LABELS[kind],
-  count: 0,
-  items: [],
-  ...over,
-})
+const contentOf = (kind: AgentViewKind, over: Partial<AgentViewContent> = {}): AgentViewContent =>
+  // Cast since 16.1 made `AgentViewContent` a per-kind discriminated union: `items: []` is a
+  // legal member of every arm, but a computed `kind` cannot select one for the compiler.
+  ({
+    id: `push-${kind}`,
+    ts: '2026-08-12T14:32:00+00:00',
+    kind,
+    title: AGENT_VIEW_LABELS[kind],
+    count: 0,
+    items: [],
+    ...over,
+  }) as AgentViewContent
 
 /** The pill for a kind, by its accessible name's leading label. */
 const pillFor = (kind: AgentViewKind): HTMLElement =>

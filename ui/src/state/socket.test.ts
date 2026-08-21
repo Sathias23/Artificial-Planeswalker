@@ -20,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RETRIES_QUIETLY } from '../components/StatePanel/states'
 import type { StateKey } from '../components/StatePanel/copy'
 import type { AgentSocketHandlers, SessionOutcome } from '../api/client'
-import type { AgentEvent, SuggestionsEvent, SystemEvent } from '../api/schema'
+import type { AgentEvent, SuggestionsEvent, SwapsEvent, SystemEvent } from '../api/schema'
 import {
   createAgentSocket,
   DISCONNECTED_AFTER_MS,
@@ -85,6 +85,9 @@ const driving = (...outcomes: SessionOutcome[]) => {
   // The WHOLE event, not its kind — what the callback carries is what the assertions can check,
   // and "was the payload delivered" is the claim c6-6's dispatch arm exists to make.
   const pushes: SuggestionsEvent[] = []
+  // The second push channel (16.1), recorded apart from the first so a cross-wired dispatch —
+  // a swaps frame reaching `onSuggestions`, or the reverse — fails by name.
+  const swapsPushes: SwapsEvent[] = []
   let reconnects = 0
 
   const socket = createAgentSocket({
@@ -94,6 +97,7 @@ const driving = (...outcomes: SessionOutcome[]) => {
     },
     onSystemEvent: (event) => events.push(event),
     onSuggestions: (event) => pushes.push(event),
+    onSwaps: (event) => swapsPushes.push(event),
     mint,
     open,
   })
@@ -105,6 +109,7 @@ const driving = (...outcomes: SessionOutcome[]) => {
     statuses,
     events,
     pushes,
+    swapsPushes,
     reconnects: () => reconnects,
     /** The socket the loop most recently opened. */
     latest: () => sockets[sockets.length - 1],
@@ -269,6 +274,7 @@ describe('the generation counter survives every await and every callback (AC 4)'
       onReconnected: () => undefined,
       onSystemEvent: () => undefined,
       onSuggestions: () => undefined,
+      onSwaps: () => undefined,
       mint: () => new Promise<SessionOutcome>((resolve) => (release = resolve)),
       open: (ticket) => {
         sockets.push({ ticket })
@@ -295,6 +301,7 @@ describe('the generation counter survives every await and every callback (AC 4)'
       onReconnected: () => undefined,
       onSystemEvent: () => undefined,
       onSuggestions: () => undefined,
+      onSwaps: () => undefined,
       mint: () => new Promise<SessionOutcome>((resolve) => answers.push(resolve)),
       open: (ticket) => {
         sockets.push({ ticket })
@@ -689,20 +696,58 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     socket.stop()
   })
 
-  it('receives and DROPS the three remaining agent-view kinds, without treating them as faults', async () => {
-    const { socket, events, pushes, statuses, latest } = await open()
+  it('DELIVERS a `swaps` push, with its payload, to its OWN view callback (16.1)', async () => {
+    // The pin this line replaces said `swaps` is dropped — 16.1 is the story that flips it,
+    // pairing the dispatch arm with the view that can display what it carries.
+    const { socket, swapsPushes, pushes, events, statuses, latest } = await open()
 
-    for (const kind of ['swaps', 'tier_list', 'groups'] as const) {
+    const push: SwapsEvent = {
+      kind: 'swaps',
+      id: 'push-swaps-1',
+      ts: '2026-08-21T09:15:00Z',
+      payload: {
+        title: 'Cheaper removal',
+        items: [
+          {
+            out_card_id: 'c-out',
+            in_card_id: 'c-in',
+            rationale: 'Same role, one turn earlier.',
+            out_qty: 2,
+            in_qty: 2,
+          },
+        ],
+      },
+    }
+    latest().handlers.onMessage(push)
+
+    // THE WHOLE ENVELOPE, to the swaps callback and to no other: a dispatch that folded this
+    // into `onSuggestions` would open a suggestions view over a swaps payload.
+    expect(swapsPushes).toEqual([push])
+    expect(swapsPushes[0].payload.items?.[0].out_card_id).toBe('c-out')
+    expect(pushes).toEqual([])
+    expect(events).toEqual([])
+    expect(statuses).toEqual(['live'])
+    expect(latest().closed).toBe(0)
+
+    socket.stop()
+  })
+
+  it('receives and DROPS the two remaining agent-view kinds, without treating them as faults', async () => {
+    const { socket, events, pushes, swapsPushes, statuses, latest } = await open()
+
+    for (const kind of ['tier_list', 'groups'] as const) {
       latest().handlers.onMessage(frame(kind))
     }
 
-    // **Epic 9** builds the views these three carry (P1). Until it does, a push is a well-formed
-    // message about a surface that does not exist yet — and treating a VALID frame as malformed
-    // would make the agent's pushes look like a wire fault to whoever debugs that story.
+    // `swaps` LEFT this list at 16.1, which gave it a view to open — the same exit `suggestions`
+    // made at c6-6. Later Epic-16 stories build the two that remain, and until they do, a push
+    // is a well-formed message about a surface that does not exist yet — treating a VALID frame
+    // as malformed would make the agent's pushes look like a wire fault.
     expect(events).toEqual([])
-    // Nor do they leak into c6-6's arm, which is the new way this could go wrong: a `default`
-    // that fell through to `onSuggestions` would open a suggestions view for a tier list.
+    // Nor do they leak into either view arm — a `default` that fell through would open a view
+    // with the wrong kind's payload.
     expect(pushes).toEqual([])
+    expect(swapsPushes).toEqual([])
     expect(statuses).toEqual(['live'])
     expect(latest().closed).toBe(0)
 
@@ -739,6 +784,7 @@ describe('the loop survives a socket factory that fails outright', () => {
       onReconnected: () => undefined,
       onSystemEvent: () => undefined,
       onSuggestions: () => undefined,
+      onSwaps: () => undefined,
       mint: () => {
         mintedAt.push(Date.now())
         return Promise.resolve(TICKET)

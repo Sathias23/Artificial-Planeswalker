@@ -25,7 +25,7 @@ your client supplies the model, the server supplies fast, accurate MTG data and 
 | **Deck management** | `create_deck`, `list_decks`, `load_deck`, `delete_deck`, `add_card_to_deck`, `remove_card_from_deck`, `view_deck` *(deprecated — use the [companion app](#the-companion-app))*, `import_decklist` (bulk Arena import) |
 | **Deck analysis** | `analyze_mana_curve`, `detect_synergies`, `validate_deck` |
 | **Deck power assessment** *(experimental)* | `assess_deck_power`, `compare_deck_power` |
-| **[Companion app](#the-companion-app)** | `companion_set_active_deck` — puts a saved deck on the companion's live browser view; `companion_show_suggestions` — puts a list of suggested cards on the same view, as cards rather than as text. Both report `app_not_running` when the companion isn't up |
+| **[Companion app](#the-companion-app)** | `companion_set_active_deck` — puts a saved deck on the companion's live browser view; `companion_show_suggestions` — puts a list of suggested cards on the same view, as cards rather than as text; `companion_show_swaps` — puts proposed card trades on the same view, out-card and in-card side by side with the reasoning. All report `app_not_running` when the companion isn't up |
 | **First-run setup** | `initialize_database`, `build_search_index` |
 
 Four companion **skills** layer expert reasoning on top of the tools —
@@ -249,11 +249,12 @@ settings · Cline MCP panel · Zed `context_servers`. Any other MCP client works
 
 The companion is a small local web app that shows the deck your agent is working on — real card
 images, laid out as cards instead of as a wall of text. Ask your agent to put a saved deck on it
-(`companion_set_active_deck`), or to show a list of suggested cards on the same view
-(`companion_show_suggestions`), and the page updates while you watch.
+(`companion_set_active_deck`), to show a list of suggested cards on the same view
+(`companion_show_suggestions`), or to show proposed card swaps as out/in pairs with the reasoning
+(`companion_show_swaps`), and the page updates while you watch.
 
 **It is optional, and nothing depends on it.** Every agent workflow completes with the app closed:
-the two companion tools simply report `app_not_running`, and no other tool ever looks for it. The
+the companion tools simply report `app_not_running`, and no other tool ever looks for it. The
 companion adds a visual channel; it never replaces chat output.
 
 ### Launch it

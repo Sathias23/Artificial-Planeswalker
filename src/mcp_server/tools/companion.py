@@ -38,7 +38,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.companion.client import push_event as _client_push_event
 from src.companion.client import set_active_deck as _client_set_active_deck
-from src.companion.contracts import ActiveDeckRequest, SuggestionsEvent, SuggestionsPayload
+from src.companion.contracts import (
+    ActiveDeckRequest,
+    SuggestionsEvent,
+    SuggestionsPayload,
+    SwapsEvent,
+    SwapsPayload,
+)
 from src.data.database import is_database_initialized
 from src.data.repositories.deck import DeckRepository
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
@@ -331,4 +337,127 @@ async def show_suggestions(*, payload: SuggestionsPayload) -> ShowSuggestionsRes
         clients=outcome.clients,
         items_pushed=items_pushed,
         message=_PUSH_MESSAGES[outcome.outcome],
+    )
+
+
+class ShowSwapsResult(BaseModel):
+    """Structured result of ``companion_show_swaps``.
+
+    A structural clone of :class:`ShowSuggestionsResult`, and the sameness is the contract: this
+    is the second *push* tool, so its ``status`` values are the leaf client's five wire outcomes
+    and **nothing else** (AD-8). It reads no database — card ids are deliberately unvalidated
+    (AD-7) and deck existence is the control tool's business (AD-16) — so there is no fourth kind
+    of failure to layer on top.
+
+    **Counts, never contents** (CM-1, AC 5): both numeric fields describe the push without
+    repeating one card id or rationale back into the conversation the agent is already holding.
+
+    Attributes:
+        status: ``displayed`` (the companion delivered the push to at least one connected
+            browser), ``no_clients_connected`` (the companion took it and no tab was listening — a
+            wire success, never something to re-send), ``app_not_running`` (no companion could be
+            proven live; no credential left the process), ``payload_rejected`` (the companion
+            refused the envelope itself), or ``backend_error`` (the companion is there and the
+            push did not land).
+        clients: How many connected browsers received the push, when the companion said. ``None``
+            on every status that never reached a receipt — distinguishable from ``0`` on purpose.
+        items_pushed: How many **swap pairs** the envelope carried — one out-card/in-card trade is
+            one item, never two. Reported on every status, because it describes what was attempted
+            rather than what arrived. Zero is a legitimate value, not an error (AD-7).
+        message: One short human-facing sentence. Never echoes the payload (CM-1).
+    """
+
+    status: Literal[
+        "displayed",
+        "no_clients_connected",
+        "app_not_running",
+        "payload_rejected",
+        "backend_error",
+    ]
+    clients: int | None = None
+    items_pushed: int
+    message: str
+
+
+_SWAPS_PUSH_MESSAGES = {
+    "no_clients_connected": (
+        "The companion took the swaps, but no browser tab is open to see them — open the URL "
+        "the companion printed when it started."
+    ),
+    "app_not_running": (
+        "The companion app isn't running, so the swaps have nowhere to appear. Start it to "
+        "see them on the glass — the content is in chat regardless."
+    ),
+    "payload_rejected": (
+        "The companion refused the swaps, so none of them were displayed. The content is in "
+        "chat regardless."
+    ),
+    "backend_error": (
+        "The companion is running but the swaps didn't land. Try again — the content is in "
+        "chat regardless."
+    ),
+}
+"""The push-outcome wording with the noun swapped, keyed by the client's own token.
+
+A clone of :data:`_PUSH_MESSAGES` rather than a second consumer of it, because that dict's
+sentences name "the suggestions" — kind-specific wording, not kind-neutral — and a shared table
+would either misname this tool's content or force both tools through a blander sentence neither
+asked for. Everything :data:`_PUSH_MESSAGES` says about its own register (what happened to the
+glass, never what to do about the reply — NG5) holds here verbatim.
+
+``displayed`` is absent because it is the one message that interpolates the two counts.
+"""
+
+
+async def show_swaps(*, payload: SwapsPayload) -> ShowSwapsResult:
+    """Put a list of proposed card swaps on the companion's glass (FR-08, AD-8).
+
+    The push-tool shape, second application — :func:`show_suggestions` is the pattern source and
+    every ruling there carries over unchanged: no database read, no id resolution, no cap
+    enforcement here (the caps are the payload model's, applied by FastMCP at the tool boundary),
+    and what arrives is what is sent — **order included**, because payload order is render order
+    and nothing here sorts, dedupes or trims.
+
+    **An empty ``items`` list is posted, not short-circuited** (AD-7): "I looked and found no
+    trade worth proposing" is a thing the agent is allowed to say on the glass.
+
+    The envelope's ``id`` is a fresh UUID4 per call — opaque identity and dedupe, never ordering
+    (AD-6) — and ``ts`` is timezone-aware because the wire refuses a naive one. No title is
+    injected when the payload omits one: the fallback header belongs to the reader.
+
+    Never raises. Everything the discovery file, the network or the companion can do is already
+    one of the client's five tokens (FR-12). An unexpected exception is deliberately **not**
+    caught: that is a bug, and crashing loudly is this package's convention for one.
+
+    Args:
+        payload: The swaps to display, already validated by the contract model.
+
+    Returns:
+        A :class:`ShowSwapsResult`.
+    """
+    event = SwapsEvent(
+        kind="swaps",
+        id=str(uuid4()),
+        ts=datetime.now(UTC),
+        payload=payload,
+    )
+    items_pushed = len(payload.items)
+    outcome = await _client_push_event(event)
+    if outcome.outcome == "displayed":
+        swaps = "swap" if items_pushed == 1 else "swaps"
+        tabs = "tab" if outcome.clients == 1 else "tabs"
+        return ShowSwapsResult(
+            status="displayed",
+            clients=outcome.clients,
+            items_pushed=items_pushed,
+            message=(
+                f"The companion is showing {items_pushed} proposed {swaps} "
+                f"in {outcome.clients} {tabs}."
+            ),
+        )
+    return ShowSwapsResult(
+        status=outcome.outcome,
+        clients=outcome.clients,
+        items_pushed=items_pushed,
+        message=_SWAPS_PUSH_MESSAGES[outcome.outcome],
     )

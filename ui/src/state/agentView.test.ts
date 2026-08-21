@@ -1,7 +1,7 @@
 import { renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { SuggestionsEvent } from '../api/schema'
+import type { SuggestionsEvent, SwapsEvent } from '../api/schema'
 import {
   AGENT_VIEW_LABELS,
   type AgentViewContent,
@@ -10,10 +10,12 @@ import {
   closeAgentView,
   openAgentView,
   openSuggestionsPush,
+  openSwapsPush,
   openViewOf,
   reopenAgentView,
   resetAgentView,
   suggestionsViewOf,
+  swapsViewOf,
   useAgentViewIsOpen,
   useAgentViewStore,
   useOpenAgentView,
@@ -257,6 +259,98 @@ describe('one envelope becomes one view, for every payload the wire admits (c6-6
   })
 })
 
+// =========================================================================================
+// STORY 16.1 — the second builder, in the first one's exact harness
+// =========================================================================================
+
+const SWAP = {
+  out_card_id: 'c-out',
+  in_card_id: 'c-in',
+  rationale: 'Same role, one turn earlier.',
+  out_qty: 2,
+  in_qty: 0,
+} as const
+
+/** A `swaps` frame, cast for the fixture's reason above: the wire really can omit `payload`. */
+const swapsFrame = (payload: unknown, id = 'push-s1'): SwapsEvent =>
+  ({ id, ts: '2026-08-21T09:15:00Z', kind: 'swaps', payload }) as SwapsEvent
+
+describe('one swaps envelope becomes one view, for every payload the wire admits (16.1)', () => {
+  it('carries the payload through — title, count and the items themselves', () => {
+    const content = swapsViewOf(swapsFrame({ title: 'Cheaper removal', items: [SWAP] }, 'push-9'))
+
+    expect(content.title).toBe('Cheaper removal')
+    expect(content.count).toBe(1)
+    expect(content.items).toEqual([SWAP])
+    expect(content.id).toBe('push-9')
+    expect(content.kind).toBe('swaps')
+    expect(content.ts).toBe('2026-08-21T09:15:00Z')
+  })
+
+  it('builds an EMPTY view rather than throwing when the payload is absent entirely', () => {
+    // `agentEventOf` validates only `kind`, so `{"kind":"swaps"}` reaches this function typed
+    // as a full event — the same totality claim `suggestionsViewOf` carries, on the second arm.
+    const content = swapsViewOf(swapsFrame(undefined))
+
+    expect(content.items).toEqual([])
+    expect(content.count).toBe(0)
+    expect(content.title).toBe(AGENT_VIEW_LABELS.swaps)
+  })
+
+  it.each([
+    ['absent', undefined],
+    ['null', null],
+    ['empty', ''],
+    ['whitespace only', '   '],
+  ])('falls back to the table’s word when the pushed title is %s', (_label, title) => {
+    // The dialog's accessible name guard, "at the point content is constructed" — and the
+    // fallback is the SAME word the nav pill carries, one owner for the kind's word.
+    const content = swapsViewOf(swapsFrame({ title, items: [SWAP] }))
+
+    expect(content.title).toBe(AGENT_VIEW_LABELS.swaps)
+  })
+
+  it('keeps a pushed title that merely has whitespace around it, trimmed', () => {
+    const content = swapsViewOf(swapsFrame({ title: '  Cheaper removal  ', items: [] }))
+
+    expect(content.title).toBe('Cheaper removal')
+  })
+
+  it('counts an explicitly empty list as 0 and not as “nothing to count”', () => {
+    const content = swapsViewOf(swapsFrame({ items: [] }))
+
+    expect(content.count).toBe(0)
+    expect(content.count).not.toBeNull()
+  })
+
+  it('OPENS the view it builds — the second verb `connection.ts` calls', () => {
+    openSwapsPush(swapsFrame({ title: 'Cheaper removal', items: [SWAP] }, 'push-7'))
+
+    expect(useAgentViewStore.getState().status).toBe('open')
+    expect(openViewNow()).toEqual({
+      id: 'push-7',
+      ts: '2026-08-21T09:15:00Z',
+      kind: 'swaps',
+      title: 'Cheaper removal',
+      count: 1,
+      items: [SWAP],
+    })
+    expect(useAgentViewStore.getState().retained.swaps).toBe(openViewNow())
+  })
+
+  it('DISPLACES an open suggestions view and marks it unread — through the wire verb', () => {
+    // c6-8 proved displacement with a synthetic second kind because no wire path could reach
+    // it; 16.1 is the story that makes the traversal real, so it is re-proven here through the
+    // production verb rather than a hand-built content object.
+    openSuggestionsPush(frame({ items: [ITEM] }))
+    openSwapsPush(swapsFrame({ items: [SWAP] }))
+
+    expect(openViewNow()).toMatchObject({ kind: 'swaps' })
+    expect(useAgentViewStore.getState().unread).toEqual({ suggestions: true })
+    expect(useAgentViewStore.getState().retained.suggestions).toBeDefined()
+  })
+})
+
 describe('dismissal never clears the content (AC 5, UX-DR34)', () => {
   it('closes by writing STATUS ONLY — the content survives, byte for byte', () => {
     // The whole of UX-DR34: *"dismissal never clears it — the view remains re-openable for the
@@ -341,6 +435,8 @@ const viewOf = (kind: AgentViewContent['kind'], id = `push-${kind}`): AgentViewC
   kind,
   title: AGENT_VIEW_LABELS[kind],
   count: 0,
+  // `[]` is a legal member of EVERY arm of 16.1's discriminated union, which is what lets this
+  // fixture stay computed-kind generic with no cast.
   items: [],
 })
 

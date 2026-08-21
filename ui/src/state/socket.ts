@@ -77,7 +77,7 @@ import {
   type AgentSocketHandlers,
   type SessionOutcome,
 } from '../api/client'
-import type { AgentEvent, SuggestionsEvent, SystemEvent } from '../api/schema'
+import type { AgentEvent, SuggestionsEvent, SwapsEvent, SystemEvent } from '../api/schema'
 
 /**
  * The first retry lands this long after a drop.
@@ -221,17 +221,28 @@ export interface AgentSocketOptions {
    * `id` that makes a repeat push identifiable are all in it, and an `id`-only callback would
    * force the caller to hold a second copy of the frame to look them up in.
    *
-   * The three remaining agent-view kinds (`swaps`, `tier_list`, `groups`) are still dropped at
-   * the switch — their views are **Epic 9** — so this is not `onViewEvent(kind, payload)`, and
+   * The two remaining agent-view kinds (`tier_list`, `groups`) are still dropped at the switch
+   * — their views are later Epic-16 stories — so this is not `onViewEvent(kind, payload)`, and
    * c6-8 deliberately left it that way (Q1, Brad 2026-08-12). That story built kind-switching
    * and went fully four-kind generic in the STORE and the NAV, and still did not widen this
-   * signature: Epic 9's preamble rules that a kind must not become *acceptable* before something
-   * can display it, because a push the UI silently cannot draw breaks
-   * never-silently-swallowed from the other side. So the shape stays the one with a caller, and
-   * `socket.test.ts:675`'s three-kinds-dropped pin stays true. Each Epic 9 view story widens
-   * this alongside the view that can receive it.
+   * signature: the epic's preamble rules that a kind must not become *acceptable* before
+   * something can display it, because a push the UI silently cannot draw breaks
+   * never-silently-swallowed from the other side. So the shape stays one callback per
+   * renderable kind, and each view story widens this alongside the view that can receive it —
+   * exactly as {@link AgentSocketOptions.onSwaps} did at 16.1.
    */
   readonly onSuggestions: (event: SuggestionsEvent) => void
+  /**
+   * A `swaps` push arrived (story 16.1). The caller opens its view
+   * (`connection.ts` → `openSwapsPush`).
+   *
+   * It carries the WHOLE EVENT for {@link AgentSocketOptions.onSuggestions}'s reason verbatim:
+   * the payload IS the content, and an `id`-only callback would force the caller to hold a
+   * second copy of the frame to look the title, items and replace key up in. This is the first
+   * widening the c6-8 comment above promised — one callback, added in the same story as the
+   * view that renders what it carries.
+   */
+  readonly onSwaps: (event: SwapsEvent) => void
   /** Injected so tests need no `fetch` stub; production passes nothing. */
   readonly mint?: () => Promise<SessionOutcome>
   /**
@@ -324,6 +335,7 @@ export const createAgentSocket = ({
   onReconnected,
   onSystemEvent,
   onSuggestions,
+  onSwaps,
   mint = readSessionTicket,
   open = openAgentSocket,
   initialStatus = 'reconnecting',
@@ -445,13 +457,18 @@ export const createAgentSocket = ({
       case 'suggestions':
         onSuggestions(event)
         return
-      // THE THREE REMAINING AGENT-VIEW KINDS ARE RECEIVED AND DELIBERATELY DROPPED, WITH A HOME
-      // (AC 11). Not an error and not a crash: **Epic 9** builds the swaps, tier-list and groups
-      // views these carry (P1), and until it does, a push is a well-formed message about a
+      // THE SECOND AGENT VIEW WITH SOMEWHERE TO GO (story 16.1). Same shape as the arm above:
+      // the whole event, because the payload is the content, and `connection.ts` decides what a
+      // store does with it.
+      case 'swaps':
+        onSwaps(event)
+        return
+      // THE TWO REMAINING AGENT-VIEW KINDS ARE RECEIVED AND DELIBERATELY DROPPED, WITH A HOME
+      // (AC 11). Not an error and not a crash: later Epic-16 stories build the tier-list and
+      // groups views these carry, and until they do, a push is a well-formed message about a
       // surface that does not exist yet. Dropping it is the honest behaviour — the alternative,
       // treating a valid frame as malformed, would make the agent's pushes look like a wire
       // fault in whatever story is being debugged.
-      case 'swaps':
       case 'tier_list':
       case 'groups':
         return
