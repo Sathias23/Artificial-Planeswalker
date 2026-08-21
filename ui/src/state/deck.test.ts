@@ -1130,7 +1130,7 @@ describe('surfaceOf — the precedence, in one place (Q1, AC 6, AC 7)', () => {
   const system = (
     panel: SystemState['panel'],
     connection: SystemState['connection'] = 'live',
-  ): SystemState => ({ panel, decks: [], connection })
+  ): SystemState => ({ panel, decks: [], connection, instanceId: null })
   const loaded: DeckState = {
     status: 'deck',
     detail: detail(),

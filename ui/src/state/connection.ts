@@ -22,7 +22,9 @@
  *
  * 1. **status** → written straight through to the system slice. `surfaceOf` reads it for the
  *    Disconnected panel (Q3); the connection pill reads the same field, through the narrow
- *    `useConnection()` selector `systemState.ts` grew for it (**shipped at c5-7**).
+ *    `useConnection()` selector `systemState.ts` grew for it (**shipped at c5-7**). Since 17.1
+ *    a transition to `'live'` also fires `identity.ts`'s instance-id refresh — see the wrapper
+ *    at the call site for why `'live'` is the trigger and not `reconnected`.
  *
  * 2. **reconnected** — a socket opened after at least one failure — re-drives **everything the
  *    outage could have made stale**, because a socket coming back is the strongest evidence the
@@ -83,6 +85,7 @@ import { useEffect } from 'react'
 import { openGroupsPush, openSuggestionsPush, openSwapsPush, openTierListPush } from './agentView'
 import { redriveDeckBoot, refetchOnDeckChanged } from './deck'
 import { resetCardAttempts } from './cards'
+import { refreshInstanceId } from './identity'
 import { createAgentSocket } from './socket'
 import { applyConnection, restartPoll, restartPollIfStopped } from './systemState'
 
@@ -106,7 +109,17 @@ import { applyConnection, restartPoll, restartPollIfStopped } from './systemStat
 export const useAgentConnection = (): void => {
   useEffect(() => {
     const socket = createAgentSocket({
-      onStatus: applyConnection,
+      // No longer the bare `applyConnection` reference (story 17.1): the status still writes
+      // straight through, and a transition to `'live'` ALSO refreshes the backend's confirmed
+      // identity. `'live'` rather than `onReconnected`, deliberately — the first connect needs
+      // the id too, and the socket's emit-on-change makes `'live'` fire exactly once per
+      // (re)connection, so this one trigger point covers AC-4's reconnect visibility with no
+      // second wiring. `void`, because the refresh is total and nothing here awaits it: the
+      // tooltip reads the store whenever the answer lands.
+      onStatus: (status) => {
+        applyConnection(status)
+        if (status === 'live') void refreshInstanceId()
+      },
       onReconnected: () => {
         // The poll first, then the deck: the poll's answer is asynchronous either way, so the
         // order buys no correctness — but it puts the whole-screen question ahead of the

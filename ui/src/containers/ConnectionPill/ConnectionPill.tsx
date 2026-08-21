@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 
 import { useDeckStore } from '../../state/deck'
 import type { ConnectionStatus } from '../../state/socket'
-import { useConnection } from '../../state/systemState'
+import { useConnection, useInstanceId } from '../../state/systemState'
 import './ConnectionPill.css'
-import { CONNECTION_WORDS, DECK_SEPARATOR, pillText } from './copy'
+import { CONNECTION_WORDS, DECK_SEPARATOR, pillText, tooltipText } from './copy'
+import { pagePort } from './port'
 
 /**
  * The connection pill — the gauge on c5-6's machine (story c5-7, FR-15, UX-DR29, UX-DR40,
@@ -37,14 +38,33 @@ import { CONNECTION_WORDS, DECK_SEPARATOR, pillText } from './copy'
  * CONTENT stays rendered where it is rendered at all (UX-DR35); what is withheld is the pill's
  * assertion about it.
  *
- * ================= NO TOOLTIP, NO `GET /health`, NO CLIENT COUNT ======================
+ * ================= THE TOOLTIP (story 17.1) — AND STILL NO CLIENT COUNT ================
  *
- * UX-DR29's port/instance-id tooltip clause is **c10-1's** by the FR coverage map (*"Pill shell +
- * reconnect in 5; status detail in 10"*, `epics:727`), and c10-1's own ACs quote it. This is a
- * real `<button>` so that `aria-describedby` can attach to it later without re-doing the element
- * or the Tab-order record — and it ships none of the reveal. It reads no endpoint at all: the
- * backend's `connected_count` is NOT an input here, whatever `state.py` and `agent_events.py` used
- * to predict (both rewritten in this commit, Q6).
+ * UX-DR29's port/instance-id tooltip clause was reserved for this story by the FR coverage map
+ * (*"Pill shell + reconnect in 5; status detail in 10"*, `epics:727`), and c5-7's real `<button>`
+ * was shipped so `aria-describedby` could attach without re-doing the element or the Tab-order
+ * record. This is that attachment. The tooltip element sits OUTSIDE the button — inside it, its
+ * text would join the button's CONTENTS and therefore its accessible NAME, breaking the pinned
+ * accname `Connected—Sultai Midrange` (the `AgentViewsNav` hint's argument exactly) — and it is
+ * the button's IMMEDIATE next sibling, because the stylesheet's `+` combinator is what reveals
+ * it on `:hover`/`:focus-visible`. The nav pill's `title`+hidden-description shape is NOT enough
+ * here: the AC requires a VISUAL reveal on keyboard focus, so the description element itself is
+ * the visible tooltip, and there is no `title` at all (UX-DR39's hover-only ban).
+ *
+ * The PORT is `window.location`'s, never a configured number — {@link agentSocketUrl}'s argument
+ * one seam over: any number written into this bundle would be wrong for the ephemeral-port case
+ * it was written for, and the page's own authority IS the backend's authority (AD-13). The
+ * INSTANCE ID is the system slice's last-confirmed value, refreshed through `identity.ts` on
+ * every transition to `'live'` — this component still reads no endpoint. The backend's
+ * `connected_count` is still NOT an input here, and stays out of the tooltip by ruling.
+ *
+ * ESCAPE SUPPRESSES THE REVEAL (WCAG 1.4.13 dismissable): a DOCUMENT-level keydown listener —
+ * not a button handler, because a hover-only reveal holds no focus and the key would land on
+ * `document.body` unheard — sets one state bit, `is-suppressed`, and CSS gates every reveal
+ * selector on its absence. Clearing is per-channel: blur always clears; mouse-leave clears only
+ * while the pill is unfocused, so a pointer passing over a focus-dismissed pill cannot re-arm
+ * the reveal the keyboard user just dismissed. An identity change must NOT announce: the live
+ * region below is keyed on the STATUS alone, so the tooltip's data changing never touches it.
  *
  * ================= THE DOT IS DECORATION, AND IT NEVER MOVES ==========================
  *
@@ -69,6 +89,39 @@ const DOT_CLASS: Record<ConnectionStatus, string> = {
 
 export function ConnectionPill() {
   const connection = useConnection()
+  // The last-confirmed backend identity — `null` until the first `GET /health` read lands, and
+  // retained through `reconnecting`/`down` thereafter (the header's last-confirmed argument).
+  const instanceId = useInstanceId()
+
+  // Generated rather than authored (`AgentViewsNav`'s reason verbatim): two mounted pills in one
+  // test document would share an authored id, and `aria-describedby` would resolve to whichever
+  // rendered first.
+  const tooltipId = useId()
+
+  // WCAG 1.4.13's dismissability, as one bit: Escape sets it, blur and mouse-leave clear it, and
+  // the stylesheet gates every reveal selector on the class it becomes. State rather than a DOM
+  // poke so React owns the class list; visual reveal itself is CSS's job and holds no state.
+  const [suppressed, setSuppressed] = useState(false)
+
+  // AT THE DOCUMENT, NOT ON THE BUTTON (review finding): the hover reveal needs no focus, so
+  // during a hover-only reveal the key lands on `document.body` and a button-scoped handler
+  // would never hear it — Escape could not dismiss exactly the channel 1.4.13's dismissable
+  // clause exists for. Registered for the mounted lifetime; the bit it sets is inert while no
+  // reveal channel is active and is cleared by the same blur/mouse-leave that would have ended
+  // the reveal it dismissed.
+  //
+  // Deliberately NO `stopPropagation` and NO `preventDefault`: there is no ancestor Escape
+  // behaviour to collide with today — the only Escape-consuming surface is the agent view, which
+  // is modal with focus trapped and a scrim over this pill — and swallowing the key here would
+  // be the exact starvation `deferred-work.md:49` records the agent view's own capture handler
+  // causing.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setSuppressed(true)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   // A SELECTOR, so the pill re-renders when the deck's NAME changes and not when its boards do.
   // `status === 'deck'` is the only arm that carries a detail; every other arm is `null`, which is
@@ -111,21 +164,34 @@ export function ConnectionPill() {
   return (
     <>
       {/* A REAL `<button>` (Q2, UX-DR47, and `keyboard-floor.test.ts:400-415` derives the rule
-          rather than listing it). The epic requires the pill be focusable NOW and c10-1 requires
-          this exact element LATER; shipping a `<div tabindex="0">` today would mean re-doing both
-          the element and the Tab-order record in Phase 2.
+          rather than listing it) — shipped at c5-7 precisely so this story's `aria-describedby`
+          could attach without re-doing the element or the Tab-order record.
 
-          NO HANDLER, AND THAT IS THE HONEST SHAPE rather than a stub. Its only action — revealing
-          the port and instance id — is c10-1's, so there is nothing for an `onClick` to do and a
-          no-op handler would be a lie told to a reviewer rather than to a screen reader. It
-          carries no `aria-expanded`, no `aria-pressed` and no `aria-haspopup`: every one of those
-          would claim a behaviour that does not exist yet. What it does claim is what it is — a
-          focusable control whose accessible name is its own text.
+          STILL NO `onClick`, AND THAT IS STILL THE HONEST SHAPE. The tooltip reveals on hover
+          and focus — CSS's job — so a click does nothing and a no-op handler would be a lie.
+          The two handlers below CLEAR the suppression bit the document-level Escape listener
+          sets (see the effect above), and the clearing is per-channel so a dismissal cannot be
+          undone by the OTHER channel (review finding): blur always clears, because leaving the
+          pill ends the focus reveal the dismissal was about; mouse-leave clears only while the
+          pill is NOT the focused element, because a pointer merely passing over a
+          focus-dismissed pill must not re-arm the reveal the keyboard user just dismissed.
+          It still carries no `aria-expanded`, no `aria-pressed` and no `aria-haspopup` — a
+          tooltip is a description, not a popup the button controls — and no `title` (UX-DR39
+          bans a hover-only disclosure; the visible tooltip is the one channel, so the two can
+          never disagree).
 
-          NO `title` (UX-DR39 bans a hover-only disclosure) and no `aria-describedby` target: the
-          attribute is c10-1's to add, and pointing it at nothing today would strip meaning from
-          the accname computation for no gain. */}
-      <button type="button" className="connection-pill">
+          `aria-describedby` is ALWAYS wired, whatever the reveal state: the description is true
+          whether or not it is painted — suppressed included — and jsdom asserts the wiring while
+          the eye-check owns the reveal. */}
+      <button
+        type="button"
+        className="connection-pill"
+        aria-describedby={tooltipId}
+        onBlur={() => setSuppressed(false)}
+        onMouseLeave={(event) => {
+          if (document.activeElement !== event.currentTarget) setSuppressed(false)
+        }}
+      >
         <span className={`connection-pill-dot ${DOT_CLASS[connection]}`} aria-hidden="true" />
         {/* One text wrapper, and the spacing between its parts comes from the LITERAL spaces
             around the separator rather than from a flex `gap` — so `button.textContent` is
@@ -144,6 +210,20 @@ export function ConnectionPill() {
           )}
         </span>
       </button>
+      {/* THE TOOLTIP (story 17.1) — the button's IMMEDIATE next sibling, which the stylesheet's
+          `+` combinator depends on, and OUTSIDE the button so its text stays a description and
+          never joins the accessible name (see the header). `role="tooltip"` names what it is;
+          the id is what `aria-describedby` above resolves. Hidden at rest by CSS alone — jsdom
+          resolves no stylesheets, so the tests assert wiring and content and the eye-check owns
+          the reveal. The text is ONE builder's sentence, so the glass and the computed
+          description cannot disagree. */}
+      <p
+        role="tooltip"
+        id={tooltipId}
+        className={`connection-pill-tooltip${suppressed ? ' is-suppressed' : ''}`}
+      >
+        {tooltipText(pagePort(), instanceId)}
+      </p>
       {/* THE APP'S SECOND POLITE LIVE REGION (AC 10, AC 11, UX-DR45 — which authorises three:
           this one, the agent-view heading and the pin announcement). OUTSIDE the button, exactly
           as `CardDetail`'s sits outside its panel: the control must not itself become a live

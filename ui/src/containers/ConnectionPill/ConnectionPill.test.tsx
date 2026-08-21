@@ -15,15 +15,21 @@
  * about.
  */
 
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import type { DeckDetail } from '../../api/schema'
 import { INITIAL_DECK_STATE, useDeckStore } from '../../state/deck'
 import type { ConnectionStatus } from '../../state/socket'
-import { applyConnection, INITIAL_SYSTEM_STATE, useSystemStore } from '../../state/systemState'
+import {
+  applyConnection,
+  applyInstanceId,
+  INITIAL_SYSTEM_STATE,
+  useSystemStore,
+} from '../../state/systemState'
 import { ConnectionPill } from './ConnectionPill'
-import { CONNECTION_WORDS, pillText } from './copy'
+import { CONNECTION_WORDS, pillText, tooltipText } from './copy'
+import { pagePort } from './port'
 
 const detail = (name: string): DeckDetail => ({
   id: 'a7f3c2d1-0000-4000-8000-000000000001',
@@ -197,10 +203,11 @@ describe('the pill is a real focusable control (AC 8, UX-DR47)', () => {
     )
   })
 
-  it('claims NO behaviour it does not have — the tooltip is c10-1’s (scope fence)', () => {
-    // A focusable element that does nothing yet must not lie about what it does. Each of these
-    // attributes would announce an interaction this build has not shipped, and `aria-describedby`
-    // pointing at nothing would strip meaning from the name computation for no gain.
+  it('still claims NO behaviour it does not have (scope fence, revised at 17.1)', () => {
+    // The tooltip shipped at 17.1, so `aria-describedby` is now asserted PRESENT (in its own
+    // describe below) — but a tooltip is a description, not a popup the button controls, so the
+    // popup-shaped claims stay banned, and `title` stays banned because the visible tooltip is
+    // the one channel (UX-DR39's hover-only ban; two channels could disagree).
     loadDeck('Sultai Midrange')
     applyConnection('live')
     render(<ConnectionPill />)
@@ -208,7 +215,198 @@ describe('the pill is a real focusable control (AC 8, UX-DR47)', () => {
     for (const attribute of ['aria-expanded', 'aria-pressed', 'aria-haspopup', 'title']) {
       expect(pill()).not.toHaveAttribute(attribute)
     }
-    expect(pill()).not.toHaveAttribute('aria-describedby')
+  })
+})
+
+describe('the tooltip names the port and the last-confirmed instance (story 17.1, AC 1–2)', () => {
+  const tooltip = () => screen.getByRole('tooltip')
+
+  it('wires aria-describedby to the tooltip, and the description IS its text', () => {
+    applyInstanceId('3f9c1a7e')
+    applyConnection('live')
+    render(<ConnectionPill />)
+
+    // The wiring is jsdom's half of the AC; the visual reveal is CSS + the eye-check.
+    expect(pill().getAttribute('aria-describedby')).toBe(tooltip().id)
+    expect(pill()).toHaveAccessibleDescription(tooltipText(pagePort(), '3f9c1a7e'))
+  })
+
+  it('shows the port with the not-yet-confirmed copy before any health read lands', () => {
+    applyConnection('live')
+    render(<ConnectionPill />)
+
+    // `instanceId: null` is the cold open; the copy says so in words rather than a placeholder.
+    expect(tooltip().textContent).toBe(tooltipText(pagePort(), null))
+    expect(tooltip().textContent).toContain('not yet confirmed')
+  })
+
+  it('shows the NEW id when a reconnect confirms a different process (AC-4)', () => {
+    applyInstanceId('old-process')
+    applyConnection('live')
+    const { rerender } = render(<ConnectionPill />)
+    expect(tooltip().textContent).toContain('old-process')
+
+    applyInstanceId('new-process')
+    rerender(<ConnectionPill />)
+
+    expect(tooltip().textContent).toBe(tooltipText(pagePort(), 'new-process'))
+    expect(tooltip().textContent).not.toContain('old-process')
+  })
+
+  it('shows the id IN FULL with its case preserved — it is data (c4-3’s lesson)', () => {
+    applyInstanceId('AbCdEf0123456789AbCdEf0123456789')
+    applyConnection('live')
+    render(<ConnectionPill />)
+
+    expect(tooltip().textContent).toContain('AbCdEf0123456789AbCdEf0123456789')
+  })
+
+  it('retains the last-confirmed id through reconnecting and down — unlike the deck name', () => {
+    // The identity truthfully names the last-confirmed backend; the deck-name asymmetry (Q3,
+    // withheld in `down`) is a different ruling about a different claim, and stays untouched.
+    loadDeck('Sultai Midrange')
+    applyInstanceId('3f9c1a7e')
+    applyConnection('down')
+    render(<ConnectionPill />)
+
+    expect(tooltip().textContent).toBe(tooltipText(pagePort(), '3f9c1a7e'))
+    expect(pill()).not.toHaveTextContent('Sultai Midrange')
+  })
+
+  it('sits OUTSIDE the button as its IMMEDIATE next sibling', () => {
+    // Outside, or its text would join the accessible NAME (the pinned accname would break);
+    // immediately next, or the stylesheet's `+` reveal combinator would match nothing.
+    applyConnection('live')
+    render(<ConnectionPill />)
+
+    expect(pill().contains(tooltip())).toBe(false)
+    expect(pill().nextElementSibling).toBe(tooltip())
+  })
+
+  it('leaves the pinned accessible NAME exactly as c5-7 shipped it', () => {
+    // The description must not leak into the name computation — the byte-identical claim AC-3
+    // makes about this story.
+    loadDeck('Sultai Midrange')
+    applyConnection('live')
+    render(<ConnectionPill />)
+
+    expect(pill()).toHaveAccessibleName('Connected—Sultai Midrange')
+    expect(pill().textContent).toBe(pillText('live', 'Sultai Midrange'))
+  })
+})
+
+describe('Escape suppresses the reveal until blur or mouse-leave (WCAG 1.4.13)', () => {
+  const tooltip = () => screen.getByRole('tooltip')
+
+  it('suppresses on Escape at the DOCUMENT while the pill is unfocused — the hover channel', () => {
+    // The dispatch target is the whole finding this shape came from: a hover-only reveal holds
+    // no focus, so the key lands on `document.body`, and a button-scoped handler would never
+    // hear it. The listener is at the document, and this test would go red if it moved back.
+    applyConnection('live')
+    render(<ConnectionPill />)
+    expect(document.activeElement).not.toBe(pill())
+
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+
+    // The class is the whole mechanism: CSS gates every reveal selector on its absence, so
+    // jsdom asserts the bit and the eye-check owns the disappearance.
+    expect(tooltip().className).toContain('is-suppressed')
+  })
+
+  it('suppresses on Escape while the pill is focused — the keyboard channel', () => {
+    applyConnection('live')
+    render(<ConnectionPill />)
+    pill().focus()
+
+    // Dispatched at the focused pill, which is where a real keydown lands; it reaches the
+    // document listener by bubbling, exactly as in a browser.
+    fireEvent.keyDown(pill(), { key: 'Escape' })
+
+    expect(tooltip().className).toContain('is-suppressed')
+  })
+
+  it('keeps aria-describedby wired and the description intact WHILE suppressed', () => {
+    // The header's "ALWAYS wired, whatever the reveal state" claim, asserted in the one state
+    // it could silently stop being true (review finding): the description is a fact about the
+    // pill whether or not it is painted, so dismissing the visual must not strip the semantics.
+    applyInstanceId('3f9c1a7e')
+    applyConnection('live')
+    render(<ConnectionPill />)
+    pill().focus()
+
+    fireEvent.keyDown(pill(), { key: 'Escape' })
+
+    expect(tooltip().className).toContain('is-suppressed')
+    expect(pill().getAttribute('aria-describedby')).toBe(tooltip().id)
+    expect(pill()).toHaveAccessibleDescription(tooltipText(pagePort(), '3f9c1a7e'))
+  })
+
+  it('clears the suppression on blur — always, whatever dismissed it', () => {
+    applyConnection('live')
+    render(<ConnectionPill />)
+    pill().focus()
+    fireEvent.keyDown(pill(), { key: 'Escape' })
+
+    fireEvent.blur(pill())
+
+    expect(tooltip().className).not.toContain('is-suppressed')
+  })
+
+  it('clears the suppression on mouse-leave while the pill is UNFOCUSED — the hover channel ends', () => {
+    applyConnection('live')
+    render(<ConnectionPill />)
+    expect(document.activeElement).not.toBe(pill())
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+
+    fireEvent.mouseLeave(pill())
+
+    expect(tooltip().className).not.toContain('is-suppressed')
+  })
+
+  it('does NOT clear on mouse-leave while the pill is focused — a passing pointer must not re-arm', () => {
+    // The re-reveal hole (review finding): a keyboard user dismisses the focus reveal, a
+    // pointer happens to cross the pill, and an unconditional mouse-leave clear would put the
+    // tooltip straight back. While the pill holds focus, only blur (or Escape's own channel
+    // ending) may end the suppression.
+    applyConnection('live')
+    render(<ConnectionPill />)
+    pill().focus()
+    fireEvent.keyDown(pill(), { key: 'Escape' })
+
+    fireEvent.mouseEnter(pill())
+    fireEvent.mouseLeave(pill())
+
+    expect(tooltip().className).toContain('is-suppressed')
+  })
+
+  it('ignores every other key — Escape is the whole vocabulary', () => {
+    applyConnection('live')
+    render(<ConnectionPill />)
+
+    fireEvent.keyDown(document.body, { key: 'Enter' })
+
+    expect(tooltip().className).not.toContain('is-suppressed')
+  })
+})
+
+describe('the page port is window.location’s, never a configured number', () => {
+  it('reads the explicit port when the URL carries one', () => {
+    expect(pagePort({ port: '8000', protocol: 'http:' })).toBe('8000')
+  })
+
+  it('names the default the browser elided — 443 for https, 80 otherwise', () => {
+    // jsdom's fixed test URL cannot reach these arms, which is why the helper takes an
+    // injectable location; production callers pass nothing and get `window.location`.
+    expect(pagePort({ port: '', protocol: 'https:' })).toBe('443')
+    expect(pagePort({ port: '', protocol: 'http:' })).toBe('80')
+  })
+
+  it('defaults to the REAL window.location — the production arm is executed, not assumed', () => {
+    // jsdom's test URL carries an explicit port, so the non-vacuity check pins that this smoke
+    // run exercises the explicit-port arm against the real global rather than passing on an
+    // empty string (review finding: the zero-argument arm was otherwise never run).
+    expect(window.location.port).not.toBe('')
+    expect(pagePort()).toBe(window.location.port)
   })
 })
 
@@ -269,6 +467,23 @@ describe('the announcement is a transition, not a level (AC 10, Q4)', () => {
     applyConnection('down')
     rerender(<ConnectionPill />)
     expect(region()?.textContent).toBe(CONNECTION_WORDS.down)
+  })
+
+  it('stays SILENT when only the INSTANCE ID changes (story 17.1 — identity is not a status)', () => {
+    // The dot never carries state alone and the region announces status TRANSITIONS only; an
+    // identity confirmation is data for the tooltip, not a transition, and the capture being
+    // keyed on the status alone is what makes this true by construction — the deck-name rule's
+    // argument, applied to the second piece of data this component now renders.
+    const { rerender } = render(<ConnectionPill />)
+    applyConnection('live')
+    rerender(<ConnectionPill />)
+    const afterTransition = region()?.textContent
+
+    applyInstanceId('3f9c1a7e')
+    rerender(<ConnectionPill />)
+
+    expect(region()?.textContent).toBe(afterTransition)
+    expect(region()?.textContent).not.toContain('3f9c1a7e')
   })
 
   it('is OUTSIDE the button — the control must not itself be a live region', () => {

@@ -28,6 +28,7 @@ import {
   DECKS_PATH,
   DECK_PATH_PREFIX,
   FORMAT_CHECK_PATH_SUFFIX,
+  HEALTH_PATH,
   READ_TIMEOUT_MS,
   SESSION_PATH,
   WS_PATH,
@@ -42,6 +43,7 @@ import {
   readDeck,
   readDecks,
   readFormatCheck,
+  readInstanceId,
   readSessionTicket,
   type AgentSocketHandlers,
 } from './client'
@@ -1041,6 +1043,92 @@ describe('readSessionTicket mints one ticket, and never twice (AC 3)', () => {
     stubFetch(() => Promise.reject(new TypeError('Failed to fetch')))
 
     await expect(readSessionTicket()).resolves.toEqual({ kind: 'unreachable' })
+  })
+})
+
+describe('readInstanceId reads the health probe once, and folds every failure to null (17.1)', () => {
+  it('asks for /health, uncached, with the shared clock', async () => {
+    const fetchMock = responding('{"status": "ok", "instance_id": "3f9c1a7e"}', 200)
+
+    await expect(readInstanceId()).resolves.toBe('3f9c1a7e')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toBe(HEALTH_PATH)
+    expect(fetchMock.mock.calls[0][1]?.cache).toBe('no-store')
+    // One `request()` helper, one timeout guard — not a second copy of the clock.
+    expect(fetchMock.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('asks the route the BACKEND declares — the constant is pinned, not self-compared', () => {
+    // Every other assertion in this describe compares the fetch call against HEALTH_PATH, so a
+    // typo'd constant would ship as a permanently "not yet confirmed" tooltip with every test
+    // green (review finding). A LITERAL pin rather than a type-level one against the generated
+    // `paths`: `wire-contract.test.ts` allows the generated file to be imported through
+    // `src/api/schema.ts` alone, and the backend's own `openapi.json` (which the drift gate
+    // holds this repo to) declares `/health` — so the literal is the same authority, one hop
+    // shorter.
+    expect(HEALTH_PATH).toBe('/health')
+  })
+
+  it('has no path parameter, and no auth either — health is what a caller reads FIRST (AD-4)', () => {
+    expect(HEALTH_PATH).not.toMatch(/[{}:]/)
+  })
+
+  it('sends NO credential of any kind — the probe precedes the decision to present one', async () => {
+    // AD-4's ordering made concrete: health is what a caller reads BEFORE deciding to trust the
+    // port, so the request must carry nothing worth stealing. The app's one credential is the
+    // WS ticket, which travels as a query parameter on the socket URL and never as a header —
+    // asserted here as the absence of any auth-shaped header on the recorded call.
+    const fetchMock = responding('{"status": "ok", "instance_id": "abc"}', 200)
+
+    await readInstanceId()
+
+    const headers = fetchMock.mock.calls[0][1]?.headers ?? {}
+    expect(Object.keys(headers).map((name) => name.toLowerCase())).toEqual(['accept'])
+  })
+
+  it('preserves the id’s case and length exactly — it is the identity, not a label', async () => {
+    responding('{"status": "ok", "instance_id": "AbCdEf0123456789AbCdEf0123456789"}', 200)
+
+    await expect(readInstanceId()).resolves.toBe('AbCdEf0123456789AbCdEf0123456789')
+  })
+
+  it('TRIMS a padded id — the fold must not be weaker than the equality it feeds', async () => {
+    // The stored id feeds `applyInstanceId`'s same-value guard and the "did the process change"
+    // reading, so a padded copy of the same id passed through raw would compare as a different
+    // backend — `connection.ts`'s deck_id trim, for the same reason (review finding).
+    responding('{"status": "ok", "instance_id": "  abc  "}', 200)
+
+    await expect(readInstanceId()).resolves.toBe('abc')
+  })
+
+  it.each([
+    ['a body that is not JSON', () => responding('<html>captive portal</html>', 200)],
+    ['a body with no instance_id', () => responding('{"status": "ok"}', 200)],
+    ['an instance_id that is not a string', () => responding('{"instance_id": 42}', 200)],
+    ['a BLANK instance_id', () => responding('{"instance_id": "   "}', 200)],
+    ['a scalar body', () => responding('"ok"', 200)],
+  ])('reports %s as null, not as an identity', async (_label, arrange) => {
+    // A blank cannot distinguish one process from another, so confirming it would let the
+    // tooltip claim an identity nothing asserted — `ticketOf`'s posture, applied to an id.
+    arrange()
+
+    await expect(readInstanceId()).resolves.toBe(null)
+  })
+
+  it('reports a refusal as null — the consumer has one question and no reason to act on tokens', async () => {
+    responding('{"reason": "internal_error"}', 500)
+
+    await expect(readInstanceId()).resolves.toBe(null)
+  })
+
+  it('reports a lost backend as null too, and never rejects — the trigger fires it void', async () => {
+    // The caller's last-confirmed semantics are what make one flat `null` sufficient here: a
+    // failed refresh writes nothing, so the three-case outcome union's distinctions would be
+    // computed and then discarded.
+    stubFetch(() => Promise.reject(new TypeError('Failed to fetch')))
+
+    await expect(readInstanceId()).resolves.toBe(null)
   })
 })
 

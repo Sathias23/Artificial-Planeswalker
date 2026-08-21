@@ -64,6 +64,24 @@ export interface SystemState {
    * Written on CHANGE only, by {@link applyConnection}, from `connection.ts`'s loop.
    */
   readonly connection: ConnectionStatus
+  /**
+   * The backend instance id the tab last CONFIRMED, or `null` before the first confirmation
+   * (story 17.1, FR-15, AD-4).
+   *
+   * A field on this slice rather than an eighth store, for the `connection` field's own reason
+   * one entry up: it is the same question — *which backend is this tab talking to* — answered
+   * with an identity instead of a status, and its one consumer (the pill's tooltip) already
+   * reads this slice through a selector hook.
+   *
+   * **Last-confirmed semantics, and that is the whole contract.** Written by
+   * {@link applyInstanceId} on a successful `GET /health` read only — `src/state/identity.ts`
+   * refreshes it on every transition to `'live'`, and a failed read leaves it alone. So through
+   * `reconnecting` and `down` the field truthfully names the LAST backend this tab confirmed,
+   * which is the honest thing a tooltip can say while nothing is answering. (Deliberately the
+   * opposite of the deck-name asymmetry, which withholds in `down` — the pill's deck claim is
+   * about a deck the app can no longer answer for; this one is explicitly about the past.)
+   */
+  readonly instanceId: string | null
 }
 
 /**
@@ -78,6 +96,9 @@ export const INITIAL_SYSTEM_STATE: SystemState = {
   panel: 'no-active-deck',
   decks: [],
   connection: 'reconnecting',
+  // `null` is the honest cold open: no backend has confirmed an identity yet, and the tooltip's
+  // copy says so in words rather than showing a placeholder id (story 17.1).
+  instanceId: null,
 }
 
 export const useSystemStore = create<SystemState>(() => INITIAL_SYSTEM_STATE)
@@ -98,6 +119,29 @@ export const useSystemStore = create<SystemState>(() => INITIAL_SYSTEM_STATE)
  */
 export const applyConnection = (connection: ConnectionStatus): void => {
   useSystemStore.setState({ connection })
+}
+
+/**
+ * Write a CONFIRMED backend instance id (story 17.1). **The third input to this slice, and its
+ * owner is still this module** — `store-writes.test.ts`'s rule is one writer per store, not one
+ * writer per field, so `identity.ts` reports and this function applies, exactly as the socket
+ * loop reports through {@link applyConnection} and `poller.ts` reports through the effect below.
+ *
+ * Change-detected, unlike {@link applyConnection} — and the asymmetry is the two callers'.
+ * The socket already emits status on change only, so a guard there would duplicate an invariant;
+ * NOTHING dedupes identity reads, because every reconnect refreshes and most reconnects land on
+ * the same process. `App` subscribes to this store selector-less, so an unguarded same-value
+ * write here would re-render the whole tree once per reconnect for nothing.
+ *
+ * Never called with a failure: `identity.ts` swallows those before this verb is reached, which
+ * is what makes the field's last-confirmed contract true by construction.
+ *
+ * Args:
+ *   instanceId: The id a `GET /health` read just confirmed.
+ */
+export const applyInstanceId = (instanceId: string): void => {
+  if (useSystemStore.getState().instanceId === instanceId) return
+  useSystemStore.setState({ instanceId })
 }
 
 /**
@@ -129,6 +173,18 @@ export const applyConnection = (connection: ConnectionStatus): void => {
  *   The current connection status. Re-renders the caller only when that field changes.
  */
 export const useConnection = (): ConnectionStatus => useSystemStore((state) => state.connection)
+
+/**
+ * The last-confirmed instance id alone (story 17.1) — {@link useConnection}'s pattern for
+ * {@link useConnection}'s reason: the pill is the one consumer, it can only ever show this
+ * field and `connection`, and a whole-slice subscription would re-render it on every `panel`
+ * and `decks` write. A reader, not a writer; the store and the `STORES` table are untouched.
+ *
+ * Returns:
+ *   The last-confirmed instance id, or `null` before the first confirmation. Re-renders the
+ *   caller only when that field changes.
+ */
+export const useInstanceId = (): string | null => useSystemStore((state) => state.instanceId)
 
 /**
  * Watch the system state change, without naming the store (c4-2 review, the recovery re-drive).
