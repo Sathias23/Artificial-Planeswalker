@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session History — Home Options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface-well: #0D0F1A;
+    --surface-base: #12141F;
+    --surface-panel: #191C2B;
+    --surface-overlay: #222639;
+    --scrim: rgba(8,9,18,0.75);
+    --border-hairline: #2C3048;
+    --border-strong: #3D4266;
+    --text-primary: #E9EBF5;
+    --text-secondary: #B3B8CF;
+    --text-tertiary: #8B91AD;
+    --accent: #8B93FF;
+    --accent-bright: #B3BAFF;
+    --accent-glow: rgba(139,147,255,0.22);
+    --focus-ring: #B3BAFF;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--surface-well);
+    color: var(--text-primary);
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.55;
+    padding: 48px 32px;
+  }
+
+  .page { max-width: 1180px; margin: 0 auto; }
+
+  /* ------- type styles ------- */
+  .t-display { font-size: 30px; font-weight: 500; letter-spacing: -0.02em; }
+  .t-heading { font-size: 17px; font-weight: 500; }
+  .t-label   { font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; }
+  .t-micro   { font-size: 10px; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+  .t-num     { font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+  /* ------- page chrome ------- */
+  .page > header { margin-bottom: 48px; }
+  .page-kicker { color: var(--accent); margin-bottom: 12px; }
+  .page-intro { color: var(--text-secondary); max-width: 68ch; margin-top: 12px; }
+
+  section.option { margin-bottom: 48px; }
+  .option-label { color: var(--text-primary); margin-bottom: 4px; }
+  .option-sub { color: var(--text-tertiary); margin-bottom: 16px; }
+
+  /* framed viewport around each mock */
+  .viewport {
+    border: 1px solid var(--border-strong);
+    border-radius: 16px;
+    background: var(--surface-well);
+    overflow-x: auto;
+    margin-bottom: 24px;
+  }
+  .mock {
+    width: 1100px;
+    min-width: 1100px;
+    height: 620px;
+    position: relative;
+    background: var(--surface-well);
+    overflow: hidden;
+    border-radius: 15px;
+  }
+
+  /* ------- deck header (shared between mocks) ------- */
+  .deck-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 24px 32px;
+    position: relative;
+    z-index: 3;
+  }
+  .deck-name { font-size: 30px; font-weight: 500; letter-spacing: -0.02em; }
+  .nav-group { display: flex; align-items: center; gap: 8px; }
+  .nav-kicker { color: var(--text-tertiary); margin-right: 8px; }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface-overlay);
+    border: 1px solid var(--border-hairline);
+    border-radius: 999px;
+    padding: 8px 16px;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 400;
+    cursor: default;
+    white-space: nowrap;
+  }
+  .pill .time { font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+  .pill .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--accent); }
+  .pill.is-active {
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+  }
+  .pill.is-open {
+    border-color: var(--accent);
+    color: var(--accent-bright);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+  .pill .glyph { font-size: 13px; line-height: 1; color: inherit; }
+
+  /* ------- deck grid hint ------- */
+  .grid-hint {
+    position: absolute;
+    inset: 96px 32px 0 32px;
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 16px;
+    align-content: start;
+    z-index: 1;
+    filter: blur(2px);
+    opacity: 0.55;
+    pointer-events: none;
+  }
+  .card-ph {
+    aspect-ratio: 63 / 88;
+    border-radius: 4.75% / 3.4%;
+    background: linear-gradient(160deg, var(--surface-panel) 0%, var(--surface-overlay) 100%);
+    border: 1px solid var(--border-hairline);
+    position: relative;
+    overflow: hidden;
+  }
+  .card-ph .ph-title {
+    position: absolute;
+    top: 6%;
+    left: 8%;
+    right: 8%;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .card-ph .ph-art {
+    position: absolute;
+    top: 16%;
+    left: 6%;
+    right: 6%;
+    height: 42%;
+    border-radius: 4px;
+    background: linear-gradient(200deg, var(--surface-overlay), var(--surface-base));
+    border: 1px solid var(--border-hairline);
+  }
+
+  /* darken the hint further where an overlay sits above it */
+  .mock .dim {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    background: linear-gradient(180deg, rgba(13,15,26,0.15) 0%, rgba(13,15,26,0.6) 100%);
+    pointer-events: none;
+  }
+
+  /* ------- Option A popover ------- */
+  .popover {
+    position: absolute;
+    top: 88px;
+    right: 32px;
+    width: 380px;
+    z-index: 4;
+    background: var(--surface-panel);
+    border: 1px solid var(--border-hairline);
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(8,9,18,0.6), 0 0 24px var(--accent-glow);
+    overflow: hidden;
+  }
+  .popover-caret {
+    position: absolute;
+    top: 82px;
+    right: 92px;
+    width: 12px;
+    height: 12px;
+    background: var(--surface-panel);
+    border-left: 1px solid var(--border-hairline);
+    border-top: 1px solid var(--border-hairline);
+    transform: rotate(45deg);
+    z-index: 5;
+  }
+  .popover-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-hairline);
+  }
+  .popover-head .t-label { color: var(--text-secondary); }
+  .popover-head .t-micro { color: var(--text-tertiary); }
+  .history-list {
+    max-height: 344px;
+    overflow-y: auto;
+    padding: 4px;
+  }
+  .history-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    cursor: default;
+  }
+  .history-row .kind {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    flex: 0 0 88px;
+  }
+  .history-row .title {
+    color: var(--text-secondary);
+    flex: 1 1 auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .history-row .time {
+    font-size: 13px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-tertiary);
+    flex: 0 0 auto;
+  }
+  .history-row.is-hover {
+    background: var(--surface-overlay);
+  }
+  .history-row.is-hover .title { color: var(--text-primary); }
+  .history-row.is-hover .kind { color: var(--accent-bright); }
+  .popover-foot {
+    padding: 8px 16px 10px;
+    border-top: 1px solid var(--border-hairline);
+    color: var(--text-tertiary);
+  }
+
+  /* ------- Option B modal ------- */
+  .scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    background: var(--scrim);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+  .modal {
+    position: absolute;
+    top: 56px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 880px;
+    z-index: 4;
+    background: var(--surface-panel);
+    border: 1px solid var(--border-hairline);
+    border-radius: 16px;
+    box-shadow: 0 12px 48px rgba(8,9,18,0.7), 0 0 32px var(--accent-glow);
+    overflow: hidden;
+  }
+  .modal-titlerow {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 24px 32px 12px 32px;
+  }
+  .modal-kicker { color: var(--accent); margin-bottom: 8px; }
+  .modal-title-wrap { display: flex; align-items: baseline; gap: 12px; }
+  .modal-h2 { font-size: 17px; font-weight: 500; color: var(--text-primary); }
+  .modal-count { font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+  .close-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface-overlay);
+    border: 1px solid var(--border-hairline);
+    border-radius: 999px;
+    padding: 6px 14px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .close-pill .esc { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); }
+
+  .history-strip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 32px 14px 32px;
+    border-bottom: 1px solid var(--border-hairline);
+    overflow: hidden;
+    position: relative;
+  }
+  .strip-kicker { color: var(--text-tertiary); flex: 0 0 auto; margin-right: 4px; }
+  .chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    background: var(--surface-overlay);
+    border: 1px solid var(--border-hairline);
+    border-radius: 999px;
+    padding: 4px 12px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    white-space: nowrap;
+    flex: 0 0 auto;
+    cursor: default;
+  }
+  .chip .time { font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+  .chip.is-current {
+    border-color: var(--accent);
+    color: var(--accent-bright);
+    box-shadow: 0 0 0 2px var(--accent-glow);
+  }
+  .chip.is-current .time { color: var(--accent-bright); }
+  .strip-fade {
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    width: 72px;
+    background: linear-gradient(90deg, transparent, var(--surface-panel) 80%);
+    pointer-events: none;
+  }
+
+  .modal-body { padding: 24px 32px 32px 32px; display: flex; flex-direction: column; gap: 12px; }
+  .swap-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--surface-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: 10px;
+    padding: 12px 16px;
+  }
+  .swap-card {
+    background: var(--surface-overlay);
+    border: 1px solid var(--border-hairline);
+    border-radius: 6px;
+    padding: 6px 12px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .swap-arrow { color: var(--accent); font-size: 14px; flex: 0 0 auto; }
+  .swap-reason { color: var(--text-tertiary); flex: 1 1 auto; font-size: 14px; }
+
+  /* ------- annotations ------- */
+  .annos {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .anno-col {
+    background: var(--surface-base);
+    border: 1px solid var(--border-hairline);
+    border-radius: 10px;
+    padding: 16px 24px 20px 24px;
+  }
+  .anno-col h3 { margin-bottom: 12px; }
+  .anno-col.gain h3 { color: var(--accent-bright); }
+  .anno-col.cost h3 { color: var(--text-secondary); }
+  .anno-col ul { list-style: none; }
+  .anno-col li {
+    color: var(--text-secondary);
+    padding: 6px 0 6px 18px;
+    position: relative;
+  }
+  .anno-col li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 14px;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--border-strong);
+  }
+  .anno-col.gain li::before { background: var(--accent); }
+
+  /* ------- footnote ------- */
+  .footnote {
+    border-top: 1px solid var(--border-hairline);
+    margin-top: 48px;
+    padding-top: 24px;
+    color: var(--text-tertiary);
+  }
+  .footnote .t-label { color: var(--text-secondary); display: block; margin-bottom: 8px; }
+
+  @media (max-width: 860px) {
+    .annos { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="t-label page-kicker">Voltglass · FR-18 decision aid</div>
+    <h1 class="t-display">Session History — Home Options</h1>
+    <p class="page-intro">
+      Session history is a capped list of the last ~20 agent pushes this session — each labelled by
+      kind and time — that lets you reopen earlier pushes, including older pushes of the same kind
+      that the nav pills can no longer reach (pills only reopen the latest push per kind). The open
+      decision: where does this list live? Two candidate homes are mocked below, in context. Both
+      are faithful to current Voltglass surfaces; neither is recommended over the other here.
+    </p>
+  </header>
+
+  <!-- ================= OPTION A ================= -->
+  <section class="option">
+    <h2 class="t-heading option-label">Option A — Extend the nav</h2>
+    <p class="option-sub">A fifth "History" pill in the deck header opens an anchored popover listing all pushes chronologically, cross-kind.</p>
+
+    <div class="viewport">
+      <div class="mock">
+
+        <!-- deck grid hint -->
+        <div class="grid-hint">
+          <div class="card-ph"><div class="ph-title">Tide Caller</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Ember Fox</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Reef Warden</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Gale Skimmer</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Silt Prowler</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Brine Adept</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Current Weaver</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Shoal Piper</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Depth Singer</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Foam Rider</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Kelp Sentinel</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Spray Dancer</div><div class="ph-art"></div></div>
+        </div>
+        <div class="dim"></div>
+
+        <!-- deck header -->
+        <div class="deck-header">
+          <h1 class="deck-name">Merfolk Tempo</h1>
+          <nav class="nav-group">
+            <span class="t-label nav-kicker">Agent</span>
+            <button class="pill is-active">Suggestions <span class="time">14:28</span></button>
+            <button class="pill is-active">Swaps <span class="time">14:32</span> <span class="dot"></span></button>
+            <button class="pill is-active">Tier list <span class="time">14:05</span></button>
+            <button class="pill">Card groups</button>
+            <button class="pill is-open"><span class="glyph">&#10226;</span> History</button>
+          </nav>
+        </div>
+
+        <!-- popover, anchored under the History pill -->
+        <div class="popover-caret"></div>
+        <div class="popover" role="dialog" aria-label="Session history">
+          <div class="popover-head">
+            <span class="t-label">Session history</span>
+            <span class="t-micro">20 pushes · this tab</span>
+          </div>
+          <div class="history-list">
+            <div class="history-row is-hover">
+              <span class="kind">Swaps</span><span class="title">Cut the slow ramp</span><span class="time">14:32</span>
+            </div>
+            <div class="history-row">
+              <span class="kind">Suggest.</span><span class="title">Opening suggestions</span><span class="time">14:28</span>
+            </div>
+            <div class="history-row">
+              <span class="kind">Swaps</span><span class="title">Trim to two colours</span><span class="time">14:19</span>
+            </div>
+            <div class="history-row">
+              <span class="kind">Tier list</span><span class="title">Tier list</span><span class="time">14:05</span>
+            </div>
+            <div class="history-row">
+              <span class="kind">Groups</span><span class="title">Card groups</span><span class="time">13:58</span>
+            </div>
+            <div class="history-row">
+              <span class="kind">Swaps</span><span class="title">Lower the top end</span><span class="time">13:44</span>
+            </div>
+            <div class="history-row">
+              <span class="kind">Suggest.</span><span class="title">Opening suggestions</span><span class="time">13:31</span>
+            </div>
+            <div class="history-row">
+              <span class="kind">Tier list</span><span class="title">Tier list</span><span class="time">13:12</span>
+            </div>
+          </div>
+          <div class="popover-foot t-micro">Scroll for 12 more · newest first</div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="annos">
+      <div class="anno-col gain">
+        <h3 class="t-label">What you gain</h3>
+        <ul>
+          <li>History is reachable without any agent view open — one click from the deck header at all times.</li>
+          <li>One global, chronological, cross-kind list: the whole session in a single place, newest first.</li>
+          <li>Sits beside the existing per-kind pills, so "latest per kind" and "everything" share one nav group.</li>
+          <li>The current agent-view modal is untouched — its header keeps its present layout.</li>
+        </ul>
+      </div>
+      <div class="anno-col cost">
+        <h3 class="t-label">What it costs</h3>
+        <ul>
+          <li>The popover is a NEW floating surface. The overlay stack is currently one level deep — the agent view is the only modal — so this needs a ruling.</li>
+          <li>A popover is not a modal, but it is new machinery: outside-click dismiss, Esc ordering against the modal, and focus handling all have to be defined.</li>
+          <li>Adds a fifth control to an already-populated header row (kicker + four pills + timestamps + unread dots).</li>
+          <li>Two overlapping affordances in one group: pills reopen latest-per-kind, the popover reopens anything — users must learn the split.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= OPTION B ================= -->
+  <section class="option">
+    <h2 class="t-heading option-label">Option B — In-view header strip</h2>
+    <p class="option-sub">A horizontal chip strip as a second header row inside the existing agent-view modal; clicking a chip swaps the view content in place (crossfade).</p>
+
+    <div class="viewport">
+      <div class="mock">
+
+        <!-- deck grid hint (behind scrim) -->
+        <div class="grid-hint">
+          <div class="card-ph"><div class="ph-title">Tide Caller</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Ember Fox</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Reef Warden</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Gale Skimmer</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Silt Prowler</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Brine Adept</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Current Weaver</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Shoal Piper</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Depth Singer</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Foam Rider</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Kelp Sentinel</div><div class="ph-art"></div></div>
+          <div class="card-ph"><div class="ph-title">Spray Dancer</div><div class="ph-art"></div></div>
+        </div>
+
+        <!-- deck header behind the scrim -->
+        <div class="deck-header" style="z-index:1;">
+          <h1 class="deck-name">Merfolk Tempo</h1>
+          <nav class="nav-group">
+            <span class="t-label nav-kicker">Agent</span>
+            <button class="pill is-active">Suggestions <span class="time">14:28</span></button>
+            <button class="pill is-active">Swaps <span class="time">14:32</span></button>
+            <button class="pill is-active">Tier list <span class="time">14:05</span></button>
+            <button class="pill">Card groups</button>
+          </nav>
+        </div>
+
+        <div class="scrim"></div>
+
+        <!-- agent view modal -->
+        <div class="modal" role="dialog" aria-modal="true" aria-label="Suggested swaps">
+          <div class="modal-titlerow">
+            <div>
+              <div class="t-micro modal-kicker">From your agent</div>
+              <div class="modal-title-wrap">
+                <h2 class="modal-h2">Suggested swaps</h2>
+                <span class="modal-count">4 swaps</span>
+              </div>
+            </div>
+            <button class="close-pill">Close <span class="esc">esc</span></button>
+          </div>
+
+          <!-- NEW: session-history strip -->
+          <div class="history-strip">
+            <span class="t-micro strip-kicker">Session</span>
+            <button class="chip is-current">Swaps <span class="time">14:32</span></button>
+            <button class="chip">Suggestions <span class="time">14:28</span></button>
+            <button class="chip">Swaps <span class="time">14:19</span></button>
+            <button class="chip">Tier list <span class="time">14:05</span></button>
+            <button class="chip">Card groups <span class="time">13:58</span></button>
+            <button class="chip">Swaps <span class="time">13:44</span></button>
+            <button class="chip">Suggestions <span class="time">13:31</span></button>
+            <div class="strip-fade"></div>
+          </div>
+
+          <div class="modal-body">
+            <div class="swap-row">
+              <span class="swap-card">Silt Prowler</span>
+              <span class="swap-arrow">&#8594;</span>
+              <span class="swap-card">Tide Caller</span>
+              <span class="swap-reason">Cheaper body that holds the tempo line on turn two.</span>
+            </div>
+            <div class="swap-row">
+              <span class="swap-card">Foam Rider</span>
+              <span class="swap-arrow">&#8594;</span>
+              <span class="swap-card">Gale Skimmer</span>
+              <span class="swap-reason">Evasion matters more than toughness in this shell.</span>
+            </div>
+            <div class="swap-row">
+              <span class="swap-card">Kelp Sentinel</span>
+              <span class="swap-arrow">&#8594;</span>
+              <span class="swap-card">Current Weaver</span>
+              <span class="swap-reason">Doubles as protection for the lords you keep.</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="annos">
+      <div class="anno-col gain">
+        <h3 class="t-label">What you gain</h3>
+        <ul>
+          <li>No new surface — reuses the modal already ruled as the app's only overlay; the one-level overlay stack stays one level.</li>
+          <li>History sits where reopening happens: pick a chip, the view swaps in place with a crossfade — no open/close churn.</li>
+          <li>Deck header is untouched; the nav group keeps its current four pills.</li>
+          <li>Chips carry kind + time in the existing pill vocabulary — no new component language.</li>
+        </ul>
+      </div>
+      <div class="anno-col cost">
+        <h3 class="t-label">What it costs</h3>
+        <ul>
+          <li>History is reachable ONLY once a view is open — the first entry point stays the nav pills, so you must open something before you can go back further.</li>
+          <li>The strip competes for modal header space with title, count, and the Close pill.</li>
+          <li>In-place content swap must re-fire the view's focus/announce contract each time a chip is clicked.</li>
+          <li>Cross-kind chips inside a view titled by one kind may read oddly — a "Tier list" chip inside the Suggestions view swaps the whole view kind, not a tab within it.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= shared behavior ================= -->
+  <footer class="footnote">
+    <span class="t-label">Shared behavior — identical under either home</span>
+    <p>Cap 20, oldest drops silently &middot; per-tab, clears on refresh &middot; ordered by timestamp &middot; reopen never re-requests from the agent &middot; stale card ids degrade to unknown-card placeholders.</p>
+  </footer>
+
+</div>
+</body>
+</html>
