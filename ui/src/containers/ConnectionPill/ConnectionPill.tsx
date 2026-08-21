@@ -61,10 +61,16 @@ import { pagePort } from './port'
  * ESCAPE SUPPRESSES THE REVEAL (WCAG 1.4.13 dismissable): a DOCUMENT-level keydown listener —
  * not a button handler, because a hover-only reveal holds no focus and the key would land on
  * `document.body` unheard — sets one state bit, `is-suppressed`, and CSS gates every reveal
- * selector on its absence. Clearing is per-channel: blur always clears; mouse-leave clears only
- * while the pill is unfocused, so a pointer passing over a focus-dismissed pill cannot re-arm
- * the reveal the keyboard user just dismissed. An identity change must NOT announce: the live
- * region below is keyed on the STATUS alone, so the tooltip's data changing never touches it.
+ * selector on its absence. THE SUPPRESSION LASTS FOR THE CURRENT REVEAL SESSION ONLY (Greptile,
+ * PR #96): Escape is pressed for many reasons on this page — unpinning the card detail is the
+ * common one — and a document listener hears them all, so an unrelated Escape would otherwise
+ * latch the bit and make the user's NEXT hover or focus silently reveal nothing. Entry events
+ * are therefore resets: `focus` and `mouseenter` each begin a new session and wipe the bit — a
+ * new entry is a new intent — while an Escape during an ACTIVE hover/focus stays dismissed
+ * precisely because no new entry event fires while the pointer or focus is held. Blur always
+ * clears too, and mouse-leave clears while the pill is unfocused; both are exits ending the
+ * session they belong to. An identity change must NOT announce: the live region below is keyed
+ * on the STATUS alone, so the tooltip's data changing never touches it.
  *
  * ================= THE DOT IS DECORATION, AND IT NEVER MOVES ==========================
  *
@@ -106,9 +112,11 @@ export function ConnectionPill() {
   // AT THE DOCUMENT, NOT ON THE BUTTON (review finding): the hover reveal needs no focus, so
   // during a hover-only reveal the key lands on `document.body` and a button-scoped handler
   // would never hear it — Escape could not dismiss exactly the channel 1.4.13's dismissable
-  // clause exists for. Registered for the mounted lifetime; the bit it sets is inert while no
-  // reveal channel is active and is cleared by the same blur/mouse-leave that would have ended
-  // the reveal it dismissed.
+  // clause exists for. Registered for the mounted lifetime, which means it also hears every
+  // Escape pressed for some OTHER surface's sake — that stray latch is what the button's
+  // entry-event resets exist to wipe (see the JSX comment): the bit a stranded Escape sets is
+  // inert while no reveal channel is active and lasts only until the next focus/mouse-enter
+  // begins a new session.
   //
   // Deliberately NO `stopPropagation` and NO `preventDefault`: there is no ancestor Escape
   // behaviour to collide with today — the only Escape-consuming surface is the agent view, which
@@ -169,12 +177,16 @@ export function ConnectionPill() {
 
           STILL NO `onClick`, AND THAT IS STILL THE HONEST SHAPE. The tooltip reveals on hover
           and focus — CSS's job — so a click does nothing and a no-op handler would be a lie.
-          The two handlers below CLEAR the suppression bit the document-level Escape listener
-          sets (see the effect above), and the clearing is per-channel so a dismissal cannot be
-          undone by the OTHER channel (review finding): blur always clears, because leaving the
-          pill ends the focus reveal the dismissal was about; mouse-leave clears only while the
-          pill is NOT the focused element, because a pointer merely passing over a
-          focus-dismissed pill must not re-arm the reveal the keyboard user just dismissed.
+          The four handlers below manage the suppression bit the document-level Escape listener
+          sets (see the effect above), and the ruling is SESSION-SCOPED dismissal (Greptile,
+          PR #96): the ENTRY events — focus, mouse-enter — each begin a new reveal session and
+          RESET the bit, because a document listener hears every Escape on the page (unpinning
+          the card detail is the common one) and an unrelated Escape must not latch the tooltip
+          shut for the next visit; a new entry is a new intent. An Escape during an ACTIVE
+          hover/focus stays dismissed exactly because no new entry event fires while the
+          pointer or focus is held. The EXIT events close the session out: blur always clears,
+          and mouse-leave clears while the pill is not the focused element (a pointer leaving a
+          still-focused, still-dismissed pill leaves the keyboard session's dismissal alone).
           It still carries no `aria-expanded`, no `aria-pressed` and no `aria-haspopup` — a
           tooltip is a description, not a popup the button controls — and no `title` (UX-DR39
           bans a hover-only disclosure; the visible tooltip is the one channel, so the two can
@@ -187,6 +199,8 @@ export function ConnectionPill() {
         type="button"
         className="connection-pill"
         aria-describedby={tooltipId}
+        onFocus={() => setSuppressed(false)}
+        onMouseEnter={() => setSuppressed(false)}
         onBlur={() => setSuppressed(false)}
         onMouseLeave={(event) => {
           if (document.activeElement !== event.currentTarget) setSuppressed(false)

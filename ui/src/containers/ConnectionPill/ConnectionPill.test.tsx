@@ -363,20 +363,48 @@ describe('Escape suppresses the reveal until blur or mouse-leave (WCAG 1.4.13)',
     expect(tooltip().className).not.toContain('is-suppressed')
   })
 
-  it('does NOT clear on mouse-leave while the pill is focused — a passing pointer must not re-arm', () => {
-    // The re-reveal hole (review finding): a keyboard user dismisses the focus reveal, a
-    // pointer happens to cross the pill, and an unconditional mouse-leave clear would put the
-    // tooltip straight back. While the pill holds focus, only blur (or Escape's own channel
-    // ending) may end the suppression.
+  it('does NOT clear on mouse-leave while the pill is focused — an exit for the OTHER channel', () => {
+    // While the pill holds focus, the keyboard session's dismissal is the standing intent, and
+    // a pointer LEAVING the pill is not an event in that session — only blur, or a new ENTRY
+    // event beginning a new session, may end the suppression.
     applyConnection('live')
     render(<ConnectionPill />)
     pill().focus()
     fireEvent.keyDown(pill(), { key: 'Escape' })
 
-    fireEvent.mouseEnter(pill())
     fireEvent.mouseLeave(pill())
 
     expect(tooltip().className).toContain('is-suppressed')
+  })
+
+  it('CLEARS on focus after an unrelated Escape — a new session must not inherit the latch (PR #96)', () => {
+    // The Greptile scenario: Escape pressed anywhere — unpinning the card detail is the common
+    // case — reaches the document listener with the pill neither hovered nor focused, and
+    // without an entry-time reset the user's NEXT visit to the pill would silently reveal
+    // nothing. A new entry is a new intent.
+    applyConnection('live')
+    render(<ConnectionPill />)
+    expect(document.activeElement).not.toBe(pill())
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(tooltip().className).toContain('is-suppressed')
+
+    fireEvent.focus(pill())
+
+    expect(tooltip().className).not.toContain('is-suppressed')
+  })
+
+  it('CLEARS on mouse-enter after an unrelated Escape — the pointer channel’s same reset', () => {
+    // The dismissal contract survives intact: an Escape during an ACTIVE hover stays dismissed
+    // precisely because no new mouseenter fires while the pointer is held on the pill — the
+    // suppress-at-body test above is that case, entered and not re-entered.
+    applyConnection('live')
+    render(<ConnectionPill />)
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(tooltip().className).toContain('is-suppressed')
+
+    fireEvent.mouseEnter(pill())
+
+    expect(tooltip().className).not.toContain('is-suppressed')
   })
 
   it('ignores every other key — Escape is the whole vocabulary', () => {
