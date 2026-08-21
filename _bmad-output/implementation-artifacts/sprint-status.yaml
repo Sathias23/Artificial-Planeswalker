@@ -329,7 +329,7 @@
 #   epic-c1..10 → _bmad-output/planning-artifacts/epics-companion-app.md          (c-prefixed, numbering UNCHANGED)
 
 generated: 2026-06-20
-last_updated: '08-20-2026 22:15'
+last_updated: '08-21-2026 18:56'
 # 08-20-2026 21:30 — STORY 15-6 DONE: THE SC-5 GATE RAN AND CLOSED (sc-5-gate-report-2026-08-20.md). Brad walked the live app, ruled it a deliberate product ("looks good", tabs, footer), then ruled the four open forks interactively: F1 open-modal-!=-surface, arrow-key flag re-accepted at the measured 206/101, M1 row added + M2/M3 accepted + M5 completeness guard extended with a planted RED proof. Inbox dispositioned by name (J6 DECLINED on its fifth home; D1 refused, stays unowned). EPIC 15 IS 6/6 CODE-COMPLETE — the 0.5.0 release cut, withheld by 15-4/15-5 ruling, is UNBLOCKED. Next: the Epic 15 retro, the integration PR to master (no Greptile, standing rule), then the release cut.
 #                Previously — 08-20-2026 21:12
 # 08-20-2026 21:12 — EPIC 14 VERDICT -> accepted; R3 CLOSED AS WAVED (Brad's rulings, master commits 72dce34 + cfec300): F7's quiet-machine closure was the named verdict-mover; the SC-5 preliminary ruling (sc-5-preliminary-ruling-2026-08-20.md, "it looks good ... we can always adjust after completion") covers the judgement half — story 15-6 cites it instead of staging a gate, and L1-L10 items surface as bugs, not gates. Also this stamp: umbrella reconciliation — claude/hello-7v0acf (15-6 spec) and master merged into feat/companion-epic-15, the canonical Epic 15 umbrella by Brad's ruling.
@@ -736,11 +736,11 @@ development_status:
   # Epic C9: The Remaining Push Kinds  *(Phase 2)*
   # FR-09, FR-10, FR-23 · UX-DR25/26/27 · depends on c6
   # NOTE: cheap because c5-1 already froze all four payload shapes — each story is tool + view only.
-  epic-16: backlog
-  16-1-proposed-swaps-tool-and-view: backlog
-  16-2-tier-lists-tool-and-view: backlog
-  16-3-card-groups-tool-and-view: backlog
-  epic-16-retrospective: optional
+  epic-16: done  # 3/3 CODE-COMPLETE 2026-08-21 on feat/companion-epic-16 (branched from b3798a5, the epic-15 integration merge). Remains: retro, integration PR to master, then Epic 17 and the 0.5.0 cut. Statuses were stale (backlog) until the 2026-08-21 retro pre-check reconciled them against the merged PRs.
+  16-1-proposed-swaps-tool-and-view: done  # PR #92 MERGED into feat/companion-epic-16 at 77f2f0f (story commit 7e9fc2f): companion_show_swaps tool + SwapsView.
+  16-2-tier-lists-tool-and-view: done  # PR #93 MERGED into feat/companion-epic-16 at 008337e (story commit d40fd66): companion_show_tier_list tool + TierListView.
+  16-3-card-groups-tool-and-view: done  # PR #94 MERGED into feat/companion-epic-16 at eeb2288 (story commit 85a1d92): companion_show_groups tool + GroupsView — last push kind; drop pin deleted.
+  epic-16-retrospective: done
 
   # Epic C10: Session History, Status Detail & Performance Polish  *(Phase 2)*
   # FR-15, FR-18 · NFR-05 hardening · depends on c7
@@ -1467,7 +1467,7 @@ action_items:
       b\"\r\n\") in test_viewer_freeze.py:1172 + consider .gitattributes eol rule
       for src/viewer/template.html — suite is red today on autocrlf=true Windows checkouts"
     owner: "Brad"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-15-retro-2026-08-20.md"
   - id: "epic-15-retro-item-85-release-doc-accuracy-sweep-before-the-0"
     epic: 15
@@ -1476,7 +1476,7 @@ action_items:
       label (~1,000 distinct printings, not full set); README.md:557 38% direction;
       README.md:513 shard arithmetic; optionally pin README Python floor to requires-python"
     owner: "Brad"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-15-retro-2026-08-20.md"
   - id: "epic-15-retro-item-86-repair-the-m5-guard-anchor-row-presence"
     epic: 15
@@ -1484,7 +1484,7 @@ action_items:
       prose quotes falsify its premise) and invert VISUAL_TRANSITION_PROPERTIES to
       an allowlist so unknown transitioned properties fail by name"
     owner: "Brad"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-15-retro-2026-08-20.md"
   - id: "epic-15-retro-item-87-local-byte-parity-for-the-plugin-mirror"
     epic: 15
@@ -1499,7 +1499,7 @@ action_items:
     action: "Full-shape payload check in test_image_cache_docs.py:182 (one line) —
       close the prefix-then-exec gap"
     owner: "Brad"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-15-retro-2026-08-20.md"
   - id: "epic-15-retro-item-89-markdown-guard-helper-consolidation-one"
     epic: 15
@@ -1508,7 +1508,7 @@ action_items:
       four scanner implementations). TERMINATION CLAUSE: not done by the Epic 16 retro
       -> formally decline"
     owner: "Brad"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-15-retro-2026-08-20.md"
   - id: "epic-15-retro-item-90-cross-machine-session-hygiene-cloud-sess"
     epic: 15
@@ -1519,3 +1519,55 @@ action_items:
     owner: "Brad"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-15-retro-2026-08-20.md"
+  - id: "epic-16-retro-item-91-port-the-whitespace-id-filter-to-the-oth"
+    epic: 16
+    action: "Port the whitespace-id filter to the other two views: GroupsView's trimmed-non-empty
+      cardIdsOf filter into TierListView, equivalent trim guard into SwapsView cardIdOf/unknown
+      check, with 16.3-style pinned tests"
+    owner: ""
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-16-retro-2026-08-21.md"
+  - id: "epic-16-retro-item-92-push-tool-docstring-accuracy-pass-one-co"
+    epic: 16
+    action: "Push-tool docstring accuracy pass (one commit + plugin rebuild): companion_show_groups
+      empty-card_ids wording -> group not displayed at all; _PUSH_MESSAGES docstring
+      all-three-tables -> four; 64 KB envelope note copied into companion_show_tier_list
+      (and swaps)"
+    owner: ""
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-16-retro-2026-08-21.md"
+  - id: "epic-16-retro-item-93-guard-hardening-pair-test-tying-_push_me"
+    epic: 16
+    action: "Guard hardening pair: test tying _push_messages keys to get_args(PushOutcomeToken)
+      so a widened vocabulary fails by name; sibling-channel-empty assertions retrofitted
+      into swaps/tier delivery tests + no_clients_connected mirrors for the three
+      new kinds"
+    owner: ""
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-16-retro-2026-08-21.md"
+  - id: "epic-16-retro-item-94-release-gating-0-5-0-ruled-by-brad-2026"
+    epic: 16
+    action: "RELEASE-GATING (0.5.0, ruled by Brad 2026-08-21): resolve the empty-push
+      copy-grammar ledger item (c6-6) — amend EXPERIENCE.md Voice-and-Tone cell to
+      a display noun, substitute lowercased AGENT_VIEW_LABELS[kind] in emptyPushLine,
+      update byte-gated copy tests; decide the all-skipped header-count contradiction
+      in passing"
+    owner: ""
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-16-retro-2026-08-21.md"
+  - id: "epic-16-retro-item-95-decide-the-view-scaffolding-consolidatio"
+    epic: 16
+    action: "Decide the view-scaffolding consolidation now the four-view family is
+      closed (build or formally decline): shared tile/placeholder-ladder/stale-release
+      module; R1 is the live demonstration of clone cost"
+    owner: ""
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-16-retro-2026-08-21.md"
+  - id: "epic-16-retro-item-96-skills-mention-of-the-push-tools-ruled-b"
+    epic: 16
+    action: "Skills mention of the push tools (ruled by Brad 2026-08-21, reversing
+      the 16.1 exclusion): add a when-the-companion-is-running push note to the deckbuilding-family
+      skills, both copies + plugin rebuild"
+    owner: ""
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-16-retro-2026-08-21.md"
