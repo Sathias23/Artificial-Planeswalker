@@ -1727,19 +1727,24 @@ describe('the containers are a declared category with a posture of its own', () 
         'react',
       ],
     },
-    // c6-8's agent-views nav — the header pills. It reads the agent-view store through TWO
-    // per-kind selector hooks and calls one verb on it, which is the whole of its state
-    // coupling; `../../api/schema` is a TYPE-only import for the kind union (the rule below
-    // reads the specifier, so it is listed either way), and it is reached rather than re-spelled
-    // because `schema.ts` is the only home for a wire-derived alias. `react` is here for
-    // `useId`, which generates the `aria-describedby` target on a quiet pill. It calls hooks and
-    // reads a store, so `posture.test.ts` would fail it under `src/components/` twice over.
+    // c6-8's agent-views nav — the header pills, and since 17.2 the History pill + popover too
+    // (the ruled FR-18 home), in this same module rather than a sibling: the popover is the
+    // pill's own disclosure, anchored inside the nav's markup, and a second module would have
+    // bought a registry entry for no seam. It reads the agent-view store through per-kind and
+    // history selector hooks and calls its exported verbs (`reopenAgentView`, `reopenPush`),
+    // which is the whole of its state coupling; `../../api/schema` is a TYPE-only import for
+    // the kind union (the rule below reads the specifier, so it is listed either way), and it
+    // is reached rather than re-spelled because `schema.ts` is the only home for a wire-derived
+    // alias. `react` is here for `useId`, the popover's open state and its native listeners.
+    // It calls hooks and reads a store, so `posture.test.ts` would fail it under
+    // `src/components/` twice over.
     {
       file: 'src/containers/AgentViewsNav/AgentViewsNav.tsx',
       imports: [
         '../../api/schema',
         '../../state/agentView',
         './AgentViewsNav.css',
+        './HistoryPopover.css',
         './copy',
         './pushTime',
         'react',

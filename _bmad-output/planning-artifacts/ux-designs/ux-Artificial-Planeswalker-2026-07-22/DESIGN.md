@@ -312,9 +312,10 @@ components:
     # last ~20 pushes. The PILL declares nothing here on purpose: it is `components.nav-pill`
     # verbatim (padding, type, quiet state and all) plus a stroke-based clock glyph — a plain
     # UI glyph, never anything that could read as a set symbol. The decision aid behind the
-    # ruling is `.working/session-history-home-options.html`; sub-treatments EXPERIENCE.md
-    # marks [ASSUMPTION] are drafted pending confirmation, while the home choice itself is
-    # ruled. Behavior in EXPERIENCE.md's "History pill + popover" row.
+    # ruling is `.working/session-history-home-options.html`; the sub-treatments EXPERIENCE.md
+    # drafted as [ASSUMPTION] were confirmed in implementation and struck at story 17.2 (one
+    # wording delta, on the enter fade — see below). Behavior in EXPERIENCE.md's "History pill
+    # + popover" row.
     background: '{colors.surface-overlay}'
     border: '1px solid {colors.border-hairline}'
     radius: '{rounded.md}'
@@ -332,9 +333,13 @@ components:
     # of times must not jitter) at the Colors section's timestamp tier.
     entry-time-type: '{typography.numeric}'
     entry-time-foreground: '{colors.text-tertiary}'
-    # Opacity-only fade — no rise, and deliberately NO new motion token or inventory entry:
-    # `glide` is the existing duration/ease pair, and an opacity-only fade self-neutralises
-    # under reduced motion.
+    # Opacity-only fade — no rise, no transform, and deliberately NO new motion token or
+    # reduced-motion registration: `glide` is the existing duration/ease pair, and an
+    # opacity-only fade self-neutralises under reduced motion. AMENDED 2026-08-22 (story 17.2):
+    # this line originally also promised "no inventory entry", which the exhaustiveness gate
+    # falsified — UX-DR42's reduced-motion inventory keys every shipped visual-class transition
+    # to a named row, so the fade ships with its own row ("History-popover fade -> appears in
+    # place", tokens.css) while the no-token and no-registration halves hold as drafted.
     enter: '{components.motion.glide} {components.motion.ease-glide}'
   agent-view:
     scrim: '{colors.scrim}'

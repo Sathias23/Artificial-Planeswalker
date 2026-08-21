@@ -2801,6 +2801,12 @@ describe('the reduced-motion mechanism (AC 11, AC 13)', () => {
       '.suggestion-row :: box-shadow': 'Deck-row live tint',
       '.flip-control :: opacity': 'Flip-control chrome fade',
       '.mana-curve-bar :: height': 'Curve-bar height',
+      // 17.2's history popover: an opacity-only fade over the glide pair (DESIGN.md
+      // `components.history-popover.enter` — no rise, no transform, so the reduced-motion
+      // block registers nothing for it; zeroing `--motion-glide` already makes it instant).
+      // Its inventory row ships in the same commit, per this guard's own rule that a new
+      // entry owes a row first.
+      '.agent-views-nav-popover :: opacity': 'History-popover fade',
     }
 
     expect(

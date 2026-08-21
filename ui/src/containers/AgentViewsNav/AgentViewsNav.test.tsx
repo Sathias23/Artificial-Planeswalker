@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { AgentViewKind } from '../../api/schema'
 import {
@@ -11,7 +11,7 @@ import {
   useAgentViewStore,
 } from '../../state/agentView'
 import { AgentViewsNav } from './AgentViewsNav'
-import { NAV_GROUP_LABEL, QUIET_TOOLTIP, UNREAD_WORD } from './copy'
+import { HISTORY_LABEL, HISTORY_QUIET_TOOLTIP, NAV_GROUP_LABEL, QUIET_TOOLTIP, UNREAD_WORD } from './copy'
 import { pushTimeLabel } from './pushTime'
 
 /**
@@ -64,21 +64,24 @@ afterEach(() => {
 })
 
 describe('the nav renders one pill per kind, in enum order (AC 1, AC 6, Q3)', () => {
-  it('renders exactly four pills', () => {
+  it('renders exactly five pills — four kinds plus History (17.2)', () => {
     render(<AgentViewsNav />)
-    expect(screen.getAllByRole('button')).toHaveLength(4)
+    expect(screen.getAllByRole('button')).toHaveLength(5)
   })
 
-  it('renders them in the ruled order — Suggestions, Swaps, Tier list, Card groups', () => {
+  it('renders them in the ruled order — Suggestions, Swaps, Tier list, Card groups, History', () => {
     // Q3 took the wire enum's order over the mock's and the IA table's. `PILL_ORDER` derives it
     // from the vocabulary table's declaration order rather than authoring it a second time, so
     // this assertion is what keeps that derivation honest: a reordered table reorders the glass.
+    // History renders LAST, outside the map (2026-08-22 ruling: immediately after the Card
+    // groups pill), which is also the proof it is not keyed into the kind enum.
     render(<AgentViewsNav />)
     expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
       'Suggestions',
       'Swaps',
       'Tier list',
       'Card groups',
+      HISTORY_LABEL,
     ])
   })
 
@@ -209,8 +212,8 @@ describe('a kind that HAS pushed is active and shows its time (AC 2, Q4)', () =>
     const { container } = render(<AgentViewsNav />)
     expect((pillFor('suggestions') as HTMLButtonElement).disabled).toBe(false)
     expect(container.querySelector('time')).toBeNull()
-    // …and the three quiet pills are unharmed, which is what "degrades alone" means.
-    expect(screen.getAllByRole('button')).toHaveLength(4)
+    // …and the sibling pills are unharmed, which is what "degrades alone" means.
+    expect(screen.getAllByRole('button')).toHaveLength(5)
   })
 
   it('stays active and shows no time when the ts is entirely ABSENT (review fix, 2026-08-12)', () => {
@@ -227,8 +230,8 @@ describe('a kind that HAS pushed is active and shows its time (AC 2, Q4)', () =>
     const { container } = render(<AgentViewsNav />)
     expect((pillFor('suggestions') as HTMLButtonElement).disabled).toBe(false)
     expect(container.querySelector('time')).toBeNull()
-    // …and the three quiet pills are unharmed, which is what "degrades alone" means.
-    expect(screen.getAllByRole('button')).toHaveLength(4)
+    // …and the sibling pills are unharmed, which is what "degrades alone" means.
+    expect(screen.getAllByRole('button')).toHaveLength(5)
   })
 
   it('survives a dismissal — a pill is active because the kind PUSHED, not because it is open', () => {
@@ -314,3 +317,340 @@ describe('clicking an active pill re-opens its view (AC 4)', () => {
     expect(useAgentViewStore.getState().status).toBe('open')
   })
 })
+
+// =========================================================================================
+// STORY 17.2 — the History pill and its popover
+// =========================================================================================
+
+/** A push with its own id and ts, so history rows can be told apart. */
+const historyPush = (n: number, kind: AgentViewKind = 'suggestions'): AgentViewContent =>
+  contentOf(kind, {
+    id: `push-h${n}`,
+    ts: `2026-08-22T10:${String(n).padStart(2, '0')}:00+00:00`,
+    title: `Push ${n}`,
+  })
+
+const historyPill = (): HTMLButtonElement =>
+  screen.getByRole<HTMLButtonElement>('button', { name: HISTORY_LABEL })
+
+const popover = (): HTMLElement | null => document.querySelector('.agent-views-nav-popover')
+const entries = (): HTMLButtonElement[] => [
+  ...document.querySelectorAll<HTMLButtonElement>('.agent-views-nav-entry'),
+]
+
+describe('the History pill is quiet until the first push of ANY kind (17.2)', () => {
+  it('renders disabled with its OWN sentence in both channels, outside the accessible name', () => {
+    render(<AgentViewsNav />)
+    const pill = historyPill()
+    expect(pill.disabled).toBe(true)
+    expect(pill.getAttribute('title')).toBe(HISTORY_QUIET_TOOLTIP)
+    const describedBy = pill.getAttribute('aria-describedby')
+    expect(describedBy).toBeTruthy()
+    expect(document.getElementById(describedBy!)?.textContent).toBe(HISTORY_QUIET_TOOLTIP)
+    // The sentence is its own, about the SESSION, not the kind pills' per-kind one.
+    expect(HISTORY_QUIET_TOOLTIP).not.toBe(QUIET_TOOLTIP)
+    // Outside the button: the name stays the one word.
+    expect(pill.textContent).toBe(HISTORY_LABEL)
+  })
+
+  it('declares itself a closed disclosure even while quiet', () => {
+    render(<AgentViewsNav />)
+    expect(historyPill().getAttribute('aria-haspopup')).toBe('true')
+    expect(historyPill().getAttribute('aria-expanded')).toBe('false')
+    // …and controls nothing yet: an `aria-controls` naming an unmounted id would be a dangling
+    // reference, the same silence a dangling `aria-describedby` is.
+    expect(historyPill().getAttribute('aria-controls')).toBeNull()
+  })
+
+  it('carries a stroke-based clock glyph, hidden from the accessibility tree', () => {
+    const { container } = render(<AgentViewsNav />)
+    const glyph = container.querySelector('.agent-views-nav-clock')!
+    expect(glyph).not.toBeNull()
+    expect(glyph.getAttribute('aria-hidden')).toBe('true')
+    // Stroke-based, per the DESIGN.md note — a plain UI glyph, never a filled set-symbol shape.
+    for (const shape of glyph.querySelectorAll('circle, path')) {
+      expect(shape.getAttribute('fill')).toBe('none')
+      expect(shape.getAttribute('stroke')).toBe('currentColor')
+    }
+  })
+
+  it('activates on the first push of ANY kind — a swaps push counts (unlike the kind pills)', () => {
+    openAgentView(historyPush(1, 'swaps'))
+    render(<AgentViewsNav />)
+    expect(historyPill().disabled).toBe(false)
+    expect(historyPill().getAttribute('title')).toBeNull()
+    expect(historyPill().getAttribute('aria-describedby')).toBeNull()
+    // Non-vacuity twin: the suggestions KIND pill is still quiet beside it.
+    expect((pillFor('suggestions') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('NEVER carries an unread dot, even while a kind pill does', () => {
+    openAgentView(historyPush(1, 'suggestions'))
+    openAgentView(historyPush(2, 'swaps')) // displaces suggestions → its KIND pill is unread
+    render(<AgentViewsNav />)
+    expect(pillFor('suggestions').textContent).toContain(UNREAD_WORD)
+    expect(historyPill().textContent).not.toContain(UNREAD_WORD)
+    expect(historyPill().querySelector('.agent-views-nav-dot')).toBeNull()
+  })
+})
+
+describe('the popover lists the session’s pushes, newest first (17.2)', () => {
+  beforeEachHistory()
+
+  it('toggles open on click, with aria-expanded following', () => {
+    render(<AgentViewsNav />)
+    expect(popover()).toBeNull()
+    fireEvent.click(historyPill())
+    expect(popover()).not.toBeNull()
+    expect(historyPill().getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(historyPill())
+    expect(popover()).toBeNull()
+    expect(historyPill().getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('associates pill and popover programmatically — aria-controls resolves while open (review finding 10)', () => {
+    render(<AgentViewsNav />)
+    fireEvent.click(historyPill())
+    const controls = historyPill().getAttribute('aria-controls')
+    expect(controls).toBeTruthy()
+    // A real element, resolved through the id — not merely an attribute pointing somewhere.
+    expect(document.getElementById(controls!)).toBe(popover())
+    fireEvent.click(historyPill())
+    // Withdrawn with the popover: a controls reference to an unmounted id is a dangling one.
+    expect(historyPill().getAttribute('aria-controls')).toBeNull()
+  })
+
+  it('renders one real <button> per push, newest first, kind + title + time', () => {
+    render(<AgentViewsNav />)
+    fireEvent.click(historyPill())
+
+    const held = entries()
+    expect(held).toHaveLength(3)
+    // Newest first — the STORE's order, rendered without re-sorting.
+    expect(held.map((e) => e.querySelector('.agent-views-nav-entry-title')?.textContent)).toEqual([
+      'Push 3',
+      'Push 2',
+      'Push 1',
+    ])
+    // Kind word from the one vocabulary table; time through pushTimeLabel with the raw ts.
+    expect(held[0].querySelector('.agent-views-nav-entry-kind')?.textContent).toBe(
+      AGENT_VIEW_LABELS.swaps,
+    )
+    const time = held[0].querySelector('time')!
+    expect(time.getAttribute('datetime')).toBe('2026-08-22T10:03:00+00:00')
+    expect(time.textContent).toBe(pushTimeLabel('2026-08-22T10:03:00+00:00'))
+  })
+
+  it('omits the title when the agent supplied none — the fallback is not read out twice', () => {
+    resetAgentView()
+    openAgentView(contentOf('suggestions')) // title === the kind's own word (the fallback)
+    closeAgentView() // the popover only shows while no view is on the glass
+    render(<AgentViewsNav />)
+    fireEvent.click(historyPill())
+    expect(entries()).toHaveLength(1)
+    expect(entries()[0].querySelector('.agent-views-nav-entry-title')).toBeNull()
+    expect(entries()[0].querySelector('.agent-views-nav-entry-kind')?.textContent).toBe(
+      AGENT_VIEW_LABELS.suggestions,
+    )
+  })
+
+  it('degrades an entry’s TIME alone on an unparseable ts — the entry stays activatable', () => {
+    resetAgentView()
+    openAgentView(contentOf('suggestions', { id: 'push-bad', ts: 'yesterday', title: 'Bad clock' }))
+    closeAgentView() // the popover only shows while no view is on the glass
+    render(<AgentViewsNav />)
+    fireEvent.click(historyPill())
+    expect(entries()).toHaveLength(1)
+    expect(entries()[0].querySelector('time')).toBeNull()
+    fireEvent.click(entries()[0])
+    expect(useAgentViewStore.getState().status).toBe('open')
+    expect(useAgentViewStore.getState().content?.id).toBe('push-bad')
+  })
+
+  it('is NOT a modal, landmark, listbox or live region — a plain group of buttons', () => {
+    render(<AgentViewsNav />)
+    fireEvent.click(historyPill())
+    const root = popover()!
+    expect(root.getAttribute('role')).toBeNull()
+    expect(root.getAttribute('aria-modal')).toBeNull()
+    expect(root.getAttribute('aria-live')).toBeNull()
+    expect(document.querySelector('[aria-live]')).toBeNull()
+    expect(screen.queryByRole('navigation')).toBeNull()
+    expect(screen.queryByRole('listbox')).toBeNull()
+    // Every entry is a real button in document order, no roving tabindex anywhere.
+    for (const entry of entries()) {
+      expect(entry.tagName).toBe('BUTTON')
+      expect(entry.getAttribute('tabindex')).toBeNull()
+    }
+  })
+
+  it('moves focus to the FIRST (newest) entry on open', () => {
+    render(<AgentViewsNav />)
+    fireEvent.click(historyPill())
+    expect(document.activeElement).toBe(entries()[0])
+  })
+})
+
+describe('the popover’s four dismissals (17.2)', () => {
+  beforeEachHistory()
+
+  it('entry activation closes FIRST (focus → pill), then opens that exact push’s view', () => {
+    render(<AgentViewsNav />)
+    fireEvent.click(historyPill())
+    const second = entries()[1]
+    fireEvent.click(second)
+
+    expect(popover()).toBeNull()
+    // That exact push, by object identity, through the store's reopenPush.
+    expect(useAgentViewStore.getState().status).toBe('open')
+    expect(useAgentViewStore.getState().content?.id).toBe('push-h2')
+    expect(useAgentViewStore.getState().content).toBe(
+      useAgentViewStore.getState().history.find((e) => e.id === 'push-h2'),
+    )
+    // Focus went to the pill on close — which is what the (absent-here) view shell would then
+    // capture as its return target; App.test.tsx composes that half.
+    expect(document.activeElement).toBe(historyPill())
+  })
+
+  it('Esc closes the popover and returns focus to the pill — consuming the keystroke', () => {
+    render(<AgentViewsNav />)
+    fireEvent.click(historyPill())
+    expect(document.activeElement).toBe(entries()[0])
+
+    const consumed = !fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+
+    expect(popover()).toBeNull()
+    expect(document.activeElement).toBe(historyPill())
+    // `preventDefault()` was called — the node-level half of the Esc layering, which is what
+    // keeps the SAME keystroke from also releasing an active pin (CardDetail honours
+    // `defaultPrevented`; UX-DR39's amended order: view → popover → pin).
+    expect(consumed).toBe(true)
+  })
+
+  it('Esc with focus on the PILL — inside the wrapper, outside the popover — closes and CONSUMES (review finding 3)', () => {
+    // The toggle puts focus exactly here, so this is the ordinary second-Esc position. The
+    // consuming listener sits on the WRAPPER, not the popover root, precisely so this keystroke
+    // is consumed too — an active pin elsewhere must survive it (UX-DR39's amended order).
+    render(<AgentViewsNav />)
+    fireEvent.click(historyPill())
+    act(() => {
+      historyPill().focus()
+    })
+    const consumed = !fireEvent.keyDown(historyPill(), { key: 'Escape' })
+    expect(popover()).toBeNull()
+    expect(consumed).toBe(true)
+    expect(document.activeElement).toBe(historyPill())
+  })
+
+  it('Esc with focus OUTSIDE the wrapper still closes it — the document-level bubble half', () => {
+    render(<AgentViewsNav />)
+    fireEvent.click(historyPill())
+    // Focus wanders out entirely (the entries are ordinary Tab stops, so this is reachable) —
+    // onto an active KIND pill, a live control outside the pill+popover wrapper. Selected by
+    // CLASS rather than through `pillFor`: with the popover open, the swaps HISTORY ENTRY's
+    // accessible name also starts with the kind word, and the role query would find both.
+    const swapsPill = [...document.querySelectorAll<HTMLButtonElement>('.agent-views-nav-pill')].find(
+      (p) => p.textContent?.startsWith(AGENT_VIEW_LABELS.swaps),
+    )!
+    act(() => {
+      swapsPill.focus()
+    })
+    const consumed = !fireEvent.keyDown(swapsPill, { key: 'Escape' })
+    expect(popover()).toBeNull()
+    // The document half does NOT consume — outside the wrapper there is no layering of its own
+    // to arbitrate (the accepted pin residual is pinned at the App seam).
+    expect(consumed).toBe(false)
+    // And focus is NOT yanked back to the History pill: it sat on a live control outside the
+    // wrapper, and closing must not reverse a decision it did not make.
+    expect(document.activeElement).toBe(swapsPill)
+  })
+
+  it('stays closed when the view closes right after a push closed it (review finding 1)', () => {
+    // The regression this pins: the first shipped form parked the `open` reset in a
+    // requestAnimationFrame, and a view closed before that frame fired cancelled the reset in
+    // the effect cleanup — the popover then sprang back uninvited the moment the view left the
+    // glass. Fake timers hold every frame back, so the close-before-frame ordering is exact.
+    vi.useFakeTimers()
+    try {
+      render(<AgentViewsNav />)
+      fireEvent.click(historyPill())
+      expect(popover()).not.toBeNull()
+      act(() => {
+        openAgentView(historyPush(9)) // a push arrives: its view opens, the popover closes…
+      })
+      expect(popover()).toBeNull()
+      act(() => {
+        closeAgentView() // …and the view is dismissed before any frame can fire
+      })
+      // The popover must NOT spring back: the reset was synchronous, not parked on a frame.
+      expect(popover()).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('outside pointerdown closes it; a press INSIDE does not', () => {
+    render(<AgentViewsNav />)
+    fireEvent.click(historyPill())
+    fireEvent.pointerDown(entries()[0])
+    expect(popover()).not.toBeNull()
+    fireEvent.pointerDown(document.body)
+    expect(popover()).toBeNull()
+  })
+
+  it('closes when a view opens by ANY route — popover and modal never coexist', () => {
+    render(<AgentViewsNav />)
+    fireEvent.click(historyPill())
+    expect(popover()).not.toBeNull()
+    act(() => {
+      openAgentView(historyPush(9)) // a push arriving while the popover is open
+    })
+    expect(popover()).toBeNull()
+    expect(useAgentViewStore.getState().status).toBe('open')
+    // …and the withdrawn entries are really gone from the Tab order (transient stops).
+    expect(entries()).toHaveLength(0)
+  })
+})
+
+describe('the popover’s enter fade starts from a state and settles (17.2, review finding 7)', () => {
+  beforeEachHistory()
+
+  // Fake timers, for `AgentView.test.tsx:234-258`'s exact reason: this is the one popover
+  // behaviour with a frame in the middle of it, and the fake clock stands in for
+  // `requestAnimationFrame` so BOTH ends of the transition are assertable — the starting state
+  // a real-timer test could never catch, and the settled state it would have to wait for. A
+  // broken flip here would ship a permanently `opacity: 0` popover on a fully green suite,
+  // which is the failure this pair exists to make loud.
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it('mounts IN the entering state, so the transition has somewhere to come from', () => {
+    // `HistoryPopover.css` hangs `opacity: 0` on this exact attribute value; a component that
+    // settled during its own first commit would paint the rest state immediately and fade
+    // nothing at all.
+    render(<AgentViewsNav />)
+    fireEvent.click(historyPill())
+    expect(popover()!.getAttribute('data-entering')).toBe('true')
+  })
+
+  it('leaves the entering state on the next frame, so the fade runs', () => {
+    render(<AgentViewsNav />)
+    fireEvent.click(historyPill())
+    act(() => {
+      vi.advanceTimersByTime(20)
+    })
+    // The attribute is REMOVED (not set to 'false'): the CSS keys on `[data-entering='true']`
+    // and the settled popover carries no residue.
+    expect(popover()!.hasAttribute('data-entering')).toBe(false)
+  })
+})
+
+/** Three mixed-kind pushes, oldest to newest — the standing fixture for the popover suites. */
+function beforeEachHistory() {
+  beforeEach(() => {
+    openAgentView(historyPush(1, 'suggestions'))
+    openAgentView(historyPush(2, 'tier_list'))
+    openAgentView(historyPush(3, 'swaps'))
+    closeAgentView()
+  })
+}

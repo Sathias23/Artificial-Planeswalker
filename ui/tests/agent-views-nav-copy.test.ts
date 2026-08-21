@@ -44,6 +44,8 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import {
+  HISTORY_LABEL,
+  HISTORY_QUIET_TOOLTIP,
   NAV_GROUP_LABEL,
   QUIET_TOOLTIP,
   UNREAD_WORD,
@@ -186,6 +188,101 @@ describe('the four pill labels are EXPERIENCE.md’s IA names (AC 1, AC 2)', () 
       expect(containerCopy).not.toContain(`'${label}'`)
       expect(containerCopy).not.toContain(`"${label}"`)
     }
+  })
+})
+
+// =========================================================================================
+// STORY 17.2 — the History pill + popover, on the same gate pattern
+// =========================================================================================
+
+const HISTORY_ROW_LABEL = 'History pill + popover'
+const HISTORY_STATE_ROW_LABEL = 'History pill before the first push'
+
+const historyRow = (): string => rowsFor(HISTORY_ROW_LABEL).join('\n')
+
+describe('the History gate is reading the real artefact rows (non-vacuity, 17.2)', () => {
+  it('found both rows', () => {
+    expect(rowsFor(HISTORY_ROW_LABEL).length).toBeGreaterThan(0)
+    expect(rowsFor(HISTORY_STATE_ROW_LABEL).length).toBeGreaterThan(0)
+  })
+
+  it('is comparing two distinct authored strings, neither shared with the kind pills', () => {
+    expect(new Set([HISTORY_LABEL, HISTORY_QUIET_TOOLTIP, QUIET_TOOLTIP]).size).toBe(3)
+  })
+
+  it('would notice a string that is NOT in the row (the positive control)', () => {
+    expect(historyRow()).not.toContain('Nothing to revisit yet - your agent')
+    expect(historyRow()).not.toContain('"Session history"')
+  })
+})
+
+describe('the History quiet sentence matches the artefact BYTE FOR BYTE (17.2)', () => {
+  it('quotes the sentence exactly as the Component Patterns row writes it', () => {
+    expect(historyRow()).toContain(`"${HISTORY_QUIET_TOOLTIP}"`)
+  })
+
+  it('uses the artefact’s ASCII apostrophe and em dash — pinned by codepoint', () => {
+    // The c6-8 gate's exact concern, on the new sentence: "looks like an apostrophe" and
+    // "looks like a dash" are the differences a diff reader waves through, and the artefact is
+    // the authority in both directions.
+    expect(HISTORY_QUIET_TOOLTIP.codePointAt(HISTORY_QUIET_TOOLTIP.indexOf("'"))).toBe(0x27)
+    expect(HISTORY_QUIET_TOOLTIP).not.toContain('’')
+    expect(HISTORY_QUIET_TOOLTIP.codePointAt(HISTORY_QUIET_TOOLTIP.indexOf('—'))).toBe(0x2014)
+    expect(historyRow()).toContain("hasn't sent anything this session.")
+  })
+
+  it('keeps the trailing period — it is a sentence, not a label', () => {
+    expect(HISTORY_QUIET_TOOLTIP.endsWith('.')).toBe(true)
+  })
+
+  it('is the sentence the STATE row points at rather than a second spelling', () => {
+    // The State Patterns row defers to the Component Patterns row for the string ("see the
+    // History pill + popover row"), so ONE artefact spelling exists and this file gates it once.
+    expect(rowsFor(HISTORY_STATE_ROW_LABEL).join('\n')).toContain('History pill + popover')
+  })
+})
+
+describe('the History pill label was written into the artefact (17.2)', () => {
+  it('records the pill’s word', () => {
+    expect(historyRow()).toContain(`"${HISTORY_LABEL}"`)
+  })
+
+  it('records the ordering ruling the store carries in code — by ts, never by id', () => {
+    expect(historyRow()).toContain('ordered by envelope `ts` — never by `id`')
+  })
+
+  it('records the dual quiet mechanism, the kind pills’ Q2 pattern', () => {
+    expect(historyRow()).toContain('disabled + pointer-tooltip + programmatic-description')
+  })
+
+  it('records that the pill never carries an unread dot', () => {
+    expect(historyRow()).toContain('Never carries an unread dot')
+  })
+})
+
+describe('DESIGN.md carries the history-popover block the CSS cites (17.2)', () => {
+  it('names the component and its material tokens', () => {
+    expect(DESIGN).toContain('history-popover:')
+    expect(DESIGN).toContain("background: '{colors.surface-overlay}'")
+    expect(DESIGN).toContain("shadow: '{components.elevation.glow}'")
+    expect(DESIGN).toContain("radius: '{rounded.md}'")
+  })
+
+  it('carries the documented max-height literal the stylesheet cites', () => {
+    // `shell.test.ts`'s geometry gate requires the 480px in AgentViewsNav.css to cite DESIGN.md;
+    // this is the other half — the cited line really exists.
+    expect(DESIGN).toContain('max-height: 480px')
+  })
+
+  it('specs the entry type roles, tabular time included', () => {
+    expect(DESIGN).toContain("entry-kind-type: '{typography.label}'")
+    expect(DESIGN).toContain("entry-title-type: '{typography.body}'")
+    expect(DESIGN).toContain("entry-time-type: '{typography.numeric}'")
+    expect(DESIGN).toContain("entry-time-foreground: '{colors.text-tertiary}'")
+  })
+
+  it('specs the enter as the glide pair — the opacity-only fade’s tokens', () => {
+    expect(DESIGN).toContain("enter: '{components.motion.glide} {components.motion.ease-glide}'")
   })
 })
 

@@ -1,0 +1,132 @@
+/* The session-history popover (story 17.2, FR-18) — DESIGN.md's `components.history-popover`
+   block, in a stylesheet of its own beside `AgentViewsNav.css` rather than inside it, and the
+   split is a GUARD'S requirement rather than an organisational taste: this surface paints
+   `--surface-overlay`, the nav pills' hover paints `--accent-dim` (legal on `--surface-panel`
+   — the c6-5 ruling), and `token-usage.test.ts`'s UX-DR6 rule is FILE-scoped — 2.70:1 is what
+   the pairing measures, and the two tokens do not have to share a rule to meet on an element,
+   so they may never share a stylesheet. Registered in `shell.test.ts`'s CONTAINERS import list
+   for `AgentViewsNav.tsx`, which is the module that imports it.
+
+   THE ONE TRANSITION THE NAV OWNS IS HERE (its sibling file's header re-affirms "none" for the
+   pills): the popover's enter is an opacity-only fade over the glide pair — DESIGN.md
+   `components.history-popover.enter` — out of a `data-entering` starting state, the agent-view
+   bloom's attribute-flip pattern for both of its reasons (a `@keyframes` block would defeat
+   the CSS reader's brace matching, and two style writes in one frame coalesce into no
+   transition at all). No rise, no transform: zeroing `--motion-glide` makes it instant, so the
+   reduced-motion block registers nothing, and its inventory row ("History-popover fade ->
+   appears in place") lives in tokens.css beside its family. */
+
+/* THE POPOVER — `components.history-popover`, value for value: `surface-overlay` background,
+   the hairline border, `{rounded.md}`, and the elevation GLOW (licensed in the block's own
+   comment: the popover holds agent content the person is returning to — the accent's meaning).
+   The `1px` hairline is DESIGN.md's own literal in that block ("1px solid
+   {colors.border-hairline}") — the same hairline every chrome edge takes, with no token family
+   to point at.
+
+   `480px` — appearing TWICE below, once per axis — is DESIGN.md
+   `components.history-popover.max-height`, a documented literal: it echoes
+   `{components.state-panel.max-width}` — the system's existing bounded-secondary-surface
+   figure — and the entry list scrolls INSIDE the popover past it (`overflow-y: auto`). The
+   block's own comment promises *"the popover itself never outgrows the viewport"*, and the two
+   `min()` clamps are that sentence made mechanical rather than hoped (review finding 2,
+   2026-08-22): the width cap reuses the same 480px figure (a long agent-authored title on a
+   `max-content` box would otherwise run past the right viewport edge — the History pill is the
+   LAST pill in the row), and both axes subtract twice `{spacing.gutter}` so a narrow or short
+   window still shows the popover whole. Exact geometry stays the eye-check's, as ever.
+
+   `position: absolute` against the `.agent-views-nav-history` wrapper's `position: relative`
+   (the sibling file), content-sized on both axes — deliberately NOT a fixed layer, so
+   `shell.test.ts`'s full-window-fixed detector never sees it and UX-DR38's one-level overlay
+   stack stays the shell's alone. */
+.agent-views-nav-popover {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-1);
+  width: max-content;
+  max-width: min(480px, calc(100vw - 2 * var(--space-gutter)));
+  max-height: min(480px, calc(100vh - 2 * var(--space-gutter)));
+  overflow-y: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-overlay);
+  box-shadow: var(--glow);
+  opacity: 1;
+  transition: opacity var(--motion-glide) var(--ease-glide);
+}
+
+/* The fade's starting state — flipped off in a frame callback by the component, so the browser
+   paints opacity 0 before the base rule's 1 arrives and the transition actually runs. */
+.agent-views-nav-popover[data-entering='true'] {
+  opacity: 0;
+}
+
+/* ONE ENTRY — a real button, text-first: kind word in the label role, the agent's title in
+   body, the time in the numeric role (the three `entry-*-type` tokens of the DESIGN.md block).
+   The 24px minimums are `DESIGN.md:462`'s global hit-area rule DECLARED rather than claimed,
+   for the nav pill's exact reason: the tallest line here is `--type-body`'s 14px at 1.5 — a
+   21px box — so the row is under the floor on its own geometry however much padding it
+   carries, and this class joins `keyboard-floor.test.ts`'s `DECLARES_MIN` list. `border: 0`
+   and a transparent background strip the UA button chrome: entries read as rows of a quiet
+   list, not as five more pills. */
+.agent-views-nav-entry {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 24px;
+  min-height: 24px;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  text-align: left;
+}
+
+/* The known-surface focus ring — the nav pill's treatment verbatim: this control sits on
+   `--surface-overlay`, not on card art, so it takes the plain outline at the standard offset,
+   and `outline` is never `none` in any of its four spellings (stylelint bans all four). */
+.agent-views-nav-entry:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* The kind word — `entry-kind-type: {typography.label}` with BOTH companions in the block (the
+   type-role gate), in the secondary tier: the entry's own name-leader, one register up from
+   the time. `text-secondary` on `surface-overlay` is a verified Colors-section pair. */
+.agent-views-nav-entry-kind {
+  font: var(--type-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* The agent's own title — `entry-title-type: {typography.body}`, primary: it is the one piece
+   of the row the agent authored, and the thing the person is scanning for. It is also the one
+   piece with no length guarantee, so it is the flex item allowed to SHRINK (`min-width: 0` —
+   a flex item's default min-width is its content) and to WRAP (`overflow-wrap: anywhere`)
+   inside the popover's clamped width, rather than pushing the time off the row's edge. */
+.agent-views-nav-entry-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font: var(--type-body);
+  color: var(--text-primary);
+}
+
+/* The push time — `entry-time-type: {typography.numeric}` at `entry-time-foreground`
+   (`text-tertiary`, the Colors section's timestamp tier — 4.8:1 on `surface-overlay`, the
+   tightest verified pair, with the block's own comment naming it). TABULAR, unlike the kind
+   pills' single time next door, and the difference is the artefact's own: a COLUMN of times
+   must not jitter, and the numeric role carries its features separately —
+   `font-variant-numeric` may only be `var(--type-numeric-features)` (UX-DR3, stylelint-
+   enforced). `margin-inline-start: auto` pushes the time to the row's far edge so the column
+   aligns whatever the title's length. */
+.agent-views-nav-entry-time {
+  margin-inline-start: auto;
+  font: var(--type-numeric);
+  font-variant-numeric: var(--type-numeric-features);
+  color: var(--text-tertiary);
+}

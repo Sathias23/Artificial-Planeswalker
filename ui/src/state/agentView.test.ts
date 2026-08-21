@@ -5,6 +5,7 @@ import type { GroupsEvent, SuggestionsEvent, SwapsEvent, TierListEvent } from '.
 import {
   AGENT_VIEW_LABELS,
   type AgentViewContent,
+  HISTORY_CAP,
   INITIAL_AGENT_VIEW,
   SUGGESTIONS_VIEW_TITLE,
   closeAgentView,
@@ -16,10 +17,13 @@ import {
   openTierListPush,
   openViewOf,
   reopenAgentView,
+  reopenPush,
   resetAgentView,
   suggestionsViewOf,
   swapsViewOf,
   tierListViewOf,
+  useAgentViewHistory,
+  useAgentViewHistoryCount,
   useAgentViewIsOpen,
   useAgentViewStore,
   useOpenAgentView,
@@ -106,14 +110,16 @@ describe('opening shows the pushed content (AC 6)', () => {
     // Kept as a whole-state `toEqual` at c6-8 rather than relaxed to `toMatchObject`, and that
     // is the point of it: this is the one assertion in the file that fails when the slice grows
     // a field, which is exactly the notice a reader wants when a story extends a store. It grew
-    // by two here — `retained` and `unread` — and both are written in the SAME `setState` as
-    // `status` and `content`, which is the claim this test has always made.
+    // by two at c6-8 — `retained` and `unread` — and by one more at 17.2 — `history` — and all
+    // are written in the SAME `setState` as `status` and `content`, which is the claim this
+    // test has always made.
     openAgentView(SUGGESTIONS)
     expect(useAgentViewStore.getState()).toEqual({
       status: 'open',
       content: SUGGESTIONS,
       retained: { suggestions: SUGGESTIONS },
       unread: {},
+      history: [SUGGESTIONS],
     })
   })
 
@@ -908,6 +914,7 @@ describe('the announcer’s open/closed bit (c7-6)', () => {
   })
 
   it('is a PRIMITIVE, which is why it exists beside `useOpenAgentView` (Design Notes)', () => {
+    // (unchanged by 17.2 — the history hooks below have their own primitive/reference split)
     // The pair is not a duplication: this one answers with a boolean, its sibling with the
     // content object. `DeckAnnouncer` subscribes to primitives only, one field per subscription,
     // so that a second push while a view is open cannot re-render a region whose sentence has
@@ -925,5 +932,216 @@ describe('the announcer’s open/closed bit (c7-6)', () => {
     const { result: closedIsOpen } = renderHook(() => useAgentViewIsOpen())
     const { result: closedContent } = renderHook(() => useOpenAgentView())
     expect(closedIsOpen.current).toBe(closedContent.current !== null)
+  })
+})
+
+// =========================================================================================
+// STORY 17.2 — the session history: last 20 pushes overall, newest first
+// =========================================================================================
+
+/** A view with its own id AND its own ts — history needs both axes to vary independently. */
+const pushAt = (n: number, kind: AgentViewContent['kind'] = 'suggestions'): AgentViewContent => ({
+  id: `push-h${n}`,
+  // Minutes, zero-padded, so ordering by ts and ordering by arrival can be told apart.
+  ts: `2026-08-22T10:${String(n).padStart(2, '0')}:00Z`,
+  kind,
+  title: `Push ${n}`,
+  count: 0,
+  items: [],
+})
+
+describe('every push is filed into the history, newest first by ts (17.2, FR-18)', () => {
+  it('starts empty, which is the History pill’s quiet state', () => {
+    expect(INITIAL_AGENT_VIEW.history).toEqual([])
+    const { result } = renderHook(() => useAgentViewHistoryCount())
+    expect(result.current).toBe(0)
+  })
+
+  it('appends each push, newest first, holding the SAME references as `retained`', () => {
+    openAgentView(pushAt(1))
+    openAgentView(pushAt(2, 'swaps'))
+    openAgentView(pushAt(3))
+
+    const history = useAgentViewStore.getState().history
+    expect(history.map((entry) => entry.id)).toEqual(['push-h3', 'push-h2', 'push-h1'])
+    // The same object, not a copy — no payload divergence between the two retention shapes.
+    expect(history[0]).toBe(useAgentViewStore.getState().retained.suggestions)
+    expect(history[1]).toBe(useAgentViewStore.getState().retained.swaps)
+  })
+
+  it('orders by envelope `ts`, NEVER by `id` — an out-of-order arrival files by its clock', () => {
+    // The ruling in the store's own comment: `id` is opaque identity (producers may mint a
+    // UUID4), so an older push arriving late must sort by `ts` even though its id says nothing.
+    openAgentView(pushAt(5))
+    openAgentView(pushAt(9))
+    openAgentView(pushAt(7)) // arrives last, belongs in the middle by ts
+
+    expect(useAgentViewStore.getState().history.map((e) => e.id)).toEqual([
+      'push-h9',
+      'push-h7',
+      'push-h5',
+    ])
+  })
+
+  it('keeps an UNPARSEABLE ts at its arrival position — a bad clock never reorders the list', () => {
+    openAgentView(pushAt(5))
+    openAgentView({ ...pushAt(6), id: 'push-bad-ts', ts: 'not a date' })
+    openAgentView(pushAt(4)) // parseable and OLDER than h5 — must not leapfrog the bad-ts entry
+
+    const ids = useAgentViewStore.getState().history.map((e) => e.id)
+    // The malformed entry took the front (its arrival position) and STAYED there: the later
+    // arrival stopped at the first entry it could not rank rather than silently sorting past it.
+    expect(ids).toEqual(['push-h4', 'push-bad-ts', 'push-h5'])
+  })
+
+  it('treats a runtime-NULL or numeric ts as unparseable — never as epoch 0 (review finding 5)', () => {
+    // `agentEventOf` validates only `kind`, so `ts` can arrive as null or a number at runtime.
+    // `new Date(null)` is EPOCH 0 and a numeric ts is milliseconds — an unguarded ranking would
+    // sort either as decades old (and silently drop it at the cap) instead of giving it the
+    // arrival-position fallback a malformed clock is owed.
+    openAgentView(pushAt(5))
+    openAgentView({ ...pushAt(6), id: 'push-null-ts', ts: null as unknown as string })
+    openAgentView({ ...pushAt(7), id: 'push-numeric-ts', ts: 1234567890 as unknown as string })
+
+    // Both malformed arrivals took the FRONT (arrival position), newest arrival first — neither
+    // sorted behind the parseable entry as an ancient instant would.
+    expect(useAgentViewStore.getState().history.map((e) => e.id)).toEqual([
+      'push-numeric-ts',
+      'push-null-ts',
+      'push-h5',
+    ])
+  })
+
+  it('caps at 20, dropping the oldest silently — the FR-18 widening’s whole number', () => {
+    for (let n = 1; n <= HISTORY_CAP + 1; n += 1) openAgentView(pushAt(n))
+
+    const history = useAgentViewStore.getState().history
+    expect(HISTORY_CAP).toBe(20)
+    expect(history).toHaveLength(HISTORY_CAP)
+    expect(history[0].id).toBe(`push-h${HISTORY_CAP + 1}`)
+    // The oldest is GONE — dropped, not shuffled.
+    expect(history.some((e) => e.id === 'push-h1')).toBe(false)
+  })
+
+  it('drops the ARRIVAL itself when it is older than all twenty — while the glass still shows it (review finding 6)', () => {
+    // The docstring's own edge: "including the arrival itself, if it is older than all twenty".
+    // A "make room first" refactor (evict the tail, THEN insert) would keep the ancient arrival
+    // and drop push-h2 instead — inverting the rule with every other cap test still green.
+    for (let n = 2; n <= HISTORY_CAP + 1; n += 1) openAgentView(pushAt(n)) // minutes 2..21
+    const ancient = pushAt(1)
+    openAgentView(ancient)
+
+    const state = useAgentViewStore.getState()
+    expect(state.history).toHaveLength(HISTORY_CAP)
+    expect(state.history.some((e) => e.id === 'push-h1')).toBe(false)
+    expect(state.history[state.history.length - 1].id).toBe('push-h2')
+    // …but the push was never swallowed as a PUSH: it is on the glass and retained per kind —
+    // only the twenty-deep list has no room for it.
+    expect(state.content).toBe(ancient)
+    expect(state.retained.suggestions).toBe(ancient)
+  })
+
+  it('replaces IN PLACE on a same-id re-push — id is identity, never a duplicate entry', () => {
+    openAgentView(pushAt(1))
+    openAgentView(pushAt(2))
+    const rePush = { ...pushAt(1), title: 'Push 1, corrected' }
+    openAgentView(rePush)
+
+    const history = useAgentViewStore.getState().history
+    expect(history).toHaveLength(2)
+    expect(history.map((e) => e.id)).toEqual(['push-h2', 'push-h1'])
+    expect(history[1]).toBe(rePush)
+  })
+
+  it('treats a re-open of a held entry as a NO-OP for the array — the same reference survives', () => {
+    // `reopenAgentView` and `reopenPush` both route through `openAgentView` with the identical
+    // retained object, so `historyWith`'s first arm returns the array itself: a revisit is not
+    // a new push, and a subscriber comparing by reference must not re-render on one.
+    openAgentView(pushAt(1))
+    openAgentView(pushAt(2))
+    closeAgentView()
+    const before = useAgentViewStore.getState().history
+
+    reopenAgentView('suggestions')
+    expect(useAgentViewStore.getState().history).toBe(before)
+
+    reopenPush('push-h1')
+    expect(useAgentViewStore.getState().history).toBe(before)
+    expect(useAgentViewStore.getState().history.map((e) => e.id)).toEqual(['push-h2', 'push-h1'])
+  })
+
+  it('writes a NEW array for a genuinely new push, so a subscriber re-renders', () => {
+    openAgentView(pushAt(1))
+    const first = useAgentViewStore.getState().history
+    openAgentView(pushAt(2))
+    expect(useAgentViewStore.getState().history).not.toBe(first)
+  })
+
+  it('is cleared by the test-only reset and by nothing else here (non-vacuity)', () => {
+    openAgentView(pushAt(1))
+    closeAgentView()
+    // Dismissal touches nothing: the history is UX-DR34's "for the rest of the session" widened.
+    expect(useAgentViewStore.getState().history).toHaveLength(1)
+    resetAgentView()
+    expect(useAgentViewStore.getState()).toEqual(INITIAL_AGENT_VIEW)
+  })
+})
+
+describe('reopenPush puts one specific push back (17.2)', () => {
+  it('re-opens the entry by IDENTITY — an older push of an already-re-pushed kind included', () => {
+    // The case the per-kind pills cannot reach and the whole story exists for: two suggestions
+    // pushes, and the OLDER one is still reachable through history.
+    const older = pushAt(1)
+    openAgentView(older)
+    openAgentView(pushAt(2))
+    closeAgentView()
+
+    reopenPush('push-h1')
+
+    expect(useAgentViewStore.getState().status).toBe('open')
+    expect(useAgentViewStore.getState().content).toBe(older)
+    // The on-the-glass invariant holds: content and retained[kind] are ONE object, so the kind
+    // pill now re-opens what is showing rather than disagreeing with the glass.
+    expect(useAgentViewStore.getState().retained.suggestions).toBe(older)
+  })
+
+  it('is a NO-OP for an id history does not hold', () => {
+    openAgentView(pushAt(1))
+    closeAgentView()
+    const before = useAgentViewStore.getState()
+    reopenPush('push-nowhere')
+    expect(useAgentViewStore.getState()).toBe(before)
+  })
+
+  it('clears the re-opened kind’s unread flag, through the shared verb', () => {
+    openAgentView(pushAt(1))
+    openAgentView(pushAt(2, 'swaps'))
+    expect(useAgentViewStore.getState().unread).toEqual({ suggestions: true })
+    closeAgentView()
+
+    reopenPush('push-h1')
+
+    expect(useAgentViewStore.getState().unread).toEqual({})
+  })
+})
+
+describe('the history hooks (17.2)', () => {
+  it('useAgentViewHistory returns the STORED array reference, never a derivation', () => {
+    openAgentView(pushAt(1))
+    const { result } = renderHook(() => useAgentViewHistory())
+    expect(result.current).toBe(useAgentViewStore.getState().history)
+  })
+
+  it('useAgentViewHistoryCount is a primitive that tracks the length', () => {
+    // Unmounted before the store write, then re-rendered fresh — the c7-6 block's idiom, so no
+    // subscribed hook receives an update outside `act`.
+    const { result: empty, unmount } = renderHook(() => useAgentViewHistoryCount())
+    expect(empty.current).toBe(0)
+    unmount()
+
+    openAgentView(pushAt(1))
+    const { result: one } = renderHook(() => useAgentViewHistoryCount())
+    expect(one.current).toBe(1)
+    expect(typeof one.current).toBe('number')
   })
 })

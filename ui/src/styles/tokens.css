@@ -338,6 +338,10 @@
                                             token zeroed)                           (c4-6)
      Detail-panel content swap           -> instant, no crossfade (it changes on
                                             every hover)                            (c4-5)
+     History-popover fade                -> appears in place (opacity only over
+                                            --motion-glide; the duration zeroing
+                                            above IS the fallback — no transform,
+                                            nothing to register)                    (17.2)
 
    TWO ROWS READ AS CLASSES — SC-5 gate ruling (Brad, 2026-08-20, sc-5-gate-report-2026-08-20.md):
    "Image fade-in" covers every image element's fade (the suggestion-row thumbnail included), and
