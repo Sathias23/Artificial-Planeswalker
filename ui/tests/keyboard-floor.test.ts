@@ -516,11 +516,28 @@ describe('every interactive element is a real control with a real hit box (AC 20
     // are clear by an order of magnitude on the short one. This is a derived-geometry claim like
     // the deck row's above; the pixels are the C6 manual checklist's (c8-6), as they are for
     // every other member.
+    // `swap-tile` joins at 16.1, on the suggestion row's derived-geometry argument: the tile is
+    // a flex column of a micro label (10px at 1.3 — a 13px line box) over a card-shaped thumb
+    // whose slot declares `min-height: 6lh` against `--type-body` (6 × 21px = 126px), with the
+    // width following from 63:88 (≈90px) — both axes clear of the 24px floor by multiples. The
+    // pixels are the manual checklist's, as for every other member.
+    // `tier-tile` joins at 16.2, on the swap tile's exact derived-geometry argument minus the
+    // label line: the tile IS its card-shaped thumb slot, which declares `min-height: 6lh`
+    // against `--type-body` (6 × 21px = 126px) with the width following from 63:88 (≈90px) —
+    // both axes clear of the 24px floor by multiples. The pixels are the manual checklist's,
+    // as for every other member.
+    // `group-tile` joins at 16.3, on the tier tile's argument VERBATIM — the same
+    // `min-height: 6lh` slot against `--type-body`, the same 63:88-derived width, the same
+    // multiples of the floor on both axes. The pixels are the manual checklist's, as for
+    // every other member.
     const WELL_CLEAR = [
       'card-tile',
       'flip-control',
       'deck-row',
       'suggestion-row',
+      'swap-tile',
+      'tier-tile',
+      'group-tile',
       'card-detail-unpin',
       'card-detail-oracle',
     ]

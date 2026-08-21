@@ -279,6 +279,9 @@ async def test_server_registers_expected_tools() -> None:
         "view_deck",
         "companion_set_active_deck",
         "companion_show_suggestions",
+        "companion_show_swaps",
+        "companion_show_tier_list",
+        "companion_show_groups",
         "analyze_mana_curve",
         "detect_synergies",
         "validate_deck",
@@ -312,6 +315,84 @@ async def test_companion_show_suggestions_publishes_its_payload_shape_to_the_age
     for field in ("card_id", "reason", "category", "confidence", "title"):
         assert field in schema, f"{field} is part of the payload the agent has to fill in"
     assert "maxItems" in schema, "the 60-item cap is part of the affordance, not a surprise"
+    assert "maxLength" in schema, "so are the per-field length caps"
+    assert tool.description is not None
+    assert "Scryfall" in tool.description, (
+        "FR-13: the docstring is the description, and it has to say ids rather than card names"
+    )
+
+
+async def test_companion_show_swaps_publishes_its_payload_shape_to_the_agent() -> None:
+    """16-1's sibling of the suggestions publication guard: the schema IS the affordance.
+
+    Same reasoning as above — a "simplification" to a loose ``dict`` argument would keep every
+    helper test green while reducing the agent's view of the payload to an opaque object, and
+    nothing else in the suite would notice.
+    """
+    server = build_server()
+    async with create_connected_server_and_client_session(server) as client:
+        tools = (await client.list_tools()).tools
+
+    tool = next(candidate for candidate in tools if candidate.name == "companion_show_swaps")
+    schema = json.dumps(tool.inputSchema)
+
+    assert "SwapItem" in schema, "the item shape must reach the agent, not just 'an object'"
+    fields = ("out_card_id", "in_card_id", "rationale", "out_qty", "in_qty", "confidence", "title")
+    for field in fields:
+        assert field in schema, f"{field} is part of the payload the agent has to fill in"
+    assert "maxItems" in schema, "the 60-item cap is part of the affordance, not a surprise"
+    assert "maxLength" in schema, "so are the per-field length caps"
+    assert tool.description is not None
+    assert "Scryfall" in tool.description, (
+        "FR-13: the docstring is the description, and it has to say ids rather than card names"
+    )
+
+
+async def test_companion_show_tier_list_publishes_its_payload_shape_to_the_agent() -> None:
+    """16-2's sibling of the two publication guards above: the schema IS the affordance.
+
+    Same reasoning — a "simplification" to a loose ``dict`` argument would keep every helper test
+    green while reducing the agent's view of the payload to an opaque object, and nothing else in
+    the suite would notice.
+    """
+    server = build_server()
+    async with create_connected_server_and_client_session(server) as client:
+        tools = (await client.list_tools()).tools
+
+    tool = next(candidate for candidate in tools if candidate.name == "companion_show_tier_list")
+    schema = json.dumps(tool.inputSchema)
+
+    assert "TierItem" in schema, "the tier shape must reach the agent, not just 'an object'"
+    for field in ("letter", "name", "note", "card_ids", "title"):
+        assert field in schema, f"{field} is part of the payload the agent has to fill in"
+    assert "maxItems" in schema, "the 12-tier and 60-card caps are part of the affordance"
+    assert "maxLength" in schema, "so are the per-field length caps"
+    assert tool.description is not None
+    assert "Scryfall" in tool.description, (
+        "FR-13: the docstring is the description, and it has to say ids rather than card names"
+    )
+
+
+async def test_companion_show_groups_publishes_its_payload_shape_to_the_agent() -> None:
+    """16-3's sibling of the three publication guards above: the schema IS the affordance.
+
+    Same reasoning — a "simplification" to a loose ``dict`` argument would keep every helper test
+    green while reducing the agent's view of the payload to an opaque object, and nothing else in
+    the suite would notice. The per-field loop leans on ``rationale`` and ``card_ids`` rather
+    than ``title``, which exists at both the payload and the item level and so discriminates
+    nothing.
+    """
+    server = build_server()
+    async with create_connected_server_and_client_session(server) as client:
+        tools = (await client.list_tools()).tools
+
+    tool = next(candidate for candidate in tools if candidate.name == "companion_show_groups")
+    schema = json.dumps(tool.inputSchema)
+
+    assert "GroupItem" in schema, "the group shape must reach the agent, not just 'an object'"
+    for field in ("rationale", "card_ids"):
+        assert field in schema, f"{field} is part of the payload the agent has to fill in"
+    assert "maxItems" in schema, "the 12-group and 60-card caps are part of the affordance"
     assert "maxLength" in schema, "so are the per-field length caps"
     assert tool.description is not None
     assert "Scryfall" in tool.description, (

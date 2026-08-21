@@ -1,19 +1,25 @@
 import { renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { SuggestionsEvent } from '../api/schema'
+import type { GroupsEvent, SuggestionsEvent, SwapsEvent, TierListEvent } from '../api/schema'
 import {
   AGENT_VIEW_LABELS,
   type AgentViewContent,
   INITIAL_AGENT_VIEW,
   SUGGESTIONS_VIEW_TITLE,
   closeAgentView,
+  groupsViewOf,
   openAgentView,
+  openGroupsPush,
   openSuggestionsPush,
+  openSwapsPush,
+  openTierListPush,
   openViewOf,
   reopenAgentView,
   resetAgentView,
   suggestionsViewOf,
+  swapsViewOf,
+  tierListViewOf,
   useAgentViewIsOpen,
   useAgentViewStore,
   useOpenAgentView,
@@ -257,6 +263,299 @@ describe('one envelope becomes one view, for every payload the wire admits (c6-6
   })
 })
 
+// =========================================================================================
+// STORY 16.1 — the second builder, in the first one's exact harness
+// =========================================================================================
+
+const SWAP = {
+  out_card_id: 'c-out',
+  in_card_id: 'c-in',
+  rationale: 'Same role, one turn earlier.',
+  out_qty: 2,
+  in_qty: 0,
+} as const
+
+/** A `swaps` frame, cast for the fixture's reason above: the wire really can omit `payload`. */
+const swapsFrame = (payload: unknown, id = 'push-s1'): SwapsEvent =>
+  ({ id, ts: '2026-08-21T09:15:00Z', kind: 'swaps', payload }) as SwapsEvent
+
+describe('one swaps envelope becomes one view, for every payload the wire admits (16.1)', () => {
+  it('carries the payload through — title, count and the items themselves', () => {
+    const content = swapsViewOf(swapsFrame({ title: 'Cheaper removal', items: [SWAP] }, 'push-9'))
+
+    expect(content.title).toBe('Cheaper removal')
+    expect(content.count).toBe(1)
+    expect(content.items).toEqual([SWAP])
+    expect(content.id).toBe('push-9')
+    expect(content.kind).toBe('swaps')
+    expect(content.ts).toBe('2026-08-21T09:15:00Z')
+  })
+
+  it('builds an EMPTY view rather than throwing when the payload is absent entirely', () => {
+    // `agentEventOf` validates only `kind`, so `{"kind":"swaps"}` reaches this function typed
+    // as a full event — the same totality claim `suggestionsViewOf` carries, on the second arm.
+    const content = swapsViewOf(swapsFrame(undefined))
+
+    expect(content.items).toEqual([])
+    expect(content.count).toBe(0)
+    expect(content.title).toBe(AGENT_VIEW_LABELS.swaps)
+  })
+
+  it.each([
+    ['absent', undefined],
+    ['null', null],
+    ['empty', ''],
+    ['whitespace only', '   '],
+  ])('falls back to the table’s word when the pushed title is %s', (_label, title) => {
+    // The dialog's accessible name guard, "at the point content is constructed" — and the
+    // fallback is the SAME word the nav pill carries, one owner for the kind's word.
+    const content = swapsViewOf(swapsFrame({ title, items: [SWAP] }))
+
+    expect(content.title).toBe(AGENT_VIEW_LABELS.swaps)
+  })
+
+  it('keeps a pushed title that merely has whitespace around it, trimmed', () => {
+    const content = swapsViewOf(swapsFrame({ title: '  Cheaper removal  ', items: [] }))
+
+    expect(content.title).toBe('Cheaper removal')
+  })
+
+  it('counts an explicitly empty list as 0 and not as “nothing to count”', () => {
+    const content = swapsViewOf(swapsFrame({ items: [] }))
+
+    expect(content.count).toBe(0)
+    expect(content.count).not.toBeNull()
+  })
+
+  it('OPENS the view it builds — the second verb `connection.ts` calls', () => {
+    openSwapsPush(swapsFrame({ title: 'Cheaper removal', items: [SWAP] }, 'push-7'))
+
+    expect(useAgentViewStore.getState().status).toBe('open')
+    expect(openViewNow()).toEqual({
+      id: 'push-7',
+      ts: '2026-08-21T09:15:00Z',
+      kind: 'swaps',
+      title: 'Cheaper removal',
+      count: 1,
+      items: [SWAP],
+    })
+    expect(useAgentViewStore.getState().retained.swaps).toBe(openViewNow())
+  })
+
+  it('DISPLACES an open suggestions view and marks it unread — through the wire verb', () => {
+    // c6-8 proved displacement with a synthetic second kind because no wire path could reach
+    // it; 16.1 is the story that makes the traversal real, so it is re-proven here through the
+    // production verb rather than a hand-built content object.
+    openSuggestionsPush(frame({ items: [ITEM] }))
+    openSwapsPush(swapsFrame({ items: [SWAP] }))
+
+    expect(openViewNow()).toMatchObject({ kind: 'swaps' })
+    expect(useAgentViewStore.getState().unread).toEqual({ suggestions: true })
+    expect(useAgentViewStore.getState().retained.suggestions).toBeDefined()
+  })
+})
+
+// =========================================================================================
+// STORY 16.2 — the third builder, in the same harness
+// =========================================================================================
+
+const TIER = {
+  letter: 'S',
+  name: 'Auto-include',
+  note: 'Never leaves the deck.',
+  card_ids: ['c-tier-1', 'c-tier-2'],
+} as const
+
+/** A `tier_list` frame, cast for the fixture's reason above: the wire really can omit `payload`. */
+const tierFrame = (payload: unknown, id = 'push-t1'): TierListEvent =>
+  ({ id, ts: '2026-08-21T10:15:00Z', kind: 'tier_list', payload }) as TierListEvent
+
+describe('one tier_list envelope becomes one view, for every payload the wire admits (16.2)', () => {
+  it('carries the payload through — title, count and the items themselves', () => {
+    const content = tierListViewOf(tierFrame({ title: 'Creature ranks', items: [TIER] }, 'push-9'))
+
+    expect(content.title).toBe('Creature ranks')
+    expect(content.count).toBe(1)
+    expect(content.items).toEqual([TIER])
+    expect(content.id).toBe('push-9')
+    expect(content.kind).toBe('tier_list')
+    expect(content.ts).toBe('2026-08-21T10:15:00Z')
+  })
+
+  it('counts payload TIERS, raw — never the cards inside them, never the render-time skip', () => {
+    // The store half of the "tiers, not cards" pin the tool carries on the Python side: two
+    // tiers holding two cards each count 2, and an EMPTY tier still counts — the view skips it
+    // at render (DESIGN.md:590), but that skipping is render-only and never rewrites the count.
+    const emptyTier = { letter: 'D', name: 'Cut', card_ids: [] } as const
+    const content = tierListViewOf(tierFrame({ items: [TIER, emptyTier] }))
+
+    expect(content.count).toBe(2)
+  })
+
+  it('builds an EMPTY view rather than throwing when the payload is absent entirely', () => {
+    // `agentEventOf` validates only `kind`, so `{"kind":"tier_list"}` reaches this function
+    // typed as a full event — the same totality claim both siblings carry, on the third arm.
+    const content = tierListViewOf(tierFrame(undefined))
+
+    expect(content.items).toEqual([])
+    expect(content.count).toBe(0)
+    expect(content.title).toBe(AGENT_VIEW_LABELS.tier_list)
+  })
+
+  it.each([
+    ['absent', undefined],
+    ['null', null],
+    ['empty', ''],
+    ['whitespace only', '   '],
+  ])('falls back to the table’s word when the pushed title is %s', (_label, title) => {
+    // The dialog's accessible name guard, "at the point content is constructed" — and the
+    // fallback is the SAME word the nav pill carries, one owner for the kind's word.
+    const content = tierListViewOf(tierFrame({ title, items: [TIER] }))
+
+    expect(content.title).toBe(AGENT_VIEW_LABELS.tier_list)
+  })
+
+  it('keeps a pushed title that merely has whitespace around it, trimmed', () => {
+    const content = tierListViewOf(tierFrame({ title: '  Creature ranks  ', items: [] }))
+
+    expect(content.title).toBe('Creature ranks')
+  })
+
+  it('counts an explicitly empty list as 0 and not as “nothing to count”', () => {
+    const content = tierListViewOf(tierFrame({ items: [] }))
+
+    expect(content.count).toBe(0)
+    expect(content.count).not.toBeNull()
+  })
+
+  it('OPENS the view it builds — the third verb `connection.ts` calls', () => {
+    openTierListPush(tierFrame({ title: 'Creature ranks', items: [TIER] }, 'push-7'))
+
+    expect(useAgentViewStore.getState().status).toBe('open')
+    expect(openViewNow()).toEqual({
+      id: 'push-7',
+      ts: '2026-08-21T10:15:00Z',
+      kind: 'tier_list',
+      title: 'Creature ranks',
+      count: 1,
+      items: [TIER],
+    })
+    expect(useAgentViewStore.getState().retained.tier_list).toBe(openViewNow())
+  })
+
+  it('DISPLACES an open swaps view and marks it unread — through the wire verb', () => {
+    // 16.1 made the first production displacement traversal real; this re-proves the machine
+    // through the third verb, so a kind-switch between the two newest arms is covered too.
+    openSwapsPush(swapsFrame({ items: [SWAP] }))
+    openTierListPush(tierFrame({ items: [TIER] }))
+
+    expect(openViewNow()).toMatchObject({ kind: 'tier_list' })
+    expect(useAgentViewStore.getState().unread).toEqual({ swaps: true })
+    expect(useAgentViewStore.getState().retained.swaps).toBeDefined()
+  })
+})
+
+// =========================================================================================
+// STORY 16.3 — the fourth and last builder, in the same harness
+// =========================================================================================
+
+const GROUP = {
+  title: 'Ramp',
+  rationale: 'These accelerate into the six-drops a turn early.',
+  card_ids: ['c-group-1', 'c-group-2'],
+} as const
+
+/** A `groups` frame, cast for the fixture's reason above: the wire really can omit `payload`. */
+const groupsFrame = (payload: unknown, id = 'push-g1'): GroupsEvent =>
+  ({ id, ts: '2026-08-21T11:15:00Z', kind: 'groups', payload }) as GroupsEvent
+
+describe('one groups envelope becomes one view, for every payload the wire admits (16.3)', () => {
+  it('carries the payload through — title, count and the items themselves', () => {
+    const content = groupsViewOf(groupsFrame({ title: 'Deck anatomy', items: [GROUP] }, 'push-8'))
+
+    expect(content.title).toBe('Deck anatomy')
+    expect(content.count).toBe(1)
+    expect(content.items).toEqual([GROUP])
+    expect(content.id).toBe('push-8')
+    expect(content.kind).toBe('groups')
+    expect(content.ts).toBe('2026-08-21T11:15:00Z')
+  })
+
+  it('counts payload GROUPS, raw — never the cards inside them, never the render-time skip', () => {
+    // The store half of the "groups, not cards" pin the tool carries on the Python side: two
+    // groups holding two cards each count 2, and an EMPTY group still counts — the view skips
+    // it at render (EXPERIENCE.md:94), but that skipping is render-only and never rewrites the
+    // count.
+    const emptyGroup = { title: 'Cut list', rationale: 'Nothing left in it.', card_ids: [] }
+    const content = groupsViewOf(groupsFrame({ items: [GROUP, emptyGroup] }))
+
+    expect(content.count).toBe(2)
+  })
+
+  it('builds an EMPTY view rather than throwing when the payload is absent entirely', () => {
+    // `agentEventOf` validates only `kind`, so `{"kind":"groups"}` reaches this function typed
+    // as a full event — the same totality claim all three siblings carry, on the last arm.
+    const content = groupsViewOf(groupsFrame(undefined))
+
+    expect(content.items).toEqual([])
+    expect(content.count).toBe(0)
+    expect(content.title).toBe(AGENT_VIEW_LABELS.groups)
+  })
+
+  it.each([
+    ['absent', undefined],
+    ['null', null],
+    ['empty', ''],
+    ['whitespace only', '   '],
+  ])('falls back to the table’s word when the pushed title is %s', (_label, title) => {
+    // The dialog's accessible name guard, "at the point content is constructed" — and the
+    // fallback is the PAYLOAD-level header's absence being covered by the nav's own word for
+    // the kind; each group's own `title` is a different field at a different level.
+    const content = groupsViewOf(groupsFrame({ title, items: [GROUP] }))
+
+    expect(content.title).toBe(AGENT_VIEW_LABELS.groups)
+  })
+
+  it('keeps a pushed title that merely has whitespace around it, trimmed', () => {
+    const content = groupsViewOf(groupsFrame({ title: '  Deck anatomy  ', items: [] }))
+
+    expect(content.title).toBe('Deck anatomy')
+  })
+
+  it('counts an explicitly empty list as 0 and not as “nothing to count”', () => {
+    const content = groupsViewOf(groupsFrame({ items: [] }))
+
+    expect(content.count).toBe(0)
+    expect(content.count).not.toBeNull()
+  })
+
+  it('OPENS the view it builds — the fourth verb `connection.ts` calls', () => {
+    openGroupsPush(groupsFrame({ title: 'Deck anatomy', items: [GROUP] }, 'push-6'))
+
+    expect(useAgentViewStore.getState().status).toBe('open')
+    expect(openViewNow()).toEqual({
+      id: 'push-6',
+      ts: '2026-08-21T11:15:00Z',
+      kind: 'groups',
+      title: 'Deck anatomy',
+      count: 1,
+      items: [GROUP],
+    })
+    expect(useAgentViewStore.getState().retained.groups).toBe(openViewNow())
+  })
+
+  it('DISPLACES an open tier-list view and marks it unread — through the wire verb', () => {
+    // The last verb's displacement traversal, covering a kind-switch between the two newest
+    // arms exactly as 16.2's twin covered the pair before it.
+    openTierListPush(tierFrame({ items: [TIER] }))
+    openGroupsPush(groupsFrame({ items: [GROUP] }))
+
+    expect(openViewNow()).toMatchObject({ kind: 'groups' })
+    expect(useAgentViewStore.getState().unread).toEqual({ tier_list: true })
+    expect(useAgentViewStore.getState().retained.tier_list).toBeDefined()
+  })
+})
+
 describe('dismissal never clears the content (AC 5, UX-DR34)', () => {
   it('closes by writing STATUS ONLY — the content survives, byte for byte', () => {
     // The whole of UX-DR34: *"dismissal never clears it — the view remains re-openable for the
@@ -319,21 +618,21 @@ describe('the test-only reset is the one thing that forgets (non-vacuity)', () =
 // =========================================================================================
 
 /**
- * A view of any kind, including the three the socket still refuses to deliver.
+ * A view of any kind, constructed by hand.
  *
- * **The synthetic second kind is this story's central honesty, not a shortcut.** Q1 ruled that
- * the nav, the store and the vocabulary go fully four-kind generic while the SOCKET keeps
- * dropping `swaps`/`tier_list`/`groups` at its dispatch switch — because Epic 9 pairs each tool
+ * **The synthetic second kind was this story's central honesty, not a shortcut.** Q1 ruled that
+ * the nav, the store and the vocabulary go fully four-kind generic while the SOCKET kept
+ * dropping the kinds without views at its dispatch switch — because the epic pairs each tool
  * with its view precisely so a push never arrives that the UI cannot display, and accepting one
- * early would recreate that bug from the other side. So AC 5's displacement cannot be reached
- * from production code until Story 9.1 ships, and it is proven HERE, at the seam that owns it,
- * with a second kind constructed by hand. That is the c6-6 AC-3 structural-deferral precedent:
- * the mechanism is built and tested in the story that owns it, and its first production
- * traversal belongs to the story whose own acceptance criterion already banks on it.
+ * early would recreate that bug from the other side. So AC 5's displacement was proven HERE, at
+ * the seam that owns it, with a second kind constructed by hand, before any production path
+ * could reach it. Every kind has since gained its wire path (`swaps` at 16.1, `tier_list` at
+ * 16.2, `groups` at 16.3 — the socket drops nothing any more), and the wire-verb displacement
+ * tests above re-prove the traversals; this fixture stays because the c6-8 machine tests below
+ * are about the STORE's state machine, which never needed a wire to be true.
  *
  * No cast is needed for the kind itself — `AgentViewContent['kind']` widened to the real
- * four-member union in this story, so `'swaps'` is a legal value of a legal type. What is
- * synthetic is only that nothing on the wire can currently produce one.
+ * four-member union at c6-8, so every kind is a legal value of a legal type.
  */
 const viewOf = (kind: AgentViewContent['kind'], id = `push-${kind}`): AgentViewContent => ({
   id,
@@ -341,6 +640,8 @@ const viewOf = (kind: AgentViewContent['kind'], id = `push-${kind}`): AgentViewC
   kind,
   title: AGENT_VIEW_LABELS[kind],
   count: 0,
+  // `[]` is a legal member of EVERY arm of 16.1's discriminated union, which is what lets this
+  // fixture stay computed-kind generic with no cast.
   items: [],
 })
 

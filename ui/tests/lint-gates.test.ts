@@ -816,13 +816,71 @@ describe('stylelint literal bans (UX-DR1, UX-DR5, story c2-4 AC 4/5/7)', () => {
     // the same way.
     expect(exempted[1].message).toContain('design token')
 
-    // The exemption list is TWO named paths and stays a list rather than becoming a habit
-    // (AC 12). A third entry is a decision, not a detail — this is where it gets noticed.
-    expect(config.overrides).toHaveLength(2)
+    // The exemption list is THREE named paths and stays a list rather than becoming a habit
+    // (AC 12). Another entry is a decision, not a detail — this is where it gets noticed.
+    // The third was 16.2's, and it is the decision this pin exists to surface: DESIGN.md's
+    // `components.tier-row` fixes the tier letter at 44px/500 as a component value, no
+    // `--type-*` role carries 44px (StatChip's decide-once route — a role at the exact size
+    // asked for — has nothing to reach), and the token pin may not move for one letter. The
+    // narrowness is asserted below rather than trusted.
+    expect(config.overrides).toHaveLength(3)
     expect(config.overrides.flatMap((o) => o.files)).toEqual([
       'src/styles/tokens.css',
       'src/styles/fonts.css',
+      'src/containers/TierListView/TierListView.css',
     ])
+  })
+
+  it('widens the tier-letter exemption to the three cited values and NOTHING else (16.2)', () => {
+    // The override REPLACES the whole allowed-list for that one file, so the narrowness that
+    // matters is twofold: the widened entries admit only DESIGN.md components.tier-row's own
+    // literals (44px, 500, and line-height 1 to hug the glyph), and every non-type entry is
+    // byte-identical to the base rule — the same drift-proofing the fonts.css override carries.
+    const config = JSON.parse(
+      readFileSync(fileURLToPath(new URL('../.stylelintrc.json', import.meta.url)), 'utf8'),
+    ) as StylelintConfig
+
+    const base = config.rules[ALLOWED_RULE][0]
+    const exempted = config.overrides.find((o) =>
+      o.files.includes('src/containers/TierListView/TierListView.css'),
+    )?.rules[ALLOWED_RULE]
+    if (!exempted) {
+      throw new Error('no overrides entry names TierListView.css with an allowed-list')
+    }
+
+    // The three widened entries admit exactly one literal each beside the CSS-wide keywords —
+    // a fourth value, or a widening to any px, fails by name.
+    expect(exempted[0]['/^font-size$/i']).toEqual([
+      '/^(44px|initial|inherit|revert|revert-layer|unset)$/i',
+    ])
+    expect(exempted[0]['/^font-weight$/i']).toEqual([
+      '/^(500|initial|inherit|revert|revert-layer|unset)$/i',
+    ])
+    expect(exempted[0]['/^line-height$/i']).toEqual([
+      '/^(0|1|initial|inherit|revert|revert-layer|unset)$/i',
+    ])
+
+    // Every entry the base rule carries that is NOT one of the three widenings (nor the
+    // catch-all and line-height groupings the split re-shapes) is present byte-identical, so
+    // a family added to the base rule cannot silently go unpoliced in this one file.
+    const reshaped = [
+      '/^(line-height|word-spacing|text-indent)$/i',
+      '/^(?!font-family$|font-variant-numeric$)font-[a-z-]+$/i',
+    ]
+    for (const key of Object.keys(base).filter((k) => !reshaped.includes(k))) {
+      expect(exempted[0][key], `the TierListView override has drifted: ${key}`).toEqual(base[key])
+    }
+    // The re-shaped pair still exists in a stricter-or-equal form: word-spacing/text-indent
+    // keep their keyword-only list, and the font-* catch-all still bans every other longhand.
+    expect(exempted[0]['/^(word-spacing|text-indent)$/i']).toEqual([
+      '/^(0|initial|inherit|revert|revert-layer|unset)$/i',
+    ])
+    expect(
+      exempted[0][
+        '/^(?!font-family$|font-variant-numeric$|font-size$|font-weight$)font-[a-z-]+$/i'
+      ],
+    ).toEqual(['/^(initial|inherit|revert|revert-layer|unset)$/i'])
+    expect(exempted[1].message).toContain('tier-row')
   })
 
   it('lints the REAL token file clean — the override is proven, not just configured', async () => {

@@ -1,0 +1,220 @@
+/* ==== THE GROUPS VIEW'S BODY (story 16.3) ===============================================
+
+   Written against DESIGN.md's `components.group-section` block (added 2026-08-21, the c6-7
+   artefact-first order): `divider: '1px solid {colors.border-hairline}'` and `measure: 900px`.
+   The component line (DESIGN.md:592) gives the anatomy: title in `{typography.heading}` with
+   the card count in `{typography.numeric}` `{colors.text-tertiary}`, the rationale in
+   `{typography.body}` `{colors.text-secondary}` at the measure, then a wrapped tile row. The
+   count is a BARE NUMERAL — no authored word rides beside it, so this view owes no copy module.
+
+   FOUR px LITERALS IN THIS FILE, EVERY ONE CITED: the divider's `1px`
+   (`components.group-section.divider`), the rationale's `900px`
+   (`components.group-section.measure`), and the badge's `1px` border and `blur(6px)` backdrop
+   (both `components.quantity-badge` values, carried exactly as `QuantityBadge.css` carries
+   them — geometry literals with no token family to point at, cited beside the value per the
+   c2-8 decide-once ruling). Every other value is a scale token or content-derived — the token
+   pin does not move for this file.
+
+   THE BADGE IS `components.quantity-badge`'s CHROME UNDER THIS VIEW'S OWN CLASS. EXPERIENCE.md
+   :94 gives the group tile a quantity badge with a DIFFERENT gate (in-deck-only, ×1 renders)
+   and NO flash — pushes replace wholesale, so there is no changed quantity for a glow to mark.
+   Reaching into `.card-tile-quantity` from here would couple two containers' stylesheets, so
+   the material is re-spent under `.group-tile-quantity`: same scrim, same border, same pill
+   radius, same blur, same numeric type — the pair reads as one family, exactly as the DFC
+   control shares the badge's material. No `data-flashed` rule exists here in any spelling.
+   `--radius-pill` is legal in this file: GroupsView.css is NOT in CARD_SHAPED (the thumbnail's
+   geometry arrives entirely through the global `card-shape` class), so the chrome-radius ban
+   that split QuantityBadge.css out of CardTile.css does not bind it.
+
+   NO `--type-*` LONGHAND ANYWHERE: the heading, numeric and body roles cover every text slot
+   this view has, so no `font-size`/`font-weight` declaration exists in this file — the
+   stylelint overrides pin (3) does not move. The numeric role travels with its companion
+   feature declaration per `findUnpairedNumericRole`'s rule.
+
+   NO NESTING ANYWHERE, for `SuggestionsView.css`'s stated reason: `token-usage.test.ts`'s CSS
+   reader matches innermost brace pairs, and a nested declaration is invisible to the contrast,
+   token and motion guards.
+
+   NOT IN `CARD_SHAPED`: nothing here touches `--radius-card` or the 63:88 ratio. The
+   thumbnail's geometry arrives entirely through the global `card-shape` class and
+   `CardPlaceholder`'s own listed stylesheet; what this file spends on that slot is POSITION
+   and HEIGHT, which are the section's business (the tier-tile route — no px tile width; the
+   mock's 164px/14px are uncited UX-DR5 drift, deliberately not copied).
+
+   NO NEW MOTION: the crossfade lives on `.agent-view-body`, and the one transition below is
+   the image fade-in — a single property over `--motion-pulse`, whose reduced-motion fallback
+   is already registered in tokens.css's inventory (zeroing the token makes the picture
+   instant).
+
+   THIS FILE SPENDS NO OUTER MARGIN — `.agent-view-body` supplies the view's inset. */
+
+/* The empty-push line: DESIGN.md `components.empty-push-line` — `type: '{typography.body}'`,
+   `foreground: '{colors.text-secondary}'`, and it "spends no length of its own". `margin: 0`
+   is the UA reset for a `<p>`, not a spacing decision. */
+.groups-view-empty {
+  margin: 0;
+  color: var(--text-secondary);
+  font: var(--type-body);
+}
+
+/* The list reset, local for `SuggestionsView.css`'s reason: a `ul` is the correct semantics
+   (UX-DR44) and a bulleted column of sections is not the correct presentation. No gap — the
+   spacing between groups belongs to the divider row below, so the rule and its clearance are
+   one declaration block rather than two that must agree. */
+.groups-view-sections {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+/* THE DIVIDER — DESIGN.md `components.group-section.divider`: `1px solid
+   {colors.border-hairline}`, between CONSECUTIVE groups only (`+`, so the first group meets
+   the shell's own header with no stray rule). `{spacing.4}` above and below the line, from the
+   scale's section band: a group is a titled section, not an internal cluster, and the hairline
+   needs air on both sides to read as a boundary rather than an underline. */
+.groups-view-item + .groups-view-item {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-hairline);
+  margin-top: var(--space-4);
+}
+
+/* THE SECTION — title/count head, rationale, strip, stacked at `{spacing.2}`: the internal
+   cluster band, the same pairing the tier row's body column uses for the same anatomy. */
+.group-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* THE HEAD — title beside count on one baseline-aligned line, `{spacing.2}` between them (the
+   internal-clusters band). */
+.group-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+/* THE TITLE — DESIGN.md:592: "title in `{typography.heading}`". Wire data (the group's own
+   heading), in `text-primary` as every heading-role string is; `overflow-wrap` so one unbroken
+   80-character token cannot force the section wider than its column. */
+.group-section-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font: var(--type-heading);
+}
+
+/* THE COUNT — DESIGN.md:592: "card count in `{typography.numeric}` `{colors.text-tertiary}`".
+   A BARE NUMERAL: it is the rendered tile list's own length, and no authored word rides beside
+   it. BOTH numeric declarations in this block (UX-DR3): the `font` shorthand resets
+   font-variant-numeric, so the tabular feature travels with the role per
+   `findUnpairedNumericRole`'s rule. */
+.group-section-count {
+  color: var(--text-tertiary);
+  font: var(--type-numeric);
+  font-variant-numeric: var(--type-numeric-features);
+}
+
+/* THE RATIONALE — DESIGN.md:592: "description in `{typography.body}` `{colors.text-secondary}`
+   capped at ~900px measure", the tilde resolved by `components.group-section.measure`: the
+   `900px` below IS that cited value. A paragraph, so it WRAPS rather than truncating — the
+   wire caps it at 600 characters and the words the agent actually said stay readable;
+   `overflow-wrap` so one unbreakable token cannot widen the column past its track. */
+.group-section-rationale {
+  min-width: 0;
+  max-width: 900px;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font: var(--type-body);
+}
+
+/* THE STRIP — a WRAPPING row of thumbnails (DESIGN.md:592's "wrapped tile row"; the flex-wrap
+   precedents are AgentView.css:106 and ColourDistribution.css:173). `{spacing.2}` between
+   tiles, the internal-clusters band. */
+.group-section-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* THE TILE — a `<button>` reset in the manner `TierListView.css` established: the UA's
+   background, border, padding and centred font all fight the strip. No hover tint and no live
+   marker, deliberately: DESIGN.md's group-section specifies neither, and an invented one would
+   need a citation this artefact cannot give. The keyboard affordance is the focus ring below;
+   the pointer feedback is the detail panel itself. */
+.group-tile {
+  display: flex;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: start;
+}
+
+/* THE FOCUS RING (UX-DR40, UX-DR46): `:focus-visible`, never `:focus`; `outline`, because the
+   tile sits on the body's known surface and the two-band over-art treatment buys nothing.
+   `outline: none` appears nowhere in this file in any spelling. */
+.group-tile:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* THE THUMBNAIL SLOT (UX-DR36): a fixed-shape well from the first frame. `min-height: 6lh`
+   against the body line-height gives the card a readable size without spending a px —
+   `TierListView.css`'s content-derivation trick, at the same scale. The child derives its
+   WIDTH from the height through `card-shape`'s own 63:88; nothing here declares
+   `aspect-ratio` or a card radius (see the header — this file is not in CARD_SHAPED).
+
+   `position: relative` is the containing block for the image AND the quantity badge, which
+   both lie OVER the well rather than replacing it, so the layout is settled before the first
+   byte arrives. */
+.group-tile-thumb {
+  position: relative;
+  display: flex;
+  min-height: 6lh;
+  font: var(--type-body);
+}
+
+/* THE PICTURE, OVER THE WELL (UX-DR36, AD-11) — `TierListView.css`'s block verbatim:
+   `object-fit: cover` for the 0.24% render-vs-frame mismatch, and a fade that is mechanically
+   reduced-motion-safe (one property, one duration token — zeroing `--motion-pulse` is
+   UX-DR42's registered fallback for image fade-in). */
+.group-tile-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--motion-pulse) var(--ease-out);
+}
+
+.group-tile-image[data-loaded='true'] {
+  opacity: 1;
+}
+
+/* THE QUANTITY BADGE — `components.quantity-badge`'s material under this view's own class
+   (EXPERIENCE.md:94; see the header for the gate and the deliberate absence of the flash).
+   Pinned top-right inside `{spacing.2}` of the thumb — UX-DR16's "inside 8px", and `--space-2`
+   IS 8px. Scrim background, `text-primary` foreground, `{rounded.pill}`; the border's `1px` is
+   DESIGN.md `components.quantity-badge.border`'s own value, and the backdrop's `blur(6px)` is
+   DESIGN.md `components.quantity-badge.backdrop`, verbatim — geometry literals cited beside
+   the value exactly as `QuantityBadge.css` cites them. Padding is the same derived
+   `--space-1`/`--space-2` pair that file records (DESIGN.md declares none, and the
+   composition reference's `2px 9px` is off-scale UX-DR5 drift). BOTH numeric declarations
+   in this block (UX-DR3): the `font` shorthand resets font-variant-numeric, and `×34` must
+   hold two tabular digits. STATIC — no transition, no `data-flashed` rule in any spelling. */
+.group-tile-quantity {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  background: var(--scrim);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-primary);
+  backdrop-filter: blur(6px);
+  font: var(--type-numeric);
+  font-variant-numeric: var(--type-numeric-features);
+}

@@ -1,0 +1,191 @@
+/* ==== THE SWAPS VIEW'S BODY (story 16.1) ================================================
+
+   Written against DESIGN.md's `components.swap-row` block, which — unlike the suggestion row —
+   shipped complete: background `{colors.surface-overlay}`, border `1px solid
+   {colors.border-hairline}`, radius `{rounded.md}`, out-tint `{colors.negative}`, in-tint
+   `{colors.positive}`, arrow `{colors.accent}`. The component row beneath it adds the anatomy:
+   labels ABOVE the tiles, tints on the LABELS ONLY and never on the art, rationale in
+   `{typography.body}` `{colors.text-secondary}` right of the pair, confidence beneath. The
+   price/curve StatChips that row also names do not ship: the wire carries no price by ruling
+   (`types.d.ts`'s SwapItem docstring), so confidence is the one chip datum that exists and it
+   renders as a real `StatChip`, which brings its own listed stylesheet.
+
+   ONE px LITERAL IN THIS FILE — the border's `1px`, DESIGN.md `components.swap-row.border`:
+   `'1px solid {colors.border-hairline}'`. Every other length is a scale token or content-driven.
+
+   NO NESTING ANYWHERE, for `SuggestionsView.css`'s stated reason: `token-usage.test.ts`'s CSS
+   reader matches innermost brace pairs, and a nested declaration is invisible to the contrast,
+   token and motion guards.
+
+   NO `--accent-dim` IN ANY SPELLING: the row's own background is `--surface-overlay`, the one
+   surface where accent-dim measures 2.70:1 and fails the 3:1 non-text floor — which is exactly
+   why DESIGN.md's swap-row names `{colors.accent}` for the arrow.
+
+   NOT IN `CARD_SHAPED`: this file spends `--radius-md` on the row, so it must never touch
+   `--radius-card` or the 63:88 ratio. The thumbnail's geometry arrives entirely through the
+   global `card-shape` class and `CardPlaceholder`'s own listed stylesheet; what this file
+   spends on that slot is POSITION and HEIGHT, which are the row's business.
+
+   NO NEW MOTION: the crossfade lives on `.agent-view-body`, and the one transition below is the
+   image fade-in — a single property over `--motion-pulse`, whose reduced-motion fallback is
+   already registered in tokens.css's inventory (zeroing the token makes the picture instant).
+
+   THIS FILE SPENDS NO OUTER MARGIN — `.agent-view-body` supplies the view's inset. */
+
+/* The empty-push line: DESIGN.md `components.empty-push-line` — `type: '{typography.body}'`,
+   `foreground: '{colors.text-secondary}'`, and it "spends no length of its own". `margin: 0` is
+   the UA reset for a `<p>`, not a spacing decision. */
+.swaps-view-empty {
+  margin: 0;
+  color: var(--text-secondary);
+  font: var(--type-body);
+}
+
+/* The list reset, local for `SuggestionsView.css`'s reason: a `ul` is the correct semantics
+   (UX-DR44) and a bulleted column of trades is not the correct presentation. `{spacing.2}`
+   between rows, from the scale's "internal clusters" band. */
+.swaps-view-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+/* THE ROW — DESIGN.md `components.swap-row`: `background: '{colors.surface-overlay}'`,
+   `border: '1px solid {colors.border-hairline}'` (the file's one px literal), `radius:
+   '{rounded.md}'`. Padding and gap are `{spacing.2}`/`{spacing.3}` from the scale, the
+   suggestion row's own pairing for the same anatomy at the same scale.
+
+   FOUR COLUMNS: out tile · arrow · in tile · text, the last `minmax(0, 1fr)` and never a bare
+   `1fr` (`shell.test.ts`'s min-content trap: one unbreakable 600-character rationale would
+   widen the column past its share). The row's HEIGHT is content-driven — whichever is taller of
+   the tile pair and the wrapped rationale — so nothing here fixes a card's size in a number. */
+.swap-row {
+  display: grid;
+  grid-template-columns: auto auto auto minmax(0, 1fr);
+  gap: var(--space-2) var(--space-3);
+  align-items: start;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-overlay);
+}
+
+/* THE TILE — a `<button>` reset in the manner `CardTile.css` established: the UA's background,
+   border, padding and centred font all fight the column. A flex COLUMN because the label sits
+   ABOVE the thumbnail (DESIGN.md: "'Out · N copies' … above the out tile").
+
+   No hover tint and no live marker, deliberately: DESIGN.md's swap-row specifies neither (the
+   suggestion row's `live-background`/`live-rule` pair is that block's own amendment, absent
+   here), and an invented one would need a citation this artefact cannot give. The keyboard
+   affordance is the focus ring below; the pointer feedback is the detail panel itself. */
+.swap-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: start;
+}
+
+/* THE FOCUS RING (UX-DR40, UX-DR46): `:focus-visible`, never `:focus`; `outline`, because the
+   tile sits on the row's known surface and the two-band over-art treatment buys nothing.
+   `outline: none` appears nowhere in this file in any spelling. */
+.swap-tile:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* THE MICRO LABELS — `{typography.micro}` with BOTH companions in each colour block below being
+   unnecessary only because they live here once: `--type-micro` is a `font` shorthand that
+   resets neither tracking nor case, so the role travels with `--tracking-micro` and the
+   uppercase (`findRoleWithoutCompanions`' rule). The tint arrives in the two variant classes —
+   ON THE LABEL ONLY, never on the art (DESIGN.md's emphatic clause). */
+.swap-tile-label {
+  color: var(--text-secondary);
+  font: var(--type-micro);
+  letter-spacing: var(--tracking-micro);
+  text-transform: uppercase;
+}
+
+/* DESIGN.md `components.swap-row.out-tint`: `{colors.negative}` — 5.9:1 on `surface-overlay`,
+   clearing the 4.5:1 small-text floor with room. */
+.swap-tile-label-out {
+  color: var(--negative);
+}
+
+/* DESIGN.md `components.swap-row.in-tint`: `{colors.positive}` — 8.1:1 on the same surface. */
+.swap-tile-label-in {
+  color: var(--positive);
+}
+
+/* THE THUMBNAIL SLOT (UX-DR36): a fixed-shape well from the first frame. `min-height: 6lh`
+   against the row's body line-height gives the card a readable size without spending a px — the
+   same content-derivation trick the suggestion row uses, expressed in line units because this
+   tile has no two-text-line neighbour to stretch against. The child derives its WIDTH from the
+   height through `card-shape`'s own 63:88; nothing here declares `aspect-ratio` or a card
+   radius (see the header — this file is not in CARD_SHAPED).
+
+   `position: relative` is the containing block for the image, which lies OVER the well rather
+   than replacing it, so the layout is settled before the first byte arrives. */
+.swap-tile-thumb {
+  position: relative;
+  display: flex;
+  min-height: 6lh;
+  font: var(--type-body);
+}
+
+/* THE PICTURE, OVER THE WELL (UX-DR36, AD-11) — `SuggestionsView.css`'s block verbatim:
+   `object-fit: cover` for the 0.24% render-vs-frame mismatch, and a fade that is mechanically
+   reduced-motion-safe (one property, one duration token — zeroing `--motion-pulse` is UX-DR42's
+   registered fallback for image fade-in). */
+.swap-tile-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--motion-pulse) var(--ease-out);
+}
+
+.swap-tile-image[data-loaded='true'] {
+  opacity: 1;
+}
+
+/* THE ARROW — DESIGN.md `components.swap-row.arrow`: `{colors.accent}` (NEVER `accent-dim`,
+   which fails 3:1 on this surface — the artefact's own correction, restated at the rule). It
+   joins the tile PAIR, so it centres against the tiles' height rather than the row's. */
+.swap-row-arrow {
+  align-self: center;
+  color: var(--accent);
+  font: var(--type-body-strong);
+}
+
+/* THE TEXT COLUMN — the rationale with the confidence StatChip beneath it, right of the pair.
+   The chip brings its own listed stylesheet (`StatChip.css`), so nothing here styles it.
+   `min-width: 0` so the grid track can actually shrink the column. */
+.swap-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* THE RATIONALE — DESIGN.md: "Rationale in `{typography.body}` `{colors.text-secondary}` right
+   of the pair". It WRAPS rather than truncating: the wire caps it at 600 characters and the
+   artefact never says "one-line" of it (the suggestion reason's clause is that row's own), so
+   the words the agent actually said stay readable and the row's height follows the content.
+   `min-height: 1lh` keeps a malformed item's empty line from collapsing the column (the
+   suggestion row's Greptile-P1 fix, inherited). `overflow-wrap` so one 600-character token
+   cannot widen the column past its track. */
+.swap-row-rationale {
+  min-width: 0;
+  min-height: 1lh;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font: var(--type-body);
+}

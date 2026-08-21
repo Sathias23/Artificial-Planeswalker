@@ -2785,6 +2785,15 @@ describe('the reduced-motion mechanism (AC 11, AC 13)', () => {
       '.agent-view-body :: opacity': 'Push-replace crossfade',
       '.card-tile-image :: opacity': 'Image fade-in',
       '.suggestion-row-image :: opacity': 'Image fade-in',
+      // 16.1's swap tile: the third image fade, claimed under the same family row per the SC-5
+      // gate ruling above — one property, one duration token, no new inventory entry owed.
+      '.swap-tile-image :: opacity': 'Image fade-in',
+      // 16.2's tier tile: the fourth image fade, claimed under the same family row for the
+      // same reason — one property, one duration token, no new inventory entry owed.
+      '.tier-tile-image :: opacity': 'Image fade-in',
+      // 16.3's group tile: the fifth image fade, claimed under the same family row for the
+      // same reason — one property, one duration token, no new inventory entry owed.
+      '.group-tile-image :: opacity': 'Image fade-in',
       '.card-tile-quantity :: box-shadow': 'Accent glow fade',
       '.deck-row :: background-color': 'Deck-row live tint',
       '.deck-row :: box-shadow': 'Deck-row live tint',

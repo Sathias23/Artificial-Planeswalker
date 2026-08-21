@@ -77,7 +77,14 @@ import {
   type AgentSocketHandlers,
   type SessionOutcome,
 } from '../api/client'
-import type { AgentEvent, SuggestionsEvent, SystemEvent } from '../api/schema'
+import type {
+  AgentEvent,
+  GroupsEvent,
+  SuggestionsEvent,
+  SwapsEvent,
+  SystemEvent,
+  TierListEvent,
+} from '../api/schema'
 
 /**
  * The first retry lands this long after a drop.
@@ -221,17 +228,50 @@ export interface AgentSocketOptions {
    * `id` that makes a repeat push identifiable are all in it, and an `id`-only callback would
    * force the caller to hold a second copy of the frame to look them up in.
    *
-   * The three remaining agent-view kinds (`swaps`, `tier_list`, `groups`) are still dropped at
-   * the switch — their views are **Epic 9** — so this is not `onViewEvent(kind, payload)`, and
-   * c6-8 deliberately left it that way (Q1, Brad 2026-08-12). That story built kind-switching
-   * and went fully four-kind generic in the STORE and the NAV, and still did not widen this
-   * signature: Epic 9's preamble rules that a kind must not become *acceptable* before something
-   * can display it, because a push the UI silently cannot draw breaks
-   * never-silently-swallowed from the other side. So the shape stays the one with a caller, and
-   * `socket.test.ts:675`'s three-kinds-dropped pin stays true. Each Epic 9 view story widens
-   * this alongside the view that can receive it.
+   * Every agent-view kind now has a callback of its own (`groups`, the last, landed at 16.3)
+   * — and the shape is still one callback per renderable kind rather than
+   * `onViewEvent(kind, payload)`, which is c6-8's deliberate ruling honoured to the end (Q1,
+   * Brad 2026-08-12): the epic's preamble rules that a kind must not become *acceptable*
+   * before something can display it, because a push the UI silently cannot draw breaks
+   * never-silently-swallowed from the other side. So each view story widened this signature
+   * alongside the view that can receive what it carries — {@link AgentSocketOptions.onSwaps}
+   * at 16.1, {@link AgentSocketOptions.onTierList} at 16.2, {@link AgentSocketOptions.onGroups}
+   * at 16.3 — and no kind is dropped anywhere any more.
    */
   readonly onSuggestions: (event: SuggestionsEvent) => void
+  /**
+   * A `swaps` push arrived (story 16.1). The caller opens its view
+   * (`connection.ts` → `openSwapsPush`).
+   *
+   * It carries the WHOLE EVENT for {@link AgentSocketOptions.onSuggestions}'s reason verbatim:
+   * the payload IS the content, and an `id`-only callback would force the caller to hold a
+   * second copy of the frame to look the title, items and replace key up in. This is the first
+   * widening the c6-8 comment above promised — one callback, added in the same story as the
+   * view that renders what it carries.
+   */
+  readonly onSwaps: (event: SwapsEvent) => void
+  /**
+   * A `tier_list` push arrived (story 16.2). The caller opens its view
+   * (`connection.ts` → `openTierListPush`).
+   *
+   * It carries the WHOLE EVENT for {@link AgentSocketOptions.onSuggestions}'s reason verbatim:
+   * the payload IS the content, and an `id`-only callback would force the caller to hold a
+   * second copy of the frame to look the title, items and replace key up in. The second
+   * widening the c6-8 comment above promised — one callback, added in the same story as the
+   * view that renders what it carries.
+   */
+  readonly onTierList: (event: TierListEvent) => void
+  /**
+   * A `groups` push arrived (story 16.3). The caller opens its view
+   * (`connection.ts` → `openGroupsPush`).
+   *
+   * It carries the WHOLE EVENT for {@link AgentSocketOptions.onSuggestions}'s reason verbatim:
+   * the payload IS the content, and an `id`-only callback would force the caller to hold a
+   * second copy of the frame to look the title, items and replace key up in. The LAST widening
+   * the c6-8 comment above promised — with it, every kind in the closed six-member event enum
+   * is delivered somewhere, and the dispatch switch below contains no drop arm at all.
+   */
+  readonly onGroups: (event: GroupsEvent) => void
   /** Injected so tests need no `fetch` stub; production passes nothing. */
   readonly mint?: () => Promise<SessionOutcome>
   /**
@@ -324,6 +364,9 @@ export const createAgentSocket = ({
   onReconnected,
   onSystemEvent,
   onSuggestions,
+  onSwaps,
+  onTierList,
+  onGroups,
   mint = readSessionTicket,
   open = openAgentSocket,
   initialStatus = 'reconnecting',
@@ -445,15 +488,24 @@ export const createAgentSocket = ({
       case 'suggestions':
         onSuggestions(event)
         return
-      // THE THREE REMAINING AGENT-VIEW KINDS ARE RECEIVED AND DELIBERATELY DROPPED, WITH A HOME
-      // (AC 11). Not an error and not a crash: **Epic 9** builds the swaps, tier-list and groups
-      // views these carry (P1), and until it does, a push is a well-formed message about a
-      // surface that does not exist yet. Dropping it is the honest behaviour — the alternative,
-      // treating a valid frame as malformed, would make the agent's pushes look like a wire
-      // fault in whatever story is being debugged.
+      // THE SECOND AGENT VIEW WITH SOMEWHERE TO GO (story 16.1). Same shape as the arm above:
+      // the whole event, because the payload is the content, and `connection.ts` decides what a
+      // store does with it.
       case 'swaps':
+        onSwaps(event)
+        return
+      // THE THIRD AGENT VIEW WITH SOMEWHERE TO GO (story 16.2). Same shape as the two arms
+      // above: the whole event, because the payload is the content, and `connection.ts` decides
+      // what a store does with it.
       case 'tier_list':
+        onTierList(event)
+        return
+      // THE FOURTH AND LAST AGENT VIEW WITH SOMEWHERE TO GO (story 16.3). Same shape as its
+      // three siblings — and with it the drop arm this switch carried since c6-8 is GONE:
+      // every kind the enum admits is delivered somewhere, and the `never` arm below is the
+      // only non-delivering path left.
       case 'groups':
+        onGroups(event)
         return
       default: {
         // A seventh kind is a COMPILE failure naming the kind, not a runtime fallthrough — the

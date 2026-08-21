@@ -850,6 +850,44 @@ export const refetchOnDeckChanged = (deckId: string | null): void => {
 export const useDeckUpdating = (): boolean => useDeckStore((slice) => slice.updating)
 
 /**
+ * How many copies of one card the active deck runs, or `null` when it runs none — the group
+ * tile's quantity-badge input (story 16.3, EXPERIENCE.md:94).
+ *
+ * A PRIMITIVE selector beside {@link useDeckUpdating}, for the per-tile subscription discipline
+ * `agentView.ts`'s pill selectors state: a group strip mounts one subscriber per tile, and a
+ * selector returning an object would re-render every tile on every deck write. A number
+ * compares by value, so a tile re-renders only when ITS card's count actually changes.
+ *
+ * `null` and never `0`: the badge's meaning here is "copies in this deck", and EXPERIENCE.md:94
+ * is explicit that a card the deck does not run carries NO badge — "rendering '×0' would be a
+ * lie". So the not-in-deck answer is the absence of a number, not a zero the consumer might
+ * print. Any state where no deck is settled (`booting`, `none`, `refused`) answers `null` for
+ * the same reason: there is no deck for the count to be a fact about.
+ *
+ * Entries are SUMMED across boards — `detail.cards` carries one row per (card, board), so a
+ * card in both the mainboard and the sideboard is still one card the deck runs, and "copies in
+ * this deck" is the total. Containers reading `useDeckStore` directly is sanctioned
+ * (`ConnectionPill` precedent); `App` keeps the boot.
+ *
+ * Args:
+ *   cardId: The tile's printing id, exactly as the wire sent it.
+ */
+export const useDeckCardQuantity = (cardId: string): number | null =>
+  useDeckStore((slice) => {
+    const { deck } = slice
+    if (deck.status !== 'deck') return null
+    let copies = 0
+    let found = false
+    for (const card of deck.detail.cards) {
+      if (card.card_id === cardId) {
+        copies += card.quantity
+        found = true
+      }
+    }
+    return found ? copies : null
+  })
+
+/**
  * How many coalesced refetches have settled successfully — the `DeckAnnouncer`'s trigger (c7-5).
  *
  * A primitive selector beside {@link useDeckUpdating}, for the same re-render economy: the one

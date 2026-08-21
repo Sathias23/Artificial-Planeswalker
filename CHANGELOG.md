@@ -20,6 +20,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `app_not_running` when it is not up. The browser UI ships pre-built inside
   the Python package, so **Node is required neither at install nor at
   runtime** — there is no build step between a fresh clone and a running app.
+- **`companion_show_swaps`** — a third companion tool that puts proposed card
+  trades on the same page: each swap renders its out-card and in-card side by
+  side, with "Out · N copies" / "In · N copies" labels, the agent's rationale,
+  and a confidence chip. Like the other push tool it validates nothing against
+  the database, accepts an empty list as a legitimate "no trade worth
+  proposing", and reports `app_not_running` when the companion is not up.
+- **`companion_show_tier_list`** — a fourth companion tool that puts a tier
+  list on the same page: cards ranked into named tiers, each rendered as a row
+  with a large colour-ramped letter (S/A/B/C/D), the tier's name beneath it,
+  an optional note, and the tier's cards as thumbnails. Tiers render in the
+  order sent, a letter may repeat under different names, and empty tiers are
+  skipped rather than drawn as empty shells. Like the other push tools it
+  validates nothing against the database, accepts an empty list as a
+  legitimate "nothing worth tiering", and reports `app_not_running` when the
+  companion is not up.
+- **`companion_show_groups`** — a fifth companion tool that puts titled card
+  groups on the same page: each group renders its title in heading type with a
+  bare count beside it, the agent's rationale paragraph beneath, and the
+  group's cards as thumbnails. A tile shows a "×N" quantity badge exactly when
+  the active deck runs that card — groups routinely name cards the deck does
+  not run, and those tiles carry no badge. Groups render in the order sent,
+  empty groups are skipped rather than drawn as empty shells, and like the
+  other push tools it validates nothing against the database, accepts an empty
+  list as a legitimate "no grouping worth drawing", and reports
+  `app_not_running` when the companion is not up.
 - **Self-diagnosable startup.** The preferred port is 8765, overridable with
   `--port` (highest precedence) or `COMPANION_PORT`; a value outside
   `0..65535` from either source is ignored with a warning rather than

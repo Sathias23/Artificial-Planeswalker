@@ -46,7 +46,12 @@ from mcp.server.fastmcp import FastMCP
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.companion.client import notify_deck_changed as _notify_deck_changed
-from src.companion.contracts import SuggestionsPayload
+from src.companion.contracts import (
+    GroupsPayload,
+    SuggestionsPayload,
+    SwapsPayload,
+    TierListPayload,
+)
 from src.data.database import create_engine, create_session_factory
 from src.mcp_server.tools.assess_deck_power import AssessDeckPowerResult
 from src.mcp_server.tools.assess_deck_power import (
@@ -57,9 +62,18 @@ from src.mcp_server.tools.build_search_index import build_search_index as _build
 from src.mcp_server.tools.card_lookup import CardLookupResult, lookup_card
 from src.mcp_server.tools.card_search import CardSearchResult
 from src.mcp_server.tools.card_search import search_cards as _search_cards_helper
-from src.mcp_server.tools.companion import SetActiveDeckResult, ShowSuggestionsResult
+from src.mcp_server.tools.companion import (
+    SetActiveDeckResult,
+    ShowGroupsResult,
+    ShowSuggestionsResult,
+    ShowSwapsResult,
+    ShowTierListResult,
+)
 from src.mcp_server.tools.companion import set_active_deck as _set_active_deck_helper
+from src.mcp_server.tools.companion import show_groups as _show_groups_helper
 from src.mcp_server.tools.companion import show_suggestions as _show_suggestions_helper
+from src.mcp_server.tools.companion import show_swaps as _show_swaps_helper
+from src.mcp_server.tools.companion import show_tier_list as _show_tier_list_helper
 from src.mcp_server.tools.compare_deck_power import CompareDeckPowerResult
 from src.mcp_server.tools.compare_deck_power import (
     compare_deck_power as _compare_deck_power_helper,
@@ -556,6 +570,160 @@ def build_server(
             including the ones where nothing actually reached the wire.
         """
         return await _show_suggestions_helper(payload=payload)
+
+    @mcp.tool()
+    async def companion_show_swaps(payload: SwapsPayload) -> ShowSwapsResult:
+        """Show a list of proposed card swaps in the companion app's live browser view.
+
+        Use this when you propose trading cards out of a deck for cards into it —
+        "cut X for Y" — so the user sees both actual cards side by side instead of
+        reading a list of names. Send the swaps here **and** give your normal
+        answer in the conversation as you always would; this adds a visual
+        channel, it does not replace the reply.
+
+        Name each card by its Scryfall printing id, which ``lookup_card_by_name``
+        or any of this server's search tools returns as the card's ``id``. A card
+        name in ``out_card_id`` or ``in_card_id`` will not render. An empty
+        ``items`` list is a legitimate push meaning "I looked and found no trade
+        worth proposing" — send it rather than skipping the call.
+
+        The companion app has to be running; if it is not, this reports that,
+        nothing is sent, and your written answer still stands on its own.
+        Stateless and cumulative in nothing — each call carries its whole
+        payload, and the companion shows what the latest call sent.
+
+        Args:
+            payload: The swaps to display. ``payload.items`` is a list of at
+                most 60 swaps, shown in the order you send them, each with
+                ``out_card_id`` (the Scryfall printing id of the card leaving
+                the deck, required), ``in_card_id`` (the Scryfall printing id
+                of the card entering it, required), ``rationale`` (why the
+                trade is worth making, required, non-blank, up to 600
+                characters),
+                ``out_qty`` and ``in_qty`` (how many copies leave and enter,
+                required, zero or more — zero is legal), and ``confidence``
+                (optional, one of ``low``, ``medium``, ``high``).
+                ``payload.title`` is an optional header for the list, up to 80
+                characters; omit it to let the companion use its own.
+
+        Returns:
+            A result whose ``status`` is ``displayed`` (delivered to at least
+            one connected browser tab now — ``clients`` counts how many),
+            ``no_clients_connected`` (the companion took it but no tab is open
+            to see it — do not send it again), ``app_not_running`` (the
+            companion isn't running, and nothing was sent), ``payload_rejected``
+            (the companion refused the envelope itself), or ``backend_error``
+            (the companion is running and the push did not land).
+            ``items_pushed`` counts the swap pairs the call attempted to push,
+            on every status — including the ones where nothing reached the wire.
+        """
+        return await _show_swaps_helper(payload=payload)
+
+    @mcp.tool()
+    async def companion_show_tier_list(payload: TierListPayload) -> ShowTierListResult:
+        """Show a tier list — cards ranked into named tiers — in the companion app's
+        live browser view.
+
+        Use this when you rank cards into tiers — "which creatures earn their slot",
+        "how do these removal spells stack up" — so the user sees the actual cards
+        grouped under each rank instead of reading a list of names. Send the tier
+        list here **and** give your normal answer in the conversation as you always
+        would; this adds a visual channel, it does not replace the reply.
+
+        Name each card by its Scryfall printing id, which ``lookup_card_by_name``
+        or any of this server's search tools returns as the card's ``id``. A card
+        name in ``card_ids`` will not render. An empty ``items`` list is a
+        legitimate push meaning "I found nothing worth tiering" — send it rather
+        than skipping the call.
+
+        The companion app has to be running; if it is not, this reports that,
+        nothing is sent, and your written answer still stands on its own.
+        Stateless and cumulative in nothing — each call carries its whole
+        payload, and the companion shows what the latest call sent.
+
+        Args:
+            payload: The tiers to display. ``payload.items`` is a list of at most
+                12 tiers, shown in the order you send them, each with ``letter``
+                (one of ``S``, ``A``, ``B``, ``C``, ``D`` — a closed set), ``name``
+                (what the tier means in MTG terms, such as "Auto-include" or
+                "Filler" — required, non-blank, up to 40 characters; the letter
+                never stands alone), ``note`` (an optional line of commentary, up
+                to 200 characters), and ``card_ids`` (the Scryfall printing ids in
+                that tier, up to 60, shown in the order you send them — may be
+                empty). Repeating a letter under a different name is legal: the
+                12-tier cap and the 5-letter vocabulary are different quantities.
+                ``payload.title`` is an optional header for the list, up to 80
+                characters; omit it to let the companion use its own.
+
+        Returns:
+            A result whose ``status`` is ``displayed`` (delivered to at least one
+            connected browser tab now — ``clients`` counts how many),
+            ``no_clients_connected`` (the companion took it but no tab is open to
+            see it — do not send it again), ``app_not_running`` (the companion
+            isn't running, and nothing was sent), ``payload_rejected`` (the
+            companion refused the envelope itself), or ``backend_error`` (the
+            companion is running and the push did not land). ``items_pushed``
+            counts the **tiers** the call attempted to push — never the cards
+            inside them — on every status, including the ones where nothing
+            reached the wire.
+        """
+        return await _show_tier_list_helper(payload=payload)
+
+    @mcp.tool()
+    async def companion_show_groups(payload: GroupsPayload) -> ShowGroupsResult:
+        """Show titled card groups — cards gathered under named headings, each with a
+        paragraph of reasoning — in the companion app's live browser view.
+
+        Use this when you organise cards into themed groups — "the ramp package",
+        "budget substitutes", "answers you are not running" — so the user sees the
+        actual cards under each heading instead of reading a list of names. Send
+        the groups here **and** give your normal answer in the conversation as you
+        always would; this adds a visual channel, it does not replace the reply.
+
+        Name each card by its Scryfall printing id, which ``lookup_card_by_name``
+        or any of this server's search tools returns as the card's ``id``. A card
+        name in ``card_ids`` will not render. A group may legitimately name cards
+        the active deck does not run — grouping is an argument about cards, not an
+        inventory of the deck. An empty ``card_ids`` list is legal (the companion
+        skips that group's tiles), and an empty ``items`` list is a legitimate
+        push meaning "I found no grouping worth drawing" — send it rather than
+        skipping the call.
+
+        The companion app has to be running; if it is not, this reports that,
+        nothing is sent, and your written answer still stands on its own.
+        Stateless and cumulative in nothing — each call carries its whole
+        payload, and the companion shows what the latest call sent.
+
+        Args:
+            payload: The groups to display. ``payload.items`` is a list of at most
+                12 groups, shown in the order you send them, each with ``title``
+                (the group's own heading — required, non-blank, up to 80
+                characters; this is the per-group heading, distinct from the
+                optional ``payload.title`` below), ``rationale`` (the paragraph
+                explaining the group — required, non-blank, up to 600 characters),
+                and ``card_ids`` (the Scryfall printing ids in that group, up to
+                60, each up to 128 characters, shown in the order you send them —
+                may be empty). ``payload.title`` is an optional header for the
+                whole view, up to 80 characters; omit it to let the companion use
+                its own. Note the total envelope is capped at 64 KB: a payload
+                that maxes every field cap at once (12 groups of 60 ids with full
+                titles and rationales) exceeds it and comes back
+                ``payload_rejected``, so keep large pushes comfortably inside the
+                caps rather than at them.
+
+        Returns:
+            A result whose ``status`` is ``displayed`` (delivered to at least one
+            connected browser tab now — ``clients`` counts how many),
+            ``no_clients_connected`` (the companion took it but no tab is open to
+            see it — do not send it again), ``app_not_running`` (the companion
+            isn't running, and nothing was sent), ``payload_rejected`` (the
+            companion refused the envelope itself), or ``backend_error`` (the
+            companion is running and the push did not land). ``items_pushed``
+            counts the **groups** the call attempted to push — never the cards
+            inside them — on every status, including the ones where nothing
+            reached the wire.
+        """
+        return await _show_groups_helper(payload=payload)
 
     @mcp.tool()
     async def analyze_mana_curve(deck_id: str) -> ManaCurveResult:

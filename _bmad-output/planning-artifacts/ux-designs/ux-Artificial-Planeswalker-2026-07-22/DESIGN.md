@@ -381,6 +381,27 @@ components:
     # below already carries in bold.
     live-background: '{colors.accent-glow}'
     live-rule: 'inset 2px 0 0 {colors.accent}'
+  group-section:
+    # ADDED 2026-08-21 (story 16.3), on c6-7's suggestion-row precedent: the Group section's
+    # component description below promised a rationale "capped at ~900px measure" and sections
+    # that read as separate groups, while this frontmatter carried NO `group-section` block at
+    # all — so the section's two px spends had nothing to cite, and `ui/tests/shell.test.ts`
+    # (every px literal in a component stylesheet carries a DESIGN.md citation) made "the groups
+    # view matches DESIGN.md" UNSATISFIABLE rather than merely unchecked. The treatment is
+    # therefore ruled and written HERE FIRST and `GroupsView.css` written against it — the other
+    # order produces either a red guard or an invented citation.
+    #
+    # TWO VALUES, AND ONLY TWO. The divider is the hairline between consecutive groups — tone
+    # alone is ambiguous between two stacked text-plus-tiles sections on the same surface, which
+    # is exactly the case the Elevation section licenses a hairline for. The measure resolves
+    # the description's "~900px": a rationale is a PARAGRAPH (the only multi-line body copy in
+    # any agent view), and 900px at `{typography.body}` is the readable-measure ceiling the
+    # description was gesturing at — now a number a stylesheet can cite instead of a tilde.
+    # Everything else is deliberately absent: section spacing comes off the spacing scale, the
+    # title/count/rationale treatments are the description's type-role assignments, and the tile
+    # geometry is content-derived (the tier-row route) — nothing here fixes a card's size in px.
+    divider: '1px solid {colors.border-hairline}'
+    measure: 900px
   connection-pill:
     background: '{colors.surface-panel}'
     border: '1px solid {colors.border-hairline}'

@@ -68,8 +68,14 @@ export interface SuggestionsViewProps {
    * it — writing `'suggestions'` here would be this module deciding what the wire said.
    */
   readonly kind: AgentViewContent['kind']
-  /** The pushed rows. Empty is legal and renders the artefact's sentence (AD-7, UX-DR33). */
-  readonly items: AgentViewContent['items']
+  /**
+   * The pushed rows. Empty is legal and renders the artefact's sentence (AD-7, UX-DR33).
+   *
+   * Narrowed to the `suggestions` ARM of the store union (16.1 made `AgentViewContent` a
+   * per-kind discriminated union), still derived from the store type rather than from a wire
+   * type — the derivation just names which arm this view draws.
+   */
+  readonly items: Extract<AgentViewContent, { kind: 'suggestions' }>['items']
 }
 
 /**
@@ -82,7 +88,7 @@ export interface SuggestionsViewProps {
  * once, by `contracts.py`, and reaches this file through `AgentViewContent['items']` rather than
  * through a second declaration of the same word.
  */
-type PushedItem = AgentViewContent['items'][number]
+type PushedItem = SuggestionsViewProps['items'][number]
 
 /**
  * The same item as it ACTUALLY arrives — every field `unknown`, because none of them was checked.
