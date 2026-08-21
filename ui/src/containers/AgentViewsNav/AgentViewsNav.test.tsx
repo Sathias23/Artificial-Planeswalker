@@ -473,6 +473,15 @@ describe('the popover lists the session’s pushes, newest first (17.2)', () => 
     expect(useAgentViewStore.getState().content?.id).toBe('push-bad')
   })
 
+  it('carries its measured viewport-top as the height clamp’s anchor term (Greptile #97 r2)', () => {
+    // jsdom has no layout, so the measured rect is zeroes and the property reads `0px` — the
+    // CSS fallback value. The assertion pins the WIRING (deleting the measurement effect or the
+    // style channel goes red); the real subtraction is a browser behaviour the eye-check owns.
+    render(<AgentViewsNav />)
+    fireEvent.click(historyPill())
+    expect(popover()!.style.getPropertyValue('--history-popover-top')).toBe('0px')
+  })
+
   it('is NOT a modal, landmark, listbox or live region — a plain group of buttons', () => {
     render(<AgentViewsNav />)
     fireEvent.click(historyPill())

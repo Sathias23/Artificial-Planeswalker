@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 
 import type { AgentViewKind } from '../../api/schema'
 import {
@@ -536,6 +536,18 @@ function HistoryPopover({ id, onActivate }: { id: string; onActivate: (id: strin
     return () => cancelAnimationFrame(frame)
   }, [])
 
+  // THE VERTICAL CLAMP'S ANCHOR TERM (Greptile PR #97, round 2). The popover hangs below a
+  // content-sized header, so `HistoryPopover.css`'s max-height cannot know its own distance
+  // from the viewport top in CSS alone — subtracting only the gutters left the tail of the
+  // scrollport below a short window. Measured once, before paint, into a custom property (the
+  // ManaCurve/ColourDistribution channel — literal inline styles stay illegal): mount-only is
+  // sufficient for the same reason the focus effect's is, and exact behaviour under resize
+  // stays the eye-check's. jsdom's zero rect degrades the term to 0px — the CSS fallback.
+  const [viewportTop, setViewportTop] = useState(0)
+  useLayoutEffect(() => {
+    setViewportTop(rootRef.current?.getBoundingClientRect().top ?? 0)
+  }, [])
+
   // FOCUS TO THE FIRST (NEWEST) ENTRY ON OPEN — a mount effect, and mount-only is sufficient
   // rather than lazy: the list cannot change while the popover shows, because every arriving
   // push auto-opens its view and that closes the popover (the pill's derived `showPopover`).
@@ -554,6 +566,7 @@ function HistoryPopover({ id, onActivate }: { id: string; onActivate: (id: strin
       id={id}
       className="agent-views-nav-popover"
       data-entering={entering ? 'true' : undefined}
+      style={{ '--history-popover-top': `${viewportTop}px` } as CSSProperties}
     >
       {history.map((entry) => (
         <HistoryEntry key={entry.id} entry={entry} onActivate={onActivate} />

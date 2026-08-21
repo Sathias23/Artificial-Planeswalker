@@ -124,9 +124,10 @@ deferred: []
   - `[low]` `[patch]` The cold-open focusables selector was wrong (`:disabled` no-op on `<a>`/bare `[tabindex]`; `tabindex="-1"` included) and triplicated — corrected and hoisted to one module-scope helper; corridor pins re-verified from the DOM, none hand-adjusted.
 
 ### 2026-08-22 — Greptile round (PR #97)
-- patch: 2: (high 0, medium 1, low 1)
+- patch: 3: (high 0, medium 2, low 1)
 - addressed_findings:
   - `[medium]` `[patch]` Greptile P1 (the ONE real finding): the popover's viewport width clamp never engaged — the box was LEFT-anchored to a pill sitting at the viewport's right edge, so a long title grew rightward off-screen on anchor offset, not box width. Re-anchored `right: 0` (grows leftward across the header, where the clamp's arithmetic is true); comment records the reasoning.
+  - `[medium]` `[patch]` Greptile round 2 P1 (the symmetric flaw): the VERTICAL clamp subtracted only gutters from `100vh` — blind to the popover's own top offset below a content-sized header (tail past a short window's bottom) and to `vh` overshooting under retracting browser chrome. Fixed with `100dvh` (AppShell's own argument) plus a measured anchor term: `--history-popover-top`, set once before paint via the ManaCurve/ColourDistribution runtime-channel escape hatch — registered as the THIRD exact-name channel in `eslint.config.js` and `token-usage.test.ts`'s `RUNTIME_CUSTOM_PROPERTIES`, `0px` jsdom fallback, wiring pinned by a container test (suite 2560 → 2561).
   - `[low]` `[patch]` CI's Prettier check (not part of local `npm run lint`) flagged 4 files — formatted; repo-wide `prettier --check` now clean.
 
 Rejected as noise: same-`id` replace keeping its position (the contract mandates in-place); a malformed `ts` at the front freezing order to arrival (defensible construction of "never silently reorder", tested); suppressing a title equal to the kind label (rendering the word twice is worse); history surviving `deck_changed` (by design — stale-UUID degradation is the safety); a UI-level cap/scroll rendering test (store owns the cap; jsdom cannot observe scroll); `escape()` helper style; the review diff appearing truncated (unified-diff context artifact); `aria-haspopup` value semantics beyond adding `aria-controls` (the attribute is contract-mandated).

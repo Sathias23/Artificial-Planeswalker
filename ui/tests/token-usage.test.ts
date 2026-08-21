@@ -615,6 +615,22 @@ const RUNTIME_CUSTOM_PROPERTIES: Map<string, { file: string; reason: string }> =
         'basis grow to fill the whole track.',
     },
   ],
+  [
+    '--history-popover-top',
+    {
+      file: 'src/containers/AgentViewsNav/HistoryPopover.css',
+      reason:
+        'the height clamp’s anchor term IS runtime geometry (story 17.2; Greptile PR #97, ' +
+        'round 2) — the popover hangs below a content-sized header, so its distance from the ' +
+        'viewport top is knowable only by measurement, and subtracting gutters alone let the ' +
+        'scrollport’s tail run past a short window’s bottom edge. Written once, before paint, ' +
+        'by HistoryPopover through the same custom-property escape hatch (a third exact-name ' +
+        '`:not()` in eslint.config.js — the protocol growing, not loosening); consumed inside ' +
+        '`max-height: min(480px, calc(100dvh - var(--history-popover-top, 0px) - …))`, where ' +
+        'the `0px` fallback keeps jsdom (zero rects) and the unmeasured first frame on the ' +
+        'old gutters-only clamp rather than collapsing the popover.',
+    },
+  ],
 ])
 
 // The reader is injectable for the same reason findCardRadiusInMarkup's is (and it was the

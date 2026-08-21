@@ -55,7 +55,18 @@
   gap: var(--space-1);
   width: max-content;
   max-width: min(480px, calc(100vw - 2 * var(--space-gutter)));
-  max-height: min(480px, calc(100vh - 2 * var(--space-gutter)));
+
+  /* The height clamp's two amendments (Greptile PR #97, round 2): `100dvh`, not `100vh` —
+     AppShell.css's own argument, `vh` is the LARGE viewport height and overshoots under
+     retracting browser chrome — and the anchor term `--history-popover-top` (the popover's
+     measured distance from the viewport top, set by the component before paint; 0px in jsdom
+     and until measured), because subtracting only the gutters assumed the popover started AT
+     the viewport top when it actually hangs below a content-sized header — on a short window
+     the scrollport's tail ran past the bottom edge. The fallback `0px` cites DESIGN.md only to
+     say it is NOT of it — the measurement channel's zero, no design value at all; this line's
+     documented literal stays DESIGN.md `components.history-popover.max-height`'s 480px, argued
+     at this file's head. */
+  max-height: min(480px, calc(100dvh - var(--history-popover-top, 0px) - var(--space-gutter)));
   overflow-y: auto;
   padding: var(--space-2);
   border: 1px solid var(--border-hairline);
