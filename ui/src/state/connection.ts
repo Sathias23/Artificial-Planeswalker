@@ -80,7 +80,7 @@
 
 import { useEffect } from 'react'
 
-import { openSuggestionsPush, openSwapsPush } from './agentView'
+import { openSuggestionsPush, openSwapsPush, openTierListPush } from './agentView'
 import { redriveDeckBoot, refetchOnDeckChanged } from './deck'
 import { resetCardAttempts } from './cards'
 import { createAgentSocket } from './socket'
@@ -160,6 +160,8 @@ export const useAgentConnection = (): void => {
       // reasons: the verb is total about every payload the wire admits, so there is nothing to
       // check here — and the reference IS the handler.
       onSwaps: openSwapsPush,
+      // THE THIRD PUSH KIND (story 16.2), same shape, same reasons.
+      onTierList: openTierListPush,
     })
     socket.start()
     return () => socket.stop()

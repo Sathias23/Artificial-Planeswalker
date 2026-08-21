@@ -117,7 +117,7 @@ def _text_of(result) -> str:
 
 
 class TestTheAppIsClosedAndTheToolsStillAnswer:
-    """AC 1: both companion tools degrade to a result. Neither raises, in a real MCP session."""
+    """AC 1: every companion tool degrades to a result. None raises, in a real MCP session."""
 
     async def test_the_discovery_file_really_is_absent(self, closed_companion: Path) -> None:
         """The precondition, asserted rather than assumed.
@@ -194,6 +194,43 @@ class TestTheAppIsClosedAndTheToolsStillAnswer:
         )
         assert result.structuredContent["items_pushed"] == 1, (
             "What was attempted is reported even when nothing reached the wire (AD-8)."
+        )
+
+    async def test_the_tier_list_push_tool_reports_the_closed_app_and_does_not_raise(
+        self, closed_companion: Path, deck_db: async_sessionmaker[AsyncSession]
+    ) -> None:
+        """16-2 AC: the third push tool degrades exactly as the first two — called BY NAME over a
+        real in-memory MCP session, so the seam under test is the registered tool and not the
+        helper behind it."""
+        server = build_server(session_factory=deck_db)
+        async with create_connected_server_and_client_session(server) as client:
+            result = await client.call_tool(
+                "companion_show_tier_list",
+                {
+                    "payload": {
+                        "items": [
+                            {
+                                "letter": "S",
+                                "name": "Auto-include",
+                                "card_ids": [_CARD_ID],
+                            }
+                        ]
+                    }
+                },
+            )
+
+        assert result.isError is False, (
+            f"A closed companion must never error an agent turn (FR-12): {_text_of(result)}"
+        )
+        assert result.structuredContent is not None
+        assert result.structuredContent["status"] == _APP_NOT_RUNNING
+        assert _APP_NOT_RUNNING in _text_of(result), (
+            "AC 1 wants the outcome in the text result the agent presents, not only in the "
+            "structured channel."
+        )
+        assert result.structuredContent["items_pushed"] == 1, (
+            "What was attempted is reported even when nothing reached the wire (AD-8) — and it "
+            "counts the one TIER, not the card inside it."
         )
 
     async def test_the_control_tool_reports_the_closed_app_and_does_not_raise(

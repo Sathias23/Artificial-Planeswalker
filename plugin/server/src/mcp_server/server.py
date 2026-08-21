@@ -46,7 +46,7 @@ from mcp.server.fastmcp import FastMCP
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.companion.client import notify_deck_changed as _notify_deck_changed
-from src.companion.contracts import SuggestionsPayload, SwapsPayload
+from src.companion.contracts import SuggestionsPayload, SwapsPayload, TierListPayload
 from src.data.database import create_engine, create_session_factory
 from src.mcp_server.tools.assess_deck_power import AssessDeckPowerResult
 from src.mcp_server.tools.assess_deck_power import (
@@ -61,10 +61,12 @@ from src.mcp_server.tools.companion import (
     SetActiveDeckResult,
     ShowSuggestionsResult,
     ShowSwapsResult,
+    ShowTierListResult,
 )
 from src.mcp_server.tools.companion import set_active_deck as _set_active_deck_helper
 from src.mcp_server.tools.companion import show_suggestions as _show_suggestions_helper
 from src.mcp_server.tools.companion import show_swaps as _show_swaps_helper
+from src.mcp_server.tools.companion import show_tier_list as _show_tier_list_helper
 from src.mcp_server.tools.compare_deck_power import CompareDeckPowerResult
 from src.mcp_server.tools.compare_deck_power import (
     compare_deck_power as _compare_deck_power_helper,
@@ -609,6 +611,56 @@ def build_server(
             on every status — including the ones where nothing reached the wire.
         """
         return await _show_swaps_helper(payload=payload)
+
+    @mcp.tool()
+    async def companion_show_tier_list(payload: TierListPayload) -> ShowTierListResult:
+        """Show a tier list — cards ranked into named tiers — in the companion app's
+        live browser view.
+
+        Use this when you rank cards into tiers — "which creatures earn their slot",
+        "how do these removal spells stack up" — so the user sees the actual cards
+        grouped under each rank instead of reading a list of names. Send the tier
+        list here **and** give your normal answer in the conversation as you always
+        would; this adds a visual channel, it does not replace the reply.
+
+        Name each card by its Scryfall printing id, which ``lookup_card_by_name``
+        or any of this server's search tools returns as the card's ``id``. A card
+        name in ``card_ids`` will not render. An empty ``items`` list is a
+        legitimate push meaning "I found nothing worth tiering" — send it rather
+        than skipping the call.
+
+        The companion app has to be running; if it is not, this reports that,
+        nothing is sent, and your written answer still stands on its own.
+        Stateless and cumulative in nothing — each call carries its whole
+        payload, and the companion shows what the latest call sent.
+
+        Args:
+            payload: The tiers to display. ``payload.items`` is a list of at most
+                12 tiers, shown in the order you send them, each with ``letter``
+                (one of ``S``, ``A``, ``B``, ``C``, ``D`` — a closed set), ``name``
+                (what the tier means in MTG terms, such as "Auto-include" or
+                "Filler" — required, non-blank, up to 40 characters; the letter
+                never stands alone), ``note`` (an optional line of commentary, up
+                to 200 characters), and ``card_ids`` (the Scryfall printing ids in
+                that tier, up to 60, shown in the order you send them — may be
+                empty). Repeating a letter under a different name is legal: the
+                12-tier cap and the 5-letter vocabulary are different quantities.
+                ``payload.title`` is an optional header for the list, up to 80
+                characters; omit it to let the companion use its own.
+
+        Returns:
+            A result whose ``status`` is ``displayed`` (delivered to at least one
+            connected browser tab now — ``clients`` counts how many),
+            ``no_clients_connected`` (the companion took it but no tab is open to
+            see it — do not send it again), ``app_not_running`` (the companion
+            isn't running, and nothing was sent), ``payload_rejected`` (the
+            companion refused the envelope itself), or ``backend_error`` (the
+            companion is running and the push did not land). ``items_pushed``
+            counts the **tiers** the call attempted to push — never the cards
+            inside them — on every status, including the ones where nothing
+            reached the wire.
+        """
+        return await _show_tier_list_helper(payload=payload)
 
     @mcp.tool()
     async def analyze_mana_curve(deck_id: str) -> ManaCurveResult:

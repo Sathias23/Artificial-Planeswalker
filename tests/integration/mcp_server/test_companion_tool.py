@@ -44,6 +44,8 @@ from src.companion.contracts import (
     SuggestionsPayload,
     SwapItem,
     SwapsPayload,
+    TierItem,
+    TierListPayload,
 )
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
@@ -51,9 +53,11 @@ from src.mcp_server.tools import companion
 from src.mcp_server.tools.companion import (
     ShowSuggestionsResult,
     ShowSwapsResult,
+    ShowTierListResult,
     set_active_deck,
     show_suggestions,
     show_swaps,
+    show_tier_list,
 )
 from src.mcp_server.tools.deck_management import create_deck
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
@@ -108,6 +112,36 @@ def _swaps_payload(*, title: str | None = _SENTINEL_SWAPS_TITLE, items: int = 2)
                 # so the fixture exercises it rather than steering around it.
                 in_qty=0 if index == 0 else 2,
                 confidence="medium" if index == 0 else None,
+            )
+            for index in range(items)
+        ],
+    )
+
+
+_SENTINEL_TIER_CARD_ID = "9f3c2b1a-sentinel-tier-card-0000-000000000001"
+_SENTINEL_TIER_NAME = "Sentinel auto-include rank"
+_SENTINEL_TIER_NOTE = "Sentinel note: these four never leave the deck whatever the matchup."
+_SENTINEL_TIER_TITLE = "Sentinel header for the ranked tiers"
+"""The tier-list twins of the suggestion sentinels above, for the same reason: a result that
+echoed any part of a tier-list payload would name itself."""
+
+_TIER_LETTERS = ("S", "A", "B", "C", "D")
+
+
+def _tier_payload(*, title: str | None = _SENTINEL_TIER_TITLE, items: int = 2) -> TierListPayload:
+    """A tier-list payload carrying the sentinels, with *items* tiers in a deliberate order.
+
+    Every tier carries TWO card ids, so any assertion equating ``items_pushed`` with a card count
+    is off by a factor of two rather than coincidentally right — the swaps fixture's own trick.
+    """
+    return TierListPayload(
+        title=title,
+        items=[
+            TierItem(
+                letter=_TIER_LETTERS[index % len(_TIER_LETTERS)],
+                name=f"{_SENTINEL_TIER_NAME} ({index})",
+                note=_SENTINEL_TIER_NOTE if index == 0 else None,
+                card_ids=[f"{_SENTINEL_TIER_CARD_ID}-{index}-{position}" for position in range(2)],
             )
             for index in range(items)
         ],
@@ -882,3 +916,260 @@ class TestTheSwapsResultIsCompact:
         result = await show_swaps(payload=_swaps_payload())
 
         assert set(result.model_dump()) == {"status", "clients", "items_pushed", "message"}
+
+
+class TestTheTierListPushIsDelegated:
+    """16-2 AC: one tier-list payload becomes one envelope, and it reaches the leaf unchanged."""
+
+    async def test_one_tier_list_envelope_carries_the_payload_through_untouched(self, push_stub):
+        """The structural clone of the suggestions delegation test, and the same trap: the
+        comparison is against a freshly built equal payload rather than the argument object."""
+        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
+
+        result = await show_tier_list(payload=_tier_payload())
+
+        assert len(stub.events) == 1, "one call is one push; nothing at this layer retries"
+        event = stub.events[0]
+        assert event.kind == "tier_list"
+        assert event.payload == _tier_payload(), "the payload crosses to the leaf untouched"
+        assert result.status == "displayed"
+        assert result.items_pushed == 2
+
+    async def test_payload_order_is_preserved_because_it_is_render_order(self, push_stub):
+        """Nothing here sorts, dedupes or reorders — the agent's order is the screen's order,
+        and for a tier list that includes NOT re-sorting tiers by letter."""
+        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
+        payload = _tier_payload(items=3)
+
+        await show_tier_list(payload=payload)
+
+        assert [(item.letter, item.name) for item in stub.events[0].payload.items] == [
+            (item.letter, item.name) for item in payload.items
+        ]
+
+    async def test_the_envelope_timestamp_is_timezone_aware(self, push_stub):
+        """The wire refuses a naive ``ts`` (``AwareDatetime``) and no socket exists here to say
+        so — this assertion stands in for it, exactly as the suggestions twin does."""
+        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
+
+        await show_tier_list(payload=_tier_payload())
+
+        assert stub.events[0].ts.tzinfo is not None
+
+    async def test_each_call_mints_its_own_opaque_event_id(self, push_stub):
+        """``id`` is identity and dedupe (AD-6): two pushes must not collide on it."""
+        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
+
+        await show_tier_list(payload=_tier_payload())
+        await show_tier_list(payload=_tier_payload())
+
+        first, second = (event.id for event in stub.events)
+        assert first.strip(), "a blank id is refused by the envelope and useless for dedupe"
+        assert first != second, "a reused id would let a reader collapse two distinct pushes"
+
+    async def test_no_title_is_injected_when_the_agent_did_not_write_one(self, push_stub):
+        """The fallback header belongs to the reader (``DEFAULT_TITLE_BY_KIND`` says "Tier
+        list"); a tool-supplied one is not agent-authored."""
+        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
+
+        await show_tier_list(payload=_tier_payload(title=None))
+
+        assert stub.events[0].payload.title is None
+
+
+class TestEveryTierListOutcomeBecomesTheStatusOfTheSameName:
+    """16-2 AC: AD-8's five tokens, 1:1, with the count carried and never invented."""
+
+    def test_the_result_vocabulary_is_the_client_s_five_and_nothing_more(self):
+        """A push tool has no database to be wrong about, so it layers no status above the wire —
+        set equality against the client's own tuple, exactly as its two siblings pin."""
+        annotation = ShowTierListResult.model_fields["status"].annotation
+        assert set(get_args(annotation)) == set(PUSH_OUTCOMES)
+
+    @pytest.mark.parametrize(
+        ("outcome", "clients"),
+        [
+            pytest.param("displayed", 2, id="displayed"),
+            pytest.param("no_clients_connected", 0, id="no-clients"),
+            pytest.param("app_not_running", None, id="app-not-running"),
+            pytest.param("payload_rejected", None, id="payload-rejected"),
+            pytest.param("backend_error", None, id="backend-error"),
+        ],
+    )
+    async def test_the_token_and_the_count_both_pass_through(self, push_stub, outcome, clients):
+        """All five in one parametrization: a tool that swallowed the fifth would look correct in
+        any single-row test. ``0`` and ``None`` stay distinguishable on purpose."""
+        push_stub(PushOutcome(outcome=outcome, clients=clients))
+
+        result = await show_tier_list(payload=_tier_payload())
+
+        assert result.status == outcome
+        assert result.clients == clients
+        assert result.items_pushed == 2
+        assert result.message, "every status carries a sentence a human can read"
+
+    async def test_no_status_leaks_a_raw_outcome_token_into_the_message(self, push_stub):
+        """The token is for a caller to switch on; the sentence is for a person to read."""
+        for outcome in PUSH_OUTCOMES:
+            push_stub(PushOutcome(outcome=outcome, clients=1 if outcome == "displayed" else None))
+
+            result = await show_tier_list(payload=_tier_payload())
+
+            assert outcome not in result.message
+            assert "companion" in result.message.lower()
+
+
+class TestAnEmptyTierListPayloadIsStillPushed:
+    """16-2 edge row: "I found nothing worth tiering" is expressible, so it reaches the wire."""
+
+    async def test_an_empty_payload_is_posted_rather_than_short_circuited(self, push_stub):
+        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
+
+        result = await show_tier_list(payload=_tier_payload(items=0))
+
+        assert len(stub.events) == 1, "AD-7: an empty push is a legal push, not a skipped one"
+        assert stub.events[0].payload.items == []
+        assert result.status == "displayed"
+        assert result.items_pushed == 0
+
+    async def test_it_is_not_passing_because_every_payload_is_pushed_empty(self, push_stub):
+        """The non-vacuity pairing: the same stub, both sizes, and the counts told apart."""
+        stub = push_stub(PushOutcome(outcome="displayed", clients=1))
+
+        empty = await show_tier_list(payload=_tier_payload(items=0))
+        filled = await show_tier_list(payload=_tier_payload(items=2))
+
+        assert [len(event.payload.items) for event in stub.events] == [0, 2], (
+            "the envelope carries whatever the caller sent, empty and non-empty alike"
+        )
+        assert (empty.items_pushed, filled.items_pushed) == (0, 2)
+
+    async def test_items_pushed_counts_tiers_and_not_cards(self, push_stub):
+        """One tier carries two card ids in this fixture and is ONE item — the count the result
+        reports is ``len(payload.items)``, the swaps "pairs, not cards" precedent applied."""
+        push_stub(PushOutcome(outcome="displayed", clients=1))
+
+        payload = _tier_payload(items=3)
+        cards_carried = sum(len(item.card_ids) for item in payload.items)
+        assert cards_carried == 6, "the fixture must carry more cards than tiers to prove this"
+
+        result = await show_tier_list(payload=payload)
+
+        assert result.items_pushed == 3
+
+
+class TestTheTierListResultIsCompact:
+    """16-2: under the same ~400-char bound, and echoing not one word of the payload."""
+
+    @pytest.mark.parametrize("outcome", PUSH_OUTCOMES)
+    async def test_the_serialised_result_stays_well_inside_the_budget(self, push_stub, outcome):
+        """Every branch, at the payload cap — 12 tiers is ``TierListPayload``'s own maximum."""
+        push_stub(PushOutcome(outcome=outcome, clients=2 if outcome == "displayed" else None))
+
+        result = await show_tier_list(payload=_tier_payload(items=12))
+
+        assert len(result.model_dump_json()) < 400, result.model_dump_json()
+
+    @pytest.mark.parametrize("outcome", PUSH_OUTCOMES)
+    async def test_not_one_planted_string_comes_back_out(self, push_stub, outcome):
+        """The agent already holds this content; a result that repeated it would cost the
+        conversation twice for nothing (CM-1)."""
+        push_stub(PushOutcome(outcome=outcome, clients=2 if outcome == "displayed" else None))
+
+        result = await show_tier_list(payload=_tier_payload())
+
+        dumped = result.model_dump_json()
+        for sentinel in (
+            _SENTINEL_TIER_CARD_ID,
+            _SENTINEL_TIER_NAME,
+            _SENTINEL_TIER_NOTE,
+            _SENTINEL_TIER_TITLE,
+        ):
+            assert sentinel not in dumped, f"{sentinel!r} was echoed back into the result"
+
+    async def test_the_result_carries_counts_and_nothing_else(self, push_stub):
+        push_stub(PushOutcome(outcome="displayed", clients=1))
+
+        result = await show_tier_list(payload=_tier_payload())
+
+        assert set(result.model_dump()) == {"status", "clients", "items_pushed", "message"}
+
+
+class TestEveryPushToolSpeaksItsOwnNoun:
+    """16-2's consolidation guard: the tables, the sentences, and each tool's own wiring.
+
+    The consolidation promised the suggestions/swaps wording stays byte-identical, and until
+    this class nothing enforced any of it: no test read a message table by name and no test
+    pinned a push-tool sentence (the ``"1 tab."`` pin above belongs to the CONTROL tool).
+    Measured before writing it: ``show_tier_list`` wired to ``_SWAPS_PUSH_MESSAGES`` with a
+    ``"suggested cards"`` success subject passed the whole suite (review, 2026-08-21). Three
+    layers close that hole — the builder against the shipped bytes, each module table against
+    the builder-with-its-own-noun, and each TOOL against the sentence a person actually reads —
+    because any one alone leaves a cross-wiring the other two catch.
+    """
+
+    def test_each_module_table_is_the_builder_applied_to_its_own_noun(self):
+        """The tables are one builder, three nouns — not three drifting copies, and not one
+        table wired to another kind's name."""
+        assert companion._PUSH_MESSAGES == companion._push_messages("suggestions")
+        assert companion._SWAPS_PUSH_MESSAGES == companion._push_messages("swaps")
+        assert companion._TIER_LIST_PUSH_MESSAGES == companion._push_messages("tiers")
+
+    def test_the_four_suggestions_failure_sentences_are_the_shipped_bytes(self):
+        """Byte-for-byte, em dash included — the anchor that catches BUILDER drift.
+
+        The table-equals-builder assertions above are relative and would follow a reworded
+        template together; this one is absolute, so an edit to :func:`_push_messages` that moves
+        one shipped byte fails here by name. One kind suffices: the previous test makes the
+        other two the same bytes with a different noun.
+        """
+        assert companion._PUSH_MESSAGES == {
+            "no_clients_connected": (
+                "The companion took the suggestions, but no browser tab is open to see them — "
+                "open the URL the companion printed when it started."
+            ),
+            "app_not_running": (
+                "The companion app isn't running, so the suggestions have nowhere to appear. "
+                "Start it to see them on the glass — the content is in chat regardless."
+            ),
+            "payload_rejected": (
+                "The companion refused the suggestions, so none of them were displayed. The "
+                "content is in chat regardless."
+            ),
+            "backend_error": (
+                "The companion is running but the suggestions didn't land. Try again — the "
+                "content is in chat regardless."
+            ),
+        }
+
+    async def test_each_tool_names_its_own_content_when_the_app_is_closed(self, push_stub):
+        """The wiring, at the tool: a cross-wired ``messages=`` argument fails here by noun."""
+        cases = (
+            (show_suggestions, _payload(), "suggestions"),
+            (show_swaps, _swaps_payload(), "swaps"),
+            (show_tier_list, _tier_payload(), "tiers"),
+        )
+        for helper, payload, noun in cases:
+            push_stub(PushOutcome(outcome="app_not_running"))
+
+            result = await helper(payload=payload)
+
+            assert f"the {noun} have nowhere to appear" in result.message, helper.__name__
+
+    async def test_the_success_sentence_carries_each_kind_s_own_subject(self, push_stub):
+        """Both counts per kind, so the subject AND its pluraliser are each tool's own —
+        a tier-list success saying "suggested cards" fails here, as does "1 tiers"."""
+        cases = (
+            (show_suggestions, _payload, ("1 suggested card", "2 suggested cards")),
+            (show_swaps, _swaps_payload, ("1 proposed swap", "2 proposed swaps")),
+            (show_tier_list, _tier_payload, ("1 tier", "2 tiers")),
+        )
+        for helper, build, subjects in cases:
+            for items, subject in zip((1, 2), subjects, strict=True):
+                push_stub(PushOutcome(outcome="displayed", clients=1))
+
+                result = await helper(payload=build(items=items))
+
+                assert result.message == f"The companion is showing {subject} in 1 tab.", (
+                    helper.__name__
+                )

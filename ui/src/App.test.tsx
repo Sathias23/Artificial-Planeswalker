@@ -2585,7 +2585,7 @@ describe('the page reconnects on its own (c5-6)', () => {
     expect(sockets).toHaveLength(1)
   })
 
-  it('refetches on deck_changed, and ignores the two unbuilt view kinds (AC 11)', async () => {
+  it('refetches on deck_changed, and ignores the one unbuilt view kind (AC 11)', async () => {
     booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
     const fetchMock = answering(decks('Atraxa Counter Cabinet v2 (owned)'))
 
@@ -2594,15 +2594,15 @@ describe('the page reconnects on its own (c5-6)', () => {
     await connect()
     const before = callsTo(fetchMock, '/api/active-deck')
 
-    // `suggestions` LEFT this list at c6-6 and `swaps` at 16.1 — each exit paired with the view
-    // that can display what the kind carries. Later Epic-16 stories build the two that remain,
-    // and until they do they are received, dropped, and not a fault.
-    for (const kind of ['tier_list', 'groups']) await push(kind)
+    // `suggestions` LEFT this list at c6-6, `swaps` at 16.1 and `tier_list` at 16.2 — each exit
+    // paired with the view that can display what the kind carries. A later Epic-16 story builds
+    // the one that remains, and until it does it is received, dropped, and not a fault.
+    for (const kind of ['groups']) await push(kind)
     expect(callsTo(fetchMock, '/api/active-deck') - before).toBe(0)
     expect(deckDetailCalls(fetchMock)).toBe(1)
     expect(sockets[0].closed).toBe(0)
-    // Nor do they open anything: a dropped kind that reached the view arm would put a dialog on
-    // the glass with a suggestions view's chrome and a tier list's payload.
+    // Nor does it open anything: a dropped kind that reached the view arm would put a dialog on
+    // the glass with some other view's chrome and a groups payload.
     expect(screen.queryByRole('dialog')).toBeNull()
 
     // AMENDED AT c7-3 — this is the pinned count that story exists to change. The line below
@@ -5565,6 +5565,109 @@ describe('a swaps push opens its view, end to end (16.1)', () => {
     expect(dialog()).toHaveAccessibleName(AGENT_VIEW_LABELS.swaps)
     // The SHARED empty-push line, `{kind}`-substituted — no second sentence anywhere.
     expect(document.querySelector('.swaps-view-empty')).toHaveTextContent(emptyPushLine('swaps'))
+  })
+})
+
+// =====================================================================================
+// 16.2 — A TIER-LIST PUSH OPENS ITS VIEW, END TO END, THROUGH THE REAL SOCKET SEAM
+// =====================================================================================
+
+describe('a tier-list push opens its view, end to end (16.2)', () => {
+  // 16.1's opener's shape on the third push kind, and the one test that can catch the whole
+  // chain at once: `client.ts` narrows the frame, `socket.ts` dispatches it to `onTierList`,
+  // `connection.ts` calls `openTierListPush`, the store opens, and `App.tsx`'s kind switch
+  // mounts `TierListView`. Every seam-level test stays green with the App render arm reverted —
+  // this is the composed assertion that cannot.
+  const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
+  const dialog = () => screen.queryByRole('dialog')
+  const tierPill = () =>
+    [...document.querySelectorAll<HTMLButtonElement>('.agent-views-nav-pill')].find((p) =>
+      p.textContent?.startsWith(AGENT_VIEW_LABELS.tier_list),
+    )!
+
+  const TIER = {
+    letter: 'S',
+    name: 'Auto-include',
+    note: 'Never leaves the deck.',
+    card_ids: ['c-tier-1', 'c-tier-2'],
+  }
+
+  const bootedDeck = async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks(ATRAXA_NAME))
+    render(<App />)
+    await settle()
+    await connect()
+    return fetchMock
+  }
+
+  beforeEach(() => {
+    resetInspection()
+    resetDeckMemory()
+    resetAgentView()
+  })
+
+  it('opens the tier-list view with NO click, row anatomy rendered, and the pill active', async () => {
+    const fetchMock = await bootedDeck()
+    const cardsBefore = callsTo(fetchMock, '/api/cards/')
+    expect(dialog()).toBeNull()
+    expect(tierPill().disabled).toBe(true)
+
+    await push('tier_list', { title: 'How the creatures rank', items: [TIER] })
+
+    // The dialog is the tier-list view: named by the pushed title, one row carrying the whole
+    // DESIGN.md:590 anatomy — the ramped letter WITH its name (colour never the sole carrier of
+    // rank), the note, and one thumbnail per card id.
+    expect(dialog()).not.toBeNull()
+    expect(dialog()).toHaveAccessibleName('How the creatures rank')
+    const row = document.querySelector('.tier-row')
+    expect(row).not.toBeNull()
+    const letter = row!.querySelector('.tier-chip-letter')!
+    expect(letter).toHaveTextContent('S')
+    expect(letter.getAttribute('data-letter')).toBe('S')
+    expect(row!.querySelector('.tier-chip-name')).toHaveTextContent(TIER.name)
+    expect(row).toHaveTextContent(TIER.note)
+    expect(row!.querySelectorAll('.tier-tile')).toHaveLength(2)
+    // No sibling machinery was mounted for a tier_list frame — the kind switch chose the arm.
+    expect(document.querySelector('.suggestion-row')).toBeNull()
+    expect(document.querySelector('.swap-row')).toBeNull()
+
+    // The nav half: the "Tier list" pill activates on the first push, with unread behaviour —
+    // the kind on the glass is never unread against itself.
+    expect(tierPill().disabled).toBe(false)
+    expect(tierPill().textContent).not.toContain('unread')
+    // …and BOTH ids were hydrated by the view itself (nothing seeds an agent-supplied id):
+    // one tier, two distinct ids, two reads.
+    expect(callsTo(fetchMock, '/api/cards/') - cardsBefore).toBe(2)
+  })
+
+  it('skips an empty tier entirely while its neighbours render (DESIGN.md:590)', async () => {
+    await bootedDeck()
+
+    await push('tier_list', {
+      title: 'Ranks with a hole',
+      items: [TIER, { letter: 'D', name: 'Cut', card_ids: [] }],
+    })
+
+    // One rendered row, not two: the empty tier is skipped, never an empty shell — and the
+    // header's count still says 2, because the skip is render-only and the count is the
+    // payload's tier count, raw.
+    expect(document.querySelectorAll('.tier-row')).toHaveLength(1)
+    expect(document.querySelector('.tier-chip-name')).toHaveTextContent(TIER.name)
+    expect(useAgentViewStore.getState().content!.count).toBe(2)
+  })
+
+  it('falls back to the table’s word when the agent names nothing, and renders an empty push', async () => {
+    await bootedDeck()
+
+    await push('tier_list', { items: [] })
+
+    expect(dialog()).not.toBeNull()
+    expect(dialog()).toHaveAccessibleName(AGENT_VIEW_LABELS.tier_list)
+    // The SHARED empty-push line, `{kind}`-substituted — no second sentence anywhere.
+    expect(document.querySelector('.tier-list-view-empty')).toHaveTextContent(
+      emptyPushLine('tier_list'),
+    )
   })
 })
 

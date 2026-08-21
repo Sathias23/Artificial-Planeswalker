@@ -77,7 +77,13 @@ import {
   type AgentSocketHandlers,
   type SessionOutcome,
 } from '../api/client'
-import type { AgentEvent, SuggestionsEvent, SwapsEvent, SystemEvent } from '../api/schema'
+import type {
+  AgentEvent,
+  SuggestionsEvent,
+  SwapsEvent,
+  SystemEvent,
+  TierListEvent,
+} from '../api/schema'
 
 /**
  * The first retry lands this long after a drop.
@@ -221,8 +227,8 @@ export interface AgentSocketOptions {
    * `id` that makes a repeat push identifiable are all in it, and an `id`-only callback would
    * force the caller to hold a second copy of the frame to look them up in.
    *
-   * The two remaining agent-view kinds (`tier_list`, `groups`) are still dropped at the switch
-   * — their views are later Epic-16 stories — so this is not `onViewEvent(kind, payload)`, and
+   * The one remaining agent-view kind (`groups`) is still dropped at the switch
+   * — its view is a later Epic-16 story — so this is not `onViewEvent(kind, payload)`, and
    * c6-8 deliberately left it that way (Q1, Brad 2026-08-12). That story built kind-switching
    * and went fully four-kind generic in the STORE and the NAV, and still did not widen this
    * signature: the epic's preamble rules that a kind must not become *acceptable* before
@@ -243,6 +249,17 @@ export interface AgentSocketOptions {
    * view that renders what it carries.
    */
   readonly onSwaps: (event: SwapsEvent) => void
+  /**
+   * A `tier_list` push arrived (story 16.2). The caller opens its view
+   * (`connection.ts` → `openTierListPush`).
+   *
+   * It carries the WHOLE EVENT for {@link AgentSocketOptions.onSuggestions}'s reason verbatim:
+   * the payload IS the content, and an `id`-only callback would force the caller to hold a
+   * second copy of the frame to look the title, items and replace key up in. The second
+   * widening the c6-8 comment above promised — one callback, added in the same story as the
+   * view that renders what it carries, leaving `groups` as the one kind still dropped.
+   */
+  readonly onTierList: (event: TierListEvent) => void
   /** Injected so tests need no `fetch` stub; production passes nothing. */
   readonly mint?: () => Promise<SessionOutcome>
   /**
@@ -336,6 +353,7 @@ export const createAgentSocket = ({
   onSystemEvent,
   onSuggestions,
   onSwaps,
+  onTierList,
   mint = readSessionTicket,
   open = openAgentSocket,
   initialStatus = 'reconnecting',
@@ -463,13 +481,18 @@ export const createAgentSocket = ({
       case 'swaps':
         onSwaps(event)
         return
-      // THE TWO REMAINING AGENT-VIEW KINDS ARE RECEIVED AND DELIBERATELY DROPPED, WITH A HOME
-      // (AC 11). Not an error and not a crash: later Epic-16 stories build the tier-list and
-      // groups views these carry, and until they do, a push is a well-formed message about a
-      // surface that does not exist yet. Dropping it is the honest behaviour — the alternative,
-      // treating a valid frame as malformed, would make the agent's pushes look like a wire
-      // fault in whatever story is being debugged.
+      // THE THIRD AGENT VIEW WITH SOMEWHERE TO GO (story 16.2). Same shape as the two arms
+      // above: the whole event, because the payload is the content, and `connection.ts` decides
+      // what a store does with it.
       case 'tier_list':
+        onTierList(event)
+        return
+      // THE ONE REMAINING AGENT-VIEW KIND IS RECEIVED AND DELIBERATELY DROPPED, WITH A HOME
+      // (AC 11). Not an error and not a crash: a later Epic-16 story builds the groups view
+      // this carries, and until it does, a push is a well-formed message about a surface that
+      // does not exist yet. Dropping it is the honest behaviour — the alternative, treating a
+      // valid frame as malformed, would make the agent's pushes look like a wire fault in
+      // whatever story is being debugged.
       case 'groups':
         return
       default: {

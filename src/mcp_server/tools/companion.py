@@ -44,6 +44,8 @@ from src.companion.contracts import (
     SuggestionsPayload,
     SwapsEvent,
     SwapsPayload,
+    TierListEvent,
+    TierListPayload,
 )
 from src.data.database import is_database_initialized
 from src.data.repositories.deck import DeckRepository
@@ -253,32 +255,59 @@ class ShowSuggestionsResult(BaseModel):
     message: str
 
 
-_PUSH_MESSAGES = {
-    "no_clients_connected": (
-        "The companion took the suggestions, but no browser tab is open to see them — open the URL "
-        "the companion printed when it started."
-    ),
-    "app_not_running": (
-        "The companion app isn't running, so the suggestions have nowhere to appear. Start it to "
-        "see them on the glass — the content is in chat regardless."
-    ),
-    "payload_rejected": (
-        "The companion refused the suggestions, so none of them were displayed. The content is in "
-        "chat regardless."
-    ),
-    "backend_error": (
-        "The companion is running but the suggestions didn't land. Try again — the content is in "
-        "chat regardless."
-    ),
-}
-"""The wording for every push outcome that is not a plain success, keyed by the client's own token.
+def _push_messages(noun: str) -> dict[str, str]:
+    """Build the four push-failure sentences for one content noun (16.2's consolidation).
 
-None of these tells the agent what to do about its *reply* — only what happened to the glass. The
-companion is a second channel and never a replacement for the conversational one (NG5), so a
-sentence here that said "present them in chat instead" would be describing a fallback rather than
-the normal behaviour it never stopped being.
+    The four sentences were measured to be pure "…the {noun}…" templates before this builder
+    existed: the shipped suggestions and swaps tables differed **only** in the word naming the
+    content, so one parameterized builder replaces two verbatim clones without changing a byte of
+    either — ``TestEveryPushToolSpeaksItsOwnNoun`` in ``test_companion_tool.py`` pins the
+    sentences as literals and each table to its own noun. A kind whose sentences ever needed a
+    different *shape* would stop calling this and write its own table, which is exactly what the
+    pre-consolidation docstrings said about sharing.
 
-``displayed`` is absent because it is the one message that interpolates the two counts.
+    None of these tells the agent what to do about its *reply* — only what happened to the glass.
+    The companion is a second channel and never a replacement for the conversational one (NG5), so
+    a sentence here that said "present them in chat instead" would be describing a fallback rather
+    than the normal behaviour it never stopped being.
+
+    ``displayed`` is absent because it is the one message that interpolates the counts — the
+    success sentence varies per kind and is passed to :func:`_execute_push` by its caller.
+
+    Args:
+        noun: The plural word for the pushed content — "suggestions", "swaps", "tiers".
+
+    Returns:
+        The wording for every push outcome that is not a plain success, keyed by the client's own
+        token.
+    """
+    return {
+        "no_clients_connected": (
+            f"The companion took the {noun}, but no browser tab is open to see them — open the "
+            "URL the companion printed when it started."
+        ),
+        "app_not_running": (
+            f"The companion app isn't running, so the {noun} have nowhere to appear. Start it to "
+            "see them on the glass — the content is in chat regardless."
+        ),
+        "payload_rejected": (
+            f"The companion refused the {noun}, so none of them were displayed. The content is in "
+            "chat regardless."
+        ),
+        "backend_error": (
+            f"The companion is running but the {noun} didn't land. Try again — the content is in "
+            "chat regardless."
+        ),
+    }
+
+
+_PUSH_MESSAGES = _push_messages("suggestions")
+"""The suggestions wording — :func:`_push_messages` with the noun the shipped table carried.
+
+Kept as a module-level table rather than rebuilt per call so the sentences stay inspectable where
+the pre-consolidation dict lived — ``TestEveryPushToolSpeaksItsOwnNoun`` in
+``test_companion_tool.py`` reads all three tables by name and pins this one's four sentences
+byte-for-byte, so a builder edit that moved a shipped byte fails there rather than shipping.
 """
 
 
@@ -319,24 +348,13 @@ async def show_suggestions(*, payload: SuggestionsPayload) -> ShowSuggestionsRes
         payload=payload,
     )
     items_pushed = len(payload.items)
-    outcome = await _client_push_event(event)
-    if outcome.outcome == "displayed":
-        cards = "card" if items_pushed == 1 else "cards"
-        tabs = "tab" if outcome.clients == 1 else "tabs"
-        return ShowSuggestionsResult(
-            status="displayed",
-            clients=outcome.clients,
-            items_pushed=items_pushed,
-            message=(
-                f"The companion is showing {items_pushed} suggested {cards} "
-                f"in {outcome.clients} {tabs}."
-            ),
-        )
-    return ShowSuggestionsResult(
-        status=outcome.outcome,
-        clients=outcome.clients,
+    cards = "card" if items_pushed == 1 else "cards"
+    return await _execute_push(
+        event,
         items_pushed=items_pushed,
-        message=_PUSH_MESSAGES[outcome.outcome],
+        result_cls=ShowSuggestionsResult,
+        messages=_PUSH_MESSAGES,
+        shown=f"{items_pushed} suggested {cards}",
     )
 
 
@@ -379,33 +397,14 @@ class ShowSwapsResult(BaseModel):
     message: str
 
 
-_SWAPS_PUSH_MESSAGES = {
-    "no_clients_connected": (
-        "The companion took the swaps, but no browser tab is open to see them — open the URL "
-        "the companion printed when it started."
-    ),
-    "app_not_running": (
-        "The companion app isn't running, so the swaps have nowhere to appear. Start it to "
-        "see them on the glass — the content is in chat regardless."
-    ),
-    "payload_rejected": (
-        "The companion refused the swaps, so none of them were displayed. The content is in "
-        "chat regardless."
-    ),
-    "backend_error": (
-        "The companion is running but the swaps didn't land. Try again — the content is in "
-        "chat regardless."
-    ),
-}
-"""The push-outcome wording with the noun swapped, keyed by the client's own token.
+_SWAPS_PUSH_MESSAGES = _push_messages("swaps")
+"""The swaps wording — :func:`_push_messages` with this tool's noun.
 
-A clone of :data:`_PUSH_MESSAGES` rather than a second consumer of it, because that dict's
-sentences name "the suggestions" — kind-specific wording, not kind-neutral — and a shared table
-would either misname this tool's content or force both tools through a blander sentence neither
-asked for. Everything :data:`_PUSH_MESSAGES` says about its own register (what happened to the
-glass, never what to do about the reply — NG5) holds here verbatim.
-
-``displayed`` is absent because it is the one message that interpolates the two counts.
+Before 16.2 this was a verbatim clone of the suggestions table with one word changed, and its
+docstring predicted a shared table "would either misname this tool's content or force both tools
+through a blander sentence neither asked for". The builder answers both horns: each kind still
+names its own content, and no sentence got blander — the templates are the shipped sentences,
+byte for byte, with the noun as the one slot they ever differed in.
 """
 
 
@@ -442,22 +441,161 @@ async def show_swaps(*, payload: SwapsPayload) -> ShowSwapsResult:
         payload=payload,
     )
     items_pushed = len(payload.items)
+    swaps = "swap" if items_pushed == 1 else "swaps"
+    return await _execute_push(
+        event,
+        items_pushed=items_pushed,
+        result_cls=ShowSwapsResult,
+        messages=_SWAPS_PUSH_MESSAGES,
+        shown=f"{items_pushed} proposed {swaps}",
+    )
+
+
+class ShowTierListResult(BaseModel):
+    """Structured result of ``companion_show_tier_list``.
+
+    The third *push* tool result, field-identical to :class:`ShowSuggestionsResult` and
+    :class:`ShowSwapsResult` on purpose: its ``status`` values are the leaf client's five wire
+    outcomes and **nothing else** (AD-8). It reads no database — card ids are deliberately
+    unvalidated (AD-7) and deck existence is the control tool's business (AD-16) — so there is no
+    fourth kind of failure to layer on top. Three distinct classes rather than one shared model
+    because these docstrings are wire-visible: each tool's result documents its own count noun.
+
+    **Counts, never contents** (CM-1, AC 5): both numeric fields describe the push without
+    repeating one card id, tier name or note back into the conversation the agent is already
+    holding.
+
+    Attributes:
+        status: ``displayed`` (the companion delivered the push to at least one connected
+            browser), ``no_clients_connected`` (the companion took it and no tab was listening — a
+            wire success, never something to re-send), ``app_not_running`` (no companion could be
+            proven live; no credential left the process), ``payload_rejected`` (the companion
+            refused the envelope itself), or ``backend_error`` (the companion is there and the
+            push did not land).
+        clients: How many connected browsers received the push, when the companion said. ``None``
+            on every status that never reached a receipt — distinguishable from ``0`` on purpose.
+        items_pushed: How many **tiers** the envelope carried — ``len(payload.items)``, never a
+            count of the cards inside them: a tier holding sixty cards is one item. Reported on
+            every status, because it describes what was attempted rather than what arrived. Zero
+            is a legitimate value, not an error (AD-7).
+        message: One short human-facing sentence. Never echoes the payload (CM-1).
+    """
+
+    status: Literal[
+        "displayed",
+        "no_clients_connected",
+        "app_not_running",
+        "payload_rejected",
+        "backend_error",
+    ]
+    clients: int | None = None
+    items_pushed: int
+    message: str
+
+
+_TIER_LIST_PUSH_MESSAGES = _push_messages("tiers")
+"""The tier-list wording — :func:`_push_messages` with this tool's noun.
+
+"Tiers" rather than "tier list" because the templates conjugate plural ("…have nowhere to
+appear", "…none of them were displayed"), and the tiers are what the push carries — the same
+grain ``items_pushed`` counts.
+"""
+
+
+async def _execute_push[ResultT: (ShowSuggestionsResult, ShowSwapsResult, ShowTierListResult)](
+    event: SuggestionsEvent | SwapsEvent | TierListEvent,
+    *,
+    items_pushed: int,
+    result_cls: type[ResultT],
+    messages: dict[str, str],
+    shown: str,
+) -> ResultT:
+    """Hand one already-minted envelope to the leaf and fold the outcome into a result (16.2).
+
+    The shared back half of every push tool — extracted because the three helpers' bodies
+    differed in exactly five tokens (event class and kind, payload type, result class, count-noun
+    pluralizer, success sentence), and the first four arrive here as arguments while the fifth is
+    ``shown``, preformatted by the caller because ``items_pushed`` is caller-computed: what an
+    "item" is (a suggestion, a pair, a tier) is the one real semantic difference between kinds.
+
+    Everything the pre-consolidation bodies guaranteed still holds, structurally: one call is one
+    push (nothing here retries), the envelope crosses to the leaf untouched, and never raising is
+    inherited from the client's own closed outcome vocabulary (FR-12). An unexpected exception is
+    deliberately **not** caught: that is a bug, and crashing loudly is this package's convention
+    for one.
+
+    Args:
+        event: The envelope, already minted by the caller — id, ts and payload included.
+        items_pushed: How many items the caller counted in its own grain.
+        result_cls: Which of the three field-identical result models to mint.
+        messages: The kind's failure sentences, from :func:`_push_messages`.
+        shown: The success sentence's subject — e.g. ``"2 suggested cards"``, ``"3 tiers"``.
+
+    Returns:
+        An instance of *result_cls*.
+    """
     outcome = await _client_push_event(event)
     if outcome.outcome == "displayed":
-        swaps = "swap" if items_pushed == 1 else "swaps"
         tabs = "tab" if outcome.clients == 1 else "tabs"
-        return ShowSwapsResult(
+        return result_cls(
             status="displayed",
             clients=outcome.clients,
             items_pushed=items_pushed,
-            message=(
-                f"The companion is showing {items_pushed} proposed {swaps} "
-                f"in {outcome.clients} {tabs}."
-            ),
+            message=f"The companion is showing {shown} in {outcome.clients} {tabs}.",
         )
-    return ShowSwapsResult(
+    return result_cls(
         status=outcome.outcome,
         clients=outcome.clients,
         items_pushed=items_pushed,
-        message=_SWAPS_PUSH_MESSAGES[outcome.outcome],
+        message=messages[outcome.outcome],
+    )
+
+
+async def show_tier_list(*, payload: TierListPayload) -> ShowTierListResult:
+    """Put a tier list on the companion's glass (FR-08, AD-8).
+
+    The push-tool shape, third application, on the shared path 16.2 consolidated — every ruling
+    from :func:`show_suggestions` carries over unchanged: no database read, no id resolution, no
+    cap enforcement here (the caps are the payload model's, applied by FastMCP at the tool
+    boundary), and what arrives is what is sent — **order included**, because payload order is
+    render order and nothing here sorts, dedupes or trims. Two tiers sharing a letter are a legal
+    payload; the agent's ordering is the agent's argument.
+
+    **``items_pushed`` counts tiers, never cards** — ``len(payload.items)``, the same grain the
+    payload's own cap (12) is written in. A tier carrying sixty card ids is one item, exactly as
+    one out/in trade is one swap.
+
+    **An empty ``items`` list is posted, not short-circuited** (AD-7): "I ranked and found
+    nothing worth tiering" is a thing the agent is allowed to say on the glass.
+
+    The envelope's ``id`` is a fresh UUID4 per call — opaque identity and dedupe, never ordering
+    (AD-6) — and ``ts`` is timezone-aware because the wire refuses a naive one. No title is
+    injected when the payload omits one: the fallback header belongs to the reader
+    (``DEFAULT_TITLE_BY_KIND`` gives it "Tier list"), and a tool-supplied title would make
+    "agent-authored" false.
+
+    Never raises. Everything the discovery file, the network or the companion can do is already
+    one of the client's five tokens (FR-12). An unexpected exception is deliberately **not**
+    caught: that is a bug, and crashing loudly is this package's convention for one.
+
+    Args:
+        payload: The tiers to display, already validated by the contract model.
+
+    Returns:
+        A :class:`ShowTierListResult`.
+    """
+    event = TierListEvent(
+        kind="tier_list",
+        id=str(uuid4()),
+        ts=datetime.now(UTC),
+        payload=payload,
+    )
+    items_pushed = len(payload.items)
+    tiers = "tier" if items_pushed == 1 else "tiers"
+    return await _execute_push(
+        event,
+        items_pushed=items_pushed,
+        result_cls=ShowTierListResult,
+        messages=_TIER_LIST_PUSH_MESSAGES,
+        shown=f"{items_pushed} {tiers}",
     )

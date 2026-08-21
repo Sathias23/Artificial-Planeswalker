@@ -521,12 +521,18 @@ describe('every interactive element is a real control with a real hit box (AC 20
     // whose slot declares `min-height: 6lh` against `--type-body` (6 × 21px = 126px), with the
     // width following from 63:88 (≈90px) — both axes clear of the 24px floor by multiples. The
     // pixels are the manual checklist's, as for every other member.
+    // `tier-tile` joins at 16.2, on the swap tile's exact derived-geometry argument minus the
+    // label line: the tile IS its card-shaped thumb slot, which declares `min-height: 6lh`
+    // against `--type-body` (6 × 21px = 126px) with the width following from 63:88 (≈90px) —
+    // both axes clear of the 24px floor by multiples. The pixels are the manual checklist's,
+    // as for every other member.
     const WELL_CLEAR = [
       'card-tile',
       'flip-control',
       'deck-row',
       'suggestion-row',
       'swap-tile',
+      'tier-tile',
       'card-detail-unpin',
       'card-detail-oracle',
     ]

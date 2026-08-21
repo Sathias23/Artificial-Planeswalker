@@ -121,6 +121,58 @@
           }
         ]
       }
+    },
+    {
+      "files": ["src/containers/TierListView/TierListView.css"],
+      "rules": {
+        "declaration-property-value-allowed-list": [
+          {
+            "/^(box|text)-shadow$/i": [
+              "/^(none|var\\(--(shadow-[a-z0-9-]+|glow)\\)(\\s*,\\s*var\\(--(shadow-[a-z0-9-]+|glow)\\))*)$/i"
+            ],
+            "/^border(-(top|bottom)-(left|right)|-(start|end)-(start|end))?-radius$/i": [
+              "/^(0|var\\(--radius-[a-z0-9-]+\\))(\\s+(0|var\\(--radius-[a-z0-9-]+\\)))*$/i"
+            ],
+            "/^padding(-(top|right|bottom|left|block|inline)(-(start|end))?)?$/i": [
+              "/^(0|var\\(--space-[a-z0-9-]+\\))(\\s+(0|var\\(--space-[a-z0-9-]+\\)))*$/i"
+            ],
+            "/^margin(-(top|right|bottom|left|block|inline)(-(start|end))?)?$/i": [
+              "/^(0|auto|var\\(--space-[a-z0-9-]+\\))(\\s+(0|auto|var\\(--space-[a-z0-9-]+\\)))*$/i"
+            ],
+            "/^(grid-)?(gap|row-gap|column-gap)$/i": [
+              "/^(0|var\\(--space-[a-z0-9-]+\\))(\\s+(0|var\\(--space-[a-z0-9-]+\\)))*$/i"
+            ],
+            "/^animation-iteration-count$/i": [
+              "/^(1|initial|inherit|revert|revert-layer|unset)(\\s*,\\s*(1|initial|inherit|revert|revert-layer|unset))*$/i"
+            ],
+            "/^(transition|animation)-(duration|delay)$/i": [
+              "/^(initial|inherit|revert|revert-layer|unset|(0s|0ms|0|var\\(--motion-[a-z0-9-]+\\))(\\s*,\\s*(0s|0ms|0|var\\(--motion-[a-z0-9-]+\\)))*)$/i"
+            ],
+            "/^font$/i": [
+              "/^(var\\(--type-(?!numeric-features\\))[a-z0-9-]+\\)|initial|inherit|revert|revert-layer|unset)$/i"
+            ],
+            "/^font-family$/i": [
+              "/^(var\\(--font-[a-z0-9-]+\\)|initial|inherit|revert|revert-layer|unset)$/i"
+            ],
+            "/^font-variant-numeric$/i": ["/^var\\(--type-numeric-features\\)$/i"],
+            "/^font-size$/i": ["/^(44px|initial|inherit|revert|revert-layer|unset)$/i"],
+            "/^font-weight$/i": ["/^(500|initial|inherit|revert|revert-layer|unset)$/i"],
+            "/^letter-spacing$/i": [
+              "/^(0|var\\(--tracking-[a-z0-9-]+\\)|initial|inherit|revert|revert-layer|unset)$/i"
+            ],
+            "/^line-height$/i": ["/^(0|1|initial|inherit|revert|revert-layer|unset)$/i"],
+            "/^(word-spacing|text-indent)$/i": [
+              "/^(0|initial|inherit|revert|revert-layer|unset)$/i"
+            ],
+            "/^(?!font-family$|font-variant-numeric$|font-size$|font-weight$)font-[a-z-]+$/i": [
+              "/^(initial|inherit|revert|revert-layer|unset)$/i"
+            ]
+          },
+          {
+            "message": "Not a design token of the right family — see the base config's message; this file's ONLY widenings are DESIGN.md components.tier-row's own literal values (letter-size: 44px, letter-weight: 500, plus line-height: 1 to hug the glyph): no type role token carries 44px, the token pin may not move for one letter, and StatChip's decide-once route (a role at the exact size asked for) has no 44px role to reach. Any OTHER font-size, weight or line-height in this file is still an error."
+          }
+        ]
+      }
     }
   ]
 }

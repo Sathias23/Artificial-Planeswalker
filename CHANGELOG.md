@@ -26,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and a confidence chip. Like the other push tool it validates nothing against
   the database, accepts an empty list as a legitimate "no trade worth
   proposing", and reports `app_not_running` when the companion is not up.
+- **`companion_show_tier_list`** — a fourth companion tool that puts a tier
+  list on the same page: cards ranked into named tiers, each rendered as a row
+  with a large colour-ramped letter (S/A/B/C/D), the tier's name beneath it,
+  an optional note, and the tier's cards as thumbnails. Tiers render in the
+  order sent, a letter may repeat under different names, and empty tiers are
+  skipped rather than drawn as empty shells. Like the other push tools it
+  validates nothing against the database, accepts an empty list as a
+  legitimate "nothing worth tiering", and reports `app_not_running` when the
+  companion is not up.
 - **Self-diagnosable startup.** The preferred port is 8765, overridable with
   `--port` (highest precedence) or `COMPANION_PORT`; a value outside
   `0..65535` from either source is ignored with a warning rather than
