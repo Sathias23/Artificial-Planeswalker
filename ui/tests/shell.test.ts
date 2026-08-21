@@ -1698,6 +1698,35 @@ describe('the containers are a declared category with a posture of its own', () 
         'react',
       ],
     },
+    // 16.3's groups view — the FOURTH and last view body, `TierListView.tsx`'s structural
+    // sibling with the same inheritance story. The one difference is the story again:
+    // `../../state/deck` joins for the in-deck quantity badge (EXPERIENCE.md:94 — a tile shows
+    // "×N" iff the active deck runs the card), read through `useDeckCardQuantity`, a PRIMITIVE
+    // per-tile selector — never the whole deck slice — so a deck write re-renders only the
+    // tiles whose count changed. Reading the deck store from a container is the ConnectionPill
+    // precedent (`:2109-2118` above): `App` keeps the boot, this only subscribes.
+    // `../SuggestionsView/copy` is reached ACROSS containers for the same kind-generic-template
+    // reason (its fourth reader), and NO copy module of its own exists — every word the view
+    // renders is wire data, the count deliberately a bare numeral. It holds hooks per TILE,
+    // handlers and the card cache's fourth self-hydrating consumer, so `posture.test.ts` would
+    // fail it under `src/components/` three times over.
+    {
+      file: 'src/containers/GroupsView/GroupsView.tsx',
+      imports: [
+        '../../components/CardPlaceholder/CardPlaceholder',
+        '../../state/agentView',
+        '../../state/cards',
+        '../../state/deck',
+        '../../state/faces',
+        '../../state/inspection',
+        '../CardTile/imageUrl',
+        '../SuggestionsView/copy',
+        '../frontFaceCost',
+        '../useCardArt',
+        './GroupsView.css',
+        'react',
+      ],
+    },
     // c6-8's agent-views nav — the header pills. It reads the agent-view store through TWO
     // per-kind selector hooks and calls one verb on it, which is the whole of its state
     // coupling; `../../api/schema` is a TYPE-only import for the kind union (the rule below
@@ -2273,7 +2302,10 @@ describe('the containers are a declared category with a posture of its own', () 
     // as 16.1, for the same reasons: the empty-push template stays shared, every rendered word
     // is wire data (so no copy module and no COPY_MODULES entry), and no derivation module —
     // the empty-tier skip is a render-time filter, not a derivation anything else reads.
-    expect(CONTAINERS).toHaveLength(38)
+    // 39 at 16.3, the fourth and last view body in the identical one-component shape: the
+    // groups view, whose quantity badge reads the deck store through a primitive selector and
+    // whose count is a bare numeral — still no copy module, still no derivation module.
+    expect(CONTAINERS).toHaveLength(39)
     for (const { file } of CONTAINERS) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }

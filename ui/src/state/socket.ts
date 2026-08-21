@@ -79,6 +79,7 @@ import {
 } from '../api/client'
 import type {
   AgentEvent,
+  GroupsEvent,
   SuggestionsEvent,
   SwapsEvent,
   SystemEvent,
@@ -227,15 +228,15 @@ export interface AgentSocketOptions {
    * `id` that makes a repeat push identifiable are all in it, and an `id`-only callback would
    * force the caller to hold a second copy of the frame to look them up in.
    *
-   * The one remaining agent-view kind (`groups`) is still dropped at the switch
-   * — its view is a later Epic-16 story — so this is not `onViewEvent(kind, payload)`, and
-   * c6-8 deliberately left it that way (Q1, Brad 2026-08-12). That story built kind-switching
-   * and went fully four-kind generic in the STORE and the NAV, and still did not widen this
-   * signature: the epic's preamble rules that a kind must not become *acceptable* before
-   * something can display it, because a push the UI silently cannot draw breaks
-   * never-silently-swallowed from the other side. So the shape stays one callback per
-   * renderable kind, and each view story widens this alongside the view that can receive it —
-   * exactly as {@link AgentSocketOptions.onSwaps} did at 16.1.
+   * Every agent-view kind now has a callback of its own (`groups`, the last, landed at 16.3)
+   * — and the shape is still one callback per renderable kind rather than
+   * `onViewEvent(kind, payload)`, which is c6-8's deliberate ruling honoured to the end (Q1,
+   * Brad 2026-08-12): the epic's preamble rules that a kind must not become *acceptable*
+   * before something can display it, because a push the UI silently cannot draw breaks
+   * never-silently-swallowed from the other side. So each view story widened this signature
+   * alongside the view that can receive what it carries — {@link AgentSocketOptions.onSwaps}
+   * at 16.1, {@link AgentSocketOptions.onTierList} at 16.2, {@link AgentSocketOptions.onGroups}
+   * at 16.3 — and no kind is dropped anywhere any more.
    */
   readonly onSuggestions: (event: SuggestionsEvent) => void
   /**
@@ -257,9 +258,20 @@ export interface AgentSocketOptions {
    * the payload IS the content, and an `id`-only callback would force the caller to hold a
    * second copy of the frame to look the title, items and replace key up in. The second
    * widening the c6-8 comment above promised — one callback, added in the same story as the
-   * view that renders what it carries, leaving `groups` as the one kind still dropped.
+   * view that renders what it carries.
    */
   readonly onTierList: (event: TierListEvent) => void
+  /**
+   * A `groups` push arrived (story 16.3). The caller opens its view
+   * (`connection.ts` → `openGroupsPush`).
+   *
+   * It carries the WHOLE EVENT for {@link AgentSocketOptions.onSuggestions}'s reason verbatim:
+   * the payload IS the content, and an `id`-only callback would force the caller to hold a
+   * second copy of the frame to look the title, items and replace key up in. The LAST widening
+   * the c6-8 comment above promised — with it, every kind in the closed six-member event enum
+   * is delivered somewhere, and the dispatch switch below contains no drop arm at all.
+   */
+  readonly onGroups: (event: GroupsEvent) => void
   /** Injected so tests need no `fetch` stub; production passes nothing. */
   readonly mint?: () => Promise<SessionOutcome>
   /**
@@ -354,6 +366,7 @@ export const createAgentSocket = ({
   onSuggestions,
   onSwaps,
   onTierList,
+  onGroups,
   mint = readSessionTicket,
   open = openAgentSocket,
   initialStatus = 'reconnecting',
@@ -487,13 +500,12 @@ export const createAgentSocket = ({
       case 'tier_list':
         onTierList(event)
         return
-      // THE ONE REMAINING AGENT-VIEW KIND IS RECEIVED AND DELIBERATELY DROPPED, WITH A HOME
-      // (AC 11). Not an error and not a crash: a later Epic-16 story builds the groups view
-      // this carries, and until it does, a push is a well-formed message about a surface that
-      // does not exist yet. Dropping it is the honest behaviour — the alternative, treating a
-      // valid frame as malformed, would make the agent's pushes look like a wire fault in
-      // whatever story is being debugged.
+      // THE FOURTH AND LAST AGENT VIEW WITH SOMEWHERE TO GO (story 16.3). Same shape as its
+      // three siblings — and with it the drop arm this switch carried since c6-8 is GONE:
+      // every kind the enum admits is delivered somewhere, and the `never` arm below is the
+      // only non-delivering path left.
       case 'groups':
+        onGroups(event)
         return
       default: {
         // A seventh kind is a COMPILE failure naming the kind, not a runtime fallthrough — the

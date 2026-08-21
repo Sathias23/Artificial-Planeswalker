@@ -80,7 +80,7 @@
 
 import { useEffect } from 'react'
 
-import { openSuggestionsPush, openSwapsPush, openTierListPush } from './agentView'
+import { openGroupsPush, openSuggestionsPush, openSwapsPush, openTierListPush } from './agentView'
 import { redriveDeckBoot, refetchOnDeckChanged } from './deck'
 import { resetCardAttempts } from './cards'
 import { createAgentSocket } from './socket'
@@ -162,6 +162,9 @@ export const useAgentConnection = (): void => {
       onSwaps: openSwapsPush,
       // THE THIRD PUSH KIND (story 16.2), same shape, same reasons.
       onTierList: openTierListPush,
+      // THE FOURTH AND LAST PUSH KIND (story 16.3), same shape, same reasons — with it every
+      // kind the wire admits has a handler, and the socket's dispatch holds no drop arm.
+      onGroups: openGroupsPush,
     })
     socket.start()
     return () => socket.stop()

@@ -7,6 +7,7 @@ import { Footer } from './components/Footer/Footer'
 import { StatePanel } from './components/StatePanel/StatePanel'
 import { AgentView } from './containers/AgentView/AgentView'
 import { AgentViewsNav } from './containers/AgentViewsNav/AgentViewsNav'
+import { GroupsView } from './containers/GroupsView/GroupsView'
 import { SuggestionsView } from './containers/SuggestionsView/SuggestionsView'
 import { SwapsView } from './containers/SwapsView/SwapsView'
 import { TierListView } from './containers/TierListView/TierListView'
@@ -763,23 +764,24 @@ export default function App() {
                 `children` and asks nothing about them, so the kind-specific view rides inside
                 rather than being branched on in there.
 
-                KIND-KEYED SINCE c6-8, THREE ARMS SINCE 16.2. `content.kind` widened to the full
+                KIND-KEYED SINCE c6-8, TOTAL SINCE 16.3. `content.kind` widened to the full
                 four-kind view enum at c6-8 so the NAV could be generic over the closed contract,
                 and each view story since pairs its tool, its dispatch arm and its container in
-                one change — a push never arrives that the UI cannot display. `suggestions`,
-                `swaps` and `tier_list` are the reachable arms; `groups` still renders `null`
-                (nothing on the glass under a shell that still announces its heading — a strictly
-                better failure than a crash) and stays UNREACHABLE from the wire, because the
-                socket still drops that kind at its dispatch switch. The remaining view story
-                replaces the `null` with its container. The narrowing on `kind` is what types
-                `items` per arm now that `AgentViewContent` is a discriminated union. */}
+                one change — a push never arrives that the UI cannot display. All four arms are
+                reachable now: 16.3 wired `groups` through the socket (whose dispatch holds no
+                drop arm any more) and replaced the trailing `null` with its container, so the
+                ternary is total over the union and a fifth kind fails `npm run typecheck` here
+                rather than rendering nothing. The narrowing on `kind` is what types `items`
+                per arm now that `AgentViewContent` is a discriminated union. */}
             {agentView.kind === 'suggestions' ? (
               <SuggestionsView kind={agentView.kind} items={agentView.items} />
             ) : agentView.kind === 'swaps' ? (
               <SwapsView kind={agentView.kind} items={agentView.items} />
             ) : agentView.kind === 'tier_list' ? (
               <TierListView kind={agentView.kind} items={agentView.items} />
-            ) : null}
+            ) : (
+              <GroupsView kind={agentView.kind} items={agentView.items} />
+            )}
           </AgentView>
         )
       }
