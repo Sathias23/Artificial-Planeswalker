@@ -61,7 +61,7 @@ Second person is the contract. The design-system readme's "second person absent"
 
 | State | Copy |
 |---|---|
-| No-active-deck | Headline: "No deck on the glass." Body: "Ask your agent to set an active deck — it will appear here the moment it does." Below: the available-deck list from `GET /api/decks` (names only, non-clickable — the agent drives). |
+| No-active-deck | Headline: "No deck on the glass." Body: "Ask your agent to set an active deck — it will appear here the moment it does." Below: the available-deck list from `GET /api/decks` (names only, non-clickable — the agent drives). Rendered as the Welcome surface (17.5): hero art above, names as quiet chips. |
 | Database not initialized | Headline: "Card database not set up yet." Body: "In your agent session, ask it to initialize the database (`initialize_database`). First build takes a few minutes — this page will come alive on its own when it's ready." |
 | Database updating | Headline: "Card database is updating." Body: "Reads will resume automatically — nothing to do here." |
 | Database updating, stalled | Headline: "Card database still updating." Body: "Reads haven't resumed for a while. Check your agent session — if no import is running, ask it to rebuild the database (`initialize_database`)." The escalation from the row above; the client decides when "a while" has passed (c3-9 owns the threshold). |

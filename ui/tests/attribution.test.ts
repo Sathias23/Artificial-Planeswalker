@@ -165,8 +165,9 @@ describe('the footer attribution is DESIGN.md, byte for byte (AC 1, AC 2)', () =
     // commit. 25 until story 17.2, whose FR-18 home ruling (2026-08-22) added **History
     // popover** — the fifth nav pill's non-modal disclosure. This pin moving is the intended
     // signal: a Components bullet arriving is a design decision with a diff, and this is one
-    // of the two places that says so out loud.
-    expect(readComponentBullets(componentsSectionOf(readFileSync(DESIGN_MD, 'utf8'))).size).toBe(26)
+    // of the two places that says so out loud. 26 until story 17.5 added **Welcome** — the
+    // no-active-deck surface (hero above the State panel, deck names as chips).
+    expect(readComponentBullets(componentsSectionOf(readFileSync(DESIGN_MD, 'utf8'))).size).toBe(27)
     expect(artefactSentence.length).toBeGreaterThan(100)
     expect(artefactSentence.startsWith('Card data')).toBe(true)
     // And the module side: five parts, so neither loop below can pass by iterating nothing.

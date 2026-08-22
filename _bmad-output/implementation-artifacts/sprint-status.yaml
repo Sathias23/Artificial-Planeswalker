@@ -751,6 +751,7 @@ development_status:
   17-2-session-history: backlog
   17-3-measure-the-latency-budgets-and-close-the-gaps: backlog
   17-4-open-the-companion-from-the-agent: review
+  17-5-welcome-surface-first-impression: review
   epic-17-retrospective: optional
 
 # Action items carried out of retrospectives (see epic-N-retro-*.md for full context)

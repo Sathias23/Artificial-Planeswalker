@@ -129,9 +129,15 @@ export function StatePanel({ state, decks }: StatePanelProps) {
           anchor, no button, no handler. The agent drives (NG1, UX-DR33), and
           `StatePanel.test.tsx` asserts it by the ABSENCE of `link` and `button` roles in the
           subtree — the only assertion that says what AC 5 actually means. A class name would
-          have proved nothing. */}
+          have proved nothing.
+
+          An EXPLICIT `role="list"` on the `<ul>` (17.5): the stylesheet now lays the names out as
+          flex chips with `list-style: none`, and Safari/VoiceOver strips a list's implicit
+          semantics exactly when it sees that combination — the "list, N items" announcement this
+          panel relies on would vanish. The explicit role restores it; it is the element's own
+          role, so nothing else in the accessibility tree changes. */}
       {filled(names) ? (
-        <ul className="state-panel-decks">
+        <ul className="state-panel-decks" role="list">
           {/* INDEX keys, deliberately: nothing in the prop contract forbids two decks sharing a
               name (the names are user-authored, c3-1 delivers them as bare strings), and a
               name key would silently drop the second (review 2026-07-29). The list is static

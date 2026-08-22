@@ -263,82 +263,76 @@ describe('AppShell updating marker (c7-4, UX-DR35, UX-DR42)', () => {
   })
 })
 
-describe('AppShell placeholder copy (AC 21)', () => {
-  it('names the owner story of every region it is holding open', () => {
-    render(<AppShell />)
+describe('AppShell empty regions render nothing (17.5 — the AC 21 placeholders are retired)', () => {
+  // From c2-1 to 17.4 every empty region rendered a line naming the story that would fill it.
+  // Every region has had an owner since c6-8, so the copy met its scheduled death in 17.5 and
+  // an empty region is now simply absent. The `filled()` SEMANTICS survive — `false`, `[]`, an
+  // empty Fragment and an empty Set are all "empty", a non-empty array is not — and these cases
+  // keep guarding them, because the Welcome surface's single-track grid depends on them too.
+  const STORY_KEY = /c[0-9]-[0-9]+/
 
-    // Mechanical repair rather than archaeological: the story that fills each region is in
-    // the copy, so removing a placeholder is a search for its own story id. EVERY id the
-    // copy names is in this list — c4-9 was the one the first version omitted, which made
-    // half of the left column's placeholder deletable without failing anything.
-    for (const owner of [
-      'c4-4',
-      'c4-8',
-      'c4-9',
-      'c4-5',
-      'c4-7',
-      'c4-10',
-      'c2-10',
-      'c2-7',
-      'c6-8',
-    ]) {
-      // `getAllByText`, not `getByText`: an owner may legitimately appear in TWO placeholders
-      // — c4-10 both fills a header badge and owns the format-check panel — and the single
-      // getter throws on a second match, which would turn a correct placeholder into a test
-      // failure.
-      expect(
-        screen.getAllByText(new RegExp(owner)).length,
-        `no placeholder names ${owner}`,
-      ).toBeGreaterThan(0)
-    }
+  it('puts no story key and no placeholder element on the glass when every region is empty', () => {
+    const { container } = render(<AppShell />)
+
+    expect(container.textContent).not.toMatch(STORY_KEY)
+    expect(container.querySelector('.app-shell-placeholder')).toBeNull()
+    expect(
+      container.querySelectorAll('.app-shell-badges p, .app-shell-nav p, .app-shell-footer p'),
+    ).toHaveLength(0)
   })
 
-  it('drops a placeholder the moment its region is filled', () => {
+  it('renders real content in a filled region', () => {
     render(<AppShell left={<p>the card grid</p>} />)
 
     expect(screen.getByText('the card grid')).toBeInTheDocument()
-    expect(screen.queryByText(/c4-4/)).not.toBeInTheDocument()
-    // The regions that are still empty keep theirs.
-    expect(screen.getByText(/c2-10/)).toBeInTheDocument()
   })
 
-  it('keeps the placeholder when a region is passed the idiomatic false (review, 2026-07-28)', () => {
-    // `left={hasDeck && <CardGrid />}` passes `false` when there is no deck. `false` is not
-    // nullish and renders nothing, so a `??`-based slot would drop BOTH the content and the
-    // placeholder — the region would just be silently blank.
-    render(<AppShell left={false} />)
+  it('treats the idiomatic false as empty (review, 2026-07-28)', () => {
+    // `left={hasDeck && <CardGrid />}` passes `false` when there is no deck.
+    const { container } = render(<AppShell left={false} />)
 
-    expect(screen.getByText(/c4-4/)).toBeInTheDocument()
+    expect(container.querySelector('.app-shell-column')!.childElementCount).toBe(0)
   })
 
-  it('keeps the placeholder for an EMPTY ARRAY — the most idiomatic empty of all', () => {
-    // `left={cards.map(...)}` over an empty list (review round 2). `[]` is not nullish, not a
-    // boolean and not `''`, so the first version of `filled()` called it filled and the region
-    // rendered blank with no clue which story owed it. `[false, null]` is the same defect one
-    // level down: empty of OUTPUT rather than empty of elements.
-    render(<AppShell left={[]} right={[false, null]} />)
+  it('treats an EMPTY ARRAY — the most idiomatic empty of all — as empty', () => {
+    // `left={cards.map(...)}` over an empty list (review round 2); `[false, null]` is the same
+    // defect one level down: empty of OUTPUT rather than empty of elements.
+    const { container } = render(<AppShell left={[]} right={[false, null]} />)
 
-    expect(screen.getByText(/c4-4/)).toBeInTheDocument()
-    expect(screen.getByText(/c4-7/)).toBeInTheDocument()
+    expect(container.querySelectorAll('.app-shell-column')).toHaveLength(1)
+    expect(container.querySelector('.app-shell-column')!.childElementCount).toBe(0)
   })
 
-  it('keeps the placeholder for an empty Fragment and an empty Set (Greptile, PR #23)', () => {
-    // Both are shapes every earlier version of `filled()` called "filled": a Fragment is a
-    // React element, and a Set is not an array. Neither renders anything, so both left a
-    // silently blank region with no clue which story owed it.
-    render(<AppShell left={<></>} right={new Set() as never} />)
+  it('treats an empty Fragment and an empty Set as empty (Greptile, PR #23)', () => {
+    const { container } = render(<AppShell left={<></>} right={new Set() as never} />)
 
-    expect(screen.getByText(/c4-4/)).toBeInTheDocument()
-    expect(screen.getByText(/c4-7/)).toBeInTheDocument()
+    expect(container.querySelectorAll('.app-shell-column')).toHaveLength(1)
+    expect(container.querySelector('.app-shell-column')!.childElementCount).toBe(0)
   })
 
   it('still renders a NON-empty array — the empty check must not eat real content', () => {
-    // The silent half. A `filled()` that answered "false" for every array would drop c4-4's
-    // real grid, which is a far worse failure than the one above.
+    // A `filled()` that answered "false" for every array would drop c4-4's real grid.
     render(<AppShell left={[<p key="a">the card grid</p>]} />)
 
     expect(screen.getByText('the card grid')).toBeInTheDocument()
-    expect(screen.queryByText(/c4-4/)).not.toBeInTheDocument()
+  })
+})
+
+describe('AppShell single-track grid when the right column is empty (17.5)', () => {
+  it('renders ONE column and marks the grid data-single when `right` is empty', () => {
+    render(<AppShell left={<p>welcome</p>} />)
+
+    const main = screen.getByRole('main')
+    expect(main.querySelectorAll('.app-shell-column')).toHaveLength(1)
+    expect(main.getAttribute('data-single')).toBe('true')
+  })
+
+  it('renders TWO columns and no data-single when `right` is filled', () => {
+    render(<AppShell left={<p>left column content</p>} right={<p>right column content</p>} />)
+
+    const main = screen.getByRole('main')
+    expect(main.querySelectorAll('.app-shell-column')).toHaveLength(2)
+    expect(main.hasAttribute('data-single')).toBe(false)
   })
 })
 
