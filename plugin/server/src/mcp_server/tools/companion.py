@@ -314,7 +314,7 @@ _PUSH_MESSAGES = _push_messages("suggestions")
 
 Kept as a module-level table rather than rebuilt per call so the sentences stay inspectable where
 the pre-consolidation dict lived — ``TestEveryPushToolSpeaksItsOwnNoun`` in
-``test_companion_tool.py`` reads all three tables by name and pins this one's four sentences
+``test_companion_tool.py`` reads all four tables by name and pins this one's four sentences
 byte-for-byte, so a builder edit that moved a shipped byte fails there rather than shipping.
 """
 
@@ -789,8 +789,10 @@ async def companion_status() -> CompanionStatusResult:
     The second probe is held to the same proof as the first: no body, or a body whose
     ``instance_id`` is not the proven record's, is ``not_running`` — a companion that died between
     the two probes, or a foreign server that took the port in that window, is never reported as
-    running. A negative ``clients`` (a malformed body) reads as ``None``, so the message never
-    names a negative tab count.
+    running. The tab count is three-valued and the message never lies about which case it is in:
+    a positive count names the tabs, an honest ``0`` says no tab is open, and an absent or
+    negative ``clients`` (an older companion, or a malformed body) reads as ``None`` — "count
+    unknown", never "no browser tab is open" and never a negative number.
 
     Never raises. Both client calls promise the same, and a stale discovery file is the ordinary
     ``not_running`` outcome, not an error (FR-12).
@@ -820,14 +822,20 @@ async def companion_status() -> CompanionStatusResult:
         return not_running
     url = _client_base_url(live.port)
     clients = health.clients if health.clients is not None and health.clients >= 0 else None
-    if clients:
+    if clients is not None and clients > 0:
         tabs = "tab" if clients == 1 else "tabs"
         message = f"The companion is running at {url} with {clients} {tabs} open — nothing to do."
-    else:
+    elif clients == 0:
         message = (
             f"The companion is running at {url} but no browser tab is open. Run launch_command — "
             f"its --open opens a tab on the running instance; give the user {url} only if the "
             "browser can't open."
+        )
+    else:
+        message = (
+            f"The companion is running at {url}, but it did not report a usable tab count (an "
+            f"older companion, or a malformed reply) — a tab may already be open. Give the user "
+            f"{url} rather than opening a possibly-duplicate tab."
         )
     return CompanionStatusResult(
         status="running",

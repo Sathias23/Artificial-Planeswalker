@@ -1045,3 +1045,30 @@ class TestOpenBrowser:
 
         assert "open" in seen
         assert seen.index("open") > seen.index("print")
+
+    def test_the_port_accepts_a_connection_the_moment_the_browser_is_asked(
+        self, recorded_serve, loopback, monkeypatch
+    ):
+        """Pre-cut R5: ``listen()`` precedes the browser, so a fast tab is queued, not refused.
+
+        The connect happens INSIDE the stand-in browser — the exact moment ``_open_browser`` is
+        invoked, with ``_serve`` stubbed so uvicorn's own ``listen()`` can never be the one that
+        made it work. A bound-but-not-listening socket refuses this connect (``ConnectionRefused``
+        on both platforms), so this test is red without the explicit ``listen()``.
+        """
+        connected: list[int] = []
+
+        def opener(url: str) -> bool:
+            port = int(url.rsplit(":", 1)[1])
+            with socket.create_connection(("127.0.0.1", port), timeout=1) as probe:
+                connected.append(probe.getpeername()[1])
+            return True
+
+        monkeypatch.setattr(server.webbrowser, "open", opener)
+
+        server.run(port=loopback.free_port(), open_browser=True)
+
+        assert connected == [recorded_serve.socket_port], (
+            "the browser's first connect must land in the backlog of the already-listening "
+            "socket, never be refused during the pre-uvicorn window"
+        )

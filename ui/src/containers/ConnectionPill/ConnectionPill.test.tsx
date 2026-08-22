@@ -415,6 +415,34 @@ describe('Escape suppresses the reveal until blur or mouse-leave (WCAG 1.4.13)',
 
     expect(tooltip().className).not.toContain('is-suppressed')
   })
+
+  it('ignores an Escape inside an IME composition session — the guard the popover taught us', () => {
+    // A composition session's Escape cancels the composition, not the reveal; before the
+    // pre-cut hardening this listener had no guard and latched anyway.
+    applyConnection('live')
+    render(<ConnectionPill />)
+
+    fireEvent.keyDown(document.body, { key: 'Escape', isComposing: true })
+
+    expect(tooltip().className).not.toContain('is-suppressed')
+  })
+
+  it('ignores an Escape another surface already consumed — defaultPrevented stands down', () => {
+    // The unit-level twin of the composed App test: the History popover preventDefault()s the
+    // Escape that closes it, and a consumed key must not also dismiss this tooltip.
+    applyConnection('live')
+    render(<ConnectionPill />)
+
+    const consume = (event: KeyboardEvent) => event.preventDefault()
+    document.addEventListener('keydown', consume, true)
+    try {
+      fireEvent.keyDown(document.body, { key: 'Escape', cancelable: true })
+    } finally {
+      document.removeEventListener('keydown', consume, true)
+    }
+
+    expect(tooltip().className).not.toContain('is-suppressed')
+  })
 })
 
 describe('the page port is window.location’s, never a configured number', () => {

@@ -25,10 +25,13 @@ running, and confirm the browser tab opened.
 1. **Status first.** Call `companion_status`. Never launch without it.
 2. **Branch on what it says:**
    - `running` with `clients >= 1` — the companion is already on screen. Say so; do nothing else.
-   - `running` with `clients` `0` (or `null`) — it is up but nobody is looking. Run the
-     `launch_command` in a **background** shell: its `--open` flag opens a browser tab on the
-     *running* instance and exits `0` (it never starts a second one). Give the user the `url` to
-     open by hand only if the browser could not be opened.
+   - `running` with `clients` `0` — it is up but nobody is looking. Run the `launch_command` in
+     a **background** shell: its `--open` flag opens a browser tab on the *running* instance and
+     exits `0` (it never starts a second one). Give the user the `url` to open by hand only if
+     the browser could not be opened.
+   - `running` with `clients` `null` — the count is **unknown** (an older companion, or a
+     malformed reply), not zero: a tab may already be open. Prefer giving the user the `url` over
+     running the launch command — popping a possibly-duplicate tab is worse than one extra click.
    - `not_running` — run the `launch_command` **exactly as returned**, in a **background** shell.
      It looks like:
 
@@ -49,12 +52,18 @@ running, and confirm the browser tab opened.
    launch from a fresh install may take a while (it installs the server's dependencies first);
    give it up to a minute before judging it failed. If the line instead says `already running at`,
    the browser was asked to open on the existing instance; a warning on stderr says if it couldn't.
+   A third outcome is `another companion is already starting up` — a second launch lost the race
+   for the instance lock while the first was still booting. Do not retry the launch in a loop:
+   wait a moment for the winner to finish starting, then re-run `companion_status` and branch on
+   what it says.
 4. **Confirm — after a pause.** The tab's WebSocket handshake takes a moment after the browser
    opens, so wait a few seconds after the URL line before calling `companion_status` again; if
    `clients` is still `0`, check once more after another short pause before concluding anything.
    Then report the result in one line: running, the URL, and whether a tab is connected. Only if
    `clients` stays `0` did the browser not open (a warning on the launch's stderr says so) — give
-   the user the URL to open by hand.
+   the user the URL to open by hand. If `clients` is `null`, the count will never appear (this
+   companion does not report one) — do not re-poll for it; confirm by asking the user whether the
+   tab opened, and give them the URL if it didn't.
 5. **Then carry on.** Once it is up, `companion_set_active_deck` and the push tools work as
    normal. Re-run anything the user wanted on the glass.
 

@@ -300,7 +300,11 @@ describe('empty and malformed tiers are skipped; neighbours render (DESIGN.md:59
     expect(rowAt(container, 0).querySelector('.tier-row-note')).toHaveTextContent(TIER.note!)
   })
 
-  it('renders a NON-STRING id inside a tier as an unknown placeholder and never throws', () => {
+  it('filters a NON-STRING id inside a tier — the good neighbour renders alone, no crash', () => {
+    // E16-91: `cardIdsOf` now FILTERS per id (GroupsView's gate) rather than coercing to `''`,
+    // so a number never spends a permanently-dead placeholder slot — the tier renders exactly
+    // the ids the app could ever render.
+    seedAll()
     const withBadId = {
       letter: 'B',
       name: 'Playable',
@@ -309,11 +313,31 @@ describe('empty and malformed tiers are skipped; neighbours render (DESIGN.md:59
 
     const { container } = render(<TierListView kind="tier_list" items={[withBadId]} />)
 
-    // The tier still counts as non-empty (two entries arrived), the bad slot degrades alone.
+    // The tier still counts as non-empty (one valid id survived), the bad slot is dropped.
     expect(rows(container)).toHaveLength(1)
     const tiles = tilesOf(rowAt(container, 0))
-    expect(tiles).toHaveLength(2)
-    expect(tiles[0].querySelector('.card-placeholder')).toHaveTextContent('Unknown card')
+    expect(tiles).toHaveLength(1)
+    expect(tiles[0].querySelector('img')).toHaveAttribute('src', '/api/card-image/c-tier-3')
+  })
+
+  it('filters an empty or whitespace-only id — it never renders, never counts, never hydrates', () => {
+    // E16-91, `GroupsView.test.tsx`'s pin cloned: a blank id names nothing the app could ever
+    // render, and a whitespace-only one would even commit a real `/api/card-image/%20` request
+    // before hydration settled. `cardIdsOf` drops both, so the strip and the hydration effect
+    // read the same one-entry list.
+    seedAll()
+    const withBlankIds = {
+      letter: 'B',
+      name: 'Mostly blank',
+      card_ids: ['', '  ', 'c-tier-3'],
+    } as unknown as typeof TIER
+
+    const { container } = render(<TierListView kind="tier_list" items={[withBlankIds]} />)
+
+    expect(rows(container)).toHaveLength(1)
+    const tiles = tilesOf(rowAt(container, 0))
+    expect(tiles).toHaveLength(1)
+    expect(tiles[0].querySelector('img')).toHaveAttribute('src', '/api/card-image/c-tier-3')
   })
 
   it('renders the shared line when EVERY tier is skipped — never an empty list shell', () => {
@@ -479,8 +503,8 @@ describe('hydration is this view’s own, across every tier (AD-12)', () => {
       />,
     )
 
-    // The malformed slot cost no request (`hydrateCard('')` refuses terminally); the good id
-    // was still asked for — one bad entry, one silent slot.
+    // The malformed slot cost no request (`cardIdsOf` filters it before the effect ever sees
+    // it — E16-91); the good id was still asked for — one bad entry, zero traffic.
     expect(cardCalls()).toEqual(['/api/cards/c-tier-2'])
   })
 })

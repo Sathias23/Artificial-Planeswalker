@@ -251,8 +251,9 @@ full suite (-m 'not integration'): 3271 collected, 0 failed, exit 0
 | D2 | In-flight-coalescing residual (two simultaneous first fetches for one key, c3-7 Q5). | **Not observed** in 175 logged fetches across 3 lifetimes. Remains the known accepted deviation if ever seen. |
 | D3 | Session-level CM-1 worst case is ~312 tokens (five tools once each at their individual worst). | **No gap.** CM-1's ceiling is per result (~200 tokens); every single result is ≤ ~92 tokens. The session figure is recorded as context, as the spec asks. |
 
-No budget was breached; nothing is pending acceptance, and the spec's frontmatter `deferred`
-stays empty.
+No budget was breached; nothing is pending acceptance. The spec's frontmatter `deferred`
+carries exactly one medium item: the cold-open (NFR-05) drift diagnosis recorded as
+Observation O1 below.
 
 ## 10. Observations (recorded, not deviations)
 

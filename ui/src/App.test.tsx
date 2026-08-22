@@ -6697,4 +6697,36 @@ describe('the History pill puts any of the last twenty pushes one click away (17
     expect(popover()).toBeNull()
     expect(document.querySelectorAll('[aria-live]')).toHaveLength(liveBefore)
   })
+
+  // ==================== POPOVER + PILL TOOLTIP: ONE ESC, ONE LAYER (pre-cut R1) =======
+  it('Esc closes the popover without suppressing the connection pill tooltip (17.1 x 17.2 seam)', async () => {
+    // The epic's own two stories compose at the document: 17.1's tooltip-suppression listener
+    // and 17.2's popover-dismiss listener both hear every Escape. The wrapper half consumes the
+    // keystroke (preventDefault) whenever focus sits inside the pill+popover wrapper — where a
+    // click-open parks it — and the pill's listener honours `defaultPrevented`, so the SAME Esc
+    // must close the popover and leave a hover-revealed tooltip alone.
+    await bootedDeck()
+    await pushed('suggestions', 'First look', 'p1')
+    escape()
+    await settle()
+
+    // Reveal the connection pill's tooltip through the hover channel (no focus moved), per the
+    // `ConnectionPill.test.tsx` idiom.
+    const connectionPill = document.querySelector<HTMLElement>('.connection-pill')!
+    const pillTooltip = () => document.querySelector('.connection-pill-tooltip')!
+    fireEvent.mouseEnter(connectionPill)
+    expect(pillTooltip().className).not.toContain('is-suppressed')
+
+    act(() => {
+      historyPill().click()
+    })
+    expect(popover()).not.toBeNull()
+    expect(document.activeElement?.classList.contains('agent-views-nav-entry')).toBe(true)
+
+    // One Escape, delivered at the focused entry as a browser would deliver it.
+    escape()
+
+    expect(popover()).toBeNull()
+    expect(pillTooltip().className).not.toContain('is-suppressed')
+  })
 })

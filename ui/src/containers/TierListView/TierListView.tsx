@@ -129,17 +129,24 @@ const noteOf = (item: UntrustedTier): string | null => {
 }
 
 /**
- * A tile's card id, or `''` — the app's own value for *"an id the app cannot render"*:
- * `hydrateCard('')` refuses it terminally with the unknown-card placeholder and issues no
- * request. NOT trimmed, for `SuggestionsView`'s recorded reason: the wire caps the id's LENGTH
- * without validating its shape (AD-7), so a padded id is not this component's to rewrite.
+ * The tier's card ids, FILTERED per id rather than coerced — `GroupsView.cardIdsOf`'s gate,
+ * ported (E16-91): a non-string, empty or whitespace-only entry is dropped — there is no honest
+ * tile for a number, and a blank id names nothing the app could ever render, so keeping it
+ * would spend a permanently-dead placeholder slot AND a real image request (a whitespace id is
+ * not `''`, so the synchronous unknown guard cannot catch it before the first paint commits
+ * `/api/card-image/%20`). A NON-blank id is NOT trimmed, for `SuggestionsView`'s recorded
+ * reason: the wire caps the id's LENGTH without validating its shape (AD-7), so a padded copy
+ * of a real id is not this component's to rewrite. A non-array `card_ids` degrades to the empty
+ * tier, which the skip below already handles (DESIGN.md:590's rule, reached by a second road).
+ * The returned list's length IS the tier's rendered count — the numeral and the strip read one
+ * list, so a dropped id never counts either.
  */
-const cardIdOf = (value: unknown): string => (typeof value === 'string' ? value : '')
-
-/** The tier's card ids, each gated to a string — a non-array `card_ids` degrades to the empty
- * tier, which the skip below already handles (DESIGN.md:590's rule, reached by a second road). */
 const cardIdsOf = (item: UntrustedTier): readonly string[] =>
-  Array.isArray(item.card_ids) ? item.card_ids.map(cardIdOf) : []
+  Array.isArray(item.card_ids)
+    ? item.card_ids.filter(
+        (value): value is string => typeof value === 'string' && value.trim() !== '',
+      )
+    : []
 
 /** Whatever the cache can render right now, as one shape — `SuggestionsView`'s renderableOf. */
 const renderableOf = (entry: CardEntry | undefined) => {

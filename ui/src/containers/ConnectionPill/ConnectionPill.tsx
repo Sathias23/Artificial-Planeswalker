@@ -118,14 +118,17 @@ export function ConnectionPill() {
   // inert while no reveal channel is active and lasts only until the next focus/mouse-enter
   // begins a new session.
   //
-  // Deliberately NO `stopPropagation` and NO `preventDefault`: there is no ancestor Escape
-  // behaviour to collide with today — the only Escape-consuming surface is the agent view, which
-  // is modal with focus trapped and a scrim over this pill — and swallowing the key here would
-  // be the exact starvation `deferred-work.md:49` records the agent view's own capture handler
-  // causing.
+  // Deliberately NO `stopPropagation` and NO `preventDefault`: this listener must never consume
+  // the key — swallowing it here would be the exact starvation `deferred-work.md:49` records the
+  // agent view's own capture handler causing. It is NOT the only document Escape listener any
+  // more: the History popover (`AgentViewsNav`) registers its own while open, and its wrapper
+  // half `preventDefault()`s — which the standard `defaultPrevented` guard below honours, so a
+  // popover-consumed Escape never latches the suppression bit. `isComposing` keeps an IME's
+  // Escape (cancelling a composition) from being misread as a dismiss gesture.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setSuppressed(true)
+      if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return
+      setSuppressed(true)
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
