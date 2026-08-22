@@ -795,6 +795,7 @@ describe('the document keyboard layering is one listener, in the bubble phase (A
       'src/containers/AgentView/AgentView.tsx',
       'src/containers/AgentViewsNav/AgentViewsNav.tsx',
       'src/containers/CardDetail/CardDetail.tsx',
+      'src/containers/ConnectionPill/ConnectionPill.tsx',
     ]) {
       expect(withoutComments(sourceOf(file))).toContain("event.key !== 'Escape'")
     }

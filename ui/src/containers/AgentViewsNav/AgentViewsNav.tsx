@@ -30,11 +30,11 @@ import { pushTimeLabel } from './pushTime'
  * FR-18, UX-DR28, UX-DR33, UX-DR34, UX-DR37, UX-DR39, UX-DR40, UX-DR44, UX-DR45, UX-DR47,
  * `DESIGN.md:260-269`/`:522`, `EXPERIENCE.md:39-42`/`:73`/`:139-147`).
  *
- * It FILLS the header slot the shell has carried empty since c2-6 — `AppShell.tsx:200`'s
- * `slot(nav, 'Agent-view nav pills land here — c6-8.')` — via `App.tsx`'s `nav` prop. The
- * eleventh application of c2-9's displacement ruling: **`AppShell.tsx` is not edited**, the
- * placeholder string stays in the shell where `AppShell.test.tsx` asserts it against the
- * component's own props, and what changes is that nothing renders it any more.
+ * It FILLS the header nav slot via `App.tsx`'s `nav` prop. Historically that slot carried the
+ * c2-6 placeholder (`slot(nav, 'Agent-view nav pills land here — c6-8.')`) under c2-9's
+ * displacement ruling — **`AppShell.tsx` was never edited**, the string simply stopped being
+ * rendered when this nav arrived; story 17.5 then retired the placeholder text from the shell
+ * itself, so the quoted call no longer exists in `AppShell.tsx`.
  *
  * ================= IT IS GENERIC OVER THE ENUM, NOT OVER WHAT HAS A VIEW ==============
  *
@@ -377,11 +377,9 @@ function HistoryPill() {
     if (!open) return
     return useAgentViewStore.subscribe((state) => {
       if (state.status !== 'open') return
-      const pill = pillRef.current
-      const active = document.activeElement
-      const inWrapper = active instanceof Node && (wrapperRef.current?.contains(active) ?? false)
-      if (pill !== null && (inWrapper || active === null || active === document.body)) pill.focus()
-      setOpen(false)
+      // `closePopover` verbatim, through the ref (see its declaration): one body for the
+      // focus-return arm-2 guard and the synchronous `open` reset, not a duplicate to drift.
+      closeRef.current()
     })
   }, [open])
 
