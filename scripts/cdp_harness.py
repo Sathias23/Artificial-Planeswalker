@@ -422,21 +422,8 @@ def cmd_budget(args: argparse.Namespace) -> int:
     companion.start()
     try:
         print(f"companion on {companion.url}, data dir {data_dir}")
-        # The active deck lives in BACKEND MEMORY (c3-4: the route takes no session), so a freshly
-        # started companion has none and the deck view would never paint. Set it here or the whole
-        # measurement silently becomes "how fast does an empty view render".
-        token = json.loads((data_dir / "companion.json").read_text(encoding="utf-8"))["token"]
-        response = httpx.put(
-            f"{companion.url}/api/active-deck",
-            json={"deck_id": args.deck_id},
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=15,
-        )
-        if response.status_code != 200:
-            raise SystemExit(
-                f"could not set the active deck: {response.status_code} {response.text}"
-            )
-        print(f"active deck set to {args.deck_id}")
+        # Why the deck must be made active, and what happens if it is not, lives on the helper.
+        _set_active_deck(companion, _read_token(data_dir), args.deck_id)
         for index in range(args.runs):
             # A FRESH PROFILE PER RUN or the arm is not the arm: reusing one profile turns a
             # cold-open measurement into a warm-HTTP-cache measurement after run 1.
@@ -516,6 +503,44 @@ def _read_token(data_dir: Path) -> str:
     return token
 
 
+def _set_active_deck(companion: Companion, token: str, deck_id: str | None) -> str:
+    """Make *deck_id* (or the largest deck present) the active deck, and say so.
+
+    One helper, two callers -- ``cmd_budget`` and the drain arm -- because the active deck lives
+    in BACKEND MEMORY (c3-4: the route takes no session), so a freshly started companion has none
+    and the deck view would never paint. Set it or the whole measurement silently becomes "how
+    fast does an empty view render". The ``httpx.HTTPError`` catch is for the transport layer: a
+    companion that died between ``/health`` and this PUT should read as a named refusal, not a
+    raw traceback.
+
+    Args:
+        companion: The running companion.
+        token: The live agent credential from the discovery file.
+        deck_id: An explicit choice, or ``None`` for the LARGEST deck present (c4-12's subject
+            rule, via :func:`_largest_deck`).
+
+    Returns:
+        The deck id that is now active.
+
+    Raises:
+        SystemExit: If the PUT could not be issued or did not answer 200.
+    """
+    chosen = deck_id or _largest_deck(companion.url, None)[0]
+    try:
+        response = httpx.put(
+            f"{companion.url}/api/active-deck",
+            json={"deck_id": chosen},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+    except httpx.HTTPError as exc:
+        raise SystemExit(f"could not set the active deck: the PUT failed with {exc!r}") from exc
+    if response.status_code != 200:
+        raise SystemExit(f"could not set the active deck: {response.status_code} {response.text}")
+    print(f"active deck set to {chosen}")
+    return chosen
+
+
 def _seeded_card_ids(companion_url: str, wanted: int) -> list[str]:
     """Return *wanted* real printing ids, read from the backend's own REST surface.
 
@@ -592,6 +617,92 @@ def _await_surfaces(browser: Browser, timeout: float) -> dict[str, float]:
     return browser.js("window.__surfaces") or {}
 
 
+def _outstanding_card_images(browser: Browser) -> int:
+    """How many ``/api/card-image/*`` requests the page has issued that have NOT yet completed.
+
+    The drain arm's positive control (17-3). Resource timing cannot answer this — a
+    ``PerformanceResourceTiming`` entry is published only when the fetch *ends*, so an in-flight
+    or pacer-queued request is invisible to it (the same trap ``measure_push``'s image comment
+    records from the other side). CDP's ``Network`` events are the seam that can: every issued
+    request produces ``requestWillBeSent``, and every completed one ``loadingFinished`` or
+    ``loadingFailed``, so the difference over the card-image URLs is the genuinely outstanding
+    count. The pump first drains whatever events the websocket is holding -- and it pumps until
+    the buffer stops growing rather than for one fixed beat, so the answer is current rather than
+    as-of-the-last-command even when a burst of completions is mid-delivery. A malformed event
+    (no ``requestId``) is skipped, never raised: a KeyError here would abort a measured run
+    mid-drain over an event this counter was never going to count.
+    """
+    seen = -1
+    while len(browser.events) != seen:
+        seen = len(browser.events)
+        browser.pump(0.05)
+    sent: set[str] = set()
+    done: set[str] = set()
+    for event in browser.events:
+        method = event.get("method")
+        params = event.get("params", {})
+        request_id = params.get("requestId")
+        if request_id is None:
+            continue
+        if method == "Network.requestWillBeSent":
+            if _CARD_IMAGE_PREFIX in params.get("request", {}).get("url", ""):
+                sent.add(request_id)
+        elif method in ("Network.loadingFinished", "Network.loadingFailed"):
+            done.add(request_id)
+    return len(sent - done)
+
+
+def push_result(
+    *,
+    run: int,
+    status_code: int,
+    response_text: str | None,
+    clients: int | None,
+    surfaces: dict[str, float],
+    missing: list[str],
+    observer_error: str | None,
+    stop: float | None,
+    t_pre: float,
+    t_post: float,
+    images_requested: int,
+    images_from_network: int,
+    images_painted: int,
+    rows: int,
+    images_outstanding_at_push: int | None = None,
+) -> dict[str, Any]:
+    """Build one ``push`` run record -- the ONE place its shape is written.
+
+    :func:`refetch_result`'s pattern, for its reason (c7-7 review, P9): shared with
+    ``tests/unit/test_cdp_harness.py``, so a test fixture cannot be pinned only to itself. A
+    hand-rolled dict in the tests would leave ``_push_run_is_valid`` and ``_report_push`` green
+    through a key rename here and blow up mid-measurement instead.
+
+    ``images_outstanding_at_push`` is ``None`` for "not counted" (every arm but drain) and the
+    key is then ABSENT, which is what keeps the validity predicate's positive-control clause
+    from ever firing on a warm run. A counted zero is an int, is included, and correctly fails
+    the run.
+    """
+    result: dict[str, Any] = {
+        "run": run,
+        "status_code": status_code,
+        "response_text": response_text,
+        "clients": clients,
+        "surfaces": surfaces,
+        "missing": missing,
+        "observer_error": observer_error,
+        "layout_ms": None if stop is None else stop - t_pre,
+        "layout_from_return_ms": None if stop is None else stop - t_post,
+        "bracket_ms": t_post - t_pre,
+        "images_requested": images_requested,
+        "images_from_network": images_from_network,
+        "images_painted": images_painted,
+        "rows": rows,
+    }
+    if images_outstanding_at_push is not None:
+        result["images_outstanding_at_push"] = images_outstanding_at_push
+    return result
+
+
 def measure_push(
     browser: Browser,
     *,
@@ -601,6 +712,7 @@ def measure_push(
     run: int,
     settle: float,
     image_settle: float,
+    count_outstanding: bool = False,
 ) -> dict[str, Any]:
     """One measured push: POST the envelope, and ask the page when the view finished laying out.
 
@@ -628,6 +740,10 @@ def measure_push(
     settle is outside this stop **by construction**, not by subtracting an animation duration from
     a larger number -- and under reduced motion the two coincide, exactly as NFR-05 says.
     """
+    # Counted immediately before the t_pre stamp, so "outstanding AT the push" is as literal as a
+    # synchronous script can make it. `None` (not zero) when the caller did not ask: only the
+    # drain arm's validity may turn on this number, and an absent key cannot fail a warm run.
+    outstanding = _outstanding_card_images(browser) if count_outstanding else None
     browser.js("window.__surfaces = {}")
     t_pre: float = browser.js("performance.now()")
     response = httpx.post(
@@ -667,22 +783,23 @@ def measure_push(
     settled = browser.js(
         "document.querySelectorAll('.suggestion-row-image[data-loaded=\"true\"]').length"
     )
-    return {
-        "run": run,
-        "status_code": response.status_code,
-        "response_text": response_text,
-        "clients": clients,
-        "surfaces": surfaces,
-        "missing": missing,
-        "observer_error": browser.js("window.__observerError"),
-        "layout_ms": None if stop is None else stop - t_pre,
-        "layout_from_return_ms": None if stop is None else stop - t_post,
-        "bracket_ms": t_post - t_pre,
-        "images_requested": len(fresh),
-        "images_from_network": len([entry for entry in fresh if entry["bytes"]]),
-        "images_painted": settled,
-        "rows": browser.js("document.querySelectorAll('.suggestions-view-item').length"),
-    }
+    return push_result(
+        run=run,
+        status_code=response.status_code,
+        response_text=response_text,
+        clients=clients,
+        surfaces=surfaces,
+        missing=missing,
+        observer_error=browser.js("window.__observerError"),
+        stop=stop,
+        t_pre=t_pre,
+        t_post=t_post,
+        images_requested=len(fresh),
+        images_from_network=len([entry for entry in fresh if entry["bytes"]]),
+        images_painted=settled,
+        rows=browser.js("document.querySelectorAll('.suggestions-view-item').length"),
+        images_outstanding_at_push=outstanding,
+    )
 
 
 def _open_measured_page(companion: Companion, args: argparse.Namespace, *, block: bool) -> Browser:
@@ -698,6 +815,90 @@ def _open_measured_page(companion: Companion, args: argparse.Namespace, *, block
         raise SystemExit(
             "The page never reported a live socket, so a push would reach nobody. Check "
             f"{companion.log_path}."
+        )
+    return browser
+
+
+def _empty_image_cache(data_dir: Path) -> None:
+    """Empty the copied data dir's ``image_cache`` so this run's image queue is genuinely cold.
+
+    Per-run, because the drain arm's premise is a COLD backend cache: the first run's drain fills
+    the disk cache, and a second run against it would serve every tile from disk, queue nothing
+    through the pacer, and fail the positive control. The retries are for Windows: the previous
+    run's cancelled fetches can hold a file open for a beat after the browser closes.
+
+    Raises:
+        SystemExit: If files survive three attempts — a "cold" run against a half-warm cache
+            would be a mislabelled measurement, which is worse than no measurement.
+    """
+    cache = data_dir / "image_cache"
+    if not cache.exists():
+        return
+    leftovers: list[Path] = []
+    failures: list[str] = []
+    for attempt in range(3):
+        if attempt:
+            # Between attempts only -- a sleep after the FINAL failure would delay the refusal
+            # for nothing.
+            time.sleep(1.0)
+        failures.clear()
+        # Best-effort with the failures KEPT: `ignore_errors=True` deletes everything it can and
+        # says nothing about what it could not, so the refusal below could not name a path or a
+        # reason. `onexc` keeps the sweep total and the diagnosis concrete.
+        shutil.rmtree(cache, onexc=lambda _func, path, exc: failures.append(f"{path}: {exc!r}"))
+        leftovers = [p for p in cache.rglob("*") if p.is_file()] if cache.exists() else []
+        if not leftovers:
+            return
+    detail = f" (last error: {failures[-1]})" if failures else ""
+    raise SystemExit(
+        f"could not empty {cache}: {len(leftovers)} file(s) survived three attempts{detail}; a "
+        "drain run against a half-warm cache would be a mislabelled measurement"
+    )
+
+
+def _await_stable_size(path: Path, *, interval: float = 0.5, max_wait: float = 10.0) -> int:
+    """Return *path*'s size once it stops growing over one *interval* -- bounded by *max_wait*.
+
+    The drain arm's lifetime offsets are honest only if nothing is still appending when they are
+    taken: a fixed sleep trusts the previous run's cancelled fetches to have unwound on schedule,
+    where this watches the file itself. The bound keeps a backend that never goes quiet from
+    hanging the measurement -- at ``max_wait`` the current size is returned and the worst case is
+    a straggler line landing in the previous lifetime's slice, which under-counts nothing.
+    """
+    deadline = time.time() + max_wait
+    size = path.stat().st_size
+    while time.time() < deadline:
+        time.sleep(interval)
+        grown = path.stat().st_size
+        if grown == size:
+            return size
+        size = grown
+    return size
+
+
+def _open_draining_page(companion: Companion, args: argparse.Namespace) -> Browser:
+    """A fresh browser onto the ACTIVE DECK VIEW, so its cold-cache image queue is draining.
+
+    The drain arm's stage (17-3, AD-11): unlike :func:`_open_measured_page` this navigation must
+    land on a painted deck grid — the grid's ~99 tiles are what issue the card-image requests the
+    push is measured against — and the settle is deliberately short, because every second spent
+    settling is a second of the ~10 s drain already gone before the push is issued.
+    """
+    browser = Browser(headless=not args.headed)
+    browser.on_new_document(_OBSERVER.replace("__SELECTORS__", json.dumps(PUSH_SURFACES)))
+    browser.send("Network.enable")
+    browser.navigate(companion.url, settle=1.0)
+    if not _await_page(browser, _SOCKET_LIVE, args.socket_wait):
+        browser.close()
+        raise SystemExit(
+            "The page never reported a live socket, so a push would reach nobody. Check "
+            f"{companion.log_path}."
+        )
+    if not _await_page(browser, ".card-grid", args.settle):
+        browser.close()
+        raise SystemExit(
+            "The deck view never painted, so there is no image queue to drain. Is the active "
+            "deck set and does the data dir hold its cards?"
         )
     return browser
 
@@ -718,7 +919,7 @@ def _reset_for_next_run(browser: Browser, args: argparse.Namespace) -> None:
 def cmd_push(args: argparse.Namespace) -> int:
     """Measure the push-to-render budget SC-1 states and nothing has ever observed (NFR-05).
 
-    Three arms, and only the first is the acceptance criterion:
+    Four arms, and only the first is the acceptance criterion:
 
     * ``warm`` -- **the AC.** One discarded priming push warms the browser's image cache, then each
       measured run reloads (cache kept) and pushes once.
@@ -728,8 +929,35 @@ def cmd_push(args: argparse.Namespace) -> int:
     * ``cold`` -- **observation only.** A fresh profile per run, so every picture is a first fetch.
       NFR-05 excludes first-fetch image paint from the budget, so this number is context, not a
       verdict.
+    * ``drain`` -- **the AD-11 instrument (17-3).** A fresh profile AND an emptied backend
+      ``image_cache`` per run, the ACTIVE DECK VIEW open so its ~99 cold tiles are genuinely
+      queued through the pacer against the real CDN, and the push issued mid-drain. The positive
+      control is the count of card-image requests still outstanding at the push -- a run where
+      the queue had already drained is named invalid, never numbered. Verdict: the warm arm's,
+      exit 2 when max ``layout_ms`` >= 250 ms. Default 3 runs, because each one is ~99 real
+      Scryfall fetches (c6-9's cold-arm precedent; the pacer's own spacing keeps this polite).
     """
+    runs_wanted = args.runs if args.runs is not None else (3 if args.arm == "drain" else 5)
+    if runs_wanted < 1:
+        # Refused BEFORE anything is opened -- `cmd_refetch`'s rule: `range(0)` would sail past
+        # the loop and report NO VALID RUNS, a refusal that reads as "the app is broken" when the
+        # truth is "you asked for no runs".
+        raise SystemExit(f"--runs must be at least 1, got {runs_wanted}.")
+    if args.deck_id and args.arm != "drain":
+        # A silently ignored argument is an operator who believes they measured a deck they did
+        # not: only the drain arm opens a deck view; the other arms read the saved decks
+        # themselves (`_seeded_card_ids`).
+        raise SystemExit("--deck-id applies only to --arm drain.")
     data_dir = Path(args.data_dir).resolve()
+    if args.arm == "drain":
+        # The drain arm WRITES to the data dir -- it empties `image_cache` per run -- so it
+        # inherits `refetch`'s gate rather than `budget`'s hygiene note. The message names
+        # `refetch`, but the instruction is the same: copy the data dir, pass the copy.
+        refuse_the_operators_data_dir(data_dir)
+        if not (data_dir / "cards.db").is_file():
+            # Checked BEFORE the companion is started, as `cmd_refetch` does: a drain against an
+            # empty data dir has no deck view and therefore no queue to measure.
+            raise SystemExit(f"No cards.db in {data_dir}; there is no deck view to drain.")
     companion = Companion(data_dir, args.port)
     companion.start()
     runs: list[dict[str, Any]] = []
@@ -741,9 +969,14 @@ def cmd_push(args: argparse.Namespace) -> int:
             else _seeded_card_ids(companion.url, args.items)
         )
         print(f"companion on {companion.url}, data dir {data_dir}")
-        print(f"arm {args.arm}, {len(card_ids)} item(s) per push, {args.runs} run(s)")
+        print(f"arm {args.arm}, {len(card_ids)} item(s) per push, {runs_wanted} run(s)")
 
-        fresh_browser_per_run = args.arm == "cold"
+        if args.arm == "drain":
+            # The deck view -- whose cold tiles ARE the drain -- paints only for an active deck;
+            # the why lives on the helper `cmd_budget` shares.
+            _set_active_deck(companion, token, args.deck_id)
+
+        fresh_browser_per_run = args.arm in ("cold", "drain")
         browser = (
             None
             if fresh_browser_per_run
@@ -768,8 +1001,28 @@ def cmd_push(args: argparse.Namespace) -> int:
                 )
                 time.sleep(args.prime_settle)
 
-            for index in range(args.runs):
-                if fresh_browser_per_run:
+            lifetime_offset = 0
+            for index in range(runs_wanted):
+                if args.arm == "drain":
+                    if index:
+                        # Let the previous run's cancelled fetches unwind before the cache is
+                        # emptied: closing the browser cancels its outstanding requests, and on
+                        # Windows a write still landing can hold a file the rmtree needs.
+                        time.sleep(2.0)
+                    _empty_image_cache(data_dir)
+                    # The companion.log byte offset AT THE LIFETIME BOUNDARY, kept in the run
+                    # record so the CM-2 count can group fetch-success lines per key PER CACHE
+                    # LIFETIME (the log carries no timestamps). Read, never written: a marker
+                    # line appended by this process was measured to be OVERWRITTEN -- the
+                    # backend child writes through its inherited stdout handle at its OWN file
+                    # pointer, which is not OS-level append, so its next line lands on top of
+                    # any bytes another writer added. The offset is taken once the log has
+                    # STOPPED GROWING (the previous browser is closed and its cancelled
+                    # requests unwound; `_await_stable_size` watches rather than trusts the
+                    # sleep above), so it sits between two lifetimes' lines.
+                    lifetime_offset = _await_stable_size(companion.log_path)
+                    browser = _open_draining_page(companion, args)
+                elif fresh_browser_per_run:
                     browser = _open_measured_page(companion, args, block=False)
                 elif browser is not None:
                     _reset_for_next_run(browser, args)
@@ -782,7 +1035,10 @@ def cmd_push(args: argparse.Namespace) -> int:
                     run=index + 1,
                     settle=args.settle,
                     image_settle=args.image_settle,
+                    count_outstanding=args.arm == "drain",
                 )
+                if args.arm == "drain":
+                    result["log_offset_at_lifetime_start"] = lifetime_offset
                 runs.append(result)
                 _print_run(result)
                 if fresh_browser_per_run:
@@ -797,35 +1053,57 @@ def cmd_push(args: argparse.Namespace) -> int:
     return _report_push(runs, args)
 
 
-def _print_run(result: dict[str, Any]) -> None:
-    """One line per run -- a bad run says why, and never prints a number it does not have."""
+def _push_run_is_valid(result: dict[str, Any]) -> str | None:
+    """Return why *result* is not evidence, or ``None`` if it is. One rule set, two callers.
+
+    The refetch reporter's pattern (c7-7 P9's reason): shared by the per-run printer and
+    ``_report_push`` so a run cannot be *described* as invalid and then *counted* anyway. The
+    positive-control clause fires only when the run carries the drain arm's
+    ``images_outstanding_at_push`` key -- an absent key (every other arm) cannot fail a run.
+    """
     if result["status_code"] != 200:
-        print(
-            f"  run {result['run']}: INVALID -- POST /agent/events returned "
-            f"{result['status_code']}: {result['response_text']}"
-        )
-        return
+        return f"POST /agent/events returned {result['status_code']}: {result['response_text']}"
     if result["missing"]:
         why = result.get("observer_error") or "the view never rendered them"
-        print(
-            f"  run {result['run']}: INVALID -- surfaces never arrived: {result['missing']} ({why})"
-        )
-        return
+        return f"surfaces never arrived: {result['missing']} ({why})"
     if not result["clients"]:
-        print(f"  run {result['run']}: INVALID -- the receipt says clients={result['clients']}")
+        return f"the receipt says clients={result['clients']}"
+    # ANY nonzero count validates the run, and the `== 0` threshold is a ruling rather than an
+    # accident: the AC's condition is "while images are queued", not "while at least N are", so
+    # one genuinely outstanding paced request satisfies it. The actual depth is recorded in the
+    # JSON and printed on the run line, so a reader judging whether the queue was deep enough to
+    # mean anything has the number in front of them rather than a threshold decided here.
+    if result.get("images_outstanding_at_push") == 0:
+        return (
+            "positive control failed: no card-image requests were outstanding when the push "
+            "was issued -- the queue had already drained, so this measured a warm-ish page"
+        )
+    return None
+
+
+def _print_run(result: dict[str, Any]) -> None:
+    """One line per run -- a bad run says why, and never prints a number it does not have."""
+    why = _push_run_is_valid(result)
+    if why is not None:
+        print(f"  run {result['run']}: INVALID -- {why}")
         return
+    outstanding = result.get("images_outstanding_at_push")
+    drain_note = (
+        "" if outstanding is None else f", {outstanding} image request(s) outstanding at the push"
+    )
     print(
         f"  run {result['run']}: layout {result['layout_ms']:.0f} ms"
         f" (from POST return {result['layout_from_return_ms']:.0f} ms,"
         f" bracket {result['bracket_ms']:.0f} ms)"
         f"  {result['rows']} row(s), {result['images_painted']} picture(s) painted,"
         f" {result['images_from_network']}/{result['images_requested']} off the network"
+        f"{drain_note}"
     )
 
 
 def _report_push(runs: list[dict[str, Any]], args: argparse.Namespace) -> int:
     """Print the arm's figures, or refuse to print any. Exit code is the verdict."""
-    good = [r for r in runs if not r["missing"] and r["clients"]]
+    good = [r for r in runs if _push_run_is_valid(r) is None]
     if not good:
         # The C4 trap, refused here as it is in `cmd_budget`: a run that measured nothing must not
         # be reported as a number. This is the branch plant 2 exists to fire.
@@ -847,6 +1125,11 @@ def _report_push(runs: list[dict[str, Any]], args: argparse.Namespace) -> int:
     painted = sorted({r["images_painted"] for r in good})
     print(f"  card images fetched over the network per run: {network}")
     print(f"  card images painted per run: {painted}")
+    outstanding = sorted(
+        {r["images_outstanding_at_push"] for r in good if "images_outstanding_at_push" in r}
+    )
+    if outstanding:
+        print(f"  card-image requests outstanding at the push per run: {outstanding}")
     if args.json:
         Path(args.json).write_text(json.dumps(runs, indent=2), encoding="utf-8")
         print(f"raw runs -> {args.json}")
@@ -1694,10 +1977,22 @@ def build_parser() -> argparse.ArgumentParser:
     push.add_argument(
         "--arm",
         default="warm",
-        choices=["warm", "cold", "blocked"],
-        help="warm = the AC; blocked proves AC 5; cold is observation only",
+        choices=["warm", "cold", "blocked", "drain"],
+        help="warm = the AC; blocked proves AC 5; cold is observation only; drain pushes while "
+        "a cold-cache deck image queue drains through the pacer (AD-11, 17-3)",
     )
-    push.add_argument("--runs", type=int, default=5, help="measured runs (c4-12 used 5)")
+    push.add_argument(
+        "--runs",
+        type=int,
+        default=None,
+        help="measured runs (default 5, c4-12's count; drain defaults to 3 -- each drain run is "
+        "~99 real Scryfall CDN fetches)",
+    )
+    push.add_argument(
+        "--deck-id",
+        default=None,
+        help="drain only: deck to make active (default: the largest deck present)",
+    )
     push.add_argument("--items", type=int, default=6, help="suggestions per push (UJ-1 sends six)")
     push.add_argument(
         "--card-ids", default=None, help="comma-separated printing ids; default reads a saved deck"
