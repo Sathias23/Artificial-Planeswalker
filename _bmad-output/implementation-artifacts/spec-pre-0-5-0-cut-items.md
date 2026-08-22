@@ -2,7 +2,7 @@
 title: 'Pre-0.5.0-cut items: epic-17 retro items 1–5 + epic-16 items 91/92/93'
 type: 'chore'
 created: '2026-08-23'
-status: 'done'
+status: 'in-review'
 baseline_revision: '030d53c5a4e2b62017216d0fb910167a4bc3dbfd'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -130,9 +130,17 @@ clean at tip.
 - E16-93's "sibling-channel-empty assertions in the swaps/tier delivery tests" live in
   `ui/src/state/socket.test.ts` (the R6 finding's actual site — the suggestions/swaps/tier
   DELIVERS tests), not in `test_companion_tool.py`; commit `c84d4cd` carries both files.
-- The R2 unknown-count message reads "…too old to report its tab count — a tab may already be
-  open. Give the user {url} rather than opening a possibly-duplicate tab." — the distinct,
-  never-negative, never-"no tab" sentence the matrix requires.
+- The R2 unknown-count message reads "…did not report a usable tab count (an older companion,
+  or a malformed reply) — a tab may already be open. Give the user {url} rather than opening a
+  possibly-duplicate tab." — the distinct, never-negative, never-"no tab" sentence the matrix
+  requires. (An earlier wording asserted "too old" as fact; the review pass reworded it, since
+  ``None`` also covers a malformed or negative body.)
+- E16-91's TierListView port also changes NON-string id handling: a non-string entry previously
+  coerced to `''` and spent a permanently-dead unknown-card placeholder slot; the GroupsView
+  filter the Code Map prescribes drops it before render, count and hydration alike, and the old
+  pinned test (2 tiles, one placeholder) was rewritten to the filtered contract (1 tile).
+  SwapsView deliberately keeps the placeholder arm — a swap row's two tile slots (out/in) are
+  structural, so a bad id degrades one slot rather than deleting it.
 
 **Probe-harness proofs (planted violations, full-suite runs, verbatim):**
 
@@ -183,7 +191,8 @@ tests/integration/test_build_plugin.py` 1977 passed / 6 skipped; `ruff check` / 
 (`test_spa.py::test_the_hero_art_is_served_from_the_bundle_root` + `TestCacheHeaders`), so
 R11's "no test pins it" is refuted — nothing added, citation carried into the evidence doc.
 
-**Item 8 re-measure:** ledger lines corrected (spec-17-3 run-result line + perf-evidence-17-3
+**Item 8 re-measure (commit `3c3aae4`; the orchestrator's matrix-audit commit `d871fc7` sits
+above it):** ledger lines corrected (spec-17-3 run-result line + perf-evidence-17-3
 §9 closing line now both name the one medium deferred item, agreeing with the frontmatter).
 Budget arm: **587/652/798 ms over 5/5 valid runs, EXIT 0 — under budget** — but on a
 NON-QUIET machine (a foreground game ran throughout; CPU samples 21.6/22.6/23.3% vs 17.3's
@@ -197,6 +206,23 @@ every cold open via the boot's transient pre-active-deck frame (`requests_total`
 format-check queue 108→109), confirmed by a URL-dump diagnostic pasted in the evidence doc.
 Hero cache pin verified green and cited (§5). Artifacts: `perf-evidence-precut-2026-08-23.md`
 + `nfr05-budget-2026-08-23.json`.
+
+**Matrix test audit (step-03, orchestrator):** every matrix row traced to a covering test that
+ran and passed, with one gap found and closed — the "Esc during IME/consumed" row had only
+source-string coverage (keyboard-floor probe) plus the App seam test for the consumed half; two
+behavioral tests were added to `ConnectionPill.test.tsx` (commit `d871fc7`). The first draft of
+the consumed-Escape test was itself caught vacuous by its own firing proof (raw
+`dispatchEvent` outside `act()` — stayed green under the planted violation) and was rewritten
+as a capture-phase consumer around `fireEvent`. Proofs (planted: both guards dropped from the
+pill listener): control `vitest: 86 files / 2590 tests, 0 failed, exit 0 → --expect-total
+2590`; RED run `vitest: 86 files / 2590 tests, 3 failed, exit 1` (the two new ConnectionPill
+tests + the composed App seam test); revert `git diff --exit-code` clean; GREEN run
+`vitest: 86 files / 2590 tests, 0 failed, exit 0`. The lock-held-launch matrix row is prose in
+the companion skill (no runtime surface; the skills-vocabulary gate is deferred R8 by ruling) —
+verified by inspection: SKILL.md step 3 names the `another companion is already starting up`
+outcome with wait-and-re-check guidance. Full verification re-run by the orchestrator at tip:
+vitest 2590/0, pytest targeted suites 1982 passed / 1 skipped, ruff/format/mypy clean,
+`git diff --exit-code plugin/` clean.
 
 ## Spec Change Log
 

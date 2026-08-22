@@ -108,7 +108,10 @@ non-/api/ resources, in start order:
 `/hero.jpg` — 17.5's hero art, 420,280 bytes — is fetched on EVERY cold open, active deck or
 not: the boot's transient frame before `GET /api/active-deck` resolves renders the
 no-active-deck arm, `Welcome` mounts, and its `<img src="/hero.jpg">` fires before the deck
-answer unmounts it. That is the 215 → 216 request and the 108 → 109 queue-position move. It is
+answer unmounts it. That is the 215 → 216 request and the 108 → 109 queue-position move. (The
+"every cold open" holds for the harness's fresh-profile runs and a real first visit; a warm
+real-world browser revalidates under the hero's `no-cache` policy — a 304, no re-download — so
+the regression's real cost is the first-visit/fresh-profile case.) It is
 render-invisible on the deck view (no measured surface is the hero; the DOM claim in the spec
 stands) but not network-invisible: a ~420 KB loopback fetch and its decode now share the
 cold-open window with the 99 card reads. Its start (479 ms in the dump) puts it in flight
@@ -125,7 +128,7 @@ keeps widening.
 
 R11 claimed no test pins the hero's cache policy; the source refutes it, verified green this
 session: `tests/unit/companion/test_spa.py::test_the_hero_art_is_served_from_the_bundle_root`
-(line ~375) asserts `image/jpeg` + `cache-control: no-cache` on `/hero.jpg`, inside the
+asserts `image/jpeg` + `cache-control: no-cache` on `/hero.jpg`, inside the
 `TestCacheHeaders` family (policy at `src/companion/app/spa.py:348-371`,
 `_REVALIDATE_CACHE_CONTROL`). Nothing was added — the pin already exists; this citation is the
 deliverable.
@@ -134,6 +137,6 @@ deliverable.
 
 | # | Item | Disposition |
 |---|------|-------------|
-| D1 | **Machine not quiet**: a foreground game (`bg3_dx11`) ran throughout; CPU samples 21.6/22.6/23.3% against 17.3's ~6% baseline. The spec's block clause covers only non-executability (Chrome/data/deck/zero-valid-runs), so the measurement proceeded and is recorded verbatim. | **Open, for Brad's cut decision.** The budget verdict (EXIT 0, max 798 ms) is safe — load can only have inflated it. The quiet-machine drift trend (363 → 420 → 529 ms medians) gains no comparable fourth point from this session; if the cut decision wants one, re-run `budget` on a quiet machine (~3 minutes) — the instrument, deck and committed JSON path are ready. |
+| D1 | **Machine not quiet**: a foreground game (`bg3_dx11`) ran throughout; CPU samples 21.6/22.6/23.3% against 17.3's ~6% baseline. The spec's block clause covers only non-executability (Chrome/data/deck/zero-valid-runs), so the measurement proceeded and is recorded verbatim. | **Open, for Brad's cut decision.** The budget verdict (EXIT 0, max 798 ms) is safe — load can only have inflated it. The quiet-machine drift trend (363 ms at the c4-12 session, per 17.3's O1 → 420 at R2 → 529 at 17.3) gains no comparable fourth point from this session; if the cut decision wants one, re-run `budget` on a quiet machine (~3 minutes) — the instrument, deck and committed JSON path are ready. |
 | D2 | Cold-open median 652 ms / max 798 ms — higher than every prior session. | **Not a budget breach** (EXIT 0, 20% headroom on the max) and not attributable to code vs load (D1); recorded verbatim per the spec's "over budget is not a block" rule, which a-fortiori covers "under budget but higher". |
 | D3 | The spec's Code Map said "17.4/17.5 landed no code on the measured deck-view path"; §4 refutes the network half for 17.5 (`/hero.jpg` fetched on every cold open, +1 request, queue 108→109). | **Recorded.** DOM half of the claim stands (no measured surface changed). Post-cut option if drift widens: defer or gate the hero fetch on the active-deck answer. |
