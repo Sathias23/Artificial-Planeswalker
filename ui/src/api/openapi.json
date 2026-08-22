@@ -8,7 +8,7 @@
     "/health": {
       "get": {
         "summary": "Read Health",
-        "description": "Report that this process is alive and say which process it is.\n\nDeliberately requires **no authentication**: it is what a caller reads *before* deciding to\nsend its token, to confirm that whatever holds the discovered port is this companion and not an\nunrelated local server (AD-4). There is no failure path to model — a companion that cannot\nanswer does not answer at all — so under a running lifespan the response is always ``200`` with\n``status=\"ok\"``. The lifespan is a real precondition: served without one (no supported path\ndoes), the missing ``instance_id`` is an unhandled error, not a modelled state.",
+        "description": "Report that this process is alive and say which process it is.\n\nDeliberately requires **no authentication**: it is what a caller reads *before* deciding to\nsend its token, to confirm that whatever holds the discovered port is this companion and not an\nunrelated local server (AD-4). There is no failure path to model — a companion that cannot\nanswer does not answer at all — so under a running lifespan the response is always ``200`` with\n``status=\"ok\"``. The lifespan is a real precondition: served without one (no supported path\ndoes), the missing ``instance_id`` is an unhandled error, not a modelled state.\n\n``clients`` is the connection registry's live count (17.4) — how many tabs hold a WebSocket at\nthis instant, read through ``connection_registry`` in ``src.companion.app.state`` like every\nother reader of that state. ``None`` when the registry does not exist — a constructed but\nnever-started app, which no supported serving path produces but a test can — and the optional\nwire shape also lets an older leaf read a newer companion's body and vice versa.",
         "operationId": "read_health_health_get",
         "responses": {
           "200": {
@@ -1649,6 +1649,17 @@
           "instance_id": {
             "type": "string",
             "title": "Instance Id"
+          },
+          "clients": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clients"
           }
         },
         "type": "object",

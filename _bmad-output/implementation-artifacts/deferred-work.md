@@ -6644,3 +6644,7 @@ item.
   `src/viewer/*`. **Home: unowned** (15-1 is done; this is its residue). (Severity: Medium —
   a red test on every local Windows full-suite run trains the reader to ignore red, the exact
   cost C6 R5 documented.)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-17-4-open-the-companion-from-the-agent.md`
+  summary: `companion --open` calls `webbrowser.open` synchronously before `_serve`; on a host with no GUI browser the stdlib falls back to a text-mode browser (lynx/w3m) that blocks the launcher until quit, so the socket is bound but never served until then.
+  evidence: `src/companion/app/server.py::_open_browser` runs on the main thread between the URL line and `_serve`; `webbrowser` docs list console browsers as fallbacks when no graphical browser is registered. Niche (headless Linux with lynx installed) and unreachable on the primary Windows platform; fix would be a daemon thread or a `webbrowser.get()` inspection.

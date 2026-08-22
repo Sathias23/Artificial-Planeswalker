@@ -329,7 +329,7 @@
 #   epic-c1..10 → _bmad-output/planning-artifacts/epics-companion-app.md          (c-prefixed, numbering UNCHANGED)
 
 generated: 2026-06-20
-last_updated: '08-22-2026 15:48'
+last_updated: 2026-08-22
 # 08-20-2026 21:30 — STORY 15-6 DONE: THE SC-5 GATE RAN AND CLOSED (sc-5-gate-report-2026-08-20.md). Brad walked the live app, ruled it a deliberate product ("looks good", tabs, footer), then ruled the four open forks interactively: F1 open-modal-!=-surface, arrow-key flag re-accepted at the measured 206/101, M1 row added + M2/M3 accepted + M5 completeness guard extended with a planted RED proof. Inbox dispositioned by name (J6 DECLINED on its fifth home; D1 refused, stays unowned). EPIC 15 IS 6/6 CODE-COMPLETE — the 0.5.0 release cut, withheld by 15-4/15-5 ruling, is UNBLOCKED. Next: the Epic 15 retro, the integration PR to master (no Greptile, standing rule), then the release cut.
 #                Previously — 08-20-2026 21:12
 # 08-20-2026 21:12 — EPIC 14 VERDICT -> accepted; R3 CLOSED AS WAVED (Brad's rulings, master commits 72dce34 + cfec300): F7's quiet-machine closure was the named verdict-mover; the SC-5 preliminary ruling (sc-5-preliminary-ruling-2026-08-20.md, "it looks good ... we can always adjust after completion") covers the judgement half — story 15-6 cites it instead of staging a gate, and L1-L10 items surface as bugs, not gates. Also this stamp: umbrella reconciliation — claude/hello-7v0acf (15-6 spec) and master merged into feat/companion-epic-15, the canonical Epic 15 umbrella by Brad's ruling.
@@ -746,10 +746,11 @@ development_status:
   # FR-15, FR-18 · NFR-05 hardening · depends on c7
   # BLOCKED ITEM: c10-2 waits on the FR-18 session-history home decision (extend the nav,
   # or a strip inside each view's header) — the one open UX item carried into story work.
-  epic-17: backlog
+  epic-17: in-progress
   17-1-connection-pill-status-detail: backlog
   17-2-session-history: backlog
   17-3-measure-the-latency-budgets-and-close-the-gaps: backlog
+  17-4-open-the-companion-from-the-agent: review
   epic-17-retrospective: optional
 
 # Action items carried out of retrospectives (see epic-N-retro-*.md for full context)

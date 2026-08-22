@@ -25,12 +25,13 @@ your client supplies the model, the server supplies fast, accurate MTG data and 
 | **Deck management** | `create_deck`, `list_decks`, `load_deck`, `delete_deck`, `add_card_to_deck`, `remove_card_from_deck`, `view_deck` *(deprecated — use the [companion app](#the-companion-app))*, `import_decklist` (bulk Arena import) |
 | **Deck analysis** | `analyze_mana_curve`, `detect_synergies`, `validate_deck` |
 | **Deck power assessment** *(experimental)* | `assess_deck_power`, `compare_deck_power` |
-| **[Companion app](#the-companion-app)** | `companion_set_active_deck` — puts a saved deck on the companion's live browser view; `companion_show_suggestions` — puts a list of suggested cards on the same view, as cards rather than as text; `companion_show_swaps` — puts proposed card trades on the same view, out-card and in-card side by side with the reasoning; `companion_show_tier_list` — puts cards ranked into named S–D tiers on the same view, each tier a lettered chip with its cards beside it; `companion_show_groups` — puts titled card groups on the same view, each a heading with its rationale paragraph and its cards beneath it. All report `app_not_running` when the companion isn't up |
+| **[Companion app](#the-companion-app)** | `companion_set_active_deck` — puts a saved deck on the companion's live browser view; `companion_show_suggestions` — puts a list of suggested cards on the same view, as cards rather than as text; `companion_show_swaps` — puts proposed card trades on the same view, out-card and in-card side by side with the reasoning; `companion_show_tier_list` — puts cards ranked into named S–D tiers on the same view, each tier a lettered chip with its cards beside it; `companion_show_groups` — puts titled card groups on the same view, each a heading with its rationale paragraph and its cards beneath it; `companion_status` — read-only: reports whether the companion is running, its URL, how many tabs are open, and the exact command that launches it. The others all report `app_not_running` when the companion isn't up, and the agent can then open it for you |
 | **First-run setup** | `initialize_database`, `build_search_index` |
 
-Four companion **skills** layer expert reasoning on top of the tools —
-`magic-deckbuilding` (the orchestrator), `synergy-discovery`, `mana-curve-analysis`, and
-`format-legality` — so a client can go from "improve my deck" to ranked, reasoned swaps.
+Five **skills** layer expert reasoning on top of the tools — `magic-deckbuilding` (the
+orchestrator), `synergy-discovery`, `mana-curve-analysis`, and `format-legality` — so a client can
+go from "improve my deck" to ranked, reasoned swaps; and `companion`, which opens the companion app
+for you when you ask (or offers to, when a push finds it closed).
 
 ### Deck power assessment (experimental)
 
@@ -93,8 +94,8 @@ The launch command is the same everywhere — only the config file differs.
 <details>
 <summary><b>Claude Code</b> (plugin — tools + skills, two commands)</summary>
 
-Install the plugin from this repo's built-in marketplace to get all 21 tools **and** the four
-deckbuilding skills in any project — no clone required:
+Install the plugin from this repo's built-in marketplace to get all 25 tools **and** the five
+skills in any project — no clone required:
 
 ```
 /plugin marketplace add Sathias23/Artificial-Planeswalker
@@ -148,7 +149,7 @@ codex plugin marketplace add Sathias23/Artificial-Planeswalker
 ```
 
 Open the `/plugins` browser inside Codex and install **artificial-planeswalker** — that gives
-you the 21 tools *and* the four deckbuilding skills. If Codex also auto-surfaces this repo's
+you the 25 tools *and* the five skills. If Codex also auto-surfaces this repo's
 *Claude Code* marketplace, skip it — that variant's config only works inside Claude Code
 (see [openai/codex#19372](https://github.com/openai/codex/issues/19372)).
 
@@ -221,7 +222,7 @@ No card data ships with the repo, so on first use ask the assistant to run the
 **`build_search_index`** if you want semantic search. Until then the card/deck tools reply with a
 `database_not_initialized` hint instead of an error. When a new set releases, ask the assistant to
 run `initialize_database` with `update=true` to pull in the new cards (then re-run
-`build_search_index` to index them). Desktop loads the 21 tools; the four skills are a Claude Code
+`build_search_index` to index them). Desktop loads the 25 tools; the five skills are a Claude Code
 plugin feature.
 </details>
 
@@ -259,11 +260,41 @@ and the page updates while you watch.
 the companion tools simply report `app_not_running`, and no other tool ever looks for it. The
 companion adds a visual channel; it never replaces chat output.
 
+### Ask the agent to open it
+
+You never need to know the launch command: say "open the companion" and the agent does the rest.
+The `companion` skill calls the read-only `companion_status` tool — which reports whether a
+companion is running, its URL, how many browser tabs are connected, and the exact launch command
+for this install — and, when nothing is running, runs that command in a background shell of its
+own. The companion starts, prints its URL, and opens your default browser on it itself (the
+`--open` flag below). Ask again with a tab already open and the agent reports "already open" and
+does nothing. If the companion is running but you closed the tab, the agent runs the same command
+again — `--open` opens a fresh tab on the running instance without starting a second one — and
+falls back to giving you the URL only if no browser could be opened. The MCP server never starts
+the companion; the process belongs to the shell the agent runs it in.
+
+**Stopping one the agent launched:** it lives in the agent's background shell, so the companion's
+own Ctrl-C does not apply — ask the agent to stop its background task, or end the process yourself
+(it is the `artificial-planeswalker companion` process on your machine). Closing the tab alone
+leaves it running.
+
 ### Launch it
 
 ```bash
 uv run artificial-planeswalker companion
 ```
+
+Add `--open` to have the companion pop your default browser on its URL as soon as it is serving
+(this is what the agent uses):
+
+```bash
+uv run artificial-planeswalker companion --open
+```
+
+`--open` is a bare flag (no value) and is safe to repeat across launches: if a companion is already
+running, the launch prints its "already running" line, opens a tab on *that* instance's URL, and
+exits `0` — it never starts a second one. If no browser can be opened, a warning lands on stderr
+and the companion keeps serving; open the printed URL by hand.
 
 It runs in the foreground until you interrupt it, and prints exactly one **launch line**:
 
@@ -301,7 +332,9 @@ uv run --directory "$PLUGIN_ROOT/server" artificial-planeswalker companion
 
 So `--port 9000` below becomes
 `uv run --directory "$PLUGIN_ROOT/server" artificial-planeswalker companion --port 9000`, and the
-`COMPANION_PORT` variants work the same way. See
+`COMPANION_PORT` variants work the same way. This `--directory` form is exactly what
+`companion_status` returns as its `launch_command` (with `--open` appended), derived from where the
+server is actually installed — so the agent's launch works from a plugin install and a clone alike. See
 [Connect your client](#connect-your-client) for how to find that root on your machine (it is
 version-keyed, and the first launch from a new one installs the server's dependencies).
 
@@ -326,6 +359,8 @@ So `--port` beats `COMPANION_PORT`, which beats the default. The rest of what th
 in one list:
 
 * `--port N` and `--port=N` are both accepted. `-h` / `--help` prints the usage and exits `0`.
+* `--open` is accepted in any position beside `--port`. `--open=yes` and a misspelt `--open` are
+  usage errors like any unknown argument; so is `--open` given twice.
 * `--port 0` is legal and means "give me any free port".
 * A `COMPANION_PORT` that is not an integer, or an integer outside `0..65535`, is **ignored with a
   logged warning** on stderr and the default is used instead — a stale environment variable must

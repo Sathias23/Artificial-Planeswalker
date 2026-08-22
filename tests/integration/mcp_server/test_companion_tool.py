@@ -42,6 +42,7 @@ from src.companion.contracts import (
     AgentEvent,
     GroupItem,
     GroupsPayload,
+    HealthResponse,
     SuggestionItem,
     SuggestionsPayload,
     SwapItem,
@@ -49,14 +50,17 @@ from src.companion.contracts import (
     TierItem,
     TierListPayload,
 )
+from src.companion.discovery import DiscoveryRecord
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
 from src.mcp_server.tools import companion
 from src.mcp_server.tools.companion import (
+    CompanionStatusResult,
     ShowGroupsResult,
     ShowSuggestionsResult,
     ShowSwapsResult,
     ShowTierListResult,
+    companion_status,
     set_active_deck,
     show_groups,
     show_suggestions,
@@ -1341,7 +1345,8 @@ class TestEveryPushToolSpeaksItsOwnNoun:
             ),
             "app_not_running": (
                 "The companion app isn't running, so the suggestions have nowhere to appear. "
-                "Start it to see them on the glass — the content is in chat regardless."
+                "Offer to open it — companion_status returns the launch command, and the "
+                "companion skill walks through it — the content is in chat regardless."
             ),
             "payload_rejected": (
                 "The companion refused the suggestions, so none of them were displayed. The "
@@ -1386,3 +1391,199 @@ class TestEveryPushToolSpeaksItsOwnNoun:
                 assert result.message == f"The companion is showing {subject} in 1 tab.", (
                     helper.__name__
                 )
+
+
+class _LiveStub:
+    """Stands in for ``live_instance``, answering a chosen record and counting the asks."""
+
+    def __init__(self, record: DiscoveryRecord | None) -> None:
+        self.record = record
+        self.calls = 0
+
+    async def __call__(self, **kwargs: object) -> DiscoveryRecord | None:
+        self.calls += 1
+        return self.record
+
+
+class _HealthStub:
+    """Stands in for ``probe_health``, recording the ports it was asked about."""
+
+    def __init__(self, health: HealthResponse | None) -> None:
+        self.health = health
+        self.ports: list[int] = []
+
+    async def __call__(self, port: int, **kwargs: object) -> HealthResponse | None:
+        self.ports.append(port)
+        return self.health
+
+
+_STATUS_TOKEN = "status-token-n3v3rSh0wn"
+"""A distinctive credential planted in the stubbed record, so a leak into the result is greppable
+(the token must never reach a ``companion_status`` result)."""
+
+
+@pytest.fixture
+def status_stubs(monkeypatch):
+    """Install ``live_instance`` / ``probe_health`` stubs for :func:`companion_status` (17.4).
+
+    Returns:
+        ``install(record, health)`` -> ``(live_stub, health_stub)``.
+    """
+
+    def install(
+        record: DiscoveryRecord | None, health: HealthResponse | None
+    ) -> tuple[_LiveStub, _HealthStub]:
+        live = _LiveStub(record)
+        probe = _HealthStub(health)
+        monkeypatch.setattr(companion, "_client_live_instance", live)
+        monkeypatch.setattr(companion, "_client_probe_health", probe)
+        return live, probe
+
+    return install
+
+
+def _record(port: int = 8765) -> DiscoveryRecord:
+    return DiscoveryRecord(port=port, token=_STATUS_TOKEN, instance_id="inst-status")
+
+
+class TestCompanionStatusIsReadOnlyAndNamesTheNextStep:
+    """17.4: the agent's read-only answer — running / URL / tabs / the exact launch command."""
+
+    async def test_not_running_offers_the_launch_command_and_no_url(self, status_stubs):
+        live, probe = status_stubs(None, None)
+
+        result = await companion_status()
+
+        assert result.status == "not_running"
+        assert result.url is None
+        assert result.clients is None
+        assert result.launch_command == companion.launch_command()
+        assert "isn't running" in result.message
+        assert probe.ports == [], "nothing proven live means nothing further is probed"
+
+    async def test_running_with_a_tab_says_there_is_nothing_to_do(self, status_stubs):
+        status_stubs(
+            _record(8765), HealthResponse(status="ok", instance_id="inst-status", clients=1)
+        )
+
+        result = await companion_status()
+
+        assert result.status == "running"
+        assert result.url == "http://127.0.0.1:8765"
+        assert result.clients == 1
+        assert "1 tab open" in result.message
+        assert "nothing to do" in result.message
+
+    async def test_running_with_no_tab_points_at_the_url_and_the_launch_command(self, status_stubs):
+        status_stubs(
+            _record(9000), HealthResponse(status="ok", instance_id="inst-status", clients=0)
+        )
+
+        result = await companion_status()
+
+        assert result.status == "running"
+        assert result.url == "http://127.0.0.1:9000"
+        assert result.clients == 0
+        assert "no browser tab is open" in result.message
+        assert "launch_command" in result.message
+        assert result.launch_command == companion.launch_command()
+
+    async def test_a_companion_that_vanishes_between_probes_is_not_running(self, status_stubs):
+        """The second probe is held to the first's proof: no health body, no ``running``."""
+        status_stubs(_record(8765), None)
+
+        result = await companion_status()
+
+        assert result.status == "not_running"
+        assert result.url is None
+        assert result.clients is None
+        assert result.launch_command == companion.launch_command()
+
+    async def test_a_foreign_instance_on_the_port_is_not_running(self, status_stubs):
+        """A body whose ``instance_id`` is not the proven record's is a different process."""
+        status_stubs(
+            _record(8765), HealthResponse(status="ok", instance_id="someone-else", clients=1)
+        )
+
+        result = await companion_status()
+
+        assert result.status == "not_running"
+        assert result.url is None
+
+    async def test_a_negative_count_is_clamped_to_none(self, status_stubs):
+        status_stubs(_record(), HealthResponse(status="ok", instance_id="inst-status", clients=-1))
+
+        result = await companion_status()
+
+        assert result.status == "running"
+        assert result.clients is None
+        assert "-1" not in result.message
+        assert "no browser tab is open" in result.message
+
+    async def test_an_older_companion_without_the_count_reads_as_no_tab(self, status_stubs):
+        """A ``/health`` body from before 17.4 carries no ``clients``: ``None``, not ``0``, and the
+        message still tells the agent how to get a tab open."""
+        status_stubs(_record(), HealthResponse(status="ok", instance_id="inst-status"))
+
+        result = await companion_status()
+
+        assert result.status == "running"
+        assert result.clients is None
+        assert "no browser tab is open" in result.message
+
+    async def test_the_health_probe_asks_the_proven_port(self, status_stubs):
+        _, probe = status_stubs(
+            _record(4321), HealthResponse(status="ok", instance_id="inst-status", clients=2)
+        )
+
+        result = await companion_status()
+
+        assert probe.ports == [4321]
+        assert result.clients == 2
+        assert "2 tabs open" in result.message
+
+    @pytest.mark.parametrize("clients", [None, 0, 1])
+    async def test_the_token_never_appears_in_the_result(self, status_stubs, clients):
+        status_stubs(
+            _record(), HealthResponse(status="ok", instance_id="inst-status", clients=clients)
+        )
+
+        result = await companion_status()
+
+        assert _STATUS_TOKEN not in result.model_dump_json()
+
+    async def test_the_result_carries_exactly_the_five_fields(self, status_stubs):
+        status_stubs(None, None)
+
+        result = await companion_status()
+
+        assert set(result.model_dump()) == {"status", "url", "clients", "launch_command", "message"}
+
+    async def test_every_status_fits_the_budget(self, status_stubs):
+        for record, health in (
+            (None, None),
+            (_record(65535), HealthResponse(status="ok", instance_id="inst-status", clients=0)),
+            (_record(65535), HealthResponse(status="ok", instance_id="inst-status", clients=12)),
+        ):
+            status_stubs(record, health)
+            result = await companion_status()
+            assert len(result.model_dump_json()) <= 400 + len(result.launch_command), (
+                result.model_dump_json()
+            )
+
+    def test_the_launch_command_uses_the_directory_form_with_open(self):
+        """The ``--directory`` form works for a plugin install (deferred-work.md:6516); ``--open``
+        is what makes the page appear without a second step."""
+        command = companion.launch_command()
+        root = companion._INSTALL_ROOT
+
+        assert command == f'uv run --directory "{root}" artificial-planeswalker companion --open'
+        assert (root / "pyproject.toml").is_file(), "the root must be the uv project directory"
+        assert root == Path(companion.__file__).resolve().parents[3]
+
+    def test_the_status_vocabulary_is_closed(self):
+        assert set(get_args(CompanionStatusResult.model_fields["status"].annotation)) == {
+            "running",
+            "not_running",
+            "error",
+        }

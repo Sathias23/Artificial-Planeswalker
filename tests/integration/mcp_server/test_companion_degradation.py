@@ -131,6 +131,23 @@ class TestTheAppIsClosedAndTheToolsStillAnswer:
             "be measuring a live companion instead of a closed one."
         )
 
+    async def test_the_status_tool_reports_not_running_with_a_launch_command(
+        self, closed_companion: Path, deck_db: async_sessionmaker[AsyncSession]
+    ) -> None:
+        """17.4: the read-only tool answers ``not_running`` and still hands over the command."""
+        server = build_server(session_factory=deck_db)
+        async with create_connected_server_and_client_session(server) as client:
+            result = await client.call_tool("companion_status", {})
+
+        assert result.isError is False, _text_of(result)
+        assert result.structuredContent is not None
+        assert result.structuredContent["status"] == "not_running"
+        assert result.structuredContent["url"] is None
+        assert (
+            "artificial-planeswalker companion --open" in result.structuredContent["launch_command"]
+        )
+        assert "not_running" in _text_of(result)
+
     async def test_the_push_tool_reports_the_closed_app_and_does_not_raise(
         self, closed_companion: Path, deck_db: async_sessionmaker[AsyncSession]
     ) -> None:

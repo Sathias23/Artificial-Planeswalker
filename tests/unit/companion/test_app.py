@@ -9,12 +9,14 @@ import logging
 import socket
 import sys
 import uuid
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
 
 from src.companion.app.main import build_app
 from src.companion.contracts import HealthResponse
+from tests.unit.companion.conftest import open_socket
 
 _MAIN_MODULE = "src.companion.app.main"
 
@@ -58,6 +60,11 @@ class TestHealthResponseContract:
     def test_status_is_a_closed_token(self):
         with pytest.raises(ValidationError):
             HealthResponse(status="degraded", instance_id="abc")
+
+    def test_clients_is_optional_so_an_older_body_still_parses(self):
+        """17.4 added the tab count; a two-field body from before it is still this shape."""
+        assert HealthResponse(status="ok", instance_id="abc").clients is None
+        assert HealthResponse(status="ok", instance_id="abc", clients=3).clients == 3
 
 
 class TestConstructionIsInert:
@@ -148,6 +155,33 @@ class TestHealthEndpoint:
         body = HealthResponse.model_validate(response.json())
         assert body.status == "ok"
         assert body.instance_id == app.state.instance_id
+        assert body.clients == 0, "17.4: the registry's live count, and nobody is connected"
+
+    async def test_clients_counts_an_open_socket_and_drops_it_on_close(self, lifespan_client):
+        """17.4: one real ticketed WebSocket under the lifespan — ``1`` while open, ``0`` after."""
+        app = build_app()
+
+        async with lifespan_client(app) as client:
+            ticket = (await client.get("/api/session")).json()["ticket"]
+            async with open_socket(app, ticket=ticket):
+                during = await client.get("/health")
+            after = await client.get("/health")
+
+        assert HealthResponse.model_validate(during.json()).clients == 1
+        assert HealthResponse.model_validate(after.json()).clients == 0
+
+    async def test_a_never_started_app_reports_no_count(self):
+        """The ``None`` guard: no lifespan means no registry, and the route says so rather than
+        raising. Driven at the function level because no supported serving path reaches it."""
+        from src.companion.app.routes.health import read_health
+
+        app = build_app()
+        app.state.instance_id = "never-started"
+
+        body = await read_health(SimpleNamespace(app=app))  # type: ignore[arg-type]
+
+        assert body.clients is None
+        assert body.instance_id == "never-started"
 
     def test_openapi_carries_the_health_contract(self):
         """AD-12: c2-3 generates TypeScript from this schema, so it must exist from day one."""

@@ -277,6 +277,7 @@ async def test_server_registers_expected_tools() -> None:
         "import_decklist",
         "remove_card_from_deck",
         "view_deck",
+        "companion_status",
         "companion_set_active_deck",
         "companion_show_suggestions",
         "companion_show_swaps",
@@ -436,6 +437,7 @@ class TestTheBuiltTreeCarriesTheCompanion:
             "mana-curve-analysis",
             "synergy-discovery",
             "format-legality",
+            "companion",
         }
 
         assert set(SKILLS) == product_skills

@@ -39,6 +39,7 @@ import logging
 import os
 import socket
 import sys
+import webbrowser
 
 import uvicorn
 from fastapi import FastAPI
@@ -267,7 +268,27 @@ def _note_reclaimed_entry() -> None:
     )
 
 
-def run(port: int | None = None) -> None:
+def _open_browser(url: str) -> None:
+    """Best-effort: pop the user's default browser on *url*, and never let that decide anything.
+
+    The launcher's own ``webbrowser.open`` (17.4) — it runs in the companion's process, so AD-15
+    holds: the MCP server still never spawns, opens or supervises anything. A host with no usable
+    browser (``open`` may raise, not just return ``False``) logs a warning and nothing else: the
+    URL line is already on stdout, serving continues, and the exit status is untouched.
+
+    Args:
+        url: The companion's base URL — the one the launch line just printed.
+    """
+    try:
+        opened = webbrowser.open(url)
+    except (webbrowser.Error, OSError) as exc:
+        logger.warning("Could not open a browser on %s (%s); open it yourself", url, exc)
+        return
+    if not opened:
+        logger.warning("No browser could be opened on %s; open it yourself", url)
+
+
+def run(port: int | None = None, *, open_browser: bool = False) -> None:
     """Serve the companion — unless one is already running or starting up.
 
     Three outcomes, and all three are successes that exit ``0``. When
@@ -300,6 +321,10 @@ def run(port: int | None = None) -> None:
             ignored with a warning rather than raising — see :func:`resolve_preferred_port`. It is
             a preference only: an explicit port does **not** bypass the single-instance check,
             because the discovery file can name just one instance whatever port it holds.
+        open_browser: Open the default browser on the companion's URL once it is known (``--open``,
+            17.4). Idempotent by design: on the already-running branch it opens the *live*
+            instance's URL, so an agent can run the launch command whenever no tab is open. A
+            browser failure is a logged warning, never a changed exit status.
     """
     # The launch lines contain an em dash (AC 6's exact text). A redirected stdout under a
     # non-UTF-8 locale (LANG=C service capture, cp437 console) would otherwise raise
@@ -315,11 +340,14 @@ def run(port: int | None = None) -> None:
     # calling asyncio.run from within a running loop raises.
     live = asyncio.run(client.live_instance())
     if live is not None:
+        live_url = client.base_url(live.port)
         print(
-            f"[planeswalker] companion is already running at {client.base_url(live.port)} — "
+            f"[planeswalker] companion is already running at {live_url} — "
             "open that URL, or stop the other instance before starting a new one",
             flush=True,
         )
+        if open_browser:
+            _open_browser(live_url)
         return
     # The atomic "am I first?", and the one thing the probe cannot answer during another launch's
     # startup window. Deliberately no second probe here: reaching this branch means the probe has
@@ -354,6 +382,10 @@ def run(port: int | None = None) -> None:
                 "open this URL in your browser (Ctrl-C to stop)",
                 flush=True,
             )
+            # After the URL line, before serving: the browser's first request lands on a socket
+            # that is already bound and listening, so uvicorn picks it up the moment it starts.
+            if open_browser:
+                _open_browser(f"http://{HOST}:{actual}")
             _serve(app, sock, actual)
         finally:
             # Belt-and-braces: uvicorn's shutdown() already closes the sockets it was handed, and a
