@@ -1527,7 +1527,7 @@ action_items:
       cardIdsOf filter into TierListView, equivalent trim guard into SwapsView cardIdOf/unknown
       check, with 16.3-style pinned tests"
     owner: ""
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-16-retro-2026-08-21.md"
   - id: "epic-16-retro-item-92-push-tool-docstring-accuracy-pass-one-co"
     epic: 16
@@ -1536,7 +1536,7 @@ action_items:
       all-three-tables -> four; 64 KB envelope note copied into companion_show_tier_list
       (and swaps)"
     owner: ""
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-16-retro-2026-08-21.md"
   - id: "epic-16-retro-item-93-guard-hardening-pair-test-tying-_push_me"
     epic: 16
@@ -1545,7 +1545,7 @@ action_items:
       into swaps/tier delivery tests + no_clients_connected mirrors for the three
       new kinds"
     owner: ""
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-16-retro-2026-08-21.md"
   - id: "epic-16-retro-item-94-release-gating-0-5-0-ruled-by-brad-2026"
     epic: 16
@@ -1581,7 +1581,7 @@ action_items:
       loop to the fourth listener; composed App test for popover+tooltip Escape ordering;
       collapse duplicated focus-return block"
     owner: "Brad"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-17-retro-2026-08-23.md"
   - id: "epic-17-retro-item-98-companion_status-honesty-pair-distinguis"
     epic: 17
@@ -1589,7 +1589,7 @@ action_items:
       clients==0 in tool message and companion skill; add running-arm test driving
       clients through the real probe_health parse"
     owner: "Brad"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-17-retro-2026-08-23.md"
   - id: "epic-17-retro-item-99-open-launch-window-pair-sock-listen-befo"
     epic: 17
@@ -1597,7 +1597,7 @@ action_items:
       the wrong bound-and-listening comment and record the race); companion-skill
       bullet naming the already-starting-up lock-held outcome"
     owner: "Brad"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-17-retro-2026-08-23.md"
   - id: "epic-17-retro-item-100-guard-the-history-revisit-retained-write"
     epic: 17
@@ -1605,7 +1605,7 @@ action_items:
       a history revisit of a non-latest entry must not touch retained[kind] — one-clause
       condition in openAgentView"
     owner: "Brad"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-17-retro-2026-08-23.md"
   - id: "epic-17-retro-item-101-release-gating-0-5-0-ruled-by-brad-2026"
     epic: 17
@@ -1614,7 +1614,7 @@ action_items:
       headroom, hero weight landed post-measurement); pin hero cache header; fix the
       deferred-stays-empty ledger contradiction in report + spec"
     owner: "Brad"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-17-retro-2026-08-23.md"
   - id: "epic-17-retro-item-102-deferred-hardening-bundle-post-0-5-0-can"
     epic: 17
