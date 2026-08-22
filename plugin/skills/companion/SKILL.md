@@ -52,6 +52,10 @@ running, and confirm the browser tab opened.
    launch from a fresh install may take a while (it installs the server's dependencies first);
    give it up to a minute before judging it failed. If the line instead says `already running at`,
    the browser was asked to open on the existing instance; a warning on stderr says if it couldn't.
+   A third outcome is `another companion is already starting up` — a second launch lost the race
+   for the instance lock while the first was still booting. Do not retry the launch in a loop:
+   wait a moment for the winner to finish starting, then re-run `companion_status` and branch on
+   what it says.
 4. **Confirm — after a pause.** The tab's WebSocket handshake takes a moment after the browser
    opens, so wait a few seconds after the URL line before calling `companion_status` again; if
    `clients` is still `0`, check once more after another short pause before concluding anything.

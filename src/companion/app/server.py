@@ -175,6 +175,9 @@ def bind_localhost_socket(preferred: int) -> socket.socket:
 
     The socket is bound but deliberately **not** listened on; ``loop.create_server(sock=…)`` calls
     ``listen()`` itself, and binding is all that is needed to reserve the port and learn its number.
+    The one exception lives in :func:`run`'s ``--open`` path, which calls ``listen()`` itself just
+    before launching the browser — a fast browser must find the port accepting (queued in the
+    backlog) rather than refusing during the window before uvicorn starts (pre-cut R5).
 
     Invariant :func:`run` relies on: when the preferred bind succeeds, the returned socket holds
     **exactly** *preferred* — so a caller may infer "the fallback was taken" from the bound port
@@ -382,9 +385,14 @@ def run(port: int | None = None, *, open_browser: bool = False) -> None:
                 "open this URL in your browser (Ctrl-C to stop)",
                 flush=True,
             )
-            # After the URL line, before serving: the browser's first request lands on a socket
-            # that is already bound and listening, so uvicorn picks it up the moment it starts.
+            # After the URL line, before serving — and only after an explicit `listen()` (pre-cut
+            # R5): a bound-but-not-listening socket REFUSES connections, and a fast browser can
+            # dial before uvicorn's own `listen()` runs inside `_serve`. Listening here closes
+            # that window: the kernel queues the browser's connect in the backlog and uvicorn
+            # serves it the moment it starts. uvicorn's later `listen()` on the same socket is a
+            # harmless re-listen.
             if open_browser:
+                sock.listen()
                 _open_browser(f"http://{HOST}:{actual}")
             _serve(app, sock, actual)
         finally:
