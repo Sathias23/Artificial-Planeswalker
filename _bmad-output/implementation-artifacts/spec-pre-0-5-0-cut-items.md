@@ -2,13 +2,58 @@
 title: 'Pre-0.5.0-cut items: epic-17 retro items 1–5 + epic-16 items 91/92/93'
 type: 'chore'
 created: '2026-08-23'
-status: 'in-review'
+status: 'done'
 baseline_revision: '030d53c5a4e2b62017216d0fb910167a4bc3dbfd'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: ['multiple-goals', 'oversized']
-deferred: []
+deferred:
+  - summary: >-
+      The release-gating quiet-machine re-measure was never obtained: both the item-8 session and
+      the review pass found the machine loaded (bg3_dx11 foreground, CPU ~22-28% vs the ~6% quiet
+      baseline), so the quiet-machine drift trend (c4-12 363 → R2 420 → 17.3 529 ms medians) has no
+      comparable fourth point for Brad's 0.5.0 cut decision.
+    evidence: |-
+      perf-evidence-precut-2026-08-23.md D1 records the loaded run verbatim (587/652/798 ms,
+      EXIT 0 — budget safe a fortiori); the review pass re-sampled CPU at 26-28% with bg3_dx11
+      still running, so the ~3-minute quiet re-run stayed non-executable unattended. Instrument,
+      deck and JSON path are ready.
+    location: >-
+      _bmad-output/implementation-artifacts/perf-evidence-precut-2026-08-23.md
+    severity: medium
+  - summary: >-
+      SuggestionsView still lacks the E16-91 whitespace-id gate its three sibling views now carry:
+      a suggestions item with card_id '  ' hydrates for real and commits /api/cards/%20.
+    evidence: |-
+      ui/src/containers/SuggestionsView/SuggestionsView.tsx cardIdOf is still the bare coercer;
+      no test in SuggestionsView.test.tsx feeds a whitespace-only card_id. Pre-existing — E16-91's
+      ruling named only TierListView and SwapsView — surfaced by the verification-gap reviewer,
+      which demonstrated the request path end-to-end.
+    location: >-
+      ui/src/containers/SuggestionsView/SuggestionsView.tsx
+    severity: medium
+  - summary: >-
+      A non-latest history revisit still clears unread[kind] even though the newest push (which the
+      kind pill keeps re-opening after the R3 guard) was never seen — the unread semantics were
+      outside R3's ruling and need their own ruling before changing.
+    evidence: |-
+      openAgentView clears unread[content.kind] unconditionally; the R3 guard scopes only the
+      retained write. Scenario: newest push arrives unread, user revisits an older envelope from
+      the History popover — the kind reads as seen.
+    location: >-
+      ui/src/state/agentView.ts
+    severity: medium
+  - summary: >-
+      The companion skill's branch list has no arm for companion_status's 'error' status, which is
+      in the tool's closed vocabulary.
+    evidence: |-
+      .claude/skills/companion/SKILL.md step 2 branches on running/not_running only;
+      test_the_status_vocabulary_is_closed pins {running, not_running, error}. Pre-existing since
+      17.4.
+    location: >-
+      .claude/skills/companion/SKILL.md
+    severity: low
 ---
 
 <intent-contract>
@@ -224,9 +269,33 @@ outcome with wait-and-re-check guidance. Full verification re-run by the orchest
 vitest 2590/0, pytest targeted suites 1982 passed / 1 skipped, ruff/format/mypy clean,
 `git diff --exit-code plugin/` clean.
 
+**Review pass (2026-08-23, four parallel layers: blind hunter, edge-case hunter, verification-gap, intent-alignment):** 0 intent gaps, 0 bad-spec findings, 9 patches applied (1 medium — the stale SPA bundle — + 8 low, commits `fcdfd37`/`47503e2`/`3b47505`), 4 deferred to frontmatter (quiet re-run still blocked by the running game; SuggestionsView whitespace gap; unread-on-revisit semantics; skill `error` arm), 10 rejected. Follow-up review recommendation: patched counts high 0 / medium 1 / low 8 → score 3×1 + 8 = 11 ≥ 5 → `followup_review_recommended: true`. Post-patch verification at tip `3b47505`: vitest 2590/2590, targeted pytest suites green (254 spot + full targeted runs), ruff/format/mypy clean, plugin mirror in sync, tree clean.
+
+**Residual risks:** the 0.5.0 cut decision still lacks a quiet-machine cold-open datapoint (deferred, medium — D1 in the evidence doc; ~3-minute re-run ready whenever the machine is quiet); the intent-alignment audit notes item 5's re-measure half is a load-confounded budget confirmation whose decision-grade content is the structural-counter diagnosis (the `/hero.jpg` +1 request refutation), which is honest but weaker than the trend point Brad's ruling asked for.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+### 2026-08-23 — Review pass
+
+- intent_gap: 0
+- bad_spec: 0
+- patch: 9: (high 0, medium 1, low 8)
+- defer: 4: (high 0, medium 3, low 1)
+- reject: 10
+- addressed_findings:
+  - `[medium]` `[patch]` Committed SPA bundle was stale (last rebuilt at 17.5) — this story's UI fixes were absent from the shipped artifact; rebuilt via `npm run build` and committed with the plugin mirror (`fcdfd37`).
+  - `[low]` `[patch]` Companion skill step 4 polled a `clients` count that is `null` forever against an older companion; added the no-re-poll clause (`47503e2`).
+  - `[low]` `[patch]` Unknown-count message asserted "too old" as fact for what may be a malformed reply; reworded without losing the pinned substrings (`47503e2`).
+  - `[low]` `[patch]` Evidence doc: 363 ms trend point uncited — attributed to c4-12 (`3b47505`).
+  - `[low]` `[patch]` Evidence doc: approximate "line ~375" reference dropped for the stable test node id (`3b47505`).
+  - `[low]` `[patch]` Evidence doc: added the `no-cache` = 304-revalidation note so the hero fetch's real-world cost is not overstated (`3b47505`).
+  - `[low]` `[patch]` Run record: item 8's commit hash (`3c3aae4`) and the matrix-audit commit (`d871fc7`) recorded (`3b47505`).
+  - `[low]` `[patch]` Run record: TierListView non-string behavior flip (placeholder-and-counts → filtered, per the ruled GroupsView-filter port) recorded as an explicit deviation (`3b47505`).
+  - `[low]` `[patch]` `nfr05-budget-2026-08-23.json` trailing newline for sibling consistency (`3b47505`).
+
+Rejected (noise / contradicted / by-design): 214→215 request move already recorded as 17.3's O2; double-listen under real uvicorn (well-defined socket semantics, disproportionate to test); SwapsView in-side whitespace twin (one shared fold function); real-socket zero/negative arms (AC named 1 and unknown; fold arms stub-pinned); `--open` test port-inference (pinned by TestRun); `closeRef` staleness (ref assigned before the subscription effect); groups sibling-empty asserts (already present, socket.test.ts:832-836); non-`--open` listen window (no consumer races that path); hero-pin "non-delivery" (R11's premise refuted by the existing test_spa pin); revisit-guard undefined-slot clause (state unreachable — resetAgentView is test-only and clears retained+history together).
 
 ## Design Notes
 
