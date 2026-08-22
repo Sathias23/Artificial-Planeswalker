@@ -5557,7 +5557,7 @@ describe('a swaps push opens its view, end to end (16.1)', () => {
 
     expect(dialog()).not.toBeNull()
     expect(dialog()).toHaveAccessibleName(AGENT_VIEW_LABELS.swaps)
-    // The SHARED empty-push line, `{kind}`-substituted — no second sentence anywhere.
+    // The SHARED empty-push line, noun-substituted — no second sentence anywhere.
     expect(document.querySelector('.swaps-view-empty')).toHaveTextContent(emptyPushLine('swaps'))
   })
 })
@@ -5658,7 +5658,7 @@ describe('a tier-list push opens its view, end to end (16.2)', () => {
 
     expect(dialog()).not.toBeNull()
     expect(dialog()).toHaveAccessibleName(AGENT_VIEW_LABELS.tier_list)
-    // The SHARED empty-push line, `{kind}`-substituted — no second sentence anywhere.
+    // The SHARED empty-push line, noun-substituted — no second sentence anywhere.
     expect(document.querySelector('.tier-list-view-empty')).toHaveTextContent(
       emptyPushLine('tier_list'),
     )
@@ -5780,7 +5780,7 @@ describe('a groups push opens its view, end to end (16.3)', () => {
 
     expect(dialog()).not.toBeNull()
     expect(dialog()).toHaveAccessibleName(AGENT_VIEW_LABELS.groups)
-    // The SHARED empty-push line, `{kind}`-substituted — no second sentence anywhere.
+    // The SHARED empty-push line, noun-substituted — no second sentence anywhere.
     expect(document.querySelector('.groups-view-empty')).toHaveTextContent(emptyPushLine('groups'))
   })
 })

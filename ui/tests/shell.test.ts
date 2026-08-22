@@ -1633,7 +1633,7 @@ describe('the containers are a declared category with a posture of its own', () 
         'react',
       ],
     },
-    // c6-6's copy module. One TEMPLATE — the artefact's row writes `{kind}` — plus the
+    // c6-6's copy module. One TEMPLATE — the artefact's row writes `{noun}` — plus the
     // placeholder it names and the one-line builder that fills it. `imports: []` for
     // `CardDetail/copy.ts`'s measured reason: `tests/` is the `nodenext` project and `src/` the
     // `bundler` one, so a `ui/tests` file may import an app module only if that module has no

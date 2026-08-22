@@ -137,7 +137,7 @@ export const SUGGESTIONS_VIEW_TITLE = AGENT_VIEW_LABELS.suggestions
  * reader: `id` keys the shell's replace effect (`AgentView.tsx` — a repeat push is a new
  * envelope, and identity is what tells the shell to re-announce); `ts` IS the nav pill's time
  * and c6-8 renders it (UX-DR28 puts the push time on the pill, and the view header carries
- * none); `kind` IS c6-8's kind-switching discriminant and this story's `{kind}` interpolation in
+ * none); `kind` IS c6-8's kind-switching discriminant and this story's empty-line noun selector in
  * the empty-push line. Retaining them cost one object field each and is what MADE c6-8's
  * *"re-hydrated against current card data"* possible without a second push — the ids and reasons are here, and the
  * ART is always re-fetched rather than retained.
