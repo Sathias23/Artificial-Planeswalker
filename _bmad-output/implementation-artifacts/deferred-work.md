@@ -6651,3 +6651,6 @@ item.
 - source_spec: `_bmad-output/implementation-artifacts/spec-17-5-welcome-surface-first-impression.md`
   summary: Record the provenance/licence of `docs/hero-image.jpg` now that 17.5 ships it in the companion bundle and `plugin/` tree (served to every user at `/hero.jpg`).
   evidence: `docs/release-readiness-review.md:110` already flags that nothing states the image's origin or licence; 17.5 raises the stakes from README decoration to redistributed asset. Pre-existing, surfaced by the 17.5 review.
+- source_spec: `_bmad-output/implementation-artifacts/spec-17-4-open-the-companion-from-the-agent.md`
+  summary: Single-quote (or shlex-quote) `_INSTALL_ROOT` in the `companion_status` launch_command — double-quote interpolation is shell-unsafe for paths containing `$`, backticks, or `"`.
+  evidence: Greptile P2 on PR #100 (`src/mcp_server/tools/companion.py:742`), merged as-is at 4/5 "safe to merge"; real but low-severity — ordinary Windows paths are unaffected, a `$`-bearing install path would mis-expand.
