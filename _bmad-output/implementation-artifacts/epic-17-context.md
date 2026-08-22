@@ -12,6 +12,7 @@ Close out the companion app's Phase 2 (formerly "c10" in planning docs): Brad ca
 - Story 17.2: Session history
 - Story 17.3: Measure the latency budgets and close the gaps
 - Story 17.4: Open the companion from the agent
+- Story 17.5: Welcome surface — a first impression instead of placeholders and a list
 
 ## Requirements & Constraints
 
@@ -21,6 +22,7 @@ Close out the companion app's Phase 2 (formerly "c10" in planning docs): Brad ca
 - **Counter-metrics to confirm:** each image+size+face combination is fetched from the Scryfall CDN at most once per cache lifetime; companion tool results add negligible token cost (compact text, ~200-token ceiling, no payload ever echoed into chat). Measure the real footprint of the unbounded image cache after sustained use so an eviction policy can eventually be sized from evidence.
 
 - **Open from the agent (17.4):** a read-only `companion_status` tool reports running / URL / connected tabs (a new optional `clients` field on `GET /health`) / the exact launch command (`uv run --directory "<install root>" artificial-planeswalker companion --open`, root derived from `__file__`); a new `companion` skill drives it — status first, then the launch command in a background shell, wait for the URL line, confirm. `--open` is the launcher's own `webbrowser.open` after the URL line (and on the already-running branch, the live URL). AD-15 holds: the MCP server never spawns the companion. `app_not_running` copy and the four existing skills ripple from "skip silently" to "offer to open it".
+- **Welcome surface (17.5):** the shell's c2-1 placeholder convention is retired (every slot filled since c6-8; an empty region renders nothing, `slot()` returns `null`); the main grid collapses to one track (`data-single`) when `right` is empty; the no-active-deck arm renders `Welcome` — `ui/public/hero.jpg` (copy of `docs/hero-image.jpg`) as a decorative `<img alt="">` banner above the unchanged `StatePanel`, the deck names restyled as wrapping chips (`<ul>/<li>` semantics kept, non-clickable). DESIGN.md gains `components.welcome`; the other five panels are untouched.
 
 ## Technical Decisions
 

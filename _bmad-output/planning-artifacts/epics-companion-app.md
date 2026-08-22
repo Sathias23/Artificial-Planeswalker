@@ -3779,3 +3779,27 @@ So that I never have to know the launch command to see the glass.
 **Given** the full suite, ruff and mypy
 **When** run
 **Then** green; the tool-name and skill-set pins include `companion_status` and the `companion` skill, and `plugin/` matches the build
+
+### Story 17.5: Welcome surface — a first impression instead of placeholders and a list
+
+As a user opening the companion with no active deck,
+I want the first screen to read as a finished welcome — hero art, the panel, my decks as quiet chips,
+So that the first thing I see is not scaffolding copy and a list taller than the window.
+
+**Acceptance Criteria:**
+
+**Given** the companion is open with no active deck
+**When** the page renders
+**Then** no text matching `/c[0-9]-[0-9]+/` appears anywhere on the glass, the hero image (`/hero.jpg`, decorative, `alt=""`) is visible above "No deck on the glass.", and the deck names read as a wrapping chip row with no link or button in the subtree — state-panel copy byte-identical to EXPERIENCE.md, list semantics unchanged
+
+**Given** no active deck
+**When** the DOM is inspected
+**Then** `main` contains exactly one `.app-shell-column` and `.app-shell-columns[data-single="true"]`; given a loaded deck, two columns and no `data-single`
+
+**Given** any other system panel (db-not-initialized, updating, stalled, disconnected, internal-error)
+**When** rendered
+**Then** no `img` is in the document and the panel is unchanged
+
+**Given** `cd ui && npm test && npm run lint && npm run build`
+**When** run
+**Then** green and `src/companion/app/static/hero.jpg` exists; `uv run pytest -q -m "not integration"` green; `plugin/` matches the build

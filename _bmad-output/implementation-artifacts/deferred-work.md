@@ -6648,3 +6648,6 @@ item.
 - source_spec: `_bmad-output/implementation-artifacts/spec-17-4-open-the-companion-from-the-agent.md`
   summary: `companion --open` calls `webbrowser.open` synchronously before `_serve`; on a host with no GUI browser the stdlib falls back to a text-mode browser (lynx/w3m) that blocks the launcher until quit, so the socket is bound but never served until then.
   evidence: `src/companion/app/server.py::_open_browser` runs on the main thread between the URL line and `_serve`; `webbrowser` docs list console browsers as fallbacks when no graphical browser is registered. Niche (headless Linux with lynx installed) and unreachable on the primary Windows platform; fix would be a daemon thread or a `webbrowser.get()` inspection.
+- source_spec: `_bmad-output/implementation-artifacts/spec-17-5-welcome-surface-first-impression.md`
+  summary: Record the provenance/licence of `docs/hero-image.jpg` now that 17.5 ships it in the companion bundle and `plugin/` tree (served to every user at `/hero.jpg`).
+  evidence: `docs/release-readiness-review.md:110` already flags that nothing states the image's origin or licence; 17.5 raises the stakes from README decoration to redistributed asset. Pre-existing, surfaced by the 17.5 review.

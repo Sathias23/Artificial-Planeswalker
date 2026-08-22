@@ -136,9 +136,10 @@ const COPY_MODULES: Map<string, string> = new Map([
   ],
   [
     'src/components/AppShell/AppShell.tsx',
-    'the placeholder line for each empty region, each naming the story that replaces it, plus ' +
-      'the product kicker and the h1 fallback (story c2-1, AC 21). Every one of these is copy ' +
-      'with a scheduled death. And one permanent resident since c7-4: the "Updating…" line the ' +
+    'the product kicker and the h1 fallback (story c2-1). Until 17.5 it also held the placeholder ' +
+      'line for each empty region, each naming the story that replaces it (AC 21) — copy with a ' +
+      'scheduled death, now dead: an empty region renders nothing. And one permanent resident ' +
+      'since c7-4: the "Updating…" line the ' +
       'reduced-motion swap shows while a refetch is in flight — authored, spelled with U+2026 ' +
       'because the epic AC and the UX-DR42 inventory both write it verbatim (UX-DR33: ship ' +
       'specified copy as specified), and asserted by codepoint in AppShell.test.tsx on the ' +
