@@ -347,3 +347,338 @@ class TestARepaintThisHarnessCannotAttributeToAPushIsNotAMeasurement:
         assert cdp._report_refetch([_run(1)], ARGS) == 0
         out = capsys.readouterr().out
         assert "commit->repaint over 1/1 valid runs" in out
+
+
+# =============================================================================================
+# 17-3: the push validity predicate, its reporter, and the drain arm's own gates — pinned the
+# way their refetch twins above are, and for the same reason: these seams decide before anything
+# is opened or after everything is measured, and a seam nothing exercises is wrong when it
+# finally matters.
+# =============================================================================================
+
+
+def _push_run(index: int = 1, *, outstanding: int | None = None, **over: Any) -> dict[str, Any]:
+    """One valid ``measure_push`` result, built by **the shipped builder** and then overridden.
+
+    ``cdp.push_result`` rather than a dict literal — ``_run``'s rule (c7-7 review, P9): a
+    hand-rolled fixture is pinned only to itself, and renaming a key in ``measure_push`` would
+    leave every test here green and blow up mid-measurement. The arithmetic is chosen so the
+    derived figures are round: ``stop - t_pre`` is 39 ms (the median of the real 17-3 warm run)
+    and ``stop - t_post`` is 18 ms.
+
+    Args:
+        index: The run number.
+        outstanding: The drain arm's positive-control count, or ``None`` for "not counted" —
+            passed through the builder so the None-means-absent rule is the shipped one.
+        **over: Keys to replace after construction; an unknown one is a drift and fails here.
+    """
+    result = cdp.push_result(
+        run=index,
+        status_code=200,
+        response_text=None,
+        clients=1,
+        surfaces=dict.fromkeys(cdp.PUSH_SURFACES, 60.0),
+        missing=[],
+        observer_error=None,
+        stop=60.0,
+        t_pre=21.0,
+        t_post=42.0,
+        images_requested=6,
+        images_from_network=0,
+        images_painted=6,
+        rows=6,
+        images_outstanding_at_push=outstanding,
+    )
+    unknown = set(over) - set(result)
+    assert not unknown, f"a push run dict has no {sorted(unknown)} key — this helper has drifted"
+    result.update(over)
+    return result
+
+
+PUSH_ARGS = SimpleNamespace(json=None, arm="warm")
+DRAIN_ARGS = SimpleNamespace(json=None, arm="drain")
+
+
+class TestAPushRunThatMeasuredNothingIsRefused:
+    """The refusals `_push_run_is_valid` centralized, pinned — printer and reporter both."""
+
+    def test_a_rejected_post_is_refused_and_the_line_says_what_came_back(
+        self, capsys: pytest.CaptureFixture[str]
+    ):
+        run = _push_run(1, status_code=400, response_text="payload_rejected")
+
+        assert cdp._report_push([run], PUSH_ARGS) == 1
+        assert "NO VALID RUNS" in capsys.readouterr().err
+
+        cdp._print_run(run)
+        line = capsys.readouterr().out
+        assert "INVALID" in line and "400" in line and "payload_rejected" in line
+        assert "layout" not in line, "a refused run printed a figure anyway"
+
+    def test_missing_surfaces_are_refused_with_the_reason(self, capsys: pytest.CaptureFixture[str]):
+        run = _push_run(1, missing=["rows"], observer_error="observer threw")
+
+        assert cdp._report_push([run], PUSH_ARGS) == 1
+        assert "NO VALID RUNS" in capsys.readouterr().err
+
+        cdp._print_run(run)
+        line = capsys.readouterr().out
+        assert "INVALID" in line and "observer threw" in line
+
+    def test_a_receipt_saying_nobody_listened_is_refused(self, capsys: pytest.CaptureFixture[str]):
+        """`clients: 0` is a broadcast to nobody — nothing rendered BECAUSE of this push."""
+        run = _push_run(1, clients=0)
+
+        assert cdp._report_push([run], PUSH_ARGS) == 1
+        assert "NO VALID RUNS" in capsys.readouterr().err
+
+        cdp._print_run(run)
+        assert "clients=0" in capsys.readouterr().out
+
+    def test_the_twin_a_valid_warm_run_reports_both_clocks(
+        self, capsys: pytest.CaptureFixture[str]
+    ):
+        """The positive twin for all three — and it pins that BOTH clocks are shown."""
+        assert cdp._report_push([_push_run(1)], PUSH_ARGS) == 0
+        out = capsys.readouterr().out
+        assert "warm arm, layout over 1/1 valid runs" in out
+
+        cdp._print_run(_push_run(1))
+        line = capsys.readouterr().out
+        assert "layout 39 ms" in line
+        assert "from POST return 18 ms" in line
+        assert "INVALID" not in line
+
+
+class TestTheDrainPositiveControl:
+    """A push measured after the queue drained is a warm measurement wearing a drain label."""
+
+    def test_zero_outstanding_requests_fail_the_run_naming_the_control(
+        self, capsys: pytest.CaptureFixture[str]
+    ):
+        run = _push_run(1, outstanding=0)
+
+        assert cdp._push_run_is_valid(run) is not None
+        assert "positive control" in str(cdp._push_run_is_valid(run))
+
+        assert cdp._report_push([run], DRAIN_ARGS) == 1
+        assert "NO VALID RUNS" in capsys.readouterr().err
+
+        cdp._print_run(run)
+        line = capsys.readouterr().out
+        assert "INVALID" in line and "positive control" in line
+        assert "layout" not in line
+
+    def test_the_twin_a_genuinely_draining_run_is_valid_and_says_how_deep(
+        self, capsys: pytest.CaptureFixture[str]
+    ):
+        run = _push_run(1, outstanding=106)
+
+        assert cdp._push_run_is_valid(run) is None
+        # Valid and REPORTED -- but one run is below the drain verdict's evidence floor, so the
+        # exit code refuses (see TestTheDrainEvidenceFloor); the figures still print.
+        assert cdp._report_push([run], DRAIN_ARGS) == 1
+        assert "drain arm, layout over 1/1 valid runs" in capsys.readouterr().out
+
+        cdp._print_run(run)
+        assert "106 image request(s) outstanding at the push" in capsys.readouterr().out
+
+    def test_a_warm_run_without_the_key_is_not_failed_by_the_control(self):
+        """The clause fires only when the drain arm counted — an absent key is not a zero."""
+        assert cdp._push_run_is_valid(_push_run(1)) is None
+        assert "images_outstanding_at_push" not in _push_run(1), (
+            "the builder included the key for a run that never counted — the None-means-absent "
+            "rule has drifted, and every warm run would now be judged by the drain's control"
+        )
+
+    def test_a_mixed_set_counts_only_the_draining_run(self, capsys: pytest.CaptureFixture[str]):
+        runs = [_push_run(1, outstanding=0), _push_run(2, outstanding=106)]
+
+        assert cdp._report_push(runs, DRAIN_ARGS) == 1
+        assert "drain arm, layout over 1/2 valid runs" in capsys.readouterr().out
+
+
+class TestTheDrainEvidenceFloor:
+    """Fewer valid drain runs than the floor is not evidence, however green they look.
+
+    Greptile r1 (PR #98): `_report_push` handed out a passing verdict on one or two valid drain
+    samples -- the story's instrument-failure rule (drain minimum 3) enforced only by the
+    workflow's prose. The figures still print (honest per-run numbers); the VERDICT refuses.
+    """
+
+    def test_three_valid_runs_meet_the_floor_and_earn_the_verdict(
+        self, capsys: pytest.CaptureFixture[str]
+    ):
+        runs = [_push_run(n, outstanding=100 + n) for n in (1, 2, 3)]
+
+        assert cdp._report_push(runs, DRAIN_ARGS) == 0
+        out = capsys.readouterr()
+        assert "drain arm, layout over 3/3 valid runs" in out.out
+        assert "refusing a verdict" not in out.err
+
+    def test_two_valid_of_three_refuse_a_verdict_naming_the_floor(
+        self, capsys: pytest.CaptureFixture[str]
+    ):
+        runs = [
+            _push_run(1, outstanding=106),
+            _push_run(2, outstanding=0),
+            _push_run(3, outstanding=104),
+        ]
+
+        assert cdp._report_push(runs, DRAIN_ARGS) == 1
+        out = capsys.readouterr()
+        assert "drain arm, layout over 2/3 valid runs" in out.out, (
+            "the honest figures must still print; only the verdict is refused"
+        )
+        assert "only 2 valid drain run(s)" in out.err
+        assert str(cdp.DRAIN_MIN_VALID_RUNS) in out.err
+
+    def test_an_over_budget_set_at_the_floor_still_fails_on_the_budget(
+        self, capsys: pytest.CaptureFixture[str]
+    ):
+        runs = [_push_run(n, outstanding=100 + n) for n in (1, 2, 3)]
+        runs[2]["layout_ms"] = cdp.PUSH_BUDGET_MS + 1.0
+
+        assert cdp._report_push(runs, DRAIN_ARGS) == 2, (
+            "the floor gates the verdict's existence, never softens it -- a full set over "
+            "budget is exit 2, not a refusal"
+        )
+        capsys.readouterr()
+
+    def test_the_floor_does_not_gate_the_warm_arm(self, capsys: pytest.CaptureFixture[str]):
+        """One valid warm run has always been reportable; the floor is the drain's alone."""
+        assert cdp._report_push([_push_run(1)], PUSH_ARGS) == 0
+        capsys.readouterr()
+
+    def test_cmd_push_refuses_a_drain_that_cannot_reach_the_floor(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
+        """Refused before anything opens: each drain run is ~99 real CDN fetches, and a set that
+        cannot reach the floor even with every run valid would burn them only to be refused at
+        the report."""
+        with pytest.raises(SystemExit) as refusal:
+            cdp.cmd_push(
+                SimpleNamespace(runs=2, deck_id=None, data_dir=str(tmp_path / "copy"), arm="drain")
+            )
+        assert "evidence floor" in str(refusal.value)
+        assert str(cdp.DRAIN_MIN_VALID_RUNS) in str(refusal.value)
+
+
+class TestPushDrainRefusesTheOperatorsDataDir:
+    """The drain arm WRITES — it empties `image_cache` — so it inherits `refetch`'s gate.
+
+    Mirrors ``TestTheRealDataDirectoryIsRefused``'s entry-point pair: the refusal must fire
+    before anything is opened, the positive twin must reach the NEXT gate, and an arm that only
+    reads must not be gated at all.
+    """
+
+    def test_drain_refuses_the_real_data_dir_before_anything_is_opened(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
+        mine = tmp_path / "my-real-data"
+        mine.mkdir()
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(mine))
+
+        with pytest.raises(SystemExit) as refused:
+            cdp.cmd_push(SimpleNamespace(runs=None, deck_id=None, data_dir=str(mine), arm="drain"))
+
+        assert "refuses to touch your real data dir" in str(refused.value)
+
+    def test_the_twin_gets_past_the_gate_and_fails_on_the_missing_database(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
+        """A real copy path reaches the next refusal, and the message proves which gate answered."""
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path / "my-real-data"))
+        copy = tmp_path / "ap-copy"
+        copy.mkdir()
+
+        with pytest.raises(SystemExit) as refused:
+            cdp.cmd_push(SimpleNamespace(runs=None, deck_id=None, data_dir=str(copy), arm="drain"))
+
+        assert "No cards.db" in str(refused.value)
+        assert "refuses to touch" not in str(refused.value)
+
+    def test_an_arm_that_only_reads_is_not_gated(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
+        """`warm` on the same directory sails past the gate — proven by reaching the Companion.
+
+        The stub raises before a process could start, so this asserts exactly one thing: the
+        warm arm got PAST where the drain arm refused, with nothing real opened either way.
+        """
+        mine = tmp_path / "my-real-data"
+        mine.mkdir()
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(mine))
+
+        class _CompanionStub:
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                raise RuntimeError("companion stub reached")
+
+        monkeypatch.setattr(cdp, "Companion", _CompanionStub)
+
+        with pytest.raises(RuntimeError, match="companion stub reached"):
+            cdp.cmd_push(
+                SimpleNamespace(runs=None, deck_id=None, data_dir=str(mine), arm="warm", port=None)
+            )
+
+    def test_a_nonsense_run_count_is_refused_first_of_all(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
+        """`cmd_refetch`'s guard, inherited: the diagnosis is the operator's argument."""
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path / "my-real-data"))
+
+        with pytest.raises(SystemExit) as refused:
+            cdp.cmd_push(
+                SimpleNamespace(runs=0, deck_id=None, data_dir=str(tmp_path / "x"), arm="warm")
+            )
+
+        assert "--runs must be at least 1" in str(refused.value)
+
+    def test_a_deck_id_on_a_non_drain_arm_is_refused_not_ignored(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
+        """A silently ignored argument is an operator who believes they measured the wrong deck."""
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(tmp_path / "my-real-data"))
+
+        with pytest.raises(SystemExit) as refused:
+            cdp.cmd_push(
+                SimpleNamespace(
+                    runs=None, deck_id="813d0434", data_dir=str(tmp_path / "x"), arm="warm"
+                )
+            )
+
+        assert "--deck-id applies only to --arm drain" in str(refused.value)
+
+
+class TestEmptyingTheImageCache:
+    """`_empty_image_cache` is the drain arm's cold-cache premise; a lie here mislabels the arm."""
+
+    def test_a_populated_cache_is_emptied(self, tmp_path: Path):
+        cache = tmp_path / "image_cache"
+        (cache / "ab" / "ab01").mkdir(parents=True)
+        (cache / "ab" / "ab01" / "normal_0.jpg").write_bytes(b"\xff\xd8pretend")
+
+        cdp._empty_image_cache(tmp_path)
+
+        assert not cache.exists() or not any(cache.rglob("*"))
+
+    def test_an_absent_cache_is_a_no_op(self, tmp_path: Path):
+        cdp._empty_image_cache(tmp_path)  # nothing to raise, nothing created
+
+        assert not (tmp_path / "image_cache").exists()
+
+    def test_files_that_survive_are_a_refusal_naming_the_stakes(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
+        """An rmtree that removes nothing must end the run, not let a 'cold' arm run half-warm."""
+        cache = tmp_path / "image_cache"
+        cache.mkdir()
+        (cache / "held.jpg").write_bytes(b"held open")
+        monkeypatch.setattr(cdp.shutil, "rmtree", lambda *args, **kwargs: None)
+        monkeypatch.setattr(cdp.time, "sleep", lambda seconds: None)
+
+        with pytest.raises(SystemExit) as refused:
+            cdp._empty_image_cache(tmp_path)
+
+        assert "mislabelled measurement" in str(refused.value)
+        assert "1 file(s) survived" in str(refused.value)

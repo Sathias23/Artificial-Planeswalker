@@ -430,6 +430,22 @@ async def read_card_image(
             )
         raise
 
+    # One INFO line per PAID network exchange, and its gate is the `fetch_image` call itself —
+    # the same gate as the failure line below, so the two lines partition every real CDN fetch
+    # between them (17-3). This is CM-2's observation seam: the unit tests prove once-per-key on
+    # a recorder, but a real session had no way to show it — a successful fetch logged nothing,
+    # so `companion.log` could not distinguish "served warm" from "fetched again". Grouping these
+    # lines per (id, face, size) per cache lifetime is how a duplicate is now observable. Warm
+    # cache hits and negative-cache refusals return above and add nothing here, so the log rate
+    # is bounded by the fetch rate — the failure line's own argument.
+    logger.info(
+        "Card %s face %d (%s) fetched from the CDN (%d bytes)",
+        scryfall_id,
+        face,
+        size,
+        len(body),
+    )
+
     # Cleared on success, which is the half of recovery a functional test misses (AC 7): ending the
     # WINDOW is not the same as forgetting the HISTORY, and a key that failed four times and then
     # succeeded must start its next failure at the base delay rather than at the escalated one.
