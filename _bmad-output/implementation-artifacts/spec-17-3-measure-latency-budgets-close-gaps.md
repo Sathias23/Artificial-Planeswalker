@@ -153,7 +153,8 @@ Deferred: the cold-open drift trend (O1) — pre-existing, recorded in frontmatt
 
 ## Auto Run Result
 
-**Executed 2026-08-22. All budgets held; nothing pending acceptance; `deferred` stays empty.**
+**Executed 2026-08-22. All budgets held; nothing pending acceptance; `deferred` carries one
+medium item — the cold-open (NFR-05) drift diagnosis (O1), per this spec's frontmatter.**
 
 Implementation (Tasks 1–3): fetch-success INFO line in `cards.py` (id/face/size + byte count,
 lazy `%` args, gated on the `fetch_image` call exactly as the failure line is); five caplog
