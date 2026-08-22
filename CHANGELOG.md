@@ -45,6 +45,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other push tools it validates nothing against the database, accepts an empty
   list as a legitimate "no grouping worth drawing", and reports
   `app_not_running` when the companion is not up.
+- **Open the companion from the agent.** A read-only **`companion_status`**
+  tool reports whether the companion is running, its URL, how many browser
+  tabs are connected, and the exact launch command for this install (the
+  `--directory` form, so it works from a plugin install and a clone alike). A
+  new **`companion` skill** drives it: status first, then the launch command
+  in a background shell of the agent's own, wait for the URL line, confirm —
+  so "open the companion" works without the user knowing the command. The
+  MCP server never starts the companion itself.
+- **`companion --open`** — a bare flag that pops the default browser on the
+  companion's URL from the companion's own process once it is serving; if a
+  companion is already running, it opens a tab on *that* instance and exits
+  `0`. A browser that cannot be opened is a logged warning, never a failure.
+- **`clients` on `GET /health`** — an optional integer beside `instance_id`:
+  how many tabs hold an open WebSocket. The only read-only tab count the
+  companion exposes; `companion_status` reads it.
 - **Self-diagnosable startup.** The preferred port is 8765, overridable with
   `--port` (highest precedence) or `COMPANION_PORT`; a value outside
   `0..65535` from either source is ignored with a warning rather than

@@ -46,7 +46,8 @@
    in DESIGN.md, so `findRoleWithoutCompanions` requires nothing beside them — unlike
    `--type-label` and `--type-micro`, which drag tracking and uppercase, and unlike
    `--type-numeric`, which drags `font-variant-numeric`. Nothing on this panel is numeric, so
-   `findUnpairedNumericRole` does not apply either.
+   `findUnpairedNumericRole` does not apply either. The 17.5 deck chips keep this true: they take
+   `--type-body`, not `--type-micro` (see the deck-list rule at the bottom for why).
 
    Every size and weight here comes FROM the role token. No `font-size`, no `font-weight`, no
    `line-height` appears in this file — they are carried by the role, never set beside it. */
@@ -107,15 +108,37 @@
    No heading over it, and that is a copy decision rather than a layout one: EXPERIENCE.md
    writes "Below: the available-deck list ... (names only)" and writes no label for it, so a
    label here would be the one thing this story exists to prevent — a user-facing sentence with
-   no UX review behind it. An unlabelled list still announces as "list, N items". */
+   no UX review behind it. An unlabelled list still announces as "list, N items".
+
+   CHIPS, NOT ROWS (17.5). Forty-odd names in a vertical list ran taller than the viewport on the
+   first screen anyone sees, so the `<ul>` wraps its `<li>`s as quiet chips instead — the
+   semantics (`<ul>/<li>`, non-clickable) are untouched, only the geometry. The chip is DESIGN.md's
+   `components.welcome.deck-chip`: hairline border, `{rounded.pill}`, `{colors.surface-well}` (the
+   same recess the command chip above steps into), `{typography.body}` — NOT `--type-micro`,
+   whose uppercase companion is mandatory (`findRoleWithoutCompanions`) and would destroy a
+   mixed-case deck NAME, the wall DESIGN.md's connection-pill ruling already hit: a name is user
+   data — `{colors.text-secondary}`. `max-width: 100%; min-width: 0; overflow-wrap: break-word` so
+   a name wraps inside its chip rather than past the panel — breaking inside a word only when a
+   single word is wider than the chip, never to pack the row. Every length is a spacing token,
+   so no px literal beyond the cited hairline and no new citation.
+   1px — DESIGN.md, `components.welcome.deck-chip.border`: "1px solid {colors.border-hairline}". */
 .state-panel-decks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
   margin: var(--space-4) 0 0;
   padding: 0;
-  color: var(--text-secondary);
-  font: var(--type-body);
   list-style: none;
 }
 
-.state-panel-decks li + li {
-  margin-top: var(--space-1);
+.state-panel-decks li {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-pill);
+  background: var(--surface-well);
+  color: var(--text-secondary);
+  font: var(--type-body);
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: break-word;
 }

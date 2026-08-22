@@ -29,6 +29,7 @@ or uvicorn. ``tests/unit/companion/test_import_boundary.py`` enforces the differ
 
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
@@ -36,6 +37,9 @@ from pydantic import BaseModel
 from sqlalchemy.exc import DatabaseError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.companion.client import base_url as _client_base_url
+from src.companion.client import live_instance as _client_live_instance
+from src.companion.client import probe_health as _client_probe_health
 from src.companion.client import push_event as _client_push_event
 from src.companion.client import set_active_deck as _client_set_active_deck
 from src.companion.contracts import (
@@ -127,8 +131,9 @@ _MESSAGES = {
         "companion printed when it started."
     ),
     "app_not_running": (
-        "The companion app isn't running, so there is nothing to display on. Start it, then ask "
-        "me again."
+        "The companion app isn't running, so there is nothing to display on. You can open it "
+        "for the user: call companion_status and run the launch command it returns (the "
+        "companion skill walks through it), then ask again."
     ),
     "payload_rejected": "The companion refused the request, so the display did not change.",
     "backend_error": "The companion is running but the change didn't land. Try again.",
@@ -289,8 +294,9 @@ def _push_messages(noun: str) -> dict[str, str]:
             "URL the companion printed when it started."
         ),
         "app_not_running": (
-            f"The companion app isn't running, so the {noun} have nowhere to appear. Start it to "
-            "see them on the glass — the content is in chat regardless."
+            f"The companion app isn't running, so the {noun} have nowhere to appear. Offer to "
+            "open it — companion_status returns the launch command, and the companion skill "
+            "walks through it — the content is in chat regardless."
         ),
         "payload_rejected": (
             f"The companion refused the {noun}, so none of them were displayed. The content is in "
@@ -707,4 +713,126 @@ async def show_groups(*, payload: GroupsPayload) -> ShowGroupsResult:
         result_cls=ShowGroupsResult,
         messages=_GROUPS_PUSH_MESSAGES,
         shown=f"{items_pushed} {groups}",
+    )
+
+
+_INSTALL_ROOT = Path(__file__).resolve().parents[3]
+"""The uv project directory the companion is launched from, derived from this file's own location.
+
+``src/mcp_server/tools/companion.py`` is three packages below the project root, so ``parents[3]``
+is the directory holding ``pyproject.toml`` — the repo checkout for a clone, and
+``<plugin>/server`` for a plugin install, where the README's ``--directory`` anchor already
+points. Derived from ``__file__`` rather than ``${CLAUDE_PLUGIN_ROOT}`` because nothing inside
+``src/`` may depend on the host's environment (17.4, Never), and the file's own path is the one
+fact true on both install shapes.
+"""
+
+
+def launch_command() -> str:
+    """The exact shell command that starts the companion and opens a browser tab on it (17.4).
+
+    The ``--directory`` form so the same string works from any working directory and for a plugin
+    install (deferred-work.md:6516); ``--open`` so the page appears without a second step. The
+    companion's own process opens the browser — the MCP server never spawns it (AD-15); the agent
+    runs this in a background shell it owns.
+
+    Returns:
+        One command line, quoted for a shell.
+    """
+    return f'uv run --directory "{_INSTALL_ROOT}" artificial-planeswalker companion --open'
+
+
+class CompanionStatusResult(BaseModel):
+    """Structured result of ``companion_status`` — read-only, and the agent's route to the glass.
+
+    The one companion tool that carries no content and sends no token: it answers "is a companion
+    running, is anyone looking at it, and how do I start one?" so the agent can *open* the
+    companion rather than telling the user to. Liveness is proven the same way every push tool
+    proves it — :func:`~src.companion.client.live_instance`'s instance-id match against the
+    discovery file — and nothing weaker: a stale file, a foreign server on the port, or a
+    mismatched id all read as ``not_running``. The token the discovery file carries is never read
+    into this result.
+
+    Attributes:
+        status: ``running`` (a companion matching the discovery file is answering) or
+            ``not_running`` (nothing provable is). ``error`` is reserved and never minted today —
+            every way the probe can fail is ``not_running`` by the client's own contract.
+        url: The running companion's base URL, or ``None`` when there is none to name.
+        clients: How many browser tabs are connected, when the companion said (17.4's ``/health``
+            field). ``None`` when not running, or when an older companion answered without it.
+        launch_command: The exact command that starts the companion and opens a tab on it. Set on
+            **every** status — on ``running`` with no tab open, the same command's already-running
+            branch opens a tab on the live instance and exits ``0``, which is the first thing to
+            try; handing the user ``url`` is the fallback when no browser can open. The agent may
+            add ``--port N`` when the user asked for a specific port; nothing else about it should
+            change.
+        message: One short sentence telling the agent what to do next.
+    """
+
+    status: Literal["running", "not_running", "error"]
+    url: str | None = None
+    clients: int | None = None
+    launch_command: str
+    message: str
+
+
+async def companion_status() -> CompanionStatusResult:
+    """Report whether the companion is running, who is watching, and how to start it (17.4).
+
+    Read-only. :func:`~src.companion.client.live_instance` does the whole proof — discovery file,
+    probe, identity match — and its record is used only for the *port*; the token beside it is
+    never read here. One more :func:`~src.companion.client.probe_health` then reads the tab count,
+    because ``live_instance`` hands back the record rather than the health body. Two probes rather
+    than a widened client return shape: the client's contract is "a proven record", and changing
+    it for one reader would ripple into every caller the push path has.
+
+    The second probe is held to the same proof as the first: no body, or a body whose
+    ``instance_id`` is not the proven record's, is ``not_running`` — a companion that died between
+    the two probes, or a foreign server that took the port in that window, is never reported as
+    running. A negative ``clients`` (a malformed body) reads as ``None``, so the message never
+    names a negative tab count.
+
+    Never raises. Both client calls promise the same, and a stale discovery file is the ordinary
+    ``not_running`` outcome, not an error (FR-12).
+
+    Returns:
+        A :class:`CompanionStatusResult`.
+    """
+    command = launch_command()
+    not_running = CompanionStatusResult(
+        status="not_running",
+        launch_command=command,
+        message=(
+            "The companion isn't running. Offer to open it for the user: run launch_command in "
+            "a background shell, wait for its URL line, and a browser tab opens on it."
+        ),
+    )
+    live = await _client_live_instance()
+    if live is None:
+        return not_running
+    health = await _client_probe_health(live.port)
+    if health is None or health.instance_id != live.instance_id:
+        logger.debug(
+            "Port %d stopped answering as instance %s between probes; treating as app not running",
+            live.port,
+            live.instance_id,
+        )
+        return not_running
+    url = _client_base_url(live.port)
+    clients = health.clients if health.clients is not None and health.clients >= 0 else None
+    if clients:
+        tabs = "tab" if clients == 1 else "tabs"
+        message = f"The companion is running at {url} with {clients} {tabs} open — nothing to do."
+    else:
+        message = (
+            f"The companion is running at {url} but no browser tab is open. Run launch_command — "
+            f"its --open opens a tab on the running instance; give the user {url} only if the "
+            "browser can't open."
+        )
+    return CompanionStatusResult(
+        status="running",
+        url=url,
+        clients=clients,
+        launch_command=command,
+        message=message,
     )

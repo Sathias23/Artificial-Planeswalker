@@ -1,0 +1,39 @@
+/* The Welcome surface (story 17.5): hero art above the no-active-deck State panel.
+
+   NO MOTION. No `transition`, no `animation` — the same ruling StatePanel.css carries: this
+   REPLACES the main surface, and animating its arrival draws the eye to the calmest thing on
+   screen. Nothing here needs a reduced-motion fallback. */
+
+/* 720px — DESIGN.md, `components.welcome.max-width: 720px`: wider than the panel's 480px so the
+   art reads as a banner; centred in the single full-width track the shell gives it. The gap
+   between hero and panel is `{spacing.5}`. */
+.welcome {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+/* The banner. NOT `aspect-ratio`: the shipped tree writes that property EXACTLY ONCE, on
+   `.card-shape`, and token-usage.test.ts gates a second one anywhere (c4-3 AC 2) — so the
+   banner is capped by height instead. 240px — DESIGN.md, `components.welcome.hero-max-height`:
+   the source is 1536x1024 and would stand 480px tall at the block width; `max-height` with
+   `object-fit: cover` crops it to a banner, anchored by `object-position` — DESIGN.md,
+   `components.welcome.hero-position: 'center 20%'` — so the title in the artwork stays visible.
+   A `max-height` rather than a `height` is the edge-case ruling: if the file is missing, `alt=""`
+   plus no declared height reserves no 240px hole (the hairline border leaves a thin strip; the
+   `<img>`'s intrinsic `width`/`height` attributes only size the box while the bytes are still
+   expected). `height: auto` keeps those attributes from fixing the aspect once the width scales.
+   Display-block kills the inline baseline gap. 1px — DESIGN.md, `components.welcome.hero-border`:
+   "1px solid {colors.border-hairline}". */
+.welcome-hero {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 240px;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+  object-fit: cover;
+  object-position: center 20%;
+}

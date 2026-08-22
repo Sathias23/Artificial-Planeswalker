@@ -1325,6 +1325,13 @@ describe('the component primitives are presentation-only, and that is asserted',
       file: 'src/components/DeckBadges/DeckBadges.tsx',
       imports: ['../Badge/Badge', './DeckBadges.css'],
     },
+    // Story 17.5's one. Composes `StatePanel` under a decorative `<img>` and nothing else — no
+    // react import (its one prop is a string array), no handlers, no ref, no request: the hero's
+    // `src` is a browser fetch, never the app's.
+    {
+      file: 'src/components/Welcome/Welcome.tsx',
+      imports: ['../StatePanel/StatePanel', './Welcome.css'],
+    },
     // Story c4-3's two, and the first component in this list whose PROPS are a discriminated
     // union rather than a flat bag: the loading well's member has one property, so there is
     // nothing to say in a well that must stay silent, and the unknown variant has no `name` for
@@ -1375,8 +1382,8 @@ describe('the component primitives are presentation-only, and that is asserted',
     // working as designed rather than a number being bumped: the component was written,
     // `git ls-files` saw it, and this list had to name it before the suite went green again.
     // 18 at c4-8's `AnalysisRow` — the pair row `AppShell.tsx:127` assigned to that story by
-    // name, built one story before the panel that shares it.
-    expect(PRIMITIVES).toHaveLength(18)
+    // name, built one story before the panel that shares it. 19 at 17.5's `Welcome.tsx`.
+    expect(PRIMITIVES).toHaveLength(19)
     for (const { file } of PRIMITIVES) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }

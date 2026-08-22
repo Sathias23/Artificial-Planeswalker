@@ -299,7 +299,8 @@ go deeper. For a saved Golgari sacrifice deck:
 If the user runs the Artificial Planeswalker **companion app** (a localhost browser view of the
 active deck), this server also exposes push tools that mirror your analysis onto that glass:
 `companion_set_active_deck`, `companion_show_suggestions`, `companion_show_swaps`,
-`companion_show_tier_list`, `companion_show_groups` (each `mcp__artificial-planeswalker__<tool>`).
+`companion_show_tier_list`, `companion_show_groups`, plus the read-only `companion_status` (each
+`mcp__artificial-planeswalker__<tool>`).
 They add a **visual channel — never a replacement**: push AND still give your full answer in chat.
 
 Natural fits for this skill:
@@ -312,8 +313,9 @@ Rules that bite:
   card *name* in an id field will not render.
 - `companion_set_active_deck(deck_id)` first when the conversation settles on a deck, so the glass
   follows the conversation.
-- Every push tool degrades gracefully: `app_not_running` just means the user has no glass open —
-  skip the visual channel silently and answer in chat as normal. Never block, retry-loop, or
+- Every push tool degrades gracefully: `app_not_running` just means the companion isn't up —
+  answer in chat as normal, then **offer to open it** once via the `companion` skill
+  (`companion_status` → its `launch_command` in a background shell). Never block, retry-loop, or
   apologise for it.
 
 ## Companion skills (reference, don't depend)

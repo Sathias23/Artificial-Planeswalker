@@ -3747,3 +3747,59 @@ So that "under 250 ms" is a number someone observed instead of a sentence someon
 **Given** the profiling results
 **When** they are recorded
 **Then** they are written down with the hardware and conditions they were measured under
+
+### Story 17.4: Open the companion from the agent
+
+As a user of the plugin,
+I want to say "open the companion" and have the agent put it on screen,
+So that I never have to know the launch command to see the glass.
+
+**Acceptance Criteria:**
+
+**Given** a fresh Claude Code session with the plugin and no companion running
+**When** the user says "open the companion"
+**Then** the agent calls the read-only `companion_status` tool, launches the printed `launch_command` in a background shell, and a browser tab opens on the companion URL with no manual command typed (AD-15 intact: the MCP server never spawns, detaches or supervises the companion)
+
+**Given** a live companion with one tab open
+**When** `companion_status` is called
+**Then** it reports `running` with `clients=1` and the agent does nothing further
+
+**Given** a live companion with no tab open
+**When** `companion_status` is called
+**Then** it reports `running` with `clients=0` and tells the agent to open the URL or run the launch command, whose `--open` flag opens a tab on the running instance and exits `0`
+
+**Given** `companion --open`
+**When** it binds
+**Then** the URL line is printed, then the browser is opened on that URL from the companion's own process, then it serves; a browser failure is a logged warning and never changes the exit status
+
+**Given** the `app_not_running` copy in the push tools and the four existing skills
+**When** a push finds the companion closed
+**Then** the agent is told it can offer to open it via the `companion` skill, rather than "skip silently"
+
+**Given** the full suite, ruff and mypy
+**When** run
+**Then** green; the tool-name and skill-set pins include `companion_status` and the `companion` skill, and `plugin/` matches the build
+
+### Story 17.5: Welcome surface — a first impression instead of placeholders and a list
+
+As a user opening the companion with no active deck,
+I want the first screen to read as a finished welcome — hero art, the panel, my decks as quiet chips,
+So that the first thing I see is not scaffolding copy and a list taller than the window.
+
+**Acceptance Criteria:**
+
+**Given** the companion is open with no active deck
+**When** the page renders
+**Then** no text matching `/c[0-9]-[0-9]+/` appears anywhere on the glass, the hero image (`/hero.jpg`, decorative, `alt=""`) is visible above "No deck on the glass.", and the deck names read as a wrapping chip row with no link or button in the subtree — state-panel copy byte-identical to EXPERIENCE.md, list semantics unchanged
+
+**Given** no active deck
+**When** the DOM is inspected
+**Then** `main` contains exactly one `.app-shell-column` and `.app-shell-columns[data-single="true"]`; given a loaded deck, two columns and no `data-single`
+
+**Given** any other system panel (db-not-initialized, updating, stalled, disconnected, internal-error)
+**When** rendered
+**Then** no `img` is in the document and the panel is unchanged
+
+**Given** `cd ui && npm test && npm run lint && npm run build`
+**When** run
+**Then** green and `src/companion/app/static/hero.jpg` exists; `uv run pytest -q -m "not integration"` green; `plugin/` matches the build

@@ -52,6 +52,7 @@ SKILLS = [
     "mana-curve-analysis",
     "synergy-discovery",
     "format-legality",
+    "companion",
 ]
 
 # Server files copied verbatim into <plugin>/server/. src/ is handled separately so we

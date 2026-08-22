@@ -372,6 +372,19 @@ class TestCacheHeaders:
         assert response.status_code == 200
         assert response.headers["cache-control"] == "no-cache"
 
+    async def test_the_hero_art_is_served_from_the_bundle_root(self, lifespan_client):
+        # Story 17.5: the Welcome surface's banner. Pinned here because it is the headline asset
+        # of the first screen and nothing else would notice its absence — the SPA renders
+        # `<img alt="">`, so a missing file is a silent hairline strip, not a failing test. Same
+        # semantics as the favicon: unhashed, outside assets/, so it must revalidate.
+        async with lifespan_client(build_app()) as client:
+            response = await client.get("/hero.jpg")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "image/jpeg"
+        assert response.headers["cache-control"] == "no-cache"
+        assert len(response.content) > 100_000
+
 
 class TestConditionalRequestsStillWork:
     """AC 7: subclassing StaticFiles rather than hand-rolling means ETag/304 come free."""

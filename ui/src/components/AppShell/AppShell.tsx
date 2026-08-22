@@ -44,8 +44,10 @@ import { filled } from '../filled'
  * designs. `ui/tests/shell.test.ts` asserts this rather than leaving it to inspection, so the
  * posture is a gate and not an omission.
  *
- * Every empty region renders a placeholder line naming the story that replaces it (AC 21), so
- * filling a region is a search for its own story id rather than an archaeology exercise.
+ * An empty region renders NOTHING (17.5). From c2-1 to 17.4 it rendered a placeholder line
+ * naming the story that would fill it (AC 21) — scaffolding copy with a scheduled death, which
+ * came once every region had an owner. When `right` is empty the second column is not rendered
+ * and the grid collapses to one track (`data-single`), so the Welcome surface gets the width.
  */
 
 export interface AppShellProps {
@@ -68,12 +70,12 @@ export interface AppShellProps {
    * **The landmark counts do not move**: still exactly one `banner`, one `main`, one `contentinfo`.
    * A `<div>` before the header is not a landmark, and this slot must never become a fourth.
    *
-   * NO PLACEHOLDER, and that is the one deliberate break from every other slot in this file. Every
-   * empty region below renders a line naming the story that fills it (AC 21) — but that line is
+   * NO PLACEHOLDER — originally the one deliberate break from every other slot in this file, when
+   * every empty region below rendered a line naming the story that fills it (AC 21): that line was
    * rendered TEXT, and this element sits before the header on every surface including the ones
-   * where the link is correctly absent. A placeholder here would put a story key on the glass
-   * permanently and in the most prominent position in the document, which is the exact defect the
-   * C3 retro's F1 action item is about. `undefined` renders nothing at all.
+   * where the link is correctly absent, so a story key here would have sat on the glass permanently
+   * in the most prominent position in the document (the C3 retro's F1 defect). Since 17.5 every
+   * slot renders nothing when empty, so this is no longer an exception. `undefined` renders nothing.
    */
   skipLink?: ReactNode
   /**
@@ -160,14 +162,17 @@ export interface AppShellProps {
 }
 
 /**
- * `content` if a region was filled, otherwise the placeholder line that names its owner.
+ * `content` if a region was filled, otherwise NOTHING. Until story 17.5 this returned a
+ * placeholder line naming the story that would fill the region (c2-1, AC 21); every region has
+ * had an owner since c6-8, so that copy met its scheduled death and the helper now only keeps
+ * `filled()`'s semantics in one place — `false`, `[]`, an empty Fragment and an empty Set all
+ * still count as empty, and a non-empty array still renders.
  * Module-local on purpose: `react-refresh/only-export-components` is an `error` here and
  * `allowConstantExport` admits constants and types but NOT a helper function, so exporting
  * this beside the component would turn the gate red. Helpers stay unexported, or move to
  * their own module.
  */
-const slot = (content: ReactNode, placeholder: string): ReactNode =>
-  filled(content) ? content : <p className="app-shell-placeholder">{placeholder}</p>
+const slot = (content: ReactNode): ReactNode => (filled(content) ? content : null)
 
 export function AppShell({
   skipLink,
@@ -189,9 +194,10 @@ export function AppShell({
           nothing else. It is outside `<header>`, `<main>` and `<footer>`, so the three landmark
           counts are unchanged; `AppShell.test.tsx` asserts both halves.
 
-          Rendered bare rather than through `slot()`: that helper's job is to substitute a
-          placeholder naming the owning story, and this is the one region that must render NOTHING
-          when empty — see the prop's docstring. */}
+          Rendered bare rather than through `slot()` — historically because that helper substituted
+          a placeholder naming the owning story, and this region had to render NOTHING when empty
+          (see the prop's docstring). Since 17.5 `slot()` renders nothing too; the bare form stays
+          as the stronger statement. */}
       {skipLink}
       <header className="app-shell-header">
         {/* `data-updating` on the IDENTITY BLOCK, not the header — the `.agent-view[data-entering]`
@@ -223,37 +229,19 @@ export function AppShell({
             </span>
           ) : null}
         </div>
-        <div className="app-shell-badges">
-          {/* Names the FILLERS (c4-2, c4-10) as well as the primitive's supplier (c2-7). AC 21
-              exists so the story that replaces a region finds its own id in the copy — and
-              c2-7 ships Badge without filling this slot, so a line naming only c2-7 is a line
-              the stories that actually fill it would never search for. */}
-          {slot(
-            badges,
-            'Format and size badges land here — c2-7 supplies the Badge primitive, c4-2 and ' +
-              'c4-10 fill them.',
-          )}
-        </div>
-        <div className="app-shell-nav">{slot(nav, 'Agent-view nav pills land here — c6-8.')}</div>
+        <div className="app-shell-badges">{slot(badges)}</div>
+        <div className="app-shell-nav">{slot(nav)}</div>
       </header>
 
       {/* THE SINGLE SCROLL CONTAINER (Q2). Both columns live inside it, so `main` is the one
           landmark AC 14 asks for and the one scroller the footer's pinning depends on. */}
-      <main className="app-shell-columns">
-        <div className="app-shell-column">
-          {slot(
-            left,
-            'The card-art grid lands here — c4-4 — with the mana-curve and colour-distribution ' +
-              'panels below it as a 1:1 pair — c4-8 composes the row, c4-9 supplies the second ' +
-              'panel.',
-          )}
-        </div>
-        <div className="app-shell-column">
-          {slot(
-            right,
-            'Card detail — c4-5 — the deck list — c4-7 — and the format check — c4-10 — stack here.',
-          )}
-        </div>
+      <main className="app-shell-columns" data-single={filled(right) ? undefined : 'true'}>
+        {/* `data-single` ON THE GRID, present only when the right column is empty (17.5): the
+            `data-updating` idiom — state travels as an attribute and the stylesheet decides what
+            it looks like. The second column is then not rendered at all rather than rendered
+            empty, so the Welcome surface gets the full width instead of a dead 452px track. */}
+        <div className="app-shell-column">{slot(left)}</div>
+        {filled(right) ? <div className="app-shell-column">{right}</div> : null}
       </main>
 
       {/* AFTER BOTH COLUMNS, BEFORE THE FOOTER — WHICH IS THE WHOLE OF THE RULING (c5-7 Q1).
@@ -263,19 +251,17 @@ export function AppShell({
           cell were updated from their "(connection pill — c5-7)" markers to this shipped truth in
           the same commit.
 
-          Rendered bare rather than through `slot()`, for the skip link's reason: a placeholder
-          naming the owning story would be pinned to a window corner permanently. See the prop. */}
+          Rendered bare rather than through `slot()`, for the skip link's reason (and, since 17.5,
+          with the same result either way). See the prop. */}
       {connectionPill}
-      <footer className="app-shell-footer">
-        {slot(footer, 'Scryfall and Fan Content attribution lands here — c2-10.')}
-      </footer>
+      <footer className="app-shell-footer">{slot(footer)}</footer>
 
       {/* AC 9 — the element is conditional, the SLOT is the CSS rule. Rendering `null` costs
           nothing and intercepts nothing; an unconditional wrapper would cover the page.
 
           `filled`, not raw truthiness — the same treatment `slot()` got, applied to the one
-          place that had been left out of it. The stakes here are higher than a missing
-          placeholder: `overlay={views.map(...)}` over an empty list, or `overlay={' '}`, would
+          place that had been left out of it. The stakes here are higher than a blank region:
+          `overlay={views.map(...)}` over an empty list, or `overlay={' '}`, would
           mount a full-window FIXED element containing nothing, which is exactly AC 9's
           click-swallower presenting as "the app stopped responding to clicks". */}
       {filled(overlay) ? <div className="app-shell-overlay">{overlay}</div> : null}

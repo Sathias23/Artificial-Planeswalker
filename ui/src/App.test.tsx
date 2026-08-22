@@ -155,6 +155,9 @@ const push = (kind: string, payload: Record<string, unknown> = {}, id = `id-${ki
 
 const ATRAXA_DECK_ID = '813d0434-1bed-4419-bf9d-d9e4070704c4'
 
+/** The no-active-deck panel's accessible name — EXPERIENCE.md's headline, byte for byte. */
+const NO_DECK = 'No deck on the glass.'
+
 /**
  * One deck row, with the two derivation-bearing fields REAL rather than blanked (c4-9).
  *
@@ -673,6 +676,108 @@ describe('the app comes alive on its own (AC 4, FR-22)', () => {
     // `EXPERIENCE.md`: "names only, non-clickable — the agent drives".
     expect(within(panel).queryAllByRole('link')).toHaveLength(0)
     expect(within(panel).queryAllByRole('button')).toHaveLength(0)
+  })
+
+  it('is the WELCOME surface — hero above the panel, single track, no story key (17.5)', async () => {
+    booting(activeDeck(null))
+    answering(decks('Boros Aggro', 'Dimir Mill'))
+
+    render(<App />)
+    await settle()
+
+    const panel = screen.getByRole('region', { name: 'No deck on the glass.' })
+    const hero = document.querySelector('img.welcome-hero')!
+    expect(hero).not.toBeNull()
+    expect(hero.getAttribute('alt')).toBe('')
+    expect(panel.contains(hero)).toBe(false)
+    expect(hero.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // One column, marked single; no placeholder copy anywhere on the glass.
+    const main = screen.getByRole('main')
+    expect(main.querySelectorAll('.app-shell-column')).toHaveLength(1)
+    expect(main.getAttribute('data-single')).toBe('true')
+    expect(document.body.textContent).not.toMatch(/c[0-9]-[0-9]+/)
+    // The chips are still a names-only list, and NOTHING in the whole Welcome subtree — hero
+    // included — is a link or a button (the Welcome.test.tsx assertion, repeated at app level).
+    const welcome = document.querySelector('.welcome') as HTMLElement
+    expect(within(panel).getAllByRole('listitem')).toHaveLength(2)
+    expect(within(welcome).queryAllByRole('link')).toHaveLength(0)
+    expect(within(welcome).queryAllByRole('button')).toHaveLength(0)
+    expect(welcome.querySelectorAll('a, button, [tabindex]')).toHaveLength(0)
+  })
+
+  // ALL FIVE non-welcome panels, each driven by its real trigger where the harness has one: the
+  // three wire arms by their refusal, `disconnected` by the real backoff (the c5-6 recipe), and
+  // `database-updating-stalled` by the store write its stalled clock performs (the
+  // STORE_DRIVEN_ARMS precedent — its trigger is a timer this suite does not own).
+  it.each([
+    ['database-not-set-up (fresh install)', () => {}],
+    ['database-updating', () => answering(refusal('database_unavailable', 503))],
+    ['internal-error', () => answering(refusal('internal_error', 500))],
+    [
+      'database-updating-stalled',
+      () => {
+        booting(activeDeck(null))
+        answering(decks())
+      },
+      () => {
+        act(() => {
+          useSystemStore.setState({ panel: 'database-updating-stalled', decks: [] })
+        })
+      },
+    ],
+    [
+      'disconnected',
+      () => {
+        booting(activeDeck(null))
+        answering(decks())
+      },
+      async () => {
+        vi.stubGlobal(
+          'fetch',
+          vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
+        )
+        await drop()
+        await advance(DISCONNECTED_AFTER_MS)
+      },
+    ],
+  ] as [string, () => void, (() => void | Promise<void>)?][])(
+    'renders NO hero and no image behind the %s panel (17.5)',
+    async (_label, arrange, afterMount) => {
+      arrange()
+      render(<App />)
+      await settle()
+      await afterMount?.()
+
+      expect(document.querySelector('.state-panel')).not.toBeNull()
+      expect(screen.queryByRole('region', { name: NO_DECK })).toBeNull()
+      expect(document.querySelectorAll('img')).toHaveLength(0)
+      expect(document.querySelector('.welcome')).toBeNull()
+    },
+  )
+
+  it('replaces the Welcome with the two-column deck surface when the agent sets a deck (17.5)', async () => {
+    // Boot with NO deck — the Welcome is on the glass — then the agent sets one and the socket
+    // carries it. The same `deck_changed` recipe the c5-6 stalled-recovery test drives.
+    booting(activeDeck(null))
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+
+    render(<App />)
+    await settle()
+    await connect()
+    expect(document.querySelector('.welcome')).not.toBeNull()
+    expect(screen.getByRole('main').getAttribute('data-single')).toBe('true')
+
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    answering(decks('Atraxa Counter Cabinet v2 (owned)'))
+    await push('deck_changed', { deck_id: ATRAXA_DECK_ID })
+
+    const main = screen.getByRole('main')
+    expect(document.querySelector('.welcome')).toBeNull()
+    expect(main.querySelectorAll('.app-shell-column')).toHaveLength(2)
+    expect(main.hasAttribute('data-single')).toBe(false)
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Atraxa Counter Cabinet v2 (owned)' }),
+    ).toBeVisible()
   })
 
   it('renders an empty deck list as nothing extra — the ordinary fresh answer (AC 5)', async () => {
@@ -2205,10 +2310,16 @@ describe('never blank, defined operationally (story c4-12, AC 23, AC 24)', () =>
    * at the same time. Recorded, not repaired.
    *
    * ⚠️ **WHAT THIS CANNOT SEE.** jsdom has no layout engine and no paint. "Not blank" here means
-   * *the DOM carries text in one of the four slots*, which is strictly weaker than *a human sees
+   * *the DOM carries text in one of the slots*, which is strictly weaker than *a human sees
    * something*: a slot filled with `color: transparent`, a zero-height column or an off-screen
    * element would all pass. The visual half is the eye-check's, and it is recorded in the story
    * rather than claimed here.
+   *
+   * FOUR SLOTS ON A DECK, THREE BEHIND A PANEL (17.5). The shell renders the second
+   * `.app-shell-column` only when `right` is filled, so on every system-panel arm there is no
+   * right column at all — `right` reads as `''` below because the element is ABSENT, not because
+   * it is empty. The deck-surface cases assert all four; the panel cases assert three, and that
+   * difference is the single-track grid doing its job rather than a blank region.
    */
   const slots = () => ({
     header: document.querySelector('.app-shell-header')?.textContent ?? '',
@@ -2272,18 +2383,17 @@ describe('never blank, defined operationally (story c4-12, AC 23, AC 24)', () =>
       render(<App />)
       await settle()
 
-      // ⚠️ ALL FOUR, AND THE FOURTH IS A MEASUREMENT THAT CORRECTS THIS TEST'S FIRST DRAFT. It
-      // asserted `['header', 'left', 'footer']` on the reasoning that `surfaceOf` returns
-      // `{kind:'panel'}` for every refusal and c4-5's Q14 ruling renders the right column only for
-      // `kind === 'deck'` — true, and yet the slot is NOT empty: `AppShell`'s own `slot()` helper
-      // substitutes its placeholder whenever a slot is unfilled, so the right column carries
-      // *"Card detail — c4-5 …"* instead of nothing. That is c2-9's honest-displacement posture
-      // doing exactly its job, and it is also the reason the C3 retro's F1 story-key count is
-      // non-zero at all. Written down here because the first draft's reasoning was sound and its
-      // conclusion was wrong, which is precisely what a measured assertion is for.
-      expect(notBlank(reason)).toEqual(['header', 'left', 'right', 'footer'])
+      // THREE, AND THE RIGHT COLUMN IS ABSENT (17.5). `surfaceOf` returns `{kind:'panel'}` for
+      // every refusal and c4-5's Q14 ruling renders the right column only for `kind === 'deck'`.
+      // From c2-1 to 17.4 the slot was nonetheless NOT empty — `AppShell`'s `slot()` substituted
+      // its placeholder (*"Card detail — c4-5 …"*) whenever a slot was unfilled, and this
+      // assertion measured all four. Story 17.5 retired the placeholders and the shell now
+      // renders no second column at all when `right` is empty (`data-single`), so the honest
+      // measurement is three slots and no story key anywhere on the glass.
+      expect(notBlank(reason)).toEqual(['header', 'left', 'footer'])
       expect(document.querySelector('.state-panel')).not.toBeNull()
-      expect(slots().right).toContain('c4-5')
+      expect(document.querySelectorAll('.app-shell-column')).toHaveLength(1)
+      expect(document.body.textContent).not.toMatch(/c[0-9]-[0-9]+/)
 
       // THE RECOVERY HALF — the title's second clause, and it was MISSING at first review: this
       // loop settled every refusal and never advanced the poll, so "through recovery back to a
@@ -2302,12 +2412,7 @@ describe('never blank, defined operationally (story c4-12, AC 23, AC 24)', () =>
         expect(document.querySelector('.state-panel')).toBeNull()
         expect(document.querySelector('.card-tile')).not.toBeNull()
       } else {
-        expect(notBlank(`${reason} → terminal, still filled`)).toEqual([
-          'header',
-          'left',
-          'right',
-          'footer',
-        ])
+        expect(notBlank(`${reason} → terminal, still filled`)).toEqual(['header', 'left', 'footer'])
         expect(document.querySelector('.state-panel')).not.toBeNull()
       }
 
@@ -2410,7 +2515,6 @@ describe('never blank, defined operationally (story c4-12, AC 23, AC 24)', () =>
  */
 describe('the page reconnects on its own (c5-6)', () => {
   const DISCONNECTED = 'Lost the companion backend.'
-  const NO_DECK = 'No deck on the glass.'
 
   /** A backend that is not there: every route, not just the socket. That is what a restart is. */
   const backendDown = () => {
@@ -2464,7 +2568,7 @@ describe('the page reconnects on its own (c5-6)', () => {
     // …and now the true panel, from the true condition. No token carried it — `disconnected` is
     // in `CLIENT_ONLY_STATES` because there is no response to carry one.
     expect(screen.getByRole('region', { name: DISCONNECTED })).toBeVisible()
-    expect(screen.queryByRole('region', { name: NO_DECK })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'No deck on the glass.' })).toBeNull()
   })
 
   it('KEEPS RETRYING behind the panel, and the panel is not a stop (AC 8)', async () => {
@@ -2730,7 +2834,6 @@ describe('the page reconnects on its own (c5-6)', () => {
  */
 describe('the connection pill reports the real loop (c5-7)', () => {
   const DISCONNECTED = 'Lost the companion backend.'
-  const NO_DECK = 'No deck on the glass.'
 
   const pill = () => document.querySelector('.connection-pill')!
   const dotClass = () => document.querySelector('.connection-pill-dot')!.className
@@ -2913,7 +3016,6 @@ describe('the connection pill reports the real loop (c5-7)', () => {
  * on receipt is exactly what this block pins.
  */
 describe('the glass follows the agent’s active-deck choice (c6-3, AC 2, AC 3, AC 4)', () => {
-  const NO_DECK = 'No deck on the glass.'
   const SKIP_LINK = 'Skip past the deck grid'
   const CARD_DETAIL = 'Card detail'
   const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
@@ -3175,7 +3277,6 @@ describe('the glass follows the agent’s active-deck choice (c6-3, AC 2, AC 3, 
  */
 describe('the glass refetches on deck_changed, coalesced and latest-wins (c7-3)', () => {
   const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
-  const NO_DECK = 'No deck on the glass.'
 
   /** `pathsSince`/friends, re-declared from the c6-3 block above — its consts are block-scoped. */
   const pathsSince = (fetchMock: ReturnType<typeof answering>, from: number) =>
@@ -4145,7 +4246,6 @@ describe('the refetch announces once, politely, on completion (c7-5)', () => {
  */
 describe('deck deletion, and agent views during a refetch (c7-6)', () => {
   const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
-  const NO_DECK = 'No deck on the glass.'
   const SKIP = 'Skip past the deck grid'
   const region = () => document.querySelector('.deck-announcement')
   const settleCount = () => useDeckStore.getState().refetchSettles
