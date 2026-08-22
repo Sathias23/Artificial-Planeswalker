@@ -314,7 +314,7 @@ _PUSH_MESSAGES = _push_messages("suggestions")
 
 Kept as a module-level table rather than rebuilt per call so the sentences stay inspectable where
 the pre-consolidation dict lived — ``TestEveryPushToolSpeaksItsOwnNoun`` in
-``test_companion_tool.py`` reads all three tables by name and pins this one's four sentences
+``test_companion_tool.py`` reads all four tables by name and pins this one's four sentences
 byte-for-byte, so a builder edit that moved a shipped byte fails there rather than shipping.
 """
 

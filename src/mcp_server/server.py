@@ -633,7 +633,12 @@ def build_server(
                 required, zero or more — zero is legal), and ``confidence``
                 (optional, one of ``low``, ``medium``, ``high``).
                 ``payload.title`` is an optional header for the list, up to 80
-                characters; omit it to let the companion use its own.
+                characters; omit it to let the companion use its own. Note the
+                total envelope is capped at 64 KB: a payload that maxes every
+                field cap at once (60 swaps, each with a full 600-character
+                rationale) exceeds it and comes back ``payload_rejected``, so
+                keep large pushes comfortably inside the caps rather than at
+                them.
 
         Returns:
             A result whose ``status`` is ``displayed`` (delivered to at least
@@ -683,7 +688,11 @@ def build_server(
                 empty). Repeating a letter under a different name is legal: the
                 12-tier cap and the 5-letter vocabulary are different quantities.
                 ``payload.title`` is an optional header for the list, up to 80
-                characters; omit it to let the companion use its own.
+                characters; omit it to let the companion use its own. Note the
+                total envelope is capped at 64 KB: a payload that maxes every
+                field cap at once (12 tiers of 60 ids with full names and
+                notes) exceeds it and comes back ``payload_rejected``, so keep
+                large pushes comfortably inside the caps rather than at them.
 
         Returns:
             A result whose ``status`` is ``displayed`` (delivered to at least one
@@ -714,8 +723,8 @@ def build_server(
         or any of this server's search tools returns as the card's ``id``. A card
         name in ``card_ids`` will not render. A group may legitimately name cards
         the active deck does not run — grouping is an argument about cards, not an
-        inventory of the deck. An empty ``card_ids`` list is legal (the companion
-        skips that group's tiles), and an empty ``items`` list is a legitimate
+        inventory of the deck. An empty ``card_ids`` list is legal (the group is
+        not displayed at all), and an empty ``items`` list is a legitimate
         push meaning "I found no grouping worth drawing" — send it rather than
         skipping the call.
 
