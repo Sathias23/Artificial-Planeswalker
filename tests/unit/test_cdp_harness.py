@@ -475,7 +475,9 @@ class TestTheDrainPositiveControl:
         run = _push_run(1, outstanding=106)
 
         assert cdp._push_run_is_valid(run) is None
-        assert cdp._report_push([run], DRAIN_ARGS) == 0
+        # Valid and REPORTED -- but one run is below the drain verdict's evidence floor, so the
+        # exit code refuses (see TestTheDrainEvidenceFloor); the figures still print.
+        assert cdp._report_push([run], DRAIN_ARGS) == 1
         assert "drain arm, layout over 1/1 valid runs" in capsys.readouterr().out
 
         cdp._print_run(run)
@@ -492,8 +494,74 @@ class TestTheDrainPositiveControl:
     def test_a_mixed_set_counts_only_the_draining_run(self, capsys: pytest.CaptureFixture[str]):
         runs = [_push_run(1, outstanding=0), _push_run(2, outstanding=106)]
 
-        assert cdp._report_push(runs, DRAIN_ARGS) == 0
+        assert cdp._report_push(runs, DRAIN_ARGS) == 1
         assert "drain arm, layout over 1/2 valid runs" in capsys.readouterr().out
+
+
+class TestTheDrainEvidenceFloor:
+    """Fewer valid drain runs than the floor is not evidence, however green they look.
+
+    Greptile r1 (PR #98): `_report_push` handed out a passing verdict on one or two valid drain
+    samples -- the story's instrument-failure rule (drain minimum 3) enforced only by the
+    workflow's prose. The figures still print (honest per-run numbers); the VERDICT refuses.
+    """
+
+    def test_three_valid_runs_meet_the_floor_and_earn_the_verdict(
+        self, capsys: pytest.CaptureFixture[str]
+    ):
+        runs = [_push_run(n, outstanding=100 + n) for n in (1, 2, 3)]
+
+        assert cdp._report_push(runs, DRAIN_ARGS) == 0
+        out = capsys.readouterr()
+        assert "drain arm, layout over 3/3 valid runs" in out.out
+        assert "refusing a verdict" not in out.err
+
+    def test_two_valid_of_three_refuse_a_verdict_naming_the_floor(
+        self, capsys: pytest.CaptureFixture[str]
+    ):
+        runs = [
+            _push_run(1, outstanding=106),
+            _push_run(2, outstanding=0),
+            _push_run(3, outstanding=104),
+        ]
+
+        assert cdp._report_push(runs, DRAIN_ARGS) == 1
+        out = capsys.readouterr()
+        assert "drain arm, layout over 2/3 valid runs" in out.out, (
+            "the honest figures must still print; only the verdict is refused"
+        )
+        assert "only 2 valid drain run(s)" in out.err
+        assert str(cdp.DRAIN_MIN_VALID_RUNS) in out.err
+
+    def test_an_over_budget_set_at_the_floor_still_fails_on_the_budget(
+        self, capsys: pytest.CaptureFixture[str]
+    ):
+        runs = [_push_run(n, outstanding=100 + n) for n in (1, 2, 3)]
+        runs[2]["layout_ms"] = cdp.PUSH_BUDGET_MS + 1.0
+
+        assert cdp._report_push(runs, DRAIN_ARGS) == 2, (
+            "the floor gates the verdict's existence, never softens it -- a full set over "
+            "budget is exit 2, not a refusal"
+        )
+        capsys.readouterr()
+
+    def test_the_floor_does_not_gate_the_warm_arm(self, capsys: pytest.CaptureFixture[str]):
+        """One valid warm run has always been reportable; the floor is the drain's alone."""
+        assert cdp._report_push([_push_run(1)], PUSH_ARGS) == 0
+        capsys.readouterr()
+
+    def test_cmd_push_refuses_a_drain_that_cannot_reach_the_floor(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
+        """Refused before anything opens: each drain run is ~99 real CDN fetches, and a set that
+        cannot reach the floor even with every run valid would burn them only to be refused at
+        the report."""
+        with pytest.raises(SystemExit) as refusal:
+            cdp.cmd_push(
+                SimpleNamespace(runs=2, deck_id=None, data_dir=str(tmp_path / "copy"), arm="drain")
+            )
+        assert "evidence floor" in str(refusal.value)
+        assert str(cdp.DRAIN_MIN_VALID_RUNS) in str(refusal.value)
 
 
 class TestPushDrainRefusesTheOperatorsDataDir:

@@ -489,6 +489,15 @@ _CARD_IMAGE_PATTERN = "*/api/card-image/*"
 PUSH_BUDGET_MS = 250
 """NFR-05 / SC-1. Stated here so the exit code and the printed line cannot disagree about it."""
 
+DRAIN_MIN_VALID_RUNS = 3
+"""The drain verdict's evidence floor (17-3 Greptile r1).
+
+The story's instrument-failure rule says fewer valid drain runs than this is not evidence: with
+one or two valid samples the reporter used to hand out a passing verdict anyway, which is the
+"described as insufficient yet counted" trap with a sample-size face. Stated beside the budget
+for the same reason the budget is: the exit code and the printed refusal must not disagree.
+"""
+
 
 def _read_token(data_dir: Path) -> str:
     """Read the live agent credential out of the discovery file the backend just wrote.
@@ -943,6 +952,14 @@ def cmd_push(args: argparse.Namespace) -> int:
         # the loop and report NO VALID RUNS, a refusal that reads as "the app is broken" when the
         # truth is "you asked for no runs".
         raise SystemExit(f"--runs must be at least 1, got {runs_wanted}.")
+    if args.arm == "drain" and runs_wanted < DRAIN_MIN_VALID_RUNS:
+        # Also refused before anything is opened: each drain run costs ~99 real CDN fetches, and
+        # a set that cannot reach the evidence floor even with every run valid would burn them
+        # only to be refused by `_report_push` at the end.
+        raise SystemExit(
+            f"--arm drain needs --runs of at least {DRAIN_MIN_VALID_RUNS} "
+            f"(the drain verdict's evidence floor), got {runs_wanted}."
+        )
     if args.deck_id and args.arm != "drain":
         # A silently ignored argument is an operator who believes they measured a deck they did
         # not: only the drain arm opens a deck view; the other arms read the saved decks
@@ -1137,6 +1154,16 @@ def _report_push(runs: list[dict[str, Any]], args: argparse.Namespace) -> int:
         # Observation only: NFR-05 excludes first-fetch image paint, so this arm has no verdict to
         # give and must not be able to fail a run that is inside the spec.
         return 0
+    if args.arm == "drain" and len(good) < DRAIN_MIN_VALID_RUNS:
+        # The figures above are honest per-run numbers and stay printed; the VERDICT is what a
+        # short set may not have. Without this clause a drain invocation whose queue drained on
+        # two of three runs would exit 0 on the surviving warm-adjacent sample.
+        print(
+            f"\nonly {len(good)} valid drain run(s) -- fewer than the "
+            f"{DRAIN_MIN_VALID_RUNS} the drain verdict requires; refusing a verdict.",
+            file=sys.stderr,
+        )
+        return 1
     return 0 if max(times) < PUSH_BUDGET_MS else 2
 
 
