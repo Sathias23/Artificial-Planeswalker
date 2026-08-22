@@ -257,6 +257,22 @@ describe('one bad entry costs one slot of one row, never the push (FR-13, AD-7)'
     }
   })
 
+  it('renders a WHITESPACE-ONLY id as the unknown placeholder — the terminal arm, no image (E16-91)', () => {
+    // `cardIdOf` folds `'  '` to `''`, the app's own "an id the app cannot render" value, so
+    // the tile takes the same terminal unknown-card arm as a non-string id — it never shows an
+    // image and never becomes inspectable.
+    seedBoth()
+    const withBlankOut = [{ ...TRADE, out_card_id: '  ' }]
+
+    const { container } = render(<SwapsView kind="swaps" items={withBlankOut} />)
+
+    const [outTile, inTile] = tilesOf(rowAt(container, 0))
+    expect(outTile.querySelector('.card-placeholder')).toHaveTextContent('Unknown card')
+    expect(outTile.querySelector('.swap-tile-image')).toBeNull()
+    // The IN tile is untouched — the fold degrades one slot, never the row.
+    expect(inTile.querySelector('.swap-tile-image')).toHaveAttribute('src', '/api/card-image/c-in')
+  })
+
   it('renders a missing or non-string rationale as an empty line, row otherwise normal', () => {
     seedBoth()
     const malformed = [
@@ -435,6 +451,15 @@ describe('hydration is this view’s own, both sides of every trade (AD-12)', ()
 
     // The malformed slot cost no request (`hydrateCard('')` refuses terminally); the good id
     // was still asked for — one bad field, one silent slot.
+    expect(cardCalls()).toEqual(['/api/cards/c-in'])
+  })
+
+  it('never hydrates a WHITESPACE-ONLY id — it folds to the unknown arm before any request', () => {
+    // E16-91, `GroupsView`'s gate in the single-id shape: `'  '` is not `''`, so without the
+    // trim fold the synchronous unknown guard would miss it and the first paint would commit a
+    // real `/api/cards/%20` + `/api/card-image/%20` pair for an id that names nothing.
+    render(<SwapsView kind="swaps" items={[{ ...TRADE, out_card_id: '  ' }]} />)
+
     expect(cardCalls()).toEqual(['/api/cards/c-in'])
   })
 })
