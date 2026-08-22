@@ -36,7 +36,7 @@ from typing import get_args
 
 import pytest
 
-from src.companion.client import PUSH_OUTCOMES, PushOutcome
+from src.companion.client import PUSH_OUTCOMES, PushOutcome, PushOutcomeToken
 from src.companion.contracts import (
     ActiveDeckRequest,
     AgentEvent,
@@ -876,6 +876,29 @@ class TestEverySwapsOutcomeBecomesTheStatusOfTheSameName:
         assert result.items_pushed == 2
         assert result.message, "every status carries a sentence a human can read"
 
+    async def test_no_clients_connected_is_pushed_once_and_never_re_sent(self, push_stub):
+        """c5-5's ruling, mirrored from suggestions (E16-93): the backend will not re-send, so a
+        retry would duplicate at the first tab."""
+        stub = push_stub(PushOutcome(outcome="no_clients_connected", clients=0))
+
+        result = await show_swaps(payload=_swaps_payload())
+
+        assert result.status == "no_clients_connected"
+        assert result.clients == 0
+        assert len(stub.events) == 1, "a success with nobody watching is still one push"
+
+    async def test_a_closed_app_is_named_as_such(self, push_stub):
+        """The suggestions closed-app coverage, mirrored (E16-93): the companion is a second
+        channel, never a condition on the first (NG5, SC-3)."""
+        push_stub(PushOutcome(outcome="app_not_running"))
+
+        result = await show_swaps(payload=_swaps_payload())
+
+        assert result.status == "app_not_running"
+        assert result.clients is None
+        assert "isn't running" in result.message
+        assert result.items_pushed == 2, "what was attempted is reported even when nothing was sent"
+
     async def test_no_status_leaks_a_raw_outcome_token_into_the_message(self, push_stub):
         """The token is for a caller to switch on; the sentence is for a person to read."""
         for outcome in PUSH_OUTCOMES:
@@ -1048,6 +1071,29 @@ class TestEveryTierListOutcomeBecomesTheStatusOfTheSameName:
         assert result.clients == clients
         assert result.items_pushed == 2
         assert result.message, "every status carries a sentence a human can read"
+
+    async def test_no_clients_connected_is_pushed_once_and_never_re_sent(self, push_stub):
+        """c5-5's ruling, mirrored from suggestions (E16-93): the backend will not re-send, so a
+        retry would duplicate at the first tab."""
+        stub = push_stub(PushOutcome(outcome="no_clients_connected", clients=0))
+
+        result = await show_tier_list(payload=_tier_payload())
+
+        assert result.status == "no_clients_connected"
+        assert result.clients == 0
+        assert len(stub.events) == 1, "a success with nobody watching is still one push"
+
+    async def test_a_closed_app_is_named_as_such(self, push_stub):
+        """The suggestions closed-app coverage, mirrored (E16-93): the companion is a second
+        channel, never a condition on the first (NG5, SC-3)."""
+        push_stub(PushOutcome(outcome="app_not_running"))
+
+        result = await show_tier_list(payload=_tier_payload())
+
+        assert result.status == "app_not_running"
+        assert result.clients is None
+        assert "isn't running" in result.message
+        assert result.items_pushed == 2, "what was attempted is reported even when nothing was sent"
 
     async def test_no_status_leaks_a_raw_outcome_token_into_the_message(self, push_stub):
         """The token is for a caller to switch on; the sentence is for a person to read."""
@@ -1225,6 +1271,29 @@ class TestEveryGroupsOutcomeBecomesTheStatusOfTheSameName:
         assert result.items_pushed == 2
         assert result.message, "every status carries a sentence a human can read"
 
+    async def test_no_clients_connected_is_pushed_once_and_never_re_sent(self, push_stub):
+        """c5-5's ruling, mirrored from suggestions (E16-93): the backend will not re-send, so a
+        retry would duplicate at the first tab."""
+        stub = push_stub(PushOutcome(outcome="no_clients_connected", clients=0))
+
+        result = await show_groups(payload=_groups_payload())
+
+        assert result.status == "no_clients_connected"
+        assert result.clients == 0
+        assert len(stub.events) == 1, "a success with nobody watching is still one push"
+
+    async def test_a_closed_app_is_named_as_such(self, push_stub):
+        """The suggestions closed-app coverage, mirrored (E16-93): the companion is a second
+        channel, never a condition on the first (NG5, SC-3)."""
+        push_stub(PushOutcome(outcome="app_not_running"))
+
+        result = await show_groups(payload=_groups_payload())
+
+        assert result.status == "app_not_running"
+        assert result.clients is None
+        assert "isn't running" in result.message
+        assert result.items_pushed == 2, "what was attempted is reported even when nothing was sent"
+
     async def test_no_status_leaks_a_raw_outcome_token_into_the_message(self, push_stub):
         """The token is for a caller to switch on; the sentence is for a person to read."""
         for outcome in PUSH_OUTCOMES:
@@ -1334,6 +1403,29 @@ class TestEveryPushToolSpeaksItsOwnNoun:
         assert companion._SWAPS_PUSH_MESSAGES == companion._push_messages("swaps")
         assert companion._TIER_LIST_PUSH_MESSAGES == companion._push_messages("tiers")
         assert companion._GROUPS_PUSH_MESSAGES == companion._push_messages("groups")
+
+    @pytest.mark.parametrize(
+        "table_name",
+        [
+            "_PUSH_MESSAGES",
+            "_SWAPS_PUSH_MESSAGES",
+            "_TIER_LIST_PUSH_MESSAGES",
+            "_GROUPS_PUSH_MESSAGES",
+        ],
+    )
+    def test_each_table_keys_exactly_the_client_vocabulary_minus_displayed(self, table_name):
+        """E16-93: the tables are tied to ``PushOutcomeToken`` BY NAME, not by habit.
+
+        A token added to the client's vocabulary without a sentence here would otherwise
+        surface as a ``KeyError`` at runtime on the first push that hit it; a stale key left
+        behind by a renamed token would sit unreachable forever. Set equality catches both, and
+        names the table that drifted. ``displayed`` is the one deliberate absence — its message
+        interpolates the counts and is passed per kind (see :func:`_push_messages`).
+        """
+        table = getattr(companion, table_name)
+        assert set(table) == set(get_args(PushOutcomeToken)) - {"displayed"}, (
+            f"{table_name} does not key exactly the client's non-displayed outcome tokens"
+        )
 
     def test_the_four_suggestions_failure_sentences_are_the_shipped_bytes(self):
         """Byte-for-byte, em dash included — the anchor that catches BUILDER drift.
