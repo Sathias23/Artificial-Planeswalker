@@ -265,6 +265,30 @@ Lead with the verdict, then the ranked table, then the synthesis. For example:
 
 ---
 
+## Companion app (push the visuals)
+
+If the user runs the Artificial Planeswalker **companion app** (a localhost browser view of the
+active deck), this server also exposes push tools that mirror your analysis onto that glass:
+`companion_set_active_deck`, `companion_show_suggestions`, `companion_show_swaps`,
+`companion_show_tier_list`, `companion_show_groups` (each `mcp__artificial-planeswalker__<tool>`).
+They add a **visual channel — never a replacement**: push AND still give your full answer in chat.
+
+Natural fits for this orchestrator:
+- **`companion_show_swaps`** — the ranked swap table (this skill's core deliverable) as
+  out-card/in-card pairs with your reasons.
+- **`companion_show_suggestions`** — a flat list of candidate adds with one-line reasons.
+- **`companion_show_tier_list`** / **`companion_show_groups`** — when your analysis naturally
+  buckets (S/A/B/C/D) or clusters (titled packages with a rationale paragraph).
+
+Rules that bite:
+- Reference cards by **Scryfall printing id** — the `id` field the lookup/search tools return. A
+  card *name* in an id field will not render.
+- `companion_set_active_deck(deck_id)` first when the conversation settles on a deck, so the glass
+  follows the conversation.
+- Every push tool degrades gracefully: `app_not_running` just means the user has no glass open —
+  skip the visual channel silently and answer in chat as normal. Never block, retry-loop, or
+  apologise for it.
+
 ## Capability companions (deeper single-topic dives)
 
 This orchestrator works **standalone today** by calling the tools directly — it does not depend on

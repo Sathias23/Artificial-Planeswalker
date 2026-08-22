@@ -152,7 +152,7 @@ describe('an empty push renders the SHARED artefact line (AD-7, UX-DR33)', () =>
 
     expect(screen.getByText(emptyPushLine('groups'))).toBeInTheDocument()
     expect(document.body.textContent).toContain('groups')
-    expect(document.body.textContent).not.toContain('{kind}')
+    expect(document.body.textContent).not.toContain('{noun}')
   })
 
   it('is a bare paragraph REPLACING the list, exactly as all three siblings’ empty states are', () => {

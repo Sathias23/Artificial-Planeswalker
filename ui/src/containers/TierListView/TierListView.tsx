@@ -60,10 +60,10 @@ import './TierListView.css'
  */
 export interface TierListViewProps {
   /**
-   * The push's own `kind`, interpolated into the shared empty-push line. The template is
-   * kind-generic (`{kind}`), so this module authors no second sentence — `emptyPushLine` is
-   * reached across containers exactly as `imageUrl` is, and `tests/empty-push-copy.test.ts`
-   * keeps pinning the one copy.
+   * The push's own `kind`, which the shared empty-push line maps to its display noun. The
+   * template is kind-generic (`{noun}`), so this module authors no second sentence —
+   * `emptyPushLine` is reached across containers exactly as `imageUrl` is, and
+   * `tests/empty-push-copy.test.ts` keeps pinning the one copy.
    */
   readonly kind: AgentViewContent['kind']
   /** The pushed tiers. Empty is legal and renders the artefact's sentence (AD-7, UX-DR33). */
@@ -339,10 +339,15 @@ export function TierListView({ kind, items }: TierListViewProps) {
     )
   }
 
-  // The SHARED empty-push line, `{kind}`-substituted — one template, one owner, third reader
+  // The SHARED empty-push line, noun-substituted — one template, one owner, third reader
   // (the copy module's whole design). A bare `<p>` replacing the `<ul>`, never inside it. It
   // renders for an empty `items` AND for a push whose every tier was skipped: an empty `<ul>`
   // would announce "list, 0 items" with nothing to explain why, and the sentence is the closest
   // honest description of a glass with nothing on it — no second sentence is authored.
+  // In the all-skipped case the shell header keeps showing the RAW store count beside this line
+  // (e.g. "5" over "came back empty") — decided at the epic-16 retro (item 4, in passing): the
+  // count states what the agent SENT and the sentence states what RENDERS, and
+  // count-stays-raw-while-render-skips is a pinned epic invariant (App.test.tsx's "count still
+  // says 2" against 1 rendered row), not a contradiction to smooth over.
   return <p className="tier-list-view-empty">{emptyPushLine(kind)}</p>
 }

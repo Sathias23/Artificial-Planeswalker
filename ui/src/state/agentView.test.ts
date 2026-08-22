@@ -2,6 +2,7 @@ import { renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import type { GroupsEvent, SuggestionsEvent, SwapsEvent, TierListEvent } from '../api/schema'
+import { EMPTY_PUSH_NOUNS } from '../containers/SuggestionsView/copy'
 import {
   AGENT_VIEW_LABELS,
   type AgentViewContent,
@@ -669,6 +670,19 @@ describe('the pill vocabulary is one table with one owner (c6-8, Task 2)', () =>
     // A collapsed table — a copy-paste, a widened type erasing the literals — would make the
     // assertion above and the nav's order assertion pass for the wrong reason.
     expect(new Set(Object.values(AGENT_VIEW_LABELS)).size).toBe(4)
+  })
+
+  it('is what the empty-push nouns are, lowercased (epic-16 retro item 4)', () => {
+    // The empty-push line's noun table lives in `SuggestionsView/copy.ts`, which must stay
+    // import-free (the `nodenext`/`bundler` split — its own header), so it cannot derive from
+    // this table. THIS test is the tether, from the side that may import both: every kind's
+    // noun is its nav label lowercased — the retro item's own prescription — and the key sets
+    // are identical, so a fifth kind added here without a noun there fails HERE, while a noun
+    // the artefact never named fails `tests/empty-push-copy.test.ts`'s enumeration gate.
+    expect(Object.keys(EMPTY_PUSH_NOUNS)).toEqual(Object.keys(AGENT_VIEW_LABELS))
+    for (const [kind, label] of Object.entries(AGENT_VIEW_LABELS)) {
+      expect(EMPTY_PUSH_NOUNS[kind]).toBe(label.toLowerCase())
+    }
   })
 })
 

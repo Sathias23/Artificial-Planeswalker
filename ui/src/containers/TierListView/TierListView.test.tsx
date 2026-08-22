@@ -109,12 +109,15 @@ afterEach(() => {
 })
 
 describe('an empty push renders the SHARED artefact line (AD-7, UX-DR33)', () => {
-  it('renders the one template with the wire kind substituted — no second sentence authored', () => {
+  it('renders the one template with the kind’s display noun — no second sentence authored', () => {
     render(<TierListView kind="tier_list" items={[]} />)
 
     expect(screen.getByText(emptyPushLine('tier_list'))).toBeInTheDocument()
-    expect(document.body.textContent).toContain('tier_list')
-    expect(document.body.textContent).not.toContain('{kind}')
+    // The epic-16 retro item-4 repair, asserted at THIS kind because it was the defect's worst
+    // data point: the glass shows the display noun, never the wire literal's underscore.
+    expect(document.body.textContent).toContain('tier list')
+    expect(document.body.textContent).not.toContain('tier_list')
+    expect(document.body.textContent).not.toContain('{noun}')
   })
 
   it('is a bare paragraph REPLACING the list, exactly as both siblings’ empty states are', () => {

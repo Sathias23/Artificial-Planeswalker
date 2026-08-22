@@ -6,7 +6,7 @@ import { resetCardCache, useCardStore } from '../../state/cards'
 import { flipCard, resetFaces } from '../../state/faces'
 import { resetInspection, useInspectionStore } from '../../state/inspection'
 import { SuggestionsView } from './SuggestionsView'
-import { EMPTY_PUSH_TEMPLATE, KIND_PLACEHOLDER, emptyPushLine } from './copy'
+import { EMPTY_PUSH_TEMPLATE, NOUN_PLACEHOLDER, emptyPushLine } from './copy'
 
 /**
  * The suggestions view's body — the empty line (c6-6) and the rows (c6-7).
@@ -133,8 +133,8 @@ describe('an empty push renders the artefact’s line (c6-6 AC 4, UX-DR33, AD-7)
     expect(screen.getByText(emptyPushLine('suggestions'))).toBeInTheDocument()
     // The substitution really happened: the placeholder is gone from what a reader sees. A
     // component that rendered the raw template would satisfy a `toContain('The agent sent')`
-    // check and put `{kind}` on the glass.
-    expect(document.body.textContent).not.toContain(KIND_PLACEHOLDER)
+    // check and put `{noun}` on the glass.
+    expect(document.body.textContent).not.toContain(NOUN_PLACEHOLDER)
     expect(document.body.textContent).toContain('suggestions')
   })
 
@@ -786,10 +786,16 @@ describe('the template is a template (non-vacuity for the gate next door)', () =
     // `tests/empty-push-copy.test.ts` compares this constant against EXPERIENCE.md byte for
     // byte. This asserts the property that makes the comparison meaningful for a RENDERED line:
     // one hole, filled once, leaving no marker behind.
-    expect(EMPTY_PUSH_TEMPLATE.split(KIND_PLACEHOLDER)).toHaveLength(2)
-    expect(emptyPushLine('suggestions')).not.toContain(KIND_PLACEHOLDER)
+    expect(EMPTY_PUSH_TEMPLATE.split(NOUN_PLACEHOLDER)).toHaveLength(2)
+    expect(emptyPushLine('suggestions')).not.toContain(NOUN_PLACEHOLDER)
     expect(emptyPushLine('suggestions')).toBe(
-      'The agent sent an empty suggestions. Nothing to show — ask it for another pass.',
+      "The agent's suggestions came back empty. Nothing to show — ask it for another pass.",
     )
+    // The noun repair's whole point, asserted at the rendered surface: the kind whose wire
+    // literal put an underscore on the glass (16.2's data point) now renders its display noun.
+    expect(emptyPushLine('tier_list')).toBe(
+      "The agent's tier list came back empty. Nothing to show — ask it for another pass.",
+    )
+    expect(emptyPushLine('groups')).toContain('card groups')
   })
 })

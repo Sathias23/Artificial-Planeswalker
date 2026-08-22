@@ -57,7 +57,7 @@ import './SwapsView.css'
 export interface SwapsViewProps {
   /**
    * The push's own `kind`, interpolated into the shared empty-push line. The template is
-   * kind-generic (`{kind}`), so this module authors no second sentence — `emptyPushLine` is
+   * kind-generic (`{noun}`), so this module authors no second sentence — `emptyPushLine` is
    * reached across containers exactly as `imageUrl` is, and `tests/empty-push-copy.test.ts`
    * keeps pinning the one copy.
    */
@@ -300,7 +300,7 @@ export function SwapsView({ kind, items }: SwapsViewProps) {
     )
   }
 
-  // The SHARED empty-push line, `{kind}`-substituted — one template, one owner, second reader
+  // The SHARED empty-push line, noun-substituted — one template, one owner, second reader
   // (the copy module's whole design). A bare `<p>` replacing the `<ul>`, never inside it.
   return <p className="swaps-view-empty">{emptyPushLine(kind)}</p>
 }

@@ -1,5 +1,6 @@
 /**
- * The one sentence this container authors (story c6-6, AC 4, UX-DR33, UX-DR30, AD-7).
+ * The one sentence this container authors (story c6-6, AC 4, UX-DR33, UX-DR30, AD-7; template
+ * amended at the epic-16 retro, item 4).
  *
  * **NO IMPORTS, and that is load-bearing rather than incidental.** `tests/` belongs to the
  * `nodenext` TypeScript project and `src/` to the `bundler` one, so a `ui/tests` file may import
@@ -8,45 +9,54 @@
  * throughout. The same shape as every other `copy.ts` in the app, and the reason
  * `tests/empty-push-copy.test.ts` can read these constants at all.
  *
- * It is also why {@link emptyPushLine} takes a plain `string` rather than the store's
- * `AgentViewContent['kind']`: importing that union — even type-only — would give this module a
- * relative import and take the verbatim gate away. The caller passes `content.kind`, which is a
- * closed wire literal, and `SuggestionsView.tsx` is where the type is held.
+ * It is also why {@link EMPTY_PUSH_NOUNS} is declared HERE rather than derived from the store's
+ * `AGENT_VIEW_LABELS`: importing the store — even type-only — would give this module a relative
+ * import and take the verbatim gate away. The two tables are kept from drifting by
+ * `agentView.test.ts`, which lives in the `bundler` project and can import both.
  */
 
 /**
  * The empty-push line, EXACTLY as `EXPERIENCE.md`'s *Voice and Tone* table writes it — including
- * the `{kind}` placeholder, which is why this is a template rather than a sentence.
+ * the `{noun}` placeholder, which is why this is a template rather than a sentence.
  *
- * ==== IT IS TRANSCRIBED, NOT AUTHORED — AND THAT IS THE DISPOSITION OF A LEDGER ENTRY ====
+ * ==== IT IS TRANSCRIBED, NOT AUTHORED — AND THE LEDGER ENTRY IS NOW DISCHARGED ====
  * The string ships **byte for byte**: em dash **U+2014** (not a hyphen, not an en dash), one
  * trailing period, sentence case. `tests/empty-push-copy.test.ts` parses that table cell and
  * compares, so a later tidy-up cannot drift it.
  *
- * Shipping the artefact's own words verbatim is the same discharge `c4-3` and `c4-12` made of
- * `deferred-work.md`'s permanently-open copy-guard entry, which names THIS STORY by name: the
- * guard can check that a sentence is registered and can check the banned characters, but *"a
- * reviewer of c2-10, c4-3, c4-12 and c6-6 must READ the copy"*. c4-12's disposition recorded that
- * *"c6-6 still owes it"*. **The reading was performed and recorded in the story's Debug Log — it
- * is a human act, and the record of it is the deliverable, not this comment.**
- *
- * ⚠️ ONE RESIDUE OF THE TRANSCRIPTION, DECLARED RATHER THAN QUIETLY REPAIRED. Substituting the
- * WIRE kind into an article-carrying template produces *"The agent sent an empty suggestions."* —
- * grammatically wrong, and worse for Epic 9's `tier_list`. The artefact writes `{kind}` and the
- * story's task list rules the substitution to be the wire kind, so that is what ships; inventing
- * a per-kind display noun ("suggestions list") would be authoring copy no artefact carries, one
- * story before the second kind that would need it. Carried to the ledger as an ARTEFACT defect
- * for the story that adds the second view kind, which is where the decision has two data points
- * instead of one.
+ * The c6-6 ledger entry this module carried ("substituting the WIRE kind produces *'The agent
+ * sent an empty suggestions.'* — grammatically wrong, and worse for `tier_list`") accumulated
+ * four data points across c6-6/16.1/16.2/16.3 and was RULED release-gating at the epic-16 retro
+ * (item 4). The repair kept the module's own discipline: the artefact's cell moved FIRST — it
+ * now writes `{noun}` and names the four display nouns — and this module transcribes it. The
+ * sentence restructures around a possessive because "an empty {noun}" fails on the plural nouns
+ * ("an empty card groups"); the possessive reads correctly for all four.
  */
 export const EMPTY_PUSH_TEMPLATE =
-  'The agent sent an empty {kind}. Nothing to show — ask it for another pass.'
+  "The agent's {noun} came back empty. Nothing to show — ask it for another pass."
 
 /**
- * The placeholder the wire kind replaces. Named rather than inlined so the gate that compares
+ * The placeholder the display noun replaces. Named rather than inlined so the gate that compares
  * this module against the artefact and the function that substitutes cannot disagree about it.
  */
-export const KIND_PLACEHOLDER = '{kind}'
+export const NOUN_PLACEHOLDER = '{noun}'
+
+/**
+ * The display noun per wire kind — the artefact's own list, and the nav's labels lowercased.
+ *
+ * EXPERIENCE.md's amended cell enumerates exactly these four ("suggestions", "swaps",
+ * "tier list", "card groups"), and `tests/empty-push-copy.test.ts` gates this table against that
+ * enumeration. Each value is also `AGENT_VIEW_LABELS[kind].toLowerCase()` — the retro item's own
+ * prescription — and `agentView.test.ts` pins THAT identity from the store's side, so a fifth
+ * kind or a renamed pill cannot leave this table behind. Declared here rather than derived
+ * because this module must stay import-free (see the header).
+ */
+export const EMPTY_PUSH_NOUNS: Record<string, string> = {
+  suggestions: 'suggestions',
+  swaps: 'swaps',
+  tier_list: 'tier list',
+  groups: 'card groups',
+}
 
 /**
  * The line for one kind of push.
@@ -57,7 +67,7 @@ export const KIND_PLACEHOLDER = '{kind}'
  * only, which is the intended semantics here rather than a limitation worked around.
  *
  * ==== WHAT THE WORDS DO, AND WHY THE SECOND CLAUSE IS THE WHOLE POINT ===================
- * *"The agent sent an empty {kind}"* states the fact and blames nobody — an empty push is the
+ * *"The agent's {noun} came back empty"* states the fact and blames nobody — an empty push is the
  * agent honestly reporting that it looked and found nothing, which `types.d.ts:1103-1105` calls
  * out as a first-class case (*"an empty `items` list is legal … so 'I looked and found nothing'
  * is expressible"*). *"ask it for another pass"* is the concrete next action UX-DR30 requires of
@@ -65,12 +75,13 @@ export const KIND_PLACEHOLDER = '{kind}'
  * apology, and there must not be one: this is not a failure of anything.
  *
  * Args:
- *   kind: The envelope's own `kind` — a closed wire literal, never user data. It is the ONE
- *     thing this story interpolates into a user-facing string, and it is safe for exactly that
- *     reason (c6-4's echo-hygiene rule: nothing payload-sourced reaches the glass unbounded).
+ *   kind: The envelope's own `kind` — a closed wire literal, never user data. It selects the
+ *     display noun from {@link EMPTY_PUSH_NOUNS}; a kind the table does not know (impossible
+ *     while the dispatch switch is total, but this function refuses to render a hole) falls back
+ *     to the wire literal itself — the pre-amendment behaviour, degraded rather than thrown.
  *
  * Returns:
  *   The artefact's sentence with the placeholder filled.
  */
 export const emptyPushLine = (kind: string): string =>
-  EMPTY_PUSH_TEMPLATE.replace(KIND_PLACEHOLDER, kind)
+  EMPTY_PUSH_TEMPLATE.replace(NOUN_PLACEHOLDER, EMPTY_PUSH_NOUNS[kind] ?? kind)
