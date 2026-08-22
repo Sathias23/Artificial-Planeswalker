@@ -536,19 +536,26 @@ function HistoryPopover({ id, onActivate }: { id: string; onActivate: (id: strin
     return () => cancelAnimationFrame(frame)
   }, [])
 
-  // THE VERTICAL CLAMP'S ANCHOR TERM (Greptile PR #97, rounds 2 and 3). The popover hangs
-  // below a content-sized header, so `HistoryPopover.css`'s max-height cannot know its own
-  // distance from the viewport top in CSS alone — subtracting only the gutters left the tail
-  // of the scrollport below a short window. Measured before paint into a custom property (the
-  // ManaCurve/ColourDistribution channel — literal inline styles stay illegal), and
+  // THE CLAMPS' ANCHOR TERMS (Greptile PR #97, rounds 2–4). The popover hangs below a
+  // content-sized header on a row that is ALLOWED to wrap (`.agent-views-nav-pills` declares
+  // `flex-wrap: wrap` as the honest narrow-window failure mode), so neither of its distances —
+  // from the viewport top (the height clamp's subtrahend, round 2) nor from the viewport left
+  // to its own right-anchored edge (the width clamp's budget, round 4: a wrapped pill leaves
+  // the viewport's right edge, and a 100vw-based cap then lets a long title run past the LEFT
+  // edge) — is knowable in CSS alone. Both are measured before paint into custom properties
+  // (the ManaCurve/ColourDistribution channel — literal inline styles stay illegal) and
   // RE-measured on window resize while open (round 3): resize is the only thing that can move
   // the anchor mid-open — the header re-wraps with the window, and the list itself cannot
-  // change under an open popover (an arriving push closes it). Not a key listener, so the
-  // keyboard-floor census has no stake. jsdom's zero rect degrades the term to 0px — the CSS
-  // fallback — and exact geometry stays the eye-check's.
-  const [viewportTop, setViewportTop] = useState(0)
+  // change under an open popover (an arriving push closes it). `rect.right` is anchor-stable
+  // even as content grows, because the popover is right-anchored to the wrapper. Not a key
+  // listener, so the keyboard-floor census has no stake. jsdom's zero rects degrade both terms
+  // to 0px, and exact geometry stays the eye-check's.
+  const [anchor, setAnchor] = useState({ top: 0, right: 0 })
   useLayoutEffect(() => {
-    const measure = () => setViewportTop(rootRef.current?.getBoundingClientRect().top ?? 0)
+    const measure = () => {
+      const rect = rootRef.current?.getBoundingClientRect()
+      setAnchor({ top: rect?.top ?? 0, right: rect?.right ?? 0 })
+    }
     measure()
     window.addEventListener('resize', measure)
     return () => window.removeEventListener('resize', measure)
@@ -572,7 +579,12 @@ function HistoryPopover({ id, onActivate }: { id: string; onActivate: (id: strin
       id={id}
       className="agent-views-nav-popover"
       data-entering={entering ? 'true' : undefined}
-      style={{ '--history-popover-top': `${viewportTop}px` } as CSSProperties}
+      style={
+        {
+          '--history-popover-top': `${anchor.top}px`,
+          '--history-popover-right': `${anchor.right}px`,
+        } as CSSProperties
+      }
     >
       {history.map((entry) => (
         <HistoryEntry key={entry.id} entry={entry} onActivate={onActivate} />

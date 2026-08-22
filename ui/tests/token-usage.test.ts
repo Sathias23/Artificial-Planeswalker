@@ -631,6 +631,21 @@ const RUNTIME_CUSTOM_PROPERTIES: Map<string, { file: string; reason: string }> =
         'old gutters-only clamp rather than collapsing the popover.',
     },
   ],
+  [
+    '--history-popover-right',
+    {
+      file: 'src/containers/AgentViewsNav/HistoryPopover.css',
+      reason:
+        'the width clamp’s budget IS runtime geometry too (story 17.2; Greptile PR #97, round ' +
+        '4 — the top term’s sibling axis): the pill row wraps at narrow windows, and a wrapped ' +
+        'anchor leaves the viewport’s right edge, so a 100vw-based cap lets a long title run ' +
+        'past the LEFT edge — the overflow is the anchor’s offset, not the box’s width, round ' +
+        '1’s lesson on the other side. The right-anchored edge’s measured viewport-X, written ' +
+        'beside the top term by the same effect; consumed inside `max-width: min(480px, ' +
+        'calc(var(--history-popover-right, 100vw) - …))`, where the `100vw` fallback keeps the ' +
+        'unmeasured frame on the old viewport-relative cap.',
+    },
+  ],
 ])
 
 // The reader is injectable for the same reason findCardRadiusInMarkup's is (and it was the

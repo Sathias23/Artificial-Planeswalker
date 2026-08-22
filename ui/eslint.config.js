@@ -176,11 +176,12 @@ export default tseslint.config(
       // declaration is `flex-grow: var(--colour-bar-share, 0)` in ColourDistribution.css, where
       // stylelint and tests/token-usage.test.ts can both see the rule around it.
       //
-      // Today the list is three names: --curve-bar-height (c4-8's bar height),
-      // --colour-bar-share (c4-9's segment width), and --history-popover-top (17.2's height-
-      // clamp anchor term: the popover's measured distance from the viewport top, which no
-      // stylesheet can know because the header above it is content-sized — Greptile PR #97,
-      // round 2).
+      // Today the list is four names: --curve-bar-height (c4-8's bar height),
+      // --colour-bar-share (c4-9's segment width), and 17.2's pair --history-popover-top /
+      // --history-popover-right (the popover's clamp anchor terms: its measured distances from
+      // the viewport top and to its right-anchored edge, which no stylesheet can know because
+      // the header above it is content-sized and its pill row wraps — Greptile PR #97, rounds
+      // 2 and 4).
       //
       // DIRECT-CHILD PATHS, NOT DESCENDANT :has, in both selectors — the c4-8 review's
       // correction of its own first amendment. The shipped draft tested
@@ -234,14 +235,14 @@ export default tseslint.config(
           // third channel is a third `:not()`, which is the protocol working rather than a
           // reason to loosen back to a prefix.
           selector:
-            'JSXAttribute[name.name="style"]:has(:matches(JSXExpressionContainer > ObjectExpression, JSXExpressionContainer > TSAsExpression > ObjectExpression) > :matches(SpreadElement, Property:not([key.value="--curve-bar-height"]):not([key.value="--colour-bar-share"]):not([key.value="--history-popover-top"])))',
+            'JSXAttribute[name.name="style"]:has(:matches(JSXExpressionContainer > ObjectExpression, JSXExpressionContainer > TSAsExpression > ObjectExpression) > :matches(SpreadElement, Property:not([key.value="--curve-bar-height"]):not([key.value="--colour-bar-share"]):not([key.value="--history-popover-top"]):not([key.value="--history-popover-right"])))',
           message:
             'Inline style={{…}} bypasses the whole token layer — no stylelint rule and no ' +
             'guard in tests/token-usage.test.ts can see it. Put the rule in a .css file and ' +
             'reach values through var(--…). The ONLY permitted form is an object literal ' +
             'whose keys are all DECLARED runtime channels (today: --curve-bar-height, ' +
-            '--colour-bar-share, --history-popover-top), with no spread — a bare `--` prefix ' +
-            'is not enough, because a ' +
+            '--colour-bar-share, --history-popover-top, --history-popover-right), with no ' +
+            'spread — a bare `--` prefix is not enough, because a ' +
             'custom property can override a real design token for every descendant (c4-8, ' +
             'AC 17; c4-9, AC 19). See ui/README.md, "The token layer".',
         },

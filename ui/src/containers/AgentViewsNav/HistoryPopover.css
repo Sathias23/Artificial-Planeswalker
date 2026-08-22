@@ -30,9 +30,9 @@
    block's own comment promises *"the popover itself never outgrows the viewport"*, and the two
    `min()` clamps are that sentence made mechanical rather than hoped (review finding 2,
    2026-08-22): the width cap reuses the same 480px figure (a long agent-authored title on a
-   `max-content` box would otherwise run past the right viewport edge — the History pill is the
-   LAST pill in the row), and both axes subtract twice `{spacing.gutter}` so a narrow or short
-   window still shows the popover whole. Exact geometry stays the eye-check's, as ever.
+   `max-content` box would otherwise overflow the viewport), and both axes bound themselves by
+   the anchor's MEASURED position minus a `{spacing.gutter}` — see each declaration's own
+   comment for its Greptile round. Exact geometry stays the eye-check's, as ever.
 
    `position: absolute` against the `.agent-views-nav-history` wrapper's `position: relative`
    (the sibling file), content-sized on both axes — deliberately NOT a fixed layer, so
@@ -54,7 +54,16 @@
   align-items: stretch;
   gap: var(--space-1);
   width: max-content;
-  max-width: min(480px, calc(100vw - 2 * var(--space-gutter)));
+
+  /* The width clamp's budget is MEASURED, not assumed (Greptile PR #97, round 4): the pill row
+     wraps at narrow windows (`flex-wrap: wrap`, the sibling file), and a wrapped anchor leaves
+     the viewport's right edge — a `100vw`-based cap then lets a long title run past the LEFT
+     edge, because the overflow is again the anchor's offset, not the box's width (round 1's
+     lesson, other side). `--history-popover-right` is the right-anchored edge's measured
+     viewport-X, set by the component beside the top term; minus one gutter it IS the leftward
+     budget. The fallback `100vw` cites DESIGN.md only as NOT of it — an unmeasured-frame
+     stand-in, no design value; the documented literal stays DESIGN.md's 480px (file head). */
+  max-width: min(480px, calc(var(--history-popover-right, 100vw) - var(--space-gutter)));
 
   /* The height clamp's two amendments (Greptile PR #97, round 2): `100dvh`, not `100vh` —
      AppShell.css's own argument, `vh` is the LARGE viewport height and overshoots under

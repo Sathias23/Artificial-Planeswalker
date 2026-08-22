@@ -480,19 +480,21 @@ describe('the popover lists the session’s pushes, newest first (17.2)', () => 
     render(<AgentViewsNav />)
     fireEvent.click(historyPill())
     expect(popover()!.style.getPropertyValue('--history-popover-top')).toBe('0px')
+    expect(popover()!.style.getPropertyValue('--history-popover-right')).toBe('0px')
   })
 
-  it('re-measures the anchor term on window resize while open (Greptile #97 r3)', () => {
+  it('re-measures both anchor terms on window resize while open (Greptile #97 r3, r4)', () => {
     // jsdom's own rects never change, so the resize path is proven by substituting the
-    // measurement itself: after a spied rect and a resize event, the property carries the new
-    // figure — deleting the resize listener leaves it at the mount-time value and goes red.
+    // measurement itself: after a spied rect and a resize event, the properties carry the new
+    // figures — deleting the resize listener leaves them at the mount-time values and goes red.
     render(<AgentViewsNav />)
     fireEvent.click(historyPill())
     const spy = vi
       .spyOn(popover()!, 'getBoundingClientRect')
-      .mockReturnValue({ top: 42 } as DOMRect)
+      .mockReturnValue({ top: 42, right: 333 } as DOMRect)
     fireEvent(window, new Event('resize'))
     expect(popover()!.style.getPropertyValue('--history-popover-top')).toBe('42px')
+    expect(popover()!.style.getPropertyValue('--history-popover-right')).toBe('333px')
     spy.mockRestore()
   })
 
