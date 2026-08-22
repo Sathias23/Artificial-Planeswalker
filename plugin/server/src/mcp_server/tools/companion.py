@@ -833,9 +833,9 @@ async def companion_status() -> CompanionStatusResult:
         )
     else:
         message = (
-            f"The companion is running at {url}, but this companion is too old to report its "
-            f"tab count — a tab may already be open. Give the user {url} rather than opening a "
-            "possibly-duplicate tab."
+            f"The companion is running at {url}, but it did not report a usable tab count (an "
+            f"older companion, or a malformed reply) — a tab may already be open. Give the user "
+            f"{url} rather than opening a possibly-duplicate tab."
         )
     return CompanionStatusResult(
         status="running",
