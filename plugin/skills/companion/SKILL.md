@@ -25,10 +25,13 @@ running, and confirm the browser tab opened.
 1. **Status first.** Call `companion_status`. Never launch without it.
 2. **Branch on what it says:**
    - `running` with `clients >= 1` — the companion is already on screen. Say so; do nothing else.
-   - `running` with `clients` `0` (or `null`) — it is up but nobody is looking. Run the
-     `launch_command` in a **background** shell: its `--open` flag opens a browser tab on the
-     *running* instance and exits `0` (it never starts a second one). Give the user the `url` to
-     open by hand only if the browser could not be opened.
+   - `running` with `clients` `0` — it is up but nobody is looking. Run the `launch_command` in
+     a **background** shell: its `--open` flag opens a browser tab on the *running* instance and
+     exits `0` (it never starts a second one). Give the user the `url` to open by hand only if
+     the browser could not be opened.
+   - `running` with `clients` `null` — the count is **unknown** (an older companion that does not
+     report it), not zero: a tab may already be open. Prefer giving the user the `url` over
+     running the launch command — popping a possibly-duplicate tab is worse than one extra click.
    - `not_running` — run the `launch_command` **exactly as returned**, in a **background** shell.
      It looks like:
 

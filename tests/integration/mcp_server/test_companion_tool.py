@@ -50,7 +50,7 @@ from src.companion.contracts import (
     TierItem,
     TierListPayload,
 )
-from src.companion.discovery import DiscoveryRecord
+from src.companion.discovery import COMPANION_FILENAME, DiscoveryRecord, read_discovery
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
 from src.mcp_server.tools import companion
@@ -69,6 +69,11 @@ from src.mcp_server.tools.companion import (
 )
 from src.mcp_server.tools.deck_management import create_deck
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
+
+# The loopback toolkit, imported rather than rebuilt — `test_deck_changed_wiring.py`'s precedent,
+# on the same terms: `test_client.py` owns the only real HTTP stubs in the repo, and a second
+# implementation here would be a fake of a fake.
+from tests.unit.companion.test_client import StubFleet, health_bytes, plant_discovery
 
 _MISSING_DECK = "deck-not-in-database-00000"
 """Short enough to stay under ``_ECHO_LIMIT`` (48) unmangled, so ``deck_id == _MISSING_DECK``
@@ -1518,18 +1523,24 @@ class TestCompanionStatusIsReadOnlyAndNamesTheNextStep:
         assert result.status == "running"
         assert result.clients is None
         assert "-1" not in result.message
-        assert "no browser tab is open" in result.message
+        # A malformed count is UNKNOWN, not zero: the message must never claim no tab is open.
+        assert "no browser tab is open" not in result.message
+        assert "tab count" in result.message
 
-    async def test_an_older_companion_without_the_count_reads_as_no_tab(self, status_stubs):
-        """A ``/health`` body from before 17.4 carries no ``clients``: ``None``, not ``0``, and the
-        message still tells the agent how to get a tab open."""
+    async def test_an_older_companion_without_the_count_reads_as_count_unknown(self, status_stubs):
+        """A ``/health`` body from before 17.4 carries no ``clients``: ``None`` is *unknown*, not
+        ``0`` — a tab may already be open, so the message hands over the URL rather than claiming
+        nobody is looking (pre-cut R2)."""
         status_stubs(_record(), HealthResponse(status="ok", instance_id="inst-status"))
 
         result = await companion_status()
 
         assert result.status == "running"
         assert result.clients is None
-        assert "no browser tab is open" in result.message
+        assert "no browser tab is open" not in result.message
+        assert "tab count" in result.message
+        assert "may already be open" in result.message
+        assert result.url is not None and result.url in result.message
 
     async def test_the_health_probe_asks_the_proven_port(self, status_stubs):
         _, probe = status_stubs(
@@ -1587,3 +1598,68 @@ class TestCompanionStatusIsReadOnlyAndNamesTheNextStep:
             "not_running",
             "error",
         }
+
+
+@pytest.fixture
+def stub_server():
+    """Yield :meth:`StubFleet.start` and tear down every loopback stub it handed out.
+
+    A four-line fixture over an imported helper, exactly as ``test_client.py``,
+    ``test_server.py`` and ``test_deck_changed_wiring.py`` each keep their own: the fixture
+    cannot simply be imported, because a module-level ``stub_server`` binding and a test
+    parameter of the same name are a redefinition (ruff F811).
+    """
+    fleet = StubFleet()
+    yield fleet.start
+    fleet.close_all()
+
+
+class TestCompanionStatusOverARealSocket:
+    """Pre-cut R7: the ``clients`` fold proven against a real health body on a real socket.
+
+    Every test in the class above stubs ``_client_live_instance`` / ``_client_probe_health``, so
+    none of them can catch the tool and the client disagreeing about what a ``/health`` body
+    means. Here nothing is monkeypatched: a loopback stub serves the JSON a real companion
+    would, a hand-planted discovery record points at it, and the tool's real client calls do
+    the whole proof — identity match included.
+    """
+
+    @pytest.fixture(autouse=True)
+    def isolated_data_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        """Point the real client at an empty data dir, and prove it starts empty."""
+        data_dir = tmp_path / "companion-data"
+        data_dir.mkdir()
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(data_dir))
+        assert not (data_dir / COMPANION_FILENAME).exists()
+        assert read_discovery() is None, (
+            "something published a discovery record into the isolated data dir — this test "
+            "would be measuring a live companion"
+        )
+        return data_dir
+
+    async def test_a_real_health_body_with_one_client_reports_the_tab(self, stub_server):
+        """``clients: 1`` parsed off the wire — no monkeypatched client functions anywhere."""
+        stub = stub_server(body=health_bytes("inst-real-parse", clients=1))
+        plant_discovery(port=stub.port, instance_id="inst-real-parse")
+
+        result = await companion_status()
+
+        assert result.status == "running"
+        assert result.url == f"http://127.0.0.1:{stub.port}"
+        assert result.clients == 1
+        assert "1 tab open" in result.message
+        assert "nothing to do" in result.message
+        assert stub.requests, "the stub was never dialled — this proved nothing"
+
+    async def test_a_real_health_body_without_the_count_reads_as_unknown(self, stub_server):
+        """The unknown arm, off the wire: an older companion's body carries no ``clients``."""
+        stub = stub_server(body=health_bytes("inst-real-parse"))
+        plant_discovery(port=stub.port, instance_id="inst-real-parse")
+
+        result = await companion_status()
+
+        assert result.status == "running"
+        assert result.clients is None
+        assert "no browser tab is open" not in result.message
+        assert "tab count" in result.message
+        assert stub.requests, "the stub was never dialled — this proved nothing"
