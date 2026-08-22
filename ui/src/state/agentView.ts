@@ -277,7 +277,29 @@ export interface AgentViewState {
    * that can leave content unseen. Opening a view (by push or by pill) clears its flag.
    */
   readonly unread: Partial<Record<AgentViewKind, true>>
+  /**
+   * **The session's last {@link HISTORY_CAP} pushes overall, newest first** (story 17.2, FR-18,
+   * the ruled 2026-08-22 session-history home).
+   *
+   * `retained` beside it keeps the LATEST per kind; this keeps the last twenty regardless of
+   * kind, which is what makes an older push of an already-re-pushed kind reachable at all. The
+   * entries hold the SAME `AgentViewContent` references the other two slots hold — no payload
+   * copy, no divergence, and art is never retained (hydration owns it), so twenty entries are a
+   * few KB. Per-tab, in-memory, cleared only by {@link resetAgentView} — a refresh starts empty,
+   * exactly as `retained` does.
+   *
+   * ⚠️ ORDERED BY ENVELOPE `ts`, NEVER BY `id` (ruling recorded in the spec, 2026-08-22): `id`
+   * is opaque identity/dedupe only — `types.d.ts:1049-1051` is emphatic that it carries NO
+   * ordering, and producers may mint a UUID4. An UNPARSEABLE `ts` falls back to the entry's
+   * ARRIVAL position (the front, where a new arrival goes) rather than sorting anywhere — a
+   * malformed `ts` must never silently reorder the list. At the cap the oldest entry drops
+   * silently. See {@link historyWith} for the one function that writes this shape.
+   */
+  readonly history: readonly AgentViewContent[]
 }
+
+/** The retention capacity FR-18's ruling fixes: the last 20 pushes overall (story 17.2). */
+export const HISTORY_CAP = 20
 
 /** The state before any agent has pushed anything. Exported so tests can restore it. */
 export const INITIAL_AGENT_VIEW: AgentViewState = {
@@ -285,6 +307,7 @@ export const INITIAL_AGENT_VIEW: AgentViewState = {
   content: null,
   retained: {},
   unread: {},
+  history: [],
 }
 
 /**
@@ -346,6 +369,69 @@ export const resetAgentView = (): void => {
  *     unread bookkeeping in ONE `setState`, so no render can ever observe `status: 'open'`
  *     beside stale content — or a pill that is unread and open at the same time.
  */
+/**
+ * The envelope's `ts` as a comparable instant, or `null` when it is absent, non-string or
+ * unparseable.
+ *
+ * Reachable in all three bad shapes: `agentEventOf` validates only the `kind` discriminant
+ * (`client.ts:701-716`), so a frame with `ts: "yesterday"` — or no `ts` at all, or a non-string
+ * one — reaches the store typed as an ISO string. Typed `unknown` and `typeof`-guarded
+ * (review finding 5, 2026-08-22) because the `Date` constructor is a trap on exactly the
+ * non-string shapes: `new Date(null)` is EPOCH 0 and a numeric `ts` is milliseconds — both
+ * would sort a malformed push as decades old and silently drop it at the cap, instead of
+ * taking the arrival-position fallback the ordering ruling requires. `pushTimeLabel` degrades
+ * the DISPLAY of the same field; this degrades its ORDERING, and both fall back rather than
+ * throw.
+ */
+const instantOf = (ts: unknown): number | null => {
+  if (typeof ts !== 'string') return null
+  const at = new Date(ts).getTime()
+  return Number.isNaN(at) ? null : at
+}
+
+/**
+ * `history` with `content` filed into it — the ONE function that writes the shape (story 17.2).
+ *
+ * Three arms, in order:
+ *
+ *   1. **Same reference already present** → the ARRAY ITSELF, untouched. This is what makes a
+ *      re-open (`reopenAgentView`, `reopenPush` — both route through {@link openAgentView})
+ *      a no-op for history: revisiting a push is not a new push, and returning the same
+ *      reference is what keeps `useAgentViewHistory`'s subscribers from re-rendering on it
+ *      (zustand compares slices by reference).
+ *   2. **Same `id`, different object** → REPLACED IN PLACE. `id` is identity on the wire, so a
+ *      re-push of the same envelope is the same push — c6-6's replace-in-place, at the list.
+ *   3. **New id** → INSERTED newest-first by envelope `ts` — **never by `id`** (opaque, carries
+ *      no ordering — `types.d.ts:1049-1051`). An unparseable `ts` — on the arrival OR on an
+ *      existing entry — falls back to ARRIVAL position: a malformed `ts` must never silently
+ *      reorder the list, so the walk stops at the first entry it cannot rank. At the cap the
+ *      oldest (last) entry drops silently — including the arrival itself, if it is older than
+ *      all twenty.
+ */
+const historyWith = (
+  history: readonly AgentViewContent[],
+  content: AgentViewContent,
+): readonly AgentViewContent[] => {
+  const existing = history.findIndex((entry) => entry.id === content.id)
+  if (existing !== -1) {
+    if (history[existing] === content) return history
+    const replaced = [...history]
+    replaced[existing] = content
+    return replaced
+  }
+  const at = instantOf(content.ts)
+  let index = 0
+  if (at !== null) {
+    while (index < history.length) {
+      const ranked = instantOf(history[index].ts)
+      if (ranked === null || ranked <= at) break
+      index += 1
+    }
+  }
+  const inserted = [...history.slice(0, index), content, ...history.slice(index)]
+  return inserted.length > HISTORY_CAP ? inserted.slice(0, HISTORY_CAP) : inserted
+}
+
 export const openAgentView = (content: AgentViewContent): void => {
   useAgentViewStore.setState((state) => {
     const displaced =
@@ -353,7 +439,10 @@ export const openAgentView = (content: AgentViewContent): void => {
         ? state.content.kind
         : null
     // Rebuilt rather than mutated: zustand compares slices by reference, so a pill subscribed
-    // to `unread` must see a NEW object or it will not re-render. Same for `retained`.
+    // to `unread` must see a NEW object or it will not re-render. Same for `retained`. The
+    // history append lives HERE too (story 17.2) — the one-writer rule and the one existing
+    // `setState` — and `historyWith` returns the SAME array for a re-open, so a revisit
+    // re-renders no history subscriber.
     const unread = { ...state.unread }
     delete unread[content.kind]
     if (displaced !== null) unread[displaced] = true
@@ -362,6 +451,7 @@ export const openAgentView = (content: AgentViewContent): void => {
       content,
       retained: { ...state.retained, [content.kind]: content },
       unread,
+      history: historyWith(state.history, content),
     }
   })
 }
@@ -404,6 +494,33 @@ export const reopenAgentView = (kind: AgentViewKind): void => {
   const retained = useAgentViewStore.getState().retained[kind]
   if (retained === undefined) return
   openAgentView(retained)
+}
+
+/**
+ * Put ONE push from the session history back on the glass, by envelope `id` (story 17.2) —
+ * {@link reopenAgentView}'s four-line shape, keyed on identity rather than kind, and the verb
+ * a history-popover entry activates.
+ *
+ * **A no-op for an id history does not hold**, for the sibling's reason: the popover only
+ * renders entries that exist, and this refuses the same call again here, so *"nothing
+ * happens"* is true whether a caller respects the rendered list or not. It never invents
+ * content and never re-requests: the entry IS the retained `AgentViewContent` reference, so
+ * re-opening mounts the shell and re-hydrates against the CURRENT card cache exactly as a
+ * kind-pill re-open does — stale printing UUIDs degrade to unknown-card placeholders through
+ * machinery this story does not touch.
+ *
+ * It delegates to {@link openAgentView}, which files the entry back into `content` and
+ * `retained[kind]` (the on-the-glass invariant: one object in all three slots) and — because
+ * the entry is the SAME reference already in `history` — leaves the history array untouched,
+ * so a revisit never duplicates and never reorders (`historyWith`, arm 1).
+ *
+ * Args:
+ *   id: The envelope `id` of the entry that was activated.
+ */
+export const reopenPush = (id: string): void => {
+  const entry = useAgentViewStore.getState().history.find((held) => held.id === id)
+  if (entry === undefined) return
+  openAgentView(entry)
 }
 
 /**
@@ -727,3 +844,29 @@ export const useAgentViewPushTime = (kind: AgentViewKind): string | null =>
  */
 export const useAgentViewUnread = (kind: AgentViewKind): boolean =>
   useAgentViewStore((state) => state.unread[kind] === true)
+
+/**
+ * The session's push history, newest first (story 17.2) — what the history popover renders.
+ *
+ * **The STORED ARRAY REFERENCE, never a derivation.** This is the one selector hook in the file
+ * that returns a non-primitive, and it is safe for exactly one reason: the array is rebuilt
+ * ONLY inside {@link openAgentView} (via `historyWith`), and a re-open of an entry already held
+ * returns the same reference — so zustand's referential comparison re-renders a subscriber
+ * exactly when the list genuinely changed. A selector that filtered, sliced or mapped here
+ * would mint a fresh array every read and loop, which is the discipline `openViewOf`'s
+ * docstring set for this store.
+ */
+export const useAgentViewHistory = (): readonly AgentViewContent[] =>
+  useAgentViewStore((state) => state.history)
+
+/**
+ * How many pushes the session history holds (story 17.2) — the History pill's quiet bit.
+ *
+ * A PRIMITIVE, deliberately, beside the array hook above: the pill itself renders none of the
+ * entries, only "quiet or active" (`count === 0` is quiet — the same shape as
+ * `useAgentViewHasPush`'s absent-key reading), so subscribing it to the array would re-render
+ * the pill on every push for a bit that moves once per session. The popover, which does render
+ * entries, takes the array hook — one subscription per consumer, each as narrow as its render.
+ */
+export const useAgentViewHistoryCount = (): number =>
+  useAgentViewStore((state) => state.history.length)

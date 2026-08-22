@@ -14,12 +14,15 @@
    frontmatter in the same commit as this file, so the citation below each is a real line in
    DESIGN.md rather than a reference to a value that lives only here.
 
-   NO TRANSITION ANYWHERE IN THIS FILE, and that is a decision. The close pill — the same spec —
-   ships none; DESIGN.md specs none; and a pill that faded its border on hover would be motion
-   this app has to inventory (UX-DR42) for an effect nobody asked for. The unread dot likewise
-   arrives statically: *"glows are moments, not steady states"* (`DESIGN.md:503`), and an arrival
-   pulse would be a moment nothing specs. The reduced-motion fallback is therefore vacuously
-   satisfied here rather than mechanically — there is nothing to neutralise. */
+   NO TRANSITION ANYWHERE IN THIS FILE, and that is a decision — re-affirmed at story 17.2,
+   which added the History pill here and put its popover's enter fade (the one transition the
+   nav owns) in `HistoryPopover.css` instead, with the story citation in that file's header.
+   The PILLS ship none: the close pill — the same spec — ships none; DESIGN.md specs none; and
+   a pill that faded its border on hover would be motion this app has to inventory (UX-DR42)
+   for an effect nobody asked for. The unread dot likewise arrives statically: *"glows are
+   moments, not steady states"* (`DESIGN.md:503`), and an arrival pulse would be a moment
+   nothing specs. The reduced-motion fallback is therefore vacuously satisfied here rather than
+   mechanically — there is nothing to neutralise. */
 
 /* The group's name (Q5). `--type-micro` with BOTH its companions in this block — the type-role
    gate fails a role whose `letter-spacing` and `text-transform` are split across rules, by name.
@@ -189,4 +192,31 @@
   flex-shrink: 0;
   border-radius: var(--radius-pill);
   background: var(--accent);
+}
+
+/* ======================= SESSION HISTORY (story 17.2, FR-18) =========================== */
+
+/* THE ANCHOR. `position: relative` on a wrapper inside this nav's OWN markup — the popover
+   positions against it, which is what keeps the popover content-sized and absolute rather than
+   a second full-window fixed layer (`shell.test.ts`'s detector; UX-DR38's one-level stack is
+   the shell's alone). `inline-flex` so the wrapper is an ordinary pill-row flex item and the
+   pill inside it lays out exactly as its four siblings do.
+
+   THE POPOVER'S OWN RULES LIVE IN `HistoryPopover.css`, NOT HERE, and the split is a guard's
+   requirement rather than taste: the popover paints `--surface-overlay`, this file's pill
+   hover uses `--accent-dim` (legal on `--surface-panel`, the c6-5 ruling above), and
+   `token-usage.test.ts`'s UX-DR6 rule is FILE-scoped — the two tokens may never share a
+   stylesheet, because they do not have to share a rule to meet on an element. */
+.agent-views-nav-history {
+  position: relative;
+  display: inline-flex;
+}
+
+/* THE CLOCK GLYPH — stroke-based, `currentColor`, sized at 1em so it rides `--type-label`'s own
+   size on the pill with no geometry literal of its own. `flex-shrink: 0` for the dot's reason:
+   a clock squashed to an ellipse is a different symbol. */
+.agent-views-nav-clock {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
 }

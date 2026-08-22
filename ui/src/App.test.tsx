@@ -31,7 +31,12 @@ import { resetDeckMemory } from './containers/CardDetail/deckMemory'
 import { EMPTY_DECK_LINE } from './containers/CardGrid/copy'
 import { CONNECTION_WORDS, pillText } from './containers/ConnectionPill/copy'
 import { emptyPushLine } from './containers/SuggestionsView/copy'
-import { NAV_GROUP_LABEL, UNREAD_WORD } from './containers/AgentViewsNav/copy'
+import {
+  HISTORY_LABEL,
+  HISTORY_QUIET_TOOLTIP,
+  NAV_GROUP_LABEL,
+  UNREAD_WORD,
+} from './containers/AgentViewsNav/copy'
 import {
   AGENT_VIEW_LABELS,
   type AgentViewContent,
@@ -1731,6 +1736,42 @@ describe('the attribution is on the surface (c2-10, AC 15)', () => {
  * 100. The 92 filler mainboard names are DECLARED SYNTHETIC IN PLACE: only the COUNT is the
  * fixture's claim, and the count is the real deck's.
  */
+/**
+ * Every real Tab stop in the document, in document order — THE one helper for every corridor
+ * reading in this file (hoisted to module scope at 17.2, review finding 13, so the c6-8 and
+ * 17.2 describes stop re-spelling it inline and a selector repair lands everywhere at once).
+ *
+ * ⚠️ `:not(:disabled)` ADDED AT c6-8, AND IT IS A REPAIR RATHER THAN AN ACCOMMODATION. Until
+ * that story the app contained no disabled control at all, so `'a[href], button, [tabindex]'`
+ * and *"the Tab order"* were the same set by accident. c6-8's quiet nav pills are the first
+ * disabled elements to ship, and they are disabled precisely BECAUSE UX-DR40 says their stop
+ * *"never exists"* — so counting them here would have recorded four Tab stops that a keyboard
+ * user can never reach, in the very suite whose job is to measure the corridor a keyboard user
+ * walks.
+ *
+ * ⚠️ AND THE SELECTOR ITSELF WAS REPAIRED AT 17.2 (review finding 13): `:disabled` only ever
+ * matches FORM controls, so `a[href]:not(:disabled)` was `a[href]` wearing a no-op guard, and
+ * `[tabindex]:not(:disabled)` both kept the no-op AND admitted `tabindex="-1"` elements —
+ * which are focusable but are NOT Tab stops, so a lingering `focusHome` residue (an imperative
+ * `tabIndex = -1` awaiting its once-blur cleanup) would have counted as a corridor stop no Tab
+ * key ever lands on. The guard belongs on the one form control (`button`), and the tabindex arm
+ * excludes the negative value by its own attribute.
+ *
+ * This is `deferred-work.md:45`'s shape — a focusable-element selector that models the markup
+ * rather than the focus behaviour — showing up in a TEST HELPER rather than in the focus trap
+ * it was filed against. The trap's own selector (`AgentView.tsx:108-115`) already excludes
+ * disabled elements; this one had no reason to until c6-8.
+ *
+ * The corridor counts pinned below are UNCHANGED by either repair, and that is the honest
+ * measurement rather than a pin nudged to fit: quiet pills add zero stops, and no pinned walk
+ * leaves a `tabindex="-1"` residue standing at read time.
+ */
+const focusablesNow = () => [
+  ...document.querySelectorAll<HTMLElement>(
+    'a[href], button:not(:disabled), [tabindex]:not([tabindex="-1"])',
+  ),
+]
+
 describe('the corridor numbers of §A are pinned in the suite (c4-11, AC 31, AC 11)', () => {
   const atraxaShape = () => [
     {
@@ -1749,32 +1790,8 @@ describe('the corridor numbers of §A are pinned in the suite (c4-11, AC 31, AC 
     ),
   ]
 
-  /**
-   * Every real Tab stop in the document, in document order.
-   *
-   * ⚠️ `:not(:disabled)` ADDED AT c6-8, AND IT IS A REPAIR RATHER THAN AN ACCOMMODATION. Until
-   * this story the app contained no disabled control at all, so `'a[href], button, [tabindex]'`
-   * and *"the Tab order"* were the same set by accident. c6-8's quiet nav pills are the first
-   * disabled elements to ship, and they are disabled precisely BECAUSE UX-DR40 says their stop
-   * *"never exists"* — so counting them here would have recorded four Tab stops that a keyboard
-   * user can never reach, in the very suite whose job is to measure the corridor a keyboard user
-   * walks. The pins below would have gone 209 → 213 and 7 → 11 while the real corridor did not
-   * move by one stop.
-   *
-   * This is `deferred-work.md:45`'s shape — a focusable-element selector that models the markup
-   * rather than the focus behaviour — showing up in a TEST HELPER rather than in the focus trap
-   * it was filed against. The trap's own selector (`AgentView.tsx:108-115`) already excludes
-   * disabled elements; this one had no reason to until now.
-   *
-   * The counts below are therefore UNCHANGED by c6-8, and that is the honest measurement rather
-   * than a pin nudged to fit: the quiet pills add zero Tab stops, which is what the story's own
-   * spec required them to do.
-   */
-  const focusablesNow = () => [
-    ...document.querySelectorAll<HTMLElement>(
-      'a[href]:not(:disabled), button:not(:disabled), [tabindex]:not(:disabled)',
-    ),
-  ]
+  // `focusablesNow` — the corridor reader — is module-scope since 17.2 (review finding 13);
+  // its history and selector rationale live on the definition above this describe.
 
   it('pins 206 = 99 tiles + 6 flips + 1 oracle + 99 rows + 1 pill on Atraxa, and the flip adjacency', async () => {
     booting(
@@ -6031,10 +6048,10 @@ describe('the agent-views nav puts a dismissed view one click away (c6-8)', () =
   })
 
   // ==================== COLD OPEN (AC 1, AC 6, UX-DR40) ==============================
-  it('renders four quiet pills that are NOT Tab stops (AC 1, UX-DR40)', async () => {
+  it('renders five quiet pills that are NOT Tab stops (AC 1, UX-DR40; five since 17.2)', async () => {
     await bootedDeck()
 
-    expect(pills()).toHaveLength(4)
+    expect(pills()).toHaveLength(5)
     expect(screen.getByText(NAV_GROUP_LABEL)).toBeVisible()
     // UX-DR40's enumeration says of this stop: *"this stop never exists"* until a kind has
     // pushed. `disabled` is what makes that literally true rather than approximately.
@@ -6255,11 +6272,7 @@ describe('the agent-views nav puts a dismissed view one click away (c6-8)', () =
     escape()
     await settle()
 
-    const focusables = [
-      ...document.querySelectorAll<HTMLElement>(
-        'a[href]:not(:disabled), button:not(:disabled), [tabindex]:not(:disabled)',
-      ),
-    ]
+    const focusables = focusablesNow()
     const at = (el: Element | null) => focusables.indexOf(el as HTMLElement)
     const skip = screen.getByRole('button', { name: 'Skip past the deck grid' })
     const firstTile = document.querySelector('.card-tile')
@@ -6271,8 +6284,9 @@ describe('the agent-views nav puts a dismissed view one click away (c6-8)', () =
     // index, because the tile count is another story's number.
     expect(at(pill('suggestions'))).toBeGreaterThan(at(skip))
     expect(at(pill('suggestions'))).toBeLessThan(at(firstTile))
-    // Exactly ONE pill is in the corridor: the other three are quiet and therefore not stops.
-    expect(focusables.filter((el) => el.classList.contains('agent-views-nav-pill'))).toHaveLength(1)
+    // Exactly TWO pills are in the corridor: the pushed kind's, and — since 17.2 — the History
+    // pill, which activates on the first push of ANY kind. The other three stay quiet stops-not.
+    expect(focusables.filter((el) => el.classList.contains('agent-views-nav-pill'))).toHaveLength(2)
   })
 
   it('adds no Tab stop at all before anything has pushed (UX-DR40, "this stop never exists")', async () => {
@@ -6280,13 +6294,307 @@ describe('the agent-views nav puts a dismissed view one click away (c6-8)', () =
     // this file did not move by four when this story shipped.
     await bootedDeck()
 
-    const focusables = [
-      ...document.querySelectorAll<HTMLElement>(
-        'a[href]:not(:disabled), button:not(:disabled), [tabindex]:not(:disabled)',
-      ),
-    ]
+    const focusables = focusablesNow()
     expect(focusables.filter((el) => el.classList.contains('agent-views-nav-pill'))).toHaveLength(0)
-    // Non-vacuity: the pills ARE rendered, they are simply not stops.
-    expect(pills()).toHaveLength(4)
+    // Non-vacuity: the pills ARE rendered (History included), they are simply not stops.
+    expect(pills()).toHaveLength(5)
+  })
+})
+
+// =====================================================================================
+// 17.2 — SESSION HISTORY: THE HISTORY PILL, THE POPOVER, AND THE RE-OPEN SEAM
+// =====================================================================================
+
+describe('the History pill puts any of the last twenty pushes one click away (17.2, FR-18)', () => {
+  const ATRAXA_NAME = 'Atraxa Counter Cabinet v2 (owned)'
+  const historyPill = () => screen.getByRole<HTMLButtonElement>('button', { name: HISTORY_LABEL })
+  const popover = () => document.querySelector('.agent-views-nav-popover')
+  const entries = () => [...document.querySelectorAll<HTMLButtonElement>('.agent-views-nav-entry')]
+
+  const bootedDeck = async () => {
+    booting(activeDeck(ATRAXA_DECK_ID), deckDetail())
+    const fetchMock = answering(decks(ATRAXA_NAME))
+    render(<App />)
+    await settle()
+    await connect()
+    return fetchMock
+  }
+
+  /** One push of `kind`, titled, then settled — the wire path end to end. */
+  const pushed = async (kind: string, title: string, id: string, items: unknown[] = []) => {
+    await push(kind, { title, items }, id)
+    await settle()
+    await advance(20)
+  }
+
+  /** Esc, delivered where a browser delivers it: at the focused element, bubbling. */
+  const escape = () =>
+    act(() => {
+      document.activeElement!.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      )
+    })
+
+  /**
+   * Four mixed-kind pushes (the AC's own fixture), with the last view dismissed. The tier-list
+   * push — the one the flagship test re-opens — carries a REAL card id (review finding 11), so
+   * the re-open genuinely hydrates and the "nothing re-requested from the agent" guard has
+   * legal traffic to observe rather than passing on silence.
+   */
+  const fourPushes = async () => {
+    await pushed('suggestions', 'First look', 'p1')
+    await pushed('swaps', 'Second look', 'p2')
+    await pushed('tier_list', 'Third look', 'p3', [
+      {
+        letter: 'S',
+        name: 'Keep',
+        note: 'Never leaves the deck.',
+        card_ids: ['id-Llanowar Elves'],
+      },
+    ])
+    await pushed('groups', 'Fourth look', 'p4')
+    escape()
+    await settle()
+    expect(screen.queryByRole('dialog')).toBeNull()
+  }
+
+  const pathsSince = (fetchMock: ReturnType<typeof answering>, from: number) =>
+    fetchMock.mock.calls.slice(from).map(([input]) => String(input))
+
+  beforeEach(() => {
+    resetInspection()
+    resetDeckMemory()
+    resetAgentView()
+  })
+
+  // ==================== COLD OPEN — QUIET, WITH ITS OWN SENTENCE ======================
+  it('renders quiet/disabled with its own tooltip + description, and is not a Tab stop', async () => {
+    await bootedDeck()
+
+    const pill = historyPill()
+    expect(pill.disabled).toBe(true)
+    expect(pill.getAttribute('title')).toBe(HISTORY_QUIET_TOOLTIP)
+    const describedBy = pill.getAttribute('aria-describedby')
+    expect(describedBy).toBeTruthy()
+    expect(document.getElementById(describedBy!)?.textContent).toBe(HISTORY_QUIET_TOOLTIP)
+    // The Tab corridor, recomputed from the DOM: no pill of any stripe is a stop on a cold
+    // open — `disabled` is what keeps UX-DR40's "this stop never exists" literally true, so
+    // every corridor pin elsewhere in this file holds without moving.
+    const focusables = focusablesNow()
+    expect(focusables.filter((el) => el.classList.contains('agent-views-nav-pill'))).toHaveLength(0)
+  })
+
+  // ==================== THE FLAGSHIP: THE WHOLE AC-1 LOOP =============================
+  it('lists four mixed-kind pushes newest-first, and the second entry re-opens that exact push (AC 1)', async () => {
+    const fetchMock = await bootedDeck()
+    await fourPushes()
+
+    // The pill went active on the first push of ANY kind.
+    const pill = historyPill()
+    expect(pill.disabled).toBe(false)
+
+    act(() => {
+      pill.focus()
+      pill.click()
+    })
+
+    // All four, newest first by ts (this harness's envelopes share one clock, so arrival
+    // breaks the ties — the store's documented fallback), with focus on the newest entry.
+    expect(popover()).not.toBeNull()
+    expect(pill.getAttribute('aria-expanded')).toBe('true')
+    expect(
+      entries().map((e) => e.querySelector('.agent-views-nav-entry-title')?.textContent),
+    ).toEqual(['Fourth look', 'Third look', 'Second look', 'First look'])
+    expect(document.activeElement).toBe(entries()[0])
+    // …and the popover added no live region and no landmark (not a modal, not an announcer).
+    expect(popover()!.getAttribute('role')).toBeNull()
+    expect(popover()!.querySelector('[aria-live]')).toBeNull()
+
+    // The world moves on before the revisit, so the re-open must genuinely RE-ASK for its card
+    // data — which is what gives the traffic guard below something real to observe (finding 11:
+    // with a warm cache and empty items it passed on zero requests, which proves nothing).
+    act(() => {
+      resetCardCache()
+    })
+    const marker = fetchMock.mock.calls.length
+    act(() => {
+      entries()[1].click()
+    })
+    await settle()
+    await advance(20)
+
+    // The popover closed FIRST, then that exact push's view opened — one overlay level, ever.
+    expect(popover()).toBeNull()
+    expect(screen.getByRole('dialog')).toBeVisible()
+    expect(screen.getByRole('heading', { level: 2, name: /Third look/ })).toBeVisible()
+    expect(useAgentViewStore.getState().content?.id).toBe('p3')
+    // Nothing was re-requested from the AGENT: hydration is the only legal traffic, and it has
+    // two legal shapes — card data AND card imagery, both served by the app's own backend.
+    const paths = pathsSince(fetchMock, marker)
+    for (const path of paths) {
+      expect(path, `${path} was re-requested on a history re-open`).toMatch(
+        /^\/api\/(cards|card-image)\//,
+      )
+    }
+    // NON-VACUITY for the loop above: the re-open really hydrated the tier's card id, so the
+    // whitelist was exercised by real traffic rather than by an empty list.
+    expect(paths).toContain('/api/cards/id-Llanowar%20Elves')
+    expect(sockets).toHaveLength(1)
+    expect(sockets[0].closed).toBe(0)
+
+    // Closing the view returns focus to the History pill — the entry activation parked focus
+    // there before the view mounted, so the shell's own capture did the rest.
+    escape()
+    await settle()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(historyPill())
+  })
+
+  // ==================== A PUSH ARRIVES WHILE THE POPOVER IS OPEN (AC 3) ===============
+  it('closes the popover when a push arrives; the view auto-opens; the entry is at the top next time', async () => {
+    await bootedDeck()
+    await pushed('suggestions', 'First look', 'p1')
+    escape()
+    await settle()
+
+    act(() => {
+      historyPill().click()
+    })
+    expect(popover()).not.toBeNull()
+
+    await pushed('swaps', 'Second look', 'p2')
+
+    // The arrival ruling intact: the view opened; the popover closed first (they never coexist).
+    expect(popover()).toBeNull()
+    expect(screen.getByRole('dialog')).toBeVisible()
+    expect(screen.getByRole('heading', { level: 2, name: /Second look/ })).toBeVisible()
+
+    // Escaping the auto-opened view lands focus on the HISTORY PILL, never on <body> (review
+    // finding 9): the focused entry unmounted with the popover, the pill's focus-settle effect
+    // parked focus there in the same commit, and the view's return-focus capture — which runs
+    // AFTER the nav's effects in the tree order — therefore recorded the pill. Deleting that
+    // settle effect makes the capture record nothing and this restore go to <body>.
+    escape()
+    await settle()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.activeElement).toBe(historyPill())
+
+    // …and on the next open the new push heads the list.
+    act(() => {
+      historyPill().click()
+    })
+    expect(
+      entries().map((e) => e.querySelector('.agent-views-nav-entry-title')?.textContent),
+    ).toEqual(['Second look', 'First look'])
+  })
+
+  // ==================== ESC ORDER: VIEW → POPOVER → PIN (UX-DR39, amended) ============
+  it('Esc closes the popover WITHOUT releasing an active pin; the next Esc releases the pin', async () => {
+    await bootedDeck()
+    await pushed('suggestions', 'First look', 'p1')
+    escape()
+    await settle()
+
+    // A pin, taken the way c4-5 takes one: click a tile.
+    const tile = document.querySelector<HTMLElement>('.card-tile')!
+    act(() => {
+      tile.click()
+    })
+    expect(useInspectionStore.getState().pinnedId).not.toBeNull()
+
+    act(() => {
+      historyPill().click()
+    })
+    expect(popover()).not.toBeNull()
+    expect(document.activeElement?.classList.contains('agent-views-nav-entry')).toBe(true)
+
+    // One Esc closes ONE layer: the popover's node-level listener consumes the keystroke
+    // (preventDefault), so CardDetail's document listener leaves the pin alone.
+    escape()
+    expect(popover()).toBeNull()
+    expect(document.activeElement).toBe(historyPill())
+    expect(useInspectionStore.getState().pinnedId).not.toBeNull()
+
+    // The NEXT Esc reaches the pin, exactly as before this story.
+    escape()
+    expect(useInspectionStore.getState().pinnedId).toBeNull()
+  })
+
+  it('pins the ACCEPTED RESIDUAL: Esc from an unrelated control closes popover AND pin together (review finding 4)', async () => {
+    // The one hole in the Esc layering, on the record rather than only in a census comment: the
+    // entries are ordinary Tab stops, so focus can leave the pill+popover wrapper while the
+    // popover stays open — and from out there the keystroke reaches BOTH document listeners
+    // unconsumed (CardDetail's registered first, at component mount). EXPERIENCE.md's Esc
+    // bullet carries the same caveat, story-cited; this test is what turns a silent future
+    // change of the behaviour — in either direction — into a red.
+    await bootedDeck()
+    await pushed('suggestions', 'First look', 'p1')
+    escape()
+    await settle()
+
+    const tile = document.querySelector<HTMLElement>('.card-tile')!
+    act(() => {
+      tile.click()
+    })
+    expect(useInspectionStore.getState().pinnedId).not.toBeNull()
+
+    act(() => {
+      historyPill().click()
+    })
+    expect(popover()).not.toBeNull()
+
+    // Focus wanders to a control OUTSIDE the wrapper, and Esc is struck there.
+    act(() => {
+      tile.focus()
+    })
+    escape()
+
+    expect(popover()).toBeNull()
+    expect(useInspectionStore.getState().pinnedId).toBeNull()
+    // …and the wandered focus was not yanked anywhere: the tile keeps it.
+    expect(document.activeElement).toBe(tile)
+  })
+
+  it('never yanks wandered focus back to the pill on an outside dismissal (review finding 8)', async () => {
+    // `closePopover`'s guard: focus returns to the pill only when closing would otherwise DROP
+    // it. Focus resting on a live control outside the wrapper is a decision the close did not
+    // make — an unconditional `pill.focus()` would pass every other test and steal it here.
+    await bootedDeck()
+    await pushed('suggestions', 'First look', 'p1')
+    escape()
+    await settle()
+
+    act(() => {
+      historyPill().click()
+    })
+    expect(document.activeElement?.classList.contains('agent-views-nav-entry')).toBe(true)
+
+    const tile = document.querySelector<HTMLElement>('.card-tile')!
+    act(() => {
+      tile.focus()
+    })
+    fireEvent.pointerDown(document.body)
+
+    expect(popover()).toBeNull()
+    expect(document.activeElement).toBe(tile)
+  })
+
+  // ==================== OUTSIDE CLICK, AND THE CENSUSES HOLD ==========================
+  it('closes on an outside pointerdown, and the live-region census is untouched throughout', async () => {
+    await bootedDeck()
+    await pushed('suggestions', 'First look', 'p1')
+    escape()
+    await settle()
+
+    const liveBefore = document.querySelectorAll('[aria-live]').length
+    act(() => {
+      historyPill().click()
+    })
+    expect(popover()).not.toBeNull()
+    expect(document.querySelectorAll('[aria-live]')).toHaveLength(liveBefore)
+
+    fireEvent.pointerDown(document.body)
+    expect(popover()).toBeNull()
+    expect(document.querySelectorAll('[aria-live]')).toHaveLength(liveBefore)
   })
 })
