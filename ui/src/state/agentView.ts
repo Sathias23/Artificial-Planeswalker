@@ -345,7 +345,10 @@ export const resetAgentView = (): void => {
  * Three writes in one `setState`, and the third is the only place in the app that can mark
  * anything unread:
  *
- *   1. **Retain.** `retained[content.kind] = content` — the pill's re-open path (AC 4).
+ *   1. **Retain.** `retained[content.kind] = content` — the pill's re-open path (AC 4). With
+ *      one exception since the pre-cut R3 guard: a HISTORY REVISIT of a non-latest entry
+ *      (`content` already filed in `history` but not the object `retained[kind]` holds) leaves
+ *      `retained` untouched — revisiting an old envelope must not corrupt latest-per-kind.
  *   2. **Read.** `unread[content.kind]` is cleared, because this push is ON THE GLASS the
  *      instant this write lands. A push is never unread against itself.
  *   3. **Displace.** If a view of a DIFFERENT kind is currently open, that kind is marked
@@ -446,10 +449,20 @@ export const openAgentView = (content: AgentViewContent): void => {
     const unread = { ...state.unread }
     delete unread[content.kind]
     if (displaced !== null) unread[displaced] = true
+    // A HISTORY REVISIT OF A NON-LATEST ENTRY MUST NOT REWRITE THE RETAINED SLOT (pre-cut R3):
+    // `retained[kind]` is the latest-per-kind contract the kind pills re-open from, and identity
+    // here is REFERENCE identity — the latest entry for a kind holds the SAME object as
+    // `retained[kind]` (`ts` is unsafe to rank, `id` carries no order — see `historyWith`). An
+    // entry already filed in `history` that is NOT that object is an older envelope being
+    // revisited: the view opens it, but the retained slot — and with it the pills' recency —
+    // stays exactly where the newest push left it. Everything not in history (a fresh push, a
+    // kind-pill reopen of the retained object itself — a harmless self-assignment) retains as
+    // before.
+    const revisit = state.history.includes(content) && content !== state.retained[content.kind]
     return {
       status: 'open',
       content,
-      retained: { ...state.retained, [content.kind]: content },
+      retained: revisit ? state.retained : { ...state.retained, [content.kind]: content },
       unread,
       history: historyWith(state.history, content),
     }

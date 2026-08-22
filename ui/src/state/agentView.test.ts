@@ -1106,17 +1106,52 @@ describe('reopenPush puts one specific push back (17.2)', () => {
     // The case the per-kind pills cannot reach and the whole story exists for: two suggestions
     // pushes, and the OLDER one is still reachable through history.
     const older = pushAt(1)
+    const newest = pushAt(2)
     openAgentView(older)
-    openAgentView(pushAt(2))
+    openAgentView(newest)
     closeAgentView()
 
     reopenPush('push-h1')
 
     expect(useAgentViewStore.getState().status).toBe('open')
     expect(useAgentViewStore.getState().content).toBe(older)
-    // The on-the-glass invariant holds: content and retained[kind] are ONE object, so the kind
-    // pill now re-opens what is showing rather than disagreeing with the glass.
-    expect(useAgentViewStore.getState().retained.suggestions).toBe(older)
+    // The retained slot is NOT rewritten (pre-cut R3): `retained[kind]` is latest-per-kind, and
+    // a revisit of an older envelope must not corrupt it — the kind pill keeps re-opening the
+    // newest push even while an older one is on the glass.
+    expect(useAgentViewStore.getState().retained.suggestions).toBe(newest)
+  })
+
+  it('leaves `retained` — the OBJECT itself — untouched on a non-latest revisit (pre-cut R3)', () => {
+    // Reference-level: a revisit must not even rebuild the map, or every pill subscribed to
+    // `retained` re-renders on a write that changed nothing.
+    const older = pushAt(1)
+    openAgentView(older)
+    openAgentView(pushAt(2))
+    closeAgentView()
+    const retainedBefore = useAgentViewStore.getState().retained
+
+    reopenPush('push-h1')
+
+    expect(useAgentViewStore.getState().retained).toBe(retainedBefore)
+  })
+
+  it('a kind-pill reopen of the LATEST entry still writes as before (the self-assignment arm)', () => {
+    // The guard keys on reference identity: the retained object revisiting ITSELF is not a
+    // non-latest revisit, so the write path behaves exactly as it shipped — content and
+    // retained[kind] stay one object.
+    const newest = pushAt(2)
+    openAgentView(pushAt(1))
+    openAgentView(newest)
+    closeAgentView()
+
+    reopenAgentView('suggestions')
+    expect(useAgentViewStore.getState().content).toBe(newest)
+    expect(useAgentViewStore.getState().retained.suggestions).toBe(newest)
+
+    closeAgentView()
+    reopenPush('push-h2')
+    expect(useAgentViewStore.getState().content).toBe(newest)
+    expect(useAgentViewStore.getState().retained.suggestions).toBe(newest)
   })
 
   it('is a NO-OP for an id history does not hold', () => {
