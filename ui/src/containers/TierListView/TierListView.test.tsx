@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Card, CardSummary, TierItem } from '../../api/schema'
 import { resetCardCache, useCardStore } from '../../state/cards'
-import { resetFaces } from '../../state/faces'
+import { resetFaces, useFaceStore } from '../../state/faces'
 import { resetInspection, useInspectionStore } from '../../state/inspection'
 import { TierListView } from './TierListView'
 import { emptyPushLine } from '../SuggestionsView/copy'
@@ -445,6 +445,201 @@ describe('the inspection contract on EVERY tile (UX-DR14, UX-DR20, UX-DR22)', ()
     act(() => seedUnknown('c-tier-1'))
 
     expect(useInspectionStore.getState().pinnedId).toBe('c-tier-2')
+  })
+})
+
+describe('the in-view preview (DESIGN.md components.tier-preview, added 2026-08-23)', () => {
+  // jsdom's usual disclaimers apply one more time: the two-column grid, the 176px/300px tracks,
+  // the sticky positioning and the ≤1100px collapse are all stylesheet claims. The load-bearing
+  // rules — the thumb's real width, unshrinkable tiles, scroll-not-wrap, the preview's media
+  // collapse — are pinned as SOURCE by `shell.test.ts`'s tier-strip rule-reading guard; the
+  // rendered geometry (that it all LOOKS right in a real browser) is the manual checklist's.
+  // What THIS block proves is the wiring: the preview reads the inspection store's resolution
+  // and renders wire data through the tile's own placeholder ladder, silently.
+  const previewOf = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>('.tier-preview')
+
+  it('renders beside the rows — and NOT for an empty or all-skipped push', () => {
+    seedAll()
+    const healthy = render(<TierListView kind="tier_list" items={[TIER]} />)
+    expect(previewOf(healthy.container)).not.toBeNull()
+    healthy.unmount()
+
+    const empty = render(<TierListView kind="tier_list" items={[]} />)
+    expect(previewOf(empty.container)).toBeNull()
+    empty.unmount()
+
+    const skipped = render(
+      <TierListView kind="tier_list" items={[{ letter: 'S', name: 'Bare', card_ids: [] }]} />,
+    )
+    expect(previewOf(skipped.container)).toBeNull()
+    skipped.unmount()
+  })
+
+  it('shows the SILENT loading well while nothing is hovered, focused or pinned', () => {
+    seedAll()
+    const { container } = render(<TierListView kind="tier_list" items={[TIER]} />)
+    const preview = previewOf(container)!
+
+    expect(preview.querySelector('.card-placeholder-well')).not.toBeNull()
+    expect(preview.querySelector('.tier-preview-image')).toBeNull()
+    // Wordless: the empty state authors NOTHING — no copy module entry exists to cite. This
+    // also pins the SHARED loading variant's silence: `CardPlaceholder`'s well renders no
+    // text, visually hidden or otherwise, so a change giving that primitive words fails here
+    // knowingly rather than leaking copy into a surface built to be silent.
+    expect(preview.textContent).toBe('')
+  })
+
+  it('tracks hover: the card’s art, name, cost and type render from the cache', () => {
+    seedAll()
+    const { container } = render(<TierListView kind="tier_list" items={[TIER]} />)
+    const [first] = tilesOf(rowAt(container, 0))
+
+    fireEvent.mouseEnter(first)
+
+    const preview = previewOf(container)!
+    expect(preview.querySelector('.tier-preview-image')).toHaveAttribute(
+      'src',
+      '/api/card-image/c-tier-1',
+    )
+    // Rendition UNSPELLED, so a hover is a warm browser-cache hit for a drawn thumbnail.
+    expect(preview.querySelector('.tier-preview-image')!.getAttribute('src')).not.toContain(
+      'size=',
+    )
+    expect(preview.querySelector('.tier-preview-image')).toHaveAttribute('alt', '')
+    expect(preview.querySelector('.tier-preview-name')).toHaveTextContent('Card c-tier-1')
+    expect(preview.querySelector('.tier-preview-type')).toHaveTextContent('Creature — Elf')
+    // The cost as pips — `ManaCost` builds its own accessible name from the parsed string.
+    expect(preview.querySelector('.mana-cost')).not.toBeNull()
+
+    // The pointer leaves with nothing pinned: the preview falls back to the silent well.
+    fireEvent.mouseLeave(first)
+    expect(preview.querySelector('.card-placeholder-well')).not.toBeNull()
+    expect(preview.textContent).toBe('')
+  })
+
+  it('tracks keyboard focus with full parity (UX-DR14)', () => {
+    seedAll()
+    const { container } = render(<TierListView kind="tier_list" items={[TIER]} />)
+    const [, second] = tilesOf(rowAt(container, 0))
+
+    fireEvent.focus(second)
+    expect(previewOf(container)!.querySelector('.tier-preview-name')).toHaveTextContent(
+      'Card c-tier-2',
+    )
+
+    fireEvent.blur(second)
+    expect(previewOf(container)!.querySelector('.card-placeholder-well')).not.toBeNull()
+  })
+
+  it('keeps a PINNED card after the pointer leaves — the store’s precedence, not its own', () => {
+    seedAll()
+    const { container } = render(<TierListView kind="tier_list" items={[TIER]} />)
+    const [first] = tilesOf(rowAt(container, 0))
+
+    fireEvent.mouseEnter(first)
+    fireEvent.click(first)
+    fireEvent.mouseLeave(first)
+
+    expect(previewOf(container)!.querySelector('.tier-preview-name')).toHaveTextContent(
+      'Card c-tier-1',
+    )
+
+    // A second single click releases, and the preview lets go with the store.
+    fireEvent.click(first)
+    expect(previewOf(container)!.querySelector('.card-placeholder-well')).not.toBeNull()
+  })
+
+  it('shows the PINNED card over a later hover — the store’s pin-over-transient resolution', () => {
+    // `targetIdOf` is `pinnedId ?? transient ?? default` (`inspection.ts`), the same one
+    // expression the shell's detail panel reads — asserted HERE because this is the first
+    // surface where both a pin and a live hover are visible in one view body, and a preview
+    // that tracked the pointer past a pin would contradict what the pin means everywhere else.
+    seedAll()
+    const { container } = render(<TierListView kind="tier_list" items={[TIER]} />)
+    const [first, second] = tilesOf(rowAt(container, 0))
+
+    fireEvent.click(first)
+    fireEvent.mouseEnter(second)
+
+    // The hover was RECORDED (the pin's release would expose it) — it just does not outrank.
+    expect(useInspectionStore.getState().hoveredId).toBe('c-tier-2')
+    expect(previewOf(container)!.querySelector('.tier-preview-name')).toHaveTextContent(
+      'Card c-tier-1',
+    )
+
+    // Releasing the pin hands the preview to the still-live hover, the store's own fallback.
+    fireEvent.click(first)
+    expect(previewOf(container)!.querySelector('.tier-preview-name')).toHaveTextContent(
+      'Card c-tier-2',
+    )
+  })
+
+  it('draws the target’s SHOWN face — the preview follows the faces store, never face 0', () => {
+    // Replacing the preview's `useFaceIndex(cardId)` with a literal `0` passes every other
+    // test in this block; this is the pin. The store is seeded directly (`flipCard` is the
+    // runtime door and it gates on the hydrated image count, which is not what is under test).
+    seedAll()
+    act(() => useFaceStore.setState({ faces: { 'c-tier-1': 1 } }))
+    const { container } = render(<TierListView kind="tier_list" items={[TIER]} />)
+
+    fireEvent.mouseEnter(tilesOf(rowAt(container, 0))[0])
+
+    expect(previewOf(container)!.querySelector('.tier-preview-image')).toHaveAttribute(
+      'src',
+      '/api/card-image/c-tier-1?face=1',
+    )
+  })
+
+  it('falls back to the NAMED placeholder when the target’s picture fails', () => {
+    seedAll()
+    const { container } = render(<TierListView kind="tier_list" items={[TIER]} />)
+    fireEvent.mouseEnter(tilesOf(rowAt(container, 0))[0])
+
+    const preview = previewOf(container)!
+    fireEvent.error(preview.querySelector('.tier-preview-image')!)
+
+    // The `<img>` is REMOVED rather than hidden (AD-11 — no broken-image glyph), and the
+    // named variant draws what the cache knows: name, cost pips, type line.
+    expect(preview.querySelector('.tier-preview-image')).toBeNull()
+    expect(preview.querySelector('.card-placeholder')).toHaveTextContent('Card c-tier-1')
+  })
+
+  it('falls back to EMPTY when the target settles to unknown — the tile effect releases it', () => {
+    const { container } = render(<TierListView kind="tier_list" items={[TIER]} />)
+    fireEvent.mouseEnter(tilesOf(rowAt(container, 0))[0])
+
+    act(() => seedUnknown('c-tier-1'))
+
+    // The existing per-tile release valve (Greptile P1) cleared the target, so the preview is
+    // back on the silent well — it never renders the unknown-card variant of its own.
+    expect(useInspectionStore.getState().hoveredId).toBeNull()
+    const preview = previewOf(container)!
+    expect(preview.querySelector('.card-placeholder-well')).not.toBeNull()
+    expect(preview.textContent).toBe('')
+  })
+
+  it('is silent and wordless: no live region, no landmark, no control, no authored copy', () => {
+    seedAll()
+    const { container } = render(<TierListView kind="tier_list" items={[TIER]} />)
+    fireEvent.mouseEnter(tilesOf(rowAt(container, 0))[0])
+
+    const preview = previewOf(container)!
+    // Not a fourth live region (`App.test.tsx` pins the census at three, exhaustively) and not
+    // a second CardDetail: no region/heading landmark, no skip-target id, no interactive stop.
+    expect(preview.hasAttribute('aria-live')).toBe(false)
+    expect(preview.querySelector('[aria-live]')).toBeNull()
+    expect(preview.querySelector('#card-detail')).toBeNull()
+    expect(preview.querySelector('button')).toBeNull()
+    expect(preview.querySelector('h2')).toBeNull()
+    // The only role inside is `ManaCost`'s own `role="img"` — the shared primitive's contract,
+    // never a region or a live politeness of this component's invention.
+    for (const element of preview.querySelectorAll('[role]')) {
+      expect(element.getAttribute('role')).toBe('img')
+    }
+    // Every rendered word is wire data the fixtures put in the cache.
+    expect(preview.querySelector('.tier-preview-name')!.textContent).toBe('Card c-tier-1')
+    expect(preview.querySelector('.tier-preview-type')!.textContent).toBe('Creature — Elf')
   })
 })
 
