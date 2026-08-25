@@ -6,13 +6,13 @@
 > `cN-M` story ids in prose, filenames, PR titles and branch names are unchanged records of
 > merged work. See `sprint-change-proposal-2026-08-16.md`.
 
-## Deferred from: code review of c6-7-suggestions-view (2026-08-11)
+## Deferred from: code review of c6-7-suggestions-view (2026-08-11)  <!-- dws-001 -->
 
 > Findings from the bmad-code-review three-layer pass (Blind Hunter, Edge Case Hunter,
 > Acceptance Auditor) against the uncommitted c6-7 diff, deferred rather than patched — either
 > low observed harm today, or needing UX input rather than a mechanical fix.
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-7-suggestions-view.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-7-suggestions-view.md`  <!-- dw-0001 -->
   summary: "Screen-reader users hear the row's badge, name, mana cost and confidence as one
   run-on phrase with no separating punctuation or labeling, since all four are sibling `<span>`s
   inside the same `<button>` as the reason line — e.g. 'ramp Llanowar Elves high Fills the
@@ -23,7 +23,7 @@
   tech before a fix is unambiguous."
   evidence: 'bmad-code-review Blind Hunter, 2026-08-11; `ui/src/containers/SuggestionsView/SuggestionsView.tsx` (`SuggestionRow`'"'"'s head line, badge/name/cost/confidence spans).'
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-7-suggestions-view.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-7-suggestions-view.md`  <!-- dw-0002 -->
   summary: "`renderableOf`'s own docstring names a fourth hydration tier as \"the interesting
   one\": a suggested card that happens to already be in the open deck, pre-seeded via
   `seedCardSummaries`, painting a name and mana cost at first frame with nothing in flight. No
@@ -33,7 +33,7 @@
   Test-coverage gap, not a runtime defect."
   evidence: 'bmad-code-review Blind Hunter, 2026-08-11; `ui/src/containers/SuggestionsView/SuggestionsView.tsx` (`renderableOf`'"'"'s docstring); `ui/src/containers/SuggestionsView/SuggestionsView.test.tsx`.'
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-7-suggestions-view.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-7-suggestions-view.md`  <!-- dw-0003 -->
   summary: "Every item whose `card_id` is present but not a string (`42`, `{id:'c-1'}`, etc.)
   maps through `cardIdOf` to the same `''` value, so several distinct malformed suggestions in
   one push share one `CardEntry`, one flip-index entry, and would share one hover/focus/pin
@@ -42,7 +42,7 @@
   distinguishes N different malformed rows from each other should that refusal ever narrow."
   evidence: 'bmad-code-review Edge Case Hunter, 2026-08-11; `ui/src/containers/SuggestionsView/SuggestionsView.tsx` (`cardIdOf`).'
 
-## Deferred from: c6-8-agent-views-nav-unread-markers-re-open-and-kind-switching (2026-08-12)
+## Deferred from: c6-8-agent-views-nav-unread-markers-re-open-and-kind-switching (2026-08-12)  <!-- dws-002 -->
 
 > Observations recorded during implementation, before the three-layer review. One is an ARTEFACT
 > contradiction the story repaired in CODE and could not repair in the artefacts it does not own;
@@ -57,15 +57,15 @@
 > as its first data point; and the C3-retro **F1 count is DISPLACED to zero** — the gate itself
 > stays 15-5's.
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-8-agent-views-nav-unread-markers-re-open-and-kind-switching.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-8-agent-views-nav-unread-markers-re-open-and-kind-switching.md`  <!-- dw-0004 -->
   summary: "**The artefacts describe the quiet nav pill's copy as a \"tooltip\", singular, and that is a contradiction the system has already repaired once in the other direction.** UX-DR28 and AC 1 require the pill be NOT focusable and carry a tooltip; UX-DR39 bans hover-only disclosure of unique information and requires focus parity — and a non-focusable element cannot disclose on focus, so the two rules cannot both be satisfied by a `title` alone. The identical shape was caught on the connection pill by the 2026-07-22 accessibility review and repaired by amending UX-DR29 to focusable + `aria-describedby`; the nav pill never got that amendment. **c6-8 repaired it in code** under Brad's Q2 ruling — the pill stays `disabled` (UX-DR28 and UX-DR40's cold-open enumeration are explicit and load-bearing) and the sentence ships as BOTH a `title` and a visually-hidden `aria-describedby` target, so the information is in the accessibility tree and never hover-only in substance. EXPERIENCE.md's nav-pill row was amended in the same commit to record the mechanism and the reason. **What remains is the residue this story cannot fix from inside a story:** UX-DR28 itself, and the epic's AC 1, still say \"tooltip\" as though a pointer affordance were the whole requirement, so the next reader of those rules meets the contradiction again with no pointer to its resolution. ~~**Home: Story 8.3's PRD reconciliation**, which is where peer-artefact disagreements of exactly this shape are collected — the repair is to amend UX-DR28 the way UX-DR29 was amended, naming the dual mechanism, rather than to change any code.~~ **CLOSED by story 15-3, 2026-08-18, exactly as prescribed** (Story 8.3 was renumbered 15-3). UX-DR28 in `epics-companion-app.md` now states that the quiet pill's sentence ships as a `title` **and** a visually-hidden `aria-describedby` target, that the pill deliberately stays `disabled` because UX-DR28's own non-focusability and UX-DR40's cold-open Tab enumeration are load-bearing, and that this is the repair UX-DR29 already received for the connection pill. The epic's c6-8 AC 1 carried the same stale \"the tooltip\" and was amended in the same commit. No code changed; the rule now describes what c6-8 shipped."
   evidence: '`review-accessibility.md:32` (the connection-pill repair this mirrors); UX-DR28 (`epics-companion-app.md:492`), UX-DR39 (`:585`), UX-DR29; the shipped dual mechanism in `ui/src/containers/AgentViewsNav/AgentViewsNav.tsx` and its reasoning in that directory''s `copy.ts`; the amended nav-pill row in `EXPERIENCE.md`, gated by `ui/tests/agent-views-nav-copy.test.ts` (which asserts the row still carries both the UX-DR39 clause and the "programmatic description" wording, so the reason cannot be quietly dropped).'
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-8-agent-views-nav-unread-markers-re-open-and-kind-switching.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-8-agent-views-nav-unread-markers-re-open-and-kind-switching.md`  <!-- dw-0005 -->
   summary: "**The header nav pills join the app's unviewed-pixels surface, extending c6-7's declaration to a component that is on EVERY screen rather than inside an overlay.** jsdom evaluates no stylesheet, resolves no layout and renders no tooltip, so every visual claim this story makes is asserted as SOURCE: that the quiet pill is `text-tertiary` and not an opacity dim, that the dot is 8px `--accent`, that both type roles ship with their companion declarations, that the hover arm excludes `:disabled`, that the pill declares 24px on both axes. Five specific things remain unchecked by anything. (1) Whether four uppercase `--type-label` pills plus a kicker plus the identity block and badges actually FIT the header at 1100px — the row wraps by design, and nobody has seen whether it does. (2) Whether the quiet `text-tertiary` reads as *\"nothing here yet\"* rather than as *\"broken\"* when three of the four pills are quiet, which is the ordinary production state until Epic 9. (3) Whether the 8px accent dot is findable at a glance beside 11px uppercase text — the connection pill's dot sits beside 14px body text, which is the sibling it cites. (4) Whether the `--type-micro` timestamp after a `--type-label` name reads as one control or as two. (5) Whether the browser renders a `title` tooltip on a `disabled` button at all, which varies by engine and is the pointer half of Q2's dual mechanism (the accessibility-tree half is asserted). **Home: the C6 manual checklist (15-6)**, which already carries C5's un-run Block J and c6-7's rows."
-  evidence: 'The "WHAT THIS SUITE CANNOT CARRY" header in `ui/src/containers/AgentViewsNav/AgentViewsNav.test.tsx`; P15 (the jsdom class-vs-token hole) from `epic-c5-retro-2026-08-09.md`; R11 (Block J ruled NOT RUN); the c6-7 entry below, which this one extends rather than duplicates — that surface is inside an overlay the user opens, this one is on the glass permanently.'
+  evidence: 'The "WHAT THIS SUITE CANNOT CARRY" header in `ui/src/containers/AgentViewsNav/AgentViewsNav.test.tsx`; P15 (the jsdom class-vs-token hole) from `archive/epic-c5-retro-2026-08-09.md`; R11 (Block J ruled NOT RUN); the c6-7 entry below, which this one extends rather than duplicates — that surface is inside an overlay the user opens, this one is on the glass permanently.'
 
-## Deferred from: c6-7-suggestions-view (2026-08-11)
+## Deferred from: c6-7-suggestions-view (2026-08-11)  <!-- dws-003 -->
 
 > Observations recorded during implementation of the suggestion rows, before the three-layer
 > review. One is a BOUNDARY question ruled to belong to the story that builds the machinery it
@@ -79,15 +79,15 @@
 > coalescing entry is **CLOSED as "not wanted"** by Brad's ruling, which is the deliberate close
 > its own terms asked for after three declines and one mis-homing.
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-7-suggestions-view.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-7-suggestions-view.md`  <!-- dw-0006 -->
   summary: "**A pinned suggestion is usually a card that is NOT in the open deck, and Epic 7's eviction rule was written as though every pin were.** UX-DR35 says a pinned target *\"that no longer exists in the deck falls back to transient\"* — written for deck cards, before any surface could pin a non-deck one. Read literally against c6-7's rows, the next `deck_changed` refetch would evict every pinned suggestion the moment the deck's card list changed, which reads as a bug against this story's own AC 2 (*\"a pinned target survives closing the view\"*) and against UJ-1 step 6: the user pins a suggested card precisely BECAUSE it is not in the deck yet. Nothing evicts today — refetch coalescing is Epic 7's and unbuilt — so there is no live defect and this story writes no code for it. **Home: Epic 7's refetch story**, which is where the decision has the eviction machinery in front of it: rule either that eviction applies only to pins whose card was in the DEPARTING deck's list, or that a pin on a non-deck card always survives. c6-7's `App.test.tsx` pin-survives-close test stands as the regression tripwire in the meantime. **RULED (Brad, 2026-08-14 — C6 R9): the FIRST option, eviction is a membership transition.** A pin is evicted only when its card was in the DEPARTING deck's list and is absent from the new one — a pin on a card that was never in the deck (every pinned suggestion) survives as a natural consequence, statelessly, with no pin-time classification (the second option's grandfathering edge: a suggestion pinned, then added to the deck, then removed, would have survived a removal it shouldn't). UX-DR35's wording amended in `epics-companion-app.md` at the DR itself and at Story 7.4's ACs, which also gained the suggestion-pin-survives AC — the real regression test this entry was owed. **Home discharged to c7-4's ACs; entry CLOSES when that AC's test ships.** **CLOSED 2026-08-15: c7-4 shipped the test (PR #78, merged at `0bfaf57`) — `App.test.tsx` \"keeps a pinned SUGGESTION — a card in neither list — through a completed refetch\" drives a real `deck_changed` refetch against a pin on `id-Birds of Paradise` (verified absent from every deck fixture), plus the `inspection.test.ts` absent→absent truth-table row; the R9 membership rule itself ships as `evictDepartedPin` and the pin-survival half is firing-proof-planted (unconditional `clearPin()` → 3 RED).**"
   evidence: 'Recorded at story creation and confirmed during implementation; UX-DR35; `EXPERIENCE.md:188` (UJ-1 step 6); `ui/src/state/inspection.ts` (nothing in the slice reads the deck); `ui/src/App.test.tsx`, "ESC CLOSES THE VIEW AND THE PIN SET FROM A ROW SURVIVES". Brad ruled Q7 as recommended (2026-08-11): file the boundary note, write no code here. **Citation corrected by code review (2026-08-11):** the named App test covers only the PIN-SURVIVES-CLOSE half of AC 2 — it never drives a `deck_changed` event, so it is not itself a tripwire for the eviction question this entry is about. The "nothing evicts today" claim rests on Epic 7''s refetch/eviction machinery being unbuilt (confirmed by `inspection.ts` reading no deck state), not on any shipped test exercising that path — Epic 7''s refetch story is still the one that owes a real regression test for whichever way it rules.'
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-7-suggestions-view.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-7-suggestions-view.md`  <!-- dw-0007 -->
   summary: "**The suggestion row is the app's first surface whose pixels no human has seen, and the guards that cover it are all source reads.** `DESIGN.md:444` lists the Suggestion row among the components *\"specified here without a visual precedent\"* — there are no composition-reference pixels to compare against — and Block J of the C5 manual checklist was RULED NOT RUN by Brad, so the whole agent-view surface has shipped unviewed. jsdom evaluates no stylesheet, resolves no layout and loads no images, so every visual claim this story makes is asserted as SOURCE: that the stylesheet spends no `--accent-dim`, no `--radius-card` and no `aspect-ratio`; that the type roles ship with their companion declarations; that the one `px` literal carries its citation. Four specific things remain unchecked by anything: whether `--accent` at 5.5:1 reads as a live marker over the row's own `--accent-glow` tint; whether the content-driven row height produces a thumbnail of a sensible WIDTH at the view's real measure (the height derives from two text lines, and the width from 63:88, so a tighter line height makes a narrower card); whether a 200-character reason ellipsizes at a useful point; and whether the badge, name, pips and confidence sit on one optical line given three different type roles. **Home: the C6 manual checklist (15-6)**, carrying C5's Block J with it."
-  evidence: '`DESIGN.md:444` (no-visual-precedent list) and the amended `components.suggestion-row`; `epic-c5-retro-2026-08-09.md` (R11, Block J ruled NOT RUN); the "WHAT THIS SUITE CANNOT CARRY" header in `ui/src/containers/SuggestionsView/SuggestionsView.test.tsx`; P15 (the jsdom class-vs-token hole) from the same retro.'
+  evidence: '`DESIGN.md:444` (no-visual-precedent list) and the amended `components.suggestion-row`; `archive/epic-c5-retro-2026-08-09.md` (R11, Block J ruled NOT RUN); the "WHAT THIS SUITE CANNOT CARRY" header in `ui/src/containers/SuggestionsView/SuggestionsView.test.tsx`; P15 (the jsdom class-vs-token hole) from the same retro.'
 
-## Deferred from: c6-6-a-push-opens-its-view-and-a-repeat-push-replaces-it-in-place (2026-08-11)
+## Deferred from: c6-6-a-push-opens-its-view-and-a-repeat-push-replaces-it-in-place (2026-08-11)  <!-- dws-004 -->
 
 > Observations recorded during implementation, before the three-layer review. Both are ARTEFACT
 > gaps rather than code defects: the story shipped the artefact's own words and its own values
@@ -101,170 +101,170 @@
 > owes it"* — the reading was performed and is recorded in this story's Debug Log, which is the
 > deliverable; the entry never closes, by its own terms).
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-6-a-push-opens-its-view-and-a-repeat-push-replaces-it-in-place.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-6-a-push-opens-its-view-and-a-repeat-push-replaces-it-in-place.md`  <!-- dw-0008 -->
   summary: "**The empty-push line is ungrammatical once its placeholder is filled, and the artefact is what says so.** `EXPERIENCE.md`'s Voice and Tone row writes *\"The agent sent an empty {kind}. Nothing to show — ask it for another pass.\"* — a template — and the story's own task list rules the substitution to be the WIRE kind. That renders *\"The agent sent an empty suggestions.\"*, which reads wrong, and gets worse for Epic 9's kinds: *\"an empty tier_list\"*, *\"an empty groups\"*. c6-6 shipped the artefact's bytes verbatim rather than inventing a per-kind display noun (\"suggestions list\", \"tier list\"), because authoring copy no artefact carries — one story before the second kind that would need it — is exactly what the copy guard's registration rule exists to prevent, and a runtime-assembled user-facing string is residue 3 of `copy-rules.test.ts`'s own header. **Home: the story that adds the SECOND view kind** (c6-8 for kind switching, or Epic 9's first view), which is the first point at which the decision has two data points instead of one. The repair is either a per-kind display-noun table registered in `COPY_MODULES`, or an `EXPERIENCE.md` amendment rewording the sentence so no article precedes the placeholder."
   evidence: '`ui/src/containers/SuggestionsView/copy.ts` (the residue is declared in the module itself); `EXPERIENCE.md:71`; the byte-for-byte pin in `ui/tests/empty-push-copy.test.ts` asserts the placeholder SURVIVES, so the day someone hard-codes a kind that gate fires. **RE-HOMED TO STORY 9.1 BY c6-8 (Brad''s Q7, 2026-08-12), with this story''s contribution recorded rather than the entry closed.** This entry named "c6-8 for kind switching" as one of two candidate homes, and c6-8 did build kind switching — but under Q1 it added no second RENDERABLE kind: the socket still drops `swaps`/`tier_list`/`groups`, so the only kind that can reach the empty-push line is still `suggestions`, and the sentence it renders is the one already shipped. Rewording byte-gated Voice-and-Tone copy in a story whose only reachable kind renders the current sentence anyway is an amendment nobody''s acceptance criterion asks for — the exact move this entry''s own history warns against. What c6-8 DID contribute is **the first of the entry''s two repair shapes, in part**: `AGENT_VIEW_LABELS` in `src/state/agentView.ts` is a per-kind display-noun table, registered in `COPY_MODULES`, covering all four kinds ("Suggestions" / "Swaps" / "Tier list" / "Card groups"). It is not yet the repair, because those are NAV LABELS and the empty-push line needs a noun that reads after an article — "an empty Tier list" is better than "an empty tier_list" and still not right, and "a Card groups" is worse. So Story 9.1 inherits a real data point and a decided home for whatever noun it needs: either extend that table with a second per-kind form, or amend `EXPERIENCE.md:71` so no article precedes the placeholder. **Home: Story 9.1** (Epic 9''s first view), which is the first story with a second reachable kind in front of it.'
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-6-a-push-opens-its-view-and-a-repeat-push-replaces-it-in-place.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-6-a-push-opens-its-view-and-a-repeat-push-replaces-it-in-place.md`  <!-- dw-0009 -->
   summary: "**`DESIGN.md` specifies a treatment for the empty-DECK line and none for the empty-PUSH line, which are the same kind of thing.** `components.empty-deck-line` carries `type: '{typography.body}'`, `foreground: '{colors.text-secondary}'` and the note that it *\"spends no length of its own\"* because its container's padding is already its inset. Nothing equivalent exists for the empty push, and the two states are structurally identical: one calm sentence standing in for absent content inside a surface that supplies its own padding. c6-6 shipped the empty-deck block's values, CITED in `SuggestionsView.css`, and did not amend the artefact — c4-12 amended `DESIGN.md` because an acceptance criterion of its own (AC 26) required the artefact to specify the treatment, and c6-6 has no such AC. Amending an artefact nobody asked to be amended is not a diff a story makes quietly. **Home: c6-7**, which renders the rest of this view and therefore has to put real values in front of a `DESIGN.md` that describes none of them — at which point the empty line's block is one line of the same amendment. **CLOSED BY c6-7 (2026-08-11), exactly as predicted.** That story amended `components.suggestion-row` first (Brad's Q2 ruling — the block carried four values and no padding, gap, row height or live marker, while the component description below the frontmatter already promised all of them), and `components.empty-push-line` was one entry of the same amendment: `type: '{typography.body}'`, `foreground: '{colors.text-secondary}'`, and a `container` note recording that the agent view body's own `{spacing.4}` is the whole of its inset. Pinned in `ui/tests/tokens.test.ts` by a SIBLING comparison against `empty-deck-line` rather than against retyped constants, so the day one of the two is amended and the other is not, the test names it."
   evidence: '`ui/src/containers/SuggestionsView/SuggestionsView.css` (the gap is declared in the stylesheet header); `DESIGN.md`, `components.empty-deck-line`; `ui/src/containers/CardGrid/CardGrid.css:42-64` for the shape the amendment took at c4-12.'
 
-## Deferred from: c6-5-agent-view-shell-with-focus-management-and-dismissal (2026-08-10)
+## Deferred from: c6-5-agent-view-shell-with-focus-management-and-dismissal (2026-08-10)  <!-- dws-005 -->
 
 > Observations recorded during implementation of the agent view shell, before the three-layer
 > review. Neither is caused by this story's code; both were found by it.
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`  <!-- dw-0010 -->
   summary: "**A SECOND, DISTINCT WINDOWS TEST FLAKE: an intermittent vitest worker-fork crash with no test attached.** Twice in roughly a dozen full `npm test` runs, the suite ended `Unhandled Error — [vitest-pool]: Worker forks emitted error / Worker exited unexpectedly`, with one test FILE silently dropped (`70 passed (71)`, `1929 passed (1934)` — five tests never run and never reported as failures). It is NOT the known cold-start `lint-gates.test.ts` timeout (Landmine 12, recorded at c6-2, c6-3 and again at this story's baseline): that one reports a named failing test with a ~125 s setup, while this reports no test at all. It did not reproduce in seven consecutive runs afterwards, and every clean run collected exactly 1,934. **Why it matters more than its frequency suggests: the failure mode is a suite that silently gets SMALLER.** A run that drops a file exits non-zero today, but the count is what a reader scores, and 1,929 reads as green to anyone not comparing it against 1,934 — which is precisely why this repo validates the collected count before scoring a run. Unowned; recorded so the next person to see it has the shape and does not re-derive it."
   evidence: 'Observed 2026-08-10 during c6-5 implementation: once on the planted-red run (alongside its 5 genuine failures) and once on a clean gate run at 19:11:54. Seven consecutive full runs immediately after were 1,934/1,934 with no error. Windows 11, vitest 4.1.10, forks pool.'
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`  <!-- dw-0011 -->
   summary: "**The running \"Nth copy module in the app\" ordinals in `shell.test.ts`'s CONTAINERS list contradict each other, and have since Epic 4.** c4-8's entry says its copy module is \"the tenth in the app\", c4-10's says \"the twelfth\", c4-11's also says \"the twelfth\", and c4-12's says \"the SIXTH in this tree\" where c4-10's already claimed sixth. They are prose ordinals with no gate behind them, so nothing has ever objected. c6-5 declined to add a fifth guess: its entry states the two counts that are checkable from `git ls-files` (tenth under `src/containers/`, thirteenth in the app) and names the inconsistency in place. Repairing five other stories' comments was out of this story's diff. **Home: unowned** — a one-line sweep for whoever next adds a copy module, or a decision to drop the app-wide ordinal entirely, which is what makes the tree-local one honest."
   evidence: '`ui/tests/shell.test.ts` — CONTAINERS entries for `CardGrid/copy.ts`, `ManaCurve/copy.ts`, `FormatCheck/copy.ts`, `SkipLink/copy.ts`. `git ls-files "ui/src/**/copy.ts"` returns 13 modules, 10 of them under `src/containers/`.'
 
-## Deferred from: code review of c6-5-agent-view-shell-with-focus-management-and-dismissal (2026-08-10)
+## Deferred from: code review of c6-5-agent-view-shell-with-focus-management-and-dismissal (2026-08-10)  <!-- dws-006 -->
 
 > Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
 > `feat/companion-c6-5-agent-view-shell` diff. Entries below are real but not caused by this
 > change's reachable behaviour, or are pre-existing drift this diff only inherits.
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`  <!-- dw-0012 -->
   summary: "`FOCUSABLE_SELECTOR` (the focus trap's boundary query) doesn't exclude natively-focusable elements carrying `tabindex=\"-1\"` — only the catch-all `[tabindex]` branch excludes programmatically-detached elements; `button:not([disabled])` etc. admit a roving-tabindex control unconditionally. Unreachable today (no such content exists inside the shell — it renders an arbitrary fixture child in tests, nothing production-real yet), but c6-7's suggestion rows are a plausible place for a roving-tabindex composite control to appear, and if one does, the trap's wrap logic would silently treat it as a real boundary stop the browser's own Tab sequence skips."
   evidence: 'Blind Hunter; `ui/src/containers/AgentView/AgentView.tsx:85-92`. **NOT TRIGGERED BY c6-7 (checked 2026-08-11), and the named risk did not materialise.** That story is the one this entry predicted — it mounts the first production-real content inside the shell — and its rows carry NO `tabindex` in any spelling: each row is a plain `<button>` in document order, which UX-DR40 requires ("nothing in the app carries one") and which the unit suite asserts by name. A view of six suggestions therefore puts six ordinary focusables between the close pill''s two ends, which is exactly the shape the trap was written against. STAYS OPEN for the first story that ships a roving-tabindex composite; c6-8''s nav pills sit OUTSIDE the shell and are not it. **NOT TRIGGERED BY c6-8 either (checked 2026-08-12) — but that story found this entry''s EXACT SHAPE in a second place, and it was live rather than hypothetical.** The pills carry no `tabindex` (quiet ones ship `disabled`, which is what keeps UX-DR40''s "nothing carries a tabindex" true), so the trap is untouched. However `App.test.tsx`''s corridor helper selected `''a[href], button, [tabindex]''` — a selector that models the MARKUP rather than the focus behaviour, which is this entry''s whole subject — and it counted four disabled buttons as Tab stops, which would have moved the pinned corridor numbers 209 -> 213 and 7 -> 11 while the real corridor did not move at all. Until c6-8 the app contained no disabled control, so that selector and "the Tab order" had been the same set by accident. Repaired in that story (`:not(:disabled)` on all three branches, with the reasoning in the helper''s docstring). The lesson generalises and is the reason this annotation is here rather than in the story record alone: **a focusable-element selector is a model of focus behaviour, and every copy of one in this repo is a place this entry can come true.** There are two — the trap''s and the corridor helper''s.'
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`  <!-- dw-0013 -->
   summary: "The document-capture Esc listener's `event.stopPropagation()` suppresses Escape for React's own synthetic event delegation app-wide while a view is open, not only for `CardDetail`'s document-bubble listener — React 17+ delegates its own listeners (including any `onKeyDown`/`onKeyDownCapture` prop anywhere in the tree) at the root DOM container, which sits below `document` in the capture path, so a capture-phase `stopPropagation()` at `document` prevents the event from ever reaching it. No `onKeyDown`/`onKeyDownCapture` prop exists anywhere in `ui/src` today, so there is zero live impact, but future content mounted inside an open agent view (c6-7 rows, c6-8 pills) should not add an Escape-consuming `onKeyDown` and expect it to fire while a view is open."
   evidence: 'Blind Hunter; `ui/src/containers/AgentView/AgentView.tsx:237-252`; confirmed no `onKeyDown`/`onKeyDownCapture` usage exists elsewhere in `ui/src` via repo-wide grep. **NOT TRIGGERED BY c6-7 (checked 2026-08-11), and the warning was heeded rather than merely survived.** This entry names "c6-7 rows" as future content that should not add an Escape-consuming `onKeyDown`; those rows shipped with no keyboard handler at all, because they are real `<button>`s and Enter/Space are already the browser''s own click (UX-DR39). The component header records this entry by number as one of the two reasons. The repo-wide grep still returns nothing. **HEEDED AND NOT TRIGGERED BY c6-8 (checked 2026-08-12), which is the other story this entry names by name.** The nav pills ship no `onKeyDown` in any spelling: they are real `<button>`s, so Enter and Space are the browser''s own click (UX-DR39), and the component header records this entry as one of three reasons the absence is deliberate. The pills are in fact dead to keyboard handlers three times over while a view is open — this starvation, the scrim covering the header, and the focus trap holding Tab inside the dialog — which is why a pill click can only ever start from a closed view. A behavioural test pins the absence rather than a comment claiming it: a synthetic `keydown` of Enter on a pill changes nothing, while a click on the same pill opens the view. The repo-wide grep still returns nothing. STAYS OPEN for Epic 9''s views.'
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`  <!-- dw-0014 -->
   summary: "`AgentViewContent.title` (the store's content shape) has no non-empty guard. An empty-string title would render an `<h2>` with no visible text, and since `aria-labelledby` points at that heading, the dialog's accessible name would resolve to nothing — failing the basic requirement that every `role=\"dialog\"` have a discernible name. Not reachable until c6-6 wires a real `suggestions` push into `openAgentView`; c6-6 should validate or fall back to a non-empty title at the point content is constructed."
   evidence: 'Blind Hunter; `ui/src/state/agentView.ts:62-71`. **CLOSED BY c6-6 (2026-08-11), at exactly the point this entry asked for.** `suggestionsViewOf` — the builder that turns an envelope into content — trims `payload.title` and falls back to `SUGGESTIONS_VIEW_TITLE` (the word "Suggestions") when the result is absent, null or empty, so no code path can construct content with a blank title. `.trim()` rather than a truthiness check, because a title of three spaces renders nothing while passing a non-empty-string check. The fallback word is a Q7 ruling (Brad, 2026-08-11) and is registered in `COPY_MODULES` as authored copy. Pinned two ways: an `it.each` over absent/null/empty/whitespace-only in `ui/src/state/agentView.test.ts`, and an end-to-end `toHaveAccessibleName` assertion in `ui/src/App.test.tsx` driven through the real socket — the second is the one that checks the property this entry is actually about, since the accessible name is computed by the DOM rather than by the store.'
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`  <!-- dw-0015 -->
   summary: "Restates and confirms the ordinal-drift item already logged in this file's `c6-5-agent-view-shell...` dev-time section above (c4-8/c4-10/c4-12's \"Nth copy module\" comments disagreeing) — surfaced independently by the code review's Blind Hunter layer as well. No new information; cross-referenced here so the review record doesn't read as having missed it."
   evidence: 'Blind Hunter; `ui/tests/shell.test.ts:1562`. See the dev-time entry above for the full history and the four disagreeing sites (c4-8, c4-10, c4-11, c4-12).'
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-5-agent-view-shell-with-focus-management-and-dismissal.md`  <!-- dw-0016 -->
   summary: "Residual focus-trap-escape gap after the scrim `preventDefault()` patch (Brad's ruling, 2026-08-10, on the review's trap-escape decision item): non-interactive content INSIDE the panel — the kicker text, the summary count, any body prose — still has no `mousedown` guard, so clicking it blurs focus to `<body>` exactly as the scrim used to, and a forward Tab can still fall through the trap's forward-Tab branch (`active === last` only, no `!inTrap` catch-all) into native tab order. The heavier fix (a document-level `focusin` recovery listener, WAI-ARIA APG pattern) was declined for this story in favour of the minimal scrim-only patch."
   evidence: 'Edge Case Hunter + Blind Hunter (independently, merged in review); `ui/src/containers/AgentView/AgentView.tsx:294-353`.'
 
-## Deferred from: code review of c6-4-companion-show-suggestions-the-agents-first-push (2026-08-10)
+## Deferred from: code review of c6-4-companion-show-suggestions-the-agents-first-push (2026-08-10)  <!-- dws-007 -->
 
 > Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
 > `feat/companion-c6-4-show-suggestions` diff. Entries below are coverage gaps and a latent
 > unguarded pattern pre-existing across the companion MCP tool suite (shared with `set_active_deck`,
 > c6-2) — real, but not caused by this change and not required by any AC.
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-4-companion-show-suggestions-the-agents-first-push.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-4-companion-show-suggestions-the-agents-first-push.md`  <!-- dw-0017 -->
   summary: "`show_suggestions`'s `displayed` branch interpolates `outcome.clients` directly into the result message and its `tab`/`tabs` pluralization with no `None`-guard. `PushOutcome.clients: int | None` does not statically forbid a `displayed` outcome paired with `clients=None`, so a hypothetical `PushOutcome(outcome=\"displayed\")` would render as \"...in None tabs.\" Unreachable through the shipped wire today — `_outcome_for` only ever emits `displayed` paired with `receipt.clients >= 1` — and this diff faithfully mirrors the identical unguarded pattern already shipped in `set_active_deck` (c6-2), so it is not novel to this story."
   evidence: 'Blind Hunter + Edge Case Hunter, independently; `src/mcp_server/tools/companion.py:313,320` (this story) and `src/mcp_server/tools/companion.py:192,198` (c6-2, pre-existing). No test in either tool exercises `displayed` with `clients=None` or `clients=0`.'
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-4-companion-show-suggestions-the-agents-first-push.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-4-companion-show-suggestions-the-agents-first-push.md`  <!-- dw-0018 -->
   summary: "No test drives the suggestions payload through the real FastMCP `call_tool` invocation path — every delegation test in `test_companion_tool.py` calls `show_suggestions()` as a bare coroutine with an already-constructed `SuggestionsPayload`. This story's central technical claim (the repo's first BaseModel-typed `@mcp.tool()` parameter actually gets coerced from wire JSON and cap-enforced at the FastMCP boundary before the tool body runs, not just published in the schema) is verified only by a schema-shape inspection test and by citing `mcp==1.28.0`'s library source in the story's Q1 ruling — never by an executing end-to-end call through a real MCP client/server pair."
   evidence: 'Blind Hunter; `tests/integration/mcp_server/test_companion_tool.py` (whole file) and `tests/integration/test_build_plugin.py::test_companion_show_suggestions_publishes_its_payload_shape_to_the_agent` (schema-shape only, never calls the tool).'
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-4-companion-show-suggestions-the-agents-first-push.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-4-companion-show-suggestions-the-agents-first-push.md`  <!-- dw-0019 -->
   summary: "The \"never raises\" contract, asserted in three separate docstrings (`show_suggestions`, and by convention across the companion tool module), has no test that forces `_client_push_event` to raise and confirms the exception actually propagates uncaught rather than being swallowed somewhere upstream. A gap shared with `set_active_deck` (c6-2), not unique to this diff."
   evidence: 'Blind Hunter; `src/mcp_server/tools/companion.py:292-295` states the convention; no test in `test_companion_tool.py` makes either stub raise.'
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-4-companion-show-suggestions-the-agents-first-push.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-4-companion-show-suggestions-the-agents-first-push.md`  <!-- dw-0020 -->
   summary: "`show_suggestions`'s docstring claims \"nothing here sorts, dedupes or trims\" — only the ordering half is tested (`test_payload_order_is_preserved_because_it_is_render_order`). No test drives a payload with duplicate `card_id`s to prove nothing collapses them, so a future \"helpful\" dedup added upstream would not turn any test red."
   evidence: 'Blind Hunter; `tests/integration/mcp_server/test_companion_tool.py` — no duplicate-`card_id` test exists in `TestTheSuggestionsPushIsDelegated`.'
 
-## Deferred from: code review of c6-3-the-glass-follows-the-agents-active-deck-choice (2026-08-09)
+## Deferred from: code review of c6-3-the-glass-follows-the-agents-active-deck-choice (2026-08-09)  <!-- dws-008 -->
 
 > Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
 > `feat/companion-c6` diff (tests-only: `ui/src/App.test.tsx` +3 tests). Entries below are coverage
 > gaps not required by any AC and pre-existing behaviour out of this story's bounds — real, but not
 > caused by this change.
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-3-the-glass-follows-the-agents-active-deck-choice.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-3-the-glass-follows-the-agents-active-deck-choice.md`  <!-- dw-0021 -->
   summary: "The new AC-4 test (404 clears to no-active-deck) only exercises the `deck_not_found` refusal reason from a mounted App receiving a live `active_deck_changed` envelope. A mid-session re-drive that 404s or refuses with a different reason — e.g. `database_not_initialized`, whose `RETRIES_QUIETLY` entry is `true` (opposite of `no-active-deck`'s `false`) — is untested end to end; only its store-level mapping is pinned (`deck.test.ts:311`) and its `RETRIES_QUIETLY` entry (`states.ts:262-272`). AC 4 is worded specifically around the 404/`deck_not_found` case, so this is out of the story's literal scope, not a regression it introduced."
   evidence: 'Edge Case Hunter; confirmed by reading `ui/src/components/StatePanel/states.ts:262-272` (RETRIES_QUIETLY mapping) and `ui/src/state/deck.test.ts:311` (store-level refusal-reason coverage) — no App-level test drives a live push through a non-`deck_not_found` refusal reason.'
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-3-the-glass-follows-the-agents-active-deck-choice.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-3-the-glass-follows-the-agents-active-deck-choice.md`  <!-- dw-0022 -->
   summary: "The Q2 none-interlude test (a pin that outlives a no-active-deck interlude, self-heals on the next deck) asserts pin release and healing but includes no request-log sweep for stray fetches of the abandoned deck during the interlude — unlike Task 1's switch test, which explicitly sweeps the whole log (the c6-2 Greptile lesson: grep for the whole pattern, not just the cited line). Not required by AC 2's wording, which Task 1's test already proves; this is optional hardening the story applied asymmetrically across its own three new tests."
   evidence: 'Blind Hunter + Edge Case Hunter, independently; `ui/src/App.test.tsx:2978-3030` — no `pathsSince`/`detailReadsOf`/`activeDeckReads` assertion anywhere in the test.'
 
-## Deferred from: code review of c6-2-companion-set-active-deck-the-agent-chooses-what-the-glass-shows (2026-08-09)
+## Deferred from: code review of c6-2-companion-set-active-deck-the-agent-chooses-what-the-glass-shows (2026-08-09)  <!-- dws-009 -->
 
 > Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
 > `feat/companion-c6-2-set-active-deck` diff. Entry below is a coverage gap pre-existing across the
 > MCP tool suite and out of this story's bounds — real, but not caused by this change.
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-2-companion-set-active-deck-the-agent-chooses-what-the-glass-shows.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-2-companion-set-active-deck-the-agent-chooses-what-the-glass-shows.md`  <!-- dw-0023 -->
   summary: "`companion_set_active_deck`'s `deck_id` parameter is passed to `DeckRepository.get_deck()` without `.strip()`, so a deck id with stray leading/trailing whitespace reports `deck_not_found` even when the trimmed id exists. `deck_analysis.py` (`analyze_mana_curve`, `detect_synergies`, the swap-suggestion helper) and `deck_management.py` (`delete_deck`, the rename/tag helper) all strip; `view_deck.py` — the skeleton this story was explicitly told to copy — does not. The inconsistency is project-wide, not introduced by c6-2."
   evidence: 'Edge Case Hunter, confirmed by reading every MCP tool helper: `src/mcp_server/tools/companion.py:128` has no `.strip()`; `src/mcp_server/tools/view_deck.py:56-78` likewise has none; `deck_analysis.py:147,223,310` and `deck_management.py:379,487` do call it.'
 
-## Deferred from: code review of c6-1 (2026-08-09)
+## Deferred from: code review of c6-1 (2026-08-09)  <!-- dws-010 -->
 
 > Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Acceptance Auditor) of the
 > `feat/companion-c6-1-leaf-client` diff. Entries below are coverage gaps not required by any AC and
 > pre-existing behaviour out of this story's bounds — real, but not caused by this change.
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`  <!-- dw-0024 -->
   summary: "c6-2's two concrete needs against this module's machinery, moved here from docstring prose per Task 7's R2 rule (review finding, decision-needed, ruled by Brad 2026-08-09: trim to pointers): (1) a tool-level `deck_not_found` outcome layered above client.py's closed five-token PushOutcomeToken set — the client cannot observe it, so it belongs at the MCP tool layer, not in PushOutcomeToken. (2) `_send()` is already generic over method and path specifically so c6-2's `PUT /api/active-deck` push can reuse it — same Authorization header, same PROBE_TIMEOUT-based timeouts, same trust_env=False net — rather than a duplicated implementation."
   evidence: 'Acceptance Auditor: PushOutcomeToken and _send''s docstrings in src/companion/client.py named c6-2''s specific endpoint/outcome, which the story''s own Task 7 forbids ("mint no new forward-looking cross-module prose ... c6-2+''s needs get a dw: ledger line, not a docstring paragraph") and which the diff''s own Completion Notes had incorrectly claimed compliance with. Trimmed from client.py and re-homed here in the same review pass.'
   resolution: '**CLOSED by c6-2 (2026-08-09).** Both needs met as ledgered. (1) `deck_not_found` is a `status` on `SetActiveDeckResult` in `src/mcp_server/tools/companion.py`, returned from the database read before any HTTP; `PushOutcomeToken` is still exactly five and `TestOutcomeVocabulary` still pins that by set equality. (2) `_send()` was reused verbatim — `method="PUT", path=ACTIVE_DECK_PATH` — with no change to its signature or body. What the ledger did NOT predict, and what the story found: `_outcome_for` could not be reused, because a `PUT /api/active-deck` 200 is an `ActiveDeckSetReceipt` and not an `EventIngestReceipt`. `_active_deck_outcome_for` is its sibling, and the `event-receipt-instead` row in `test_client.py` pins that the wrong receipt shape does not parse.'
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`  <!-- dw-0025 -->
   summary: "No test pins the 401-vs-403 boundary at the push layer. `_outcome_for` folds every status outside {200,400,403,413} into `backend_error`, including 401 — the one code most easily confused with the retry-triggering 403. A regression or misconfigured proxy answering 401 would silently become a non-retried `backend_error` with nothing pinning that as intended."
   evidence: 'Blind Hunter. `src/companion/client.py:384-400` (`_outcome_for`) — the sole "unexpected status" test uses 418, not 401.'
   resolution: '**CLOSED by c6-2 (2026-08-09, Q5 ruled yes by Brad).** A 401 row now sits in the unexpected-status parametrization of **both** matrices: `TestPushEvent::test_an_unexpected_status_is_backend_error_unretried` (widened from a single 418 case) and `TestSetActiveDeck::test_every_other_status_is_backend_error_unretried`. Each pins 401 → `backend_error` **and** a request count of exactly one, so "not retried" is asserted rather than assumed.'
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`  <!-- dw-0026 -->
   summary: "No test covers a backend restart landing in the narrower window between the /health probe and the POST within a single attempt — only the between-attempts race (via on_post) is exercised. AD-4's 'verify before you send' principle is satisfied per-attempt, but the gap between live_instance() returning and _send() reading record.token inside one attempt is an inherent TOCTOU window of any verify-then-act pattern and isn't practically closable without a redesign."
   evidence: 'Blind Hunter. `src/companion/client.py:403-424` (`_attempt`).'
 
-- source_spec: `_bmad-output/implementation-artifacts/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c6-1-leaf-client-with-health-verification-retry-once-and-the-closed-outcome-vocabulary.md`  <!-- dw-0027 -->
   summary: "EventIngestReceipt has no extra=\"forbid\" (src/companion/contracts.py:1313-1349), so unexpected wire fields alongside a valid `clients` are silently ignored rather than rejected — inconsistent with PushOutcome's own extra=\"forbid\" tightness. Pre-existing (c5-5), untouched by c6-1, and contracts.py is out of this story's bounds."
   evidence: 'Blind Hunter, confirmed by reading the model: `clients: int = Field(ge=0)` with no `model_config` overriding pydantic v2''s default extra="ignore".'
 
-## Deferred from: R3 declined (2026-08-09)
+## Deferred from: R3 declined (2026-08-09)  <!-- dws-011 -->
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-r3-derived-class-token-guard.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-r3-derived-class-token-guard.md`  <!-- dw-0028 -->
   summary: "THE SWAP ROW IS THE UNGUARDED CASE THAT MATTERS, and the story that builds it is the only one that can close it. DESIGN.md:283-284 gives it `out-tint: '{colors.negative}'` and `in-tint: '{colors.positive}'` — red means 'cut this card', green means 'add this card'. Transposing them is semantically INVERTED (the UI confidently recommends the opposite of the truth), invisible to jsdom (which applies no CSS), and invisible to a name-matching guard (the classes are named by role, not by tone). One source-read assertion in that story — out binds negative, in binds positive — is the whole fix."
   evidence: 'Found during R3''s review 2026-08-09, and it is why R3 was declined: R3 covered class names ending in a tone (Badge, StatChip only) and would never have seen this. Precedent for the cost: c5-7 probe P15 pointed the connection dot at the wrong status token and all 1,866 tests passed. R3''s own plant re-measured it — `.badge-positive` repointed to var(--negative) gave 1 failed / 1,872 passed. Not homed on a prep item by ruling; home is the swap-row story itself.'
 
-## Deferred from: code review of R1 (Windows integration CI lane) — 2026-08-09
+## Deferred from: code review of R1 (Windows integration CI lane) — 2026-08-09  <!-- dws-012 -->
 
 > Two-layer adversarial review (Blind Hunter, Edge Case Hunter) of the `chore/c6-prep-r1-windows-ci-lane`
 > diff. The factual errors the review found in the new workflow comments were patched in-branch; the
 > entries below are the findings NOT caused by this change, or deliberately out of its scope.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-r1-windows-integration-ci-lane.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-r1-windows-integration-ci-lane.md`  <!-- dw-0029 -->
   summary: "The C5 retro and this ledger both state that a bare `-m integration` sweeps in the twice-sighted test_list_decks_with_strategy_field flake. MEASURED FALSE 2026-08-09: tests/integration/data/test_deck_repository.py carries no marker anywhere, so the flake is in the `not integration` set and already runs in both ubuntu `quality` jobs on every push. R4's stated premise (\"a bare `-m integration` red says something — today it sweeps in the flake\") inherits the error and should be re-derived before R4 is actioned."
   evidence: 'Blind Hunter, verified independently: `grep -c integration tests/integration/data/test_deck_repository.py` returns 0; the flake is at :320. The claim originated at deferred-work.md:5728 and propagated into the retro, the R1 spec, and (until patched) a shipped ci.yml comment — a worked example of the very failure mode R2 exists to fix.'
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-r1-windows-integration-ci-lane.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-r1-windows-integration-ci-lane.md`  <!-- dw-0030 -->
   summary: "_BOOT_DEADLINE = 30.0 in test_live_backend.py was calibrated on the maintainer's warm dev box and has never been measured on a cold windows-latest runner. Every companion boot imports the full MCP tool tree plus fastembed/onnxruntime (src/mcp_server/__main__.py:39 -> tools/find_similar.py:35 -> src/search/embedder.py:10), measured at ~2.8 s warm locally; a cold Defender-scanning runner plus backend_two's ~2 s dead-port probe could plausibly approach the deadline. If the new lane flakes, this is the first thing to measure — do NOT reflexively tighten or loosen the constant."
   evidence: 'Both reviewers, independently. Confirmed locally: importing src.mcp_server.__main__ pulls fastembed, onnxruntime and sqlite_vec into sys.modules. No model is DOWNLOADED (that needs TextEmbedding() instantiation), so the job stays "no model, no secrets"; the cost is import and DLL scanning, not a fetch. Deliberately not pre-emptively changed — the R1 spec forbids touching the test timeouts, and the honest measurement only exists after the first CI runs.'
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-r1-windows-integration-ci-lane.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-r1-windows-integration-ci-lane.md`  <!-- dw-0031 -->
   summary: "The new lane's vacuity floor covers only a vanished path (exit 4) or an empty one (exit 5). A @pytest.mark.skip on the test, the walk being gutted while the file remains, or unrelated files landing in tests/integration/companion/ all leave the job GREEN with zero real-socket coverage. A `--collect-only` count assertion in the workflow step would close this and is neither the ci.yml source-reading guard ruled out at the C5 retro nor R4's marker work — it was simply never considered."
   evidence: 'Both reviewers. Edge Case Hunter notes the same file already carries explicit non-vacuity guards on the SPA-bundle and generated-types steps (ci.yml:166-174, :206-217), written on the reasoning that "it would go red" was insufficient THERE — so the new job is inconsistent with its own file. The overclaiming comment was patched in-branch; the missing guard is the open question.'
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-r1-windows-integration-ci-lane.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-r1-windows-integration-ci-lane.md`  <!-- dw-0032 -->
   summary: "Adding the job does not make it a gate: until `companion-integration` is added to branch protection as a required check, a red lane does not block a merge, and R1's stated purpose (a test with no automated home rots silently) is only half delivered. This is a GitHub settings change with no repo-tree representation, so nothing in the tree can track it."
   evidence: 'Blind Hunter. The R1 spec defers it to Brad by ruling ("that is Brad''s call after the lane is green") but records it nowhere durable — ledgering it here so the follow-up survives the branch.'
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-r1-windows-integration-ci-lane.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-r1-windows-integration-ci-lane.md`  <!-- dw-0033 -->
   summary: "Every PR — including docs-only ones — now pays a windows-latest runner (billed at 2x minutes) to install onnxruntime/fastembed/numpy from scratch in order to run a ~4 s test. The C5 retro authorised the lane on the \"the file runs in ~4-5 s\" framing; the dependency install is the actual cost and was not in that reasoning. A `paths-ignore` filter or a narrower dependency install would cut it."
   evidence: 'Blind Hunter. The repo is public so Actions minutes are free, which is why this is a note rather than a defect — but the retro''s cost premise was measured on the wrong thing and should be re-stated honestly if the lane is ever questioned.'
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-r1-windows-integration-ci-lane.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-r1-windows-integration-ci-lane.md`  <!-- dw-0034 -->
   summary: "src/companion/app/singleton.py:58-59 states that both `mypy src/` and `mypy src/ --platform linux` are mandatory, while ci.yml:67-68 runs `--platform win32` and the comment above it records why `--platform linux` was explicitly REJECTED as a no-op on an ubuntu runner. The generated mirror plugin/server/src/companion/app/singleton.py repeats the stale sentence. Pre-existing; natural R2 sweep material."
   evidence: 'Blind Hunter. Not caused by the R1 change — the contradiction predates it — but it is the same class of falsified cross-module prose R2 owns, and the mirror means the fix is a two-site edit plus a plugin rebuild.'
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-r1-windows-integration-ci-lane.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-r1-windows-integration-ci-lane.md`  <!-- dw-0035 -->
   summary: "test_live_backend.py phase 2 calls client.live_instance() exactly once against a 1 s connect / 2 s read / 5 s total budget (src/companion/client.py), with probe_health swallowing every cause — unlike _await_record, it does not poll. On a loaded runner one slow first request fails the whole test with the uninformative message \"live_instance() found nothing\". Also, websockets.connect is not given proxy=None, so an HTTP_PROXY/ALL_PROXY set without no_proxy would route the handshakes off-box (the httpx sibling already sets trust_env=False)."
   evidence: 'Edge Case Hunter. Both are pre-existing properties of the c5-8 test rather than anything R1 changed — but R1 is what moves this test onto shared CI hardware where a slow first request and a proxied environment are both more likely than on the maintainer''s box.'
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-r1-windows-integration-ci-lane.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-r1-windows-integration-ci-lane.md`  <!-- dw-0036 -->
   summary: "Job topology is now asserted in prose in five uncounted places (ci.yml's header, ci.yml's job comment, ui/README.md, ui/tests/fonts.test.ts, both .gitattributes files) with no drift check, in a repo that drift-checks plugin/, the SPA bundle and generated types. A second Windows job or a fourth job silently falsifies several at once — the same N-way prose-sync obligation R2 was created for, now with CI topology as its subject."
   evidence: 'Edge Case Hunter, and directly demonstrated by this very change: the R1 sweep had to touch six prose sites across four directories to keep one fact true, and the first attempt missed three of them.'
 
-## Deferred from: C6-prep scope split (2026-08-09)
+## Deferred from: C6-prep scope split (2026-08-09)  <!-- dws-013 -->
 
 > The C6-prep intent named four action items (R1, R2, R3, R5). Split to a single goal — **R1**,
 > the Windows integration CI lane — because each of the four is an independently reviewable and
@@ -272,130 +272,130 @@
 > action item in `sprint-status.yaml` with a ruling recorded at its own entry in this file. These
 > rows exist only so the split is traceable; the action item stays the record of truth.
 
-- source_spec: none
+- source_spec: none  <!-- dw-0037 -->
   summary: 'R2 — the standalone prose-sync sweep: cross-module rulings get ONE canonical home (this ledger), the 5+ Q3/AD-5 narration sites become one-line pointers, scripts/dump_openapi.py''s changelog paragraphs are deleted, and dw:5197''s twice-confirmed test_committed_schema.py docstring sentence is absorbed. Standing rule rides with it: no new forward-looking cross-module prose in docstrings.'
   evidence: 'Split from the C6-prep intent 2026-08-09 (Brad chose R1 first). Independently shippable: touches docstrings and one deleted paragraph only, zero behaviour change, reviewable alone. Ruled at the C5 retro — see the dw:5244 and dw:5252 regions and epic-c5 action item R2.'
 
-- source_spec: none
+- source_spec: none  <!-- dw-0038 -->
   summary: 'R3 — one repo-wide derived class→token source-reading guard covering every status-semantic binding (Badge tones, ManaPip colours, deck-row live tint, connection-pill dot), generalising c5-7 probe P15''s fix. Existing per-component guards are kept, not deleted. Owed BEFORE Epic 6''s first view story adds more surfaces of the same shape.'
   evidence: 'Split from the C6-prep intent 2026-08-09 (Brad chose R1 first). Independently shippable: a new derived guard, natural home ui/tests/token-usage.test.ts, merges alone. Sequencing affinity only with R5 (R5''s harness is what would plant against this guard) — not a dependency. Ruled at the C5 retro — see the dw:5617 region and epic-c5 action item R3.'
 
-- source_spec: none
+- source_spec: none  <!-- dw-0039 -->
   summary: 'R5 — the vitest half of the probe harness (re-keyed from C4 item 4): full `npm test` with a validated collected-test count before a run is scored, native uppercase-drive path, vitest crash-signature refusal, do-nothing negative controls. Owed BEFORE Epic 6''s first frontend story.'
   evidence: 'Split from the C6-prep intent 2026-08-09 (Brad chose R1 first). Independently shippable: a new harness capability with its own negative controls; the Python half already ships at scripts/probe_harness.py. Three of the five recorded harness lies are frontend-specific and c5-7 ran fifteen frontend plants by hand — that is the measured cost of leaving it. Ruled at the C5 retro — see the dw:5115 region and epic-c5 action item R5.'
 
-## Deferred from: code review of c5-6-client-reconnection, Group 3 (2026-08-08)
+## Deferred from: code review of c5-6-client-reconnection, Group 3 (2026-08-08)  <!-- dws-014 -->
 
 > UI shell/API/dev-proxy diff (App.tsx, api/client.ts, api/schema.ts, components/StatePanel/states.ts,
 > config/devProxy.ts + tests) — third of a chunked review; 0 patch findings survived (one attempted
 > patch on devProxy.ts's WEBSOCKET_PATTERNS typing was reverted after testing showed it broke real
 > compilation).
 
-- source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`  <!-- dw-0040 -->
   summary: "agentEventOf only validates the `kind` discriminant, not `id`/`ts`/`payload` — a frame like {\"kind\":\"deck_changed\"} with no id/ts/payload passes through typed as a full AgentEvent. Not exercised today (system-event kinds are dispatched by kind alone; the four agent-view kinds are dropped unread), becomes actionable when Epic 6 builds the agent views and reads those fields."
   evidence: 'Blind Hunter + Edge Case Hunter, independently; ui/src/api/client.ts:701-716. NOT TRIGGERED BY c6-3 (checked 2026-08-09): that story is Epic 6''s first frontend story, but it reads no payload field at all — by ruling, the `active_deck_changed` handler ignores both the kind and `payload.deck_id` and re-drives the boot, which asks `GET /api/active-deck` first (connection.ts:96-108). Its tests drive frames through `push()` with a payload present and assert only surface and request-log outcomes, so nothing here is exercised or closed. STAYS OPEN for the first story that actually reads those fields — c6-4 onwards, when the agent views land. NOT TRIGGERED BY c6-4 (checked 2026-08-10) either: that story is Python-only — an MCP push tool with no `ui/` diff at all — so `agentEventOf` is neither called nor changed by it, and the SPA still drops the `suggestions` kind unread. The trigger is c6-7, the story that renders suggestion payload fields. **PARTIALLY TRIGGERED BY c6-6 (2026-08-11), and the ruling is recorded rather than the entry closed.** c6-6 is the first code in the app to READ an agent-view payload: `suggestionsViewOf` reads `payload.title` and `payload.items`. Brad ruled Q6 as recommended — **`agentEventOf` stays kind-only** (its documented register; widening a shipped, pinned narrower is a bigger change than this story needs) and the defence lives at the builder, which is TOTAL: `event.payload?.items ?? []` and a trimmed-title fallback construct a valid empty view for a bare `{"kind":"suggestions"}` frame. That is mandatory independent of the malformed-frame case, because `SuggestionsPayload.title` and `.items` are both OPTIONAL in the generated types even for honest wires. Pinned by three builder rows in `ui/src/state/agentView.test.ts` (absent payload / absent items / blank title) and one end-to-end test in `ui/src/App.test.tsx` that serialises a frame with no `payload` key at all and asserts the view opens empty with the socket still open. **What remains open is the half c6-6 does not reach: no ITEM field is validated** — a `card_id` that is not a string, or a missing `reason`, still passes through untouched, because this story renders no row. That stays c6-7''s, at the row that renders it (FR-13/AD-7: one bad entry degrades to the placeholder, the push never fails wholesale). **CLOSED BY c6-7 (2026-08-11), at exactly the point this entry names.** `SuggestionsView.tsx` types the row''s prop as `UntrustedItem` — every field of the store''s item type remapped to `unknown` — so the compiler REQUIRES a gate rather than calling one redundant, which is what stops a later tidy-up deleting it on the strength of the generated types. Four readers, four gates: a non-string `card_id` becomes `''''` (the app''s own value for "an id it cannot render": `hydrateCard` refuses it terminally with `placeholder: ''unknown-card''` and issues NO request, so a malformed item lands on AC 4''s degradation through shipped machinery rather than a new refusal invented at the row); a missing or non-string `reason` renders an empty line with the row otherwise normal (the element is unconditional, because dropping it would change the row height and therefore the derived width of the thumbnail beside it); a non-string `category` renders no badge; and `confidence` is checked for MEMBERSHIP of the three wire tokens rather than merely for being a string, because that slot is a chrome token in a 10px uppercase role. Pinned by four unit rows and one App-level row, all of which assert the NEIGHBOURS still render. `agentEventOf` remains kind-only — the c6-6 ruling stands, and this entry is now closed on both halves.'
 
-- source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`  <!-- dw-0041 -->
   summary: "The equivalence between the agent's outbound POST /agent/events body shape and the WebSocket frame the browser actually receives is asserted only in a comment (ws.py broadcasts the ingested event verbatim), with no cross-language contract test pinning it."
   evidence: 'Blind Hunter; ui/src/api/schema.ts, ui/src/api/client.ts:662-669.'
 
-## Deferred from: code review of c5-6-client-reconnection, Group 1 (2026-08-08)
+## Deferred from: code review of c5-6-client-reconnection, Group 1 (2026-08-08)  <!-- dws-015 -->
 
 > UI reconnection-core diff (`connection.ts`, `socket.ts`, `deck.ts`, `cards.ts`, `systemState.ts`,
 > `poller.ts` + tests) — first of a chunked review; Groups 2 (backend) and 3 (UI shell/API/dev-proxy)
 > still queued.
 
-- source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`  <!-- dw-0042 -->
   summary: "useAgentConnection's socket does not reconcile the shared `connection` field on `stop()`/remount — if the component were ever unmounted and remounted while status was `down` or `live`, the store would show a stale value until the new socket's status next changes."
   evidence: 'Blind Hunter + Edge Case Hunter, both independently; ui/src/state/socket.ts:491-497 (stop()) and ui/src/state/connection.ts (useAgentConnection). Pre-existing pattern: App is documented as the sole, permanently-mounted consumer of useSystemState, useDeckState and now useAgentConnection alike; none of the three defends against a remount all three explicitly disclaim as unsupported.'
 
-- source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`  <!-- dw-0043 -->
   summary: 'Two independent triggers (redriveDeckBoot() fired directly on a system event, and the pre-existing subscribeSystemState edge-trigger in useDeckState) can both re-drive the same DeckBoot instance in quick succession around one event, costing a redundant fetch.'
   evidence: 'Blind Hunter; ui/src/state/deck.ts:559-565, ui/src/state/connection.ts:352-364. Idempotent and generation-guarded — low impact, narrow timing window.'
 
-- source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`  <!-- dw-0044 -->
   summary: 'Whether restartPollIfStopped/restartPoll actually close dw:3472/3544 and dw:3463 depends on backend behaviour outside this diff slice (does a DB rebuild or later DB death produce a deck_changed/active_deck_changed frame, or drop the socket?). Needs confirmation in the Group 2 (backend) review pass.'
   evidence: 'Acceptance Auditor; ui/src/state/systemState.ts:186-216.'
 
-- source_spec: `_bmad-output/implementation-artifacts/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/c5-6-client-reconnection-with-backoff-and-a-fresh-ticket-per-attempt.md`  <!-- dw-0045 -->
   summary: 'connection.ts (wiring restartPoll -> resetCardAttempts -> redriveDeckBoot on reconnect, and redriveDeckBoot -> restartPollIfStopped on a system event) has no dedicated unit test in this slice, nor does AgentSocketOptions.initialStatus. Needs confirmation in the Group 2 pass that App.test.tsx actually pins this call order rather than merely observing an eventual refetch.'
   evidence: 'Acceptance Auditor + Blind Hunter; ui/src/state/connection.ts (whole file), ui/src/state/socket.ts:223 (initialStatus).'
 
-## Deferred from: code review of story-7.4 (2026-07-17)
+## Deferred from: code review of story-7.4 (2026-07-17)  <!-- dws-016 -->
 
 > Test-hardening gaps in the `assess_deck_power` e2e suite (tests-only story; all 7 ACs met, suite green). Neither is a product defect — both are e2e-coverage extensions whose behavior is already guarded at the unit/model level.
 
-- source_spec: `_bmad-output/implementation-artifacts/7-4-end-to-end-tool-test-determinism-diff-regression.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/7-4-end-to-end-tool-test-determinism-diff-regression.md`  <!-- dw-0046 -->
   summary: 'Bracket-4 floor (≥4 confirmed Game Changers) is unreachable through the e2e client — the `_assessment_cards` fixture seeds only two `game_changer=True` cards and Commander singleton rules cap each at quantity 1, so a `bracket == 4` result (and the GC ≥4 gate in dimensions.py) is never exercised end-to-end. Future hardening: add ≥4 distinct GC cards to reach the floor-4 gate through the tools.'
   evidence: 'Edge Case Hunter trace: dimensions.py GC gate GC_BRACKET_FOUR_MIN=4, count is quantity-aware; fixture exposes e2e-gc-bolas + e2e-gc-aura only. The ≥4 gate is covered by unit scorer tests (test_assessment_scorer.py), not this client suite.'
 
-- source_spec: `_bmad-output/implementation-artifacts/7-4-end-to-end-tool-test-determinism-diff-regression.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/7-4-end-to-end-tool-test-determinism-diff-regression.md`  <!-- dw-0047 -->
   summary: 'The populated `data_vintage` combo values are never positively asserted at the e2e/wire level — the absent-snapshot test pins the null path (`combo_snapshot_imported_at`/`export_version is None`), but no seeded e2e test asserts the present path equals the fixture''s seeded `export_version="5.6.0"` / `imported_at="2026-07-16T09:07:00+00:00"`. A passthrough bug that dropped or garbled the vintage on the present path is caught only at model level (7.3 helper tests). Future hardening: assert the populated vintage in the commander happy-path test.'
   evidence: 'Blind Hunter + Acceptance Auditor: null-vs-present vintage contract is half-covered e2e; seeded values live in tests/fixtures/combo_snapshot.py:63-65.'
 
-## Deferred from: code review of spec-pre-epic-7-real-deck-gate (2026-07-17)
+## Deferred from: code review of spec-pre-epic-7-real-deck-gate (2026-07-17)  <!-- dws-017 -->
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-pre-epic-7-real-deck-gate.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-pre-epic-7-real-deck-gate.md`  <!-- dw-0048 -->
   summary: '`combo_potential` counts `almost_included` variants whose single missing piece is not legal in the deck''s format, inflating the dimension for constructed decks — the matcher (`match_combos`) and the dimension scoring are format-blind on the missing piece.'
   evidence: 'G-R2 gate run 2026-07-17: Abzan Dragons and Prismatic Dragon (both Standard) each scored combo_potential=100 from Betor-anchored almost_included variants whose missing partners (e.g. Archfiend of Despair, Mycosynth Lattice, Wound Reflection) are not Standard-legal — the combo can never be completed in-format. Pre-existing product behavior (5.6/6.3 design), surfaced by the Blind Hunter review of the gate report; a natural Epic 7 calibration input.'
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-pre-epic-6-importer-gate.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-pre-epic-6-importer-gate.md`  <!-- dw-0049 -->
   status: ✅ RESOLVED (2026-07-16, commit 18880dc)
   summary: 'Transformer rejects all 33 reversible_card printings ("Name // Name") with `missing required field(s): type_line` — Scryfall''s reversible layout carries type_line (and cmc) only on card_faces. Fix = derive required fields from faces in transform_scryfall_card (a transform-contract change held back by the gate spec''s Ask-First boundary); until then those 33 oracle identities keep pre-existing rows and are surfaced by the stale-remaining warning each run.'
   resolution: 'Shape-gated face derivation in transform_scryfall_card: cards with NO top-level type_line (the reversible signature) derive name (deduped, so "Anje Falkenrath // Anje Falkenrath" -> "Anje Falkenrath" for exact decklist lookups), type_line, mana_cost, cmc, colors (WUBRG-ordered face union) and all-faces-agree power/toughness from card_faces; ijson Decimal face values sanitized to float so the card_faces JSON column serializes. Cards WITH a top-level type_line transform byte-identically (transform/MDFC/split untouched). Test-pinned (4 new unit tests); next import run should show 0 rejects and clear the 33-identity stale warning.'
   evidence: 'Live acceptance run 2026-07-15 (b74-successor): all 33 rejects share the doubled-name + type_line-missing signature (Reckoner Bankbuster, Anje Falkenrath, Zndrsplt, …); the gate''s G-I2 diagnostics made the reason string visible for the first time. Parallels the resolved oracle_id face-fallback fix (resolve_oracle_id, 0.3.0).'
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-pre-epic-6-importer-gate.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-pre-epic-6-importer-gate.md`  <!-- dw-0050 -->
   summary: 'TOCTOU window in reconcile_oracle_identities: a deck_cards row committed by a concurrent connection (e.g. import_decklist via the live MCP server) between the reconcile''s deck_cards plan-scan and its write phase is never repointed, and the stale cards row is then deleted with FK enforcement OFF — a silently dangling deck_cards.card_id. Fix candidates: re-scan deck_cards after acquiring the write lock (BEGIN IMMEDIATE / first-write upgrade), or verify-and-repoint residual references just before the delete.'
   evidence: 'Edge Case Hunter trace over scryfall.py plan-scan vs execute+delete phases; SQLite deferred transactions take no lock until the first write, and the central DB is shared with a live MCP server. Window is narrow (scan-to-write span) and requires a concurrent deck write during a bulk import.'
-- source_spec: `_bmad-output/implementation-artifacts/spec-pre-epic-6-importer-gate.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-pre-epic-6-importer-gate.md`  <!-- dw-0051 -->
   summary: 'Reconcile deletions orphan card_vec/card_embedding_meta rows until a build_search_index run with prune=true (prune defaults to False): KNN over-fetch returns deleted ids that vanish at the cards JOIN, thinning semantic results. Consider auto-pruning vectors for deleted card ids at reconcile time, or defaulting prune=true when the importer reports rows_deleted > 0.'
   evidence: 'Both reviewers; src/search/index_builder.py orphan cleanup only runs during index builds, and build_search_index.prune defaults False. Mitigated in-gate by the result message now recommending prune=true after deletions.'
 
-## Deferred from: dev of story-5.9 (2026-07-14)
+## Deferred from: dev of story-5.9 (2026-07-14)  <!-- dws-018 -->
 
 > Live-DB data-quality issues discovered while closing the 5.9 benchmark gate. Out of the
 > story's frozen scope (AC10: no `src/data/**` / `scripts/` edits); the operational damage was
 > repaired by hand on Brad's machine (documented in the 5.9 Completion Notes) but the root
 > causes live in the importer.
 
-- source_spec: 5-9-pure-score-entry-point-benchmark-validation.md
+- source_spec: 5-9-pure-score-entry-point-benchmark-validation.md  <!-- dw-0052 -->
   summary: 'Re-running `import_scryfall_data.py` accumulates duplicate rows per card name: Scryfall''s default_cards "preferred printing" per oracle identity changes between bulk snapshots, so each refresh inserts rows under NEW printing ids while the old printing rows persist (observed 2026-07-14: 51,189 rows for ~38k cards; 12,992 stale rows with `game_changer` NULL because the upsert only touches the new ids). Consequences: `find_by_name_exact` (ORDER BY id LIMIT 1) resolves 4,711 names to an arbitrary STALE printing, and any new backfilled column stays NULL on stale rows. Fix candidates: reconcile/delete rows whose oracle_id gained a fresh printing (mind deck_cards FK references), key the upsert by oracle_id, or propagate oracle-level fields (like game_changer) across all rows of the same oracle_id post-import.'
   evidence: 'Central cards.db state 2026-07-14 pre-repair; epic-4 retro recorded 0 NULL on 2026-07-12, the Jul-14 refresh reintroduced 12,992. Hand-repair applied: copy game_changer across same-oracle_id rows, then set the 36 residual NULLs FALSE (none on the GC list).'
-- source_spec: 5-9-pure-score-entry-point-benchmark-validation.md
+- source_spec: 5-9-pure-score-entry-point-benchmark-validation.md  <!-- dw-0053 -->
   summary: 'The bulk import reports "Errors: 36" with no per-card diagnostics reaching the operator log tail, and those 36 cards (incl. Blood Crypt, Hallowed Fountain, Reckoner Bankbuster) silently keep stale data — likely the new printing id colliding with a uniqueness constraint while a different-id row for the same oracle identity already exists. Surface the failing card names + exception class in the import summary, and count them against a "stale rows remaining" warning.'
   evidence: 'b74hepj01 import run 2026-07-14: 38,197 inserted / 36 errors; the 36 error cards exactly matched the 36 names left game_changer-NULL after the oracle_id repair.'
 
-## Deferred from: code review of story-5.8 (2026-07-14)
+## Deferred from: code review of story-5.8 (2026-07-14)  <!-- dws-019 -->
 
 > Both are Story 5.9 (calibration / threshold + weight tuning) concerns surfaced during the 5.8 review — neither is a correctness defect in the shipped code (all inputs are frozen, type-pinned, and test-pinned). Parallels the 5.7 `win_turn_band` defer directly below.
 
-- source_spec: 5-8-for-format-aggregate-tier-label-standard-fork-confidence-vocabulary.md
+- source_spec: 5-8-for-format-aggregate-tier-label-standard-fork-confidence-vocabulary.md  <!-- dw-0054 -->
   status: ✅ RESOLVED (Story 5.9, 2026-07-14)
   summary: '`tier_label`/`aggregate_score` trust their frozen profile''s shape & weight validity: `tier_label` (aggregate.py:146) assumes exactly 4 strictly-ascending `tier_thresholds` (a 5+-tuple → IndexError; non-ascending → silent mislabel), and `aggregate_score` (aggregate.py:116) assumes non-negative + finite weights (NaN → ValueError; negative → silent monotonicity break). Unreachable with the shipped frozen+tested profiles, but 5.9 hand-tunes both `weights` and `tier_thresholds` — optional cheap defense-in-depth for the tuning workflow.'
   evidence: 'aggregate.py:146 `TIER_LABELS[bisect_right(profile.tier_thresholds, score)]`; aggregate.py:116 weighted sum. Invariants pinned by profiles type `tuple[int,int,int,int]` + test_assessment_profiles.py (non_negative, sum-to-1.0, ascending). Same class as the 5.7 `win_turn_band` guard defer.'
   resolution: '`aggregate_score` now raises `ValueError` on a negative or non-finite weight; `tier_label` raises on cuts not strictly ascending within `(0, 100)`. Test-pinned (`TestStory59Guards` in test_assessment_aggregate.py, incl. a shipped-profiles-pass check).'
-- source_spec: 5-8-for-format-aggregate-tier-label-standard-fork-confidence-vocabulary.md
+- source_spec: 5-8-for-format-aggregate-tier-label-standard-fork-confidence-vocabulary.md  <!-- dw-0055 -->
   status: ✅ RESOLVED (Story 5.9, 2026-07-14)
   summary: '`tier_thresholds` domain `(0, 100]` permits a cut of exactly 100, making the top band (`Competitive`) a degenerate single-point band reachable only by an exact score of 100. Harmless for the shipped `(20, 40, 60, 80)`; add a guardrail when 5.9 re-cuts per-format anchors.'
   evidence: profiles.py:126 field type + test_assessment_profiles.py in-domain check `0 < cut <= 100`.
   resolution: 'Domain tightened to `(0, 100)`: `tier_label` guards it and the aggregate profile-shape test now asserts `0 < cut < 100` (a cut at exactly 100 is a tuning mistake, never a meaningful configuration).'
 
-## Deferred from: code review of story-5.7 (2026-07-14)
+## Deferred from: code review of story-5.7 (2026-07-14)  <!-- dws-020 -->
 
 > All three are Story 5.9 (calibration / benchmark tuning) concerns surfaced during the 5.7 review — none is a correctness defect in the shipped code.
 
-- source_spec: 5-7-dimension-vector-commander-bracket-floor-cedh-candidacy.md
+- source_spec: 5-7-dimension-vector-commander-bracket-floor-cedh-candidacy.md  <!-- dw-0056 -->
   status: ✅ RESOLVED — KEPT AS-IS, documented (Story 5.9, 2026-07-14)
   summary: '`card_advantage` dimension structurally caps at 98 (80 count-weight + 18 max tutor bonus), never reaching 99/100 — revisit the ceiling during 5.9 calibration.'
   evidence: dimensions.py:562 `_card_advantage_score`; provisional/5.9-owned mapping by design.
   resolution: 'Keep-decision documented in `_card_advantage_score`''s docstring after the calibration pass: the 2-point headroom is invisible under the aggregate weights and benchmark cuts, and re-normalizing the two terms would change every deck''s score for zero benchmark benefit.'
-- source_spec: 5-7-dimension-vector-commander-bracket-floor-cedh-candidacy.md
+- source_spec: 5-7-dimension-vector-commander-bracket-floor-cedh-candidacy.md  <!-- dw-0057 -->
   status: ✅ RESOLVED (Story 5.9, 2026-07-14)
   summary: '`sixty_card` curve targets (interaction 8 / draw 6 / instant-cheap 4) are self-labelled provisional guesses, and mana_efficiency shares one land-delta penalty slope across 99- and 60-card decks — Standard vs Commander vectors are not on a comparable scale until 5.9 anchors them.'
   evidence: dimensions.py:177-201 target dicts; only Commander targets trace to the Command Zone template.
   resolution: 'Closed by per-format `tier_thresholds` anchoring: Standard cuts (28, 45, 65, 85) are anchored against the four Standard benchmark bands independently of Commander''s (20, 40, 60, 80), and raw 0-100 aggregates are never compared across formats — stated in the STANDARD_PROFILE tier_thresholds comment. The sixty_card curve-target VALUES stay provisional (the Standard benchmark orders cleanly without touching them).'
-- source_spec: 5-7-dimension-vector-commander-bracket-floor-cedh-candidacy.md
+- source_spec: 5-7-dimension-vector-commander-bracket-floor-cedh-candidacy.md  <!-- dw-0058 -->
   status: ✅ RESOLVED (Story 5.9, 2026-07-14)
   summary: '`_speed_score` has no guard for a malformed `win_turn_band` (`lo > hi`) — unreachable with the shipped frozen+tested profiles, but a future 5.9 band edit of the form `hi = lo-4` divides by zero and `hi < lo` inverts the mapping. Optional cheap defense-in-depth for the band-editing workflow.'
   evidence: dimensions.py:484 (`slowest - fastest = band_hi - band_lo + 4`); invariant documented at profiles.py:86-87.
@@ -409,41 +409,41 @@
 > deferred, each an independently shippable quick-dev run. Full observed evidence for each is in
 > the source file.
 
-- source_spec: none
+- source_spec: none  <!-- dw-0059 -->
   summary: Add a saboteur/combat-damage-trigger pattern to `detect_synergies` (rated the Kotis deck "low cohesion").
   evidence: Split from the 8-lead Kotis improvement intent; isolated synergy-logic change, independent of the validator/import work chosen first.
-- source_spec: none
+- source_spec: none  <!-- dw-0060 -->
   summary: Bulk deck-import MCP tool accepting an Arena export blob (per-line resolve, per-line ok/ambiguous/not-found report).
   evidence: Split from the 8-lead Kotis improvement intent; a new standalone tool (saving the 60-card deck took ~50 `add_card_to_deck` calls, the 100-card port 75 more).
-- source_spec: none
+- source_spec: none  <!-- dw-0061 -->
   summary: Import-time legality-snapshot sanity check for pool-superset invariants (e.g. Pym Particles `standardbrawl: legal` but `brawl: not_legal` is impossible).
   evidence: Split from the 8-lead Kotis improvement intent; import-script validation, standalone. Natural pairing with the games-union import work if the import script is revisited.
-- source_spec: none
+- source_spec: none  <!-- dw-0062 -->
   summary: Strip parenthetical reminder text from oracle text before embedding (menace cards pollute "unblockable" queries, convoke pollutes "ramp"); requires index rebuild.
   evidence: Split from the 8-lead Kotis improvement intent; embedding-pipeline change with a rebuild cost — batch with other re-embed work if possible.
-- source_spec: none
+- source_spec: none  <!-- dw-0063 -->
   summary: Intersection mode (or rerank/decompose guidance) for compound semantic queries, plus a playability prior on ranking (Llanowar Elves absent from a ramp top-40 Prismite topped).
   evidence: Split from the 8-lead Kotis improvement intent; the largest, most design-heavy lead — benefits from the reminder-text fix landing first. Overlaps the existing "Compound-intent dilution" Epic-3 candidate below.
-- source_spec: none
+- source_spec: none  <!-- dw-0064 -->
   summary: '`capture_arena_window` tool — screenshot the MTGA window (Win32 `PrintWindow`/`mss`) for board reads; opt-in, graceful `window_not_found`.'
   evidence: Split from the 8-lead Kotis improvement intent; first tool touching the local machine rather than the card DB, so it needs its own opt-in design pass.
 
-## Deferred from: code review of spec-games-union-brawl-singleton (2026-07-10)
+## Deferred from: code review of spec-games-union-brawl-singleton (2026-07-10)  <!-- dws-021 -->
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-games-union-brawl-singleton.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-games-union-brawl-singleton.md`  <!-- dw-0065 -->
   status: ✅ RESOLVED (0.3.0, 2026-07-11)
   summary: Face-keyed aggregation (`card_faces[0].oracle_id` fallback in `src/data/importers/aggregate.py`) is inert — `transform_scryfall_card` hard-requires a top-level `oracle_id`, so reversible-layout cards are still rejected downstream, and `reconcile_games` matches aggregates by `CardModel.oracle_id` only.
   evidence: Blind Hunter traced the pass-2 path — cards grouped by the face/self fallbacks reach the transformer and are error-counted there (pre-existing transformer limitation, parity with the old oracle_cards import). Fix belongs in a transformer pass (accept face-level oracle_id) plus a reconcile lookup keyed the same way as `group_key`.
   resolution: Extracted `resolve_oracle_id` (top-level → `card_faces[0].oracle_id`) as the single oracle-identity source shared by `group_key` and `transform_scryfall_card`; the transformer no longer hard-requires a top-level `oracle_id`, so reversible cards import with `oracle_id == group_key` — which makes the `reconcile_games` lookup-by-`oracle_id` align with `group_key` automatically. Verified end-to-end: a reversible card dedupes to one row with unioned games (was dropped entirely).
-- source_spec: `_bmad-output/implementation-artifacts/spec-games-union-brawl-singleton.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-games-union-brawl-singleton.md`  <!-- dw-0066 -->
   status: ✅ RESOLVED (0.3.0, 2026-07-11)
   summary: '`reconcile_games` failure after `import_cards` has committed leaves the DB populated but `initialize_database` reports `status="error"`, and a plain retry short-circuits `already_initialized` with games left stale.'
   evidence: Edge Case Hunter, `src/data/importers/scryfall.py` reconcile stage — the import commits per batch, so a reconcile-stage DatabaseError (lock/disk) can't roll it back. Narrow failure window; remedy is `update=true` (re-runs reconcile). Consider catching reconcile errors as a warning or surfacing a "re-run with update=true" hint in the error message.
   resolution: The orchestrator now catches `IntegrityError`/`DatabaseError` from the reconcile stage and logs a warning instead of failing the run (the cards already committed), so the import reports success and stale pre-existing rows refresh on the next `update=true`. The first-run half is additionally covered by the 0.3.0 `import_state` marker (a first-run failure leaves the DB flagged partial, so a retry re-imports rather than short-circuiting).
 
-## Deferred from: code review of first-run-data-initialization (2026-06-28)
+## Deferred from: code review of first-run-data-initialization (2026-06-28)  <!-- dws-022 -->
 
-> Surfaced by the 3-reviewer adversarial pass on `spec-first-run-data-initialization.md`. The
+> Surfaced by the 3-reviewer adversarial pass on `archive/spec-first-run-data-initialization.md`. The
 > contract gap (uncaught `init_database` failure) and two real robustness items (partial-import
 > *exception* path now clears the truncated `cards`; `build_search_index(rebuild=True)` now resolves
 > the embedder before the destructive drop) were patched in-branch. The items below are real but
@@ -479,7 +479,7 @@
 
 ## ✅ Resolved by first-run-data-initialization (2026-06-28)
 
-> Closed by `spec-first-run-data-initialization.md` — the in-client `initialize_database` /
+> Closed by `archive/spec-first-run-data-initialization.md` — the in-client `initialize_database` /
 > `build_search_index` tools plus a graceful `database_not_initialized` status across every
 > card/deck tool. The items below are closed; they remain listed in their original sections for
 > traceability.
@@ -550,10 +550,10 @@
   (`uvx gitleaks detect --source . --log-opts="--all"`), tag `v0.1.0`, cut the GitHub Release with
   the `.mcpb` attached, flip the repo public. Brad executes these.
 
-## Deferred from: code review of licensing-repo-health-docs (2026-06-28)
+## Deferred from: code review of licensing-repo-health-docs (2026-06-28)  <!-- dws-023 -->
 
 > Surfaced by the 3-reviewer adversarial pass on the §6 licensing/repo-health docs run
-> (`spec-licensing-repo-health-docs.md`). The doc-accuracy issues in the *new* files
+> (`archive/spec-licensing-repo-health-docs.md`). The doc-accuracy issues in the *new* files
 > (CONTRIBUTING/CHANGELOG over-claiming that `setup.py` builds the search index; the "all MCP
 > tools are sync `def`" overstatement) were patched in-branch. The items below are real but
 > pre-existing or outside this run's frozen scope (no README/code edits).
@@ -579,7 +579,7 @@
   describes the Phase-1 *design target*, not the implementation — and it's what led the docs run to
   over-generalize. Reconcile the project-context MCP-tool rule with the actual async/sync split.
 
-## Deferred from: code review of spec-central-os-data-dir (2026-06-27)
+## Deferred from: code review of spec-central-os-data-dir (2026-06-27)  <!-- dws-024 -->
 
 > Surfaced by the 3-reviewer adversarial pass on the `feat/central-data-dir` work. The HIGH/MED
 > findings (broken `migrate_add_bug_reports.py` import, empty-env sync/async divergence, relative
@@ -614,7 +614,7 @@
   untracked + gitignored `_bmad/` (ruff now skips it) and the pre-commit formatter normalized one
   f-string in `card_lookup.py`. Verified: `ruff format --check .` (120 files) + `ruff check .` both pass.
 
-## Deferred from: code review of trim-deps-package-metadata (2026-06-28)
+## Deferred from: code review of trim-deps-package-metadata (2026-06-28)  <!-- dws-025 -->
 
 > Surfaced by the 3-reviewer adversarial pass on the `chore/trim-deps-package-metadata` work
 > (§6 deps/metadata cleanup). No HIGH/MED findings against the change itself — every blind-hunter
@@ -634,7 +634,7 @@
 
 ## ✅ Resolved by the Pre-Epic-3 Targeted Gate (2026-06-27)
 
-> Cleared via `spec-pre-epic-3-targeted-gate.md` before starting Epic 3. The items below are closed;
+> Cleared via `archive/spec-pre-epic-3-targeted-gate.md` before starting Epic 3. The items below are closed;
 > they remain listed in their original sections for traceability.
 
 - **G1 — `_FakeEmbedder`/`_FakeVecEmbedder` duplication (was 5 copies).** Consolidated into one
@@ -671,13 +671,13 @@
   (`src/mcp_server/tools/find_similar.py`). Consider defaulting `colors` to the seed card's colour
   identity (overridable) to cut leakage. Tool already supports the filter; only the default is open.
 
-## Deferred from: code review of 2-6-rag-sanity-eval (2026-06-24)
+## Deferred from: code review of 2-6-rag-sanity-eval (2026-06-24)  <!-- dws-026 -->
 
 - **`evaluate_hit_rate([])` produces confusing "0 miss(es)" failure message** — `tests/integration/search/test_rag_eval.py`. If `_QUERY_FIXTURE` is ever emptied (module-level constant; only via code edit), `evaluate_hit_rate([])` returns `(0.0, [])`, which trips the `>= TARGET_HIT_RATE` assert but `format_failure` prints "0 miss(es)" with no per-miss lines — self-contradictory. Add `assert case_results, "Query fixture is empty"` before the hit-rate assert as a defensive guard in a future maintenance pass.
 - **`reset_embedder()` teardown ordering hazard across modules** — `tests/integration/search/test_rag_eval.py`. Module-scoped `rag_eval_index` fixture calls `reset_embedder()` in teardown. If another module's session-scoped fixture loaded the embedder, this reset destroys the shared singleton mid-session. Pre-existing pattern in `test_embedder.py` and `test_semantic_search_tool.py`; a session-scoped coordinator would fix it project-wide.
 - **Yield-fixture setup failure leaves `ConnectionFactory` unclosed** — `tests/integration/search/test_rag_eval.py:rag_eval_index`. If `get_embedder()` raises during fixture setup (model download failure, ONNX error), pytest does not run the teardown, so `factory.close()` is never called. Tmp files are cleaned by `tmp_path_factory` at session end; no functional impact. Fix with `try/finally` around setup if file-lock issues surface on Windows.
 
-## Deferred from: code review of 2-5-find-similar-cards-tool (2026-06-22)
+## Deferred from: code review of 2-5-find-similar-cards-tool (2026-06-22)  <!-- dws-027 -->
 
 - **LIKE wildcard injection in `card_name`** — `src/mcp_server/tools/find_similar.py`. Characters `%` and `_` in seed card names are not escaped before the `LIKE lower(?)` partial-match fallback, silently broadening or changing the match set. Acknowledged in code comment as "accepted LIKE-wildcard risk, mirroring CardRepository (deferred-work)". Pre-existing in `card_lookup.py` and `card.py` (1-3 review).
 - **`limit > over_fetch_k` silently starves results (find_similar path)** — `src/search/query.py:hybrid_search`. `find_similar_cards` never passes `over_fetch_k`, so callers requesting `limit > 200` receive fewer alternatives than requested with no warning. Also, seed cards with many printings (e.g. Lightning Bolt ~50 printings) consume KNN slots before exclusion, further reducing the effective result count. Related: noted in 2-4 review.
@@ -690,13 +690,13 @@
 - **`_decode_colors` does not guard against non-list JSON or `JSONDecodeError`** — `src/mcp_server/tools/find_similar.py:_decode_colors`. If `cards.colors` contains valid JSON but not a JSON array (e.g. a string scalar `"R"`), `json.loads` returns a non-list that bypasses the `value is not None` check and reaches `CardSummary(colors=...)` as the wrong type; malformed JSON raises `JSONDecodeError` uncaught. Same pattern as `_coerce_json_list` in `query.py`; Scryfall always writes a valid JSON array — infrastructure concern.
 - **Disambiguation "showing first N" message branch is unreachable for 6–10 distinct matches** — `src/mcp_server/tools/find_similar.py:253`. `shown = distinct[:_MAX_MATCHES]` equals `distinct` when `len(distinct) ≤ 10`, so the inner `if len(shown) < len(distinct)` branch (which emits "showing the first N") is dead code for that range. For 6–10 matches, the message says "Please refine" without the count sub-clause, even though all matches are returned in `matches`. Cosmetic phrasing gap; `matches` list is correct.
 
-## Deferred from: code review of 2-4-semantic-search-cards-tool-hybrid-query (2026-06-22)
+## Deferred from: code review of 2-4-semantic-search-cards-tool-hybrid-query (2026-06-22)  <!-- dws-028 -->
 
 - **Unhandled exceptions propagating from sync tool** — `src/mcp_server/server.py:440`. `OperationalError` (DB unavailable / index not built), `RuntimeError` (ONNX failure), and `json.JSONDecodeError` (malformed DB column) all propagate uncaught through the sync tool, resulting in `isError=True` FastMCP responses. Matches the existing Epic-1 async tool pattern; a `status="error"` enum extension would be needed to handle these gracefully. Defer until infra errors surface in practice.
 - **`_FakeEmbedder` duplicated in three test files** — `tests/unit/search/test_query.py`, `tests/integration/mcp_server/test_semantic_search_tool.py`, and `tests/integration/conftest.py` each define an identical `_FakeEmbedder` / `_FakeVecEmbedder` class. Move to a shared `tests/integration/conftest.py` or a dedicated `tests/fixtures/embedder.py` helper to avoid triple-maintenance on `Embedder` interface changes.
 - **`limit > over_fetch_k` silently truncates results** — `src/search/query.py:hybrid_search`. Callers passing `limit > 200` (default `over_fetch_k`) receive fewer results than requested with no indication. Spec says "sane max ~50"; add an upper-bound validation in `_validation_error` (e.g. `limit > 50 → status="invalid"`) in a future polish pass.
 
-## Deferred from: code review of 1-1-repository-restructure-dependency-reshape (2026-06-20)
+## Deferred from: code review of 1-1-repository-restructure-dependency-reshape (2026-06-20)  <!-- dws-029 -->
 
 - **`legacy/tests/conftest.py` module-level chainlit import** — `import chainlit` at the top of `legacy/tests/conftest.py` (line 8) causes `ModuleNotFoundError` if someone runs `pytest legacy/tests/` on a lean env (without `--group legacy`). `testpaths = ["tests"]` protects the default run. Fix: add a note to `legacy/` documentation or add a root-level `conftest.py` `collect_ignore_glob` guard to make the failure message clearer.
 
@@ -708,11 +708,11 @@
 
 - **Task 0 out-of-scope changes** — Story 1.1 also shipped three pre-existing-defect fixes (explicitly approved by user): recreated `src/data/schemas/pagination.py`, fixed `CardModel.printed_name` default, and updated test contract assertions for `PaginatedResult`. These were correctness-restoring fixes needed to unblock AC4 (100 tests were failing at baseline). No follow-up action required; noted here for traceability.
 
-## Deferred from: code review of 1-2-sqlite-connectionfactory-with-wal-extension-loading (2026-06-20)
+## Deferred from: code review of 1-2-sqlite-connectionfactory-with-wal-extension-loading (2026-06-20)  <!-- dws-030 -->
 
 - **Empty string `CARDS_DATABASE_URL` not guarded** — `_resolve_db_path` returns `""` if the env var is set to an empty string, which `sqlite3.connect("")` will fail on (OperationalError). This is an operator misconfiguration that fails loudly; not worth defensive handling given project rules against unnecessary validation. If it becomes a user-facing pain point, add a guard in `_resolve_db_path` to fall back to the default when the stripped URL is empty.
 
-## Deferred from: code review of 1-3-fastmcp-server-with-card-lookup-bug-report (2026-06-20)
+## Deferred from: code review of 1-3-fastmcp-server-with-card-lookup-bug-report (2026-06-20)  <!-- dws-031 -->
 
 - **`updated_at` onupdate lambda silent in ORM** — `src/data/models/bug_report.py:43-47`. SQLAlchemy `mapped_column(onupdate=callable)` does not fire via the ORM unit-of-work; `updated_at` will always equal `created_at`. Matches the pre-existing `DeckModel` pattern. Only matters when a future story adds an update operation.
 - **No CHECK constraint on status column** — `src/data/models/bug_report.py:32-34`. Any raw string can be written to `status` bypassing enum validation; reading it back via `BugReport.model_validate` would raise `ValueError`. Currently only triggered by manual DB manipulation. Address when an update story is implemented.
@@ -722,7 +722,7 @@
 - **migrate_add_bug_reports.py CWD-sensitive** — `scripts/migrate_add_bug_reports.py:20`. Default `DATABASE_URL` uses `./data/cards.db`; if the script is run from a non-root directory it silently targets the wrong file. Convention (run via `uv run` from project root) guards this; a doc comment would help.
 - **Transport cast is runtime no-op** — `src/mcp_server/__main__.py:20`. `cast(_Transport, os.getenv(...))` provides no runtime validation. FastMCP raises on an invalid transport string anyway, but an explicit guard would give a clearer error message.
 
-## Deferred from: code review of 1-4-advanced-card-search-tool (2026-06-20)
+## Deferred from: code review of 1-4-advanced-card-search-tool (2026-06-20)  <!-- dws-032 -->
 
 - **`CardSummary.mana_cost`/`oracle_text` non-nullable** — `src/data/schemas/card.py:84,87`. Both fields are `str` (not `str | None`), matching the pre-existing `Card` schema pattern. Scryfall has null mana_cost for tokens/land faces and null oracle_text for split cards. If the DB stores these as NULL, `CardSummary.model_validate(card)` will raise `ValidationError`. Needs to be addressed as part of a broader Card/CardSummary schema nullability audit; this story explicitly prohibits modifying `Card`.
 - **`CardSummary.colors: list[str]` no None-coercion** — `src/data/schemas/card.py:88`. `Card.games` has `@field_validator` coercing `None → []`; `colors` has no equivalent in either `Card` or `CardSummary`. If a `CardModel.colors` is NULL in SQLite, `model_validate` raises `ValidationError`. Pre-existing in `Card`; should be addressed alongside the mana_cost/oracle_text audit.
@@ -731,7 +731,7 @@
 - **`page` beyond `total_pages` gives generic empty message** — `src/mcp_server/tools/card_search.py:178-189`. Requesting `page=999` on a 1-page result set returns `status="empty"` with the standard "try adjusting filters" hint, giving no indication the page number exceeded the range. A future polish pass could detect `page > result.total_pages` after the repo call and return a more specific message.
 - **`colors=[]` applies no filter for non-"exact" modes** — `src/data/repositories/card.py`. `search_advanced` treats `colors=[]` (empty list) the same as `colors=None` for `any`/`all`/`at_most` modes because `if colors:` is falsy. A caller expecting "empty list = colorless only" gets "no filter" instead. Pre-existing behavior in `search_advanced`; out of scope for this story.
 
-## Deferred from: code review of 1-5-deck-management-tools (2026-06-20)
+## Deferred from: code review of 1-5-deck-management-tools (2026-06-20)  <!-- dws-033 -->
 
 - **`DeckSummary.from_attributes=True` footgun** — `src/data/schemas/deck.py`. `DeckSummary.model_validate(deck)` silently gives zero counts because `Deck` has no `mainboard_count` attribute. Docstring warns; helpers always use explicit constructors. Could remove `from_attributes=True` from `DeckSummary`/`DeckDetail` (only `DeckCardSummary` actually needs it) to prevent future misuse.
 - **`CardSummary.model_validate(dc.card)` on a Pydantic model** — `deck_management.py:_deck_detail`. Works in Pydantic v2 via attribute inspection on `Card` instances. A more explicit pattern (`CardSummary(**dc.card.model_dump())`) is safer but out of Story 1.5 scope.
@@ -740,11 +740,11 @@
 - **`_deck_detail` crash risk if `dc.card` is `None`** — `deck_management.py`. FK enforcement is OFF; if a card row is deleted after a `deck_cards` row was inserted, `get_deck_with_cards` may return a `DeckCard` with a null `card`. `CardSummary.model_validate(None)` would raise. Defended by add-path pre-validation (AC4) but not structurally guaranteed.
 - **No `format` validation in `create_deck`** — `deck_management.py`. Invalid format strings (e.g., `"potato"`) are stored silently; deferred to Story 1.6 `validate_deck` by D-1.5b.
 
-## Deferred from: dev of 1-2-sqlite-connectionfactory-with-wal-extension-loading (2026-06-20)
+## Deferred from: dev of 1-2-sqlite-connectionfactory-with-wal-extension-loading (2026-06-20)  <!-- dws-034 -->
 
 - **`test_list_decks` flaky ordering (pre-existing)** — `tests/integration/data/test_deck_repository.py::test_list_decks` asserts three rapidly-created decks come back newest-first, but `DeckRepository.list_decks` orders by `created_at.desc()` with **no secondary tie-breaker** ([`src/data/repositories/deck.py:260`](../../src/data/repositories/deck.py#L260)). When the three `create_deck` calls land on identical `created_at` timestamps (common under full-suite timing), SQLite resolves the tie arbitrarily and the assertion fails non-deterministically. Verified: the test passes 5/5 in isolation but fails intermittently in the full run. Unrelated to Story 1.2 (which only adds `src/search`); left untouched per scope discipline. Fix: add a deterministic secondary sort key to `list_decks` (e.g. `.order_by(DeckModel.created_at.desc(), DeckModel.id)`) **and** make the test's creation-order intent explicit (e.g. distinct/controlled `created_at` values), since UUID `id` is not time-ordered.
 
-## Deferred from: code review of 2-1-embedder-port-fastembed-singleton-persistent-cache (2026-06-21)
+## Deferred from: code review of 2-1-embedder-port-fastembed-singleton-persistent-cache (2026-06-21)  <!-- dws-035 -->
 
 - **Double-checked locking portability for non-CPython/free-threaded Python** — `src/search/embedder.py:1038`. The outer `if _embedder is None` read has no lock and relies on CPython's GIL for visibility. Correct on CPython 3.12 (project target), but not portable to free-threaded builds (PEP 703, opt-in in Python 3.13+) or other implementations. Revisit if/when free-threaded Python is targeted.
 - **encode_batch large-batch memory ceiling** — `src/search/embedder.py:encode_batch`. No `batch_size` passthrough; a ~60k-item call materializes all output vectors in memory (~88 MB for float32 alone) plus fastembed's internal buffers. Spec explicitly deferred `batch_size` to Story 2.3's index builder.
@@ -752,13 +752,13 @@
 - **test_resolve_cache_dir_never_temp assertion style** — `tests/unit/search/test_embedder.py:1197`. `startswith("./data")` check is correct for the current relative default. If the P1 absolute-path patch is ever applied, this test will need updating to match the resolved absolute path.
 - **README.md and setup.py changes bundled in story commit** — Not in the spec File List; spec's Git Intelligence note acknowledges these as pre-existing MCP-pivot cleanup. Noted for traceability.
 
-## Deferred from: code review of 2-2-card-vec-schema-with-metadata-columns (2026-06-21)
+## Deferred from: code review of 2-2-card-vec-schema-with-metadata-columns (2026-06-21)  <!-- dws-036 -->
 
 - **Tests call `factory.close()` without try/finally** — `tests/unit/search/test_schema.py`. Every test leaves `factory.close()` outside a `try/finally`, so connections are not released on assertion failure. On Windows, leaked WAL connections can cause file-lock errors. Pre-existing pattern mirrored from `test_connection.py`; fix the pattern project-wide when refactoring the test helpers.
 - **Migration CWD-relative DB path** — `scripts/migrate_add_card_vec.py`. Default `./data/cards.db` is CWD-relative; running from a non-root directory silently targets the wrong file. Pre-existing `ConnectionFactory` behavior; convention is `uv run` from project root. Same issue exists in `migrate_add_bug_reports.py`.
 - **`mana_value integer` column accepts Python float inputs without coercion** — `src/search/schema.py`. SQLite's dynamic typing allows storing a Python `float` in an `integer`-affinity column without error, so `WHERE mana_value = 2` could silently miss cards stored as `2.0`. The `int(cmc)` cast is Story 2.3's responsibility at insert time.
 
-## Deferred from: code review of 1-6-deck-analysis-tools (2026-06-20)
+## Deferred from: code review of 1-6-deck-analysis-tools (2026-06-20)  <!-- dws-037 -->
 
 - **`dc.quantity` zero or negative can undercount mainboard cards** — `validate_deck` in `src/logic/deck_validator.py` accumulates `dc.quantity` without clamping. A zero or negative quantity (bypassing the DeckCard schema validator) would undercount the mainboard, potentially letting an illegal deck pass the 60-card check. Fix at insert time in `DeckRepository.add_card_to_deck` with `quantity >= 1` enforcement.
 - **`card.legalities` potentially `None` from DB NULL** — `card.legalities.get(format)` in `validate_deck` (`src/logic/deck_validator.py`) raises `AttributeError` if `legalities` is `None`. The `Card` schema types this as `dict[str, str]` (non-nullable), but SQLite does not enforce NOT NULL for JSON columns without a CHECK constraint. Address in a broader Card schema nullability audit (related: deferred in 1-4 review).
@@ -768,11 +768,11 @@
 - **`format` normalization absent from pure `validate_deck` logic** — The tool helper normalises `format.strip() or "standard"`, but the pure function in `src/logic/deck_validator.py` accepts any string, including `""`. Direct callers (e.g., future logic-layer callers) passing an empty format will get all cards flagged as format-illegally. Consider adding the normalization to the pure function as a defensive guard.
 - **`seeded_card_db` omits `games` field on seed cards** — The three shared fixture cards (Lightning Bolt, Thunderbolt, Counterspell) default to `games=[]`. The `games` filter path in `validate_deck` is therefore not exercised end-to-end through the MCP harness (`test_mcp_tools.py`). Covered at the helper level in `test_deck_analysis_tool.py`. Acceptable Phase-1 gap; extend the harness test when the fixture is enriched for Epic-2 work.
 
-## Deferred from: code review of story-3.4 (2026-06-27)
+## Deferred from: code review of story-3.4 (2026-06-27)  <!-- dws-038 -->
 
 - **`validate_deck` skips `dc.card is None` rows from copy/legality checks while still counting them in `mainboard_count`** — `src/logic/deck_validator.py` does `if dc.card is None: continue` before tallying copies/legality, but `mainboard_count` sums quantity unconditionally. A saved deck with an orphaned card join (a `card_id` no longer in the DB) passes copy/legality vacuously while still counting toward the 60-card size — a "legal" result can hide un-validated phantom cards. Pre-existing tool/data edge; obscure. Could add a one-line caveat to the format-legality skill's "what the tool can't see" section. (Source: Edge Case Hunter; Severity: Low.)
 
-## Deferred from: code review of mcpb-bundle (2026-06-28)
+## Deferred from: code review of mcpb-bundle (2026-06-28)  <!-- dws-039 -->
 
 > Surfaced by the 3-reviewer adversarial pass on the `chore/mcpb-bundle` work (§4 MCPB bundle).
 > The one HIGH that mattered (`.mcpbignore`'s unanchored `data/` also excluding `src/data/`, which
@@ -807,7 +807,7 @@
   placeholder (defense-in-depth), with a unit test — otherwise the bug returns. (Source: Brad live
   smoke-test; Severity: was High, now fixed.)
 
-## Deferred from: code review of story-4.2 (2026-07-12)
+## Deferred from: code review of story-4.2 (2026-07-12)  <!-- dws-040 -->
 
 > 3-reviewer adversarial pass on the `scripts/migrate_add_game_changer.py` diff (Story 4.2). The
 > Blind Hunter's headline finding — the documented backfill re-import can't actually populate
@@ -822,7 +822,7 @@
 - **Upsert-based backfill only touches rows present in the current Scryfall bulk export** — `src/data/importers/importer.py`. A card absent from a freshly-downloaded bulk file keeps its prior (NULL) `game_changer` value indefinitely; the migration docstring's "overwrites every card" framing overstates actual coverage. Inherent to the importer's existing upsert design, not introduced by this diff. (Source: Blind Hunter; Severity: Low.)
 - **Idempotency guard checks column presence only, not type/nullability** — `scripts/migrate_add_game_changer.py:50-53`. A differently-typed partial/failed prior migration attempt would be silently treated as already-satisfied. Identical guard shape in the precedent script. (Source: Blind Hunter; Severity: Low.)
 
-## Deferred from: code review of story-4.1 (2026-07-11)
+## Deferred from: code review of story-4.1 (2026-07-11)  <!-- dws-041 -->
 
 - **Untyped `game_changer` value could reach the `Boolean` column unchecked** — `src/data/importers/transformers.py:79`. `card_json.get("game_changer")` performs no type/shape validation; a non-bool value (string/int) would flow straight into a `Boolean` SQLAlchemy column with no coercion or error. Pre-existing pattern: no field in `transform_scryfall_card` has type validation beyond null-coalescing, and Scryfall is a trusted, documented source for this field. (Source: Edge Case Hunter + Blind Hunter; Severity: Low.)
 - **No cross-printing `game_changer` reconciliation in oracle aggregation** — `src/data/importers/aggregate.py`. Unlike `games` (unioned across all printings of an oracle identity), `game_changer` is taken from whichever printing happens to be canonical, with no explicit cross-printing reconciliation. Mirrors the identical, deliberate gap already present for `power`/`toughness`; out of this story's scope per its own Dev Notes (extraction only, not aggregation semantics). (Source: Edge Case Hunter; Severity: Low.)
@@ -831,7 +831,7 @@
 - **No Pydantic schema-layer test for `game_changer`** — nothing constructs/validates a `Card` (via `model_validate`/`model_dump`) with `game_changer=False` to prove the "no coercion validator" claim rather than merely asserting it in a comment. Identical gap already exists for `power`/`toughness` in `tests/unit/data/test_schemas.py`. (Source: Blind Hunter; Severity: Low.)
 - **Sprint-status prose doesn't note the feature isn't usable end-to-end until Story 4.2's migration ships** — `epic-4` flips to `in-progress` and `4-1` to `done` while `4-2-migrate-and-backfill-existing-databases` stays `backlog`; a reader of `sprint-status.yaml` alone can't tell "done" here means "additive schema only, unusable on existing DBs until 4.2 ships." Already documented clearly in this story's own Dev Notes ("What this story is (and is NOT)"). (Source: Blind Hunter; Severity: Low.)
 
-## Deferred from: code review of story-5.1 (2026-07-12)
+## Deferred from: code review of story-5.1 (2026-07-12)  <!-- dws-042 -->
 
 > 3-reviewer adversarial pass on Story 5.1's calibration benchmark set (`tests/fixtures/benchmark_decks.py` + 7 decklist fixtures + offline self-validation test). The headline finding — a rules-illegal duplicate "Kinnan, Bonder Prodigy" card in `cedh_kinnan_bonder_prodigy.txt`, rooted in the Dev Agent's admitted departure from AC3/Task 2's "copy verbatim from source" mandate — is a decision-needed item logged in the story file's Review Findings, not deferred here (it's a defect in the acceptance-gate data itself, not a pre-existing/out-of-scope gap). The items below are real but low-severity hardening gaps, not blocking.
 
@@ -840,11 +840,11 @@
 - **Parser accepts a zero-quantity card line with no guard** — `tests/fixtures/benchmark_decks.py:149-158`. `BenchmarkCard.quantity`'s docstring claims `>= 1` but nothing enforces it; a `0 Foo (SET) 1` line would parse as a phantom zero-quantity card. No current occurrence. (Source: Edge Case Hunter; Severity: Low.)
 - **No guard against split-quantity duplicate non-commander cards** — `tests/fixtures/benchmark_decks.py:149-158`. Generalizes the Kinnan bug class beyond commanders; `_mainboard_total` sums by line, not by distinct name, so the same card split across two lines would inflate the total silently. No current occurrence outside Kinnan; would be caught by the same duplicate-name-check patch tracked in the story file, once implemented. (Source: Blind Hunter; Severity: Low.)
 
-## Deferred from: code review of story-5.2 (2026-07-12)
+## Deferred from: code review of story-5.2 (2026-07-12)  <!-- dws-043 -->
 
 - **No construction-time (`__post_init__`) validation for weight-sum / win-turn-band ordering / rubric domain / non-empty version invariants** — `src/logic/assessment/profiles.py:43,69` (`DimensionWeights`, `FormatProfile`). AC3 permits (doesn't require) `__post_init__` validation on the frozen dataclasses; the two hardcoded module constants are already exhaustively covered by `tests/unit/logic/test_assessment_profiles.py`, so this is only a gap for hypothetical future dynamic construction (e.g., an Epic 7 `PROFILES` lookup or a 5.9 tuning script constructing profiles outside this module). Revisit if/when `FormatProfile`/`DimensionWeights` are ever constructed anywhere else. (Source: Blind Hunter + Edge Case Hunter, independently; Severity: Low.)
 
-## Deferred from: code review of story-5.3 (2026-07-12)
+## Deferred from: code review of story-5.3 (2026-07-12)  <!-- dws-044 -->
 
 > 3-reviewer adversarial pass on Story 5.3's shared oracle-text classifiers
 > (`src/logic/assessment/classifiers.py`). No decision-needed items — AC5/AC6 explicitly state
@@ -872,7 +872,7 @@ graveyard-hate cards (Tormod's Crypt) get the generic `INTERACTION` tag via the 
 `(?:destroy|exile) (?:all|each)` branch. (Sources: Blind Hunter + Edge Case Hunter, batched;
 Severity: n/a — explicitly deferred by the story's own ACs.)
 
-## Deferred from: code review of story-5.5 (2026-07-13)
+## Deferred from: code review of story-5.5 (2026-07-13)  <!-- dws-045 -->
 
 > 3-reviewer adversarial pass on Story 5.5's consistency/interaction/structural-coverage
 > signals (`src/logic/assessment/consistency.py`). No decision-needed items. The Edge Case
@@ -902,7 +902,7 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   hardening beyond AC8's required test matrix — revisit if a future refactor touches the
   summation/clamp logic. (Source: Blind Hunter; Severity: Low.)
 
-## Deferred from: code review of story-6-1 (2026-07-16)
+## Deferred from: code review of story-6-1 (2026-07-16)  <!-- dws-046 -->
 
 > Story 6.1 is the schema/migration/write-path slice of commander identity. Its Dev Notes
 > explicitly scope **all commander validation/inference to Epic 7 / Story 7.1** ("Do not add
@@ -927,7 +927,7 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   established additive-import contract), but Epic 7 (or a deck-edit story) will need an explicit
   set-commander path. (Source: Blind Hunter; Severity: Low; deferred.)
 
-## Deferred from: code review of 7-2-combo-provisioning-the-degradation-ladder (2026-07-17)
+## Deferred from: code review of 7-2-combo-provisioning-the-degradation-ladder (2026-07-17)  <!-- dws-047 -->
 
 - **Transient `OperationalError` during combo provisioning is reported as
   `combo_data_unavailable`** — `ComboSnapshotRepository`'s three read methods catch
@@ -945,7 +945,7 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   Story 7.3 (human-summary serialization) should disambiguate assembled vs one-away in the
   client-facing projection. (Source: Blind Hunter; Severity: Low; deferred to Story 7.3.)
 
-## Deferred from: code review of c1-2-side-effect-free-asgi-app-with-a-lifespan-and-a-health-endpoint (2026-07-25)
+## Deferred from: code review of c1-2-side-effect-free-asgi-app-with-a-lifespan-and-a-health-endpoint (2026-07-25)  <!-- dws-048 -->
 
 - **`lifespan_client` seam is not parameterizable for its named inheritors** — the conftest helper
   hardcodes `BASE_URL = "http://testserver"` and accepts no headers/base-url kwargs
@@ -969,7 +969,7 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   authoritative typed gate against the real locked versions. Pinning one dep would be inconsistent
   with the other seven floors; pinning all seven would go stale against `uv.lock` unchecked.*
 
-## Deferred from: code review of c1-3-port-selection-with-ephemeral-fallback-and-a-printed-launch-url (2026-07-25)
+## Deferred from: code review of c1-3-port-selection-with-ephemeral-fallback-and-a-printed-launch-url (2026-07-25)  <!-- dws-049 -->
 
 - **No `SO_EXCLUSIVEADDRUSE` on the Windows bind** — `_new_socket` correctly omits `SO_REUSEADDR`
   on Windows (`src/companion/app/server.py:109-124`), but does not set `SO_EXCLUSIVEADDRUSE`, so
@@ -992,7 +992,7 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   instantly diagnosable (fix = retry loop in `free_port`). (Source: Edge Case Hunter + Blind
   Hunter; Severity: Low; deferred — act on first flake.)
 
-## Deferred from: code review of c1-4-typed-rest-error-contract-with-closed-reason-tokens (2026-07-25)
+## Deferred from: code review of c1-4-typed-rest-error-contract-with-closed-reason-tokens (2026-07-25)  <!-- dws-050 -->
 
 - **Outermost error middleware vs c1-5's CORS: unhandled-503s will carry no CORS headers** — c1-4
   pins `UnhandledErrorMiddleware` outermost (`src/companion/app/main.py`, install-last comment) so
@@ -1011,7 +1011,7 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   assertions in `test_security.py::TestCorsIsDeliberatelyAbsent`, so a later story that wants CORS
   must revisit this ruling first.
 
-## Deferred from: story c1-5-localhost-only-security-envelope-host-validation-and-cors (2026-07-25)
+## Deferred from: story c1-5-localhost-only-security-envelope-host-validation-and-cors (2026-07-25)  <!-- dws-051 -->
 
 - **`test_list_decks_with_strategy_field` is order-flaky on a same-tick tie** — observed failing
   once in a full-suite run during c1-5 and passing in isolation and on two subsequent full runs;
@@ -1025,7 +1025,7 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   boundary. (Source: c1-5 full-suite gate run; Severity: Low; needs a home in the data-layer work —
   natural fit is `data-layer-orphan-handling`, the other open `src/data` item.)
 
-## Deferred from: code review of c1-6-lazy-database-engine-so-a-fresh-install-starts-instead-of-erroring (2026-07-25)
+## Deferred from: code review of c1-6-lazy-database-engine-so-a-fresh-install-starts-instead-of-erroring (2026-07-25)  <!-- dws-052 -->
 
 - **Cached-engine path never re-runs the existence check** — once an engine is cached, deleting
   `cards.db` while the companion runs means the next request's connection re-plants a zero-byte
@@ -1071,7 +1071,7 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   paths can route through it. Candidate: scrub `[parameters: ...]` from tracebacks, or accept as
   local-log-only. (Source: Blind Hunter; Severity: Low.)
 
-## Deferred from: story c1-7-discovery-file-as-the-sole-rendezvous (2026-07-26)
+## Deferred from: story c1-7-discovery-file-as-the-sole-rendezvous (2026-07-26)  <!-- dws-053 -->
 
 - **`os.replace` fails with `PermissionError [WinError 5]` while another process holds the target
   open** — measured on this machine during story writing and re-confirmed in implementation. The
@@ -1144,7 +1144,7 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   lesson about `trust_env=False` applied in advance: an environment variable that legitimately
   partitions the guard's scope must be *stated*, not left to be found.)
 
-## Deferred from: story c1-8-single-instance-enforcement-with-verified-identity (2026-07-26)
+## Deferred from: story c1-8-single-instance-enforcement-with-verified-identity (2026-07-26)  <!-- dws-054 -->
 
 - **Two launches started within the same startup window can both start** — the
   single-instance check is **check-then-act**, and nothing makes the check and the publish one
@@ -1262,7 +1262,7 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   rather than a label. (Source: Brad, unprompted during story c1-7; Severity: Medium — it is
   weighted at 0.20 on the 60-card fork; no user-visible failure, but a systematic blind spot.)
 
-## Deferred from: story c1-9-one-console-script-that-dispatches-without-disturbing-the-mcp-server (2026-07-26)
+## Deferred from: story c1-9-one-console-script-that-dispatches-without-disturbing-the-mcp-server (2026-07-26)  <!-- dws-055 -->
 
 - **Windows Ctrl-Break ends the companion with exit status `3`, and interactive Ctrl-C is
   unverified** — live check 3 (real `CTRL_BREAK_EVENT` to a detached child) confirmed everything
@@ -1310,7 +1310,7 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   if a future story wants a test that deliberately exercises the real-data-dir diagnostics path.
   (Source: c1-9 code review, Acceptance Auditor; Severity: Low.)
 
-## Deferred from: code review of c1-9 (2026-07-26)
+## Deferred from: code review of c1-9 (2026-07-26)  <!-- dws-056 -->
 
 - ~~**The "both mypy runs are mandatory" comment is enforced by no gate**~~ — **CLOSED by c2-1
   (2026-07-26).** `singleton.py`'s platform branch declares `uv run mypy src/` and
@@ -1336,7 +1336,7 @@ Severity: n/a — explicitly deferred by the story's own ACs.)
   The break was reverted; `git status --porcelain -- src/` is empty in the shipped commit.
   (Source: c1-9 code review, Blind Hunter; closed by story c2-1, C1 retro action item 3.)
 
-## Deferred from: Epic C1 retrospective manual testing (2026-07-26)
+## Deferred from: Epic C1 retrospective manual testing (2026-07-26)  <!-- dws-057 -->
 
 Brad ran blocks A–D and G–H and declared himself satisfied; two blocks were not run. Homed here per
 the gate-output rule rather than left as "we meant to".
@@ -1382,7 +1382,7 @@ the gate-output rule rather than left as "we meant to".
   inferred. **What is still not confirmed is the PAGE doing it in a browser** — see c3-9's own
   residue below. (Severity: Low.)
 
-## Deferred from: story c2-1 (2026-07-26)
+## Deferred from: story c2-1 (2026-07-26)  <!-- dws-058 -->
 
 - **`npm audit` reports 8 high-severity advisories in the `ui/` dev toolchain, and no gate looks at
   it.** All 8 are transitive and dev-only: `brace-expansion`/`minimatch` (a DoS via unbounded
@@ -1442,7 +1442,7 @@ the gate-output rule rather than left as "we meant to".
   story that next opens `DeckRepository.list_decks`. (Severity: Low — a false red, never a false
   green; but it will keep costing someone a re-run.)
 
-## Deferred from: code review of c2-2-the-backend-serves-the-built-spa-as-a-committed-artifact (2026-07-26)
+## Deferred from: code review of c2-2-the-backend-serves-the-built-spa-as-a-committed-artifact (2026-07-26)  <!-- dws-059 -->
 
 - **`sprint-status.yaml`'s `last_updated` comment is a single ever-growing line, thousands of
   characters long.** Each story appends its entire narrative onto one line chained behind
@@ -1468,7 +1468,7 @@ the gate-output rule rather than left as "we meant to".
   half, and the epic retro checklist is its established home. (Severity: Low — every proxy signal
   is green; this is the eyes-on-pixels confirmation.)
 
-## Deferred from: code review of c2-3 (2026-07-27)
+## Deferred from: code review of c2-3 (2026-07-27)  <!-- dws-060 -->
 
 - **`_truncate_descriptions`'s drop-the-key branch can void a Response Object's required
   `description` (spec-invalid OpenAPI).** `del node["description"]` at
@@ -1490,7 +1490,7 @@ the gate-output rule rather than left as "we meant to".
   re-check that nothing started parsing the file in the meantime. (Severity: Low — pre-existing,
   fix already homed.)
 
-## Deferred from: code review of c2-4-the-voltglass-token-layer (2026-07-27)
+## Deferred from: code review of c2-4-the-voltglass-token-layer (2026-07-27)  <!-- dws-061 -->
 
 - **Typography literals are the ungated family in the "every value is a token" set.** The c2-4
   literal bans cover colour/shadow/radius/spacing, but no rule keys `font`, `font-size`,
@@ -1509,7 +1509,7 @@ the gate-output rule rather than left as "we meant to".
   `font-stretch`, `font-optical-sizing`, `font-size-adjust`, `font-synthesis` (never enumerated)
   and an invented `font-hyperkerning`. "Every value is a token" is now true.
 
-## Deferred from: implementation of c2-5-self-hosted-space-grotesk (2026-07-28)
+## Deferred from: implementation of c2-5-self-hosted-space-grotesk (2026-07-28)  <!-- dws-062 -->
 
 - **AC 4's render half is Brad's, deferred to the C2 epic manual-testing checklist.** The
   machine-verifiable half is fully closed: the committed binary is a real WOFF2 by signature,
@@ -1561,7 +1561,7 @@ the gate-output rule rather than left as "we meant to".
   (Severity: Low — the thing being prevented is a build-time CDN import, which the total ban on
   `.css`/`.html` covers absolutely.)
 
-## Deferred from: code review of c2-5-self-hosted-space-grotesk (2026-07-28)
+## Deferred from: code review of c2-5-self-hosted-space-grotesk (2026-07-28)  <!-- dws-063 -->
 
 - **`git ls-files`-keyed guards cannot see untracked stylesheets.** `shippedStylesheets` in
   `ui/tests/fonts.test.ts` and `ui/tests/token-usage.test.ts` builds its file list from
@@ -1572,16 +1572,9 @@ the gate-output rule rather than left as "we meant to".
   `git ls-files --others --exclude-standard '*.css'` to every such guard at once, not a
   per-story patch. (Severity: Low — the window closes at `git add`, and CI never has it.)
 
-- **`:root { font: var(--type-body) }` pins the document rem basis to 14px and overrides the
-  browser's default-font-size preference.** Before c2-5, `:root` set no `font-size`, so `1rem`
-  tracked the user's browser setting; now it is 14px document-wide. Latent — nothing in `ui/`
-  uses `rem`, and the whole token layer is px-based per DESIGN.md, so user font-size preferences
-  were already inert for component text. If an accessibility pass ever revisits px-vs-rem, this
-  root declaration is where the document basis is set. (Severity: Low — design-system-level,
-  pre-dates this story in effect; the 14px change itself is recorded in the c2-5 Completion
-  Notes.)
+- **[SC-5: re-accepted (ship-and-adjust)]** `:root { font: var(--type-body) }` pins the document rem basis to 14px and overrides the browser's default-font-size preference. — gate: archive/sc-5-gate-report-2026-08-20.md
 
-## Deferred from: implementation of c2-6-the-two-column-application-shell (2026-07-28)
+## Deferred from: implementation of c2-6-the-two-column-application-shell (2026-07-28)  <!-- dws-064 -->
 
 - **AC 4's and AC 5's render halves are Brad's, deferred to the C2 epic manual-testing
   checklist.** This is the third story to split an AC this way (c2-2 AC 17, c2-5 AC 4), so it is
@@ -1596,9 +1589,7 @@ the gate-output rule rather than left as "we meant to".
      column, 452px right column, footer, panels floating with visible canvas between them.
   2. Sweep **~1100px → ~2560px**: no horizontal scrollbar at any width, and below 1100px the
      right column drops beneath the left rather than compressing.
-  3. On a **long deck**, the footer stays visible without scrolling, and the scrollbar sits at
-     the content region's edge rather than the window's — the intended app-shell appearance and
-     the accepted consequence of Q2.
+  3. **[SC-5: re-accepted — paint-level half covered by the live walk]** On a long deck, the footer stays visible without scrolling. — gate: archive/sc-5-gate-report-2026-08-20.md
 
   (Severity: Medium — the composition is the story's whole point, and no gate can see it.)
 
@@ -1636,7 +1627,7 @@ the gate-output rule rather than left as "we meant to".
   level, the right repair is a `--z-*` token family, not a wider regex. (Severity: Low — one
   value, one level, and the epic's design says there will never be a second.)
 
-## Deferred from: c2-6 AC 7 amendment (2026-07-28)
+## Deferred from: c2-6 AC 7 amendment (2026-07-28)  <!-- dws-065 -->
 
 - **`DESIGN.md` line 328 still names `{spacing.6}` for the agent-view overlay inset; the shipped
   shell uses `--space-gutter`.** Story c2-6's AC 7 was amended to `var(--space-gutter)` by Brad's
@@ -1667,7 +1658,7 @@ the gate-output rule rather than left as "we meant to".
   still saying `{spacing.6}`" were updated in the same commit; three `ui/src` comments quoting the
   old wording were not, and are recorded as residue under story 15-3 below.
 
-## Deferred from: c2-7 — presentation-only primitives (2026-07-29)
+## Deferred from: c2-7 — presentation-only primitives (2026-07-29)  <!-- dws-066 -->
 
 - **The four primitives' APPEARANCE is not dev-verified, and cannot be in this story.** `Panel`,
   `Badge`, `StatChip` and `GroupHeader` ship with **no on-screen consumer** — nothing imports
@@ -1713,7 +1704,7 @@ the gate-output rule rather than left as "we meant to".
   which was declined here as out of scope for a story that ships components. (Severity: Low —
   two copies, both anchored, and the UX artefacts are re-exported rarely.)
 
-## Deferred from: code review of c2-7 (2026-07-29)
+## Deferred from: code review of c2-7 (2026-07-29)  <!-- dws-067 -->
 
 - **StatChip `signed()` renders raw `String(delta)`** — a fractional delta shows
   `+0.30000000000000004` and a magnitude ≥ 1e21 shows `+1e+21` as user-facing text
@@ -1722,7 +1713,7 @@ the gate-output rule rather than left as "we meant to".
   either formats before passing or adds the sibling formatted-delta prop Q6 anticipated.
   (Severity: Low — no current caller passes a non-integer delta.)
 
-## Deferred from: c2-8 — ManaPip / ManaCost and the Scryfall cost parser (2026-07-29)
+## Deferred from: c2-8 — ManaPip / ManaCost and the Scryfall cost parser (2026-07-29)  <!-- dws-068 -->
 
 - **`ManaPip` and `ManaCost` APPEARANCE is not dev-verified, and cannot be in this story.**
   Both ship with **no on-screen consumer** — nothing imports them, deliberately (AC 24:
@@ -1886,7 +1877,7 @@ the gate-output rule rather than left as "we meant to".
   theirs. A reviewer of c2-10, c4-3, c4-12 and c6-6 must READ the copy. (Severity: Low, but
   permanent — this does not get closed, it gets honoured.)
 
-## Deferred from: code review of c2-9 (2026-07-29)
+## Deferred from: code review of c2-9 (2026-07-29)  <!-- dws-069 -->
 
 - **A runtime-unknown `state` key crashes the StatePanel.** `STATE_COPY[state]` at
   `StatePanel.tsx:92` has no fallback branch: a value arriving through untyped wiring (a stale
@@ -1930,24 +1921,13 @@ the gate-output rule rather than left as "we meant to".
   is nothing in this repository for it to be checked against today, so a gate on it would assert
   prose against prose. (Severity: Low.)
 
-## Deferred from: story c2-10 (footer attribution, 2026-07-30)
+## Deferred from: story c2-10 (footer attribution, 2026-07-30)  <!-- dws-070 -->
 
 Every entry here is a **visual claim jsdom cannot decide** (AC 22). The source-read half of each
 is asserted in `ui/tests/shell.test.ts` against `Footer.css`; what is deferred is only what the
 CSS *does on screen*. None of these is claimed anywhere as verified.
 
-- **10px ALL-CAPS legal text — is it actually readable?** THIS IS THE FIRST THING TO LOOK AT.
-  `DESIGN.md` assigns footer attribution to `{typography.micro}` (`400 10px/1.3`, `0.08em`
-  tracking) and declares that role uppercase, and the companion guard derives the requirement
-  from the artefact's own `textTransform:` key — so three sentences of legally load-bearing text
-  render at 10px in capitals. Brad ruled **ship the spec as written** (Q1, 2026-07-30): it is
-  what the artefact says, the DOM text is untouched by `text-transform` so nothing about the
-  contract or the screen reader changes, and deviating means amending a UX artefact on a
-  frontend story. The contrast AC exists because this text must be readable — and case and size
-  are the other two halves of readability, which no AC covers. **If it reads badly by eye, the
-  correction is a `DESIGN.md` amendment in Epic 8's release-readiness pass**, made with the
-  rendered page in hand rather than from the spec. (Severity: Medium — it is the one string in
-  the app that has to be readable.)
+- **[SC-5: re-accepted — the 2026-07-30 "ship as written" ruling stands]** 10px ALL-CAPS legal text — is it actually readable? — gate: archive/sc-5-gate-report-2026-08-20.md
 
 - **The 24px hit box as laid out.** `min-height: 24px` + `min-width: 24px` with
   `display: inline-block` is asserted in source (the review of 2026-07-30 changed the display
@@ -2008,7 +1988,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   hairline aligns with the header and columns inside the gutter frame. No longer a unilateral
   call; a full-bleed rule would now be a new decision, not a correction.
 
-## Deferred from: story c3-1 (deck list and deck detail endpoints, 2026-07-31)
+## Deferred from: story c3-1 (deck list and deck detail endpoints, 2026-07-31)  <!-- dws-071 -->
 
 - **`list_decks` materialises every deck's full card list just to count it.**
   `src/data/repositories/deck.py:263` eager-loads
@@ -2090,7 +2070,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   TypeScript reader ("Supports conversion from SQLAlchemy CardModel instances" trips nothing) is
   not statically decidable, and now carries a `ui/README.md` blind-spot row saying so.
 
-## Deferred from: code review of c3-1 (2026-07-31)
+## Deferred from: code review of c3-1 (2026-07-31)  <!-- dws-072 -->
 
 - **A `pydantic.ValidationError` escaping `DeckRepository` has no handler anywhere in the companion
   stack, and `GET /api/decks` gives it a whole-list blast radius.** `install_error_handling` types
@@ -2289,7 +2269,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   author's own new router, seen immediately. Its value is the shape of the failure it would produce
   for the author who *doesn't* notice, which no amount of paid tax can evidence.
 
-## Deferred from: code review of c3-1-deck-list-and-deck-detail-endpoints (2026-07-31, post-commit pass)
+## Deferred from: code review of c3-1-deck-list-and-deck-detail-endpoints (2026-07-31, post-commit pass)  <!-- dws-073 -->
 
 - **`from_deck` on a non-eager-loaded `Deck` silently yields 0/0/0 counts and an empty `cards`** —
   re-confirmed by the post-commit review as the sharpest edge the projection move created:
@@ -2358,7 +2338,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   writes `format === null` against the generated type that branch is dead code — it should key on
   `format_recognized` instead, which c3-3 added for exactly this.
 
-## Deferred from: story c3-2 (2026-07-31)
+## Deferred from: story c3-2 (2026-07-31)  <!-- dws-074 -->
 
 - **There is no price data anywhere in this project, and FR-17's "prices if present in local data"
   is therefore never satisfied.** Measured at c3-2: `PRAGMA table_info(cards)` lists 23 columns and
@@ -2551,7 +2531,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
 
 
 
-## Deferred from: code review of c3-2 (2026-07-31)
+## Deferred from: code review of c3-2 (2026-07-31)  <!-- dws-075 -->
 
 - **A malformed card id reaching the UI from DATA renders nothing at all — no placeholder, no
   state.** `card_not_found` is the token wired to the unknown-card placeholder; a card id that
@@ -2681,7 +2661,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   > `test_a_description_inside_an_example_payload_is_not_collected` through the full 2,526-test
   > run** (not a single-file run — verified through `scripts/probe_harness.py`). **CLOSED.**
 
-## Deferred from: code review of c3-2-card-detail-endpoint, round 2 (2026-07-31)
+## Deferred from: code review of c3-2-card-detail-endpoint, round 2 (2026-07-31)  <!-- dws-076 -->
 
 - **A body-less GET publishes `413 payload_too_large` in its client contract.** The app-wide
   `error_responses` wiring from `build_app()` lands the 413 row on `GET /api/cards/{card_id}`
@@ -2769,7 +2749,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   a truncation — and it made "presence of per-face `image_uris`" mean *truthiness* everywhere,
   which three assertions in `test_routes_cards.py` were updated to say.
 
-## Deferred from: story c3-3 (format check endpoint, 2026-08-01)
+## Deferred from: story c3-3 (format check endpoint, 2026-08-01)  <!-- dws-077 -->
 
 - **Rotation exposure cannot be computed from local data at all, and the panel now says so
   permanently.** Q3 (Brad, 2026-07-31) ruled that the row ships with status `advisory` rather than
@@ -2928,7 +2908,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   construction in one consumer is not the same as fixing it. **Home: unowned** — a `src/data`
   story. (Severity: Low.)
 
-## Deferred from: code review of c3-3-format-check-endpoint-over-the-existing-validators (round 2, 2026-08-01)
+## Deferred from: code review of c3-3-format-check-endpoint-over-the-existing-validators (round 2, 2026-08-01)  <!-- dws-078 -->
 
 - **`is_legal: false` above six non-violation rows is a live UI trap, mitigated only by prose.**
   The report deliberately carries no honest headline field (Q4: one shape always, mirrors the
@@ -3073,7 +3053,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   `NO_UI_RESPONSE` rather than trusting any enumerated list, and the comment added at that line now
   says so. **Home: unowned, informational.** (Severity: Low — it fails loudly and names itself.)
 
-## Deferred from: code review of c3-4 (2026-08-01)
+## Deferred from: code review of c3-4 (2026-08-01)  <!-- dws-079 -->
 
 - **The pre-auth body-buffering deferral now has a test pinning the ordering.** The c5-5 body-cap
   entry above stands, with one addendum the review surfaced: `test_routes_active_deck.py::
@@ -3104,7 +3084,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   merge as a second header. Unreachable today: no code raises 405 manually. **Home: unowned,
   ledgered** — the first story that hand-raises a 405 owns it. (Severity: Low — latent.)
 
-## Deferred from: story c3-6 (the image pacer, 2026-08-01)
+## Deferred from: story c3-6 (the image pacer, 2026-08-01)  <!-- dws-080 -->
 
 - **The epic's CM-2 acceptance criterion is not satisfied by c3-6 and is not paraphrased into
   something adjacent.** *"An image fetched once is not fetched again within the cache lifetime"*
@@ -3269,7 +3249,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   queue misbehaves, and note that any reopening must also decide how the ceiling avoids poisoning
   the negative cache. (Severity: closed.)
 
-## Deferred from: story c3-5 (card image endpoint, 2026-08-01)
+## Deferred from: story c3-5 (card image endpoint, 2026-08-01)  <!-- dws-081 -->
 
 - ~~**Between this story and c3-6 the image route fetches unpaced.**~~ **RESOLVED 2026-08-01 by
   c3-6.** `images.Pacer` ships: one semaphore (`FETCH_CONCURRENCY = 4`) plus request spacing
@@ -3393,7 +3373,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   later story that wants a cacheable error knows it must argue for it. **Home: unowned,
   informational.** (Severity: Low.)
 
-## Deferred from: code review of c3-5-card-image-endpoint (2026-08-01)
+## Deferred from: code review of c3-5-card-image-endpoint (2026-08-01)  <!-- dws-082 -->
 
 - **A refused or unparseable *stored* image URL answers `image_fetch_failed` — the transient,
   retryable token — though the refusal is a permanent fact of the row.** `contracts.py` defines
@@ -3416,7 +3396,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   "a true count read as a false rule"); it justifies the absence of a branch and is **not**
   published as a wire promise. Written into `images.py`'s module docstring. (Severity: closed.)
 
-## Deferred from: code review of c3-6-paced-concurrency-capped-cdn-fetching-at-one-global-choke-point (2026-08-01)
+## Deferred from: code review of c3-6-paced-concurrency-capped-cdn-fetching-at-one-global-choke-point (2026-08-01)  <!-- dws-083 -->
 
 - **httpx's closed-client `RuntimeError` escapes `_fetch_checked`'s `except` tuple as a raw 500**
   (`src/companion/app/images.py:751`). A request still queued in the pacer when lifespan teardown
@@ -3448,7 +3428,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   removed. (Severity: Low → **resolved**.)
 
 
-## Deferred from: story c3-7 (the sharded, atomically written disk cache, 2026-08-01)
+## Deferred from: story c3-7 (the sharded, atomically written disk cache, 2026-08-01)  <!-- dws-084 -->
 
 - ~~**The cache is unbounded: no eviction, no size accounting, no TTL, no index**~~ **DISCLOSED
   BY 15-2, 2026-08-18 — the eviction question itself stays open, in its own entry below.** (AD-11,
@@ -3632,7 +3612,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   the change, take more than one sample, and do not read a whole-suite delta on this box as
   signal.** **Home: unowned** — a measurement-practice note, not a defect. (Severity: Low.)
 
-## Deferred from: code review of c3-7 (2026-08-01)
+## Deferred from: code review of c3-7 (2026-08-01)  <!-- dws-085 -->
 
 - **Q4's declined alternative — a sidecar carrying the upstream's full `Content-Type` — and the
   parameter divergence it tolerates.** A warm hit derives its media type from the stored
@@ -3749,7 +3729,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   c6-4 reaches `DiskCache` with an id from anywhere but a validated route parameter, validate at
   the class boundary first. (Severity: Low.)
 
-## Deferred from: story c3-8 (distinguishable failure signalling and negative caching, 2026-08-02)
+## Deferred from: story c3-8 (distinguishable failure signalling and negative caching, 2026-08-02)  <!-- dws-086 -->
 
 - **A cold paint against a dead CDN still costs ~124 seconds and all ~99 requests, once per
   process.** This is the exposure the negative cache does **not** close, stated as a ledger entry
@@ -3799,7 +3779,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   loss disguised as a cleanup.* The two worked failures are named in the agreement (c3-6's
   `from time import sleep` and c3-7's `Path.replace` — in both cases the retired ban DID catch the
   spelling its replacement missed); c3-8 is the worked *keep*. Recorded in
-  `epic-c3-retro-2026-08-02.md` § *Team agreements*. (Severity: Low → **closed**.)
+  `archive/epic-c3-retro-2026-08-02.md` § *Team agreements*. (Severity: Low → **closed**.)
 
 - **`ErrorResponse`'s class docstring is published in full and nothing says so at the edit site.**
   c3-8 predicted "no wire diff", edited that docstring, and measured a real diff in both generated
@@ -3818,7 +3798,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   `scripts/dump_openapi.py`. (A docstring edit still is a wire change, and still needs its own
   regeneration.) (Severity: Low.)
 
-## Deferred from: code review of c3-8-distinguishable-failure-signalling-and-negative-caching (2026-08-02)
+## Deferred from: code review of c3-8-distinguishable-failure-signalling-and-negative-caching (2026-08-02)  <!-- dws-087 -->
 
 - **Concurrent duplicate requests for one key escalate the backoff per-record, not per-outage, and
   each record slides the window forward.** Two simultaneous requests both pass `is_backing_off`
@@ -3853,7 +3833,7 @@ CSS *does on screen*. None of these is claimed anywhere as verified.
   the tile author exactly one correct action without a new token — but it is a wire-visible change
   c3-8's rulings excluded. Declined at review (Brad, 2026-08-02) so the tile author decides with
   the UI in view. **Home: c4-4**, beside the blind-spot row it would resolve. (Severity: Low.)
-## Deferred from: story c3-9 (fresh install guides instead of erroring, 2026-08-02)
+## Deferred from: story c3-9 (fresh install guides instead of erroring, 2026-08-02)  <!-- dws-088 -->
 
 Every entry here has a **named home**, per AC 23. Nothing in this section is prose-only: each one
 either has an owner story or is declared inside the file it constrains.
@@ -3936,7 +3916,7 @@ either has an owner story or is declared inside the file it constrains.
   test. **Home: the epic manual-testing checklist**, beside the transition look-at. (Severity:
   Low.)
 
-## Deferred from: code review of c3-9 (2026-08-02)
+## Deferred from: code review of c3-9 (2026-08-02)  <!-- dws-089 -->
 
 - **Alternating `database_unavailable`/`database_not_initialized` pins the backoff near base.**
   `poller.ts` resets `delay` to `POLL_BASE_MS` on every outcome-identity change (Q2's own ruling:
@@ -4003,7 +3983,7 @@ either has an owner story or is declared inside the file it constrains.
   inherits `seedCardSummaries` — the entry point that turns the `DeckCardSummary[]` its own fetch
   already returns into the cache's summary tier for zero extra requests. **Home: c4-2.**
 
-## Deferred from: code review of c4-1-a-single-card-hydration-cache-with-in-flight-deduping (2026-08-02)
+## Deferred from: code review of c4-1-a-single-card-hydration-cache-with-in-flight-deduping (2026-08-02)  <!-- dws-090 -->
 
 - **Three transient failures make an id terminal for the tab's life while the whole-screen poller
   self-heals (FR-22 asymmetry).** `retryable` counts `unreachable` outcomes against
@@ -4037,7 +4017,7 @@ either has an owner story or is declared inside the file it constrains.
   > hook of any family, so the subscription lives at the call site and the test component is the
   > shape c4-4's tile will take.
 
-## Deferred from: c4-2-deck-state-bootstrap-and-the-type-grouped-decklist (2026-08-02)
+## Deferred from: c4-2-deck-state-bootstrap-and-the-type-grouped-decklist (2026-08-02)  <!-- dws-091 -->
 
 ### The ten inherited deferrals, each with a disposition (AC 28, C2 retro ruling R2)
 
@@ -4227,7 +4207,7 @@ either has an owner story or is declared inside the file it constrains.
   > checkable, because the same defect measures differently under three tests that all sound like
   > "the front-face policy".*
 
-## Deferred from: c4-3-card-placeholders-named-unknown-and-loading-wells (2026-08-04)
+## Deferred from: c4-3-card-placeholders-named-unknown-and-loading-wells (2026-08-04)  <!-- dws-092 -->
 
 **Inherited deferrals, dispositions in one place** (C2 retro ruling R2). Twelve entries were
 homed on or shared with this story; most have a disposition written beside their own entry above
@@ -4329,7 +4309,7 @@ else to that list.
   (Severity: Low today — nothing mounts a well until c4-4 — but it should be decided there rather
   than inherited by accident.)
 
-## Deferred from: code review of c4-3-card-placeholders-named-unknown-and-loading-wells (2026-08-04)
+## Deferred from: code review of c4-3-card-placeholders-named-unknown-and-loading-wells (2026-08-04)  <!-- dws-093 -->
 
 - **Running `ui/tests/token-usage.test.ts` standalone crashes the vitest runner** — the file
   imports two `src/` modules across the project boundary, and resolving it alone picks the wrong
@@ -4471,7 +4451,7 @@ lives on is given so this section is checkable rather than merely reassuring.
   real latency percentiles), and the ~124 s dead-CDN first paint remains unobserved — the CDN
   was alive. **Home: 17-3, narrowed to profiling and the dead-CDN case.**
 
-## Deferred from: code review of c4-5-persistent-card-detail-panel-with-transient-and-pinned-inspection (2026-08-05)
+## Deferred from: code review of c4-5-persistent-card-detail-panel-with-transient-and-pinned-inspection (2026-08-05)  <!-- dws-094 -->
 
 - **The 21em oracle-text scroller is keyboard-unreachable.** `.card-detail-oracle` clamps at
   14 lines with `overflow-y: auto` and contains no focusable element, so a keyboard-only user
@@ -4516,7 +4496,7 @@ lives on is given so this section is checkable rather than merely reassuring.
   `CardDetail.tsx`'s announcement comment at review 2026-08-05. **Home: the epic manual-testing
   checklist — hear it with a real screen reader beside the em-dash entry already there.**
 
-## Deferred from: code review of c4-6-double-faced-card-flip-control (2026-08-06)
+## Deferred from: code review of c4-6-double-faced-card-flip-control (2026-08-06)  <!-- dws-095 -->
 
 - **An in-flight hydration sweep is not cancelled on deck replacement.** `hydrateDeckCards` fires
   per `detail` identity with no abort path (`ui/src/App.tsx:213-216`), so switching decks mid-cold-
@@ -4550,7 +4530,7 @@ lives on is given so this section is checkable rather than merely reassuring.
   Added to the epic manual-testing checklist (entry 5 in the c4-6 record). **Home: the epic
   manual-testing checklist.**
 
-## Deferred from: code review of c4-7-deck-list-panel (2026-08-06)
+## Deferred from: code review of c4-7-deck-list-panel (2026-08-06)  <!-- dws-096 -->
 
 - **`frontFaceCost` shape 2 rests on a point-in-time corpus measurement, unguarded against future
   imports.** A faced card with any non-blank, non-split top-level `mana_cost` is returned verbatim
@@ -4811,27 +4791,15 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   reads the `prices` object). `DESIGN.md` was amended twice for the price; `EXPERIENCE.md` was
   not. **Home: the C4 retro**, with the `DESIGN.md` amendments as the precedent.
 
-## Deferred from: code review of c4-9-colour-distribution-panel (2026-08-06)
+## Deferred from: code review of c4-9-colour-distribution-panel (2026-08-06)  <!-- dws-097 -->
 
 - **The inline-style channel allowlist is global and value-unconstrained** (`ui/eslint.config.js:230`). With two declared channels, cross-story misuse is now expressible: `--curve-bar-height` written from `ColourDistribution.tsx` (or `--colour-bar-share` from `ManaCurve.tsx`), or an absurd value (`'9999%'`), passes both ESLint and `RUNTIME_CUSTOM_PROPERTIES` — the tests-side map already records each channel's owning file, but the ESLint half ignores it. Fix shape when a third channel arrives: per-file scoping of the `:not([key.value=…])` chain, or a tests-side owner assertion walking real call sites.
 - **A colour-bar segment below ~0.24% share is invisible while its legend entry remains** (`ColourDistribution.css:116-118`). The 1px `--surface-well` hairline plus global `border-box` consumes the whole resolved width of a sub-1px segment, so the bar shows N−1 colours and the legend N. Needs ~450+ total pips (Commander-scale); thinnest live segment is 15.35px. Revisit if deck scale ever grows past the current corpus.
 - **Zero-total conflates "genuinely colourless deck" with "hydration not yet arrived"** (`ColourDistribution.tsx:147`). A deck whose every non-land is blank-top-level-cost renders no panel at first paint, then the panel materializes mid-sweep and snaps the curve from full width to half — an unannounced layout jump sitting inside the accepted c4-6 no-re-drive window. No corpus deck reaches the state; a fix would need a "pips possibly pending" signal distinct from `total === 0`, which is Epic-6-shaped territory (the same seam as the sweep-recovery keeper).
 
-## Deferred from: c4-10-format-check-panel (2026-08-06)
+## Deferred from: c4-10-format-check-panel (2026-08-06)  <!-- dws-098 -->
 
-- **A format-check refusal is SILENT, by ruling, and that is a real cost with no signal.**
-  (`ui/src/state/formatCheck.ts`, Q6, AC 12.) `'refused'`, `'unreachable'` and *"a 200 that is not
-  the contract"* all render `null`: the right column loses its third panel and keeps its first two,
-  and **nothing anywhere tells the user a check was attempted and failed**. The ruling is right —
-  the two client precedents point opposite ways (`ui/README.md:1263-1286`), and a format-check
-  refusal is neither a card (one tile among a hundred) nor a deck (the surface itself), so routing
-  it through `panelFor` would replace a working deck view with *"The companion hit a bug"* because
-  one auxiliary read failed, which is FR-13 inverted. What is deferred is the *signal*, not the
-  posture. **The panel also owns no timer and never retries**, so a transient failure persists
-  until reload. **Fix shape**: an inline, calm "could not be checked" state inside the panel's own
-  body — never a state panel, never a banner — which needs a vocabulary decision this story had no
-  mandate to make. **Home: Epic 7's refetch (c7-3), or 15-6.** (Severity: Low — measured live
-  exposure is zero on a healthy backend, and the read is a non-event at 5.2 ms median.)
+- **[SC-5: re-accepted (ship-and-adjust)]** A format-check refusal is SILENT, by ruling, and that is a real cost with no signal (the c4-10 silent-refusal family, homed "c7-3 or 15-6"). — gate: archive/sc-5-gate-report-2026-08-20.md
 
 - **The format check goes stale the moment the agent changes the deck** (Q7, AC 11). One read per
   active-deck id per mount, no refetch, no `deck_changed` handler — `epics-companion-app.md:698`
@@ -4890,7 +4858,7 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   frontend-only `npm test` still cannot see a stale mirror. **Home: the C4 retro**, downgraded from
   *"unguarded"* to *"guarded on the Python side only"*. (Severity: Low.)
 
-## Deferred from: code review of c4-10-format-check-panel (2026-08-06)
+## Deferred from: code review of c4-10-format-check-panel (2026-08-06)  <!-- dws-099 -->
 
 - **The `.test.ts` exemption pair creates an unguarded fixture dead zone.** The `is_legal` scan
   (`ui/tests/format-check-source.test.ts:97`) and the copy guard both exempt every `\.test\.tsx?$`
@@ -4901,7 +4869,7 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   been shown the door. **Home: the C4 retro** — decide whether fixture-library test files need a
   declared registry or the exemption needs narrowing. (Severity: Low.)
 
-## Deferred from: c4-11-keyboard-floor-skip-link-tab-order-and-focus-management (2026-08-07)
+## Deferred from: c4-11-keyboard-floor-skip-link-tab-order-and-focus-management (2026-08-07)  <!-- dws-100 -->
 
 ### Dispositions of the nine inherited deferrals (C2 retro ruling R2)
 
@@ -4978,17 +4946,7 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   renders the transition. **Home: c7-6**, by name, with the mechanism written down.
   (Severity: Medium.)
 
-- **The skip link does not reach the footer, and the footer is why the story says it exists.**
-  Measured over all 40 real decks at c4-11: the corridor is **206 Tab stops max / 78 median / 102.0
-  mean**; the link removes only the first **105**; **19 of 40** decks remain >50 stops from the
-  footer and **36 of 40** remain >20. Behind them are exactly two links, one the Wizards Fan Content
-  Policy notice that NFR-08 and `DESIGN.md:419` make *"a condition of public release, not a design
-  choice"*. UX-DR31 specifies ONE link and this story shipped exactly that;
-  `validation-report-2026-07-25.md:45` already records the gap as gate H3's still-open half.
-  **The alternative is costed rather than left to be re-derived**: a second link ("Skip to footer",
-  or retargeting this one past the deck list) closes ~42 stops on the median deck and costs one more
-  component plus a DESIGN.md + EXPERIENCE.md amendment. **Home: 15-6**, which actions or re-accepts
-  the revisit-before-public-release flag. (Severity: Medium.)
+- **[SC-5: re-accepted — AC 4 corridor re-accepted with the measured numbers (206 stops max / 101 post-skip-link)]** The skip link does not reach the footer, and the footer is why the story says it exists. — gate: archive/sc-5-gate-report-2026-08-20.md
 
 - **The connection pill's DOM position is decided by nobody, and three stories each assume someone
   else did it.** UX-DR40 (before this story's rewrite) put it between the deck rows and the footer;
@@ -5199,21 +5157,7 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   answered by inventing copy. Pinned in `CardGrid.test.tsx` so the choice is visible if it is ever
   wrong. **Home: the C4 retro.** (Severity: Low.)
 
-- **⚠️ UX-DR20 SAYS THE DETAIL PANEL IS "NEVER EMPTY WHILE A DECK IS LOADED", AND AN EMPTY DECK IS
-  A LOADED DECK — ARTEFACT DEFECT, NOT REPAIRED HERE.** `inspection.ts`'s `coldOpenTargetOf`
-  returns `null` for a deck with no cards, with the comment *"which is c4-12's copy"*. c4-11's
-  correction resolved only the skip-link-TARGET half (*"`CardDetail` renders its frame and heading
-  unconditionally"*); **the panel's BODY on an empty deck is specified nowhere**, and neither is
-  `DeckList`'s — `DeckList.tsx` records that gap verbatim and refuses to invent copy for it.
-  `EXPERIENCE.md`'s two rows and this story's own ACs each name exactly THREE panels to hide and
-  neither of these is among them.
-  **SEEN, NOT ARGUED (eye-check, Chrome 151, 2026-08-07):** the two panels render as **57px empty
-  shells** — a `CARD DETAIL` header over a blank body and a `DECK LIST` header over a blank body —
-  beside a 47px grid strip, on an otherwise empty 1720×1080 canvas. That is precisely the
-  *"reads as a loading failure rather than as an absent feature"* failure mode `DESIGN.md` names by
-  hand. Ruled: **status quo, recorded, not repaired** — adding a fourth panel to the hide list
-  invents spec and inventing an empty-state sentence puts unsourced words on the glass.
-  **Home: the C4 retro**, with the DESIGN.md amendments as precedent. (Severity: Medium.)
+- **[SC-5: re-accepted (ship-and-adjust)]** UX-DR20 says the detail panel is "never empty while a deck is loaded", and an empty deck is a loaded deck — artefact defect rendering as "reads as a loading failure", not repaired. — gate: archive/sc-5-gate-report-2026-08-20.md
 
 - **The effect ordering in `App.tsx` is worth ~180 ms of cold-open layout time and nothing enforced
   it.** Measured over CDP, Chrome 151, the real 99-card deck: as shipped (sweep declared first) the
@@ -5264,7 +5208,7 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
   class landed in the story's own new guard — and the second in which the anchor caught it before a
   reviewer did.** Recorded as method: **anchor first, then assert.** (Severity: Low — closed.)
 
-## Deferred from: code review of c4-12-empty-deck-state-and-the-cold-open-render-budget (2026-08-07)
+## Deferred from: code review of c4-12-empty-deck-state-and-the-cold-open-render-budget (2026-08-07)  <!-- dws-101 -->
 
 - **One-frame stale format-check report on a non-empty→non-empty deck switch** (`ui/src/App.tsx:350`).
   When the active deck changes from deck A to deck B, the commit frame that renders deck B's header
@@ -5283,7 +5227,7 @@ nine inherited deferrals, all eight triggered residues and the four new entries 
 ## Rulings from: the EPIC C4 RETROSPECTIVE (2026-08-07)
 
 Eight decisions ruled by Sathias. R1/R2/R6 are process and live in
-`epic-c4-retro-2026-08-07.md`'s *Team agreements*; the ledger dispositions are below.
+`archive/epic-c4-retro-2026-08-07.md`'s *Team agreements*; the ledger dispositions are below.
 
 ### R5 — four entries CLOSED, each with the measurement that closes it
 
@@ -5398,7 +5342,7 @@ Eight decisions ruled by Sathias. R1/R2/R6 are process and live in
 Block I was homed on **c4-2** at the C3 retro, acknowledged there and not run, so it had been
 carried across two epics. Run at the C4 retro through headless Chrome over CDP against a real
 backend on an isolated `PLANESWALKER_DATA_DIR`. **All four panels are now rendered by a real
-engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries change here.
+engine** and the results are in `archive/epic-c4-retro-2026-08-07.md`. Three entries change here.
 
 - ✅ **CLOSED — `database-updating`, `database-updating-stalled` and the state panels were never
   rendered by a real engine (`:3310-3316`).** They have been now. A3: a `cards.db` that exists but
@@ -5512,7 +5456,7 @@ engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries cha
   `uv run pytest` **2,501 passed / 1 skipped — unchanged**.
 
 
-## Deferred from: c5-1-the-event-envelope-and-every-per-kind-payload-contract (2026-08-07)
+## Deferred from: c5-1-the-event-envelope-and-every-per-kind-payload-contract (2026-08-07)  <!-- dws-102 -->
 
 - **AD-1's construction-limit family no longer scans `src/companion/contracts.py`, and that is a
   narrowed guard rather than a closed one.** AD-7 caps an agent push at **60** items, and
@@ -5596,7 +5540,7 @@ engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries cha
      alongside the spine amendment above. (Severity: Low — both are documentation drift against
      shipped, tested code.)
 
-## Deferred from: c5-2-same-origin-session-endpoint-minting-single-use-websocket-tickets (2026-08-08)
+## Deferred from: c5-2-same-origin-session-endpoint-minting-single-use-websocket-tickets (2026-08-08)  <!-- dws-103 -->
 
 - **`Origin` on REST: RULED, and c1-5's open question is CLOSED.** c1-5 recorded the question and
   homed it on c5-2 and c5-3 by name (`c1-5:357-358`, `:625-631`). **Ruling (Q1, Brad 2026-08-08):
@@ -5676,7 +5620,7 @@ engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries cha
   of rediscovering it, which is the entry doing its job, but that only works for an author who
   finds the ledger. (Severity: Low, unchanged. **Home: still unowned.**)
 
-## Deferred from: code review of c5-2-same-origin-session-endpoint-minting-single-use-websocket-tickets (2026-08-08)
+## Deferred from: code review of c5-2-same-origin-session-endpoint-minting-single-use-websocket-tickets (2026-08-08)  <!-- dws-104 -->
 
 - **`consume()` has zero production callers, so "single-use" is unproven on any production path.**
   Every consume/expiry/eviction property is unit-only; nothing in the running app calls
@@ -5718,7 +5662,7 @@ engine** and the results are in `epic-c4-retro-2026-08-07.md`. Three entries cha
   so the sweep DELETES the docstring's changelog paragraphs rather than moving them, leaving a
   current-behaviour statement and one pointer.
 
-## Deferred from: c5-3-authenticated-websocket-upgrade-with-host-and-origin-validation (2026-08-08)
+## Deferred from: c5-3-authenticated-websocket-upgrade-with-host-and-origin-validation (2026-08-08)  <!-- dws-105 -->
 
 - **The Vite dev proxy rewrites `Host` but not `Origin`, so a proxied handshake will be refused —
   and the refusal is now reachable, because c5-3 shipped the `Origin` check.** Under `vite dev` the
@@ -6054,21 +5998,7 @@ here by name; all three are closed below. All six of the story's open questions 
 
 ### New, from this story
 
-- **The measured Tab-corridor figures in `EXPERIENCE.md:143` and `epics-companion-app.md` are each
-  one stop short as of this story, and were NOT re-measured.** c4-11 measured the corridor from the
-  header to the first footer link over all 40 real decks — **206 max / 78 median / 102.0 mean**, with
-  the skip link removing the first 105 and leaving 101. The pill is an always-present stop *inside*
-  that corridor, so every one of those figures gains exactly **+1** on every deck (207 / 79 / 103.0;
-  105 removed, 102 left). Both suite pins were recomputed from the DOM rather than relaxed
-  (`App.test.tsx`: 208 → 209 focusables and a 206-stop corridor on the Atraxa shape; 6 → 7 and a
-  4-stop corridor on the 1-card deck), so the arithmetic is checked — but the 40-deck sweep behind
-  the artefact numbers was not re-run, and a derived +1 is not a measurement.
-
-  Note the shape of the cost: the pill is proportionally **worst where the corridor is shortest**
-  (a 1-card deck goes from 3 stops to 4), which is the opposite of where the skip link helps.
-  **Home: 15-6**, which already carries the revisit-before-public-release flag for this exact
-  corridor and is the story that actions or re-accepts it. (Severity: low — the direction and the
-  magnitude are both known exactly; only the artefact text is stale.)
+- **[SC-5: re-accepted — the AC 4 corridor re-acceptance covers the pill's +1]** The measured Tab-corridor figures in `EXPERIENCE.md:143` and `epics-companion-app.md` are each one stop short as of this story (the connection pill adds +1 on every deck), and were NOT re-measured. — gate: archive/sc-5-gate-report-2026-08-20.md
 
 - **Two live-region prose claims were falsified by this story and are recorded rather than silently
   edited.** `SkipLink.tsx:80` and `CardGrid/copy.ts:47` each asserted that *"CardDetail's single
@@ -6110,7 +6040,7 @@ here by name; all three are closed below. All six of the story's open questions 
   deck row's live tint, the pill dot), before Epic 6's agent views add more surfaces of exactly
   this shape. Per-component guards that already exist are kept, not deleted.
 
-## Deferred from: code review of c5-7-connection-pill (2026-08-08)
+## Deferred from: code review of c5-7-connection-pill (2026-08-08)  <!-- dws-106 -->
 
 - **Empty-string deck name (`''`) is not normalized to `null` before reaching the pill's render or
   `pillText`.** `ConnectionPill.tsx:77-78`'s selector (`state.deck.status === 'deck' ?
@@ -6251,7 +6181,7 @@ Also executed or re-homed at this retro, beyond the seven:
   (`test_committed_schema.py` module docstring) remains unowned and cheap — fair game for R2's
   sweep to absorb.
 
-## Deferred from: code review of c6-6-a-push-opens-its-view-and-a-repeat-push-replaces-it-in-place (2026-08-11)
+## Deferred from: code review of c6-6-a-push-opens-its-view-and-a-repeat-push-replaces-it-in-place (2026-08-11)  <!-- dws-107 -->
 
 - **`id`/`ts` on the `suggestions` envelope are trusted without validation.**
   `suggestionsViewOf` (`ui/src/state/agentView.ts:229-230`) copies `event.id`/`event.ts` straight
@@ -6273,7 +6203,7 @@ Also executed or re-homed at this retro, beyond the seven:
   headline class ever changes, these tests would keep passing against a fixture that no longer
   matches production. Test-quality only, no functional impact.
 
-## Deferred from: code review of c6-9-degradation-with-the-app-closed-and-the-250-ms-push-budget (2026-08-12)
+## Deferred from: code review of c6-9-degradation-with-the-app-closed-and-the-250-ms-push-budget (2026-08-12)  <!-- dws-108 -->
 
 - **The pre-existing `outside_app` role only flags module-level companion-app imports.**
   `find_import_violations`'s `outside_app` role (`tests/unit/companion/test_import_boundary.py:491`,
@@ -6307,13 +6237,13 @@ Also executed or re-homed at this retro, beyond the seven:
   images in flight at sample time, silently under-counting the warmth metrics. Does not affect
   the reported budget verdict (`layout_ms`) — only the supplementary network/painted counts.
 
-## Deferred from: code review of spec-c6-r2-vitest-probe-harness (2026-08-13)
+## Deferred from: code review of spec-c6-r2-vitest-probe-harness (2026-08-13)  <!-- dws-109 -->
 
 > Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Verification Gap) of the
 > `chore/c7-prep-r2-vitest-probe-harness` diff. The entry below is real but is blocked by the
 > spec's own "no git operations" boundary, so it needs a design ruling rather than a patch.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-c6-r2-vitest-probe-harness.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-c6-r2-vitest-probe-harness.md`  <!-- dw-0067 -->
   summary: Nothing binds an `--expect-total` to the tree that produced it, so a baseline from a
     stale checkout, another branch, or last week's control run scores a planted run as valid
     whenever both trees happen to collect the same count.
@@ -6326,13 +6256,13 @@ Also executed or re-homed at this retro, beyond the seven:
     describes" was softened in review to match. Closing this needs a ruling on whether the harness
     may shell out to `git rev-parse HEAD`.'
 
-## Deferred from: code review of c7-1-one-shared-notifier-with-a-bounded-await-and-no-detached-tasks (2026-08-13)
+## Deferred from: code review of c7-1-one-shared-notifier-with-a-bounded-await-and-no-detached-tasks (2026-08-13)  <!-- dws-110 -->
 
 > Three-layer adversarial review (Blind Hunter, Edge Case Hunter, Verification Gap) of the
 > `feat/companion-c7-1-shared-notifier` diff. Both entries below are pre-existing, not caused by
 > this story's own code — surfaced incidentally by the review.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-c7-1-shared-notifier.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-c7-1-shared-notifier.md`  <!-- dw-0068 -->
   summary: Two `tests/integration/data/test_deck_repository.py` tests
     (`test_update_deck_strategy`, `test_list_decks_with_strategy_field`) fail inside the full suite
     even on a clean tree, and were never formally tracked anywhere outside the story's own Task 0
@@ -6343,7 +6273,7 @@ Also executed or re-homed at this retro, beyond the seven:
     touches no data-layer code) and reproduce independent of any planted violation. Both pass in
     isolation per the same section. Flagged there as "for Brad, out of this story's scope" but
     never entered here, so nothing tracks it once the story record stops being read.
-- source_spec: `_bmad-output/implementation-artifacts/spec-c7-1-shared-notifier.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-c7-1-shared-notifier.md`  <!-- dw-0069 -->
   summary: The detached-task ban (`test_ws.py::test_the_push_path_creates_no_task`, mirrored
     locally in this story as `test_no_detached_task_identifier_appears_in_client_py`) flags any AST
     `Name`/`Attribute` node matching `create_task`/`ensure_future`/`TaskGroup`/`gather` anywhere in
@@ -6355,15 +6285,15 @@ Also executed or re-homed at this retro, beyond the seven:
     in `test_client.py` for `client.py` specifically), so narrowing it is a design change to an
     inherited guard, not something this story's own diff should do unilaterally.
 
-## Deferred from: code review of spec-c7-6-deletion-and-views-during-refetch.md (2026-08-15)
+## Deferred from: code review of spec-c7-6-deletion-and-views-during-refetch.md (2026-08-15)  <!-- dws-111 -->
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-c7-6-deletion-and-views-during-refetch.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-c7-6-deletion-and-views-during-refetch.md`  <!-- dw-0070 -->
   summary: The panel → deck mirror transition can still drop focus to `<body>` — c7-6's rescue covers only deck → panel.
   evidence: After the c7-6 rescue (or AgentView ARM 3's close-restore) parks focus on `.state-panel-headline`, a subsequent panel → deck transition — the agent creating or activating a deck, or reconnect restoring a loaded deck displaced by the `'down'` panel (`deck.ts:731`) — unmounts the StatePanel and the focused headline dies with it, dropping focus to `<body>` with no rescue firing (`App.tsx:895` early-returns when the arriving surface is `deck`). Pre-existing failure class (ARM 3 could park focus there before c7-6) but c7-6 widens its reachability; no test in the repo covers focus across a panel → deck transition. Same failure class as the half SkipLink.tsx ledgered for c7-6, at the opposite edge. Found by edge-case-hunter + verification-gap, independently.
 
-## Deferred from: story 15-2 (image cache stewardship, 2026-08-18)
+## Deferred from: story 15-2 (image cache stewardship, 2026-08-18)  <!-- dws-112 -->
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-15-2-image-cache-stewardship-documented-location-inspection-and-removal.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-15-2-image-cache-stewardship-documented-location-inspection-and-removal.md`  <!-- dw-0071 -->
   summary: The documented inspect/clear commands are verified only as far as their Python payload —
     the surrounding shell syntax is unverified, and the PowerShell block has never been executed
     anywhere in CI.
@@ -6380,7 +6310,7 @@ Also executed or re-homed at this retro, beyond the seven:
     building for two fenced blocks. **Home: unowned.** Forcing function: a Windows user reporting
     that a documented command errored, or this project acquiring a Windows CI runner for any other
     reason.
-- source_spec: `_bmad-output/implementation-artifacts/spec-15-2-image-cache-stewardship-documented-location-inspection-and-removal.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-15-2-image-cache-stewardship-documented-location-inspection-and-removal.md`  <!-- dw-0072 -->
   summary: The README's footprint figures (~90 KB per tile, 8.5 MB per deck, ~95 MB per library)
     are pinned by nothing and age with the corpus.
     **PARTIALLY CLOSED by story 15-3, 2026-08-18 — the planning-artefact half only.** This entry's
@@ -6413,9 +6343,9 @@ Also executed or re-homed at this retro, beyond the seven:
     trigger is any future story that touches the image route's storage, or a user reporting a
     footprint far from the documented one).
 
-## Deferred from: story 15-3 (reconcile the PRD with what was built, 2026-08-18)
+## Deferred from: story 15-3 (reconcile the PRD with what was built, 2026-08-18)  <!-- dws-113 -->
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-15-3-reconcile-the-prd-with-what-was-built.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-15-3-reconcile-the-prd-with-what-was-built.md`  <!-- dw-0073 -->
   summary: The new drift guard gates the PRD and only the PRD. Every other artefact this story
     amended — the addendum, the epic, the architecture spine, its HTML projection — is still gated
     by nothing.
@@ -6431,7 +6361,7 @@ Also executed or re-homed at this retro, beyond the seven:
     the spine (it names shipped constants) and expensive for the epic (5,000 lines of prose with no
     stable anchors). **Home: unowned.** Forcing function: the next figure or token that drifts in a
     document this guard cannot see.
-- source_spec: `_bmad-output/implementation-artifacts/spec-15-3-reconcile-the-prd-with-what-was-built.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-15-3-reconcile-the-prd-with-what-was-built.md`  <!-- dw-0074 -->
   summary: The retired-claim scan is literal, so a paraphrase of a retired claim would pass.
   evidence: `test_the_retired_claims_are_gone` bans the strings `mode=ro` and
     `~/.artificial-planeswalker` anywhere in the PRD, which is why the amendments describe both in
@@ -6442,7 +6372,7 @@ Also executed or re-homed at this retro, beyond the seven:
     checked structurally instead of literally, because `layout` legitimately appears in that row.
     The module's docstring declares this. **Home: unowned.** Forcing function: a reviewer noticing a
     paraphrase, which is the same mechanism that found these three.
-- source_spec: `_bmad-output/implementation-artifacts/spec-15-3-reconcile-the-prd-with-what-was-built.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-15-3-reconcile-the-prd-with-what-was-built.md`  <!-- dw-0075 -->
   summary: `docs/companion-app-feature-brief.md:104` still names the `mode=ro` recipe, deliberately
     and by ruling.
   evidence: Declared residue in this story's spec rather than an oversight: the feature brief is a
@@ -6451,7 +6381,7 @@ Also executed or re-homed at this retro, beyond the seven:
     retired claim with no pointer to NFR-02's amendment. The cheap repair, if it is ever wanted, is
     a one-line superseded-by banner at the top of the brief rather than an edit to the line.
     **Home: unowned.** Forcing function: someone reading the brief as though it were current.
-- source_spec: `_bmad-output/implementation-artifacts/spec-15-3-reconcile-the-prd-with-what-was-built.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-15-3-reconcile-the-prd-with-what-was-built.md`  <!-- dw-0076 -->
   summary: Three shipped source comments announce that this PRD amendment is owed and were not
     discharged, because they live under `src/` and `ui/src/` — which this story's own contract
     forbids it to touch.
@@ -6468,7 +6398,7 @@ Also executed or re-homed at this retro, beyond the seven:
     under `src/`, `ui/src/` or `plugin/`, and `ui/src` in particular risks the committed SPA bundle.
     **Home: unowned**, and cheap — three comment edits in any story that already touches those
     files. Forcing function: a reader acting on a promise that has already been kept.'
-- source_spec: `_bmad-output/implementation-artifacts/spec-15-3-reconcile-the-prd-with-what-was-built.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-15-3-reconcile-the-prd-with-what-was-built.md`  <!-- dw-0077 -->
   summary: Three `ui/src` comments still quote DESIGN.md as saying `{spacing.6}` for the
     agent-view overlay inset, which it no longer does.
   evidence: '`ui/src/components/AppShell/AppShell.css:270` (*"the 32px of UX-DR8''s inset by
@@ -6479,7 +6409,7 @@ Also executed or re-homed at this retro, beyond the seven:
     same `ui/src` prohibition as the entry above. Nothing renders differently — both tokens are 32px
     and the CSS already uses `var(--space-gutter)` — so this is a citation that has gone stale, not
     a defect. **Home: unowned.** Forcing function: any story that edits the agent-view shell.'
-- source_spec: `_bmad-output/implementation-artifacts/spec-15-3-reconcile-the-prd-with-what-was-built.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-15-3-reconcile-the-prd-with-what-was-built.md`  <!-- dw-0078 -->
   summary: '"Story 8.3" is an ID COLLISION: code comments pointing there now resolve to a live,
     unrelated story.'
   evidence: 'This story was written as `c8-3` / "Story 8.3" and was renumbered to 15-3 (see
@@ -6509,9 +6439,9 @@ Also executed or re-homed at this retro, beyond the seven:
     note rules that historical prose keeps its original ids, and editing a dated record to say
     something it did not say is the drift this ledger exists to prevent.'
 
-## Deferred from: code review of 15-4 (2026-08-19)
+## Deferred from: code review of 15-4 (2026-08-19)  <!-- dws-114 -->
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-15-4-release-documentation-for-the-companion-app.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-15-4-release-documentation-for-the-companion-app.md`  <!-- dw-0079 -->
   summary: >-
     The single documented launch command does not work for the plugin install route, which the
     README advertises as the one needing no clone.
@@ -6549,7 +6479,7 @@ Also executed or re-homed at this retro, beyond the seven:
     so it is scoped to each route''s own section. The plain `uv run artificial-planeswalker
     companion` stays correct for the clone route and is unchanged.'
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-15-4-release-documentation-for-the-companion-app.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-15-4-release-documentation-for-the-companion-app.md`  <!-- dw-0080 -->
   summary: >-
     `CHANGELOG.md` is read by no test, so AC 2's "spelled identically at every occurrence" is
     verified for the README occurrences only.
@@ -6564,7 +6494,7 @@ Also executed or re-homed at this retro, beyond the seven:
     coverage than exists. Reopening it is a design decision about whether release notes should be
     machine-gated at all, which is retrospective work, not story work. (Severity: Low.)
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-15-4-release-documentation-for-the-companion-app.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-15-4-release-documentation-for-the-companion-app.md`  <!-- dw-0081 -->
   summary: >-
     CI pins `node-version: 20` while the measured floor is `>=20.19.0`, so the lane's own name
     understates what it requires.
@@ -6580,7 +6510,7 @@ Also executed or re-homed at this retro, beyond the seven:
 
 ## Dispositions from: the SC-5 gate (15-6, 2026-08-20)
 
-The gate ran 2026-08-20 (`sc-5-gate-report-2026-08-20.md`; ruling line Brad's, same date). Every
+The gate ran 2026-08-20 (`archive/sc-5-gate-report-2026-08-20.md`; ruling line Brad's, same date). Every
 item the gate inherited gets its disposition here by name — C2 retro R2's rule. The governing
 ruling is ship-and-adjust ("we can always adjust after completion"): a RE-ACCEPTED item below is
 terminal at this gate — anything real among them comes back as a bug report, not a carried gate
@@ -6630,7 +6560,7 @@ item.
 - **`GET /api/decks` poller cost**: untouched — **home unchanged: 17-3** (its entry already says
   so; noted for completeness).
 
-## Deferred from: story 15-6 (the SC-5 gate, 2026-08-20)
+## Deferred from: story 15-6 (the SC-5 gate, 2026-08-20)  <!-- dws-115 -->
 
 - **The 15-1 viewer freeze pin fails on a Windows CRLF checkout, and only there.**
   `tests/unit/viewer/test_viewer_freeze.py::TestFreezePinDetectsViolations::test_a_line_ending_rewrite_is_not_reported`
@@ -6645,18 +6575,18 @@ item.
   a red test on every local Windows full-suite run trains the reader to ignore red, the exact
   cost C6 R5 documented.)
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-17-4-open-the-companion-from-the-agent.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-17-4-open-the-companion-from-the-agent.md`  <!-- dw-0082 -->
   summary: `companion --open` calls `webbrowser.open` synchronously before `_serve`; on a host with no GUI browser the stdlib falls back to a text-mode browser (lynx/w3m) that blocks the launcher until quit, so the socket is bound but never served until then.
   evidence: `src/companion/app/server.py::_open_browser` runs on the main thread between the URL line and `_serve`; `webbrowser` docs list console browsers as fallbacks when no graphical browser is registered. Niche (headless Linux with lynx installed) and unreachable on the primary Windows platform; fix would be a daemon thread or a `webbrowser.get()` inspection.
-- source_spec: `_bmad-output/implementation-artifacts/spec-17-5-welcome-surface-first-impression.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-17-5-welcome-surface-first-impression.md`  <!-- dw-0083 -->
   summary: Record the provenance/licence of `docs/hero-image.jpg` now that 17.5 ships it in the companion bundle and `plugin/` tree (served to every user at `/hero.jpg`).
   evidence: `docs/release-readiness-review.md:110` already flags that nothing states the image's origin or licence; 17.5 raises the stakes from README decoration to redistributed asset. Pre-existing, surfaced by the 17.5 review.
-- source_spec: `_bmad-output/implementation-artifacts/spec-17-4-open-the-companion-from-the-agent.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-17-4-open-the-companion-from-the-agent.md`  <!-- dw-0084 -->
   summary: Single-quote (or shlex-quote) `_INSTALL_ROOT` in the `companion_status` launch_command — double-quote interpolation is shell-unsafe for paths containing `$`, backticks, or `"`.
   evidence: Greptile P2 on PR #100 (`src/mcp_server/tools/companion.py:742`), merged as-is at 4/5 "safe to merge"; real but low-severity — ordinary Windows paths are unaffected, a `$`-bearing install path would mis-expand.
-- source_spec: `_bmad-output/implementation-artifacts/spec-tier-list-usability.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-tier-list-usability.md`  <!-- dw-0085 -->
   summary: GroupsView group tiles (and SwapsView's coincidental label-derived sizing) still ride the intrinsic-width-less `aspect-ratio` derivation that collapsed tier tiles to ~0px slivers; port the `thumb-width` fix (DESIGN.md amendment + explicit width) to both.
   evidence: `GroupsView.css` `.group-tile-thumb` copies the tier idiom with only absolutely-positioned overlay children (no in-flow width source), the exact mechanism the tier-list-usability review proved yields zero intrinsic width; `SwapsView.css` renders correctly only because its "OUT · N COPIES" label happens to be ~63:88-proportioned. Both files' comments were corrected by this spec but the layouts were ruled out of its scope.
-- source_spec: `_bmad-output/implementation-artifacts/spec-tier-list-usability.md`
+- source_spec: `_bmad-output/implementation-artifacts/archive/spec-tier-list-usability.md`  <!-- dw-0086 -->
   summary: A plain vertical mouse wheel does not scroll the tier strips' `overflow-x: auto` rows (only shift+wheel, trackpad gestures, scrollbar drag, or tabbing through tiles do); decide whether a wheel-to-horizontal affordance is wanted and rule it in DESIGN.md before implementing.
   evidence: Standard browser behavior for horizontal overflow containers; surfaced by the tier-list-usability review (blind-hunter). The primary platform is Windows with a mouse, so the main pointer gesture over a strip scrolls the outer `.agent-view-body` instead. Needs a design ruling (wheel hijacking is nonstandard) rather than a quick patch.

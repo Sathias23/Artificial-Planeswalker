@@ -208,7 +208,7 @@ docs will be publicly indexed.
 ## Resolution log — 2026-08-20: SC-5 closed (companion app)
 
 - **SC-5 ("a deliberate product, not a debug dashboard") is CLOSED.** Gate run 2026-08-20 against
-  `feat/companion-epic-15`; record: `_bmad-output/implementation-artifacts/sc-5-gate-report-2026-08-20.md`,
+  `feat/companion-epic-15`; record: `_bmad-output/implementation-artifacts/archive/sc-5-gate-report-2026-08-20.md`,
   ruling line Brad's, same date. Conditions accepted rather than resolved: the inherited manual-check
   items are re-accepted ship-and-adjust; an open agent view is ruled not-a-surface for the
   attribution requirement; arrow-key grid navigation is re-accepted for release with the measured
