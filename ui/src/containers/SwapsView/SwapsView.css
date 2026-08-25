@@ -123,11 +123,16 @@
 }
 
 /* THE THUMBNAIL SLOT (UX-DR36): a fixed-shape well from the first frame. `min-height: 6lh`
-   against the row's body line-height gives the card a readable size without spending a px — the
-   same content-derivation trick the suggestion row uses, expressed in line units because this
-   tile has no two-text-line neighbour to stretch against. The child derives its WIDTH from the
-   height through `card-shape`'s own 63:88; nothing here declares `aspect-ratio` or a card
-   radius (see the header — this file is not in CARD_SHAPED).
+   against the row's body line-height gives the slot a readable HEIGHT without spending a px —
+   expressed in line units because this tile has no two-text-line neighbour to stretch against.
+   ⚠️ THE WIDTH HALF OF THE FIRST SPELLING WAS FALSE (recorded 2026-08-23, with the tier list's
+   repair): this comment claimed the child "derives its WIDTH from the height through
+   `card-shape`'s own 63:88", and no such derivation exists — an `aspect-ratio` box with no
+   in-flow content has no intrinsic width, which is why the tier strip's identical slot
+   collapsed to slivers and now carries DESIGN.md's `thumb-width: 176px` instead. This tile's
+   sizing is deliberately NOT fixed here (words only — a follow-up candidate, with GroupsView's
+   twin). Nothing here declares `aspect-ratio` or a card radius (see the header — this file is
+   not in CARD_SHAPED).
 
    `position: relative` is the containing block for the image, which lies OVER the well rather
    than replacing it, so the layout is settled before the first byte arrives. */

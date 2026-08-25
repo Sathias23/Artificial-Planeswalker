@@ -1,15 +1,28 @@
-import { useId } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 
 import type { AgentViewKind } from '../../api/schema'
 import {
   AGENT_VIEW_LABELS,
+  type AgentViewContent,
   reopenAgentView,
+  reopenPush,
   useAgentViewHasPush,
+  useAgentViewHistory,
+  useAgentViewHistoryCount,
+  useAgentViewIsOpen,
   useAgentViewPushTime,
+  useAgentViewStore,
   useAgentViewUnread,
 } from '../../state/agentView'
 import './AgentViewsNav.css'
-import { NAV_GROUP_LABEL, QUIET_TOOLTIP, UNREAD_WORD } from './copy'
+import './HistoryPopover.css'
+import {
+  HISTORY_LABEL,
+  HISTORY_QUIET_TOOLTIP,
+  NAV_GROUP_LABEL,
+  QUIET_TOOLTIP,
+  UNREAD_WORD,
+} from './copy'
 import { pushTimeLabel } from './pushTime'
 
 /**
@@ -17,11 +30,11 @@ import { pushTimeLabel } from './pushTime'
  * FR-18, UX-DR28, UX-DR33, UX-DR34, UX-DR37, UX-DR39, UX-DR40, UX-DR44, UX-DR45, UX-DR47,
  * `DESIGN.md:260-269`/`:522`, `EXPERIENCE.md:39-42`/`:73`/`:139-147`).
  *
- * It FILLS the header slot the shell has carried empty since c2-6 — `AppShell.tsx:200`'s
- * `slot(nav, 'Agent-view nav pills land here — c6-8.')` — via `App.tsx`'s `nav` prop. The
- * eleventh application of c2-9's displacement ruling: **`AppShell.tsx` is not edited**, the
- * placeholder string stays in the shell where `AppShell.test.tsx` asserts it against the
- * component's own props, and what changes is that nothing renders it any more.
+ * It FILLS the header nav slot via `App.tsx`'s `nav` prop. Historically that slot carried the
+ * c2-6 placeholder (`slot(nav, 'Agent-view nav pills land here — c6-8.')`) under c2-9's
+ * displacement ruling — **`AppShell.tsx` was never edited**, the string simply stopped being
+ * rendered when this nav arrived; story 17.5 then retired the placeholder text from the shell
+ * itself, so the quoted call no longer exists in `AppShell.tsx`.
  *
  * ================= IT IS GENERIC OVER THE ENUM, NOT OVER WHAT HAS A VIEW ==============
  *
@@ -81,6 +94,12 @@ export function AgentViewsNav() {
         {PILL_ORDER.map((kind) => (
           <AgentViewPill key={kind} kind={kind} />
         ))}
+        {/* THE FIFTH PILL, AFTER THE FOUR KIND PILLS (story 17.2, FR-18, ruled 2026-08-22).
+            Deliberately OUTSIDE the map: History is not an `AgentViewKind` — it never pushes and
+            has no view of its own — so keying it into `PILL_ORDER` would put a non-kind in a list
+            the enum derives, and the exhaustiveness gate on `AGENT_VIEW_LABELS` would stop
+            meaning "one word per wire kind". */}
+        <HistoryPill />
       </div>
     </>
   )
@@ -223,6 +242,390 @@ function AgentViewPill({ kind }: { kind: AgentViewKind }) {
               rather than a colour. Not announced: UX-DR45 licenses no live region here. */}
           <span className="visually-hidden">{UNREAD_WORD}</span>
         </>
+      )}
+    </button>
+  )
+}
+
+/**
+ * The stroke-based clock glyph on the History pill (story 17.2, DESIGN.md's
+ * `components.history-popover` header note) — **a plain UI glyph, never anything
+ * set-symbol-shaped**, which is the note's own emphasis: a circular glyph in a Magic app is one
+ * careless flourish away from reading as a set symbol, so this is the most generic clock
+ * drawable — a circle and two hands, stroked in `currentColor` so it takes the pill's own
+ * foreground in every state (quiet `text-tertiary`, rest `text-secondary`, hover
+ * `accent-bright`) with no rule of its own.
+ *
+ * `aria-hidden` + `focusable="false"`: the label word "History" beside it carries the whole
+ * accessible name, exactly as the unread dot's word does — a glyph never carries meaning alone
+ * (UX-DR29's rule, applied preemptively). Sized in CSS at `1em` so it rides the label's own
+ * type role rather than declaring a geometry literal.
+ */
+function ClockGlyph() {
+  return (
+    <svg className="agent-views-nav-clock" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M8 4.75V8l2.25 1.75"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/**
+ * The History pill and its popover — the ruled FR-18 home (story 17.2, Sathias 2026-08-22;
+ * `EXPERIENCE.md`'s `History pill + popover` row, DESIGN.md `{components.history-popover}`).
+ *
+ * ================= THE APP'S FIRST DISCLOSURE CONTROL, AND WHAT THAT IS NOT ===========
+ *
+ * A real `<button aria-haspopup aria-expanded>` toggling a **non-modal** popover: no scrim, no
+ * focus trap, no roving focus, no landmark, no live region — opening and closing announce
+ * nothing, and a push arriving while it is open closes it unannounced (the arrival ruling opens
+ * the push's view, and popover and modal never coexist — see {@link showPopover}). The entries
+ * are ordinary document-order Tab stops, withdrawn on dismiss.
+ *
+ * ================= QUIET UNTIL THE FIRST PUSH OF *ANY* KIND ===========================
+ *
+ * The kind pills' exact quiet pattern — `disabled` + `title` + `aria-describedby` to a
+ * visually-hidden sibling OUTSIDE the button — with its own sentence ({@link
+ * HISTORY_QUIET_TOOLTIP}), because this pill's quiet is about the session rather than a kind.
+ * It **never carries an unread dot**: unread stays per-kind on the kind pills, and history is a
+ * place to revisit, not a place to catch up.
+ *
+ * ================= DISMISSAL, AND WHERE EACH LISTENER LIVES ===========================
+ *
+ * Four gestures: entry activation, Esc, outside click, toggling the pill. Esc is TWO listeners
+ * with one outcome: a native keydown on the WRAPPER node — pill and popover together, the
+ * `AgentView` trap's attach-through-refs pattern — that `preventDefault()`s, which is what
+ * keeps `CardDetail`'s document-level pin release out of the same keystroke, honouring
+ * UX-DR39's amended order (view → popover → pin) whenever focus sits anywhere inside the
+ * wrapper (opening puts it on the newest entry; toggling leaves it on the pill — both inside) —
+ * plus a document-level BUBBLE keydown for an Esc struck with focus elsewhere (the entries are
+ * ordinary Tab stops, so focus can leave without dismissing). The document listener is in the
+ * keyboard-floor census with its written reason; the modal's capture listener pre-empts both
+ * while a view is open, and by invariant the popover is already closed then anyway. Outside
+ * click is a native document `pointerdown` per the `AgentView` scrim convention.
+ *
+ * Focus contract: open → the first (newest) entry; close → back to this pill whenever focus
+ * would otherwise be dropped (it was inside the popover, or already on `<body>`) — never to
+ * `document.body`. Entry activation closes FIRST (focus → pill), then opens the view through
+ * {@link reopenPush}, so the view's own mount capture records the pill as its return target and
+ * the overlay stack stays one level deep.
+ */
+function HistoryPill() {
+  const count = useAgentViewHistoryCount()
+  const viewIsOpen = useAgentViewIsOpen()
+  const [open, setOpen] = useState(false)
+  const hintId = useId()
+  // The popover element's own id, for `aria-controls` on the pill — the programmatic half of
+  // the disclosure relationship the `aria-expanded`/`aria-haspopup` pair only implies. `useId`
+  // for the hint id's reason: two mounted navs must not share one target.
+  const popoverId = useId()
+  const pillRef = useRef<HTMLButtonElement>(null)
+  const wrapperRef = useRef<HTMLSpanElement>(null)
+
+  /**
+   * Whether the popover is on the glass RIGHT NOW. Derived rather than `open` alone, so the
+   * commit that mounts an agent view is the same commit that unmounts the popover — "popover
+   * and modal never coexist" held by construction in a single render, with no frame in which
+   * the DOM holds both. `open` itself is reset by the effect below so the popover does not
+   * spring back when the view closes.
+   */
+  const showPopover = open && !viewIsOpen
+
+  /**
+   * `closePopover`, read through a ref at event time, so the two document listeners below can
+   * register once per open (`[showPopover]`) without re-subscribing on every render — the
+   * `AgentView` shell's `onCloseRef` pattern, for its reason.
+   */
+  const closeRef = useRef<() => void>(() => {})
+
+  const closePopover = () => {
+    const pill = pillRef.current
+    const active = document.activeElement
+    // Focus returns to the pill whenever closing would otherwise DROP it — it sits inside the
+    // wrapper (an entry, or the pill itself) and the entries are about to unmount, or it is
+    // already on `<body>`. Focus resting on some other control (the entries are ordinary Tab
+    // stops, so it can wander out) is a decision this close did not make and must not reverse —
+    // `AgentView`'s arm-2 guard, in the non-modal shape.
+    const inWrapper = active instanceof Node && (wrapperRef.current?.contains(active) ?? false)
+    if (pill !== null && (inWrapper || active === null || active === document.body)) pill.focus()
+    setOpen(false)
+  }
+  useEffect(() => {
+    closeRef.current = closePopover
+  })
+
+  // A PUSH ARRIVED (or a view opened by any route) WHILE THE POPOVER WAS OPEN: the derived
+  // `showPopover` unmounts it in the very commit the view mounts — closed "first", before the
+  // view is seen — and this SUBSCRIPTION settles the residue durably. A store subscription
+  // rather than an effect body write, which is `react-hooks/set-state-in-effect`'s own
+  // recommended shape (subscribe to the external system, set state in the callback) — and the
+  // callback runs SYNCHRONOUSLY on the store write, before React commits, which buys the focus
+  // hand-off its timing: focus still sits on the entry that is ABOUT to unmount, so it is moved
+  // to the pill here, and the view's mount-time return-focus capture then records the pill —
+  // never `document.body`. The `open` reset is synchronous too, deliberately (review finding 1,
+  // 2026-08-22): the first shipped form parked it in a requestAnimationFrame, and a view closed
+  // before that frame fired cancelled the reset in the effect cleanup — leaving `open` true and
+  // the popover springing back uninvited the moment the view left the glass.
+  useEffect(() => {
+    if (!open) return
+    return useAgentViewStore.subscribe((state) => {
+      if (state.status !== 'open') return
+      // `closePopover` verbatim, through the ref (see its declaration): one body for the
+      // focus-return arm-2 guard and the synchronous `open` reset, not a duplicate to drift.
+      closeRef.current()
+    })
+  }, [open])
+
+  // ESC, THE WRAPPER-LEVEL HALF (see the header): a native listener attached through the ref —
+  // `jsx-a11y` is right that the wrapper `<span>` is not a control, so the listener goes on the
+  // node rather than into a prop, the `AgentView` trap's exact reasoning. On the WRAPPER rather
+  // than the popover root (review finding 3, 2026-08-22): focus can legitimately sit on the
+  // PILL while the popover is open — toggling put it there — and a popover-scoped listener
+  // would miss that Esc, closing via the document half below WITHOUT consuming the keystroke
+  // and co-releasing an active pin. It `preventDefault()`s, which is what keeps the SAME Esc
+  // from also releasing a pin (`CardDetail`'s document listener honours `defaultPrevented`):
+  // UX-DR39's amended order — view, then popover, then pin — one layer per keystroke. It does
+  // NOT stop propagation; the document-level twin sees `defaultPrevented` and stands down.
+  useEffect(() => {
+    if (!showPopover) return
+    const wrapper = wrapperRef.current
+    if (wrapper === null) return
+    const dismiss = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return
+      event.preventDefault()
+      closeRef.current()
+    }
+    wrapper.addEventListener('keydown', dismiss)
+    return () => wrapper.removeEventListener('keydown', dismiss)
+  }, [showPopover])
+
+  // ESC CLOSES THE POPOVER — the document-level BUBBLE half (see the header). Registered only
+  // while the popover shows; never stops propagation and never needs to: the agent view's
+  // capture listener pre-empts it while a view is open (when this is unregistered anyway), and
+  // the wrapper's own listener has already `preventDefault()`ed — which the standard guard
+  // below honours — whenever focus was inside. `keyboard-floor.test.ts` carries this entry in
+  // the listener census with the phase asserted.
+  useEffect(() => {
+    if (!showPopover) return
+    const dismiss = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return
+      closeRef.current()
+    }
+    document.addEventListener('keydown', dismiss)
+    return () => document.removeEventListener('keydown', dismiss)
+  }, [showPopover])
+
+  // OUTSIDE CLICK CLOSES THE POPOVER — a native document pointer listener per the `AgentView`
+  // scrim convention (native on the node that owns the gesture, never a synthetic prop on a
+  // non-control). `pointerdown` rather than `click`, because a click whose mousedown and
+  // mouseup straddle the popover edge would fire on a common ancestor and misread the gesture;
+  // the DOWN alone is the honest "you pressed elsewhere". The wrapper (pill + popover) is the
+  // inside — a press on the pill itself must fall through to the pill's own toggle rather than
+  // close-then-reopen.
+  useEffect(() => {
+    if (!showPopover) return
+    const onPointerDown = (event: globalThis.Event) => {
+      const target = event.target
+      if (target instanceof Node && (wrapperRef.current?.contains(target) ?? false)) return
+      closeRef.current()
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [showPopover])
+
+  const activateEntry = (id: string) => {
+    // CLOSE FIRST, THEN OPEN (the sequencing ruling): `closePopover` puts focus on the pill and
+    // unmounts the entries; `reopenPush` then mounts the view, whose capture effect records the
+    // pill as the element to restore focus to on dismissal. One handler, one commit, one
+    // overlay level.
+    closePopover()
+    reopenPush(id)
+  }
+
+  if (count === 0) {
+    return (
+      <span ref={wrapperRef} className="agent-views-nav-history">
+        <button
+          type="button"
+          className="agent-views-nav-pill agent-views-nav-history-pill"
+          disabled
+          /* BOTH channels, the kind pills' Q2 ruling verbatim — a pointer `title` plus a
+             programmatic description, one string, so the two cannot disagree. The disclosure
+             attributes stay on the quiet pill too: it IS the toggle, merely not yet usable, and
+             a control whose role changes when it activates is a control a reader has to
+             re-learn. */
+          title={HISTORY_QUIET_TOOLTIP}
+          aria-describedby={hintId}
+          aria-haspopup="true"
+          aria-expanded="false"
+        >
+          <ClockGlyph />
+          {HISTORY_LABEL}
+        </button>
+        {/* OUTSIDE the button, for the kind pills' reason: inside, the sentence would join the
+            accessible NAME and then describe the pill with itself again. */}
+        <span id={hintId} className="visually-hidden">
+          {HISTORY_QUIET_TOOLTIP}
+        </span>
+      </span>
+    )
+  }
+
+  return (
+    <span ref={wrapperRef} className="agent-views-nav-history">
+      <button
+        ref={pillRef}
+        type="button"
+        className="agent-views-nav-pill agent-views-nav-history-pill"
+        aria-haspopup="true"
+        aria-expanded={showPopover}
+        /* Wired only while the popover is mounted: an `aria-controls` naming an id that is not
+           in the document is a dangling reference, which is the same silence a dangling
+           `aria-describedby` would be. */
+        aria-controls={showPopover ? popoverId : undefined}
+        onClick={() => {
+          if (showPopover) closePopover()
+          else setOpen(true)
+        }}
+      >
+        <ClockGlyph />
+        {HISTORY_LABEL}
+        {/* NO time, NO unread dot, ever: the pill names a LIST, not a push — the times live on
+            the entries inside, and unread stays per-kind on the kind pills (the ruled
+            sub-treatment). */}
+      </button>
+      {showPopover && <HistoryPopover id={popoverId} onActivate={activateEntry} />}
+    </span>
+  )
+}
+
+/**
+ * The popover itself (story 17.2) — a plain group of entry `<button>`s, newest first, exactly
+ * as the store holds them ({@link useAgentViewHistory} is the stored reference; the ORDERING —
+ * by envelope `ts`, never `id`, malformed `ts` at arrival position — is the store's, decided
+ * once in `historyWith`, so this component renders the array and re-sorts nothing).
+ *
+ * NOT a modal, NOT a landmark, NOT a live region, NOT a listbox: no role, no label, no
+ * `aria-live`, no roving focus — the entries are ordinary Tab stops and open/close announce
+ * nothing (the ruled sub-treatments, all confirmed here). Mounting moves focus to the first
+ * (newest) entry; every later focus move is the person's own.
+ *
+ * The enter is an OPACITY-ONLY fade over the glide tokens, expressed as a transition out of a
+ * `data-entering` state with the flip in a frame callback — `AgentView.tsx`'s bloom pattern,
+ * for both of its reasons (a keyframes block would defeat the CSS reader's brace matching, and
+ * two style writes in one frame coalesce into no transition at all). No rise, no transform: an
+ * opacity fade over a tokenised duration self-neutralises under reduced motion, so the
+ * reduced-motion block registers nothing for it.
+ */
+function HistoryPopover({ id, onActivate }: { id: string; onActivate: (id: string) => void }) {
+  const history = useAgentViewHistory()
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  const [entering, setEntering] = useState(true)
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setEntering(false))
+    return () => cancelAnimationFrame(frame)
+  }, [])
+
+  // THE CLAMPS' ANCHOR TERMS (Greptile PR #97, rounds 2–4). The popover hangs below a
+  // content-sized header on a row that is ALLOWED to wrap (`.agent-views-nav-pills` declares
+  // `flex-wrap: wrap` as the honest narrow-window failure mode), so neither of its distances —
+  // from the viewport top (the height clamp's subtrahend, round 2) nor from the viewport left
+  // to its own right-anchored edge (the width clamp's budget, round 4: a wrapped pill leaves
+  // the viewport's right edge, and a 100vw-based cap then lets a long title run past the LEFT
+  // edge) — is knowable in CSS alone. Both are measured before paint into custom properties
+  // (the ManaCurve/ColourDistribution channel — literal inline styles stay illegal) and
+  // RE-measured on window resize while open (round 3): resize is the only thing that can move
+  // the anchor mid-open — the header re-wraps with the window, and the list itself cannot
+  // change under an open popover (an arriving push closes it). `rect.right` is anchor-stable
+  // even as content grows, because the popover is right-anchored to the wrapper. Not a key
+  // listener, so the keyboard-floor census has no stake. jsdom's zero rects degrade both terms
+  // to 0px, and exact geometry stays the eye-check's.
+  const [anchor, setAnchor] = useState({ top: 0, right: 0 })
+  useLayoutEffect(() => {
+    const measure = () => {
+      const rect = rootRef.current?.getBoundingClientRect()
+      setAnchor({ top: rect?.top ?? 0, right: rect?.right ?? 0 })
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [])
+
+  // FOCUS TO THE FIRST (NEWEST) ENTRY ON OPEN — a mount effect, and mount-only is sufficient
+  // rather than lazy: the list cannot change while the popover shows, because every arriving
+  // push auto-opens its view and that closes the popover (the pill's derived `showPopover`).
+  useEffect(() => {
+    rootRef.current?.querySelector<HTMLElement>('button')?.focus()
+  }, [])
+
+  // Esc handling lives on the WRAPPER in `HistoryPill` (both halves — the consuming node
+  // listener and the census-registered document one), not here: focus can sit on the pill while
+  // the popover shows, and a popover-scoped listener would miss that keystroke (review finding
+  // 3, 2026-08-22).
+
+  return (
+    <div
+      ref={rootRef}
+      id={id}
+      className="agent-views-nav-popover"
+      data-entering={entering ? 'true' : undefined}
+      style={
+        {
+          '--history-popover-top': `${anchor.top}px`,
+          '--history-popover-right': `${anchor.right}px`,
+        } as CSSProperties
+      }
+    >
+      {history.map((entry) => (
+        <HistoryEntry key={entry.id} entry={entry} onActivate={onActivate} />
+      ))}
+    </div>
+  )
+}
+
+/**
+ * One history entry (story 17.2): kind label + push title (when the agent supplied one) + time.
+ *
+ * The TITLE renders only when it differs from the kind's own word: the store's builders fall
+ * back to `AGENT_VIEW_LABELS[kind]` for an untitled push, and "Suggestions — Suggestions" would
+ * be the fallback read out twice. That is what the artefact's *"push title (when present)"*
+ * means once the fallback exists — present is "the agent named it".
+ *
+ * The TIME is `pushTimeLabel` verbatim (never re-implemented; its bytes are host-locale and are
+ * never asserted), inside a `<time>` carrying the raw `ts`, exactly as the kind pills render
+ * theirs — and it degrades to nothing on an absent or unparseable `ts`, per that module's own
+ * contract, while the entry stays activatable: a push whose clock is unreadable is still a push
+ * worth revisiting.
+ */
+function HistoryEntry({
+  entry,
+  onActivate,
+}: {
+  entry: AgentViewContent
+  onActivate: (id: string) => void
+}) {
+  // `ts` is typed as a string, but `agentEventOf` validates only `kind`, so at runtime it can
+  // be absent — the same two-guard shape the kind pill wears at its `<time>`.
+  const raw = typeof entry.ts === 'string' ? entry.ts : null
+  const time = raw === null ? null : pushTimeLabel(raw)
+  return (
+    <button type="button" className="agent-views-nav-entry" onClick={() => onActivate(entry.id)}>
+      <span className="agent-views-nav-entry-kind">{AGENT_VIEW_LABELS[entry.kind]}</span>
+      {entry.title !== AGENT_VIEW_LABELS[entry.kind] && (
+        <span className="agent-views-nav-entry-title">{entry.title}</span>
+      )}
+      {raw !== null && time !== null && (
+        <time className="agent-views-nav-entry-time" dateTime={raw}>
+          {time}
+        </time>
       )}
     </button>
   )

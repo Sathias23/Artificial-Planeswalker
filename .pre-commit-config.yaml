@@ -36,4 +36,4 @@ repos:
         entry: uv run python -m scripts.build_plugin
         language: system
         pass_filenames: false
-        files: ^(src/|\.claude/skills/(magic-deckbuilding|mana-curve-analysis|synergy-discovery|format-legality)/|pyproject\.toml|uv\.lock|README\.md|LICENSE|NOTICE|scripts/build_plugin\.py)
+        files: ^(src/|\.claude/skills/(magic-deckbuilding|mana-curve-analysis|synergy-discovery|format-legality|companion)/|pyproject\.toml|uv\.lock|README\.md|LICENSE|NOTICE|scripts/build_plugin\.py)

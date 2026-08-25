@@ -442,9 +442,11 @@ def ticket_store(app: FastAPI) -> TicketStore | None:
 # and a connected-client count appears in neither. The pill reads its own socket through the
 # browser's store and makes no backend call at all.
 #
-# `connected_count` is still consumed — see its own docstring — and the honest statement of who
-# might want it is "a future status surface", with c10-1 the nearest candidate; note that c10-1
-# reads `GET /health` for a port and an instance id, still not this count.
+# `connected_count` is still consumed — see its own docstring — and the "future status surface"
+# this comment used to predict arrived at 17.4: `GET /health` now carries it as `clients`, read by
+# the MCP server's `companion_status` so the agent can tell "running, nobody looking" from
+# "already on screen" without pushing anything. (The 17.1 pill still reads /health only for the
+# port and instance id.)
 # The third and last of the Structural Seed's three nouns for this module.
 # ---------------------------------------------------------------------------------------------
 

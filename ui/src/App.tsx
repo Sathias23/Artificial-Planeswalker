@@ -5,6 +5,7 @@ import { AppShell } from './components/AppShell/AppShell'
 import { DeckBadges } from './components/DeckBadges/DeckBadges'
 import { Footer } from './components/Footer/Footer'
 import { StatePanel } from './components/StatePanel/StatePanel'
+import { Welcome } from './components/Welcome/Welcome'
 import { AgentView } from './containers/AgentView/AgentView'
 import { AgentViewsNav } from './containers/AgentViewsNav/AgentViewsNav'
 import { GroupsView } from './containers/GroupsView/GroupsView'
@@ -577,9 +578,8 @@ export default function App() {
          ==== THE ROW HAS ITS SECOND CHILD (c4-9, AC 1, AC 2), AND NOTHING ELSE HERE MOVED ====
          `AnalysisRow` was built at c4-8 to be right twice — one child filling the width, two at
          exactly 1:1 — so this story lands by adding a sibling and editing neither that component
-         nor `AppShell.tsx`. The EIGHTH application of c2-9's displacement ruling; the shell's
-         left-column placeholder (the line naming c4-4, c4-8 and c4-9) still fires whenever
-         `left` is empty, which `AppShell.test.tsx:115` asserts against the component's own props.
+         nor `AppShell.tsx`. The EIGHTH application of c2-9's displacement ruling (the shell's
+         left-column placeholder it displaced is gone altogether since 17.5).
          Document order is the contract: the curve first, the colour bar second, matching
          DESIGN.md's *"the mana-curve and color-distribution panels below it as a 1:1 pair"*.
 
@@ -601,7 +601,10 @@ export default function App() {
             </AnalysisRow>
           </>
         ) : surface.panel === 'no-active-deck' ? (
-          <StatePanel state="no-active-deck" decks={system.decks} />
+          /* THE WELCOME SURFACE (17.5): the same no-active-deck panel, with the hero art above
+             it. The other five system panels stay bare — no hero, no layout change. The shell
+             renders a single track here because `right` is empty. */
+          <Welcome decks={system.decks} />
         ) : (
           <StatePanel state={surface.panel} />
         )

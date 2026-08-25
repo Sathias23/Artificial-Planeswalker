@@ -1,32 +1,42 @@
-"""Drift guard over story 15-4's release documentation — README's ``## The companion app``
-section, the ``## Requirements`` claim that repeats it, and the Scryfall attribution in
-``README.md`` and ``NOTICE``.
+"""Drift guard over story 15-4's release documentation — the companion guide
+(``docs/companion.md``), README's ``## Requirements`` claim that repeats its Node promise, and the
+Scryfall attribution in ``README.md`` and ``NOTICE``.
 
-The section is the only place a first-time user is told how to start the companion, what the app
+The operating prose lived in ``README.md`` as ``## The companion app`` until the README was
+restructured: the deep-dive subsections moved verbatim into ``docs/companion.md`` under
+``# The companion app — full guide``, and README keeps a shortened section that links into it.
+This module follows the prose — its section is now the whole guide — while the claims that stayed
+in README (``## Requirements``, the ``## What it does`` capability table, the attribution) are
+still read out of README.
+
+The guide is the only place a first-time user is told how to start the companion, what the app
 prints, which port it picks, what a second launch does, and what a fresh install with no card
 database looks like. Every one of those claims is true only because a constant, a message literal or
 an entry-point return currently says so — and prose has no compiler, so this module is the compiler.
 The idiom is ``test_image_cache_docs.py``'s, story 15-2's guard over the section immediately below
 this one, and the pins follow the same rule: **key on the shipped symbol, never on a literal copied
-out of the README**, so a rename that updates the prose moves the pin with it and a rename that does
-not turns this red.
+out of the documentation**, so a rename that updates the prose moves the pin with it and a rename
+that does not turns this red.
 
 Where a value has no constant to import, the source file is parsed rather than transcribed. The four
 ``[planeswalker]`` announcements are lifted out of ``src/companion/app/server.py``'s AST — f-strings
 included, with their interpolation slots rendered as wildcards and then checked against ``HOST`` and
-``DEFAULT_PORT`` — so the README quotes the runner's own words, em dashes and all, and gaining a
-fifth announcement fails here until the README grows one too. The exit statuses are read the same
+``DEFAULT_PORT`` — so the guide quotes the runner's own words, em dashes and all, and gaining a
+fifth announcement fails here until the guide grows one too. The exit statuses are read the same
 way, off every integer ``return`` in the dispatcher, and the fresh-install panel copy is read out of
 ``ui/src/components/StatePanel/copy.ts`` at the entry whose key is the kebab spelling of the shipped
 ``database_not_initialized`` reason token.
 
 **One deliberate divergence from ``test_image_cache_docs.py``.** That module terminates its scan on
-an ATX heading of *any* level, because ``### Image cache (companion app)`` owns no subsections. This
-section does own them — six ``###`` headings — so :func:`_extract_section` terminates on a heading
-of the section's own level or higher, derived from :data:`SECTION_HEADING` rather than hardcoded.
-Both bounds are tested rather than asserted in prose, including the one that matters most: the
-neighbouring image-cache section must stay *outside* this extraction, or an assertion here could
-pass on story 15-2's prose instead of this story's.
+an ATX heading of *any* level, because ``## Image cache`` owns no subsections. This section does own
+them — the guide's ``##`` headings — so :func:`_extract_section` terminates on a heading of the
+section's own level or higher, derived from :data:`SECTION_HEADING` rather than hardcoded. The
+heading is now the guide's single ``#`` title, so the extraction is the whole file — which is the
+point: everything in ``docs/companion.md`` is this module's remit, the image-cache section
+included (:data:`OWNED_SUBSECTION_HEADING` pins that it is still there; story 15-2's guard reads it
+by its own heading from the same file). Both bounds are tested rather than asserted in prose, and
+because the section runs to end-of-file the extraction drops trailing blank lines, so a bounded and
+an EOF-terminated extraction of the same prose compare equal.
 
 **Declared residue — what this guard does NOT prove:**
 
@@ -34,7 +44,7 @@ pass on story 15-2's prose instead of this story's.
    user sees depends on uvicorn suppressing its own banner when handed a pre-bound socket, and the
    ephemeral fallback depends on a real ``OSError`` at bind time. Neither is exercised here — both
    belong to ``tests/unit/companion/test_server.py``, which owns the runner. This module proves only
-   that the README quotes the messages the runner would print, character for character.
+   that the guide quotes the messages the runner would print, character for character.
 2. **The announcement selector is a literal.** :data:`_ANNOUNCEMENT_PREFIX` is this module's own
    word for "a line the user sees on stdout"; the code has no constant for it. The count assertion
    is what makes that safe: exactly :data:`_EXPECTED_ANNOUNCEMENTS` are expected, so a prefix change
@@ -58,15 +68,17 @@ pass on story 15-2's prose instead of this story's.
    through :func:`_claim`, which collapses whitespace and drops ``*`` and backticks — so re-wrapping
    a paragraph, or emphasising a word, cannot turn this module red. The exceptions:
    :func:`_announcement_pattern` matches each quoted announcement on **one line**, because that is
-   what a user comparing the README against their terminal needs (a ~140-character line in a file
+   what a user comparing the guide against their terminal needs (a ~140-character line in a file
    that wraps at ~95-100 columns, kept in a fenced block for exactly that reason); and the launch
    command must appear as a line of its own inside a fenced block, because it is the one thing in
    the section a reader copies rather than reads. Both are stated here rather than discovered.
-7. **Anchors are checked for resolution, not for aim.** :meth:`…test_every_in_page_link_resolves`
-   proves each ``](#slug)`` names a heading that exists in the same file — it cannot tell that the
+7. **Anchors are checked for resolution, not for aim.** :meth:`…test_every_link_anchor_resolves`
+   proves each ``](#slug)`` names a heading in the same file — in ``README.md`` *and* in
+   ``docs/companion.md`` — and that every cross-document ``docs/companion.md#slug`` /
+   ``../README.md#slug`` anchor names a heading in the file it points at. It cannot tell that the
    heading it names is the *useful* one. And renaming a heading is therefore not the "one edit" a
-   naive reader might assume: it moves this module's constant, the heading, and every in-page link
-   that pointed at it.
+   naive reader might assume: it moves this module's constant, the heading, and every link — in-page
+   or cross-document — that pointed at it.
 """
 
 import ast
@@ -91,6 +103,7 @@ from src.mcp_server.tools.companion import SetActiveDeckResult, ShowSuggestionsR
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 README_PATH = REPO_ROOT / "README.md"
+GUIDE_PATH = REPO_ROOT / "docs" / "companion.md"
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
 SERVER_SOURCE_PATH = REPO_ROOT / "src" / "companion" / "app" / "server.py"
 ENTRY_POINT_SOURCE_PATH = REPO_ROOT / "src" / "mcp_server" / "__main__.py"
@@ -98,23 +111,37 @@ STATE_PANEL_COPY_PATH = REPO_ROOT / "ui" / "src" / "components" / "StatePanel" /
 NOTICE_PATH = REPO_ROOT / "NOTICE"
 FOOTER_COPY_PATH = REPO_ROOT / "ui" / "src" / "components" / "Footer" / "copy.ts"
 
-SECTION_HEADING = "## The companion app"
-"""The section this module is the compiler for.
+SECTION_HEADING = "# The companion app — full guide"
+"""The section this module is the compiler for: the guide's title, so the section is the file.
 
-**Renaming it is not one edit.** It moves this constant, the heading in ``README.md``, and every
-in-page ``](#the-companion-app)`` link that points at it — two of which live in the tool table and
-the requirements list, outside the section. ``test_every_in_page_link_resolves`` is what makes the
-third of those visible rather than silent.
+**Renaming it is not one edit.** It moves this constant and the heading in ``docs/companion.md`` —
+and README reaches the guide through ``docs/companion.md#…`` links whose anchors
+``test_every_link_anchor_resolves`` checks, so a retitle that breaks an anchor turns that test red
+rather than scrolling a reader nowhere.
+"""
+
+README_COMPANION_HEADING = "## The companion app"
+"""README's shortened companion section — the launch commands and the link list into the guide.
+
+This module's prose pins moved to the guide with the prose; what is still read from README is how a
+reader *arrives*: the in-page links that point at this section, and the links out of it into
+``docs/companion.md``.
 """
 
 CAPABILITY_HEADING = "## What it does"
 """The capability table, which claims BOTH companion tools report the not-running token."""
 
 REQUIREMENTS_HEADING = "## Requirements"
-"""The other place the Node claim is made — outside this module's section, and read first."""
+"""The other place the Node claim is made — in README, outside the guide, and read first."""
 
-NEIGHBOUR_HEADING = "### Image cache (companion app)"
-"""Story 15-2's section, which must stay outside this extraction — see the bounding test."""
+OWNED_SUBSECTION_HEADING = "## Image cache"
+"""Story 15-2's section, now *inside* this extraction — see the bounding test.
+
+In README the image-cache section sat beside this one and had to stay outside the scan; in the
+guide it is one of the sections the single ``#`` title owns, and its own guard
+(``test_image_cache_docs.py``) reads it by this heading from the same file. The bounding test pins
+its presence, so the two modules can never silently end up reading different documents.
+"""
 
 _ANNOUNCEMENT_PREFIX = "[planeswalker] "
 """This module's selector for a line ``run()`` prints to the user's terminal.
@@ -126,8 +153,8 @@ that changed under this module would find nothing and fail on the count, never p
 _EXPECTED_ANNOUNCEMENTS = 4
 """How many user-facing lines ``server.run()`` can print: launch, fallback, and the two refusals.
 
-Not a style rule — every one of them is a line the README promises the reader will recognise, so a
-fifth arriving without a README entry is exactly the drift this module exists to catch.
+Not a style rule — every one of them is a line the guide promises the reader will recognise, so a
+fifth arriving without a guide entry is exactly the drift this module exists to catch.
 """
 
 # Any ATX heading, capturing its level, so the scan can terminate on a heading of this section's own
@@ -247,6 +274,35 @@ def _paragraphs_crediting(text: str, href: str) -> list[str]:
     return [block for block in re.split(r"\n\s*\n", text) if href in block]
 
 
+def _headings(text: str) -> list[str]:
+    """Return every ATX heading line in *text*, skipping fenced blocks.
+
+    The guide's plugin-install section quotes shell comments that start with ``# `` at column
+    zero; a naive line scan would read those as headings and mint slugs no heading owns, quietly
+    widening the set a dead anchor could hide in.
+
+    Args:
+        text: A whole markdown document.
+
+    Returns:
+        The heading lines, in document order.
+    """
+    found: list[str] = []
+    marker: str | None = None
+    for line in text.splitlines():
+        opener = _FENCE.match(line)
+        if opener is not None:
+            char = opener.group("marker")[0]
+            if marker is None:
+                marker = char
+            elif char == marker:
+                marker = None
+            continue
+        if marker is None and _ATX_HEADING.match(line):
+            found.append(line)
+    return found
+
+
 def _slug(heading: str) -> str:
     """Return GitHub's in-page anchor for an ATX *heading* line.
 
@@ -265,42 +321,56 @@ def _read_readme() -> str:
     return README_PATH.read_text(encoding="utf-8")
 
 
-def _extract_section(readme: str, heading: str = SECTION_HEADING) -> str:
+def _read_guide() -> str:
+    """Return docs/companion.md's text, read from the repository root, not the working directory."""
+    assert PYPROJECT_PATH.exists(), f"{REPO_ROOT} is not the repository root"
+    return GUIDE_PATH.read_text(encoding="utf-8")
+
+
+def _extract_section(
+    document: str, heading: str = SECTION_HEADING, source: str = "docs/companion.md"
+) -> str:
     """Return one section, from its heading to the next heading of its level or higher.
 
     **The non-vacuity anchor.** Every assertion in this module reads what this returns, so a missing
     or renamed heading has to fail here, loudly and by name, rather than yield an empty string that
     every substring check would then pass over.
 
-    Two bounding rules, one inherited and one deliberately different:
+    Three bounding rules, one inherited and two deliberately different:
 
-    * The scan is **fence-aware**, exactly as story 15-2's is. A ``### `` line inside a fenced block
-      is sample text, not a heading; this section quotes shell commands, so without this a
-      documented comment could truncate it mid-command.
+    * The scan is **fence-aware**, exactly as story 15-2's is. A heading-shaped line inside a fenced
+      block is sample text, not a heading; the guide quotes shell commands whose comments start with
+      ``#``, so without this a documented comment could truncate it mid-command.
     * The terminator is a heading of **this section's own level or higher**, derived from the hashes
       in :data:`SECTION_HEADING`. Story 15-2's guard terminates on any level because its section has
-      no subsections; this one has six, and terminating on any level would leave every assertion
-      below reading only the section's opening paragraphs.
+      no subsections; this one owns every ``##`` section in the guide, and terminating on any level
+      would leave every assertion below reading only the guide's opening paragraphs.
+    * **Trailing blank lines are dropped.** The default section is the guide's ``#`` title and runs
+      to end-of-file, while a section bounded by a later heading keeps the blank separator before
+      it — and the bounds test compares the two for equality, so the comparison has to be about
+      prose rather than about where the file happens to end.
 
     Args:
-        readme: The full text of ``README.md``.
+        document: The full text of the file named by *source*.
         heading: The ATX heading line to extract from. Defaults to this module's own section; the
-            ``## Requirements`` block is read with the same machinery rather than a second scanner.
+            README blocks (``## Requirements``, the capability table) are read with the same
+            machinery rather than a second scanner.
+        source: The file's repo-relative name, for failure messages only.
 
     Returns:
-        The section's lines, heading included, joined with newlines.
+        The section's lines, heading included, trailing blank lines dropped, joined with newlines.
     """
     own_level = len(heading) - len(heading.lstrip("#"))
-    lines = readme.splitlines()
+    lines = document.splitlines()
     starts = [i for i, line in enumerate(lines) if line.strip() == heading]
     assert starts, (
-        f"README.md has no {heading!r} heading. Every claim this module guards against it lives in "
-        "that section, so its absence fails here rather than passing vacuously on an empty scan. "
-        "Restore the heading in README.md, or — if the section was deliberately renamed — update "
-        f"{Path(__file__).name} to match (and every in-page link that pointed at it)."
+        f"{source} has no {heading!r} heading. Every claim this module guards against it lives in "
+        f"that section, so its absence fails here rather than passing vacuously on an empty scan. "
+        f"Restore the heading in {source}, or — if the section was deliberately renamed — update "
+        f"{Path(__file__).name} to match (and every link anchor that pointed at it)."
     )
     assert len(starts) == 1, (
-        f"README.md carries {len(starts)} lines reading {heading!r} (at lines "
+        f"{source} carries {len(starts)} lines reading {heading!r} (at lines "
         f"{[i + 1 for i in starts]}). This module would guard only the first, so a second copy is "
         "an unguarded duplicate rather than a harmless one — delete it, or reword it so it is not "
         "an exact heading match."
@@ -326,11 +396,15 @@ def _extract_section(readme: str, heading: str = SECTION_HEADING) -> str:
     # An unclosed fence leaves every later line "inside" it, so the scan runs to EOF and the section
     # silently widens to the rest of the file — at which point every "the section says X" assertion
     # below is satisfiable by some other section's prose. That has to fail here, naming the cause.
+    # (For the guide's own title the extraction is the whole file either way, but the guard still
+    # matters there: an unclosed fence would swallow the rest of the guide's *headings* as prose.)
     assert fence is None, (
-        f"a fenced block opened inside README.md's {heading!r} section is never closed, so the "
-        "extraction ran to the end of the file and this guard would be reading the whole README "
-        "rather than one section. Close the fence in README.md."
+        f"a fenced block opened inside {source}'s {heading!r} section is never closed, so the "
+        f"extraction ran to the end of the file with every later line read as sample text rather "
+        f"than as prose and headings. Close the fence in {source}."
     )
+    while end > start and not lines[end - 1].strip():
+        end -= 1
     return "\n".join(lines[start:end])
 
 
@@ -392,8 +466,8 @@ def _announcement_pattern(fragments: list[str]) -> re.Pattern[str]:
         fragments: The literal runs of one announcement, in order.
 
     Returns:
-        A pattern matching the rendered line on a single README line, with one ``slot<N>`` group per
-        interpolation.
+        A pattern matching the rendered line on a single line of the guide, with one
+        ``slot<N>`` group per interpolation.
     """
     parts = [re.escape(fragments[0])]
     for index, fragment in enumerate(fragments[1:]):
@@ -406,21 +480,21 @@ def _match_announcement(section: str, fragments: list[str]) -> re.Match[str]:
     """Assert the section quotes one announcement verbatim, and return the match.
 
     Args:
-        section: The extracted README section.
+        section: The extracted guide section.
         fragments: The literal runs of the announcement, from :func:`_announcements`.
 
     Returns:
-        The match, so a caller can inspect what the README put in the interpolation slots.
+        The match, so a caller can inspect what the guide put in the interpolation slots.
     """
     rendered = "…".join(fragments)
     match = _announcement_pattern(fragments).search(section)
     assert match is not None, (
-        f"README's {SECTION_HEADING!r} section does not quote the line server.run() prints:\n"
+        f"the guide's {SECTION_HEADING!r} section does not quote the line server.run() prints:\n"
         f"    {rendered}\n"
         "(the … marks an interpolated value, which may be anything). The runner's wording changed "
-        "and the README's did not, or the quoted block was reworded into a paraphrase — a user "
-        "matching what is on their terminal against the README has to find the same characters, "
-        "em dashes included. Fix README.md."
+        "and the guide's did not, or the quoted block was reworded into a paraphrase — a user "
+        "matching what is on their terminal against the guide has to find the same characters, "
+        "em dashes included. Fix docs/companion.md."
     )
     return match
 
@@ -449,7 +523,7 @@ def _panel_copy(reason: str) -> dict[str, str]:
     assert key in blocks, (
         f"{STATE_PANEL_COPY_PATH.name} has no {key!r} entry, which is the kebab spelling of the "
         f"shipped {reason!r} reason token. Either the panel copy moved (this module must follow "
-        "it) or the fresh-install state lost its panel — in which case README's first-run "
+        "it) or the fresh-install state lost its panel — in which case the guide's first-run "
         "narrative is describing a screen that no longer exists."
     )
     body = blocks[key]
@@ -461,48 +535,54 @@ def _panel_copy(reason: str) -> dict[str, str]:
     ):
         match = pattern.search(body)
         assert match is not None, (
-            f"the {key!r} panel copy declares no {field} — README quotes all three lines, so a "
-            "missing one means the guard would silently stop checking a sentence the README still "
+            f"the {key!r} panel copy declares no {field} — the guide quotes all three lines, so a "
+            "missing one means the guard would silently stop checking a sentence the guide still "
             "shows the reader"
         )
         text = match.group("text")
-        # The literal is compared raw against rendered README prose, so an escape sequence would
-        # make the two differ in a way no author could see: `\\'` reads as a backslash here and as
-        # an apostrophe on the glass. Rejected rather than half-decoded — decoding TypeScript
-        # escapes properly is a parser, and a wrong parser here would be worse than no guard.
+        # The literal is compared raw against the guide's rendered prose, so an escape sequence
+        # would make the two differ in a way no author could see: `\\'` reads as a backslash
+        # here and as an apostrophe on the glass. Rejected rather than half-decoded — decoding
+        # TypeScript escapes properly is a parser, and a wrong parser here would be worse than no
+        # guard.
         assert "\\" not in text, (
             f"the {key!r} panel's {field} literal contains a backslash escape ({text!r}). This "
-            "module compares the literal against rendered README prose, so it cannot tell what "
-            "that escape renders as. Either write the character directly in copy.ts, or teach this "
-            "module to decode it — do not leave the comparison quietly wrong."
+            "module compares the literal against the guide's rendered prose, so it cannot tell "
+            "what that escape renders as. Either write the character directly in copy.ts, or "
+            "teach this module to decode it — do not leave the comparison quietly wrong."
         )
         found[field] = text
     return found
 
 
 class TestTheCompanionSectionMatchesTheShippedApp:
-    """README's release documentation against the code it describes (story 15-4)."""
+    """The guide's release documentation against the code it describes (story 15-4)."""
 
     def test_the_documented_section_exists(self) -> None:
         """The anchor: nothing below this test means anything if the section is gone."""
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
 
         assert section.startswith(SECTION_HEADING)
         assert len(section.splitlines()) > 40, (
             f"{SECTION_HEADING!r} is present but nearly empty — the guard would pass vacuously on "
-            "a stub. Restore the companion documentation in README.md."
+            "a stub. Restore the companion documentation in docs/companion.md."
         )
-        assert NEIGHBOUR_HEADING not in section, (
-            f"the extraction swallowed {NEIGHBOUR_HEADING!r}, story 15-2's section. Every "
-            "'the section says X' assertion below would then be able to pass on that section's "
-            "prose instead of this one's — fix the bound in _extract_section, not the README."
+        # The inverse of the bound this test pinned when the section lived in README: there the
+        # neighbouring image-cache section had to stay OUT of the scan; in the guide it is one of
+        # the sections the title owns, and its own guard reads it by this heading from this file.
+        # Losing it here means the two doc-guard modules no longer agree on where the prose lives.
+        assert f"\n{OWNED_SUBSECTION_HEADING}\n" in section, (
+            f"the extraction no longer contains {OWNED_SUBSECTION_HEADING!r}, story 15-2's "
+            "section. The guide's title owns every section in the file, image cache included — "
+            "either the section moved out of docs/companion.md (move test_image_cache_docs.py "
+            "with it) or the extraction stopped short of it."
         )
 
     def test_every_line_the_runner_prints_is_quoted_verbatim(self) -> None:
         """Matrix rows 1, 2, 3 and 4: all four stdout lines, from the runner's own AST.
 
         The count is asserted first. A fifth announcement added to ``server.run()`` fails here until
-        the README quotes it too, which is the whole point: the section promises a reader that what
+        the guide quotes it too, which is the whole point: the guide promises a reader that what
         they see on their terminal is written down.
         """
         announcements = _announcements()
@@ -510,11 +590,11 @@ class TestTheCompanionSectionMatchesTheShippedApp:
         assert len(announcements) == _EXPECTED_ANNOUNCEMENTS, (
             f"{SERVER_SOURCE_PATH.name} prints {len(announcements)} {_ANNOUNCEMENT_PREFIX!r} "
             f"lines, not {_EXPECTED_ANNOUNCEMENTS}. Either a new line reaches the user and "
-            "README's companion section does not mention it (document it, then raise the count), "
-            "or one was removed and the README still promises it."
+            "the companion guide does not mention it (document it, then raise the count), "
+            "or one was removed and the guide still promises it."
         )
 
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
         for fragments in announcements:
             _match_announcement(section, fragments)
 
@@ -524,20 +604,20 @@ class TestTheCompanionSectionMatchesTheShippedApp:
         ``DEFAULT_PORT`` is "the single place in ``src/`` that names the number", so a change to it
         has exactly one prose consequence and this is where it lands.
         """
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
         launch = [f for f in _announcements() if "companion running at" in f[0]]
         assert len(launch) == 1, "server.run() no longer prints exactly one launch line"
 
         slots = _match_announcement(section, launch[0]).groupdict()
 
         assert slots["slot0"] == server.HOST, (
-            f"README's launch line names {slots['slot0']!r} where the runner interpolates "
-            f"server.HOST ({server.HOST!r}). The address the app binds and the address the README "
+            f"the guide's launch line names {slots['slot0']!r} where the runner interpolates "
+            f"server.HOST ({server.HOST!r}). The address the app binds and the address the guide "
             "tells a user to open have to be the same string — the section explains at length why "
             "it is the literal rather than `localhost`."
         )
         assert slots["slot1"] == str(server.DEFAULT_PORT), (
-            f"README's launch line names port {slots['slot1']!r} but server.DEFAULT_PORT is "
+            f"the guide's launch line names port {slots['slot1']!r} but server.DEFAULT_PORT is "
             f"{server.DEFAULT_PORT}. The default port moved and the prose did not."
         )
 
@@ -550,14 +630,14 @@ class TestTheCompanionSectionMatchesTheShippedApp:
         proof 8 — moving ``DEFAULT_PORT`` turns three tests red, and fixing those three still leaves
         the fallback example naming the retired port.
         """
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
         fallback = [f for f in _announcements() if "is unavailable" in "".join(f)]
         assert len(fallback) == 1, "server.run() no longer prints exactly one fallback line"
 
         slot = _match_announcement(section, fallback[0]).group("slot0")
 
         assert slot == str(server.DEFAULT_PORT), (
-            f"README's fallback example says port {slot!r} is unavailable, but the port the app "
+            f"the guide's fallback example says port {slot!r} is unavailable, but the port the app "
             f"would have preferred is server.DEFAULT_PORT ({server.DEFAULT_PORT}). The example "
             "shows a reader a conflict on a port the app never tries."
         )
@@ -570,20 +650,20 @@ class TestTheCompanionSectionMatchesTheShippedApp:
         sentence would document a system that does not exist, so both are pinned — and the one that
         must name a URL is checked for naming the *shipped* base URL, not merely some URL.
         """
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
         verified = [f for f in _announcements() if "is already running at" in f[0]]
         starting = [f for f in _announcements() if "already starting up" in f[0]]
 
         assert len(verified) == 1 and len(starting) == 1, (
             "server.run() no longer prints exactly one 'already running' and one 'already starting "
-            "up' line — the README documents two distinct refusals and this guard can no longer "
+            "up' line — the guide documents two distinct refusals and this guard can no longer "
             "tell which is which"
         )
 
         slot = _match_announcement(section, verified[0]).group("slot0")
         assert slot == client.base_url(server.DEFAULT_PORT), (
-            f"README quotes the steady-state refusal naming {slot!r}, but the runner interpolates "
-            f"client.base_url(port), which for the default port is "
+            f"the guide quotes the steady-state refusal naming {slot!r}, but the runner "
+            f"interpolates client.base_url(port), which for the default port is "
             f"{client.base_url(server.DEFAULT_PORT)!r}."
         )
 
@@ -591,7 +671,7 @@ class TestTheCompanionSectionMatchesTheShippedApp:
         assert "http://" not in "".join(starting[0]), (
             "the startup-window refusal now names a URL in its own literal text. It deliberately "
             "did not, because no URL can be stated honestly during another launch's startup "
-            "window, and README's section explains that absence — reconcile the two."
+            "window, and the guide explains that absence — reconcile the two."
         )
 
     def test_the_documented_launch_command_is_the_installed_console_script(self) -> None:
@@ -603,7 +683,7 @@ class TestTheCompanionSectionMatchesTheShippedApp:
         scripts = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))["project"]["scripts"]
         assert len(scripts) == 1, (
             f"pyproject declares {len(scripts)} console scripts {sorted(scripts)}; this guard "
-            "assumes the one the README documents. Say which one the section means."
+            "assumes the one the guide documents. Say which one the section means."
         )
         script_name = next(iter(scripts))
 
@@ -612,13 +692,13 @@ class TestTheCompanionSectionMatchesTheShippedApp:
         )
         assert len(subcommands) == 1, (
             "the dispatcher's usage text no longer names exactly one subcommand that runs the "
-            f"companion backend (found {subcommands}); README's launch command cannot be derived"
+            f"companion backend (found {subcommands}); the guide's launch command cannot be derived"
         )
         command = f"uv run {script_name} {subcommands[0]}"
 
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
         assert command in section, (
-            f"README's companion section never spells the launch command {command!r}, built from "
+            f"the companion guide never spells the launch command {command!r}, built from "
             f"pyproject's [project.scripts] and the dispatcher's usage text. The console script or "
             "the subcommand was renamed and the documentation was not."
         )
@@ -635,7 +715,7 @@ class TestTheCompanionSectionMatchesTheShippedApp:
         """Matrix row 5: precedence, the environment variable's name, and the accepted range.
 
         The precedence is not merely asserted as prose — it is *exercised* against
-        :func:`server.resolve_preferred_port` first, so the sentence the README carries is checked
+        :func:`server.resolve_preferred_port` first, so the sentence the guide carries is checked
         against behaviour rather than against another sentence.
         """
         # If DEFAULT_PORT ever moved near the ceiling these probes would exceed _MAX_PORT and the
@@ -652,7 +732,7 @@ class TestTheCompanionSectionMatchesTheShippedApp:
         monkeypatch.delenv(server.PORT_ENV_VAR)
         assert server.resolve_preferred_port(None) == server.DEFAULT_PORT
 
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
 
         prose = _claim(_prose(section))
         assert f"prefers port {server.DEFAULT_PORT}" in prose, (
@@ -668,7 +748,7 @@ class TestTheCompanionSectionMatchesTheShippedApp:
         precedence = f"--port beats {server.PORT_ENV_VAR}"
         assert precedence in prose, (
             f"the section does not state the measured precedence {precedence!r}. The exercises "
-            "above prove --port wins; the README has to say so, because a user who sets both and "
+            "above prove --port wins; the guide has to say so, because a user who sets both and "
             "gets the other one has no way to tell which was supposed to win."
         )
         assert f"{server._MIN_PORT}..{server._MAX_PORT}" in prose, (
@@ -698,12 +778,12 @@ class TestTheCompanionSectionMatchesTheShippedApp:
             and isinstance(node.value.value, int)
         }
         assert returns == {0, 2}, (
-            f"{ENTRY_POINT_SOURCE_PATH.name} returns the statuses {sorted(returns)}; README's "
+            f"{ENTRY_POINT_SOURCE_PATH.name} returns the statuses {sorted(returns)}; the guide's "
             "companion section tells the reader 2 is the only non-zero status the program mints. A "
             "new status is a new thing a user can see and must be documented."
         )
         # The AST walk above reads `return <int>` only. A `sys.exit(3)` would produce a status the
-        # walk cannot see, and README's "the only non-zero status it ever returns" would become
+        # walk cannot see, and the guide's "the only non-zero status it ever returns" would become
         # unfalsifiable rather than false (review, 2026-08-19). The dispatcher's own docstring says
         # nothing here calls sys.exit; this is that sentence, enforced.
         exits = [
@@ -717,13 +797,13 @@ class TestTheCompanionSectionMatchesTheShippedApp:
             f"{ENTRY_POINT_SOURCE_PATH.name} now calls sys.exit at line(s) "
             f"{[node.lineno for node in exits]}. The exit status stops being the value main() "
             "returns, so the AST check above no longer sees every status a user can observe and "
-            "README's claim about the only non-zero status cannot be checked at all."
+            "the guide's claim about the only non-zero status cannot be checked at all."
         )
 
         assert entry_point.main(["companion", "--port", "not-an-integer"]) == 2
         assert entry_point.main(["companion", "--help"]) == 0
 
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
         assert "exits `2`" in section, (
             "the section does not tell a reader that a malformed --port exits 2, which is the one "
             "failure status this program can produce"
@@ -740,7 +820,7 @@ class TestTheCompanionSectionMatchesTheShippedApp:
         the same pin story 15-2's leftovers list carries, applied to the paragraph that explains
         *why* those files are there.
         """
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
 
         for name, symbol in (
             (discovery.COMPANION_FILENAME, "discovery.COMPANION_FILENAME"),
@@ -775,15 +855,15 @@ class TestTheCompanionSectionMatchesTheShippedApp:
         ``database_not_initialized`` token, and the database file name comes from the path builder —
         so a reworded panel or a renamed file fails here rather than at a confused user.
         """
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
         copy = _panel_copy("database_not_initialized")
 
         for field, text in copy.items():
             assert text in section, (
-                f"README's first-run narrative does not quote the panel's {field}:\n    {text}\n"
+                f"the guide's first-run narrative does not quote the panel's {field}:\n    {text}\n"
                 "The reader is told what the page will say so they can recognise it; a "
-                "paraphrase of a screen is not a description of it. Update README.md to match the "
-                "shipped copy."
+                "paraphrase of a screen is not a description of it. Update docs/companion.md to "
+                "match the shipped copy."
             )
 
         assert paths.database_path().name in section, (
@@ -811,7 +891,7 @@ class TestTheCompanionSectionMatchesTheShippedApp:
         never reads and the page never heals. That is the *quieter* failure and the one worth
         naming, so a future tidy-up may not collapse the two platforms back into one sentence.
         """
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
 
         marker = "Recovering from a failed first import"
         assert marker in section, (
@@ -848,9 +928,9 @@ class TestTheCompanionSectionMatchesTheShippedApp:
         """Story 15-4's first acceptance criterion, and the epic's standing guarantee.
 
         The status token is read off ``SetActiveDeckResult``'s closed set rather than typed here, so
-        a renamed outcome cannot leave the README promising a word the tools no longer return.
+        a renamed outcome cannot leave the docs promising a word the tools no longer return.
         """
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
         # BOTH tools, because README's capability table claims both report it. Reading only the
         # control tool's set left the claim about the push tool unguarded (review, 2026-08-19).
         tokens = set()
@@ -887,7 +967,7 @@ class TestTheCompanionSectionMatchesTheShippedApp:
         # The claim is *made* in the capability table, outside this section — that is the row a
         # reader meets first, and it says BOTH tools report the token. Left unguarded it could name
         # a status neither model returns (firing proof 14, 2026-08-19, which passed until this).
-        capabilities = _extract_section(_read_readme(), CAPABILITY_HEADING)
+        capabilities = _extract_section(_read_readme(), CAPABILITY_HEADING, source="README.md")
         assert not_running[0] in capabilities, (
             f"README's {CAPABILITY_HEADING!r} table does not name {not_running[0]!r}, the status "
             "both companion tools return with the app closed. The table is where the promise that "
@@ -899,19 +979,18 @@ class TestTheCompanionSectionMatchesTheShippedApp:
         """SC-4: a fresh install launches with one ``uv`` command and no build step.
 
         The claim is checked against ``pyproject.toml`` before it is checked against the prose: if
-        ``fastapi`` or ``uvicorn`` ever moved into an extra or a dependency group, the README's
+        ``fastapi`` or ``uvicorn`` ever moved into an extra or a dependency group, the guide's
         "no extra, no dependency group" sentence would be false and this fails on the *code* side.
         """
         pyproject = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
         base = {re.split(r"[<>=!\[ ]", spec)[0] for spec in pyproject["project"]["dependencies"]}
         assert {"fastapi", "uvicorn"} <= base, (
             f"fastapi and uvicorn are no longer both base dependencies (found {sorted(base)}). "
-            "README's companion section tells the reader there is no extra and no dependency group "
+            "the companion guide tells the reader there is no extra and no dependency group "
             "to install — that sentence is now false."
         )
 
-        readme = _read_readme()
-        section = _claim(_extract_section(readme))
+        section = _claim(_extract_section(_read_guide()))
         assert "Node is never required" in section, (
             "the section does not state that Node is never required at install or runtime. The "
             "absence of a Node prerequisite is the point of the committed bundle, and a reader who "
@@ -923,54 +1002,92 @@ class TestTheCompanionSectionMatchesTheShippedApp:
             "found out"
         )
 
-        # The same claim is restated in ## Requirements, outside this module's section, where a
-        # reader meets it first. Left unguarded, that copy could say the opposite and every test
+        # The same claim is restated in README's ## Requirements — a different document now, where
+        # a reader meets it first. Left unguarded, that copy could say the opposite and every test
         # here would stay green — measured, not argued (review, 2026-08-19).
-        requirements = _claim(_extract_section(readme, REQUIREMENTS_HEADING))
+        requirements = _claim(
+            _extract_section(_read_readme(), REQUIREMENTS_HEADING, source="README.md")
+        )
         assert "Node is not required at install or at runtime" in requirements, (
             f"README's {REQUIREMENTS_HEADING!r} block does not repeat the claim the companion "
             "section makes, and the two are free to contradict each other. It is the first place a "
             "reader looks to find out what they must install."
         )
 
-    def test_every_in_page_link_resolves_and_this_section_is_linked_to(self) -> None:
-        """Story 15-4 added two in-page links to this section; both were unguarded.
+    def test_every_link_anchor_resolves_and_the_guide_is_linked_to(self) -> None:
+        """Story 15-4's anchor pin, widened to the two documents the prose now spans.
 
         Measured (review, 2026-08-19): rewriting ``](#the-companion-app)`` to a slug naming no
         heading, in the capability table and the requirements list, left the suite green. A dead
-        anchor scrolls a reader nowhere and looks like a working link, and this section is reached
-        through those two — so both the resolution of every link and the existence of at least one
-        pointing here are asserted.
+        anchor scrolls a reader nowhere and looks like a working link — and the restructure added a
+        second way to die: README reaches the guide through ``docs/companion.md#slug`` anchors, and
+        the guide points back through ``../README.md#slug`` ones, none of which either file can
+        check against itself. So every in-page anchor is resolved against its own document, every
+        cross-document anchor against the document it points at, and the arrival paths are pinned:
+        README's shortened companion section is linked to from outside itself, and it links into
+        the guide — without those, the guide is only reachable by knowing it exists.
         """
         readme = _read_readme()
-        slugs = {_slug(line) for line in readme.splitlines() if _ATX_HEADING.match(line)}
-        assert len(slugs) > 5, "no headings were found in README.md — the slug scan is vacuous"
+        guide = _read_guide()
+        slugs = {
+            "README.md": {_slug(line) for line in _headings(readme)},
+            "docs/companion.md": {_slug(line) for line in _headings(guide)},
+        }
+        for name, found in slugs.items():
+            assert len(found) > 5, f"no headings were found in {name} — the slug scan is vacuous"
 
-        targets = re.findall(r"\]\(#(?P<slug>[^)]*)\)", readme)
-        assert targets, "README.md contains no in-page links at all — this check is vacuous"
-        dead = sorted({target for target in targets if target not in slugs})
-        assert not dead, (
-            f"README.md links to {dead}, which match no heading in the same file. A dead in-page "
-            f"anchor looks exactly like a working one. Known headings resolve to: {sorted(slugs)}."
-        )
+        for name, text in (("README.md", readme), ("docs/companion.md", guide)):
+            targets = re.findall(r"\]\(#(?P<slug>[^)]*)\)", text)
+            assert targets, f"{name} contains no in-page links at all — this check is vacuous"
+            dead = sorted({target for target in targets if target not in slugs[name]})
+            assert not dead, (
+                f"{name} links to {dead}, which match no heading in the same file. A dead in-page "
+                f"anchor looks exactly like a working one. Known headings resolve to: "
+                f"{sorted(slugs[name])}."
+            )
 
-        own = _slug(SECTION_HEADING)
-        section = _extract_section(readme)
-        outside = readme.replace(section, "")
+        for source, text, pattern, target_doc in (
+            ("README.md", readme, r"\]\(docs/companion\.md#(?P<slug>[^)]*)\)", "docs/companion.md"),
+            ("docs/companion.md", guide, r"\]\(\.\./README\.md#(?P<slug>[^)]*)\)", "README.md"),
+        ):
+            crossing = re.findall(pattern, text)
+            assert crossing, (
+                f"{source} carries no anchored links into {target_doc} at all — the two documents "
+                "were split on the promise that each would route the reader to the other, and this "
+                "check is vacuous without at least one such link"
+            )
+            dead = sorted({slug for slug in crossing if slug not in slugs[target_doc]})
+            assert not dead, (
+                f"{source} links to {target_doc} anchors {dead}, which match no heading there. A "
+                "dead cross-document anchor opens the right page and then scrolls the reader "
+                f"nowhere. Known headings resolve to: {sorted(slugs[target_doc])}."
+            )
+
+        own = _slug(README_COMPANION_HEADING)
+        readme_section = _extract_section(readme, README_COMPANION_HEADING, source="README.md")
+        outside = readme.replace(readme_section, "")
         assert f"](#{own})" in outside, (
-            f"nothing outside the section links to #{own}. The capability table's row and "
-            "the requirements list are how a reader arrives here; without them the section is only "
-            "reachable by scrolling."
+            f"nothing outside README's companion section links to #{own}. The capability table's "
+            "row and the requirements list are how a reader arrives there; without them the "
+            "section — and the guide it links to — is only reachable by scrolling."
+        )
+        assert "docs/companion.md" in readme_section, (
+            "README's companion section never links into docs/companion.md, so the full guide is "
+            "unreachable from the place that summarises it — the shortened section is only honest "
+            "while it says where the rest went."
         )
 
-    def test_ordinary_prose_edits_elsewhere_in_the_readme_do_not_move_this_guard(self) -> None:
-        """The silent half: this guard is about one section and must ignore the rest of the file.
+    def test_ordinary_prose_edits_elsewhere_in_the_guide_do_not_move_this_guard(self) -> None:
+        """The silent half: this guard is about one section and must ignore what sits outside it.
 
-        A guard that fires on any README edit gets disabled by the third person it inconveniences.
-        Edits before *and* after the section are both exercised, because the extraction is bounded
-        at both ends — and the trailing cases are the two heading levels that must terminate it.
+        A guard that fires on any edit around the guide gets disabled by the third person it
+        inconveniences. Edits before *and* after the section are both exercised, because the
+        extraction is bounded at both ends. The section is the guide's ``#`` title, so the one
+        trailing heading level that must terminate it is another ``#`` — a trailing ``##`` section
+        is *supposed* to be swallowed now (that is the containment test's planted case), because a
+        new ``##`` section added to the guide is new companion prose this module owns.
         """
-        original = _read_readme()
+        original = _read_guide()
         section = _extract_section(original)
 
         edited_before = original.replace(
@@ -982,23 +1099,21 @@ class TestTheCompanionSectionMatchesTheShippedApp:
             "bounded at its start"
         )
 
-        for trailing in (
-            "\n## A brand new trailing section\n\nMore unrelated prose.\n",
-            "\n# A trailing top-level heading\n\nMore unrelated prose.\n",
-        ):
-            assert _extract_section(original + trailing) == section, (
-                f"the trailing block {trailing.splitlines()[1]!r} changed what the guard reads — "
-                "the extraction is not bounded at its end"
-            )
+        trailing = "\n# A trailing top-level heading\n\nMore unrelated prose.\n"
+        assert _extract_section(original + trailing) == section, (
+            f"the trailing block {trailing.splitlines()[1]!r} changed what the guard reads — "
+            "the extraction is not bounded at its end"
+        )
 
     def test_the_sections_own_subheadings_stay_inside_it(self) -> None:
         """The counterpart bound, and the one story 15-2's guard does not need.
 
-        This section owns six ``###`` subsections. A terminator that stopped at any ATX level would
-        cut the extraction off after two paragraphs, and every "the section says X" assertion above
-        would then fail with a message about prose that is plainly there.
+        This section is the guide's title and owns every ``##`` section in the file. A terminator
+        that stopped at any ATX level would cut the extraction off after the opening paragraphs,
+        and every "the section says X" assertion above would then fail with a message about prose
+        that is plainly there.
         """
-        original = _read_readme()
+        original = _read_guide()
         section = _extract_section(original)
 
         subheadings = [
@@ -1008,10 +1123,13 @@ class TestTheCompanionSectionMatchesTheShippedApp:
         ]
         assert len(subheadings) >= 4, (
             f"the extraction found only {len(subheadings)} subheading(s) inside "
-            f"{SECTION_HEADING!r}. Either the section was flattened (in which case this bound no "
+            f"{SECTION_HEADING!r}. Either the guide was flattened (in which case this bound no "
             "longer needs proving) or the terminator regressed to stopping at any ATX level."
         )
 
+        # Both depths the terminator must let through: a deeper sub-subsection planted at the top,
+        # and a sibling-of-the-subsections `##` appended at the end — the level that used to
+        # terminate this scan when the section lived in README under a `##` heading.
         planted = original.replace(
             SECTION_HEADING, SECTION_HEADING + "\n\n#### A planted sub-subsection\n\nProse.", 1
         )
@@ -1019,25 +1137,32 @@ class TestTheCompanionSectionMatchesTheShippedApp:
             "a `####` sub-subsection truncated the section — a heading deeper than this section's "
             "own level is part of it, not its terminator"
         )
+        appended = original + "\n## An appended companion section\n\nProse.\n"
+        assert "## An appended companion section" in _extract_section(appended), (
+            "a `##` section appended to the guide fell outside the extraction — every `##` "
+            "section in docs/companion.md is companion prose this module owns, and one the scan "
+            "cannot see is one no assertion here can ever guard"
+        )
 
     def test_a_heading_inside_a_fenced_block_does_not_truncate_the_section(self) -> None:
-        """A ``## `` line inside a fence is sample text, and the scan must read it as such.
+        """A ``# `` line inside a fence is sample text, and the scan must read it as such.
 
-        This section quotes shell commands, so a documented comment or a markdown sample could
-        otherwise end the section early and hide the rest of it from every assertion above.
+        The guide quotes shell commands whose comments start with ``#`` at column zero — the
+        plugin-install section really does — so without fence-awareness a documented comment could
+        end the section early and hide the rest of it from every assertion above.
         """
-        original = _read_readme()
+        original = _read_guide()
         section = _extract_section(original)
         planted = original.replace(
             SECTION_HEADING,
-            SECTION_HEADING + "\n\n```bash\n## this is a shell comment, not a heading\n```",
+            SECTION_HEADING + "\n\n```bash\n# this is a shell comment, not a heading\n```",
             1,
         )
 
         extracted = _extract_section(planted)
 
-        assert "## this is a shell comment" in extracted, (
-            "a `##` line inside a fenced block truncated the section — the extraction is not "
+        assert "# this is a shell comment" in extracted, (
+            "a `#` line inside a fenced block truncated the section — the extraction is not "
             "fence-aware, so a documented shell comment can hide the rest of the section from "
             "every assertion in this module"
         )

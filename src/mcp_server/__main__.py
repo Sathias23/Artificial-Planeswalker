@@ -42,7 +42,7 @@ from src.mcp_server.server import build_server
 _Transport = Literal["stdio", "sse", "streamable-http"]
 
 _USAGE = """\
-usage: artificial-planeswalker [-h] [companion [--port PORT]]
+usage: artificial-planeswalker [-h] [companion [--port PORT] [--open]]
 
 Run the Artificial-Planeswalker MCP server, or the companion backend.
 
@@ -54,6 +54,8 @@ options:
   --port PORT    port the companion should prefer, overriding COMPANION_PORT
                  and the default port; a value outside 0..65535 is ignored
                  with a warning
+  --open         open the default browser on the companion's URL once it is
+                 up (or on the running instance's URL, if one is already up)
   -h, --help     show this message and exit
 """
 """The usage text, deliberately naming **no port number**.
@@ -149,8 +151,8 @@ def _usage_error(message: str) -> int:
     return 2
 
 
-def _parse_companion_port(args: Sequence[str]) -> int | None | str:
-    """Parse ``companion``'s arguments down to a preferred port.
+def _parse_companion_args(args: Sequence[str]) -> tuple[int | None, bool] | str:
+    """Parse ``companion``'s arguments down to a preferred port and an open-browser flag.
 
     Accepts ``--port N`` and ``--port=N``, in that one form pair only, **at most once** — this CLI
     has no alias-override use case, so a repeated ``--port`` is almost certainly a typo and
@@ -161,17 +163,27 @@ def _parse_companion_port(args: Sequence[str]) -> int | None | str:
     :func:`src.companion.app.server.resolve_preferred_port`, which logs a warning and uses the
     default, exactly as it treats ``COMPANION_PORT``.
 
+    ``--open`` (17.4) is a bare flag and takes no value: ``--open=yes`` is an unrecognized
+    argument like any other, and giving it twice is the same typo ``--port`` twice is. Order
+    between the two options is free.
+
     Args:
         args: Everything after the ``companion`` subcommand.
 
     Returns:
-        The parsed port, ``None`` when ``--port`` was not given, or a ``str`` describing the usage
-        error when the arguments are malformed.
+        ``(port, open_browser)`` — the port ``None`` when ``--port`` was not given — or a ``str``
+        describing the usage error when the arguments are malformed.
     """
     port: int | None = None
+    open_browser = False
     remaining = list(args)
     while remaining:
         arg = remaining.pop(0)
+        if arg == "--open":
+            if open_browser:
+                return "--open given more than once"
+            open_browser = True
+            continue
         if arg == "--port":
             if not remaining:
                 return "--port needs a value"
@@ -186,7 +198,7 @@ def _parse_companion_port(args: Sequence[str]) -> int | None | str:
             port = int(raw)
         except ValueError:
             return f"--port needs an integer, not {raw!r}"
-    return port
+    return port, open_browser
 
 
 def _run_companion(args: Sequence[str]) -> int:
@@ -205,9 +217,10 @@ def _run_companion(args: Sequence[str]) -> int:
         # extended by the c1-9 review ruling): usage on stdout, exit 0 — never the stderr banner.
         _usage()
         return 0
-    parsed = _parse_companion_port(args)
+    parsed = _parse_companion_args(args)
     if isinstance(parsed, str):
         return _usage_error(parsed)
+    port, open_browser = parsed
 
     # AD-15: this process owns its terminal, so unlike the MCP process it configures the root
     # logger — and this is what finally surfaces the records c1-3, c1-7 and c1-8 already emit
@@ -230,7 +243,7 @@ def _run_companion(args: Sequence[str]) -> int:
         # and a Ctrl-C in that window is the same deliberate user action as one during the probe.
         from src.companion.app.server import run
 
-        run(parsed)
+        run(port, open_browser=open_browser)
     except KeyboardInterrupt:
         # Under uvicorn, Ctrl-C is handled internally and shuts the server down gracefully. An
         # interrupt *before* uvicorn exists — during the identity probe or the bind — propagates

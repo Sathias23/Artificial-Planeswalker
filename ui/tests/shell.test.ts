@@ -1137,6 +1137,70 @@ describe('the analysis pair row is 1:1 by CONSTRUCTION (story c4-8, Q6, AC 3)', 
   })
 })
 
+describe('the tier strip cannot silently re-collapse (tier-list usability, 2026-08-23)', () => {
+  // WHY THIS READS THE STYLESHEET RATHER THAN RENDERING — the AnalysisRow block's reason,
+  // verbatim: jsdom has no layout engine, so the headline defect this change repaired
+  // (thumbnails collapsing to overlapping ~0px slivers, the strip wrapping instead of
+  // scrolling, the preview column staying put at a width it does not fit) is invisible to
+  // every rendered assertion in `TierListView.test.tsx`. Nor can the px-citation gate hold
+  // it: that guard fires on an ADDED uncited literal, and the regression shape here is a
+  // REMOVAL — reverting `width: 176px`, re-adding `flex-wrap: wrap` or dropping
+  // `flex: 0 0 auto` would regress the defect with the suite green. So the load-bearing
+  // rules are read as SOURCE, over the same git-derived list, with non-vacuity checks that
+  // each rule was found at all. Comments are stripped first so documentation of a rule can
+  // never satisfy (or trip) a check about the rule.
+  const TIER_CSS = 'src/containers/TierListView/TierListView.css'
+  const tierSource = stripComments(sourceOf(TIER_CSS))
+
+  const tierRuleOf = (selector: string) =>
+    new RegExp(`${selector.replace(/\./g, '\\.')}\\s*\\{([^}]*)\\}`).exec(tierSource)?.[1] ?? ''
+
+  it('is reading the real stylesheet (non-vacuity)', () => {
+    // `shippedStylesheets` is the module-scope git-derived list; an untracked stylesheet would
+    // not be in it, so this is also the `git add` check for this file.
+    expect(shippedStylesheets).toContain(TIER_CSS)
+  })
+
+  it('gives the thumb slot its cited real width — the sliver repair itself', () => {
+    // DESIGN.md `components.tier-row.thumb-width`. The old derivation (`min-height: 6lh` with
+    // the width "following from 63:88") yielded no intrinsic width at all; an explicit width
+    // is the repair, and this pin is what keeps a tidy-up from restoring the derivation.
+    const thumb = tierRuleOf('.tier-tile-thumb')
+    expect(thumb.length, 'the `.tier-tile-thumb` rule was not found at all').toBeGreaterThan(10)
+    expect(thumb).toMatch(/width:\s*176px\s*;/)
+  })
+
+  it('keeps every tile unshrinkable — a long row scrolls instead of crushing its tiles', () => {
+    // A flex item's default `flex-shrink: 1` would let a sixty-card tier crush every tile
+    // before the scrollbar ever appeared — the I/O matrix's "tiles never shrink or overlap".
+    const tile = tierRuleOf('.tier-tile')
+    expect(tile.length, 'the `.tier-tile` rule was not found at all').toBeGreaterThan(10)
+    expect(tile).toMatch(/flex:\s*0\s+0\s+auto\s*;/)
+  })
+
+  it('scrolls the strip horizontally and never wraps it', () => {
+    const strip = tierRuleOf('.tier-row-thumbs')
+    expect(strip.length, 'the `.tier-row-thumbs` rule was not found at all').toBeGreaterThan(10)
+    expect(strip).toMatch(/overflow-x:\s*auto\s*;/)
+    // NOT declared in any value — `flex-wrap: wrap` is exactly the pre-repair rule.
+    expect(strip).not.toMatch(/flex-wrap/)
+  })
+
+  it('collapses the preview column away under the shell’s own breakpoint', () => {
+    // The same `(width < 1100px)` figure `AppShell.css` re-stacks its columns on. `display:
+    // none`, not `visibility: hidden`, for the AnalysisRow rule's own distinction: a hidden
+    // element still occupies its grid area, so the collapsed single-track body would carry a
+    // dead sticky box beneath the rows.
+    const mediaAt = tierSource.indexOf('@media (width < 1100px)')
+    expect(mediaAt, 'the `(width < 1100px)` media block was not found at all').toBeGreaterThan(-1)
+    const media = tierSource.slice(mediaAt)
+    const preview = /\.tier-preview\s*\{([^}]*)\}/.exec(media)?.[1] ?? ''
+    expect(preview.length, 'no `.tier-preview` rule inside the media block').toBeGreaterThan(5)
+    expect(preview).toMatch(/display:\s*none\s*;/)
+    expect(preview).not.toMatch(/visibility/)
+  })
+})
+
 describe('the shell is presentation-only, and that is asserted (AC 16)', () => {
   const shellSourceText = sourceOf(SHELL_TSX)
 
@@ -1325,6 +1389,13 @@ describe('the component primitives are presentation-only, and that is asserted',
       file: 'src/components/DeckBadges/DeckBadges.tsx',
       imports: ['../Badge/Badge', './DeckBadges.css'],
     },
+    // Story 17.5's one. Composes `StatePanel` under a decorative `<img>` and nothing else — no
+    // react import (its one prop is a string array), no handlers, no ref, no request: the hero's
+    // `src` is a browser fetch, never the app's.
+    {
+      file: 'src/components/Welcome/Welcome.tsx',
+      imports: ['../StatePanel/StatePanel', './Welcome.css'],
+    },
     // Story c4-3's two, and the first component in this list whose PROPS are a discriminated
     // union rather than a flat bag: the loading well's member has one property, so there is
     // nothing to say in a well that must stay silent, and the unknown variant has no `name` for
@@ -1375,8 +1446,8 @@ describe('the component primitives are presentation-only, and that is asserted',
     // working as designed rather than a number being bumped: the component was written,
     // `git ls-files` saw it, and this list had to name it before the suite went green again.
     // 18 at c4-8's `AnalysisRow` — the pair row `AppShell.tsx:127` assigned to that story by
-    // name, built one story before the panel that shares it.
-    expect(PRIMITIVES).toHaveLength(18)
+    // name, built one story before the panel that shares it. 19 at 17.5's `Welcome.tsx`.
+    expect(PRIMITIVES).toHaveLength(19)
     for (const { file } of PRIMITIVES) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }
@@ -1633,7 +1704,7 @@ describe('the containers are a declared category with a posture of its own', () 
         'react',
       ],
     },
-    // c6-6's copy module. One TEMPLATE — the artefact's row writes `{kind}` — plus the
+    // c6-6's copy module. One TEMPLATE — the artefact's row writes `{noun}` — plus the
     // placeholder it names and the one-line builder that fills it. `imports: []` for
     // `CardDetail/copy.ts`'s measured reason: `tests/` is the `nodenext` project and `src/` the
     // `bundler` one, so a `ui/tests` file may import an app module only if that module has no
@@ -1682,10 +1753,17 @@ describe('the containers are a declared category with a posture of its own', () 
     // self-hydrating consumer, so `posture.test.ts` would fail it under `src/components/` three
     // times over. `../../state/agentView` is TYPE-only, reaching the STATE layer rather than
     // `src/api/` — the props derive from the store union's own `tier_list` arm.
+    // …and `ManaCost` joins at the tier-list usability change (2026-08-23): the view grew a
+    // module-local in-view preview of the inspection target (`TierPreview` — the card-detail
+    // panel sits behind the agent view's scrim, so hover showed nothing), whose head line draws
+    // the cost as pips exactly as `CardDetail` does. `useInspectionTargetId` is its READ of the
+    // store — the preview writes nothing — and it reaches this file through the already-listed
+    // `../../state/inspection`, so the pips' primitive is the only new module.
     {
       file: 'src/containers/TierListView/TierListView.tsx',
       imports: [
         '../../components/CardPlaceholder/CardPlaceholder',
+        '../../components/ManaCost/ManaCost',
         '../../state/agentView',
         '../../state/cards',
         '../../state/faces',
@@ -1727,19 +1805,24 @@ describe('the containers are a declared category with a posture of its own', () 
         'react',
       ],
     },
-    // c6-8's agent-views nav — the header pills. It reads the agent-view store through TWO
-    // per-kind selector hooks and calls one verb on it, which is the whole of its state
-    // coupling; `../../api/schema` is a TYPE-only import for the kind union (the rule below
-    // reads the specifier, so it is listed either way), and it is reached rather than re-spelled
-    // because `schema.ts` is the only home for a wire-derived alias. `react` is here for
-    // `useId`, which generates the `aria-describedby` target on a quiet pill. It calls hooks and
-    // reads a store, so `posture.test.ts` would fail it under `src/components/` twice over.
+    // c6-8's agent-views nav — the header pills, and since 17.2 the History pill + popover too
+    // (the ruled FR-18 home), in this same module rather than a sibling: the popover is the
+    // pill's own disclosure, anchored inside the nav's markup, and a second module would have
+    // bought a registry entry for no seam. It reads the agent-view store through per-kind and
+    // history selector hooks and calls its exported verbs (`reopenAgentView`, `reopenPush`),
+    // which is the whole of its state coupling; `../../api/schema` is a TYPE-only import for
+    // the kind union (the rule below reads the specifier, so it is listed either way), and it
+    // is reached rather than re-spelled because `schema.ts` is the only home for a wire-derived
+    // alias. `react` is here for `useId`, the popover's open state and its native listeners.
+    // It calls hooks and reads a store, so `posture.test.ts` would fail it under
+    // `src/components/` twice over.
     {
       file: 'src/containers/AgentViewsNav/AgentViewsNav.tsx',
       imports: [
         '../../api/schema',
         '../../state/agentView',
         './AgentViewsNav.css',
+        './HistoryPopover.css',
         './copy',
         './pushTime',
         'react',
@@ -2131,9 +2214,12 @@ describe('the containers are a declared category with a posture of its own', () 
     // subscription beside `App`'s. `../../state/socket` is a TYPE import (`ConnectionStatus`),
     // which is what keeps the WebSocket module's behaviour out of this file entirely.
     //
-    // NOTE WHAT IS ABSENT: no `../../api/…` of any kind, in either form. The pill reads no wire
-    // shape and makes no request — its "is the backend there" answer arrives through the store
-    // that c5-6's loop writes, and the `/health` read that WOULD touch the network is c10-1's.
+    // NOTE WHAT IS ABSENT: no `../../api/…` of any kind, in either form — STILL, after 17.1
+    // shipped the `/health`-fed tooltip. The pill reads no wire shape and makes no request: the
+    // instance id arrives through the system store exactly as the connection status does
+    // (`identity.ts` refreshes it on transitions to `'live'`, `useInstanceId` is the selector
+    // this story grew beside `useConnection`), so the component's posture is unchanged from
+    // c5-7's. `./port` joined at 17.1 — see its own entry below.
     {
       file: 'src/containers/ConnectionPill/ConnectionPill.tsx',
       imports: [
@@ -2142,9 +2228,18 @@ describe('the containers are a declared category with a posture of its own', () 
         '../../state/systemState',
         './ConnectionPill.css',
         './copy',
+        './port',
         'react',
       ],
     },
+    // 17.1's port resolver — the NINTH application of the `react-refresh/only-export-components`
+    // split (`imageUrl.ts`'s entry states the rule). `imports: []` is the strongest statement
+    // this list can make about it: no react, no store, no wire and above all no fetch — it reads
+    // `window.location`'s two fields and names the default port the browser elided. Deliberately
+    // NOT in `copy.ts`, whose charter draws a hard "what is data and not copy" line: a port is
+    // data, and the copy module's import-freedom is load-bearing for the nodenext gate that
+    // imports it.
+    { file: 'src/containers/ConnectionPill/port.ts', imports: [] },
     // c5-7's copy module — the SEVENTH in this tree, and the first that AUTHORS its strings rather
     // than transcribing them: no artefact specified the pill's words at all (see the module's own
     // header). `imports: []` for `CardDetail/copy.ts`'s measured reason — `tests/` is the
@@ -2305,7 +2400,12 @@ describe('the containers are a declared category with a posture of its own', () 
     // 39 at 16.3, the fourth and last view body in the identical one-component shape: the
     // groups view, whose quantity badge reads the deck store through a primitive selector and
     // whose count is a bare numeral — still no copy module, still no derivation module.
-    expect(CONTAINERS).toHaveLength(39)
+    // 40 at 17.1, which adds ONE module to an existing component: the pill's port resolver,
+    // split out of `ConnectionPill.tsx` by the same lint rule that split `imageUrl.ts` and the
+    // nav's time formatter. The tooltip itself, its copy and its state all landed in files this
+    // list already covers (`ConnectionPill.tsx`, `copy.ts`) or does not need to
+    // (`src/state/identity.ts`, which the store-writes and posture gates own).
+    expect(CONTAINERS).toHaveLength(40)
     for (const { file } of CONTAINERS) {
       expect(sourceOf(file).length, `${file} is empty or missing`).toBeGreaterThan(200)
     }

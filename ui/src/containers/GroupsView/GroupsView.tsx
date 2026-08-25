@@ -69,7 +69,7 @@ import './GroupsView.css'
 export interface GroupsViewProps {
   /**
    * The push's own `kind`, interpolated into the shared empty-push line. The template is
-   * kind-generic (`{kind}`), so this module authors no second sentence — `emptyPushLine` is
+   * kind-generic (`{noun}`), so this module authors no second sentence — `emptyPushLine` is
    * reached across containers exactly as `imageUrl` is, its fourth reader, and
    * `tests/empty-push-copy.test.ts` keeps pinning the one copy.
    */
@@ -359,7 +359,7 @@ export function GroupsView({ kind, items }: GroupsViewProps) {
     )
   }
 
-  // The SHARED empty-push line, `{kind}`-substituted — one template, one owner, fourth reader
+  // The SHARED empty-push line, noun-substituted — one template, one owner, fourth reader
   // (the copy module's whole design). A bare `<p>` replacing the `<ul>`, never inside it. It
   // renders for an empty `items` AND for a push whose every group was skipped: an empty `<ul>`
   // would announce "list, 0 items" with nothing to explain why, and the sentence is the closest

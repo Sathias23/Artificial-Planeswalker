@@ -33,8 +33,14 @@ describe('generated wire types (AD-12)', () => {
   // `status` must stay the 'ok' literal, not widen to string: it is the closed token the
   // backend's Literal["ok"] declares, and the identity probe's whole value is that a caller can
   // tell this companion from an unrelated server holding the same port (AD-4).
+  // `clients` (17.4) is optional AND nullable on the wire: optional so a reader built against the
+  // older two-field body still parses, nullable because the backend declares `int | None`.
   it('pins HealthResponse to the backend shape', () => {
-    expectTypeOf<HealthResponse>().toEqualTypeOf<{ status: 'ok'; instance_id: string }>()
+    expectTypeOf<HealthResponse>().toEqualTypeOf<{
+      status: 'ok'
+      instance_id: string
+      clients?: number | null
+    }>()
   })
 
   // The body is the token and nothing else — no message, no detail, no errors[] (AD-16).

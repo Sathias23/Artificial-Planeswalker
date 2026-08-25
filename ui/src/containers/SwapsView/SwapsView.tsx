@@ -57,7 +57,7 @@ import './SwapsView.css'
 export interface SwapsViewProps {
   /**
    * The push's own `kind`, interpolated into the shared empty-push line. The template is
-   * kind-generic (`{kind}`), so this module authors no second sentence — `emptyPushLine` is
+   * kind-generic (`{noun}`), so this module authors no second sentence — `emptyPushLine` is
    * reached across containers exactly as `imageUrl` is, and `tests/empty-push-copy.test.ts`
    * keeps pinning the one copy.
    */
@@ -94,10 +94,16 @@ export type EveryConfidenceTokenRenders = Assert<
  * A tile's card id, or `''` — the app's own value for *"an id the app cannot render"*:
  * `hydrateCard('')` refuses it terminally with the unknown-card placeholder and issues no
  * request, which routes a malformed item into the degradation the matrix already describes.
- * NOT trimmed, for `SuggestionsView`'s recorded reason: the wire caps the id's LENGTH without
- * validating its shape (AD-7), so a padded id is not this component's to rewrite.
+ * A WHITESPACE-ONLY id folds to `''` too (E16-91, `GroupsView.cardIdsOf`'s gate in the
+ * single-id shape): it names nothing the app could ever render, and unlike `''` the
+ * synchronous unknown guard cannot catch it before the first paint commits
+ * `/api/card-image/%20` — so it takes the same terminal unknown-card arm, never a request.
+ * A NON-blank id is NOT trimmed, for `SuggestionsView`'s recorded reason: the wire caps the
+ * id's LENGTH without validating its shape (AD-7), so a padded copy of a real id is not this
+ * component's to rewrite.
  */
-const cardIdOf = (value: unknown): string => (typeof value === 'string' ? value : '')
+const cardIdOf = (value: unknown): string =>
+  typeof value === 'string' && value.trim() !== '' ? value : ''
 
 /** The rationale, or `''` — the row keeps its line either way (see {@link SwapRow}). */
 const rationaleOf = (item: UntrustedSwap): string =>
@@ -300,7 +306,7 @@ export function SwapsView({ kind, items }: SwapsViewProps) {
     )
   }
 
-  // The SHARED empty-push line, `{kind}`-substituted — one template, one owner, second reader
+  // The SHARED empty-push line, noun-substituted — one template, one owner, second reader
   // (the copy module's whole design). A bare `<p>` replacing the `<ul>`, never inside it.
   return <p className="swaps-view-empty">{emptyPushLine(kind)}</p>
 }

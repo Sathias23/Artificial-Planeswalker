@@ -2,7 +2,7 @@
 name: Artificial-Planeswalker Companion
 description: 'Dark-only, card-art-forward visual identity for the companion app — Voltglass: cool blue-violet smoked glass with one luminous periwinkle accent, game-adjacent, never imitative of WotC trade dress.'
 status: approved
-updated: 2026-08-18
+updated: 2026-08-22
 theme: voltglass
 sources:
   - _bmad-output/planning-artifacts/prds/prd-Artificial-Planeswalker-2026-07-22/prd.md
@@ -306,6 +306,41 @@ components:
     # motion-inventory entry this story does not own. The dot never carries the state alone —
     # UX-DR29's rule — so the pill's accessible name says "unread" in words as well.
     unread-dot-size: 8px
+  history-popover:
+    # ADDED 2026-08-22 (FR-18 home ruling, Sathias): session history extends the nav — a fifth
+    # "History" pill after the four kind pills, toggling a non-modal popover of the session's
+    # last ~20 pushes. The PILL declares nothing here on purpose: it is `components.nav-pill`
+    # verbatim (padding, type, quiet state and all) plus a stroke-based clock glyph — a plain
+    # UI glyph, never anything that could read as a set symbol. The decision aid behind the
+    # ruling is `.working/session-history-home-options.html`; the sub-treatments EXPERIENCE.md
+    # drafted as [ASSUMPTION] were confirmed in implementation and struck at story 17.2 (one
+    # wording delta, on the enter fade — see below). Behavior in EXPERIENCE.md's "History pill
+    # + popover" row.
+    background: '{colors.surface-overlay}'
+    border: '1px solid {colors.border-hairline}'
+    radius: '{rounded.md}'
+    # A token, never a literal ("neither is ever written as a literal" — Elevation & Depth).
+    # The subtle accent glow is licensed here because the popover holds agent content the user
+    # is returning to — the accent's own meaning, "the agent put something here".
+    shadow: '{components.elevation.glow}'
+    # Echoes `{components.state-panel.max-width}` — the system's existing bounded-secondary-
+    # surface figure. The entry list scrolls INSIDE the popover past it; the popover itself
+    # never outgrows the viewport.
+    max-height: 480px
+    entry-kind-type: '{typography.label}'
+    entry-title-type: '{typography.body}'
+    # The time is data beside a label, so it takes `{typography.numeric}` (tabular — a column
+    # of times must not jitter) at the Colors section's timestamp tier.
+    entry-time-type: '{typography.numeric}'
+    entry-time-foreground: '{colors.text-tertiary}'
+    # Opacity-only fade — no rise, no transform, and deliberately NO new motion token or
+    # reduced-motion registration: `glide` is the existing duration/ease pair, and an
+    # opacity-only fade self-neutralises under reduced motion. AMENDED 2026-08-22 (story 17.2):
+    # this line originally also promised "no inventory entry", which the exhaustiveness gate
+    # falsified — UX-DR42's reduced-motion inventory keys every shipped visual-class transition
+    # to a named row, so the fade ships with its own row ("History-popover fade -> appears in
+    # place", tokens.css) while the no-token and no-registration halves hold as drafted.
+    enter: '{components.motion.glide} {components.motion.ease-glide}'
   agent-view:
     scrim: '{colors.scrim}'
     backdrop: 'blur(16px)'
@@ -336,6 +371,36 @@ components:
     chip-width: 132px
     letter-size: 44px
     letter-weight: '500'
+    # ADDED 2026-08-23 (tier-list usability). This block shipped seven values and NOTHING on the
+    # thumbnail's size, while the strip's stylesheet claimed the width was derived "from the
+    # height through card-shape's own 63:88" — a derivation that never existed: the tile's only
+    # sizing input was `aspect-ratio` on an empty box, which yields no intrinsic width, so the
+    # thumbnails collapsed to overlapping ~0px slivers. On c6-7's suggestion-row precedent the
+    # width is therefore RULED HERE FIRST and the stylesheet written against it. 176px is the
+    # deck grid's own cited floor — the Layout section's `repeat(auto-fill, minmax(176px, 1fr))`
+    # — i.e. the smallest box this system already calls a readable card face; the HEIGHT follows
+    # through `{components.card-tile.aspect}`'s 63:88. The strip SCROLLS horizontally rather
+    # than wrapping, so tiles keep this size at any count — the component row below says only
+    # "a thumbnail row", which a scrolling row contradicts nothing of.
+    thumb-width: 176px
+  tier-preview:
+    # ADDED 2026-08-23 (tier-list usability). Hovering or focusing a tier tile sets the
+    # inspection target, but the persistent card-detail panel sits BEHIND the agent view's
+    # scrim — so inside the tier-list view body, and only there, a lightweight preview of the
+    # current inspection target (hover / focus / pin, the inspection store's own precedence)
+    # renders in a second column on the right. It is SILENT AND WORDLESS: no live region, no
+    # `role="region"`, no authored copy — every rendered word is wire data from the card cache
+    # (name, mana cost as pips, type line), and the art falls back through the card-placeholder
+    # ladder. It is `position: sticky` inside the view body's one scroll container — no new
+    # fixed layer, no z-index — and it is NOT a second card-detail panel: no pin control, no
+    # flip, no oracle text, no announcement.
+    # 300px sits deliberately between the two figures the system already rules: wider than the
+    # 176px thumb floor (this is the "look closer" render the strip's tiles point at) and
+    # narrower than the shell's 452px detail column, so at the ~1100px window floor the tiers
+    # keep the clear majority of the view body's width.
+    # The column COLLAPSES AWAY below the shell's own ~1100px breakpoint (the Layout section's
+    # window floor); the strip stays usable alone.
+    preview-width: 300px
   suggestion-row:
     # AMENDED 2026-08-11 (story c6-7, Q2). This block carried four values — background, border,
     # radius, thumb-radius — and nothing about SPACING, ROW HEIGHT or the LIVE MARKER's form,
@@ -400,6 +465,11 @@ components:
     # Everything else is deliberately absent: section spacing comes off the spacing scale, the
     # title/count/rationale treatments are the description's type-role assignments, and the tile
     # geometry is content-derived (the tier-row route) — nothing here fixes a card's size in px.
+    # AMENDED 2026-08-23 (tier-list usability): "the tier-row route" never produced a WIDTH —
+    # an aspect-ratio box with no in-flow content has no intrinsic width, so the content
+    # derivation this line praises collapses the tiles to ~0px slivers. tier-row now rules
+    # `thumb-width: 176px` for its own strip; the group tiles still ride the old derivation and
+    # share the collapse, which is a recorded follow-up rather than this amendment's to fix.
     divider: '1px solid {colors.border-hairline}'
     measure: 900px
   connection-pill:
@@ -478,6 +548,32 @@ components:
     background: '{colors.surface-base}'
     border-top: '1px solid {colors.border-hairline}'
     type: '{typography.micro}'
+  welcome:
+    # ADDED 2026-08-22 (story 17.5). The no-active-deck surface, which is the first thing anyone
+    # sees: the hero art as a banner ABOVE the State panel (not inside it — the panel's
+    # no-illustration rule is untouched), with the available-deck names as quiet chips instead of
+    # a vertical list. `max-width` is the one geometry literal: wider than the panel's 480px so
+    # the art reads as a banner, narrower than the track so it still centres as an object.
+    max-width: 720px
+    # The banner crop: the 1536x1024 source stands 480px tall at the block width. A max-height
+    # rather than a height, so a missing file reserves no 240px hole (with the hairline border a
+    # thin strip remains); not an aspect-ratio, because the shipped tree writes that property
+    # exactly once (cards). `hero-position` is the crop anchor that keeps the title visible.
+    hero-max-height: 240px
+    hero-position: 'center 20%'
+    gap: '{spacing.5}'
+    hero-radius: '{rounded.lg}'
+    hero-border: '1px solid {colors.border-hairline}'
+    deck-chip:
+      background: '{colors.surface-well}'
+      border: '1px solid {colors.border-hairline}'
+      radius: '{rounded.pill}'
+      # Body, never micro: micro's uppercase companion is mandatory and a deck name is user data
+      # (the connection-pill ruling above, applied again).
+      type: '{typography.body}'
+      foreground: '{colors.text-secondary}'
+      padding: '{spacing.1} {spacing.3}'
+      gap: '{spacing.2}'
 ---
 
 ## Brand & Style
@@ -578,7 +674,7 @@ Tonal layering (the surface ramp) does the everyday hierarchy work. Borders are 
 
 ## Components
 
-→ **Composition reference:** `imports/claude-design/Planeswalker Companion.dc.html` demonstrates Panel, Badge, StatChip, Card tile, Quantity badge, Mana curve, Color distribution, ManaPip/ManaCost, Deck row, Group header, Card detail panel, Format check, Agent view, Swap row, Tier row and Group section in composition. It does **not** demonstrate — and these are specified here without a visual precedent — DFC flip control, Suggestion row, Connection pill, State panel, Card placeholder, Skip link, or Footer attribution. Read the mock for arrangement and density; read this file for the rules, which correct it in several places (card geometry, tokenized shadows, `accent-dim` restrictions, spacing scale).
+→ **Composition reference:** `imports/claude-design/Planeswalker Companion.dc.html` demonstrates Panel, Badge, StatChip, Card tile, Quantity badge, Mana curve, Color distribution, ManaPip/ManaCost, Deck row, Group header, Card detail panel, Format check, Agent view, Swap row, Tier row and Group section in composition. It does **not** demonstrate — and these are specified here without a visual precedent — DFC flip control, Suggestion row, Connection pill, State panel, Card placeholder, Skip link, Footer attribution, or the History pill + popover. Read the mock for arrangement and density; read this file for the rules, which correct it in several places (card geometry, tokenized shadows, `accent-dim` restrictions, spacing scale).
 
 ### Containers & chrome
 
@@ -586,6 +682,7 @@ Tonal layering (the surface ramp) does the everyday hierarchy work. Borders are 
 - **Badge** — pill, `{typography.label}`, 5 tones: neutral (`surface-overlay` / `text-secondary` / `border-strong`), accent, positive, negative, caution. Semantic tones tint background and border from their own semantic token — never from hard-coded RGB, which breaks every non-Voltglass theme.
 - **StatChip** — label in `{typography.micro}` `{colors.text-tertiary}` over a 17px `{typography.numeric}` value in `{colors.text-primary}`, on `{components.stat-chip.background}`. Optional delta in `{typography.micro}`, tinted `{colors.positive}` / `{colors.negative}` by sign.
 - **Agent views nav** (the nav pill) — the agent-view controls in the header, and the "Close · esc" control inside a view. `{components.nav-pill.padding}` at `{rounded.pill}`, `{typography.label}`. Hover/focus: border to `{components.nav-pill.hover-border}`, text to `{components.nav-pill.hover-foreground}`, plus `{components.nav-pill.hover-glow}`. A pill whose view has an unread push carries a `{components.nav-pill.unread-dot}` at `{components.nav-pill.unread-dot-size}` — the accent's meaning is "the agent put something here", so an unread push is exactly what it marks. **Three states, added 2026-08-12 (story c6-8), because the block above carried a hover treatment and an unread dot and the header nav needs the other three-quarters of the component to exist:** a pill whose kind has received no push this session is **quiet** — `{components.nav-pill.quiet-foreground}`, no hover rule at all, and not focusable (it ships `disabled`, so the cold-open Tab order contains no pill at all, which is UX-DR40's enumeration read literally); a pill whose kind HAS received one is active and carries **the last push's time** after its label in `{components.nav-pill.time-type}` `{components.nav-pill.time-foreground}`, absolute and static; and the unread dot is presentational (`aria-hidden`) with the word "unread" in the button's accessible name beside it, because UX-DR29 already ruled that the dot never carries the state alone and UX-DR45 does not license this pill to announce. The quiet pill's copy is EXPERIENCE.md:73's, byte-for-byte, and it reaches assistive technology as a programmatic description as well as a pointer tooltip — UX-DR39 bans hover-only disclosure of unique information, and the connection pill was already repaired once for exactly this shape (see EXPERIENCE.md's amended nav-pill row).
+- **History pill + popover** — **the session-history home, RULED 2026-08-22 (Sathias; decision aid `.working/session-history-home-options.html`)**. The pill is `components.nav-pill` verbatim — padding, `{typography.label}`, the quiet state, the lot — as a fifth pill after the four kind pills, carrying a stroke-based **clock glyph** in the label's colour: a plain UI glyph, the DFC control's own rule against anything symbol-shaped. It carries **no unread dot, ever** — unread stays per-kind on the kind pills. It toggles a **non-modal popover** anchored under the header on `{components.history-popover.background}` inside `{components.history-popover.border}` at `{components.history-popover.radius}` with `{components.history-popover.shadow}` — the subtle accent glow, because the popover holds agent content the user is returning to. Capped at `{components.history-popover.max-height}`; the entry list scrolls inside it. Entry rows are real `<button>`s at a ≥ 24×24px hit area: kind in `{components.history-popover.entry-kind-type}`, push title (when present) in `{components.history-popover.entry-title-type}`, time in `{components.history-popover.entry-time-type}` `{components.history-popover.entry-time-foreground}`. Enters with an **opacity-only fade** over `{components.history-popover.enter}` — no rise, and no new motion-inventory entry, because an opacity-only fade self-neutralises under reduced motion. No scrim, no focus trap: it is not a modal, not a landmark, not a live region. Behavior, ordering, dismissal and the [ASSUMPTION]-tagged sub-treatments are in EXPERIENCE.md's "History pill + popover" row.
 - **Skip link** — "Skip past the deck grid": visually hidden until it receives keyboard focus; on focus it appears at the window's top-left as a `{components.skip-link.radius}` chip on `{components.skip-link.background}` with `{components.skip-link.border}`, text in `{typography.body-strong}` `{components.skip-link.foreground}`, carrying the standard `{components.focus-ring}`. It exists because the card grid puts a long run of Tab stops between the header nav and everything in the right column — **measured 2026-08-07 on the largest real deck (Atraxa Counter Cabinet v2, 99 tiles): 205 stops from the top of the document to the footer, of which the link skips 102.0 on average** (amended 2026-08-07, story c4-12, Q13; this read *"100+ Tab stops"* while EXPERIENCE.md already carried c4-11's measured figures, so the two peer artefacts disagreed about the same number). Behavior in EXPERIENCE.md.
 - **Footer attribution** — one quiet line, full width, `{components.footer-attribution.background}` above `{components.footer-attribution.border-top}`, `{typography.micro}` in `{components.footer-attribution.foreground}` (`text-secondary`, 9.3:1 — this text is legally load-bearing and gets a passing tier, not a muted one): "Card data and imagery courtesy of Scryfall. Unofficial Fan Content permitted under the Wizards of the Coast Fan Content Policy. Not approved/endorsed by Wizards." Links persistently underlined (identifiable at rest, not hover-only); hover brightens to `{colors.text-primary}`; each link's hit area ≥ 24px tall. Visible without scrolling, and never louder than this. **Required on every surface — this is a condition of public release, not a design choice.**
   *(SC-5 gate ruling, Brad, 2026-08-20 — `sc-5-gate-report-2026-08-20.md` F1: an **open agent view is not a surface** for this requirement's purposes. The overlay's scrim covers the whole shell, attribution included, exactly as a modal is meant to; the requirement is judged on the surfaces proper, where the footer is structural and unconditional.)*
@@ -614,8 +711,9 @@ Tonal layering (the surface ramp) does the everyday hierarchy work. Borders are 
 
 ### System presence & states
 
-- **Connection pill** — bottom-left, `{components.connection-pill.radius}` on `{components.connection-pill.background}` with `{components.connection-pill.border}`: a `{components.connection-pill.dot-size}` dot (`{colors.positive}` live · `{colors.caution}` reconnecting · `{colors.negative}` backend gone — all **static**, no pulse) plus `{typography.micro}` text naming the state and the active deck name. The dot never carries the state alone. Quiet at rest; it never animates. *This replaces `AgentStatus`, whose `idle | thinking | streaming` vocabulary describes agent cognition the app has no signal for.* **Amended 2026-08-08 (story c5-7): the micro role applies to the STATE WORD only; the active deck NAME takes `{typography.body}` `{colors.text-secondary}` beside it.** `{typography.micro}` carries `textTransform: uppercase` from this file's own frontmatter, and an uppercased `SULTAI MIDRANGE` destroys the mixed-case name the pill exists to show — the identical wall c4-10 hit with the format check's server-authored sentence (`:236-237`) and c4-3 hit with the unknown-card label. The resolution is the same one, and the shipped precedent for the pairing is in this app's own header: `app-shell-kicker` is micro/uppercase/tertiary and the deck name beside it is not. The words themselves are in `EXPERIENCE.md`'s connection-pill copy row, authored by that story because no artefact had them.
-- **State panel** — the shared shell for no-active-deck, database-not-initialized, database-updating and disconnected states: centered on `{components.state-panel.background}` at `{components.state-panel.radius}` with `{components.state-panel.border}`, max-width `{components.state-panel.max-width}`. Headline `{typography.heading}`, guidance `{typography.body}` `{colors.text-secondary}`, the concrete next action on its own line in `{typography.body-strong}` `{colors.accent}` (commands in an inline chip on `{colors.surface-well}` at `{rounded.sm}` in `{fonts.mono}` — the *only* place a second family appears, because a command is data the user retypes). No illustrations, no sad-face icons — calm text on a calm panel. The panel also covers **database-updating-stalled** and **internal-error**, added with their copy in story c2-9; a panel whose state has no honest next action renders none rather than inventing one.
+- **Connection pill** — bottom-left, `{components.connection-pill.radius}` on `{components.connection-pill.background}` with `{components.connection-pill.border}`: a `{components.connection-pill.dot-size}` dot (`{colors.positive}` live · `{colors.caution}` reconnecting · `{colors.negative}` backend gone — all **static**, no pulse) plus `{typography.micro}` text naming the state and the active deck name. The dot never carries the state alone. Quiet at rest; it never animates. *This replaces `AgentStatus`, whose `idle | thinking | streaming` vocabulary describes agent cognition the app has no signal for.* **Amended 2026-08-08 (story c5-7): the micro role applies to the STATE WORD only; the active deck NAME takes `{typography.body}` `{colors.text-secondary}` beside it.** `{typography.micro}` carries `textTransform: uppercase` from this file's own frontmatter, and an uppercased `SULTAI MIDRANGE` destroys the mixed-case name the pill exists to show — the identical wall c4-10 hit with the format check's server-authored sentence (`:236-237`) and c4-3 hit with the unknown-card label. The resolution is the same one, and the shipped precedent for the pairing is in this app's own header: `app-shell-kicker` is micro/uppercase/tertiary and the deck name beside it is not. The words themselves are in `EXPERIENCE.md`'s connection-pill copy row, authored by that story because no artefact had them. **Amended 2026-08-21 (story 17.1): the tooltip.** Revealed on hover or keyboard focus (never hover-only — UX-DR39) and tied to the pill via `aria-describedby`: a `{rounded.sm}` surface on `{colors.surface-overlay}` with `{colors.border-hairline}`, anchored flush above the pill — and "flush" is shipped as a deliberate few-pixel overlap of the pill’s box, not a zero-pixel gap: the two must not be "fixed" against each other, because any gap at all can drop the pointer mid-travel and dismiss the reveal (WCAG 1.4.13 hoverable; the eye-check owns the exact clearance). Esc dismisses the reveal, carrying the page's port and the backend's `GET /health` instance id in `{typography.body}` `{colors.text-secondary}` — data, so the micro role's uppercase may not touch it, the same wall again. The reveal is an instant visibility flip: nothing on this component animates, still. Copy is in `EXPERIENCE.md`'s connection-pill copy row.
+- **State panel** — the shared shell for no-active-deck, database-not-initialized, database-updating and disconnected states: centered on `{components.state-panel.background}` at `{components.state-panel.radius}` with `{components.state-panel.border}`, max-width `{components.state-panel.max-width}`. Headline `{typography.heading}`, guidance `{typography.body}` `{colors.text-secondary}`, the concrete next action on its own line in `{typography.body-strong}` `{colors.accent}` (commands in an inline chip on `{colors.surface-well}` at `{rounded.sm}` in `{fonts.mono}` — the *only* place a second family appears, because a command is data the user retypes). No illustrations inside the panel (the Welcome hero sits above it, not in it — 17.5), no sad-face icons — calm text on a calm panel. The panel also covers **database-updating-stalled** and **internal-error**, added with their copy in story c2-9; a panel whose state has no honest next action renders none rather than inventing one.
+- **Welcome** — the no-active-deck surface (added 2026-08-22, story 17.5): `docs/hero-image.jpg` as a decorative banner (`alt=""`, `{components.welcome.hero-radius}`, `{components.welcome.hero-border}`, cropped to `{components.welcome.hero-max-height}` with `object-fit: cover` anchored at `{components.welcome.hero-position}`; intrinsic `width`/`height` attributes reserve the box before load) above the no-active-deck State panel, the two stacked at `{components.welcome.gap}` inside a centred `{components.welcome.max-width}` block. The shell collapses to a single track for it — no empty right column. The available-deck names keep their list semantics (`<ul>/<li>`, names only, non-clickable — the agent drives) but render as quiet wrapping chips: `{components.welcome.deck-chip}` — `{colors.surface-well}` with a hairline border at `{rounded.pill}`, `{typography.body}` `{colors.text-secondary}` — body, not micro, because a deck name is user data and micro uppercases. No motion. The other five State panels are unchanged — no hero.
 - **Empty deck line** — what a loaded deck with **zero cards** shows in place of its grid: the one sentence *"This deck is empty — ask your agent to add cards."* (EXPERIENCE.md's Voice and Tone row is the source; it is transcribed, not authored) in `{components.empty-deck-line.type}` `{components.empty-deck-line.foreground}`, as the **only child of the untitled card-grid Panel**. It **replaces** the `<ul>` rather than sitting inside or beside it: a `<p>` inside a `<ul>` is invalid against UX-DR44's mandated list semantics, and an empty list left beside the sentence announces *"list, 0 items"* to a screen-reader user **before** the sentence explaining why. **No panel of its own, no error styling, no icon, no `aria-live`** — an empty deck is the NORMAL state at creation (`create_deck` writes no card, and `remove_card_from_deck` never deletes the deck), it arrives as a plain 200 with `cards: []`, and it reaches the glass through the same loaded-deck surface a full deck does. It takes **no inset, no minimum height and no centering of its own** — `{components.panel.body-padding}` is the whole of its spacing, per the frontmatter note. The **mana curve, color distribution and format check** panels are hidden in this state (EXPERIENCE.md); the **card detail and deck list panels are not** — they render their frames with no card and no rows, which no artefact describes and which is recorded as an open artefact defect against UX-DR20 rather than repaired by inventing copy. **Added 2026-08-07 (story c4-12, Q2)**, because until this amendment the state was specified in EXPERIENCE.md only and this file's own rule — *"Every value in the UI comes from this scale"* — had nothing here to point at.
 
 ## Do's and Don'ts

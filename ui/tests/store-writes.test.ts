@@ -123,7 +123,11 @@ const STORES: { store: string; owner: string; why: string }[] = [
       '`resetFaces` precedent; it is also the ONLY function that ever writes `content` back ' +
       'to `null`, which is what keeps UX-DR34 true of every production path. `content` is a ' +
       "SCALAR rather than a stack, so UX-DR38's permanently-one-level overlay is " +
-      'unrepresentable-by-type rather than a rule anybody has to obey. The container that ' +
+      'unrepresentable-by-type rather than a rule anybody has to obey. Story 17.2 widened the ' +
+      'retention BESIDE those fields rather than reshaping them: `history` holds the last 20 ' +
+      "pushes overall (FR-18, newest-first by envelope `ts`), appended inside `openAgentView`'s " +
+      'single existing `setState` — still one writer, and the history popover that renders it ' +
+      'calls only the exported verbs (`reopenPush`). The container that ' +
       'renders it touches no `setState`, which is what the scan below actually asserts.',
   },
 ]

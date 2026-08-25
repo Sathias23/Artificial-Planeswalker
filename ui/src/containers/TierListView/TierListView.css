@@ -11,11 +11,15 @@
    all five stops clear the contrast floor; the letter is also always accompanied by its name
    in text, so colour is never the sole carrier of rank.
 
-   FOUR px/weight LITERALS IN THIS FILE, EVERY ONE A DESIGN.md `components.tier-row` VALUE:
-   the border's `1px` (`'1px solid {colors.border-hairline}'`, DESIGN.md:334), the chip's
-   `132px` (`chip-width: 132px`, DESIGN.md:336), the letter's `44px` (`letter-size: 44px`,
-   DESIGN.md:337) and the letter's weight `500` (`letter-weight: '500'`, DESIGN.md:338). Every
-   other value is a scale token or content-driven — the token pin does not move for this file.
+   SIX px LITERALS (PLUS THE WEIGHT) IN THIS FILE, EVERY ONE A DESIGN.md VALUE: the border's
+   `1px` (`'1px solid {colors.border-hairline}'`, DESIGN.md:334), the chip's `132px`
+   (`chip-width: 132px`, DESIGN.md:336), the letter's `44px` (`letter-size: 44px`, DESIGN.md:337)
+   and its weight `500` (`letter-weight: '500'`, DESIGN.md:338) — all `components.tier-row` —
+   plus, added 2026-08-23: the thumb's `176px` (`components.tier-row.thumb-width`, ruled in
+   DESIGN.md first, per the c6-7 citation order), the preview column's `300px`
+   (`components.tier-preview.preview-width`, DESIGN.md) and the `1100px` collapse breakpoint
+   (DESIGN.md's Layout section: "the app targets a window from ~1100px"). Every other value is a
+   scale token or content-driven — the token pin does not move for this file.
 
    NO `--type-*` ROLE VAR IN THE LETTER'S DECLARATION BLOCK: 44px/500 is not one of the type
    roles, and pairing a role's `font` shorthand with overrides would claim a role the letter
@@ -48,6 +52,19 @@
   margin: 0;
   color: var(--text-secondary);
   font: var(--type-body);
+}
+
+/* THE VIEW BODY'S TWO COLUMNS (DESIGN.md `components.tier-preview`, added 2026-08-23): the
+   tier rows in a `minmax(0, 1fr)` track — NEVER a bare `1fr` (`shell.test.ts`'s min-content
+   trap: one unbreakable note would widen the column past its share) — beside the preview's
+   `300px` (`components.tier-preview.preview-width`, DESIGN.md). `align-items: start` is what
+   gives the preview a shorter box than the rows, which is what `position: sticky` needs to
+   have anywhere to travel. `{spacing.3}` between the columns, the row grid's own column gap. */
+.tier-list-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--space-3);
+  align-items: start;
 }
 
 /* The list reset, local for `SuggestionsView.css`'s reason: a `ul` is the correct semantics
@@ -167,22 +184,32 @@
   font: var(--type-body);
 }
 
-/* THE STRIP — a WRAPPING row of thumbnails (DESIGN.md:590's "thumbnail row"; the flex-wrap
-   precedents are AgentView.css:106 and ColourDistribution.css:173). `{spacing.2}` between
-   tiles, the internal-clusters band. */
+/* THE STRIP — a SCROLLING row of thumbnails (DESIGN.md `components.tier-row`, amended
+   2026-08-23: "the strip SCROLLS horizontally rather than wrapping, so tiles keep this size at
+   any count"; the component row's "a thumbnail row" contradicts nothing). No `flex-wrap` — a
+   sixty-card tier is one row behind `overflow-x: auto`, and the tiles below are `flex: 0 0
+   auto` so nothing shrinks. `{spacing.2}` between tiles, the internal-clusters band.
+
+   NO `tabindex` ON THIS SCROLL CONTAINER, DELIBERATELY — unlike the oracle scroller, which
+   holds only text and NEEDED a stop (WCAG 2.1.1): every tile in this strip is already a real
+   `<button>` Tab stop, and Tabbing through them scrolls the strip the way arrowing through a
+   listbox does, so a strip-level stop would be an anonymous extra landing between sixty named
+   ones. */
 .tier-row-thumbs {
   display: flex;
-  flex-wrap: wrap;
   gap: var(--space-2);
+  overflow-x: auto;
 }
 
 /* THE TILE — a `<button>` reset in the manner `SwapsView.css` established: the UA's background,
-   border, padding and centred font all fight the strip. No hover tint and no live marker,
-   deliberately: DESIGN.md's tier-row specifies neither, and an invented one would need a
-   citation this artefact cannot give. The keyboard affordance is the focus ring below; the
-   pointer feedback is the detail panel itself. */
+   border, padding and centred font all fight the strip. `flex: 0 0 auto` is the strip's other
+   half: a flex item's default `flex-shrink: 1` would let a long row crush every tile before the
+   scrollbar ever appeared. No hover tint and no live marker, deliberately: DESIGN.md's tier-row
+   specifies neither, and an invented one would need a citation this artefact cannot give. The
+   keyboard affordance is the focus ring below; the pointer feedback is the in-view preview. */
 .tier-tile {
   display: flex;
+  flex: 0 0 auto;
   padding: 0;
   border: none;
   background: none;
@@ -197,18 +224,23 @@
   outline-offset: var(--focus-ring-offset);
 }
 
-/* THE THUMBNAIL SLOT (UX-DR36): a fixed-shape well from the first frame. `min-height: 6lh`
-   against the row's body line-height gives the card a readable size without spending a px —
-   `SwapsView.css`'s content-derivation trick, at the same scale. The child derives its WIDTH
-   from the height through `card-shape`'s own 63:88; nothing here declares `aspect-ratio` or a
-   card radius (see the header — this file is not in CARD_SHAPED).
+/* THE THUMBNAIL SLOT (UX-DR36): a fixed-shape well from the first frame, at a REAL width —
+   `176px` is DESIGN.md `components.tier-row.thumb-width` (added 2026-08-23, and ruled there
+   first): the deck grid's own cited floor, the smallest box this system calls a readable card
+   face. The HEIGHT follows from the width through the in-flow placeholder's `card-shape` 63:88
+   — the direction that actually works, because the earlier height-first derivation (`min-height:
+   6lh`, `SwapsView.css`'s trick) never produced a width at all: an `aspect-ratio` box with no
+   in-flow content has no intrinsic width, and the tiles collapsed to overlapping ~0px slivers.
+   Nothing here declares `aspect-ratio` or a card radius (see the header — this file is not in
+   CARD_SHAPED); `display: block` so the placeholder child fills the slot's width and sets its
+   height.
 
    `position: relative` is the containing block for the image, which lies OVER the well rather
    than replacing it, so the layout is settled before the first byte arrives. */
 .tier-tile-thumb {
   position: relative;
-  display: flex;
-  min-height: 6lh;
+  display: block;
+  width: 176px;
   font: var(--type-body);
 }
 
@@ -228,4 +260,89 @@
 
 .tier-tile-image[data-loaded='true'] {
   opacity: 1;
+}
+
+/* ==== THE IN-VIEW PREVIEW (DESIGN.md `components.tier-preview`, added 2026-08-23) =========
+   The card-detail panel sits BEHIND the agent view's scrim, so hovering a tile showed nothing;
+   this column is the tier list's own render of the inspection target. STICKY, NOT FIXED:
+   `.agent-view-body` is the one scroll container, and `position: sticky` inside it needs no
+   AgentView edit, no new fixed layer and no `z-index`. `top: 0` pins it to the scrollport's
+   content edge while the rows scroll past. */
+.tier-preview {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* THE PREVIEW'S ART SLOT — the tile slot's shape one size up: the width is the grid track's
+   `300px` (DESIGN.md `components.tier-preview.preview-width`, cited at `.tier-list-body`), so
+   no length is spent here; the height follows through the in-flow placeholder's `card-shape`
+   63:88, exactly as the thumb's does. `position: relative` is the image's containing block. */
+.tier-preview-art {
+  position: relative;
+  display: block;
+  font: var(--type-body);
+}
+
+/* THE PREVIEW'S PICTURE, OVER THE WELL — the tile image's block MINUS the fade, deliberately:
+   `token-usage.test.ts` enumerates every shipped visual-class transition against the UX-DR42
+   inventory, and this dumber surface ships NO motion of its own rather than growing that pin —
+   the opacity flip below is instant, which is also the registered reduced-motion outcome the
+   image-fade family falls back to. */
+.tier-preview-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+}
+
+.tier-preview-image[data-loaded='true'] {
+  opacity: 1;
+}
+
+/* THE PREVIEW'S WORDS — wire data only (name, pips, type line), no authored copy. The head
+   line is `CardDetail`'s pairing at the roles this quieter surface earns: name in
+   `--type-body-strong` (no companions — the role has neither, per `findRoleWithoutCompanions`'
+   derivation) with the cost's pips beside it, then the type line in body `text-secondary`.
+   `overflow-wrap` so one unbreakable 42-character name cannot widen the 300px track (cited
+   above). */
+.tier-preview-head {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.tier-preview-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font: var(--type-body-strong);
+}
+
+.tier-preview-type {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+  font: var(--type-body);
+}
+
+/* THE COLLAPSE — DESIGN.md `components.tier-preview`: "the column collapses away below the
+   shell's own ~1100px breakpoint" (`1100px` — DESIGN.md's Layout section, the same figure
+   `AppShell.css` re-stacks its columns on; the range form is mandatory —
+   `media-feature-range-notation` fails the prefix spelling). The strip stays usable alone:
+   nothing else in this file reads the window's width. */
+@media (width < 1100px) {
+  .tier-list-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tier-preview {
+    display: none;
+  }
 }

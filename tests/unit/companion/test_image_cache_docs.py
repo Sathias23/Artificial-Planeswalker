@@ -1,17 +1,20 @@
-"""Drift guard over README's ``### Image cache (companion app)`` section (story 15-2).
+"""Drift guard over the companion guide's ``## Image cache`` section (story 15-2).
 
-The section documents four things that are true only because a constant currently says so — the
-directory's name, the width of its shard, the shape of an entry's filename, and which environment
-variable moves the whole thing — plus one *command* a user is invited to paste into a shell that
-ends in ``rm -rf``. Prose has no compiler, so this module is the compiler: every load-bearing claim
-is keyed on the shipped symbol (``images.CACHE_DIRECTORY_NAME``, ``images._cache_path``,
-``images.cache_root``, ``singleton.LOCK_FILENAME``, ``discovery.COMPANION_FILENAME``) and never on a
-literal copied out of the README, so a rename that updates the prose moves the pin with it and a
-rename that does not turns this red. The precedent is
+The section lived in ``README.md`` as ``### Image cache (companion app)`` until the README was
+restructured; it moved verbatim into ``docs/companion.md``, and README keeps only a short pointer
+section this module does not read. The section documents four things that are true only because a
+constant currently says so — the directory's name, the width of its shard, the shape of an entry's
+filename, and which environment variable moves the whole thing — plus one *command* a user is
+invited to paste into a shell that ends in ``rm -rf``. Prose has no compiler, so this module is
+the compiler: every load-bearing claim is keyed on the shipped symbol
+(``images.CACHE_DIRECTORY_NAME``, ``images._cache_path``, ``images.cache_root``,
+``singleton.LOCK_FILENAME``, ``discovery.COMPANION_FILENAME``) and never on a literal copied out of
+the guide, so a rename that updates the prose moves the pin with it and a rename that does not
+turns this red. The precedent is
 ``test_images.py::test_the_wire_prose_in_contracts_matches_the_shipped_schedule``, which does the
 same for the schedule published to the wire.
 
-The one-liner the README tells a user to run is not merely matched, it is **executed**: extracted
+The one-liner the guide tells a user to run is not merely matched, it is **executed**: extracted
 from the fenced block, run in-process under this package's autouse ``isolated_data_dir`` fixture
 (which pins ``PLANESWALKER_DATA_DIR`` at the test's ``tmp_path``), and compared against
 :func:`src.companion.app.images.cache_root`. That single assertion carries both the override claim
@@ -27,14 +30,17 @@ directory is the one defect in this section that would actually cost a user some
    (2026-08-18), is that each clear block deletes the variable its own verified one-liner assigned:
    a correct payload beside an ``rm -rf`` aimed somewhere else used to pass. The ``uv run`` wrapper
    is also stripped, so this module cannot see that the documented commands require the checkout
-   and its environment to be present — the README says so in words instead.
-2. **It reads one section, found by heading.** Prose elsewhere in ``README.md`` (or in any other
-   document) that contradicts this section is invisible here, and the ``plugin/`` mirror of this
-   file is guarded by CI's rebuild-and-diff rather than by an assertion here. The heading itself is
+   and its environment to be present — the guide says so in words instead.
+2. **It reads one section, found by heading.** Prose elsewhere in ``docs/companion.md`` — or in
+   ``README.md``, whose short pointer section is a different document entirely — that contradicts
+   this section is invisible here, and any shipped mirror of these files is guarded by CI's
+   rebuild-and-diff rather than by an assertion here. The heading itself is
    the non-vacuity anchor: :func:`_extract_section` fails by name rather than returning an empty
    string, so a removed or renamed section can never let the remaining assertions pass over
    nothing; it is fence-aware and terminates on any ATX level, both of which are tested rather than
-   asserted in prose.
+   asserted in prose. ``## Image cache`` is currently the guide's **last** section, so the scan
+   runs to end-of-file — which is why the extraction drops trailing blank lines: bounded and
+   EOF-terminated extractions of the same prose must compare equal.
 3. **The footprint figures are pinned by nothing.** ~90 KB per tile, 8.5 MB per deck and ~95 MB per
    library are measurements from the C3 retrospective (2026-08-02) with no constant to key on; they
    age with the corpus and with Scryfall's encoder. This module asserts the numbers are *present
@@ -59,10 +65,15 @@ from src.companion.app import images, singleton
 # ---------------------------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-README_PATH = REPO_ROOT / "README.md"
+GUIDE_PATH = REPO_ROOT / "docs" / "companion.md"
 
-SECTION_HEADING = "### Image cache (companion app)"
-"""The section this module is the compiler for. Renaming it here and in README.md is one edit."""
+SECTION_HEADING = "## Image cache"
+"""The section this module is the compiler for.
+
+Renaming it here and in docs/companion.md is *almost* one edit — README's companion section links
+to ``docs/companion.md#image-cache``, and ``test_companion_docs.py``'s anchor test is what makes
+that third edit visible rather than silent.
+"""
 
 # A synthetic Scryfall-shaped uuid. Its only job is to be fed to the shipped path builder so the
 # documented example can be *derived* — the shard width and the `<size>_<face><ext>` filename shape
@@ -94,7 +105,7 @@ path-printing command and nothing else; anything longer is verified another way,
 _ATX_HEADING = re.compile(r"#{1,6} ")
 
 # The shell capture the clear command deletes: `CACHE=$(…)` in bash, `$Cache = …` in PowerShell.
-# The name is captured rather than assumed so the binding test compares what the README actually
+# The name is captured rather than assumed so the binding test compares what the guide actually
 # wrote on both lines, never a name this file expects it to have used.
 _SHELL_ASSIGNMENTS = {
     "bash": re.compile(r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*)=\$\(.*python -c ", re.MULTILINE),
@@ -108,13 +119,13 @@ _DELETION_ARGUMENTS = {
 }
 
 
-def _read_readme() -> str:
-    """Return README.md's text, read from the repository root rather than the working directory."""
+def _read_guide() -> str:
+    """Return docs/companion.md's text, read from the repository root, not the working directory."""
     assert (REPO_ROOT / "pyproject.toml").exists(), f"{REPO_ROOT} is not the repository root"
-    return README_PATH.read_text(encoding="utf-8")
+    return GUIDE_PATH.read_text(encoding="utf-8")
 
 
-def _extract_section(readme: str) -> str:
+def _extract_section(guide: str) -> str:
     """Return the image-cache section, from its heading to the next ATX heading of any level.
 
     **The non-vacuity anchor.** Every assertion in this module reads what this returns, so a
@@ -131,22 +142,28 @@ def _extract_section(readme: str) -> str:
       heading; without this a documented shell comment could truncate the section mid-command and
       the module would report a missing block that is plainly there.
 
+    One rule added by the move into ``docs/companion.md``: **trailing blank lines are dropped**.
+    The section is currently the guide's last, so the ordinary extraction runs to end-of-file
+    while an extraction bounded by a later heading keeps the blank separator line before it — and
+    the bounds test compares the two for equality. Trimming makes the comparison about prose
+    rather than about where the file happens to end; no assertion here reads trailing whitespace.
+
     Args:
-        readme: The full text of ``README.md``.
+        guide: The full text of ``docs/companion.md``.
 
     Returns:
-        The section's lines, heading included, joined with newlines.
+        The section's lines, heading included, trailing blank lines dropped, joined with newlines.
     """
-    lines = readme.splitlines()
+    lines = guide.splitlines()
     starts = [i for i, line in enumerate(lines) if line.strip() == SECTION_HEADING]
     assert starts, (
-        f"README.md has no {SECTION_HEADING!r} heading. Every claim this module guards lives in "
-        "that section, so its absence fails here rather than passing vacuously on an empty scan. "
-        "Restore the heading in README.md, or — if the section was deliberately renamed — update "
-        f"SECTION_HEADING in {Path(__file__).name} to match."
+        f"docs/companion.md has no {SECTION_HEADING!r} heading. Every claim this module guards "
+        "lives in that section, so its absence fails here rather than passing vacuously on an "
+        "empty scan. Restore the heading in docs/companion.md, or — if the section was "
+        f"deliberately renamed — update SECTION_HEADING in {Path(__file__).name} to match."
     )
     assert len(starts) == 1, (
-        f"README.md carries {len(starts)} lines reading {SECTION_HEADING!r} (at lines "
+        f"docs/companion.md carries {len(starts)} lines reading {SECTION_HEADING!r} (at lines "
         f"{[i + 1 for i in starts]}). This module would guard only the first, so a second copy is "
         "an unguarded duplicate rather than a harmless one — delete it, or reword it so it is not "
         "an exact heading match."
@@ -161,6 +178,8 @@ def _extract_section(readme: str) -> str:
         if not in_fence and _ATX_HEADING.match(lines[i]):
             end = i
             break
+    while end > start and not lines[end - 1].strip():
+        end -= 1
     return "\n".join(lines[start:end])
 
 
@@ -190,7 +209,7 @@ def _documented_one_liners(section: str) -> list[str]:
         assert _EXPECTED_PAYLOAD_SHAPE.fullmatch(code), (
             f"the documented one-liner {code!r} is not the path-printing command this guard "
             f"executes (its whole body must match {_EXPECTED_PAYLOAD_SHAPE.pattern!r}). This "
-            "module runs what the README tells a user to run, so a payload that does anything "
+            "module runs what the guide tells a user to run, so a payload that does anything "
             "other than print a path must not be executed here — verify it another way."
         )
     return payloads
@@ -222,48 +241,48 @@ def _fenced_blocks(section: str) -> list[tuple[str, str]]:
         elif language is not None:
             body.append(line)
     assert language is None, (
-        "a fenced block in README's image-cache section is never closed — everything after it "
+        "a fenced block in the guide's image-cache section is never closed — everything after it "
         "reads as commentary rather than as a command, so a missing-block failure below would "
-        "name the wrong cause. Close the fence in README.md."
+        "name the wrong cause. Close the fence in docs/companion.md."
     )
     return blocks
 
 
 def _run(code: str) -> str:
-    """Execute one README payload in-process and return what it printed, stripped."""
+    """Execute one documented payload in-process and return what it printed, stripped."""
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
-        exec(compile(code, "<README image-cache one-liner>", "exec"), {})  # noqa: S102
+        exec(compile(code, "<companion-guide image-cache one-liner>", "exec"), {})  # noqa: S102
     return buffer.getvalue().strip()
 
 
 class TestTheImageCacheSectionMatchesTheShippedCache:
-    """README's stewardship section against the code it describes (story 15-2, AC 1-5)."""
+    """The guide's stewardship section against the code it describes (story 15-2, AC 1-5)."""
 
     def test_the_documented_section_exists(self) -> None:
         """The anchor: nothing below this test means anything if the section is gone."""
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
 
         assert section.startswith(SECTION_HEADING)
         assert len(section.splitlines()) > 10, (
             f"{SECTION_HEADING!r} is present but nearly empty — the guard would pass vacuously on "
-            "a stub. Restore the stewardship prose in README.md."
+            "a stub. Restore the stewardship prose in docs/companion.md."
         )
 
     def test_the_documented_directory_is_the_shipped_directory_name(self) -> None:
         """AC 1: the name in the prose is ``images.CACHE_DIRECTORY_NAME``, not a remembered word."""
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
 
         assert f"{images.CACHE_DIRECTORY_NAME}/" in section, (
-            f"README's {SECTION_HEADING!r} section does not name the shipped cache directory "
+            f"the guide's {SECTION_HEADING!r} section does not name the shipped cache directory "
             f"{images.CACHE_DIRECTORY_NAME!r}. Either the constant was renamed and the prose was "
-            "not (edit README.md), or the prose was rewritten around a different name (edit "
-            "src/companion/app/images.py, or the prose)."
+            "not (edit docs/companion.md), or the prose was rewritten around a different name "
+            "(edit src/companion/app/images.py, or the prose)."
         )
 
     def test_the_documented_location_follows_the_data_dir_override(self) -> None:
         """AC 1: the section says the location moves with ``PLANESWALKER_DATA_DIR``."""
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
 
         assert "PLANESWALKER_DATA_DIR" in section, (
             "the section does not tell the reader the cache follows PLANESWALKER_DATA_DIR, which "
@@ -276,7 +295,7 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
         Shard width, directory nesting and the ``<size>_<face><ext>`` filename all come out of the
         function, so any change to the layout fails here naming the path the code now builds.
         """
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
         built = images._cache_path(
             Path(images.CACHE_DIRECTORY_NAME),
             _SYNTHETIC_CARD_ID,
@@ -286,38 +305,38 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
         )
 
         assert built.as_posix() in section, (
-            f"README's documented layout example does not match the path images._cache_path "
+            f"the guide's documented layout example does not match the path images._cache_path "
             f"actually builds, which is {built.as_posix()!r}. The shipped layout changed and the "
-            "prose did not — edit the example in README.md."
+            "prose did not — edit the example in docs/companion.md."
         )
 
         assert len(built.parts) >= 3, (
             "images._cache_path no longer builds a sharded path — it returned "
             f"{built.as_posix()!r}, "
             "which has no shard segment to describe. The layout changed shape; rewrite both the "
-            "prose in README.md and this assertion."
+            "prose in docs/companion.md and this assertion."
         )
         shard_width = len(built.parts[1])
         shard_word = _NUMBER_WORDS.get(shard_width, str(shard_width))
         assert f"{shard_word}-character shard" in section, (
-            f"images._cache_path shards on {shard_width} character(s) but README does not describe "
-            f"a {shard_word}-character shard — edit the prose in README.md."
+            f"images._cache_path shards on {shard_width} character(s) but the guide does not "
+            f"describe a {shard_word}-character shard — edit the prose in docs/companion.md."
         )
 
     def test_the_documented_command_resolves_the_shipped_cache_root(self) -> None:
-        """AC 2: the README's own one-liner, executed, prints exactly ``images.cache_root()``.
+        """AC 2: the guide's own one-liner, executed, prints exactly ``images.cache_root()``.
 
         Runs under the autouse ``isolated_data_dir`` fixture, so ``PLANESWALKER_DATA_DIR`` is
         pinned at this test's ``tmp_path`` — which makes this simultaneously the override claim and
         the proof that the documented ``rm -rf`` target is the directory the app writes to.
         """
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
         one_liners = _documented_one_liners(section)
 
         assert one_liners, (
             f'no `python -c "..."` command was found in README\'s {SECTION_HEADING!r} section. '
             "The inspect/clear blocks are the point of the section; extraction returning nothing "
-            "is a failure, never a pass. Restore the fenced command blocks in README.md."
+            "is a failure, never a pass. Restore the fenced command blocks in docs/companion.md."
         )
 
         expected = str(images.cache_root())
@@ -327,7 +346,7 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
                 f"the documented command {code!r} resolves a different directory than the app "
                 f"writes to: it printed {printed!r}, images.cache_root() is {expected!r}. A "
                 "documented deletion command that points elsewhere is the one defect in this "
-                "section that costs a user data — fix README.md."
+                "section that costs a user data — fix docs/companion.md."
             )
 
     def test_each_clear_command_deletes_the_path_its_own_block_resolved(self) -> None:
@@ -340,7 +359,7 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
         (``rm -rf`` was still present). Nothing tied the verified path to the deleted one, which is
         precisely the defect this section's own docstring calls the only one that costs a user data.
         """
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
         blocks = _fenced_blocks(section)
 
         for language in ("bash", "powershell"):
@@ -365,7 +384,7 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
                     f"the ```{language} clear block resolves the cache into "
                     f"{assignment.group('name')!r} and then deletes {target.group('target')!r} — a "
                     "verified path and an unverified deletion target. Delete the variable the "
-                    "block just resolved, in README.md."
+                    "block just resolved, in docs/companion.md."
                 )
 
     def test_both_platforms_get_a_copy_pasteable_block_for_both_actions(self) -> None:
@@ -377,7 +396,7 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
         The section promises a Windows user and a macOS/Linux user each two actions, so each of the
         four is asserted on the verb that performs it.
         """
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
         blocks = _fenced_blocks(section)
 
         for language, inspect_verbs, clear_verb in (
@@ -386,18 +405,18 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
         ):
             spoken = [body for spoken_language, body in blocks if spoken_language == language]
             assert spoken, (
-                f"no ```{language} block in README's {SECTION_HEADING!r} section — "
+                f"no ```{language} block in the guide's {SECTION_HEADING!r} section — "
                 f"{'macOS/Linux' if language == 'bash' else 'Windows'} users have nothing to paste"
             )
             assert any(any(verb in body for verb in inspect_verbs) for body in spoken), (
                 f"no ```{language} block inspects the cache (looked for {inspect_verbs}); a user "
                 "on that platform is told the cache grows without bound and given no way to see "
-                "how big it got. Restore the inspect block in README.md."
+                "how big it got. Restore the inspect block in docs/companion.md."
             )
             assert any(clear_verb in body for body in spoken), (
                 f"no ```{language} block clears the cache (looked for {clear_verb!r}); AC 2 asks "
                 "for a copy-pasteable removal command on both platforms. Restore the clear block "
-                "in README.md."
+                "in docs/companion.md."
             )
 
     def test_the_eviction_paragraph_states_the_measured_footprint(self) -> None:
@@ -407,7 +426,7 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
         present and that the measurement is distinguished from the earlier arithmetic estimate,
         not that they are still accurate against today's corpus.
         """
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
         lowered = section.lower()
 
         assert "evict" in lowered, "the section never mentions eviction at all"
@@ -425,7 +444,7 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
 
     def test_the_staleness_paragraph_names_its_cause_and_its_remedy(self) -> None:
         """AC 5: accepted staleness, with the key that causes it and the deletion that fixes it."""
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
 
         assert "image_uris" in section, (
             "the staleness paragraph does not name image_uris, the field whose change is the "
@@ -439,7 +458,7 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
 
     def test_the_leftovers_list_names_every_file_an_uninstall_leaves(self) -> None:
         """AC 4: the three real leftovers, each keyed on the constant that spells it."""
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
 
         for name, symbol in (
             (images.CACHE_DIRECTORY_NAME, "images.CACHE_DIRECTORY_NAME"),
@@ -466,7 +485,7 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
 
     def test_the_two_cache_disable_behaviours_are_disclosed(self) -> None:
         """The two lifecycle exposures that stay unbuilt are at least stated, with their remedy."""
-        section = _extract_section(_read_readme())
+        section = _extract_section(_read_guide())
         lowered = section.lower()
 
         limit = images.DISK_CACHE_WRITE_FAILURE_LIMIT
@@ -474,7 +493,8 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
         # a bare KeyError from the lookup that was supposed to produce that message.
         assert f"{_NUMBER_WORDS.get(limit, str(limit))} *consecutive*" in lowered, (
             f"DISK_CACHE_WRITE_FAILURE_LIMIT is {images.DISK_CACHE_WRITE_FAILURE_LIMIT} but the "
-            "section does not say so — edit README.md, or the constant's prose moved without it"
+            "section does not say so — edit docs/companion.md, or the constant's prose moved "
+            "without it"
         )
         assert "restart" in lowered, (
             "neither disable path names its remedy; restarting the app is the whole of it, and a "
@@ -485,19 +505,21 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
             "which is what makes both behaviours acceptable rather than defects"
         )
 
-    def test_ordinary_prose_edits_elsewhere_in_the_readme_do_not_move_this_guard(self) -> None:
+    def test_ordinary_prose_edits_elsewhere_in_the_guide_do_not_move_this_guard(self) -> None:
         """The silent half: this guard is about one section and must ignore the rest of the file.
 
-        A guard that fires on any README edit gets disabled by the third person it inconveniences.
-        Edits before *and* after the section are both exercised, because the extraction is bounded
-        at both ends.
+        A guard that fires on any edit to the guide gets disabled by the third person it
+        inconveniences. Edits before *and* after the section are both exercised: the extraction is
+        bounded at its start, and — because this is currently the guide's last section — the
+        trailing cases prove a section appended after it stays out rather than being swallowed by
+        the end-of-file scan.
         """
-        original = _read_readme()
+        original = _read_guide()
         section = _extract_section(original)
 
         # Anchored on the one heading this module owns, never on a neighbouring section's title —
-        # a guard that goes red when someone renames "Semantic search index" is guarding the wrong
-        # thing (review 2026-08-18).
+        # a guard that goes red when someone renames "Running from a plugin install" is guarding
+        # the wrong thing (review 2026-08-18, retargeted at the guide when the section moved).
         edited_before = original.replace(
             SECTION_HEADING, "An unrelated prose edit above the cache.\n\n" + SECTION_HEADING, 1
         )
@@ -527,7 +549,7 @@ class TestTheImageCacheSectionMatchesTheShippedCache:
         would end the section early, and every assertion below it would then fail with a
         "the section does not say X" message about prose that is plainly there.
         """
-        original = _read_readme()
+        original = _read_guide()
         section = _extract_section(original)
         planted = original.replace(
             SECTION_HEADING,

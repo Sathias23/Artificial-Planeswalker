@@ -33,6 +33,12 @@ class HealthResponse(BaseModel):
             answer does not answer at all.
         instance_id: The per-process identity minted at startup, echoed so a caller can match it
             against the value the discovery file advertised.
+        clients: How many browser tabs hold an open WebSocket right now — the registry's own
+            count, **not** a delivery receipt (17.4). Optional so a reader built against the older
+            two-field body still parses a newer companion's answer, and ``None`` from an older
+            companion that never sent it. This is the only read-only tab count the companion
+            exposes: ``companion_status`` reads it so the agent can tell "running, no tab open"
+            from "running, already on screen" without pushing anything.
 
     Example:
         >>> HealthResponse(status="ok", instance_id="0f6e...").status
@@ -41,6 +47,7 @@ class HealthResponse(BaseModel):
 
     status: Literal["ok"]
     instance_id: str
+    clients: int | None = None
 
 
 _MAX_DECK_ID_LENGTH = 256

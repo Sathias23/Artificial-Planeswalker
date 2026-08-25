@@ -136,9 +136,10 @@ const COPY_MODULES: Map<string, string> = new Map([
   ],
   [
     'src/components/AppShell/AppShell.tsx',
-    'the placeholder line for each empty region, each naming the story that replaces it, plus ' +
-      'the product kicker and the h1 fallback (story c2-1, AC 21). Every one of these is copy ' +
-      'with a scheduled death. And one permanent resident since c7-4: the "Updating…" line the ' +
+    'the product kicker and the h1 fallback (story c2-1). Until 17.5 it also held the placeholder ' +
+      'line for each empty region, each naming the story that replaces it (AC 21) — copy with a ' +
+      'scheduled death, now dead: an empty region renders nothing. And one permanent resident ' +
+      'since c7-4: the "Updating…" line the ' +
       'reduced-motion swap shows while a refetch is in flight — authored, spelled with U+2026 ' +
       'because the epic AC and the UX-DR42 inventory both write it verbatim (UX-DR33: ship ' +
       'specified copy as specified), and asserted by codepoint in AppShell.test.tsx on the ' +
@@ -420,21 +421,23 @@ const COPY_MODULES: Map<string, string> = new Map([
   ],
   [
     'src/containers/SuggestionsView/copy.ts',
-    'the empty-push line (story c6-6, AC 4): "The agent sent an empty {kind}. Nothing to show ' +
-      '— ask it for another pass.", the ONE authored sentence a push carrying no items puts on ' +
-      'the glass, rendered in place of the rows inside the agent view’s body. Like the ' +
-      'empty-deck line it is TRANSCRIBED rather than authored — EXPERIENCE.md’s Voice and Tone ' +
-      'table carries it, em dash U+2014 and trailing period included — and ' +
-      'tests/empty-push-copy.test.ts compares the shipped constant against that table cell ' +
-      'byte-for-byte, which is copy gated against whatever wrote it. It is the FIRST entry in ' +
-      'this Map whose artefact string is a TEMPLATE: the row writes "{kind}", so the constant ' +
-      'ships the placeholder and a one-line builder substitutes the envelope’s own kind — a ' +
-      'closed wire literal, never user data, which is the whole of c6-4’s echo-hygiene rule ' +
-      'applied here. ONE RESIDUE IS DECLARED RATHER THAN REPAIRED: substituting the wire kind ' +
-      'into an article-carrying template reads "an empty suggestions", which is ungrammatical ' +
-      'and worse for Epic 9’s "tier_list" — inventing a per-kind display noun would be ' +
-      'authoring copy no artefact carries, so it is carried on the ledger for the story that ' +
-      'adds the second view kind. Shipping the artefact’s own words is ALSO the disposition of ' +
+    'the empty-push line (story c6-6, AC 4; amended at the epic-16 retro, item 4): "The ' +
+      'agent’s {noun} came back empty. Nothing to show — ask it for another pass.", the ONE ' +
+      'authored sentence a push carrying no items puts on the glass, rendered in place of the ' +
+      'rows inside the agent view’s body. Like the empty-deck line it is TRANSCRIBED rather ' +
+      'than authored — EXPERIENCE.md’s Voice and Tone table carries it, em dash U+2014 and ' +
+      'trailing period included — and tests/empty-push-copy.test.ts compares the shipped ' +
+      'constant against that table cell byte-for-byte, which is copy gated against whatever ' +
+      'wrote it. It is the FIRST entry in this Map whose artefact string is a TEMPLATE: the row ' +
+      'writes "{noun}" and enumerates the four display nouns beside it, so the constant ships ' +
+      'the placeholder, a transcribed noun table (gated against the cell’s enumeration; pinned ' +
+      'to lowercased AGENT_VIEW_LABELS from agentView.test.ts), and a one-line builder ' +
+      'substitutes the kind’s noun — the kind is a closed wire literal, never user data, which ' +
+      'is the whole of c6-4’s echo-hygiene rule applied here. The residue this entry declared ' +
+      'for four epics (the wire-kind substitution read "an empty suggestions" and put ' +
+      '"tier_list"’s underscore on the glass) was RULED release-gating and repaired ' +
+      'artefact-first at the epic-16 retro. Shipping the artefact’s own words is ALSO the ' +
+      'disposition of ' +
       'the permanently-open copy-guard entry whose text names this story: "a reviewer of ' +
       'c2-10, c4-3, c4-12 and c6-6 must READ the copy", and c4-12’s disposition recorded that ' +
       '"c6-6 still owes it" — the story’s Debug Log records the reading having been performed. ' +

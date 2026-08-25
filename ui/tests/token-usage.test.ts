@@ -615,6 +615,37 @@ const RUNTIME_CUSTOM_PROPERTIES: Map<string, { file: string; reason: string }> =
         'basis grow to fill the whole track.',
     },
   ],
+  [
+    '--history-popover-top',
+    {
+      file: 'src/containers/AgentViewsNav/HistoryPopover.css',
+      reason:
+        'the height clamp’s anchor term IS runtime geometry (story 17.2; Greptile PR #97, ' +
+        'round 2) — the popover hangs below a content-sized header, so its distance from the ' +
+        'viewport top is knowable only by measurement, and subtracting gutters alone let the ' +
+        'scrollport’s tail run past a short window’s bottom edge. Written once, before paint, ' +
+        'by HistoryPopover through the same custom-property escape hatch (a third exact-name ' +
+        '`:not()` in eslint.config.js — the protocol growing, not loosening); consumed inside ' +
+        '`max-height: min(480px, calc(100dvh - var(--history-popover-top, 0px) - …))`, where ' +
+        'the `0px` fallback keeps jsdom (zero rects) and the unmeasured first frame on the ' +
+        'old gutters-only clamp rather than collapsing the popover.',
+    },
+  ],
+  [
+    '--history-popover-right',
+    {
+      file: 'src/containers/AgentViewsNav/HistoryPopover.css',
+      reason:
+        'the width clamp’s budget IS runtime geometry too (story 17.2; Greptile PR #97, round ' +
+        '4 — the top term’s sibling axis): the pill row wraps at narrow windows, and a wrapped ' +
+        'anchor leaves the viewport’s right edge, so a 100vw-based cap lets a long title run ' +
+        'past the LEFT edge — the overflow is the anchor’s offset, not the box’s width, round ' +
+        '1’s lesson on the other side. The right-anchored edge’s measured viewport-X, written ' +
+        'beside the top term by the same effect; consumed inside `max-width: min(480px, ' +
+        'calc(var(--history-popover-right, 100vw) - …))`, where the `100vw` fallback keeps the ' +
+        'unmeasured frame on the old viewport-relative cap.',
+    },
+  ],
 ])
 
 // The reader is injectable for the same reason findCardRadiusInMarkup's is (and it was the
@@ -2801,6 +2832,12 @@ describe('the reduced-motion mechanism (AC 11, AC 13)', () => {
       '.suggestion-row :: box-shadow': 'Deck-row live tint',
       '.flip-control :: opacity': 'Flip-control chrome fade',
       '.mana-curve-bar :: height': 'Curve-bar height',
+      // 17.2's history popover: an opacity-only fade over the glide pair (DESIGN.md
+      // `components.history-popover.enter` — no rise, no transform, so the reduced-motion
+      // block registers nothing for it; zeroing `--motion-glide` already makes it instant).
+      // Its inventory row ships in the same commit, per this guard's own rule that a new
+      // entry owes a row first.
+      '.agent-views-nav-popover :: opacity': 'History-popover fade',
     }
 
     expect(

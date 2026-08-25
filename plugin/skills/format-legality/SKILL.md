@@ -484,6 +484,30 @@ fabricate a verdict.)
 
 ---
 
+## Companion app (push the visuals)
+
+If the user runs the Artificial Planeswalker **companion app** (a localhost browser view of the
+active deck), this server also exposes push tools that mirror your analysis onto that glass:
+`companion_set_active_deck`, `companion_show_suggestions`, `companion_show_swaps`,
+`companion_show_tier_list`, `companion_show_groups`, plus the read-only `companion_status` (each
+`mcp__artificial-planeswalker__<tool>`).
+They add a **visual channel — never a replacement**: push AND still give your full answer in chat.
+
+Natural fits for this skill:
+- **`companion_show_swaps`** — banned/rotated cards paired with their legal replacements.
+- **`companion_show_suggestions`** — legal alternatives when the user asks what they can play
+  instead.
+
+Rules that bite:
+- Reference cards by **Scryfall printing id** — the `id` field the lookup/search tools return. A
+  card *name* in an id field will not render.
+- `companion_set_active_deck(deck_id)` first when the conversation settles on a deck, so the glass
+  follows the conversation.
+- Every push tool degrades gracefully: `app_not_running` just means the companion isn't up —
+  answer in chat as normal, then **offer to open it** once via the `companion` skill
+  (`companion_status` → its `launch_command` in a background shell). Never block, retry-loop, or
+  apologise for it.
+
 ## Companion skills (reference, don't depend)
 
 This skill works **standalone** — it calls the tools directly and does not require any other skill.

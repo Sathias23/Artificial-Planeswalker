@@ -63,12 +63,14 @@ from src.mcp_server.tools.card_lookup import CardLookupResult, lookup_card
 from src.mcp_server.tools.card_search import CardSearchResult
 from src.mcp_server.tools.card_search import search_cards as _search_cards_helper
 from src.mcp_server.tools.companion import (
+    CompanionStatusResult,
     SetActiveDeckResult,
     ShowGroupsResult,
     ShowSuggestionsResult,
     ShowSwapsResult,
     ShowTierListResult,
 )
+from src.mcp_server.tools.companion import companion_status as _companion_status_helper
 from src.mcp_server.tools.companion import set_active_deck as _set_active_deck_helper
 from src.mcp_server.tools.companion import show_groups as _show_groups_helper
 from src.mcp_server.tools.companion import show_suggestions as _show_suggestions_helper
@@ -497,6 +499,30 @@ def build_server(
             return await _view_deck_helper(session, deck_id=deck_id, open_browser=open_browser)
 
     @mcp.tool()
+    async def companion_status() -> CompanionStatusResult:
+        """Report whether the companion app is running, and how to open it if not.
+
+        Use this when the user asks to open or see the companion, or when a
+        companion tool answered ``app_not_running`` and you want to offer to
+        start it. Read-only: it sends nothing to the companion and changes
+        nothing. To actually open it, run the returned ``launch_command`` in a
+        background shell (the ``companion`` skill walks through it): the
+        companion starts in the foreground, prints its URL, and opens a browser
+        tab on it itself. Run the command as returned — add ``--port N`` only
+        when the user asked for a specific port — and never in the foreground:
+        it serves until interrupted.
+
+        Returns:
+            A result whose ``status`` is ``running`` (``url`` is the companion's
+            address and ``clients`` counts the open browser tabs — with one or
+            more, there is nothing to do; with zero, run ``launch_command``,
+            whose ``--open`` opens a tab on the running instance, and give the
+            user ``url`` only if no browser could open) or ``not_running`` (run
+            ``launch_command``). ``launch_command`` is set on every status.
+        """
+        return await _companion_status_helper()
+
+    @mcp.tool()
     async def companion_set_active_deck(deck_id: str) -> SetActiveDeckResult:
         """Show a saved deck in the companion app's live browser view.
 
@@ -507,7 +533,8 @@ def build_server(
         ``create_deck`` or ``list_decks``.
 
         The companion app has to be running; if it is not, this reports that and
-        nothing else happens. Stateless — pass ``deck_id`` every call.
+        nothing else happens — ``companion_status`` tells you how to open it.
+        Stateless — pass ``deck_id`` every call.
 
         Args:
             deck_id: The deck id to display.
@@ -540,7 +567,8 @@ def build_server(
         than skipping the call.
 
         The companion app has to be running; if it is not, this reports that,
-        nothing is sent, and your written answer still stands on its own.
+        nothing is sent, and your written answer still stands on its own
+        (``companion_status`` tells you how to open it).
         Stateless and cumulative in nothing — each call carries its whole
         payload, and the companion shows what the latest call sent.
 
@@ -588,7 +616,8 @@ def build_server(
         worth proposing" — send it rather than skipping the call.
 
         The companion app has to be running; if it is not, this reports that,
-        nothing is sent, and your written answer still stands on its own.
+        nothing is sent, and your written answer still stands on its own
+        (``companion_status`` tells you how to open it).
         Stateless and cumulative in nothing — each call carries its whole
         payload, and the companion shows what the latest call sent.
 
@@ -604,7 +633,12 @@ def build_server(
                 required, zero or more — zero is legal), and ``confidence``
                 (optional, one of ``low``, ``medium``, ``high``).
                 ``payload.title`` is an optional header for the list, up to 80
-                characters; omit it to let the companion use its own.
+                characters; omit it to let the companion use its own. Note the
+                total envelope is capped at 64 KB: a payload that maxes every
+                field cap at once (60 swaps, each with a full 600-character
+                rationale) exceeds it and comes back ``payload_rejected``, so
+                keep large pushes comfortably inside the caps rather than at
+                them.
 
         Returns:
             A result whose ``status`` is ``displayed`` (delivered to at least
@@ -637,7 +671,8 @@ def build_server(
         than skipping the call.
 
         The companion app has to be running; if it is not, this reports that,
-        nothing is sent, and your written answer still stands on its own.
+        nothing is sent, and your written answer still stands on its own
+        (``companion_status`` tells you how to open it).
         Stateless and cumulative in nothing — each call carries its whole
         payload, and the companion shows what the latest call sent.
 
@@ -653,7 +688,11 @@ def build_server(
                 empty). Repeating a letter under a different name is legal: the
                 12-tier cap and the 5-letter vocabulary are different quantities.
                 ``payload.title`` is an optional header for the list, up to 80
-                characters; omit it to let the companion use its own.
+                characters; omit it to let the companion use its own. Note the
+                total envelope is capped at 64 KB: a payload that maxes every
+                field cap at once (12 tiers of 60 ids with full names and
+                notes) exceeds it and comes back ``payload_rejected``, so keep
+                large pushes comfortably inside the caps rather than at them.
 
         Returns:
             A result whose ``status`` is ``displayed`` (delivered to at least one
@@ -684,13 +723,14 @@ def build_server(
         or any of this server's search tools returns as the card's ``id``. A card
         name in ``card_ids`` will not render. A group may legitimately name cards
         the active deck does not run — grouping is an argument about cards, not an
-        inventory of the deck. An empty ``card_ids`` list is legal (the companion
-        skips that group's tiles), and an empty ``items`` list is a legitimate
+        inventory of the deck. An empty ``card_ids`` list is legal (the group is
+        not displayed at all), and an empty ``items`` list is a legitimate
         push meaning "I found no grouping worth drawing" — send it rather than
         skipping the call.
 
         The companion app has to be running; if it is not, this reports that,
-        nothing is sent, and your written answer still stands on its own.
+        nothing is sent, and your written answer still stands on its own
+        (``companion_status`` tells you how to open it).
         Stateless and cumulative in nothing — each call carries its whole
         payload, and the companion shows what the latest call sent.
 

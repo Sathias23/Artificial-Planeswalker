@@ -64,7 +64,7 @@ import './SuggestionsView.css'
 export interface SuggestionsViewProps {
   /**
    * The push's own `kind`, interpolated into the empty-push line. Taken from the store's content
-   * rather than hard-coded, because the artefact's sentence is a TEMPLATE with a `{kind}` hole in
+   * rather than hard-coded, because the artefact's sentence is a TEMPLATE with a `{noun}` hole in
    * it — writing `'suggestions'` here would be this module deciding what the wire said.
    */
   readonly kind: AgentViewContent['kind']

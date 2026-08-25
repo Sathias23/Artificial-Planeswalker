@@ -19,6 +19,7 @@ wrong-but-JSON answer is precisely the shape that slips through on a binary endp
 
 import asyncio
 import json
+import logging
 from pathlib import Path
 
 import httpx
@@ -26,6 +27,7 @@ import pytest
 
 from src.companion.app import images
 from src.companion.app.main import build_app
+from src.companion.app.routes import cards as cards_route
 from src.companion.app.spa import _IMMUTABLE_CACHE_CONTROL
 from src.data.models.deck import DeckModel
 from src.data.models.deck_card import DeckCardModel
@@ -1179,8 +1181,10 @@ class TestAQueuedBurstDoesNotStallTheApp:
 
         `/health` is the honest stand-in available today, and the substitution is recorded rather
         than passed off as the same test — the literal AC (a concurrent push meeting its 250 ms
-        budget while images are queued) is homed on **c10-3**, whose own AC already says exactly
-        that.
+        budget while images are queued) is homed on **c10-3** (renumbered 17-3), whose own AC
+        already says exactly that. As of 17-3 that instrument exists:
+        ``scripts/cdp_harness.py push --arm drain`` measures the push against a real CDN drain,
+        with the outstanding-request count as its positive control.
 
         **The interleaving COUNT is what has teeth.** A test that merely asserted "/health
         answered" would pass on a serialised loop that ran it after every image completed. Five
@@ -2924,3 +2928,138 @@ class TestTheNegativeCacheTouchesNoDiskAndNoOtherApp:
             "the warm hit advanced the pacer's clock — it is served before the pacer is entered "
             "and before the negative check, so it owes neither a permit nor a spacing turn"
         )
+
+
+# =============================================================================================
+# Story 17-3: the fetch-success log line — CM-2 made observable in a real session.
+#
+# The once-per-key guarantee is proved above on a recorder, and only on a recorder: until this
+# line a successful CDN fetch logged NOTHING, so a real session's `companion.log` could not tell
+# "served warm" from "fetched again" and CM-2 was unobservable outside the unit suite. The line's
+# gate is the `fetch_image` call itself — the same gate as the existing failure line — so the two
+# lines partition every paid network exchange between them, and grouping success lines per
+# (id, face, size) per cache lifetime is what the 17-3 measurement session counts.
+# =============================================================================================
+
+_SUCCESS_MARK = "fetched from the CDN"
+_FAILURE_MARK = "failed to fetch"
+
+
+def _route_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    """This module's records only — `caplog.records` collects every logger in the app."""
+    return [record for record in caplog.records if record.name == cards_route.logger.name]
+
+
+class TestAFetchSuccessLogsExactlyOnce:
+    """One INFO line per real CDN fetch; none from warm hits, refusals, or failures."""
+
+    async def test_one_real_fetch_logs_one_success_line_carrying_the_full_key(
+        self, image_shapes, lifespan_client, cdn, caplog
+    ):
+        """The line, and the WHOLE key on it — id, face and size, so `companion.log` lines can
+        be grouped per key. A line missing any coordinate could not distinguish two keys that
+        share the others, and a duplicate fetch would then be invisible to the count."""
+        with caplog.at_level(logging.INFO, logger=cards_route.logger.name):
+            async with lifespan_client(build_app()) as client:
+                response = await client.get(
+                    _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID), params={"size": "large"}
+                )
+
+        assert response.status_code == 200
+        assert len(cdn.requested) == 1, "this test is vacuous unless exactly one fetch happened"
+        lines = [r for r in _route_records(caplog) if _SUCCESS_MARK in r.getMessage()]
+        assert len(lines) == 1, (
+            f"{len(lines)} success lines for one paid network exchange; the gate must be the "
+            "fetch_image call itself"
+        )
+        [record] = lines
+        assert record.levelno == logging.INFO
+        message = record.getMessage()
+        assert SINGLE_FACE_ID in message, "the id is the key's first coordinate"
+        assert "face 0" in message, "the face is the key's second coordinate"
+        assert "(large)" in message, "the size is the key's third coordinate"
+
+    async def test_two_fetches_for_two_keys_log_two_lines_grouped_apart(
+        self, image_shapes, lifespan_client, cdn, caplog
+    ):
+        """NON-VACUITY for the per-key grouping: two distinct keys must yield two lines that a
+        reader grouping on (id, face, size) files separately — a line that dropped the size
+        would collapse them into a false duplicate."""
+        with caplog.at_level(logging.INFO, logger=cards_route.logger.name):
+            async with lifespan_client(build_app()) as client:
+                await client.get(_IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID))
+                await client.get(
+                    _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID), params={"size": "png"}
+                )
+
+        assert len(cdn.requested) == 2
+        lines = [r.getMessage() for r in _route_records(caplog) if _SUCCESS_MARK in r.getMessage()]
+        assert len(lines) == 2
+        assert "(normal)" in lines[0] and "(png)" in lines[1]
+
+    async def test_a_warm_cache_hit_logs_no_new_success_line(
+        self, image_shapes, lifespan_client, cdn, caplog
+    ):
+        """CM-2's other half on the log: within one cache lifetime, a key fetched once shows
+        exactly one line however many times it is served — which is precisely what makes >1 line
+        per key a duplicate worth diagnosing in a real session's log."""
+        path = _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)
+        with caplog.at_level(logging.INFO, logger=cards_route.logger.name):
+            async with lifespan_client(build_app()) as client:
+                first = await client.get(path)
+                second = await client.get(path)
+                third = await client.get(path)
+
+        assert first.status_code == second.status_code == third.status_code == 200
+        assert len(cdn.requested) == 1, "the warm hits fetched; the log claim below proves nothing"
+        lines = [r for r in _route_records(caplog) if _SUCCESS_MARK in r.getMessage()]
+        assert len(lines) == 1, (
+            f"three requests for one key left {len(lines)} success lines; warm hits must log "
+            "nothing — the log rate is bounded by the FETCH rate, not the request rate"
+        )
+
+    async def test_a_negative_cache_refusal_logs_no_success_line(
+        self, image_shapes, lifespan_client, remembered, caplog
+    ):
+        """A remembered failure issues no request, so it must add no success line — and it adds
+        no SECOND failure line either (the repeat is answered at DEBUG; c3-8's asymmetry)."""
+        clock, recorder = remembered
+        recorder.raises = httpx.ConnectError("the CDN is unreachable")
+        path = _IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID)
+
+        with caplog.at_level(logging.INFO, logger=cards_route.logger.name):
+            async with lifespan_client(build_app()) as client:
+                first = await client.get(path)
+                refused = await client.get(path)
+
+        assert first.status_code == refused.status_code == 502
+        assert len(recorder.requested) == 1, (
+            "the refusal reached the transport; it was not answered from memory"
+        )
+        ours = _route_records(caplog)
+        assert [r for r in ours if _SUCCESS_MARK in r.getMessage()] == [], (
+            "a request that paid no network exchange wrote a fetch-success line"
+        )
+        failures = [r for r in ours if _FAILURE_MARK in r.getMessage()]
+        assert len(failures) == 1, "the refusal added a failure line; records are per FETCH only"
+
+    async def test_the_failure_path_emits_only_the_existing_line(
+        self, image_shapes, lifespan_client, cdn, caplog
+    ):
+        """A failed fetch keeps its one INFO line and gains nothing: the two lines partition the
+        paid exchanges, so a fetch that failed must never also read as a success."""
+        cdn.raises = httpx.ReadTimeout("too slow")
+
+        with caplog.at_level(logging.INFO, logger=cards_route.logger.name):
+            async with lifespan_client(build_app()) as client:
+                response = await client.get(_IMAGE_PATH.format(scryfall_id=SINGLE_FACE_ID))
+
+        assert response.status_code == 502
+        assert len(cdn.requested) == 1
+        ours = _route_records(caplog)
+        assert [r for r in ours if _SUCCESS_MARK in r.getMessage()] == [], (
+            "a failed fetch wrote a success line"
+        )
+        failures = [r for r in ours if _FAILURE_MARK in r.getMessage()]
+        assert len(failures) == 1
+        assert failures[0].levelno == logging.INFO

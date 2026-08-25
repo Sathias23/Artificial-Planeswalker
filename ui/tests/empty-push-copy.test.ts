@@ -19,7 +19,7 @@
  *
  * ================= WHY THE PIN IS ON A TEMPLATE AND NOT ON A SENTENCE ==================
  *
- * The artefact writes `{kind}`, so the artefact's own string is a template and the shipped
+ * The artefact writes `{noun}`, so the artefact's own string is a template and the shipped
  * constant is that template unchanged. Substitution is asserted next door
  * (`SuggestionsView.test.tsx`), where the rendering lives. Splitting it that way is what keeps
  * THIS file's comparison a pure byte-for-byte one — a gate that substituted first would be
@@ -41,7 +41,11 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { EMPTY_PUSH_TEMPLATE, KIND_PLACEHOLDER } from '../src/containers/SuggestionsView/copy.ts'
+import {
+  EMPTY_PUSH_NOUNS,
+  EMPTY_PUSH_TEMPLATE,
+  NOUN_PLACEHOLDER,
+} from '../src/containers/SuggestionsView/copy.ts'
 
 const artefact = (name: string): string =>
   readFileSync(
@@ -106,8 +110,8 @@ describe('the empty-push line is the artefact’s sentence (c6-6, AC 4)', () => 
 
   it('ships the sentence BYTE-FOR-BYTE, placeholder and em dash and trailing period included', () => {
     // Byte-for-byte against the quoted value, not `toContain` and not a normalised compare: "The
-    // agent sent an empty {kind} - nothing to show" (hyphen), "…another pass" (no period) and a
-    // helpfully-expanded "{kind}" are all plausible edits that read fine in a diff, and each
+    // agent's {noun} came back empty - nothing to show" (hyphen), "…another pass" (no period) and
+    // a helpfully-expanded "{noun}" are all plausible edits that read fine in a diff, and each
     // breaks either UX-DR33's voice or the artefact contract.
     const quoted = /In-view:\s*"([^"]*)"/.exec(rowWith(ROW_LABEL, 'In-view:'))
 
@@ -125,14 +129,30 @@ describe('the empty-push line is the artefact’s sentence (c6-6, AC 4)', () => 
     expect(EMPTY_PUSH_TEMPLATE.endsWith('.')).toBe(true)
   })
 
-  it('keeps the artefact’s PLACEHOLDER rather than a hard-coded kind', () => {
+  it('keeps the artefact’s PLACEHOLDER rather than a hard-coded noun', () => {
     // The half that makes this row different from every other transcribed sentence in the app:
-    // the artefact's string has a hole in it, and shipping "an empty suggestions view" — however
-    // much better it reads — would be authoring copy while claiming to quote it. The residue
-    // that produces (the substituted line is ungrammatical) is declared in the copy module and
-    // carried on the ledger, not repaired here.
-    expect(EMPTY_PUSH_TEMPLATE).toContain(KIND_PLACEHOLDER)
-    expect(EMPTY_PUSH_TEMPLATE.split(KIND_PLACEHOLDER)).toHaveLength(2)
+    // the artefact's string has a hole in it, and the constant ships the hole. What fills it is
+    // no longer the wire kind — the epic-16 retro (item 4) ruled the c6-6 grammar ledger entry
+    // release-gating, the artefact's cell moved first to `{noun}` + a named noun list, and the
+    // substitution below gates that list against the cell.
+    expect(EMPTY_PUSH_TEMPLATE).toContain(NOUN_PLACEHOLDER)
+    expect(EMPTY_PUSH_TEMPLATE.split(NOUN_PLACEHOLDER)).toHaveLength(2)
+  })
+
+  it('ships the artefact’s own noun list, no more and no fewer', () => {
+    // The amended cell ENUMERATES the display nouns after the sentence ("suggestions", "swaps",
+    // "tier list", "card groups"), which makes the noun table transcribable rather than
+    // authored: every quoted string in the cell after the sentence itself is a noun. The wire
+    // kinds keying the table are not in the artefact — the store's `AGENT_VIEW_LABELS` is that
+    // half of the contract, and `agentView.test.ts` pins table↔labels from the side that may
+    // import both. A fifth kind added to the store without a noun here fails THAT test; a noun
+    // here the artefact never named fails THIS one.
+    const cell = rowWith(ROW_LABEL, 'In-view:')
+    const quoted = [...cell.matchAll(/"([^"]*)"/g)].map((m) => m[1])
+    const nouns = quoted.filter((q) => q !== EMPTY_PUSH_TEMPLATE)
+
+    expect(nouns.length, 'the cell must enumerate the nouns beside the sentence').toBeGreaterThan(0)
+    expect([...Object.values(EMPTY_PUSH_NOUNS)].sort()).toEqual([...nouns].sort())
   })
 
   it('carries the "opens and renders rather than rejecting" posture the branch is built on', () => {

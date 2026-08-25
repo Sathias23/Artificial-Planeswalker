@@ -36,12 +36,13 @@ from typing import get_args
 
 import pytest
 
-from src.companion.client import PUSH_OUTCOMES, PushOutcome
+from src.companion.client import PUSH_OUTCOMES, PushOutcome, PushOutcomeToken
 from src.companion.contracts import (
     ActiveDeckRequest,
     AgentEvent,
     GroupItem,
     GroupsPayload,
+    HealthResponse,
     SuggestionItem,
     SuggestionsPayload,
     SwapItem,
@@ -49,14 +50,17 @@ from src.companion.contracts import (
     TierItem,
     TierListPayload,
 )
+from src.companion.discovery import COMPANION_FILENAME, DiscoveryRecord, read_discovery
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
 from src.mcp_server.tools import companion
 from src.mcp_server.tools.companion import (
+    CompanionStatusResult,
     ShowGroupsResult,
     ShowSuggestionsResult,
     ShowSwapsResult,
     ShowTierListResult,
+    companion_status,
     set_active_deck,
     show_groups,
     show_suggestions,
@@ -65,6 +69,11 @@ from src.mcp_server.tools.companion import (
 )
 from src.mcp_server.tools.deck_management import create_deck
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
+
+# The loopback toolkit, imported rather than rebuilt — `test_deck_changed_wiring.py`'s precedent,
+# on the same terms: `test_client.py` owns the only real HTTP stubs in the repo, and a second
+# implementation here would be a fake of a fake.
+from tests.unit.companion.test_client import StubFleet, health_bytes, plant_discovery
 
 _MISSING_DECK = "deck-not-in-database-00000"
 """Short enough to stay under ``_ECHO_LIMIT`` (48) unmangled, so ``deck_id == _MISSING_DECK``
@@ -867,6 +876,29 @@ class TestEverySwapsOutcomeBecomesTheStatusOfTheSameName:
         assert result.items_pushed == 2
         assert result.message, "every status carries a sentence a human can read"
 
+    async def test_no_clients_connected_is_pushed_once_and_never_re_sent(self, push_stub):
+        """c5-5's ruling, mirrored from suggestions (E16-93): the backend will not re-send, so a
+        retry would duplicate at the first tab."""
+        stub = push_stub(PushOutcome(outcome="no_clients_connected", clients=0))
+
+        result = await show_swaps(payload=_swaps_payload())
+
+        assert result.status == "no_clients_connected"
+        assert result.clients == 0
+        assert len(stub.events) == 1, "a success with nobody watching is still one push"
+
+    async def test_a_closed_app_is_named_as_such(self, push_stub):
+        """The suggestions closed-app coverage, mirrored (E16-93): the companion is a second
+        channel, never a condition on the first (NG5, SC-3)."""
+        push_stub(PushOutcome(outcome="app_not_running"))
+
+        result = await show_swaps(payload=_swaps_payload())
+
+        assert result.status == "app_not_running"
+        assert result.clients is None
+        assert "isn't running" in result.message
+        assert result.items_pushed == 2, "what was attempted is reported even when nothing was sent"
+
     async def test_no_status_leaks_a_raw_outcome_token_into_the_message(self, push_stub):
         """The token is for a caller to switch on; the sentence is for a person to read."""
         for outcome in PUSH_OUTCOMES:
@@ -1039,6 +1071,29 @@ class TestEveryTierListOutcomeBecomesTheStatusOfTheSameName:
         assert result.clients == clients
         assert result.items_pushed == 2
         assert result.message, "every status carries a sentence a human can read"
+
+    async def test_no_clients_connected_is_pushed_once_and_never_re_sent(self, push_stub):
+        """c5-5's ruling, mirrored from suggestions (E16-93): the backend will not re-send, so a
+        retry would duplicate at the first tab."""
+        stub = push_stub(PushOutcome(outcome="no_clients_connected", clients=0))
+
+        result = await show_tier_list(payload=_tier_payload())
+
+        assert result.status == "no_clients_connected"
+        assert result.clients == 0
+        assert len(stub.events) == 1, "a success with nobody watching is still one push"
+
+    async def test_a_closed_app_is_named_as_such(self, push_stub):
+        """The suggestions closed-app coverage, mirrored (E16-93): the companion is a second
+        channel, never a condition on the first (NG5, SC-3)."""
+        push_stub(PushOutcome(outcome="app_not_running"))
+
+        result = await show_tier_list(payload=_tier_payload())
+
+        assert result.status == "app_not_running"
+        assert result.clients is None
+        assert "isn't running" in result.message
+        assert result.items_pushed == 2, "what was attempted is reported even when nothing was sent"
 
     async def test_no_status_leaks_a_raw_outcome_token_into_the_message(self, push_stub):
         """The token is for a caller to switch on; the sentence is for a person to read."""
@@ -1216,6 +1271,29 @@ class TestEveryGroupsOutcomeBecomesTheStatusOfTheSameName:
         assert result.items_pushed == 2
         assert result.message, "every status carries a sentence a human can read"
 
+    async def test_no_clients_connected_is_pushed_once_and_never_re_sent(self, push_stub):
+        """c5-5's ruling, mirrored from suggestions (E16-93): the backend will not re-send, so a
+        retry would duplicate at the first tab."""
+        stub = push_stub(PushOutcome(outcome="no_clients_connected", clients=0))
+
+        result = await show_groups(payload=_groups_payload())
+
+        assert result.status == "no_clients_connected"
+        assert result.clients == 0
+        assert len(stub.events) == 1, "a success with nobody watching is still one push"
+
+    async def test_a_closed_app_is_named_as_such(self, push_stub):
+        """The suggestions closed-app coverage, mirrored (E16-93): the companion is a second
+        channel, never a condition on the first (NG5, SC-3)."""
+        push_stub(PushOutcome(outcome="app_not_running"))
+
+        result = await show_groups(payload=_groups_payload())
+
+        assert result.status == "app_not_running"
+        assert result.clients is None
+        assert "isn't running" in result.message
+        assert result.items_pushed == 2, "what was attempted is reported even when nothing was sent"
+
     async def test_no_status_leaks_a_raw_outcome_token_into_the_message(self, push_stub):
         """The token is for a caller to switch on; the sentence is for a person to read."""
         for outcome in PUSH_OUTCOMES:
@@ -1326,6 +1404,29 @@ class TestEveryPushToolSpeaksItsOwnNoun:
         assert companion._TIER_LIST_PUSH_MESSAGES == companion._push_messages("tiers")
         assert companion._GROUPS_PUSH_MESSAGES == companion._push_messages("groups")
 
+    @pytest.mark.parametrize(
+        "table_name",
+        [
+            "_PUSH_MESSAGES",
+            "_SWAPS_PUSH_MESSAGES",
+            "_TIER_LIST_PUSH_MESSAGES",
+            "_GROUPS_PUSH_MESSAGES",
+        ],
+    )
+    def test_each_table_keys_exactly_the_client_vocabulary_minus_displayed(self, table_name):
+        """E16-93: the tables are tied to ``PushOutcomeToken`` BY NAME, not by habit.
+
+        A token added to the client's vocabulary without a sentence here would otherwise
+        surface as a ``KeyError`` at runtime on the first push that hit it; a stale key left
+        behind by a renamed token would sit unreachable forever. Set equality catches both, and
+        names the table that drifted. ``displayed`` is the one deliberate absence — its message
+        interpolates the counts and is passed per kind (see :func:`_push_messages`).
+        """
+        table = getattr(companion, table_name)
+        assert set(table) == set(get_args(PushOutcomeToken)) - {"displayed"}, (
+            f"{table_name} does not key exactly the client's non-displayed outcome tokens"
+        )
+
     def test_the_four_suggestions_failure_sentences_are_the_shipped_bytes(self):
         """Byte-for-byte, em dash included — the anchor that catches BUILDER drift.
 
@@ -1341,7 +1442,8 @@ class TestEveryPushToolSpeaksItsOwnNoun:
             ),
             "app_not_running": (
                 "The companion app isn't running, so the suggestions have nowhere to appear. "
-                "Start it to see them on the glass — the content is in chat regardless."
+                "Offer to open it — companion_status returns the launch command, and the "
+                "companion skill walks through it — the content is in chat regardless."
             ),
             "payload_rejected": (
                 "The companion refused the suggestions, so none of them were displayed. The "
@@ -1386,3 +1488,270 @@ class TestEveryPushToolSpeaksItsOwnNoun:
                 assert result.message == f"The companion is showing {subject} in 1 tab.", (
                     helper.__name__
                 )
+
+
+class _LiveStub:
+    """Stands in for ``live_instance``, answering a chosen record and counting the asks."""
+
+    def __init__(self, record: DiscoveryRecord | None) -> None:
+        self.record = record
+        self.calls = 0
+
+    async def __call__(self, **kwargs: object) -> DiscoveryRecord | None:
+        self.calls += 1
+        return self.record
+
+
+class _HealthStub:
+    """Stands in for ``probe_health``, recording the ports it was asked about."""
+
+    def __init__(self, health: HealthResponse | None) -> None:
+        self.health = health
+        self.ports: list[int] = []
+
+    async def __call__(self, port: int, **kwargs: object) -> HealthResponse | None:
+        self.ports.append(port)
+        return self.health
+
+
+_STATUS_TOKEN = "status-token-n3v3rSh0wn"
+"""A distinctive credential planted in the stubbed record, so a leak into the result is greppable
+(the token must never reach a ``companion_status`` result)."""
+
+
+@pytest.fixture
+def status_stubs(monkeypatch):
+    """Install ``live_instance`` / ``probe_health`` stubs for :func:`companion_status` (17.4).
+
+    Returns:
+        ``install(record, health)`` -> ``(live_stub, health_stub)``.
+    """
+
+    def install(
+        record: DiscoveryRecord | None, health: HealthResponse | None
+    ) -> tuple[_LiveStub, _HealthStub]:
+        live = _LiveStub(record)
+        probe = _HealthStub(health)
+        monkeypatch.setattr(companion, "_client_live_instance", live)
+        monkeypatch.setattr(companion, "_client_probe_health", probe)
+        return live, probe
+
+    return install
+
+
+def _record(port: int = 8765) -> DiscoveryRecord:
+    return DiscoveryRecord(port=port, token=_STATUS_TOKEN, instance_id="inst-status")
+
+
+class TestCompanionStatusIsReadOnlyAndNamesTheNextStep:
+    """17.4: the agent's read-only answer — running / URL / tabs / the exact launch command."""
+
+    async def test_not_running_offers_the_launch_command_and_no_url(self, status_stubs):
+        live, probe = status_stubs(None, None)
+
+        result = await companion_status()
+
+        assert result.status == "not_running"
+        assert result.url is None
+        assert result.clients is None
+        assert result.launch_command == companion.launch_command()
+        assert "isn't running" in result.message
+        assert probe.ports == [], "nothing proven live means nothing further is probed"
+
+    async def test_running_with_a_tab_says_there_is_nothing_to_do(self, status_stubs):
+        status_stubs(
+            _record(8765), HealthResponse(status="ok", instance_id="inst-status", clients=1)
+        )
+
+        result = await companion_status()
+
+        assert result.status == "running"
+        assert result.url == "http://127.0.0.1:8765"
+        assert result.clients == 1
+        assert "1 tab open" in result.message
+        assert "nothing to do" in result.message
+
+    async def test_running_with_no_tab_points_at_the_url_and_the_launch_command(self, status_stubs):
+        status_stubs(
+            _record(9000), HealthResponse(status="ok", instance_id="inst-status", clients=0)
+        )
+
+        result = await companion_status()
+
+        assert result.status == "running"
+        assert result.url == "http://127.0.0.1:9000"
+        assert result.clients == 0
+        assert "no browser tab is open" in result.message
+        assert "launch_command" in result.message
+        assert result.launch_command == companion.launch_command()
+
+    async def test_a_companion_that_vanishes_between_probes_is_not_running(self, status_stubs):
+        """The second probe is held to the first's proof: no health body, no ``running``."""
+        status_stubs(_record(8765), None)
+
+        result = await companion_status()
+
+        assert result.status == "not_running"
+        assert result.url is None
+        assert result.clients is None
+        assert result.launch_command == companion.launch_command()
+
+    async def test_a_foreign_instance_on_the_port_is_not_running(self, status_stubs):
+        """A body whose ``instance_id`` is not the proven record's is a different process."""
+        status_stubs(
+            _record(8765), HealthResponse(status="ok", instance_id="someone-else", clients=1)
+        )
+
+        result = await companion_status()
+
+        assert result.status == "not_running"
+        assert result.url is None
+
+    async def test_a_negative_count_is_clamped_to_none(self, status_stubs):
+        status_stubs(_record(), HealthResponse(status="ok", instance_id="inst-status", clients=-1))
+
+        result = await companion_status()
+
+        assert result.status == "running"
+        assert result.clients is None
+        assert "-1" not in result.message
+        # A malformed count is UNKNOWN, not zero: the message must never claim no tab is open.
+        assert "no browser tab is open" not in result.message
+        assert "tab count" in result.message
+
+    async def test_an_older_companion_without_the_count_reads_as_count_unknown(self, status_stubs):
+        """A ``/health`` body from before 17.4 carries no ``clients``: ``None`` is *unknown*, not
+        ``0`` — a tab may already be open, so the message hands over the URL rather than claiming
+        nobody is looking (pre-cut R2)."""
+        status_stubs(_record(), HealthResponse(status="ok", instance_id="inst-status"))
+
+        result = await companion_status()
+
+        assert result.status == "running"
+        assert result.clients is None
+        assert "no browser tab is open" not in result.message
+        assert "tab count" in result.message
+        assert "may already be open" in result.message
+        assert result.url is not None and result.url in result.message
+
+    async def test_the_health_probe_asks_the_proven_port(self, status_stubs):
+        _, probe = status_stubs(
+            _record(4321), HealthResponse(status="ok", instance_id="inst-status", clients=2)
+        )
+
+        result = await companion_status()
+
+        assert probe.ports == [4321]
+        assert result.clients == 2
+        assert "2 tabs open" in result.message
+
+    @pytest.mark.parametrize("clients", [None, 0, 1])
+    async def test_the_token_never_appears_in_the_result(self, status_stubs, clients):
+        status_stubs(
+            _record(), HealthResponse(status="ok", instance_id="inst-status", clients=clients)
+        )
+
+        result = await companion_status()
+
+        assert _STATUS_TOKEN not in result.model_dump_json()
+
+    async def test_the_result_carries_exactly_the_five_fields(self, status_stubs):
+        status_stubs(None, None)
+
+        result = await companion_status()
+
+        assert set(result.model_dump()) == {"status", "url", "clients", "launch_command", "message"}
+
+    async def test_every_status_fits_the_budget(self, status_stubs):
+        for record, health in (
+            (None, None),
+            (_record(65535), HealthResponse(status="ok", instance_id="inst-status", clients=0)),
+            (_record(65535), HealthResponse(status="ok", instance_id="inst-status", clients=12)),
+        ):
+            status_stubs(record, health)
+            result = await companion_status()
+            assert len(result.model_dump_json()) <= 400 + len(result.launch_command), (
+                result.model_dump_json()
+            )
+
+    def test_the_launch_command_uses_the_directory_form_with_open(self):
+        """The ``--directory`` form works for a plugin install (deferred-work.md:6516); ``--open``
+        is what makes the page appear without a second step."""
+        command = companion.launch_command()
+        root = companion._INSTALL_ROOT
+
+        assert command == f'uv run --directory "{root}" artificial-planeswalker companion --open'
+        assert (root / "pyproject.toml").is_file(), "the root must be the uv project directory"
+        assert root == Path(companion.__file__).resolve().parents[3]
+
+    def test_the_status_vocabulary_is_closed(self):
+        assert set(get_args(CompanionStatusResult.model_fields["status"].annotation)) == {
+            "running",
+            "not_running",
+            "error",
+        }
+
+
+@pytest.fixture
+def stub_server():
+    """Yield :meth:`StubFleet.start` and tear down every loopback stub it handed out.
+
+    A four-line fixture over an imported helper, exactly as ``test_client.py``,
+    ``test_server.py`` and ``test_deck_changed_wiring.py`` each keep their own: the fixture
+    cannot simply be imported, because a module-level ``stub_server`` binding and a test
+    parameter of the same name are a redefinition (ruff F811).
+    """
+    fleet = StubFleet()
+    yield fleet.start
+    fleet.close_all()
+
+
+class TestCompanionStatusOverARealSocket:
+    """Pre-cut R7: the ``clients`` fold proven against a real health body on a real socket.
+
+    Every test in the class above stubs ``_client_live_instance`` / ``_client_probe_health``, so
+    none of them can catch the tool and the client disagreeing about what a ``/health`` body
+    means. Here nothing is monkeypatched: a loopback stub serves the JSON a real companion
+    would, a hand-planted discovery record points at it, and the tool's real client calls do
+    the whole proof — identity match included.
+    """
+
+    @pytest.fixture(autouse=True)
+    def isolated_data_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        """Point the real client at an empty data dir, and prove it starts empty."""
+        data_dir = tmp_path / "companion-data"
+        data_dir.mkdir()
+        monkeypatch.setenv("PLANESWALKER_DATA_DIR", str(data_dir))
+        assert not (data_dir / COMPANION_FILENAME).exists()
+        assert read_discovery() is None, (
+            "something published a discovery record into the isolated data dir — this test "
+            "would be measuring a live companion"
+        )
+        return data_dir
+
+    async def test_a_real_health_body_with_one_client_reports_the_tab(self, stub_server):
+        """``clients: 1`` parsed off the wire — no monkeypatched client functions anywhere."""
+        stub = stub_server(body=health_bytes("inst-real-parse", clients=1))
+        plant_discovery(port=stub.port, instance_id="inst-real-parse")
+
+        result = await companion_status()
+
+        assert result.status == "running"
+        assert result.url == f"http://127.0.0.1:{stub.port}"
+        assert result.clients == 1
+        assert "1 tab open" in result.message
+        assert "nothing to do" in result.message
+        assert stub.requests, "the stub was never dialled — this proved nothing"
+
+    async def test_a_real_health_body_without_the_count_reads_as_unknown(self, stub_server):
+        """The unknown arm, off the wire: an older companion's body carries no ``clients``."""
+        stub = stub_server(body=health_bytes("inst-real-parse"))
+        plant_discovery(port=stub.port, instance_id="inst-real-parse")
+
+        result = await companion_status()
+
+        assert result.status == "running"
+        assert result.clients is None
+        assert "no browser tab is open" not in result.message
+        assert "tab count" in result.message
+        assert stub.requests, "the stub was never dialled — this proved nothing"

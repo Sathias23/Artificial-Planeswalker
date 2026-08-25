@@ -26,13 +26,20 @@ class _FakeServer:
 
 
 class _RecordingRun:
-    """Records the port handed to ``src.companion.app.server.run`` instead of serving."""
+    """Records the port handed to ``src.companion.app.server.run`` instead of serving.
+
+    ``calls`` keeps the port-only shape every pre-17.4 assertion reads; ``opens`` records the
+    ``open_browser`` keyword beside it, so the flag's plumbing is asserted separately from the
+    port's rather than by widening every existing ``== [1234]``.
+    """
 
     def __init__(self) -> None:
         self.calls: list[int | None] = []
+        self.opens: list[bool] = []
 
-    def __call__(self, port: int | None = None) -> None:
+    def __call__(self, port: int | None = None, *, open_browser: bool = False) -> None:
         self.calls.append(port)
+        self.opens.append(open_browser)
 
 
 class _RootLoggerGuard:
@@ -185,6 +192,25 @@ class TestTheCompanionSubcommand:
         assert main_mod.main(["companion", "--port=1234"]) == 0
         assert recorded_run.calls == [1234]
 
+    def test_open_is_off_unless_asked_for(self, recorded_run, root_logger_guard):
+        """17.4: a plain launch never pops a browser — ``--open`` is opt-in."""
+        assert main_mod.main(["companion"]) == 0
+        assert recorded_run.opens == [False]
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["companion", "--open"],
+            ["companion", "--open", "--port", "1234"],
+            ["companion", "--port=1234", "--open"],
+        ],
+        ids=["alone", "before-port", "after-port"],
+    )
+    def test_open_reaches_run_in_any_position(self, argv, recorded_run, root_logger_guard):
+        assert main_mod.main(argv) == 0
+        assert recorded_run.opens == [True]
+        assert recorded_run.calls == [None if len(argv) == 2 else 1234]
+
     def test_an_out_of_range_port_is_not_a_usage_error(self, recorded_run, root_logger_guard):
         """It flows through to resolve_preferred_port, which warns and uses the default (AC 3)."""
         assert main_mod.main(["companion", "--port", "99999"]) == 0
@@ -212,7 +238,7 @@ class TestTheCompanionSubcommand:
 
         seen: list[int] = []
         monkeypatch.setattr(
-            server_mod, "run", lambda port=None: seen.append(len(logging.root.handlers))
+            server_mod, "run", lambda port=None, **_: seen.append(len(logging.root.handlers))
         )
         root_logger_guard.make_pristine()
 
@@ -224,7 +250,7 @@ class TestTheCompanionSubcommand:
         """Ctrl-C before uvicorn exists must not print a traceback for a deliberate action."""
         import src.companion.app.server as server_mod
 
-        def interrupt(port: int | None = None) -> None:
+        def interrupt(port: int | None = None, **_: object) -> None:
             raise KeyboardInterrupt
 
         monkeypatch.setattr(server_mod, "run", interrupt)
@@ -244,6 +270,9 @@ class TestUsageErrors:
             ["companion", "--bogus"],
             ["companion", "extra"],
             ["companion", "--port", "1234", "--port=5678"],
+            ["companion", "--open=yes"],
+            ["companion", "--opne"],
+            ["companion", "--open", "--open"],
             ["nonsense"],
             ["--version"],
         ],
@@ -254,6 +283,9 @@ class TestUsageErrors:
             "unknown-option",
             "stray-argument",
             "duplicate-port",
+            "open-with-a-value",
+            "misspelt-open",
+            "duplicate-open",
             "unknown-subcommand",
             "unknown-option-as-subcommand",
         ],
@@ -291,7 +323,7 @@ class TestUsageErrors:
             assert recorded_run.calls == []
 
     def test_the_usage_text_names_every_valid_shape(self):
-        for expected in ("artificial-planeswalker", "companion", "--port", "--help"):
+        for expected in ("artificial-planeswalker", "companion", "--port", "--open", "--help"):
             assert expected in main_mod._USAGE
 
     def test_the_usage_text_names_no_port_number(self):

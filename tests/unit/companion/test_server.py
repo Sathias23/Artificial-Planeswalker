@@ -15,6 +15,7 @@ import logging
 import os
 import socket
 import sys
+import webbrowser
 from pathlib import Path
 
 import httpx
@@ -911,4 +912,163 @@ class TestNothingBindsBeyondLoopback:
         assert not offenders, (
             f"a bind target other than the HOST constant was found: {offenders}. NFR-01 makes "
             "127.0.0.1 the security envelope — 0.0.0.0, '::', '' and 'localhost' are all forbidden."
+        )
+
+
+class _RecordingBrowser:
+    """Stands in for ``webbrowser.open``: records the URLs, answers or raises as scripted."""
+
+    def __init__(self, *, result: bool = True, raises: Exception | None = None) -> None:
+        self.result = result
+        self.raises = raises
+        self.urls: list[str] = []
+
+    def __call__(self, url: str) -> bool:
+        self.urls.append(url)
+        if self.raises is not None:
+            raise self.raises
+        return self.result
+
+
+@pytest.fixture
+def browser(monkeypatch):
+    """Replace ``webbrowser.open`` so no test here ever pops a real browser.
+
+    Returns:
+        ``install(result=True, raises=None)`` -> the recorder.
+    """
+
+    def install(*, result: bool = True, raises: Exception | None = None) -> _RecordingBrowser:
+        recorder = _RecordingBrowser(result=result, raises=raises)
+        monkeypatch.setattr(server.webbrowser, "open", recorder)
+        return recorder
+
+    return install
+
+
+class TestOpenBrowser:
+    """17.4: ``--open`` is its own ``webbrowser.open``, after the URL line, never fatal."""
+
+    def test_off_by_default(self, recorded_serve, loopback, browser):
+        opened = browser()
+
+        server.run(port=loopback.free_port())
+
+        assert opened.urls == []
+
+    def test_opens_the_url_the_launch_line_printed(self, recorded_serve, loopback, browser, capsys):
+        opened = browser()
+        wanted = loopback.free_port()
+
+        server.run(port=wanted, open_browser=True)
+
+        assert opened.urls == [f"http://127.0.0.1:{wanted}"]
+        assert f"http://127.0.0.1:{wanted}" in capsys.readouterr().out
+        assert recorded_serve.calls, "the browser opening must not pre-empt serving"
+
+    def test_opens_the_real_port_after_a_fallback(self, recorded_serve, loopback, browser):
+        """The URL handed to the browser is the bound one, not the preferred one."""
+        opened = browser()
+        taken = _port_of(loopback.occupy())
+
+        server.run(port=taken, open_browser=True)
+
+        assert opened.urls == [f"http://127.0.0.1:{recorded_serve.socket_port}"]
+
+    def test_already_running_opens_the_live_instances_url_and_returns(
+        self, recorded_serve, stub_server, loopback, browser, capsys
+    ):
+        """Idempotent by design: the agent may run the launch command whenever no tab is open."""
+        opened = browser()
+        stub = stub_server(body=health_bytes("inst-live"))
+        plant_discovery(port=stub.port, instance_id="inst-live")
+
+        assert server.run(port=loopback.free_port(), open_browser=True) is None
+
+        assert opened.urls == [f"http://127.0.0.1:{stub.port}"]
+        assert "already running" in capsys.readouterr().out
+        assert recorded_serve.calls == []
+
+    def test_already_running_without_open_pops_nothing(
+        self, recorded_serve, stub_server, loopback, browser
+    ):
+        opened = browser()
+        stub = stub_server(body=health_bytes("inst-live"))
+        plant_discovery(port=stub.port, instance_id="inst-live")
+
+        server.run(port=loopback.free_port())
+
+        assert opened.urls == []
+
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            {"result": False},
+            {"raises": webbrowser.Error("no browser")},
+            {"raises": OSError(2, "x")},
+        ],
+        ids=["returns-false", "raises-webbrowser-error", "raises-oserror"],
+    )
+    def test_a_browser_failure_warns_and_still_serves(
+        self, recorded_serve, loopback, browser, caplog, failure
+    ):
+        browser(**failure)
+        wanted = loopback.free_port()
+
+        with caplog.at_level(logging.WARNING, logger=server.__name__):
+            assert server.run(port=wanted, open_browser=True) is None
+
+        assert recorded_serve.calls, "a browser failure must never stop the serve"
+        assert any(
+            record.levelno == logging.WARNING and "open it yourself" in record.getMessage()
+            for record in caplog.records
+        )
+
+    def test_the_browser_is_asked_after_the_url_line(self, recorded_serve, loopback, monkeypatch):
+        """Order is the contract: the agent waits for the URL line, and the tab follows it."""
+        seen: list[str] = []
+
+        class _Stdout(io.StringIO):
+            def write(self, text: str) -> int:
+                if "companion running at" in text:
+                    seen.append("print")
+                return super().write(text)
+
+        def opener(url: str) -> bool:
+            seen.append("open")
+            return True
+
+        monkeypatch.setattr(server.webbrowser, "open", opener)
+        monkeypatch.setattr(sys, "stdout", _Stdout())
+
+        server.run(port=loopback.free_port(), open_browser=True)
+
+        assert "open" in seen
+        assert seen.index("open") > seen.index("print")
+
+    def test_the_port_accepts_a_connection_the_moment_the_browser_is_asked(
+        self, recorded_serve, loopback, monkeypatch
+    ):
+        """Pre-cut R5: ``listen()`` precedes the browser, so a fast tab is queued, not refused.
+
+        The connect happens INSIDE the stand-in browser — the exact moment ``_open_browser`` is
+        invoked, with ``_serve`` stubbed so uvicorn's own ``listen()`` can never be the one that
+        made it work. A bound-but-not-listening socket refuses this connect (``ConnectionRefused``
+        on both platforms), so this test is red without the explicit ``listen()``.
+        """
+        connected: list[int] = []
+
+        def opener(url: str) -> bool:
+            port = int(url.rsplit(":", 1)[1])
+            with socket.create_connection(("127.0.0.1", port), timeout=1) as probe:
+                connected.append(probe.getpeername()[1])
+            return True
+
+        monkeypatch.setattr(server.webbrowser, "open", opener)
+
+        server.run(port=loopback.free_port(), open_browser=True)
+
+        assert connected == [recorded_serve.socket_port], (
+            "the browser's first connect must land in the backlog of the already-listening "
+            "socket, never be refused during the pre-uvicorn window"
         )

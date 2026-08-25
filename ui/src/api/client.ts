@@ -97,6 +97,7 @@ import type {
   DeckSummary,
   ErrorResponse,
   FormatCheckReport,
+  HealthResponse,
   SessionTicket,
 } from './schema'
 
@@ -382,6 +383,19 @@ export type SessionOutcome =
   | { readonly kind: 'ticket'; readonly ticket: string }
   | { readonly kind: 'error'; readonly reason: string | null }
   | { readonly kind: 'unreachable' }
+
+/**
+ * Where the backend names itself (story 17.1, FR-15, AD-4).
+ *
+ * No path parameter — the same structurally-retry-safe shape {@link DECKS_PATH} has — and no
+ * retry either, because nothing schedules this route at all: it is read on transitions to
+ * `'live'` only (`src/state/identity.ts` owns the trigger), never polled. The route is the
+ * companion's unauthenticated identity probe: `routes/health.py` holds no database and models no
+ * failure, so under a running lifespan the answer is always `200` with `status: "ok"` and the
+ * process's own `instance_id`. What the pill's tooltip needs is exactly that id — the one fact
+ * that distinguishes a fresh backend from the one this tab last confirmed.
+ */
+export const HEALTH_PATH = '/health'
 
 /**
  * Where the socket lives, minus the query string.
@@ -731,6 +745,30 @@ const ticketOf = (body: unknown): string | null => {
   return ticket
 }
 
+/**
+ * The instance id out of a `200` body, or `null` if the body was not the promised record.
+ *
+ * One field, and a blank counts as absent — {@link ticketOf}'s posture exactly. `status` is
+ * deliberately NOT checked: the consumer reads one thing, the id, and a body carrying a
+ * non-blank string `instance_id` is a body from this route; the `'ok'` literal is the openapi
+ * drift gate's business (`schema.test.ts` pins it at the type level).
+ *
+ * TRIMMED, not merely blank-checked (review finding) — `connection.ts`'s deck_id reasoning
+ * verbatim: the stored id feeds `applyInstanceId`'s equality guard and the tooltip's "did the
+ * process change" reading, so a PADDED copy of the same id passed through raw would compare as
+ * a different backend. A fold weaker than the comparison it feeds is the second-lock weakness
+ * that review keeps closing.
+ */
+const instanceIdOf = (body: unknown): string | null => {
+  if (typeof body !== 'object' || body === null) return null
+  // `in` rather than a cast, for `reasonOf`'s reason: the value on the wire is untyped JSON.
+  if (!('instance_id' in body)) return null
+  const instanceId: unknown = (body as Partial<HealthResponse>).instance_id
+  if (typeof instanceId !== 'string') return null
+  const trimmed = instanceId.trim()
+  return trimmed === '' ? null : trimmed
+}
+
 /** A response that ARRIVED: whether it was a 2xx, and whatever body could be read out of it. */
 interface Received {
   readonly ok: boolean
@@ -1018,6 +1056,34 @@ export const readSessionTicket = async (): Promise<SessionOutcome> => {
   // A `200` that is not the promised record: the posture every reader above takes. `null` is the
   // reason a contract violation has — there is no token for "the backend answered something else".
   return ticket === null ? { kind: 'error', reason: null } : { kind: 'ticket', ticket }
+}
+
+/**
+ * Read the backend's instance id once, and report it — or `null` — without ever throwing
+ * (story 17.1).
+ *
+ * **ONE request, no retry, no loop, no timer** — the sixth reader in this module to say so.
+ * Nothing here waits: the trigger is a transition to `'live'` (`src/state/identity.ts`), and a
+ * connection that just proved itself live is the best moment this route will ever have. A read
+ * that fails anyway — the process died in the gap, a proxy answered, the body was not the
+ * contract — answers `null`, and the CALLER's last-confirmed semantics leave the store untouched
+ * rather than blanking an identity that was true when it was read.
+ *
+ * `null` collapses every failure — non-2xx, malformed 200, rejection — because the consumer has
+ * exactly one question (*what id, if any, did the backend just confirm?*) and no arm of the usual
+ * three-case outcome union would be acted on differently. Health is unauthenticated (AD-4:
+ * it is what a caller reads BEFORE presenting a credential), so there is no token plumbing.
+ *
+ * Returns:
+ *   The non-blank `instance_id` out of a valid `200`, else `null`. Never rejects.
+ */
+export const readInstanceId = async (): Promise<string | null> => {
+  const received = await request(HEALTH_PATH)
+  if (received === null) return null
+
+  if (!received.ok) return null
+
+  return instanceIdOf(received.body)
 }
 
 /**

@@ -329,7 +329,7 @@
 #   epic-c1..10 → _bmad-output/planning-artifacts/epics-companion-app.md          (c-prefixed, numbering UNCHANGED)
 
 generated: 2026-06-20
-last_updated: '08-21-2026 18:56'
+last_updated: 08-23-2026 04:26
 # 08-20-2026 21:30 — STORY 15-6 DONE: THE SC-5 GATE RAN AND CLOSED (sc-5-gate-report-2026-08-20.md). Brad walked the live app, ruled it a deliberate product ("looks good", tabs, footer), then ruled the four open forks interactively: F1 open-modal-!=-surface, arrow-key flag re-accepted at the measured 206/101, M1 row added + M2/M3 accepted + M5 completeness guard extended with a planted RED proof. Inbox dispositioned by name (J6 DECLINED on its fifth home; D1 refused, stays unowned). EPIC 15 IS 6/6 CODE-COMPLETE — the 0.5.0 release cut, withheld by 15-4/15-5 ruling, is UNBLOCKED. Next: the Epic 15 retro, the integration PR to master (no Greptile, standing rule), then the release cut.
 #                Previously — 08-20-2026 21:12
 # 08-20-2026 21:12 — EPIC 14 VERDICT -> accepted; R3 CLOSED AS WAVED (Brad's rulings, master commits 72dce34 + cfec300): F7's quiet-machine closure was the named verdict-mover; the SC-5 preliminary ruling (sc-5-preliminary-ruling-2026-08-20.md, "it looks good ... we can always adjust after completion") covers the judgement half — story 15-6 cites it instead of staging a gate, and L1-L10 items surface as bugs, not gates. Also this stamp: umbrella reconciliation — claude/hello-7v0acf (15-6 spec) and master merged into feat/companion-epic-15, the canonical Epic 15 umbrella by Brad's ruling.
@@ -746,11 +746,13 @@ development_status:
   # FR-15, FR-18 · NFR-05 hardening · depends on c7
   # BLOCKED ITEM: c10-2 waits on the FR-18 session-history home decision (extend the nav,
   # or a strip inside each view's header) — the one open UX item carried into story work.
-  epic-17: backlog
-  17-1-connection-pill-status-detail: backlog
-  17-2-session-history: backlog
-  17-3-measure-the-latency-budgets-and-close-the-gaps: backlog
-  epic-17-retrospective: optional
+  epic-17: in-progress
+  17-1-connection-pill-status-detail: done
+  17-2-session-history: done
+  17-3-measure-the-latency-budgets-and-close-the-gaps: done
+  17-4-open-the-companion-from-the-agent: done
+  17-5-welcome-surface-first-impression: done
+  epic-17-retrospective: done
 
 # Action items carried out of retrospectives (see epic-N-retro-*.md for full context)
 action_items:
@@ -1525,7 +1527,7 @@ action_items:
       cardIdsOf filter into TierListView, equivalent trim guard into SwapsView cardIdOf/unknown
       check, with 16.3-style pinned tests"
     owner: ""
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-16-retro-2026-08-21.md"
   - id: "epic-16-retro-item-92-push-tool-docstring-accuracy-pass-one-co"
     epic: 16
@@ -1534,7 +1536,7 @@ action_items:
       all-three-tables -> four; 64 KB envelope note copied into companion_show_tier_list
       (and swaps)"
     owner: ""
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-16-retro-2026-08-21.md"
   - id: "epic-16-retro-item-93-guard-hardening-pair-test-tying-_push_me"
     epic: 16
@@ -1543,7 +1545,7 @@ action_items:
       into swaps/tier delivery tests + no_clients_connected mirrors for the three
       new kinds"
     owner: ""
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-16-retro-2026-08-21.md"
   - id: "epic-16-retro-item-94-release-gating-0-5-0-ruled-by-brad-2026"
     epic: 16
@@ -1553,7 +1555,7 @@ action_items:
       update byte-gated copy tests; decide the all-skipped header-count contradiction
       in passing"
     owner: ""
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-16-retro-2026-08-21.md"
   - id: "epic-16-retro-item-95-decide-the-view-scaffolding-consolidatio"
     epic: 16
@@ -1569,5 +1571,58 @@ action_items:
       the 16.1 exclusion): add a when-the-companion-is-running push note to the deckbuilding-family
       skills, both copies + plugin rebuild"
     owner: ""
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-16-retro-2026-08-21.md"
+  - id: "epic-17-retro-item-97-escape-seam-hardening-one-commit-iscompo"
+    epic: 17
+    action: "Escape-seam hardening (one commit): isComposing/defaultPrevented guards
+      on the pill document listener; repair the two stale comments (ConnectionPill
+      header, AgentViewsNav:33-37 AppShell citation); extend keyboard-floor non-vacuity
+      loop to the fourth listener; composed App test for popover+tooltip Escape ordering;
+      collapse duplicated focus-return block"
+    owner: "Brad"
+    status: done
+    ref: "_bmad-output/implementation-artifacts/epic-17-retro-2026-08-23.md"
+  - id: "epic-17-retro-item-98-companion_status-honesty-pair-distinguis"
+    epic: 17
+    action: "companion_status honesty pair: distinguish clients-unknown (None) from
+      clients==0 in tool message and companion skill; add running-arm test driving
+      clients through the real probe_health parse"
+    owner: "Brad"
+    status: done
+    ref: "_bmad-output/implementation-artifacts/epic-17-retro-2026-08-23.md"
+  - id: "epic-17-retro-item-99-open-launch-window-pair-sock-listen-befo"
+    epic: 17
+    action: "--open launch-window pair: sock.listen() before _open_browser (or correct
+      the wrong bound-and-listening comment and record the race); companion-skill
+      bullet naming the already-starting-up lock-held outcome"
+    owner: "Brad"
+    status: done
+    ref: "_bmad-output/implementation-artifacts/epic-17-retro-2026-08-23.md"
+  - id: "epic-17-retro-item-100-guard-the-history-revisit-retained-write"
+    epic: 17
+    action: "Guard the history-revisit retained write (ruled by Brad 2026-08-23):
+      a history revisit of a non-latest entry must not touch retained[kind] — one-clause
+      condition in openAgentView"
+    owner: "Brad"
+    status: done
+    ref: "_bmad-output/implementation-artifacts/epic-17-retro-2026-08-23.md"
+  - id: "epic-17-retro-item-101-release-gating-0-5-0-ruled-by-brad-2026"
+    epic: 17
+    action: "RELEASE-GATING (0.5.0, ruled by Brad 2026-08-23): cold-open diagnosis
+      + re-measure against the branch tip (O1 trigger fired: 363->420->529 ms, 4%
+      headroom, hero weight landed post-measurement); pin hero cache header; fix the
+      deferred-stays-empty ledger contradiction in report + spec"
+    owner: "Brad"
+    status: done
+    ref: "_bmad-output/implementation-artifacts/epic-17-retro-2026-08-23.md"
+  - id: "epic-17-retro-item-102-deferred-hardening-bundle-post-0-5-0-can"
+    epic: 17
+    action: "Deferred hardening bundle (post-0.5.0 candidates): popover anchor ResizeObserver;
+      skills tool-vocabulary subset-of-tool-census gate; drain-instrument hardening
+      (bounded pump, per-run failure-recorder reset, cancellation logging, _outstanding_card_images
+      units); tooltip last-confirmed copy hedge; positive control in connection-pill-copy
+      gate"
+    owner: "Brad"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-17-retro-2026-08-23.md"

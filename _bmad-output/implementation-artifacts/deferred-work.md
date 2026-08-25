@@ -6644,3 +6644,19 @@ item.
   `src/viewer/*`. **Home: unowned** (15-1 is done; this is its residue). (Severity: Medium —
   a red test on every local Windows full-suite run trains the reader to ignore red, the exact
   cost C6 R5 documented.)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-17-4-open-the-companion-from-the-agent.md`
+  summary: `companion --open` calls `webbrowser.open` synchronously before `_serve`; on a host with no GUI browser the stdlib falls back to a text-mode browser (lynx/w3m) that blocks the launcher until quit, so the socket is bound but never served until then.
+  evidence: `src/companion/app/server.py::_open_browser` runs on the main thread between the URL line and `_serve`; `webbrowser` docs list console browsers as fallbacks when no graphical browser is registered. Niche (headless Linux with lynx installed) and unreachable on the primary Windows platform; fix would be a daemon thread or a `webbrowser.get()` inspection.
+- source_spec: `_bmad-output/implementation-artifacts/spec-17-5-welcome-surface-first-impression.md`
+  summary: Record the provenance/licence of `docs/hero-image.jpg` now that 17.5 ships it in the companion bundle and `plugin/` tree (served to every user at `/hero.jpg`).
+  evidence: `docs/release-readiness-review.md:110` already flags that nothing states the image's origin or licence; 17.5 raises the stakes from README decoration to redistributed asset. Pre-existing, surfaced by the 17.5 review.
+- source_spec: `_bmad-output/implementation-artifacts/spec-17-4-open-the-companion-from-the-agent.md`
+  summary: Single-quote (or shlex-quote) `_INSTALL_ROOT` in the `companion_status` launch_command — double-quote interpolation is shell-unsafe for paths containing `$`, backticks, or `"`.
+  evidence: Greptile P2 on PR #100 (`src/mcp_server/tools/companion.py:742`), merged as-is at 4/5 "safe to merge"; real but low-severity — ordinary Windows paths are unaffected, a `$`-bearing install path would mis-expand.
+- source_spec: `_bmad-output/implementation-artifacts/spec-tier-list-usability.md`
+  summary: GroupsView group tiles (and SwapsView's coincidental label-derived sizing) still ride the intrinsic-width-less `aspect-ratio` derivation that collapsed tier tiles to ~0px slivers; port the `thumb-width` fix (DESIGN.md amendment + explicit width) to both.
+  evidence: `GroupsView.css` `.group-tile-thumb` copies the tier idiom with only absolutely-positioned overlay children (no in-flow width source), the exact mechanism the tier-list-usability review proved yields zero intrinsic width; `SwapsView.css` renders correctly only because its "OUT · N COPIES" label happens to be ~63:88-proportioned. Both files' comments were corrected by this spec but the layouts were ruled out of its scope.
+- source_spec: `_bmad-output/implementation-artifacts/spec-tier-list-usability.md`
+  summary: A plain vertical mouse wheel does not scroll the tier strips' `overflow-x: auto` rows (only shift+wheel, trackpad gestures, scrollbar drag, or tabbing through tiles do); decide whether a wheel-to-horizontal affordance is wanted and rule it in DESIGN.md before implementing.
+  evidence: Standard browser behavior for horizontal overflow containers; surfaced by the tier-list-usability review (blind-hunter). The primary platform is Windows with a mouse, so the main pointer gesture over a strip scrolls the outer `.agent-view-body` instead. Needs a design ruling (wheel hijacking is nonstandard) rather than a quick patch.

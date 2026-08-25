@@ -3,7 +3,8 @@
  *
  * ================= WHAT IS HERE, AND WHAT IS DELIBERATELY NOT =========================
  *
- * Three strings, and the PILL LABELS ARE NOT AMONG THEM. `Suggestions` / `Swaps` / `Tier list` /
+ * Five strings since story 17.2 (the History pill's label and quiet sentence joined c6-8's
+ * three), and the KIND pill labels are still NOT among them. `Suggestions` / `Swaps` / `Tier list` /
  * `Card groups` live in `src/state/agentView.ts`'s `AGENT_VIEW_LABELS`, because c6-6's review
  * ruled that the word for a KIND has one owner and the state layer is it — a view's fallback
  * title and its pill label are the same word, and Epic 9's three view stories each need theirs
@@ -85,3 +86,38 @@ export const QUIET_TOOLTIP = "Your agent hasn't sent this yet."
  * not spoken on arrival.
  */
 export const UNREAD_WORD = 'unread'
+
+/**
+ * The fifth pill's visible label (story 17.2, FR-18, the ruled 2026-08-22 session-history home).
+ *
+ * **Here and NOT in `AGENT_VIEW_LABELS`, and that is a boundary rather than an oversight.** The
+ * state table owns one word per {@link AgentViewKind} because a kind's pill label and its view's
+ * fallback title are the same word — but History is not a kind: it never pushes, it has no view
+ * of its own and no fallback title to share, and keying it into that table would break the
+ * `satisfies Record<AgentViewKind, string>` exhaustiveness gate AND make `PILL_ORDER` (derived
+ * from the table's keys) grow a pill the enum does not name. So the word belongs to the one
+ * container that renders it, which is this module's whole charter.
+ *
+ * Sentence case for the kind labels' reason: `{typography.label}` uppercases at render, and the
+ * string a screen reader speaks is the stored one.
+ */
+export const HISTORY_LABEL = 'History'
+
+/**
+ * What the History pill says before the first push of ANY kind this session (story 17.2) —
+ * transcribed from `EXPERIENCE.md`'s `History pill + popover` row, byte for byte, and gated
+ * against it by `tests/agent-views-nav-copy.test.ts` exactly as {@link QUIET_TOOLTIP} is gated
+ * against its row.
+ *
+ * Its OWN sentence rather than {@link QUIET_TOOLTIP}, because the two quiet states are
+ * different claims: a kind pill is quiet about ONE kind ("your agent hasn't sent THIS yet")
+ * while the History pill is quiet about the whole session — it activates on the first push of
+ * any kind, so its sentence has to be about "anything". Same dual delivery as the kind pills
+ * (Q2's ruling): a `title` for the pointer AND a visually-hidden `aria-describedby` target for
+ * the accessibility tree, both carrying this one string.
+ *
+ * The apostrophe is the ASCII `'` (U+0027) and the dash is the em dash (U+2014) — the gate
+ * compares bytes read from the artefact, so neither can drift whichever way it is re-typeset.
+ */
+export const HISTORY_QUIET_TOOLTIP =
+  "Nothing to revisit yet — your agent hasn't sent anything this session."

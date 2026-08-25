@@ -690,7 +690,8 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
   })
 
   it('DELIVERS a `suggestions` push, with its payload, to the view callback (c6-6, AC 1)', async () => {
-    const { socket, pushes, events, statuses, latest } = await open()
+    const { socket, pushes, swapsPushes, tierPushes, groupsPushes, events, statuses, latest } =
+      await open()
 
     const push: SuggestionsEvent = {
       kind: 'suggestions',
@@ -707,6 +708,12 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     // a "was it called" check and fails this one.
     expect(pushes).toEqual([push])
     expect(pushes[0].payload.items).toEqual([{ card_id: 'c-1', reason: 'Curve.' }])
+    // EVERY sibling channel, not only the ones that existed when this was written (E16-93/R6):
+    // a dispatch fallthrough double-delivering this kind to a later-added channel must fail
+    // here, not pass because the assertion list froze at c6-6.
+    expect(swapsPushes).toEqual([])
+    expect(tierPushes).toEqual([])
+    expect(groupsPushes).toEqual([])
     // The system callback is NOT the one that fired, and the connection was never disturbed.
     expect(events).toEqual([])
     expect(statuses).toEqual(['live'])
@@ -718,7 +725,8 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
   it('DELIVERS a `swaps` push, with its payload, to its OWN view callback (16.1)', async () => {
     // The pin this line replaces said `swaps` is dropped — 16.1 is the story that flips it,
     // pairing the dispatch arm with the view that can display what it carries.
-    const { socket, swapsPushes, pushes, events, statuses, latest } = await open()
+    const { socket, swapsPushes, tierPushes, groupsPushes, pushes, events, statuses, latest } =
+      await open()
 
     const push: SwapsEvent = {
       kind: 'swaps',
@@ -743,6 +751,9 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     // into `onSuggestions` would open a suggestions view over a swaps payload.
     expect(swapsPushes).toEqual([push])
     expect(swapsPushes[0].payload.items?.[0].out_card_id).toBe('c-out')
+    // Every sibling channel, later-added kinds included (E16-93/R6).
+    expect(tierPushes).toEqual([])
+    expect(groupsPushes).toEqual([])
     expect(pushes).toEqual([])
     expect(events).toEqual([])
     expect(statuses).toEqual(['live'])
@@ -754,7 +765,8 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
   it('DELIVERS a `tier_list` push, with its payload, to its OWN view callback (16.2)', async () => {
     // The pin this line replaces said `tier_list` is dropped — 16.2 is the story that flips it,
     // pairing the dispatch arm with the view that can display what it carries.
-    const { socket, tierPushes, swapsPushes, pushes, events, statuses, latest } = await open()
+    const { socket, tierPushes, swapsPushes, groupsPushes, pushes, events, statuses, latest } =
+      await open()
 
     const push: TierListEvent = {
       kind: 'tier_list',
@@ -779,6 +791,8 @@ describe('ONE total switch over the six-kind closed enum (AC 11, AC 12, AC 13)',
     expect(tierPushes).toEqual([push])
     expect(tierPushes[0].payload.items?.[0].letter).toBe('S')
     expect(swapsPushes).toEqual([])
+    // The later-added sibling too (E16-93/R6).
+    expect(groupsPushes).toEqual([])
     expect(pushes).toEqual([])
     expect(events).toEqual([])
     expect(statuses).toEqual(['live'])

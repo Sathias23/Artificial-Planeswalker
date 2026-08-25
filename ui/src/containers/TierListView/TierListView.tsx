@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 
 import { CardPlaceholder } from '../../components/CardPlaceholder/CardPlaceholder'
+import { ManaCost } from '../../components/ManaCost/ManaCost'
 import type { AgentViewContent } from '../../state/agentView'
 import { hydrateCard, useCardEntry, type CardEntry } from '../../state/cards'
 import { useFaceIndex } from '../../state/faces'
@@ -11,10 +12,11 @@ import {
   setFocused,
   setHovered,
   togglePin,
+  useInspectionTargetId,
   usePinnedId,
 } from '../../state/inspection'
 import { cardImageUrl } from '../CardTile/imageUrl'
-import { frontFaceName } from '../frontFaceCost'
+import { frontFaceCost, frontFaceName } from '../frontFaceCost'
 import { useCardArt } from '../useCardArt'
 import { emptyPushLine } from '../SuggestionsView/copy'
 import './TierListView.css'
@@ -27,7 +29,7 @@ import './TierListView.css'
  * ================= WHAT IS DIFFERENT, AND WHY (DESIGN.md's tier-row) =====================
  *
  * A tier row renders MANY cards — a chip carrying the tier's letter and name, then a note and a
- * wrapping thumbnail strip — so the per-card hooks live on a module-local {@link TierTile}
+ * horizontally scrolling thumbnail strip — so the per-card hooks live on a module-local {@link TierTile}
  * composed once per card inside a module-local {@link TierRow}, exactly as `SwapTile` composes
  * twice inside `SwapRow`. Each TILE is the `<button>` carrying the five inspection verbs (a
  * row-level button would make one gesture mean up to sixty cards).
@@ -60,10 +62,10 @@ import './TierListView.css'
  */
 export interface TierListViewProps {
   /**
-   * The push's own `kind`, interpolated into the shared empty-push line. The template is
-   * kind-generic (`{kind}`), so this module authors no second sentence — `emptyPushLine` is
-   * reached across containers exactly as `imageUrl` is, and `tests/empty-push-copy.test.ts`
-   * keeps pinning the one copy.
+   * The push's own `kind`, which the shared empty-push line maps to its display noun. The
+   * template is kind-generic (`{noun}`), so this module authors no second sentence —
+   * `emptyPushLine` is reached across containers exactly as `imageUrl` is, and
+   * `tests/empty-push-copy.test.ts` keeps pinning the one copy.
    */
   readonly kind: AgentViewContent['kind']
   /** The pushed tiers. Empty is legal and renders the artefact's sentence (AD-7, UX-DR33). */
@@ -129,17 +131,24 @@ const noteOf = (item: UntrustedTier): string | null => {
 }
 
 /**
- * A tile's card id, or `''` — the app's own value for *"an id the app cannot render"*:
- * `hydrateCard('')` refuses it terminally with the unknown-card placeholder and issues no
- * request. NOT trimmed, for `SuggestionsView`'s recorded reason: the wire caps the id's LENGTH
- * without validating its shape (AD-7), so a padded id is not this component's to rewrite.
+ * The tier's card ids, FILTERED per id rather than coerced — `GroupsView.cardIdsOf`'s gate,
+ * ported (E16-91): a non-string, empty or whitespace-only entry is dropped — there is no honest
+ * tile for a number, and a blank id names nothing the app could ever render, so keeping it
+ * would spend a permanently-dead placeholder slot AND a real image request (a whitespace id is
+ * not `''`, so the synchronous unknown guard cannot catch it before the first paint commits
+ * `/api/card-image/%20`). A NON-blank id is NOT trimmed, for `SuggestionsView`'s recorded
+ * reason: the wire caps the id's LENGTH without validating its shape (AD-7), so a padded copy
+ * of a real id is not this component's to rewrite. A non-array `card_ids` degrades to the empty
+ * tier, which the skip below already handles (DESIGN.md:590's rule, reached by a second road).
+ * The returned list's length IS the tier's rendered count — the numeral and the strip read one
+ * list, so a dropped id never counts either.
  */
-const cardIdOf = (value: unknown): string => (typeof value === 'string' ? value : '')
-
-/** The tier's card ids, each gated to a string — a non-array `card_ids` degrades to the empty
- * tier, which the skip below already handles (DESIGN.md:590's rule, reached by a second road). */
 const cardIdsOf = (item: UntrustedTier): readonly string[] =>
-  Array.isArray(item.card_ids) ? item.card_ids.map(cardIdOf) : []
+  Array.isArray(item.card_ids)
+    ? item.card_ids.filter(
+        (value): value is string => typeof value === 'string' && value.trim() !== '',
+      )
+    : []
 
 /** Whatever the cache can render right now, as one shape — `SuggestionsView`'s renderableOf. */
 const renderableOf = (entry: CardEntry | undefined) => {
@@ -249,9 +258,120 @@ function TierTile({ cardId }: { cardId: string }) {
 }
 
 /**
+ * The in-view card preview (DESIGN.md `components.tier-preview`, added 2026-08-23) — why it
+ * exists: hovering a tile sets the inspection target, but the persistent `CardDetail` panel
+ * sits BEHIND the agent view's scrim, so inside this view the target was invisible. This
+ * column renders it in-view instead.
+ *
+ * DELIBERATELY DUMBER THAN `CardDetail`, WHICH IT MUST NEVER BE A SECOND COPY OF: no duplicate
+ * `id="card-detail"` skip target, no fourth live region (`App.test.tsx` pins the census at
+ * three, exhaustively), no `role="region"`/`h2` landmark, no second driver of the module-scope
+ * deck memory — and no pin announcement, flip control or oracle text. It READS
+ * {@link useInspectionTargetId} — the same pin-over-transient-over-default resolution every
+ * other consumer reads — and writes NOTHING: hover, focus and pin all keep belonging to the
+ * tiles.
+ *
+ * SILENT AND WORDLESS: no `aria-live`, no authored copy. Every rendered word is wire data from
+ * the card cache — the front face's name, the cost as pips (`ManaCost` builds its own
+ * accessible name from the parsed cost, as it does everywhere), the type line — so no
+ * `COPY_MODULES` entry is owed. The art falls back through `TierTile`'s own placeholder
+ * ladder: no target (or a target the tile effect is releasing as unknown) → the silent
+ * loading well; picture failed → the named variant drawing what the cache knows; otherwise
+ * the well with the image over it. `alt=""` — the name renders in text beside the art.
+ */
+function TierPreview() {
+  const targetId = useInspectionTargetId()
+  // `''` is `hydrateCard`'s own terminally-refused non-id, so the no-target render and the
+  // malformed-target render collapse onto one branch with zero requests — `TierTile`'s
+  // synchronous-unknown guard, reused as the empty state.
+  const cardId = targetId ?? ''
+  const entry = useCardEntry(cardId)
+  const face = useFaceIndex(cardId)
+  const { state: art, settleIfCached, onLoad, onError } = useCardArt(cardId, face)
+
+  // HYDRATION SELF-SUFFICIENCY (review 2026-08-23): the target is not always an id a mounted
+  // tile is hydrating — a pin set on another surface survives into this view (that survival is
+  // FR-17's own requirement), and against a cold cache entry the art would render while the
+  // name/cost/type never arrived. `hydrateCard` dedupes an in-flight id, so on the common path
+  // (a tier's own card, already swept by the view effect) this costs no request; `''` is
+  // guarded here AND terminally refused there.
+  useEffect(() => {
+    if (cardId !== '') void hydrateCard(cardId)
+  }, [cardId])
+
+  // THE RELEASE VALVE, FOR THE TILELESS TARGET (Greptile P1 on PR #103): `TierTile` clears a
+  // target that settles terminally unknown, but only for ids it renders — a pin retained from
+  // ANOTHER surface (FR-17's survival) whose card has no tile in this push settles unknown with
+  // nobody to release it, and because the store resolves `pinnedId` over every transient, the
+  // stuck pin would outrank all tier hover/focus forever. Same effect as the tile's, keyed on
+  // the resolved target; the self-hydration above is what guarantees the settle ever happens.
+  const unknown = isUnknownCard(entry)
+  const pinnedId = usePinnedId()
+  useEffect(() => {
+    if (!unknown) return
+    clearHovered(cardId)
+    clearFocused(cardId)
+    if (pinnedId === cardId) clearPin()
+  }, [unknown, cardId, pinnedId])
+
+  const renderable = renderableOf(entry)
+  // The unknown case falls back to the EMPTY well rather than the unknown-card variant: a
+  // release valve — the tile's for a rendered id, the preview's own above for a tileless one —
+  // is already clearing this target, so this is a one-render transient, and a preview is not
+  // the surface that explains a dead id.
+  const empty = cardId === '' || unknown
+
+  return (
+    <div className="tier-preview">
+      <span className="tier-preview-art">
+        {empty ? (
+          <CardPlaceholder variant="loading" />
+        ) : art === 'failed' ? (
+          <CardPlaceholder
+            variant="named-card"
+            name={renderable?.name ?? null}
+            cost={renderable?.mana_cost ?? null}
+            typeLine={renderable?.type_line ?? null}
+          />
+        ) : (
+          <>
+            <CardPlaceholder variant="loading" />
+            <img
+              ref={settleIfCached}
+              className="card-shape tier-preview-image"
+              data-loaded={art === 'shown' ? 'true' : 'false'}
+              /* AD-11: the backend proxy; rendition UNSPELLED so the bytes share the tiles'
+                 browser-cache key — a hover is a warm hit for any card whose thumb has drawn. */
+              src={cardImageUrl(cardId, undefined, face)}
+              alt=""
+              decoding="async"
+              onLoad={onLoad}
+              onError={onError}
+            />
+          </>
+        )}
+      </span>
+      {/* THE WORDS — rendered only once the cache holds something to say; until then the art
+          well stands alone, exactly as a pre-hydration tile's hidden span is empty. Front face
+          only, `DeckRow`'s reason; `frontFaceCost` resolves the 87.8% of DFCs whose real cost
+          lives in `card_faces[0]`. */}
+      {empty || renderable === null ? null : (
+        <>
+          <span className="tier-preview-head">
+            <span className="tier-preview-name">{frontFaceName(renderable.name)}</span>
+            <ManaCost cost={frontFaceCost(renderable, entry)} />
+          </span>
+          <span className="tier-preview-type">{renderable.type_line}</span>
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
  * One tier (DESIGN.md's tier-row): the 132px chip on `surface-well` carrying the ramped letter
- * with its name beneath, then the optional note in body `text-secondary` and the wrapping
- * thumbnail strip. Callers pass only fields that already survived the gates — a tier that could
+ * with its name beneath, then the optional note in body `text-secondary` and the horizontally
+ * scrolling thumbnail strip. Callers pass only fields that already survived the gates — a tier that could
  * not produce a legal letter, name and at least one card never reaches this component (the
  * degrade-and-skip lives in {@link TierListView}, where the neighbours keep rendering).
  */
@@ -282,10 +402,10 @@ function TierRow({
             empty line (see `noteOf`; the swap rationale's unconditional-line rule is about a
             REQUIRED field arriving malformed, which this is not). */}
         {note === null ? null : <span className="tier-row-note">{note}</span>}
-        {/* THE STRIP — payload order, wrapping (DESIGN.md:590's "thumbnail row"; the flex-wrap
-            precedent is AgentView.css and ColourDistribution.css). Keyed by id AND position for
-            the suggestion list's duplicate-tolerance reason: nothing constrains an agent
-            against ranking the same printing twice. */}
+        {/* THE STRIP — payload order, scrolling horizontally rather than wrapping (DESIGN.md
+            `components.tier-row`, amended 2026-08-23: tiles keep full size at any count).
+            Keyed by id AND position for the suggestion list's duplicate-tolerance reason:
+            nothing constrains an agent against ranking the same printing twice. */}
         <span className="tier-row-thumbs">
           {cardIds.map((cardId, index) => (
             <TierTile key={`${cardId}:${index}`} cardId={cardId} />
@@ -327,22 +447,34 @@ export function TierListView({ kind, items }: TierListViewProps) {
 
   if (rows.length !== 0) {
     return (
-      /* A REAL `ul`/`li` (UX-DR44) — the list semantics tell a screen-reader user how many
-         tiers survived to the glass before they start moving through them. */
-      <ul className="tier-list-rows">
-        {rows.map((row) => (
-          <li className="tier-list-item" key={`${row.letter}:${row.name}:${row.index}`}>
-            <TierRow letter={row.letter} name={row.name} note={row.note} cardIds={row.cardIds} />
-          </li>
-        ))}
-      </ul>
+      /* TWO COLUMNS — the rows beside the in-view preview (DESIGN.md `components.tier-preview`).
+         The preview renders ONLY when rows exist: an all-skipped push shows the shared sentence
+         alone, and a sticky empty well beside a one-line paragraph would be a box with nothing
+         to preview. */
+      <div className="tier-list-body">
+        {/* A REAL `ul`/`li` (UX-DR44) — the list semantics tell a screen-reader user how many
+            tiers survived to the glass before they start moving through them. */}
+        <ul className="tier-list-rows">
+          {rows.map((row) => (
+            <li className="tier-list-item" key={`${row.letter}:${row.name}:${row.index}`}>
+              <TierRow letter={row.letter} name={row.name} note={row.note} cardIds={row.cardIds} />
+            </li>
+          ))}
+        </ul>
+        <TierPreview />
+      </div>
     )
   }
 
-  // The SHARED empty-push line, `{kind}`-substituted — one template, one owner, third reader
+  // The SHARED empty-push line, noun-substituted — one template, one owner, third reader
   // (the copy module's whole design). A bare `<p>` replacing the `<ul>`, never inside it. It
   // renders for an empty `items` AND for a push whose every tier was skipped: an empty `<ul>`
   // would announce "list, 0 items" with nothing to explain why, and the sentence is the closest
   // honest description of a glass with nothing on it — no second sentence is authored.
+  // In the all-skipped case the shell header keeps showing the RAW store count beside this line
+  // (e.g. "5" over "came back empty") — decided at the epic-16 retro (item 4, in passing): the
+  // count states what the agent SENT and the sentence states what RENDERS, and
+  // count-stays-raw-while-render-skips is a pinned epic invariant (App.test.tsx's "count still
+  // says 2" against 1 rendered row), not a contradiction to smooth over.
   return <p className="tier-list-view-empty">{emptyPushLine(kind)}</p>
 }

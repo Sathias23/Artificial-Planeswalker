@@ -498,12 +498,18 @@ describe('every interactive element is a real control with a real hit box (AC 20
     // line box) as the close pill it shares a DESIGN.md block with, so it is under the floor on
     // its own geometry however much padding it carries, and it declares both minimums in the
     // same rule. Four members of this group now, and every one of them is a pill.
+    // `agent-views-nav-entry` joins at 17.2, the fifth pill-family member in all but shape: a
+    // history-popover entry's tallest line is `--type-body`'s 14px at 1.5 (a 21px box) beside
+    // an 11px label, so the row is under the floor on its own geometry however much padding it
+    // carries, and it declares both minimums in its own rule (EXPERIENCE.md's "every entry has
+    // a ≥ 24×24px hit area" made a declaration rather than a claim).
     const DECLARES_MIN = [
       'footer-attribution-link',
       'skip-link',
       'connection-pill',
       'agent-view-close',
       'agent-views-nav-pill',
+      'agent-views-nav-entry',
     ]
     // Well clear BY MEASURED GEOMETRY, each with its eye-check on record: the tile is card-sized,
     // the flip control's hit box is 32×32 (c4-6), the deck row spans the panel at ≥34px, the
@@ -521,15 +527,18 @@ describe('every interactive element is a real control with a real hit box (AC 20
     // whose slot declares `min-height: 6lh` against `--type-body` (6 × 21px = 126px), with the
     // width following from 63:88 (≈90px) — both axes clear of the 24px floor by multiples. The
     // pixels are the manual checklist's, as for every other member.
-    // `tier-tile` joins at 16.2, on the swap tile's exact derived-geometry argument minus the
-    // label line: the tile IS its card-shaped thumb slot, which declares `min-height: 6lh`
-    // against `--type-body` (6 × 21px = 126px) with the width following from 63:88 (≈90px) —
-    // both axes clear of the 24px floor by multiples. The pixels are the manual checklist's,
-    // as for every other member.
-    // `group-tile` joins at 16.3, on the tier tile's argument VERBATIM — the same
-    // `min-height: 6lh` slot against `--type-body`, the same 63:88-derived width, the same
-    // multiples of the floor on both axes. The pixels are the manual checklist's, as for
-    // every other member.
+    // `tier-tile` joins at 16.2, minus the swap tile's label line: the tile IS its card-shaped
+    // thumb slot, which declares an explicit `width: 176px` (DESIGN.md's tier-row thumb-width,
+    // added 2026-08-23 — the first spelling here claimed a width "following from 63:88", a
+    // derivation that never produced one: an aspect-ratio box with no in-flow content has no
+    // intrinsic width) with the HEIGHT following from 63:88 (≈246px) — both axes clear of the
+    // 24px floor by multiples. The pixels are the manual checklist's, as for every other member.
+    // `group-tile` joins at 16.3, on the swap tile's argument — a `min-height: 6lh` slot
+    // against `--type-body` (6 × 21px = 126px), a 63:88-derived width, multiples of the floor
+    // claimed on both axes. (That width derivation is the one the tier tile's correction above
+    // records as never having produced a width; the group tile still rides it, a recorded
+    // follow-up — the 126px HEIGHT alone clears the 24px floor by multiples either way.) The
+    // pixels are the manual checklist's, as for every other member.
     const WELL_CLEAR = [
       'card-tile',
       'flip-control',
@@ -716,17 +725,45 @@ describe('the document keyboard layering is one listener, in the bubble phase (A
     // while a view is open — an always-mounted capture listener would swallow Esc for the pin
     // when nothing is showing, which inverts UX-DR39 rather than implementing it.
     { entry: 'src/containers/AgentView/AgentView.tsx:document.keydown', capture: true },
+    // 17.2. Closes the history popover — at the document because the popover's entries are
+    // ordinary document-order Tab stops, so focus can wander OUT of the popover while it stays
+    // open, and an element-scoped handler would never hear that Esc. BUBBLE, registered only
+    // while the popover shows, never stopping propagation: the agent view's capture listener
+    // above pre-empts it while a view is open (when the popover is closed by invariant anyway,
+    // so the pre-emption is belt on braces). Sharing the bubble phase with the two listeners
+    // below is safe by the same defaultPrevented discipline they use — AND the layering
+    // UX-DR39's amended order needs (Esc closes the popover WITHOUT releasing an active pin)
+    // is carried by a node-level listener on the pill+popover WRAPPER (not the popover root —
+    // focus legitimately sits on the pill while the popover is open), which runs before every
+    // document listener and calls `preventDefault()`; this document twin and CardDetail's
+    // release both honour that flag, so a popover Esc struck with focus inside the wrapper
+    // closes exactly one layer. With focus OUTSIDE the wrapper, this listener and CardDetail's
+    // both act — the residual the entries-as-ordinary-Tab-stops ruling accepts, PINNED in
+    // App.test.tsx (17.2) and carried in EXPERIENCE.md's Esc bullet, not merely recorded here.
+    { entry: 'src/containers/AgentViewsNav/AgentViewsNav.tsx:document.keydown', capture: false },
     // c4-5. Releases the pin, in the bubble phase, so the capture listener above always wins.
     { entry: 'src/containers/CardDetail/CardDetail.tsx:document.keydown', capture: false },
+    // 17.1. Suppresses the pill's tooltip reveal (WCAG 1.4.13 dismissable) — at the document
+    // because a hover-only reveal holds no focus, so the key lands on `document.body` and a
+    // button handler would never hear it. BUBBLE, and sharing the phase with CardDetail's is
+    // safe HERE though it would not be in general: neither bubble listener stops propagation,
+    // and their effects are independent (one Esc may release the pin AND dismiss the tooltip —
+    // there is no order in which those two outcomes differ), so import order still decides
+    // nothing. The agent view's capture listener keeps pre-empting both, which is UX-DR39's
+    // layering: while a view is open the pill sits under the scrim anyway.
+    { entry: 'src/containers/ConnectionPill/ConnectionPill.tsx:document.keydown', capture: false },
   ]
 
   it('registers exactly these document key listeners, and names their owners', () => {
     expect(
       keyListeners.map((l) => `${l.file}:${l.receiver}.${l.event}`),
-      'the document keyboard layering admits exactly two listeners — the agent view’s Esc in ' +
-        'CAPTURE and CardDetail’s in BUBBLE. A third one (on document OR window) breaks ' +
-        'UX-DR39’s "Esc closes the topmost thing" ordering, and a second one in the same phase ' +
-        'makes it depend on module import order.',
+      'the document keyboard layering admits exactly four listeners — the agent view’s Esc in ' +
+        'CAPTURE, and the history popover’s, CardDetail’s and the connection pill’s in BUBBLE ' +
+        '(safe together because none stops propagation and the popover/pin ordering rides ' +
+        'defaultPrevented from the popover’s node-level listener — see the table). Any ' +
+        'OTHER listener (on document OR window) breaks UX-DR39’s "Esc closes the topmost ' +
+        'thing" ordering, and a same-phase listener whose effect interacts with an existing ' +
+        'one makes the outcome depend on module import order.',
     ).toEqual(DOCUMENT_KEY_LISTENERS.map((l) => l.entry))
   })
 
@@ -759,7 +796,9 @@ describe('the document keyboard layering is one listener, in the bubble phase (A
     expect(keyListeners).toHaveLength(DOCUMENT_KEY_LISTENERS.length)
     for (const file of [
       'src/containers/AgentView/AgentView.tsx',
+      'src/containers/AgentViewsNav/AgentViewsNav.tsx',
       'src/containers/CardDetail/CardDetail.tsx',
+      'src/containers/ConnectionPill/ConnectionPill.tsx',
     ]) {
       expect(withoutComments(sourceOf(file))).toContain("event.key !== 'Escape'")
     }

@@ -192,6 +192,14 @@
   overflow-y: auto;
 }
 
+/* ONE TRACK WHEN THE RIGHT COLUMN IS EMPTY (17.5). The shell sets `data-single` on the grid and
+   renders no second column, so the Welcome surface (and any other single-column state) is not
+   parked beside a dead 452px track. Same shape as the <1100px collapse below, driven by state
+   rather than by width. */
+.app-shell-columns[data-single] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 /* Panels FLOAT: visible canvas between them at the panel-gap, which is the theme's density
    philosophy rather than spare padding (DESIGN.md). `min-width: 0` is the per-column half of
    the same argument `minmax(0, …)` makes for the track — a grid ITEM also defaults to
@@ -238,19 +246,10 @@
    only child that gives ground. That is a layout property of the SLOT, not of whatever fills
    it — a later story swapping the footer's contents must not be able to unpin it.
 
-   The `.app-shell-placeholder` line below still fires whenever `footer` is empty, and
-   AppShell.test.tsx still asserts it against this component's own props. It is DISPLACED by
-   App.tsx, not deleted (c2-9's decide-once ruling, applied a second time). */
+   An empty `footer` renders nothing since 17.5 (the placeholder line this rule used to sit
+   beside is gone); the slot is FILLED by App.tsx, not deleted (c2-9's decide-once ruling). */
 .app-shell-footer {
   flex-shrink: 0;
-}
-
-/* Every region the shell holds open renders one of these until its owner story lands (AC 21).
-   Deliberately quiet: it is scaffolding, and it should not read as content. */
-.app-shell-placeholder {
-  margin: 0;
-  font: var(--type-body);
-  color: var(--text-tertiary);
 }
 
 /* ==== THE OVERLAY SLOT ================================================================
