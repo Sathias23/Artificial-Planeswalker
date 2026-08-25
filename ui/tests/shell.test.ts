@@ -1195,10 +1195,7 @@ describe('the tier strip cannot silently re-collapse (tier-list usability, 2026-
     expect(mediaAt, 'the `(width < 1100px)` media block was not found at all').toBeGreaterThan(-1)
     const media = tierSource.slice(mediaAt)
     const preview = /\.tier-preview\s*\{([^}]*)\}/.exec(media)?.[1] ?? ''
-    expect(
-      preview.length,
-      'no `.tier-preview` rule inside the media block',
-    ).toBeGreaterThan(5)
+    expect(preview.length, 'no `.tier-preview` rule inside the media block').toBeGreaterThan(5)
     expect(preview).toMatch(/display:\s*none\s*;/)
     expect(preview).not.toMatch(/visibility/)
   })

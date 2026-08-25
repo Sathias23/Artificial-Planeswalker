@@ -299,11 +299,27 @@ function TierPreview() {
     if (cardId !== '') void hydrateCard(cardId)
   }, [cardId])
 
+  // THE RELEASE VALVE, FOR THE TILELESS TARGET (Greptile P1 on PR #103): `TierTile` clears a
+  // target that settles terminally unknown, but only for ids it renders — a pin retained from
+  // ANOTHER surface (FR-17's survival) whose card has no tile in this push settles unknown with
+  // nobody to release it, and because the store resolves `pinnedId` over every transient, the
+  // stuck pin would outrank all tier hover/focus forever. Same effect as the tile's, keyed on
+  // the resolved target; the self-hydration above is what guarantees the settle ever happens.
+  const unknown = isUnknownCard(entry)
+  const pinnedId = usePinnedId()
+  useEffect(() => {
+    if (!unknown) return
+    clearHovered(cardId)
+    clearFocused(cardId)
+    if (pinnedId === cardId) clearPin()
+  }, [unknown, cardId, pinnedId])
+
   const renderable = renderableOf(entry)
-  // The unknown case falls back to the EMPTY well rather than the unknown-card variant: the
-  // tile's release effect is already clearing this target (the Greptile-P1 valve), so this is
-  // a one-render transient, and a preview is not the surface that explains a dead id.
-  const empty = cardId === '' || isUnknownCard(entry)
+  // The unknown case falls back to the EMPTY well rather than the unknown-card variant: a
+  // release valve — the tile's for a rendered id, the preview's own above for a tileless one —
+  // is already clearing this target, so this is a one-render transient, and a preview is not
+  // the surface that explains a dead id.
+  const empty = cardId === '' || unknown
 
   return (
     <div className="tier-preview">

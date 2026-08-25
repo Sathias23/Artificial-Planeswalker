@@ -503,9 +503,7 @@ describe('the in-view preview (DESIGN.md components.tier-preview, added 2026-08-
       '/api/card-image/c-tier-1',
     )
     // Rendition UNSPELLED, so a hover is a warm browser-cache hit for a drawn thumbnail.
-    expect(preview.querySelector('.tier-preview-image')!.getAttribute('src')).not.toContain(
-      'size=',
-    )
+    expect(preview.querySelector('.tier-preview-image')!.getAttribute('src')).not.toContain('size=')
     expect(preview.querySelector('.tier-preview-image')).toHaveAttribute('alt', '')
     expect(preview.querySelector('.tier-preview-name')).toHaveTextContent('Card c-tier-1')
     expect(preview.querySelector('.tier-preview-type')).toHaveTextContent('Creature — Elf')
@@ -617,6 +615,25 @@ describe('the in-view preview (DESIGN.md components.tier-preview, added 2026-08-
     const preview = previewOf(container)!
     expect(preview.querySelector('.card-placeholder-well')).not.toBeNull()
     expect(preview.textContent).toBe('')
+  })
+
+  it('releases a TILELESS pin that settles unknown, so tier hover is never outranked forever (Greptile P1, PR #103)', () => {
+    seedAll()
+    // A pin retained from ANOTHER surface (FR-17's survival) naming a card with NO tile in this
+    // push: no per-tile release valve exists for it, so the preview's own must fire.
+    act(() => {
+      useInspectionStore.setState({ pinnedId: 'c-outside' })
+    })
+    const { container } = render(<TierListView kind="tier_list" items={[TIER]} />)
+
+    act(() => seedUnknown('c-outside'))
+
+    // The preview's release valve cleared the stuck pin the moment it settled unknown…
+    expect(useInspectionStore.getState().pinnedId).toBeNull()
+    // …so a tier hover is the resolved target again, not permanently outranked by a dead id.
+    fireEvent.mouseEnter(tilesOf(rowAt(container, 0))[0])
+    const preview = previewOf(container)!
+    expect(preview.querySelector('.tier-preview-name')!.textContent).toBe('Card c-tier-1')
   })
 
   it('is silent and wordless: no live region, no landmark, no control, no authored copy', () => {
