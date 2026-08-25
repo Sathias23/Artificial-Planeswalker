@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.5.0] - 2026-08-25
+
 ### Added
 
 - **The companion app** — an optional local browser view of the deck your agent
@@ -91,6 +95,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   install** (it already arrived transitively via `uvicorn[standard]`) but is now
   declared explicitly, because `scripts/cdp_harness.py` is a committed tool and
   a committed tool must not lean on another package's extra.
+
+- **Session history.** The companion keeps every push from the current session
+  revisitable: nav pills beside the agent view open a history popover, and a
+  push you dismissed can be reopened exactly as it arrived. History is
+  per-instance and lives only as long as the companion process.
+- **Connection pill.** The page's status pill now reports the browser's own
+  socket state and the active deck's name, so "is this page live?" is
+  answerable at a glance without opening devtools.
+- **Welcome surface.** A fresh page with no active deck opens on a first-
+  impression panel instead of an empty shell, saying what the companion is
+  and how to put a deck on it.
+- **Tier list usability.** Tier thumbnails render at a real card size in
+  horizontally scrolling strips (they previously collapsed to unusable
+  slivers), and hovering, focusing or pinning any tile shows that card —
+  art, name, cost, type line — in a preview panel inside the view, where the
+  main card-detail panel is covered by the overlay.
 
 ### Changed
 
@@ -353,7 +373,8 @@ Initial public release.
   action: `setup.py` imports the card database into the central directory
   automatically (the semantic index is built separately, see Added).
 
-[Unreleased]: https://github.com/Sathias23/Artificial-Planeswalker/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Sathias23/Artificial-Planeswalker/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Sathias23/Artificial-Planeswalker/releases/tag/v0.2.0
