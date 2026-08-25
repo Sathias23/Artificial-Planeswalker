@@ -371,6 +371,36 @@ components:
     chip-width: 132px
     letter-size: 44px
     letter-weight: '500'
+    # ADDED 2026-08-23 (tier-list usability). This block shipped seven values and NOTHING on the
+    # thumbnail's size, while the strip's stylesheet claimed the width was derived "from the
+    # height through card-shape's own 63:88" — a derivation that never existed: the tile's only
+    # sizing input was `aspect-ratio` on an empty box, which yields no intrinsic width, so the
+    # thumbnails collapsed to overlapping ~0px slivers. On c6-7's suggestion-row precedent the
+    # width is therefore RULED HERE FIRST and the stylesheet written against it. 176px is the
+    # deck grid's own cited floor — the Layout section's `repeat(auto-fill, minmax(176px, 1fr))`
+    # — i.e. the smallest box this system already calls a readable card face; the HEIGHT follows
+    # through `{components.card-tile.aspect}`'s 63:88. The strip SCROLLS horizontally rather
+    # than wrapping, so tiles keep this size at any count — the component row below says only
+    # "a thumbnail row", which a scrolling row contradicts nothing of.
+    thumb-width: 176px
+  tier-preview:
+    # ADDED 2026-08-23 (tier-list usability). Hovering or focusing a tier tile sets the
+    # inspection target, but the persistent card-detail panel sits BEHIND the agent view's
+    # scrim — so inside the tier-list view body, and only there, a lightweight preview of the
+    # current inspection target (hover / focus / pin, the inspection store's own precedence)
+    # renders in a second column on the right. It is SILENT AND WORDLESS: no live region, no
+    # `role="region"`, no authored copy — every rendered word is wire data from the card cache
+    # (name, mana cost as pips, type line), and the art falls back through the card-placeholder
+    # ladder. It is `position: sticky` inside the view body's one scroll container — no new
+    # fixed layer, no z-index — and it is NOT a second card-detail panel: no pin control, no
+    # flip, no oracle text, no announcement.
+    # 300px sits deliberately between the two figures the system already rules: wider than the
+    # 176px thumb floor (this is the "look closer" render the strip's tiles point at) and
+    # narrower than the shell's 452px detail column, so at the ~1100px window floor the tiers
+    # keep the clear majority of the view body's width.
+    # The column COLLAPSES AWAY below the shell's own ~1100px breakpoint (the Layout section's
+    # window floor); the strip stays usable alone.
+    preview-width: 300px
   suggestion-row:
     # AMENDED 2026-08-11 (story c6-7, Q2). This block carried four values — background, border,
     # radius, thumb-radius — and nothing about SPACING, ROW HEIGHT or the LIVE MARKER's form,
@@ -435,6 +465,11 @@ components:
     # Everything else is deliberately absent: section spacing comes off the spacing scale, the
     # title/count/rationale treatments are the description's type-role assignments, and the tile
     # geometry is content-derived (the tier-row route) — nothing here fixes a card's size in px.
+    # AMENDED 2026-08-23 (tier-list usability): "the tier-row route" never produced a WIDTH —
+    # an aspect-ratio box with no in-flow content has no intrinsic width, so the content
+    # derivation this line praises collapses the tiles to ~0px slivers. tier-row now rules
+    # `thumb-width: 176px` for its own strip; the group tiles still ride the old derivation and
+    # share the collapse, which is a recorded follow-up rather than this amendment's to fix.
     divider: '1px solid {colors.border-hairline}'
     measure: 900px
   connection-pill:

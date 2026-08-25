@@ -527,15 +527,18 @@ describe('every interactive element is a real control with a real hit box (AC 20
     // whose slot declares `min-height: 6lh` against `--type-body` (6 × 21px = 126px), with the
     // width following from 63:88 (≈90px) — both axes clear of the 24px floor by multiples. The
     // pixels are the manual checklist's, as for every other member.
-    // `tier-tile` joins at 16.2, on the swap tile's exact derived-geometry argument minus the
-    // label line: the tile IS its card-shaped thumb slot, which declares `min-height: 6lh`
-    // against `--type-body` (6 × 21px = 126px) with the width following from 63:88 (≈90px) —
-    // both axes clear of the 24px floor by multiples. The pixels are the manual checklist's,
-    // as for every other member.
-    // `group-tile` joins at 16.3, on the tier tile's argument VERBATIM — the same
-    // `min-height: 6lh` slot against `--type-body`, the same 63:88-derived width, the same
-    // multiples of the floor on both axes. The pixels are the manual checklist's, as for
-    // every other member.
+    // `tier-tile` joins at 16.2, minus the swap tile's label line: the tile IS its card-shaped
+    // thumb slot, which declares an explicit `width: 176px` (DESIGN.md's tier-row thumb-width,
+    // added 2026-08-23 — the first spelling here claimed a width "following from 63:88", a
+    // derivation that never produced one: an aspect-ratio box with no in-flow content has no
+    // intrinsic width) with the HEIGHT following from 63:88 (≈246px) — both axes clear of the
+    // 24px floor by multiples. The pixels are the manual checklist's, as for every other member.
+    // `group-tile` joins at 16.3, on the swap tile's argument — a `min-height: 6lh` slot
+    // against `--type-body` (6 × 21px = 126px), a 63:88-derived width, multiples of the floor
+    // claimed on both axes. (That width derivation is the one the tier tile's correction above
+    // records as never having produced a width; the group tile still rides it, a recorded
+    // follow-up — the 126px HEIGHT alone clears the 24px floor by multiples either way.) The
+    // pixels are the manual checklist's, as for every other member.
     const WELL_CLEAR = [
       'card-tile',
       'flip-control',

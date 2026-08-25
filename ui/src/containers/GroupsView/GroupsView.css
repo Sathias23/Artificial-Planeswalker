@@ -161,10 +161,18 @@
 }
 
 /* THE THUMBNAIL SLOT (UX-DR36): a fixed-shape well from the first frame. `min-height: 6lh`
-   against the body line-height gives the card a readable size without spending a px —
-   `TierListView.css`'s content-derivation trick, at the same scale. The child derives its
-   WIDTH from the height through `card-shape`'s own 63:88; nothing here declares
-   `aspect-ratio` or a card radius (see the header — this file is not in CARD_SHAPED).
+   against the body line-height gives the slot a readable HEIGHT without spending a px — the
+   height-only half of the line-unit derivation, which stands; `SwapsView.css` carries the same
+   declaration with the same corrected caveat (this line formerly cited "`TierListView.css`'s
+   content-derivation trick", whose slot moved to DESIGN.md's `thumb-width: 176px` on
+   2026-08-23).
+   ⚠️ THE WIDTH HALF OF THE FIRST SPELLING WAS FALSE (recorded with that repair): the claim
+   that the child "derives its WIDTH from the height through `card-shape`'s own 63:88" names a
+   derivation that never existed — an `aspect-ratio` box with no in-flow content has no
+   intrinsic width, so these tiles share the collapse the tier strip was repaired for. Fixing
+   this view's sizing is a recorded follow-up, deliberately not made here (words only).
+   Nothing here declares `aspect-ratio` or a card radius (see the header — this file is not
+   in CARD_SHAPED).
 
    `position: relative` is the containing block for the image AND the quantity badge, which
    both lie OVER the well rather than replacing it, so the layout is settled before the first

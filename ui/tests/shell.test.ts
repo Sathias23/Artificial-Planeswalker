@@ -1137,6 +1137,70 @@ describe('the analysis pair row is 1:1 by CONSTRUCTION (story c4-8, Q6, AC 3)', 
   })
 })
 
+describe('the tier strip cannot silently re-collapse (tier-list usability, 2026-08-23)', () => {
+  // WHY THIS READS THE STYLESHEET RATHER THAN RENDERING — the AnalysisRow block's reason,
+  // verbatim: jsdom has no layout engine, so the headline defect this change repaired
+  // (thumbnails collapsing to overlapping ~0px slivers, the strip wrapping instead of
+  // scrolling, the preview column staying put at a width it does not fit) is invisible to
+  // every rendered assertion in `TierListView.test.tsx`. Nor can the px-citation gate hold
+  // it: that guard fires on an ADDED uncited literal, and the regression shape here is a
+  // REMOVAL — reverting `width: 176px`, re-adding `flex-wrap: wrap` or dropping
+  // `flex: 0 0 auto` would regress the defect with the suite green. So the load-bearing
+  // rules are read as SOURCE, over the same git-derived list, with non-vacuity checks that
+  // each rule was found at all. Comments are stripped first so documentation of a rule can
+  // never satisfy (or trip) a check about the rule.
+  const TIER_CSS = 'src/containers/TierListView/TierListView.css'
+  const tierSource = stripComments(sourceOf(TIER_CSS))
+
+  const tierRuleOf = (selector: string) =>
+    new RegExp(`${selector.replace(/\./g, '\\.')}\\s*\\{([^}]*)\\}`).exec(tierSource)?.[1] ?? ''
+
+  it('is reading the real stylesheet (non-vacuity)', () => {
+    // `shippedStylesheets` is the module-scope git-derived list; an untracked stylesheet would
+    // not be in it, so this is also the `git add` check for this file.
+    expect(shippedStylesheets).toContain(TIER_CSS)
+  })
+
+  it('gives the thumb slot its cited real width — the sliver repair itself', () => {
+    // DESIGN.md `components.tier-row.thumb-width`. The old derivation (`min-height: 6lh` with
+    // the width "following from 63:88") yielded no intrinsic width at all; an explicit width
+    // is the repair, and this pin is what keeps a tidy-up from restoring the derivation.
+    const thumb = tierRuleOf('.tier-tile-thumb')
+    expect(thumb.length, 'the `.tier-tile-thumb` rule was not found at all').toBeGreaterThan(10)
+    expect(thumb).toMatch(/width:\s*176px\s*;/)
+  })
+
+  it('keeps every tile unshrinkable — a long row scrolls instead of crushing its tiles', () => {
+    // A flex item's default `flex-shrink: 1` would let a sixty-card tier crush every tile
+    // before the scrollbar ever appeared — the I/O matrix's "tiles never shrink or overlap".
+    const tile = tierRuleOf('.tier-tile')
+    expect(tile.length, 'the `.tier-tile` rule was not found at all').toBeGreaterThan(10)
+    expect(tile).toMatch(/flex:\s*0\s+0\s+auto\s*;/)
+  })
+
+  it('scrolls the strip horizontally and never wraps it', () => {
+    const strip = tierRuleOf('.tier-row-thumbs')
+    expect(strip.length, 'the `.tier-row-thumbs` rule was not found at all').toBeGreaterThan(10)
+    expect(strip).toMatch(/overflow-x:\s*auto\s*;/)
+    // NOT declared in any value — `flex-wrap: wrap` is exactly the pre-repair rule.
+    expect(strip).not.toMatch(/flex-wrap/)
+  })
+
+  it('collapses the preview column away under the shell’s own breakpoint', () => {
+    // The same `(width < 1100px)` figure `AppShell.css` re-stacks its columns on. `display:
+    // none`, not `visibility: hidden`, for the AnalysisRow rule's own distinction: a hidden
+    // element still occupies its grid area, so the collapsed single-track body would carry a
+    // dead sticky box beneath the rows.
+    const mediaAt = tierSource.indexOf('@media (width < 1100px)')
+    expect(mediaAt, 'the `(width < 1100px)` media block was not found at all').toBeGreaterThan(-1)
+    const media = tierSource.slice(mediaAt)
+    const preview = /\.tier-preview\s*\{([^}]*)\}/.exec(media)?.[1] ?? ''
+    expect(preview.length, 'no `.tier-preview` rule inside the media block').toBeGreaterThan(5)
+    expect(preview).toMatch(/display:\s*none\s*;/)
+    expect(preview).not.toMatch(/visibility/)
+  })
+})
+
 describe('the shell is presentation-only, and that is asserted (AC 16)', () => {
   const shellSourceText = sourceOf(SHELL_TSX)
 
@@ -1689,10 +1753,17 @@ describe('the containers are a declared category with a posture of its own', () 
     // self-hydrating consumer, so `posture.test.ts` would fail it under `src/components/` three
     // times over. `../../state/agentView` is TYPE-only, reaching the STATE layer rather than
     // `src/api/` — the props derive from the store union's own `tier_list` arm.
+    // …and `ManaCost` joins at the tier-list usability change (2026-08-23): the view grew a
+    // module-local in-view preview of the inspection target (`TierPreview` — the card-detail
+    // panel sits behind the agent view's scrim, so hover showed nothing), whose head line draws
+    // the cost as pips exactly as `CardDetail` does. `useInspectionTargetId` is its READ of the
+    // store — the preview writes nothing — and it reaches this file through the already-listed
+    // `../../state/inspection`, so the pips' primitive is the only new module.
     {
       file: 'src/containers/TierListView/TierListView.tsx',
       imports: [
         '../../components/CardPlaceholder/CardPlaceholder',
+        '../../components/ManaCost/ManaCost',
         '../../state/agentView',
         '../../state/cards',
         '../../state/faces',
