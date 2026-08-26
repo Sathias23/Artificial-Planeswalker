@@ -31,6 +31,15 @@ repos:
   # input changes, rebuild it; pre-commit then fails if plugin/ was modified, prompting a re-add.
   - repo: local
     hooks:
+      # CI parity for the ui job's Prettier step: `npm run lint` does NOT include Prettier, so
+      # without this a formatting slip reaches CI and the fix-up push burns a Greptile review
+      # (PR #105). Same script and cwd as CI (`npm run format:check` inside ui/).
+      - id: ui-prettier-check
+        name: prettier --check (ui)
+        entry: npm run format:check --prefix ui
+        language: system
+        pass_filenames: false
+        files: ^ui/
       - id: build-plugin-sync
         name: rebuild plugin/ (keep marketplace source in sync with src/)
         entry: uv run python -m scripts.build_plugin
