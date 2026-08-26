@@ -353,8 +353,11 @@ export const setDefaultTarget = (cardId: string | null): void => {
  * second derivation (AD-12), and the check is what makes the difference real.
  *
  * `boardsOf` emits `mainboard` in `TYPE_GROUPS` order **with empty groups omitted**, so
- * `mainboard[0]` is genuinely the first populated group. There is no `sort`, no `filter` and no
- * second grouping here — each of those is the drift `deckGroups.ts` was written to prevent.
+ * `mainboard[0]` is genuinely the first populated group — and its cards arrive already sorted
+ * (ascending mana value, ties alphabetical, `deckGroups.ts::byManaValueThenName`), so the target
+ * here is that group's cheapest, then alphabetically first, card. There is still no `sort`, no
+ * `filter` and no second grouping HERE — each of those is the drift `deckGroups.ts` was written
+ * to prevent; the order is read verbatim from the one derivation that imposes it.
  *
  * Args:
  *   boards: `surfaceOf`'s answer for a loaded deck, verbatim.

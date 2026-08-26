@@ -16,14 +16,21 @@
 import { describe, expect, it } from 'vitest'
 
 import type { CardSummary, DeckCardSummary, DeckDetail } from '../api/schema'
-import { TYPE_GROUPS, boardsOf, boardsOfDeck, frontFace, groupOf } from './deckGroups'
+import {
+  TYPE_GROUPS,
+  boardsOf,
+  boardsOfDeck,
+  byManaValueThenName,
+  frontFace,
+  groupOf,
+} from './deckGroups'
 
-/** A `CardSummary` with only the field the derivation reads made meaningful. */
-const summary = (name: string, typeLine: string): CardSummary => ({
+/** A `CardSummary` with only the fields the derivation reads made meaningful. */
+const summary = (name: string, typeLine: string, cmc = 0): CardSummary => ({
   id: `id-${name}`,
   name,
   mana_cost: '',
-  cmc: 0,
+  cmc,
   type_line: typeLine,
   oracle_text: '',
   colors: [],
@@ -35,18 +42,19 @@ interface RowOptions {
   quantity?: number
   sideboard?: boolean
   commander?: boolean
+  cmc?: number
 }
 
 const row = (
   name: string,
   typeLine: string,
-  { quantity = 1, sideboard = false, commander = false }: RowOptions = {},
+  { quantity = 1, sideboard = false, commander = false, cmc = 0 }: RowOptions = {},
 ): DeckCardSummary => ({
   card_id: `id-${name}`,
   quantity,
   sideboard,
   commander,
-  card: summary(name, typeLine),
+  card: summary(name, typeLine, cmc),
 })
 
 describe('the front face is the whole rule (AC 14, FR-05, UX-DR17)', () => {
@@ -238,6 +246,117 @@ describe('a type the scheme does not name is CARRIED, never dropped (AC 16)', ()
   })
 })
 
+describe('the comparator — ascending mana value, ties alphabetical', () => {
+  it('orders by cmc ascending', () => {
+    const cheap = row('Llanowar Elves', 'Creature — Elf Druid', { cmc: 1 })
+    const dear = row('Wrath of God', 'Sorcery', { cmc: 4 })
+
+    expect(byManaValueThenName(cheap, dear)).toBeLessThan(0)
+    expect(byManaValueThenName(dear, cheap)).toBeGreaterThan(0)
+  })
+
+  it('breaks a cmc tie alphabetically by name, via localeCompare', () => {
+    const a = row('Avacyn, Angel of Hope', 'Creature — Angel', { cmc: 8 })
+    const z = row('Zealous Conscripts', 'Creature — Human Warrior', { cmc: 8 })
+
+    expect(byManaValueThenName(a, z)).toBeLessThan(0)
+    expect(byManaValueThenName(z, a)).toBeGreaterThan(0)
+    expect(
+      byManaValueThenName(a, row('Avacyn, Angel of Hope', 'Creature — Angel', { cmc: 8 })),
+    ).toBe(0)
+  })
+
+  it('handles a fractional cmc — 0.5 exists (Little Girl) and sorts between 0 and 1', () => {
+    const zero = row('Ornithopter', 'Artifact Creature — Thopter', { cmc: 0 })
+    const half = row('Little Girl', 'Creature — Human Child', { cmc: 0.5 })
+    const one = row('Llanowar Elves', 'Creature — Elf Druid', { cmc: 1 })
+
+    expect([one, half, zero].sort(byManaValueThenName).map((c) => c.card.name)).toEqual([
+      'Ornithopter',
+      'Little Girl',
+      'Llanowar Elves',
+    ])
+  })
+})
+
+describe('each board arrives sorted — cmc ascending, ties alphabetical', () => {
+  it('sorts within a mainboard group, whatever order the payload used', () => {
+    // Deliberately supplied in DESCENDING cmc — the wire's order is "not meaningful" and a
+    // fixture already ascending could not tell a sorted render from a preserved one.
+    const boards = boardsOf([
+      row('Wrath of God', 'Sorcery', { cmc: 4 }),
+      row('Ponder', 'Sorcery', { cmc: 1 }),
+      row('Divination', 'Sorcery', { cmc: 3 }),
+    ])
+
+    expect(boards.mainboard[0].cards.map((c) => c.card.name)).toEqual([
+      'Ponder',
+      'Divination',
+      'Wrath of God',
+    ])
+  })
+
+  it('breaks within-group cmc ties alphabetically', () => {
+    const boards = boardsOf([
+      row('Zealous Conscripts', 'Creature — Human Warrior', { cmc: 5 }),
+      row('Avacyn, Angel of Hope', 'Creature — Angel', { cmc: 5 }),
+    ])
+
+    expect(boards.mainboard[0].cards.map((c) => c.card.name)).toEqual([
+      'Avacyn, Angel of Hope',
+      'Zealous Conscripts',
+    ])
+  })
+
+  it('sorts an all-cmc-0 Lands group alphabetically', () => {
+    const boards = boardsOf([
+      row('Swamp', 'Basic Land — Swamp', { cmc: 0 }),
+      row('Forest', 'Basic Land — Forest', { cmc: 0 }),
+    ])
+
+    expect(boards.mainboard[0].cards.map((c) => c.card.name)).toEqual(['Forest', 'Swamp'])
+  })
+
+  it('sorts the sideboard with the same comparator', () => {
+    const boards = boardsOf([
+      row('Duress', 'Sorcery', { cmc: 1, sideboard: true }),
+      row('Pithing Needle', 'Artifact', { cmc: 1, sideboard: true }),
+      row('Rest in Peace', 'Enchantment', { cmc: 2, sideboard: true }),
+    ])
+
+    expect(boards.sideboard.map((c) => c.card.name)).toEqual([
+      'Duress',
+      'Pithing Needle',
+      'Rest in Peace',
+    ])
+  })
+
+  it('sorts the commander board too — usually 1 card, and consistency is free', () => {
+    const boards = boardsOf([
+      row('Tymna the Weaver', 'Legendary Creature — Human Cleric', { cmc: 3, commander: true }),
+      row('Thrasios, Triton Hero', 'Legendary Creature — Merfolk Wizard', {
+        cmc: 2,
+        commander: true,
+      }),
+    ])
+
+    expect(boards.commander.map((c) => c.card.name)).toEqual([
+      'Thrasios, Triton Hero',
+      'Tymna the Weaver',
+    ])
+  })
+
+  it('never mutates the input — the payload array and its rows are untouched', () => {
+    const cards = [row('Wrath of God', 'Sorcery', { cmc: 4 }), row('Ponder', 'Sorcery', { cmc: 1 })]
+    const before = [...cards]
+
+    boardsOf(cards)
+
+    expect(cards).toEqual(before)
+    expect(cards.map((c) => c.card.name)).toEqual(['Wrath of God', 'Ponder'])
+  })
+})
+
 describe('the three boards, and what each one holds (Q4)', () => {
   const cards = [
     row('Atraxa, Grand Unifier', 'Legendary Creature — Phyrexian Angel', { commander: true }),
@@ -359,7 +478,9 @@ describe('CONSERVATION — nothing is lost and the counts still sum (AC 16)', ()
 
     // Three rows the scheme cannot name: two "Card" and one "Card // Card". A derivation that
     // filtered to known types instead of falling back would lose them silently and the
-    // conservation assertions above would be the only thing that noticed.
+    // conservation assertions above would be the only thing that noticed. The order below is the
+    // comparator's answer, not insertion order: both rows are cmc 0, so the tie breaks
+    // alphabetically — which happens to match how the fixture lists them.
     expect(other?.cards.map((card) => card.card.name)).toEqual([
       'Pym Particles',
       'Reversible Thing',
