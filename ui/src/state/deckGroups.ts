@@ -77,7 +77,10 @@ import type { DeckCardSummary, DeckDetail } from '../api/schema'
  * ONE list serving both, because two lists are two things to drift (AC 15). The order is the
  * conventional decklist order every Magic tool uses, so **c4-7**'s group headers and **c4-5**'s
  * *"the first card of the first type group"* both have something deterministic to rest on;
- * `deckGroups.test.ts` asserts the order itself, not merely the membership.
+ * `deckGroups.test.ts` asserts the order itself, not merely the membership. (c4-5's "first card"
+ * no longer rests on this group order ALONE: within each group `boardsOf` sorts by
+ * {@link byManaValueThenName}, so the first card of the first group is its cheapest, then
+ * alphabetically first, card — not whichever row the payload happened to emit first.)
  *
  * **What first-match-wins decides, measured on live decks at `2095050`** — 88 rows carry more
  * than one primary type on the front face:
@@ -217,6 +220,32 @@ const quantityOf = (cards: readonly DeckCardSummary[]): number =>
   cards.reduce((total, card) => total + card.quantity, 0)
 
 /**
+ * Arena-style order WITHIN a board or type group: ascending mana value, ties alphabetical.
+ *
+ * The wire's own docstring says its order is *"not meaningful"* — it falls out of the composite
+ * primary key — so this module imposes one, and it imposes it HERE, at the single derivation
+ * point, because "one derivation, no consumer re-sorts" is this module's founding rule.
+ * `CardGrid`, `DeckList` and `coldOpenTargetOf` all read the result verbatim.
+ *
+ * Two properties matter and both are deliberate:
+ *
+ *   - `cmc` is a FLOAT, not an int — `Little Girl` is 0.5 — so the comparison is numeric
+ *     subtraction, never a bucket. (`curve.ts`'s `bucketOf` clamps at 7+ and folds 0/1, which is
+ *     right for a histogram and wrong for an ordering.)
+ *   - The tiebreak is `localeCompare` on `name`, so the comparator is total and deterministic and
+ *     an all-cmc-0 Lands group comes out alphabetical rather than in key order.
+ *
+ * One accepted caveat, the same one the mana curve documents: a genuine split card's `cmc` is the
+ * combined faces' value, and it sorts by that.
+ */
+export const byManaValueThenName = (a: DeckCardSummary, b: DeckCardSummary): number =>
+  a.card.cmc - b.card.cmc || a.card.name.localeCompare(b.card.name)
+
+/** A sorted COPY — `boardsOf` must never mutate the payload array it was handed. */
+const ordered = (cards: readonly DeckCardSummary[]): readonly DeckCardSummary[] =>
+  [...cards].sort(byManaValueThenName)
+
+/**
  * Partition a deck's cards into boards and type groups (AC 13, AC 14, AC 15, AC 16).
  *
  * ================= THE PARTITION SPLITS ON `sideboard` FIRST, AND THAT IS ARITHMETIC ====
@@ -247,17 +276,21 @@ const quantityOf = (cards: readonly DeckCardSummary[]): number =>
  *
  * Returns:
  *   The boards. Groups with no cards are omitted entirely, so `mainboard` is never a list of
- *   mostly-empty headers; the ORDER of the groups that remain is {@link TYPE_GROUPS}'s.
+ *   mostly-empty headers; the ORDER of the groups that remain is {@link TYPE_GROUPS}'s, and the
+ *   order WITHIN every board and group is {@link byManaValueThenName}'s — ascending mana value,
+ *   ties alphabetical.
  */
 export const boardsOf = (cards: readonly DeckCardSummary[]): DeckBoards => {
-  const sideboard = cards.filter((card) => card.sideboard)
+  // Every board is sorted with the ONE comparator — {@link byManaValueThenName} — commander
+  // included (usually 1 card; consistency is free). Sorting happens here and only here.
+  const sideboard = ordered(cards.filter((card) => card.sideboard))
   const kept = cards.filter((card) => !card.sideboard)
-  const commander = kept.filter((card) => card.commander)
+  const commander = ordered(kept.filter((card) => card.commander))
   const main = kept.filter((card) => !card.commander)
 
   const mainboard = TYPE_GROUPS.map((group) => ({
     group,
-    cards: main.filter((card) => groupOf(card.card.type_line) === group),
+    cards: ordered(main.filter((card) => groupOf(card.card.type_line) === group)),
   }))
     .filter((entry) => entry.cards.length > 0)
     .map((entry) => ({ ...entry, quantity: quantityOf(entry.cards) }))

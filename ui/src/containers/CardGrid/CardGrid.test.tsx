@@ -30,7 +30,7 @@ import { EMPTY_DECK_LINE } from './copy'
 const deckCard = (
   name: string,
   typeLine: string,
-  extra: { quantity?: number; commander?: boolean; sideboard?: boolean } = {},
+  extra: { quantity?: number; commander?: boolean; sideboard?: boolean; cmc?: number } = {},
 ) => ({
   card_id: `id-${name}`,
   quantity: extra.quantity ?? 1,
@@ -40,7 +40,7 @@ const deckCard = (
     id: `id-${name}`,
     name,
     mana_cost: '',
-    cmc: 0,
+    cmc: extra.cmc ?? 0,
     type_line: typeLine,
     oracle_text: '',
     colors: [] as string[],
@@ -74,6 +74,24 @@ describe('the grid renders the store’s answer, not a second one (AC 15)', () =
     // order, which `boardsOf` imposed and this component only preserves. The payload order was
     // Land, Instant, Creature, Commander, so an unordered render would show that instead.
     expect(captions()).toEqual(['Atraxa, Grand Unifier', 'Llanowar Elves', 'Counterspell', 'Swamp'])
+  })
+
+  it('draws a group’s tiles in the derivation’s WITHIN-group order — ascending cmc', () => {
+    // The DeckList suite's probe-e lesson, applied here: every other fixture in this file puts
+    // one card per group, so nothing else would notice a within-group reorder. The payload is
+    // deliberately in DESCENDING cmc; `boardsOf` sorts ascending (ties alphabetical) and this
+    // component must render that answer verbatim.
+    render(
+      <CardGrid
+        boards={boardsOf([
+          deckCard('Wrath of God', 'Sorcery', { cmc: 4 }),
+          deckCard('Ponder', 'Sorcery', { cmc: 1 }),
+          deckCard('Divination', 'Sorcery', { cmc: 3 }),
+        ])}
+      />,
+    )
+
+    expect(captions()).toEqual(['Ponder', 'Divination', 'Wrath of God'])
   })
 
   it('does not re-sort, re-group or re-filter — the tiles come from the boards verbatim', () => {

@@ -673,20 +673,24 @@ describe('the panel re-derives nothing (AC 28)', () => {
     // was measuring between-group order — which `boardsOf` guarantees — and calling it proof of
     // within-group order, which nothing checked.
     //
-    // Three creatures, deliberately given in an order that is NOT alphabetical, so any re-sort
-    // this component performs is visible. `boardsOf` preserves input order within a group
-    // (`main.filter(...)`), so the store's order IS the payload's order here.
+    // The store's within-group order is `boardsOf`'s comparator — ascending cmc, ties
+    // alphabetical — NOT the payload's. Three creatures with distinct cmcs, deliberately given
+    // in DESCENDING cmc (an order that is also not alphabetical), so a component that either
+    // preserved payload order or ran a well-meaning name `.sort()` of its own is visible.
     const boards = boardsOf([
-      row('z', { name: 'Zealous Conscripts' }),
-      row('a', { name: 'Avacyn, Angel of Hope' }),
-      row('m', { name: 'Murktide Regent' }),
+      row('z', { name: 'Zealous Conscripts', cmc: 5 }),
+      row('a', { name: 'Avacyn, Angel of Hope', cmc: 8 }),
+      row('m', { name: 'Murktide Regent', cmc: 7 }),
     ])
     render(<DeckList boards={boards} />)
 
     const names = [...panelOf().querySelectorAll('.deck-row-name')].map((n) => n.textContent)
-    expect(names).toEqual(['Zealous Conscripts', 'Avacyn, Angel of Hope', 'Murktide Regent'])
-    // Spelled out, so the failure message says which mistake was made: alphabetical is what a
-    // well-meaning `.sort()` produces, and it is exactly what must NOT appear.
+    // Ascending cmc: 5, 7, 8.
+    expect(names).toEqual(['Zealous Conscripts', 'Murktide Regent', 'Avacyn, Angel of Hope'])
+    // Spelled out, so the failure message says which mistake was made: payload order is what a
+    // component that ignored the derivation would render, and alphabetical is what a
+    // well-meaning name `.sort()` produces. Neither must appear.
+    expect(names).not.toEqual(['Zealous Conscripts', 'Avacyn, Angel of Hope', 'Murktide Regent'])
     expect(names).not.toEqual([...names].sort((x, y) => (x ?? '').localeCompare(y ?? '')))
     expect(names).toEqual(boards.mainboard[0].cards.map((c) => c.card.name))
   })
