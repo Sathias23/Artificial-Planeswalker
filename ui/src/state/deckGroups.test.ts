@@ -261,8 +261,9 @@ describe('the comparator — ascending mana value, ties alphabetical', () => {
 
     expect(byManaValueThenName(a, z)).toBeLessThan(0)
     expect(byManaValueThenName(z, a)).toBeGreaterThan(0)
-    expect(byManaValueThenName(a, row('Avacyn, Angel of Hope', 'Creature — Angel', { cmc: 8 })))
-      .toBe(0)
+    expect(
+      byManaValueThenName(a, row('Avacyn, Angel of Hope', 'Creature — Angel', { cmc: 8 })),
+    ).toBe(0)
   })
 
   it('handles a fractional cmc — 0.5 exists (Little Girl) and sorts between 0 and 1', () => {
@@ -346,10 +347,7 @@ describe('each board arrives sorted — cmc ascending, ties alphabetical', () =>
   })
 
   it('never mutates the input — the payload array and its rows are untouched', () => {
-    const cards = [
-      row('Wrath of God', 'Sorcery', { cmc: 4 }),
-      row('Ponder', 'Sorcery', { cmc: 1 }),
-    ]
+    const cards = [row('Wrath of God', 'Sorcery', { cmc: 4 }), row('Ponder', 'Sorcery', { cmc: 1 })]
     const before = [...cards]
 
     boardsOf(cards)
