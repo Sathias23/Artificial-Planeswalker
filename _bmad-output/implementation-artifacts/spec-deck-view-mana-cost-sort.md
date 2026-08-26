@@ -2,7 +2,7 @@
 title: 'Sort deck-view cards by ascending mana value within each type group'
 type: 'feature'
 created: '2026-08-27'
-status: 'in-review'
+status: 'done'
 review_loop_iteration: 0
 baseline_commit: '22aa78d14b8ec6b51d73feff7ac6d8eabb59e775'
 context: []
