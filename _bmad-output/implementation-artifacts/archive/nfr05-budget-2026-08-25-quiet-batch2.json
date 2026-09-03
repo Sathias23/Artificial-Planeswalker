@@ -1,0 +1,87 @@
+[
+  {
+    "surfaces": {
+      "header": 39.5,
+      "grid": 110.59999990463257,
+      "curve": 110.59999990463257,
+      "colour": 110.59999990463257,
+      "deck-list": 110.59999990463257,
+      "format-check": 448.5
+    },
+    "missing": [],
+    "observer_error": null,
+    "layout_ms": 448.5,
+    "requests_total": 216,
+    "card_reads": 99,
+    "format_check_queue_position": 109,
+    "format_check_start_ms": 104.79999995231628
+  },
+  {
+    "surfaces": {
+      "header": 38,
+      "grid": 90.30000019073486,
+      "curve": 90.30000019073486,
+      "colour": 90.30000019073486,
+      "deck-list": 90.30000019073486,
+      "format-check": 394.80000019073486
+    },
+    "missing": [],
+    "observer_error": null,
+    "layout_ms": 394.80000019073486,
+    "requests_total": 216,
+    "card_reads": 99,
+    "format_check_queue_position": 109,
+    "format_check_start_ms": 85.10000014305115
+  },
+  {
+    "surfaces": {
+      "header": 37.10000014305115,
+      "grid": 89.10000014305115,
+      "curve": 89.10000014305115,
+      "colour": 89.10000014305115,
+      "deck-list": 89.10000014305115,
+      "format-check": 424.40000009536743
+    },
+    "missing": [],
+    "observer_error": null,
+    "layout_ms": 424.40000009536743,
+    "requests_total": 216,
+    "card_reads": 99,
+    "format_check_queue_position": 109,
+    "format_check_start_ms": 83.90000009536743
+  },
+  {
+    "surfaces": {
+      "header": 36.10000014305115,
+      "grid": 86.90000009536743,
+      "curve": 86.90000009536743,
+      "colour": 87,
+      "deck-list": 87,
+      "format-check": 357.60000014305115
+    },
+    "missing": [],
+    "observer_error": null,
+    "layout_ms": 357.60000014305115,
+    "requests_total": 216,
+    "card_reads": 99,
+    "format_check_queue_position": 109,
+    "format_check_start_ms": 81.90000009536743
+  },
+  {
+    "surfaces": {
+      "header": 37.700000047683716,
+      "grid": 90.40000009536743,
+      "curve": 90.40000009536743,
+      "colour": 90.40000009536743,
+      "deck-list": 90.40000009536743,
+      "format-check": 339.60000014305115
+    },
+    "missing": [],
+    "observer_error": null,
+    "layout_ms": 339.60000014305115,
+    "requests_total": 216,
+    "card_reads": 99,
+    "format_check_queue_position": 109,
+    "format_check_start_ms": 85.60000014305115
+  }
+]
