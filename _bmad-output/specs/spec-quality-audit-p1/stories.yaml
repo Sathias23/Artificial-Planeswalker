@@ -1,0 +1,68 @@
+- id: "1"
+  title: Metadata, input bounds, tracked clutter, and the process-artifact move
+  description: >-
+    CAP-7, CAP-9, CAP-10, CAP-8 in SPEC.md, as batch 0 in batches.md: version single-sourced,
+    SECURITY.md current, gitignore anchored and cache untracked, tool argument ceilings and
+    destructive annotations, HTTP transports dropped from .env.example, implementation-artifacts
+    moved to an orphan process branch with a pre-commit guard for the local path.
+  invoke_dev_with: >-
+    Greptile: NO. Implement then set status review and stop; Sathias runs the three-layer review
+    and raises the PR(s). Before the first push run the preflight gate in batches.md and rebuild
+    plugin/ in the same commit as any src/mcp_server/tools change. Split into two PRs if the
+    orphan-branch move (CAP-8) is easier to review alone. After the move, confirm
+    bmad-sprint-planning status still resolves sprint-status.yaml via a worktree of the process
+    branch; if any bmad config hard-codes the master path, change it in this story.
+- id: "2"
+  title: Remove lint-as-tests and add behaviour tests for the import layer and MCP wire
+  description: >-
+    CAP-5 and CAP-6, as batch 1 in batches.md: delete or convert the source-scan, docstring-prose,
+    constant-pin, scanner-meta, and docs-drift tests per the per-file list; move CSS token rules
+    into stylelint and copy bans into eslint; add spellbook, scryfall_api, combo_snapshot and
+    call_tool coverage.
+  spec_checkpoint: true
+  done_checkpoint: true
+  invoke_dev_with: >-
+    Greptile: YES (run 1 of 3). Implement then set status review and stop. Before the first push run
+    the full preflight gate in batches.md, including ui npm test with the new test:gates script
+    split out, so no formatting or drift fix-up lands after the review starts. Keep the retained
+    gates named in SPEC.md constraints untouched. Record the before/after unit-job time and the three
+    module coverage numbers in the story's completion notes.
+- id: "3"
+  title: Indexed name lookup, single-transaction import, off-loop search tools
+  description: >-
+    CAP-1, CAP-2, CAP-11, as batch 2 in batches.md: NOCASE index and collate query on card names,
+    one commit per import, asyncio.to_thread around the three sync tools and the initialize_database
+    passes, one shared companion client with the probe dropped, lazy fastembed import.
+  invoke_dev_with: >-
+    Greptile: YES (run 2 of 3). Implement then set status review and stop. Run the preflight gate
+    before the first push; rebuild plugin/ in the same PR. Existing cards.db files must gain the new
+    index without a manual step (on initialize_database or on engine connect). Fix the server.py
+    module docstring that claims FastMCP threadpools sync tools. Record the EXPLAIN QUERY PLAN
+    before/after and the 100-line import timing in the completion notes.
+- id: "4"
+  title: Companion cold-open request diet
+  description: >-
+    CAP-3, as batch 3 in batches.md: deck list without card rows, full Card objects embedded in the
+    deck-detail response, Cache-Control on the card route, disk-cache-first image route, a booting
+    panel state, and the hero as a hashed recompressed asset.
+  spec_checkpoint: true
+  invoke_dev_with: >-
+    Greptile: YES (run 3 of 3). Implement then set status review and stop. This is the only story
+    that changes the OpenAPI schema: run npm run gen:api, rebuild the SPA bundle and plugin/, and
+    commit all three in the same PR before the first push, after the preflight gate. Do not touch
+    the companion security invariants listed in SPEC.md constraints. Measure with
+    uv run python -m scripts.cdp_harness budget on a quiet machine before and after and put both
+    medians in the PR body.
+- id: "5"
+  title: Provenance out of code comments
+  description: >-
+    CAP-4, as batch 4 in batches.md: prune story ids, dates, review rounds, names and retracted
+    predictions from comments and docstrings in src, ui/src, ci.yml, eslint.config.js,
+    ui/package.json and ui/README.md, keeping the invariant sentence; two PRs, one for src and one
+    for ui plus config.
+  invoke_dev_with: >-
+    Greptile: NO. Implement then set status review and stop. Depends on story 2 having merged.
+    Comment-only changes; if any hunk touches code, isolate it in its own commit. Start with the six
+    src files above 65% comment share, then the five ui files. Keep AD-nn citations that link a live
+    architecture decision. Rebuild plugin/ in the src PR. Run the grep from CAP-4's success criterion
+    and paste its empty output in the completion notes.
