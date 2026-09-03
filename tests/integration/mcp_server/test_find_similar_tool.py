@@ -16,6 +16,7 @@ filter composition, not_found (unknown / unindexed), ambiguous, and the invalid 
 """
 
 import json
+import math
 import sqlite3
 
 from src.mcp_server.tools.find_similar import SimilarCardsResult, find_similar_cards
@@ -351,6 +352,12 @@ def test_invalid_bad_filter_values(tmp_path) -> None:
 
     bad_range = find_similar_cards(conn, card_name="Seed Card", mana_value_min=5, mana_value_max=2)
     assert bad_range.status == "invalid"
+
+    # Non-finite bounds are rejected before SQL sees them.
+    nan_min = find_similar_cards(conn, card_name="Seed Card", mana_value_min=math.nan)
+    assert nan_min.status == "invalid" and "finite" in nan_min.message
+    inf_max = find_similar_cards(conn, card_name="Seed Card", mana_value_max=math.inf)
+    assert inf_max.status == "invalid" and "finite" in inf_max.message
 
     bad_limit = find_similar_cards(conn, card_name="Seed Card", limit=0)
     assert bad_limit.status == "invalid"

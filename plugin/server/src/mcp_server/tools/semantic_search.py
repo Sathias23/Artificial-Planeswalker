@@ -19,6 +19,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from src.data.schemas.card import CardSummary
+from src.mcp_server.tools.card_search import mana_bounds_error
 from src.mcp_server.tools.messages import (
     DATABASE_NOT_INITIALIZED_MESSAGE,
     INDEX_NOT_BUILT_MESSAGE,
@@ -112,10 +113,9 @@ def _validation_error(
             if game not in _VALID_GAMES:
                 return f"Invalid game '{game}'. Valid games are: paper, arena, mtgo."
 
-    if mana_value_min is not None and mana_value_min < 0:
-        return f"mana_value_min must be >= 0 (got {mana_value_min})."
-    if mana_value_max is not None and mana_value_max < 0:
-        return f"mana_value_max must be >= 0 (got {mana_value_max})."
+    mana_error = mana_bounds_error(mana_value_min, mana_value_max)
+    if mana_error is not None:
+        return mana_error
     if (
         mana_value_min is not None
         and mana_value_max is not None

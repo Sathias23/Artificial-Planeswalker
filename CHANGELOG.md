@@ -7,7 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **One version source.** `src.__version__` now reads the installed package
+  metadata instead of carrying its own literal (it had drifted to 0.1.0), and
+  `ui/package.json` carries the same version as `pyproject.toml`; a unit test
+  guards all three against drifting again.
+- **Security policy refreshed** for the 0.5.x line: it now describes the
+  companion's loopback HTTP + WebSocket surface (bearer token, single-use
+  tickets, Host/Origin checks, body cap, image-proxy allow-list) and names
+  stdio as the only supported MCP transport. `.env.example` and the README no
+  longer advertise the `sse` / `streamable-http` transports (the env-var code
+  path is unchanged).
+- **Bounded tool inputs.** `add_card_to_deck` rejects a `quantity` above 250
+  (the same cap `import_decklist` already applied); `create_deck` caps the
+  deck name (100 chars), strategy (2000 chars), tag count (20) and tag length
+  (50); `search_cards` rejects a `page_size` above 100; and the mana-value
+  bounds on `search_cards`, `semantic_search_cards` and `find_similar_cards`
+  reject NaN / infinity instead of passing them to SQL. Every rejection is a
+  `status="invalid"` result with a message naming the field.
+- **Honest tool annotations.** `initialize_database` and `build_search_index`
+  now declare `destructiveHint`, so clients that gate destructive tools
+  behind a confirmation can do so.
+- **Repository hygiene.** A stray root-level `node_modules/` cache file is no
+  longer tracked; the `build/`, `dist/`, `lib/` ignore rules are anchored to
+  the repo root so a future `ui/src/lib/` cannot be silently ignored.
+- **Process artifacts moved off master.** Story files, sprint status, retros
+  and the deferred-work ledger (`_bmad-output/implementation-artifacts/`, 177
+  files) now live on the orphan `process` branch, checked out locally as a
+  worktree under `.worktrees/process/`. Planning artifacts stay on master. A
+  pre-commit hook rejects commits that carry the maintainer's local machine
+  path.
 
 ## [0.5.0] - 2026-08-25
 

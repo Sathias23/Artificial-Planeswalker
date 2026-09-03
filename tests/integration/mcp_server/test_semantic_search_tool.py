@@ -10,6 +10,7 @@ One ``@pytest.mark.integration`` test drives the **real** embedder for honest se
 """
 
 import json
+import math
 import sqlite3
 
 import pytest
@@ -215,6 +216,12 @@ def test_invalid_bad_filter_values(tmp_path) -> None:
 
     bad_range = semantic_search_cards(conn, fake, q, mana_value_min=5, mana_value_max=2)
     assert bad_range.status == "invalid"
+
+    # Non-finite bounds are rejected before the embedder or SQL sees them.
+    nan_min = semantic_search_cards(conn, fake, q, mana_value_min=math.nan)
+    assert nan_min.status == "invalid" and "finite" in nan_min.message
+    inf_max = semantic_search_cards(conn, fake, q, mana_value_max=math.inf)
+    assert inf_max.status == "invalid" and "finite" in inf_max.message
 
     bad_limit = semantic_search_cards(conn, fake, q, limit=0)
     assert bad_limit.status == "invalid"

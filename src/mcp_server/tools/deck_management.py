@@ -39,6 +39,15 @@ logger = logging.getLogger(__name__)
 # Maximum number of candidate cards returned for an ambiguous name resolution.
 _MAX_MATCHES = 10
 
+# Ceilings on the LLM-supplied arguments (nothing at the MCP boundary bounds them otherwise).
+# ``MAX_CARD_QUANTITY`` is the single copy cap shared with ``deck_import``: no real deck holds
+# more than 250 of one card, and an unbounded integer would be stored as-is.
+MAX_CARD_QUANTITY = 250
+MAX_DECK_NAME_CHARS = 100
+MAX_STRATEGY_CHARS = 2000
+MAX_TAGS = 20
+MAX_TAG_CHARS = 50
+
 
 class DeckListResult(BaseModel):
     """Structured result of ``list_decks``.
@@ -220,6 +229,25 @@ async def list_decks(session: AsyncSession, *, format: str | None = None) -> Dec
     )
 
 
+def _create_deck_validation_error(
+    *, name: str, strategy: str | None, tags: list[str] | None
+) -> str | None:
+    """Return a message naming the first ``create_deck`` argument outside its bounds, else None."""
+    if not name or not name.strip():
+        return "Deck name must not be empty."
+    if len(name.strip()) > MAX_DECK_NAME_CHARS:
+        return f"name must be at most {MAX_DECK_NAME_CHARS} characters (got {len(name.strip())})."
+    if strategy is not None and len(strategy) > MAX_STRATEGY_CHARS:
+        return f"strategy must be at most {MAX_STRATEGY_CHARS} characters (got {len(strategy)})."
+    if tags is not None:
+        if len(tags) > MAX_TAGS:
+            return f"tags must hold at most {MAX_TAGS} entries (got {len(tags)})."
+        for tag in tags:
+            if len(tag) > MAX_TAG_CHARS:
+                return f"each tag must be at most {MAX_TAG_CHARS} characters (got {len(tag)})."
+    return None
+
+
 async def create_deck(
     session: AsyncSession,
     *,
@@ -241,11 +269,13 @@ async def create_deck(
         tags: Optional list of tags / win conditions.
 
     Returns:
-        A ``DeckResult`` with ``status`` of ``ok``, ``invalid`` (blank name), ``error``, or
-        ``database_not_initialized`` (run ``initialize_database`` first).
+        A ``DeckResult`` with ``status`` of ``ok``, ``invalid`` (blank or over-long name, or a
+        strategy / tags value over its cap), ``error``, or ``database_not_initialized`` (run
+        ``initialize_database`` first).
     """
-    if not name or not name.strip():
-        return DeckResult(status="invalid", message="Deck name must not be empty.")
+    invalid = _create_deck_validation_error(name=name, strategy=strategy, tags=tags)
+    if invalid is not None:
+        return DeckResult(status="invalid", message=invalid)
 
     if not await is_database_initialized(session):
         return DeckResult(
@@ -368,7 +398,7 @@ async def add_card_to_deck(
         deck_id: The target deck id.
         card_id: The card id to add (mutually exclusive with ``name``).
         name: A card name to resolve and add (mutually exclusive with ``card_id``).
-        quantity: Number of copies to add (must be >= 1; default 1).
+        quantity: Number of copies to add (1 to ``MAX_CARD_QUANTITY``; default 1).
         sideboard: Add to the sideboard instead of the mainboard (default False).
         commander: Mark this card as the deck's commander (default False; flag
             two cards for partners).
@@ -383,11 +413,11 @@ async def add_card_to_deck(
     selector_error = _selector_error(card_id, name)
     if selector_error is not None:
         return DeckCardResult(status="invalid", deck_id=deck_id, message=selector_error)
-    if quantity < 1:
+    if quantity < 1 or quantity > MAX_CARD_QUANTITY:
         return DeckCardResult(
             status="invalid",
             deck_id=deck_id,
-            message=f"quantity must be >= 1 (got {quantity}).",
+            message=f"quantity must be between 1 and {MAX_CARD_QUANTITY} (got {quantity}).",
         )
 
     if not await is_database_initialized(session):

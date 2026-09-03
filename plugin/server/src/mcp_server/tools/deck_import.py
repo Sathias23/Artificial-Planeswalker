@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.data.database import is_database_initialized
 from src.data.repositories.deck import DeckRepository
 from src.data.schemas.card import CardSummary
-from src.mcp_server.tools.deck_management import DeckCardResult
+from src.mcp_server.tools.deck_management import MAX_CARD_QUANTITY, DeckCardResult
 from src.mcp_server.tools.deck_management import add_card_to_deck as _add_card_to_deck
 from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
 
@@ -33,7 +33,7 @@ _ABOUT_HEADER = "about"
 _SIDEBOARD_SECTIONS: frozenset[ArenaSection] = frozenset({"sideboard", "companion"})
 _MAX_EXPORT_CHARS = 50_000
 _MAX_RESULT_LINES = 250
-_MAX_QUANTITY = 250
+_MAX_QUANTITY = MAX_CARD_QUANTITY
 _CARD_LINE_RE = re.compile(
     r"^(?P<quantity>\d+)\s+(?P<name>.+)\s+"
     r"\((?P<set_code>[^()\s]+)\)\s+(?P<collector_number>\S+)$"

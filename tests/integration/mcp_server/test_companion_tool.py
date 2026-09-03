@@ -53,6 +53,7 @@ from src.companion.contracts import (
 from src.companion.discovery import COMPANION_FILENAME, DiscoveryRecord, read_discovery
 from src.data.database import create_engine, create_session_factory, init_database
 from src.data.models.card import CardModel
+from src.data.repositories.deck import DeckRepository
 from src.mcp_server.tools import companion
 from src.mcp_server.tools.companion import (
     CompanionStatusResult,
@@ -550,11 +551,11 @@ class TestTheResultIsCompact:
     async def test_a_displayed_result_stays_compact_for_an_oversized_deck_name(
         self, session, client_stub
     ):
-        """``deck.name`` is unbounded in storage — ``create_deck`` only refuses a blank one."""
+        """``deck.name`` is unbounded in storage (the tool caps it; the repository does not)."""
         client_stub(PushOutcome(outcome="displayed", clients=1))
-        created = await create_deck(session, name="B" * 5000)
+        created = await DeckRepository(session).create_deck(name="B" * 5000, format="standard")
 
-        result = await set_active_deck(session, deck_id=created.deck.id)
+        result = await set_active_deck(session, deck_id=created.id)
 
         assert result.status == "displayed"
         assert len(result.model_dump_json()) < 400, result.model_dump_json()

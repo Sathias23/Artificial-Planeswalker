@@ -10,6 +10,7 @@ dropping all presentation/session concerns (HTML, RunContext, session cursors,
 the ``max_results`` alias).
 """
 
+import math
 from typing import Literal
 
 from pydantic import BaseModel
@@ -25,6 +26,8 @@ from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
 _VALID_COLORS = frozenset({"W", "U", "B", "R", "G"})
 _VALID_RARITIES = frozenset({"common", "uncommon", "rare", "mythic", "special", "bonus"})
 _VALID_GAMES = frozenset({"paper", "arena", "mtgo"})
+# Ceiling on the LLM-supplied page size (``search_advanced`` clamps to 50 below this anyway).
+_MAX_PAGE_SIZE = 100
 
 
 class CardSearchResult(BaseModel):
@@ -50,6 +53,21 @@ class CardSearchResult(BaseModel):
     page_size: int = 20
     total_pages: int = 0
     message: str
+
+
+def mana_bounds_error(mana_value_min: float | None, mana_value_max: float | None) -> str | None:
+    """Reject a non-finite or negative mana bound before it reaches SQL (NaN never compares).
+
+    Shared by the three search tools so every mana filter fails the same way.
+    """
+    for label, value in (("mana_value_min", mana_value_min), ("mana_value_max", mana_value_max)):
+        if value is None:
+            continue
+        if not math.isfinite(value):
+            return f"{label} must be a finite number (got {value})."
+        if value < 0:
+            return f"{label} must be >= 0 (got {value})."
+    return None
 
 
 def _validation_error(
@@ -87,10 +105,9 @@ def _validation_error(
             if game not in _VALID_GAMES:
                 return f"Invalid game '{game}'. Valid games are: paper, arena, mtgo."
 
-    if mana_value_min is not None and mana_value_min < 0:
-        return f"mana_value_min must be >= 0 (got {mana_value_min})."
-    if mana_value_max is not None and mana_value_max < 0:
-        return f"mana_value_max must be >= 0 (got {mana_value_max})."
+    mana_error = mana_bounds_error(mana_value_min, mana_value_max)
+    if mana_error is not None:
+        return mana_error
     if (
         mana_value_min is not None
         and mana_value_max is not None
@@ -104,6 +121,8 @@ def _validation_error(
         return f"page must be >= 1 (got {page})."
     if page_size < 1:
         return f"page_size must be >= 1 (got {page_size})."
+    if page_size > _MAX_PAGE_SIZE:
+        return f"page_size must be <= {_MAX_PAGE_SIZE} (got {page_size})."
 
     return None
 

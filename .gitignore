@@ -8,9 +8,13 @@ temp/
 /.codex/
 
 # Dev process tooling — untracked via `git rm --cached` but kept ON DISK locally so the bmad
-# workflow still runs. NOTE: _bmad-output/ is intentionally NOT ignored — its planning +
-# implementation artifacts are the public design record.
+# workflow still runs. NOTE: _bmad-output/ is intentionally NOT ignored — its planning artifacts
+# (PRD, architecture, UX, research, specs) are the public design record. Implementation artifacts
+# (stories, sprint status, retros, deferred-work ledger) live on the orphan `process` branch,
+# checked out locally as a worktree under .worktrees/ (ignored below) so the bmad skills still
+# resolve them.
 /_bmad/
+/.worktrees/
 .claude/skills/bmad-*/
 # BMAD installer dump for Codex-style agents — dev tooling, not shipped. Scoped to skills/ only:
 # .agents/plugins/ (the Codex marketplace file) IS committed, so never blanket-ignore .agents/.
@@ -22,14 +26,16 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
+# Anchored to the repo root: an unanchored `lib/` would silently ignore any future `ui/src/lib/`
+# (ui/.gitignore already covers ui/dist and ui/node_modules).
+/build/
 develop-eggs/
-dist/
+/dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -38,6 +44,9 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# Node (a root-level vitest cache was once committed by accident; ui/ has its own rule)
+node_modules/
 
 # Virtual environments
 .venv/
