@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Bounded tool inputs.** `add_card_to_deck` rejects a `quantity` above 250
   (the same cap `import_decklist` already applied); `create_deck` caps the
   deck name (100 chars), strategy (2000 chars), tag count (20) and tag length
-  (50); `search_cards` rejects a `page_size` above 100; and the mana-value
+  (50); `search_cards` rejects a `page_size` above 50; and the mana-value
   bounds on `search_cards`, `semantic_search_cards` and `find_similar_cards`
   reject NaN / infinity instead of passing them to SQL. Every rejection is a
   `status="invalid"` result with a message naming the field.

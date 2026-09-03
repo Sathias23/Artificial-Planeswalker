@@ -250,7 +250,7 @@ def build_server(
             format: Restrict to cards legal in this format (e.g. "standard").
             games: Restrict to platforms (any of "paper", "arena", "mtgo").
             page: 1-based page number (default 1).
-            page_size: Results per page (default 20, max 100; the repository clamps to 50).
+            page_size: Results per page (default 20, max 50).
 
         Returns:
             A result whose ``status`` is ``ok`` (``cards`` plus pagination

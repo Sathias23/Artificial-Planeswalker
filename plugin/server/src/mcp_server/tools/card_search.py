@@ -26,8 +26,9 @@ from src.mcp_server.tools.messages import DATABASE_NOT_INITIALIZED_MESSAGE
 _VALID_COLORS = frozenset({"W", "U", "B", "R", "G"})
 _VALID_RARITIES = frozenset({"common", "uncommon", "rare", "mythic", "special", "bonus"})
 _VALID_GAMES = frozenset({"paper", "arena", "mtgo"})
-# Ceiling on the LLM-supplied page size (``search_advanced`` clamps to 50 below this anyway).
-_MAX_PAGE_SIZE = 100
+# Ceiling on the LLM-supplied page size, equal to the ``search_advanced`` clamp so an accepted
+# value is never silently truncated.
+_MAX_PAGE_SIZE = 50
 
 
 class CardSearchResult(BaseModel):

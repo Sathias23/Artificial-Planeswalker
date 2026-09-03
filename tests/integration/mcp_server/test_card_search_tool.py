@@ -359,11 +359,11 @@ async def test_invalid_page_returns_invalid(session: AsyncSession):
 
 
 async def test_page_size_above_cap_returns_invalid(session: AsyncSession):
-    """page_size > 100 returns status='invalid' naming the ceiling."""
-    result = await search_cards(session, page_size=101)
+    """page_size > 50 returns status='invalid' naming the ceiling."""
+    result = await search_cards(session, page_size=51)
 
     assert result.status == "invalid"
-    assert "100" in result.message
+    assert "50" in result.message
 
 
 async def test_nan_mana_bound_returns_invalid(session: AsyncSession):
