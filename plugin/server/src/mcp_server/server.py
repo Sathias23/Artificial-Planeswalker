@@ -43,6 +43,7 @@ import logging
 from typing import Literal
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.companion.client import notify_deck_changed as _notify_deck_changed
@@ -378,7 +379,7 @@ def build_server(
             deck_id: The target deck id.
             card_id: The card id to add (provide this OR ``name``, not both).
             name: A card name to resolve and add (provide this OR ``card_id``).
-            quantity: Number of copies to add (must be >= 1; default 1).
+            quantity: Number of copies to add (1 to 250; default 1).
             sideboard: Add to the sideboard instead of the mainboard (default False).
             commander: Mark this card as the deck's commander (default False;
                 flag two cards for partners).
@@ -1049,7 +1050,9 @@ def build_server(
             limit=limit,
         )
 
-    @mcp.tool()
+    # Both tools below wipe-and-rebuild local state (the card tables / the embedding index), so
+    # they carry an honest destructive hint for clients that gate such tools behind confirmation.
+    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
     async def initialize_database(update: bool = False) -> InitializeDatabaseResult:
         """Download the Magic card data and set up — or update — the local database.
 
@@ -1081,7 +1084,7 @@ def build_server(
         """
         return await _initialize_database_helper(update=update)
 
-    @mcp.tool()
+    @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
     def build_search_index(rebuild: bool = False) -> BuildSearchIndexResult:
         """Build the semantic search index (one-time step that enables semantic_search_cards).
 

@@ -10,6 +10,8 @@ fine here (mirrors test_card_lookup_tool.py). The cross-session harness test mus
 use the file-backed fixture instead.
 """
 
+import math
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -354,3 +356,28 @@ async def test_invalid_page_returns_invalid(session: AsyncSession):
     result = await search_cards(session, page=0)
 
     assert result.status == "invalid"
+
+
+async def test_page_size_above_cap_returns_invalid(session: AsyncSession):
+    """page_size > 50 returns status='invalid' naming the ceiling."""
+    result = await search_cards(session, page_size=51)
+
+    assert result.status == "invalid"
+    assert "50" in result.message
+
+
+async def test_nan_mana_bound_returns_invalid(session: AsyncSession):
+    """A NaN mana bound is rejected before any query runs (NaN never compares in SQL)."""
+    result = await search_cards(session, mana_value_min=math.nan)
+
+    assert result.status == "invalid"
+    assert "finite" in result.message
+    assert result.cards == []
+
+
+async def test_inf_mana_bound_returns_invalid(session: AsyncSession):
+    """An infinite mana bound is rejected as non-finite."""
+    result = await search_cards(session, mana_value_max=math.inf)
+
+    assert result.status == "invalid"
+    assert "finite" in result.message

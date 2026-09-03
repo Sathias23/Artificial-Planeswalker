@@ -113,7 +113,7 @@ _ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 # silent non-match, i.e. an unparseable summary REFUSAL on a perfectly good run.
 _LINE_BREAKS = re.compile(r"\r\n?")
 
-# ` RUN  v4.1.10 C:/Users/brads/Projects/Artificial-Planeswalker/ui` — the run stating, in its own
+# ` RUN  v4.1.10 <repo>/ui` — the run stating, in its own
 # words, which root it resolved. Cross-checks lies #1-2 that owning the cwd already prevents.
 _RUN_BANNER = re.compile(r"^\s*RUN\s+v[\d.]+\s+(?P<root>\S.*?)\s*$", re.MULTILINE)
 

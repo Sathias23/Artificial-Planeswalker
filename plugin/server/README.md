@@ -82,8 +82,7 @@ Then point any MCP client at it — in this directory,
 [`.mcp.json`](https://github.com/Sathias23/Artificial-Planeswalker/blob/master/.mcp.json) already does:
 
 ```bash
-uv run python -m src.mcp_server          # stdio (default; how clients launch it)
-MCP_TRANSPORT=streamable-http uv run python -m src.mcp_server   # serve over HTTP instead
+uv run python -m src.mcp_server          # stdio — the supported transport; how clients launch it
 ```
 
 ## Connect your client

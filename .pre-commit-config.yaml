@@ -27,6 +27,18 @@ repos:
           - httpx>=0.28.1
         files: ^src/
 
+  # The maintainer's local machine path leaked into the tracked tree (fourteen process files and
+  # one comment) before the process artifacts moved to the `process` branch. `pygrep` needs no
+  # script: pre-commit greps every staged text file and fails on any match. The two documents that
+  # describe the leak, and the story that specified this hook, quote the path on purpose.
+  - repo: local
+    hooks:
+      - id: no-local-machine-paths
+        name: no local machine paths
+        language: pygrep
+        entry: 'C:[\\/]+Users[\\/]+brads|c-{2}Users-brads'
+        exclude: ^(docs/release-readiness-review\.md|_bmad-output/planning-artifacts/research/quality-audit-2026-09-03\.md|_bmad-output/specs/spec-quality-audit-p1/stories/1-metadata-bounds-clutter-process-move\.md)$
+
   # Keep the committed plugin/ tree (the marketplace `source`) in sync with src/. When a source
   # input changes, rebuild it; pre-commit then fails if plugin/ was modified, prompting a re-add.
   - repo: local

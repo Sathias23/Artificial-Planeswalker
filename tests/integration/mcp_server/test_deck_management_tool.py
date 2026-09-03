@@ -24,6 +24,11 @@ from src.data.models.deck_card import DeckCardModel
 from src.data.schemas.card import CardSummary
 from src.data.schemas.deck import DeckCardSummary
 from src.mcp_server.tools.deck_management import (
+    MAX_CARD_QUANTITY,
+    MAX_DECK_NAME_CHARS,
+    MAX_STRATEGY_CHARS,
+    MAX_TAG_CHARS,
+    MAX_TAGS,
     add_card_to_deck,
     create_deck,
     delete_deck,
@@ -418,6 +423,78 @@ async def test_add_card_invalid_quantity(session: AsyncSession) -> None:
     )
 
     assert result.status == "invalid"
+
+
+async def test_add_card_quantity_above_cap_is_invalid_and_writes_nothing(
+    session: AsyncSession,
+) -> None:
+    """quantity above MAX_CARD_QUANTITY returns status='invalid' naming the range; no row."""
+    created = await create_deck(session, name="Qty cap")
+    assert created.deck is not None
+    deck_id = created.deck.id
+
+    result = await add_card_to_deck(
+        session, deck_id=deck_id, card_id="card-bolt", quantity=MAX_CARD_QUANTITY + 1
+    )
+
+    assert result.status == "invalid"
+    assert "1" in result.message and str(MAX_CARD_QUANTITY) in result.message
+    rows = (
+        (await session.execute(select(DeckCardModel).where(DeckCardModel.deck_id == deck_id)))
+        .scalars()
+        .all()
+    )
+    assert rows == []
+
+
+async def test_add_card_quantity_at_cap_is_ok(session: AsyncSession) -> None:
+    """quantity == MAX_CARD_QUANTITY (250) is accepted."""
+    created = await create_deck(session, name="Qty at cap")
+    assert created.deck is not None
+
+    result = await add_card_to_deck(
+        session, deck_id=created.deck.id, card_id="card-bolt", quantity=MAX_CARD_QUANTITY
+    )
+
+    assert result.status == "ok"
+
+
+async def test_create_deck_name_too_long_is_invalid(session: AsyncSession) -> None:
+    """A name over MAX_DECK_NAME_CHARS returns status='invalid'."""
+    result = await create_deck(session, name="x" * (MAX_DECK_NAME_CHARS + 1))
+
+    assert result.status == "invalid"
+    assert "name" in result.message
+    at_cap = await create_deck(session, name="x" * MAX_DECK_NAME_CHARS)
+    assert at_cap.status == "ok"
+
+
+async def test_create_deck_strategy_too_long_is_invalid(session: AsyncSession) -> None:
+    """A strategy over MAX_STRATEGY_CHARS returns status='invalid' naming the field."""
+    result = await create_deck(
+        session, name="Long strategy", strategy="s" * (MAX_STRATEGY_CHARS + 1)
+    )
+
+    assert result.status == "invalid"
+    assert "strategy" in result.message
+
+
+async def test_create_deck_too_many_tags_is_invalid(session: AsyncSession) -> None:
+    """More than MAX_TAGS tags returns status='invalid' naming the field."""
+    result = await create_deck(
+        session, name="Many tags", tags=[f"t{i}" for i in range(MAX_TAGS + 1)]
+    )
+
+    assert result.status == "invalid"
+    assert "tags" in result.message
+
+
+async def test_create_deck_tag_too_long_is_invalid(session: AsyncSession) -> None:
+    """A single tag over MAX_TAG_CHARS returns status='invalid' naming the field."""
+    result = await create_deck(session, name="Long tag", tags=["t" * (MAX_TAG_CHARS + 1)])
+
+    assert result.status == "invalid"
+    assert "tag" in result.message
 
 
 # --- remove_card_from_deck (AC2, AC4) ---
