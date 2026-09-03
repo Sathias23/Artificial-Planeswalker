@@ -2,7 +2,7 @@
 title: 'Metadata, input bounds, tracked clutter, and the process-artifact move'
 type: 'chore'
 created: '2026-09-03'
-status: 'review'
+status: 'done'
 baseline_commit: '8acc5718957c12f8b7458d4d783b834499708627'
 review_loop_iteration: 0
 context: ['_bmad-output/specs/spec-quality-audit-p1/SPEC.md', '_bmad-output/specs/spec-quality-audit-p1/batches.md']
